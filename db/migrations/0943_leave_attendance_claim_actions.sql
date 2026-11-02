@@ -189,7 +189,7 @@ CREATE CONSTRAINT TRIGGER claim_configuration_range_close AFTER UPDATE ON claim_
 CREATE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap
-  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','attendancePolicy.schedule')
+  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule')
   AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 --> statement-breakpoint
@@ -198,7 +198,7 @@ REVOKE ALL ON FUNCTION app.module_function_legacy_allowed(uuid,uuid,text,uuid) F
 CREATE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap
-  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','attendancePolicy.schedule')
+  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule')
   AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 --> statement-breakpoint
@@ -219,7 +219,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT coalesce((SELECT app.module_action_allowed(split_part(a.parent_capability,'.',1),split_part(a.parent_capability,'.',2),p_company)
   AND app.function_action_allowed(p_key,p_operation,p_company)
   FROM app.access_function_action a WHERE a.function_key=p_key AND a.operation=p_operation
-   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','attendancePolicy.schedule')),false);
+   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule')),false);
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.module_function_allowed(text,text,uuid) FROM PUBLIC;
@@ -545,3 +545,72 @@ DO $$ DECLARE relation_name text;BEGIN
   EXECUTE format('CREATE TRIGGER module_configuration_write_lock BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock()',relation_name);
  END LOOP;
 END $$;
+
+--> statement-breakpoint
+-- Grade Groups is shared vocabulary; only its maintenance purpose is administrative.
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+  PERFORM app.register_function_action('leaveConfig.gradeGroups',operation,'tenant','leave_configuration.'||operation,'app.module_action_current_legacy_allowed',
+   '{"moduleKey":"leave","labelKey":"admin.benefitScheme.groupsTitle","kind":"submenu","course":"administrative","screenKey":"leaveConfig","href":"/admin/settings/system-labels","employeeBearing":false}'::jsonb);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE TABLE app.module_grade_group_source(
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,group_id uuid NOT NULL,operation text NOT NULL CHECK(operation IN ('add','delete')),
+ PRIMARY KEY(xact_id,tenant_id,user_id,group_id,operation));
+REVOKE ALL ON app.module_grade_group_source FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.module_grade_group_source_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ DELETE FROM app.module_grade_group_source WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.module_grade_group_source VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),CASE WHEN TG_OP='INSERT' THEN NEW.id ELSE OLD.id END,CASE WHEN TG_OP='INSERT' THEN 'add' ELSE 'delete' END) ON CONFLICT DO NOTHING;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.module_grade_group_source_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_grade_group_source AFTER INSERT OR DELETE ON public.grade_group FOR EACH ROW EXECUTE FUNCTION app.module_grade_group_source_record();
+CREATE TRIGGER module_grade_group_action BEFORE INSERT OR UPDATE OR DELETE ON public.grade_group FOR EACH ROW EXECUTE FUNCTION app.module_catalogue_action_guard('leave_configuration','leaveConfig.gradeGroups');
+--> statement-breakpoint
+CREATE FUNCTION app.module_grade_group_member_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE row_image jsonb;group_id uuid;operation text;deferred_check boolean:=TG_WHEN='AFTER';
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ -- Check both queued images, including membership moved away and restored before commit.
+ FOR row_image IN SELECT image FROM (VALUES(CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END),(CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END)) images(image) WHERE image IS NOT NULL LOOP
+  IF row_image->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RAISE EXCEPTION 'Grade group member identity unavailable' USING ERRCODE='42501';END IF;
+  IF TG_OP<>'DELETE' AND (NOT EXISTS(SELECT 1 FROM public.grade_group parent WHERE parent.id=(row_image->>'grade_group_id')::uuid AND parent.tenant_id=app.current_tenant_id()) OR NOT EXISTS(SELECT 1 FROM public.job_grade grade WHERE grade.id=(row_image->>'grade_id')::uuid AND grade.tenant_id=app.current_tenant_id())) THEN RAISE EXCEPTION 'Grade group member source unavailable' USING ERRCODE='42501';END IF;
+  group_id:=(row_image->>'grade_group_id')::uuid;operation:='edit';
+  IF EXISTS(SELECT 1 FROM app.module_grade_group_source source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=app.current_tenant_id() AND source.user_id=app.current_user_id() AND source.group_id=group_id AND source.operation='add') THEN operation:='add';
+  ELSIF TG_OP='DELETE' AND NOT EXISTS(SELECT 1 FROM public.grade_group parent WHERE parent.id=group_id AND parent.tenant_id=app.current_tenant_id()) THEN
+   operation:='delete';
+   IF deferred_check AND NOT EXISTS(SELECT 1 FROM app.module_grade_group_source source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=app.current_tenant_id() AND source.user_id=app.current_user_id() AND source.group_id=group_id AND source.operation='delete') THEN RAISE EXCEPTION 'Grade group deletion source unavailable' USING ERRCODE='42501';END IF;
+  END IF;
+  IF NOT app.module_action_allowed('leave_configuration',operation,NULL) OR NOT app.function_action_allowed('leaveConfig.gradeGroups',operation,NULL) THEN RAISE EXCEPTION 'Grade group member action unavailable' USING ERRCODE='42501';END IF;
+ END LOOP;
+ IF TG_OP='UPDATE' AND (OLD.id IS DISTINCT FROM NEW.id OR OLD.tenant_id IS DISTINCT FROM NEW.tenant_id) THEN RAISE EXCEPTION 'Grade group member identity unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.module_grade_group_member_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_grade_group_member BEFORE INSERT OR UPDATE OR DELETE ON public.grade_group_member FOR EACH ROW EXECUTE FUNCTION app.module_grade_group_member_guard();
+CREATE CONSTRAINT TRIGGER module_grade_group_member_final AFTER INSERT OR UPDATE OR DELETE ON public.grade_group_member DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.module_grade_group_member_guard();
+--> statement-breakpoint
+DO $$ DECLARE relation_name text;BEGIN
+ FOREACH relation_name IN ARRAY ARRAY['grade_group','grade_group_member'] LOOP
+  EXECUTE format('CREATE TRIGGER module_configuration_write_lock BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock()',relation_name);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER module_grade_group_action_final AFTER INSERT OR UPDATE OR DELETE ON public.grade_group DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.module_catalogue_action_guard('leave_configuration','leaveConfig.gradeGroups');
+
+--> statement-breakpoint
+CREATE FUNCTION app.module_grade_group_delete_floor() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() AND EXISTS(SELECT 1 FROM public.leave_approval_policy policy WHERE policy.tenant_id=OLD.tenant_id AND policy.grade_group_id=OLD.id) THEN RAISE EXCEPTION 'Grade group is used by leave approval rules' USING ERRCODE='42501';END IF;
+ RETURN OLD;
+END $$;
+REVOKE ALL ON FUNCTION app.module_grade_group_delete_floor() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_grade_group_delete_floor BEFORE DELETE ON public.grade_group FOR EACH ROW EXECUTE FUNCTION app.module_grade_group_delete_floor();

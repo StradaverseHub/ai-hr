@@ -19,3 +19,11 @@ export async function assertModuleFunctionTx(tx:Tx,key:string,operation:ModuleAc
 export function assertModuleFunction(ctx:SessionContext,key:string,operation:ModuleAction,companyId:string|null=null){
  return withTenant(ctx,tx=>assertModuleFunctionTx(tx,key,operation,companyId));
 }
+
+/** Read-only purpose flags; no configuration lock or mutation admission. */
+export function moduleFunctionAccess(ctx:SessionContext,key:string,operation:ModuleAction,companyId:string|null=null):Promise<boolean>{
+ return withTenant(ctx,async tx=>{
+  const [result]=await tx.execute<{allowed:boolean}>(sql`select app.module_function_allowed(${key},${operation},${companyId}::uuid) as allowed`);
+  return result?.allowed===true;
+ });
+}
