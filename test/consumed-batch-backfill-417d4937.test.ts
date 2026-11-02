@@ -84,6 +84,19 @@ const clearMarker = (id: string) =>
     .set({ consumedBatchId: null, consumedAt: null })
     .where(eq(schema.payrollIndividualTxn.id, id));
 
+/** Native fixture's independently asserted fold-on amount is this rehearsal's reviewed evidence.
+ * Production manifests require retained run/source evidence, not a report copied without review.
+ */
+async function reviewedApply(id: string) {
+  const txn = await txnRow(id);
+  const [slip] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, txn.batchId!));
+  expect(Number(slip.overtimePay)).toBe(250);
+  const report = await runConsumedBackfill(URL);
+  const candidate = report.candidates.find(row => row.id === id)!;
+  expect(candidate).toBeDefined();
+  return runConsumedBackfill(URL, { apply: true, reviewedRows: [{ id, fingerprint: candidate.fingerprint, evidenceRef: 'native fold-on fixture: overtime 250, unchanged source' }] });
+}
+
 describe('417d4937 — the consumed-marker backfill', () => {
   it('marks a row that IS on a calculated payslip, and dates it to when that run was calculated', async () => {
     await enableFold();
@@ -95,7 +108,7 @@ describe('417d4937 — the consumed-marker backfill', () => {
     await clearMarker(id); // ← the state every production row written before 0437 is in
     expect((await txnRow(id)).consumedBatchId).toBeNull();
 
-    const r = await runConsumedBackfill(URL, { apply: true });
+    const r = await reviewedApply(id);
     expect(r.candidates.map((c) => c.id)).toEqual([id]);
     expect(r.marked).toBe(1);
     expect(r.remainingAfter).toBe(0);
@@ -133,7 +146,7 @@ describe('417d4937 — the consumed-marker backfill', () => {
     await generatePayslips(a, { batchId });
     await clearMarker(id);
 
-    await runConsumedBackfill(URL, { apply: true });
+    await reviewedApply(id);
     const second = await runConsumedBackfill(URL, { apply: true });
     expect(second.alreadyCorrect).toBe(true);
     expect(second.candidates).toHaveLength(0);
@@ -226,6 +239,20 @@ describe('417d4937 — the consumed-marker backfill', () => {
     expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId))).toEqual(before);
   });
 
+  it('refuses a reviewed fingerprint after any source value changed', async () => {
+    await enableFold();
+    const { employmentId, batchId } = await hire('2026-05');
+    const { id } = await createIndividualTxn(a, { batchId, employmentId, kind:'overtime', txnDate:'2026-05-10', amount:250 });
+    await generatePayslips(a, { batchId });
+    await clearMarker(id);
+    const [candidate] = (await runConsumedBackfill(URL)).candidates;
+    await owner.db.update(schema.payrollIndividualTxn).set({notes:'Revised source evidence'}).where(eq(schema.payrollIndividualTxn.id,id));
+    const result = await runConsumedBackfill(URL, {apply:true, reviewedRows:[{id,fingerprint:candidate.fingerprint,evidenceRef:'reviewed original native run'}]});
+    expect(result.marked).toBe(0);
+    expect(result.unreviewed).toBe(1);
+    expect((await txnRow(id)).consumedBatchId).toBeNull();
+  });
+
   it('leaves an ALREADY-MARKED row exactly as it is — it never overwrites a marker', async () => {
     await enableFold();
     const { employmentId, batchId } = await hire('2026-05');
@@ -253,7 +280,7 @@ describe('417d4937 — the consumed-marker backfill', () => {
     const [slipBefore] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
     const rowBefore = await txnRow(id);
 
-    await runConsumedBackfill(URL, { apply: true });
+    await reviewedApply(id);
 
     const rowAfter = await txnRow(id);
     for (const k of ['amount', 'kind', 'txnDate', 'notes', 'batchId', 'employmentId', 'source'] as const) {

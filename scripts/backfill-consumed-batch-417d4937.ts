@@ -1,85 +1,13 @@
-/**
- * 417d4937 — MAKE THE LEDGER AGREE WITH THE PAYSLIP THAT ALREADY PRINTS THE LINE.
- *
- * ⚠️ THIS IS NOT PART OF THE DEPLOY. `deploy.sh` runs MIGRATIONS, not scripts (AGENTS rule 13). The
- * round is not finished when `deploy.sh` returns — it is finished when this has been RUN and the row
- * count it reports has been read.
- *
- * ⚠️ `node --env-file=` DOES NOT WORK ON THE SERVER (AGENTS rule 21). The box runs node v18.19.1 and
- * that flag arrived in node 20; it exits 9 with "bad option: --env-file". SOURCE the env instead, which
- * also keeps the credentials on the box:
- *
- *   cd /opt/ai-hr && set -a && . ./.env.production && set +a \
- *     && node --import tsx scripts/backfill-consumed-batch-417d4937.ts
- *   …same, with --apply, to write.
- *
- * (The --env-file form is still correct for LOCAL runs against .env.local, where node is current.)
- *
- * REPORT-ONLY BY DEFAULT, like scripts/repair-january-bonus-double-import.ts and
- * scripts/repair-fixed-transaction-overlaps.ts. Without --apply it counts and lists what it would mark
- * and writes nothing at all.
- *
- * ════════════════════════════════════════════════════════════════════════════════════════════════════
- * WHAT IS WRONG, AND WHY IT IS NOT THE DEFECT THE REPORTER OPENED
- * ════════════════════════════════════════════════════════════════════════════════════════════════════
- *
- * `payroll_individual_txn.consumed_batch_id` (migration 0437) is the marker that stops a LATER payroll
- * run paying the same one-off a second time. `markIndividualTxnsConsumed` stamps it inside the same
- * transaction as the payslip inserts — but only from the moment 0437 shipped. Every row that reached a
- * payslip BEFORE that reads NULL forever, and db/schema.ts records that as at 2026-08-13 every
- * production row was in exactly that state.
- *
- * Measured read-only on production 2026-08-18: the SpaceX 2026-08 Director Fee row has `batch_id` set
- * and `consumed_batch_id` NULL while the payslip for that run prints the line. The ledger and the
- * payslip disagree about the same money.
- *
- * IT IS INVISIBLE ON SCREEN, which is why it is a SECOND defect beside the reporter's rather than the
- * one they are looking at: `core/individual-txn-status.ts` derives the Individual tab's status from the
- * batch status and the payslip timestamps and never reads this column. What it protects is the FUTURE:
- * an unmarked row is one a subsequent run may legitimately fold and pay again.
- *
- * ════════════════════════════════════════════════════════════════════════════════════════════════════
- * THE FIVE CONDITIONS A ROW MUST MEET, AND WHY EACH ONE IS THERE
- * ════════════════════════════════════════════════════════════════════════════════════════════════════
- *
- * 1. `batch_id IS NOT NULL` — an unattached row has never been near a run.
- * 2. `consumed_batch_id IS NULL` — never overwrite an existing marker. This is also what makes the
- *    script IDEMPOTENT: a second run finds nothing left and says so.
- * 3. the batch is `processed` or `closed` — a draft has no payslips, and marking against one would be
- *    a claim about money nobody has calculated.
- * 4. a payslip exists for (batch, employment) — the row must actually have been ON a payslip. An
- *    employee excluded from the run has no payslip and therefore no claim to mark.
- * 5. `coalesce(txn.updated_at, txn.created_at) <= payslip.created_at` — THE STALENESS RULE, taken
- *    verbatim from `individualTxnReprocessRequired` (core/individual-txn-status.ts) rather than
- *    re-invented, so this script and that screen can never disagree about what "is in the payslip"
- *    means. A row keyed or edited AFTER the run was calculated is not in that payslip and must never
- *    be marked — doing so would strand real money that is still waiting to be paid. The `coalesce` is
- *    load-bearing: `updated_at` is NULL on a row that has never been edited.
- *
- * `consumed_at` IS SET TO THE PAYSLIP'S `created_at`, NOT TO NOW. The column means "when was this money
- * paid", and the honest answer is the instant the run that paid it was calculated. `now()` would date a
- * January payment to whenever somebody happened to run a repair script.
- *
- * ════════════════════════════════════════════════════════════════════════════════════════════════════
- * THE TENANT GATE — AND WHY IT IS NOT OPTIONAL
- * ════════════════════════════════════════════════════════════════════════════════════════════════════
- *
- * Gated on `payroll.individual_txn_pay_enabled`, the SAME flag both `markIndividualTxnsConsumed` call
- * sites are gated on (core/payroll.ts). With the fold off the ledger is RECORD-ONLY: no row ever
- * reached a payslip as money, so marking one would be a lie that PERMANENTLY STRANDS it the day the
- * tenant turns the flag on. Resolved from `tenant_setting`, with the catalogue default (false) for a
- * tenant that has no row — the same fallback `getSetting` applies. Every skipped tenant is REPORTED,
- * so a gate that looks wrong is visible rather than silent.
- *
- * ════════════════════════════════════════════════════════════════════════════════════════════════════
- * WHAT IT NEVER DOES
- * ════════════════════════════════════════════════════════════════════════════════════════════════════
- *
- * It never touches a payslip, a batch, an amount or a status. It never clears a marker (that is
- * `releaseIndividualTxnsConsumed`'s job, and only a run whose payslips were destroyed may do it). It
- * never marks a row on a tenant whose fold is off. It writes one column pair on rows that already
- * satisfy all five conditions, and nothing else.
+/** Reviewed consumed-marker repair, report-only by default.
+ * Current tenant settings and row timestamps nominate candidates; they do not prove that an old
+ * run folded an individual transaction. Apply requires an independently reviewed evidence reference
+ * and an exact report fingerprint for each selected row. Never infer historical payment from a
+ * setting enabled today. Ambiguous rows remain unmarked for reconciliation.
+ * This is an operator repair, never a deployment step. It does not change payslip money or versions.
  */
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { lockNativePayrollPeriodsTx } from '../core/payroll-period-lock';
 import { sql } from 'drizzle-orm';
 
 import { createDb } from '../db/client';
@@ -102,15 +30,19 @@ export type ConsumedBackfillRow = {
   amount: string;
   txnDate: string;
   payslipCalculatedAt: string;
+  /** Hash of exact transaction, payslip and batch values; not proof of payment by itself. */
+  fingerprint: string;
+  companyId: string;
 };
 
+export type ReviewedConsumedRow = { id: string; fingerprint: string; evidenceRef: string };
 export type ConsumedBackfillReport = {
   apply: boolean;
   /** Tenants whose fold is ON — the only ones any row was considered for. */
   eligibleTenantIds: string[];
   /** Tenants SKIPPED because the fold is off, with the count of rows that were therefore left alone. */
   skippedTenants: { tenantId: string; unmarkedRows: number }[];
-  /** Rows that meet all five conditions. In report-only mode this is what WOULD be marked. */
+  /** Candidate inventory. Only independently reviewed exact witnesses may be marked. */
   candidates: ConsumedBackfillRow[];
   /** Rows written. 0 in report-only mode. */
   marked: number;
@@ -118,12 +50,12 @@ export type ConsumedBackfillReport = {
   alreadyCorrect: boolean;
   /** Rows still disagreeing after the write. Non-empty ⇒ read the output before believing the run. */
   remainingAfter: number;
+  /** Eligible rows without an approved exact witness, or whose witness became stale. */
+  unreviewed: number;
 };
 
 /**
- * The five conditions, as ONE predicate expressed once and reused by the count, the listing and the
- * update. Written out rather than assembled from parts so the three can never drift — the whole class of
- * bug this script exists to repair is two places disagreeing about the same row.
+ * Candidate predicate only. Current eligibility is distinct from the reviewed historical witness.
  */
 const ELIGIBLE = (tenantIds: string[]) => sql`
   t.batch_id IS NOT NULL
@@ -131,6 +63,7 @@ const ELIGIBLE = (tenantIds: string[]) => sql`
   AND b.status IN ('processed', 'closed')
   AND ps.id IS NOT NULL
   AND coalesce(t.updated_at, t.created_at) <= ps.created_at
+  AND EXISTS (SELECT 1 FROM tenant_setting ts WHERE ts.tenant_id=t.tenant_id AND ts.key=${PAY_SETTING_KEY} AND ts.value='true'::jsonb)
   AND t.tenant_id IN (${sql.join(
     tenantIds.map((id) => sql`${id}::uuid`),
     sql`, `,
@@ -139,8 +72,14 @@ const ELIGIBLE = (tenantIds: string[]) => sql`
 
 export async function runConsumedBackfill(
   url: string,
-  opts: { apply: boolean } = { apply: false },
+  opts: { apply: boolean; reviewedRows?: readonly ReviewedConsumedRow[] } = { apply: false },
 ): Promise<ConsumedBackfillReport> {
+  const reviewed = opts.reviewedRows ?? [];
+  if (!Array.isArray(reviewed) || reviewed.length > 5000 || new Set(reviewed.map(r => r.id)).size !== reviewed.length ||
+      reviewed.some(r => !r || typeof r !== 'object' || !/^[0-9a-f-]{36}$/i.test(r.id) || !/^[0-9a-f]{64}$/.test(r.fingerprint) ||
+        typeof r.evidenceRef !== 'string' || !r.evidenceRef.trim() || r.evidenceRef.length > 1000)) {
+    throw new Error('Provide unique reviewed row IDs, report fingerprints and independent evidence references.');
+  }
   const owner = createDb(url);
 
   // ── Which tenants may be touched at all ──────────────────────────────────────────────────────────
@@ -181,11 +120,13 @@ export async function runConsumedBackfill(
       marked: 0,
       alreadyCorrect: true,
       remainingAfter: 0,
+      unreviewed: 0,
     };
   }
 
   const listSql = sql`
-    SELECT t.id, t.tenant_id, t.batch_id, t.employment_id,
+    SELECT t.id, t.tenant_id, t.batch_id, t.employment_id, b.company_id,
+           (to_jsonb(t)::text || to_jsonb(ps)::text || to_jsonb(b)::text) AS witness,
            e.employee_code, p.full_name,
            b.pay_period, b.run_type, b.status AS batch_status,
            pc.code, t.amount::text AS amount, t.txn_date::text AS txn_date,
@@ -204,7 +145,7 @@ export async function runConsumedBackfill(
     id: string; tenant_id: string; batch_id: string; employment_id: string;
     employee_code: string | null; full_name: string | null;
     pay_period: string | null; run_type: string | null; batch_status: string;
-    code: string | null; amount: string; txn_date: string; payslip_calculated_at: string;
+    code: string | null; amount: string; txn_date: string; payslip_calculated_at: string; company_id: string; witness: string;
   }>(listSql);
 
   const candidates: ConsumedBackfillRow[] = before.map((r) => ({
@@ -221,28 +162,36 @@ export async function runConsumedBackfill(
     amount: r.amount,
     txnDate: r.txn_date,
     payslipCalculatedAt: r.payslip_calculated_at,
+    companyId: r.company_id,
+    fingerprint: createHash('sha256').update(r.witness).digest('hex'),
   }));
 
   let marked = 0;
   let remainingAfter = candidates.length;
 
+  const approved = new Map(reviewed.map(row => [row.id, row]));
   if (opts.apply && candidates.length > 0) {
-    // ONE statement, the same predicate. `consumed_at` takes the payslip's own instant — the moment the
-    // run that paid this line was calculated — never `now()`.
-    const written = await owner.db.execute<{ id: string }>(sql`
-      UPDATE payroll_individual_txn t
-         SET consumed_batch_id = t.batch_id,
-             consumed_at = ps.created_at
-        FROM payroll_batch b
-        JOIN payslip ps ON ps.batch_id = b.id
-       WHERE b.id = t.batch_id
-         AND ps.employment_id = t.employment_id
-         AND ${ELIGIBLE(eligibleTenantIds)}
-      RETURNING t.id
-    `);
-    marked = written.length;
-    const after = await owner.db.execute<{ id: string }>(listSql);
-    remainingAfter = after.length;
+    // Native payroll writers share Access -> company/month ownership. Re-read exact row content
+    // after that wait, then lock the candidate sources. A changed witness is left for a fresh review.
+    await owner.db.transaction(async tx => {
+      for (const tenantId of [...new Set(candidates.map(row => row.tenantId))].sort()) {
+        await lockNativePayrollPeriodsTx(tx, { tenantId }, candidates.filter(row => row.tenantId === tenantId && row.payPeriod)
+          .map(row => ({ companyId: row.companyId, payPeriod: row.payPeriod! })));
+      }
+      const current = await tx.execute<{ id: string; witness: string }>(sql`${listSql} FOR UPDATE OF t, b`);
+      for (const row of current) {
+        if (!candidates.some(candidate => candidate.id === row.id)) continue;
+        const review = approved.get(row.id);
+        if (!review || review.fingerprint !== createHash('sha256').update(row.witness).digest('hex')) continue;
+        const written = await tx.execute<{ id: string }>(sql`
+          UPDATE payroll_individual_txn t SET consumed_batch_id=t.batch_id, consumed_at=ps.created_at
+          FROM payslip ps WHERE t.id=${row.id}::uuid AND t.consumed_batch_id IS NULL
+            AND ps.batch_id=t.batch_id AND ps.employment_id=t.employment_id RETURNING t.id
+        `);
+        marked += written.length;
+      }
+    });
+    remainingAfter = (await owner.db.execute<{ id: string }>(listSql)).length;
   }
 
   return {
@@ -253,6 +202,7 @@ export async function runConsumedBackfill(
     marked,
     alreadyCorrect: candidates.length === 0,
     remainingAfter,
+    unreviewed: remainingAfter,
   };
 }
 
@@ -265,7 +215,9 @@ if (process.argv[1]?.endsWith('backfill-consumed-batch-417d4937.ts')) {
     console.error('backfill-consumed-batch-417d4937 requires MIGRATION_DATABASE_URL (owner role).');
     process.exit(1);
   }
-  runConsumedBackfill(url, { apply: process.argv.includes('--apply') })
+  const manifestArg = process.argv.find(arg => arg.startsWith('--reviewed-rows='));
+  const reviewedRows = manifestArg ? JSON.parse(readFileSync(manifestArg.slice('--reviewed-rows='.length), 'utf8')) as ReviewedConsumedRow[] : undefined;
+  runConsumedBackfill(url, { apply: process.argv.includes('--apply'), reviewedRows })
     // The pooled client is shared per connection string, so it is closed HERE — by the CLI that owns
     // the process — and never inside the function, which a rehearsal test calls on a live harness pool.
     .then(async (r) => {
@@ -285,12 +237,12 @@ if (process.argv[1]?.endsWith('backfill-consumed-batch-417d4937.ts')) {
         console.log('\nNothing to do: every eligible row already carries a consumed marker.');
         process.exit(0);
       }
-      console.log(`\n${r.apply ? 'MARKED' : 'WOULD MARK'} ${r.candidates.length} row(s):`);
+      console.log(`\n${r.candidates.length} candidate row(s); ${r.marked} marked with exact reviewed evidence:`);
       for (const c of r.candidates) {
         console.log(
           `  ${c.payPeriod ?? '?'} ${c.runType ?? '?'} ${c.employeeCode ?? c.employmentId} ` +
             `${c.code ?? '(no pay item)'} RM${c.amount} on ${c.txnDate} ` +
-            `(payslip calculated ${c.payslipCalculatedAt})`,
+            `(payslip calculated ${c.payslipCalculatedAt}; fingerprint ${c.fingerprint}; id ${c.id})`,
         );
       }
       if (r.apply) {
@@ -300,7 +252,7 @@ if (process.argv[1]?.endsWith('backfill-consumed-batch-417d4937.ts')) {
           process.exit(1);
         }
       } else {
-        console.log('\nNothing was written. Re-run with --apply to write.');
+        console.log('\nNothing was written. Independently reconcile candidates, then provide --apply --reviewed-rows=/path/to/reviewed.json. Each JSON row requires id, fingerprint and evidenceRef.');
       }
       process.exit(0);
     })
