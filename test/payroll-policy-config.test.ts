@@ -397,4 +397,22 @@ describe('2.1.1 default-equals-legacy golden matrix + non-default measurably cha
     expect(Number(cfg.basicSalary)).toBeLessThan(6000);
     expect(Number(cfg.basicSalary)).toBeCloseTo(5000, 0);
   });
+  it('R15 native April payroll includes every interval and excludes one ending at April start', async () => {
+    const {id:policyId} = await createPolicy(a, {companyId:b.companyId,name:`April intervals ${randomUUID()}`,policyType:'monthly',config:{salaryIncrementProration:true}});
+    const make = async (changes: readonly [string,number][]) => {
+      const employee = await hireEmployee(a, {person:{fullName:'April interval fixture',primaryEmail:`${randomUUID()}@example.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+      for (const [effectiveFrom,basicSalary] of changes) await setCompensation(a, {employmentId:employee.employmentId,basicSalary,monthlyAllowance:0,effectiveFrom});
+      await setStatutoryProfileMY(a, {personId:employee.personId,icNumber:nextIc()});
+      await assignPolicy(a, {employmentId:employee.employmentId,policyId});
+      return employee.employmentId;
+    };
+    const expired = await make([['2026-01-01',3000],['2026-04-01',3300],['2026-04-16',3600]]);
+    const three = await make([['2026-01-01',3000],['2026-04-11',3300],['2026-04-21',3900]]);
+    const {batchId} = await createBatch(a, {companyId:b.companyId,payPeriod:'2026-04',scope:{employmentIds:[expired,three]}});
+    await generatePayslips(a, {batchId});
+    // Independent calendar oracles: (3300*15+3600*15)/30; (3000+3300+3900)*10/30.
+    expect(Number((await slipOf(batchId,expired)).basicSalary)).toBe(3450);
+    expect(Number((await slipOf(batchId,three)).basicSalary)).toBe(3400);
+  });
+
 });
