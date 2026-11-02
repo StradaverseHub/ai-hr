@@ -2099,6 +2099,17 @@ export function setEmploymentPayComponent(
       }
     }
 
+    // A native version replacement is Edit even though its immutable value is an INSERT.
+    // The database binds this intent to the exact source, proposed value and final audit.
+    if (p.replacesId) {
+      await tx.execute(sql`select app.financial_fixed_replacement_begin(${p.replacesId}::uuid, ${JSON.stringify({
+        employment_id: p.employmentId, component_id: p.componentId, amount: money(p.amount),
+        valid_from: p.effectiveFrom, valid_to: effectiveTo, currency,
+        prorate_override: p.prorateOverride ?? null, remarks: p.remarks ?? null, run_type: runType,
+        payroll_cycle_id: payrollCycleId,
+      })}::jsonb)`);
+    }
+
     // PASS 2 — resolve each clash. Nothing below can throw.
     for (const c of clashes) {
       // 2f889bae — CLOSE THE PRIOR ROW THE DAY BEFORE THE NEW ONE STARTS, NOT ON IT.
