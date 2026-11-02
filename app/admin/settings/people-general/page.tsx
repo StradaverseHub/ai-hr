@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { canConfigurePeopleGeneral, getPeopleGeneral } from '@/core/people-general';
+import { canViewPeopleGeneral, canConfigurePeopleGeneral, getPeopleGeneral } from '@/core/people-general';
 import { Card, ErrorBanner, PageHeader, btnPrimary, btnGhost } from '@/components/ui';
 import { savePeopleGeneralAction } from './actions';
 
@@ -9,7 +9,8 @@ export default async function PeopleGeneralPage({ searchParams }: {
   searchParams: Promise<{ error?: string; toast?: string }>;
 }) {
   const s = await requireAdmin();
-  if (!await canConfigurePeopleGeneral(s)) redirect('/');
+  if (!await canViewPeopleGeneral(s)) redirect('/');
+  const canEdit=await canConfigurePeopleGeneral(s);
   const policy = await getPeopleGeneral(s);
   const t = await getTranslations('peopleGeneral');
   const { error } = await searchParams;
@@ -18,7 +19,8 @@ export default async function PeopleGeneralPage({ searchParams }: {
     <ErrorBanner message={error} />
     <Card className="p-5 sm:p-6">
       <h2 className="mb-6 text-base font-semibold">{t('identityValidation')}</h2>
-      <form action={savePeopleGeneralAction} className="space-y-5">
+      <form action={savePeopleGeneralAction}>
+        <fieldset disabled={!canEdit} className="space-y-5">
         <input type="hidden" name="revision" value={policy.revision ?? ''} />
         <label className="flex cursor-pointer items-start justify-between gap-5">
           <span className="space-y-1"><span className="block text-sm font-semibold">{t('allowDuplicatedNric')}</span>
@@ -55,6 +57,7 @@ export default async function PeopleGeneralPage({ searchParams }: {
           <div className="flex gap-2"><button type="reset" className={btnGhost}>{t('cancel')}</button>
             <button type="submit" className={btnPrimary}>{t('save')}</button></div>
         </div>
+        </fieldset>
       </form>
     </Card>
   </div>;

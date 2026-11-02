@@ -20,6 +20,12 @@ export async function readPeopleGeneralTx(tx: Tx): Promise<PeopleGeneralPolicy> 
 export function getPeopleGeneral(ctx: SessionContext) {
   return withTenant(ctx,async tx=>{if(!await settingsAccessTx(tx,'view','peopleGeneral'))throw new PeopleGeneralError('forbidden');return readPeopleGeneralTx(tx);});
 }
+export function canViewPeopleGeneral(ctx:SessionContext){
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.people_general_can_configure() and app.organisation_settings_function_allowed('peopleGeneral','view',NULL) as allowed`);
+  return row?.allowed===true;
+ });
+}
 export function canConfigurePeopleGeneral(ctx: SessionContext) {
   return withTenant(ctx, async tx => {
     const [row] = await tx.execute<{ allowed: boolean }>(sql`select app.people_general_can_configure() and app.organisation_settings_function_allowed('peopleGeneral','edit',NULL) as allowed`);
