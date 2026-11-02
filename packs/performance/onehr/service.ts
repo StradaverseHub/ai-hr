@@ -22,7 +22,7 @@ import { personalPlan } from './personal-record-model';
 import { evidenceCitationSchema, evidenceDetailsSchema, evidenceFieldsSchema, evidenceLinkSchema, patchEvidenceFields, standingResponses, upsertEvidenceResponse } from './evidence-model';
 import { assessmentParticipantsTx } from './participation-service';
 import { talentContext, writeTalentAction } from './talent-service';
-import { careerRoutes, careerDirections, careerGap, careerSkillEvidence, resolveTechnicalProfile, technicalProfilePlan } from './career-model';
+import { careerRoutes, careerDirections, careerGap, careerSkillEvidence, resolveTechnicalProfile, technicalProfilePlan, type CareerSkillEvidence } from './career-model';
 import { anonymousFeedbackReport } from './feedback-report';
 import { assertOverallRemark } from './journey-model';
 import { onehrLabel } from './person-labels';
@@ -1043,8 +1043,9 @@ export async function freezeOnehrReview(ctx:SessionContext,reviewId:string,expec
 }
 // WP-E: the release writer (both steps, the bulk page and the notices) lives in release-service.ts.
 
-async function careerArchitectureTx(tx:Tx,r:Awaited<ReturnType<typeof loadReview>>,career:ReturnType<typeof careerSchema.parse>,self=false,ownAnswers?:AssessmentDraft|null) {
- const [history]=await tx.execute<{value:{reviewId:string;status:string;competencies:Competency[]}[]}>(sql`select app.assessment_skill_history(${r.row.reviewId}::uuid) as value`);
+async function careerArchitectureTx(tx:Tx,r:Awaited<ReturnType<typeof loadReview>>,career:ReturnType<typeof careerSchema.parse>,self=false,ownAnswers?:AssessmentDraft|null,purpose:'task'|'administration'='task') {
+ const historySource=purpose==='administration'?sql`app.onehr_administrative_skill_history(${r.row.reviewId}::uuid)`:sql`app.assessment_skill_history(${r.row.reviewId}::uuid)`;
+ const [history]=await tx.execute<{value:{reviewId?:string;status:string;competencies:CareerSkillEvidence[]}[]}>(sql`select ${historySource} as value`);
  const current=self?{reviewId:r.row.reviewId,status:r.row.competencyStatus,competencies:ownAnswers?.kind==='competency_self'?r.competencies.map(c=>({...c,self:ownAnswers.answers[c.id]?.answer??c.self})):r.competencies}:undefined;
  const evidence=careerSkillEvidence(history?.value??[],current),profile=r.cycle.policy.profiles.find(p=>p.id===r.row.profileId)??null;
  const mapProfile=career.selfProfileId&&!['roster','assigned'].includes(r.row.profileMatch??'')?r.cycle.policy.profiles.find(p=>p.id===career.selfProfileId&&p.active!==false)??profile:profile;
@@ -1055,14 +1056,14 @@ async function careerArchitectureTx(tx:Tx,r:Awaited<ReturnType<typeof loadReview
  const target=r.cycle.policy.profiles.find(p=>p.id===career.targetProfileId&&p.active!==false);
  return {routes,directions,targetGap:target?{profile:target,...careerGap(evidence.planning,target)}:null};
 }
-async function saveCareerTx(tx:Tx,ctx:SessionContext,r:Awaited<ReturnType<typeof loadReview>>,career:ReturnType<typeof careerSchema.parse>,expected?:number|null) {
+async function saveCareerTx(tx:Tx,ctx:SessionContext,r:Awaited<ReturnType<typeof loadReview>>,career:ReturnType<typeof careerSchema.parse>,expected?:number|null,purpose:'task'|'administration'='task') {
  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`career:${r.row.employmentId}`},0))`);
  const [current]=await tx.select().from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId)).for('update');
  if(expected!==undefined&&(current?.revision??null)!==expected)throw Error('Your career profile changed. Reload before saving.');
  for(const id of [career.selfProfileId,career.targetProfileId])if(id&&!r.cycle.policy.profiles.some(p=>p.id===id&&p.active!==false))throw Error('Choose an active role from the career catalogue.');
  const previous=current?careerSchema.parse(current.career):null;
  if(career.targetProfileId&&career.targetProfileId!==previous?.targetProfileId){
-  const graph=await careerArchitectureTx(tx,r,career);
+  const graph=await careerArchitectureTx(tx,r,career,false,undefined,purpose);
   if(!graph.directions.some(p=>p.id===career.targetProfileId))throw Error('Choose a next role from your current career options, within two grades of your employment grade.');
  }
  if(current)await tx.update(assessmentCareerProfile).set({reviewId:r.row.reviewId,career,revision:current.revision+1,updatedAt:new Date()}).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
@@ -1078,7 +1079,7 @@ export async function saveAssessmentCareerProfileTx(tx:Tx,ctx:SessionContext,rev
   if(!r.cycle.policy.modules.idp||!self&&!admin)throw Error('Only the employee or a scoped Performance administrator may update the career profile.');
   if(!admin){if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_self');await requireParticipant(tx,reviewId);}
   const [previous]=await tx.select({career:assessmentCareerProfile.career}).from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
-  await saveCareerTx(tx,ctx,r,career,expected);await audit(tx,ctx,reviewId,'career-profile-saved',{byAdmin:admin,previous:previous?.career??null,next:career});
+  await saveCareerTx(tx,ctx,r,career,expected,admin?'administration':'task');await audit(tx,ctx,reviewId,'career-profile-saved',{byAdmin:admin,previous:previous?.career??null,next:career});
 }
 export async function commentAssessmentCareerProfile(ctx:SessionContext,reviewId:string,expected:number|null,comment:string) {
  return withPerformanceTenant(ctx,tx=>commentAssessmentCareerProfileTx(tx,ctx,reviewId,expected,comment));
@@ -1334,7 +1335,7 @@ async function reviewForPurposeTx(tx:Tx,ctx:SessionContext,reviewId:string,purpo
     const profile=r.cycle.policy.profiles.find(p=>p.id===r.row.profileId)??null;
     const ownDraft=self?drafts.find(d=>d.kind==='competency_self'):null;
     const ownAnswers=ownDraft?assessmentDraftSchema.parse(ownDraft.payload):null;
-    const careerGraph=self||manager||reviewer||admin?await careerArchitectureTx(tx,r,careerSchema.parse(careerProfile?.career??{aspiration:'',mobility:null,mobilityNote:'',targetProfileId:null}),self,ownAnswers):{routes:[],directions:[],targetGap:null};
+    const careerGraph=self||manager||reviewer||admin?await careerArchitectureTx(tx,r,careerSchema.parse(careerProfile?.career??{aspiration:'',mobility:null,mobilityNote:'',targetProfileId:null}),self,ownAnswers,readPurpose):{routes:[],directions:[],targetGap:null};
     const developmentQuota=self&&r.cycle.policy.modules.idp&&aiFeatures.idp?await assessmentAiQuotaTx(tx,ctx,`idp_goals:${r.cycle.native.id}`):null;
     const careerDraftQuota=self&&r.cycle.policy.modules.idp&&aiFeatures.idp?await assessmentAiQuotaTx(tx,ctx,`career_draft:${r.cycle.native.id}`):null;
     const visiblePolicy={...r.cycle.policy,profiles:r.cycle.policy.profiles.map(reviewProfile)};

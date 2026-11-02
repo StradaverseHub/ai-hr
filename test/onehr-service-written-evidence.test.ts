@@ -13,6 +13,8 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
+import {assignRole} from '../core/admin';
+import {demonstratedSkills,type CareerSkillEvidence} from '../packs/performance/onehr/career-model';
 import * as perf from '../packs/performance/service';
 import { defaultPolicy, type KPI } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
@@ -702,6 +704,16 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(notices).toHaveLength(2);expect(JSON.stringify(notices.map(n=>n.payload))).not.toMatch(/requestId|peerEmploymentId|answers/);
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
     await expect(perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,original.requestId,'reset')).rejects.toThrow(/finalized/);
+  });
+  it('reads career skill history through its selected native purpose without returning review narratives or historical identifiers',async()=>{
+    const {cycleId:skillsCycle}=await perf.createCycle(a,{name:'Native skill evidence',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});const policy=defaultPolicy(framework);policy.modules={pm:false,tm:true,idp:true,evidence:false};policy.profiles=[{id:randomUUID(),name:'Native analysis role',companyId:b.companyId,grade:'12',competencies:[{id:'ANALYSIS-2',principle:'Technical',text:'Demonstrate analysis',future:false,skillTitle:'Analysis',skillLevel:2}]}];await perf.configureOnehrCycle(a,skillsCycle,null,policy);await perf.openCycle(a,{cycleId:skillsCycle});
+    const [source]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,skillsCycle),eq(schema.onehrReview.employmentId,subject.employmentId)));await perf.submitOnehrCompetencies(self,source.reviewId,source.revision,{'ANALYSIS-2':{answer:'no',remark:''}},false,'Native Own assessment reflection');const [submitted]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,source.reviewId));const privateRemark='Confidential assessor observation unrelated to career skill facts';await perf.submitOnehrCompetencies(mgr,source.reviewId,submitted.revision,{'ANALYSIS-2':{answer:'yes',remark:privateRemark}},true);
+    const [reviewed]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,source.reviewId));expect(reviewed.competencies[0].managerRemark).toBe(privateRemark);
+    type History={reviewId?:string;status:string;competencies:CareerSkillEvidence[]}[];const read=async(actor:SessionContext,purpose:'task'|'administration')=>{const [row]=await withTenant(actor,tx=>tx.execute<{value:History|null}>(sql`select ${purpose==='task'?sql`app.assessment_skill_history(${source.reviewId}::uuid)`:sql`app.onehr_administrative_skill_history(${source.reviewId}::uuid)`} as value`));return row.value;};
+    const own=await read(self,'task'),assigned=await read(mgr,'task'),administrative=await read(a,'administration');expect(own?.length).toBeGreaterThan(0);expect(assigned?.length).toBeGreaterThan(0);expect(administrative?.length).toBeGreaterThan(0);for(const history of [own!,assigned!,administrative!]){expect(demonstratedSkills(history)).toEqual({Analysis:2});expect(JSON.stringify(history)).not.toContain(privateRemark);for(const record of history)for(const skill of record.competencies)expect(Object.keys(skill).every(key=>['future','skillTitle','skillLevel','manager','self'].includes(key))).toBe(true);}
+    expect(own!.some(record=>record.reviewId===source.reviewId)).toBe(true);expect(assigned!.every(record=>!('reviewId' in record))).toBe(true);expect(administrative!.every(record=>!('reviewId' in record))).toBe(true);expect(await read(a,'task')).toBeNull();expect(await read(peers[0].ctx,'task')).toBeNull();
+    await assignRole(a,{appUserId:self.userId!,role:'hr_admin'});const mixed={...self,roles:['employee','hr_admin'],grants:[{role:'employee',companyId:null},{role:'hr_admin',companyId:null}]};expect(await read(mixed,'task')).toEqual(own);expect(await read(mixed,'administration')).toBeNull();
+    const [privilege]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_skill_history_native(uuid)','EXECUTE') or has_function_privilege('ai_hr_app','app.financial_onehr_skill_history_fields(jsonb,uuid)','EXECUTE') as allowed`);expect(privilege.allowed).toBe(false);
   });
   it('preserves the opening company and grade after the native employment changes company',async()=>{
     const sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Original company cohort',companyId:b.companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});
