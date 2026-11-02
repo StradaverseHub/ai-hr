@@ -14,7 +14,6 @@ const target='test/lifecycle-v9-html-gaps.browser.test.tsx';
 const baseConfig='vitest.browser.config.ts';
 const measured='.vitest-attachments/v9-keyboard-measured.browser.test.tsx';
 const config='.vitest-attachments/v9-keyboard-diagnostic.config.mts';
-const helper='.vitest-attachments/helpers/v9-html-fixture.ts';
 const title='repairs reference details, keyboard sections, notice and duplicate chrome in monolith dark mobile';
 const marker='V9_KEYBOARD_DIAGNOSTIC ';
 const kind='V9_KEYBOARD_MEASUREMENT_ONLY';
@@ -43,7 +42,7 @@ assert.equal(originalConfig.blob,'2643f42716a47d4862cd18e4bcf283aadc703c3f');
 const plan=createPlan(),unit=plan.units.find(row=>row.id==='browser-firefox');
 assert(unit?.kind==='browser'&&unit.engine==='firefox'&&plan.execution.workers===2&&unit.files.length===35,'Original Firefox execution profile required');
 assert.equal(hash(JSON.stringify(unit.files)),'d0a7af6abe9e5818f018dd62c29038bf18e4db6cb4cbf79dff735ad61798cbf1','Original ordered Firefox file inventory required');
-const files=unit.files.map(file=>file===target?measured:file);
+const files=unit.files;
 
 // Adapt the earlier passive capture/bubble observer to this incident's first Enter only.
 const observer=String.raw`
@@ -111,15 +110,29 @@ source=replaceExactly(source,enter+assertion,
  +enter.replace("await userEvent.keyboard('{Enter}');","observation?.record('before-existing-enter');await userEvent.keyboard('{Enter}');observation?.record('after-existing-enter');")
  +assertion.replace('const rulesAtKeyReturn=','rulesAtKeyReturn=')
  +"   }finally{observation?.finish();}\n");
-mkdirSync('.vitest-attachments/helpers',{recursive:true});
+mkdirSync('.vitest-attachments',{recursive:true});
 write(measured,source);
-write(helper,"export * from '../../test/helpers/v9-html-fixture';\n");
-write(config,`import base from '../vitest.browser.config';\nexport default {...base,test:{...base.test,include:[...base.test.include,${JSON.stringify(measured)}],browser:{...base.test.browser,instances:[{browser:'firefox'}]}}};\n`);
+write(config,`import {readFileSync} from 'node:fs';
+import base from '../vitest.browser.config';
+const original = new URL('../${target}', import.meta.url).pathname;
+const measurement = new URL('./v9-keyboard-measured.browser.test.tsx', import.meta.url);
+export default {...base,
+  plugins: [...(base.plugins ?? []), {
+    name: 'observe-original-firefox-suite',
+    enforce: 'pre',
+    transform(_code, id) {
+      if (id.split('?')[0] === original) return {code: readFileSync(measurement, 'utf8'), map: null};
+    },
+  }],
+  test: {...base.test, browser: {...base.test.browser, instances: [{browser: 'firefox'}]}},
+};
+`);
+
 
 const healthBefore=hostHealth();
 const provenance={kind,releaseAuthorized:false,candidate,baseline,controller:process.env.AIHR_CI_CONTROL_HEAD,
  runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,engine:'firefox',workers:plan.execution.workers,
- originalTest,originalConfig,measuredSha256:hash(source),configSha256:hash(readFileSync(config)),helperSha256:hash(readFileSync(helper)),
+ originalTest,originalConfig,measuredSha256:hash(source),configSha256:hash(readFileSync(config)),
  originalFiles:unit.files,measurementFiles:files,healthBefore};
 json(join(destination,'measurement-inputs.json'),provenance);
 assert(healthBefore.ok,'Original disk admission guard refused diagnostic');
@@ -153,9 +166,9 @@ const retainedReport=retainBounded(report,'measurement-vitest.json',4*1024*1024)
 const result=retainedReport?JSON.parse(readFileSync(report,'utf8')):null;
 const observedFiles=result?.testResults?.map(file=>relative(process.cwd(),file.name)).sort()??[];
 const observedExactFiles=JSON.stringify(observedFiles)===JSON.stringify([...files].sort());
-const targetResult=result?.testResults?.find(file=>relative(process.cwd(),file.name)===measured);
+const targetResult=result?.testResults?.find(file=>relative(process.cwd(),file.name)===target);
 const targetStatus=targetResult?.assertionResults?.find(item=>item.fullName===title)?.status??null;
-const failurePng='.vitest-attachments/__screenshots__/v9-keyboard-measured.browser.test.tsx/'
+const failurePng='test/__screenshots__/lifecycle-v9-html-gaps.browser.test.tsx/'
  +title.replaceAll(/[^a-zA-Z0-9_-]/g,'-')+'-1.png';
 const retainedScreenshot=child.status!==0&&retainBounded(failurePng,'measurement-failure.png',2*1024*1024);
 trackedClean();
