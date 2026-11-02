@@ -1,3 +1,4 @@
+import {allFixedUpstreamFindingsClear,fixedUpstreamCause} from './anomaly-fixed-upstream';
 /**
  * ADR-0083 §2.5 / §3 item 3 — THE ACTION LAYER. The first place in this system where an agent writes.
  *
@@ -40,10 +41,10 @@
  * about a finding; it cannot change a payslip, a rate or a statutory figure. ADR-0074's invariant is
  * untouched: the money is the deterministic kernel's, and an agent may not reach it.
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
-import { resolveAnomalyVerdict } from './payroll-anomaly';
+import { closeFixedUpstreamAnomalyVerdict } from './payroll-anomaly';
 import { gapsForRecord, type ReadinessGapId } from './record-readiness';
 import { recordProposal } from './agent-proposal';
 
@@ -104,10 +105,7 @@ export const actionTypeById = (id: string): AgentActionType | undefined =>
  * may ever close. `net-swing` is absent because "their pay moved 40%" is not a condition that stops being
  * true when somebody edits a field — closing it would be asserting a judgement the agent has not made.
  */
-const CAUSE_OF: Partial<Record<string, ReadinessGapId>> = {
-  'missing-bank-profile': 'no_bank_account',
-  'missing-tax-profile': 'no_tax_number',
-};
+const CAUSE_OF = fixedUpstreamCause;
 
 export type ProposedSubject = {
   verdictId: string;
@@ -171,30 +169,16 @@ export async function proposeActions(ctx: SessionContext): Promise<ActionProposa
         and(
           isNull(schema.payrollAnomalyVerdict.supersededAt),
           isNull(schema.payrollAnomalyVerdict.resolvedAt),
-          inArray(schema.payrollAnomalyFinding.detectorId, Object.keys(CAUSE_OF)),
         ),
       );
 
-    const out: ProposedSubject[] = [];
-    const seen = new Set<string>();
-    for (const r of rows) {
-      const cause = CAUSE_OF[r.detectorId];
-      if (!cause) continue;
-      // `hasComp: true` — compensation is irrelevant to these two causes and querying it here would add a
-      // join for a value neither branch reads. Stated rather than left as a bare literal.
-      const gaps = gapsForRecord({ ...r, hasComp: true });
-      // STILL BROKEN ⇒ NOT A PROPOSAL. The whole claim is "the cause is gone".
-      if (gaps.includes(cause)) continue;
-      // One verdict may carry several findings; it is closed once.
-      if (seen.has(r.verdictId)) continue;
-      seen.add(r.verdictId);
-      out.push({
-        verdictId: r.verdictId,
-        employmentId: r.employmentId,
-        name: r.name,
-        detectorId: r.detectorId,
-        cause,
-      });
+    const grouped=new Map<string,typeof rows>();
+    for(const row of rows){const group=grouped.get(row.verdictId)??[];group.push(row);grouped.set(row.verdictId,group);}
+    const out:ProposedSubject[]=[];
+    for(const group of grouped.values()) {
+      const first=group[0]!;
+      if(!allFixedUpstreamFindingsClear(group.map(r=>r.detectorId),gapsForRecord({...first,hasComp:true})))continue;
+      out.push({verdictId:first.verdictId,employmentId:first.employmentId,name:first.name,detectorId:first.detectorId,cause:CAUSE_OF[first.detectorId]!});
     }
     return out;
   });
@@ -250,59 +234,16 @@ export async function executeAction(
   // approved is worse than refusing, because the operator believes the whole thing happened.
   if (ids.length > type.blastRadiusCap) throw new AgentActionError('blast_radius');
 
-  const fresh = await proposeActions(ctx);
-  const stillValid = new Set(
-    (fresh[0]?.subjects ?? [])
-      .concat()
-      .map((s) => s.verdictId),
-  );
-  // `proposeActions` caps its display list, so anything beyond SHOW must be re-tested individually rather
-  // than assumed stale. Re-running the predicate is cheap next to writing the wrong thing.
-  const unknown = ids.filter((id) => !stillValid.has(id));
-  if (unknown.length > 0) {
-    const recheck = await withTenant(ctx, async (tx) => {
-      const rows = await tx
-        .select({
-          verdictId: schema.payrollAnomalyVerdict.id,
-          detectorId: schema.payrollAnomalyFinding.detectorId,
-          paymentMethod: schema.employment.paymentMethod,
-          ic: schema.employeeStatutoryMy.icNumber,
-          passport: schema.employeeStatutoryMy.passportNumber,
-          taxNumber: schema.employeeStatutoryMy.taxNumber,
-          epfNumber: schema.employeeStatutoryMy.epfNumber,
-          socsoNumber: schema.employeeStatutoryMy.socsoNumber,
-          bankAccountNo: schema.employeeStatutoryMy.bankAccountNo,
-        })
-        .from(schema.payrollAnomalyVerdict)
-        .innerJoin(
-          schema.payrollAnomalyFinding,
-          eq(schema.payrollAnomalyFinding.verdictId, schema.payrollAnomalyVerdict.id),
-        )
-        .innerJoin(schema.employment, eq(schema.employment.id, schema.payrollAnomalyVerdict.employmentId))
-        .leftJoin(
-          schema.employeeStatutoryMy,
-          eq(schema.employeeStatutoryMy.personId, schema.employment.personId),
-        )
-        .where(
-          and(
-            inArray(schema.payrollAnomalyVerdict.id, unknown),
-            isNull(schema.payrollAnomalyVerdict.supersededAt),
-            isNull(schema.payrollAnomalyVerdict.resolvedAt),
-          ),
-        );
-      const ok = new Set<string>();
-      for (const r of rows) {
-        const cause = CAUSE_OF[r.detectorId];
-        if (cause && !gapsForRecord({ ...r, hasComp: true }).includes(cause)) ok.add(r.verdictId);
-      }
-      return ok;
-    });
-    for (const id of recheck) stillValid.add(id);
-  }
-
   let closed = 0;
   for (const id of ids) {
-    const valid = stillValid.has(id);
+    let valid=false;
+    try {
+      await closeFixedUpstreamAnomalyVerdict(ctx,id);
+      valid=true;
+      closed++;
+    } catch {
+      // One refused nomination never erases an earlier committed result.
+    }
 
     // ADR-0084 §2.3 — THE LEDGER'S MOST IMPORTANT TENANT, and the only DETERMINISTIC one: no model is
     // involved, which is why `provider`/`model` are null and why the table is `agent_proposal` rather
@@ -330,24 +271,6 @@ export async function executeAction(
       ...(valid ? { decision: 'approved' as const } : {}),
     });
 
-    if (!valid) continue;
-    try {
-      // Through the EXISTING service: its RBAC check, its status guard and its domain event are the ones
-      // already trusted for a human doing this by hand. This layer does not open a second write path.
-      await resolveAnomalyVerdict(ctx, {
-        verdictId: id,
-        resolution: 'fixed_upstream',
-        note: 'Closed by the control plane: the record fact that caused this finding is no longer missing.',
-      });
-      closed++;
-    } catch {
-      // ONE REFUSAL MUST NOT DISCARD THE REST, and it must not report failure over work that COMMITTED.
-      // Each call is its own transaction, so a throw escaping this loop would leave the earlier verdicts
-      // closed while the operator is told the whole thing failed — the mirror of the truncation (4)
-      // refuses, and just as misleading. The realistic cause is a race: somebody resolved this verdict by
-      // hand while the page was open, and the service's status guard correctly refused. Not closed BY US
-      // is the only fact this layer can assert, so it counts as stale and the numbers stay true.
-    }
   }
   return { closed, stale: ids.length - closed };
 }

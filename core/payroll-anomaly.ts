@@ -1,3 +1,6 @@
+import {allFixedUpstreamFindingsClear} from './anomaly-fixed-upstream';
+import {gapsForRecord} from './record-readiness';
+import {lockStatutorySourceTx} from './statutory-source-lock';
 import {assertAiPrincipalTx} from './ai-principal';
 import {resolveEntitlementsTx,assertModuleEnabled} from './entitlements';
 /**
@@ -783,13 +786,24 @@ async function hypothesisProposalsToStamp(tx: Tx, verdictId: string): Promise<st
  * if nobody can record "you missed this", the metric that most governs granting autonomy is permanently
  * unmeasurable.
  */
-export async function resolveAnomalyVerdict(
+/** Explicit human dispositions retain their existing semantics. */
+export function resolveAnomalyVerdict(ctx:SessionContext,p:{verdictId:string;resolution:'accepted'|'fixed_upstream'|'false_positive';note?:string}):Promise<void>{
+ return resolveAnomalyVerdictOwned(ctx,p);
+}
+/** A nomination is not proof: complete causes and unresolved state are checked under native locks. */
+export function closeFixedUpstreamAnomalyVerdict(ctx:SessionContext,verdictId:string):Promise<void>{
+ return resolveAnomalyVerdictOwned(ctx,{verdictId,resolution:'fixed_upstream',note:'Closed by the control plane: every supported record-fact cause is no longer missing.'},true);
+}
+
+async function resolveAnomalyVerdictOwned(
   ctx: SessionContext,
   p: { verdictId: string; resolution: 'accepted' | 'fixed_upstream' | 'false_positive'; note?: string },
+  requireFixedCauses=false,
 ): Promise<void> {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   const toStamp = await withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
+    if(requireFixedCauses)await lockStatutorySourceTx(tx,ctx);
     const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
       where u.id=${ctx.userId??null}::uuid and u.tenant_id=${ctx.tenantId}::uuid
        and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
@@ -804,14 +818,26 @@ export async function resolveAnomalyVerdict(
         batchId: schema.payrollAnomalyVerdict.batchId,
         disposition: schema.payrollAnomalyVerdict.disposition,
         supersededAt: schema.payrollAnomalyVerdict.supersededAt,
+        resolvedAt: schema.payrollAnomalyVerdict.resolvedAt,
       })
       .from(schema.payrollAnomalyVerdict)
       .where(eq(schema.payrollAnomalyVerdict.id, p.verdictId))
-      .limit(1);
+      .limit(1).for('update');
     if (!row) throw new Error('verdict not found');
     if (row.supersededAt) throw new Error('cannot resolve a superseded verdict');
+    if(requireFixedCauses) {
+      if(row.resolvedAt)throw new Error('verdict already resolved');
+      // Join the actual shared-person source interval, then pin this employment and profile.
+      const [subject]=await tx.select({personId:schema.employment.personId,paymentMethod:schema.employment.paymentMethod}).from(schema.employment).where(eq(schema.employment.id,row.employmentId)).for('share',{noWait:true});
+      if(!subject)throw new Error('Payroll anomaly unavailable.');
+      const [profile]=await tx.select({ic:schema.employeeStatutoryMy.icNumber,passport:schema.employeeStatutoryMy.passportNumber,taxNumber:schema.employeeStatutoryMy.taxNumber,epfNumber:schema.employeeStatutoryMy.epfNumber,socsoNumber:schema.employeeStatutoryMy.socsoNumber,bankAccountNo:schema.employeeStatutoryMy.bankAccountNo}).from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,subject.personId)).for('share',{noWait:true});
+      const findings=await tx.select({detectorId:schema.payrollAnomalyFinding.detectorId}).from(schema.payrollAnomalyFinding).where(eq(schema.payrollAnomalyFinding.verdictId,row.id)).for('share');
+      const gaps=gapsForRecord({ic:null,passport:null,taxNumber:null,epfNumber:null,socsoNumber:null,bankAccountNo:null,...profile,paymentMethod:subject.paymentMethod,hasComp:true});
+      if(!allFixedUpstreamFindingsClear(findings.map(f=>f.detectorId),gaps))throw new Error('Anomaly causes are not all fixed.');
+    }
 
-    await tx
+
+    const changed=await tx
       .update(schema.payrollAnomalyVerdict)
       .set({
         resolution: p.resolution,
@@ -819,7 +845,8 @@ export async function resolveAnomalyVerdict(
         resolvedAt: sql`now()`,
         resolvedByUserId: ctx.userId ?? null,
       })
-      .where(eq(schema.payrollAnomalyVerdict.id, p.verdictId));
+      .where(and(eq(schema.payrollAnomalyVerdict.id, p.verdictId),...(requireFixedCauses?[isNull(schema.payrollAnomalyVerdict.resolvedAt),isNull(schema.payrollAnomalyVerdict.supersededAt)]:[]))).returning({id:schema.payrollAnomalyVerdict.id});
+    if(changed.length!==1)throw new Error('Payroll anomaly changed.');
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
