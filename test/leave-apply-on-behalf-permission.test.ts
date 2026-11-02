@@ -23,8 +23,10 @@ import { and, eq,sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { canApplyLeaveOnBehalf, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess,ownLeaveRequestActionAccess } from '../core/leave';
-import { listEmployees, reportingLinesFor } from '../core/read';
+import { canApplyLeaveOnBehalf, decideLeave, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess,ownLeaveRequestActionAccess } from '../core/leave';
+import { countLeaveRequestsByStatus, listEmployees, listLeaveRequestsPage, reportingLinesFor } from '../core/read';
+import { ownLeaveRejections } from '../core/my-leave';
+import { ownLeaveRequestsPage } from '../core/mobile-leave-history';
 import { PAYROLL_PERMISSION_DEFAULTS, PAYROLL_PERMISSION_KEYS,decidePayrollPermission } from '../lib/payroll-permissions';
 import {withTenant,type SessionContext} from '../db/client';
 import { readFileSync } from 'node:fs';
@@ -524,4 +526,22 @@ it('projects own pending request controls without granting them for a visible re
  const unknown=randomUUID(),flags=await ownLeaveRequestActionAccess(manager.ctx,[own.leaveRequestId,other.leaveRequestId,unknown]);
  expect(flags[own.leaveRequestId]).toEqual({canEdit:true,canDelete:true});expect(flags[other.leaveRequestId]).toEqual({canEdit:false,canDelete:false});expect(flags[unknown]).toBeUndefined();
  expect(await ownLeaveRequestActionAccess(manager.ctx,[])).toEqual({});
+});
+
+it('keeps the own history list, counts, mobile nomination and rejection reason on the actual own View source',async()=>{
+ const manager=await hire('manager'),subject=await hire('employee');await reportsTo(subject.employmentId,manager.employmentId);const typeId=await leaveType();
+ const make=(ctx:SessionContext,employmentId:string)=>requestLeave(ctx,{employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const own=await make(manager.ctx,manager.employmentId),other=await make(subject.ctx,subject.employmentId),ids=[own.leaveRequestId,other.leaveRequestId];
+ const [native,page,counts,mobile]=await Promise.all([
+  listLeaveRequestsPage(manager.ctx,{ids,limit:10,offset:0}),
+  listLeaveRequestsPage(manager.ctx,{purpose:'ownApplication',ids,limit:10,offset:0}),
+  countLeaveRequestsByStatus(manager.ctx,{purpose:'ownApplication',ids}),
+  ownLeaveRequestsPage(manager.ctx,subject.employmentId,{limit:10,cursor:null}),
+ ]);
+ expect(native.rows.map(row=>row.id).sort()).toEqual(ids.slice().sort());
+ expect({ids:page.rows.map(row=>row.id),total:page.total,counts}).toEqual({ids:[own.leaveRequestId],total:1,counts:{pending:1}});
+ expect(mobile).toMatchObject({items:[],counts:{pending:0,approved:0,rejected:0,cancelled:0}});
+ await decideLeave(adminCtx(b),{leaveRequestId:other.leaveRequestId,decision:'rejected',rejectReason:'Fictional report reason'});
+ await decideLeave(adminCtx(b),{leaveRequestId:own.leaveRequestId,decision:'rejected',rejectReason:'Fictional own reason'});
+ expect(await ownLeaveRejections(manager.ctx,ids)).toEqual(new Map([[own.leaveRequestId,{reason:'Fictional own reason',dates:[]}]]));
 });

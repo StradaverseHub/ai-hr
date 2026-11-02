@@ -818,6 +818,7 @@ export function ownLeaveRejections(
           eq(domainEvent.aggregateType, 'leave-request'),
           eq(domainEvent.eventType, 'leave-request.rejected'),
           inArray(domainEvent.aggregateId, ids),
+          sql`app.leave_own_request_view_allowed(${domainEvent.aggregateId})`,
           isNotNull(domainEvent.payload),
         ),
       )
@@ -853,6 +854,7 @@ export async function ownLeaveRejectionReasons(
 export async function myUpcomingLeave(ctx: SessionContext, employmentIds: readonly string[], today: string) {
   if (employmentIds.length === 0) return [];
   const { rows } = await listLeaveRequestsPage(ctx, {
+    purpose: 'ownApplication',
     employmentIds: [...employmentIds],
     statuses: ['pending', 'approved'],
     from: today,

@@ -2430,3 +2430,26 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.module_company_cleanup_begin(uuid),app.module_company_cleanup_finish(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.module_company_cleanup_begin(uuid),app.module_company_cleanup_finish(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- The own-history surface discloses request details only through the same actual
+-- self/company View. Approval, attendance and payroll references are independent.
+CREATE FUNCTION app.leave_own_request_view_allowed(p_request uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.leave_request request WHERE request.id=p_request AND request.tenant_id=app.current_tenant_id()
+  AND app.leave_own_application_allowed(request.employment_id,'view'));
+$$;
+REVOKE ALL ON FUNCTION app.leave_own_request_view_allowed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_own_request_view_allowed(uuid) TO ai_hr_app;
+DO $own_history$ DECLARE predecessor record;source text;definition text;anchor text:='AND lr.tenant_id = app.current_tenant_id()';BEGIN
+ FOR predecessor IN SELECT * FROM (VALUES
+  ('app.own_leave_request_approvals(uuid[])','9b347d9cc12b9ddf3ef4fa7c99f88ae2'),
+  ('app.own_leave_request_cancellations(uuid[])','cfd5c4cf3ed2b5681330fc8a02d23816')) owners(signature,source_hash)
+ LOOP
+  SELECT prosrc,pg_get_functiondef(oid) INTO source,definition FROM pg_proc WHERE oid=to_regprocedure(predecessor.signature);
+  IF source IS NULL OR md5(source)<>predecessor.source_hash OR (length(source)-length(replace(source,anchor,'')))/length(anchor)<>1 THEN
+   RAISE EXCEPTION 'Own Leave history projection source changed: %',predecessor.signature;
+  END IF;
+  EXECUTE replace(definition,anchor,anchor||E'\n      AND app.leave_own_application_allowed(lr.employment_id,''view'')');
+ END LOOP;
+END $own_history$;
