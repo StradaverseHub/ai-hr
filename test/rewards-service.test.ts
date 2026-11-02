@@ -8,7 +8,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
-import { returnedRewardUnits, getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, decideRewardUnit, postRewardUnit, canPostRewardUnit, rewardPayrollChoices, prepareReviewedRewardPostTx, postReviewedRewardUnitTx } from '../packs/rewards/service';
+import { returnedRewardUnits, getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, decideRewardUnit, postRewardUnit, cancelRewardReviewTx, canPostRewardUnit, rewardPayrollChoices, prepareReviewedRewardPostTx, postReviewedRewardUnitTx } from '../packs/rewards/service';
 import { emptyFacts,emptyRecommendation,visibleEntry,isSeniorPlanMember, returnedState, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { dispatchNotificationsFromSweep, renderRewardRouted } from '../core/notifications';
@@ -476,6 +476,34 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(Number(unchanged.basicSalary)).toBe(5000);
     expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId, batch.batchId))).toEqual([]);
     expect((await view()).unit.status).toBe('approved');
+  });
+  it.each(['assigned','administration']as const)('privately preserves the original actor-only cancellation %s course and exact audit',async course=>{
+    let actor=admin;
+    if(course==='administration'){
+      const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Actual no-seat cancellation administrator',primaryEmail:'cancel-administrator@rewards.test'}).returning();
+      actor={...admin,userId:await createAppUser(b.tenantId,person.id,'hr_admin'),personId:person.id,roles:['hr_admin'],grants:undefined};
+    }
+    const before=await view(),why='Actual independently reviewed cancellation';let originalAfter:typeof before.unit|undefined,originalReceipt:Awaited<ReturnType<typeof cancelRewardReviewTx>>|undefined;const rollback=new Error('Original cancellation oracle rollback');
+    try{await withTenant(actor,async tx=>{originalReceipt=await cancelRewardReviewTx(tx,actor,unitId,before.unit.revision,why);[originalAfter]=await tx.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id,unitId));throw rollback;});}catch(error){expect(error).toBe(rollback);}
+    expect(originalReceipt).toMatchObject({unitId,cancelledRevision:before.unit.revision,currentRevision:before.unit.revision+1,status:'withdrawn'});expect(originalAfter).toBeDefined();expect((await view()).unit).toEqual(before.unit);
+    await owner.withTenant(actor,async tx=>{const [result]=await tx.execute<{value:unknown}>(sql`select app.reward_cancel_native(${unitId}::uuid,${before.unit.revision},${why})as value`);expect(result.value).toEqual({unitId,eventId:expect.any(String),cancelledRevision:before.unit.revision,currentRevision:before.unit.revision+1,status:'withdrawn'});await tx.execute(sql`set constraints all immediate`);const [proof]=await tx.execute<{course:string}>(sql`select admission->>'course'as course from app.reward_cancel_native_effect where unit_id=${unitId}::uuid and xact_id=pg_current_xact_id()and completed and not active`);expect(proof.course).toBe(course);});
+    const after=await view(),stripTime=(unit:typeof before.unit)=>{const {updatedAt:_time,...rest}=unit;return rest;};expect(stripTime(after.unit)).toEqual(stripTime(originalAfter!));expect(after.rows).toEqual(before.rows);
+    const decisions=await owner.db.select().from(schema.rewardDecision).where(eq(schema.rewardDecision.unitId,unitId));
+    if(course==='assigned'){expect(decisions).toHaveLength(1);expect(decisions[0]).toMatchObject({actorId:actor.userId,action:'withdraw',fromStage:'draft',toStage:'withdrawn',reason:why,revision:before.unit.revision});}else expect(decisions).toEqual([]);
+    const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.cancelled')));expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorId:actor.userId,actorType:'user',subjectEmploymentId:null,payload:{fromStage:'draft',reason:why,revision:before.unit.revision,before:{status:'draft',revision:before.unit.revision},after:{status:'withdrawn',revision:before.unit.revision+1}}});expect(Object.keys(events[0].payload).sort()).toEqual(['after','before','cancelRowHash','fromStage','reason','revision']);
+    await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_cancel_command(${unitId}::uuid,${before.unit.revision},${why})`))).rejects.toThrow();
+  });
+  it('refuses non-GR participants and any raw agent stamp at the private cancellation admission',async()=>{
+    const before=await view();
+    let participant:unknown;try{await owner.withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_cancel_admission(${unitId}::uuid,${before.unit.revision},'Actual cancelled unit request')`));}catch(error){participant=error;}
+    expect(pgErrorChain(participant)).toContainEqual(expect.objectContaining({code:'42501',message:'Only the company Rewards administrator or Group Rewards may cancel this review.'}));
+    for(const value of ['not-a-uuid','00000000-0000-4000-8000-000000000077']){let refusal:unknown;try{await owner.withTenant(admin,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id',${value},true)`);await tx.execute(sql`select app.reward_cancel_native(${unitId}::uuid,${before.unit.revision},'An actual human cancellation request')`);});}catch(error){refusal=error;}expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'A current human Rewards principal is required'}));}
+    expect((await view()).unit).toEqual(before.unit);expect(await owner.db.select().from(schema.rewardDecision).where(eq(schema.rewardDecision.unitId,unitId))).toEqual([]);
+  });
+  it.each([false,true])('revalidates an early-flushed cancellation after authority revoke (restore=%s)',async restore=>{
+    const before=await view(),decisions=await owner.db.select().from(schema.rewardDecision).where(eq(schema.rewardDecision.unitId,unitId)),events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,unitId));let restored=false;let refusal:unknown;
+    try{await owner.withTenant(admin,async tx=>{await tx.execute(sql`select app.reward_cancel_native(${unitId}::uuid,${before.unit.revision},'Actual cancellation authority rollback')`);await tx.execute(sql`set constraints all immediate`);if(restore)await tx.execute(sql`set constraints app.rewards_cancel_native_effect deferred`);await tx.execute(sql`update role_assignment set role='manager'where tenant_id=${b.tenantId}::uuid and app_user_id=${admin.userId!}::uuid and role='hr_admin'`);if(restore){await tx.execute(sql`update role_assignment set role='hr_admin'where tenant_id=${b.tenantId}::uuid and app_user_id=${admin.userId!}::uuid and role='manager'`);restored=true;}});}catch(error){refusal=error;}
+    expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward cancellation authority changed'}));expect(restored).toBe(restore);expect((await view()).unit).toEqual(before.unit);expect(await owner.db.select().from(schema.rewardDecision).where(eq(schema.rewardDecision.unitId,unitId))).toEqual(decisions);expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,unitId))).toEqual(events);
   });
   it('privately performs one actual native decision with its exact actor, physical effects and audit under a savepoint',async()=>{
     const before=await view(),why='Actual private native decision reviewed';

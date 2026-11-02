@@ -3081,19 +3081,21 @@ DECLARE key text:=substring(cap FROM '^function[.](.+)[.][^.]+$');operation text
 BEGIN
  IF co IS NULL OR cap IS NULL OR cap<>'function.'||key||'.'||operation OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=co AND c.tenant_id=t)OR NOT EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id))THEN RETURN false;END IF;
  IF key IN('rewards.review','rewards.configuration.assigned','rewards.configuration.administration')THEN IF operation<>'view'THEN RETURN false;END IF;
- ELSIF key='rewards.posting'THEN IF operation NOT IN('view','execute')THEN RETURN false;END IF;
+ ELSIF key IN('rewards.posting','rewards.cancellation.assigned','rewards.cancellation.administration')THEN IF operation NOT IN('view','execute')THEN RETURN false;END IF;
  ELSIF key IN('rewards.decisions.submit','rewards.decisions.approve','rewards.decisions.return','rewards.decisions.reject','rewards.decisions.withdraw')THEN
   command:=substring(key FROM '[^.]+$');IF operation<>'view'AND operation<>(CASE WHEN command='approve'THEN'approve'ELSE'execute'END)THEN RETURN false;END IF;
  ELSE RETURN false;END IF;
  FOR unit IN SELECT r.* FROM public.reward_unit r WHERE r.tenant_id=t AND r.company_id=co AND r.deleted_at IS NULL LOOP
   roles:=ARRAY(SELECT app.rewards_roles_for_tenant(t,u,unit.id));
-  IF key='rewards.configuration.administration'THEN
-   IF EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN('hr_admin','super_admin')AND app.access_scope_covers(r.company_id,co,t))THEN RETURN true;END IF;
+  IF key IN('rewards.configuration.administration','rewards.cancellation.administration')THEN
+   IF(key<>'rewards.cancellation.administration'OR operation='view'OR unit.status NOT IN('posted','withdrawn','rejected'))AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN('hr_admin','super_admin')AND app.access_scope_covers(r.company_id,co,t))THEN RETURN true;END IF;
    CONTINUE;
   END IF;
   IF cardinality(roles)=0 THEN CONTINUE;END IF;
   IF key='rewards.configuration.assigned'THEN
    IF'gr'=ANY(roles)THEN RETURN true;END IF;
+  ELSIF key='rewards.cancellation.assigned'THEN
+   IF'gr'=ANY(roles)AND(operation='view'OR unit.status NOT IN('posted','withdrawn','rejected'))THEN RETURN true;END IF;
   ELSIF key='rewards.posting'THEN
    IF'payroll'=ANY(roles)AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN('hr_admin','super_admin')AND app.access_scope_covers(r.company_id,co,t))THEN RETURN true;END IF;
   ELSIF operation='view'THEN RETURN true;
@@ -3112,7 +3114,7 @@ CREATE FUNCTION app.rewards_function_current_legacy_allowed(t uuid,u uuid,cap te
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT co IS NOT NULL AND t=app.current_tenant_id()AND u=app.current_user_id()AND app.principal_snapshot_current()
  AND app.rewards_function_legacy_allowed(t,u,cap,co)
- AND CASE WHEN cap IN('function.rewards.posting.view','function.rewards.posting.execute','function.rewards.configuration.administration.view')THEN app.reward_admin(co)ELSE true END;
+ AND CASE WHEN cap IN('function.rewards.posting.view','function.rewards.posting.execute','function.rewards.configuration.administration.view','function.rewards.cancellation.administration.view','function.rewards.cancellation.administration.execute')THEN app.reward_admin(co)ELSE true END;
 $$;
 REVOKE ALL ON FUNCTION app.rewards_function_legacy_allowed(uuid,uuid,text,uuid),app.rewards_function_current_legacy_allowed(uuid,uuid,text,uuid)FROM PUBLIC,ai_hr_app;
 
@@ -3244,3 +3246,118 @@ REVOKE ALL ON FUNCTION app.reward_configuration_review(uuid)FROM PUBLIC,ai_hr_ap
 -- does not assert that policy/member mutation purposes are closed or publication is complete.
 SELECT app.register_function_action('rewards.configuration.assigned','view','company',NULL,'app.rewards_function_legacy_allowed','{"moduleKey":"rewards","labelKey":"rewards.configuration","kind":"native_acl","course":"assigned","screenKey":"rewardsAdmin","href":"/rewards","employeeBearing":false}'::jsonb);
 SELECT app.register_function_action('rewards.configuration.administration','view','company','rewards.view','app.rewards_function_legacy_allowed','{"moduleKey":"rewards","labelKey":"rewards.configuration","kind":"native_acl","course":"administrative","screenKey":"rewardsAdmin","href":"/rewards","employeeBearing":false}'::jsonb);
+
+--> statement-breakpoint
+-- Cancellation is the original actor-only unit course (0839), not an employee-data read.
+-- No posted actor, event namespace, source rows, authority hint or monetary input is accepted.
+CREATE FUNCTION app.reward_cancel_admission(p_unit uuid,p_revision integer,p_reason text)RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;actor public.app_user;roles text[];reason text;course text;key text;entries jsonb;decision_digest text;has_decision boolean;stamp text;
+BEGIN
+ IF nullif(current_setting('app.agent_principal_id',true),'')IS NOT NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
+ IF app.current_agent_principal()IS NOT NULL OR NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
+ PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
+ reason:=app.reward_calc_text(to_jsonb(p_reason),4000);
+ IF app.reward_calc_units(reason)<10 THEN RAISE EXCEPTION 'Explain why the review is being cancelled (at least 10 characters).' USING ERRCODE='42501';END IF;
+ SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL FOR UPDATE;
+ SELECT u.* INTO actor FROM public.app_user u WHERE u.id=app.current_user_id()AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
+ IF unit.id IS NULL OR actor.id IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
+ roles:=ARRAY(SELECT app.reward_roles(unit.id));
+ IF'gr'=ANY(roles)THEN course:='assigned';ELSIF app.reward_admin(unit.company_id)THEN course:='administration';ELSE RAISE EXCEPTION 'Only the company Rewards administrator or Group Rewards may cancel this review.' USING ERRCODE='42501';END IF;
+ key:='rewards.cancellation.'||course;
+ IF app.function_action_allowed(key,'execute',unit.company_id)IS NOT TRUE OR(course='administration'AND app.lifecycle_reward_notice_action('rewards','delete',unit.company_id)IS NOT TRUE)THEN RAISE EXCEPTION 'Reward cancellation function unavailable' USING ERRCODE='42501';END IF;
+ IF unit.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'This review changed in another session. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF unit.status IN('posted','withdrawn','rejected')THEN RAISE EXCEPTION 'This review can no longer be cancelled.' USING ERRCODE='42501';END IF;
+ IF unit.parent_unit_id IS NOT NULL THEN PERFORM 1 FROM public.reward_unit parent WHERE parent.id=unit.parent_unit_id AND parent.tenant_id=unit.tenant_id FOR UPDATE;END IF;
+ has_decision:=EXISTS(SELECT 1 FROM unnest(roles)r WHERE r<>'pbp');
+ IF has_decision THEN
+  SELECT coalesce(jsonb_agg(jsonb_build_object('id',e.id,'source',e.source,'facts',e.facts,'recommendation',e.recommendation)ORDER BY e.id),'[]'::jsonb)INTO entries FROM public.reward_entry e WHERE e.unit_id=unit.id AND e.tenant_id=unit.tenant_id;
+  decision_digest:=app.reward_calc_decision_digest(unit.policy,unit.kind,unit.parent_unit_id,unit.offcycle,entries);
+ END IF;
+ stamp:=app.access_function_authority_stamp();IF stamp IS NULL THEN RAISE EXCEPTION 'Reward cancellation authority unavailable' USING ERRCODE='42501';END IF;
+ RETURN jsonb_build_object('tenantId',unit.tenant_id,'userId',actor.id,'unitId',unit.id,'companyId',unit.company_id,'unitBefore',to_jsonb(unit),'unitBeforeHash',app.reward_decision_row_hash(to_jsonb(unit),'reward_unit'),'reason',reason,'revision',unit.revision,'fromStage',unit.status,'course',course,'functionKey',key,'positiveAdmission',true,'authorityStamp',stamp,'hasDecision',has_decision,'decisionDigest',decision_digest);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_cancel_admission(uuid,integer,text)FROM PUBLIC,ai_hr_app;
+CREATE TABLE app.reward_cancel_native_effect(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,unit_id uuid NOT NULL,
+ admission jsonb NOT NULL,unit_after jsonb,decision_id uuid,decision_after jsonb,event_id uuid NOT NULL,event_after jsonb,
+ active boolean NOT NULL DEFAULT true,completed boolean NOT NULL DEFAULT false,recheck bigint NOT NULL DEFAULT 0
+);
+CREATE TABLE app.reward_cancel_native_receipt(
+ effect_id uuid NOT NULL REFERENCES app.reward_cancel_native_effect(id)ON DELETE CASCADE,table_name text NOT NULL,row_id uuid NOT NULL,before_hash text NOT NULL,after_hash text NOT NULL,
+ PRIMARY KEY(effect_id,table_name,row_id,before_hash,after_hash)
+);
+ALTER TABLE app.reward_cancel_native_effect ENABLE ROW LEVEL SECURITY;ALTER TABLE app.reward_cancel_native_receipt ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.reward_cancel_native_effect,app.reward_cancel_native_receipt FROM PUBLIC,ai_hr_app;
+CREATE INDEX reward_cancel_native_current_idx ON app.reward_cancel_native_effect(xact_id,tenant_id,user_id,unit_id);
+CREATE FUNCTION app.reward_cancel_native_capture()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE previous jsonb:=CASE WHEN TG_OP='INSERT'THEN'{}'::jsonb ELSE to_jsonb(OLD)END;following jsonb:=to_jsonb(NEW);proof uuid;
+BEGIN
+ IF TG_TABLE_NAME NOT IN('reward_unit','reward_decision')THEN RAISE EXCEPTION 'Invalid Reward cancellation receipt' USING ERRCODE='42501';END IF;
+ SELECT e.id INTO proof FROM app.reward_cancel_native_effect e WHERE e.xact_id=pg_current_xact_id()AND e.tenant_id=app.current_tenant_id()AND e.user_id=app.current_user_id()AND e.active AND NOT e.completed
+ AND(TG_TABLE_NAME='reward_unit'AND e.unit_id=NEW.id OR TG_TABLE_NAME='reward_decision'AND e.decision_id=NEW.id);
+ IF proof IS NOT NULL THEN INSERT INTO app.reward_cancel_native_receipt VALUES(proof,TG_TABLE_NAME,NEW.id,app.reward_decision_row_hash(previous,TG_TABLE_NAME),app.reward_decision_row_hash(following,TG_TABLE_NAME))ON CONFLICT DO NOTHING;END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_cancel_native_capture()FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER rewards_cancel_native_capture AFTER UPDATE ON public.reward_unit FOR EACH ROW EXECUTE FUNCTION app.reward_cancel_native_capture();
+CREATE TRIGGER rewards_cancel_native_capture AFTER INSERT ON public.reward_decision FOR EACH ROW EXECUTE FUNCTION app.reward_cancel_native_capture();
+CREATE FUNCTION app.reward_cancel_native_validate()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.reward_cancel_native_effect;unit public.reward_unit;roles text[];before_image jsonb;after_image jsonb;expected_payload jsonb;
+BEGIN
+ SELECT e.* INTO proof FROM app.reward_cancel_native_effect e WHERE e.id=NEW.id;IF proof.id IS NULL THEN RETURN NULL;END IF;
+ IF proof.active OR NOT proof.completed OR nullif(current_setting('app.agent_principal_id',true),'')IS NOT NULL OR app.current_agent_principal()IS NOT NULL OR NOT app.principal_snapshot_current()OR proof.xact_id<>pg_current_xact_id()OR proof.tenant_id IS DISTINCT FROM app.current_tenant_id()OR proof.user_id IS DISTINCT FROM app.current_user_id()OR proof.admission->>'authorityStamp'IS DISTINCT FROM app.access_function_authority_stamp()OR NOT EXISTS(SELECT 1 FROM public.app_user actor WHERE actor.id=proof.user_id AND actor.tenant_id=proof.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id))THEN RAISE EXCEPTION 'Reward cancellation authority changed' USING ERRCODE='42501';END IF;
+ SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=proof.unit_id AND u.tenant_id=proof.tenant_id AND u.company_id::text=proof.admission->>'companyId'AND u.deleted_at IS NULL;
+ IF unit.id IS NULL OR proof.admission->>'tenantId'IS DISTINCT FROM proof.tenant_id::text OR proof.admission->>'userId'IS DISTINCT FROM proof.user_id::text OR proof.admission->>'unitId'IS DISTINCT FROM proof.unit_id::text OR proof.admission->'positiveAdmission'IS DISTINCT FROM'true'::jsonb OR proof.admission->>'course'NOT IN('assigned','administration')OR proof.admission->>'functionKey'IS DISTINCT FROM('rewards.cancellation.'||(proof.admission->>'course'))OR app.function_action_denial_clear(proof.admission->>'functionKey','execute',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward cancellation authority changed' USING ERRCODE='42501';END IF;
+ roles:=ARRAY(SELECT app.reward_roles(unit.id));
+ IF(proof.admission->>'course'='assigned'AND NOT('gr'=ANY(roles)))OR(proof.admission->>'course'='administration'AND(app.reward_admin(unit.company_id)IS NOT TRUE OR app.lifecycle_reward_notice_action('rewards','delete',unit.company_id)IS NOT TRUE))THEN RAISE EXCEPTION 'Reward cancellation authority changed' USING ERRCODE='42501';END IF;
+ before_image:=proof.admission->'unitBefore';after_image:=proof.unit_after;
+ IF before_image->>'status'IN('posted','withdrawn','rejected')OR after_image IS NULL OR app.reward_decision_row_hash(before_image,'reward_unit')IS DISTINCT FROM proof.admission->>'unitBeforeHash'OR app.reward_decision_row_hash(to_jsonb(unit),'reward_unit')IS DISTINCT FROM app.reward_decision_row_hash(after_image,'reward_unit')OR after_image-ARRAY['status','approved_digest','revision','updated_at']IS DISTINCT FROM before_image-ARRAY['status','approved_digest','revision','updated_at']OR after_image->>'status'<>'withdrawn'OR after_image->'approved_digest'IS DISTINCT FROM'null'::jsonb OR(after_image->>'revision')::integer<>(before_image->>'revision')::integer+1
+ OR NOT EXISTS(SELECT 1 FROM app.reward_cancel_native_receipt r WHERE r.effect_id=proof.id AND r.table_name='reward_unit'AND r.row_id=unit.id AND r.before_hash=proof.admission->>'unitBeforeHash'AND r.after_hash=app.reward_decision_row_hash(after_image,'reward_unit'))THEN RAISE EXCEPTION 'Reward cancellation unit effect unavailable' USING ERRCODE='42501';END IF;
+ IF proof.admission->'hasDecision'='true'::jsonb THEN
+  IF NOT EXISTS(SELECT 1 FROM unnest(roles)r WHERE r<>'pbp')OR NOT EXISTS(SELECT 1 FROM public.reward_decision d JOIN app.reward_cancel_native_receipt r ON r.effect_id=proof.id AND r.table_name='reward_decision'AND r.row_id=d.id AND r.before_hash=encode(sha256(convert_to('{}','UTF8')),'hex')AND r.after_hash=app.reward_decision_row_hash(to_jsonb(d),'reward_decision')WHERE d.id=proof.decision_id AND d.tenant_id=proof.tenant_id AND d.unit_id=unit.id AND d.actor_id=proof.user_id AND d.revision=(proof.admission->>'revision')::integer AND d.action='withdraw'AND d.from_stage=proof.admission->>'fromStage'AND d.to_stage='withdrawn'AND d.reason=proof.admission->>'reason'AND d.digest=proof.admission->>'decisionDigest'AND app.reward_decision_row_hash(to_jsonb(d),'reward_decision')=app.reward_decision_row_hash(proof.decision_after,'reward_decision'))THEN RAISE EXCEPTION 'Reward cancellation decision effect unavailable' USING ERRCODE='42501';END IF;
+ ELSIF proof.decision_id IS NOT NULL OR proof.decision_after IS NOT NULL THEN RAISE EXCEPTION 'Unexpected Reward cancellation decision' USING ERRCODE='42501';END IF;
+ expected_payload:=jsonb_build_object('cancelRowHash',encode(sha256(convert_to(after_image::text,'UTF8')),'hex'),'fromStage',proof.admission->'fromStage','reason',proof.admission->'reason','revision',proof.admission->'revision','before',jsonb_build_object('status',proof.admission->'fromStage','revision',proof.admission->'revision'),'after',jsonb_build_object('status','withdrawn','revision',(proof.admission->>'revision')::integer+1));
+ IF NOT EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.id=proof.event_id AND audit.tenant_id=proof.tenant_id AND audit.aggregate_type='reward-unit'AND audit.aggregate_id=unit.id AND audit.event_type='reward-unit.cancelled'AND audit.actor_type='user'AND audit.actor_id=proof.user_id AND audit.subject_employment_id IS NULL AND audit.payload=expected_payload AND app.reward_decision_row_hash(to_jsonb(audit),'domain_event')=app.reward_decision_row_hash(proof.event_after,'domain_event')AND EXISTS(SELECT 1 FROM app.lifecycle_row_transaction_receipt birth WHERE birth.xact_id=proof.xact_id AND birth.tenant_id=proof.tenant_id AND birth.user_id=proof.user_id AND birth.table_name='domain_event'AND birth.row_id=audit.id))THEN RAISE EXCEPTION 'Reward cancellation audit unavailable' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_cancel_native_validate()FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER rewards_cancel_native_effect AFTER UPDATE ON app.reward_cancel_native_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.completed AND NOT NEW.active)EXECUTE FUNCTION app.reward_cancel_native_validate();
+CREATE FUNCTION app.reward_cancel_authority_changed()RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ UPDATE app.reward_cancel_native_effect e SET recheck=e.recheck+1 WHERE e.xact_id=pg_current_xact_id()AND e.tenant_id=NEW.tenant_id AND e.completed AND NOT e.active;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_cancel_authority_changed()FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER rewards_cancel_authority_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.reward_cancel_authority_changed();
+CREATE FUNCTION app.reward_cancel_native(p_unit uuid,p_revision integer,p_reason text)RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE admission jsonb;context_id uuid;decision_id uuid;event_id uuid:=gen_random_uuid();after_unit jsonb;after_decision jsonb;after_event jsonb;affected integer;
+BEGIN
+ admission:=app.reward_cancel_admission(p_unit,p_revision,p_reason);
+ DELETE FROM app.reward_cancel_native_effect e WHERE e.tenant_id=app.current_tenant_id()AND e.xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ IF EXISTS(SELECT 1 FROM app.reward_cancel_native_effect e WHERE e.xact_id=pg_current_xact_id()AND e.tenant_id=app.current_tenant_id()AND e.active)THEN RAISE EXCEPTION 'A native Reward cancellation is already active' USING ERRCODE='42501';END IF;
+ IF admission->'hasDecision'='true'::jsonb THEN decision_id:=gen_random_uuid();END IF;
+ INSERT INTO app.reward_cancel_native_effect(xact_id,tenant_id,user_id,unit_id,admission,decision_id,event_id)VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),p_unit,admission,decision_id,event_id)RETURNING id INTO context_id;
+ UPDATE public.reward_unit actual SET status='withdrawn',approved_digest=NULL,revision=p_revision+1,updated_at=clock_timestamp()WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id()AND actual.revision=p_revision AND app.reward_decision_row_hash(to_jsonb(actual),'reward_unit')=admission->>'unitBeforeHash'RETURNING to_jsonb(actual)INTO after_unit;
+ GET DIAGNOSTICS affected=ROW_COUNT;IF affected<>1 THEN RAISE EXCEPTION 'Reward cancellation source changed' USING ERRCODE='40001';END IF;
+ IF decision_id IS NOT NULL THEN
+  INSERT INTO public.reward_decision(id,tenant_id,unit_id,actor_id,revision,action,from_stage,to_stage,reason,digest)VALUES(decision_id,app.current_tenant_id(),p_unit,app.current_user_id(),p_revision,'withdraw',admission->>'fromStage','withdrawn',admission->>'reason',admission->>'decisionDigest')RETURNING to_jsonb(reward_decision)INTO after_decision;
+ END IF;
+ INSERT INTO public.domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)VALUES(event_id,app.current_tenant_id(),'reward-unit',p_unit,'reward-unit.cancelled','user',app.current_user_id(),jsonb_build_object('cancelRowHash',encode(sha256(convert_to(after_unit::text,'UTF8')),'hex'),'fromStage',admission->'fromStage','reason',admission->'reason','revision',p_revision,'before',jsonb_build_object('status',admission->'fromStage','revision',p_revision),'after',jsonb_build_object('status','withdrawn','revision',p_revision+1)))RETURNING to_jsonb(domain_event)INTO after_event;
+ UPDATE app.reward_cancel_native_effect e SET active=false,completed=true,unit_after=after_unit,decision_after=after_decision,event_after=after_event WHERE e.id=context_id;
+ RETURN jsonb_build_object('unitId',p_unit,'eventId',event_id,'cancelledRevision',p_revision,'currentRevision',p_revision+1,'status','withdrawn');
+END $$;
+CREATE FUNCTION app.reward_cancel_command(p_unit uuid,p_revision integer,p_reason text)RETURNS jsonb
+LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.reward_cancel_native(p_unit,p_revision,p_reason);$$;
+REVOKE ALL ON FUNCTION app.reward_cancel_native(uuid,integer,text),app.reward_cancel_command(uuid,integer,text)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+DO $$ DECLARE course text;operation text;BEGIN
+ FOREACH course IN ARRAY ARRAY['assigned','administration']LOOP
+  FOREACH operation IN ARRAY ARRAY['view','execute']LOOP
+   PERFORM app.register_function_action('rewards.cancellation.'||course,operation,'company',CASE WHEN course='administration'THEN CASE WHEN operation='view'THEN'rewards.view'ELSE'rewards.delete'END END,'app.rewards_function_legacy_allowed',jsonb_build_object('moduleKey','rewards','labelKey','rewardsConfig.actions.cancel','kind','native_acl','course',CASE WHEN course='assigned'THEN'assigned'ELSE'administrative'END,'screenKey',CASE WHEN course='assigned'THEN'rewards'ELSE'rewardsAdmin'END,'href',CASE WHEN course='assigned'THEN'/rewards'ELSE'/admin/rewards'END,'employeeBearing',false));
+  END LOOP;
+ END LOOP;
+END $$;

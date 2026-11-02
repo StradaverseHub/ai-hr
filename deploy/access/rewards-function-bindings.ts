@@ -19,6 +19,14 @@ export const REWARDS_FUNCTIONS:readonly FunctionActionDescriptor[]=[
   ]}]},
  ...(['assigned','administration']as const).map(course=>({key:`rewards.configuration.${course}`,scope:'company' as const,moduleKey:'rewards',labelKey:'rewards.configuration',kind:'native_acl' as const,course:course==='assigned'?'assigned' as const:'administrative' as const,screenKey:'rewardsAdmin',href:'/rewards',employeeBearing:false,
   actions:[{operation:'view' as const,parentCapability:course==='administration'?'rewards.view':null,delegationFloorFunction:'app.rewards_function_legacy_allowed',bindings:[{owner:'app.reward_configuration_review',operation:course==='assigned'?'native-GR-configuration-metadata':'native-company-HR-configuration-metadata'}]}]})),
+ ...(['assigned','administration']as const).map(course=>({key:`rewards.cancellation.${course}`,scope:'company' as const,moduleKey:'rewards',labelKey:'rewardsConfig.actions.cancel',kind:'native_acl' as const,course:course==='assigned'?'assigned' as const:'administrative' as const,screenKey:course==='assigned'?'rewards':'rewardsAdmin',href:course==='assigned'?'/rewards':'/admin/rewards',employeeBearing:false,
+  actions:(['view','execute']as const).map(operation=>({operation,parentCapability:course==='administration'?(operation==='view'?'rewards.view':'rewards.delete'):null,delegationFloorFunction:'app.rewards_function_legacy_allowed',bindings:[
+   {owner:'app.reward_cancel_command',operation:'fixed-human-actor-only-cancel-frontdoor'},
+   {owner:'app.reward_cancel_admission',operation:'actual-native-nonterminal-source-and-course'},
+   {owner:'app.reward_cancel_native',operation:'exact-unit-optional-decision-fixed-audit'},
+   {owner:'app.reward_cancel_native_validate',operation:'sealed-final-source-native-authority-and-denial'},
+   {owner:'app.reward_cancel_authority_changed',operation:'same-root-epoch-recheck'},
+  ]}))})),
  ...decisionCourses.map(({command,operation,labelKey}):FunctionActionDescriptor=>({key:`rewards.decisions.${command}`,scope:'company',moduleKey:'rewards',labelKey,kind:'native_acl',course:'assigned',screenKey:'rewards',href:'/rewards',employeeBearing:false,
   actions:(['view',operation]as readonly FunctionOperation[]).map(action=>({operation:action,parentCapability:null,delegationFloorFunction:'app.rewards_function_legacy_allowed',bindings:[
    {owner:'app.reward_decision_command',operation:`fixed-human-${command}-frontdoor`},
@@ -52,4 +60,8 @@ export const REWARDS_FUNCTION_REQUIRED_OWNERS=[
  'app.reward_configuration_review(uuid)',
  'app.reward_decision_command(uuid,integer,text,text,boolean)',
  'app.reward_post_command(uuid,integer,uuid)',
+ 'app.reward_cancel_command(uuid,integer,text)',
+ 'app.reward_cancel_admission(uuid,integer,text)',
+ 'app.reward_cancel_native(uuid,integer,text)',
+ 'app.reward_cancel_native_validate()',
 ]as const;
