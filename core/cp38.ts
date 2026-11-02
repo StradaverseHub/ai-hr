@@ -160,6 +160,7 @@ async function assertNoProcessedPeriod(
   validFrom: string,
   validTo: string | null,
 ): Promise<void> {
+  const payrollBatch=payrollDocumentBatch;
   const fromMonth = validFrom.slice(0, 7);
   const toMonth = validTo ? validTo.slice(0, 7) : null;
   const [hit] = await tx
@@ -319,7 +320,6 @@ export async function cp38ForPeriod(
 ): Promise<Map<string, { amount: number; cp38Ref: string }>> {
   const out = new Map<string, { amount: number; cp38Ref: string }>();
   if (empIds.length === 0) return out;
-  const payrollBatch=payrollDocumentBatch;
   const rows = await cp38RowsForPeriod(tx, empIds, periodKey);
   // First row per employment wins (latest valid_from) — overlap is impossible, so this is deterministic.
   for (const r of rows) {
