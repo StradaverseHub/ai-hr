@@ -294,7 +294,8 @@ export function StepSelection({
                 {multiCompany && (
                   <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{e.company}</span>
                 )}
-                {e.terminatedOn && (
+                {e.outstandingOnly&&<span className="rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{t('outstandingOnly',{date:e.terminatedOn??''})}</span>}
+                {e.terminatedOn && !e.outstandingOnly && (
                   <span className="text-xs text-amber-600 dark:text-amber-400">({t('leaverTag')})</span>
                 )}
                 {/* An em dash, never an empty cell: two of forty employments carry a policy today, so blank

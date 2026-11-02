@@ -10,7 +10,7 @@ import {PayrollTaxBasisError,type TaxBasisSelection,type TaxBasisPreview,type Ta
 import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx,lockPayrollHistoryWriteTx} from './payroll-history-lock';
-import {resolvePayrollPermission,parsePayrollHistorySource} from '../packs/payroll/service';
+import {resolvePayrollPermission,parsePayrollHistorySource,markBatchNeedsRecalc} from '../packs/payroll/service';
 import {taxBasisSourceHashTx,readEffectiveTaxBasesTx,validatedTaxBasis} from './payroll-tax-basis-read';
 const uuidArray=(ids:string[])=>sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
 const uuid=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
@@ -121,7 +121,14 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
    const items=row.basis.items.map((item,index)=>{const saved=prior?.items[index];return {...item,previousTreatment:saved?.code===item.code&&saved.amount===item.amount?saved.latestTreatment:item.previousTreatment};});
    const basis={...validatedTaxBasis(row.basis),items,supersedes:old.map(r=>r.id),settingsHash,appliedSettings:settings.filter(setting=>row.basis.items.some(item=>item.code===setting.code)),rulesEvidence:rulesEvidence[row.period]};
    ytdTaxable=round(ytdTaxable+basis.pcb);ytdExempt=round(ytdExempt+exempt);
-   months.push({payslipId:source.id,period:source.period,sourceHash:await taxBasisSourceHashTx(tx,source.id),beforeTaxable,taxable:basis.pcb,difference:beforeTaxable===null?null:round(basis.pcb-beforeTaxable),beforeExempt,exempt,ytdTaxable,ytdExempt,items:basis.items,basis});
+   const beforeNormal=prior?.normal??(object(st.pcbNonCash)?money(st.pcbNonCash.cashNormal):null);
+   const beforeAdditional=prior?.additional??money(source.bonus);
+   const payrollInputsChanged=beforeTaxable===null||round(basis.pcb-beforeTaxable)!==0
+    ||beforeNormal!==null&&round(Number(basis.normal)-Number(beforeNormal))!==0
+    ||beforeAdditional!==null&&round(Number(basis.additional)-Number(beforeAdditional))!==0
+    ||hash(prior?.exemptionUsed??(object(st.exemptionUsed)?st.exemptionUsed:{}))!==hash(basis.exemptionUsed)
+    ||round(Number(prior?.lp??st.lp??0))!==round(Number(basis.lp??0));
+   months.push({payrollInputsChanged,payslipId:source.id,period:source.period,sourceHash:await taxBasisSourceHashTx(tx,source.id),beforeTaxable,taxable:basis.pcb,difference:beforeTaxable===null?null:round(basis.pcb-beforeTaxable),beforeExempt,exempt,ytdTaxable,ytdExempt,items:basis.items,basis});
   }
   const comparison=(b:TaxBasisValue)=>{const {supersedes,...values}=b;return {...values,items:b.items.map(({previousTreatment,...item})=>item)};};
   const changed=months.some(m=>!effective?.has(m.payslipId)||hash(comparison(effective.get(m.payslipId)!.basis))!==hash(comparison(m.basis)));
@@ -191,6 +198,13 @@ async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:
    for(const m of reviewed.months){
     const [last]=await tx.execute<{ordinal:number}>(sql`select coalesce(max(ordinal),0)::integer as ordinal from payroll_tax_basis_revision where payslip_id=${m.payslipId}::uuid`);
     await tx.execute(sql`insert into payroll_tax_basis_revision(tenant_id,company_id,employment_id,payslip_id,period,source_hash,ordinal,batch_id,basis,supersedes) values(${ctx.tenantId}::uuid,${opened.selection.companyId}::uuid,${reviewed.id}::uuid,${m.payslipId}::uuid,${m.period},${m.sourceHash},${last.ordinal+1},${opened.id}::uuid,${JSON.stringify(m.basis)}::jsonb,${uuidArray(m.basis.supersedes as string[])})`);
+   }
+   const firstChanged=reviewed.months.filter(m=>m.payrollInputsChanged).map(m=>m.period).sort()[0];
+   if(firstChanged){
+    const impacted=await tx.execute<{id:string}>(sql`select distinct b.id from payroll_batch b join payslip p on p.batch_id=b.id join pay_period period on period.id=b.pay_period_id
+     where b.tenant_id=${ctx.tenantId}::uuid and b.company_id=${opened.selection.companyId}::uuid and p.employment_id=${reviewed.id}::uuid
+      and b.status='processed' and period.status='open' and b.pay_period>=${firstChanged} and b.pay_period like ${opened.selection.year+'-%'} and b.history_import_attempt_id is null order by b.id`);
+    for(const target of impacted){await markBatchNeedsRecalc(tx,ctx,{batchId:target.id,employmentIds:[reviewed.id],category:'statutory'});await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-batch',aggregateId:target.id,eventType:'payroll-batch.tax-basis-recalc-required',actor:actorOf(ctx),subjectEmploymentId:reviewed.id,payload:{taxBasisBatchId:opened.id,employmentId:reviewed.id,sourcePeriod:firstChanged}});}
    }
    await recordEventTx(tx,ctx,opened.id,opened.selection.companyId,'employee_completed',reviewed,reviewed.id);await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-tax-basis',aggregateId:opened.id,eventType:'payroll.tax-basis.corrected',actor:actorOf(ctx),subjectEmploymentId:reviewed.id,payload:{companyId:opened.selection.companyId,year:opened.selection.year,upToMonth:opened.selection.upToMonth,recordCount:reviewed.recordCount,previewHash:input.previewHash}});
   });}catch(error){

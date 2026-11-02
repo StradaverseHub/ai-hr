@@ -43,6 +43,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 /** The pack's implementation modules (extensionless, as import specifiers resolve them). */
 const BOUNDARIES = [
   'core/payroll',
+  'core/payroll-employment-eligibility',
   // 2ef69d1e — Back Pay (Arrears). A payroll implementation file like its neighbours: it is declared by
   // the pack (satelliteTables back_pay_run / back_pay_line), routed under app/payroll/, and re-exported
   // by the facade. Listed BOTH here and in ALWAYS_ALLOWED so the guard treats it exactly as it treats
@@ -85,6 +86,7 @@ const BOUNDARIES = [
 /** The pack surface (see packs/payroll/index.ts header): wiring/facade, implementation, routes. */
 const ALWAYS_ALLOWED = [
   'packs/payroll/', // the pack itself: wiring (index.ts) + service facade
+  'core/payroll-employment-eligibility.ts',
   'core/payroll.ts', // implementation files import each other freely
   'core/payroll-attendance-allowance.ts',
   'core/payroll-overtime-pattern.ts',

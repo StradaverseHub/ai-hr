@@ -6130,7 +6130,13 @@
       "closeBlockedPending": "This run cannot be closed: {n} employee(s) eligible for this run are still New / Pending: {names}. Process them with Reprocess first, then close again.",
       "closeBlockedReprocessRunning": "This run cannot be closed while a reprocess is still running on it. Wait for the reprocess to finish, then close again.",
       "closeBlockedReprocessFailed": "This run cannot be closed: the latest reprocess failed for {n} employee(s): {names}. Fix the reported problem and reprocess them, then close again.",
-      "closeBlockedAndMore": " and {n} more"
+      "closeBlockedAndMore": " and {n} more",
+      "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "Payroll source changed after its income-tax correction. Saved outcomes remain valid. Review and recalculate the affected tax history before retrying.",
+      "reprocessFailedEmployee": "Failed employee",
+      "reprocessPendingEmployees": "{count} selected employee(s) are pending.",
+      "reprocessPcbBefore": "Previous PCB",
+      "reprocessPcbAfter": "Updated PCB",
+      "reprocessPcbDifference": "PCB difference"
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -7939,7 +7945,8 @@
       "draftResultTitle": "Payroll drafts",
       "draftResultSubtitle": "Review the outcome for each company. Saved drafts have no calculated payslips; open a saved run to review transactions before processing.",
       "draftCompanySaved": "Draft saved",
-      "draftSaving": "Saving drafts…"
+      "draftSaving": "Saving drafts…",
+      "outstandingOnly": "Outstanding payments only · left {date}"
     },
     "guide": {
       "title": "Payroll Workflow Guide",
@@ -33385,7 +33392,8 @@
     "noticeOriginal": "This shows the original payroll calculation. Later income-tax basis corrections are recorded separately.",
     "noticeApplied": "This result uses recorded income-tax basis corrections. Actual PCB paid and issued payroll remain unchanged.",
     "noticeReferences": "Income-tax correction references",
-    "noticeView": "View income-tax correction"
+    "noticeView": "View income-tax correction",
+    "reviewPayrollProcess": "Review Payroll Process"
   },
   "entra": {
     "title": "Microsoft Entra ID",

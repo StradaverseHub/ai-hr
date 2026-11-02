@@ -199,11 +199,11 @@ export function Wizard({
   useEffect(() => {
     if (companyIds.length === 0 || !/^\d{4}-\d{2}$/.test(payPeriod)) return;
     setLoadingEmployees(true);
-    fetchPayrollRunEmployees(companyIds, payPeriod)
+    fetchPayrollRunEmployees(companyIds,payPeriod,cycleId||undefined)
       .then(setEmployees)
       .finally(() => setLoadingEmployees(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- companyKey is the stable dependency for the set
-  }, [companyKey, payPeriod]);
+  }, [companyKey,payPeriod,cycleId]);
 
   // Step-2 filter catalogs span the WHOLE selected company set (multi-company): a filter dropdown must offer
   // every selected company's departments / BUs / positions / cost centres, not just the primary company's.
@@ -395,6 +395,7 @@ export function Wizard({
           // company is fixed; a fresh run may span several. `employmentIds` is only sent when the operator
           // actually narrowed the set (filtersTouched) — otherwise the whole-company default is validated.
           <StepValidation
+            payrollCycleId={isResume?undefined:cycleId||undefined}
             companyIds={isResume ? [companyId] : companyIds}
             payPeriod={payPeriod}
             employmentIds={filtersTouched ? [...selected] : undefined}

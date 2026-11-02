@@ -21,7 +21,7 @@ const TAX_CODES = new Set([
 export function reprocessStoppedMessageKey(code: string | null | undefined) {
   return code && REPROCESS_STOPPED_CODES.has(code) ? `reprocessStopped_${code}` : 'reprocessStoppedPartial';
 }
-const REPROCESS_STOPPED_CODES = new Set(['BATCH_NOT_PROCESSED', 'PERIOD_CLOSED', 'PERMISSION_DENIED', 'SUPERSEDED']);
+const REPROCESS_STOPPED_CODES = new Set(['BATCH_NOT_PROCESSED', 'PERIOD_CLOSED', 'PERMISSION_DENIED', 'SUPERSEDED', 'TAX_BASIS_SOURCE_CHANGED']);
 
 /** Displays a recorded attempt; it never recalculates or substitutes a current employee profile. */
 export async function ReprocessOutcomeStatus({ outcome }: { outcome: ReprocessEmployeeOutcome }) {
@@ -80,7 +80,7 @@ export async function ReprocessOutcomeRemarks({
   </div>;
 }
 
-export async function ReprocessOutcomePanel({ outcomes, history, slips, run, currency, batchId, from, jobId, selected, stopped, stoppedCode }: {
+export async function ReprocessOutcomePanel({ outcomes, history, slips, run, currency, batchId, from, jobId, selected, stopped, stoppedCode, stoppedEmployee }: {
   outcomes: readonly ReprocessEmployeeOutcome[];
   history: readonly RecomputeDisclosureRow[];
   slips: readonly { id: string; employmentId: string; version: number }[];
@@ -93,6 +93,7 @@ export async function ReprocessOutcomePanel({ outcomes, history, slips, run, cur
   stopped: boolean;
   /** 3244584c — the job's recorded run-level reason (payroll_reprocess_job.error), when it stopped. */
   stoppedCode?: string | null;
+  stoppedEmployee?:{employmentId:string;name:string;employeeCode:string|null}|null;
 }) {
   const t = await getTranslations('payroll.batch');
   const ts = await getTranslations('people.detail.incentiveDeclarations');
@@ -108,9 +109,11 @@ export async function ReprocessOutcomePanel({ outcomes, history, slips, run, cur
     {counts.excluded + counts.not_eligible > 0 && <p className="-mt-2 px-4 pb-3 text-sm">{t('reprocessOutcomeExclusionSummary', {
       excluded: counts.excluded, notEligible: counts.not_eligible,
     })}</p>}
-    {(stopped || outcomes.length < selected) && <p className="border-y border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+    {stopped && <p className="border-y border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
       {t(reprocessStoppedMessageKey(stopped ? stoppedCode : null))}
     </p>}
+    {stoppedEmployee&&stopped&&<p className="px-4 py-3 text-sm" role="alert"><strong>{t('reprocessFailedEmployee')}: </strong><EmployeeName name={stoppedEmployee.name} code={stoppedEmployee.employeeCode}/></p>}
+    {selected>outcomes.length+(stopped&&stoppedEmployee?1:0)&&<p className="px-4 py-3 text-sm" role="status">{t('reprocessPendingEmployees',{count:selected-outcomes.length-(stopped&&stoppedEmployee?1:0)})}</p>}
     <div className="overflow-x-auto">
       <table className="w-full min-w-[52rem] text-sm">
         <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground"><tr>
@@ -119,6 +122,9 @@ export async function ReprocessOutcomePanel({ outcomes, history, slips, run, cur
           <th className="px-3 py-2 font-medium">{t('reprocessOutcomeCategoryHeading')}</th>
           <th className="px-3 py-2 text-right font-medium">{t('reprocessColNetBefore')}</th>
           <th className="px-3 py-2 text-right font-medium">{t('reprocessColNetAfter')}</th>
+          <th className="px-3 py-2 text-right font-medium">{t('reprocessPcbBefore')}</th>
+          <th className="px-3 py-2 text-right font-medium">{t('reprocessPcbAfter')}</th>
+          <th className="px-3 py-2 text-right font-medium">{t('reprocessPcbDifference')}</th>
           <th className="px-3 py-2 font-medium">{t('reprocessOutcomeRemarksHeading')}</th>
         </tr></thead>
         <tbody className="divide-y divide-border">{outcomes.map(outcome => {
@@ -136,6 +142,9 @@ export async function ReprocessOutcomePanel({ outcomes, history, slips, run, cur
             <td className="px-3 py-3 text-xs">{scheme ? ts(`scheme_${scheme}`) : '—'}</td>
             <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot && outcome.classification !== 'added' ? formatMoney(exactSnapshot.diff.netBefore, currency) : '—'}</td>
             <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot ? formatMoney(exactSnapshot.diff.netAfter, currency) : '—'}</td>
+            <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot?.pcbBefore!=null?formatMoney(exactSnapshot.pcbBefore,currency):'—'}</td>
+            <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot?.pcbAfter!=null?formatMoney(exactSnapshot.pcbAfter,currency):'—'}</td>
+            <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot?.pcbBefore!=null&&exactSnapshot.pcbAfter!=null?formatMoney(Math.round((exactSnapshot.pcbAfter-exactSnapshot.pcbBefore)*100)/100,currency):'—'}</td>
             <td className="max-w-sm px-3 py-3"><ReprocessOutcomeRemarks outcome={outcome} batchId={batchId} from={from} jobId={jobId} /></td>
           </tr>;
         })}</tbody>

@@ -1,3 +1,5 @@
+import {payrollEmploymentPredicate,payrollCompensationEffectiveOn} from './payroll-employment-eligibility';
+import {settingEnabled} from './entitlements';
 /**
  * Payroll readiness aggregation (feedback 5db3ae48, Phase A) — the config-LEVEL pre-flight the reporter's
  * proposed "PRE-PROCESS VALIDATION" step asks for, sitting one layer ABOVE the existing per-batch
@@ -80,7 +82,7 @@ const currentPayPeriod = () => new Date().toISOString().slice(0, 7);
  */
 export function payrollReadiness(
   ctx: SessionContext,
-  p: { companyId: string; payPeriod?: string; statutoryStale?: boolean; scope?: BatchScope | null },
+  p: { companyId: string;payrollCycleId?:string|null;runType?:string;id?:string; payPeriod?: string; statutoryStale?: boolean; scope?: BatchScope | null },
 ): Promise<PayrollReadiness> {
   const payPeriod = /^\d{4}-\d{2}$/.test(p.payPeriod ?? '') ? (p.payPeriod as string) : currentPayPeriod();
   return withTenant(ctx, async (tx) => {
@@ -90,7 +92,7 @@ export function payrollReadiness(
     // The persisted run subset is resolved by the same owner as Generate and its employee pre-checks.
     // Absent scope keeps Settings company-wide; a department that resolves to nobody stays empty.
     const population = await resolveBatchScopeFilter(tx, p.scope ?? null);
-    const companyDuringPeriod = employedByCompanyDuring(p.companyId, periodStart, periodEnd);
+    const companyDuringPeriod=payrollEmploymentPredicate({...p,payPeriod},settingEnabled(ctx,'payroll.individual_txn_pay_enabled'));
 
     // ── masterData ── the same period-active population as generatePayslips, compensation/statutory LEFT-
     // joined so gaps surface instead of silently dropping. Missing salary = blocker (the run's inner-join
@@ -104,15 +106,14 @@ export function payrollReadiness(
       .from(employment)
       .leftJoin(
         compensation,
-        and(eq(compensation.employmentId, employment.id), compensationEffectiveOn(periodEnd)),
+        and(eq(compensation.employmentId, employment.id), payrollCompensationEffectiveOn(payPeriod)),
       )
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(
         and(
           companyDuringPeriod,
           population.filter,
-          lte(employment.hiredOn, periodEnd),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+
         ),
       );
     const missingComp = masterRows[0]?.missingComp ?? 0;
@@ -254,15 +255,15 @@ export function payrollReadiness(
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(
         compensation,
-        and(eq(compensation.employmentId, employment.id), compensationEffectiveOn(periodEnd)),
+        and(eq(compensation.employmentId, employment.id), payrollCompensationEffectiveOn(payPeriod)),
       )
       .where(
         and(
           companyDuringPeriod,
           population.filter,
           eq(compensation.payMode, 'custom_period'),
-          lte(employment.hiredOn, periodEnd),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+          or(isNull(employment.terminatedOn),gte(employment.terminatedOn,periodStart)),
+
         ),
       )
       .orderBy(person.fullName);

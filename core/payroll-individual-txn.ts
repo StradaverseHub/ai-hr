@@ -1,3 +1,4 @@
+import {payrollEmploymentPredicate,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 /**
  * 1.2.2 Individual Transaction (ADR-0056, amended by f1564110 Phase 2) — a pure dated one-off payroll
  * transaction ledger.
@@ -808,7 +809,8 @@ export type BulkTxnRow = {
  */
 async function isEmployedDuringPeriod(
   tx: Tx,
-  p: { employmentId: string; companyId: string; payPeriod: string },
+  p: PayrollEligibilityRun & { employmentId: string },
+  enabled=false,
 ): Promise<boolean> {
   const [y, m] = p.payPeriod.split('-').map(Number);
   const periodStart = `${p.payPeriod}-01`;
@@ -819,9 +821,7 @@ async function isEmployedDuringPeriod(
     .where(
       and(
         eq(employment.id, p.employmentId),
-        employedByCompanyDuring(p.companyId, periodStart, periodEnd),
-        lte(employment.hiredOn, periodEnd),
-        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+        payrollEmploymentPredicate(p,enabled),
       ),
     )
     .limit(1);
@@ -846,6 +846,7 @@ async function isEmployedDuringPeriod(
  */
 async function batchScopeRefusal(
   tx: Tx,
+  ctx: SessionContext,
   p: { employmentId: string; batchId: string; companyId: string; payPeriod: string; scope: BatchScope | null },
 ): Promise<EmploymentNotInBatchScopeError> {
   const [who] = await tx
@@ -865,7 +866,8 @@ async function batchScopeRefusal(
       employmentId: p.employmentId,
       companyId: p.companyId,
       payPeriod: p.payPeriod,
-    }),
+      ...(await tx.select({id:payrollBatch.id,runType:payrollBatch.runType,payrollCycleId:payrollBatch.payrollCycleId}).from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).limit(1))[0],
+    },individualTxnPayEnabled(ctx)),
   });
 }
 
@@ -1013,7 +1015,7 @@ async function addEmploymentToBatchScopeTx(
   // widen: somebody the run ALREADY covers is not being added to it, so refusing them here would be a
   // refusal of something nobody asked for. See the note above for what marking an employment outside
   // this window does to a processed run.
-  if (!(await isEmployedDuringPeriod(tx, { employmentId: p.employmentId, companyId: batch.companyId, payPeriod: batch.payPeriod }))) {
+  if (!(await isEmployedDuringPeriod(tx,{...batch,id:p.batchId,employmentId:p.employmentId},individualTxnPayEnabled(ctx)))) {
     throw new EmploymentNotActiveInPeriodError(p.employmentId, p.batchId, batch.payPeriod);
   }
 
@@ -1161,35 +1163,6 @@ export async function createIndividualTxnsBulkTx(
     // r256 — the payees this save WIDENED the run onto, for the caller's success message. Empty on every
     // save that needed no widening, which is every save on a whole-company or already-covering run.
     const widenedEmploymentIds: string[] = [];
-    if (scopeIds !== null && target.batchId != null) {
-      for (const eid of employmentIds) {
-        if (scopeIds.includes(eid)) continue;
-        if (!p.widenScopeIfNeeded) {
-          throw await batchScopeRefusal(tx, {
-            employmentId: eid,
-            batchId: target.batchId,
-            companyId: targetCompanyId,
-            payPeriod,
-            scope,
-          });
-        }
-        // r256 — Continue. The widening runs in THIS transaction and keeps every guard it has ever had
-        // (period-active, company, writable status, and the reprocess authority on a processed run); a
-        // throw from any of them takes the inserts below down with it. It does NOT mark here — the one
-        // mark at the end of this transaction names every payee, this one included.
-        const widened = await addEmploymentToBatchScopeTx(tx, ctx, {
-          batchId: target.batchId,
-          employmentId: eid,
-          markForRecalc: false,
-        });
-        // `added: false` means somebody else's widening got there first — a success, not a widening of
-        // ours to report. Either way the run now covers them, so the local set has to say so before the
-        // next payee is tested against it.
-        if (widened.added) widenedEmploymentIds.push(eid);
-        scopeIds.push(eid);
-      }
-    }
-
     // Validate every row BEFORE inserting any (fail fast) into a typed set — the transaction still guarantees
     // all-or-nothing if a later insert fails (e.g. numeric overflow), which the real-rollback test exercises (C8).
     const validated: Array<{ kind: TxnKind; txnDate: string; amount: number; quantity?: number | null; unit?: string | null; notes?: string | null; componentId?: string | null; source?: string | null; sourceRef?: string | null }> = [];
@@ -1263,6 +1236,37 @@ export async function createIndividualTxnsBulkTx(
         ids.push(row.id);
       }
     }
+    // Scope is adjudicated after source rows are validated/inserted in this same transaction.
+    // A refused/unconfirmed widening rolls those rows and their events back atomically.
+    if (scopeIds !== null && target.batchId != null) {
+      for (const eid of employmentIds) {
+        if (scopeIds.includes(eid)) continue;
+        if (!p.widenScopeIfNeeded) {
+          throw await batchScopeRefusal(tx,ctx,{
+            employmentId: eid,
+            batchId: target.batchId,
+            companyId: targetCompanyId,
+            payPeriod,
+            scope,
+          });
+        }
+        // r256 — Continue. The widening runs in THIS transaction and keeps every guard it has ever had
+        // (period-active, company, writable status, and the reprocess authority on a processed run); a
+        // throw from any of them takes the inserts below down with it. It does NOT mark here — the one
+        // mark at the end of this transaction names every payee, this one included.
+        const widened = await addEmploymentToBatchScopeTx(tx, ctx, {
+          batchId: target.batchId,
+          employmentId: eid,
+          markForRecalc: false,
+        });
+        // `added: false` means somebody else's widening got there first — a success, not a widening of
+        // ours to report. Either way the run now covers them, so the local set has to say so before the
+        // next payee is tested against it.
+        if (widened.added) widenedEmploymentIds.push(eid);
+        scopeIds.push(eid);
+      }
+    }
+
     // 49e7e0a2 — one mark for the whole submission, naming every payee it touched, appended once rather
     // than once per row: the mark is a statement about the RUN, and N identical marks would be N history
     // entries saying the same thing.

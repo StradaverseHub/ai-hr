@@ -222,6 +222,7 @@ export default async function BatchPage({
   const configReadiness: PayrollReadiness | null =
     batch.status === 'draft'
       ? await payrollReadiness(s, {
+          id:batchId,runType:batch.runType,payrollCycleId:batch.payrollCycleId,
           companyId: batch.companyId,
           payPeriod: batch.payPeriod,
           scope,
