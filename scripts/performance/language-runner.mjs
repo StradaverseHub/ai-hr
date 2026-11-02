@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
-import {mkdirSync,writeFileSync,readFileSync,readdirSync,openSync,closeSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,readdirSync,openSync,closeSync,copyFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import https from 'node:https';
 import http from 'node:http';
@@ -15,12 +15,13 @@ const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const sha=git('rev-parse','HEAD');assert.equal(sha,process.env.AIHR_CI_HEAD);assert.equal(git('status','--porcelain'),'');
 const out=join(process.env.RUNNER_TEMP,'service-performance-evidence'),privateDir=join(process.env.RUNNER_TEMP,'language-performance-private');
 mkdirSync(out,{recursive:true,mode:0o700});mkdirSync(privateDir,{recursive:true,mode:0o700});
+const focusedEvidence=join(process.env.RUNNER_TEMP,'aihr-focused');mkdirSync(focusedEvidence,{recursive:true,mode:0o700});
 const authKey=randomBytes(32).toString('hex');
 const env={...process.env,PERF_HTTP_SUITE:'workflow-preflight',PERF_ATTENDANCE_DAYS:'180',AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',AUTH_PROVIDER:'internal',AUTH_SESSION_KEY:authKey,AUTH_PUBLIC_ORIGIN:'https://localhost:3443',
  AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',AUDIT_HASH_CHAIN_ENABLED:'true',
- AI_CONFIG_SECRET:randomBytes(32).toString('hex'),PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:out,AIHR_FOCUSED_EVIDENCE_DIR:out,
+ AI_CONFIG_SECRET:randomBytes(32).toString('hex'),PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:out,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
- TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev'};
+ TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test'};
 for(const key of Object.keys(env))if(key.startsWith('WORKOS_')||key==='SHARE_PASSWORD'||key==='DEV_USER_ID')delete env[key];
 env.SHARE_PASSWORD='';env.DEV_USER_ID='';
 const workers=Number(process.env.PERF_APP_WORKERS||'1');assert([1,2].includes(workers));
@@ -96,8 +97,10 @@ try{
  const buildEnv={...env,NODE_ENV:'production',NODE_OPTIONS:'--max-old-space-size=6144'};
  for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])buildEnv[key]='postgres://nobody:nothing@127.0.0.1:1/no_database';
  await run('postgres','bash',['.github/ci/postgres.sh','reset']);dbStarted=true;
- await run('migrate','pnpm',['db:migrate']);await run('catalogs',process.execPath,['--import','tsx','scripts/seed-catalogs.ts']);
- await run('fixture',process.execPath,['--import','tsx','scripts/performance/language-fixture.mjs'],{...env,NODE_ENV:'development'},600000);
+ await run('migrate','pnpm',['db:migrate']);
+ copyFileSync(join(focusedEvidence,'personnel-draft-discard-premigration-role-prerequisites.json'),join(out,'personnel-draft-discard-premigration-role-prerequisites.json'));
+ await run('catalogs',process.execPath,['--import','tsx','scripts/seed-catalogs.ts']);
+ await run('fixture',process.execPath,['--import','tsx','scripts/performance/language-fixture.mjs'],{...env,NODE_ENV:'development',TEST_DATABASE_URL:env.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:env.MIGRATION_DATABASE_URL},600000);
  // Refuse invalid database/role/fixture setup before paying for the production build.
  await run('build','pnpm',['build'],buildEnv);
  report.buildId=readFileSync('.next/BUILD_ID','utf8').trim();
