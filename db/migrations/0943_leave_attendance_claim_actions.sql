@@ -1036,11 +1036,14 @@ CREATE TRIGGER claim_native_epoch_seed AFTER INSERT ON public.tenant REFERENCING
 CREATE FUNCTION app.claim_native_source_statement_lock() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF app.current_tenant_id() IS NOT NULL THEN PERFORM app.access_workforce_write_lock();END IF;RETURN NULL;
+ IF app.current_tenant_id() IS NOT NULL THEN
+  PERFORM app.audit_access_order_lock_for(app.current_tenant_id());
+  PERFORM app.access_workforce_write_lock();
+ END IF;RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION app.claim_native_source_statement_lock() FROM PUBLIC,ai_hr_app;
 DO $$ DECLARE relation_name text;columns text;BEGIN
- FOREACH relation_name IN ARRAY ARRAY['employment','person','assignment','reporting_line','company','department','claim_type','claim_item','claim_policy','claim_form_field','claim_mileage_rate'] LOOP
+ FOREACH relation_name IN ARRAY ARRAY['employment','person','assignment','reporting_line','reporting_line_scope','company','department','claim_type','claim_item','claim_policy','claim_form_field','claim_mileage_rate'] LOOP
   columns:=CASE relation_name WHEN 'person' THEN 'id,tenant_id,nationality,gender,marital_status,voided_at' WHEN 'company' THEN 'id,tenant_id,parent_company_id,archived_at' WHEN 'department' THEN 'id,tenant_id,parent_department_id,company_id,business_unit_id,archived_at' ELSE '' END;
   EXECUTE format('CREATE TRIGGER claim_native_source_access BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_statement_lock()',relation_name);
   EXECUTE format('CREATE TRIGGER claim_native_epoch_insert AFTER INSERT ON public.%I REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_epoch_bump(%L)',relation_name,columns);

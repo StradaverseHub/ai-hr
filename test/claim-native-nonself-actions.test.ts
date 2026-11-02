@@ -310,3 +310,22 @@ it('resolves pure publisher targets without ambient tenant/claims and preserves 
  const [native]=await withTenant(stranger.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.claim_decision_allowed(${leaf.employmentId}::uuid) as allowed`));expect(native.allowed).toBe(false);
  await expect(withTenant(stranger.ctx,tx=>tx.execute(sql`select app.claim_delegation_line_covers_for(${b.tenantId}::uuid,${randomUUID()}::uuid,${leaf.employmentId}::uuid,'claims','claims.claim')`))).rejects.toThrow();
 });
+
+
+it('requeues completed Claim proof after an actual APP scoped-delegation revoke and restore following early flush',async()=>{
+ await actor('scope epoch stand-in report',b.deptB,stranger.employmentId);
+ await setReportingLine(admin,{subordinateEmploymentId:middle.employmentId,managerEmploymentId:stranger.employmentId,lineType:'delegate',validFrom:'2026-01-01',scopes:[{module:'claims',taskType:'claims.claim'}],orgScope:{companyId:b.companyId,businessUnitId:null,departmentId:b.deptA}});
+ const [scope]=await owner.db.select({id:s.reportingLineScope.id,module:s.reportingLineScope.module,taskType:s.reportingLineScope.taskType}).from(s.reportingLineScope).innerJoin(s.reportingLine,eq(s.reportingLine.id,s.reportingLineScope.reportingLineId)).where(sql`${s.reportingLine.subordinateEmploymentId}=${middle.employmentId}::uuid and ${s.reportingLine.managerEmploymentId}=${stranger.employmentId}::uuid and ${s.reportingLine.lineType}='delegate' and ${s.reportingLine.supersededAt} is null`);expect(scope).toBeDefined();
+ // This is an actual native APP scope writer, not a fixture role switch or invented proof flag.
+ await withTenant(admin,tx=>tx.update(s.reportingLineScope).set({module:'leave',taskType:'leave.application'}).where(eq(s.reportingLineScope.id,scope.id)));
+ await withTenant(admin,tx=>tx.update(s.reportingLineScope).set({module:scope.module,taskType:scope.taskType}).where(eq(s.reportingLineScope.id,scope.id)));
+ const pending=await submitClaim(admin,submission()),before=await owner.db.select().from(s.reportingLineScope).where(eq(s.reportingLineScope.id,scope.id));
+ await refusal(withTenant(admin,async tx=>{
+  const [principal]=await tx.execute<{owner:boolean}>(sql`select pg_has_role(session_user,(select relowner from pg_class where oid='public.app_user'::regclass),'USAGE') as owner`);expect(principal.owner).toBe(false);
+  await decideClaim(admin,{claimRequestId:pending.id,decision:'approve'},tx);await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`set constraints all deferred`);
+  await tx.update(s.reportingLineScope).set({module:'leave',taskType:'leave.application'}).where(eq(s.reportingLineScope.id,scope.id));
+  await tx.update(s.reportingLineScope).set({module:scope.module,taskType:scope.taskType}).where(eq(s.reportingLineScope.id,scope.id));
+  expect(await tx.select().from(s.reportingLineScope).where(eq(s.reportingLineScope.id,scope.id))).toEqual(before);
+ }),'Claim command effects incomplete');
+ expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id)))[0].status).toBe('pending');expect(await owner.db.select().from(s.reportingLineScope).where(eq(s.reportingLineScope.id,scope.id))).toEqual(before);
+});

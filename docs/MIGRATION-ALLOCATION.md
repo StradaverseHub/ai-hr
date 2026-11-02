@@ -1531,3 +1531,10 @@ and the actual report ownership ceiling, including the original FK deletion casc
 statement fence precedes tuples; no caller role/GUC, execution grant or employee data bypass is added.
 Native company relocation and non-HR raw creation cases are authored and require hosted qualification.
 This checkpoint does not claim complete publication or qualify delivery workers by itself.
+
+Claim native authority epoch now includes actual reporting_line_scope mutations, including the
+absence-means-all/module/task effects consumed by 0818. The same source fence first tries canonical
+Access ordering and then retains the existing write-lock/revision fence; pre-held data cannot cause
+a blocking Access upgrade. No role/admission authority is changed. A real APP native scope writer
+positive and completed-decision→early-flush→scope revoke/restore rollback case is authored, unrun.
+The whole source row is restored before final validation, so the monotone epoch/requeue is material.
