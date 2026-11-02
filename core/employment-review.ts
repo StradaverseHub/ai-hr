@@ -267,9 +267,10 @@ async function startReviewTx(
 export async function submitManagerEvaluation(
   ctx: SessionContext,
   p: { reviewId: string; recommendation: ReviewRecommendation; comments?: string | null },
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
-    const [rev] = await tx.select().from(employmentReview).where(eq(employmentReview.id, p.reviewId)).limit(1);
+  const run = async (tx: Tx) => {
+    const [rev] = await tx.select().from(employmentReview).where(eq(employmentReview.id, p.reviewId)).limit(1).for('update');
     if (!rev) throw new ReviewError('Review not found (or not visible).');
     if (rev.status !== 'pending_manager') throw new ReviewError('This review is not awaiting a manager evaluation.');
 
@@ -300,7 +301,8 @@ export async function submitManagerEvaluation(
       payload: { reviewType: rev.reviewType },
     });
     return { status: 'pending_hr' as const };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /** Stage 2 — HR's final decision (advisory). Admin-only, never self. Advances pending_hr → completed. */
@@ -313,9 +315,10 @@ export async function decideReview(
     hrComments?: string | null;
     deciderEmploymentId?: string | null;
   },
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
-    const [rev] = await tx.select().from(employmentReview).where(eq(employmentReview.id, p.reviewId)).limit(1);
+  const run = async (tx: Tx) => {
+    const [rev] = await tx.select().from(employmentReview).where(eq(employmentReview.id, p.reviewId)).limit(1).for('update');
     if (!rev) throw new ReviewError('Review not found (or not visible).');
     if (rev.status !== 'pending_hr') throw new ReviewError('This review is not awaiting an HR decision.');
     await assertHrReviewAuthorityTx(tx,ctx,rev.employmentId);
@@ -351,7 +354,8 @@ export async function decideReview(
       payload: { decision: p.decision, reviewType: rev.reviewType },
     });
     return { status: 'completed' as const, decision: p.decision };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 async function isPersonOfEmployment(tx: Tx, employmentId: string, personId: string): Promise<boolean> {

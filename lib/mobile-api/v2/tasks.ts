@@ -39,7 +39,7 @@ export const TASK_KINDS = ['leave', 'leaveCancellation', 'replacementLeave', 'at
 export const TaskKind = z.enum(TASK_KINDS);
 export type TaskKind = z.infer<typeof TaskKind>;
 /** D2: the kinds decided natively. Attendance covers clock corrections AND overtime (one decider). D12 adds claims. */
-export const NATIVE_TASK_KINDS = ['leave', 'leaveCancellation', 'attendance', 'claim'] as const;
+export const NATIVE_TASK_KINDS = ['leave', 'leaveCancellation', 'attendance', 'claim', 'replacementLeave'] as const;
 export const NativeTaskKind = z.enum(NATIVE_TASK_KINDS);
 export type NativeTaskKind = z.infer<typeof NativeTaskKind>;
 export const isNativeTaskKind = (kind: string): kind is NativeTaskKind => (NATIVE_TASK_KINDS as readonly string[]).includes(kind);
@@ -182,7 +182,19 @@ export const ClaimTaskDetailV2 = z.object({
   receipts: z.array(ClaimReceiptV2).max(50),
   expected: claimExpected,
 });
-export const TaskDetailV2 = z.discriminatedUnion('kind', [LeaveTaskDetailV2, LeaveCancellationTaskDetailV2, AttendanceTaskDetailV2, ClaimTaskDetailV2]);
+/** Canonical TOIL reader facts. No credit is calculated on the phone. */
+const CreditPart = z.object({ sequence:z.number().int(), date:isoDate, dayClass:z.string().max(40), rule:z.string().max(40), sourceMinutes:z.number(), qualifyingMinutes:z.number(), countedMinutes:z.number(), days:z.number() });
+const CreditReview = z.discriminatedUnion('basis', [
+  z.object({basis:z.literal('legacy')}),
+  z.object({basis:z.literal('unavailable'),reason:z.string().max(80)}),
+  z.object({basis:z.literal('formula'),workedDayKind:z.string().max(40),datedClassScope:z.boolean().optional(),datedParts:z.array(CreditPart).max(3).optional(),status:z.enum(['incomplete','ready','refused']),reason:z.string().max(80).nullable(),claimedMinutes:z.number().nullable(),boundMinutes:z.number(),eligibleMinutes:z.number().nullable(),creditDays:z.number().nullable(),calculationId:z.string().max(128),sourceRevision:z.number().int()}),
+]);
+export const ReplacementTaskDetailV2 = z.object({
+  kind:z.literal('replacementLeave'),...common, unit:z.enum(['day','hour']),totalDays:z.number(),totalHours:z.number(),submittedOn:isoDate,employeeReason:z.string().max(2000).nullable(),
+  dates:z.array(z.object({workedDate:isoDate,days:z.number().nullable(),fromTime:clock.nullable(),toTime:clock.nullable(),hours:z.number().nullable(),sourceType:z.string().max(40),workedDayKind:z.string().max(40).nullable(),shiftEnd:clock.nullable(),actualClockOut:clock.nullable(),eligibleMinutes:z.number().nullable(),claimReview:CreditReview.optional()})).max(5000),
+  expected:claimExpected,
+});
+export const TaskDetailV2 = z.discriminatedUnion('kind', [LeaveTaskDetailV2, LeaveCancellationTaskDetailV2, AttendanceTaskDetailV2, ClaimTaskDetailV2, ReplacementTaskDetailV2]);
 export type TaskDetailV2 = z.infer<typeof TaskDetailV2>;
 
 /**
