@@ -748,7 +748,7 @@ BEGIN
  PERFORM app.access_workforce_write_lock();
  IF NOT app.access_workforce_action_company(p_company,'add') THEN RAISE EXCEPTION 'Hire source unavailable' USING ERRCODE='42501';END IF;
  SELECT * INTO d FROM public.employee_draft WHERE id=p_draft AND tenant_id=app.current_tenant_id() AND company_id=p_company FOR UPDATE;
- IF NOT FOUND THEN RAISE EXCEPTION 'Hire source unavailable' USING ERRCODE='42501';END IF;
+ IF NOT FOUND OR NOT app.data_permission_draft_matches(d.tenant_id,app.current_user_id(),to_jsonb(d)) THEN RAISE EXCEPTION 'Hire source unavailable' USING ERRCODE='42501';END IF;
  hash:=encode(sha256(convert_to(to_jsonb(d)::text,'UTF8')),'hex');
  IF EXISTS(SELECT 1 FROM app.workforce_hire_source s WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=d.tenant_id AND s.user_id=app.current_user_id() AND (s.draft_id<>d.id OR s.source_hash<>hash OR s.employment_id IS NOT NULL)) THEN RAISE EXCEPTION 'Hire source changed' USING ERRCODE='40001';END IF;
  DELETE FROM app.workforce_hire_source WHERE tenant_id=d.tenant_id AND xact_id<pg_snapshot_xmin(pg_current_snapshot());
@@ -979,6 +979,8 @@ DECLARE company uuid;author uuid;action text;own boolean;initial boolean:=false;
 BEGIN
  IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
  PERFORM app.access_workforce_write_lock();
+ IF TG_OP<>'INSERT' AND NOT app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),to_jsonb(OLD))
+  OR TG_OP<>'DELETE' AND NOT app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),to_jsonb(NEW)) THEN RAISE EXCEPTION 'Draft data scope unavailable' USING ERRCODE='42501';END IF;
  company:=CASE WHEN TG_OP='DELETE' THEN OLD.company_id ELSE NEW.company_id END;
  author:=CASE WHEN TG_OP='DELETE' THEN OLD.created_by_person_id ELSE NEW.created_by_person_id END;
  action:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
@@ -1750,3 +1752,101 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  )::text,'UTF8')),'hex') ELSE NULL END FROM app.access_control_epoch epoch WHERE epoch.tenant_id=app.current_tenant_id();
 $$;
 REVOKE ALL ON FUNCTION app.access_function_authority_stamp() FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- One prospective draft subject owner, also consumed by Onboarding. Missing schema attributes stay
+-- NULL; there is no invented employment status/category or numeric/default sentinel allowance.
+CREATE FUNCTION app.data_permission_draft_text(p_row jsonb,p_path text[]) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$
+ SELECT CASE WHEN jsonb_typeof(p_row#>p_path)='string' THEN nullif(p_row#>>p_path,'') ELSE NULL END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_draft_text(jsonb,text[]) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_draft_subject(t uuid,p_row jsonb) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN jsonb_typeof(p_row)='object' AND p_row->>'tenant_id'=t::text THEN jsonb_build_object(
+  'tenant',t::text,'company',(SELECT c.id::text FROM public.company c WHERE c.tenant_id=t AND c.id::text=p_row->>'company_id'),
+  'businessUnit',(SELECT d.business_unit_id::text FROM public.department d WHERE d.tenant_id=t AND d.archived_at IS NULL AND d.id::text=app.data_permission_draft_text(p_row,ARRAY['data','employment','departmentId'])),
+  'division',NULL,'branch',NULL,
+  'department',(SELECT d.id::text FROM public.department d WHERE d.tenant_id=t AND d.archived_at IS NULL AND d.id::text=app.data_permission_draft_text(p_row,ARRAY['data','employment','departmentId'])),
+  'section',NULL,'team',NULL,
+  'position',(SELECT p.id::text FROM public.position p WHERE p.tenant_id=t AND p.archived_at IS NULL AND p.id::text=app.data_permission_draft_text(p_row,ARRAY['data','employment','positionId'])),
+  'grade',(SELECT g.id::text FROM public.job_grade g WHERE g.tenant_id=t AND g.archived_at IS NULL AND g.id::text=app.data_permission_draft_text(p_row,ARRAY['data','employment','gradeId'])),
+  'employmentType',(SELECT e.enumlabel FROM pg_enum e WHERE e.enumtypid='public.employment_type'::regtype AND e.enumlabel=app.data_permission_draft_text(p_row,ARRAY['data','employment','employmentType'])),
+  'employmentStatus',NULL,
+  'costCentre',(SELECT c.id::text FROM public.cost_center c WHERE c.tenant_id=t AND c.archived_at IS NULL AND c.id::text=app.data_permission_draft_text(p_row,ARRAY['data','employment','costCenterId'])),
+  'nationality',app.data_permission_draft_text(p_row,ARRAY['data','profile','nationality']),
+  'gender',app.data_permission_draft_text(p_row,ARRAY['data','profile','gender']),
+  'maritalStatus',app.data_permission_draft_text(p_row,ARRAY['data','profile','maritalStatus']),
+  'category',NULL,'employeeId',coalesce(app.data_permission_draft_text(p_row,ARRAY['reserved_employee_code']),app.data_permission_draft_text(p_row,ARRAY['data','profile','employeeCode']))
+ ) ELSE NULL END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_draft_subject(uuid,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_draft_matches(t uuid,u uuid,p_row jsonb) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE profile public.data_permission_profile%ROWTYPE;rules jsonb;
+BEGIN
+ IF jsonb_typeof(p_row)<>'object' OR p_row->>'tenant_id' IS DISTINCT FROM t::text OR NOT EXISTS(SELECT 1 FROM public.app_user actor WHERE actor.id=u AND actor.tenant_id=t AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)) THEN RETURN false;END IF;
+ SELECT p.* INTO profile FROM public.user_data_permission_assignment assignment LEFT JOIN public.data_permission_profile p ON p.tenant_id=assignment.tenant_id AND p.id=assignment.profile_id WHERE assignment.tenant_id=t AND assignment.user_id=u;
+ IF NOT FOUND THEN RETURN true;END IF; -- Additional data ceiling only; caller retains its actual native source/company course.
+ IF profile.id IS NULL OR NOT profile.enabled OR profile.retired_at IS NOT NULL OR profile.active_revision_id IS NULL THEN RETURN false;END IF;
+ SELECT r.rules INTO rules FROM public.data_permission_revision r WHERE r.id=profile.active_revision_id AND r.tenant_id=profile.tenant_id AND r.profile_id=profile.id;
+ RETURN app.data_permission_rules_match(rules,app.data_permission_draft_subject(t,p_row));
+END; $$;
+REVOKE ALL ON FUNCTION app.data_permission_draft_matches(uuid,uuid,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_draft_read(p_draft uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employee_draft source WHERE source.id=p_draft AND source.tenant_id=app.current_tenant_id()
+  AND app.access_workforce_draft(source.company_id,source.created_by_person_id,'read') AND app.data_permission_draft_matches(source.tenant_id,app.current_user_id(),to_jsonb(source)));
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_draft_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.data_permission_draft_read(uuid) TO ai_hr_app;
+CREATE POLICY data_permission_draft_read ON public.employee_draft AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.data_permission_draft_read(id));
+
+--> statement-breakpoint
+CREATE TABLE app.workforce_draft_mutation(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,draft_id uuid NOT NULL,operation text NOT NULL CHECK(operation IN ('add','edit','delete')),before_hash text NOT NULL,after_hash text NOT NULL,before_source jsonb NOT NULL,after_source jsonb NOT NULL,authority_stamp text NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,draft_id,before_hash,after_hash));
+REVOKE ALL ON app.workforce_draft_mutation FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_mutation_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE prior jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ proposed jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ authority text;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ authority:=app.access_function_authority_stamp();IF authority IS NULL THEN RAISE EXCEPTION 'Draft source authority unavailable' USING ERRCODE='42501';END IF;
+ DELETE FROM app.workforce_draft_mutation WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.workforce_draft_mutation VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),coalesce(NEW.id,OLD.id),CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END,
+  encode(sha256(convert_to(prior::text,'UTF8')),'hex'),encode(sha256(convert_to(proposed::text,'UTF8')),'hex'),prior,proposed,authority) ON CONFLICT DO NOTHING;
+ RETURN NULL;
+END; $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_mutation_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER workforce_draft_mutation AFTER INSERT OR UPDATE OR DELETE ON public.employee_draft FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_mutation_record();
+--> statement-breakpoint
+CREATE TABLE app.workforce_draft_audit(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,draft_id uuid NOT NULL,event_id uuid NOT NULL,event_type text NOT NULL,PRIMARY KEY(xact_id,tenant_id,event_id));
+REVOKE ALL ON app.workforce_draft_audit FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_audit_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.aggregate_type='employee-draft' AND NEW.event_type IN ('employee-draft.created','employee-draft.updated','employee-draft.discarded','employee-draft.completed') AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() AND NEW.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() THEN
+  DELETE FROM app.workforce_draft_audit WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+  INSERT INTO app.workforce_draft_audit VALUES(pg_current_xact_id(),NEW.tenant_id,NEW.actor_id,NEW.aggregate_id,NEW.id,NEW.event_type);
+ END IF;RETURN NULL;
+END; $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_audit_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER workforce_draft_audit AFTER INSERT ON public.domain_event FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_audit_record();
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_saved_source_allowed(p_draft uuid,p_source jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND p_source->>'id'=p_draft::text AND p_source->>'tenant_id'=app.current_tenant_id()::text
+ AND app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),p_source)
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_mutation proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft AND proof.operation IN ('add','edit')
+  AND proof.after_hash=encode(sha256(convert_to(p_source::text,'UTF8')),'hex') AND proof.authority_stamp=app.access_function_authority_stamp()
+  AND (proof.before_source='{}'::jsonb OR app.data_permission_draft_matches(proof.tenant_id,proof.user_id,proof.before_source))
+  AND EXISTS(SELECT 1 FROM public.employee_draft actual WHERE actual.tenant_id=proof.tenant_id AND actual.id=proof.draft_id AND to_jsonb(actual)=p_source)
+  AND EXISTS(SELECT 1 FROM app.workforce_draft_audit audit WHERE audit.xact_id=proof.xact_id AND audit.tenant_id=proof.tenant_id AND audit.user_id=proof.user_id AND audit.draft_id=proof.draft_id AND audit.event_type IN ('employee-draft.created','employee-draft.updated')));
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_saved_source_allowed(uuid,jsonb) FROM PUBLIC,ai_hr_app;

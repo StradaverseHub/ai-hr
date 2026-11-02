@@ -163,3 +163,23 @@ it('checks newly administrative recipients in previews and direct SQL without pe
  await saveAccessConfiguration(actor,{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);
  expect(await owner.client`select user_id from access_membership where tenant_id=${b.tenantId}::uuid and group_id=${groupId}::uuid and retired_at is null`).toMatchObject([{user_id:target.id}]);
 });
+
+it('matches prospective draft current and proposed data scope instead of accepting an unassigned employment sentinel',async()=>{
+ const root=await ctx();
+ const [user]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'draft_scope_'+randomUUID()}).returning();
+ await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:b.companyId});
+ const profileId=randomUUID(),change=async(command:DataPermissionCommand)=>{const state=await readDataPermissions(root),preview=await previewDataPermission(root,state.revision,command);await saveDataPermission(root,state.revision,command,preview.fingerprint);};
+ await change({kind:'create',profileId,name:'Fictional draft department',enabled:true,rules:{legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptA]}]}});
+ await change({kind:'assign',userId:user.id,profileId});
+ const actor={...root,userId:user.id,personId:null,grants:[{role:'hr_admin',companyId:b.companyId}]};
+ const data={profile:{fullName:'Fictional scoped draft'},employment:{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time'}};
+ const draft=await saveEmployeeDraft(actor,{data,currentStep:1});expect(await getEmployeeDraft(actor,draft.id)).not.toBeNull();
+ await expect(saveEmployeeDraft(actor,{id:draft.id,data:{...data,employment:{...data.employment,departmentId:b.deptB}},currentStep:2})).rejects.toThrow();
+ await expect(saveEmployeeDraft(actor,{data:{...data,employment:{companyId:b.companyId,employmentType:'full_time'}},currentStep:1})).rejects.toThrow();
+ const [retained]=await owner.db.select().from(s.employeeDraft).where(eq(s.employeeDraft.id,draft.id));expect(retained.data).toMatchObject({employment:{departmentId:b.deptA}});
+ // Old/current row scope is checked too: a later native source placement outside D cannot be edited
+ // back into D as a way to launder an otherwise inaccessible employee admission source.
+ await owner.db.update(s.employeeDraft).set({data:{...data,employment:{...data.employment,departmentId:b.deptB}}}).where(eq(s.employeeDraft.id,draft.id));
+ expect(await getEmployeeDraft(actor,draft.id)).toBeNull();
+ await expect(saveEmployeeDraft(actor,{id:draft.id,data,currentStep:2})).rejects.toThrow();
+});
