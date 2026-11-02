@@ -463,7 +463,7 @@ BEGIN
  SELECT jsonb_agg(CASE WHEN n=target_index THEN task||jsonb_build_object('status',p_status,'completedAt',CASE WHEN p_status='done'THEN stamp ELSE NULL END,'completedBy',CASE WHEN p_status='done'THEN app.current_user_id() ELSE NULL END)ELSE task END ORDER BY n)
  INTO tasks FROM jsonb_array_elements(c.data->'tasks')WITH ORDINALITY t(task,n);
  entry:=jsonb_build_object('id',gen_random_uuid(),'at',stamp,'by',app.current_user_id(),'name',actor_name,'action','task.status','detail',(target->>'name')||' · '||p_status);
- effect:=app.lifecycle_native_effect_begin('assigned-onboarding-task',c.id,'onboarding.task','onboarding.handover','onboarding.readNote','onboarding.acknowledge','onboarding.note_changed','onboarding.fulfil','onboarding.approve');
+ effect:=app.lifecycle_native_effect_begin('assigned-onboarding-task',c.id,'onboarding.task');
  INSERT INTO public.lc_onboarding_case_revision(tenant_id,case_id,company_id,revision,data)VALUES(c.tenant_id,c.id,c.company_id,c.revision,c.data)ON CONFLICT DO NOTHING;
  UPDATE public.lc_onboarding_case x SET data=c.data||jsonb_build_object('tasks',tasks,'history',coalesce(c.data->'history','[]'::jsonb)||jsonb_build_array(entry)),revision=c.revision+1,updated_at=clock_timestamp()WHERE x.id=c.id AND x.tenant_id=c.tenant_id;
  PERFORM app.lifecycle_native_effect_complete(effect);
