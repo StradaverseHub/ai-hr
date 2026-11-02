@@ -1089,3 +1089,13 @@ SQL owners decide actual batch membership and live reservation cutoff. The dupli
 cutoff/scope query was removed from that reader. Ordinary own Claim View grants no financial read
 exception. Native reserve/pay/unpay/requeue ports remain Security-owned prerequisites before whole
 Claim publication; the existing AFTER financial effect and deferred money/audit checks stay in place.
+
+
+### Exact native Auto-code source witness
+
+The0939 hire source may ignore a leftover explicit Auto-mode textbox value only when private942
+`organisation_employee_code_issued(company,code)` proves that exact code was successfully issued
+in this actor/tenant/company transaction. Reserved and manual source codes remain exact. Original
+wizard Manual→Auto positive coverage is retained; new native negative cases reject posted Auto
+without an issuer and reject using a real automatic issuance to replace manual or reserved codes.
+This source depends on root942 witness89bc7e9da and requires hosted failed/affected qualification.
