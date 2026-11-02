@@ -15,7 +15,9 @@
  * which is the detector's whole basis — no clock is mocked and no timestamp is written by hand.
  */
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import {withTenant} from '../db/client';
+import {createIndividualTxn,updateIndividualTxn} from '../core/payroll-individual-txn';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -431,6 +433,28 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
     expect(runs).toHaveLength(1);
     expect(runs[0].status).toBe('posted');
     expect(runs[0].total).toBeCloseTo(1000, 2);
+  });
+
+  it('Back Pay posting cannot adopt an existing manual transaction or rewrite its calculated source',async()=>{
+    const {a,employmentId}=await hire(5000);await runAndClose('2026-03');
+    await setCompensation(a,{employmentId,basicSalary:6000,effectiveFrom:'2026-03-01'});
+    const {runId}=await calculateBackPay(a,{companyId:base.companyId,targetPayPeriod:'2026-04'});
+    const {id}=await createIndividualTxn(a,{companyId:base.companyId,payPeriod:'2026-04',employmentId,kind:'overtime',txnDate:'2026-04-01',amount:1000});
+    await expect(withTenant(a,tx=>tx.execute(sql`update back_pay_line set posted_txn_id=${id}::uuid where run_id=${runId}::uuid`))).rejects.toThrow();
+    await expect(withTenant(a,tx=>tx.execute(sql`update back_pay_line set difference=9999 where run_id=${runId}::uuid`))).rejects.toThrow();
+    const detail=await backPayRunDetail(a,runId);expect(detail?.run.status).toBe('draft');
+    expect((await owner.db.select().from(schema.backPayLine).where(eq(schema.backPayLine.runId,runId))).every(line=>line.postedTxnId===null)).toBe(true);
+  });
+
+  it('cancelling a posted draft freezes the actual linked row after an authorized Individual edit',async()=>{
+    const {a,employmentId}=await hire(5000);await runAndClose('2026-03');
+    await setCompensation(a,{employmentId,basicSalary:6000,effectiveFrom:'2026-03-01'});
+    const {runId}=await calculateBackPay(a,{companyId:base.companyId,targetPayPeriod:'2026-04'});
+    await approveAndPostBackPay(a,{runId});
+    const [posted]=await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.employmentId,employmentId));
+    await updateIndividualTxn(a,{id:posted.id,amount:1001});
+    expect((await cancelBackPayRun(a,{runId})).removed).toBe(1);
+    expect(await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.id,posted.id))).toEqual([]);
   });
 
   it('cancel removes the postings while the target run is a draft, and is REFUSED once it is processed', async () => {
