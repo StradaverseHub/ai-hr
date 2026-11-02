@@ -1,3 +1,4 @@
+import {boundedUniqueName} from '../lib/bounded-unique-name';
 /**
  * Lifecycle configuration (ADR-0095) — Module Config: staff, step lists, checklists, access systems,
  * approval levels, custom fields and the request catalogue.
@@ -153,7 +154,7 @@ export async function saveStepDefs(ctx: SessionContext, kind: CaseKind, steps: S
       if (kind === 'onboarding' && (rule === 'outcome_accepted' || rule === 'outcome_rejected')) throw new LifecycleError('Outcome rules apply to offboarding only.');
       if (kind === 'offboarding' && (rule === 'carpark' || rule === 'laptop')) throw new LifecycleError('Car park and laptop rules apply to onboarding only.');
       let key = s.key && KEY_RE.test(s.key) ? s.key : slugKey(label);
-      if (!s.key) { let n = 2; const base = key; while (seen.has(key) || known.has(key)) key = `${base}_${n++}`.slice(0, 40); }
+      if (!s.key && (seen.has(key) || known.has(key))) key = boundedUniqueName(key,new Set([...seen,...known]),40,n=>`_${n}`);
       if (seen.has(key)) throw new LifecycleError(`Duplicate step key ${key}.`);
       seen.add(key);
       return { key, phase: s.phase, label, ownerTeam: clean(s.ownerTeam, 100) ?? '', hrms: s.hrms === true, rule, sort: (i + 1) * 10 };
@@ -244,7 +245,7 @@ export async function saveProvisionDefs(
       const name = clean(it.name, 200);
       if (!name) throw new LifecycleError('Every checklist item needs a name.');
       let key = it.key && KEY_RE.test(it.key) ? it.key : slugKey(name);
-      if (!it.key) { let n = 2; const b = key; while (seen.has(key) || base.some((x) => x.itemKey === key)) key = `${b}_${n++}`.slice(0, 40); }
+      if (!it.key && (seen.has(key) || base.some(x=>x.itemKey===key))) key = boundedUniqueName(key,new Set([...seen,...base.map(x=>x.itemKey)]),40,n=>`_${n}`);
       if (seen.has(key)) throw new LifecycleError(`Duplicate item key ${key}.`);
       seen.add(key);
       keepKeys.push(key);
@@ -335,7 +336,7 @@ export async function saveCustomFields(ctx: SessionContext, kind: CaseKind, fiel
       const options = (f.options ?? []).map((o) => clean(o, 100)).filter((o): o is string => !!o);
       if (type === 'choice' && options.length === 0) throw new LifecycleError(`Choice field "${label}" needs at least one option.`);
       let key = f.key && KEY_RE.test(f.key) ? f.key : slugKey(label);
-      if (!f.key) { const b = key; let n = 2; while (seen.has(key) || existing.some((e) => e.key === key)) key = `${b}_${n++}`.slice(0, 40); }
+      if (!f.key && (seen.has(key) || existing.some(e=>e.key===key))) key = boundedUniqueName(key,new Set([...seen,...existing.map(e=>e.key)]),40,n=>`_${n}`);
       if (seen.has(key)) throw new LifecycleError(`Duplicate field key ${key}.`);
       seen.add(key);
       return { key, label, type, required: f.required === true, options: type === 'choice' ? options : [], companyIds: f.companyIds ?? [], sort: (i + 1) * 10 };

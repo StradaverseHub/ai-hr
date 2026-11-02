@@ -18,6 +18,8 @@ import {
   createClockingMapping,
   deleteClockingMapping,
   getClockingImportRun,
+  duplicateClockingMapping,
+  listClockingMappings,
   listClockingImportRuns,
   setClockingMappingActive,
   validateClockingImport,
@@ -468,6 +470,15 @@ describe('the mapping library (plan items 1-9, 22)', () => {
     await createClockingMapping(ctx, CODED);
     await expect(createClockingMapping(ctx, { ...CODED, name: 'SUPREMA csv' })).rejects.toMatchObject({ code: 'nameTaken' });
     await expect(createClockingMapping(ctx, { ...CODED, name: 'AIHR Standard Template' })).rejects.toMatchObject({ code: 'nameTaken' });
+  });
+
+  it('duplicates a maximum-length mapping with distinct suffixes and unchanged source', async () => {
+    const name='A'.repeat(100),ctx=adminCtx(b);
+    const id=await createClockingMapping(ctx,{...CODED,name});
+    const first=await duplicateClockingMapping(ctx,id),second=await duplicateClockingMapping(ctx,id);
+    const names=(await listClockingMappings(ctx)).filter(m=>[id,first,second].includes(m.id)).map(m=>m.name);
+    expect(names).toContain(name);expect(names).toContain('A'.repeat(93)+' (copy)');expect(names).toContain('A'.repeat(91)+' (copy 2)');
+    expect(new Set(names.map(n=>n.toLowerCase())).size).toBe(3);expect(names.every(n=>n.length<=100)).toBe(true);
   });
 
   it('a mapping may be deleted until an import uses it; then only deactivated', async () => {
