@@ -8,7 +8,7 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {updateJobGrade} from '../core/admin';
 import {dispatchNotificationsFromSweep} from '../core/notifications';
-import {getRewardUnit,createRewardUnit,getRewardUnitGovernance,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,previewRewardSeniorMembership,saveRewardSeniorMembership,saveRewardSeniorAward,saveRewardEntry,postRewardUnit,decideRewardUnit} from '../packs/rewards/service';
+import {getRewardUnit,createRewardUnit,getRewardUnitGovernance,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,previewRewardSeniorMembership,saveRewardSeniorMembership,saveRewardSeniorAward,saveRewardEntry,postRewardUnit,decideRewardUnit,readRewardSeniorEvidence} from '../packs/rewards/service';
 import {configureRewardFixture,refreshRewardFixtureBudget,ensureRewardGovernanceFixtureSchema} from './rewards-governance-fixture';
 import {createBatch,setPayrollInput,rewardPayrollProvenance} from '../packs/payroll/service';
 import {emptyFacts} from '../packs/rewards/model';
@@ -91,6 +91,19 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   const restricted=await getRewardUnitGovernance(bu,unitId);expect(restricted.senior[0].award).toBeNull();expect(restricted.totals).toBeNull();
   const privateRows=await withTenant(payroll,tx=>tx.select().from(schema.rewardSeniorAward).where(eq(schema.rewardSeniorAward.unitId,unitId)));expect(privateRows).toEqual([]);
   await expect(withTenant(payroll,tx=>tx.execute(sql`select app.reward_senior_awards_for_post(${unitId}::uuid)`))).rejects.toMatchObject({cause:{code:'42501',message:expect.stringContaining('posting authority')}});
+ });
+ it('prepares an exact bounded Senior evidence reader with real native role and own-person exclusions',async()=>{
+  const initial=await view(),selection={employmentIds:[employeeId],adoptLegacy:false},preview=await previewRewardSeniorMembership(gr,unitId,initial.unit.revision,selection);
+  await saveRewardSeniorMembership(gr,unitId,initial.unit.revision,selection,preview.digest);await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'selection');
+  const current=await view();await saveRewardEntry(gr,unitId,current.unit.revision,entryId,current.rows[0].recommendation,{...current.rows[0].facts,reviewed:true});
+  const content='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=';
+  await saveRewardSeniorAward(gr,unitId,(await view()).unit.revision,{entryId,newBasicCents:550000,incrementBp:null,bonusCents:123400,approvalReference:'FICTIONAL-EVIDENCE',approvalDate:today,reason:'Fictional independently retained approval evidence',evidence:[{name:'fictional-decision.png',mime:'image/png',content}]});
+  const [file]=await owner.db.select({id:schema.rewardSeniorEvidence.id}).from(schema.rewardSeniorEvidence).where(eq(schema.rewardSeniorEvidence.unitId,unitId));
+  const expected=await readRewardSeniorEvidence(ctro,unitId,file.id),[bounded]=await owner.withTenant(ctro,tx=>tx.execute<{value:unknown}>(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)as value`));expect(bounded.value).toEqual(expected);expect(expected).toEqual({name:'fictional-decision.png',mime:'image/png',content});
+  await expect(withTenant(ctro,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow();await expect(owner.withTenant(bu,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow('evidence is restricted');
+  const [employee]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employeeId)),ownUser=await createAppUser(b.tenantId,employee.personId,'employee'),own={...gr,userId:ownUser,personId:employee.personId,roles:['employee'],grants:undefined};
+  await setRewardMember(gr,unitId,(await view()).unit.revision,ownUser,'ctro');await expect(readRewardSeniorEvidence(own,unitId,file.id)).rejects.toThrow('Evidence is not available');await expect(owner.withTenant(own,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow('Evidence is not available');
+  await setRewardMember(gr,unitId,(await view()).unit.revision,ctro.userId!,'ctro',true);await expect(owner.withTenant(ctro,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow();
  });
  it('refuses Senior confirmation after the live grade code changes under the same grade UUID',async()=>{
   const v=await view(),selection={employmentIds:[employeeId],adoptLegacy:false},preview=await previewRewardSeniorMembership(gr,unitId,v.unit.revision,selection);

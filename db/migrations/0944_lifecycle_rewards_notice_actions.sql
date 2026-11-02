@@ -3012,3 +3012,26 @@ BEGIN
  RETURN jsonb_build_object('unitId',unit.id,'revision',unit.revision,'canEdit',unit.kind='annual'AND unit.status='draft','mode',coalesce(unit.policy->>'seniorMembershipMode','legacy-grades'),'rows',rows);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_senior_membership_metadata(uuid)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Exact selected Senior evidence only. Private pending reviewed read ACL; callers never
+-- receive the entry/source/recommendation, other attachments or a general personnel grant.
+CREATE FUNCTION app.reward_senior_evidence_read(p_unit uuid,p_evidence uuid)RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;actor public.app_user;roles text[];result jsonb;
+BEGIN
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
+ SELECT u.* INTO actor FROM public.app_user u WHERE u.id=app.current_user_id()AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
+ roles:=ARRAY(SELECT app.reward_roles(p_unit));
+ SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL AND(u.created_by=app.current_user_id()OR app.reward_admin(u.company_id)OR cardinality(roles)>0);
+ IF actor.id IS NULL OR unit.id IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
+ IF cardinality(roles)=0 THEN RAISE EXCEPTION 'Ask an administrator to assign your Reward Desk role for this unit.' USING ERRCODE='42501';END IF;
+ IF NOT(roles&&ARRAY['gr','ctro','ec'])THEN RAISE EXCEPTION 'Senior plan evidence is restricted.' USING ERRCODE='42501';END IF;
+ SELECT jsonb_build_object('name',f.name,'mime',f.mime,'content',f.content)INTO result FROM public.reward_senior_evidence f
+ JOIN public.reward_entry e ON e.id=f.entry_id AND e.unit_id=f.unit_id AND e.tenant_id=f.tenant_id
+ JOIN public.employment actual ON actual.id=e.employment_id AND actual.tenant_id=e.tenant_id
+ WHERE f.id=p_evidence AND f.unit_id=unit.id AND f.tenant_id=unit.tenant_id AND actual.person_id IS DISTINCT FROM actor.person_id AND(e.facts->>'reviewed'='true'OR'gr'=ANY(roles));
+ IF result IS NULL THEN RAISE EXCEPTION 'Evidence is not available.' USING ERRCODE='42501';END IF;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_senior_evidence_read(uuid,uuid)FROM PUBLIC,ai_hr_app;
