@@ -23,3 +23,10 @@ export async function renderContractDocument(input:{record:ContractCase;facts:Co
  return {pdf:Buffer.from(rendered.bytes),hash:createHash('sha256').update(rendered.bytes).digest('hex'),values,resolved:resolved.document};
 }
 export function exportContractTemplates(templates:unknown[]){return JSON.stringify({format:'aihr.contract-templates',version:1,fields:CONTRACT_FIELDS.map(f=>({key:f.key,kind:f.kind,futureLetterSource:f.source})),templates},null,2);}
+
+export function validateContractTemplateForIssue(type:import('./contract-management-template-model').ContractDocumentType,raw:unknown):LetterDocument{
+ const document=validateContractTemplate(raw),present=new Set<string>();
+ const visit=(value:unknown)=>{if(!value||typeof value!=='object')return;const node=value as Record<string,unknown>;if(node.type==='if')return;if(node.type==='field'&&typeof node.key==='string')present.add(node.key);for(const child of Object.values(node))if(Array.isArray(child))child.forEach(visit);else visit(child);};
+ document.blocks.forEach(visit);const required=type==='renewal'?['employee.name','employee.id','contract.newStart','contract.newEnd','pay.basicSalary','pay.fixedAllowance']:['employee.name','employee.id','contract.lastWorkingDay'];
+ if(required.some(key=>!present.has(key)))throw new ContractManagementError('invalid','Include the employee identity and all issued contract dates and pay terms outside conditional blocks.');return document;
+}

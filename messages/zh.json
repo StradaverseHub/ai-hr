@@ -33718,7 +33718,8 @@
       "contractType": "Contract type",
       "businessGroup": "Business group ID",
       "payChanges": "Pay changes (true / false)",
-      "termMonths": "Term in months"
+      "termMonths": "Term in months",
+      "daysToEnd": "距合同结束天数"
     },
     "operator": {
       "is": "is",
@@ -33750,7 +33751,11 @@
       "end": "End of contract",
       "declined": "Employee declined",
       "retirement": "Retirement"
-    }
+    },
+    "timingSource": "时间设置来源",
+    "companyTiming": "公司签署时间设置",
+    "workflowTiming": "此工作流",
+    "signatureEscalationDays": "合同结束前多少天升级"
   },
   "contractTemplates": {
     "title": "合同模板",
