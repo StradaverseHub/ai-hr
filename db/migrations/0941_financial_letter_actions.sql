@@ -1442,15 +1442,23 @@ SELECT app.register_function_action('payroll.backPay',operation,'company','payro
 FROM unnest(ARRAY['view','add','edit','delete','execute']) operation;
 
 --> statement-breakpoint
+CREATE FUNCTION app.financial_backpay_subjects_allowed(p_run uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT NOT EXISTS(SELECT 1 FROM public.back_pay_line line WHERE line.run_id=p_run AND line.tenant_id=app.current_tenant_id() AND NOT app.data_permission_matches(line.employment_id));
+$$;
+REVOKE ALL ON FUNCTION app.financial_backpay_subjects_allowed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.financial_backpay_subjects_allowed(uuid) TO ai_hr_app;
 CREATE FUNCTION app.financial_backpay_scope_allowed(p_run uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.back_pay_run run WHERE run.id=p_run AND run.tenant_id=app.current_tenant_id()
  AND app.access_backpay_action(run.company_id,'view')
- AND NOT EXISTS(SELECT 1 FROM public.back_pay_line line WHERE line.run_id=run.id AND line.tenant_id=run.tenant_id AND NOT app.data_permission_matches(line.employment_id)));
+ AND app.financial_backpay_subjects_allowed(run.id));
 $$;
 REVOKE ALL ON FUNCTION app.financial_backpay_scope_allowed(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.financial_backpay_scope_allowed(uuid) TO ai_hr_app;
-CREATE POLICY financial_backpay_read ON back_pay_run AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.financial_backpay_scope_allowed(id));
+-- INSERT RETURNING sees the proposed row through policy columns, before a STABLE helper can
+-- re-query its own newborn root. Child INSERT guards independently check every proposed subject.
+CREATE POLICY financial_backpay_read ON back_pay_run AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.access_backpay_action(company_id,'view') AND app.financial_backpay_subjects_allowed(id));
 CREATE POLICY financial_backpay_read ON back_pay_line AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.financial_backpay_scope_allowed(run_id) AND app.data_permission_matches(employment_id));
 
 --> statement-breakpoint
