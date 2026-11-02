@@ -32,7 +32,7 @@ export function validateCleanupCertificate(cert,{controller,toolSha256,lease,rec
  assert(hex(cert.reconciliationSha256)&&(!reconciliationSha256||cert.reconciliationSha256===reconciliationSha256),'Exact reviewed reconciliation digest required');
  validateRecoveryLease(cert.lease);if(lease)assert(isDeepStrictEqual(cert.lease,lease),'Cleanup certificate belongs to another active lease');
  assert(hex(cert.certificateId)&&sha(controller)&&cert.controller===controller&&hex(toolSha256)&&cert.toolSha256===toolSha256&&hex(cert.humanEvidenceSha256)&&hex(cert.fencesSha256)&&hex(cert.runtimeSha256),'Reviewed controller/tool/owner-evidence/fences required');
- const issued=Date.parse(cert.issuedAt),end=Date.parse(cert.expiresAt);assert(Number.isFinite(issued)&&Number.isFinite(end)&&issued<=now&&end>now&&end-issued===1800000,'Independent thirty-minute cleanup-only certificate expired');
+ const issued=Date.parse(cert.issuedAt),end=Date.parse(cert.expiresAt);assert(Number.isFinite(issued)&&Number.isFinite(end)&&issued<=now&&end>now&&end-issued===900000,'Independent fifteen-minute cleanup-only certificate expired');
  validateReauthentication(cert.reauthentication,{now:issued,issuing:true});assert(Date.parse(cert.reauthentication.verifiedAt)<=issued&&issued-Date.parse(cert.reauthentication.verifiedAt)<=120000,'Certificate requires fresh reauthentication at issuance');return cert;
 }
 export function validateCleanupFences(f){
@@ -51,7 +51,7 @@ export function issueCleanupCertificate({controller,toolSha256,humanEvidenceSha2
  validateReauthentication(reauthentication,{now,issuing:true});validateCleanupFences(fences);
  assert(runtime?.source===SELECTION.source&&runtime.installId===SELECTION.installId&&runtime.buildRecordId===SELECTION.buildRecordId&&runtime.nextBuildId===SELECTION.nextBuildId&&runtime.healthStatus===200&&runtime.fullMigrationLedgerVerified===true&&runtime.migrationLedger?.rows===642,'Actual current full runtime/642 proof required');
  assert(fences?.source===SELECTION.source&&fences.lease&&fences.installId===SELECTION.installId&&fences.ledger?.rows===642&&fences.pid===runtime.pid,'Actual same-lease/process fences required');
- const cert={format:1,kind:'EXPLICIT_POSTARRIVAL_CLEANUP_ONLY_V2',policy:CLEANUP_ONLY_POLICY,purpose:'remove-owned-retained-next-and-consumed-packet-only',selection:SELECTION,lease:fences.lease,certificateId,controller,toolSha256,humanEvidenceSha256,reauthentication,fencesSha256:digest(fences),runtimeSha256:digest(runtimeBinding(runtime)),reconciliationSha256,issuedAt:new Date(now).toISOString(),expiresAt:new Date(now+1800000).toISOString()};
+ const cert={format:1,kind:'EXPLICIT_POSTARRIVAL_CLEANUP_ONLY_V2',policy:CLEANUP_ONLY_POLICY,purpose:'remove-owned-retained-next-and-consumed-packet-only',selection:SELECTION,lease:fences.lease,certificateId,controller,toolSha256,humanEvidenceSha256,reauthentication,fencesSha256:digest(fences),runtimeSha256:digest(runtimeBinding(runtime)),reconciliationSha256,issuedAt:new Date(now).toISOString(),expiresAt:new Date(now+900000).toISOString()};
  return validateCleanupCertificate(cert,{controller,toolSha256,lease:fences.lease,now});
 }
 export function validateCleanupReady(ready,cert,context){

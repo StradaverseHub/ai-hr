@@ -16,6 +16,12 @@ export function verifyPriorDiagnostics(directory,inventory,newAttempt){
    const roots=readdirSync(directory).filter(name=>/^(?:ready-recovery-|cleanup-only-)/.test(name)&&name!==newAttempt);assert((roots.length===0)===(inventory.length===0),'Complete prior attempt inventory required');for(const name of roots){const s=lstatSync(join(directory,name));assert(s.isDirectory()&&!s.isSymbolicLink()&&diagnosticPaths.has(name),'Every prior failed attempt root must be inventoried');}
    for(const wanted of inventory){assert(typeof wanted.path==='string'&&/^[a-z0-9_-]+(?:\/[a-z0-9_.-]+)*$/.test(wanted.path)&&!wanted.path.split('/').some(v=>v==='.'||v==='..')&&wanted.path!==newAttempt,'Bounded prior diagnostic path required');const path=join(directory,wanted.path),s=lstatSync(path);assert(!s.isSymbolicLink()&&s.uid===process.getuid()&&s.ino===wanted.inode&&s.dev===wanted.device,'Prior diagnostic identity changed');if(wanted.kind==='directory'){assert(s.isDirectory()&&(s.mode&0o777)===0o700);for(const child of readdirSync(path))assert(diagnosticPaths.has(wanted.path+'/'+child),'Prior diagnostic directory contents changed');}else{assert(wanted.kind==='file');const bytes=privateBytes(path);assert(bytes.length===wanted.bytes&&digest(bytes)===wanted.sha256,'Prior failed diagnostic bytes changed');}}
 }
+// Same filesystem validator used by production reconciliation and dangling-sentinel controls.
+export function assertOriginalRecordFiles(directory,files,additional=[]){
+ assert(files&&isDeepStrictEqual(Object.keys(files).sort(),ORIGINAL_FILES),'Exact complete original record keys required');
+ const allowed=[...ORIGINAL_FILES,...additional].sort();assert(isDeepStrictEqual(readdirSync(directory).filter(n=>n.endsWith('.json')).sort(),allowed),'Unexpected or omitted original/root authority record');
+ for(const [name,wanted]of Object.entries(files)){const path=join(directory,name),bytes=privateBytes(path),s=lstatSync(path);assert(s.ino===wanted.inode&&s.dev===wanted.device&&bytes.length===wanted.bytes&&digest(bytes)===wanted.sha256&&bytes.equals(Buffer.from(wanted.base64,'base64')),'Original failed attempt record changed');}
+}
 export function assertOriginalOperationsAbsent(readProcesses){
  const commands=readProcesses();assert(Array.isArray(commands),'Actual original process inventory required');
  assert(!commands.some(args=>args.includes(SELECTION.installId)||args.includes('--ci-build='+SELECTION.installId)),'Original installer/cleanup operation is still live');
@@ -38,9 +44,12 @@ export async function serve({mode,source,controller,reconciliationPath,reconcili
  const readMetadata=()=>{const p=readPrivateInstall(SELECTION.installId,{allowExpired:true,allowCleanup:true});historicalInstallMetadata(readFileSync(join(p.directory,'authorization.json')),{validateOriginal:validateInstallGrant});assert(p.grant.source===SELECTION.source&&p.grant.build.buildRecordId===SELECTION.buildRecordId,'Historical source differs');return p;};
  const p=readMetadata(),g=p.grant,activated=JSON.parse(privateBytes(join(p.directory,'activated.json'))),recordNames=['authorization.json','store.json','verified.json','activated.json','audit/system-testing.json','audit/successful-build.json','audit/build-provenance.json','audit/bytes/build-bundle-files.json'];
  const absent=['normal-cleanup-ready.json','normal-cleanup-commit.json','normal-cleanup-consumed.json','cleanup-authorized.json','cleanup-intent.json','cleanup-result.json','normal-cleanup-owned-cleanup.json'];let authority=null,consumedRecord=null,engineExecuted=false;
- function originals(){assertOriginalOperationsAbsent(originalProcesses);const allowed=[...ORIGINAL_FILES,...(authority?['cleanup-authorized.json']:[]),...(consumedRecord?['normal-cleanup-consumed.json']:[]),...(engineExecuted?['cleanup-intent.json','cleanup-result.json']:[])].sort();assert(isDeepStrictEqual(readdirSync(p.directory).filter(n=>n.endsWith('.json')).sort(),allowed),'Unexpected or omitted original/root authority record');if(consumedRecord)assert(privateBytes(join(p.directory,'normal-cleanup-consumed.json')).equals(Buffer.from(installJson(consumedRecord)+'\n')),'Consumed one-use record changed');for(const [name,wanted]of Object.entries(reconciled.files)){assert(/^[a-z0-9-]+\.json$/.test(name));const path=join(p.directory,name),bytes=privateBytes(path),s=lstatSync(path);assert(s.ino===wanted.inode&&s.dev===wanted.device&&bytes.length===wanted.bytes&&digest(bytes)===wanted.sha256&&bytes.equals(Buffer.from(wanted.base64,'base64')),'Original failed attempt record changed');}
-   verifyPriorDiagnostics(p.directory,reconciled.priorDiagnostics,attemptName);
-  }
+ function originals(){
+  assertOriginalOperationsAbsent(originalProcesses);
+  assertOriginalRecordFiles(p.directory,reconciled.files,[...(authority?['cleanup-authorized.json']:[]),...(consumedRecord?['normal-cleanup-consumed.json']:[]),...(engineExecuted?['cleanup-intent.json','cleanup-result.json']:[])]);
+  if(consumedRecord)assert(privateBytes(join(p.directory,'normal-cleanup-consumed.json')).equals(Buffer.from(installJson(consumedRecord)+'\n')),'Consumed one-use record changed');
+  verifyPriorDiagnostics(p.directory,reconciled.priorDiagnostics,attemptName);
+ }
  assert(!existsSync(join(p.directory,'normal-cleanup.lock')),'Existing cleanup lock requires reconciliation');originals();for(const n of absent)assert(!existsSync(join(p.directory,n)),'Existing authority/consume/result refuses replay');
  return withNormalCleanupLock(p.directory,{source:SELECTION.source,installId:SELECTION.installId,pid:process.pid,purpose:'cleanup-only-v2'},async()=>{
   originals();for(const n of absent)assert(!existsSync(join(p.directory,n)),'Concurrent authority/consume/result');

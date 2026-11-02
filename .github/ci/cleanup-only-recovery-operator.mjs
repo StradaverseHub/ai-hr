@@ -21,12 +21,12 @@ export async function driveCleanupOnly({channel,certificate,controller,toolSha25
   await channel.success();validateCleanupCertificate(certificate,context());save('actual-cleanup-result.json',result);save('transport-stderr.json',channel.stderr());frozen();return result;
  }catch{channel.stdin.end();save('cleanup-only-incomplete.json',{retainLease:true,reconcileRemoteBeforeRetry:true,originalFailuresUnchanged:true,error:'Cleanup-only protocol refused or incomplete'});throw Error('Cleanup-only protocol refused; retain lease and reconcile; never automatically retry');}
 }
-// The independent30-minute cleanup certificate bounds authority. Channel waiting cannot shorten
+// The independent15-minute cleanup certificate bounds authority. Channel waiting cannot shorten
 // a fully awaited audit into a false EOF, and never renews certificate/READY/source-proof lifetimes.
 export function openCleanupOnlyChannel(args){
- const child=spawn('ssh',args,{stdio:['pipe','pipe','pipe']}),frames=cleanupFrames(child.stdout,{timeout:1800000});let errorBytes=0;const errors=[];
+ const child=spawn('ssh',args,{stdio:['pipe','pipe','pipe']}),frames=cleanupFrames(child.stdout,{timeout:900000});let errorBytes=0;const errors=[];
  child.stderr.on('data',chunk=>{errorBytes+=chunk.length;if(errorBytes<=65536)errors.push(chunk);});
- const done=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Cleanup-only channel close timeout; retain lease')),1860000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);code===0?resolve():reject(Error('Cleanup-only transport failed; reconcile before retry'));});});done.catch(()=>{});child.stdin.on('error',()=>{});
+ const done=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Cleanup-only channel close timeout; retain lease')),960000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);code===0?resolve():reject(Error('Cleanup-only transport failed; reconcile before retry'));});});done.catch(()=>{});child.stdin.on('error',()=>{});
  return {frames,stdin:child.stdin,success:async()=>{await done;assert(errorBytes<=65536,'Bounded cleanup stderr required');frames.finish();},stderr:()=>({bytes:errorBytes,sha256:digest(Buffer.concat(errors))})};
 }
 const quote=s=>"'"+s.replaceAll("'","'\"'\"'")+"'";
