@@ -3,8 +3,9 @@ import * as ScreenCapture from 'expo-screen-capture';
 import * as WebBrowser from 'expo-web-browser';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
-import { assertAuthGeneration, hasStoredSession, redirectUri, signOut as clearTokens, workosLogoutUrl } from './auth';
+import { assertAuthGeneration, authGeneration, hasStoredSession, redirectUri, signOut as clearTokens, workosLogoutUrl } from './auth';
 import { t } from './i18n';
+import { useApi } from './api';
 import { createSessionState, type Visibility } from './session-state';
 import { sweepProtectedDocuments } from './protected-document';
 import { releasePushOnExit } from './push-core';
@@ -92,6 +93,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (employmentId !== state.getSnapshot().employmentId) sweepProtectedDocuments();
     state.setEmploymentId(employmentId);
   }, [state]);
+  // Resolve the same first own employment as mobileEmployment. Never replace a manual selection.
+  const selectInitialEmployment = useCallback((employmentId: string) => {
+    const current = state.getSnapshot();
+    if (current.status === 'signedIn' && current.employmentId === null) setEmploymentId(employmentId);
+  }, [state, setEmploymentId]);
   const value = useMemo(() => ({
     ...snapshot, setEmploymentId, unlock: state.unlock,
     async signOut() {
@@ -106,10 +112,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     },
     async markSignedIn(owner: number) { await protectScreen(); assertAuthGeneration(owner); state.markSignedIn(); },
   }), [snapshot, state, setEmploymentId]);
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={value}>
+    {snapshot.status === 'signedIn' && snapshot.employmentId === null &&
+      <InitialEmploymentSelection onResolved={selectInitialEmployment} onSignInRequired={value.signOut} />}
+    {children}
+  </Ctx.Provider>;
 }
 export function useSession(): Session {
   const session = useContext(Ctx);
   if (!session) throw new Error('useSession outside SessionProvider');
   return session;
+}
+
+/** A fresh authenticated own-employment inventory supplies identity, never authority or a guessed ID.
+ * Existing screens and offline recovery remain mounted while it loads or is unavailable. */
+function InitialEmploymentSelection({ onResolved, onSignInRequired }: {
+  onResolved: (employmentId: string) => void;
+  onSignInRequired: () => void;
+}) {
+  const me = useApi('me', {}, onSignInRequired);
+  const owner = authGeneration();
+  const employmentId = me.data?.employments[0]?.employmentId;
+  useEffect(() => {
+    if (authGeneration() === owner && !me.loading && !me.error && employmentId) onResolved(employmentId);
+  }, [owner, me.loading, me.error, employmentId, onResolved]);
+  return null;
 }

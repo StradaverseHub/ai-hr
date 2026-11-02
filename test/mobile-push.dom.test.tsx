@@ -313,7 +313,8 @@ describe('leaving the account', () => {
       'expo-web-browser': { openAuthSessionAsync: vi.fn() },
       'react-native': { Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
       './session-state': { createSessionState }, './i18n': { t: (k: string) => k },
-      './auth': { hasStoredSession: async () => true, signOut: clearTokens, assertAuthGeneration() {}, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback' },
+      './api': { useApi: () => ({ data: { employments: [] }, loading: false, error: null }) },
+      './auth': { authGeneration: () => 1, hasStoredSession: async () => true, signOut: clearTokens, assertAuthGeneration() {}, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback' },
       './protected-document': { sweepProtectedDocuments: () => {} }, './push-core': { releasePushOnExit: release },
     });
     const probe: { current?: { status: string; signOut: () => Promise<void>; setEmploymentId: (id: string | null) => void } } = {};

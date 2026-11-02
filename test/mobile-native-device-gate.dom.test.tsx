@@ -29,7 +29,8 @@ function deviceFixture(level: number) {
     if (id === './protected-document') return { sweepProtectedDocuments: () => {} };
     if (id === './push-core') return { releasePushOnExit: async () => undefined };
     if (id === './i18n') return { t: (key: string) => key };
-    if (id === './auth') return { hasStoredSession: async () => true, signOut: clearTokens, assertAuthGeneration() {}, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback' };
+    if (id === './api') return { useApi: () => ({ data: { employments: [] }, loading: false, error: null }) };
+      if (id === './auth') return { authGeneration: () => 1, hasStoredSession: async () => true, signOut: clearTokens, assertAuthGeneration() {}, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback' };
     throw new Error(`Unexpected device gate dependency: ${id}`);
   } });
   function Probe() {

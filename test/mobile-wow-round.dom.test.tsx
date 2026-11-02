@@ -51,7 +51,7 @@ function sessionFixture(opts: { authenticate?: () => Promise<{ success: boolean 
     if (id === './protected-document') return { sweepProtectedDocuments: () => {} };
     if (id === './push-core') return { releasePushOnExit: async () => undefined };
     if (id === './i18n') return { t: (key: string) => key };
-    if (id === './auth') return { hasStoredSession: async () => true, signOut: async () => undefined, assertAuthGeneration() {}, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback' };
+    if (id === './auth') return { authGeneration: () => 1, hasStoredSession: async () => true, signOut: async () => undefined, assertAuthGeneration() {}, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback' };
     throw new Error(`Unexpected dependency: ${id}`);
   } });
   function Probe() { const s = output.exports.useSession(); currentSession = s; return <div>{s.status === 'signedIn' && s.visible ? 'Private screen' : s.status}</div>; }
