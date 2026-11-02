@@ -370,12 +370,13 @@ export type OnboardingCommand = ({ type: 'equipmentBulk' } & M.EquipmentBulk) | 
 export async function onboardingCommand(ctx: SessionContext, id: string, revision: number, command: OnboardingCommand) {
     command = onboardingCommandSchema.parse(command);
     jsonSize(command);
-    if(command.type==='task'||command.type==='handover'||command.type==='readNote'||command.type==='acknowledge'){
+    if(command.type==='task'||command.type==='handover'||command.type==='readNote'||command.type==='acknowledge'||command.type==='fulfil'){
         const taskCommand=command;
         return withTenant(ctx,async tx=>{
             let result:{revision:number;employment_id:string|null;company_id:string;did_change?:boolean};
             try{
                 if(taskCommand.type==='task')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_assigned_task_update(${id}::uuid,${revision},${taskCommand.taskId},${taskCommand.status})`);
+                else if(taskCommand.type==='fulfil')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_fulfil_item(${id}::uuid,${revision},${taskCommand.itemId},${taskCommand.status})`);
                 else [result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_delivery_update(${id}::uuid,${revision},${taskCommand.type},${JSON.stringify(taskCommand.type==='acknowledge'?taskCommand.data:{})}::jsonb)`);
             }catch(error){
                 const pg=(error as {cause?:{message?:string;code?:string};message?:string;code?:string}).cause??error as {message?:string;code?:string};
@@ -486,9 +487,6 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
                 break;
             case 'assignApproval':
                 M.assignApproval(config, c, command.itemId, command.stepId, command.user, actor, env);
-                break;
-            case 'fulfil':
-                M.fulfil(config, c, command.itemId, command.status, actor, env);
                 break;
             case 'removeItem': {
                 const i = r?.items.find(i => i.id === command.itemId);

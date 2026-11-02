@@ -298,13 +298,17 @@ describe('V3.1 onboarding database and authorization', () => {
     });
     it('records only native handover and note effects for a hidden assigned team',async()=>{
         let row=await prepared();
-        await onboardingCommand(tech,row.case.id,row.revision,{type:'fulfil',itemId:row.case.requisitions[0]!.items[0]!.id,status:'done'});
-        row=(await onboardingList(admin))[0]!;
         const id=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Delivery scope '+id})`;
         await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
         await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
         await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${tech.userId!},${id},${admin.userId!})`;
         expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)))).toEqual([]);
+        const itemId=row.case.requisitions[0]!.items[0]!.id;
+        await expect(onboardingCommand(other,row.case.id,row.revision,{type:'fulfil',itemId,status:'done'})).rejects.toThrow();
+        await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_fulfil_item(${row.case.id}::uuid,${row.revision},${itemId},'done')`))).rejects.toThrow();
+        expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'fulfil',itemId,status:'done'});row=(await onboardingList(admin))[0]!;
+        expect(row.case.requisitions[0]!.items[0]!.state).toBe('ready');
         await expect(onboardingCommand(other,row.case.id,row.revision,{type:'readNote'})).rejects.toThrow();
         await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_delivery_update(${row.case.id}::uuid,${row.revision},'readNote','{}'::jsonb)`))).rejects.toThrow();
         expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
