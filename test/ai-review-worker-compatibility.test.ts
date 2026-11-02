@@ -29,7 +29,7 @@ const WEB_TAX_BASIS_READER = ", set_config('app.payroll_tax_basis_reader', '1', 
 // Only the exact independently reviewed Bank changes may differ in the new web source.
 // The executed old worker still receives its own immutable original bytes below.
 // ADR-0155 §6: reviewed whole-row custody/safe metadata bridge; archived968 bytes stay unchanged.
-const REVIEWED_BANK_SOURCE='616a9e8f9d73076bc52462c3cf581090668bcc29';
+const REVIEWED_BANK_SOURCE='2cfe7cbdfba875284c1c362c9a345250ab170232';
 const reviewedChanges=['core/bank-import-worker.ts','core/import-sections.ts','core/import-history.ts'];
 // The web package migration entry changed for guarded CI provisioning, not for the worker tick.
 // Pin all three reviewed owners byte-for-byte; no arbitrary command omission or script allowlist.

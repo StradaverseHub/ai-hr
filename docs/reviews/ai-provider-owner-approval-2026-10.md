@@ -497,7 +497,7 @@ On 2 November 2026, the isolated audit candidate adopts the same 24 approved fin
 purposes from base `50ea247177a9fe1373d3e79d9c742f0fc399ebb7`. The old 1150-file source
 digest is `adbd370dd31e429d8090b935c4dbaa730a840d50506aa4443b70269205ca1055`.
 The reviewed closure now has 1152 files and digest
-`ba018e33802786eecc280a7b9f26866c7478d1e574708d8b781bb5a69157cc9d`.
+`823cf71c9e7de37eb0586a0d8ccaacf6d93d5c6bf5398ccb05de35df657f7b60`.
 An independent immutable-blob calculation matched the original baseline and the canonical
 generator before re-attestation. This is an agent technical source review within the existing
 purposes, not a new human privacy approval, provider certification or installation acceptance.
@@ -519,8 +519,9 @@ existing behavior. Native authority narrows and immutable historical rows are re
 
 The import bridge in `616a9e8f9d73076bc52462c3cf581090668bcc29` preserves the immutable
 968 worker's raw SQL ABI through full-company physical-row custody, while fixed guarded
-metadata views preserve partial-company web history. Core source matches that independently
-reviewed bridge. Migration0932 separately checks projection ownership/RLS assumptions and
+metadata views preserve partial-company web history. The final native event decoder additionally validates decoded text as string or null
+(`2cfe7cbdfba875284c1c362c9a345250ab170232`), failing closed on unexpected driver data.
+No accepted field, disclosure, purpose or provider contract changes. Migration0932 separately checks projection ownership/RLS assumptions and
 grants read-only views; it is outside this static closure and still needs its own native
 security/archived-worker qualification. No new database role or private-data disclosure is added.
 
