@@ -1,14 +1,47 @@
-## Current result:500-user targets unmet; auth-only baseline candidate prepared
+## Current result: both auth-only500 tests fail; feedback-only source qualifying
 
-Both frozen Onboarding composition loads on8bd3 finish FAIL at the original600s HTTP parent: [1s41401880196](https://github.com/StradaverseHub/ai-hr/actions/runs/41401880196) is killed at610.11s with last196 completed/1 failed/303 active,542 iterations; [5s41401884354](https://github.com/StradaverseHub/ai-hr/actions/runs/41401884354) at610.14s with177/1/322,545 iterations. Both retain three loaded Home-card failures and native Personnel delete55P03 (DRAFT-A021C832/DRAFT-3445F677). Final accounting,p95,browser and audit acceptance are unavailable. Original resource limits,pacing,workload,targets and timeouts are unchanged. Reject the Onboarding composition for the next candidate despite native103-check/compiler evidence and5→1 setup proof. Bell composition also remains unaccepted and outside the retained07f application baseline. No overall speedup percentage is established. Full raw artifacts: /private/tmp/aihr-onboarding-{one,five}-8bd3-attempt1; analysis /private/tmp/aihr-onboarding-load-comparison-20261102.json.
+Staging readiness remains **NO;0/2 activity targets accepted**. Exact auth-only
+sourcebee63dd2c26f0a2c8d2b3ca33827118c7b739b54 finishes both original load profiles:
+[1s41408202511](https://github.com/StradaverseHub/ai-hr/actions/runs/41408202511)
+settles328 completed/172 failed,360 iterations,2/6 loaded browsers;
+[5s41408206047](https://github.com/StradaverseHub/ai-hr/actions/runs/41408206047)
+settles497/3,694 iterations,6/6 loaded browsers. Both have three loaded Home-card
+failures, complete accounting, two valid tenant audit chains without interior gaps,
+and fail the original latency targets. Their HTTP stages stay within600s at586.30s
+and595.14s. One-second errors:158 aborts,11 Leave dependency refusals,3 native
+Personnel refusals; five-second:one socket hangup,one Leave dependency refusal,
+one Personnel55P03. Role-level read p95 remains44–77s and write66–89s across
+these observations. No accepted overall speedup follows. Original runs and raw
+artifacts /private/tmp/aihr-auth-{one,five}-bee6-attempt1 remain preserved.
+The authentication reservation experiment is not selected for the next candidate.
 
-Native authentication admission red [87e7/41402921663](https://github.com/StradaverseHub/ai-hr/actions/runs/41402921663) proves a competing caller obtains the sole slot between the session and remaining fresh authentication SQL. Repair2407b27d0283417435520348432a4c9879e2a455 retains one APP connection through the same five autocommit reads,in the same order,and releases before idle-policy lookup/writes. [41403522627](https://github.com/StradaverseHub/ai-hr/actions/runs/41403522627) passes75 database and21 other assertions across11 files plus the fresh whole compiler. Four new native cases cover proof ordering,live mid-read revocation,native22012 error/release and legacy idle initialization with one slot. No permission result cache,retry,query omission or expiry change. This is component correctness evidence; no500-user speed result exists for this repair.
+The owner approved regeneration of the same two generated source metadata files for
+this performance task; literal provider approvals remain unchanged and provider
+egress remains blocked. The earlier metadata approval question is resolved.
 
-A separate candidate in /private/tmp/aihr-performance-auth-read-baseline-20261102 prepares exactly those auth implementation/test bytes on the retained07f application baseline under302c6f887,excluding both unaccepted compositions. Automatic approval review rejected copying generated manifests for a different source. Following its safer alternative,only code/test are prepared; source manifests and human approval registry remain untouched. Exact generated proposals are providerdb0490bf... and agent0dee5f46...; review /private/tmp/aihr-auth-baseline-source-metadata-review-20261102.md,complete patchSHA2560b4fe1e007d6cccbfd427b253a822a57c2093b8ec141895c885b44c771ea198a. Explicit approval is pending for this metadata update,with an option to authorize the same metadata-only regeneration for subsequent performance work. Affected baseline/root checks and a fresh compiler must precede both original500-user reruns. No provider binding refresh,provider request,integration,staging ticket/lease or deployment.
+Feedback plan source7912 passed29 checks and compilation; its sole strict Lifecycle
+count failure (88 expected,89 actual) was repaired in7ed4 and affected rehearsal
+[41411056590](https://github.com/StradaverseHub/ai-hr/actions/runs/41411056590)
+passes, retaining30 successful checks total. Native coverage includes500 principals
+and516 independent controls. Those bytes were tested on the unaccepted auth base;
+that is not whole-system speed evidence or approval to promote the auth experiment.
 
-Independent read-only staging metadata still contains642 expected applied identities atwatermark1793330000299. The two raw-current-file differences are the pre-existing0180/0212 historical versions; the unchanged strict migration-history owner and archived original SQL verify them,with no new exception or rewrite. Full proof /private/tmp/aihr-performance-feedback-ledger-prefix-verified-20261102.json. Fresh source claims scan covers1808 heads,319 journals,398 migration trees,255 registered worktrees,575 WIP variants,zero parse errors; foreign claims now extend through0933/when333. No new SQL reservation or migration is created. Main22f5073e and alpha8b676f25 remain distinct; installed-source acceptance is not inferred from Git.
+New isolatedf2b9e4e9a6cf6c0888470b99b4ddaca26a213250 carries only feedback plan
+reuse onto retained7490/application07f. All659 inherited SQL files and journal
+entries,auth implementation,root layout and literal approvals remain exact. Existing
+UNAPPLIED0934/idx792/when334 is unchanged,with strict660/89 count expectations.
+Both canonical manifest checks pass (module last). Hosted affected native/Home/OneHR/
+populated-upgrade checks and whole compiler are running in
+[41414760893](https://github.com/StradaverseHub/ai-hr/actions/runs/41414760893).
+Both original500-user1s/5s profiles follow only after those prerequisites pass.
+No deployment,merge,queue admission,lease,provider approval or resource increase.
 
-Isolated feedback profiling finds and fixes a real owner-vs-APP exclusion mismatch in the proposed helper (native red41402119157). Corrected candidate41402528075 passes13 controls. The simpler STABLE SECURITY INVOKER full-query variant preserves original APP/RLS predicates and canonical timestamp decoding; [4600/41403606963](https://github.com/StradaverseHub/ai-hr/actions/runs/41403606963) passes all13 controls and removes both temporary helpers. Empty100-read component medians are243.19ms original,91.64ms invoker,196.78ms restored. Earlier41403179804 remains FAIL for raw string-vs-Date decoding,not permission correctness. This is not whole-system capacity evidence,and no feedback implementation/migration is promoted. Targets remain0/2;staging readiness is not established.
+Fresh08:38:49UTC read-only all-ref/WIP scan:1816 heads,320 journals,399 migration
+trees,263 worktrees,584 variants,zero parse errors; maximum934/792/334 is the
+existing owned feedback append. Main6ea889365/alpha cf6949d92 are intentionally
+not merged into this causal experiment. Earlier read-only live ledger verification
+of642 expected identities atwatermark299 remains historical; refresh before any
+later release reconciliation. No live migration or installation was changed.
 
 ## Measured transaction admission bottleneck; speed target unmet
 
