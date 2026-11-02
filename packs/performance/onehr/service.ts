@@ -1794,9 +1794,8 @@ export async function submitAssessmentModerationTx(tx:Tx,ctx:SessionContext,revi
 export async function assignAssessmentKpiModerator(ctx:SessionContext,reviewId:string,expected:number,kpiId:string,moderatorEmploymentId:string) {
  uuid.parse(kpiId);uuid.parse(moderatorEmploymentId);
  return withPerformanceTenant(ctx,async tx=>{
-  const r=await loadReview(tx,reviewId,true);await requireAdmin(tx,r.row.cycleId);revision(r.row.revision,expected);
-  if(!['open','calibration'].includes(r.cycle.native.status)||r.native.closedAt)throw Error('This cycle is read-only.');
-  await writeKpiApprovalChainTx(tx,ctx,r,r.kpis,kpiId,[moderatorEmploymentId],moderatorEmploymentId===r.native.reviewerEmploymentId?'line':'matrix',true);
+  uuid.parse(reviewId);z.number().int().parse(expected);
+  await tx.execute(sql`select app.onehr_kpi_moderator_assign(${reviewId}::uuid,${expected}::integer,${kpiId}::uuid,${moderatorEmploymentId}::uuid)`);
  });
 }
 /** The single KPI moderator writer's body: replaces one untouched line's whole approval chain. Refuses an acted-on

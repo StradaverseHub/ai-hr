@@ -1222,7 +1222,7 @@ BEGIN
   RETURN NOT p_current OR app.performance_current_native_roles(p_company,CASE WHEN operation='add' AND p_company IS NULL THEN ARRAY['hr_admin','super_admin'] WHEN operation='add' THEN ARRAY['hr_admin','super_admin','performance_comp_partner'] ELSE ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner'] END);
  END IF;
  IF function_key='performance.onehr.reviewAdministration' THEN
-  RETURN operation='view' AND p_company IS NOT NULL AND EXISTS(SELECT 1 FROM public.app_user account
+  RETURN operation IN ('view','edit') AND p_company IS NOT NULL AND EXISTS(SELECT 1 FROM public.app_user account
    JOIN public.role_assignment stored ON stored.app_user_id=account.id AND stored.tenant_id=account.tenant_id
    WHERE account.id=p_user AND account.tenant_id=p_tenant AND account.archived_at IS NULL AND NOT app.login_blocked(account.id)
    AND stored.role::text IN ('hr_admin','super_admin','performance_comp_partner','performance_partner')
@@ -3647,3 +3647,58 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_plan_goal_review(uuid,uuid,integer,uuid,jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_plan_goal_review(uuid,uuid,integer,uuid,jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Administrative mutation admission retains each action's original native Self
+-- rule. It cannot be used as a field reader or as a task-role fallback.
+SELECT app.register_function_action('performance.onehr.reviewAdministration','edit','company',NULL,'app.financial_delegate_onehr_review',jsonb_build_object(
+ 'moduleKey','performance_compensation','labelKey','onehr.reviewAdministration','kind','native_acl','course','administrative','href','/performance','employeeBearing',true));
+CREATE FUNCTION app.onehr_review_administration_edit(wanted_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_human_principal_current() AND EXISTS(SELECT 1 FROM public.performance_onehr_review review
+ JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
+ WHERE review.review_id=wanted_review AND review.tenant_id=app.current_tenant_id() AND app.financial_onehr_result_admin(wanted_review)
+ AND app.function_action_allowed('performance.onehr.reviewAdministration','view',review.company_id)
+ AND app.function_action_allowed('performance.onehr.reviewAdministration','edit',review.company_id));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_administration_edit(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_administration_edit(uuid) TO ai_hr_app;
+CREATE FUNCTION app.onehr_kpi_moderator_assign(wanted_review uuid,expected_revision integer,wanted_kpi uuid,wanted_moderator uuid) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE review public.performance_onehr_review%ROWTYPE;header public.performance_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;subject public.employment%ROWTYPE;candidate public.employment%ROWTYPE;previous jsonb;next_kpi jsonb;next_kpis jsonb;choices jsonb;pending_actor uuid;phase text;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR administration actor unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF review.review_id IS NULL OR NOT app.onehr_review_administration_edit(wanted_review) THEN RAISE EXCEPTION 'OneHR administrative data unavailable' USING ERRCODE='42501';END IF;
+ SELECT * INTO header FROM public.performance_review actual WHERE actual.id=wanted_review AND actual.tenant_id=review.tenant_id;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ IF cycle.status NOT IN ('open','calibration') OR header.closed_at IS NOT NULL THEN RAISE EXCEPTION 'This cycle is read-only.' USING ERRCODE='42501';END IF;
+ IF review.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ SELECT kpi INTO previous FROM jsonb_array_elements(review.kpis) WITH ORDINALITY source(kpi,position) WHERE kpi->>'id'=wanted_kpi::text ORDER BY position LIMIT 1;
+ IF previous IS NULL THEN RAISE EXCEPTION 'KPI not found.' USING ERRCODE='42501';END IF;
+ IF coalesce((previous->>'locked')::boolean,false) OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(previous->'approvalChain','[]'::jsonb)) step WHERE step->>'at' IS NOT NULL) THEN RAISE EXCEPTION 'An acted-on KPI moderator cannot change.' USING ERRCODE='42501';END IF;
+ SELECT * INTO subject FROM public.employment actual WHERE actual.id=review.employment_id AND actual.tenant_id=review.tenant_id;
+ SELECT * INTO candidate FROM public.employment actual WHERE actual.id=wanted_moderator AND actual.tenant_id=review.tenant_id FOR SHARE;
+ IF candidate.id IS NULL OR subject.id IS NULL OR candidate.person_id=subject.person_id OR candidate.terminated_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+ OR NOT (app.can_see_employment(candidate.id) AND app.data_permission_record_read(candidate.id)
+  OR app.onehr_partner_for(candidate.company_id) AND app.data_permission_matches(candidate.id))
+ THEN RAISE EXCEPTION 'Choose an active employee other than the subject within your scope.' USING ERRCODE='42501';END IF;
+ next_kpi:=previous||jsonb_build_object('moderatorEmploymentId',candidate.id,'moderatorSource',CASE WHEN candidate.id=header.reviewer_employment_id THEN 'line' ELSE 'matrix' END,
+ 'approvalChain',jsonb_build_array(jsonb_build_object('employmentId',candidate.id,'actual',NULL,'remark','','at',NULL)));
+ SELECT jsonb_agg(CASE WHEN kpi->>'id'=wanted_kpi::text THEN next_kpi ELSE kpi END ORDER BY position) INTO next_kpis FROM jsonb_array_elements(review.kpis) WITH ORDINALITY source(kpi,position);
+ UPDATE public.performance_onehr_review actual SET kpis=next_kpis,revision=review.revision+1 WHERE actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+ VALUES(review.tenant_id,'onehr',wanted_review,'onehr.kpi-moderator-assigned','user',app.current_user_id(),jsonb_build_object('kpiId',wanted_kpi,'previous',previous->'moderatorEmploymentId','moderatorEmploymentId',candidate.id));
+ choices:=app.onehr_moderator_choices(wanted_review);phase:=CASE WHEN review.results_submitted_at IS NOT NULL THEN 'results' ELSE 'setting' END;
+ IF phase='results' THEN pending_actor:=candidate.id;
+ ELSIF next_kpi->>'setting'='proposed' THEN pending_actor:=(next_kpi->'approvalChain'->(SELECT count(*)::integer FROM jsonb_array_elements(coalesce(next_kpi->'settingApprovals','[]'::jsonb)) step WHERE step->>'action'='approved')->>'employmentId')::uuid;END IF;
+ IF pending_actor IS NOT NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(choices) choice WHERE choice->>'id'=pending_actor::text) THEN
+  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+  VALUES(review.tenant_id,'onehr',wanted_review,'onehr.kpi-approval-needed','user',app.current_user_id(),jsonb_build_object('employmentIds',jsonb_build_array(pending_actor),'phase',phase));
+ END IF;
+ RETURN review.revision+1;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_kpi_moderator_assign(uuid,integer,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_kpi_moderator_assign(uuid,integer,uuid,uuid) TO ai_hr_app;

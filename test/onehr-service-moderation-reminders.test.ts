@@ -111,6 +111,26 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     }
   });
 
+  it('binds administrative KPI reassignment to actual source and candidate data ceilings',async()=>{
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Untouched administrative assignment',description:'Native source',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}]);
+    const [before]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));await perf.assignAssessmentKpiModerator(a,reviewId,before.revision,id,peers[0].employmentId);
+    const [after]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));const original=(before.kpis as KPI[])[0],changed=(after.kpis as KPI[])[0];
+    expect(changed).toEqual({...original,moderatorEmploymentId:peers[0].employmentId,moderatorSource:'matrix',approvalChain:[{employmentId:peers[0].employmentId,actual:null,remark:'',at:null}]});expect(after).toEqual({...before,kpis:[changed],revision:before.revision+1});
+    const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.kpi-moderator-assigned')));expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorType:'user',actorId:a.userId,payload:{kpiId:id,previous:manager.employmentId,moderatorEmploymentId:peers[0].employmentId}});
+    await expect(withTenant(a,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_kpi_moderator_assign(${reviewId}::uuid,${after.revision}::integer,${id}::uuid,${manager.employmentId}::uuid)`);})).rejects.toThrow(/OneHR administration actor unavailable/);
+    const hidden=await hireEmployee(a,{person:{fullName:'Fictional other-department candidate'},companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
+    const profile=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'department',values:[b.deptA]}]};
+    await owner.client`insert into data_permission_profile(id,tenant_id,name) values(${profile},${b.tenantId},${'Fictional administrative candidate ceiling '+profile})`;
+    await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by) values(${revision},${b.tenantId},${profile},${JSON.stringify(rules)}::text::jsonb,${a.userId!})`;
+    await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${profile}`;
+    await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by) values(${b.tenantId},${a.userId!},${profile},${a.userId!})`;
+    const [source]=await withTenant(a,tx=>tx.execute<{edit:boolean;subject:boolean;candidate:boolean}>(sql`select app.onehr_review_administration_edit(${reviewId}::uuid) as edit,app.data_permission_matches(${subject.employmentId}::uuid) as subject,app.data_permission_matches(${hidden.employmentId}::uuid) as candidate`));expect(source).toEqual({edit:true,subject:true,candidate:false});
+    await expect(perf.assignAssessmentKpiModerator(a,reviewId,after.revision,id,hidden.employmentId)).rejects.toThrow(/within your scope/);
+    const excludedRevision=randomUUID();await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by) values(${excludedRevision},${b.tenantId},${profile},${JSON.stringify({...rules,predicates:[{field:'department',values:[b.deptB]}]})}::text::jsonb,${a.userId!})`;await owner.client`update data_permission_profile set active_revision_id=${excludedRevision} where id=${profile}`;
+    const [excluded]=await withTenant(a,tx=>tx.execute<{edit:boolean}>(sql`select app.onehr_review_administration_edit(${reviewId}::uuid) as edit`));expect(excluded.edit).toBe(false);await expect(perf.assignAssessmentKpiModerator(a,reviewId,after.revision,id,hidden.employmentId)).rejects.toThrow(/administrative data unavailable/);
+    expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([after]);expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.kpi-moderator-assigned')))).toEqual([{id:events[0].id}]);
+  });
+
   it('approves only the actual assigned setting lines against the full private scorecard source',async()=>{
     const first=randomUUID(),second=randomUUID();
     for(const peer of peers.slice(0,2))await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:peer.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
