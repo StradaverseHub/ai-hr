@@ -43,6 +43,7 @@ async function readTx(tx:Tx,native:boolean,page:Page,facets:EmployeeListFilters,
 }
 it('qualifies a narrow-count/bounded-wide prototype against the current exact projection, including live scope and native failure recovery',async()=>{
  await resetDb();const b=await seedBase(),foreign=await seedBase(),ctx=adminCtx(b);const ids:string[]=[];
+ await owner.client.unsafe('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');
  async function append(base:Base,from:number,to:number,prefix:string){
   const result:string[]=[];
   for(let start=from;start<to;start+=256){
