@@ -970,3 +970,12 @@ The SQL comments inside these files still name their original provisional number
 ## Approved feedback implementation — 3 November 2026 (provisional source only)
 
 Fresh main/alpha baseline dfbcf85b1, journal through0929 idx762/when1793330000329. A full local/origin ref and registered worktree journal scan found competing claims through0946/when1793330000346. Rewards owns0947/when347 on its independent branch. This lifecycle branch reserves0948_document_signing atidx763/when1793330000348. Probation0949/when349 and Contract Management0950/when350 are coordinated subsequent independent builds; Payroll reserves0951/when351 only if needed. Aggregate integration must reindex the union and recheck current refs/live ordered ledger; none is applied by this reservation. Existing applied bytes and prefix remain unchanged.
+
+## Approved Lifecycle effect boundary — 3 November 2026 (provisional source)
+
+A fresh scan of336 unique committed journals plus registered worktree journals found foreign
+0952_teras_chats/when1793330000352 after the coordinated0947–0951 claims. This owned aggregate
+reserves0953_lifecycle_service_info_intents/when1793330000353 for the fixed optional Probation/Contract
+service-info intent dispatcher. Module owners define private exact-transaction predicates; the ordinary
+0579 workforce path remains intact. This is uninstalled source, not ledger or release evidence.
+Reindex the final union and check freshly accepted refs plus the ordered live ledger before installation.
