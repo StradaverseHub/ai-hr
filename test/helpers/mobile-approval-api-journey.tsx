@@ -22,6 +22,7 @@ export function nativeApiJourney(options: {
 }) {
   const alert = vi.fn(), reload = vi.fn(), signOut = vi.fn();
   const sent: Record<string, unknown>[] = [], answers: unknown[] = [];
+  const portFailures: unknown[] = [];
   const View = ({ children }: any) => <div>{children}</div>;
   const Text = ({ children }: any) => <span>{children}</span>;
   const Button = ({ title, disabled, onPress, accessibilityLabel }: any) => <button aria-label={accessibilityLabel} disabled={disabled} onClick={onPress}>{title}</button>;
@@ -38,7 +39,9 @@ export function nativeApiJourney(options: {
     apiPostV2: async (path: string, schema: any, body: Record<string, unknown>) => {
       expect(path).toBe(`v2/${options.family}/${options.kind}/${options.id}/decision`);
       sent.push(structuredClone(body));
-      const answer = schema.parse(await options.decide(body));
+      let answer;
+      try { answer = schema.parse(await options.decide(body)); }
+      catch (error) { portFailures.push(error); throw error; }
       answers.push(answer);
       // Deliberately lose the first *committed* answer; the actual server receipt must replay on Retry.
       if (options.loseFirstReply && sent.length === 1) throw new errors.UnavailableError();
@@ -86,7 +89,10 @@ export function nativeApiJourney(options: {
       await waitFor(() => expect(screen.getByRole('button', { name: 'approvalRetry' })).toBeTruthy(), { timeout: 10000 });
       fireEvent.click(screen.getByRole('button', { name: 'approvalRetry' }));
     }
-    await waitFor(() => expect(answers).toHaveLength(options.loseFirstReply ? 2 : 1), { timeout: 10000 });
+    await waitFor(() => {
+      if (portFailures.length) throw portFailures[0];
+      expect(answers).toHaveLength(options.loseFirstReply ? 2 : 1);
+    }, { timeout: 10000 });
     if (options.loseFirstReply) { expect(sent[1]).toEqual(sent[0]); expect(answers[1]).toEqual(answers[0]); }
     expect(signOut).not.toHaveBeenCalled();
   }

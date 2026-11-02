@@ -72,7 +72,9 @@ async function journey(ctx: SessionContext, family: Family, kind: string, id: st
     caller = outsider.ctx;
     const denied = await routes[family].write.POST(new Request(`https://hr.test/api/mobile/v2/${family}/${kind}/${id}/decision`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
     expect(denied.status).toBe(200);
-    expect(await denied.json()).toMatchObject({ outcome: 'refused', code: 'not_assigned' });
+    // Notice receipts use the recipient employment in their composite reference;
+    // the receipt owner guard refuses a different person before opening that receipt.
+    expect(await denied.json()).toEqual({ outcome: 'refused', code: kind === 'noticeAcknowledgement' ? 'employment_required' : 'not_assigned' });
     caller = ctx;
     const r = await routes[family].write.POST(new Request(`https://hr.test/api/mobile/v2/${family}/${kind}/${id}/decision`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
     expect(r.status).toBe(200); return r.json();
