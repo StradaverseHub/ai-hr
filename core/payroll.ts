@@ -1,5 +1,5 @@
 import {readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx} from './payroll-formula-inputs';
-import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic,payrollRoundAmount as roundAmount} from '../lib/payroll-basic';
+import {eligibleWorkingDays,payrollIncrementBasic,payrollLegacyCombinedIncrementBasic,payrollRateBasic,payrollRoundAmount as roundAmount} from '../lib/payroll-basic';
 import {preparePayFormulaRuntimeTx} from './pay-formula-runtime';
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {divideFormulaDecimal,applyFormulaAmount} from '../lib/pay-formula-language';
@@ -4709,6 +4709,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const incrementEmpIds = emps
       .filter((e) => policyConfigByEmp.get(e.employmentId)?.salaryIncrementProration)
       .map((e) => e.employmentId);
+    // R15 owner decision: repair only a complete default-calendar month. Combined tenure,
+    // employer-segment, custom-cutoff/divisor and working-day behavior awaits separate policy review.
+    const calendarIncrementIds = new Set(emps.filter(e=>{
+      const cfg=policyConfigByEmp.get(e.employmentId)??null;
+      const settings=resolveProrationSettings(cfg,{isHire:false,isResign:false});
+      return e.hiredOn<periodStart && (!e.terminatedOn || e.terminatedOn>periodEnd) &&
+        !segmentByEmp.has(e.employmentId) && !prorationOptsByEmp.has(e.employmentId) &&
+        settings?.divisor!=='custom_days' && !usesWorkingDayProration(settings);
+    }).map(e=>e.employmentId));
     if (incrementEmpIds.length) {
       const straddleRows = await tx
         .select({
@@ -4723,7 +4732,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
             inArray(compensation.employmentId, incrementEmpIds),
             isNull(compensation.supersededAt),
             lte(compensation.validFrom, periodEnd),
-            or(isNull(compensation.validTo), gt(compensation.validTo, periodStart)),
+            or(isNull(compensation.validTo), gte(compensation.validTo, periodStart)),
           ),
         );
       const byEmp = new Map<string, { basic: number; validFrom: string; validTo: string | null }[]>();
@@ -4733,7 +4742,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         byEmp.set(r.employmentId, list);
       }
       for (const [employmentId, rows] of byEmp) {
-        const blended=payrollIncrementBasic(rows,periodStart,periodEnd,dim);
+        const blend = calendarIncrementIds.has(employmentId) ? payrollIncrementBasic : payrollLegacyCombinedIncrementBasic;
+        const blended=blend(rows,periodStart,periodEnd,dim);
         if(blended!==undefined)incrementBasicByEmp.set(employmentId,blended);
       }
     }

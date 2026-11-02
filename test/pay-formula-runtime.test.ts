@@ -2,6 +2,9 @@ import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
+import {createMovementEvent} from '../core/movement';
+import {assignPolicy,createPolicy} from '../core/payroll-policy';
+import type {PayrollPolicyConfig} from '../core/payroll-policy-config';
 import {createIndividualTxn} from '../core/payroll-individual-txn';
 import {resolvePayComponentSet,type ResolvablePayComponent} from '../core/pay-rule';
 import {setCompensation} from '../core/comp';
@@ -169,3 +172,38 @@ it('BK39 preserves the owner-confirmed all-rows-of-code RM0 fixed aggregate for 
  const evaluations=(slip.statutory as {formulaEvaluations:{formulaId:string;amount:string}[]}).formulaEvaluations;
  expect(evaluations).toEqual(expect.arrayContaining([expect.objectContaining({formulaId:'RUNTIME',amount:'1'})]));
 });
+
+it.each(['hire','exit','custom divisor','working days','custom cutoff','entity transfer','explicit calendar defaults'] as const)(
+ 'R15 preserves deferred %s behavior and its formula preview',async(kind)=>{
+  context={...context,period:'2026-04',asOf:'2026-04-30'};
+  await setCompensation(ctx,{employmentId:employee.employmentId,basicSalary:3300,monthlyAllowance:0,effectiveFrom:'2026-04-01'});
+  await setCompensation(ctx,{employmentId:employee.employmentId,basicSalary:3600,monthlyAllowance:0,effectiveFrom:'2026-04-16'});
+  if(kind==='hire')await owner.db.update(schema.employment).set({hiredOn:'2026-04-10'}).where(eq(schema.employment.id,employee.employmentId));
+  if(kind==='exit')await owner.db.update(schema.employment).set({terminatedOn:'2026-04-20'}).where(eq(schema.employment.id,employee.employmentId));
+  let policyCompany=base.companyId;
+  if(kind==='entity transfer'){
+   const [company]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Deferred transfer fixture'}).returning();
+   const [department]=await owner.db.insert(schema.department).values({tenantId:base.tenantId,companyId:company.id,name:'Destination'}).returning();
+   await createMovementEvent(ctx,{employmentId:employee.employmentId,kind:'entityTransfer',effectiveDate:'2026-04-16',companyId:company.id,departmentId:department.id,remarks:'Compatibility fixture'});
+   policyCompany=company.id;context={...context,asOf:'2026-04-15'};
+  }
+  const config:PayrollPolicyConfig={salaryIncrementProration:true,
+   ...(kind==='custom divisor'?{proration:{divisor:'custom_days' as const,customDays:26}}:{}),
+   ...(kind==='working days'?{proration:{includeSaturday:false}}:{}),
+   ...(kind==='custom cutoff'?{cutOff:{mode:'custom' as const,anchorDay:26}}:{}),
+   ...(kind==='explicit calendar defaults'?{proration:{divisor:'calendar_month' as const},cutOff:{mode:'custom' as const,anchorDay:1}}:{}),
+  };
+  const {id:policyId}=await createPolicy(ctx,{companyId:policyCompany,name:`Deferred ${kind}`,policyType:'monthly',config});
+  await assignPolicy(ctx,{employmentId:employee.employmentId,policyId});
+  const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});
+  await generatePayslips(ctx,{batchId});
+  const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+  // Owner deferred all combined-case changes: original first/latest blend is(5000*15+3600*15)/30=4300.
+  // Effective calendar defaults remain the approved full-month case:(3300*15+3600*15)/30=3450.
+  const expected=kind==='explicit calendar defaults'?3450:4300;
+  expect(Number(slip.basicSalary)).toBe(expected);
+  const saved=await savePayFormula(ctx,{formulaId:'DEFERRED',description:'Owner-confirmed compatibility',method:'write',source:'Return {#PayItem}("BASIC")'});
+  const preview=await testPayFormula(ctx,{...saved,context:{...context,batchId} as PayFormulaContext});
+  expect(preview.passed,preview.error??'compatibility preview').toBe(true);
+  expect(Number(preview.amount)).toBe(expected);
+ });
