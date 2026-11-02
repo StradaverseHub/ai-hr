@@ -614,7 +614,7 @@ DO $$ DECLARE operation text;BEGIN
   PERFORM app.register_function_action('noticeBoard',operation,'company','notices.'||operation,'app.lifecycle_reward_notice_delegation_allowed',
    '{"moduleKey":"notices","labelKey":"nav.noticeBoard","kind":"screen","course":"administrative","screenKey":"noticeBoard","href":"/admin/notice-board","employeeBearing":true}'::jsonb);
   PERFORM app.register_function_action('noticeBoard.global',operation,'tenant','notices_global.'||operation,'app.lifecycle_reward_notice_delegation_allowed',
-   '{"moduleKey":"notices","labelKey":"nav.noticeBoard","kind":"native_acl","course":"administrative","screenKey":"noticeBoard","href":"/admin/notice-board","employeeBearing":true}'::jsonb);
+   '{"moduleKey":"notices","labelKey":"notices.groupAuthoring","kind":"native_acl","course":"administrative","screenKey":"noticeBoard","href":"/admin/notice-board","employeeBearing":true}'::jsonb);
  END LOOP;
 END $$;
 
@@ -637,7 +637,7 @@ REVOKE ALL ON FUNCTION app.lifecycle_task_function_legacy_allowed(uuid,uuid,text
 DO $$ DECLARE operation text;BEGIN
  FOREACH operation IN ARRAY ARRAY['view','execute']LOOP
   PERFORM app.register_function_action('lifecycle.shared.tasks',operation,'company',NULL,'app.lifecycle_task_function_legacy_allowed',
-   '{"moduleKey":"lifecycle","labelKey":"nav.myTasks","kind":"native_acl","course":"assigned","href":"/tasks","employeeBearing":false}'::jsonb);
+   '{"moduleKey":"lifecycle","labelKey":"onboardingV31.copy.cde75c43eb31e","kind":"native_acl","course":"assigned","href":"/tasks","employeeBearing":false}'::jsonb);
  END LOOP;
 END $$;
 --> statement-breakpoint
@@ -724,7 +724,7 @@ REVOKE ALL ON FUNCTION app.lifecycle_delivery_function_legacy_allowed(uuid,uuid,
 DO $$ DECLARE key text;operation text;BEGIN
  FOREACH key IN ARRAY ARRAY['lifecycle.shared.handover','lifecycle.shared.requisitionNotes','lifecycle.self.acknowledgement','lifecycle.shared.fulfilment']LOOP
   FOREACH operation IN ARRAY ARRAY['view','execute']LOOP
-   PERFORM app.register_function_action(key,operation,'company',NULL,'app.lifecycle_delivery_function_legacy_allowed',jsonb_build_object('moduleKey','lifecycle','labelKey','nav.myTasks','kind','native_acl','course',CASE WHEN key='lifecycle.self.acknowledgement'THEN'own'ELSE'assigned'END,'href','/tasks','employeeBearing',false));
+   PERFORM app.register_function_action(key,operation,'company',NULL,'app.lifecycle_delivery_function_legacy_allowed',jsonb_build_object('moduleKey','lifecycle','labelKey',CASE key WHEN 'lifecycle.shared.handover'THEN'onboardingV31.copy.c2ad9e1e18276'WHEN'lifecycle.shared.requisitionNotes'THEN'onboardingV31.copy.c2c2fc0cafbff'WHEN'lifecycle.self.acknowledgement'THEN'onboardingV31.copy.c0671783a107b'ELSE'onboardingV31.copy.c582c799c7789'END,'kind','native_acl','course',CASE WHEN key='lifecycle.self.acknowledgement'THEN'own'ELSE'assigned'END,'href','/tasks','employeeBearing',false));
   END LOOP;
  END LOOP;
 END $$;
@@ -801,7 +801,7 @@ $$;
 REVOKE ALL ON FUNCTION app.lifecycle_conversation_function_legacy_allowed(uuid,uuid,text,uuid),app.lifecycle_conversation_function_current_legacy_allowed(uuid,uuid,text,uuid)FROM PUBLIC,ai_hr_app;
 DO $$DECLARE operation text;BEGIN
  FOREACH operation IN ARRAY ARRAY['view','execute']LOOP
-  PERFORM app.register_function_action('lifecycle.shared.conversations',operation,'company',NULL,'app.lifecycle_conversation_function_legacy_allowed','{"moduleKey":"lifecycle","labelKey":"nav.myTasks","kind":"native_acl","course":"assigned","href":"/tasks","employeeBearing":false}'::jsonb);
+  PERFORM app.register_function_action('lifecycle.shared.conversations',operation,'company',NULL,'app.lifecycle_conversation_function_legacy_allowed','{"moduleKey":"lifecycle","labelKey":"onboardingV31.copy.c9bfd2d7fe771","kind":"native_acl","course":"assigned","href":"/tasks","employeeBearing":false}'::jsonb);
  END LOOP;
 END $$;
 --> statement-breakpoint
@@ -1063,7 +1063,7 @@ $$;
 REVOKE ALL ON FUNCTION app.lifecycle_approval_function_legacy_allowed(uuid,uuid,text,uuid),app.lifecycle_approval_function_current_legacy_allowed(uuid,uuid,text,uuid)FROM PUBLIC,ai_hr_app;
 DO $$DECLARE operation text;BEGIN
  FOREACH operation IN ARRAY ARRAY['view','approve']LOOP
-  PERFORM app.register_function_action('lifecycle.shared.approvals',operation,'company',NULL,'app.lifecycle_approval_function_legacy_allowed','{"moduleKey":"lifecycle","labelKey":"nav.myTasks","kind":"native_acl","course":"assigned","href":"/tasks","employeeBearing":false}'::jsonb);
+  PERFORM app.register_function_action('lifecycle.shared.approvals',operation,'company',NULL,'app.lifecycle_approval_function_legacy_allowed','{"moduleKey":"lifecycle","labelKey":"onboardingV31.copy.c2bfc3471571e","kind":"native_acl","course":"assigned","href":"/tasks","employeeBearing":false}'::jsonb);
  END LOOP;
 END $$;
 --> statement-breakpoint
@@ -1158,7 +1158,7 @@ $$;
 REVOKE ALL ON FUNCTION app.lifecycle_approval_assignment_legacy_allowed(uuid,uuid,text,uuid),app.lifecycle_approval_assignment_current_legacy_allowed(uuid,uuid,text,uuid)FROM PUBLIC,ai_hr_app;
 DO $$DECLARE operation text;BEGIN
  FOREACH operation IN ARRAY ARRAY['view','execute']LOOP
-  PERFORM app.register_function_action('lifecycle.shared.approvalAssignments',operation,'company',NULL,'app.lifecycle_approval_assignment_legacy_allowed','{"moduleKey":"lifecycle","labelKey":"nav.myTasks","kind":"native_acl","course":"assigned","href":"/tasks","employeeBearing":false}'::jsonb);
+  PERFORM app.register_function_action('lifecycle.shared.approvalAssignments',operation,'company',NULL,'app.lifecycle_approval_assignment_legacy_allowed','{"moduleKey":"lifecycle","labelKey":"onboardingV31.copy.c9465f30ec600","kind":"native_acl","course":"assigned","href":"/tasks","employeeBearing":false}'::jsonb);
  END LOOP;
 END $$;
 
