@@ -51,7 +51,7 @@ export async function readOwnLeaveApplyMenu(supplied:SessionContext,locale?:stri
   const types=eligible.map(row=>{const identity=byId.get(row.id),translated=Object.values(identity?.i18n??{}).map(entry=>entry?.name).filter((name):name is string=>typeof name==='string'&&name.trim()!=='');
    return Object.freeze({id:row.id,name:String(row.name),code:String(row.code),
     durations:Object.freeze(Array.isArray(row.durations)?row.durations.filter((value):value is string=>typeof value==='string'):[]),
-    role:typeof identity?.role==='string'&&identity.role!==''?identity.role:null,
+    role:identity?.role?String(identity.role):null,
     names:Object.freeze([...new Set([String(identity?.name??row.name),...translated])])});})
    .sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
   return Object.freeze({kind:'menu' as const,employmentId,types:Object.freeze(types)});
