@@ -18,19 +18,19 @@ export type ContractTerm={id:string;employmentId:string;companyId:string;kind:Co
 export type ContractDecision={
   revision:number;kind:'renew'|'end';months:number|null;startOn:string|null;endOn:string;
   salaryCents:string;allowanceCents:string;reason:string;submittedBy:string;submittedAt:string;
-  confirmedBy:string|null;confirmedAt:string|null;
+  confirmedBy:string|null;confirmedAt:string|null;submittedPersonId?:string;confirmedPersonId?:string|null;approvalSnapshot?:ContractApprovalStep[];
 };
 export type ContractApprovalStep={
-  id:string;name:string;stage:number;holderIds:string[];quorum:'any'|'all';when:'always'|'pay_changed';
-  state:'pending'|'approved'|'rejected'|'skipped';actions:{actorId:string;action:'approve'|'reject';comment:string;at:string}[];
+  id:string;name:string;stage:number;holderIds:string[];holderPersonIds?:Record<string,string>;quorum:'any'|'all';when:'always'|'pay_changed';
+  state:'pending'|'approved'|'rejected'|'skipped';actions:{actorId:string;actorPersonId?:string;action:'approve'|'reject';comment:string;at:string}[];
 };
 export type ContractDecisionDraft={kind:'renew'|'end';months:number|null;basicSalary:string;fixedAllowance:string;reason:string;savedBy:string;savedAt:string;sourceRevision:string};
 export type ContractCase={
   id:string;number:string;term:ContractTerm;revision:number;state:ContractState;settings:ContractSettings;
-  decision:ContractDecision|null;decisionDraft?:ContractDecisionDraft|null;decisionHistory:ContractDecision[];approvals:ContractApprovalStep[];
+  decision:ContractDecision|null;requiresResubmission?:boolean;decisionDraft?:ContractDecisionDraft|null;decisionHistory:ContractDecision[];approvals:ContractApprovalStep[];
   document:{id:string;hash:string;templateId:string;templateVersion:number;decisionRevision:number;issuedAt:string|null;acceptedAt:string|null;declinedAt:string|null;declineReason:string|null}|null;
   effects:{personnel:string|null;payroll:string|null;verificationTask:string|null;offboarding:string|null;manualHandoff:string|null};
-  sourceRetirementApprovalId:string|null;healthCompletedAt:string|null;
+  sourceRetirementApprovalId:string|null;healthCompletedAt:string|null;retirementApproved?:boolean;
 };
 function day(value:string):void{if(!isCalendarDate(value))refuse('Enter a valid contract date.');}
 export function contractCents(value:string):bigint{
@@ -63,10 +63,10 @@ export function proposeContractDecision(record:ContractCase,input:{kind:'renew'|
   contractCents(input.salaryCents);contractCents(input.allowanceCents);
   const dates=input.kind==='renew'?contractRenewalDates(record.term.endOn,input.months??0,record.settings.minimumTermMonths):{startOn:null,endOn:record.term.endOn};
   const decision:ContractDecision={revision:(record.decision?.revision??0)+1,kind:input.kind,months:input.kind==='renew'?input.months:null,...dates,salaryCents:input.salaryCents,allowanceCents:input.allowanceCents,reason:input.reason.trim(),submittedBy:input.actorId,submittedAt:input.at,confirmedBy:null,confirmedAt:null};
-  return{...record,revision:record.revision+1,state:'decision_pending',decision,decisionHistory:record.decision?[...record.decisionHistory,record.decision]:record.decisionHistory,approvals:[],document:null};
+  return{...record,revision:record.revision+1,state:'decision_pending',requiresResubmission:false,decision,decisionHistory:record.decision?[...record.decisionHistory,{...record.decision,approvalSnapshot:structuredClone(record.approvals)}]:record.decisionHistory,approvals:[],document:null};
 }
 export function confirmContractDecision(record:ContractCase,input:{actorId:string;at:string;steps:ContractApprovalStep[]}):ContractCase{
-  const decision=record.decision;if(!decision||record.state!=='decision_pending')throw new ContractManagementError('conflict','There is no submitted decision to confirm.');
+  const decision=record.decision;if(!decision||record.state!=='decision_pending'||record.requiresResubmission)throw new ContractManagementError('conflict','There is no submitted decision to confirm.');
   if(!input.actorId||decision.kind==='renew'&&input.actorId===decision.submittedBy)throw new ContractManagementError('forbidden','A separate People BP must confirm the submitted decision.');
   const payChanged=contractPayChanged(record.term,decision),ids=new Set<string>();
   const steps=input.steps.map(s=>{
@@ -88,7 +88,7 @@ export function actOnContractApproval(record:ContractCase,input:{stepId:string;a
   const actions=[...step.actions,{actorId:input.actorId,action:input.action,comment:input.comment.trim(),at:input.at}];
   const state=input.action==='reject'?'rejected' as const:step.quorum==='any'||step.holderIds.every(id=>actions.some(a=>a.actorId===id&&a.action==='approve'))?'approved' as const:'pending' as const;
   const approvals=record.approvals.map(s=>s.id===step.id?{...s,state,actions}:s);
-  return{...record,revision:record.revision+1,approvals,state:input.action==='reject'?'decision_pending':record.state,decision:input.action==='reject'?{...record.decision,confirmedBy:null,confirmedAt:null}:record.decision};
+  return{...record,revision:record.revision+1,approvals,requiresResubmission:input.action==='reject'||record.requiresResubmission,state:input.action==='reject'?'decision_pending':record.state,decision:input.action==='reject'?{...record.decision,confirmedBy:null,confirmedAt:null}:record.decision};
 }
 export function contractApprovalsComplete(record:ContractCase):boolean{return !!record.decision?.confirmedAt&&(record.approvals.length>0||!!record.sourceRetirementApprovalId&&!!record.healthCompletedAt)&&record.approvals.every(s=>s.state==='approved'||s.state==='skipped');}
 export function issueContractDocument(record:ContractCase,document:NonNullable<ContractCase['document']>):ContractCase{

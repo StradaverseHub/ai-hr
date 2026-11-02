@@ -34453,6 +34453,17 @@
     }
   },
   "contractManagement": {
+    "resubmitRequired": "直属经理或指定 People BP 必须先提交修订后的决定，方可确认。",
+    "sourcePayBasisUnsupported": "这些合同条款要求按月计薪。People Ops 必须先在人事资料中审核计薪方式，才能继续。",
+    "sourceCurrencyUnsupported": "这些合同条款要求使用马币金额。People Ops 必须审核人事资料中的工资及固定津贴币种。",
+    "dateAmendmentPending": "合同结束日期更正正在等待获授权的记录更新。更新成功前，当前结束日期仍然有效。",
+    "dateAmendmentFailed": "结束日期更正需要审核。请先检查当前人事资料，再重试。",
+    "retryDateAmendment": "重试更正结束日期",
+    "reviewedDocumentLocked": "此合同已接受审核。必须修订决定后，才能生成新的 PDF。",
+    "cancelDateAmendment": "取消日期更正",
+    "dateAmendmentCancelled": "已取消结束日期更正",
+    "readOnlyNote": "此合同当前仅供查看。获授权人员仍可访问合同历史和已签发文档。",
+    "sourceIncomplete": "打开此个案前，请先检查人事资料中的合同日期、基本工资和已配置的马币固定津贴。",
     "retryFiling": "重试归档至 P-file",
     "generationPending": "正在准备合同 PDF。当前文档准备就绪后，方可继续审批和签署。",
     "generationFailed": "合同 PDF 需要审核。People Ops 可检查当前条款并重试生成。",
@@ -34655,6 +34666,7 @@
       "skipped": "不需要"
     },
     "effect": {
+      "date_amendment": "合同结束日期更正",
       "generation": "合同 PDF",
       "personnel": "人事更新",
       "payroll": "薪酬更新",

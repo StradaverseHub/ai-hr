@@ -34453,6 +34453,17 @@
     }
   },
   "contractManagement": {
+    "resubmitRequired": "Pengurus Barisan atau People BP yang ditugaskan mesti menyerahkan keputusan yang disemak semula sebelum pengesahan.",
+    "sourcePayBasisUnsupported": "Terma kontrak ini memerlukan bayaran bulanan. People Ops mesti menyemak asas bayaran dalam Rekod Kakitangan sebelum meneruskan.",
+    "sourceCurrencyUnsupported": "Terma kontrak ini memerlukan amaun MYR. People Ops mesti menyemak mata wang gaji dan elaun tetap dalam Rekod Kakitangan.",
+    "dateAmendmentPending": "Pembetulan tarikh tamat kontrak sedang menunggu kemas kini rekod yang dibenarkan. Tarikh tamat semasa kekal berkuat kuasa sehingga kemas kini berjaya.",
+    "dateAmendmentFailed": "Pembetulan tarikh tamat memerlukan semakan. Semak Rekod Kakitangan semasa sebelum mencuba semula.",
+    "retryDateAmendment": "Cuba pembetulan tarikh tamat semula",
+    "reviewedDocumentLocked": "Kontrak ini telah disemak. Keputusan yang disemak semula diperlukan sebelum menyediakan PDF baharu.",
+    "cancelDateAmendment": "Batalkan pembetulan tarikh",
+    "dateAmendmentCancelled": "Pembetulan tarikh tamat dibatalkan",
+    "readOnlyNote": "Kontrak ini hanya boleh dibaca buat masa ini. Sejarah kontrak dan dokumen yang telah dikeluarkan masih tersedia kepada pengguna yang dibenarkan.",
+    "sourceIncomplete": "Semak tarikh kontrak, gaji pokok dan elaun tetap MYR yang dikonfigurasi dalam Rekod Kakitangan sebelum membuka kes ini.",
     "retryFiling": "Cuba pemfailan P-file semula",
     "generationPending": "PDF kontrak sedang disediakan. Kelulusan dan tandatangan akan diteruskan apabila dokumen semasa siap.",
     "generationFailed": "PDF kontrak memerlukan semakan. People Ops boleh menyemak terma semasa dan mencuba penyediaan semula.",
@@ -34655,6 +34666,7 @@
       "skipped": "Tidak diperlukan"
     },
     "effect": {
+      "date_amendment": "Pembetulan tarikh tamat kontrak",
       "generation": "PDF kontrak",
       "personnel": "Kemas kini Personel",
       "payroll": "Kemas kini bayaran",
