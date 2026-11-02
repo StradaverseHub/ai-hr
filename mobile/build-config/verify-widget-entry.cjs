@@ -26,3 +26,6 @@ if(process.argv.includes('--self-test')){
  const old=resolve(shadow,'./attendance-widgets','ios');assert.equal(old.type,'sourceFile');assert.equal(old.filePath,oldStub);assert.notEqual(old.filePath,expected.ios);
  console.log('[widget-entry] regression reproduced: generic .ts would shadow the iOS renderer');
 }
+
+// The serialized widget is parsed again by JavaScriptCore in the native extension.
+require('./verify-widget-layouts.cjs');

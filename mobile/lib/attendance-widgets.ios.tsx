@@ -13,7 +13,7 @@ const InWidget=(p:WidgetPresentation,e:WidgetEnvironment)=>{
   <Text modifiers={[font({size:9}),foregroundStyle(muted),lineLimit(1),minimumScaleFactor(.8),privacySensitive()]}>{p.status} · {p.clockIn}</Text>
   <Text modifiers={[font({size:26,weight:'regular'}),monospacedDigit(),lineLimit(1),minimumScaleFactor(.75),foregroundStyle(ink),privacySensitive()]}>{p.inTime}</Text>
   <HStack spacing={6} modifiers={[frame({maxWidth:999,minHeight:32}),background('#A6F2D5',shapes.roundedRectangle({cornerRadius:12}))]}><Image systemName="arrow.right.to.line" size={14} color="#102E25"/><Text modifiers={[font({size:13,weight:'semibold'}),foregroundStyle('#102E25'),lineLimit(1),minimumScaleFactor(.75)]}>{p.clockIn}</Text></HStack>
-  <Text modifiers={[font({size:9}),foregroundStyle(muted),lineLimit(2),frame({minHeight:22,alignment:'leading'}),privacySensitive()]}>{p.updated.replace(' · ', '\n')}</Text>
+  <VStack alignment="leading" spacing={0} modifiers={[frame({minHeight:22,alignment:'leading'})]}><Text modifiers={[font({size:9}),foregroundStyle(muted),lineLimit(1),minimumScaleFactor(.8),privacySensitive()]}>{p.updated.split(' · ')[0]}</Text><Text modifiers={[font({size:9}),foregroundStyle(muted),lineLimit(1),minimumScaleFactor(.8),privacySensitive()]}>{p.updated.split(' · ')[1]??''}</Text></VStack>
  </VStack>;
 };
 const OutWidget=(p:WidgetPresentation,e:WidgetEnvironment)=>{
@@ -25,7 +25,7 @@ const OutWidget=(p:WidgetPresentation,e:WidgetEnvironment)=>{
   <Text modifiers={[font({size:9}),foregroundStyle(muted),lineLimit(1),minimumScaleFactor(.8),privacySensitive()]}>{p.status} · {p.clockOut}</Text>
   <Text modifiers={[font({size:26,weight:'regular'}),monospacedDigit(),lineLimit(1),minimumScaleFactor(.75),foregroundStyle(ink),privacySensitive()]}>{p.outTime}</Text>
   <HStack spacing={6} modifiers={[frame({maxWidth:999,minHeight:32}),background('#A6F2D5',shapes.roundedRectangle({cornerRadius:12}))]}><Image systemName="arrow.up.right" size={14} color="#102E25"/><Text modifiers={[font({size:13,weight:'semibold'}),foregroundStyle('#102E25'),lineLimit(1),minimumScaleFactor(.75)]}>{p.clockOut}</Text></HStack>
-  <Text modifiers={[font({size:9}),foregroundStyle(muted),lineLimit(2),frame({minHeight:22,alignment:'leading'}),privacySensitive()]}>{p.updated.replace(' · ', '\n')}</Text>
+  <VStack alignment="leading" spacing={0} modifiers={[frame({minHeight:22,alignment:'leading'})]}><Text modifiers={[font({size:9}),foregroundStyle(muted),lineLimit(1),minimumScaleFactor(.8),privacySensitive()]}>{p.updated.split(' · ')[0]}</Text><Text modifiers={[font({size:9}),foregroundStyle(muted),lineLimit(1),minimumScaleFactor(.8),privacySensitive()]}>{p.updated.split(' · ')[1]??''}</Text></VStack>
  </VStack>;
 };
 const ActionsWidget=(p:WidgetPresentation,e:WidgetEnvironment)=>{
