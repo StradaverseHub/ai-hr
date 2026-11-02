@@ -106,8 +106,9 @@ REVOKE ALL ON FUNCTION app.teras_chat_stamp() FROM PUBLIC;
 CREATE TRIGGER teras_chat_stamp BEFORE INSERT OR UPDATE ON public.teras_chat
  FOR EACH ROW EXECUTE FUNCTION app.teras_chat_stamp();
 --> statement-breakpoint
--- 3. One turn of a stored chat, numbered from 1 in the chat's order. A withheld turn is the marker only. Ciphertexts are
---    base64url tokens (lib/ai/crypto.ts), never readable text, and bounded in size.
+-- 3. One turn of a stored chat, numbered from 1 in the chat's order. A withheld turn is the marker only; any other turn
+--    holds all three ciphertexts (a missing one makes the check false, never unknown). Ciphertexts are base64url tokens
+--    (lib/ai/crypto.ts), never readable text, and bounded in size.
 CREATE TABLE public.teras_chat_turn (
  tenant_id uuid NOT NULL,
  app_user_id uuid NOT NULL,
@@ -120,8 +121,8 @@ CREATE TABLE public.teras_chat_turn (
  model_ciphertext text,
  PRIMARY KEY (tenant_id,chat_id,seq),
  FOREIGN KEY (tenant_id,app_user_id,chat_id) REFERENCES public.teras_chat(tenant_id,app_user_id,id) ON DELETE CASCADE,
- CHECK ((withheld AND question_ciphertext IS NULL AND reply_ciphertext IS NULL AND model_ciphertext IS NULL)
-  OR (NOT withheld AND question_ciphertext ~ '^[A-Za-z0-9_-]{40,}$' AND reply_ciphertext ~ '^[A-Za-z0-9_-]{40,}$' AND model_ciphertext ~ '^[A-Za-z0-9_-]{40,}$')),
+ CHECK (CASE WHEN withheld THEN question_ciphertext IS NULL AND reply_ciphertext IS NULL AND model_ciphertext IS NULL
+  ELSE coalesce(question_ciphertext ~ '^[A-Za-z0-9_-]{40,}$' AND reply_ciphertext ~ '^[A-Za-z0-9_-]{40,}$' AND model_ciphertext ~ '^[A-Za-z0-9_-]{40,}$',false) END),
  CHECK (octet_length(coalesce(question_ciphertext,''))<=32768 AND octet_length(coalesce(reply_ciphertext,''))<=131072
   AND octet_length(coalesce(model_ciphertext,''))<=262144)
 );

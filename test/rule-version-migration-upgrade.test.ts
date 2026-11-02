@@ -66,6 +66,11 @@ it('applies the Teras tail from 0890/0891 on over populated leave policy and app
     has_table_privilege('ai_hr_app',c.oid,'UPDATE') as u,has_table_privilege('ai_hr_app',c.oid,'DELETE') as d,has_table_privilege('ai_hr_app',c.oid,'TRUNCATE') as t
    from pg_class c where c.relnamespace='public'::regnamespace and c.relkind='r' and c.relname like 'teras\\_%' order by c.relname`);
   expect(grants).toEqual([
+   // 0952 (AI Centre stored chats): own chats are deleted, never updated except the turn counter (a column grant, so
+   // no table-wide UPDATE); turns are append-only; the setting is never deleted.
+   {table:'teras_chat',rls:true,s:true,i:true,u:false,d:true,t:false},
+   {table:'teras_chat_retention',rls:true,s:true,i:true,u:true,d:false,t:false},
+   {table:'teras_chat_turn',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_mandate',rls:true,s:true,i:true,u:true,d:false,t:false},
    {table:'teras_mandate_control',rls:true,s:true,i:true,u:true,d:false,t:false},
    {table:'teras_mandate_job_type_enablement',rls:true,s:true,i:true,u:true,d:false,t:false},

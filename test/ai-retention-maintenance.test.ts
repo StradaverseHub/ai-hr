@@ -188,7 +188,7 @@ describe('out-of-band expired AI custody maintenance', () => {
   it('retires expired private bytes and opinions only, leaves active custody and HR facts unchanged, then is idempotent', async () => {
     const expired = await review(true), active = await review(false), expiredFeedback = await feedback(true), activeFeedback = await feedback(false);
     const before = await state(), result = await runAiRetentionTick(owner);
-    expect(result).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:0, backlog: false, oldestExpiredAgeSeconds: null });
+    expect(result).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:0,chats:0, backlog: false, oldestExpiredAgeSeconds: null });
     for (const id of [expired, active, expiredFeedback, activeFeedback, base.tenantId]) expect(JSON.stringify(result)).not.toContain(id);
     const after = await state();
     expect(after.reviews.find(row => row.id === expired)).toMatchObject({ state: 'expired', intent_digest: null, reviewed_digest: null, ciphertext: null });
@@ -196,7 +196,7 @@ describe('out-of-band expired AI custody maintenance', () => {
     expect(after.feedback.some(row => row.id === expiredFeedback)).toBe(false);
     expect(after.feedback.find(row => row.id === activeFeedback)).toEqual(before.feedback.find(row => row.id === activeFeedback));
     expect(after.requests).toEqual(before.requests); expect(after.ledger).toEqual(before.ledger); expect(after.events).toEqual(before.events);
-    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 0, busy: 0, reviews: 0, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:0, backlog: false, oldestExpiredAgeSeconds: null });
+    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 0, busy: 0, reviews: 0, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:0,chats:0, backlog: false, oldestExpiredAgeSeconds: null });
   });
   it('rejects an app-role carrier despite administrator claims, without any mutation', async () => {
     await review(true); await feedback(true); const before = await state();
@@ -231,7 +231,7 @@ describe('out-of-band expired AI custody maintenance', () => {
       expect(result.oldestExpiredAgeSeconds).toBeGreaterThanOrEqual(1); expect(await state()).toEqual(before);
     }
     finally { release(); clearTimeout(watchdog); await holder; }
-    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:0, backlog: false, oldestExpiredAgeSeconds: null });
+    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:0,chats:0, backlog: false, oldestExpiredAgeSeconds: null });
   });
   it('reports real remaining expired custody after the100-row bound, then clears it in a separate pass', async () => {
     const ids: string[] = [];

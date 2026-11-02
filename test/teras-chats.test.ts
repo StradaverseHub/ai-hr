@@ -77,7 +77,7 @@ describe('isolation',()=>{
  it('the owner reads their own chat; no other login, tenant, group administrator or agent reads or writes it',async()=>{
   const me=await hire(b,'Fictional Chat Owner','employee'),peer=await hire(b,'Fictional Chat Neighbour','employee'),admin=await hire(b,'Fictional Chat Administrator','hr_admin');
   expect(isGroupAdmin(admin.ctx)).toBe(true);
-  const {chatId}=await chat(me.ctx);expect(chatId).not.toBeNull();
+  const stored=await chat(me.ctx);expect(stored.chatId).toBe(stored.conversationId);const chatId=stored.chatId!;
   const reopened=await reopenOwnChat(me.ctx,chatId,scope());
   expect(reopened.turns).toEqual([{seq:1,withheld:false,question:'How much annual leave do I have?',reply:'You have 12 days of annual leave.'}]);
   expect(reopened.history).toEqual(MODEL);
@@ -91,8 +91,8 @@ describe('isolation',()=>{
    expect(await deleteOwnChat(other,chatId)).toBe(0);
    // Another login cannot add a turn to it, under its own id or by copying a stored row.
    expect(await recordChatTurn(other,{conversationId:chatId,conversationScope:scope(),companyId:b.companyId,question:'Fictional intrusion',reply:'x',modelRows:MODEL,withheld:false})).toBeNull();
-   const [stored]=await turnsOf(chatId);
-   await expect(withTenant(other,tx=>tx.insert(terasChatTurn).values({...stored,seq:2}))).rejects.toThrow();
+   const [row]=await turnsOf(chatId);
+   await expect(withTenant(other,tx=>tx.insert(terasChatTurn).values({...row,seq:2}))).rejects.toThrow();
    await expect(withTenant(other,tx=>tx.execute(sql`update public.teras_chat set turn_count=turn_count+1 where id=${chatId}::uuid returning id`))).resolves.toHaveLength(0);
   }
   // Another tenant, the same login id: nothing.
@@ -184,29 +184,29 @@ describe('retention',()=>{
 
  it('a shorter setting brings every chat\'s expiry forward at once; a longer one applies from the next message and revives nothing',async()=>{
   const me=await hire(b,'Fictional Shortened Owner','employee'),peer=await hire(b,'Fictional Shortened Peer','employee'),admin=await hire(b,'Fictional Retention Administrator','hr_admin');
-  const window=async(id:string)=>(await owner.db.execute<{days:number}>(sql`select round(extract(epoch from expires_at-last_message_at)/86400)::int as days from public.teras_chat where id=${id}::uuid`))[0]?.days;
+  const keptDays=async(id:string)=>(await owner.db.execute<{days:number}>(sql`select round(extract(epoch from expires_at-last_message_at)/86400)::int as days from public.teras_chat where id=${id}::uuid`))[0]?.days;
   const tenDays=await chat(me.ctx,'Ten days ago'),today=await chat(me.ctx,'Today'),theirs=await chat(peer.ctx,'Theirs');
   await backdate(tenDays.chatId!,10);
-  expect(await window(today.chatId!)).toBe(30);
+  expect(await keptDays(today.chatId!)).toBe(30);
   expect((await listed(me.ctx)).sort()).toEqual([tenDays.chatId,today.chatId].sort());
   await setChatRetention(admin.ctx,{keepDays:7});
   // Every chat of the tenant, every login: brought forward to its last message plus seven days.
-  expect(await window(today.chatId!)).toBe(7);expect(await window(tenDays.chatId!)).toBe(7);expect(await window(theirs.chatId!)).toBe(7);
+  expect(await keptDays(today.chatId!)).toBe(7);expect(await keptDays(tenDays.chatId!)).toBe(7);expect(await keptDays(theirs.chatId!)).toBe(7);
   expect(await listed(me.ctx)).toEqual([today.chatId]);
   // Lengthening before the runner has passed does not revive the expired chat or extend the others.
   await setChatRetention(admin.ctx,{keepDays:365});
-  expect(await listed(me.ctx)).toEqual([today.chatId]);expect(await window(today.chatId!)).toBe(7);
+  expect(await listed(me.ctx)).toEqual([today.chatId]);expect(await keptDays(today.chatId!)).toBe(7);
   expect((await tick()).chats).toBe(1);expect(await chatsOf(me.ctx.userId)).toEqual([today.chatId]);
   // The next message is stamped with the longer setting, as is a new chat.
   await chat(me.ctx,'A second message',{conversationId:today.conversationId});
-  expect(await window(today.chatId!)).toBe(365);
-  const fresh=await chat(me.ctx,'A new chat');expect(await window(fresh.chatId!)).toBe(365);
+  expect(await keptDays(today.chatId!)).toBe(365);
+  const fresh=await chat(me.ctx,'A new chat');expect(await keptDays(fresh.chatId!)).toBe(365);
   // Another tenant's chats keep their own setting.
   const foreign=await seedBase();await setModule(foreign.tenantId,'assistant','active');
   const outsider=await hire(foreign,'Fictional Foreign Asker','employee');
   const kept=await recordChatTurn(outsider.ctx,{conversationId:randomUUID(),conversationScope:JSON.stringify([foreign.companyId]),companyId:foreign.companyId,question:'Elsewhere',reply:'Elsewhere',modelRows:MODEL,withheld:false});
   await setChatRetention(admin.ctx,{keepDays:1});
-  expect(await window(kept!)).toBe(30);expect(await window(today.chatId!)).toBe(1);
+  expect(await keptDays(kept!)).toBe(30);expect(await keptDays(today.chatId!)).toBe(1);
  });
 });
 
@@ -324,9 +324,9 @@ describe('the floating panel and Ask share one stored chat',()=>{
   const record=(question:string,turn:Awaited<ReturnType<typeof runConversationTurn>>)=>recordChatTurn(me.ctx,{conversationId:turn.trace.conversationId,conversationScope:scope(),companyId:b.companyId,
    question,reply:turn.reply,modelRows:turn.modelTurn,withheld:turn.sensitive||turn.refused});
   // The panel: a first turn, stored under its conversation.
+  const harness=async()=>{const route=await conversationRoute(me.ctx);if(route.route!=='harness')throw Error('Expected the harness route.');return route;};
   script([()=>final('Your leave balances are under Leave.')]);
-  const route=await conversationRoute(me.ctx);expect(route.route).toBe('harness');if(route.route!=='harness')return;
-  const panel=await runConversationTurn(me.ctx,route,{question:'Where can I see my leave balance?',companyId:b.companyId,locale:'en'});
+  const panel=await runConversationTurn(me.ctx,await harness(),{question:'Where can I see my leave balance?',companyId:b.companyId,locale:'en'});
   const chatId=await record('Where can I see my leave balance?',panel);
   expect(chatId).toBe(panel.trace.conversationId);
   // Ask: "Open in AI Centre" reopens that chat and continues it from the stored model side, not the browser.
@@ -335,12 +335,12 @@ describe('the floating panel and Ask share one stored chat',()=>{
   expect(reopened.history.length).toBeLessThanOrEqual(MAX_HISTORY_MESSAGES);expect(CHAT_LIMITS.historyMessages).toBe(MAX_HISTORY_MESSAGES);
   const continuation=issueConversationContinuation(me.ctx,chatId!,reopened.history.map(row=>({...row,side:'model' as const})));
   script([args=>{expect(JSON.stringify(args.turns)).toContain('Where can I see my leave balance?');return final('Open Leave, then Balances.');}]);
-  const ask=await runConversationTurn(me.ctx,await conversationRoute(me.ctx) as typeof route,{question:'And how do I apply?',companyId:b.companyId,locale:'en',continuation});
+  const ask=await runConversationTurn(me.ctx,await harness(),{question:'And how do I apply?',companyId:b.companyId,locale:'en',continuation});
   expect(sent.length).toBeGreaterThan(0);expect(ask.trace.conversationId).toBe(chatId);
   expect(await record('And how do I apply?',ask)).toBe(chatId);
   // A routed turn in the same chat joins as the marker only.
   script([()=>final('I am sorry to hear that.')]);
-  const routed=await runConversationTurn(me.ctx,await conversationRoute(me.ctx) as typeof route,{question:'My manager is harassing me at work.',companyId:b.companyId,locale:'en',continuation:ask.continuation});
+  const routed=await runConversationTurn(me.ctx,await harness(),{question:'My manager is harassing me at work.',companyId:b.companyId,locale:'en',continuation:ask.continuation});
   expect(routed.sensitive).toBe(true);expect(await record('My manager is harassing me at work.',routed)).toBe(chatId);
   const both=await reopenOwnChat(me.ctx,chatId,scope());
   expect(both.turns.map(turn=>turn.withheld?'withheld':turn.question)).toEqual(['Where can I see my leave balance?','And how do I apply?','withheld']);
