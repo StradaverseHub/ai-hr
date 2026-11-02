@@ -88,3 +88,10 @@ describe('precise submenu prerequisites',()=>{
   expect(()=>assertAccessGrantCeiling(value,definitions,'worker',[{capabilityId:'function.payroll.individualTransactions.add',companyId:'child'}],evidence)).toThrow('ceiling');
  });
 });
+
+it('keeps live native authority separate from individual overrides and lets an explicit denial win',()=>{
+ const value=snapshot();value.groups=value.groups.filter(group=>group.systemAdministrator);value.nativeDefaults=[{userId:'worker',capabilityId:'workforce.view',companyId:'child'}];
+ const inherited=resolveAccessCapability(value,catalog,'worker','workforce.view',target,evidence);expect(inherited.allowed).toBe(true);expect(inherited.sources).toMatchObject([{nativeDerived:true,effect:'allow'}]);expect(value.overrides).toEqual([]);
+ value.overrides=[{userId:'worker',capabilityId:'workforce.view',companyId:'child',effect:'deny'}];expect(resolveAccessCapability(value,catalog,'worker','workforce.view',target,evidence).reason).toBe('denied');
+ value.overrides=[];value.nativeDefaults=[];expect(resolveAccessCapability(value,catalog,'worker','workforce.view',target,evidence).allowed).toBe(false);
+});

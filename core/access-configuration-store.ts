@@ -32,7 +32,7 @@ export const accessConfigurationStore:AccessConfigurationOwner={
       if(grant.companyId===null||grant.companyId===command.companyId||current.evidence.covers(grant.companyId,command.companyId))return [{...grant,companyId:command.companyId}];
       return current.evidence.covers(command.companyId,grant.companyId)?[grant]:[];
     });
-    try{await tx.execute(sql`select app.access_configuration_delegation_preview(${JSON.stringify(grants)}::jsonb)`);}catch(error){return refusal(error);}
+    try{await tx.execute(sql`select app.access_configuration_delegation_preview(${JSON.stringify(grants)}::jsonb)`);await tx.execute(sql`select app.access_configuration_transition_preview(${current.snapshot.revision}::uuid,${current.scopeFingerprint},${JSON.stringify(command)}::jsonb)`);}catch(error){return refusal(error);}
   },
   async persist(tx,_ctx,change){
     try{
