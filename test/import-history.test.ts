@@ -49,7 +49,8 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
  it('gives the application role append-only privileges with RLS enabled on all three tables',async()=>{
   for(const table of ['import_attempt','import_attempt_item','import_attempt_event']){
    const[p]=await withTenant(a,tx=>tx.execute<Record<string,unknown>>(sql`select has_table_privilege(current_user,${'public.'+table},'SELECT') as read,has_table_privilege(current_user,${'public.'+table},'INSERT') as insert,has_table_privilege(current_user,${'public.'+table},'UPDATE') as update,has_table_privilege(current_user,${'public.'+table},'DELETE') as delete,(select relrowsecurity from pg_class where oid=${'public.'+table}::regclass) as rls`));
-   expect(p).toEqual({read:true,insert:true,update:false,delete:false,rls:true});
+   expect(p).toEqual({read:table!=='import_attempt',insert:true,update:false,delete:false,rls:true});
+   if(table==='import_attempt'){const [columns]=await withTenant(a,tx=>tx.execute(sql`select has_column_privilege(current_user,'public.import_attempt','id','SELECT') as metadata,has_column_privilege(current_user,'public.import_attempt','source_content','SELECT') as source,has_column_privilege(current_user,'public.import_attempt','plan','SELECT') as plan`));expect(columns).toEqual({metadata:true,source:false,plan:false});}
   }
   const{attemptId}=await upload(a,[row('ACME','AC001','ACME-OPS','100')]);
   await expect(withTenant(a,tx=>tx.execute(sql`update import_attempt set source_name='changed' where id=${attemptId}::uuid`))).rejects.toThrow();
