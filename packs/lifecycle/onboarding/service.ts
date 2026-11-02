@@ -839,6 +839,15 @@ export async function onboardingNote(ctx: SessionContext, caseId: string, input:
     if (input.body.length > 10000 || input.mentions.length > 50)
         M.fail('This note is too long.');
     return withTenant(ctx, async (tx) => {
+        const [assigned]=await tx.execute<{allowed:boolean}>(sql`select app.onboarding_conversation_assigned(${caseId}::uuid,${input.context}) as allowed`);
+        if(assigned?.allowed){
+            let result:{revision:number;employment_id:string|null;company_id:string};
+            try{[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_conversation_update(${caseId}::uuid,${input.context},${input.id??null}::uuid,${input.body},${JSON.stringify(input.mentions)}::jsonb,${input.deleted??false},${input.resolve??false})`);}
+            catch(error){const pg=(error as {cause?:{message?:string;code?:string}}).cause??error as {message?:string;code?:string};M.fail(pg.message??'This conversation is not available.',pg.code==='42501'?'forbidden':pg.code==='40001'?'conflict':'invalid');}
+            if(!result)M.fail('This conversation is not available.','forbidden');
+            await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onboarding-case',aggregateId:caseId,eventType:'onboarding.note_changed',actor:actorOf(ctx),subjectEmploymentId:result.employment_id,payload:{caseId,companyId:result.company_id}});
+            return;
+        }
         const { row, config, actor, c } = await loadTx(tx, ctx, caseId, true);
         if (!(actor.caseActions&&actor.sections?.notes==='view')&&!await participantTx(tx, caseId))
             M.fail('This conversation is not available.', 'forbidden');
