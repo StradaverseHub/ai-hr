@@ -277,7 +277,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     // transactions; revocation during the snapshot discards the result before publication.
     const stamp=async()=>runTenantTransaction(ctx,async tx=>{
       const [row]=await tx.execute(sql`select app.data_permission_read_stamp() as stamp`) as unknown as {stamp:string|null}[];
-      if(!row?.stamp)throw new Error('Data access is no longer available.');return row.stamp;
+      if(!row?.stamp)throw new Error('Forbidden: Data access is no longer available.');return row.stamp;
     });
     const before=await stamp();
     const result=await runTenantTransaction(ctx,fn,options);
