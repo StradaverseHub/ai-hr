@@ -1413,3 +1413,10 @@ reuses the existing 0941 data-only ceiling without any Letter execution authorit
 projection/no-mutation, proposed manager gains, canonical profile assignment and private-port cases
 are authored, unrun. Source ACL admission/audit/recipient before-after/native-floor closure remains
 in progress; no raw permission write is newly authorized by these helpers.
+
+Report recipient projection additionally filters stored roles through actual company coverage (global
+roles only for NULL future scope), matching report.read native category ownership. Leave intentionally
+retains its original full-role collection. An actual Employee-global + HR-only-other-company fixture
+checks native Report before=false, projected Employee-allow gain, actual after=true, the contrasting
+Leave role truth, and NULL-future scoped-role exclusion. This corrects a review finding before Report
+source adoption; it grants no role, support flag or execution port and is authored/unrun.

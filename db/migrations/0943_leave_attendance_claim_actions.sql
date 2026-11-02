@@ -1515,7 +1515,7 @@ CREATE FUNCTION app.native_permission_override_recipients(p_tenant uuid,p_permis
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT account.id,scope.company_id,app.native_permission_override_fact(p_tenant,p_permission,scope.company_id,roles.held,NULL,NULL),app.native_permission_override_fact(p_tenant,p_permission,scope.company_id,roles.held,p_before,p_after)
  FROM public.app_user account CROSS JOIN app.native_permission_override_scopes(p_tenant,p_before,p_after) scope
- CROSS JOIN LATERAL(SELECT ARRAY(SELECT assignment.role::text FROM public.role_assignment assignment WHERE assignment.tenant_id=p_tenant AND assignment.app_user_id=account.id) AS held) roles
+ CROSS JOIN LATERAL(SELECT ARRAY(SELECT assignment.role::text FROM public.role_assignment assignment WHERE assignment.tenant_id=p_tenant AND assignment.app_user_id=account.id AND (p_permission='leave.apply_on_behalf' OR app.access_scope_covers(assignment.company_id,scope.company_id,p_tenant))) AS held) roles
  WHERE account.tenant_id=p_tenant AND account.archived_at IS NULL AND NOT app.login_blocked(account.id);
 $$;
 -- Singleton role transitions additionally cover unknown future recipients. Any OR-role gain is
