@@ -25,7 +25,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { and, eq, gt, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
@@ -126,6 +126,18 @@ describe('1.2.2 Individual Transaction', () => {
   }
 
   // ───────────────────── round-trip + events ─────────────────────
+
+  it('native Individual Edit cannot forge Process consumption or restore away an intermediate forbidden mutation',async()=>{
+    const {a,employmentId,batchId}=await hireWithBatch();
+    const {id}=await createIndividualTxn(a,{batchId,employmentId,kind:'overtime',txnDate:'2026-05-10',amount:250});
+    await expect(withTenant(a,tx=>tx.execute(sql`update payroll_individual_txn set consumed_batch_id=${batchId}::uuid,consumed_at=now() where id=${id}::uuid`))).rejects.toThrow();
+    await expect(withTenant(a,async tx=>{
+      await tx.execute(sql`update payroll_individual_txn set amount=999,consumed_batch_id=${batchId}::uuid,consumed_at=now() where id=${id}::uuid`);
+      await tx.execute(sql`update payroll_individual_txn set amount=250,consumed_batch_id=null,consumed_at=null where id=${id}::uuid`);
+    })).rejects.toThrow();
+    const [row]=await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.id,id));
+    expect(row.amount).toBe('250.00');expect(row.consumedBatchId).toBeNull();expect(row.consumedAt).toBeNull();
+  });
 
   it('create / list / update / delete round-trip emits created/updated/deleted events', async () => {
     const { a, employmentId, batchId } = await hireWithBatch();

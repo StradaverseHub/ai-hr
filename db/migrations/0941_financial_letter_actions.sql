@@ -1355,7 +1355,7 @@ REVOKE ALL ON FUNCTION app.access_backpay_action(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.access_backpay_action(uuid,text) TO ai_hr_app;
 CREATE TABLE app.financial_backpay_posting(
  transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,run_id uuid NOT NULL,row_id uuid NOT NULL,
- employment_id uuid NOT NULL,affected_period text NOT NULL,amount numeric(12,2) NOT NULL,mode text NOT NULL,
+ employment_id uuid NOT NULL,affected_period text NOT NULL,amount numeric(12,2) NOT NULL,mode text NOT NULL,source_hash text NOT NULL,
  PRIMARY KEY(transaction_id,tenant_id,user_id,run_id,row_id,mode)
 );
 ALTER TABLE app.financial_backpay_posting ENABLE ROW LEVEL SECURITY;
@@ -1364,7 +1364,7 @@ CREATE FUNCTION app.access_backpay_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE a jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
  b jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
- d jsonb:=CASE WHEN TG_OP='DELETE' THEN b ELSE a END;run public.back_pay_run;operation text;total numeric;period text;txn uuid;
+ d jsonb:=CASE WHEN TG_OP='DELETE' THEN b ELSE a END;run public.back_pay_run;operation text;total numeric;period text;txn uuid;source jsonb;
 BEGIN
  IF app.acting_as_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;END IF;
  PERFORM app.access_workforce_write_lock();
@@ -1393,8 +1393,10 @@ BEGIN
    -- Freeze the complete net before cancellation clears any source links. Each source row stays
    -- immutable; a posted transaction cannot later be substituted for a different employee/period.
    SELECT round(sum(l.difference),2),min(l.affected_period) INTO total,period FROM public.back_pay_line l WHERE l.tenant_id=run.tenant_id AND l.run_id=run.id AND l.employment_id=NEW.employment_id AND l.affected_period=NEW.affected_period AND NOT l.needs_review;
+   SELECT to_jsonb(t) INTO source FROM public.payroll_individual_txn t WHERE t.id=txn AND t.tenant_id=run.tenant_id AND t.employment_id=NEW.employment_id AND t.company_id=run.company_id AND t.pay_period=run.target_pay_period AND t.consumed_batch_id IS NULL;
+   IF source IS NULL OR operation='execute' AND NOT EXISTS(SELECT 1 FROM app.financial_individual_effect e WHERE e.transaction_id=pg_current_xact_id() AND e.tenant_id=run.tenant_id AND e.user_id=app.current_user_id() AND e.row_id=txn AND e.before_row='{}'::jsonb AND e.after_hash=encode(sha256(convert_to(source::text,'UTF8')),'hex')) THEN RAISE EXCEPTION 'Back Pay posting source unavailable' USING ERRCODE='42501';END IF;
    IF total IS NULL OR abs(total)<0.01 OR NEW.needs_review THEN RAISE EXCEPTION 'Back Pay net unavailable' USING ERRCODE='42501';END IF;
-   INSERT INTO app.financial_backpay_posting VALUES(pg_current_xact_id(),run.tenant_id,app.current_user_id(),run.id,txn,NEW.employment_id,period,total,operation) ON CONFLICT DO NOTHING;
+   INSERT INTO app.financial_backpay_posting VALUES(pg_current_xact_id(),run.tenant_id,app.current_user_id(),run.id,txn,NEW.employment_id,period,total,operation,encode(sha256(convert_to(source::text,'UTF8')),'hex')) ON CONFLICT DO NOTHING;
   END IF;
  END IF;
  RETURN NEW;
@@ -1409,13 +1411,15 @@ CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_backpay_po
 CREATE FUNCTION app.financial_backpay_posting_approved(p_before jsonb,p_after jsonb) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.financial_backpay_posting proof JOIN public.back_pay_run run ON run.id=proof.run_id AND run.tenant_id=proof.tenant_id
- JOIN public.pay_component component ON component.id=(coalesce(p_after->>'component_id',p_before->>'component_id'))::uuid AND component.tenant_id=run.tenant_id
+ LEFT JOIN public.pay_component component ON component.id=(coalesce(p_after->>'component_id',p_before->>'component_id'))::uuid AND component.tenant_id=run.tenant_id
  WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
  AND proof.row_id=coalesce(p_after->>'id',p_before->>'id')::uuid
  AND app.access_backpay_action(run.company_id,proof.mode) AND app.data_permission_matches(proof.employment_id)
  AND (proof.mode='execute' AND p_before='{}'::jsonb AND run.status='posted' AND run.approved_by_user_id=proof.user_id AND EXISTS(SELECT 1 FROM public.back_pay_line l WHERE l.tenant_id=proof.tenant_id AND l.run_id=proof.run_id AND l.posted_txn_id=proof.row_id AND l.employment_id=proof.employment_id AND l.affected_period=proof.affected_period)
   OR proof.mode='delete' AND p_after='{}'::jsonb AND run.status='cancelled' AND run.cancelled_by_user_id=proof.user_id AND NOT EXISTS(SELECT 1 FROM public.back_pay_line l WHERE l.tenant_id=proof.tenant_id AND l.posted_txn_id=proof.row_id))
- AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'company_id'=run.company_id::text
+ AND proof.source_hash=encode(sha256(convert_to(coalesce(nullif(p_after,'{}'::jsonb),p_before)::text,'UTF8')),'hex')
+ AND (proof.mode='delete' OR (
+ coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'company_id'=run.company_id::text
  AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'pay_period'=run.target_pay_period
  AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'employment_id'=proof.employment_id::text
  AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'kind'=CASE WHEN proof.amount>=0 THEN 'earning' ELSE 'deduction' END
@@ -1426,6 +1430,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'consumed_batch_id' IS NULL
  AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'consumed_at' IS NULL
  AND (coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'batch_id' IS NULL OR EXISTS(SELECT 1 FROM public.payroll_batch batch WHERE batch.tenant_id=run.tenant_id AND batch.id=(coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'batch_id')::uuid AND batch.company_id=run.company_id AND batch.pay_period=run.target_pay_period AND batch.run_type='regular' AND batch.status='draft'))
+ ))
  AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.tenant_id=proof.tenant_id AND audit.aggregate_id=run.id AND audit.aggregate_type='back-pay-run' AND audit.actor_id=proof.user_id AND audit.event_type=CASE WHEN proof.mode='execute' THEN 'back-pay.posted' ELSE 'back-pay.cancelled' END AND app.financial_audit_written(audit.id)));
 $$;
 REVOKE ALL ON FUNCTION app.financial_backpay_posting_approved(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
