@@ -29363,7 +29363,22 @@
       "caseNoWorkflows": "Tiada aliran kerja aktif sepadan dengan kes ini.",
       "caseSubmitDocuments": "Hantar kes penerimaan pekerja untuk memulakan dokumennya.",
       "casePreviewMessage": "Pratonton mesej",
-      "casePreviewDocument": "Pratonton dokumen"
+      "casePreviewDocument": "Pratonton dokumen",
+      "caseCancelOffboarding": "Batalkan kes pemberhentian",
+      "caseExitClearance": "Pelepasan keluar",
+      "caseLastWorkingDay": "Hari bekerja terakhir",
+      "caseLeavers": "Pekerja keluar",
+      "caseNeedsHrReview": "Perlu semakan HR",
+      "caseNoPersonnelChanges": "Tiada perubahan menunggu semakan Pengurusan Kakitangan.",
+      "caseNoChecklistTasks": "Tiada tugas senarai semak.",
+      "caseNoReturnItems": "Tiada item pemulangan atau pembatalan direkodkan.",
+      "caseOffboardingChecklist": "Senarai semak pemberhentian",
+      "caseOpenDocument": "Buka dokumen",
+      "caseReturnRevoke": "Pemulangan dan pembatalan akses",
+      "caseItem": "Item",
+      "caseType": "Jenis",
+      "caseProvidedBy": "Dibekalkan oleh",
+      "caseReturnDue": "Pulangkan atau batalkan sebelum"
     }
   },
   "processAssessment": {

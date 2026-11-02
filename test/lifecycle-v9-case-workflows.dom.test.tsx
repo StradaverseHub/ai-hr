@@ -1,5 +1,6 @@
+import type {ReactElement} from 'react';
 import {beforeAll,expect,it,vi} from 'vitest';
-import {fireEvent,render,screen,within} from '@testing-library/react';
+import {fireEvent,render as renderUI,screen,within} from '@testing-library/react';
 import {CaseWorkflows} from '../app/lifecycle/v9/case-workflows';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {NextIntlClientProvider} from 'next-intl';
@@ -58,3 +59,6 @@ it('permits pending per-person editing and self-tests without offering a live st
  const {c,config,preview}=mailFixture();c.state='pending';const command=vi.fn().mockResolvedValue({ok:true});vi.mocked(readV9Email).mockResolvedValueOnce({ok:true,preview});render(<CaseWorkflows c={c} config={config} busy={false} command={command}/>);
  expect(screen.getByRole('button',{name:'Start now Fictional manual workflow'})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:'Edit for this person'}));expect(await screen.findByLabelText('Subject')).toHaveValue('Subject for {employee.name}');fireEvent.click(screen.getByRole('button',{name:'Cancel edit'}));const dialog=screen.getByRole('dialog',{name:'Email preview'});expect(within(dialog).getByRole('button',{name:'Send email'})).toBeDisabled();fireEvent.click(within(dialog).getByRole('button',{name:'Send test'}));expect(command).toHaveBeenCalledExactlyOnceWith({type:'emailTest',emailId:'e3'});
 });
+
+function withMessages(node:ReactElement){return <NextIntlClientProvider locale="en" messages={messages}>{node}</NextIntlClientProvider>;}
+function render(node:ReactElement){const view=renderUI(withMessages(node));return {...view,rerender:(next:ReactElement)=>view.rerender(withMessages(next))};}

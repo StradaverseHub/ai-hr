@@ -29363,7 +29363,22 @@
       "caseNoWorkflows": "No live workflows match this case.",
       "caseSubmitDocuments": "Submit the onboarding case to start its documents.",
       "casePreviewMessage": "Preview message",
-      "casePreviewDocument": "Preview document"
+      "casePreviewDocument": "Preview document",
+      "caseCancelOffboarding": "Cancel offboarding case",
+      "caseExitClearance": "Exit clearance",
+      "caseLastWorkingDay": "Last working day",
+      "caseLeavers": "Leavers",
+      "caseNeedsHrReview": "Needs HR review",
+      "caseNoPersonnelChanges": "No changes awaiting Personnel Management review.",
+      "caseNoChecklistTasks": "No checklist tasks.",
+      "caseNoReturnItems": "No return or revoke items recorded.",
+      "caseOffboardingChecklist": "Offboarding checklist",
+      "caseOpenDocument": "Open document",
+      "caseReturnRevoke": "Return and revoke",
+      "caseItem": "Item",
+      "caseType": "Type",
+      "caseProvidedBy": "Provided by",
+      "caseReturnDue": "Return or revoke by"
     }
   },
   "processAssessment": {

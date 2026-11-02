@@ -29363,7 +29363,22 @@
       "caseNoWorkflows": "ไม่มีเวิร์กโฟลว์ที่ใช้งานตรงกับกรณีนี้",
       "caseSubmitDocuments": "ส่งกรณีเริ่มงานเพื่อเริ่มจัดทำเอกสาร",
       "casePreviewMessage": "ดูตัวอย่างข้อความ",
-      "casePreviewDocument": "ดูตัวอย่างเอกสาร"
+      "casePreviewDocument": "ดูตัวอย่างเอกสาร",
+      "caseCancelOffboarding": "ยกเลิกกรณีออกจากงาน",
+      "caseExitClearance": "การตรวจสอบก่อนออกจากงาน",
+      "caseLastWorkingDay": "วันทำงานสุดท้าย",
+      "caseLeavers": "พนักงานที่ออกจากงาน",
+      "caseNeedsHrReview": "ต้องให้ฝ่ายบุคคลตรวจสอบ",
+      "caseNoPersonnelChanges": "ไม่มีการเปลี่ยนแปลงที่รอฝ่ายจัดการบุคลากรตรวจสอบ",
+      "caseNoChecklistTasks": "ไม่มีงานในรายการตรวจสอบ",
+      "caseNoReturnItems": "ไม่มีรายการคืนหรือเพิกถอนที่บันทึกไว้",
+      "caseOffboardingChecklist": "รายการตรวจสอบการออกจากงาน",
+      "caseOpenDocument": "เปิดเอกสาร",
+      "caseReturnRevoke": "คืนและเพิกถอน",
+      "caseItem": "รายการ",
+      "caseType": "ประเภท",
+      "caseProvidedBy": "ผู้จัดหา",
+      "caseReturnDue": "กำหนดคืนหรือเพิกถอน"
     }
   },
   "processAssessment": {

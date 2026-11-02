@@ -29363,7 +29363,22 @@
       "caseNoWorkflows": "Không có quy trình đang hoạt động phù hợp hồ sơ này.",
       "caseSubmitDocuments": "Gửi hồ sơ hội nhập để bắt đầu tạo tài liệu.",
       "casePreviewMessage": "Xem trước tin nhắn",
-      "casePreviewDocument": "Xem trước tài liệu"
+      "casePreviewDocument": "Xem trước tài liệu",
+      "caseCancelOffboarding": "Hủy hồ sơ nghỉ việc",
+      "caseExitClearance": "Xác nhận hoàn tất nghỉ việc",
+      "caseLastWorkingDay": "Ngày làm việc cuối cùng",
+      "caseLeavers": "Nhân viên nghỉ việc",
+      "caseNeedsHrReview": "Cần HR xem xét",
+      "caseNoPersonnelChanges": "Không có thay đổi chờ Quản lý nhân sự xem xét.",
+      "caseNoChecklistTasks": "Không có nhiệm vụ trong danh sách.",
+      "caseNoReturnItems": "Chưa ghi nhận mục cần trả hoặc thu hồi.",
+      "caseOffboardingChecklist": "Danh sách kiểm tra nghỉ việc",
+      "caseOpenDocument": "Mở tài liệu",
+      "caseReturnRevoke": "Trả lại và thu hồi",
+      "caseItem": "Mục",
+      "caseType": "Loại",
+      "caseProvidedBy": "Bên cung cấp",
+      "caseReturnDue": "Hạn trả hoặc thu hồi"
     }
   },
   "processAssessment": {
