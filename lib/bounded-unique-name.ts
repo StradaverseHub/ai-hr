@@ -1,3 +1,7 @@
+export class NameAllocationError extends Error {
+ constructor(){super('No unique name available');this.name='NameAllocationError';}
+}
+
 /** UTF-16 length bound without splitting a Unicode code point. */
 export function boundedNamePrefix(value:string,length:number):string {
  return value.slice(0,length).replace(/[\uD800-\uDBFF]$/u,'');
@@ -8,9 +12,9 @@ export function boundedNamePrefix(value:string,length:number):string {
 export function boundedUniqueName(base:string,taken:ReadonlySet<string>,maxLength:number,suffix:(n:number)=>string,attempts=1000,normalize:(value:string)=>string=value=>value):string {
   for(let n=2;n<attempts+2;n++) {
     const tail=suffix(n);
-    if(tail.length>=maxLength)throw new Error('No unique name available');
+    if(tail.length>=maxLength)throw new NameAllocationError();
     const candidate=boundedNamePrefix(base,maxLength-tail.length)+tail;
     if(!taken.has(normalize(candidate)))return candidate;
   }
-  throw new Error('No unique name available');
+  throw new NameAllocationError();
 }

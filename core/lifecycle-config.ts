@@ -1,4 +1,4 @@
-import {boundedUniqueName} from '../lib/bounded-unique-name';
+import {boundedUniqueName,NameAllocationError} from '../lib/bounded-unique-name';
 /**
  * Lifecycle configuration (ADR-0095) — Module Config: staff, step lists, checklists, access systems,
  * approval levels, custom fields and the request catalogue.
@@ -107,6 +107,14 @@ export async function myLifecycleLevel(ctx: SessionContext, companyId: string | 
   return withTenant(ctx, async (tx) => (await import('./lifecycle-base')).levelOf(tx, companyId));
 }
 
+function uniqueLifecycleKey(base:string,taken:ReadonlySet<string>):string {
+  try {return boundedUniqueName(base,taken,40,n=>`_${n}`);}
+  catch(error){
+    if(error instanceof NameAllocationError)throw new LifecycleError('No unique configuration key is available. Rename the item and try again.');
+    throw error;
+  }
+}
+
 // ───────────────────────────── step definitions ─────────────────────────────
 const toStepDef = (d: StepDefault, i: number): StepDef => ({
   key: d.key, phase: d.phase, label: d.label, ownerTeam: d.ownerTeam, hrms: d.hrms === true, rule: d.rule, sort: (i + 1) * 10,
@@ -154,7 +162,7 @@ export async function saveStepDefs(ctx: SessionContext, kind: CaseKind, steps: S
       if (kind === 'onboarding' && (rule === 'outcome_accepted' || rule === 'outcome_rejected')) throw new LifecycleError('Outcome rules apply to offboarding only.');
       if (kind === 'offboarding' && (rule === 'carpark' || rule === 'laptop')) throw new LifecycleError('Car park and laptop rules apply to onboarding only.');
       let key = s.key && KEY_RE.test(s.key) ? s.key : slugKey(label);
-      if (!s.key && (seen.has(key) || known.has(key))) key = boundedUniqueName(key,new Set([...seen,...known]),40,n=>`_${n}`);
+      if (!s.key && (seen.has(key) || known.has(key))) key = uniqueLifecycleKey(key,new Set([...seen,...known]));
       if (seen.has(key)) throw new LifecycleError(`Duplicate step key ${key}.`);
       seen.add(key);
       return { key, phase: s.phase, label, ownerTeam: clean(s.ownerTeam, 100) ?? '', hrms: s.hrms === true, rule, sort: (i + 1) * 10 };
@@ -245,7 +253,7 @@ export async function saveProvisionDefs(
       const name = clean(it.name, 200);
       if (!name) throw new LifecycleError('Every checklist item needs a name.');
       let key = it.key && KEY_RE.test(it.key) ? it.key : slugKey(name);
-      if (!it.key && (seen.has(key) || base.some(x=>x.itemKey===key))) key = boundedUniqueName(key,new Set([...seen,...base.map(x=>x.itemKey)]),40,n=>`_${n}`);
+      if (!it.key && (seen.has(key) || base.some(x=>x.itemKey===key))) key = uniqueLifecycleKey(key,new Set([...seen,...base.map(x=>x.itemKey)]));
       if (seen.has(key)) throw new LifecycleError(`Duplicate item key ${key}.`);
       seen.add(key);
       keepKeys.push(key);
@@ -336,7 +344,7 @@ export async function saveCustomFields(ctx: SessionContext, kind: CaseKind, fiel
       const options = (f.options ?? []).map((o) => clean(o, 100)).filter((o): o is string => !!o);
       if (type === 'choice' && options.length === 0) throw new LifecycleError(`Choice field "${label}" needs at least one option.`);
       let key = f.key && KEY_RE.test(f.key) ? f.key : slugKey(label);
-      if (!f.key && (seen.has(key) || existing.some(e=>e.key===key))) key = boundedUniqueName(key,new Set([...seen,...existing.map(e=>e.key)]),40,n=>`_${n}`);
+      if (!f.key && (seen.has(key) || existing.some(e=>e.key===key))) key = uniqueLifecycleKey(key,new Set([...seen,...existing.map(e=>e.key)]));
       if (seen.has(key)) throw new LifecycleError(`Duplicate field key ${key}.`);
       seen.add(key);
       return { key, label, type, required: f.required === true, options: type === 'choice' ? options : [], companyIds: f.companyIds ?? [], sort: (i + 1) * 10 };
