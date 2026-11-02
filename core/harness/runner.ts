@@ -183,11 +183,16 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
   }
   if(!response.toolCalls.length){if(judge(response.content??'',null,null))break;continue;}
   messages.push({role:'assistant',content:response.content,toolCalls:response.toolCalls});
-  let stepCalls=0;
+  // Review M7: a response whose calls exceed the per-step or per-turn cap is not trusted at all. None of its calls
+  // runs; each is answered as refused and counted, and the turn is forced to its final answer. Otherwise the calls
+  // run one after another, in the order returned, each through the same checks as a single call.
+  if(response.toolCalls.length>S.budgets.maxCallsPerStep||turnCalls+response.toolCalls.length>S.budgets.maxCallsPerTurn){
+   refusedCalls+=response.toolCalls.length;forceFinal=true;
+   for(const call of response.toolCalls)messages.push({role:'tool',toolCallId:call.id,content:fenceUntrusted(call.name,{ok:false,message:'Too many lookups at once; ask for fewer.'},nonce)});
+   continue;
+  }
+  turnCalls+=response.toolCalls.length;
   for(const call of response.toolCalls){
-   // Review M7: calls beyond the per-step or per-turn cap are answered as refused and counted, never run or traced one by one.
-   if(++stepCalls>S.budgets.maxCallsPerStep||++turnCalls>S.budgets.maxCallsPerTurn){refusedCalls++;forceFinal=forceFinal||turnCalls>S.budgets.maxCallsPerTurn;
-    messages.push({role:'tool',toolCallId:call.id,content:fenceUntrusted(call.name,{ok:false,message:'Too many lookups at once; use the results already returned.'},nonce)});continue;}
    const record=(status:TraceCall['status'],content:unknown,refusal?:string)=>{calls.push({step:steps,tool:call.name,status,argumentsDigest:argumentsDigest(call.arguments),...(refusal?{refusal}:{})});
     messages.push({role:'tool',toolCallId:call.id,content:fenceUntrusted(call.name,content,nonce)});};
    // On a final-only step nothing but final_answer was offered, so any other call is refused.

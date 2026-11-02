@@ -57,10 +57,11 @@ export function captureConversationInput(args: ConverseArgs): ConverseArgs {
   try {
     const value = capture(args) as Record<string, unknown>;
     if (!value || Array.isArray(value) || typeof value !== 'object' || Object.keys(value).some(key =>
-      !['system', 'turns', 'tools', 'maxTokens', 'timeoutMs', 'cacheKey'].includes(key))) return refused();
+      !['system', 'turns', 'tools', 'maxTokens', 'timeoutMs', 'cacheKey', 'allowMultipleToolCalls'].includes(key))) return refused();
     if (!Array.isArray(value.system) || !value.system.every(block => typeof block === 'string') ||
         !Array.isArray(value.turns) || !Array.isArray(value.tools)) return refused();
     if (value.cacheKey !== undefined && typeof value.cacheKey !== 'string') return refused();
+    if (value.allowMultipleToolCalls !== undefined && value.allowMultipleToolCalls !== true) return refused();
     const maxTokens = value.maxTokens === undefined ? 2048 : value.maxTokens;
     const timeoutMs = value.timeoutMs === undefined ? 120_000 : value.timeoutMs;
     if (typeof maxTokens !== 'number' || !Number.isSafeInteger(maxTokens) || maxTokens < 1 || maxTokens > 1_000_000 ||

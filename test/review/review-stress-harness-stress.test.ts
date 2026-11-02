@@ -52,7 +52,8 @@ describe('harness volume (no database)',()=>{
   expect(dispatched.length,'tool executions from one model step').toBeLessThanOrEqual(64);
   expect(OutcomeRecordInput.safeParse(outcomeRecordFromTrace(result.trace)).success).toBe(true);
   // Fixed: the spec's per-step cap runs at most that many and counts the rest.
-  expect(dispatched.length).toBe(HARNESS_SPEC.budgets.maxCallsPerStep);expect(result.trace.budgets.refusedCalls).toBe(100-HARNESS_SPEC.budgets.maxCallsPerStep);
+  // A response over the per-step cap is not trusted at all (owner decision on the multi-call opt-in): none of its calls runs.
+  expect(dispatched.length).toBe(0);expect(result.trace.budgets.refusedCalls).toBe(100);
  },60_000);
 
  it('fixed M8: a single model call is never sent more history than the turn\'s own token budget (runner.ts:112,130)',async()=>{
