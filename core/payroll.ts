@@ -4701,7 +4701,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       }
     }
 
-    // 1c — salary-increment proration: the two straddling compensation rows (superseded old + open new) for
+    // 1c — salary-increment proration: every effective half-open compensation interval for
     // any employment whose policy enables it AND that has a mid-period increment. Resolved once; the loop
     // reads a per-employee blended basic. Default (off / single row) ⇒ the kernel's single period-effective row is
     // untouched. Only fires when the new comp row exists at generate time (snapshot immutability, ADR-0036).
@@ -4723,7 +4723,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
             inArray(compensation.employmentId, incrementEmpIds),
             isNull(compensation.supersededAt),
             lte(compensation.validFrom, periodEnd),
-            or(isNull(compensation.validTo), gte(compensation.validTo, periodStart)),
+            or(isNull(compensation.validTo), gt(compensation.validTo, periodStart)),
           ),
         );
       const byEmp = new Map<string, { basic: number; validFrom: string; validTo: string | null }[]>();

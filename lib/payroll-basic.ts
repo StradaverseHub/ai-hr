@@ -3,12 +3,26 @@
 const daysInMonth=(year:number,month:number)=>new Date(Date.UTC(year,month,0)).getUTCDate();
 const round2=(n:number)=>Math.round(n*100)/100;
 export const payrollRateBasic=(rate:number,quantity:number)=>round2(rate*quantity);
-export function payrollIncrementBasic(rows:readonly {basic:number;validFrom:string;validTo:string|null}[],periodStart:string,periodEnd:string,dim:number):number|undefined{
- if(rows.length<2)return undefined;
- const ordered=[...rows].sort((a,b)=>a.validFrom.localeCompare(b.validFrom)),old=ordered[0],latest=ordered[ordered.length-1];
- if(latest.validFrom<=periodStart||latest.validFrom>periodEnd)return undefined;
- const before=Math.max(0,Number(latest.validFrom.slice(8,10))-1),after=dim-before;
- return round2((old.basic*before+latest.basic*after)/dim);
+/** Blend every effective half-open salary interval across a complete calendar month.
+ * A missing/overlapping day is not enough evidence to replace the ordinary basic-pay owner.
+ * Tenure, custom cutoffs and policy divisors remain the caller's separate proration contract.
+ */
+export function payrollIncrementBasic(
+  rows: readonly { basic: number; validFrom: string; validTo: string | null }[],
+  periodStart: string,
+  periodEnd: string,
+  dim: number,
+): number | undefined {
+  const effective = rows.filter(row => row.validFrom <= periodEnd && (!row.validTo || row.validTo > periodStart));
+  if (effective.length < 2) return undefined;
+  let total = 0;
+  for (let time = Date.parse(`${periodStart}T00:00:00Z`); time <= Date.parse(`${periodEnd}T00:00:00Z`); time += 86_400_000) {
+    const day = new Date(time).toISOString().slice(0, 10);
+    const active = effective.filter(row => row.validFrom <= day && (!row.validTo || row.validTo > day));
+    if (active.length !== 1 || !Number.isFinite(active[0].basic)) return undefined;
+    total += active[0].basic;
+  }
+  return round2(total / dim);
 }
 export function eligibleWorkingDays(
   payPeriod: string,
