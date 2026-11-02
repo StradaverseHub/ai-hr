@@ -10,7 +10,7 @@ describe('fixture target and exact-owned data admission',()=>{
  it('checks actual database/owner identity and refuses coexisting foreign tenants',()=>{
   const admitted=assertDisposableDemoUrl('postgres://fixture_owner:fake@127.0.0.1:5433/ai_hr_fixture_pooled_leave','pooled-leave');
   expect(()=>assertDisposableDemoIdentity(admitted,{database:admitted.database,user:'fixture_owner',tenants:[tenant]})).not.toThrow();
-  for(const change of [{database:'foreign'},{user:'another_owner'},{tenants:[tenant,'22222222-2222-2222-2222-222222222222']}])expect(()=>assertDisposableDemoIdentity(admitted,{database:admitted.database,user:'fixture_owner',tenants:[tenant],...change})).toThrow();
+  for(const change of [{database:'foreign'},{user:'another_owner'},{owner:'foreign_owner'},{tenants:[tenant,'22222222-2222-2222-2222-222222222222']}])expect(()=>assertDisposableDemoIdentity(admitted,{database:admitted.database,user:'fixture_owner',tenants:[tenant],...change})).toThrow();
  });
  it('cleanup matches complete owned rows, not shared date/type/name or merely equal counts',()=>{
   const original=[{id:'owned',tenant_id:tenant,start_date:'2026-01-12',days:'2.00'}];
