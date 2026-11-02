@@ -308,6 +308,19 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId, batch.batchId))).toEqual([]);
     expect((await view()).unit.status).toBe('approved');
   });
+  it('derives bounded annual calculations from actual governance and native membership without exporting hidden inputs',async()=>{
+    for(const actor of [admin,actors.bu!,actors.bg!,actors.ctro!,actors.ec!,actors.pbp!]){
+      const expected=await getRewardUnit(actor,unitId),[native]=await withTenant(actor,tx=>tx.execute<{value:Record<string,unknown>&{rows:Record<string,unknown>[]}}>(sql`select app.reward_annual_calculation(${unitId}::uuid,${expected.unit.revision})as value`));
+      expect(native.value.rows).toEqual(expected.rows.map(row=>Object.fromEntries(Object.keys(native.value.rows[0]).map(key=>[key,(row as unknown as Record<string,unknown>)[key]]))));
+      for(const key of ['budgets','flags','poolStatus','suggestedMultiplierBp','suggestion','suggestedLumpCents','lumpUnitCents','lumpWorking','bonusCounts','payWindow','route','hiddenCount'])expect(native.value[key]).toEqual((expected as unknown as Record<string,unknown>)[key]);
+      await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_calc_annual_unit(${unitId}::uuid,${expected.unit.revision})`))).rejects.toThrow();
+    }
+    const actual=await view(),recipient=actual.rows[0];
+    await owner.db.update(schema.rewardEntry).set({source:{...recipient.source,personId:admin.personId!}}).where(eq(schema.rewardEntry.id,recipient.id));
+    await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_annual_calculation(${unitId}::uuid,${actual.unit.revision})`))).rejects.toThrow();
+    await owner.db.update(schema.rewardEntry).set({source:recipient.source}).where(eq(schema.rewardEntry.id,recipient.id));
+    expect((await view()).rows[0].source).toEqual(recipient.source);
+  });
   it('posts an approved off-cycle increase once and retains its funding consumption', async () => {
     const rev = await approve(); const batch = await createBatch(admin, { companyId: b.companyId, payPeriod: today.slice(0, 7) });
     await postRewardUnit(admin, unitId, rev, batch.batchId);

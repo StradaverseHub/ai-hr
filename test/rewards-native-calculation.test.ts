@@ -4,6 +4,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {defaultPolicy,emptyFacts,emptyRecommendation,policySchema,type RewardEntry} from '../packs/rewards/model';
 import {calculateOffcycle} from '../packs/rewards/offcycle';
+import {emptyGovernance,effectiveRewardPolicy,governanceBasis,seniorSourceFingerprint} from '../packs/rewards/governance-model';
 import {calculateRewards,increase,ratio} from '../packs/rewards/engine';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 let ctx:SessionContext;
@@ -95,4 +96,24 @@ it('matches complete annual independent pools, shared cohorts, bonus/lump distri
  // Leap-year proration uses actual calendar days and floors each quotient in the same order.
  const leapPolicy={...policy,year:2024,effectiveFrom:'2024-12-31',joinedBefore:'2025-01-01',confirmedBy:'2024-12-31',blockedFrom:'2025-01-01',blockedTo:'2025-12-31'},leap=structuredClone(ordinary);leap.source.hiredOn='2024-02-29';leap.source.confirmedOn='2024-04-01';
  const [leapResult]=await owner.db.execute<{value:unknown}>(sql`select app.reward_calc_annual(${JSON.stringify([leap])}::jsonb,${JSON.stringify(leapPolicy)}::jsonb)as value`);expect(leapResult.value).toEqual(calculateRewards([leap],leapPolicy));
+});
+
+it('preserves actual PostgreSQL JSON round-trip governance and Senior receipts instead of jsonb text hashes',async()=>{
+ const jsonValues=[{source:{name:'Fictional / Unicode İΣ😀',value:0.30000000000000004,other:null},indexed:{'1':'one','01':'zero one','10':'ten','2':'two'},nested:[true,false,null,'\\\"\n']},...[1e-7,1e-6,1e20,1e21,1000000000000000100,0.30000000000000004,Number.MIN_VALUE,Number.MAX_VALUE]];
+ for(const value of jsonValues){const encoded=JSON.stringify(value),[row]=await owner.db.execute<{stored:unknown;serialized:string}>(sql`select ${encoded}::jsonb as stored,app.reward_calc_json_stringify(${encoded}::jsonb)as serialized`);expect(row.serialized).toBe(JSON.stringify(row.stored));}
+ const policy=defaultPolicy(2026);policy.payWindowKeep={'1':'Actual first eligibility reason','01':'Actual second eligibility reason'};
+ const a=entry('00000000-0000-4000-8000-000000000002'),b=entry('00000000-0000-4000-8000-000000000001');a.source.performanceRating=3.85;
+ const [roundtrip]=await owner.db.execute<{policy:typeof policy;entries:RewardEntry[]}>(sql`select ${JSON.stringify(policy)}::jsonb as policy,${JSON.stringify([a,b])}::jsonb as entries`);
+ const [receipt]=await owner.db.execute<{basis:string;senior:string}>(sql`select app.reward_calc_governance_basis(${JSON.stringify(roundtrip.policy)}::jsonb,${JSON.stringify(roundtrip.entries)}::jsonb)as basis,app.reward_calc_senior_fingerprint(${JSON.stringify(roundtrip.entries[0])}::jsonb)as senior`);
+ expect(receipt).toEqual({basis:governanceBasis(roundtrip.policy,roundtrip.entries),senior:seniorSourceFingerprint(roundtrip.entries[0])});
+ for(const values of [null,{forecastCents:1000000,actualCents:null,targetCents:1000000,targetMonthsBp:20000,multiplierBp:10000,branchRatings:{}},{forecastCents:2000000,actualCents:1500000,targetCents:1000000,targetMonthsBp:30000,multiplierBp:null,branchRatings:{}},{forecastCents:2000000,actualCents:0,targetCents:1000000,targetMonthsBp:20000,multiplierBp:10000,branchRatings:{}},{forecastCents:1000000,actualCents:null,targetCents:null,targetMonthsBp:20000,multiplierBp:10000,branchRatings:{}}]){
+  const state={...emptyGovernance(),inputs:values},[row]=await owner.db.execute<{value:unknown}>(sql`select app.reward_calc_effective_policy(${JSON.stringify(policy)}::jsonb,${JSON.stringify(state)}::jsonb)as value`);expect(row.value).toEqual(effectiveRewardPolicy(policy,state));
+ }
+});
+
+it('uses proleptic Gregorian day differences and an input-independent numeric serialization setting',async()=>{
+ for(const [a,b]of [['0000-01-01','0001-01-01'],['2000-02-28','2000-03-01'],['2100-02-28','2100-03-01'],['2024-02-29','2024-12-31']]){
+  const [row]=await owner.db.execute<{days:number}>(sql`select app.reward_calc_day(${b})-app.reward_calc_day(${a})as days`);expect(row.days).toBe((Date.parse(b+'T00:00:00Z')-Date.parse(a+'T00:00:00Z'))/86400000);
+ }
+ await owner.db.transaction(async tx=>{await tx.execute(sql`set local extra_float_digits=0`);const [row]=await tx.execute<{value:string}>(sql`select app.reward_calc_json_number(9007199254740991)as value`);expect(row.value).toBe('9007199254740991');});
 });

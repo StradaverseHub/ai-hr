@@ -1974,12 +1974,42 @@ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
 $$;
 REVOKE ALL ON FUNCTION app.reward_calc_entry_visible(jsonb,text[],uuid),app.reward_calc_senior(jsonb,jsonb),app.reward_calc_offcycle_route(text,jsonb,jsonb)FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+CREATE FUNCTION app.reward_calc_projection(p_calculation jsonb,p_policy jsonb,p_roles text[],p_person uuid,p_route jsonb)RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE entry jsonb;visible jsonb:='[]';visible_ids jsonb:='[]';flags jsonb;hidden_blocks bigint;plan text;counts jsonb:='{}';pay_windows jsonb:='{}';count_eligible bigint;count_increases bigint;count_reductions bigint;count_lump bigint;
+BEGIN
+ FOR entry IN SELECT value FROM jsonb_array_elements(p_calculation->'rows')LOOP
+  IF app.reward_calc_entry_visible(entry,p_roles,p_person)IS TRUE THEN
+   visible_ids:=visible_ids||jsonb_build_array(entry->'id');
+   IF NOT(p_roles&&ARRAY['gr','ctro','ec'])AND app.reward_calc_senior(p_policy,entry)THEN entry:=entry||jsonb_build_object('recommendation',jsonb_build_object('meritBp',NULL,'promotionGrade',NULL,'promotionBp',NULL,'specialBp',NULL,'multiplierBp',NULL,'bonusCents',NULL,'lumpCents',NULL,'reason','','currentRoleSummary','','proposedRoleSummary',''),'newBasicCents',entry->'source'->'basicCents','bonusCents',0,'meritCents',0,'promotionCents',0,'specialCents',0,'lumpCents',0);END IF;
+   visible:=visible||jsonb_build_array(entry);
+  END IF;
+ END LOOP;
+ SELECT coalesce(jsonb_agg(f ORDER BY n)FILTER(WHERE NOT(f?'entryId')OR visible_ids?(f->>'entryId')),'[]'::jsonb),count(*)FILTER(WHERE f?'entryId'AND NOT(visible_ids?(f->>'entryId'))AND f->>'severity'='block')INTO flags,hidden_blocks FROM jsonb_array_elements(p_calculation->'flags')WITH ORDINALITY all_flags(f,n);
+ IF hidden_blocks>0 THEN flags:=flags||app.reward_calc_flag('block','ACCESS-01','A restricted record needs review by its authorised reviewer.');END IF;
+ FOREACH plan IN ARRAY ARRAY['standard','h']LOOP
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_calculation->'rows')e WHERE e->>'plan'=plan AND NOT app.reward_calc_senior(p_policy,e)AND NOT(visible_ids?(e->>'id')))THEN counts:=counts||jsonb_build_object(plan,NULL);
+  ELSE
+   SELECT count(*)FILTER(WHERE(e->>'bonusEligible')::boolean),count(*)FILTER(WHERE(e->>'bonusCents')::numeric>(e->>'standardBonusCents')::numeric),count(*)FILTER(WHERE(e->>'bonusCents')::numeric<(e->>'standardBonusCents')::numeric),count(*)FILTER(WHERE(e->>'lumpCents')::numeric>0)INTO count_eligible,count_increases,count_reductions,count_lump FROM jsonb_array_elements(p_calculation->'rows')e WHERE e->>'plan'=plan AND NOT app.reward_calc_senior(p_policy,e);
+   counts:=counts||jsonb_build_object(plan,jsonb_build_object('eligible',count_eligible,'increases',count_increases,'reductions',count_reductions,'lump',count_lump));
+  END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(p_calculation->'rows')e WHERE e->>'plan'=plan AND NOT(visible_ids?(e->>'id')))THEN pay_windows:=pay_windows||jsonb_build_object(plan,NULL);ELSE pay_windows:=pay_windows||jsonb_build_object(plan,jsonb_build_object('count',p_calculation->'budgets'->plan->'excludedCount','payrollCents',p_calculation->'budgets'->plan->'excludedPayrollCents'));END IF;
+ END LOOP;
+ RETURN(p_calculation-'rows'-'flags'-'budgets')||CASE WHEN p_calculation?'suggestion'AND NOT('gr'=ANY(p_roles))THEN'{"suggestion":null}'::jsonb ELSE'{}'::jsonb END||jsonb_build_object('rows',visible,'flags',flags,'budgets',(p_calculation->'budgets')-'ec','hiddenCount',jsonb_array_length(p_calculation->'rows')-jsonb_array_length(visible),'route',p_route,'bonusCounts',counts,'payWindow',pay_windows);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_calc_projection(jsonb,jsonb,text[],uuid,jsonb)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 -- A bounded actual-unit calculation read. The application cannot supply source rows, funding,
 -- roles or a person discriminator, and never receives private/own/EC-hidden entry inputs.
 -- Raw read policies remain unchanged until every independent native consumer is ported.
+CREATE FUNCTION app.reward_calc_source_identity_current(p_unit uuid,p_tenant uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT NOT EXISTS(SELECT 1 FROM public.reward_entry e LEFT JOIN public.employment emp ON emp.id=e.employment_id AND emp.tenant_id=e.tenant_id WHERE e.unit_id=p_unit AND e.tenant_id=p_tenant AND(emp.id IS NULL OR e.source->>'employmentId'IS DISTINCT FROM e.employment_id::text OR e.source->>'personId'IS DISTINCT FROM emp.person_id::text));
+$$;
+REVOKE ALL ON FUNCTION app.reward_calc_source_identity_current(uuid,uuid)FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.reward_offcycle_calculation(p_unit uuid,p_revision integer)RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE unit public.reward_unit;actor public.app_user;roles text[];entries jsonb;calculation jsonb;funding jsonb;entry jsonb;visible jsonb:='[]';visible_ids jsonb:='[]';flags jsonb;hidden_blocks bigint;plan text;counts jsonb:='{}';pay_windows jsonb:='{}';hidden_count integer;
+DECLARE unit public.reward_unit;actor public.app_user;roles text[];entries jsonb;calculation jsonb;funding jsonb;
 BEGIN
  IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Reward calculation unavailable' USING ERRCODE='42501';END IF;
  SELECT actual.* INTO actor FROM public.app_user actual WHERE actual.id=app.current_user_id()AND actual.tenant_id=app.current_tenant_id()AND actual.archived_at IS NULL AND NOT app.login_blocked(actual.id);
@@ -1987,28 +2017,11 @@ BEGIN
  roles:=ARRAY(SELECT app.reward_roles(p_unit));
  IF actor.id IS NULL OR unit.id IS NULL OR cardinality(roles)=0 THEN RAISE EXCEPTION 'Reward calculation unavailable' USING ERRCODE='42501';END IF;
  IF unit.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'Reward calculation changed' USING ERRCODE='40001';END IF;
+ IF NOT app.reward_calc_source_identity_current(unit.id,unit.tenant_id)THEN RAISE EXCEPTION 'Reward recipient source unavailable' USING ERRCODE='42501';END IF;
  SELECT coalesce(jsonb_agg(jsonb_build_object('id',e.id,'source',e.source,'facts',e.facts,'recommendation',e.recommendation)ORDER BY e.id),'[]'::jsonb)INTO entries FROM public.reward_entry e WHERE e.tenant_id=unit.tenant_id AND e.unit_id=unit.id;
  funding:=app.reward_funding(unit.id,false);calculation:=app.reward_calc_offcycle(entries,unit.kind,unit.offcycle,funding);
  IF(funding->>'duplicate')::boolean THEN calculation:=jsonb_set(calculation,'{flags}',(calculation->'flags')||app.reward_calc_flag('block','OC-12','An employee already has an open off-cycle request against this annual review.'));END IF;
- FOR entry IN SELECT value FROM jsonb_array_elements(calculation->'rows')LOOP
-  IF app.reward_calc_entry_visible(entry,roles,actor.person_id)IS TRUE THEN
-   visible_ids:=visible_ids||jsonb_build_array(entry->'id');
-   IF NOT(roles&&ARRAY['gr','ctro','ec'])AND app.reward_calc_senior(unit.policy,entry)THEN
-    entry:=entry||jsonb_build_object('recommendation',jsonb_build_object('meritBp',NULL,'promotionGrade',NULL,'promotionBp',NULL,'specialBp',NULL,'multiplierBp',NULL,'bonusCents',NULL,'lumpCents',NULL,'reason','','currentRoleSummary','','proposedRoleSummary',''),'newBasicCents',entry->'source'->'basicCents','bonusCents',0,'meritCents',0,'promotionCents',0,'specialCents',0,'lumpCents',0);
-   END IF;
-   visible:=visible||jsonb_build_array(entry);
-  END IF;
- END LOOP;
- hidden_count:=jsonb_array_length(entries)-jsonb_array_length(visible);
- SELECT coalesce(jsonb_agg(f ORDER BY n),'[]'::jsonb),count(*)FILTER(WHERE f?'entryId'AND NOT(visible_ids? (f->>'entryId'))AND f->>'severity'='block')INTO flags,hidden_blocks FROM jsonb_array_elements(calculation->'flags')WITH ORDINALITY all_flags(f,n)WHERE NOT(f?'entryId')OR visible_ids?(f->>'entryId')OR f->>'severity'='block';
- -- Hidden blockers contribute only one generic native ACCESS-01 flag, never entry identifiers.
- SELECT coalesce(jsonb_agg(f ORDER BY n),'[]'::jsonb)INTO flags FROM jsonb_array_elements(flags)WITH ORDINALITY all_flags(f,n)WHERE NOT(f?'entryId')OR visible_ids?(f->>'entryId');
- IF hidden_blocks>0 THEN flags:=flags||app.reward_calc_flag('block','ACCESS-01','A restricted record needs review by its authorised reviewer.');END IF;
- FOREACH plan IN ARRAY ARRAY['standard','h']LOOP
-  IF EXISTS(SELECT 1 FROM jsonb_array_elements(calculation->'rows')e WHERE e->>'plan'=plan AND NOT app.reward_calc_senior(unit.policy,e)AND NOT(visible_ids?(e->>'id')))THEN counts:=counts||jsonb_build_object(plan,NULL);ELSE counts:=counts||jsonb_build_object(plan,jsonb_build_object('eligible',0,'increases',0,'reductions',0,'lump',0));END IF;
-  IF EXISTS(SELECT 1 FROM jsonb_array_elements(calculation->'rows')e WHERE e->>'plan'=plan AND NOT(visible_ids?(e->>'id')))THEN pay_windows:=pay_windows||jsonb_build_object(plan,NULL);ELSE pay_windows:=pay_windows||jsonb_build_object(plan,jsonb_build_object('count',0,'payrollCents',0));END IF;
- END LOOP;
- RETURN(calculation-'rows'-'flags'-'budgets')||jsonb_build_object('rows',visible,'flags',flags,'budgets',(calculation->'budgets')-'ec','hiddenCount',hidden_count,'route',app.reward_calc_offcycle_route(unit.kind,unit.offcycle,entries),'bonusCounts',counts,'payWindow',pay_windows);
+ RETURN app.reward_calc_projection(calculation,unit.policy,roles,actor.person_id,app.reward_calc_offcycle_route(unit.kind,unit.offcycle,entries));
 END $$;
 REVOKE ALL ON FUNCTION app.reward_offcycle_calculation(uuid,integer)FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_offcycle_calculation(uuid,integer)TO ai_hr_app;
@@ -2028,12 +2041,23 @@ BEGIN
  IF jsonb_typeof(p_value)IS DISTINCT FROM'array'OR jsonb_array_length(p_value)<>p_count THEN RAISE EXCEPTION 'Invalid reward policy vector' USING ERRCODE='22023';END IF;
  PERFORM app.reward_calc_json_integer(value,p_max)FROM jsonb_array_elements(p_value);RETURN p_value;
 END $$;
+CREATE FUNCTION app.reward_calc_day(value text)RETURNS integer
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE y integer;m integer;d integer;days integer[]:=ARRAY[31,28,31,30,31,30,31,31,30,31,30,31];ordinal integer;
+BEGIN
+ IF value IS NULL OR value!~'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'THEN RAISE EXCEPTION 'Invalid reward date' USING ERRCODE='22023';END IF;
+ y:=left(value,4)::integer;m:=substr(value,6,2)::integer;d:=right(value,2)::integer;
+ IF mod(y,4)=0 AND(mod(y,100)<>0 OR mod(y,400)=0)THEN days[2]:=29;END IF;
+ IF m NOT BETWEEN 1 AND 12 OR d<1 OR d>days[m]THEN RAISE EXCEPTION 'Invalid reward date' USING ERRCODE='22023';END IF;
+ ordinal:=365*(y-1)+floor((y-1)::numeric/4)::integer-floor((y-1)::numeric/100)::integer+floor((y-1)::numeric/400)::integer+d-1;
+ FOR n IN 1..m-1 LOOP ordinal:=ordinal+days[n];END LOOP;RETURN ordinal;
+END $$;
 CREATE FUNCTION app.reward_calc_date(p_value jsonb)RETURNS text
 LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE value text:=p_value#>>'{}';day date;
+DECLARE value text:=p_value#>>'{}';
 BEGIN
- IF jsonb_typeof(p_value)IS DISTINCT FROM'string'OR value!~'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'THEN RAISE EXCEPTION 'Invalid reward policy date' USING ERRCODE='22023';END IF;
- day:=value::date;IF to_char(day,'YYYY-MM-DD')<>value THEN RAISE EXCEPTION 'Invalid reward policy date' USING ERRCODE='22023';END IF;RETURN value;
+ IF jsonb_typeof(p_value)IS DISTINCT FROM'string'THEN RAISE EXCEPTION 'Invalid reward policy date' USING ERRCODE='22023';END IF;
+ PERFORM app.reward_calc_day(value);RETURN value;
 END $$;
 CREATE FUNCTION app.reward_calc_policy(p jsonb)RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
@@ -2124,14 +2148,14 @@ BEGIN
  END LOOP;
  RETURN jsonb_build_object('rows',rows,'flags',flags);
 END $$;
-REVOKE ALL ON FUNCTION app.reward_calc_json_integer(jsonb,numeric,numeric),app.reward_calc_vector(jsonb,integer,numeric),app.reward_calc_date(jsonb),app.reward_calc_policy(jsonb),app.reward_calc_annual_seed(jsonb,jsonb)FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION app.reward_calc_day(text),app.reward_calc_json_integer(jsonb,numeric,numeric),app.reward_calc_vector(jsonb,integer,numeric),app.reward_calc_date(jsonb),app.reward_calc_policy(jsonb),app.reward_calc_annual_seed(jsonb,jsonb)FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.reward_calc_bonus_base(p_row jsonb,p_policy jsonb)RETURNS numeric
 LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE year_start date:=make_date((p_policy->>'year')::integer,1,1);year_end date:=make_date((p_policy->>'year')::integer,12,31);year_days integer;days integer;months numeric;
+DECLARE year_start integer:=app.reward_calc_day((p_policy->>'year')||'-01-01');year_end integer:=app.reward_calc_day((p_policy->>'year')||'-12-31');year_days integer;days integer;months numeric;
 BEGIN
  IF(p_row->>'bonusEligible')::boolean IS NOT TRUE OR p_row->'facts'->>'performance'IS NULL THEN RETURN 0;END IF;
- year_days:=year_end-year_start+1;days:=greatest(0,least(year_days,year_end-greatest(year_start,(p_row->'source'->>'hiredOn')::date)+1));
+ year_days:=year_end-year_start+1;days:=greatest(0,least(year_days,year_end-greatest(year_start,app.reward_calc_day(p_row->'source'->>'hiredOn'))+1));
  months:=coalesce((p_policy->'bonusMatrix'->(p_row->'source'->>'grade')->>(array_position(ARRAY['UA','BE','ME','AE','OU'],p_row->'facts'->>'performance')-1))::numeric,0);
  RETURN app.reward_calc_ratio(app.reward_calc_ratio((p_row->>'bonusBasicCents')::numeric,months,10000),days,year_days);
 END $$;
@@ -2218,3 +2242,113 @@ BEGIN
  RETURN jsonb_build_object('rows',rows,'budgets',budgets,'flags',flags,'poolStatus',pool_status,'suggestedMultiplierBp',suggested_multiplier,'suggestion',suggestion,'suggestedLumpCents',suggested_lump,'lumpUnitCents',lump_unit,'lumpWorking',lump_working);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_calc_bonus_base(jsonb,jsonb),app.reward_calc_annual(jsonb,jsonb,jsonb)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Native governance receipts use JSON.stringify, not jsonb::text (different whitespace, object
+-- enumeration and numeric exponent spelling). These private serializers preserve that existing
+-- contract rather than invalidating every saved budget or accepting an unverified old digest.
+CREATE FUNCTION app.reward_calc_json_number(p numeric)RETURNS text
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp SET extra_float_digits=3 AS $$
+DECLARE value double precision;raw text;negative boolean;mantissa text;exponent integer:=0;decimal_position integer;digits text;leading integer;dot integer;output text;
+BEGIN
+ BEGIN value:=p::double precision;EXCEPTION WHEN numeric_value_out_of_range THEN RETURN'null';END;
+ IF value=0 THEN RETURN'0';END IF;
+ raw:=value::text;IF raw IN('NaN','Infinity','-Infinity')THEN RETURN'null';END IF;
+ negative:=left(raw,1)='-';IF negative THEN raw:=substr(raw,2);END IF;
+ IF strpos(raw,'e')>0 THEN exponent:=split_part(raw,'e',2)::integer;mantissa:=split_part(raw,'e',1);ELSE mantissa:=raw;END IF;
+ dot:=strpos(mantissa,'.');IF dot=0 THEN dot:=length(mantissa)+1;END IF;
+ digits:=replace(mantissa,'.','');leading:=length(digits)-length(regexp_replace(digits,'^0+',''));digits:=regexp_replace(digits,'^0+','');decimal_position:=dot-1+exponent-leading;digits:=regexp_replace(digits,'0+$','');
+ IF decimal_position-1>=21 OR decimal_position-1<=-7 THEN output:=left(digits,1)||CASE WHEN length(digits)>1 THEN'.'||substr(digits,2)ELSE''END||'e'||CASE WHEN decimal_position-1>=0 THEN'+'ELSE''END||(decimal_position-1)::text;
+ ELSIF decimal_position<=0 THEN output:='0.'||repeat('0',-decimal_position)||digits;
+ ELSIF decimal_position>=length(digits)THEN output:=digits||repeat('0',decimal_position-length(digits));
+ ELSE output:=left(digits,decimal_position)||'.'||substr(digits,decimal_position+1);END IF;
+ RETURN CASE WHEN negative THEN'-'ELSE''END||output;
+END $$;
+CREATE FUNCTION app.reward_calc_json_stringify(p jsonb)RETURNS text
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE part record;result text;separator text:='';index_key boolean;
+BEGIN
+ CASE jsonb_typeof(p)
+ WHEN'object'THEN
+  result:='{';FOR part IN SELECT key,value FROM jsonb_each(p)WITH ORDINALITY items(key,value,n)ORDER BY CASE WHEN key~'^(0|[1-9][0-9]*)$'AND length(key)<=10 THEN CASE WHEN key::numeric<=4294967294 THEN 0 ELSE 1 END ELSE 1 END,CASE WHEN key~'^(0|[1-9][0-9]*)$'AND length(key)<=10 THEN CASE WHEN key::numeric<=4294967294 THEN key::numeric ELSE NULL END ELSE NULL END,n LOOP
+   result:=result||separator||to_jsonb(part.key)::text||':'||app.reward_calc_json_stringify(part.value);separator:=',';
+  END LOOP;RETURN result||'}';
+ WHEN'array'THEN
+  result:='[';FOR part IN SELECT value FROM jsonb_array_elements(p)WITH ORDINALITY items(value,n)ORDER BY n LOOP result:=result||separator||app.reward_calc_json_stringify(part.value);separator:=',';END LOOP;RETURN result||']';
+ WHEN'number'THEN RETURN app.reward_calc_json_number((p#>>'{}')::numeric);
+ ELSE RETURN coalesce(p::text,'null');END CASE;
+END $$;
+CREATE FUNCTION app.reward_calc_senior_fingerprint(p_entry jsonb)RETURNS text
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE k text;result text:='{';separator text:='';
+BEGIN
+ FOREACH k IN ARRAY ARRAY['employmentId','compensationId','basicCents','gradeId','grade']LOOP
+  IF p_entry->'source'?k THEN result:=result||separator||to_jsonb(k)::text||':'||app.reward_calc_json_stringify(p_entry->'source'->k);separator:=',';END IF;
+ END LOOP;RETURN result||'}';
+END $$;
+CREATE FUNCTION app.reward_calc_governance_basis(p_policy jsonb,p_entries jsonb)RETURNS text
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE k text;body text:='{"group":{';separator text:='';entry jsonb;facts text;fact_separator text;
+BEGIN
+ FOREACH k IN ARRAY ARRAY['year','activeAsOf','minimumBonusRating','excludeNotice','excludeErCase','confirmedBy','blockedFrom','blockedTo','payWindowKeep','seniorMembershipMode','seniorGrades']LOOP
+  IF p_policy?k THEN body:=body||separator||to_jsonb(k)::text||':'||app.reward_calc_json_stringify(p_policy->k);separator:=',';END IF;
+ END LOOP;body:=body||'},"entries":[';separator:='';
+ FOR entry IN SELECT value FROM jsonb_array_elements(p_entries)ORDER BY value->>'id'COLLATE "C" LOOP
+  facts:='{';fact_separator:='';FOREACH k IN ARRAY ARRAY['performance','seniorPlan','erCase','confidentiality']LOOP
+   IF entry->'facts'?k THEN facts:=facts||fact_separator||to_jsonb(k)::text||':'||app.reward_calc_json_stringify(entry->'facts'->k);fact_separator:=',';END IF;
+  END LOOP;
+  body:=body||separator||'{"id":'||app.reward_calc_json_stringify(entry->'id')||',"source":'||app.reward_calc_json_stringify(entry->'source')||',"facts":'||facts||'}}';separator:=',';
+ END LOOP;
+ RETURN encode(sha256(convert_to(body||']}','UTF8')),'hex');
+END $$;
+CREATE FUNCTION app.reward_calc_effective_policy(p_policy jsonb,p_state jsonb)RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE input jsonb:=p_state->'inputs';status text;actual numeric;target numeric;
+BEGIN
+ IF input IS NULL OR input='null'::jsonb THEN RETURN p_policy;END IF;
+ target:=(input->>'targetCents')::numeric;
+ status:=CASE WHEN target IS NULL OR target<=0 THEN'not-set'WHEN input->'actualCents'<>'null'::jsonb THEN CASE WHEN(input->>'actualCents')::numeric>0 THEN'final'ELSE'not-set'END WHEN coalesce((input->>'forecastCents')::numeric,0)>0 THEN'provisional'ELSE'not-set'END;
+ RETURN p_policy||jsonb_build_object('patActual',CASE WHEN status='not-set'THEN 0 ELSE coalesce((input->>'actualCents')::numeric,(input->>'forecastCents')::numeric,0)END,'patTarget',CASE WHEN status='not-set'THEN 100 ELSE target END,'targetMonthsBp',input->'targetMonthsBp','multiplierBp',CASE WHEN p_policy->>'bonusStructure'='branch'THEN'10000'::jsonb ELSE input->'multiplierBp'END,'branchRatings',input->'branchRatings','exemptReason',CASE WHEN coalesce(p_state->'exemption'->>'confirmedBy','')<>''THEN p_state->'exemption'->>'reason'ELSE''END);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_calc_json_number(numeric),app.reward_calc_json_stringify(jsonb),app.reward_calc_senior_fingerprint(jsonb),app.reward_calc_governance_basis(jsonb,jsonb),app.reward_calc_effective_policy(jsonb,jsonb)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- The actual annual owner derives the caller's native governance course itself. GR can read
+-- private inputs; other members consume the existing public pool projection, never private PAT.
+CREATE FUNCTION app.reward_calc_annual_unit(p_unit uuid,p_revision integer)RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;roles text[];entries jsonb;state jsonb;public_state jsonb;effective jsonb;controls jsonb;awards jsonb:='{}';item record;calculation jsonb;
+BEGIN
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Reward calculation unavailable' USING ERRCODE='42501';END IF;
+ SELECT actual.* INTO unit FROM public.reward_unit actual WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id()AND actual.kind='annual'AND actual.deleted_at IS NULL;
+ roles:=ARRAY(SELECT app.reward_roles(p_unit));
+ IF unit.id IS NULL OR cardinality(roles)=0 THEN RAISE EXCEPTION 'Reward calculation unavailable' USING ERRCODE='42501';END IF;
+ IF unit.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'Reward calculation changed' USING ERRCODE='40001';END IF;
+ IF NOT app.reward_calc_source_identity_current(unit.id,unit.tenant_id)THEN RAISE EXCEPTION 'Reward recipient source unavailable' USING ERRCODE='42501';END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',e.id,'source',e.source,'facts',e.facts,'recommendation',e.recommendation)ORDER BY e.id),'[]'::jsonb)INTO entries FROM public.reward_entry e WHERE e.tenant_id=unit.tenant_id AND e.unit_id=unit.id;
+ IF'gr'=ANY(roles)THEN SELECT g.state INTO state FROM public.reward_governance g WHERE g.tenant_id=unit.tenant_id AND g.unit_id=unit.id;END IF;
+ SELECT g.snapshot INTO public_state FROM public.reward_governance_public g WHERE g.tenant_id=unit.tenant_id AND g.unit_id=unit.id;
+ IF public_state IS NOT NULL AND public_state->'selectionConfirmed'='false'::jsonb AND'bu'=ANY(roles)AND NOT('gr'=ANY(roles))THEN RAISE EXCEPTION 'Senior plan membership awaits independent Group Rewards confirmation before the BU review can open.' USING ERRCODE='42501';END IF;
+ effective:=CASE WHEN state IS NOT NULL THEN app.reward_calc_effective_policy(unit.policy,state)WHEN public_state IS NOT NULL THEN unit.policy||jsonb_build_object('patActual',0,'patTarget',100,'targetMonthsBp',public_state->'targetMonthsBp','multiplierBp',public_state->'multiplierBp','branchRatings',public_state->'branchRatings','exemptReason','')ELSE unit.policy END;
+ IF roles&&ARRAY['gr','ctro','ec']THEN
+  FOR item IN SELECT a.award,e.id,e.source FROM public.reward_senior_award a JOIN public.reward_entry e ON e.id=a.entry_id AND e.unit_id=a.unit_id AND e.tenant_id=a.tenant_id WHERE a.tenant_id=unit.tenant_id AND a.unit_id=unit.id LOOP
+   IF coalesce(item.award->>'confirmedBy','')<>''AND item.award->>'sourceFingerprint'=app.reward_calc_senior_fingerprint(jsonb_build_object('source',item.source))AND(item.award->>'newBasicCents')::numeric>=(item.source->>'basicCents')::numeric THEN awards:=awards||jsonb_build_object(item.id::text,jsonb_build_object('newBasicCents',item.award->'newBasicCents','bonusCents',item.award->'bonusCents'));END IF;
+  END LOOP;
+ END IF;
+ controls:=jsonb_build_object('poolStatus',coalesce(public_state->>'status','legacy'),'seniorAwards',awards);
+ IF public_state IS NOT NULL THEN controls:=controls||jsonb_build_object('bonusPools',public_state->'pools');END IF;
+ calculation:=app.reward_calc_annual(entries,effective,controls);
+ IF public_state IS NOT NULL AND public_state->>'basis'IS DISTINCT FROM app.reward_calc_governance_basis(unit.policy,entries)THEN calculation:=jsonb_set(calculation,'{flags}',(calculation->'flags')||app.reward_calc_flag('block','PAT-STALE','Eligibility or employee source facts changed. Group Rewards must review and refresh the unit budget inputs.'));END IF;
+ RETURN calculation;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_calc_annual_unit(uuid,integer)FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.reward_annual_calculation(p_unit uuid,p_revision integer)RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;actor public.app_user;roles text[];calculation jsonb;
+BEGIN
+ calculation:=app.reward_calc_annual_unit(p_unit,p_revision);
+ SELECT actual.* INTO actor FROM public.app_user actual WHERE actual.id=app.current_user_id()AND actual.tenant_id=app.current_tenant_id()AND actual.archived_at IS NULL AND NOT app.login_blocked(actual.id);
+ SELECT actual.* INTO unit FROM public.reward_unit actual WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id();roles:=ARRAY(SELECT app.reward_roles(p_unit));
+ IF actor.id IS NULL OR unit.id IS NULL OR cardinality(roles)=0 THEN RAISE EXCEPTION 'Reward calculation unavailable' USING ERRCODE='42501';END IF;
+ RETURN app.reward_calc_projection(calculation,unit.policy,roles,actor.person_id,'["bu","bg","gr","ctro","ec"]'::jsonb);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_annual_calculation(uuid,integer)FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_annual_calculation(uuid,integer)TO ai_hr_app;
