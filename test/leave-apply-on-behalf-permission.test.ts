@@ -507,3 +507,11 @@ it('keeps a real customer-granted manager on-behalf course and pure target floor
  await owner.db.update(schema.payrollPermissionGrant).set({allowed:false}).where(and(eq(schema.payrollPermissionGrant.tenantId,b.tenantId),eq(schema.payrollPermissionGrant.permissionKey,'leave.apply_on_behalf'),eq(schema.payrollPermissionGrant.role,'manager')));
  const [revoked]=await withTenant(manager.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(revoked.allowed).toBe(false);
 });
+
+it('refuses a raw pending application by a visible-report manager without the native on-behalf permission',async()=>{
+ const manager=await hire('manager'),subject=await hire('employee');await reportsTo(subject.employmentId,manager.employmentId);const typeId=await leaveType();
+ const visible=await withTenant(manager.ctx,tx=>tx.select({id:schema.employment.id}).from(schema.employment).where(eq(schema.employment.id,subject.employmentId)));expect(visible).toEqual([{id:subject.employmentId}]);
+ let failure:unknown;try{await withTenant(manager.ctx,tx=>tx.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END,days:'2.00',status:'pending'}));}catch(error){failure=error;}
+ let denied=false;for(let cause=failure;cause&&typeof cause==='object';cause=(cause as {cause?:unknown}).cause)if((cause as {code?:string}).code==='42501'&&(cause as {message?:string}).message==='On-behalf Leave application unavailable')denied=true;
+ expect(denied).toBe(true);expect(await requestCount(subject.employmentId)).toBe(0);
+});

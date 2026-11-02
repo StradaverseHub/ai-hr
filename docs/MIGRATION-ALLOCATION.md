@@ -1377,3 +1377,10 @@ Denied target options are absent while independently permitted own/nonself choic
 native target filtering and rendered denied/allowed dialog/field cases are authored, unrun. Home
 shortcuts, existing pending Edit/Delete affordances, separate give-back and assigned decision UI,
 shared raw/effect closure and genuine supported publication still require subsequent work.
+
+The raw pending Leave request INSERT now repeats actual source tenant/employment and the exact own
+or on-behalf Add course before row creation, closing the visible-manager-without-on-behalf-permission
+route. A real APP raw refusal case first proves the report is visible, then checks 42501 and no row.
+The guard deliberately does not relabel approved/cancelled split or historical import rows. This
+pending action admission is not a proof of submitted audit/date/document/ledger business effects;
+those finite source and terminal obligations, read courses and other raw operations remain open.
