@@ -4645,6 +4645,7 @@
             "app.current_roles",
             "app.current_tenant_id",
             "app.current_user_id",
+            "app.employee_master_definition_allowed",
             "app.function_action_allowed",
             "app.has_role_for",
             "app.is_admin",
@@ -4691,6 +4692,7 @@
             "app.current_roles",
             "app.current_tenant_id",
             "app.current_user_id",
+            "app.employee_master_definition_allowed",
             "app.function_action_allowed",
             "app.has_role_for",
             "app.is_admin",
@@ -4723,6 +4725,7 @@
         "app.current_roles",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.employee_master_definition_allowed",
         "app.function_action_allowed",
         "app.has_role_for",
         "app.is_admin",
@@ -17122,6 +17125,7 @@
             "app.current_roles",
             "app.current_tenant_id",
             "app.current_user_id",
+            "app.employee_master_definition_allowed",
             "app.financial_setup_catalog_function",
             "app.function_action_allowed",
             "app.has_role_for",
@@ -17214,6 +17218,7 @@
         "app.current_roles",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.employee_master_definition_allowed",
         "app.financial_setup_catalog_function",
         "app.function_action_allowed",
         "app.has_role_for",
@@ -64261,6 +64266,7 @@
         "app.current_roles",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.employee_master_definition_allowed",
         "app.function_action_allowed",
         "app.has_role_for",
         "app.is_admin",
@@ -64391,6 +64397,7 @@
         "app.current_roles",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.employee_master_definition_allowed",
         "app.function_action_allowed",
         "app.has_role_for",
         "app.is_admin",
@@ -64429,6 +64436,7 @@
         "app.current_roles",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.employee_master_definition_allowed",
         "app.function_action_allowed",
         "app.has_role_for",
         "app.is_admin",
@@ -64466,6 +64474,7 @@
       "owners": [
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.employee_master_definition_allowed",
         "app.is_admin",
         "app.login_blocked",
         "app.principal_snapshot_current",
@@ -64623,6 +64632,7 @@
         "app.current_roles",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.employee_master_definition_allowed",
         "app.function_action_allowed",
         "app.has_role_for",
         "app.is_admin",
@@ -64754,6 +64764,7 @@
         "app.current_roles",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.employee_master_definition_allowed",
         "app.financial_setup_catalog_function",
         "app.function_action_allowed",
         "app.has_role_for",
@@ -76718,6 +76729,14 @@
         "app.custom_report_visible",
         "app.current_user_id",
         "app.is_admin"
+      ]
+    },
+    {
+      "table": "custom_report",
+      "policy": "employee_master_definition_read",
+      "source": "db/migrations/0939_workforce_action_permissions.sql",
+      "owners": [
+        "app.employee_master_definition_allowed"
       ]
     },
     {
