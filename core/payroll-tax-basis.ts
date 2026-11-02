@@ -26,7 +26,7 @@ async function permission(tx:Tx,ctx:SessionContext,companyId:string,write=false)
  if(write&&!await resolvePayrollPermission(tx,ctx,'payroll.tax-basis.view',companyId))fail('Income-tax recalculation access is unavailable for this company.');
  if(!ctx.userId||!await resolvePayrollPermission(tx,ctx,write?'payroll.tax-basis.recalculate':'payroll.tax-basis.view',companyId))fail('Income-tax recalculation access is unavailable for this company.');
  const [authority]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.can_admin_payroll_for(${companyId}::uuid) and (${write}::boolean=false or app.access_financial_action_company('payroll',${companyId}::uuid,'edit')) as ok`);
- if(!authority?.ok)fail('Your payroll authority changed. Sign in again.');
+ if(!authority?.ok)fail('Income-tax recalculation access is unavailable. Your payroll authority changed; sign in again.');
 }
 type Settings={id:string;code:string;name:string;kind:string;includedInPcb:boolean;pcbRemunerationType:'normal'|'additional'|'optional_deduction'|null;pcbExemptionCode:string|null;isNonPayable:boolean;epfBonus2012:boolean;archivedAt:unknown};
 async function settingsTx(tx:Tx,lock=false){

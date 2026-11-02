@@ -25,6 +25,40 @@ $$;
 REVOKE ALL ON FUNCTION app.financial_setup_catalog_action(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.financial_setup_catalog_action(text) TO ai_hr_app;
 --> statement-breakpoint
+DO $$DECLARE key text;operation text;BEGIN
+ FOREACH key IN ARRAY ARRAY['payComponents.catalogue','payComponents.formulaBuilder'] LOOP
+  FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+   PERFORM app.register_function_action(key,operation,'tenant','payroll_configuration.'||operation,'app.financial_setup_delegation_allowed',
+    jsonb_build_object('moduleKey','payroll','labelKey',CASE WHEN key='payComponents.catalogue' THEN 'admin.users.screen.payComponents' ELSE 'payFormula.title' END,
+     'kind','submenu','course','administrative','screenKey','payComponents','href',CASE WHEN key='payComponents.catalogue' THEN '/admin/pay-components' ELSE '/payroll/formula-builder' END));
+  END LOOP;
+ END LOOP;
+END;$$;
+CREATE FUNCTION app.financial_setup_catalog_function(p_key text,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_key IN ('payComponents.catalogue','payComponents.formulaBuilder') AND app.financial_setup_catalog_action(p_operation)
+ AND app.function_action_allowed(p_key,p_operation,NULL);
+$$;
+REVOKE ALL ON FUNCTION app.financial_setup_catalog_function(text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.financial_setup_catalog_function(text,text) TO ai_hr_app;
+CREATE FUNCTION app.financial_setup_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('payComponents.catalogue','payComponents.formulaBuilder')
+  AND app.financial_setup_legacy_allowed(t,u,a.parent_capability,co));
+$$;
+REVOKE ALL ON FUNCTION app.financial_setup_function_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_setup_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.is_admin()
+ AND app.financial_setup_legacy_allowed(t,u,cap,co);
+$$;
+CREATE FUNCTION app.financial_setup_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('payComponents.catalogue','payComponents.formulaBuilder')
+  AND app.financial_setup_current_legacy_allowed(t,u,a.parent_capability,co));
+$$;
+REVOKE ALL ON FUNCTION app.financial_setup_current_legacy_allowed(uuid,uuid,text,uuid),app.financial_setup_function_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE TABLE app.financial_setup_birth(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,kind text NOT NULL,row_id uuid NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,kind,row_id));
 ALTER TABLE app.financial_setup_birth ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.financial_setup_birth FROM PUBLIC,ai_hr_app;
@@ -101,7 +135,7 @@ BEGIN
   IF NOT app.can_admin_employment(subject) OR TG_OP='UPDATE' AND (b->>'employment_id') IS DISTINCT FROM (a->>'employment_id') AND NOT app.can_admin_employment((b->>'employment_id')::uuid) THEN RAISE EXCEPTION 'Native loan administration unavailable' USING ERRCODE='42501';END IF;
   IF TG_OP='UPDATE' AND b->>'status' IS DISTINCT FROM 'cancelled' AND a->>'status'='cancelled' THEN op:='delete';END IF;
  ELSIF TG_TABLE_NAME='pay_formula_test' THEN co:=(r->>'company_id')::uuid;subject:=(r->>'employment_id')::uuid;op:='view';
-  IF NOT app.financial_setup_catalog_action('edit') THEN RAISE EXCEPTION 'Formula test editing unavailable' USING ERRCODE='42501';END IF;
+  IF NOT app.financial_setup_catalog_function('payComponents.formulaBuilder','edit') THEN RAISE EXCEPTION 'Formula test editing unavailable' USING ERRCODE='42501';END IF;
  ELSIF TG_TABLE_NAME IN ('payroll_tax_basis_preview','payroll_tax_basis_batch','payroll_tax_basis_event','payroll_tax_basis_revision') THEN
   co:=(r->>'company_id')::uuid;subject:=(r->>'employment_id')::uuid;op:='edit';
   IF NOT app.access_financial_action_company('payroll',co,'edit') OR subject IS NOT NULL AND NOT app.data_permission_matches(subject) THEN RAISE EXCEPTION 'Tax correction subject action unavailable' USING ERRCODE='42501';END IF;
@@ -113,7 +147,7 @@ BEGIN
   RETURN NULL;
  ELSE RAISE EXCEPTION 'Unknown financial setup owner' USING ERRCODE='42501';END IF;
  IF catalogue THEN
-  IF NOT app.financial_setup_catalog_action(op) THEN RAISE EXCEPTION 'Payroll catalogue action unavailable' USING ERRCODE='42501';END IF;
+  IF NOT app.financial_setup_catalog_function(CASE WHEN TG_TABLE_NAME IN ('pay_formula','pay_formula_revision','pay_formula_accumulation') OR TG_TABLE_NAME='pay_formula_event' AND r->>'kind' IS DISTINCT FROM 'linked' THEN 'payComponents.formulaBuilder' ELSE 'payComponents.catalogue' END,op) THEN RAISE EXCEPTION 'Payroll catalogue action unavailable' USING ERRCODE='42501';END IF;
  ELSE
   IF subject IS NOT NULL THEN
    IF NOT app.access_financial_action_employment('payroll',subject,op) THEN RAISE EXCEPTION 'Financial subject action unavailable' USING ERRCODE='42501';END IF;
@@ -170,7 +204,7 @@ CREATE CONSTRAINT TRIGGER financial_tp1_action AFTER INSERT OR UPDATE OR DELETE 
 -- Definition reads used by the calculation owner retain their distinct read predicate. The builder
 -- itself, including validation/generation, consumes this explicit catalogue purpose.
 CREATE OR REPLACE FUNCTION app.pay_formula_catalog_access() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.financial_setup_catalog_action('view');
+ SELECT app.financial_setup_catalog_function('payComponents.formulaBuilder','view');
 $$;
 
 --> statement-breakpoint
@@ -226,16 +260,38 @@ CREATE TABLE app.financial_history_intent(
 );
 ALTER TABLE app.financial_history_intent ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.financial_history_intent FROM PUBLIC,ai_hr_app;
+CREATE TABLE app.financial_history_noop(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,attempt_id uuid NOT NULL,plan_hash text NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,attempt_id));
+ALTER TABLE app.financial_history_noop ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_history_noop FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.financial_history_begin(p_attempt uuid,p_keys jsonb) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE source public.payroll_history_import_attempt%ROWTYPE;k jsonb;planned jsonb;op text;co uuid;subject uuid;starts date;ends date;
 BEGIN
  PERFORM app.access_workforce_write_lock();
- IF jsonb_typeof(p_keys) IS DISTINCT FROM 'array' OR jsonb_array_length(p_keys) NOT BETWEEN 1 AND 10000 OR octet_length(p_keys::text)>2097152 THEN RAISE EXCEPTION 'History selection unavailable' USING ERRCODE='22023';END IF;
+ IF jsonb_typeof(p_keys) IS DISTINCT FROM 'array' OR jsonb_array_length(p_keys)>10000 OR octet_length(p_keys::text)>2097152 THEN RAISE EXCEPTION 'History selection unavailable' USING ERRCODE='22023';END IF;
  SELECT * INTO source FROM public.payroll_history_import_attempt WHERE id=p_attempt AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF NOT FOUND OR NOT app.principal_snapshot_current() OR coalesce((source.plan->'counts'->>'invalid')::integer,1)<>0 OR jsonb_typeof(source.plan->'rows') IS DISTINCT FROM 'array' OR source.plan->'issues' IS DISTINCT FROM '[]'::jsonb
  OR EXISTS(SELECT 1 FROM public.payroll_history_import_event WHERE attempt_id=source.id AND kind IN ('confirmed','reverted')) THEN RAISE EXCEPTION 'History source changed' USING ERRCODE='42501';END IF;
  DELETE FROM app.financial_history_intent WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ IF jsonb_array_length(p_keys)=0 THEN
+  IF jsonb_array_length(source.plan->'rows') NOT BETWEEN 1 AND 10000 THEN RAISE EXCEPTION 'History unchanged source unavailable' USING ERRCODE='42501';END IF;
+  FOR planned IN SELECT value FROM jsonb_array_elements(source.plan->'rows') LOOP
+   co:=(planned->>'companyId')::uuid;subject:=(planned->>'employmentId')::uuid;
+   IF planned->>'operation' IS DISTINCT FROM 'unchanged' OR NOT app.financial_history_permission(co,'import') OR NOT app.access_financial_action_company('payroll',co,'view') OR NOT app.data_permission_matches(subject) THEN RAISE EXCEPTION 'History unchanged subject unavailable' USING ERRCODE='42501';END IF;
+   IF NOT EXISTS(SELECT 1 FROM public.payroll_history_import_record r JOIN public.payroll_history_import_revision v ON v.record_id=r.id AND v.tenant_id=r.tenant_id JOIN public.payroll_history_import_snapshot s ON s.record_id=r.id AND s.tenant_id=r.tenant_id AND s.id=v.snapshot_id
+    WHERE r.tenant_id=source.tenant_id AND r.id=(planned->>'recordId')::uuid AND r.company_id=co AND r.employment_id=subject AND r.period=planned->>'period' AND r.cycle_id=(planned->>'cycleId')::uuid
+     AND v.id=(planned->>'expectedRevisionId')::uuid AND s.id=(planned->>'expectedSnapshotId')::uuid AND s.value_hash=planned->>'valueHash' AND s."values"=planned->'values'
+     AND NOT EXISTS(SELECT 1 FROM public.payroll_history_import_revision newer WHERE newer.record_id=r.id AND newer.tenant_id=r.tenant_id AND newer.ordinal>v.ordinal))
+   AND NOT EXISTS(SELECT 1 FROM public.payslip s JOIN public.payroll_batch b ON b.id=s.batch_id AND b.tenant_id=s.tenant_id
+    WHERE planned->>'recordId' IS NULL AND s.tenant_id=source.tenant_id AND s.id=(planned->>'expectedOrdinaryPayslipId')::uuid AND s.employment_id=subject AND b.company_id=co AND b.pay_period=planned->>'period' AND (b.payroll_cycle_id IS NULL OR b.payroll_cycle_id=(planned->>'cycleId')::uuid) AND b.status='closed' AND b.history_import_attempt_id IS NULL AND app.payroll_history_effective(s.id)
+     AND s.basic_salary=(planned->'values'->>'basicSalary')::numeric AND s.allowance=(planned->'values'->>'allowance')::numeric AND s.overtime_pay=(planned->'values'->>'overtimePay')::numeric AND s.bonus=(planned->'values'->>'bonus')::numeric AND s.gross_pay=(planned->'values'->>'grossPay')::numeric
+     AND s.other_deductions=(planned->'values'->>'otherDeductions')::numeric AND s.total_deductions=(planned->'values'->>'totalDeductions')::numeric AND s.net_pay=(planned->'values'->>'netPay')::numeric AND s.employer_cost=(planned->'values'->>'employerCost')::numeric AND s.statutory=planned->'values'->'statutory')
+   THEN RAISE EXCEPTION 'History unchanged result changed' USING ERRCODE='42501';END IF;
+  END LOOP;
+  DELETE FROM app.financial_history_noop WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+  INSERT INTO app.financial_history_noop VALUES(pg_current_xact_id(),source.tenant_id,app.current_user_id(),source.id,encode(sha256(convert_to(source.plan::text,'UTF8')),'hex'));
+  RETURN;
+ END IF;
  FOR k IN SELECT value FROM jsonb_array_elements(p_keys) LOOP
   IF jsonb_typeof(k) IS DISTINCT FROM 'object' OR (SELECT array_agg(key ORDER BY key) FROM jsonb_object_keys(k)key) IS DISTINCT FROM ARRAY['companyId','cycleId','employmentId','period'] THEN RAISE EXCEPTION 'History row key unavailable' USING ERRCODE='22023';END IF;
   SELECT item.value INTO STRICT planned FROM jsonb_array_elements(source.plan->'rows') AS item(value) WHERE item.value->>'companyId'=k->>'companyId' AND item.value->>'employmentId'=k->>'employmentId' AND item.value->>'period'=k->>'period' AND item.value->>'cycleId'=k->>'cycleId';
@@ -305,6 +361,16 @@ BEGIN
 END;$$;
 REVOKE ALL ON FUNCTION app.financial_history_intent_completed() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER financial_history_completed AFTER INSERT ON app.financial_history_intent DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_history_intent_completed();
+CREATE FUNCTION app.financial_history_noop_completed() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.xact_id<>pg_current_xact_id() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.user_id IS DISTINCT FROM app.current_user_id()
+ OR NOT EXISTS(SELECT 1 FROM public.payroll_history_import_event e WHERE e.tenant_id=NEW.tenant_id AND e.attempt_id=NEW.attempt_id AND e.actor_id=NEW.user_id AND e.kind='confirmed' AND e.changes='[]'::jsonb AND app.financial_history_row_written('payroll_history_import_event',to_jsonb(e)))
+ THEN RAISE EXCEPTION 'History unchanged confirmation incomplete' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END;$$;
+REVOKE ALL ON FUNCTION app.financial_history_noop_completed() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER financial_history_noop_completed AFTER INSERT ON app.financial_history_noop DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_history_noop_completed();
 
 --> statement-breakpoint
 -- Original upload bytes and precomputed preview values cannot be partly redacted. Mixed hidden
@@ -428,6 +494,7 @@ BEGIN
   IF (r->>'actor_id')::uuid IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'History actor unavailable' USING ERRCODE='42501';END IF;
   IF r->>'kind' IN ('failed','revert_failed') THEN
    IF NOT EXISTS(SELECT 1 FROM public.payroll_history_import_attempt a WHERE a.id=(r->>'attempt_id')::uuid AND a.tenant_id=app.current_tenant_id() AND app.financial_history_plan_visible(a.plan,a.created_by)) THEN RAISE EXCEPTION 'History source unavailable' USING ERRCODE='42501';END IF;RETURN NULL;END IF;
+  IF r->>'kind'='confirmed' AND r->'changes'='[]'::jsonb AND EXISTS(SELECT 1 FROM app.financial_history_noop proof JOIN public.payroll_history_import_attempt a ON a.id=proof.attempt_id AND a.tenant_id=proof.tenant_id WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.attempt_id=(r->>'attempt_id')::uuid AND proof.plan_hash=encode(sha256(convert_to(a.plan::text,'UTF8')),'hex')) THEN RETURN NULL;END IF;
   IF NOT EXISTS(SELECT 1 FROM app.financial_history_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=NEW.tenant_id AND i.user_id=app.current_user_id() AND i.attempt_id=(r->>'attempt_id')::uuid AND ((r->>'kind'='confirmed' AND i.operation IN ('add','edit')) OR (r->>'kind'='reverted' AND i.operation='delete'))) THEN RAISE EXCEPTION 'History completion owner unavailable' USING ERRCODE='42501';END IF;
   RETURN NULL;
  END IF;

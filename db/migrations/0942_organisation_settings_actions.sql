@@ -18,6 +18,13 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND (cap NOT LIKE 'settings.%' OR EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN ('super_admin','hr_admin') AND r.company_id IS NULL));
 $$;
 REVOKE ALL ON FUNCTION app.organisation_settings_legacy_allowed(uuid,uuid,text,uuid),app.organisation_settings_delegation_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.organisation_settings_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
+ AND app.organisation_settings_legacy_allowed(t,u,cap,co)
+ AND CASE WHEN cap LIKE 'settings.%' THEN app.is_admin() WHEN co IS NULL THEN app.is_group_admin() ELSE app.is_admin_for(co) END;
+$$;
+REVOKE ALL ON FUNCTION app.organisation_settings_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 -- Future root companies require genuinely tenant-wide View/Add grants; no fabricated company ID.
 CREATE FUNCTION app.organisation_global_action(p_operation text) RETURNS boolean

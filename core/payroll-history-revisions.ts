@@ -290,7 +290,7 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
    const group=groups.get(groupKey)??[];group.push(row);groups.set(groupKey,group);
   }
   const selectedHistoryKeys=[...groups.values()].flat().map(row=>({companyId:row.companyId,employmentId:row.employmentId,period:row.period,cycleId:row.cycleId}));
-  if(selectedHistoryKeys.length)await tx.execute(sql`select app.financial_history_begin(${source.id}::uuid,${JSON.stringify(selectedHistoryKeys)}::text::jsonb)`);
+  await tx.execute(sql`select app.financial_history_begin(${source.id}::uuid,${JSON.stringify(selectedHistoryKeys)}::text::jsonb)`);
   for(const rows of groups.values()){
    const first=rows[0];
    const [parent]=await tx.select().from(payPeriod).where(and(eq(payPeriod.companyId,first.companyId),eq(payPeriod.period,first.period)));

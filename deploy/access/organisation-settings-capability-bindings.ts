@@ -41,5 +41,6 @@ export const ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION = {
   ...operations.map(operation=>[`settings.${operation}`,['system_administrator'] as const]),
  ]),
  legacyParityFunction:'app.organisation_settings_legacy_allowed',
+ currentLegacyParityFunction:'app.organisation_settings_current_legacy_allowed',
  delegationFloorFunction:'app.organisation_settings_delegation_allowed',
 } as const;

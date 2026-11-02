@@ -29,11 +29,11 @@ async function authority(tx:Tx,ctx:SessionContext,companyId?:string){
  if(!p?.allowed)throw new PayFormulaError('Formula access is unavailable.');
 }
 async function catalogAction(tx:Tx,operation:'add'|'edit'|'delete'){
- const [row]=await tx.execute<{allowed:boolean}>(sql`select app.financial_setup_catalog_action(${operation}) as allowed`);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.financial_setup_catalog_function('payComponents.formulaBuilder',${operation}) as allowed`);
  if(!row?.allowed)throw new PayFormulaError('Formula action is unavailable.');
 }
 async function catalogCapabilities(tx:Tx){
- const [row]=await tx.execute<{add:boolean;edit:boolean;remove:boolean}>(sql`select app.financial_setup_catalog_action('add') as add,app.financial_setup_catalog_action('edit') as edit,app.financial_setup_catalog_action('delete') as remove`);
+ const [row]=await tx.execute<{add:boolean;edit:boolean;remove:boolean}>(sql`select app.financial_setup_catalog_function('payComponents.formulaBuilder','add') as add,app.financial_setup_catalog_function('payComponents.formulaBuilder','edit') as edit,app.financial_setup_catalog_function('payComponents.formulaBuilder','delete') as remove`);
  return {add:row?.add===true,edit:row?.edit===true,delete:row?.remove===true};
 }
 /** Authoring shares the catalogue owner; no posted role or company grants authority. */
