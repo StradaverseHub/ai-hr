@@ -1686,14 +1686,14 @@ wizard action projections and full publication remain separate work.
 
 ## Permissions integration above accepted 0946 — 3 November 2026 (unapplied candidate)
 
-Accepted main a02845ba retains its complete journal and applied migration bodies. Only the ten permissions migrations are relocated; their SQL bytes match the source checkpoint. This is local integration, without installation.
+Accepted main a02845ba retains its complete journal and applied migration bodies. The ten permissions migrations are relocated. Nine retain exact source bytes; 0950 verifies the equivalent, already accepted 0946 draft owner body without replacing it. This is local integration, without installation.
 
 | Source tag | Integration tag | idx | when | SQL SHA256 |
 | --- | --- | ---: | ---: | --- |
 | 0936_data_permission_profiles | 0947_data_permission_profiles | 794 | 1793330000347 | 59a9a1de8fd9409479b2568b72e2bd8279e5babfd6b5ddfbe37b83dd84d7bc21 |
 | 0937_data_permission_reader_bypasses | 0948_data_permission_reader_bypasses | 795 | 1793330000348 | 2afbef5858f4541f3e0cacd876ae40d8575543e8c4f3ffdaba797919185d00b7 |
 | 0938_data_permission_enforcement | 0949_data_permission_enforcement | 796 | 1793330000349 | cef45c7d9ee037e3b7ff1e5b2d3578eb35c3a96083ffd29e830119421cf52c73 |
-| 0939_workforce_action_permissions | 0950_workforce_action_permissions | 797 | 1793330000350 | bc95e44385fa4adeef13539a74daf040027c20cf73eae52cd05d6558eff0f4c4 |
+| 0939_workforce_action_permissions | 0950_workforce_action_permissions | 797 | 1793330000350 | 12d6c2aef460bc2d5d69fa75638d5438be3db5e21d34ed760ae7796869ef2734 |
 | 0940_bounded_approval_task_sources | 0951_bounded_approval_task_sources | 798 | 1793330000351 | 2c2e90e81f38bba34706057012d8d948c347c6271564dc824e0a4ea13e8cee0d |
 | 0941_financial_letter_actions | 0952_financial_letter_actions | 799 | 1793330000352 | f71c10eaf3697341cfac8e511836d94d47454ae28f970bb757878898d46c6217 |
 | 0942_organisation_settings_actions | 0953_organisation_settings_actions | 800 | 1793330000353 | 1160474bb42ffdbeb6e24169940b34fdfbb5c028038172df590f18652bc79a03 |
