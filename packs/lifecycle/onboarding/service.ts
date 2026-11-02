@@ -1061,8 +1061,12 @@ export async function onboardingReadNotice(ctx: SessionContext, id?: string) {
     });
 }
 /** Minute sweep; recipients are login identities, including staff who have no employment. */
-export async function sweepOnboarding(ctx: SessionContext) {
-    return withTenant(ctx, async (tx) => {
+export async function sweepOnboarding(ctx: SessionContext,runTenant:typeof withTenant=withTenant) {
+    return runTenant(ctx, async (tx) => {
+        if(!ctx.userId){
+            const [principal]=rows<{owner:boolean}>(await tx.execute(sql`select current_user='ai_hr_owner' OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=current_user AND rolsuper) as owner`));
+            if(!principal?.owner)M.fail('Scheduled onboarding dispatch requires the storage owner.', 'forbidden');
+        }
         const [{ ok }] = rows<{
             ok: boolean;
         }>(await tx.execute(sql `select app.is_group_admin() as ok`));

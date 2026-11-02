@@ -236,12 +236,38 @@ DO $$ DECLARE owned_table text;BEGIN
  END LOOP;
 END $$;
 --> statement-breakpoint
+-- Tuple xmin is a subtransaction ID after SAVEPOINT; it is not a top-level transaction witness.
+-- Private physical INSERT/UPDATE receipts retain the actual topxid and exact resulting row hash.
+CREATE TABLE app.lifecycle_row_transaction_receipt(
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,table_name text NOT NULL,row_id uuid NOT NULL,row_hash text NOT NULL,
+ PRIMARY KEY(xact_id,tenant_id,user_id,table_name,row_id,row_hash)
+);
+ALTER TABLE app.lifecycle_row_transaction_receipt ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.lifecycle_row_transaction_receipt FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.lifecycle_row_transaction_capture()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_user_id() IS NULL THEN RETURN NULL;END IF;
+ DELETE FROM app.lifecycle_row_transaction_receipt WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.lifecycle_row_transaction_receipt VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),TG_TABLE_NAME,NEW.id,encode(sha256(convert_to(to_jsonb(NEW)::text,'UTF8')),'hex'))ON CONFLICT DO NOTHING;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.lifecycle_row_transaction_capture() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER lifecycle_row_transaction_capture AFTER INSERT ON public.domain_event FOR EACH ROW EXECUTE FUNCTION app.lifecycle_row_transaction_capture();
+CREATE TRIGGER lifecycle_row_transaction_capture AFTER INSERT OR UPDATE ON public.it_asset_request FOR EACH ROW EXECUTE FUNCTION app.lifecycle_row_transaction_capture();
+CREATE FUNCTION app.lifecycle_row_in_transaction(p_table text,p_id uuid,p_row jsonb)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.lifecycle_row_transaction_receipt r WHERE r.xact_id=pg_current_xact_id() AND r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id()
+ AND r.table_name=p_table AND r.row_id=p_id AND r.row_hash=encode(sha256(convert_to(p_row::text,'UTF8')),'hex'));
+$$;
+REVOKE ALL ON FUNCTION app.lifecycle_row_in_transaction(text,uuid,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.lifecycle_native_effect_approved(p_table text,p_before jsonb,p_after jsonb)RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c JOIN app.lifecycle_native_effect_receipt r ON r.context_id=c.id
  WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND c.completed AND NOT c.active
  AND r.table_name=p_table AND r.before_hash=encode(sha256(convert_to(coalesce(p_before,'{}'::jsonb)::text,'UTF8')),'hex') AND r.after_hash=encode(sha256(convert_to(coalesce(p_after,'{}'::jsonb)::text,'UTF8')),'hex')
- AND EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=c.tenant_id AND e.aggregate_id=c.case_id AND e.event_type=c.event_type AND e.actor_type='user' AND e.actor_id=c.user_id AND e.xmin::text=pg_current_xact_id()::text));
+ AND EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=c.tenant_id AND e.aggregate_id=c.case_id AND e.event_type=c.event_type AND e.actor_type='user' AND e.actor_id=c.user_id AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e))));
 $$;
 REVOKE ALL ON FUNCTION app.lifecycle_native_effect_approved(text,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -249,7 +275,7 @@ CREATE FUNCTION app.lifecycle_native_effect_cleanup()RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c WHERE c.id=NEW.id)THEN RETURN NULL;END IF;
- IF NOT NEW.completed OR NEW.active OR NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=NEW.tenant_id AND e.aggregate_id=NEW.case_id AND e.event_type=NEW.event_type AND e.actor_type='user' AND e.actor_id=NEW.user_id AND e.xmin::text=NEW.xact_id::text)
+ IF NOT NEW.completed OR NEW.active OR NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=NEW.tenant_id AND e.aggregate_id=NEW.case_id AND e.event_type=NEW.event_type AND e.actor_type='user' AND e.actor_id=NEW.user_id AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e)))
  THEN RAISE EXCEPTION 'Native Lifecycle completion requires its actual audit event' USING ERRCODE='42501';END IF;
  DELETE FROM app.lifecycle_native_effect_context WHERE id=NEW.id;
  RETURN NULL;
@@ -365,7 +391,7 @@ BEGIN
   IF p_before->>'status' IN('cancelled','rejected','completed','assigned') OR p_after->>'status'<>'cancelled'
    OR(p_before-ARRAY['status','cancel_reason'])IS DISTINCT FROM(p_after-ARRAY['status','cancel_reason'])THEN RETURN false;END IF;
  END IF;
- RETURN EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=app.current_tenant_id() AND e.aggregate_id=(data->>'id')::uuid AND e.event_type=event AND e.actor_type='user' AND e.actor_id=app.current_user_id() AND e.xmin::text=pg_current_xact_id()::text);
+ RETURN EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=app.current_tenant_id() AND e.aggregate_id=(data->>'id')::uuid AND e.event_type=event AND e.actor_type='user' AND e.actor_id=app.current_user_id() AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e)));
 END $$;
 REVOKE ALL ON FUNCTION app.lifecycle_own_request_effect(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -373,7 +399,7 @@ REVOKE ALL ON FUNCTION app.lifecycle_own_request_effect(jsonb,jsonb) FROM PUBLIC
 DO $$ DECLARE body text;anchor text:=' IF app.lifecycle_native_effect_approved(TG_TABLE_NAME,before_row,after_row)THEN RETURN NULL;END IF;';BEGIN
  body:=pg_get_functiondef('app.lifecycle_legacy_action_guard()'::regprocedure);
  IF strpos(body,anchor)=0 THEN RAISE EXCEPTION 'Lifecycle action guard changed before own-request binding';END IF;
- EXECUTE replace(body,anchor,anchor||E'\n IF TG_TABLE_NAME=''it_asset_request'' AND app.lifecycle_own_request_effect(before_row,after_row)THEN RETURN NULL;END IF;\n IF TG_TABLE_NAME=''lc_history'' AND TG_OP=''INSERT'' AND app.principal_snapshot_current() AND data->>''ref_type''=''asset_request'' AND data->>''action'' IN(''request.created'',''request.cancelled'') AND(data->>''actor_user_id'')::uuid=app.current_user_id() AND EXISTS(SELECT 1 FROM public.it_asset_request q JOIN public.domain_event e ON e.aggregate_id=q.id AND e.tenant_id=q.tenant_id WHERE q.id=(data->>''ref_id'')::uuid AND q.tenant_id=app.current_tenant_id() AND q.requester_user_id=app.current_user_id() AND q.xmin::text=pg_current_xact_id()::text AND e.actor_type=''user'' AND e.actor_id=app.current_user_id() AND e.event_type=CASE WHEN data->>''action''=''request.created'' THEN ''lifecycle-asset-request.created'' ELSE ''lifecycle-asset-request.cancelled'' END AND e.xmin::text=pg_current_xact_id()::text)THEN RETURN NULL;END IF;');
+ EXECUTE replace(body,anchor,anchor||E'\n IF TG_TABLE_NAME=''it_asset_request'' AND app.lifecycle_own_request_effect(before_row,after_row)THEN RETURN NULL;END IF;\n IF TG_TABLE_NAME=''lc_history'' AND TG_OP=''INSERT'' AND app.principal_snapshot_current() AND data->>''ref_type''=''asset_request'' AND data->>''action'' IN(''request.created'',''request.cancelled'') AND(data->>''actor_user_id'')::uuid=app.current_user_id() AND EXISTS(SELECT 1 FROM public.it_asset_request q JOIN public.domain_event e ON e.aggregate_id=q.id AND e.tenant_id=q.tenant_id WHERE q.id=(data->>''ref_id'')::uuid AND q.tenant_id=app.current_tenant_id() AND q.requester_user_id=app.current_user_id() AND app.lifecycle_row_in_transaction(''it_asset_request'',q.id,to_jsonb(q)) AND e.actor_type=''user'' AND e.actor_id=app.current_user_id() AND e.event_type=CASE WHEN data->>''action''=''request.created'' THEN ''lifecycle-asset-request.created'' ELSE ''lifecycle-asset-request.cancelled'' END AND app.lifecycle_row_in_transaction(''domain_event'',e.id,to_jsonb(e)))THEN RETURN NULL;END IF;');
 END $$;
 --> statement-breakpoint
 CREATE FUNCTION app.lifecycle_legacy_record_read(p_table text,p_row jsonb)RETURNS boolean

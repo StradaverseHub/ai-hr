@@ -154,7 +154,8 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(backfilled.case.history.some(entry => entry.by === 'system')).toBe(true);
         await expect(withTenant({...system,roles:['employee']},tx=>tx.execute(sql`select app.onboarding_next_case_number('2026')`))).rejects.toThrow();
         await expect(withTenant(system,tx=>tx.execute(sql`select app.onboarding_next_case_number('not-a-year')`))).rejects.toThrow();
-        expect((await sweepOnboarding(system)).created).toBeGreaterThan(0);
+        await expect(sweepOnboarding(system)).rejects.toThrow('Scheduled onboarding dispatch requires the storage owner.');
+        expect((await sweepOnboarding(system,owner.withTenant)).created).toBeGreaterThan(0);
         expect((await onboardingNotices(admin)).length).toBeGreaterThan(0);
     });
     it('keeps one case and the latest Personnel source during concurrent save and backfill', async () => {
@@ -264,7 +265,7 @@ describe('V3.1 onboarding database and authorization', () => {
             history:await tx.select().from(schema.lcOnboardingCaseRevision).where(eq(schema.lcOnboardingCaseRevision.caseId,caseId)),
             privateHistory:await tx.select().from(schema.lcOnboardingPrivateRevision).where(eq(schema.lcOnboardingPrivateRevision.caseId,caseId)),
             notes:await tx.select().from(schema.lcOnboardingNote).where(eq(schema.lcOnboardingNote.caseId,caseId)),
-            files:await tx.select().from(schema.lcV9File).where(eq(schema.lcV9File.onboardingCaseId,caseId)),
+            files:await tx.execute(sql`select id,filename from lc_v9_file where onboarding_case_id=${caseId}::uuid order by id`),
         }));
         const baseline=await read();for(const rows of Object.values(baseline))expect(rows.length).toBeGreaterThan(0);
         await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${scopeId},${b.tenantId},${'Prospective scope '+scopeId})`;
@@ -281,6 +282,19 @@ describe('V3.1 onboarding database and authorization', () => {
         for(const rows of Object.values(await read()))expect(rows.length).toBeGreaterThan(0);
         await owner.client`update data_permission_profile set enabled=false where id=${scopeId}`;
         for(const rows of Object.values(await read()))expect(rows).toEqual([]);
+    });
+    it('retains native completion audit witnesses across a real savepoint',async()=>{
+        const row=await prepared();expect(row.case.tasks.find(task=>task.id==='welcome')?.assignee).toBe(tech.userId);
+        await withTenant(tech,async tx=>{
+            await tx.execute(sql`savepoint assigned_task_effect`);
+            await tx.execute(sql`select * from app.onboarding_assigned_task_update(${row.case.id}::uuid,${row.revision},'welcome','progress')`);
+            await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'onboarding-case',aggregateId:row.case.id,eventType:'onboarding.task',actor:actorOf(tech),subjectEmploymentId:row.case.employmentId,payload:{caseId:row.case.id,companyId:b.companyId}});
+            await tx.execute(sql`release savepoint assigned_task_effect`);
+            await tx.execute(sql`set constraints all immediate`);
+        });
+        const updated=(await onboardingList(admin))[0]!;expect(updated.revision).toBe(row.revision+1);expect(updated.case.tasks.find(task=>task.id==='welcome')?.status).toBe('progress');
+        await v9OwnTask(tech,{caseId:updated.case.id,revision:updated.revision,taskId:'welcome',status:'done',reason:''});
+        expect((await onboardingList(admin))[0]!.case.tasks.find(task=>task.id==='welcome')?.status).toBe('done');
     });
     it('preserves the same case when Personnel activates its draft', async () => {
         const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Activation Hire', employeeCode: 'ONB-ACT-1', primaryEmail: 'activation@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });
