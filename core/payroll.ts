@@ -4701,10 +4701,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       }
     }
 
-    // 1c — salary-increment proration: every effective half-open compensation interval for
-    // any employment whose policy enables it AND that has a mid-period increment. Resolved once; the loop
-    // reads a per-employee blended basic. Default (off / single row) ⇒ the kernel's single period-effective row is
-    // untouched. Only fires when the new comp row exists at generate time (snapshot immutability, ADR-0036).
+    // 1c — resolve salary-increment basic once from the history available at generation time.
+    // Complete default-calendar months use every effective half-open interval. Owner-deferred
+    // combined cases keep the named legacy blend below. Off/single-row cases retain ordinary basic.
+    // Issued payslips are not changed by later compensation records (ADR-0036).
     const incrementBasicByEmp = new Map<string, number>();
     const incrementEmpIds = emps
       .filter((e) => policyConfigByEmp.get(e.employmentId)?.salaryIncrementProration)
@@ -6505,9 +6505,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // Earnings come from the typed components (flag on) or compensation + payroll_input (flag off).
       // Either way these reproduce the same variables, so the agency-base math below is unchanged.
       const en = await earningsOf(e, factor);
-      // 1c — salary-increment proration: when the policy enables it AND a mid-period increment straddles the
-      // period, the basic is the two-row blend (already day-weighted across the increment date), NOT
-      // basic×factor. Default (off / no straddle) ⇒ undefined ⇒ the kernel's normal basicGross is used.
+      // 1c — an enabled increment owner supplies its final basic: all intervals in the approved
+      // complete-calendar scope, or unchanged legacy arithmetic for deferred combinations.
+      // Do not apply factor again here. Off/no blend retains the ordinary basicGross owner.
       // 2.1.2 — for a daily pay mode, basic = per-day rate × eligible days (no proration, no increment
       // blend); hourly = per-hour rate × worked hours. D4's period-boundary rule means a mode never changes
       // mid-period, so these overrides and the increment blend cannot both legitimately fire.
