@@ -1,7 +1,8 @@
+import {publishWorkforceForDataFixture} from './helpers/workforce-publication-fixture';
 /** Actual shared-site native courses. Publication stays incomplete until its genuine owners close. */
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {CompanyDeleteForbiddenError,createCompany,deleteCompany,setCompanyParent} from '../core/admin';
@@ -42,7 +43,10 @@ it('aligns stored/current/recipient native floors without fabricating an install
  expect(await clockingSiteActionAccess(narrowed,'view')).toBe(true);expect(await clockingSiteActionAccess(narrowed,'edit')).toBe(false);
  await expect(withTenant(admin,tx=>tx.execute(sql`select * from app.clocking_site_source`))).rejects.toThrow();
 });
+const publicationCleanups:(()=>Promise<void>)[]=[];
+afterEach(async()=>{for(const clean of publicationCleanups.splice(0).reverse())await clean();});
 it('refuses raw company unticking and site removal while actual employee assignments use them',async()=>{
+ await publishWorkforceForDataFixture(admin,publicationCleanups);
  const site=await createClockingLocation(admin,input('Fictional assigned gate')),hired=await hireEmployee(admin,{person:{fullName:'Fictional assigned employee',primaryEmail:`${randomUUID()}@test.local`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
  await owner.db.insert(s.employeeClockingLocation).values({tenantId:b.tenantId,employmentId:hired.employmentId,clockingLocationId:site.id});
  const profileId=randomUUID();

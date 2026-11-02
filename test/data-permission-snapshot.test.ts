@@ -1,17 +1,19 @@
+import {publishWorkforceForDataFixture} from './helpers/workforce-publication-fixture';
 /** Actual RR owner port with fresh committed authority fences, not a second JS filter. */
 import {randomUUID} from 'node:crypto';
-import {afterAll,beforeAll,beforeEach,describe,it,expect} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,it,expect} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand} from '../core/data-permissions';
-import {publishWorkforceCapabilities} from '../deploy/access/publish-workforce-capabilities';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,admin:SessionContext,limited:SessionContext,shown:string,hidden:string,gradeA:string,gradeB:string;
+const publicationCleanups:(()=>Promise<void>)[]=[];
 beforeAll(migrateTestDb);afterAll(closeAll);
+afterEach(async()=>{for(const clean of publicationCleanups.splice(0).reverse())await clean();});
 beforeEach(async()=>{
- await resetDb();b=await seedBase();admin={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};await publishWorkforceCapabilities(owner.client);
+ await resetDb();b=await seedBase();admin={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};await publishWorkforceForDataFixture(admin,publicationCleanups);
  const grades=await owner.db.insert(s.jobGrade).values([{tenantId:b.tenantId,code:'SNAPA',name:'Snapshot A'},{tenantId:b.tenantId,code:'SNAPB',name:'Snapshot B'}]).returning();gradeA=grades[0].id;gradeB=grades[1].id;
  shown=(await hireEmployee(admin,{person:{fullName:'Snapshot allowed',primaryEmail:'snapshot-allowed@fixture.invalid'},employeeCode:'SNAP-A',companyId:b.companyId,departmentId:b.deptA,gradeId:gradeA,employmentType:'full_time',hiredOn:'2026-01-01'})).employmentId;
  hidden=(await hireEmployee(admin,{person:{fullName:'Snapshot hidden',primaryEmail:'snapshot-hidden@fixture.invalid'},employeeCode:'SNAP-B',companyId:b.companyId,departmentId:b.deptA,gradeId:gradeB,employmentType:'full_time',hiredOn:'2026-01-01'})).employmentId;
