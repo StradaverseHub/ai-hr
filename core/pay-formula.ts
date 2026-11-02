@@ -27,6 +27,14 @@ async function authority(tx:Tx,ctx:SessionContext,companyId?:string){
  const [p]=await tx.execute<{allowed:boolean}>(sql`select app.principal_snapshot_current() and ${companyId?sql`app.can_admin_payroll_for(${companyId}::uuid)`:sql`app.pay_formula_catalog_access()`} as allowed`);
  if(!p?.allowed)throw new PayFormulaError('Formula access is unavailable.');
 }
+/** Authoring shares the catalogue owner; no posted role or company grants authority. */
+export async function assertPayFormulaDraftAuthorTx(tx:Tx,ctx:SessionContext){await authority(tx,ctx);}
+/** Validate a draft's catalogue references without saving a formula or reading employee records. */
+export async function validatePayFormulaDraft(ctx:SessionContext,source:string){
+ const program=parsePayFormula(source);
+ if(diagnosePayFormula(source).some(problem=>problem.severity==='error'))throw new PayFormulaError('The proposed formula has validation errors.');
+ return locked(ctx,async tx=>{await dependencySnapshotTx(tx,ctx,program);});
+}
 async function locked<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){return withTenant(ctx,async tx=>{await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await authority(tx,ctx);await lockPayComponentCatalogTx(tx,ctx);return fn(tx);});}
 async function event(tx:Tx,ctx:SessionContext,p:{id:string;kind:string;revisionId?:string;testId?:string;componentId?:string;detail?:unknown}){
  await tx.execute(sql`insert into pay_formula_event(tenant_id,formula_id,revision_id,test_id,component_id,kind,detail,actor_id) values(${ctx.tenantId}::uuid,${p.id}::uuid,${p.revisionId??null}::uuid,${p.testId??null}::uuid,${p.componentId??null}::uuid,${p.kind},${JSON.stringify(p.detail??{})}::jsonb,${ctx.userId!}::uuid)`);

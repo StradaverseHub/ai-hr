@@ -27292,7 +27292,8 @@
           "product_feedback_text": "Teks maklum balas produk",
           "closed_references": "Rujukan legap dan kategori tertutup (teks serta nilai sumber kekal setempat)",
           "coarse_aggregate_bands": "Julat agregat kasar (bukan jaminan tanpa nama)",
-          "pseudonymous_person_bands": "Julat setiap orang dengan alias rawak (bukan tanpa nama)"
+          "pseudonymous_person_bands": "Julat setiap orang dengan alias rawak (bukan tanpa nama)",
+          "authored_formula_request": "Keperluan formula yang ditulis pengguna"
         },
         "redaction": {
           "pii_masked": "Disembunyikan",
@@ -33267,6 +33268,45 @@
         "needs_employee_test": "{variable} memerlukan ujian dengan pekerja sebenar. Nilai contoh hanya meliputi Gaji Pokok, Elaun Tetap, Hari Kalendar, Input dan kadar Item Gaji.",
         "division_by_zero": "Baris {line} membahagi dengan 0. Gaji akan berhenti dengan ralat pengiraan bagi pekerja ini.",
         "out_of_range": "Hasilnya di luar amaun yang boleh dibayar oleh Item Gaji (0 hingga 100,000,000)."
+      }
+    },
+    "generator": {
+      "title": "Penjana Formula AI",
+      "requirement": "Terangkan pengiraan",
+      "disclosure": "Penerangan dihantar kepada pembekal AI yang diluluskan organisasi anda. Gunakan contoh rekaan tanpa rekod pekerja.",
+      "consent": "Saya faham maklumat yang akan dihantar.",
+      "generate": "Jana Formula",
+      "regenerate": "Jana Semula Formula",
+      "working": "Menjana…",
+      "clear": "Kosongkan",
+      "apply": "Gunakan dalam Editor Formula",
+      "variables": "Pemboleh ubah digunakan",
+      "valid": "Sintaks disemak. Semak dan uji sebelum menyimpan.",
+      "needsClarification": "Penjelasan atau alternatif yang disokong diperlukan.",
+      "replaceTitle": "Gantikan kandungan editor?",
+      "replaceHelp": "Draf ini menggantikan teks editor dan suntingan yang belum disimpan.",
+      "replace": "Gantikan kandungan",
+      "cancel": "Batal",
+      "draftOnly": "Draf AI tidak menyimpan atau mengaktifkan formula secara automatik. Ujian menggunakan pengiraan gaji sedia ada.",
+      "failed": "Draf tidak dapat dijana atau disahkan. Semak permintaan dan cuba lagi.",
+      "unavailable": "Tiada sambungan AI diluluskan. Suntingan manual masih tersedia.",
+      "reviewRequired": "Penjanaan formula memerlukan kelulusan perkongsian data. Suntingan manual masih tersedia.",
+      "applied": "Draf dimasukkan ke editor. Semak dan uji sebelum menyimpan.",
+      "fields": {
+        "joinDate": "Tarikh mula",
+        "groupJoinDate": "Tarikh mula kumpulan",
+        "resignationDate": "Tarikh peletakan jawatan",
+        "confirmationDate": "Tarikh pengesahan",
+        "lastWorkingDate": "Tarikh akhir bekerja",
+        "employmentType": "Jenis pekerjaan",
+        "employeeNo": "Nombor pekerja",
+        "departmentCode": "Kod jabatan",
+        "positionCode": "Kod jawatan",
+        "gradeCode": "Kod gred",
+        "dateOfBirth": "Tarikh lahir",
+        "gender": "Jantina",
+        "nationality": "Kewarganegaraan",
+        "maritalStatus": "Status perkahwinan"
       }
     }
   },

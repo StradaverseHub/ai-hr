@@ -27292,7 +27292,8 @@
           "product_feedback_text": "Product feedback text",
           "closed_references": "Opaque references and closed categories (source text and values stay local)",
           "coarse_aggregate_bands": "Coarse aggregate bands (not an anonymity guarantee)",
-          "pseudonymous_person_bands": "Per-person bands with random aliases (not anonymous)"
+          "pseudonymous_person_bands": "Per-person bands with random aliases (not anonymous)",
+          "authored_formula_request": "User-authored formula requirement"
         },
         "redaction": {
           "pii_masked": "Masked",
@@ -33267,6 +33268,45 @@
         "needs_employee_test": "{variable} needs a real employee test. Sample values cover only Basic Salary, Fixed Allowances, Calendar Days, Input and the Pay Item rates.",
         "division_by_zero": "Line {line} divides by 0. Payroll would stop with a calculation error for this employee.",
         "out_of_range": "The result is outside the amounts a Pay Item can pay (0 to 100,000,000)."
+      }
+    },
+    "generator": {
+      "title": "AI Formula Generator",
+      "requirement": "Describe the calculation",
+      "disclosure": "Your description is sent to your organisation’s approved AI provider. Use fictional examples and do not include employee records.",
+      "consent": "I understand what will be sent.",
+      "generate": "Generate Formula",
+      "regenerate": "Regenerate Formula",
+      "working": "Generating…",
+      "clear": "Clear",
+      "apply": "Apply to Formula Editor",
+      "variables": "Variables used",
+      "valid": "Formula syntax checked. Review and test before saving.",
+      "needsClarification": "Clarification or a supported alternative is needed.",
+      "replaceTitle": "Replace the editor content?",
+      "replaceHelp": "Applying this draft replaces the current editor text. Unsaved edits will be replaced.",
+      "replace": "Replace editor content",
+      "cancel": "Cancel",
+      "draftOnly": "AI drafts never save, activate or apply themselves to payroll. Sample tests use the payroll evaluator.",
+      "failed": "The draft could not be generated or validated. Review your request and try again.",
+      "unavailable": "No approved AI connection is available. Manual editing remains available.",
+      "reviewRequired": "Formula generation requires approval of its data-sharing contract. Manual editing remains available.",
+      "applied": "Draft applied to the editor. Review and test before saving.",
+      "fields": {
+        "joinDate": "Join date",
+        "groupJoinDate": "Group join date",
+        "resignationDate": "Resignation date",
+        "confirmationDate": "Confirmation date",
+        "lastWorkingDate": "Last working date",
+        "employmentType": "Employment type",
+        "employeeNo": "Employee number",
+        "departmentCode": "Department code",
+        "positionCode": "Position code",
+        "gradeCode": "Grade code",
+        "dateOfBirth": "Date of birth",
+        "gender": "Gender",
+        "nationality": "Nationality",
+        "maritalStatus": "Marital status"
       }
     }
   },

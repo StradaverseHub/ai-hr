@@ -27292,7 +27292,8 @@
           "product_feedback_text": "产品反馈文本",
           "closed_references": "不透明引用与限定类别（来源文本和值保留在本地）",
           "coarse_aggregate_bands": "粗粒度汇总区间（不保证匿名）",
-          "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）"
+          "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）",
+          "authored_formula_request": "用户编写的公式要求"
         },
         "redaction": {
           "pii_masked": "已遮盖",
@@ -33267,6 +33268,45 @@
         "needs_employee_test": "{variable} 需要使用真实员工测试。示例数值仅涵盖基本工资、固定津贴、日历天数、Input 和薪资项目费率。",
         "division_by_zero": "第 {line} 行除以 0。该员工的薪资将因计算错误而停止。",
         "out_of_range": "结果超出薪资项目可支付的金额范围（0 至 100,000,000）。"
+      }
+    },
+    "generator": {
+      "title": "AI公式生成器",
+      "requirement": "描述计算要求",
+      "disclosure": "您的描述将发送给组织批准的AI服务商。请使用虚构示例，不要包含员工记录。",
+      "consent": "我了解将发送哪些信息。",
+      "generate": "生成公式",
+      "regenerate": "重新生成公式",
+      "working": "正在生成…",
+      "clear": "清空",
+      "apply": "应用到公式编辑器",
+      "variables": "使用的变量",
+      "valid": "公式语法已检查。保存前请审核并测试。",
+      "needsClarification": "需要补充说明或选择受支持的替代方案。",
+      "replaceTitle": "替换编辑器内容？",
+      "replaceHelp": "应用此草稿将替换当前文本和未保存的修改。",
+      "replace": "替换内容",
+      "cancel": "取消",
+      "draftOnly": "AI草稿不会自动保存、启用或应用到薪资。示例测试使用薪资计算器。",
+      "failed": "无法生成或验证草稿。请检查要求后重试。",
+      "unavailable": "没有可用的已批准AI连接。仍可手动编辑。",
+      "reviewRequired": "生成公式需要批准其数据共享规则。仍可手动编辑。",
+      "applied": "草稿已应用到编辑器。保存前请审核并测试。",
+      "fields": {
+        "joinDate": "入职日期",
+        "groupJoinDate": "集团入职日期",
+        "resignationDate": "辞职日期",
+        "confirmationDate": "转正日期",
+        "lastWorkingDate": "最后工作日期",
+        "employmentType": "雇佣类型",
+        "employeeNo": "员工编号",
+        "departmentCode": "部门代码",
+        "positionCode": "职位代码",
+        "gradeCode": "职级代码",
+        "dateOfBirth": "出生日期",
+        "gender": "性别",
+        "nationality": "国籍",
+        "maritalStatus": "婚姻状况"
       }
     }
   },

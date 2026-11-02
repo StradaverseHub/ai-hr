@@ -9,7 +9,7 @@ import {parsePayFormula,type FormulaValue} from '@/lib/pay-formula-language';
 import {explainPayFormula,type FormulaExplanationWords} from '@/lib/pay-formula-explain';
 import {PAY_FORMULA_TEMPLATE_KEYS,payFormulaTemplateSource,type PayFormulaTemplateKey} from '@/lib/pay-formula-templates';
 import type {FormulaDiagnostic} from '@/lib/pay-formula-diagnostics';
-import {PAY_FORMULA_SAMPLE_VARIABLES,type PayFormulaSampleResult,type PayFormulaSampleStep,type PayFormulaSampleValues,type PayFormulaSampleVariable} from '@/lib/pay-formula-sample';
+import {PAY_FORMULA_SAMPLE_VARIABLES,payFormulaSampleFields,type PayFormulaSampleResult,type PayFormulaSampleStep,type PayFormulaSampleValues,type PayFormulaSampleVariable} from '@/lib/pay-formula-sample';
 import {sampleFormulaAction} from './actions';
 import {formulaInput,formulaButton,formulaPrimary} from './ui-types';
 
@@ -78,10 +78,11 @@ const shown=(value:FormulaValue)=>value.type==='boolean'?String(value.value):val
 export function FormulaSampleTest({text}:{text:string}){
  const t=useTranslations('payFormula'),busy=useRef(false);
  const [values,setValues]=useState<PayFormulaSampleValues>({}),[result,setResult]=useState<PayFormulaSampleResult|null>(null),[error,setError]=useState(''),[pending,setPending]=useState(false);
+ const fields=payFormulaSampleFields(text);
  const visible=PAY_FORMULA_SAMPLE_VARIABLES.filter(name=>['Basic','FixedAllowances','CalendarDays','Input'].includes(name)||new RegExp('\\{#'+name+'\\}','i').test(text));
  async function run(){
   if(busy.current)return;busy.current=true;setPending(true);setError('');
-  try{const clean:PayFormulaSampleValues={};for(const name of visible){const raw=values[name];if(raw!==undefined&&raw.trim()!=='')clean[name]=raw.replace(/,/g,'').trim();}
+  try{const clean:PayFormulaSampleValues={fields:values.fields};for(const name of visible){const raw=values[name];if(raw!==undefined&&raw.trim()!=='')clean[name]=raw.replace(/,/g,'').trim();}
    const response=await sampleFormulaAction({source:text,values:clean});if(!response.ok){setResult(null);setError(response.error);return;}setResult(response.value);}
   finally{busy.current=false;setPending(false);}
  }
@@ -100,6 +101,7 @@ export function FormulaSampleTest({text}:{text:string}){
  return <div className="space-y-4">
   <p className="text-sm text-muted-foreground">{t('testArea.sampleHelp')}</p>
   <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">{visible.map((name:PayFormulaSampleVariable)=><label key={name} className="text-sm">{t('testArea.fields.'+name)}<input className={formulaInput} inputMode="decimal" value={values[name]??''} onChange={event=>setValues({...values,[name]:event.target.value})}/></label>)}</fieldset>
+  {fields.length>0&&<fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">{fields.map(field=><label key={field.key} className="text-sm">{t('generator.fields.'+field.field)}<input className={formulaInput} type={field.type==='date'?'date':'text'} maxLength={500} value={values.fields?.[field.key]??''} onChange={event=>setValues({...values,fields:{...values.fields,[field.key]:event.target.value}})}/></label>)}</fieldset>}
   <button type="button" className={formulaPrimary} disabled={pending||!text.trim()} onClick={run}>{pending?t('working'):t('testArea.run')}</button>
   {error&&<p className="text-sm text-destructive">{error}</p>}
   {result&&<div role="status" className="space-y-3">

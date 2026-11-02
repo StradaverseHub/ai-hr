@@ -27292,7 +27292,8 @@
           "product_feedback_text": "Văn bản phản hồi sản phẩm",
           "closed_references": "Tham chiếu mờ và danh mục cố định (văn bản và giá trị nguồn ở lại cục bộ)",
           "coarse_aggregate_bands": "Khoảng tổng hợp thô (không bảo đảm ẩn danh)",
-          "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)"
+          "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)",
+          "authored_formula_request": "Yêu cầu công thức do người dùng viết"
         },
         "redaction": {
           "pii_masked": "Đã che",
@@ -33267,6 +33268,45 @@
         "needs_employee_test": "{variable} cần kiểm thử với nhân viên thực. Giá trị mẫu chỉ bao gồm Lương cơ bản, Phụ cấp cố định, Số ngày theo lịch, Input và các hệ số của Khoản lương.",
         "division_by_zero": "Dòng {line} chia cho 0. Việc tính lương sẽ dừng với lỗi tính toán cho nhân viên này.",
         "out_of_range": "Kết quả nằm ngoài số tiền mà Khoản lương có thể trả (0 đến 100,000,000)."
+      }
+    },
+    "generator": {
+      "title": "Trình tạo công thức AI",
+      "requirement": "Mô tả phép tính",
+      "disclosure": "Mô tả được gửi tới nhà cung cấp AI được tổ chức phê duyệt. Dùng ví dụ hư cấu, không đưa hồ sơ nhân viên vào.",
+      "consent": "Tôi hiểu thông tin sẽ được gửi.",
+      "generate": "Tạo công thức",
+      "regenerate": "Tạo lại công thức",
+      "working": "Đang tạo…",
+      "clear": "Xóa",
+      "apply": "Áp dụng vào trình sửa công thức",
+      "variables": "Biến được dùng",
+      "valid": "Đã kiểm tra cú pháp. Xem lại và thử trước khi lưu.",
+      "needsClarification": "Cần làm rõ hoặc chọn phương án được hỗ trợ.",
+      "replaceTitle": "Thay nội dung trình sửa?",
+      "replaceHelp": "Bản nháp thay thế văn bản hiện tại và các sửa đổi chưa lưu.",
+      "replace": "Thay nội dung",
+      "cancel": "Hủy",
+      "draftOnly": "AI không tự lưu, kích hoạt hay áp dụng công thức vào bảng lương. Kiểm thử mẫu dùng bộ tính lương.",
+      "failed": "Không thể tạo hoặc xác thực bản nháp. Kiểm tra yêu cầu rồi thử lại.",
+      "unavailable": "Không có kết nối AI được phê duyệt. Vẫn có thể sửa thủ công.",
+      "reviewRequired": "Tạo công thức cần phê duyệt quy tắc chia sẻ dữ liệu. Vẫn có thể sửa thủ công.",
+      "applied": "Đã áp dụng bản nháp. Xem lại và thử trước khi lưu.",
+      "fields": {
+        "joinDate": "Ngày vào làm",
+        "groupJoinDate": "Ngày vào tập đoàn",
+        "resignationDate": "Ngày từ chức",
+        "confirmationDate": "Ngày xác nhận",
+        "lastWorkingDate": "Ngày làm cuối",
+        "employmentType": "Loại việc làm",
+        "employeeNo": "Mã nhân viên",
+        "departmentCode": "Mã phòng ban",
+        "positionCode": "Mã vị trí",
+        "gradeCode": "Mã ngạch",
+        "dateOfBirth": "Ngày sinh",
+        "gender": "Giới tính",
+        "nationality": "Quốc tịch",
+        "maritalStatus": "Tình trạng hôn nhân"
       }
     }
   },
