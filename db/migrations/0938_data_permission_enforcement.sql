@@ -447,10 +447,12 @@ BEGIN
   -- The established profile guard still checks the COMPLETE delta and audit in this transaction.
   IF app.is_self_person(person) THEN RETURN NULL;END IF;
   SELECT coalesce(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(coalesce(after_row,'{}'::jsonb))d
-   WHERE d.key IN ('nationality','gender','marital_status') AND d.value IS DISTINCT FROM before_row->d.key;
+   WHERE d.value IS DISTINCT FROM before_row->d.key AND (d.key IN (SELECT column_name FROM app.access_profile_value_bindings() WHERE owner IN ('person','compliance'))
+    OR d.key IN ('address','address_line1','address_line2','address_line3','postcode','city','state','country','marital_status_source_request_id'));
   IF TG_OP='UPDATE' AND delta<>'{}'::jsonb AND (
     app.access_profile_value_approved('person',person,NULL,person,delta,false,false)
-    OR app.access_profile_marriage_delta(before_row,after_row,delta)) THEN RETURN NULL;END IF;
+    OR app.access_profile_marriage_delta(before_row,after_row,delta)
+    OR app.access_privacy_value_intent_allowed('person',before_row,after_row)) THEN RETURN NULL;END IF;
  ELSE subject_id:=CASE WHEN TG_TABLE_NAME='employment' THEN coalesce((after_row->>'id')::uuid,(before_row->>'id')::uuid)
    ELSE coalesce((after_row->>'employment_id')::uuid,(before_row->>'employment_id')::uuid) END;END IF;
  FOR proof IN SELECT * FROM app.data_permission_write_subject s WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=t AND s.user_id=u
