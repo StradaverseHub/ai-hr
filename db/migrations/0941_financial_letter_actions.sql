@@ -4043,7 +4043,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_panel_nomination(uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
 SELECT app.register_function_action('performance.onehr.panelFeedback',operation,'company',NULL,'app.financial_delegate_onehr_review',jsonb_build_object(
- 'moduleKey','performance_compensation','labelKey','onehr.feedbackTitle','kind','native_acl','course','assigned','href','/me/performance','employeeBearing',false)) FROM unnest(ARRAY['view','edit']) operation;
+ 'moduleKey','performance_compensation','labelKey','onehr.feedback360','kind','native_acl','course','assigned','href','/me/performance','employeeBearing',false)) FROM unnest(ARRAY['view','edit']) operation;
 CREATE FUNCTION app.financial_onehr_feedback_card_native(wanted_request uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 
