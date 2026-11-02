@@ -3219,34 +3219,8 @@ async function insertClaimAttachmentTx(
   if (p.status !== 'pending' && p.status !== 'draft') {
     throw new ClaimError('Receipts can only be added while the claim is a draft or pending');
   }
-  const [subject]=await tx.execute<{own:boolean}>(sql`select app.claim_subject_is_own(${p.employmentId}::uuid) as own`);
-  if(subject?.own){
-    const [stored]=await tx.execute<{id:string}>(sql`select app.claim_own_receipt_native(${p.claimRequestId}::uuid,${p.fileName},${p.mimeType},${p.content},${p.sourcePurpose??'receipt-add'}) as id`);
-    if(!stored?.id)throw new ClaimError('Own claim receipt unavailable');return{id:stored.id};
-  }
-  const [row] = await tx
-    .insert(claimAttachment)
-    .values({
-      tenantId: ctx.tenantId,
-      claimRequestId: p.claimRequestId,
-      employmentId: p.employmentId,
-      content: p.content,
-      fileName: p.fileName,
-      mimeType: p.mimeType,
-      sizeBytes: p.content.byteLength,
-      uploadedByUserId: ctx.userId ?? null,
-    })
-    .returning({ id: claimAttachment.id });
-  await appendEvent(tx, {
-    tenantId: ctx.tenantId,
-    aggregateType: 'claim-request',
-    aggregateId: p.claimRequestId,
-    eventType: 'claim-request.receipt-added',
-    actor: actorOf(ctx),
-    subjectEmploymentId: p.employmentId,
-    payload: { fileName: p.fileName, sizeBytes: p.content.byteLength },
-  });
-  return { id: row.id };
+  const [stored]=await tx.execute<{id:string}>(sql`select app.claim_receipt_native(${p.claimRequestId}::uuid,${p.fileName},${p.mimeType},${p.content},${p.sourcePurpose??'receipt-add'}) as id`);
+  if(!stored?.id)throw new ClaimError('Claim receipt unavailable');return{id:stored.id};
 }
 
 /** Attach a receipt to a claim (denormalizes employment_id from the claim for RLS). */

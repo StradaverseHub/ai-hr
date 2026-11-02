@@ -230,7 +230,7 @@ GRANT EXECUTE ON FUNCTION app.module_function_allowed(text,text,uuid) TO ai_hr_a
 CREATE TABLE app.module_claim_effect(
  xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,claim_id uuid NOT NULL,
  course text NOT NULL CHECK(course IN ('own_cancel','admin_cancel','reimbursement')),
- before_hash text NOT NULL,after_hash text NOT NULL,event_id uuid NOT NULL,
+ before_hash text NOT NULL,after_hash text NOT NULL,event_id uuid NOT NULL,authority_stamp text NOT NULL,
  PRIMARY KEY(xact_id,tenant_id,user_id,claim_id,before_hash,after_hash)
 );
 REVOKE ALL ON app.module_claim_effect FROM PUBLIC,ai_hr_app;
@@ -261,10 +261,11 @@ END $$;
 --> statement-breakpoint
 CREATE FUNCTION app.claim_cancel_native(p_claim uuid,p_expected_employment uuid DEFAULT NULL) RETURNS TABLE(event_id uuid,employment_id uuid)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE selected public.claim_request%ROWTYPE;person_id uuid;company_id uuid;own_course boolean;after_row jsonb;audit uuid;
+DECLARE selected public.claim_request%ROWTYPE;person_id uuid;company_id uuid;own_course boolean;after_row jsonb;audit uuid;authority text;
 BEGIN
  PERFORM app.access_workforce_write_lock();
  IF NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Claim cancellation unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app.claim_command_lock();
  SELECT q.* INTO selected FROM public.claim_request q WHERE q.id=p_claim AND q.tenant_id=app.current_tenant_id() FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Claim not found' USING ERRCODE='42501';END IF;
  SELECT e.person_id,e.company_id INTO person_id,company_id FROM public.employment e WHERE e.id=selected.employment_id AND e.tenant_id=selected.tenant_id AND e.voided_at IS NULL;
@@ -277,12 +278,13 @@ BEGIN
  ELSE
   IF NOT app.module_action_allowed('claims','delete',company_id) OR NOT app.function_action_allowed('claims.administration','delete',company_id) THEN RAISE EXCEPTION 'Claim cancellation unavailable' USING ERRCODE='42501';END IF;
  END IF;
+ authority:=app.claim_command_authority_stamp();
  UPDATE public.claim_request q SET status='cancelled' WHERE q.id=selected.id AND q.tenant_id=selected.tenant_id RETURNING to_jsonb(q) INTO after_row;
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id)
  VALUES(selected.tenant_id,'claim-request',selected.id,'claim-request.cancelled','user',app.current_user_id(),selected.employment_id) RETURNING id INTO audit;
  DELETE FROM app.module_claim_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
  INSERT INTO app.module_claim_effect VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,CASE WHEN own_course THEN 'own_cancel' ELSE 'admin_cancel' END,
-  encode(sha256(convert_to(to_jsonb(selected)::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex'),audit);
+  encode(sha256(convert_to(to_jsonb(selected)::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex'),audit,authority);
  RETURN QUERY SELECT audit,selected.employment_id;
 END; $$;
 --> statement-breakpoint
@@ -291,21 +293,23 @@ GRANT EXECUTE ON FUNCTION app.claim_cancel_native(uuid,uuid) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.claim_reimburse_native(p_claims uuid[],p_reference text DEFAULT NULL) RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE selected public.claim_request%ROWTYPE;company_id uuid;after_row jsonb;audit uuid;paid integer:=0;
+DECLARE selected public.claim_request%ROWTYPE;company_id uuid;after_row jsonb;audit uuid;authority text;paid integer:=0;
  at_time timestamptz:=statement_timestamp();reference text:=coalesce(p_reference,'reimbursement');
 BEGIN
  PERFORM app.access_workforce_write_lock();
  IF NOT app.principal_snapshot_current() OR p_claims IS NULL OR cardinality(p_claims)>10000 OR length(reference)>4000 THEN RAISE EXCEPTION 'Claim reimbursement unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app.claim_command_lock();
  DELETE FROM app.module_claim_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
  FOR selected IN SELECT q.* FROM public.claim_request q WHERE q.id=ANY(p_claims) AND q.tenant_id=app.current_tenant_id() AND q.status::text='approved' AND NOT q.taxable ORDER BY q.id FOR UPDATE LOOP
   SELECT e.company_id INTO company_id FROM public.employment e WHERE e.id=selected.employment_id AND e.tenant_id=selected.tenant_id AND e.voided_at IS NULL;
   IF company_id IS NULL OR NOT app.can_admin_employment(selected.employment_id) OR NOT app.module_action_allowed('claims','edit',company_id)
    OR NOT app.function_action_allowed('claimsConfig.reimbursements','execute',company_id) THEN RAISE EXCEPTION 'Claim reimbursement unavailable' USING ERRCODE='42501';END IF;
+  authority:=app.claim_command_authority_stamp();
   UPDATE public.claim_request q SET status='paid',paid_at=at_time,payout_ref=reference WHERE q.id=selected.id AND q.tenant_id=selected.tenant_id RETURNING to_jsonb(q) INTO after_row;
   INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
   VALUES(selected.tenant_id,'claim-request',selected.id,'claim-request.paid','user',app.current_user_id(),selected.employment_id,jsonb_build_object('via','reimbursement','payoutRef',reference)) RETURNING id INTO audit;
   INSERT INTO app.module_claim_effect VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,'reimbursement',
-   encode(sha256(convert_to(to_jsonb(selected)::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex'),audit);
+   encode(sha256(convert_to(to_jsonb(selected)::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex'),audit,authority);
   paid:=paid+1;
  END LOOP;RETURN paid;
 END; $$;
@@ -641,21 +645,21 @@ $$;
 REVOKE ALL ON FUNCTION app.claim_own_source_allowed(uuid,text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.claim_own_source_allowed(uuid,text,text) TO ai_hr_app;
 --> statement-breakpoint
-CREATE TABLE app.claim_draft_delete_effect(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,claim_id uuid NOT NULL,before_source jsonb NOT NULL,event_id uuid,completed boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,claim_id));
+CREATE TABLE app.claim_draft_delete_effect(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,claim_id uuid NOT NULL,before_source jsonb NOT NULL,event_id uuid,completed boolean NOT NULL DEFAULT false,authority_stamp text NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,claim_id));
 REVOKE ALL ON app.claim_draft_delete_effect FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.claim_draft_delete_native(p_claim uuid,p_expected_employment uuid DEFAULT NULL) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE source public.claim_request%ROWTYPE;event uuid;
 BEGIN
- PERFORM app.access_workforce_write_lock();
+ PERFORM app.claim_command_lock();
  SELECT * INTO source FROM public.claim_request WHERE id=p_claim AND tenant_id=app.current_tenant_id() AND app.claim_own_source_allowed(employment_id,'claims.own.drafts','view') FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Claim not found';END IF;
  IF p_expected_employment IS NOT NULL AND source.employment_id<>p_expected_employment THEN RAISE EXCEPTION 'Draft does not belong to the selected employment';END IF;
  IF source.status<>'draft' THEN RAISE EXCEPTION 'Only a draft claim can be deleted';END IF;
  IF NOT app.claim_own_source_allowed(source.employment_id,'claims.own.drafts','delete') THEN RAISE EXCEPTION 'Claim draft delete unavailable' USING ERRCODE='42501';END IF;
  DELETE FROM app.claim_draft_delete_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
- INSERT INTO app.claim_draft_delete_effect(xact_id,tenant_id,user_id,claim_id,before_source) VALUES(pg_current_xact_id(),source.tenant_id,app.current_user_id(),source.id,to_jsonb(source));
+ INSERT INTO app.claim_draft_delete_effect(xact_id,tenant_id,user_id,claim_id,before_source,authority_stamp) VALUES(pg_current_xact_id(),source.tenant_id,app.current_user_id(),source.id,to_jsonb(source),app.claim_command_authority_stamp());
  DELETE FROM public.claim_attachment WHERE tenant_id=source.tenant_id AND claim_request_id=source.id;
  DELETE FROM public.claim_request WHERE tenant_id=source.tenant_id AND id=source.id;
  IF NOT FOUND THEN RAISE EXCEPTION 'Claim draft delete changed' USING ERRCODE='40001';END IF;
@@ -678,6 +682,7 @@ BEGIN
  IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
  PERFORM app.access_workforce_write_lock();
  IF coalesce(NEW.tenant_id,OLD.tenant_id) IS DISTINCT FROM app.current_tenant_id() OR TG_OP='UPDATE' AND ROW(OLD.id,OLD.tenant_id,OLD.employment_id) IS DISTINCT FROM ROW(NEW.id,NEW.tenant_id,NEW.employment_id) THEN RAISE EXCEPTION 'Claim source identity unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' AND OLD.status::text<>'draft' OR TG_OP='UPDATE' AND NEW.status IS DISTINCT FROM OLD.status AND NOT(OLD.status::text='draft' AND NEW.status::text='pending' OR OLD.status::text='pending' AND NEW.status::text IN ('approved','rejected','cancelled') OR OLD.status::text='approved' AND NEW.status::text='paid' OR OLD.status::text='paid' AND NEW.status::text='approved') THEN RAISE EXCEPTION 'Claim lifecycle source unavailable' USING ERRCODE='42501';END IF;
  -- A row-level FK does not establish tenant custody or the selected item's actual parent.
  -- Repeat the native reference owner at creation/reference changes, including raw app SQL.
  IF TG_OP='INSERT' OR TG_OP='UPDATE' AND ROW(OLD.claim_type_id,OLD.claim_item_id) IS DISTINCT FROM ROW(NEW.claim_type_id,NEW.claim_item_id) THEN
@@ -695,6 +700,7 @@ BEGIN
   IF NEW.decided_at IS NOT NULL OR NEW.decided_by_employment_id IS NOT NULL OR NEW.payroll_batch_id IS NOT NULL OR NEW.paid_at IS NOT NULL OR NEW.payout_ref IS NOT NULL THEN RAISE EXCEPTION 'Claim creation stamps unavailable' USING ERRCODE='42501';END IF;
   key:=CASE WHEN NEW.status='draft' THEN 'claims.own.drafts' ELSE 'claims.own.submit' END;operation:=CASE WHEN NEW.status='draft' THEN 'add' ELSE 'execute' END;
  ELSIF TG_OP='UPDATE' AND OLD.status='draft' AND NEW.status IN ('draft','pending') THEN
+  IF NEW.status::text='pending' AND prior-ARRAY['claim_item_id','amount','quantity_km','taxable','field_values','mileage_rate_applied','status'] IS DISTINCT FROM proposed-ARRAY['claim_item_id','amount','quantity_km','taxable','field_values','mileage_rate_applied','status'] THEN RAISE EXCEPTION 'Claim draft fields unavailable' USING ERRCODE='42501';END IF;
   IF (prior-ARRAY['claim_type_id','claim_item_id','amount','quantity_km','incurred_on','description','taxable','field_values','mileage_rate_applied','status']) IS DISTINCT FROM (proposed-ARRAY['claim_type_id','claim_item_id','amount','quantity_km','incurred_on','description','taxable','field_values','mileage_rate_applied','status']) THEN RAISE EXCEPTION 'Claim draft fields unavailable' USING ERRCODE='42501';END IF;
   key:=CASE WHEN NEW.status='draft' THEN 'claims.own.drafts' ELSE 'claims.own.submit' END;operation:=CASE WHEN NEW.status='draft' THEN 'edit' ELSE 'execute' END;
  ELSIF TG_OP='UPDATE' AND OLD.status<>'draft' AND NEW.status=OLD.status AND prior IS DISTINCT FROM proposed THEN
@@ -724,7 +730,7 @@ BEGIN
  IF NOT app.claim_draft_delete_approved(NEW.claim_id,NEW.before_source,true) THEN RAISE EXCEPTION 'Claim draft delete effects incomplete' USING ERRCODE='42501';END IF;RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION app.claim_draft_delete_complete() FROM PUBLIC,ai_hr_app;
-CREATE CONSTRAINT TRIGGER claim_draft_delete_complete AFTER INSERT ON app.claim_draft_delete_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_draft_delete_complete();
+CREATE CONSTRAINT TRIGGER claim_draft_delete_complete AFTER INSERT OR UPDATE ON app.claim_draft_delete_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_draft_delete_complete();
 --> statement-breakpoint
 CREATE TRIGGER module_claim_write_lock BEFORE INSERT OR UPDATE OR DELETE ON public.claim_request FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
 
@@ -964,7 +970,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  -- or a new-row existence waiver; no fresh-born source lookup is required by INSERT RETURNING.
  SELECT p_status IN ('draft','pending','approved','rejected','cancelled','paid') AND app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment e
  WHERE e.id=p_subject AND e.tenant_id=app.current_tenant_id()
- AND (app.claim_subject_is_own(e.id) AND app.claim_own_read_allowed(e.id,p_status='draft') OR app.claim_self_decision_allowed(e.id,'view')
+ AND (app.claim_subject_is_own(e.id) AND app.claim_own_read_allowed(e.id,p_status='draft') OR p_status<>'draft' AND app.claim_self_decision_allowed(e.id,'view')
  OR app.claim_admin_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.is_admin_for(e.company_id) AND app.module_action_allowed('claims','view',e.company_id) AND app.function_action_allowed('claims.administration','view',e.company_id)
  OR app.claim_related_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.can_see_employment(e.id) AND app.function_action_allowed('claims.related','view',e.company_id)
  OR p_status<>'draft' AND app.claim_assigned_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.function_action_allowed('claims.assigned','view',e.company_id)));
@@ -1048,7 +1054,7 @@ REVOKE ALL ON FUNCTION app.claim_command_statement_lock() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER claim_command_source_lock BEFORE INSERT OR UPDATE ON public.claim_request FOR EACH STATEMENT EXECUTE FUNCTION app.claim_command_statement_lock();
 --> statement-breakpoint
 -- Native command receipts prove the actual admitted queued OLD→NEW, never a posted purpose flag.
-CREATE TABLE app.claim_command_effect(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,claim_id uuid NOT NULL,course text NOT NULL CHECK(course IN ('submit','approve','reject')),before_source jsonb NOT NULL,after_source jsonb NOT NULL,authority_stamp text NOT NULL,born boolean NOT NULL DEFAULT false);
+CREATE TABLE app.claim_command_effect(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,claim_id uuid NOT NULL,course text NOT NULL CHECK(course IN ('submit','approve','reject')),before_source jsonb NOT NULL,after_source jsonb NOT NULL,authority_stamp text NOT NULL,born boolean NOT NULL DEFAULT false,completed boolean NOT NULL DEFAULT false);
 REVOKE ALL ON app.claim_command_effect FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.claim_own_source_audit_record() RETURNS trigger
@@ -1057,6 +1063,7 @@ BEGIN
  IF NEW.aggregate_type='claim-request' AND NEW.event_type IN ('claim-request.draft-saved','claim-request.submitted','claim-request.approved','claim-request.rejected') AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() AND NEW.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() THEN
   DELETE FROM app.claim_own_source_audit WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
   INSERT INTO app.claim_own_source_audit VALUES(pg_current_xact_id(),NEW.tenant_id,NEW.actor_id,NEW.aggregate_id,NEW.id,NEW.event_type,NEW.payload);
+  UPDATE app.claim_command_effect proof SET completed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.actor_id AND proof.claim_id=NEW.aggregate_id AND proof.born AND NEW.event_type=CASE proof.course WHEN 'submit' THEN 'claim-request.submitted' WHEN 'approve' THEN 'claim-request.approved' ELSE 'claim-request.rejected' END;
  END IF;RETURN NULL;
 END $$;
 --> statement-breakpoint
@@ -1064,7 +1071,7 @@ CREATE FUNCTION app.claim_command_effect_allowed(p_before jsonb,p_after jsonb,p_
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.claim_command_effect proof JOIN app.claim_own_source_audit audit ON audit.xact_id=proof.xact_id AND audit.tenant_id=proof.tenant_id AND audit.user_id=proof.user_id AND audit.claim_id=proof.claim_id
    JOIN public.domain_event event ON event.id=audit.event_id AND event.tenant_id=audit.tenant_id AND event.aggregate_id=proof.claim_id AND event.subject_employment_id=(p_after->>'employment_id')::uuid AND event.actor_type='user' AND event.actor_id=proof.user_id AND event.aggregate_type='claim-request'
-   WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.claim_id=(p_after->>'id')::uuid AND proof.course=p_course AND (p_receipt IS NULL OR proof.id=p_receipt) AND proof.before_source=p_before AND proof.after_source=p_after AND proof.born AND proof.authority_stamp=app.claim_command_authority_stamp()
+   WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.claim_id=(p_after->>'id')::uuid AND proof.course=p_course AND (p_receipt IS NULL OR proof.id=p_receipt) AND proof.before_source=p_before AND proof.after_source=p_after AND proof.born AND proof.completed AND proof.authority_stamp=app.claim_command_authority_stamp()
    AND event.event_type=CASE p_course WHEN 'submit' THEN 'claim-request.submitted' WHEN 'approve' THEN 'claim-request.approved' ELSE 'claim-request.rejected' END
    AND CASE p_course WHEN 'submit' THEN event.payload->>'claimTypeId'=p_after->>'claim_type_id' AND event.payload->>'claimItemId' IS NOT DISTINCT FROM p_after->>'claim_item_id' AND event.payload->>'incurredOn'=p_after->>'incurred_on' AND event.payload->>'taxable'=p_after->>'taxable'
     WHEN 'approve' THEN event.payload->>'taxable'=p_after->>'taxable' AND event.payload->>'payoutMethod'=CASE WHEN p_after->>'taxable'='true' THEN 'payroll' ELSE 'reimbursement' END ELSE true END) AND CASE p_course WHEN 'submit' THEN app.claim_nonself_submit_allowed((p_after->>'employment_id')::uuid) WHEN 'approve' THEN app.claim_decision_allowed((p_after->>'employment_id')::uuid) WHEN 'reject' THEN app.claim_decision_allowed((p_after->>'employment_id')::uuid) ELSE false END;
@@ -1136,4 +1143,198 @@ BEGIN
  IF NOT FOUND OR app.claim_command_effect_allowed(proof.before_source,proof.after_source,proof.course,proof.id) IS NOT TRUE THEN RAISE EXCEPTION 'Claim command effects incomplete' USING ERRCODE='42501';END IF;RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION app.claim_command_effect_complete() FROM PUBLIC,ai_hr_app;
-CREATE CONSTRAINT TRIGGER claim_command_effect_complete AFTER INSERT ON app.claim_command_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_command_effect_complete();
+CREATE CONSTRAINT TRIGGER claim_command_effect_complete AFTER INSERT OR UPDATE ON app.claim_command_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_command_effect_complete();
+
+--> statement-breakpoint
+-- Actual nonself receipt maintenance retains the native can-see/data course. A delegated approval
+-- may read its task receipt but never inherits this independent upload permission.
+CREATE FUNCTION app.claim_receipt_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT co IS NOT NULL AND EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=t AND e.company_id=co AND CASE
+ WHEN cap IN ('function.claims.related.view','function.claims.related.receipts.view','function.claims.related.receipts.add') THEN app.claim_related_subject_for(t,u,e.id)
+ WHEN cap IN ('function.claims.administration.view','function.claims.administration.receipts.view','function.claims.administration.receipts.add') THEN app.claim_admin_subject_for(t,u,e.id)
+ ELSE false END);
+$$;
+CREATE FUNCTION app.claim_receipt_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.claim_receipt_native_allowed(t,u,cap,co)
+ AND EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=t AND e.company_id=co AND app.can_see_employment(e.id) AND CASE
+ WHEN cap IN ('function.claims.related.view','function.claims.related.receipts.view','function.claims.related.receipts.add') THEN app.claim_related_subject_for(t,u,e.id)
+ WHEN cap IN ('function.claims.administration.view','function.claims.administration.receipts.view','function.claims.administration.receipts.add') THEN app.claim_admin_subject_for(t,u,e.id) AND app.is_admin_for(co)
+ ELSE false END);
+$$;
+REVOKE ALL ON FUNCTION app.claim_receipt_native_allowed(uuid,uuid,text,uuid),app.claim_receipt_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE key text;operation text;BEGIN
+ FOREACH key IN ARRAY ARRAY['related','administration'] LOOP
+  FOREACH operation IN ARRAY ARRAY['view','add'] LOOP
+   PERFORM app.register_function_action('claims.'||key||'.receipts',operation,'company','function.claims.'||key||'.view','app.claim_receipt_current_native_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"administrative","employeeBearing":true}');
+  END LOOP;
+ END LOOP;
+END $$;
+CREATE FUNCTION app.claim_maintenance_receipt_allowed(subject uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','add') AND app.principal_snapshot_current() AND app.can_see_employment(subject)
+ AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=subject AND e.tenant_id=app.current_tenant_id()
+ AND (app.claim_admin_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.is_admin_for(e.company_id) AND app.module_action_allowed('claims','view',e.company_id) AND app.function_action_allowed('claims.administration','view',e.company_id) AND app.function_action_allowed('claims.administration.receipts','view',e.company_id) AND app.function_action_allowed('claims.administration.receipts',p_operation,e.company_id)
+ OR app.claim_related_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.function_action_allowed('claims.related','view',e.company_id) AND app.function_action_allowed('claims.related.receipts','view',e.company_id) AND app.function_action_allowed('claims.related.receipts',p_operation,e.company_id)));
+$$;
+REVOKE ALL ON FUNCTION app.claim_maintenance_receipt_allowed(uuid,text) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+ALTER TABLE app.claim_own_receipt_effect ADD COLUMN native_course text NOT NULL DEFAULT 'own' CHECK(native_course IN ('own','nonself'));
+CREATE OR REPLACE FUNCTION app.claim_own_source_mutation_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE course text;own boolean:=app.claim_subject_is_own(NEW.employment_id);
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ IF NEW.status::text='draft' AND own THEN course:=CASE TG_OP WHEN 'INSERT' THEN 'draft-add' ELSE 'draft-edit' END;
+ ELSIF NEW.status::text='pending' AND(TG_OP='INSERT' OR OLD.status::text='draft') THEN
+  course:='submit';
+  IF NOT own AND NOT EXISTS(SELECT 1 FROM app.claim_command_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.claim_id=NEW.id AND proof.course='submit' AND proof.after_source=to_jsonb(NEW) AND proof.born AND proof.authority_stamp=app.claim_command_authority_stamp()) THEN RETURN NULL;END IF;
+ ELSE RETURN NULL;END IF;
+ DELETE FROM app.claim_own_source_mutation WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.claim_own_source_mutation(xact_id,tenant_id,user_id,claim_id,course,source,authority_stamp) VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id,course,to_jsonb(NEW),app.claim_command_authority_stamp());RETURN NULL;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_receipt_native(p_claim uuid,p_name text,p_mime text,p_content bytea,p_course text DEFAULT 'receipt-add') RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE parent public.claim_request%ROWTYPE;attachment public.claim_attachment%ROWTYPE;source_id uuid;authority text;event uuid;operation text;own boolean;
+BEGIN
+ PERFORM app.claim_command_lock();
+ SELECT * INTO parent FROM public.claim_request actual WHERE actual.id=p_claim AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ own:=app.claim_subject_is_own(parent.employment_id);
+ IF parent.id IS NULL OR parent.status::text NOT IN ('draft','pending') OR p_course IS NULL OR p_course NOT IN ('draft-add','draft-edit','submit','receipt-add') OR p_name IS NULL OR p_mime IS NULL OR p_mime NOT IN ('application/pdf','image/jpeg','image/png') OR p_content IS NULL OR octet_length(p_content) NOT BETWEEN 1 AND 10485760
+ OR CASE WHEN own THEN NOT app.claim_own_source_allowed(parent.employment_id,'claims.own.receipts','view') ELSE NOT app.claim_maintenance_receipt_allowed(parent.employment_id,'view') END
+ THEN RAISE EXCEPTION '%',CASE WHEN own THEN 'Own claim receipt unavailable' ELSE 'Claim receipt unavailable' END USING ERRCODE='42501';END IF;
+ authority:=app.claim_command_authority_stamp();
+ IF p_course='receipt-add' THEN
+  IF CASE WHEN own THEN NOT app.claim_own_source_allowed(parent.employment_id,'claims.own.receipts','add') ELSE NOT app.claim_maintenance_receipt_allowed(parent.employment_id,'add') END THEN RAISE EXCEPTION '%',CASE WHEN own THEN 'Own claim receipt Add unavailable' ELSE 'Claim receipt Add unavailable' END USING ERRCODE='42501';END IF;
+ ELSE
+  operation:=CASE p_course WHEN 'draft-add' THEN 'add' WHEN 'draft-edit' THEN 'edit' ELSE 'execute' END;
+  IF CASE WHEN own THEN NOT app.claim_own_source_allowed(parent.employment_id,CASE WHEN p_course='submit' THEN 'claims.own.submit' ELSE 'claims.own.drafts' END,operation) ELSE p_course<>'submit' OR NOT app.claim_nonself_submit_allowed(parent.employment_id) END THEN RAISE EXCEPTION '%',CASE WHEN own THEN 'Own receipt source action unavailable' ELSE 'Claim receipt source action unavailable' END USING ERRCODE='42501';END IF;
+  SELECT source.id INTO source_id FROM app.claim_own_source_mutation source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=parent.tenant_id AND source.user_id=app.current_user_id() AND source.claim_id=parent.id AND source.course=p_course AND source.source=to_jsonb(parent) AND source.authority_stamp=authority AND source.receipt_id IS NULL ORDER BY source.id LIMIT 1 FOR UPDATE;
+  IF source_id IS NULL THEN RAISE EXCEPTION '%',CASE WHEN own THEN 'Own receipt native source unavailable' ELSE 'Claim receipt native source unavailable' END USING ERRCODE='42501';END IF;
+ END IF;
+ attachment.id:=gen_random_uuid();attachment.tenant_id:=parent.tenant_id;attachment.claim_request_id:=parent.id;attachment.employment_id:=parent.employment_id;attachment.content:=p_content;attachment.file_name:=p_name;attachment.mime_type:=p_mime;attachment.size_bytes:=octet_length(p_content);attachment.uploaded_by_user_id:=app.current_user_id();attachment.created_at:=now();
+ DELETE FROM app.claim_own_receipt_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.claim_own_receipt_effect(xact_id,tenant_id,user_id,receipt_id,claim_id,employment_id,course,source_id,metadata,content_hash,authority_stamp,native_course) VALUES(pg_current_xact_id(),parent.tenant_id,app.current_user_id(),attachment.id,parent.id,parent.employment_id,p_course,source_id,to_jsonb(attachment)-'content',encode(sha256(p_content),'hex'),authority,CASE WHEN own THEN 'own' ELSE 'nonself' END);
+ IF source_id IS NOT NULL THEN UPDATE app.claim_own_source_mutation SET receipt_id=attachment.id WHERE id=source_id;END IF;
+ INSERT INTO public.claim_attachment SELECT(attachment).*;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Claim receipt insert changed' USING ERRCODE='40001';END IF;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(parent.tenant_id,'claim-request',parent.id,'claim-request.receipt-added','user',app.current_user_id(),parent.employment_id,jsonb_build_object('fileName',p_name,'sizeBytes',octet_length(p_content))) RETURNING id INTO event;
+ UPDATE app.claim_own_receipt_effect SET completed=true,event_id=event WHERE xact_id=pg_current_xact_id() AND tenant_id=parent.tenant_id AND user_id=app.current_user_id() AND receipt_id=attachment.id;
+ RETURN attachment.id;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_receipt_native(uuid,text,text,bytea,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_receipt_native(uuid,text,text,bytea,text) TO ai_hr_app;
+--> statement-breakpoint
+-- Preserve the published narrow API contract: its name never becomes a nonself-purpose bypass.
+CREATE OR REPLACE FUNCTION app.claim_own_receipt_native(p_claim uuid,p_name text,p_mime text,p_content bytea,p_course text DEFAULT 'receipt-add') RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM public.claim_request actual WHERE actual.id=p_claim AND actual.tenant_id=app.current_tenant_id() AND app.claim_subject_is_own(actual.employment_id)) THEN RAISE EXCEPTION 'Own claim receipt unavailable' USING ERRCODE='42501';END IF;
+ RETURN app.claim_receipt_native(p_claim,p_name,p_mime,p_content,p_course);
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_receipt_effect_context_allowed(p_receipt uuid,p_final boolean) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.claim_own_receipt_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.receipt_id=p_receipt AND proof.authority_stamp=app.claim_command_authority_stamp()
+ AND CASE proof.native_course WHEN 'own' THEN app.claim_subject_is_own(proof.employment_id) AND app.claim_own_source_allowed(proof.employment_id,'claims.own.receipts','view') AND CASE proof.course WHEN 'receipt-add' THEN app.claim_own_source_allowed(proof.employment_id,'claims.own.receipts','add') ELSE app.claim_own_source_allowed(proof.employment_id,CASE WHEN proof.course='submit' THEN 'claims.own.submit' ELSE 'claims.own.drafts' END,CASE proof.course WHEN 'submit' THEN 'execute' WHEN 'draft-add' THEN 'add' ELSE 'edit' END) END
+ WHEN 'nonself' THEN NOT app.claim_subject_is_own(proof.employment_id) AND app.claim_maintenance_receipt_allowed(proof.employment_id,'view') AND CASE proof.course WHEN 'receipt-add' THEN app.claim_maintenance_receipt_allowed(proof.employment_id,'add') WHEN 'submit' THEN app.claim_nonself_submit_allowed(proof.employment_id) ELSE false END ELSE false END
+ AND(NOT p_final OR proof.born AND proof.completed AND EXISTS(SELECT 1 FROM public.domain_event event WHERE event.id=proof.event_id AND event.tenant_id=proof.tenant_id AND event.aggregate_id=proof.claim_id AND event.aggregate_type='claim-request' AND event.actor_type='user' AND event.actor_id=proof.user_id AND event.subject_employment_id=proof.employment_id AND event.event_type='claim-request.receipt-added' AND event.payload->>'fileName'=proof.metadata->>'file_name' AND event.payload->>'sizeBytes'=proof.metadata->>'size_bytes')
+ AND(proof.source_id IS NULL OR EXISTS(SELECT 1 FROM app.claim_own_source_mutation source JOIN app.claim_own_source_audit audit ON audit.xact_id=source.xact_id AND audit.tenant_id=source.tenant_id AND audit.user_id=source.user_id AND audit.claim_id=source.claim_id WHERE source.id=proof.source_id AND source.receipt_id=proof.receipt_id AND source.authority_stamp=proof.authority_stamp AND audit.event_type=CASE WHEN source.course='submit' THEN 'claim-request.submitted' ELSE 'claim-request.draft-saved' END AND audit.payload->>'claimTypeId'=source.source->>'claim_type_id' AND audit.payload->>'claimItemId' IS NOT DISTINCT FROM source.source->>'claim_item_id' AND audit.payload->>'incurredOn'=source.source->>'incurred_on'))));
+$$;
+REVOKE ALL ON FUNCTION app.claim_receipt_effect_context_allowed(uuid,boolean) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.claim_own_receipt_approved(p_receipt uuid,p_row jsonb,p_content bytea,p_final boolean) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.claim_receipt_effect_context_allowed(p_receipt,p_final) AND EXISTS(SELECT 1 FROM app.claim_own_receipt_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.receipt_id=p_receipt AND proof.metadata=p_row-'content' AND proof.content_hash=encode(sha256(p_content),'hex'));
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.claim_own_receipt_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE image jsonb:=CASE WHEN TG_OP='DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;source jsonb;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ IF TG_OP='UPDATE' THEN RAISE EXCEPTION 'Claim receipts are immutable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN
+  SELECT proof.before_source INTO source FROM app.claim_draft_delete_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=OLD.tenant_id AND proof.user_id=app.current_user_id() AND proof.claim_id=OLD.claim_request_id AND proof.before_source->>'employment_id'=OLD.employment_id::text;
+  IF source IS NULL OR NOT app.claim_draft_delete_approved(OLD.claim_request_id,source,TG_WHEN='AFTER') THEN RAISE EXCEPTION 'Claim receipt removal source unavailable' USING ERRCODE='42501';END IF;RETURN OLD;
+ END IF;
+ IF NOT app.claim_own_receipt_approved(NEW.id,image,NEW.content,TG_WHEN='AFTER') THEN RAISE EXCEPTION '%',CASE WHEN app.claim_subject_is_own(NEW.employment_id) THEN 'Own claim receipt source unavailable' ELSE 'Claim receipt source unavailable' END USING ERRCODE='42501';END IF;RETURN NEW;
+END $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.claim_own_receipt_read_allowed(p_claim uuid,p_subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.claim_request actual JOIN public.employment e ON e.id=actual.employment_id AND e.tenant_id=actual.tenant_id WHERE actual.id=p_claim AND actual.tenant_id=app.current_tenant_id() AND actual.employment_id=p_subject AND app.claim_source_read_allowed(p_subject,actual.status::text)
+ AND(app.claim_subject_is_own(p_subject) AND app.claim_own_source_allowed(p_subject,'claims.own.receipts','view') OR app.claim_maintenance_receipt_allowed(p_subject,'view') OR actual.status::text<>'draft' AND(app.claim_self_decision_allowed(p_subject,'view') OR app.claim_assigned_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.function_action_allowed('claims.assigned','view',e.company_id))));
+$$;
+
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
+$$;
+CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
+$$;
+
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.claim_draft_delete_approved(p_claim uuid,p_source jsonb,p_final boolean) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.claim_own_source_allowed((p_source->>'employment_id')::uuid,'claims.own.drafts','delete') AND EXISTS(SELECT 1 FROM app.claim_draft_delete_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.claim_id=p_claim AND proof.before_source=p_source AND proof.authority_stamp=app.claim_command_authority_stamp() AND (NOT p_final OR proof.completed AND NOT EXISTS(SELECT 1 FROM public.claim_request actual WHERE actual.id=proof.claim_id) AND NOT EXISTS(SELECT 1 FROM public.claim_attachment attachment WHERE attachment.claim_request_id=proof.claim_id) AND EXISTS(SELECT 1 FROM public.domain_event event WHERE event.id=proof.event_id AND event.tenant_id=proof.tenant_id AND event.actor_type='user' AND event.actor_id=proof.user_id AND event.aggregate_type='claim-request' AND event.aggregate_id=proof.claim_id AND event.event_type='claim-request.draft-deleted' AND event.subject_employment_id=(p_source->>'employment_id')::uuid)));
+$$;
+
+--> statement-breakpoint
+-- Retained completion contexts are rechecked after a real control/native-source change even if
+-- the caller flushed all deferred checks early. These do not grant any ongoing source authority.
+CREATE FUNCTION app.claim_receipt_effect_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.claim_receipt_effect_context_allowed(NEW.receipt_id,true) IS NOT TRUE THEN RAISE EXCEPTION 'Claim receipt effects incomplete' USING ERRCODE='42501';END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_receipt_effect_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER claim_receipt_effect_complete AFTER INSERT OR UPDATE ON app.claim_own_receipt_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_receipt_effect_complete();
+--> statement-breakpoint
+CREATE FUNCTION app.claim_native_effect_context_allowed(p_claim uuid,p_before_hash text,p_after_hash text,p_subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM app.module_claim_effect proof
+ JOIN public.employment e ON e.tenant_id=proof.tenant_id AND e.id=p_subject
+ JOIN public.domain_event audit ON audit.tenant_id=proof.tenant_id AND audit.id=proof.event_id AND audit.aggregate_id=proof.claim_id AND audit.aggregate_type='claim-request' AND audit.actor_type='user' AND audit.actor_id=proof.user_id AND audit.subject_employment_id=e.id
+ WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.claim_id=p_claim
+ AND proof.before_hash=p_before_hash AND proof.after_hash=p_after_hash AND proof.authority_stamp=app.claim_command_authority_stamp()
+ AND CASE proof.course WHEN 'own_cancel' THEN app.is_self_person(e.person_id) AND app.function_action_allowed('claims.own','delete',e.company_id) AND audit.event_type='claim-request.cancelled'
+ WHEN 'admin_cancel' THEN app.can_admin_employment(e.id) AND app.module_action_allowed('claims','delete',e.company_id) AND app.function_action_allowed('claims.administration','delete',e.company_id) AND audit.event_type='claim-request.cancelled'
+ WHEN 'reimbursement' THEN app.can_admin_employment(e.id) AND app.module_action_allowed('claims','edit',e.company_id) AND app.function_action_allowed('claimsConfig.reimbursements','execute',e.company_id) AND audit.event_type='claim-request.paid' AND audit.payload->>'via'='reimbursement' END);
+$$;
+REVOKE ALL ON FUNCTION app.claim_native_effect_context_allowed(uuid,text,text,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.claim_native_effect_approved(p_claim uuid,p_before jsonb,p_after jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.claim_native_effect_context_allowed(p_claim,encode(sha256(convert_to(p_before::text,'UTF8')),'hex'),encode(sha256(convert_to(p_after::text,'UTF8')),'hex'),(p_after->>'employment_id')::uuid);
+$$;
+CREATE FUNCTION app.claim_native_effect_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE subject uuid;
+BEGIN
+ SELECT audit.subject_employment_id INTO subject FROM public.domain_event audit WHERE audit.id=NEW.event_id AND audit.tenant_id=NEW.tenant_id;
+ IF app.claim_native_effect_context_allowed(NEW.claim_id,NEW.before_hash,NEW.after_hash,subject) IS NOT TRUE THEN RAISE EXCEPTION 'Claim native effects incomplete' USING ERRCODE='42501';END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_native_effect_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER claim_native_effect_complete AFTER INSERT OR UPDATE ON app.module_claim_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_native_effect_complete();
+--> statement-breakpoint
+CREATE FUNCTION app.claim_authority_changed() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.epoch IS DISTINCT FROM OLD.epoch THEN
+  UPDATE app.claim_command_effect proof SET completed=proof.completed WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.born AND proof.completed;
+  UPDATE app.claim_own_receipt_effect proof SET completed=proof.completed WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.born AND proof.completed;
+  UPDATE app.claim_draft_delete_effect proof SET completed=proof.completed WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.completed;
+  UPDATE app.module_claim_effect proof SET event_id=proof.event_id WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id;
+ END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_authority_changed() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER claim_control_authority_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.claim_authority_changed();
+CREATE TRIGGER claim_native_authority_recheck AFTER UPDATE ON app.claim_native_source_epoch FOR EACH ROW EXECUTE FUNCTION app.claim_authority_changed();

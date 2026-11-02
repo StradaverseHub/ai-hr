@@ -1177,3 +1177,35 @@ Relevant native writers take Access before source tuples; command admission lock
 row to refuse an already-pinned stale repeatable-read writer. Authored native fixtures contrast a
 restored manager relationship (refused, full rollback) with actual approval→reimbursement in one
 transaction (retained). No receipt is used as ongoing actor/default/delegation authority.
+
+
+### Native nonself receipt construction and task read (unapplied chapter)
+
+All runtime Claim receipt INSERTs now consume one finite actual stored-parent constructor, including
+nonself upload and logical submit initialization. Native admin/recursive/HOD file maintenance has
+its own exact View/Add and data scope; direct/delegated task View can read the actual task receipt
+without becoming upload authority. The old own-only public API remains own-only. Constructor slots
+still require a real same-transaction parent mutation and native source audit, byte/metadata equality,
+actual physical birth and completed upload audit; source class is private and derived from the real
+parent. Both own and nonself receipts now bind the private Claim native-source stamp, not a caller
+purpose alone. Existing own refusal messages/closed Draft Delete remain intact. The TS adapter no
+longer uses a raw nonself INSERT/audit path. Native actual byte/audit positives, unrelated read refusal,
+assigned read-without-upload and raw/posted-source negatives are authored; hosted qualification is
+required. Catalogue consumer/maintenance raw-read separation and genuine component publication
+remain unfinished, so this is not a complete supported Claim package.
+
+
+Claims completion remains live after an early `SET CONSTRAINTS ALL IMMEDIATE`: retained private
+command, receipt, closed Draft Delete and cancel/reimbursement proofs capture actual source stamps;
+Claims-only hooks requeue exact current-XID tenant contexts on real control/native epoch changes.
+No foreign proof rows or current/default grants are changed. A private physical byte/metadata birth
+is separate from receipt context validation, so a genuine same-transaction closed Draft Delete can
+still compose with its initial receipt. Authored genuine APP-session command/receipt/cancel/reimburse
+fixtures use the public canonical data-permission transition owner to assign and restore an existing
+actor after early validation, without elevating the session or adding fixture grants. Separate
+owner-held downgrade simulations cover native graph and own login restore; these are explicitly
+protocol simulations, not strict APP-login qualification. No supported binding is fabricated.
+All new cases still require hosted execution. Ordinary approval→reimbursement stays a positive native
+outcome chain.
+Finite status transitions now refuse filed-row hard deletion and lifecycle rewinds, while Submit
+cannot silently edit the Draft's static source fields; actual native repricing fields remain allowed.

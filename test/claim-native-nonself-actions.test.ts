@@ -2,11 +2,11 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {createClaimType,submitClaim,decideClaim,listClaimsForEmployment,listPendingClaims,actionablePendingClaimIds} from '../core/claims';
-import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand} from '../core/data-permissions';
+import {createClaimType,submitClaim,decideClaim,listClaimsForEmployment,listPendingClaims,actionablePendingClaimIds,submitClaimWithAttachment,addClaimAttachment,getClaimAttachment,saveClaimDraft,deleteClaimDraft} from '../core/claims';
+import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand,type DataPermissionState,type DataPermissionPreview} from '../core/data-permissions';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 let b:Base,admin:SessionContext,typeId:string;
@@ -150,4 +150,136 @@ it('refuses a foreign-tenant decider reference without changing the actual subje
  await refusal(decideClaim(admin,{claimRequestId:pending.id,decision:'approve',deciderEmploymentId:foreign.employmentId}),'Claim decision fields unavailable');
  expect(await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id))).toEqual(before);
  expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audits);
+});
+
+it('constructs actual nonself submission and maintenance receipts with exact native byte audits',async()=>{
+ const file={fileName:'Fictional team receipt.pdf',mimeType:'application/pdf',content:Buffer.from('Fictional team receipt bytes')};
+ const submitted=await submitClaimWithAttachment(top.ctx,submission(),file);
+ const files=await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.claimRequestId,submitted.id));expect(files).toHaveLength(1);expect(files[0].uploadedByUserId).toBe(top.userId);
+ expect(await getClaimAttachment(top.ctx,files[0].id)).toEqual(file);expect(await getClaimAttachment(leaf.ctx,files[0].id)).toEqual(file);expect(await getClaimAttachment(stranger.ctx,files[0].id)).toBeNull();
+ const added=await addClaimAttachment(admin,{claimRequestId:submitted.id,...file,fileName:'Fictional administrative addition.pdf'});
+ expect(await getClaimAttachment(admin,added.id)).toEqual({...file,fileName:'Fictional administrative addition.pdf'});
+ const events=await owner.client`select actor_id,event_type from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${submitted.id}::uuid order by sequence`;
+ expect(events).toEqual([{actor_id:top.userId,event_type:'claim-request.submitted'},{actor_id:top.userId,event_type:'claim-request.receipt-added'},{actor_id:admin.userId,event_type:'claim-request.receipt-added'}]);
+});
+it('keeps assigned receipt read outside administrative data scope without granting upload or a posted constructor course',async()=>{
+ const file={fileName:'Fictional assigned receipt.pdf',mimeType:'application/pdf',content:Buffer.from('Fictional assigned receipt bytes')};
+ const submitted=await submitClaimWithAttachment(admin,submission(),file);
+ const [stored]=await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.claimRequestId,submitted.id));
+ await assignOtherDepartment(middle.userId);
+ expect(await getClaimAttachment(middle.ctx,stored.id)).toEqual(file);
+ await refusal(addClaimAttachment(middle.ctx,{claimRequestId:submitted.id,...file}),'Claim receipt unavailable');
+ const audit=await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`;
+ await refusal(withTenant(admin,tx=>tx.insert(s.claimAttachment).values({tenantId:b.tenantId,claimRequestId:submitted.id,employmentId:leaf.employmentId,uploadedByUserId:b.adminUserId,fileName:file.fileName,mimeType:file.mimeType,sizeBytes:file.content.length,content:file.content})),'Claim receipt source unavailable');
+ await refusal(withTenant(top.ctx,tx=>tx.execute(sql`select app.claim_receipt_native(${submitted.id}::uuid,${file.fileName},${file.mimeType},${file.content},'submit')`)),'Claim receipt native source unavailable');
+ await refusal(withTenant(top.ctx,tx=>tx.execute(sql`select app.claim_own_receipt_native(${submitted.id}::uuid,${file.fileName},${file.mimeType},${file.content},'receipt-add')`)),'Own claim receipt unavailable');
+ expect(await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.claimRequestId,submitted.id))).toEqual([stored]);
+ expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audit);
+});
+
+// This owner-held downgrade exercises the real guarded bodies, but is NOT strict APP-login evidence.
+async function ownerAppTransaction(actor:SessionContext,run:(tx:Tx)=>Promise<void>){
+ return owner.withTenant(actor,async tx=>{await tx.execute(sql`set local role ai_hr_app`);await run(tx);});
+}
+it('requeues an owner-held protocol decision after early validation and native revoke/restore',async()=>{
+ const pending=await submitClaim(admin,submission());
+ const [line]=await owner.db.select().from(s.reportingLine).where(sql`${s.reportingLine.subordinateEmploymentId}=${leaf.employmentId}::uuid and ${s.reportingLine.managerEmploymentId}=${middle.employmentId}::uuid and ${s.reportingLine.lineType}='administrative' and ${s.reportingLine.supersededAt} is null`);
+ const before=await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id)),audit=await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`;
+ await refusal(ownerAppTransaction(middle.ctx,async tx=>{
+  await decideClaim(middle.ctx,{claimRequestId:pending.id,decision:'approve'},tx);
+  await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`set constraints all deferred`);
+  // The native command above ran as app. Only the storage-owner test operator changes real source
+  // facts below; no manager permission, owner GUC or synthetic authority receipt is introduced.
+  await tx.execute(sql`reset role`);
+  await tx.update(s.reportingLine).set({managerEmploymentId:top.employmentId}).where(eq(s.reportingLine.id,line.id));
+  await tx.update(s.reportingLine).set({managerEmploymentId:middle.employmentId}).where(eq(s.reportingLine.id,line.id));
+  const [current]=await tx.execute<{allowed:boolean}>(sql`select app.claim_decision_allowed(${leaf.employmentId}::uuid) as allowed`);expect(current.allowed).toBe(true);
+ }),'Claim command effects incomplete');
+ expect(await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id))).toEqual(before);
+ expect(await owner.db.select().from(s.reportingLine).where(eq(s.reportingLine.id,line.id))).toEqual([line]);
+ expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audit);
+});
+it('requeues owner-held own receipt protocol completion after early validation and restored login authority',async()=>{
+ const audit=await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`;
+ let id:string|undefined;
+ await refusal(ownerAppTransaction(leaf.ctx,async tx=>{
+  const saved=await saveClaimDraft(leaf.ctx,submission(),{fileName:'Fictional retained receipt.pdf',mimeType:'application/pdf',content:Buffer.from('Fictional retained receipt bytes')},tx);id=saved.id;
+  await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`set constraints all deferred`);await tx.execute(sql`reset role`);
+  await tx.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,leaf.userId));await tx.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,leaf.userId));
+  const [current]=await tx.execute<{own:boolean}>(sql`select app.claim_subject_is_own(${leaf.employmentId}::uuid) as own`);expect(current.own).toBe(true);
+ }),'Claim receipt effects incomplete');
+ expect(id).toBeTruthy();expect(await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,id!))).toEqual([]);
+ expect(await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.claimRequestId,id!))).toEqual([]);
+ expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audit);
+});
+it('requeues owner-held closed Draft protocol completion after early validation and restored login authority',async()=>{
+ const saved=await saveClaimDraft(leaf.ctx,submission()),before=await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,saved.id));
+ const audit=await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`;
+ await refusal(ownerAppTransaction(leaf.ctx,async tx=>{
+  await deleteClaimDraft(leaf.ctx,saved.id,leaf.employmentId,tx);
+  await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`set constraints all deferred`);await tx.execute(sql`reset role`);
+  await tx.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,leaf.userId));await tx.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,leaf.userId));
+  const [current]=await tx.execute<{own:boolean}>(sql`select app.claim_subject_is_own(${leaf.employmentId}::uuid) as own`);expect(current.own).toBe(true);
+ }),'Claim draft delete effects incomplete');
+ expect(await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,saved.id))).toEqual(before);
+ expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audit);
+});
+it('refuses filed-row hard deletion, invalid lifecycle rewinds, and source edits hidden inside Submit',async()=>{
+ const filed=await submitClaim(admin,submission());
+ await refusal(withTenant(admin,tx=>tx.delete(s.claimRequest).where(eq(s.claimRequest.id,filed.id))),'Claim lifecycle source unavailable');
+ await decideClaim(admin,{claimRequestId:filed.id,decision:'reject'});
+ await refusal(withTenant(admin,tx=>tx.update(s.claimRequest).set({status:'pending',decidedAt:null,decidedByEmploymentId:null}).where(eq(s.claimRequest.id,filed.id))),'Claim lifecycle source unavailable');
+ const draft=await saveClaimDraft(leaf.ctx,submission());
+ await refusal(withTenant(leaf.ctx,tx=>tx.update(s.claimRequest).set({status:'pending',description:'Changed through Execute'}).where(eq(s.claimRequest.id,draft.id))),'Claim draft fields unavailable');
+ expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,filed.id)))[0].status).toBe('rejected');
+ expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,draft.id)))[0].status).toBe('draft');
+});
+
+async function nativeDataTransitionTx(tx:Tx,command:DataPermissionCommand){
+ const [state]=await tx.execute<{value:DataPermissionState}>(sql`select app.data_permission_state() as value`);
+ const [preview]=await tx.execute<{value:DataPermissionPreview}>(sql`select app.data_permission_transition(${JSON.stringify(command)}::jsonb,${state.value.revision},false,null) as value`);
+ expect(preview.value.fingerprint).toBeTruthy();
+ const [done]=await tx.execute<{value:{revision:string}}>(sql`select app.data_permission_transition(${JSON.stringify(command)}::jsonb,${state.value.revision},true,${preview.value.fingerprint}) as value`);
+ expect(done.value.revision).toBeTruthy();
+}
+it('requeues a genuine APP-session decision after early flush and canonical assign/restore without owner elevation',async()=>{
+ const profileId=randomUUID(),create:DataPermissionCommand={kind:'create',profileId,name:'Fictional actual APP data control',enabled:true,rules:{legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptB]}]}};
+ const state=await readDataPermissions(admin),preview=await previewDataPermission(admin,state.revision,create);await saveDataPermission(admin,state.revision,create,preview.fingerprint);
+ const assignments=(await readDataPermissions(admin)).assignments,pending=await submitClaim(admin,submission());
+ const before=await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id));
+ await refusal(withTenant(admin,async tx=>{
+  const [session]=await tx.execute<{owner:boolean;app:boolean}>(sql`select pg_has_role(session_user,(select relowner from pg_class where oid='public.app_user'::regclass),'USAGE') as owner,pg_has_role(current_user,'ai_hr_app','USAGE') as app`);expect(session).toEqual({owner:false,app:true});
+  await decideClaim(admin,{claimRequestId:pending.id,decision:'approve'},tx);
+  await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`set constraints all deferred`);
+  await nativeDataTransitionTx(tx,{kind:'assign',userId:middle.userId,profileId});
+  const [assigned]=await tx.execute<{value:DataPermissionState}>(sql`select app.data_permission_state() as value`);expect(assigned.value.assignments).toContainEqual({userId:middle.userId,profileId});
+  await nativeDataTransitionTx(tx,{kind:'assign',userId:middle.userId,profileId:null});
+  const [restored]=await tx.execute<{value:DataPermissionState}>(sql`select app.data_permission_state() as value`);expect(restored.value.assignments).toEqual(assignments);
+  const [native]=await tx.execute<{allowed:boolean}>(sql`select app.claim_decision_allowed(${leaf.employmentId}::uuid) as allowed`);expect(native.allowed).toBe(true);
+ }),'Claim command effects incomplete');
+ expect(await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id))).toEqual(before);
+ expect((await readDataPermissions(admin)).assignments).toEqual(assignments);
+});
+
+for(const course of ['receipt','cancel','reimburse'] as const)it(`requeues genuine APP-session ${course} completion after early flush and canonical control restore`,async()=>{
+ const profileId=randomUUID(),create:DataPermissionCommand={kind:'create',profileId,name:'Fictional actual APP retained '+course,enabled:true,rules:{legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptB]}]}};
+ const state=await readDataPermissions(admin),preview=await previewDataPermission(admin,state.revision,create);await saveDataPermission(admin,state.revision,create,preview.fingerprint);
+ const assignments=(await readDataPermissions(admin)).assignments,pending=await submitClaim(admin,submission());
+ if(course==='reimburse')await decideClaim(admin,{claimRequestId:pending.id,decision:'approve'});
+ const before=await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id)),audit=await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`;
+ await refusal(withTenant(admin,async tx=>{
+  const [session]=await tx.execute<{owner:boolean;app:boolean}>(sql`select pg_has_role(session_user,(select relowner from pg_class where oid='public.app_user'::regclass),'USAGE') as owner,pg_has_role(current_user,'ai_hr_app','USAGE') as app`);expect(session).toEqual({owner:false,app:true});
+  if(course==='receipt')await tx.execute(sql`select app.claim_receipt_native(${pending.id}::uuid,'Fictional canonical control receipt.pdf','application/pdf',${Buffer.from('Fictional actual receipt source')},'receipt-add')`);
+  else if(course==='cancel')await tx.execute(sql`select * from app.claim_cancel_native(${pending.id}::uuid,null)`);
+  else {const [paid]=await tx.execute<{paid:number}>(sql`select app.claim_reimburse_native(ARRAY[${pending.id}::uuid],'Fictional restored control reimbursement') as paid`);expect(paid.paid).toBe(1);}
+  await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`set constraints all deferred`);
+  await nativeDataTransitionTx(tx,{kind:'assign',userId:middle.userId,profileId});
+  const [assigned]=await tx.execute<{value:DataPermissionState}>(sql`select app.data_permission_state() as value`);expect(assigned.value.assignments).toContainEqual({userId:middle.userId,profileId});
+  await nativeDataTransitionTx(tx,{kind:'assign',userId:middle.userId,profileId:null});
+  const [restored]=await tx.execute<{value:DataPermissionState}>(sql`select app.data_permission_state() as value`);expect(restored.value.assignments).toEqual(assignments);
+ }),course==='receipt'?'Claim receipt effects incomplete':'Claim native effects incomplete');
+ expect(await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id))).toEqual(before);
+ expect(await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.claimRequestId,pending.id))).toEqual([]);
+ expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audit);
+ expect((await readDataPermissions(admin)).assignments).toEqual(assignments);
 });
