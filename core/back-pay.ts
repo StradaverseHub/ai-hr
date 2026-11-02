@@ -107,6 +107,7 @@ import {
   appUser,
   backPayLine,
   backPayRun,
+  backPaySource,
   company,
   compensation,
   employment,
@@ -151,6 +152,7 @@ export const BACK_PAY_REVIEW_REASONS = [
   'nonPayableItem',
   'noBaselineSalary',
   'unpaidLeaveInPeriod',
+  'priorArrears',
 ] as const;
 export type BackPayReviewReason = (typeof BACK_PAY_REVIEW_REASONS)[number];
 
@@ -259,8 +261,14 @@ async function detectArrearsTx(tx: Tx, p: { companyId: string }): Promise<Arrear
         // …but the run could not see it. THIS is the detector; the clause above alone is just
         // "everyone has a salary" (41/36 on production, versus the true 26/22).
         sql`${compensation.recordedAt} > ${payslip.createdAt}`,
+        sql`(${compensation.validTo} is null or ${compensation.validTo} > (${payrollBatch.payPeriod} || '-01')::date)`,
         // The duplicate guard: a revision already carried by a live run is not detectable again until
         // that run is cancelled.
+        sql`not exists (
+          select 1 from ${backPaySource} source
+          join ${backPayRun} run on run.id=source.run_id
+          where source.source_compensation_id=${compensation.id} and run.status<>'cancelled'
+        )`,
         sql`not exists (
           select 1 from ${backPayLine} bl
           join ${backPayRun} br on br.id = bl.run_id
@@ -405,7 +413,13 @@ async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Pr
   const ruleByCode = new Map<string, PayRule | null>(catalog.map((c) => [c.code.trim().toUpperCase(), c.rule]));
   const catalogById = new Map(catalog.map((c) => [c.id, c]));
 
-  for (const cand of p.candidates) {
+  const grouped = new Map<string, ArrearsCandidate>();
+  for (const candidate of [...p.candidates].sort((a,b)=>a.compensationId.localeCompare(b.compensationId))) {
+    const prior = grouped.get(candidate.employmentId);
+    if (prior) prior.affectedPeriods = [...new Set([...prior.affectedPeriods, ...candidate.affectedPeriods])].sort();
+    else grouped.set(candidate.employmentId, {...candidate, affectedPeriods:[...candidate.affectedPeriods]});
+  }
+  for (const cand of grouped.values()) {
     const history = historyByEmp.get(cand.employmentId) ?? [];
     for (const period of cand.affectedPeriods) {
       const { start: periodStart, end: periodEnd, dim } = periodBounds(period);
@@ -444,6 +458,18 @@ async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Pr
         reviewReason: null,
         ...over,
       });
+
+      // A later revision cannot safely reuse the original paid anchor after another
+      // live arrears reservation. Keep the existing explicit-review path; do not
+      // invent residual or dependent-cancellation semantics.
+      const [priorArrears] = await tx.select({id:backPayLine.id}).from(backPayLine)
+        .innerJoin(backPayRun, eq(backPayRun.id, backPayLine.runId))
+        .where(and(eq(backPayLine.employmentId,cand.employmentId),eq(backPayLine.affectedPeriod,period),
+          sql`${backPayRun.status}<>'cancelled'`)).limit(1);
+      if (priorArrears) {
+        out.push(line({payCode:BASIC_PAY_CODE,payItemName:'Basic Salary',needsReview:true,reviewReason:'priorArrears'}));
+        continue;
+      }
 
       // What the run could SEE. `recorded_at <= the payslip's created_at` is the same test detection uses,
       // read the other way round.
@@ -700,9 +726,17 @@ export function calculateBackPay(
 ): Promise<{ runId: string; lineCount: number; total: number }> {
   if (!isBackPayPeriod(p.targetPayPeriod)) throw new Error('back-pay-invalid-period');
   return withTenant(ctx, async (tx) => {
+    await lockPayComponentCatalogTx(tx,ctx);
     const candidates = await detectArrearsTx(tx, { companyId: p.companyId });
     const wanted = p.compensationIds && p.compensationIds.length > 0 ? new Set(p.compensationIds) : null;
     const selected = wanted ? candidates.filter((c) => wanted.has(c.compensationId)) : candidates;
+    // A partial revision selection must not price the full history while leaving
+    // an unselected overlapping witness free to be priced again later.
+    const selectedIds = new Set(selected.map(candidate=>candidate.compensationId));
+    if (candidates.some(other=>!selectedIds.has(other.compensationId) && selected.some(candidate=>
+      candidate.employmentId===other.employmentId && candidate.affectedPeriods.some(period=>other.affectedPeriods.includes(period))))) {
+      throw new Error('Select all salary revisions affecting the same employee and paid month.');
+    }
     const lines = await computeLinesTx(tx, { candidates: selected });
     if (lines.length === 0) throw new BackPayNothingToCalculateError();
 
@@ -717,6 +751,10 @@ export function calculateBackPay(
         remarks: p.remarks ?? null,
       })
       .returning({ id: backPayRun.id });
+
+    for (const source of selected) {
+      await tx.insert(backPaySource).values({tenantId:ctx.tenantId,runId:run.id,sourceCompensationId:source.compensationId});
+    }
 
     for (const l of lines) {
       await tx.insert(backPayLine).values({
@@ -1135,6 +1173,7 @@ export function approveAndPostBackPay(
  */
 export function cancelBackPayRun(ctx: SessionContext, p: { runId: string }): Promise<{ runId: string; removed: number }> {
   return withTenant(ctx, async (tx) => {
+    await lockPayComponentCatalogTx(tx,ctx);
     const run = await loadRunTx(tx, p.runId);
     if (run.status === 'cancelled') throw new BackPayStatusError(run.status, 'draft|verified|posted');
 

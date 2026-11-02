@@ -215,6 +215,26 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
     expect(await payslipRow(employmentId, batchId)).toEqual(before);
   });
 
+  it('BK53 keeps a later overlapping adjustment on the existing no-money review path', async () => {
+    const { a, employmentId } = await hire(3000);
+    const batchId = await runAndClose('2026-03');
+    const before = await payslipRow(employmentId, batchId);
+    await setCompensation(a, { employmentId, basicSalary: 3300, effectiveFrom: '2026-03-01' });
+    const first = await calculateBackPay(a, { companyId: base.companyId, targetPayPeriod: '2026-04' });
+    expect(first.total).toBe(300);
+    await setCompensation(a, { employmentId, basicSalary: 3400, effectiveFrom: '2026-03-01' });
+    const second = await calculateBackPay(a, { companyId: base.companyId, targetPayPeriod: '2026-04' });
+    expect(second.total).toBe(0);
+    const review = await backPayRunDetail(a, second.runId);
+    expect(review!.rows[0]).toMatchObject({needsReview:true,reviewReason:'priorArrears'});
+    expect(review!.rows[0].byPeriod['2026-03'].new).toBeNull();
+    await cancelBackPayRun(a, {runId:second.runId});
+    await cancelBackPayRun(a, {runId:first.runId});
+    const retry = await calculateBackPay(a, {companyId:base.companyId,targetPayPeriod:'2026-04'});
+    expect(retry.total).toBe(400);
+    expect(await payslipRow(employmentId,batchId)).toEqual(before);
+  });
+
   it('a backdated RISE produces a positive basic line, and the closed payslip is byte-identical afterwards', async () => {
     const { a, employmentId } = await hire(5000);
     const marchBatch = await runAndClose('2026-03');

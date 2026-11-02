@@ -7807,6 +7807,17 @@ export const backPayLine = pgTable(
   ],
 );
 
+/** Every compensation revision reviewed by one back-pay calculation, independent of priced line grain. */
+export const backPaySource = pgTable('back_pay_source', {
+  id: id(),
+  tenantId: tenantId(),
+  runId: uuid('run_id').notNull().references(() => backPayRun.id),
+  sourceCompensationId: uuid('source_compensation_id').notNull().references(() => compensation.id),
+}, t => [
+  uniqueIndex('back_pay_source_run_source_unique').on(t.runId, t.sourceCompensationId),
+  index('back_pay_source_lookup_idx').on(t.tenantId, t.sourceCompensationId),
+]);
+
 // ───────────────────── Performance & talent (ADR-0013) ─────────────────────
 // The first unregulated, entirely config-driven module: no statutory floor, no "correct" rating.
 // The review cycle is the backbone; the pay seam (rating → recommendation → enacted via the tested
