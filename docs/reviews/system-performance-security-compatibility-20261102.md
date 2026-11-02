@@ -15,6 +15,13 @@ A subsequent read observed cleanbc7e06b2062b1606d48144328e00ba574b228d4f;
 `git diff300fc..bc7e -- db/migrations/0936_data_permission_profiles.sql
  db/migrations/0938_data_permission_enforcement.sql` is empty. Evidence is still
 identified as300fc; it is not relabelled onto a later application commit.
+Latest read-only observation isd407d190b98db6a46c68ef65072a0e129b8a6e98,with foreign
+WIP in core/payroll.ts and0941_financial_letter_actions.sql,preserved untouched.
+The complete visible_employment_ids declaration/body remains byte-identical to300fc
+(5937-byte section SHA256b857cee6f5d1bf1a1df479dca8f1767b8e2ed4dbb1c3b6efb7317788a1f53206).
+Adjacent0938 read/profile helpers have changed their isolation checks,so the complete
+file and owner contract are no longer identical. This requires current-source owner
+integration and qualification;300fc native evidence is not transferred wholesale.
 
 Relevant source:
 

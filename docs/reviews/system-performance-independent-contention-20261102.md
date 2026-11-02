@@ -133,7 +133,7 @@ participant rollback and120-event recovery chain pass again.
 These are separate small-sample runner observations,not request-matched production
 percentiles or an overall system percentage. Local tail removal and lower isolated
 callback support one unchanged whole-system pair after correctness qualifies.
-Exact frozen29f806a36 aliases run1s41438476472 and5s41438488700; both are active.
+Exact frozen29f806a36 aliases run1s41438476472 and5s41438488700; both finish FAIL; full outcome follows.
 500principals,two million retained Claims/Attendance rows,30route/six mixed workflow
 coverage,six hydrated browser contexts,1worker,pool10,heap4096MiB,standard4CPU,
 durable~2GiB PostgreSQL,5mhold,90srequests and600sparent remain unchanged. Benchmark,
@@ -148,3 +148,35 @@ and28c25a7b234de8075e62b6e3daaaadf036cddc04c23aa091b4f540b0f27b0ae8.
 Both canonical checks pass under the existing task-scoped human metadata approval.
 Literal provider bindings remain byte-identical and provider egress blocked.
 No SQL/journal change,foreign source edit,release admission or deployment follows.
+
+
+## Original full pair: terminal failures retained
+
+Exact29f8 runs41438476472/41438488700 both account for500 users and finish the
+original HTTP stage within600s (579.720/593.691s).1s settles497/3,5s439/61;
+all3/61 errors are request aborts. Both complete6/6 hydrated browser journeys and
+all6 mixed workflow categories,but retain3 loaded Home failures and fail p95 targets.
+No native SQL error appears in the bounded server metadata; this is not proof that
+an earlier race is repaired. Both tenant chains validate (2823/2166 and2005/2166
+checked,no interior gaps). Strict result JSON retains role percentiles,actual settings,
+fixture counts,declared exclusions and original stages/errors. Neither profile accepts
+a whole-system speed gain or promotes the local application into the primary draft.
+
+New sampled Access/Audit waiter occurrences are187/129 and144/109 over426/431
+samples. Recursive visibility statement1969980583505592512 records207865/183197
+calls and166787.27/186296.50ms nested execution. Drizzle classifier sampled self time
+is11.28/12.02s. These observations retain the visibility/authority and admission
+pressure diagnosis; they do not justify ORM replacement,permission caching or
+removing canonical locks. Source-compatible visibility implementation remains with
+the independent security owner; its adjacent policy changes must be qualified.
+Artifacts:/private/tmp/aihr-punch-audit-{one,five}-29f8-attempt1.
+Strict extractor:/private/tmp/aihr-punch-audit-results-20261102.py.
+Results:/private/tmp/aihr-punch-audit-terminal-results-20261102.json.
+Remaining contention:/private/tmp/aihr-punch-audit-remaining-contention-20261102.json.
+No blind full-load retry,resources/limits change or deployment follows.
+
+Independent next attribution is test-onlyfde8ef786afdf33e6bc29d026d7dc0854e297ac5 /
+41442927885,pending. It forwards the real overtime refresh,replacement-leave check
+and service audit writes while recording bounded numeric spans after punch-owner
+exit. All prior functional,payload,chain and final-audit rollback assertions remain.
+It adds no application or policy change and cannot justify a broad load retry alone.
