@@ -635,6 +635,21 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     for(const row of rows)expect(Number(row.score)).toBeCloseTo(sourceGolden.scoring[row.id].expected,10);
     await expect(withTenant(a,tx=>tx.execute(sql`select app.assessment_kpi_score(1::numeric,'{}'::jsonb)`))).rejects.toThrow();
   });
+  it('keeps nominated panel feedback independent of Self, assigned reviewer and administrative courses',async()=>{
+    await perf.assignOnehrPanel(mgr,reviewId,(await view(mgr)).revision,peers.map(peer=>({employmentId:peer.employmentId,relationship:'peer'})));
+    const panels=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.reviewId,reviewId));expect(panels).toHaveLength(peers.length);
+    const panel=panels.find(item=>item.peerEmploymentId===peers[0].employmentId)!;const card=await perf.getOnehrFeedback(peers[0].ctx,panel.requestId);expect(card.statements.length).toBeGreaterThan(0);
+    const [floors]=await owner.db.execute<{nominee:boolean;administrator:boolean}>(sql`select app.financial_function_native(${b.tenantId}::uuid,${peers[0].ctx.userId}::uuid,'function.performance.onehr.panelFeedback.edit',${b.companyId}::uuid,false) as nominee,app.financial_function_native(${b.tenantId}::uuid,${a.userId}::uuid,'function.performance.onehr.panelFeedback.edit',${b.companyId}::uuid,false) as administrator`);expect(floors).toEqual({nominee:true,administrator:false});
+    for(const unrelated of [a,mgr,self]){await expect(perf.getOnehrFeedback(unrelated,panel.requestId)).rejects.toThrow(/not found/);await expect(perf.declineOnehrFeedback(unrelated,panel.requestId)).rejects.toThrow(/not found/);}
+    await expect(withTenant(peers[0].ctx,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_feedback_apply(${panel.requestId}::uuid,false,NULL::jsonb,NULL::text,NULL::jsonb)`);})).rejects.toThrow(/actor unavailable/);
+    expect(await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,panel.requestId))).toEqual([panel]);
+    const answers=Object.fromEntries(card.statements.map(statement=>[statement.id,'no']));await perf.submitOnehrFeedback(peers[0].ctx,panel.requestId,answers,'Native nominated response.');
+    const [submitted]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,panel.requestId));expect(submitted).toEqual({...panel,answers,remark:'Native nominated response.',submittedAt:submitted.submittedAt});expect(submitted.submittedAt).not.toBeNull();
+    const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,panel.requestId),eq(schema.domainEvent.eventType,'onehr.feedback-submitted')));expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorType:'user',actorId:peers[0].ctx.userId,payload:{}});
+    await expect(perf.submitOnehrFeedback(peers[0].ctx,panel.requestId,answers,'Duplicate')).rejects.toThrow(/already submitted/);
+    const second=panels.find(item=>item.peerEmploymentId===peers[1].employmentId)!;await perf.declineOnehrFeedback(peers[1].ctx,second.requestId);const [declined]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,second.requestId));expect(declined).toEqual({...second,archivedAt:declined.archivedAt});expect(declined.archivedAt).not.toBeNull();await expect(perf.getOnehrFeedback(peers[1].ctx,second.requestId)).rejects.toThrow(/not found/);
+    const [privilege]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_panel_nomination(uuid,uuid,uuid,uuid)','EXECUTE') as allowed`);expect(privilege.allowed).toBe(false);
+  });
   it('preserves archived feedback, reopens submitted answers as a draft, and revokes changed reports',async()=>{
     await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);
     const [original]=await owner.db.select().from(schema.onehrPanel).where(and(eq(schema.onehrPanel.reviewId,reviewId),eq(schema.onehrPanel.peerEmploymentId,peers[0].employmentId)));

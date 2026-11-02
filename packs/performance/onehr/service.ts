@@ -517,25 +517,15 @@ export async function submitOnehrFeedback(ctx:SessionContext,requestId:string,ra
   const answers=z.record(z.string(),z.enum(['yes','no'])).parse(raw);note.parse(remark);
   const principleComments=z.record(z.string().max(200),z.string().trim().max(2000)).parse(comments);
   return withPerformanceTenant(ctx,async tx=>{
-    // Serialize all writes and freezing for the review, including peer responses.
-    const initial=await feedbackCard(tx,requestId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${initial.reviewId},0))`);
-    const card=await feedbackCard(tx,requestId);if(card.submitted||card.frozen)throw Error('Feedback is already submitted or finalized.');
-    const cycle=await loadCycle(tx,card.cycleId);if(!['open','calibration'].includes(cycle.native.status))throw Error('The cycle is closed.');assertWindow(cycle.policy,'f360');
-    if(Object.keys(principleComments).some(key=>!card.statements.some(s=>s.principle===key)))throw Error('Use only the assigned leadership principles.');
-    const score=scoreAnswers(card.statements,answers);assertOverallRemark(remark,score.score/score.max*100>cycle.policy.midMaxPct);
-    await clearAssessmentDraftTx(tx,ctx,card.reviewId,'feedback',requestId);
-    await tx.update(onehrPanel).set({answers,remark,principleComments,submittedAt:new Date()}).where(eq(onehrPanel.requestId,requestId));
-    await tx.update(peerFeedbackRequest).set({status:'submitted'}).where(eq(peerFeedbackRequest.id,requestId));await audit(tx,ctx,requestId,'feedback-submitted');
+    uuid.parse(requestId);
+    await tx.execute(sql`select app.onehr_feedback_apply(${requestId}::uuid,true,${JSON.stringify(answers)}::jsonb,${remark}::text,${JSON.stringify(principleComments)}::jsonb)`);
   });
 }
 
 export async function declineOnehrFeedback(ctx:SessionContext,requestId:string) {
  return withPerformanceTenant(ctx,async tx=>{
-  const card=await feedbackCard(tx,requestId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${card.reviewId},0))`);
-  const fresh=await feedbackCard(tx,requestId);if(fresh.submitted||fresh.frozen)throw Error('Feedback is already submitted or finalized.');
-  const cycle=await loadCycle(tx,card.cycleId);if(!['open','calibration'].includes(cycle.native.status))throw Error('The cycle is closed.');assertWindow(cycle.policy,'f360');
-  await tx.update(onehrPanel).set({archivedAt:new Date()}).where(eq(onehrPanel.requestId,requestId));
-  await tx.update(peerFeedbackRequest).set({status:'declined'}).where(eq(peerFeedbackRequest.id,requestId));await audit(tx,ctx,requestId,'feedback-declined');
+  uuid.parse(requestId);
+  await tx.execute(sql`select app.onehr_feedback_apply(${requestId}::uuid,false,NULL::jsonb,NULL::text,NULL::jsonb)`);
  });
 }
 
