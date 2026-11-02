@@ -36,7 +36,7 @@ const privacyFixture=vi.hoisted(()=>({reviewed:true}));
 vi.mock('../lib/ai/provider-data-reviews',async original=>{
  const actual=await original<typeof import('../lib/ai/provider-data-reviews')>();
  const {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST}=await import('../lib/ai/provider-data-source-manifest');
- const contracts=new Set(['performance_narrative_selection_v1','performance_fact_selection_v1','performance_native_outline_v1','performance_explicit_commands_v1','performance_starter_selection_v1']);
+ const contracts=new Set(['performance_narrative_selection_v1','performance_fact_selection_v1','performance_native_outline_v1','performance_explicit_commands_v1','performance_starter_selection_v1','performance_literal_command_v1']);
  return {...actual,
   providerDataReviewStatus:(contract:string)=>contracts.has(contract)?privacyFixture.reviewed?'approved':'pending':actual.providerDataReviewStatus(contract),
   assertProviderDataContractReviewed:(contract:string,digest:string)=>{
