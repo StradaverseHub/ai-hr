@@ -1,3 +1,16 @@
+## Read/write scheduling rejected; transaction timing qualification active
+
+Frozen diagnostic f3348610f keeps application/workload07f07749f byte-identical and separates GET/HEAD from POST across two workers under unchanged total pool10/heap4GiB, standard four-CPU host, approximately2GiB PostgreSQL and original workload/timeouts. Both runs finish **FAIL**, with complete500-user accounting:
+
+|Activity|Completed/failed|Read/write p95|Browsers|HTTP stage|
+|---|---|---|---|---|
+|1s [41375426108](https://github.com/StradaverseHub/ai-hr/actions/runs/41375426108)|223/277|82.09s/31.05s|0/6|590.35s; within600s|
+|5s [41375429457](https://github.com/StradaverseHub/ai-hr/actions/runs/41375429457)|489/11|71.46s/69.77s|5/6|596.87s; within600s|
+
+Every recorded user failure is an abort. Both retain three loaded Home-card failures, valid audit chains for both tenants and no interior unchained entries. Closed diagnostics record no heap exhaustion or native public-error/Draft failure blocks; absence of a captured native error does not negate HTTP failure. Actual routing counts prove GET/POST lane separation. Reads regress versus the same-app round-robin control, and severe aborts change completed work. Lower write p95 is not accepted system improvement. Reject method separation for deployment; retain the one-worker baseline. All eight latest planned load runs have finished; **0/2 targets accepted; no deployment**.
+
+Existing traces measure database CPU/ready/lock samples and statement times but not application pool admission directly. Isolated diagnostic a2b1857b7 adds numeric transaction admission/callback/settlement envelopes to withTenant and entitlement resolution. [41378937766](https://github.com/StradaverseHub/ai-hr/actions/runs/41378937766) is qualifying the actual one-connection admission barrier, failure identity/no-retry behavior, session setup, native command/audit and Payroll controls plus the whole compiler. This is instrumentation, not a fix or acceptance result. Admission includes BEGIN, callbacks include SQL/network/JavaScript, and settlement includes COMMIT/ROLLBACK; none alone is pure database service time. No SQL, identities or business data are collected. This probe is not merged into the performance application draft.
+
 ## Current lock fixes and capacity verification
 
 The500-user target remains **0/2 accepted**. No performance change is deployed. Two native concurrency defects are fixed in the draft: ordinary USER clocking imports now share stable authority, and Leave approval-step generation completes before its submitted audit append. Native subject/configuration/financial ownership, the audit-chain mechanism and complete transaction rollback remain enforced. No migration, timeout, resource cap or workload changes accompany these two fixes.
