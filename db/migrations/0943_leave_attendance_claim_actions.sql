@@ -1211,14 +1211,14 @@ BEGIN
  SELECT * INTO parent FROM public.claim_request actual WHERE actual.id=p_claim AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
  own:=app.claim_subject_is_own(parent.employment_id);
  IF parent.id IS NULL OR parent.status::text NOT IN ('draft','pending') OR p_course IS NULL OR p_course NOT IN ('draft-add','draft-edit','submit','receipt-add') OR p_name IS NULL OR p_mime IS NULL OR p_mime NOT IN ('application/pdf','image/jpeg','image/png') OR p_content IS NULL OR octet_length(p_content) NOT BETWEEN 1 AND 10485760
- OR CASE WHEN own THEN NOT app.claim_own_source_allowed(parent.employment_id,'claims.own.receipts','view') ELSE NOT app.claim_maintenance_receipt_allowed(parent.employment_id,'view') END
+ OR (CASE WHEN own THEN NOT app.claim_own_source_allowed(parent.employment_id,'claims.own.receipts','view') ELSE NOT app.claim_maintenance_receipt_allowed(parent.employment_id,'view') END)
  THEN RAISE EXCEPTION '%',CASE WHEN own THEN 'Own claim receipt unavailable' ELSE 'Claim receipt unavailable' END USING ERRCODE='42501';END IF;
  authority:=app.claim_command_authority_stamp();
  IF p_course='receipt-add' THEN
-  IF CASE WHEN own THEN NOT app.claim_own_source_allowed(parent.employment_id,'claims.own.receipts','add') ELSE NOT app.claim_maintenance_receipt_allowed(parent.employment_id,'add') END THEN RAISE EXCEPTION '%',CASE WHEN own THEN 'Own claim receipt Add unavailable' ELSE 'Claim receipt Add unavailable' END USING ERRCODE='42501';END IF;
+  IF (CASE WHEN own THEN NOT app.claim_own_source_allowed(parent.employment_id,'claims.own.receipts','add') ELSE NOT app.claim_maintenance_receipt_allowed(parent.employment_id,'add') END) THEN RAISE EXCEPTION '%',CASE WHEN own THEN 'Own claim receipt Add unavailable' ELSE 'Claim receipt Add unavailable' END USING ERRCODE='42501';END IF;
  ELSE
   operation:=CASE p_course WHEN 'draft-add' THEN 'add' WHEN 'draft-edit' THEN 'edit' ELSE 'execute' END;
-  IF CASE WHEN own THEN NOT app.claim_own_source_allowed(parent.employment_id,CASE WHEN p_course='submit' THEN 'claims.own.submit' ELSE 'claims.own.drafts' END,operation) ELSE p_course<>'submit' OR NOT app.claim_nonself_submit_allowed(parent.employment_id) END THEN RAISE EXCEPTION '%',CASE WHEN own THEN 'Own receipt source action unavailable' ELSE 'Claim receipt source action unavailable' END USING ERRCODE='42501';END IF;
+  IF (CASE WHEN own THEN NOT app.claim_own_source_allowed(parent.employment_id,CASE WHEN p_course='submit' THEN 'claims.own.submit' ELSE 'claims.own.drafts' END,operation) ELSE p_course<>'submit' OR NOT app.claim_nonself_submit_allowed(parent.employment_id) END) THEN RAISE EXCEPTION '%',CASE WHEN own THEN 'Own receipt source action unavailable' ELSE 'Claim receipt source action unavailable' END USING ERRCODE='42501';END IF;
   SELECT source.id INTO source_id FROM app.claim_own_source_mutation source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=parent.tenant_id AND source.user_id=app.current_user_id() AND source.claim_id=parent.id AND source.course=p_course AND source.source=to_jsonb(parent) AND source.authority_stamp=authority AND source.receipt_id IS NULL ORDER BY source.id LIMIT 1 FOR UPDATE;
   IF source_id IS NULL THEN RAISE EXCEPTION '%',CASE WHEN own THEN 'Own receipt native source unavailable' ELSE 'Claim receipt native source unavailable' END USING ERRCODE='42501';END IF;
  END IF;
