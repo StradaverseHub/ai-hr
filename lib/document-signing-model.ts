@@ -38,7 +38,7 @@ export function validateSigningRoute(route: SigningRoute, rules: SigningGuardrai
 }
 /** Missing holders block; they never silently turn a required step into a skipped step. */
 export function pendingSigningSteps(document: SigningDocument): SigningStep[] {
-  const signed=new Set(document.actions.filter(a=>a.contentRevision===document.contentRevision&&a.contentHash===document.contentHash&&a.action==='signed').map(a=>a.stepId));
+  const signed=new Set(document.actions.filter(a=>a.contentRevision===document.contentRevision&&a.contentHash===document.contentHash&&(a.action==='signed'||a.action==='declined'&&document.route.steps.some(s=>s.id===a.stepId&&s.kind==='acknowledge'))).map(a=>a.stepId));
   const remaining=document.route.steps.filter(s=>s.required&&!signed.has(s.id));
   const stage=Math.min(...remaining.map(s=>s.stage));
   return remaining.filter(s=>s.stage===stage);
@@ -61,7 +61,7 @@ export function recordSigningAction(document: SigningDocument, rules: SigningGua
   if (input.revision!==document.contentRevision || input.hash!==document.contentHash) throw new SigningError('conflict','This document changed. Read the current revision before signing.');
   if (document.actions.some(a=>a.id===input.id)) {
     const prior=document.actions.find(a=>a.id===input.id)!;
-    if (prior.actorId===input.actorId&&prior.stepId===input.stepId&&prior.contentHash===input.hash&&prior.contentRevision===input.revision&&prior.action===input.action) return document;
+    if (prior.actorId===input.actorId&&prior.stepId===input.stepId&&prior.contentHash===input.hash&&prior.contentRevision===input.revision&&prior.action===input.action&&prior.comment===(input.comment?.trim()??'')&&(input.action==='returned'||prior.signature?.method===input.method&&prior.signature?.value===input.value&&input.consent===true)) return document;
     throw new SigningError('conflict','This action reference was already used.');
   }
   const step=pendingSigningSteps(document).find(s=>s.id===input.stepId);
@@ -73,9 +73,18 @@ export function recordSigningAction(document: SigningDocument, rules: SigningGua
   const next={...document,actions:[...document.actions,action]};
   if (rules.independentApprovalFromRole&&step.kind==='approve') {
     const manager=next.actions.find(a=>a.action==='signed'&&a.role===rules.independentApprovalFromRole&&a.contentRevision===input.revision&&a.contentHash===input.hash);
-    if (manager?.actorId===input.actorId) throw new SigningError('forbidden','A distinct person must approve this review.');
+    if (manager?.actorId===input.actorId&&!document.route.steps.some(s=>s.required&&s.kind==='approve'&&s.holderId!==null&&s.holderId!==input.actorId)) throw new SigningError('forbidden','A distinct person must approve this review.');
   }
   return next;
+}
+/** Only the subject owner's recorded refusal-confirmation path may invoke this transition. */
+export function recordAcknowledgementDecline(document:SigningDocument,input:{id:string;stepId:string;actorId:string;actorName:string;reason:string;at:string}):SigningDocument{
+  const step=pendingSigningSteps(document).find(s=>s.id===input.stepId);
+  if(!step||step.kind!=='acknowledge'||!step.holderId)throw new SigningError('conflict','Only the pending employee acknowledgement can be recorded as declined.');
+  if(!input.reason.trim()||!input.actorId||input.actorId===step.holderId||!input.actorName.trim()||!Number.isFinite(Date.parse(input.at)))invalid('A recorded refusal reason and independent confirmation are required.');
+  if(document.actions.some(a=>a.id===input.id))throw new SigningError('conflict','This refusal action reference was already used.');
+  const action:SigningAction={id:input.id,stepId:step.id,contentRevision:document.contentRevision,contentHash:document.contentHash,actorId:input.actorId,actorName:input.actorName,representedId:step.holderId,role:step.role,at:input.at,action:'declined',comment:input.reason.trim(),signature:null};
+  return{...document,actions:[...document.actions,action]};
 }
 export function reviseSigningDocument(document: SigningDocument, hash: string): SigningDocument {
   if (!/^[a-f0-9]{64}$/.test(hash)||hash===document.contentHash) invalid('A new content fingerprint is required.');
