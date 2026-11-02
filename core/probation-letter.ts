@@ -1,5 +1,4 @@
 import {validateProbationLetterFields,probationLetterDocument} from '../lib/probation-letter-document';
-import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../db/client';
@@ -15,7 +14,8 @@ import {createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActio
 const id=z.uuid(),json=(value:unknown)=>JSON.stringify(value);
 const base=v9ConfigSchema.shape.templates.element;
 const route=z.object({version:z.number().int().positive(),steps:z.array(z.object({id:z.string().min(1).max(120),role:z.enum(['lm','hod','pbp','employee']),kind:z.enum(['sign','acknowledge','approve']),stage:z.number().int().min(0).max(30),holderId:z.null(),holderPersonId:z.undefined().optional(),representedId:z.undefined().optional(),required:z.boolean()}).strict()).min(2).max(30)}).strict();
-const templateSchema=base.omit({module:true}).extend({module:z.literal('probation'),outcome:z.enum(['confirm','extend','not_confirm']),unfinished:z.boolean(),blocks:base.shape.versions.element.shape.blocks,fields:base.shape.versions.element.shape.fields,route}).strict();
+const letterRules=base.shape.rules.pick({businessGroup:true,company:true,department:true,grade:true}).extend({businessUnit:z.array(z.string().min(1).max(200)).max(200).optional(),outcome:z.array(z.enum(['confirm','extend','not_confirm'])).max(3).optional(),extensionNumber:z.array(z.string().regex(/^[0-2]$/)).max(3).optional()}).strict();
+const templateSchema=base.omit({module:true}).extend({rules:letterRules,module:z.literal('probation'),outcome:z.enum(['confirm','extend','not_confirm']),unfinished:z.boolean(),blocks:base.shape.versions.element.shape.blocks,fields:base.shape.versions.element.shape.fields,route}).strict();
 export type ProbationLetterDefinition={id:string;companyId:string;key:string;version:number;state:'draft'|'published'|'retired';data:ProbationTemplate};
 export type ProbationLetterPreview={merge:Record<string,string>;blocks:Block[];fields:Field[];route:SigningRoute;guardrails:SigningGuardrails;companyId:string;employmentId:string;templateId:string;templateVersion:number;templateName?:string;outcomeRevision:number;sourceDigest:string};
 export type ProbationLetterView={id:string;caseId:string;outcomeId:string;outcomeRevision:number|null;storageRevision:number;state:string;createdAt:string;name:string;templateId:string;templateVersion:number;blocks:Block[];fields:Field[];merge:Record<string,string>;signing:{id:string;document:SigningDocument}|null;canPrepare:boolean;canRelease:boolean;document:Document};
@@ -36,8 +36,10 @@ function validateTemplate(raw:unknown,publish:boolean):ProbationTemplate{
 export function probationLetterTemplates(ctx:SessionContext,companyId:string){return withScopedLifecycleTenant(ctx,async tx=>{companyGate(ctx,id.parse(companyId));return tx.execute<ProbationLetterDefinition>(sql`select id,company_id as "companyId",definition_key as key,version,state,data from probation_builder_definition where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid and kind='template' order by definition_key,version desc`);});}
 export function saveProbationLetterTemplate(ctx:SessionContext,input:{companyId:string;template:unknown;publish:boolean;expectedVersion:number}){return withScopedLifecycleTenant(ctx,async tx=>{
  companyGate(ctx,id.parse(input.companyId));const template=validateTemplate(input.template,input.publish);z.number().int().nonnegative().parse(input.expectedVersion);
- const[row]=await tx.execute<{id:string}>(sql`select app.probation_definition_save(${input.companyId}::uuid,${template.outcome},'template',${json(template)}::jsonb,${input.publish},${input.expectedVersion}) as id`);return row.id;
+ const[row]=await tx.execute<{id:string}>(sql`select app.probation_definition_save(${input.companyId}::uuid,${template.id},'template',${json(template)}::jsonb,${input.publish},${input.expectedVersion}) as id`);return row.id;
 });}
+export type ProbationLetterChoices={templates:{id:string;familyId:string;version:number;name:string;score:number}[];suggestedTemplateId:string|null;tie:boolean};
+export function probationLetterTemplateChoices(ctx:SessionContext,outcomeId:string){return withScopedLifecycleTenant(ctx,async tx=>{const[row]=await tx.execute<{data:ProbationLetterChoices}>(sql`select app.probation_letter_template_choices(${id.parse(outcomeId)}::uuid) as data`);return row.data;});}
 async function previewTx(tx:Tx,ctx:SessionContext,input:{outcomeId:string;templateId:string;edits:Record<string,string>;revision:number}){
  id.parse(input.outcomeId);id.parse(input.templateId);z.number().int().positive().parse(input.revision);z.record(z.string().max(120),z.string().max(10000)).refine(v=>Object.keys(v).length<=200).parse(input.edits);
  const[row]=await tx.execute<{data:ProbationLetterPreview}>(sql`select app.probation_letter_preview(${input.outcomeId}::uuid,${input.templateId}::uuid,${json(input.edits)}::jsonb,${input.revision}) as data`);if(!row?.data)throw new ProbationError('forbidden','The current letter source is unavailable.');companyGate(ctx,row.data.companyId);return row.data;
@@ -45,7 +47,7 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:{outcomeId:string;templa
 export function previewProbationLetter(ctx:SessionContext,input:Parameters<typeof previewTx>[2]){return withScopedLifecycleTenant(ctx,tx=>previewTx(tx,ctx,input));}
 export {probationLetterDocument} from '../lib/probation-letter-document';
 
-async function renderLetter(document:Document,signing:SigningDocument|null,reference:string):Promise<Buffer>{
+export async function renderProbationLetterPdf(document:Document,signing:SigningDocument|null,reference:string):Promise<Buffer>{
  const {v9PdfDocument}=await import('../lib/lifecycle-v9-pdf'),{renderLetterPdf}=await import('../lib/letter-pdf');
  const resolved=v9PdfDocument(document,true),current=signing?.actions.filter(a=>a.action==='signed'&&a.contentHash===signing.contentHash&&a.contentRevision===signing.contentRevision)??[];
  if(signing)resolved.blocks.push({type:'heading',level:2,content:[{type:'text',text:'Authenticated signature history'}]},{type:'table',rows:[['Role','Verified signer','Time'],...current.map(a=>[a.role,a.actorName,a.at])].map(row=>row.map(text=>[{type:'text' as const,text}]))});
@@ -55,18 +57,19 @@ async function renderLetter(document:Document,signing:SigningDocument|null,refer
  for(const action of drawn){const page=pdf.addPage([595,842]),stamp=await pdf.embedPng(Buffer.from(action.signature!.value.split(',')[1],'base64')),scale=Math.min(420/stamp.width,160/stamp.height);page.drawText(action.role+' · '+action.at,{x:48,y:780,size:10,font});page.drawImage(stamp,{x:48,y:580,width:stamp.width*scale,height:stamp.height*scale});}
  return Buffer.from(await pdf.save());
 }
-export function prepareProbationLetter(ctx:SessionContext,input:Parameters<typeof previewTx>[2]){return withScopedLifecycleTenant(ctx,async tx=>{
+export async function prepareProbationLetterTx(tx:Tx,ctx:SessionContext,input:Parameters<typeof previewTx>[2]){
  const preview=await previewTx(tx,ctx,input);
  if(preview.blocks.some(block=>block.type==='letterhead')&&['company.name','company.regNo','company.address'].some(key=>!preview.merge[key]?.trim()))throw new ProbationError('invalid','An authorized Organisation administrator must complete the company letterhead before this letter can be prepared.');
  validateProbationLetterFields(preview.fields,preview.merge);
- const document=probationLetterDocument({id:randomUUID(),...preview,name:preview.templateName??'Probation outcome letter',createdAt:new Date().toISOString()}),basePdf=await renderLetter(document,null,'Probation outcome preparation');
- const[row]=await tx.execute<{data:ProbationLetterPreview&{partId:string;contentHash:string;contentRevision:number}}>(sql`select app.probation_prepare_letter(${input.outcomeId}::uuid,${input.templateId}::uuid,${json(input.edits)}::jsonb,${basePdf},${input.revision},${preview.sourceDigest}) as data`);
+ const[row]=await tx.execute<{data:ProbationLetterPreview&{partId:string;contentHash:string;contentRevision:number}}>(sql`select app.probation_prepare_letter(${input.outcomeId}::uuid,${input.templateId}::uuid,${json(input.edits)}::jsonb,${input.revision},${preview.sourceDigest}) as data`);
  const created=await createSigningDocumentTx(tx,ctx,{companyId:row.data.companyId,employmentId:row.data.employmentId,subjectId:row.data.partId,subjectType:'probation',contentHash:row.data.contentHash,route:row.data.route,guardrails:row.data.guardrails});
  await tx.execute(sql`select app.probation_letter_transition(${row.data.partId}::uuid)`);return{partId:row.data.partId,outcomeRevision:row.data.outcomeRevision,documentId:created.id};
-});}
+}
+export function prepareProbationLetter(ctx:SessionContext,input:Parameters<typeof previewTx>[2]){return withScopedLifecycleTenant(ctx,tx=>prepareProbationLetterTx(tx,ctx,input));}
+
 async function readLetterTx(tx:Tx,ctx:SessionContext,caseId:string,partId:string):Promise<ProbationLetterView>{
  id.parse(caseId);id.parse(partId);
- const[row]=await tx.execute<{id:string;case_id:string;revision:number;created_at:string;company_id:string;data:{state:string;letterOutcomeId:string;letterTemplateId:string;letterTemplateVersion:number;letterTemplateName?:string;letterBlocks:Block[];letterFields:Field[];letterMerge:Record<string,string>};outcome_revision:number|null;can_prepare:boolean;can_release:boolean}>(sql`select p.id,p.case_id,p.revision,p.created_at::text,c.company_id,p.data,(select revision from probation_outcome o where o.id=(p.data->>'letterOutcomeId')::uuid and o.tenant_id=p.tenant_id) as outcome_revision,app.probation_role(c.employment_id,'pbp') or app.probation_role(c.employment_id,'gbs') as can_prepare,app.probation_role(c.employment_id,'pbp') or app.probation_role(c.employment_id,'gbs') and p.data->'letterMerge'->>'outcome'='confirm' as can_release from probation_part p join probation_case c on c.id=p.case_id and c.tenant_id=p.tenant_id where p.id=${partId}::uuid and p.case_id=${caseId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.data->>'documentKind'='letter'`);
+ const[row]=await tx.execute<{id:string;case_id:string;revision:number;created_at:string;company_id:string;data:{state:string;letterOutcomeId:string;letterTemplateId:string;letterTemplateVersion:number;letterTemplateName?:string;letterBlocks:Block[];letterFields:Field[];letterMerge:Record<string,string>};outcome_revision:number|null;can_prepare:boolean;can_release:boolean}>(sql`select p.id,p.case_id,p.revision,p.created_at::text,c.company_id,p.data,(select revision from probation_outcome o where o.id=(p.data->>'letterOutcomeId')::uuid and o.tenant_id=p.tenant_id) as outcome_revision,app.probation_role(c.employment_id,'pbp') or app.probation_role(c.employment_id,'gbs') as can_prepare,p.data->>'state' not in('locked','cancelled','release_requested') and exists(select 1 from probation_outcome current_outcome where current_outcome.id=(p.data->>'letterOutcomeId')::uuid and current_outcome.tenant_id=p.tenant_id and current_outcome.letter_part_id=p.id and current_outcome.released_at is null) and (app.probation_role(c.employment_id,'pbp') or app.probation_role(c.employment_id,'gbs') and p.data->'letterMerge'->>'outcome'='confirm') as can_release from probation_part p join probation_case c on c.id=p.case_id and c.tenant_id=p.tenant_id where p.id=${partId}::uuid and p.case_id=${caseId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.data->>'documentKind'='letter'`);
  if(!row)throw new ProbationError('forbidden','This outcome letter is unavailable in your current scope.');companyGate(ctx,row.company_id);
  const[stored]=await tx.execute<{id:string}>(sql`select id from document_signing_document where subject_type='probation' and subject_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
  const signing=stored?{id:stored.id,document:await readSigningDocumentTx(tx,ctx,stored.id)}:null;
@@ -81,6 +84,5 @@ export function actOnProbationLetter(ctx:SessionContext,input:{caseId:string;par
 export function releaseProbationLetter(ctx:SessionContext,input:{caseId:string;partId:string;outcomeRevision:number;reason:string}){return withScopedLifecycleTenant(ctx,async tx=>{
  const view=await readLetterTx(tx,ctx,input.caseId,input.partId);if(!view.canRelease||!view.signing||view.outcomeRevision!==input.outcomeRevision)throw new ProbationError('conflict','An authorized current completed letter is required.');
  const rules={requiredRoles:view.signing.document.route.steps.filter(s=>s.required).map(s=>s.role)};if(!signingComplete(view.signing.document,rules))throw new ProbationError('invalid','Every required signer must finish before release.');
- const finalPdf=await renderLetter(view.document,view.signing.document,'Probation outcome · '+view.id);
- const[row]=await tx.execute<{id:string}>(sql`select app.probation_release_signed_letter(${view.outcomeId}::uuid,${view.id}::uuid,${input.outcomeRevision},${finalPdf},${input.reason}) as id`);return row.id;
+ const[row]=await tx.execute<{id:string}>(sql`select app.probation_release_signed_letter(${view.outcomeId}::uuid,${view.id}::uuid,${input.outcomeRevision},${input.reason}) as id`);return row.id;
 });}
