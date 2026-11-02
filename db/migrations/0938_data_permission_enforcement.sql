@@ -1001,7 +1001,9 @@ REVOKE ALL ON FUNCTION app.data_permission_read_generation_bump() FROM PUBLIC,ai
 CREATE FUNCTION app.data_permission_read_stamp() RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT CASE WHEN app.principal_snapshot_current() OR app.current_agent_principal() IS NOT NULL THEN
-  encode(sha256(convert_to(jsonb_build_array(g.tenant_id,g.generation,app.current_user_id(),app.current_agent_principal(),current_date)::text,'UTF8')),'hex') ELSE NULL END
+  encode(sha256(convert_to(jsonb_build_array(g.tenant_id,g.generation,app.current_user_id(),app.current_agent_principal(),current_date)::text,'UTF8')),'hex')
+ WHEN app.current_user_id() IS NULL AND app.current_agent_principal() IS NULL AND app.access_workforce_storage_owner() THEN
+  encode(sha256(convert_to(jsonb_build_array(g.tenant_id,g.generation,'storage-maintenance',session_user,current_setting('role'),current_date)::text,'UTF8')),'hex') ELSE NULL END
  FROM app.data_permission_read_generation g WHERE g.tenant_id=app.current_tenant_id();
 $$;
 REVOKE ALL ON FUNCTION app.data_permission_read_stamp() FROM PUBLIC;
