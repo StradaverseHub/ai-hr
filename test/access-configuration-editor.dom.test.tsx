@@ -41,6 +41,11 @@ describe('access editor decisions and stale preview behavior',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Preview permission changes'}));await waitFor(()=>expect(f.preview).toHaveBeenCalledOnce());
   expect(f.preview.mock.calls[0][0].command).toMatchObject({kind:'replaceGroupGrants',grants:[{capabilityId:'workforce.view',companyId:companyB}]});
  });
+ it('tenant action cells retain tenant scope while a company is selected',async()=>{
+  const f=fixture(true);f.chooseReaders();f.view.rerender(f.tree({...f.props,capabilities:[...f.props.capabilities,...(['view','add','edit','delete'] as const).map(operation=>({id:'settings.'+operation,label:operation+' tenant settings',scope:'tenant' as const,supported:true}))]}));
+  fireEvent.click(screen.getByRole('checkbox',{name:'add tenant settings'}));fireEvent.click(screen.getByRole('button',{name:'Preview permission changes'}));
+  await waitFor(()=>expect(f.preview).toHaveBeenCalledOnce());expect(f.preview.mock.calls[0][0].command).toMatchObject({kind:'replaceGroupGrants',grants:expect.arrayContaining([{capabilityId:'settings.view',companyId:null},{capabilityId:'settings.add',companyId:null}])});
+ });
  it('preserves permissions in another company when changing the selected scope',async()=>{
   const f=fixture();f.chooseReaders();fireEvent.click(screen.getByRole('checkbox',{name:/View workforce records/}));
   fireEvent.click(screen.getByRole('button',{name:'Preview permission changes'}));

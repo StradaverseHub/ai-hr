@@ -36,6 +36,10 @@ describe('genuine Workforce operations',()=>{
   const editor=await workforceEditor(bounded,employee.employmentId);const row=editor!.registers.find(item=>item.id===added.id)!;expect(editor!.actionCapabilities?.employment).toEqual({add:true,edit:false,delete:false});
   await expect(maintainWorkforceRecord(bounded,{employmentId:employee.employmentId,kind:'qualification',rowId:added.id,operation:'update',patch:{description:'Denied edit'},expectedVersion:row.version})).rejects.toThrow();
   await expect(maintainWorkforceRecord(bounded,{employmentId:employee.employmentId,kind:'qualification',rowId:added.id,operation:'archive',patch:{},expectedVersion:row.version})).rejects.toThrow();
+  const [outside]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional outside action company'}).returning();
+  const [department]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:outside.id,name:'Fictional outside department',code:'OUT'}).returning();
+  const other=await hireEmployee(context,{person:{fullName:'Fictional outside person',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:outside.id,departmentId:department.id,employmentType:'full_time',hiredOn:'2026-01-01'});
+  await expect(maintainWorkforceRecord(bounded,{employmentId:other.employmentId,kind:'qualification',rowId:null,operation:'add',patch:{qualification:'Denied outside company',isHighest:false},expectedVersion:null})).rejects.toThrow();
   await expect(hireEmployee(bounded,{person:{fullName:'No fake HR',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'})).rejects.toThrow();
  });
  it('an Edit holder cannot add via native or direct employment INSERT despite legacy maintain',async()=>{
@@ -50,6 +54,9 @@ describe('genuine Workforce operations',()=>{
  it('Delete denial also prevents soft archiving a register and direct hard removal',async()=>{
   const employee=await hire();await deny('delete');
   const [document]=await owner.db.insert(s.employeeDocument).values({tenantId:b.tenantId,employmentId:employee.employmentId,title:'Fictional retained document',fileName:'fictional.txt',mimeType:'text/plain',content:Buffer.from('fictional'),sizeBytes:9,uploadedByUserId:null}).returning();
+  const added=await maintainWorkforceRecord(await ctx(),{employmentId:employee.employmentId,kind:'qualification',rowId:null,operation:'add',patch:{qualification:'Fictional retained qualification',isHighest:false},expectedVersion:null});
+  const editor=await workforceEditor(await ctx(),employee.employmentId),qualification=editor!.registers.find(row=>row.id===added.id)!;
+  await expect(maintainWorkforceRecord(await ctx(),{employmentId:employee.employmentId,kind:'qualification',rowId:added.id,operation:'archive',patch:{},expectedVersion:qualification.version})).rejects.toThrow();
   await expect(withTenant(await ctx(),tx=>tx.delete(s.employeeDocument).where(eq(s.employeeDocument.id,document.id)))).rejects.toThrow();
  });
  it('View denial wins over a separate positive Add and a second legacy role',async()=>{
@@ -60,6 +67,15 @@ describe('genuine Workforce operations',()=>{
   const context=await ctx(),email=randomUUID()+'@fixture.invalid';
   const draft=await saveEmployeeDraft(context,{data:{profile:{fullName:'Fictional consumed source',primaryEmail:email,employeeIdMode:'manual',employeeCode:'ACT-DRAFT'},employment:{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'},payroll:{basicSalary:'3000'}},currentStep:4});
   await deny('edit','delete');const completed=await completeEmployeeDraft(await ctx(),draft.id);expect(completed.employmentId).toBeTruthy();expect(await getEmployeeDraft(await ctx(),draft.id)).toBeNull();
+ });
+ it('complex draft source reaches canonical profile, bank, period, compensation and family before Add consumes it',async()=>{
+  const context=await ctx();
+  const draft=await saveEmployeeDraft(context,{data:{profile:{fullName:'Fictional full source',primaryEmail:randomUUID()+'@fixture.invalid',employeeIdMode:'manual',employeeCode:'ACT-COMPLEX',phone:'0123456789',firstName:'Fictional',lastName:'Source',permanentAddressLine1:'Fictional source address',sameAsPermanent:'yes'},employment:{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01',probationValue:'3',probationUnit:'month'},statutory:{bankName:'Fictional Bank',bankAccountNo:'12345678',enableCustomHolderName:'yes',customHolderName:'Fictional Source',epfMode:'manual_percentage',epfEmployeeRate:'11',epfEmployerRate:'13'},payroll:{basicSalary:'3,000',monthlyAllowance:'250',remarks:'Fictional source compensation'},family:[{fullName:'Fictional source child',relationship:'child',isBeneficiary:true,dateOfBirth:'2020-01-01'}]},currentStep:6});
+  await deny('edit','delete');const completed=await completeEmployeeDraft(await ctx(),draft.id);expect(await getEmployeeDraft(await ctx(),draft.id)).toBeNull();
+  const [employment]=await owner.db.select().from(s.employment).where(eq(s.employment.id,completed.employmentId));expect(employment.probationValue).toBe(3);
+  const [person]=await owner.db.select().from(s.person).where(eq(s.person.id,employment.personId));expect(person.correspondenceAddressLine1).toBe('Fictional source address');
+  const [statutory]=await owner.db.select().from(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,employment.personId));expect(statutory.bankAccountNo).toBe('12345678');expect(statutory.epfEmployeeRate).toBe('0.1100');
+  expect(await owner.db.select().from(s.employeeDependent).where(eq(s.employeeDependent.personId,employment.personId))).toHaveLength(1);
  });
  it('Add does not authorize discarding an unrelated saved draft',async()=>{
   const context=await ctx();const draft=await saveEmployeeDraft(context,{data:{profile:{fullName:'Fictional retained source',primaryEmail:randomUUID()+'@fixture.invalid'},employment:{companyId:b.companyId}},currentStep:0});

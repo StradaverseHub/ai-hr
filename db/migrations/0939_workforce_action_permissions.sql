@@ -498,6 +498,12 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
+CREATE TABLE app.access_default_capability_grant(legacy_key text NOT NULL CHECK(legacy_key IN ('hr_admin','manager','employee','payroll_partner','performance_comp_partner')),capability_id text NOT NULL REFERENCES public.access_capability(id),PRIMARY KEY(legacy_key,capability_id));
+--> statement-breakpoint
+REVOKE ALL ON TABLE app.access_default_capability_grant FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+INSERT INTO app.access_default_capability_grant SELECT 'hr_admin',id FROM public.access_capability WHERE id IN ('workforce.view','workforce.maintain','workforce.add','workforce.edit','workforce.delete','profile.review');
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.access_install_defaults(t uuid,u uuid) RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE root_group uuid; hr_group uuid;
@@ -520,7 +526,7 @@ BEGIN
  INSERT INTO public.access_group_grant(tenant_id,group_id,capability_id)
   SELECT t,root_group,c.id FROM public.access_capability c;
  INSERT INTO public.access_group_grant(tenant_id,group_id,capability_id)
-  SELECT t,hr_group,c.id FROM public.access_capability c WHERE c.id IN ('workforce.view','workforce.maintain','workforce.add','workforce.edit','workforce.delete','profile.review');
+  SELECT t,g.id,m.capability_id FROM public.access_group g JOIN app.access_default_capability_grant m ON m.legacy_key=g.legacy_key WHERE g.tenant_id=t AND g.retired_at IS NULL AND NOT g.system_administrator;
  -- Role-derived memberships are a live view. Existing organizational-manager authority is not copied
  -- into a manager role or a new permission row; its actual owner remains the reporting graph.
  UPDATE public.access_configuration SET initialized=true,revision=gen_random_uuid(),updated_at=now() WHERE tenant_id=t;
@@ -560,7 +566,7 @@ CREATE TRIGGER workforce_action_write BEFORE UPDATE OR DELETE ON employment FOR 
 CREATE TABLE app.workforce_hire_source (
  xact_id xid8 NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,user_id uuid NOT NULL,
  draft_id uuid NOT NULL,company_id uuid NOT NULL,source_hash text NOT NULL,source jsonb NOT NULL,
- employment_id uuid,PRIMARY KEY(xact_id,tenant_id,user_id,draft_id),UNIQUE(xact_id,tenant_id,user_id,employment_id)
+ employment_id uuid,consumed boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,draft_id),UNIQUE(xact_id,tenant_id,user_id,employment_id)
 );
 ALTER TABLE app.workforce_hire_source ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.workforce_hire_source FROM PUBLIC,ai_hr_app;
@@ -576,7 +582,7 @@ BEGIN
  hash:=encode(sha256(convert_to(to_jsonb(d)::text,'UTF8')),'hex');
  IF EXISTS(SELECT 1 FROM app.workforce_hire_source s WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=d.tenant_id AND s.user_id=app.current_user_id() AND (s.draft_id<>d.id OR s.source_hash<>hash OR s.employment_id IS NOT NULL)) THEN RAISE EXCEPTION 'Hire source changed' USING ERRCODE='40001';END IF;
  DELETE FROM app.workforce_hire_source WHERE tenant_id=d.tenant_id AND xact_id<>pg_current_xact_id();
- INSERT INTO app.workforce_hire_source VALUES(pg_current_xact_id(),d.tenant_id,app.current_user_id(),d.id,p_company,hash,to_jsonb(d),NULL) ON CONFLICT DO NOTHING;
+ INSERT INTO app.workforce_hire_source(xact_id,tenant_id,user_id,draft_id,company_id,source_hash,source,employment_id) VALUES(pg_current_xact_id(),d.tenant_id,app.current_user_id(),d.id,p_company,hash,to_jsonb(d),NULL) ON CONFLICT DO NOTHING;
 END;
 $$;
 REVOKE ALL ON FUNCTION app.access_workforce_prepare_hire_source(uuid,uuid) FROM PUBLIC;
@@ -606,25 +612,137 @@ CREATE TRIGGER workforce_hire_source_bind AFTER INSERT ON employment FOR EACH RO
 --> statement-breakpoint
 CREATE FUNCTION app.access_workforce_hire_source_supported(data jsonb) RETURNS boolean
 LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE section record;entry record;allowed text[];
+DECLARE section record;entry record;allowed text[];member jsonb;
 BEGIN
  IF jsonb_typeof(data)<>'object' THEN RETURN false;END IF;
  FOR section IN SELECT * FROM jsonb_each(data) LOOP
   IF section.key='creationDefaultsVersion' THEN IF section.value<>'1'::jsonb THEN RETURN false;END IF;CONTINUE;END IF;
-  IF section.key='family' THEN IF section.value<>'[]'::jsonb THEN RETURN false;END IF;CONTINUE;END IF;
+  allowed:=CASE section.key
+   WHEN 'profile' THEN ARRAY['fullName','employeeCode','employeeIdMode','primaryEmail','phone','gender','dateOfBirth','maritalStatus','nationality','icNumber','salutation','firstName','lastName','preferredName','religion','race','homePhone','personalEmail','permanentAddressLine1','permanentAddressLine2','permanentAddressLine3','permanentPostcode','permanentCity','permanentState','permanentCountry','correspondenceAddressLine1','correspondenceAddressLine2','correspondenceAddressLine3','correspondencePostcode','correspondenceCity','correspondenceState','correspondenceCountry','correspondenceMobilePhone','correspondenceHomePhone','sameAsPermanent','passportNumber','passportIssueDate','passportExpiryDate','passportIssuingCountry','passportIssuingCountryCode','passportRemark']
+   WHEN 'employment' THEN ARRAY['companyId','departmentId','positionId','costCenterId','gradeId','reportingManagerEmploymentId','employmentType','hiredOn','provisionalEndOn','probationValue','probationUnit','extendedProbationValue','extendedProbationUnit','confirmationDate','noticeBeforeConfirmationValue','noticeBeforeConfirmationUnit','noticeAfterConfirmationValue','noticeAfterConfirmationUnit']
+   WHEN 'statutory' THEN ARRAY['bankName','bankAccountNo','epfNumber','socsoNumber','taxNumber','taxCategory','numChildren','socsoCategory','eisCategory','eisEligible','isResident','epfCitizenship','epfMode','epfEmployeeRate','epfEmployerRate','epfEmployeeAmount','epfEmployerAmount','epfManualReason','subjectToSkbbk','employerBearsTax','taxResidency','employerBearsEpf','employerBearsSocso','employerBearsEis','employerBearsSkbbk','disabledIndividual','disabledSpouse','childReliefMode','subjectToHrdf','enableCustomHolderName','customHolderName','enableCustomHolderId','customHolderId']
+   WHEN 'payroll' THEN ARRAY['basicSalary','monthlyAllowance','payMode','paymentTerm','rateAmount','remarks','paymentMethod','payrollPolicyId']
+   WHEN 'family' THEN ARRAY['key','fullName','relationship','dateOfBirth','gender','icOrPassport','isBeneficiary','phone','remarks','passportNumber','residentialAddress','isDeceased','deceasedOn','marriageDate','marriageStatus','spouseWorking','occupation','companyName','employerAddress','isStudent','schoolName','studyLevel','studyCountry','childReliefCategory','childTaxRelief','childReliefPercentage']
+   ELSE ARRAY[]::text[] END;
+  IF section.key='family' THEN
+   IF jsonb_typeof(section.value)<>'array' THEN RETURN false;END IF;
+   FOR member IN SELECT value FROM jsonb_array_elements(section.value) LOOP
+    IF jsonb_typeof(member)<>'object' THEN RETURN false;END IF;
+    FOR entry IN SELECT * FROM jsonb_each(member) LOOP
+     IF entry.key<>ALL(allowed) THEN RETURN false;END IF;
+    END LOOP;
+   END LOOP;CONTINUE;
+  END IF;
   IF jsonb_typeof(section.value)<>'object' THEN IF section.value NOT IN ('null'::jsonb,'""'::jsonb) THEN RETURN false;END IF;CONTINUE;END IF;
-  allowed:=CASE section.key WHEN 'profile' THEN ARRAY['fullName','primaryEmail','employeeCode','employeeIdMode','phone']
-   WHEN 'employment' THEN ARRAY['companyId','departmentId','employmentType','hiredOn']
-   WHEN 'payroll' THEN ARRAY['basicSalary','monthlyAllowance','payMode','paymentTerm','rateAmount','remarks']
-   WHEN 'statutory' THEN ARRAY['subjectToSkbbk'] ELSE ARRAY[]::text[] END;
   FOR entry IN SELECT * FROM jsonb_each(section.value) LOOP
    IF entry.value IN ('null'::jsonb,'""'::jsonb,'[]'::jsonb,'{}'::jsonb) THEN CONTINUE;END IF;
    IF entry.key<>ALL(allowed) OR jsonb_typeof(entry.value)<>'string' THEN RETURN false;END IF;
   END LOOP;
  END LOOP;RETURN true;
-END;
-$$;
+END; $$;
 REVOKE ALL ON FUNCTION app.access_workforce_hire_source_supported(jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Source consumption checks the complete native source, not merely its identity/number.
+CREATE FUNCTION app.access_workforce_hire_effects_match(data jsonb,p_employment uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE e public.employment%ROWTYPE;master jsonb;placement jsonb;stat jsonb;pay jsonb;section record;entry record;
+ target jsonb;column_name text;expected text;actual text;mode text;family_row jsonb;stored_family jsonb;family_expected jsonb;expected_members jsonb:='[]';actual_members jsonb;key text;profile jsonb;
+BEGIN
+ SELECT * INTO e FROM public.employment WHERE id=p_employment AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NOT app.data_permission_employment_born(e.id) OR NOT app.access_workforce_hire_source_supported(data) THEN RETURN false;END IF;
+ SELECT to_jsonb(p) INTO master FROM public.person p WHERE p.id=e.person_id AND p.tenant_id=e.tenant_id;
+ SELECT to_jsonb(a) INTO placement FROM public.assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL AND a.valid_from=e.hired_on;
+ SELECT to_jsonb(m) INTO stat FROM public.employee_statutory_my m WHERE m.person_id=e.person_id AND m.tenant_id=e.tenant_id;
+ SELECT to_jsonb(c) INTO pay FROM public.compensation c WHERE c.employment_id=e.id AND c.tenant_id=e.tenant_id AND c.valid_from=e.hired_on AND c.superseded_at IS NULL;
+ profile:=coalesce(data->'profile','{}');
+ IF profile->>'sameAsPermanent'='yes' THEN
+  FOREACH key IN ARRAY ARRAY['AddressLine1','AddressLine2','AddressLine3','Postcode','City','State','Country'] LOOP
+   profile:=jsonb_set(profile,ARRAY['correspondence'||key],coalesce(profile->('permanent'||key),'null'));
+  END LOOP;
+ END IF;
+ data:=jsonb_set(data,'{profile}',profile);
+ mode:=coalesce(nullif(btrim(data#>>'{statutory,epfMode}'),''),'auto');
+ FOR section IN SELECT * FROM jsonb_each(data) WHERE key IN ('profile','employment','statutory','payroll') LOOP
+  IF jsonb_typeof(section.value)<>'object' THEN CONTINUE;END IF;
+  FOR entry IN SELECT * FROM jsonb_each(section.value) LOOP
+   expected:=nullif(btrim(entry.value#>>'{}'),'');IF expected IS NULL THEN CONTINUE;END IF;
+   column_name:=lower(regexp_replace(entry.key,'([A-Z])','_\1','g'));
+   target:=CASE section.key WHEN 'profile' THEN master WHEN 'employment' THEN to_jsonb(e) WHEN 'statutory' THEN stat WHEN 'payroll' THEN pay END;
+   IF section.key='profile' THEN
+    IF entry.key IN ('employeeIdMode','sameAsPermanent') THEN CONTINUE;END IF;
+    IF entry.key='employeeCode' THEN target:=to_jsonb(e);END IF;
+    IF entry.key='icNumber' OR entry.key LIKE 'passport%' THEN target:=stat;END IF;
+    IF entry.key='icNumber' THEN expected:=regexp_replace(expected,'[^0-9]','','g');END IF;
+   ELSIF section.key='employment' THEN
+    IF entry.key IN ('departmentId','positionId','costCenterId','employmentType') THEN target:=placement;END IF;
+    IF entry.key='reportingManagerEmploymentId' THEN
+     IF NOT EXISTS(SELECT 1 FROM public.reporting_line l WHERE l.tenant_id=e.tenant_id AND l.subordinate_employment_id=e.id AND l.manager_employment_id::text=expected AND l.valid_from=e.hired_on AND l.line_type='administrative' AND l.superseded_at IS NULL) THEN RETURN false;END IF;CONTINUE;
+    END IF;
+    IF entry.key='provisionalEndOn' THEN
+     IF data#>>'{employment,employmentType}'='part_time' THEN expected:=NULL;
+     ELSIF coalesce(data#>>'{employment,employmentType}','full_time')='full_time' AND nullif(data#>>'{employment,probationValue}','') IS NOT NULL THEN
+      expected:=(e.hired_on+CASE coalesce(nullif(data#>>'{employment,probationUnit}',''),'month') WHEN 'month' THEN make_interval(months=>(data#>>'{employment,probationValue}')::integer) WHEN 'week' THEN make_interval(days=>7*(data#>>'{employment,probationValue}')::integer) ELSE make_interval(days=>(data#>>'{employment,probationValue}')::integer) END)::date::text;
+     END IF;
+    END IF;
+   ELSIF section.key='payroll' THEN
+    IF entry.key IN ('paymentMethod','payrollPolicyId') THEN target:=to_jsonb(e);END IF;
+    IF entry.key IN ('basicSalary','monthlyAllowance','rateAmount') THEN expected:=regexp_replace(expected,'[,_]','','g');END IF;
+   ELSIF section.key='statutory' THEN
+    IF entry.key IN ('subjectToSkbbk','employerBearsTax','employerBearsEpf','employerBearsSocso','employerBearsEis','employerBearsSkbbk','disabledIndividual','disabledSpouse','subjectToHrdf','enableCustomHolderName','enableCustomHolderId') THEN expected:=(lower(expected) IN ('true','yes','y','1'))::text;END IF;
+    IF entry.key='eisEligible' AND nullif(data#>>'{statutory,eisCategory}','') IS NOT NULL THEN CONTINUE;END IF;
+    IF entry.key='eisEligible' THEN expected:=(lower(expected) IN ('true','yes','y','1'))::text;END IF;
+    IF entry.key IN ('enableCustomHolderName','enableCustomHolderId') THEN expected:=(lower(btrim(entry.value#>>'{}'))='yes')::text;END IF;
+    IF entry.key='customHolderName' AND lower(coalesce(data#>>'{statutory,enableCustomHolderName}',''))<>'yes' THEN expected:=NULL;END IF;
+    IF entry.key='customHolderId' AND lower(coalesce(data#>>'{statutory,enableCustomHolderId}',''))<>'yes' THEN expected:=NULL;END IF;
+    IF entry.key='epfCitizenship' THEN expected:=regexp_replace(lower(expected),'[ -]+','_','g');END IF;
+    IF entry.key='epfMode' THEN expected:=CASE mode WHEN 'manual_percentage' THEN 'manual_percentage' WHEN 'voluntary_percentage' THEN 'topup_percentage' WHEN 'semi_auto' THEN 'voluntary_excess' WHEN 'manual_employee_amount' THEN 'manual_amount' WHEN 'manual_employer_amount' THEN 'manual_amount' WHEN 'manual_both_amount' THEN 'manual_amount' WHEN 'none' THEN 'exempt' ELSE 'auto' END;END IF;
+    IF entry.key IN ('epfEmployeeRate','epfEmployerRate') THEN
+     IF mode IN ('manual_percentage','voluntary_percentage') OR (mode='semi_auto' AND entry.key='epfEmployeeRate') THEN expected:=(expected::numeric/100)::text;ELSE expected:=NULL;END IF;
+    END IF;
+    IF entry.key IN ('epfEmployeeAmount','epfEmployerAmount') THEN
+     IF NOT (mode='manual_both_amount' OR mode='manual_employee_amount' AND entry.key='epfEmployeeAmount' OR mode='manual_employer_amount' AND entry.key='epfEmployerAmount') THEN expected:=NULL;END IF;
+    END IF;
+    IF entry.key='epfManualReason' AND mode NOT IN ('manual_employee_amount','manual_employer_amount','manual_both_amount') THEN expected:=NULL;END IF;
+    IF entry.key='numChildren' AND data#>>'{statutory,childReliefMode}'='auto' THEN CONTINUE;END IF; -- Native family owner recomputes this derived value.
+    IF entry.key='taxCategory' AND expected NOT IN ('1','2','3') THEN column_name:='tax_circumstance';END IF;
+    IF entry.key='isResident' AND nullif(data#>>'{statutory,taxResidency}','') IS NOT NULL THEN CONTINUE;END IF;
+    IF entry.key='isResident' THEN expected:=(lower(expected) IN ('true','yes','y','1'))::text;END IF;
+    IF entry.key='taxResidency' AND data#>>'{statutory,taxCategory}'='none' THEN expected:=CASE WHEN expected='non_resident' THEN 'non_resident' ELSE 'resident' END;END IF;
+    IF entry.key='taxResidency' AND expected IN ('rep','knowledge_worker','c_suite') THEN
+     IF NOT EXISTS(SELECT 1 FROM public.employment_tax_selection_my t WHERE t.tenant_id=e.tenant_id AND t.employment_id=e.id AND t.company_id=e.company_id AND t.scheme::text=expected) THEN RETURN false;END IF;CONTINUE;
+    END IF;
+   END IF;
+   actual:=nullif(btrim(target->>column_name),'');
+   IF jsonb_typeof(target->column_name)='number' AND expected IS NOT NULL THEN
+    IF actual::numeric IS DISTINCT FROM expected::numeric THEN RETURN false;END IF;
+   ELSIF actual IS DISTINCT FROM expected THEN RETURN false;END IF;
+  END LOOP;
+ END LOOP;
+ -- Match the canonical family multiset, including duplicates; row/UI keys confer no storage authority.
+ FOR family_row IN SELECT value FROM jsonb_array_elements(coalesce(data->'family','[]')) LOOP
+  family_expected:='{}';
+  FOR entry IN SELECT * FROM jsonb_each(family_row) WHERE key<>'key' LOOP
+   column_name:=lower(regexp_replace(entry.key,'([A-Z])','_\1','g'));
+   expected:=nullif(btrim(entry.value#>>'{}'),'');
+   IF entry.key IN ('marriageDate','marriageStatus','spouseWorking','companyName','employerAddress') AND family_row->>'relationship'<>'spouse' THEN expected:=NULL;END IF;
+   IF entry.key IN ('isStudent','schoolName','studyLevel','studyCountry','childReliefCategory','childTaxRelief','childReliefPercentage') AND family_row->>'relationship'<>'child' THEN expected:=NULL;END IF;
+   family_expected:=family_expected||jsonb_build_object(column_name,expected);
+  END LOOP;
+  expected_members:=expected_members||jsonb_build_array(family_expected);
+ END LOOP;
+ SELECT coalesce(jsonb_agg(to_jsonb(d)),'[]') INTO actual_members FROM public.employee_dependent d WHERE d.tenant_id=e.tenant_id AND d.person_id=e.person_id AND d.archived_at IS NULL;
+ IF jsonb_array_length(actual_members)<>jsonb_array_length(expected_members) THEN RETURN false;END IF;
+ FOR family_expected IN SELECT value FROM jsonb_array_elements(expected_members) LOOP
+  stored_family:=NULL;
+  SELECT value INTO stored_family FROM jsonb_array_elements(actual_members) m WHERE NOT EXISTS(SELECT 1 FROM jsonb_each(family_expected) v WHERE nullif(btrim(m.value->>v.key),'') IS DISTINCT FROM nullif(v.value#>>'{}','')) LIMIT 1;
+  IF stored_family IS NULL THEN RETURN false;END IF;
+  -- Remove one matching physical row, retaining multiplicity.
+  actual_members:=actual_members-(SELECT ordinality::integer-1 FROM jsonb_array_elements(actual_members) WITH ORDINALITY m WHERE m.value=stored_family LIMIT 1);
+ END LOOP;
+ RETURN true;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_hire_effects_match(jsonb,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.access_workforce_consumed_draft(p_source jsonb) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -632,18 +750,18 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
  WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=app.current_tenant_id() AND s.user_id=app.current_user_id()
  AND s.draft_id=(p_source->>'id')::uuid AND s.source_hash=encode(sha256(convert_to(p_source::text,'UTF8')),'hex')
- AND app.access_workforce_hire_source_supported(s.source->'data')
+ AND app.access_workforce_hire_effects_match(s.source->'data',e.id)
  AND app.data_permission_employment_born(e.id) AND app.access_workforce_action_company(e.company_id,'add')
  AND nullif(btrim(s.source#>>'{data,profile,phone}'),'') IS NOT DISTINCT FROM nullif(btrim(p.phone),'')
  AND EXISTS(SELECT 1 FROM public.assignment a WHERE a.tenant_id=e.tenant_id AND a.employment_id=e.id
   AND a.department_id::text=s.source#>>'{data,employment,departmentId}' AND a.superseded_at IS NULL
   AND a.employment_type::text=coalesce(nullif(s.source#>>'{data,employment,employmentType}',''),'full_time'))
  AND EXISTS(SELECT 1 FROM public.compensation c WHERE c.tenant_id=e.tenant_id AND c.employment_id=e.id AND c.valid_from=e.hired_on AND c.superseded_at IS NULL
-  AND c.basic_salary=coalesce(nullif(replace(s.source#>>'{data,payroll,basicSalary}',',',''),''),'0')::numeric
-  AND c.monthly_allowance=coalesce(nullif(replace(s.source#>>'{data,payroll,monthlyAllowance}',',',''),''),'0')::numeric
+  AND c.basic_salary=coalesce(nullif(regexp_replace(s.source#>>'{data,payroll,basicSalary}','[,_]','','g'),''),'0')::numeric
+  AND c.monthly_allowance=coalesce(nullif(regexp_replace(s.source#>>'{data,payroll,monthlyAllowance}','[,_]','','g'),''),'0')::numeric
   AND c.pay_mode::text=coalesce(nullif(s.source#>>'{data,payroll,payMode}',''),'monthly')
   AND c.payment_term=coalesce(nullif(s.source#>>'{data,payroll,paymentTerm}',''),'monthly')
-  AND c.rate_amount IS NOT DISTINCT FROM nullif(replace(s.source#>>'{data,payroll,rateAmount}',',',''),'')::numeric
+  AND c.rate_amount IS NOT DISTINCT FROM nullif(regexp_replace(s.source#>>'{data,payroll,rateAmount}','[,_]','','g'),'')::numeric
   AND nullif(btrim(c.remarks),'') IS NOT DISTINCT FROM nullif(btrim(s.source#>>'{data,payroll,remarks}'),''))
  AND (nullif(s.source#>>'{data,statutory,subjectToSkbbk}','') IS NULL OR EXISTS(SELECT 1 FROM public.employee_statutory_my m WHERE m.person_id=e.person_id AND m.tenant_id=e.tenant_id AND m.subject_to_skbbk=(s.source#>>'{data,statutory,subjectToSkbbk}'='yes'))));
 $$;
@@ -671,7 +789,9 @@ BEGIN
  IF own OR app.access_workforce_draft_action(company,action) OR TG_OP='UPDATE' AND app.access_workforce_draft_action(company,'add') THEN
   IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
  END IF;
- IF TG_OP='DELETE' AND app.access_workforce_consumed_draft(to_jsonb(OLD)) THEN RETURN OLD;END IF;
+ IF TG_OP='DELETE' AND app.access_workforce_consumed_draft(to_jsonb(OLD)) THEN
+  UPDATE app.workforce_hire_source SET consumed=true WHERE xact_id=pg_current_xact_id() AND tenant_id=OLD.tenant_id AND user_id=app.current_user_id() AND draft_id=OLD.id;
+  RETURN OLD;END IF;
  RAISE EXCEPTION 'Draft action unavailable' USING ERRCODE='42501';
 END;
 $$;
@@ -738,7 +858,7 @@ END; $$;
 --> statement-breakpoint
 ALTER TABLE app.access_privacy_value_intent DROP CONSTRAINT access_privacy_value_intent_kind_check;
 --> statement-breakpoint
-ALTER TABLE app.access_privacy_value_intent ADD CONSTRAINT access_privacy_value_intent_kind_check CHECK(kind IN ('person','dependent','emergency','statutory'));
+ALTER TABLE app.access_privacy_value_intent ADD CONSTRAINT access_privacy_value_intent_kind_check CHECK(kind IN ('person','dependent','emergency','statutory','photo'));
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.access_privacy_erasure_begin(p_employment uuid,p_scope text,p_request_ref text,p_reason text) RETURNS timestamptz
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -834,6 +954,13 @@ BEGIN
    END IF;
   END IF;
  END IF;
+ IF p_scope IN ('identity','all') THEN
+  SELECT to_jsonb(ph) INTO original FROM public.person_photo ph WHERE ph.tenant_id=selected.tenant_id AND ph.person_id=selected.person_id FOR UPDATE;
+  IF original IS NOT NULL THEN
+   INSERT INTO app.access_privacy_value_intent VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,selected.person_id,
+    'photo',(original->>'id')::uuid,encode(sha256(convert_to((original-'updated_at')::text,'UTF8')),'hex'),encode(sha256(convert_to('{}','UTF8')),'hex'),p_scope,encode(sha256(convert_to(p_request_ref,'UTF8')),'hex'),encode(sha256(convert_to(p_reason,'UTF8')),'hex'),NULL);
+  END IF;
+ END IF;
  RETURN at_time;
 END; $$;
 --> statement-breakpoint
@@ -847,7 +974,7 @@ BEGIN
   OR intent.tenant_id IS DISTINCT FROM app.current_tenant_id() OR app.principal_snapshot_current() IS NOT TRUE OR app.is_admin() IS NOT TRUE
   OR app.can_admin_employment(intent.employment_id) IS NOT TRUE THEN
   RAISE EXCEPTION 'Privacy erasure incomplete' USING ERRCODE='42501'; END IF;
- table_name:=CASE intent.kind WHEN 'person' THEN 'person' WHEN 'dependent' THEN 'employee_dependent' WHEN 'emergency' THEN 'person_emergency_contact' WHEN 'statutory' THEN 'employee_statutory_my' END;
+ table_name:=CASE intent.kind WHEN 'person' THEN 'person' WHEN 'dependent' THEN 'employee_dependent' WHEN 'emergency' THEN 'person_emergency_contact' WHEN 'statutory' THEN 'employee_statutory_my' WHEN 'photo' THEN 'person_photo' END;
  EXECUTE format('SELECT to_jsonb(r) FROM public.%I r WHERE r.id=$1 AND r.tenant_id=$2',table_name) INTO actual USING intent.row_id,intent.tenant_id;
  actual:=COALESCE(actual,'{}'::jsonb);
  IF encode(sha256(convert_to((actual-'updated_at')::text,'UTF8')),'hex')<>intent.after_hash THEN
@@ -886,3 +1013,61 @@ END; $$;
 REVOKE ALL ON FUNCTION app.access_workforce_statutory_action_guard() FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE CONSTRAINT TRIGGER access_workforce_statutory_action_guard AFTER INSERT OR UPDATE OR DELETE ON employee_statutory_my DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_workforce_statutory_action_guard();
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_photo_action_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ subject uuid:=COALESCE(NEW.person_id,OLD.person_id);operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+BEGIN
+ IF app.acting_as_owner() OR app.access_privacy_value_intent_allowed('photo',before_row,after_row) THEN RETURN NULL; END IF;
+ IF TG_OP<>'DELETE' AND to_regprocedure('app.profile_task_photo_approved(uuid)') IS NOT NULL THEN
+  IF app.profile_task_photo_approved(subject) THEN RETURN NULL; END IF;
+ END IF;
+ IF app.access_workforce_action_person(subject,operation) THEN RETURN NULL; END IF;
+ RAISE EXCEPTION 'Workforce photo action unavailable' USING ERRCODE='42501';
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_photo_action_guard() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER access_workforce_photo_action_guard AFTER INSERT OR UPDATE OR DELETE ON person_photo DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_workforce_photo_action_guard();
+
+--> statement-breakpoint
+-- Preview uses the same native-aware delegation owner as the physical commit seam.
+CREATE FUNCTION app.access_configuration_delegation_preview(p_grants jsonb) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE grant_row jsonb;
+BEGIN
+ IF app.principal_snapshot_current() IS NOT TRUE OR NOT app.access_allowed_for(app.current_user_id(),'access.configure',NULL) THEN RAISE EXCEPTION 'access ceiling' USING ERRCODE='42501'; END IF;
+ IF jsonb_typeof(p_grants)<>'array' OR jsonb_array_length(p_grants)>2000 THEN RAISE EXCEPTION 'access invalid' USING ERRCODE='23514'; END IF;
+ FOR grant_row IN SELECT value FROM jsonb_array_elements(p_grants) LOOP
+  IF NOT app.access_command_keys(grant_row,ARRAY['capabilityId','companyId']) THEN RAISE EXCEPTION 'access invalid' USING ERRCODE='23514'; END IF;
+  PERFORM app.access_require_delegate(grant_row->>'capabilityId',(grant_row->>'companyId')::uuid);
+ END LOOP;RETURN true;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_configuration_delegation_preview(jsonb) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_configuration_delegation_preview(jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_hire_source_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source app.workforce_hire_source%ROWTYPE;
+BEGIN
+ SELECT * INTO source FROM app.workforce_hire_source s WHERE s.xact_id=NEW.xact_id AND s.tenant_id=NEW.tenant_id AND s.user_id=NEW.user_id AND s.draft_id=NEW.draft_id;
+ IF NOT FOUND OR NOT source.consumed THEN RETURN NULL;END IF;
+ IF source.xact_id<>pg_current_xact_id() OR source.user_id IS DISTINCT FROM app.current_user_id() OR source.tenant_id IS DISTINCT FROM app.current_tenant_id()
+  OR NOT app.access_workforce_consumed_draft(source.source)
+  OR EXISTS(SELECT 1 FROM public.employee_draft d WHERE d.id=source.draft_id AND d.tenant_id=source.tenant_id)
+  OR NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=source.tenant_id AND e.aggregate_type='employee-draft' AND e.aggregate_id=source.draft_id
+   AND e.event_type='employee-draft.completed' AND e.actor_type='user' AND e.actor_id=source.user_id AND e.subject_employment_id=source.employment_id
+   AND e.payload->>'employmentId'=source.employment_id::text AND e.payload->>'companyId'=source.company_id::text) THEN
+  RAISE EXCEPTION 'Hire source effects incomplete' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_hire_source_complete() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER workforce_hire_source_complete AFTER INSERT OR UPDATE ON app.workforce_hire_source DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_workforce_hire_source_complete();
