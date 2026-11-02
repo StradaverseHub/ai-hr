@@ -33796,6 +33796,7 @@
     }
   },
   "contractManagement": {
+    "saveDraft": "Save decision draft",
     "retry": "Try again",
     "title": "Contract Management",
     "intro": "Track contract expiry, decisions, approvals and employee acceptance.",
@@ -33892,7 +33893,7 @@
     "completeHandoff": "Complete hand-off",
     "reminderSchedule": "Reminder schedule",
     "reminderDetails": "First alert {first} days before expiry; reminder {reminder} days before; decision due {due} days before; escalation {escalation} days before. Employee signature reminders every {signature} days.",
-    "history": "Contract decision history",
+    "history": "Contract history",
     "noHistory": "No earlier decisions have been recorded on this case.",
     "activity": "Case activity",
     "recordedActor": "Recorded authorised actor",
@@ -33989,7 +33990,10 @@
       "payroll": "Pay update",
       "verification": "People Ops verification",
       "document": "Document filing",
-      "offboarding": "Offboarding hand-off"
+      "offboarding": "Offboarding hand-off",
+      "records": "Personnel and pay records",
+      "verify": "People Ops verification",
+      "manual_handoff": "Manual Offboarding hand-off"
     },
     "effectStatus": {
       "pending": "Pending",

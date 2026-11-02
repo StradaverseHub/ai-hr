@@ -3,7 +3,7 @@ import {revalidatePath} from 'next/cache';
 import {getSession} from '@/lib/session';
 import * as owner from '@/packs/contracts/service';
 import {z} from 'zod';
-export type ContractCommand='previewIntake'|'intake'|'previewDecision'|'decision'|'confirm'|'approval'|'generate'|'accept'|'release'|'retry'|'handoff'|'reconcile'|'verifyRecords'|'setup'|'configure'|'role'|'captureEvidence'|'verifyEvidence'|'amendEnd'|'refreshApprovers';
+export type ContractCommand='previewIntake'|'intake'|'previewDecision'|'decision'|'confirm'|'approval'|'generate'|'accept'|'release'|'retry'|'handoff'|'reconcile'|'verifyRecords'|'setup'|'configure'|'role'|'captureEvidence'|'verifyEvidence'|'amendEnd'|'refreshApprovers'|'saveDecisionDraft'|'revokeRole';
 /** Every request authenticates again; the owner independently validates scope, capability and revision. */
 export async function runContractCommand(command:ContractCommand,input:unknown){
  const session=await getSession();if(!session)return{ok:false as const,error:'session'};
@@ -14,6 +14,8 @@ export async function runContractCommand(command:ContractCommand,input:unknown){
    case 'intake':result=await owner.intakeContract(session,input);break;
    case 'previewDecision':result=await owner.previewContractDecision(session,input);break;
    case 'decision':result=await owner.submitContractDecision(session,input);break;
+   case 'saveDecisionDraft':result=await owner.saveContractDecisionDraft(session,input);break;
+   case 'revokeRole':result=await owner.revokeContractRole(session,input);break;
    case 'confirm':result=await owner.confirmContractDecision(session,input);break;
    case 'approval':result=await owner.decideContractApproval(session,input);break;
    case 'generate':result=await owner.generateContractDocument(session,input);break;
@@ -44,3 +46,5 @@ export async function readContractRetirementContext(employmentId:string){
 export async function readContractLetterEditor(caseId:string,type:'renewal'|'end'|'declined'|'retirement'){
  const session=await getSession();if(!session)return{ok:false as const,error:'session'};
  try{return{ok:true as const,editor:await owner.contractLetterEditor(session,z.uuid().parse(caseId),z.enum(['renewal','end','declined','retirement']).parse(type))};}catch{return{ok:false as const,error:'failed'};}
+
+}
