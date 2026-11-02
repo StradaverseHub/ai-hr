@@ -399,9 +399,21 @@ jobs:
           enableCrossOsArchive: false
           fail-on-cache-miss: false
         env: {SEGMENT_DOWNLOAD_TIMEOUT_MINS: '1'}
+      # Bounded next build heap: exactly 8192 MB, only the canonical build step, only on a GitHub-hosted
+      # 16 GB Linux runner; the job-level 6144 stays for every other step. build-heap.mjs refuses any other
+      # runner and any value above 8192; raising the ceiling needs owner review
+      # (docs/reviews/build-capacity-8192-proposal.md). Rollback: revert restores 6144.
+      - name: Admit bounded next build heap
+        id: build-heap
+        run: node ../automation/.github/ci/build-heap.mjs admit
+        env: {AIHR_CI_BUILD_HEAP_MB: '8192'}
       - name: Canonical System Testing production build and byte bundle
         run: pnpm exec tsx ../automation/.github/ci/next-application-cache.mjs
-        env: {GH_TOKEN: '${{ github.token }}'}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODE_OPTIONS: ${{ steps.build-heap.outputs.node_options }}
+          AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.build-heap.outputs.heap_profile }}
+          AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.build-heap.outputs.memtotal_kib }}
       - name: Publish mandatory canonical build packet
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
