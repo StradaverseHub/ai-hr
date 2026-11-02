@@ -1,16 +1,18 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, fireEvent } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import en from '../messages/en.json';
 import PeopleGeneralPage from '../app/admin/settings/people-general/page';
-const mocks=vi.hoisted(()=>({policy:{allowDuplicatedNric:false,allowDuplicatedEmail:false,revision:null as string|null},allowed:true}));
+const mocks=vi.hoisted(()=>({policy:{allowDuplicatedNric:false,allowDuplicatedEmail:false,revision:null as string|null},allowed:true,view:true}));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture'})}));
-vi.mock('../core/people-general',()=>({canConfigurePeopleGeneral:async()=>mocks.allowed,getPeopleGeneral:async()=>mocks.policy}));
+vi.mock('../core/people-general',()=>({canViewPeopleGeneral:async()=>mocks.view,canConfigurePeopleGeneral:async()=>mocks.allowed,getPeopleGeneral:async()=>mocks.policy}));
 vi.mock('../app/admin/settings/people-general/actions',()=>({savePeopleGeneralAction:async()=>{}}));
 vi.mock('next/navigation',()=>({redirect:(to:string)=>{throw new Error(`redirect:${to}`);}}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=> (key:string,values?:Record<string,string>)=>{
  let text=key.split('.').reduce<unknown>((node,key)=>(node as Record<string,unknown>)[key],en.peopleGeneral) as string;
  for(const [key,value]of Object.entries(values??{}))text=text.replace(`{${key}}`,value);return text;
 }}));
+
+afterEach(()=>{cleanup();mocks.allowed=true;mocks.view=true;});
 
 describe('People > General approved setting',()=>{
  it('renders OFF with a named accessible switch, required explanation and reversible unsaved edits',async()=>{
@@ -32,6 +34,13 @@ describe('People > General approved setting',()=>{
   mocks.policy={allowDuplicatedNric:true,allowDuplicatedEmail:true,revision:'fixture'};mocks.allowed=true;
   render(await PeopleGeneralPage({searchParams:Promise.resolve({})}));
   expect(screen.getByRole('switch',{name:/Allow Duplicated NRIC/})).toBeChecked();expect(screen.getByRole('switch',{name:/Allow Duplicated Work Email/})).toBeChecked();expect(screen.getAllByText('Current setting: ON')).toHaveLength(2);expect(screen.getByText(en.peopleGeneral.emailOnExplanation)).toBeInTheDocument();
-  mocks.allowed=false;await expect(PeopleGeneralPage({searchParams:Promise.resolve({})})).rejects.toThrow('redirect:/');
+  mocks.allowed=false;mocks.view=false;await expect(PeopleGeneralPage({searchParams:Promise.resolve({})})).rejects.toThrow('redirect:/');
+ });
+ it('keeps the persisted policy readable when View is allowed and Edit is denied',async()=>{
+  mocks.allowed=false;mocks.view=true;mocks.policy={allowDuplicatedNric:true,allowDuplicatedEmail:false,revision:'fixture'};
+  render(await PeopleGeneralPage({searchParams:Promise.resolve({})}));
+  const switches=screen.getAllByRole('switch');expect(switches).toHaveLength(2);
+  expect(switches[0]).toBeChecked();expect(switches[1]).not.toBeChecked();
+  for(const control of [...switches,screen.getByRole('button',{name:'Save setting'}),screen.getByRole('button',{name:'Cancel'})])expect(control.matches(':disabled')).toBe(true);
  });
 });

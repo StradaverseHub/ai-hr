@@ -31,14 +31,14 @@ const FONT_ORIGIN='https://review-fonts.invalid/';
 const scriptFontCss=SCRIPT_FONTS.map(font=>`@font-face{font-family:'${font.family}';src:url(${FONT_ORIGIN}${font.file}) format('${font.format}');font-weight:${font.weight};font-style:normal;font-display:block;}`).join('');
 const fontBytes=new Map<string,Buffer>();
 function scriptFont(file:string):Buffer{let bytes=fontBytes.get(file);if(!bytes){bytes=brotliDecompressSync(readFileSync(join('assets/fonts',file)));fontBytes.set(file,bytes);}return bytes;}
-export async function captureAiReviewScreenshots(html:string,locale:string,section:'overview'|'queue'|'probe'|'scheduled-group'|'scheduled-company'|'runner-controls'|'runner-controls-dark'|'build-list'|'pay-rule'|'security-overview'|'security-create'|'security-invite'|'security-functions'|'security-users'|'security-permissions'|'formula-write'|'formula-conditions'|'feedback-board'|'feedback-capped'|'feedback-unloaded'|'messenger'|'formula-pay-item'|'formula-trace'|'formula-help-examples'|'formula-sample-test'|'formula-checks'|'delegation-replacement'|'inventory-group'|'inventory-company'|'runs-paged'|'followup-features'|`chat-card-${string}`|`ai-centre-${string}`,fixture='real components; fictional data owners; no authenticated server journey',theme:'classic'|'atelier'|'monolith'='classic',colorMode:'light'|'dark'='light'){
+export async function captureAiReviewScreenshots(html:string,locale:string,section:'overview'|'queue'|'probe'|'scheduled-group'|'scheduled-company'|'runner-controls'|'runner-controls-dark'|'build-list'|'pay-rule'|'security-overview'|'security-create'|'security-invite'|'security-functions'|'security-users'|'security-permissions'|'formula-write'|'formula-conditions'|'feedback-board'|'feedback-capped'|'feedback-unloaded'|'messenger'|'formula-pay-item'|'formula-trace'|'formula-help-examples'|'formula-sample-test'|'formula-checks'|'delegation-replacement'|'inventory-group'|'inventory-company'|'runs-paged'|'followup-features'|`chat-card-${string}`|`ai-centre-${string}`|'security-password-policy'|'security-data-permissions'|`security-flyout-${string}`|'payroll-hub-settings'|'payroll-correction-controls'|'payroll-transactions'|'passport-fields'|'people-configuration-navigation'|'formula-generator'|'lifecycle-case-onboarding'|'lifecycle-case-offboarding',fixture='real components; fictional data owners; no authenticated server journey',theme:'classic'|'atelier'|'monolith'='classic',colorMode:'light'|'dark'='light'){
  const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
  if(!evidence)return;
  if(process.env.GITHUB_ACTIONS!=='true')throw Error('Visual capture requires the selected GitHub Actions runner.');
  const executable='/usr/bin/google-chrome';
  if(!existsSync(executable))throw Error('The hosted runner Chrome executable is unavailable; no visual evidence claimed.');
  const out=join(evidence,'ui-screenshots');mkdirSync(out,{recursive:true});
- const styles=await applicationCss(),browser=await chromium.launch({executablePath:executable,headless:true});
+ const styles=(await applicationCss())+(section.startsWith('lifecycle-case-')?'\n'+readFileSync('app/onboarding-workspace.css','utf8')+'\n'+readFileSync('app/lifecycle/v9/workspace.css','utf8'):''),browser=await chromium.launch({executablePath:executable,headless:true});
  const rows=[];
  try{for(const [device,width,height] of [['desktop',1440,1000],['mobile',390,844]] as const){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
@@ -50,6 +50,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   const scrollRegions=await page.locator('[data-function-access-scroll]').evaluateAll(nodes=>nodes.map(node=>({width:node.clientWidth,content:node.scrollWidth,scrollable:getComputedStyle(node).overflowX==='auto'})));
   if(width===390&&scrollRegions.some(region=>!region.scrollable||region.width>=region.content))throw Error('The wide function guide must remain horizontally scrollable on a phone.');
   const clippedCalendarCells=section==='chat-card-rewards-calendar'?await page.evaluate(()=>Array.from(document.querySelectorAll('table td')).some(cell=>{const box=cell.getBoundingClientRect();return box.left<0||box.right>window.innerWidth+1||cell.scrollWidth>cell.clientWidth+1;})):false;
+  if(section==='people-configuration-navigation')await page.locator('a[href="/admin/settings/system-labels"]').scrollIntoViewIfNeeded();
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
   if(section==='security-functions')await page.screenshot({path:join(out,`${locale}-${section}-${device}-viewport.png`),fullPage:false});
   rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});

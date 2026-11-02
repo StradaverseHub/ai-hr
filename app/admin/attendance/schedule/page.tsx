@@ -1,3 +1,4 @@
+import {assertModuleFunction} from '@/core/module-action-access';
 import {getTranslations} from 'next-intl/server';
 import {redirect} from 'next/navigation';
 import {requireAdmin} from '@/lib/authz';
@@ -14,6 +15,7 @@ import {loadOfflineClockingSettings} from '../../attendance-policy/offline-clock
  * card sits beside the group card here, where the approved design places it (draft 0647, owner decision 2026-10-28). */
 export default async function ScheduleListPage({searchParams}:{searchParams:Promise<{error?:string;toast?:string;policy?:string;viewPolicy?:string}>}) {
  const s=await requireAdmin(),t=await getTranslations('admin.scheduleConfig'),hub=await getTranslations('attendanceSettingsHub'),sp=await searchParams;
+ await assertModuleFunction(s,'attendancePolicy.schedule','view');
  if(sp.policy||sp.viewPolicy){
   const q=new URLSearchParams();
   for(const key of ['policy','viewPolicy','error','toast'] as const)if(typeof sp[key]==='string')q.set(key,sp[key]!);

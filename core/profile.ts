@@ -1,3 +1,4 @@
+import {profileTaskProjectionTx,profileTaskEffectSourceTx,profileTaskStorePersonTx} from './profile-task-source';
 import {splitProfileSubmission} from '../lib/profile-submission-policy';
 import {validateProfileAttachments,saveProfileAttachmentsTx} from './profile-attachments';
 import {profileFieldApproval} from '../lib/profile-edit-policy-value';
@@ -515,7 +516,7 @@ export async function decideProfileChange(
      */
     await assertProfileChangeDecisionAuthorityTx(tx,ctx,req,p.decision);
 
-    if(p.decision==='approved'&&!isProfilePhotoProposal(req.proposed))await tx.execute(sql`select app.access_profile_value_begin(${req.id}::uuid)`);
+    if(p.decision==='approved'&&!isProfilePhotoProposal(req.proposed)){await tx.execute(sql`select app.access_profile_value_begin(${req.id}::uuid)`);const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_employment(${req.employmentId}::uuid) as allowed`);if(scope?.allowed!==true)await profileTaskProjectionTx(tx,req.id,true);}
     if(p.decision==='approved'&&isProfilePhotoProposal(req.proposed)){
       const {applyProfilePhotoProposalTx}=await import('./person-photo');await applyProfilePhotoProposalTx(tx,ctx,req);
     }else if(p.decision==='approved'&&req.proposed&&typeof req.proposed==='object'&&!Array.isArray(req.proposed)&&'v' in req.proposed&&req.proposed.v===2){
@@ -608,7 +609,8 @@ export async function profileRequestRejectionContextTx(tx:Tx,ctx:SessionContext,
   fieldIds=Object.entries(req.proposed).map(([key,value])=>{const definition=requestableField(key),field=PERSONNEL_FIELDS.find(item=>item.ess.binding?.legacyKey===key);if(!definition||!field||value!==null&&!['string','number','boolean'].includes(typeof value))throw new EssProfileError('unavailable');return field.id;});
  }
  if(!fieldIds.length||fieldIds.length>32||new Set(fieldIds).size!==fieldIds.length||fieldIds.some(id=>!policy.visible.has(id)))throw new EssProfileError('unavailable');
- const [identity]=await tx.select({employmentId:employment.id,companyId:employment.companyId,subjectPersonId:person.id,employeeName:person.fullName,employeeCode:employment.employeeCode,companyName:company.legalName,employmentVersion:sql<string>`employment.xmin::text`,personVersion:sql<string>`person.xmin::text`,companyVersion:sql<string>`company.xmin::text`}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).where(and(eq(employment.id,req.employmentId),eq(employment.tenantId,ctx.tenantId),eq(person.id,req.personId))).limit(1).for('update');
+ let [identity]=await tx.select({employmentId:employment.id,companyId:employment.companyId,subjectPersonId:person.id,employeeName:person.fullName,employeeCode:employment.employeeCode,companyName:company.legalName,employmentVersion:sql<string>`employment.xmin::text`,personVersion:sql<string>`person.xmin::text`,companyVersion:sql<string>`company.xmin::text`}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).where(and(eq(employment.id,req.employmentId),eq(employment.tenantId,ctx.tenantId),eq(person.id,req.personId))).limit(1).for('update');
+ if(!identity){const [task]=await tx.execute<typeof identity>(sql`select employment_id as "employmentId",company_id as "companyId",person_id as "subjectPersonId",employee as "employeeName",employee_code as "employeeCode",company_name as "companyName",employment_version as "employmentVersion",person_version as "personVersion",company_version as "companyVersion" from app.profile_task_identity(${req.id}::uuid)`);identity=task;}
  if(!identity)throw new EssProfileError('unavailable');
  const [version]=await tx.execute<{revision:string}>(sql`select xmin::text as revision from profile_change_request where id=${req.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
  if(!version)throw new EssProfileError('unavailable');
@@ -678,19 +680,22 @@ export async function setPersonComplianceFields(
     await lockProfileValueWritesTx(tx,ctx.tenantId);
     if(!administrator){const [direct]=await tx.execute<{allowed:boolean}>(sql`select app.profile_direct_subject(${p.employmentId}::uuid) as allowed`);if(!direct?.allowed)throw new EssProfileError('permission');}
     // Resolve the person through the authenticated subject or existing administrator scope.
-    const [emp] = await tx
+    let [emp] = await tx
       .select({ personId: employment.personId })
       .from(employment)
       .where(eq(employment.id, p.employmentId))
       .limit(1);
+    const task=emp?null:await profileTaskEffectSourceTx(tx,undefined,p.employmentId);
+    if(!emp&&task)emp={personId:task.subject.personId};
     if (!emp) throw new Error('Employment not found (or not visible).');
     const personId = emp.personId;
 
-    const [before] = await tx
+    let [before] = await tx
       .select({ gender: person.gender, maritalStatus: person.maritalStatus, dateOfBirth: person.dateOfBirth })
       .from(person)
       .where(eq(person.id, personId))
       .limit(1);
+    if(!before&&task)before=Object.fromEntries(Object.entries(task.master).filter(([key])=>key in personSet)) as typeof before;
     if (!before) throw new Error('Person not found.');
 
     // Item 354a500d — for the IC-autofill path (dobOnlyIfEmpty), honour "never overwrite an existing DOB"
@@ -702,10 +707,7 @@ export async function setPersonComplianceFields(
     }
     if (Object.keys(writeSet).length === 0) return { id: personId };
 
-    await tx
-      .update(person)
-      .set({ ...writeSet, ...maritalStatusSourceReset(writeSet) })
-      .where(eq(person.id, personId));
+    if(!task||!await profileTaskStorePersonTx(tx,personId,{...writeSet,...maritalStatusSourceReset(writeSet)}))await tx.update(person).set({...writeSet,...maritalStatusSourceReset(writeSet)}).where(eq(person.id,personId));
     const after = { ...before, ...writeSet };
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -734,25 +736,24 @@ export function listProfileChangeRequests(
         id: profileChangeRequest.id,
         employmentId: profileChangeRequest.employmentId,
         personId: profileChangeRequest.personId,
-        employee: person.fullName,
-        employeeCode: employment.employeeCode,
+        employee: sql<string>`task.employee`,
+        employeeCode: sql<string|null>`task.employee_code`,
         proposed: profileChangeRequest.proposed,
-        currentPhotoPresent:sql<boolean>`exists(select 1 from ${personPhoto} where ${personPhoto.personId}=${profileChangeRequest.personId})`,
+        currentPhotoPresent:sql<boolean>`task.current_photo_present`,
         status: profileChangeRequest.status,
         decisionReason: profileChangeRequest.decisionReason,
         decidedAt: profileChangeRequest.decidedAt,
         createdAt: profileChangeRequest.createdAt,
       })
       .from(profileChangeRequest)
-      .innerJoin(employment, eq(employment.id, profileChangeRequest.employmentId))
-      .innerJoin(person, eq(person.id, profileChangeRequest.personId))
+      .innerJoin(sql`LATERAL app.profile_task_identity(${profileChangeRequest.id}) AS task`,sql`true`)
       .where(
         and(
           profileRouteReaderPredicate(ctx),
           opts.requestId?eq(profileChangeRequest.id,opts.requestId):undefined,
           opts.status ? eq(profileChangeRequest.status, opts.status) : undefined,
           opts.companyIds && opts.companyIds.length
-            ? inArray(employment.companyId, opts.companyIds)
+            ? sql`task.company_id = ANY(ARRAY[${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`
             : undefined,
         ),
       )
@@ -911,11 +912,10 @@ export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:
   await assertAssignedWorkPrincipalTx(tx,ctx);
   const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
   return tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
-   employee:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest)
-   .innerJoin(employment,and(eq(employment.id,profileChangeRequest.employmentId),eq(employment.tenantId,profileChangeRequest.tenantId)))
-   .leftJoin(person,and(eq(person.id,profileChangeRequest.personId),eq(person.tenantId,profileChangeRequest.tenantId)))
+   employee:sql<string>`task.employee`,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest)
+   .innerJoin(sql`LATERAL app.profile_task_identity(${profileChangeRequest.id}) AS task`,sql`true`)
    .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current),
-    sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+    sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:companyIds.length===0?sql`false`:sql`task.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
    .orderBy(desc(profileChangeRequest.createdAt),profileChangeRequest.id);
  });
  const allowed=new Set(await actionableProfileChangeIds(ctx,candidates.map(row=>row.id)));

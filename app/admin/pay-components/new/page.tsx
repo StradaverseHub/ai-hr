@@ -1,4 +1,6 @@
 import { requireAdmin } from '@/lib/authz';
+import {notFound} from 'next/navigation';
+import {payrollCatalogueActions} from '@/core/financial-setup-access';
 import { isAiConfigured } from '@/core/ai-config';
 import { listPayComponents } from '@/core/pay-components';
 import { ComponentForm } from '../component-form';
@@ -19,6 +21,7 @@ export default async function NewPayComponentPage({
   searchParams: Promise<{ error?: string; fresh?: string; from?: string }>;
 }) {
   const s = await requireAdmin();
+  if(!(await payrollCatalogueActions(s)).add)notFound();
   const { error, fresh, from } = await searchParams;
   const aiEnabled = await isAiConfigured(s);
   // a6da1387 — Copy Pay Code: ?from=CODE pre-fills a CREATE form from the source item. includeArchived so
@@ -26,7 +29,7 @@ export default async function NewPayComponentPage({
   // `editing`) keeps the CREATE action, makes the Pay Code field editable + blank, and titles it "Copy Pay
   // Code" — uniqueness is still enforced by createPayComponent on save.
   const source = from
-    ? (await listPayComponents(s, { includeArchived: true })).find((c) => c.code === from) ?? null
+    ? (await listPayComponents(s, { includeArchived: true, maintenance: true })).find((c) => c.code === from) ?? null
     : null;
   // Copy Pay Code branch: a CREATE form pre-filled from the source item (keyed off its code so switching
   // sources remounts). The blank-New branch below is left byte-identical to 911b2886 — the `fresh` nonce

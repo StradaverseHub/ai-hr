@@ -1,3 +1,4 @@
+import {settingsAccessTx} from './organisation-access';
 import {createUngovernedProbe} from '../lib/ai/governance';
 /**
  * AI provider configuration service (ADR-0023). Per-tenant BYOK: an admin configures a provider with
@@ -75,6 +76,7 @@ export type AiProviderView = {
   label: string;
   models: string[];
   defaultModel: string;
+  hasStoredConfiguration?: boolean;
   configured: boolean; // a key is stored for this provider
   model: string;
   keyLast4: string | null;
@@ -100,6 +102,7 @@ export type AiConfigView = {
 export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    if(!await settingsAccessTx(tx,'view','aiConfig'))throw new Error('Forbidden');
     await assertConfigurationAdminTx(tx,ctx);
     // Explicit column list — the ciphertext is not even granted to the app role, but be unambiguous.
     const rows = await tx
@@ -122,6 +125,7 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
         models: meta.models,
         defaultModel: meta.defaultModel,
         configured: Boolean(draft || row),
+        hasStoredConfiguration:Boolean(row),
         model: draft?.model ?? row?.model ?? meta.defaultModel,
         keyLast4: draft?.keyLast4 ?? row?.keyLast4 ?? null,
         isActive: row?.isActive ?? false,
@@ -368,6 +372,9 @@ export async function testConnection(
 
   const prepared:ResolvedAiConfig|ValidateResult=await withTenant(ctx, async (tx) => {
     await assertConfigurationAdminTx(tx,ctx);
+    const [stored]=await tx.select({id:aiProviderConfig.id}).from(aiProviderConfig).where(eq(aiProviderConfig.provider,p.provider as AiProvider)).limit(1);
+    const candidate=p.provider==='openrouter'?(await providerCandidatesTx(tx,ctx))[0]:undefined;
+    if(!await settingsAccessTx(tx,stored||candidate?'edit':'add','aiConfig'))throw new AiConfigError('Provider configuration action unavailable.');
     let cfg: ResolvedAiConfig;
     if (typed) {
       let gatewayBaseUrl: string | undefined;

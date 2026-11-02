@@ -1,4 +1,5 @@
 /** Explicit admin-controlled candidate evaluation. No HR fields, arbitrary prompts, endpoints or tools. */
+import {settingsAccessTx} from './organisation-access';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -20,7 +21,7 @@ export class AiProviderReadinessError extends Error {
 }
 const unavailable = (): never => { throw new AiProviderReadinessError('unavailable'); };
 const captured = (ctx: SessionContext) => ({ ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) });
-async function authority(tx: Tx, ctx: SessionContext) { if (!(await currentAiProviderAdminTx(tx, ctx))) return unavailable(); }
+async function authority(tx: Tx, ctx: SessionContext,operation:'view'|'edit'|'delete'='view') { if (!(await currentAiProviderAdminTx(tx, ctx))||operation!=='view'&&!await settingsAccessTx(tx,operation,'aiConfig')) return unavailable(); }
 export type AiProviderCandidateView = Readonly<{ id: string; version: string; provider: 'openrouter'; model: string; keyLast4: string; providerOptions: OpenRouterOptions; updatedAt: string }>;
 export async function providerCandidatesTx(tx: Tx, ctx: SessionContext): Promise<AiProviderCandidateView[]> {
   await authority(tx, ctx);
@@ -66,7 +67,7 @@ export async function evaluateProviderCandidate(ctx: SessionContext, input: Prov
   const consent = Consent.safeParse(input);
   if (!consent.success) throw new AiProviderReadinessError('consent_required');
   const snapshot = await withTenant(ctx, async tx => {
-    await authority(tx, ctx);
+    await authority(tx, ctx,'edit');
     if (!isSecretStorable()) return unavailable();
     const candidate = await resolveAiProviderCandidateSnapshotTx(tx, ctx, consent.data.provider);
     const binding = candidate.candidate;
@@ -83,7 +84,7 @@ export async function evaluateProviderCandidate(ctx: SessionContext, input: Prov
   try { summary = await runProviderProtocolEvaluation(cfg); assertProviderProtocolEvaluation(summary, cfg); }
   catch { throw new AiProviderReadinessError('probe_failed'); }
   return withTenant(ctx, async tx => {
-    await authority(tx, ctx);
+    await authority(tx, ctx,'edit');
     const current = await resolveAiProviderCandidateSnapshotTx(tx, ctx, 'openrouter');
     if (!current.candidate || current.fingerprint !== snapshot.fingerprint || current.principal !== snapshot.principal) return unavailable();
     const evaluationId = randomUUID();
@@ -107,7 +108,7 @@ export async function evaluateProviderCandidate(ctx: SessionContext, input: Prov
 
 /** Consume exactly one current receipt and promote in one transaction. Any failure rolls it all back. */
 export async function activateOpenRouterCandidateTx(tx: Tx, ctx: SessionContext, receipt: unknown): Promise<{ rowId: string; evaluationId: string }> {
-  await authority(tx, ctx);
+  await authority(tx, ctx,'edit');
   if (!ctx.userId) return unavailable();
   const proof = openProviderEvaluationReceipt({ tenantId: ctx.tenantId, userId: ctx.userId }, receipt);
   if (!proof) throw new AiProviderReadinessError('receipt_required');

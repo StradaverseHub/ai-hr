@@ -17,7 +17,7 @@ export function leaderPendingEntries(policy:Pick<Policy,'modules'|'kind'>,tier:T
   return (pm&&!entry.performanceLocked&&(tier!=='group'&&tier!=='final'||entry.performanceReady))||pot&&!entry.potentialLocked;
  });
 }
-export type ReviewWorkFacts={kpis:KpiWork[];competenciesAssigned:boolean;competencyStatus:string;resultsSubmitted:boolean;managerPerformance:string|null;planStatus:string|null};
+export type ReviewWorkFacts={kpis:KpiWork[];competenciesAssigned:boolean;competencyStatus:string;resultsSubmitted:boolean;managerPerformance:string|null;managerComplete?:boolean;planStatus:string|null};
 export type ReviewWorkActor={self:boolean;manager:boolean;employmentIds:string[]};
 export type ReviewWorkPart={module:'pm'|'tm'|'idp';stage:string;state:'open'|'waiting'|'done'|'later';locked:boolean;cell:WindowCell};
 /** A shared derivation for the person's worklist and actor-neutral notification/reminder readers. */
@@ -27,7 +27,7 @@ export function reviewWorkspaceParts(policy:Pick<Policy,'modules'|'kind'>,facts:
  if(!kpis.length||kpis.some(k=>['draft','returned'].includes(k.setting))){stage='setting';state=self?'open':'waiting';}
  else if(kpis.some(k=>k.setting==='proposed')){stage='setting';state=self?'waiting':kpis.some(k=>employmentIds.includes(pendingSettingApprover(k)??''))?'open':'waiting';}
  else if(policy.kind==='quarterly'){stage='checkin';state=kpis.every(k=>k.checkIn)?'done':self?'open':'waiting';}
- else if(facts.managerPerformance)state='done';
+ else if(facts.managerComplete===true||facts.managerPerformance)state='done';
  else if(facts.resultsSubmitted){stage=self?'results':'moderation';state=self?'done':reviewerModerationState(kpis,employmentIds);}
  else state=self?'open':'waiting';
  if(policy.modules.pm)parts.push({module:'pm',stage,state,locked:false,cell:stage==='setting'?self?'pm_setting':'pm_setting_approve':self?'pm_results':'pm_approve'});

@@ -1,3 +1,4 @@
+import {assertModuleFunctionTx} from './module-action-access';
 import { liveArrangementsTx, pickArrangementOn } from './shift-arrangement-resolve';
 /** Canonical group controls. Exception revisions are immutable and forward dated. */
 import { and, asc, eq, gte, lte, inArray, sql } from 'drizzle-orm';
@@ -53,6 +54,7 @@ export function saveScheduleGroupControl(ctx:SessionContext,p:{ruleId:string;kin
  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!isAdmin(ctx))throw new Error('Only an HR administrator can change Schedule Group controls.');
  return withTenant(ctx,async tx=>{
+  await assertModuleFunctionTx(tx,'attendancePolicy.schedule','edit');
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [rule]=await tx.select().from(attendanceRule).where(eq(attendanceRule.id,p.ruleId)).for('update');

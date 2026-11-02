@@ -1,8 +1,9 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import {notFound} from 'next/navigation';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
-import { listConfigs, formatEmployeeCode, exceedsCp39EmployeeNoLength, type ConfigRow } from '@/core/employee-id-config';
+import { listConfigsForMaintenance, employeeIdMaintenanceActions, formatEmployeeCode, exceedsCp39EmployeeNoLength, type ConfigRow } from '@/core/employee-id-config';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { Pager } from '@/components/pager';
@@ -34,7 +35,12 @@ export default async function EmployeeIdConfigPage({
 
   const all = await listCompanies(s);
   const companies = all.filter((c) => scopeIds.includes(c.id));
-  const configs = await listConfigs(s, scopeIds);
+  const [configs,permissions] = await Promise.all([listConfigsForMaintenance(s,scopeIds),employeeIdMaintenanceActions(s)]);
+  if(!permissions.some(row=>row.view&&(row.companyId===null||scopeIds.includes(row.companyId))))notFound();
+  const permitted=(companyId:string|null,operation:'view'|'add'|'edit'|'delete')=>permissions.some(row=>row.companyId===companyId&&row.view&&row[operation]);
+  const creationCompanies=companies.filter(company=>permitted(company.id,'add'));
+  const canCreateGlobal=permitted(null,'add');
+  const canCreate=canCreateGlobal||creationCompanies.length>0;
 
   const companyName = (id: string | null) => (id == null ? t('scopeGlobal') : companies.find((c) => c.id === id)?.name ?? '—');
   // 9da61c86 — a list of records like its System Settings siblings, so it carries the same bar: the
@@ -56,7 +62,8 @@ export default async function EmployeeIdConfigPage({
   const returnFields = <input type="hidden" name="returnTo" value={listQs} />;
 
   const editing: ConfigRow | null = edit ? configs.find((c) => c.id === edit) ?? null : null;
-  const showForm = Boolean(editing || newParam);
+  const showForm = Boolean(editing || newParam&&canCreate);
+  const canSave=editing?permitted(editing.companyId,'edit'):canCreate;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -79,9 +86,9 @@ export default async function EmployeeIdConfigPage({
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 pr-4">
           <SectionHeader title={t('catalogTitle')} count={configs.length} />
-          <Link href={keepingPlace(`${PAGE}?new=1`)} className={btnPrimary}>
+          {canCreate&&<Link href={keepingPlace(`${PAGE}?new=1`)} className={btnPrimary}>
             {t('createNew')}
-          </Link>
+          </Link>}
         </div>
 
         <Pager basePath={PAGE} state={pgState} />
@@ -125,21 +132,21 @@ export default async function EmployeeIdConfigPage({
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center justify-end gap-3">
-                      <Link
+                      {permitted(c.companyId,'edit')&&<Link
                         href={keepingPlace(`${PAGE}?edit=${c.id}`)}
                         className="text-xs font-medium text-primary hover:underline"
                       >
                         {t('edit')}
-                      </Link>
-                      <form action={setStatusAction}>
+                      </Link>}
+                      {permitted(c.companyId,'edit')&&<form action={setStatusAction}>
                         <input type="hidden" name="id" value={c.id} />
                         <input type="hidden" name="status" value={c.status === 'active' ? 'inactive' : 'active'} />
                         {returnFields}
                         <button className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
                           {c.status === 'active' ? t('deactivate') : t('activate')}
                         </button>
-                      </form>
-                      <form action={deleteConfigAction}>
+                      </form>}
+                      {permitted(c.companyId,'delete')&&<form action={deleteConfigAction}>
                         <input type="hidden" name="id" value={c.id} />
                         {returnFields}
                         <ConfirmSubmit
@@ -150,7 +157,7 @@ export default async function EmployeeIdConfigPage({
                         >
                           {t('delete')}
                         </ConfirmSubmit>
-                      </form>
+                      </form>}
                     </div>
                   </td>
                 </tr>
@@ -170,7 +177,8 @@ export default async function EmployeeIdConfigPage({
       {showForm && (
         <Card className="p-5">
           <SectionHeader title={editing ? t('editTitle') : t('createTitle')} />
-          <form action={editing ? updateConfigAction : createConfigAction} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <form action={editing ? updateConfigAction : createConfigAction} className="mt-4">
+            <fieldset disabled={!canSave} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {editing && <input type="hidden" name="id" value={editing.id} />}
             {returnFields}
 
@@ -180,9 +188,9 @@ export default async function EmployeeIdConfigPage({
                 // Scope is immutable on edit (it decides the uniqueness index) — show it read-only.
                 <input className={inputCls} value={companyName(editing.companyId)} readOnly disabled />
               ) : (
-                <select name="companyId" defaultValue="" className={inputCls}>
-                  <option value="">{t('scopeGlobal')}</option>
-                  {companies.map((c) => (
+                <select name="companyId" defaultValue={canCreateGlobal?'':creationCompanies[0]?.id} className={inputCls}>
+                  {canCreateGlobal&&<option value="">{t('scopeGlobal')}</option>}
+                  {creationCompanies.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
@@ -297,6 +305,7 @@ export default async function EmployeeIdConfigPage({
                 {t('cancel')}
               </Link>
             </div>
+            </fieldset>
           </form>
         </Card>
       )}

@@ -1,4 +1,4 @@
-import { replacePassword } from './password-policy';
+import { replacePassword,effectivePasswordPolicy } from './password-policy';
 import { randomUUID } from 'node:crypto';
 import {emailLocale,type EmailLocale} from '../email-design/model';
 import {recoveryEmailDesign} from '../email-design/delivery';
@@ -6,7 +6,7 @@ import {renderEmailDesign} from '../email-design/render';
 import {accountEmailAction,recoveryEmailContent} from '../account-email-content';
 import { client } from '../../db/client';
 import { internalConfig } from './config';
-import { digest, opaque, validOpaque, validatePassword } from './crypto';
+import { digest, opaque, validOpaque } from './crypto';
 import { authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions } from './store';
 import { canonicalOrg, credentialByLogin, takeRate, InternalAuthError, verifyCredentialFactor, type Credential } from './service';
 import { sendInternalMail, type MailTransport } from './mail';
@@ -75,8 +75,8 @@ export async function completeRecovery(raw: string, password: string, code: stri
     if (!value || !c?.enabled || c.version !== value.version) throw new InternalAuthError('invalidChallenge');
     const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
     if (principal[0]?.tenant_id !== c.tenantId) throw new InternalAuthError('invalidChallenge');
-    try { validatePassword(password, c.username, c.email); } catch { throw new InternalAuthError('passwordPolicy'); }
-    if (c.totpSecret && !await verifyCredentialFactor(c, code)) return false;
+    const requireVerification=(await effectivePasswordPolicy(tx,c.tenantId)).requirements?.firstResetVerification;
+    if (requireVerification&&!c.totpSecret || c.totpSecret && !await verifyCredentialFactor(c, code)) return false;
     await replacePassword(tx, c, password); c.version = randomUUID(); c.mustChange = false;
     await revokeCredentialsSessions(tx, c.subject);
     await writeRecord(tx, `credential:${c.subject}`, c, c.subject);

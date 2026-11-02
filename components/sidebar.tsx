@@ -573,7 +573,7 @@ const GROUPS: Group[] = [
       REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
       {href:SECURITY_CENTER,labelKey:'securityCenter',icon:ShieldCheck,exactHref:true},
-      ...SECURITY_PAGES.map(page=>({href:page.href,labelKey:page.navKey,icon:ShieldCheck,exactHref:true})),
+      ...SECURITY_PAGES.map(page=>({href:page.href,labelKey:page.navKey,icon:ShieldCheck,exactHref:true,...(page.key==='permissions'?{ownedSubpaths:['/admin/users/access']}:{} )})),
     ],
   },
 ];
@@ -773,7 +773,7 @@ export function Sidebar({
   };
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
-  const securityAccess={admin:canAdministerSecurity,configure:canConfigureAccess,provision:canProvisionUsers};
+  const securityAccess={admin:canAdministerSecurity,configure:canConfigureAccess,provision:canProvisionUsers,passwordPolicy:canConfigureLoginPresentation};
   const canSeeChild = (c: ChildItem) =>
     (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
   // The former audience inventory still supplies its original visibility boundaries.
@@ -852,7 +852,7 @@ export function Sidebar({
     {labelKey:selectedWorkspace==='strata'?'workspaceStrata':'workspaceOps',items:moduleRows},
     ...(systemRows.length ? [{labelKey:'systemConfiguration',items:[
       ...(otherSystemRows.length?[{collapsible:true,activeMatch:'children',labelKey:'systemConfiguration',icon:Settings2,children:otherSystemRows} satisfies CollapsibleGroupItem]:[]),
-      ...(securityRows.length?[{collapsible:true,activeMatch:'children',labelKey:'securityCenter',icon:ShieldCheck,defaultHref:SECURITY_CENTER,children:securityRows} satisfies CollapsibleGroupItem]:[]),
+      ...(securityRows.length?[{collapsible:true,activeMatch:'children',labelKey:'securityCenter',icon:ShieldCheck,children:securityRows} satisfies CollapsibleGroupItem]:[]),
     ]}] : []),
   ];
   const isWorkspaceKey = (key?:string) => key==='workspaceOps'||key==='workspaceStrata';
@@ -948,7 +948,7 @@ export function Sidebar({
   }
   usePublishNavIndex(navEntries, activeEntry);
 
-  const openNode = openKey && !monolith
+  const openNode = openKey && (!monolith || openKey === 'securityCenter')
     ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (atelier || !r.defaultHref || collapsed)) ?? null
     : null;
   const openChildren = openNode ? openNode.children.filter(canSeeChild) : [];
@@ -987,6 +987,11 @@ export function Sidebar({
   const monolithModule = (item: CollapsibleGroupItem) => {
     const children = item.children.filter(canSeeChild);
     if (children.length === 0) return null;
+    if (item.labelKey === 'securityCenter') return <NavFlyout key={item.labelKey} labelKey={item.labelKey} icon={item.icon}
+      open={openKey === item.labelKey} active={children.some(isRowActive)} collapsed={false} rowBase={railRow}
+      panelId={`nav-flyout-${item.labelKey}`} onOpen={() => setOpenKey(item.labelKey)}
+      onToggle={() => setOpenKey(key => key === item.labelKey ? null : item.labelKey)}
+      triggerRef={element => { triggerRefs.current[item.labelKey] = element; }}/>;
     const active =
       item.defaultHref || item.activeMatch === 'children'
         ? children.some(isRowActive)
@@ -1160,12 +1165,12 @@ export function Sidebar({
       const Icon = item.icon;
       const label = t(item.labelKey);
       const kidsId = `atelier-flyout-${item.labelKey}`;
-      const flip = () => setOpenKey(expanded ? null : item.labelKey);
+      const flip = () => setOpenKey(item.labelKey === 'securityCenter' ? item.labelKey : expanded ? null : item.labelKey);
       const register = (element: HTMLButtonElement | null) => { triggerRefs.current[item.labelKey] = element; };
       // Collapsed (b953a339), a module is its icon: it opens the floating sub-menu, which lists every page
       // the module has — including a landing page, which is always one of its children.
       return (
-        <div key={item.labelKey} data-atelier-module={item.labelKey}>
+        <div key={item.labelKey} data-atelier-module={item.labelKey} onPointerEnter={event => { if (item.labelKey === 'securityCenter' && event.pointerType === 'mouse') setOpenKey(item.labelKey); }}>
           {item.defaultHref && !collapsed ? (
             <div className={cn('atelier-row pr-0', active&&'bg-accent font-medium text-foreground')}>
               <Link href={item.defaultHref} onClick={()=>setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
@@ -1406,6 +1411,7 @@ export function Sidebar({
                       collapsed={collapsed}
                       rowBase={rowBase}
                       panelId={`nav-flyout-${item.labelKey}`}
+                      onOpen={item.labelKey === 'securityCenter' ? () => setOpenKey(item.labelKey) : undefined}
                       onToggle={() =>
                         setOpenKey((k) => (k === item.labelKey ? null : item.labelKey))
                       }

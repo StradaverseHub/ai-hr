@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import {CaseSummaryCards, CaseSummaryCard} from './lifecycle-v9/case-layout';
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { useOnboardingCopy } from '@/lib/onboarding-copy';
 
@@ -14,11 +15,11 @@ export function OnboardingBadge({ children, tone = 'neutral' }: { children: Reac
 }
 
 export function OnboardingSummary({ children }: { children: ReactNode }) {
-  return <div className="onb-summary">{children}</div>;
+  return <CaseSummaryCards>{children}</CaseSummaryCards>;
 }
 
 export function OnboardingStat({ label, value, detail }: { label: string; value: ReactNode; detail?: ReactNode }) {
-  return <div className="onb-stat"><span className="onb-muted">{label}</span><strong>{value}</strong>{detail && <span className="onb-muted">{detail}</span>}</div>;
+  return <CaseSummaryCard label={label} value={value} detail={detail}/>;
 }
 
 /** Native popover escapes the scrolling table and supports keyboard, click and dismissal. */

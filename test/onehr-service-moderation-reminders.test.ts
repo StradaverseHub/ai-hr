@@ -601,9 +601,14 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const queued=await perf.queueAssessmentReminders(a,cycleId,'manual',1);expect(queued.queued).toBe(1);
     const [recipient]=await owner.db.select().from(schema.assessmentReminderRecipient).where(and(eq(schema.assessmentReminderRecipient.runId,queued.runId!),eq(schema.assessmentReminderRecipient.outcome,'queued')));
     expect(recipient.userId).toBe(eligible[0].ctx.userId);
+    const [unassigned]=await withTenant(eligible[0].ctx,tx=>tx.execute<{source:unknown;changed:boolean}>(sql`select app.onehr_reminder_dispatch_source(${recipient.id}::uuid) as source,app.onehr_reminder_dispatch_update(${recipient.id}::uuid,'{}'::jsonb,'changed','[]'::jsonb,null::jsonb,null::timestamptz,null::bigint,null::bigint) as changed`));expect(unassigned).toEqual({source:null,changed:false});
     const system={...a,userId:undefined,personId:undefined};
     await withTenant(system,async tx=>{
-      expect(await perf.assessmentReminderRecipientsTx(tx,recipient.id)).toEqual([eligible[0].employmentId]);
+      const [source]=await tx.execute<{dispatcher:boolean;run:boolean;recipient:boolean;actor:boolean;route:boolean;port:boolean}>(sql`select app.assessment_dispatcher_scope() as dispatcher,exists(select 1 from performance_assessment_reminder_run where id=${queued.runId!}::uuid) as run,exists(select 1 from performance_assessment_reminder_recipient where id=${recipient.id}::uuid) as recipient,coalesce((app.assessment_pending_work(${cycleId}::uuid)->'actors') @> ${JSON.stringify([{userId:eligible[0].ctx.userId}])}::jsonb,false) as actor,exists(select 1 from app.assessment_reminder_mail_routes(${cycleId}::uuid) where user_id=${eligible[0].ctx.userId!}::uuid and employment_id=${eligible[0].employmentId}::uuid) as route,app.onehr_reminder_dispatch_source(${recipient.id}::uuid) is not null as port`);
+      expect(source).toEqual({dispatcher:true,run:true,recipient:false,actor:true,route:true,port:true});
+      const resolved=await perf.assessmentReminderRecipientsTx(tx,recipient.id);
+      const [delivery]=await tx.execute<{outcome:string|null}>(sql`select app.onehr_reminder_dispatch_source(${recipient.id}::uuid)->'recipient'->>'outcome' as outcome`);expect(delivery?.outcome).toBe('queued');
+      expect(resolved).toEqual([eligible[0].employmentId]);
       // A real committed workflow change invalidates the transaction-local projection.
       await owner.db.update(schema.onehrReview).set({competencyStatus:'reviewed'}).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,eligible[0].employmentId)));
       expect(await perf.assessmentReminderRecipientsTx(tx,recipient.id)).toEqual([]);
@@ -716,6 +721,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const read=(task:'setting'|'results'|'competencies'|'plan')=>withTenant(a,tx=>perf.assessmentReviewTaskRecipientsTx(tx,reviewId,task));
     expect(await read('setting')).toEqual([matrix.employmentId]);expect(await read('results')).toEqual([]);
     const system={...a,userId:undefined,personId:undefined};expect(await withTenant(system,tx=>perf.assessmentReviewTaskRecipientsTx(tx,reviewId,'setting'))).toEqual([matrix.employmentId]);
+    const [notice]=await withTenant(system,tx=>tx.execute<{source:{facts:{managerPerformance:null;managerComplete:boolean;kpis:Record<string,unknown>[]}}}>(sql`select app.onehr_review_notice_source(${reviewId}::uuid) as source`));expect(notice.source).not.toBeNull();expect(notice.source.facts.managerPerformance).toBeNull();expect(Object.keys(notice.source.facts.kpis[0]).sort()).toEqual(['hrOwned','setting','locked','moderatorEmploymentId','checkIn','approvalChain','settingApprovals'].sort());expect(JSON.stringify(notice.source)).not.toContain('Current assignment');
     expect(await withTenant(system,tx=>tx.update(schema.onehrReview).set({selfRemark:'No human decision may come from this dispatcher.'}).where(eq(schema.onehrReview.reviewId,reviewId)).returning())).toEqual([]);
     await withTenant(a,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'onehr',aggregateId:reviewId,eventType:'onehr.kpi-approval-needed',actor:actorOf(a),payload:{phase:'setting',employmentIds:[outsider.employmentId]}}));
     await dispatchNotifications(a);

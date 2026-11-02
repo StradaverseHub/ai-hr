@@ -14,7 +14,8 @@ import {hireEmployee} from '../core/org';
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq,sql } from 'drizzle-orm';
+import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { checkIn, checkOut } from '../core/attendance';
@@ -628,4 +629,23 @@ describe('7c834696 — lateness / early-out are measured, and deductions are for
     expect(futureRow.lateMinutes).toBe(25);
     expect(futureRow.lateDeductMinutes).toBe(30); // floor(25 / 15) = 1 block × 30
   });
+});
+
+
+it('only the finite native initializer can establish Standard; an app owner GUC cannot forge it',async()=>{
+ const admin=adminCtx(b);
+ let failure:unknown;try{await withTenant(admin,async tx=>{
+  await tx.execute(sql`select set_config('app.owner','true',true)`);
+  await tx.insert(schema.attendanceRule).values({tenantId:b.tenantId,name:'Forged Standard',isDefault:true,lateGracePeriodMinutes:99});
+ });}catch(error){failure=error;}
+ let denied=false;for(let error=failure;error&&typeof error==='object';error=(error as {cause?:unknown}).cause){
+  if((error as {code?:string}).code==='42501'&&(error as {message?:string}).message==='Standard Schedule source unavailable')denied=true;
+ }expect(denied).toBe(true);
+ const created=await ensureStandardRule(admin);expect(created.created).toBe(true);
+ expect(await ensureStandardRule(admin)).toEqual({id:created.id,created:false});
+ const rows=await owner.db.select().from(schema.attendanceRule).where(eq(schema.attendanceRule.isDefault,true));
+ expect(rows).toHaveLength(1);expect(rows[0].name).toBe('Standard');expect(rows[0].lateGracePeriodMinutes).toBe(0);
+ const events=await owner.client`select actor_id,payload from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${created.id}::uuid and event_type='attendance-rule.created'`;
+ expect(events).toEqual([{actor_id:admin.userId,payload:{name:'Standard',isDefault:true,seeded:true}}]);
+ await expect(withTenant(admin,tx=>tx.execute(sql`insert into app.module_standard_rule_effect select * from app.module_standard_rule_effect`))).rejects.toThrow();
 });

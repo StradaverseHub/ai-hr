@@ -76,6 +76,20 @@ export class PerfError extends Error {
   }
 }
 
+/** Generic cycle administration is independent from assigned OneHR work. */
+async function assertCycleFunctionTx(tx:Tx,companyId:string|null,operation:'view'|'add'|'edit') {
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.performance_cycle_function_action(${companyId}::uuid,${operation}) as allowed`);
+ if(!row?.allowed)throw new PerfError('Performance cycle action unavailable');
+}
+
+/** Exact current action availability for existing native cycle controls. */
+export async function cycleFunctionAccess(ctx:SessionContext,companyIds:readonly (string|null)[]) {
+ return withTenant(ctx,async tx=>Promise.all([...new Set(companyIds)].map(async companyId=>{
+  const [row]=await tx.execute<{canView:boolean;canAdd:boolean;canEdit:boolean}>(sql`select app.performance_cycle_function_action(${companyId}::uuid,'view') as "canView",app.performance_cycle_function_action(${companyId}::uuid,'add') as "canAdd",app.performance_cycle_function_action(${companyId}::uuid,'edit') as "canEdit"`);
+  return {companyId,canView:row?.canView??false,canAdd:row?.canAdd??false,canEdit:row?.canEdit??false};
+ })));
+}
+
 /** Seed scale if a cycle is created without one. Tenant-configurable per cycle thereafter. */
 export const DEFAULT_RATING_SCALE: RatingScale = [
   { value: 1, label: 'Below' },
@@ -294,6 +308,7 @@ export async function createCycle(
   // HR elects which lifecycle stages run; default = all three. Normalize + reject empty / unknown.
   const stages = cycleStages(p.stages);
   return withTenant(ctx, async (tx) => {
+    await assertCycleFunctionTx(tx,p.companyId??null,'add');
     const [row] = await tx
       .insert(reviewCycle)
       .values({
@@ -400,6 +415,7 @@ async function eligibilityCandidates(
 export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
   return withTenant(ctx, async (tx) => {
     const cycle = await loadCycle(tx, p.cycleId);
+    await assertCycleFunctionTx(tx,cycle.companyId,'edit');
     if (!canAdminPerfCtx(ctx, cycle.companyId)) {
       throw new PerfError('Only an admin or performance & comp partner can open a review cycle');
     }
@@ -478,6 +494,8 @@ export async function previewEligibleCount(
     }
   }
   return withTenant(ctx, async (tx) => {
+    await assertCycleFunctionTx(tx,p.companyId??null,'view');
+    for(const companyId of rules?.companyIds??[])await assertCycleFunctionTx(tx,companyId,'view');
     const asOf = todayInKualaLumpur();
     const candidates = await eligibilityCandidates(tx, ctx.tenantId, p.companyId ?? null, asOf);
     const nativeEligible = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible).map(c=>c.employmentId);
@@ -494,6 +512,7 @@ export async function moveCycleToCalibration(ctx: SessionContext, p: { cycleId: 
 export async function releaseCycle(ctx: SessionContext, p: { cycleId: string }) {
   return withTenant(ctx, async (tx) => {
     const cycle = await loadCycle(tx, p.cycleId);
+    await assertCycleFunctionTx(tx,cycle.companyId,'edit');
     if (!canAdminPerfCtx(ctx, cycle.companyId)) {
       throw new PerfError('Only an admin or performance & comp partner can release a cycle');
     }
@@ -530,6 +549,7 @@ async function transitionCycle(
     if (!canAdminPerfCtx(ctx, cycle.companyId)) {
       throw new PerfError('Only an admin or performance & comp partner can change a cycle status');
     }
+    await assertCycleFunctionTx(tx,cycle.companyId,'edit');
     if (!from.includes(cycle.status)) {
       throw new PerfError(`Cannot move a ${cycle.status} cycle to ${to}`);
     }
@@ -1408,7 +1428,7 @@ export type CycleSummary = {
 /** Cycles for the management view, each with progress counts. RLS scopes to the tenant. */
 export function listCycles(ctx: SessionContext): Promise<CycleSummary[]> {
   return withTenant(ctx, async (tx) => {
-    const cycles = await tx.select().from(reviewCycle).orderBy(desc(reviewCycle.periodStart));
+    const cycles = await tx.select().from(reviewCycle).where(sql`app.performance_cycle_function_action(${reviewCycle.companyId},'view')`).orderBy(desc(reviewCycle.periodStart));
     if (cycles.length === 0) return [];
     const counts = await tx
       .select({
@@ -1561,6 +1581,9 @@ export function cycleDetail(ctx: SessionContext, cycleId: string) {
   return withTenant(ctx, async (tx) => {
     const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, cycleId)).limit(1);
     if (!cycle) return null;
+    const [course]=await tx.execute<{nativeAdmin:boolean}>(sql`select app.performance_cycle_native_admin(${cycle.companyId}::uuid) as "nativeAdmin"`);
+    const nativeAdmin=course?.nativeAdmin===true;
+    if(nativeAdmin)await assertCycleFunctionTx(tx,cycle.companyId,'view');
     const rows = await tx
       .select({
         reviewId: performanceReview.id,
@@ -1587,7 +1610,7 @@ export function cycleDetail(ctx: SessionContext, cycleId: string) {
           isNull(compensation.supersededAt),
         ),
       )
-      .where(eq(performanceReview.cycleId, cycleId))
+      .where(and(eq(performanceReview.cycleId, cycleId),nativeAdmin?undefined:sql`app.is_self_person(${employment.personId})`))
       .orderBy(person.fullName);
 
     const reviewerNames = await namesForEmployments(

@@ -23,6 +23,7 @@
  *
  * The targeting engine is `core/org-criteria.ts`, shared with bulk leave adjustments rather than copied.
  */
+import {nativeFunctionActionTx,type NativeAction} from './lifecycle-reward-notice-access';
 import {createHash} from 'node:crypto';
 import {NOTICE_ATTACHMENT_MAX_BYTES} from '../lib/notice-upload-policy';
 export {NOTICE_ATTACHMENT_MAX_BYTES};
@@ -189,18 +190,31 @@ function cleanNotice(p: NoticeInput): Required<Omit<NoticeInput, 'criteria' | 'e
 type StoredCriteria = OrgCriteria & { employmentIds?: string[] };
 
 /** Being a recipient does not authorize the administrator editor or its writes. */
-const authoringNotice=(id:string)=>and(eq(notice.id,id),sql`app.can_manage_notice(${notice.id})`);
+const authoringNotice=(id:string)=>and(eq(notice.id,id),sql`app.notice_action_allowed(${notice.id},'view')`);
 function requireNoticeWrite(rows:readonly {id:string}[]){if(rows.length!==1)throw new NoticeError('That notice is no longer available in your authoring scope.');}
 
-export function noticeAuthoringScope(ctx:SessionContext){
+export function noticeAuthoringScope(ctx:SessionContext,action:NativeAction='view'){
  return withTenant(ctx,async tx=>{
-  const [group]=await tx.execute(sql`SELECT app.principal_snapshot_current() AND app.is_group_admin() AS allowed`) as unknown as {allowed:boolean}[];
+  const [group]=await tx.execute(sql`SELECT app.notice_owner_action_allowed(NULL::uuid,${action}) AS allowed`) as unknown as {allowed:boolean}[];
   const companies=await tx.select({id:company.id,name:company.legalName}).from(company)
-   .where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.principal_snapshot_current() AND app.is_admin_for(${company.id})`))
+   .where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.notice_owner_action_allowed(${company.id},${action})`))
    .orderBy(asc(company.legalName),asc(company.id));
   return {groupAllowed:group?.allowed===true,companies};
  });
 }
+
+async function requireNoticeActionTx(tx:Tx,id:string,action:NativeAction|'publish'|'attach'){
+ await tx.execute(sql`select app.access_workforce_write_lock()`);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.notice_action_allowed(${id}::uuid,${action}) as allowed`);
+ if(!row?.allowed)throw new NoticeError('That notice action is unavailable in your authoring scope.');
+}
+export function noticeActions(ctx:SessionContext,id:string){return withTenant(ctx,async tx=>{
+ const [row]=await tx.execute<{view:boolean;add:boolean;edit:boolean;delete:boolean;publish:boolean;attach:boolean}>(sql`select
+ app.notice_action_allowed(${id}::uuid,'view') as view,app.notice_action_allowed(${id}::uuid,'add') as add,
+ app.notice_action_allowed(${id}::uuid,'edit') as edit,app.notice_action_allowed(${id}::uuid,'delete') as delete,
+ app.notice_action_allowed(${id}::uuid,'publish') as publish,app.notice_action_allowed(${id}::uuid,'attach') as attach`);
+ return row;
+});}
 
 /** The preview and publisher use the same audience resolver and authoring boundary. Unresolved tokens
  * stay in the draft; only real, authorized employments count, and an incomplete audience cannot publish.
@@ -241,6 +255,9 @@ export function noticeAudiencePreview(ctx:SessionContext,id:string){
 export async function createNotice(ctx: SessionContext, p: NoticeInput): Promise<{ id: string }> {
   const c = cleanNotice(p);
   return withTenant(ctx, async (tx) => {
+    await nativeFunctionActionTx(tx,ctx,c.companyId?'notices':'notices_global','add',c.companyId);
+    const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.notice_owner_action_allowed(${c.companyId}::uuid,'add') as allowed`);
+    if(!authority?.allowed)throw new NoticeError('Creating a notice is unavailable in this authoring scope.');
     const stored: StoredCriteria =
       c.targetMode === 'individual' ? { employmentIds: c.employmentIds } : c.criteria;
     const [row] = await tx
@@ -284,6 +301,7 @@ export async function createNotice(ctx: SessionContext, p: NoticeInput): Promise
 export async function updateNotice(ctx: SessionContext, id: string, p: NoticeInput): Promise<void> {
   const c = cleanNotice(p);
   return withTenant(ctx, async (tx) => {
+    await requireNoticeActionTx(tx,id,'edit');
     const [before] = await tx.select().from(notice).where(authoringNotice(id)).limit(1).for('update');
     if (!before) throw new NoticeError('That notice could not be found.');
     if (before.archivedAt) throw new NoticeError('An archived notice cannot be edited — restore it first.');
@@ -347,6 +365,7 @@ export async function publishNotice(
   const asOf = opts.asOf && ISO_DATE.test(opts.asOf) ? opts.asOf : todayInKualaLumpur();
   const actorUserId = requireActor(ctx, 'published');
   return withTenant(ctx, async (tx) => {
+    await requireNoticeActionTx(tx,id,'publish');
     const [row] = await tx.select().from(notice).where(authoringNotice(id)).limit(1).for('update');
     if (!row) throw new NoticeError('That notice could not be found.');
     if (row.archivedAt) throw new NoticeError('An archived notice cannot be published.');
@@ -401,6 +420,7 @@ export async function publishNotice(
 export async function archiveNotice(ctx: SessionContext, id: string): Promise<void> {
   const actorUserId = requireActor(ctx, 'archived');
   return withTenant(ctx, async (tx) => {
+    await requireNoticeActionTx(tx,id,'delete');
     const [row] = await tx.select({ archivedAt: notice.archivedAt }).from(notice).where(authoringNotice(id)).limit(1);
     if (!row) throw new NoticeError('That notice could not be found.');
     if (row.archivedAt) throw new NoticeError('That notice is already archived.');
@@ -422,6 +442,7 @@ export async function archiveNotice(ctx: SessionContext, id: string): Promise<vo
 
 export async function restoreNotice(ctx: SessionContext, id: string): Promise<void> {
   return withTenant(ctx, async (tx) => {
+    await requireNoticeActionTx(tx,id,'edit');
     const [row] = await tx.select({ archivedAt: notice.archivedAt }).from(notice).where(authoringNotice(id)).limit(1);
     if (!row) throw new NoticeError('That notice could not be found.');
     if (!row.archivedAt) throw new NoticeError('That notice is not archived.');
@@ -450,6 +471,7 @@ export async function restoreNotice(ctx: SessionContext, id: string): Promise<vo
  */
 export async function deleteNotice(ctx: SessionContext, id: string): Promise<void> {
   return withTenant(ctx, async (tx) => {
+    await requireNoticeActionTx(tx,id,'delete');
     const [row] = await tx.select({ publishedAt: notice.publishedAt }).from(notice).where(authoringNotice(id)).limit(1);
     if (!row) throw new NoticeError('That notice could not be found.');
     if (row.publishedAt) {
@@ -473,6 +495,7 @@ export async function deleteNotice(ctx: SessionContext, id: string): Promise<voi
 export async function duplicateNotice(ctx: SessionContext, id: string): Promise<{ id: string }> {
   const actor=requireActor(ctx,'duplicated');
   return withTenant(ctx, async (tx) => {
+    await requireNoticeActionTx(tx,id,'add');
     const [row] = await tx.select().from(notice).where(authoringNotice(id)).limit(1).for('update');
     if (!row) throw new NoticeError('That notice could not be found.');
     const [copy] = await tx
@@ -596,7 +619,7 @@ export async function listNotices(
         )`,
       })
       .from(notice)
-      .where(and(sql`app.can_manage_notice(${notice.id})`,opts.includeArchived ? undefined : isNull(notice.archivedAt)))
+      .where(and(sql`app.notice_action_allowed(${notice.id},'view')`,opts.includeArchived ? undefined : isNull(notice.archivedAt)))
       .orderBy(desc(notice.createdAt),asc(notice.id));
     return rows.map((r) => ({
       ...r,
@@ -850,6 +873,7 @@ export async function addNoticeAttachment(ctx:SessionContext,id:string,expectedC
  if(!noticeAttachmentMime.has(mimeType))throw new NoticeAttachmentError('file','The file type is not supported for notices.');
  const digest=createHash('sha256').update(content).digest('hex');
  return withTenant(ctx,async tx=>{
+    await requireNoticeActionTx(tx,id,'attach');
   const [parent]=await tx.select({id:notice.id,contentVersion:notice.contentVersion,attachmentIds:notice.attachmentIds,archivedAt:notice.archivedAt}).from(notice).where(authoringNotice(id)).limit(1).for('update');
   if(!parent||parent.archivedAt)throw new NoticeAttachmentError('unavailable','That notice is no longer available for editing.');
   const [prior]=await tx.select({id:noticeAttachment.id,fileName:noticeAttachment.fileName,mimeType:noticeAttachment.mimeType,digest:sql<string>`encode(sha256(${noticeAttachment.content}),'hex')`})
@@ -891,6 +915,6 @@ export function noticeAttachmentMetadata(ctx:SessionContext,id:string){
 export function noticeAttachmentUploadState(ctx:SessionContext,id:string){
  if(!uuidNotice(id))return Promise.resolve(null);
  return withTenant(ctx,async tx=>{
-  const [row]=await tx.select({id:notice.id,contentVersion:notice.contentVersion}).from(notice).where(and(authoringNotice(id),isNull(notice.archivedAt))).limit(1);return row??null;
+  const [row]=await tx.select({id:notice.id,contentVersion:notice.contentVersion}).from(notice).where(and(authoringNotice(id),sql`app.notice_action_allowed(${id}::uuid,'attach')`,isNull(notice.archivedAt))).limit(1);return row??null;
  });
 }

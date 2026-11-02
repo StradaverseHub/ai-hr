@@ -1,3 +1,4 @@
+import {lockAccessConfigurationTx} from '../../../core/access-configuration-lock';
 import {JOINER_SECTION_PRESETS,joinerPageSections,joinerRecordAccess} from '../../../lib/onboarding-page-access';
 import {projectJoinerPage} from '../../../lib/onboarding-page-projection';
 import { defaultV9CaseFields } from '../../../lib/lifecycle-v9-case-form';
@@ -369,14 +370,40 @@ export type OnboardingCommand = ({ type: 'equipmentBulk' } & M.EquipmentBulk) | 
 export async function onboardingCommand(ctx: SessionContext, id: string, revision: number, command: OnboardingCommand) {
     command = onboardingCommandSchema.parse(command);
     jsonSize(command);
+    if(command.type==='task'||command.type==='handover'||command.type==='readNote'||command.type==='acknowledge'||command.type==='fulfil'||command.type==='approve'||command.type==='assignApproval'||command.type==='addItem'||command.type==='removeItem'||command.type==='keepProviding'){
+        const taskCommand=command;
+        return withTenant(ctx,async tx=>{
+            let result:{revision:number;employment_id:string|null;company_id:string;did_change?:boolean;function_key?:string;native_branch?:string};
+            try{
+                if(taskCommand.type==='addItem'||taskCommand.type==='removeItem'||taskCommand.type==='keepProviding'){const{type,...payload}=taskCommand;[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string;function_key:string;native_branch:string}>(sql`select * from app.onboarding_exception_update(${id}::uuid,${revision},${type},${JSON.stringify(payload)}::jsonb)`);}
+                else if(taskCommand.type==='task')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_assigned_task_update(${id}::uuid,${revision},${taskCommand.taskId},${taskCommand.status})`);
+                else if(taskCommand.type==='assignApproval')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_approval_assign(${id}::uuid,${revision},${taskCommand.itemId},${taskCommand.stepId},${taskCommand.user})`);
+                else if(taskCommand.type==='approve')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_approval_decide(${id}::uuid,${revision},${JSON.stringify(taskCommand.itemIds)}::jsonb,${taskCommand.decision})`);
+                else if(taskCommand.type==='fulfil')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_fulfil_item(${id}::uuid,${revision},${taskCommand.itemId},${taskCommand.status})`);
+                else [result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_delivery_update(${id}::uuid,${revision},${taskCommand.type},${JSON.stringify(taskCommand.type==='acknowledge'?taskCommand.data:{})}::jsonb)`);
+            }catch(error){
+                const pg=(error as {cause?:{message?:string;code?:string};message?:string;code?:string}).cause??error as {message?:string;code?:string};
+                M.fail(pg.message??'This task is unavailable.',pg.code==='40001'?'conflict':pg.code==='42501'?'forbidden':'invalid');
+            }
+            if(!result)M.fail('This task is unavailable.','forbidden');
+            if(result.did_change===false)return{revision:result.revision};
+            await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onboarding-case',aggregateId:id,eventType:'onboarding.'+taskCommand.type,actor:actorOf(ctx),subjectEmploymentId:result.employment_id,payload:{caseId:id,companyId:result.company_id,...(result.function_key&&result.native_branch?{functionKey:result.function_key,nativeBranch:result.native_branch}:{})}});
+            // A real assigned task needs no general case/Personnel read. Preserve the ordinary visible
+            // HR follow-up only where its independent administrative row/action course still applies.
+            const [followup]=await tx.execute<{allowed:boolean}>(sql`select ${result.employment_id}::uuid is not null and app.can_admin_employment(${result.employment_id}::uuid) and app.lifecycle_reward_notice_action('lifecycle','edit',${result.company_id}::uuid) as allowed`);
+            if(followup?.allowed){
+                const {config}=await configTx(tx,ctx),actor=await actorTx(tx,ctx,config,result.company_id);
+                if(config.v9ChecklistRevision&&actor.hr){const {v9NativeTransitionTx}=await import('../v9/service');return{revision:(await v9NativeTransitionTx(ctx,tx,id)).revision};}
+            }
+            return{revision:result.revision};
+        });
+    }
     return withTenant(ctx, async (tx) => {
         // Serialise assignment/load decisions within the tenant, including simultaneous submissions.
         await lockOnboardingTx(tx, ctx.tenantId);
         const { row, config, actor, c } = await loadTx(tx, ctx, id, true);
         if (row.revision !== revision) {
             if (actor.module && command.type === 'submit' && c.state === 'submitted' && !c.reconcileNeeded)
-                return { revision: row.revision };
-            if (M.inGroup(config, config.techGroup, actor.id) && command.type === 'handover' && M.currentReq(c)?.handedAt)
                 return { revision: row.revision };
             M.fail('This case changed. Reload it before trying again.', 'conflict');
         }
@@ -455,70 +482,8 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
             case 'reopen':
                 M.reopenCase(c, actor, env);
                 break;
-            case 'task':
-                M.setTask(config, c, command.taskId, command.status, actor, env);
-                break;
             case 'assignTask':
                 M.manualTask(config, c, command.taskId, command.user, actor, env, command.roundRobin);
-                break;
-            case 'approve':
-                M.decide(config, c, command.itemIds, command.decision, actor, env);
-                break;
-            case 'assignApproval':
-                M.assignApproval(config, c, command.itemId, command.stepId, command.user, actor, env);
-                break;
-            case 'fulfil':
-                M.fulfil(config, c, command.itemId, command.status, actor, env);
-                break;
-            case 'removeItem': {
-                const i = r?.items.find(i => i.id === command.itemId);
-                if (!i)
-                    M.fail('Item not found.');
-                M.removeItem(config, c, i, actor, env);
-                break;
-            }
-            case 'addItem': {
-                if (!r || !config.exceptions.groups.some(g => M.inGroup(config, g, actor.id)))
-                    M.fail('Your group cannot add items.', 'forbidden');
-                const cat = config.catalogue.find(x => x.id === command.catalogueId);
-                if (!cat)
-                    M.fail('Item not found.');
-                if (command.confirmedBy && !env.users.includes(command.confirmedBy))
-                    M.fail('Choose a current confirming user.');
-                M.addItem(config, c, r, cat, 'exception', false, command.reason, command.approval, command.confirmedBy, actor, env);
-                break;
-            }
-            case 'handover':
-                M.handover(config, c, actor, env);
-                break;
-            case 'readNote':
-                if (!r || !(r.items.some(i => M.inGroup(config, i.team, actor.id)) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id))))
-                    M.fail('Only the fulfilling teams or groups who can add systems acknowledge this note.', 'forbidden');
-                else {
-                    r.noteAcks[actor.id] = r.noteVersion;
-                    M.log(c, actor, env, 'note.read');
-                }
-                break;
-            case 'keepProviding': {
-                const i = r?.items.find(i => i.id === command.itemId);
-                if (!i || !M.inGroup(config, i.team, actor.id))
-                    M.fail('Only the fulfilling team can keep providing.', 'forbidden');
-                i.retiredFlag = false;
-                M.log(c, actor, env, 'item.kept', i.name);
-                break;
-            }
-            case 'acknowledge':
-                if (!c.personId || c.personId !== ctx.personId || !r?.handedAt || c.state !== 'submitted' || c.acknowledgement)
-                    M.fail('Acknowledgement is not available.', 'forbidden');
-                if (command.data.acknowledged !== 'true' || !command.data.contactNumber?.trim() || !command.data.serialNumber?.trim())
-                    M.fail('Confirm that you received the equipment.');
-                c.acknowledgement = { at: env.now, by: actor.id, data: command.data };
-                for (const t of c.tasks.filter(t => t.by === 'joiner' && t.gate)) {
-                    t.status = 'done';
-                    t.completedAt = env.now;
-                    t.completedBy = actor.id;
-                }
-                M.log(c, actor, env, 'acknowledgement.submitted');
                 break;
         }
         if (command.type === 'submit' || command.type === 'saveSubmit')
@@ -550,6 +515,7 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
  * interleaving and fails if the two ever drift apart.
  */
 async function lockOnboardingTx(tx: Tx, tenantId: string) {
+    await lockAccessConfigurationTx(tx,tenantId);
     await tx.execute(sql `select pg_advisory_xact_lock(hashtext('audit-chain:' || ${tenantId}::uuid::text))`);
     await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${tenantId + ':onboarding'},0))`);
 }
@@ -578,6 +544,38 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
         return;
     // Personnel saves and the scheduled backfill must not both create the first case for one draft.
     await lockOnboardingTx(tx, ctx.tenantId);
+    // The native SAVE port consumes an exact same-transaction Workforce save receipt. It does
+    // not return the source or full case, and cannot turn an ordinary refresh into a source grant.
+    if (mode === 'save' && ctx.userId) {
+        const [saved] = rows<{ handled: boolean; case_id: string | null; company_id: string | null; did_change: boolean }>(await tx.execute(sql`select * from app.onboarding_sync_saved_draft(${draftId}::uuid)`));
+        if (saved?.handled) {
+            if (saved.did_change && saved.case_id) await appendEvent(tx, {
+                tenantId: ctx.tenantId, aggregateType: 'onboarding-case', aggregateId: saved.case_id,
+                eventType: 'onboarding.personnel_synced', actor: actorOf(ctx),
+                payload: { caseId: saved.case_id, companyId: saved.company_id },
+            });
+            return;
+        }
+    }
+    if (mode === 'active' && ctx.userId) {
+        if (!active) M.fail('Draft activation source unavailable.', 'forbidden');
+        const [activated] = rows<{ handled: boolean; case_id: string | null; company_id: string | null; did_change: boolean }>(await tx.execute(sql`select * from app.onboarding_sync_active_draft(${draftId}::uuid,${active.employmentId}::uuid,${active.personId}::uuid)`));
+        if (activated?.did_change && activated.case_id) await appendEvent(tx, {
+            tenantId: ctx.tenantId, aggregateType: 'onboarding-case', aggregateId: activated.case_id,
+            eventType: 'onboarding.personnel_activated', actor: actorOf(ctx), subjectEmploymentId: active.employmentId,
+            payload: { caseId: activated.case_id, companyId: activated.company_id },
+        });
+        return;
+    }
+    if (mode === 'discard' && ctx.userId) {
+        const [discarded] = rows<{ handled: boolean; case_id: string | null; company_id: string | null; did_change: boolean }>(await tx.execute(sql`select * from app.onboarding_sync_discarded_draft(${draftId}::uuid)`));
+        if (discarded?.did_change && discarded.case_id) await appendEvent(tx, {
+            tenantId: ctx.tenantId, aggregateType: 'onboarding-case', aggregateId: discarded.case_id,
+            eventType: 'onboarding.source_discarded', actor: actorOf(ctx),
+            payload: { caseId: discarded.case_id, companyId: discarded.company_id },
+        });
+        return;
+    }
     const { config, revision } = await configTx(tx, ctx);
     if (!revision)
         return;
@@ -842,6 +840,15 @@ export async function onboardingNote(ctx: SessionContext, caseId: string, input:
     if (input.body.length > 10000 || input.mentions.length > 50)
         M.fail('This note is too long.');
     return withTenant(ctx, async (tx) => {
+        const [assigned]=await tx.execute<{allowed:boolean}>(sql`select app.onboarding_conversation_assigned(${caseId}::uuid,${input.context}) as allowed`);
+        if(assigned?.allowed){
+            let result:{revision:number;employment_id:string|null;company_id:string};
+            try{[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_conversation_update(${caseId}::uuid,${input.context},${input.id??null}::uuid,${input.body},${JSON.stringify(input.mentions)}::jsonb,${input.deleted??false},${input.resolve??false})`);}
+            catch(error){const pg=(error as {cause?:{message?:string;code?:string}}).cause??error as {message?:string;code?:string};M.fail(pg.message??'This conversation is not available.',pg.code==='42501'?'forbidden':pg.code==='40001'?'conflict':'invalid');}
+            if(!result)M.fail('This conversation is not available.','forbidden');
+            await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onboarding-case',aggregateId:caseId,eventType:'onboarding.note_changed',actor:actorOf(ctx),subjectEmploymentId:result.employment_id,payload:{caseId,companyId:result.company_id}});
+            return;
+        }
         const { row, config, actor, c } = await loadTx(tx, ctx, caseId, true);
         if (!(actor.caseActions&&actor.sections?.notes==='view')&&!await participantTx(tx, caseId))
             M.fail('This conversation is not available.', 'forbidden');
@@ -903,7 +910,7 @@ export type OnboardingTask = {
     id: string;
     caseId: string;
     revision: number;
-    kind: 'checklist' | 'approval' | 'manualApproval' | 'team' | 'handover' | 'mention' | 'hrNote' | 'case' | 'owner' | 'acknowledgement';
+    kind: 'checklist' | 'approval' | 'manualApproval' | 'team' | 'handover' | 'mention' | 'hrNote' | 'case' | 'owner' | 'acknowledgement' | 'exceptionAdd' | 'exceptionRemove' | 'keepProviding';
     title: string;
     joiner: string;
     businessGroup: string;
@@ -922,13 +929,15 @@ export type OnboardingTask = {
     claimedBy?: string | null;
     context?: string;
     lockReason?: string;
+    bounded?: boolean;
+    canExecute?: boolean;
+    canReply?: boolean;
 };
+type AssignedChecklistRow={case_id:string;revision:number;updated_at:Date|string;joiner:string;business_group:string;join_date:string;task_id:string;title:string;task_by:string;gate:boolean;opens_on:string|null;due_on:string|null;status:string;handed:boolean|null};
 export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTask[]> {
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config), today = todayInKualaLumpur();
         const list = await tx.select().from(cases).orderBy(asc(cases.id)), out: OnboardingTask[] = [];
-        const allNotes = await tx.select().from(notes).orderBy(asc(notes.createdAt), asc(notes.id));
-        const names = await directoryTx(tx);
         for (const row of list) {
             const c = row.data, f = M.effectiveFacts(c), r = M.currentReq(c);
             if (c.state === 'cancelled')
@@ -944,9 +953,6 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
             for (const t of c.tasks) {
                 if (t.status === 'done')
                     continue;
-                const locked = !!(t.opensOn && t.opensOn > today || t.gate && !r?.handedAt), lockReason = t.gate && !r?.handedAt ? 'After Day 1 handover' : t.opensOn && t.opensOn > today ? 'Opens ' + t.opensOn.split('-').reverse().join('/') : undefined;
-                if (t.assignee === actor.id)
-                    add({ kind: t.by === 'joiner' && t.gate ? 'acknowledgement' : 'checklist', title: t.name, taskId: t.id, due: t.dueOn, status: t.status, assigned: true, locked, lockReason });
                 if (t.by !== 'group' && !t.assignee && t.failure && actor.module)
                     add({ kind: 'owner', title: 'Link the Personnel account: ' + t.name, taskId: t.id, due: t.dueOn, team: true });
                 if (t.by === 'group' && !t.assignee && actor.module && (t.failure || t.dueOn <= M.dayDate(today, 8)))
@@ -955,30 +961,14 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
             if (r && !r.cancelledAt && !r.handedAt) {
                 if (actor.module && r.items.some(i => !i.removed && !i.team))
                     add({ kind: 'owner', title: 'Choose a fulfilling team', itemIds: r.items.filter(i => !i.removed && !i.team).map(i => i.id) });
-                const actionable = r.items.filter(i => !i.removed && i.approval === 'pending' && i.steps.some(s => M.stepOpen(i, s) && s.status === 'pending' && (!s.manual || s.user) && (s.user === actor.id || M.inGroup(config, s.group, actor.id))));
-                if (actionable.length)
-                    add({ kind: 'approval', title: 'Approve ' + actionable.length + ' items', itemIds: actionable.map(i => i.id), assigned: actionable.some(i => i.steps.some(s => s.user === actor.id && M.stepOpen(i, s))), team: true });
-                const manual = new Set<string>();
-                for (const i of r.items.filter(i => !i.removed)) {
-                    for (const s of i.steps)
-                        if (M.stepOpen(i, s) && s.manual && !s.user && M.inGroup(config, s.group, actor.id) && !manual.has(s.id + ':' + s.group)) {
-                            manual.add(s.id + ':' + s.group);
-                            add({ kind: 'manualApproval', title: 'Choose an approver: ' + s.label, itemIds: [i.id], stepId: s.id, team: true });
-                        }
-                    if (M.activeItem(i) && i.state !== 'ready' && i.state !== 'handed' && M.inGroup(config, i.team, actor.id))
-                        add({ kind: 'team', title: i.name, itemIds: [i.id], due: M.equipmentDate(c, i), status: i.state === 'progress' ? 'progress' : 'todo', team: true, assigned: i.claim === actor.id, locked: !!i.claim && i.claim !== actor.id, claimedBy: i.claim ? names.find(u => u.id === i.claim)?.name ?? 'A teammate' : null });
-                }
-                if (M.inGroup(config, config.techGroup, actor.id) && !r.items.some(i => !i.removed && i.approval === 'pending') && r.items.filter(M.activeItem).every(i => i.state === 'ready'))
-                    add({ kind: 'handover', title: 'Record Day 1 handover', team: true, overdue: !!f.joinDate && f.joinDate <= today });
-                if (r.hrNote && r.noteAcks[actor.id] !== r.noteVersion && (r.items.some(i => M.inGroup(config, i.team, actor.id)) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id))))
-                    add({ kind: 'hrNote', title: 'Read People GBS note', team: true });
             }
-            for (const n of allNotes.filter(n => n.caseId === c.id).map(n => n.data))
-                if (!n.deleted && (!c.submittedAt || n.at >= c.submittedAt) && n.mentions.includes(actor.id) && !n.resolved.includes(actor.id)) {
-                    const within = !!f.joinDate && f.joinDate <= M.dayDate(today, config.exceptions.remindDays + 1);
-                    add({ kind: 'mention', title: n.name + ' mentioned you', noteId: n.id, context: n.context, tagged: true, assigned: true, overdue: within });
-                }
         }
+        // Fixed actual-assignee projection also covers a task whose subject is outside the user's
+        // general data profile. It returns no private case, note, document or sibling-task payload.
+        const own=await tx.execute<{task:OnboardingTask}>(sql`select task from app.onboarding_checklist_task_rows()`);
+        out.push(...own.map(row=>row.task));
+        const delivery=await tx.execute<{task:OnboardingTask}>(sql`select task from app.onboarding_delivery_task_rows() union all select task from app.onboarding_exception_task_rows()`);
+        out.push(...delivery.map(row=>row.task));
         return out.sort((a, b) => Number(b.overdue) - Number(a.overdue) || (a.due || '9999').localeCompare(b.due || '9999') || a.id.localeCompare(b.id));
     });
 }
@@ -994,8 +984,12 @@ export async function onboardingAssignedTaskMetadata(ctx:SessionContext):Promise
                 .where(and(eq(cases.tenantId,ctx.tenantId),inArray(cases.id,ids.slice(start,start+1000)))).orderBy(cases.id);
             for(const row of rows)updated.set(row.id,row.updatedAt);
         }
+        const actual=await tx.execute<AssignedChecklistRow>(sql`select * from app.onboarding_assigned_task_rows()`);
+        const delivery=await tx.execute<{task:OnboardingTask;updated_at:Date|string}>(sql`select * from app.onboarding_delivery_task_rows() union all select * from app.onboarding_exception_task_rows()`);
+        for(const row of delivery)updated.set(row.task.caseId,row.updated_at instanceof Date?row.updated_at:new Date(row.updated_at));
+        const actualTasks=new Map(actual.map(row=>[row.case_id+':'+row.task_id,row.updated_at instanceof Date?row.updated_at:new Date(row.updated_at)]));
         return assigned.flatMap(item=>{
-            const sourceUpdatedAt=updated.get(item.caseId);if(!sourceUpdatedAt)return [];
+            const sourceUpdatedAt=item.taskId&&(item.kind==='checklist'||item.kind==='acknowledgement')?actualTasks.get(item.caseId+':'+item.taskId):updated.get(item.caseId);if(!sourceUpdatedAt)return [];
             const dueDate=(item.kind==='checklist'||item.kind==='acknowledgement')&&M.validDate(item.due)?item.due:undefined;
             return [{id:item.id,kind:'onboarding' as const,subjectName:item.title+' · '+item.joiner,sourceUpdatedAt,
                 linkPath:'/tasks#'+encodeURIComponent('onboarding-'+item.id),...(dueDate?{dueDate}:{})}];
@@ -1032,8 +1026,12 @@ export async function onboardingReadNotice(ctx: SessionContext, id?: string) {
     });
 }
 /** Minute sweep; recipients are login identities, including staff who have no employment. */
-export async function sweepOnboarding(ctx: SessionContext) {
-    return withTenant(ctx, async (tx) => {
+export async function sweepOnboarding(ctx: SessionContext,runTenant:typeof withTenant=withTenant) {
+    return runTenant(ctx, async (tx) => {
+        if(!ctx.userId){
+            const [principal]=rows<{owner:boolean}>(await tx.execute(sql`select current_user='ai_hr_owner' OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=current_user AND rolsuper) as owner`));
+            if(!principal?.owner)M.fail('Scheduled onboarding dispatch requires the storage owner.', 'forbidden');
+        }
         const [{ ok }] = rows<{
             ok: boolean;
         }>(await tx.execute(sql `select app.is_group_admin() as ok`));
@@ -1361,16 +1359,15 @@ export async function onboardingHoldingsTx(ctx: SessionContext, tx: Tx, employme
 }
 /** Records a confirmed recovery on the issuing owner, in the same transaction as offboarding. */
 export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, employmentId: string, companyId: string, source: Pick<OnboardingHolding, 'caseId' | 'requestId' | 'itemId'>, offboardingCaseId: string, reason: string, assigned?:{revision:number;itemId:string}) {
-    let permitted=false, assignedGroup:string|null=null;
     if(assigned){
-      const [bound]=await tx.execute<{scope:{companyId:string;employmentId:string;item:{group:string|null;nativeSource?:{caseId:string;requestId:string;itemId:string}}}}>(sql`select app.lc_v9_assigned_item(${offboardingCaseId}::uuid,${assigned.revision},${assigned.itemId}) as scope`);
-      const match=bound.scope.item.nativeSource;permitted=bound.scope.companyId===companyId&&bound.scope.employmentId===employmentId&&!!match&&match.caseId===source.caseId&&match.requestId===source.requestId&&match.itemId===source.itemId;
-      assignedGroup=bound.scope.item.group;
-    }else{
-      await holdingAuthorityTx(ctx, tx, companyId);
-      const [exit] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from lc_v9_case c cross join lateral jsonb_array_elements(c.data->'items') i where c.id=${offboardingCaseId}::uuid and c.tenant_id=${ctx.tenantId}::uuid and c.company_id=${companyId}::uuid and c.employment_id=${employmentId}::uuid and c.module='off' and c.data->>'state'='submitted' and i->'nativeSource'->>'caseId'=${source.caseId} and i->'nativeSource'->>'requestId'=${source.requestId} and i->'nativeSource'->>'itemId'=${source.itemId}) as ok`);
-      permitted=!!exit?.ok;
+      const [result]=await tx.execute<{source_case_id:string;employment_id:string;company_id:string;did_change:boolean;event_type:string|null;function_key:string;native_branch:string}>(sql`select * from app.onboarding_recover_assigned_holding(${offboardingCaseId}::uuid,${assigned.revision},${assigned.itemId},${source.caseId}::uuid,${source.requestId},${source.itemId},${employmentId}::uuid,${companyId}::uuid,${reason})`);
+      if(!result)M.fail('Recovery work unavailable.','forbidden');
+      if(result?.did_change&&result.event_type)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onboarding-case',aggregateId:result.source_case_id,eventType:result.event_type,actor:actorOf(ctx),subjectEmploymentId:result.employment_id,payload:{caseId:result.source_case_id,companyId:result.company_id,functionKey:result.function_key,nativeBranch:result.native_branch}});
+      return;
     }
+    await holdingAuthorityTx(ctx, tx, companyId);
+    const [exit] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from lc_v9_case c cross join lateral jsonb_array_elements(c.data->'items') i where c.id=${offboardingCaseId}::uuid and c.tenant_id=${ctx.tenantId}::uuid and c.company_id=${companyId}::uuid and c.employment_id=${employmentId}::uuid and c.module='off' and c.data->>'state'='submitted' and i->'nativeSource'->>'caseId'=${source.caseId} and i->'nativeSource'->>'requestId'=${source.requestId} and i->'nativeSource'->>'itemId'=${source.itemId}) as ok`);
+    const permitted=!!exit?.ok;
     if(!permitted)M.fail('The open offboarding case does not contain this issued item.','conflict');
     await lockOnboardingTx(tx, ctx.tenantId);
     const [row] = await tx.select().from(cases).where(and(eq(cases.id, source.caseId), eq(cases.tenantId, ctx.tenantId), eq(cases.companyId, companyId), eq(cases.employmentId, employmentId))).for('update');
@@ -1382,10 +1379,18 @@ export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, em
         M.fail('Another case has already recorded this item recovery.', 'conflict');
     }
     const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config, companyId), now = new Date().toISOString();
-    if(assigned&&(item.team!==assignedGroup||!M.inGroup(config,item.team,actor.id)))M.fail('The issuing providing team changed. Review the recovery assignment.','conflict');
     item.recovery = { offboardingCaseId, outcome: item.type === 'system' ? 'revoked' : 'returned', at: now, by: actor.id, reason: reason.trim() };
     item.revokeNeeded = false;
-    M.log(c, actor, { now, id: randomUUID } as M.Environment, 'holding.' + item.recovery.outcome, `${item.name} · confirmed by ${assigned?'the assigned providing team':'HR'} on offboarding case ${offboardingCaseId}${reason.trim() ? ' · ' + reason.trim() : ''}`);
+    M.log(c, actor, { now, id: randomUUID } as M.Environment, 'holding.' + item.recovery.outcome, `${item.name} · confirmed by HR on offboarding case ${offboardingCaseId}${reason.trim() ? ' · ' + reason.trim() : ''}`);
     await storeTx(tx, ctx, row, c, false);
     await auditTx(tx, ctx, c, 'holding_' + item.recovery.outcome);
+}
+
+/** A finite native task review; it never returns a full case or an administrative authority flag. */
+export async function onboardingBoundedTask(ctx:SessionContext,taskId:string){
+    if(typeof taskId!=='string'||taskId.length===0||taskId.length>500||/[\u0000-\u001f]/.test(taskId))M.fail('This work is not available.','forbidden');
+    return withTenant(ctx,async tx=>{
+        const [row]=await tx.execute<{detail:{task:OnboardingTask;body:string;notes:M.Note[];requestNumber:string|null;items?:{id:string;name:string}[];candidates?:{id:string;name:string}[];catalogue?:{id:string;name:string;mandatory:boolean;workflowName:string|null}[]}|null}>(sql`select app.onboarding_delivery_task_detail(${taskId})as detail`);
+        if(!row?.detail)M.fail('This work is not available.','forbidden');return row.detail;
+    });
 }

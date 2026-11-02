@@ -4537,6 +4537,83 @@
       "when": 1793330000329,
       "tag": "0929_teras_review_services",
       "breakpoints": true
+    },
+    {
+      "idx": 763,
+      "version": "7",
+      "when": 1793330000335,
+      "tag": "0935_password_account_unlock",
+      "breakpoints": true
+    },
+    {
+      "idx": 764,
+      "version": "7",
+      "when": 1793330000336,
+      "tag": "0936_data_permission_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 765,
+      "version": "7",
+      "when": 1793330000337,
+      "tag": "0937_data_permission_reader_bypasses",
+      "breakpoints": true
+    },
+    {
+      "idx": 766,
+      "version": "7",
+      "when": 1793330000338,
+      "tag": "0938_data_permission_enforcement",
+      "breakpoints": true
+    },
+    {
+      "idx": 767,
+      "version": "7",
+      "when": 1793330000339,
+      "tag": "0939_workforce_action_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 768,
+      "version": "7",
+      "when": 1793330000340,
+      "tag": "0940_bounded_approval_task_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 769,
+      "version": "7",
+      "when": 1793330000341,
+      "tag": "0941_financial_letter_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 770,
+      "version": "7",
+      "when": 1793330000342,
+      "tag": "0942_organisation_settings_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 771,
+      "version": "7",
+      "when": 1793330000343,
+      "tag": "0943_leave_attendance_claim_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 772,
+      "version": "7",
+      "when": 1793330000344,
+      "tag": "0944_lifecycle_rewards_notice_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 773,
+      "version": "7",
+      "when": 1793330000345,
+      "tag": "0945_financial_setup_actions",
+      "breakpoints": true
     }
   ]
 }

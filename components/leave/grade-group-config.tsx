@@ -44,7 +44,9 @@ export function GradeGroupConfig({
   gradeGroups,
   grades,
   actions,
+  actionControls,
 }: {
+  actionControls: {add:boolean;edit:boolean;delete:boolean};
   gradeGroups: GradeGroupRow[];
   /** The ACTIVE job grades a group may contain. Archived grades are not offered as NEW members; a group
    *  that already holds one keeps it — this form only posts the boxes it renders, so a member it cannot
@@ -57,6 +59,7 @@ export function GradeGroupConfig({
   };
 }) {
   const t = useTranslations('admin.benefitScheme');
+  const controls=actionControls;
 
   return (
     <div className="space-y-3 p-3" data-tour="grade-groups">
@@ -80,6 +83,7 @@ export function GradeGroupConfig({
               <div className="mt-3">
                 <form action={actions.updateGradeGroup} className="space-y-3">
                   <input type="hidden" name="id" value={g.id} />
+                  <fieldset disabled={!controls.edit} className="contents">
                   <Field label={t('groupNameLabel')}>
                     <input name="name" defaultValue={g.name} required className={inputCls} />
                   </Field>
@@ -104,15 +108,16 @@ export function GradeGroupConfig({
                       {grades.length === 0 && <span className="text-xs text-muted-foreground">{t('noGrades')}</span>}
                     </div>
                   </div>
+                  </fieldset>
                   <div className="flex items-center gap-2">
-                    <Button type="submit" size="sm">
+                    <Button type="submit" size="sm" disabled={!controls.edit}>
                       {t('save')}
                     </Button>
                     {/* 9054e31c: Delete shares the Save row — a second submit button posting
                         deleteGradeGroup via formAction (same pattern as the holidays page and the TP1
                         form). The action reads only the hidden id; the extra name/gradeIds fields are
                         ignored. formNoValidate so a cleared required name input cannot block Delete. */}
-                    <Button type="submit" variant="ghost" size="sm" formAction={actions.deleteGradeGroup} formNoValidate>
+                    <Button type="submit" variant="ghost" size="sm" formAction={actions.deleteGradeGroup} formNoValidate disabled={!controls.delete}>
                       {t('delete')}
                     </Button>
                   </div>
@@ -126,6 +131,7 @@ export function GradeGroupConfig({
         action={actions.createGradeGroup}
         className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-border p-3"
       >
+        <fieldset disabled={!controls.add} className="contents">
         <Field label={t('groupNameLabel')}>
           <input name="name" required placeholder={t('groupNamePlaceholder')} className={`${inputCls} w-56`} />
         </Field>
@@ -142,6 +148,7 @@ export function GradeGroupConfig({
           </div>
         </div>
         <button className={btnPrimary}>{t('addGroup')}</button>
+        </fieldset>
       </form>
     </div>
   );

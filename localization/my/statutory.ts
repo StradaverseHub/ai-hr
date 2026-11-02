@@ -1,5 +1,7 @@
+import {profileTaskEffectSourceTx,profileTaskStoreStatutoryTx} from '../../core/profile-task-source';
 import {assertWorkforcePersonTx,assertWorkforceEmploymentTx,WorkforceAccessError} from '../../core/workforce-access';
 import {isDeepStrictEqual} from 'node:util';
+import { validPassportMY, type PassportFieldsMY } from './passport';
 import {captureStatutorySourceContext as captureStatutoryContext,lockStatutorySourceTx as statutoryWriteIntervalMYTx,lockReviewedStatutorySourceTx} from '../../core/statutory-source-lock';
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
@@ -468,6 +470,13 @@ export async function setStatutoryProfileMY(ctx:SessionContext,p:StatutoryInput,
   return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
+/** New hire initializer: preserve an existing person's election; only a genuinely new profile defaults on. */
+export async function initializeHiredStatutoryMY(ctx:SessionContext,p:StatutoryInput,outerTx?:Tx){
+ ctx=captureStatutoryContext(ctx);p=structuredClone(p);
+ const run=async(tx:Tx)=>{await statutoryWriteIntervalMYTx(tx,ctx);const current=await getStatutoryProfileMYTx(tx,ctx,p.personId,{forUpdate:true});return setStatutoryProfileMY(ctx,{...p,subjectToSkbbk:p.subjectToSkbbk??current?.subjectToSkbbk??true},tx);};
+ return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
 /** A TP3 partial-save was attempted for a person with no Malaysian statutory row yet. */
 export class NoStatutoryProfileError extends Error {
   constructor() {
@@ -611,6 +620,8 @@ function normalizedBankValuesMY(p:BankInput){
  * takes every interactive check: absence of PERSON is never treated as a system principal. */
 async function statutoryMaintenanceSubjectMYTx(tx:Tx,ctx:SessionContext,p:{personId:string;employmentId?:string}){
  await statutoryWriteIntervalMYTx(tx,ctx);
+ const task=await profileTaskEffectSourceTx(tx,p.personId,p.employmentId);
+ if(task&&task.owners.some(owner=>['bank','identity','passport','registration','taxLegacy'].includes(owner))){if(p.employmentId&&task.subject.id!==p.employmentId)throw new WorkforceAccessError();return;}
  if(ctx.userId){
   const [floor]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() and app.can_see_person(${p.personId}::uuid) as allowed`);
   if(floor?.allowed!==true)throw new WorkforceAccessError();
@@ -643,7 +654,8 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
       directBank = purpose?.allowed === true;
     }
     if (!directBank) await statutoryMaintenanceSubjectMYTx(tx,ctx,p);
-    const [existing] = await tx
+    const task=await profileTaskEffectSourceTx(tx,p.personId,p.employmentId);
+    let [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
         bankName: employeeStatutoryMy.bankName,
@@ -656,18 +668,16 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
       .limit(1);
+    if(!existing&&task?.stat)existing=task.stat;
     if (!existing) throw new NoStatutoryProfileError();
-    await tx
-      .update(employeeStatutoryMy)
-      .set({ ...values, updatedAt: sql`now()` })
-      .where(eq(employeeStatutoryMy.id, existing.id));
+    if(!task||!await profileTaskStoreStatutoryTx(tx,p.personId,values))await tx.update(employeeStatutoryMy).set({...values,updatedAt:sql`now()`}).where(eq(employeeStatutoryMy.id,existing.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-statutory',
       aggregateId: existing.id,
       eventType: 'employee.bank.updated',
       actor: actorOf(ctx),
-      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+      subjectEmploymentId:task?.subject.id??await subjectEmploymentForPerson(tx,ctx.tenantId,p.personId),
       // before/after of only the bank + custom-holder columns so a compliance auditor can reconstruct who
       // changed the salary-payment destination (incl. a custom-holder activation) and when, from the log
       // alone. Bank account number + custom-holder ID are payee routing identifiers, not per-payslip
@@ -1029,13 +1039,15 @@ export async function setIcProfileMY(
   if (ic && !isValidIC(ic)) throw new InvalidICError();
   const run = async (tx:Tx) => {
     await statutoryWriteIntervalMYTx(tx,ctx);
-    const [existing] = await tx
+    const task=await profileTaskEffectSourceTx(tx,p.personId);
+    let [existing] = await tx
       .select({ id: employeeStatutoryMy.id, icNumber: employeeStatutoryMy.icNumber, oldIcNumber: employeeStatutoryMy.oldIcNumber })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
       .limit(1);
+    if(!existing&&task?.stat)existing=task.stat;
     let id: string;
-    if (existing) {
+    if(task){const saved=await profileTaskStoreStatutoryTx(tx,p.personId,{icNumber:ic??existing?.icNumber??null,oldIcNumber:oldIc});if(!saved)throw new NoStatutoryProfileError();id=saved;}else if (existing) {
       await tx
         .update(employeeStatutoryMy)
         // `ic ?? existing.icNumber` — a save that carries only the old card must not wipe the MyKad.
@@ -1055,7 +1067,7 @@ export async function setIcProfileMY(
       aggregateId: id,
       eventType: 'employee.ic.updated',
       actor: actorOf(ctx),
-      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+      subjectEmploymentId:task?.subject.id??await subjectEmploymentForPerson(tx,ctx.tenantId,p.personId),
       // IC is a government identity number (like the SOCSO/bank routing identifiers already recorded on the
       // sibling statutory events); before/after so an auditor can reconstruct a correction from the log alone.
       payload: {
@@ -1069,13 +1081,10 @@ export async function setIcProfileMY(
   return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
-/** Item e3ce0d4d — an identity save was missing a mandatory passport field (number / issue / expiry). The
- *  trio is required for non-Malaysian employees, and required TOGETHER whenever any passport detail is
- *  entered (item 55865c32 — a partially-filled passport can never be saved); remark + issuing country are
- *  optional. Distinct message. */
+/** Country-owned passport completeness or supplied-format refusal. */
 export class PassportRequiredError extends Error {
   constructor() {
-    super('Passport number, issue date and expiry date are required together (mandatory for a non-Malaysian employee).');
+    super('A passport number is required for a non-Malaysian employee. Check any supplied passport dates and country code.');
     this.name = 'PassportRequiredError';
   }
 }
@@ -1104,7 +1113,7 @@ export type PassportInput = {
  *
  * Item 55865c32 — the Passport Information section now shows for EVERY employee, so requiredness is derived
  * from the person's stored nationality (SERVER-SIDE — the client's live selection is never trusted):
- *   • non-Malaysian → number + issue + expiry stay mandatory (their primary identification, as before);
+ *   • non-Malaysian → number is mandatory; supplied dates and country code are validated;
  *   • Malaysian     → the passport is optional, but all-or-nothing: if ANY passport field is entered the trio
  *     must be complete (PassportRequiredError otherwise). An all-blank save CLEARS an existing passport block
  *     (audited before/after, same admin gate as every profile save) and NO-OPS (`{ id: null }`) when the
@@ -1112,7 +1121,7 @@ export type PassportInput = {
  * Remark and issuing country are optional on every path.
  */
 /** The same six-field normalization serves native writes and local reviewed reads. */
-function normalizedPassportValuesMY(p:PassportInput){
+function normalizedPassportValuesMY(p:PassportFieldsMY){
   const number = (p.passportNumber ?? '').trim() || null;
   const issue = (p.passportIssueDate ?? '').trim() || null;
   const expiry = (p.passportExpiryDate ?? '').trim() || null;
@@ -1133,8 +1142,7 @@ function normalizedPassportValuesMY(p:PassportInput){
 }
 /** Same country-owned passport completeness check for a proposed edit and the actual writer. */
 export function validatePassportProfileMY(p:PassportInput,nationality:string|null|undefined){
- const values=normalizedPassportValuesMY(p),trioComplete=Boolean(values.passportNumber&&values.passportIssueDate&&values.passportExpiryDate),anyFieldPresent=Object.values(values).some(Boolean);
- return trioComplete||(isMalaysianNationality(nationality)&&!anyFieldPresent);
+ return validPassportMY(p,nationality);
 }
 /** Passport editor admission metadata only; the SAME native guard reads no government-ID fields. */
 export async function canMaintainPassportProfileMY(supplied:SessionContext,p:{personId:string;employmentId:string}):Promise<boolean>{
@@ -1145,20 +1153,21 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
-  const values=normalizedPassportValuesMY(p),anyFieldPresent=Object.values(values).some(Boolean);
   const run = async (tx:Tx) => {
     await statutoryMaintenanceSubjectMYTx(tx,ctx,p);
     // Nationality is derived from the person RECORD inside the same RLS tx — never from the caller.
-    const [subject] = await tx
+    const task=await profileTaskEffectSourceTx(tx,p.personId,p.employmentId);
+    let [subject] = await tx
       .select({ nationality: person.nationality })
       .from(person)
       .where(eq(person.id, p.personId))
       .limit(1);
-    if(!validatePassportProfileMY(p,subject?.nationality))throw new PassportRequiredError();
-    // Non-Malaysian primary identification: the trio is always mandatory. Malaysian: mandatory only when a
+
+    // Non-Malaysian primary identification requires the number. Malaysian: the trio is mandatory when a
     // partial passport was entered (all-or-nothing). No MyKad IC validation runs on this path.
 
-    const [existing] = await tx
+    if(!subject&&task)subject={nationality:task.master.nationality??null};
+    let [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
         passportNumber: employeeStatutoryMy.passportNumber,
@@ -1171,10 +1180,14 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
       .limit(1);
+    if(!existing&&task?.stat)existing=task.stat;
+    const merged={...existing,...Object.fromEntries(Object.entries(p).filter(([,value])=>value!==undefined))};
+    const values=normalizedPassportValuesMY(merged),anyFieldPresent=Object.values(values).some(Boolean);
+    if(!validPassportMY(merged,subject?.nationality))throw new PassportRequiredError();
     // All-blank Malaysian save with no statutory row: nothing to clear — don't seed an empty row.
     if (!existing && !anyFieldPresent) return { id: null as string | null };
     let id: string;
-    if (existing) {
+    if(task){const saved=await profileTaskStoreStatutoryTx(tx,p.personId,values);if(!saved)throw new NoStatutoryProfileError();id=saved;}else if (existing) {
       await tx
         .update(employeeStatutoryMy)
         .set({ ...values, updatedAt: sql`now()` })
@@ -1195,7 +1208,7 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
       aggregateId: id,
       eventType: 'employee.passport.updated',
       actor: actorOf(ctx),
-      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+      subjectEmploymentId:task?.subject.id??await subjectEmploymentForPerson(tx,ctx.tenantId,p.personId),
       // Passport is a government identity document — before/after so an auditor can reconstruct a correction
       // from the log alone, exactly like the sibling employee.ic.updated event.
       payload: {
@@ -1308,7 +1321,8 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
   const run = async (tx:Tx) => {
     await statutoryWriteIntervalMYTx(tx,ctx);
     if(p.employmentId)await taxSelectionContextMY(tx,ctx,p.employmentId,true);
-    const [existing] = await tx
+    const task=await profileTaskEffectSourceTx(tx,p.personId,p.employmentId);
+    let [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
         taxNumber: employeeStatutoryMy.taxNumber,
@@ -1327,6 +1341,7 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
       .limit(1).for('update');
+    if(!existing&&task?.stat)existing=task.stat;
     if (!existing) throw new NoIcYetError();
     if(p.expectedApplicabilityEpoch!==undefined&&p.expectedApplicabilityEpoch!==existing.taxApplicabilityEpoch)throw new TaxSelectionError('stale_context');
     const circumstance=writeTaxCircumstance({key:p.taxCircumstance,category:p.taxCategory,beforeKey:existing.taxCircumstance,beforeCategory:existing.taxCategory,epoch:existing.taxApplicabilityEpoch});
@@ -1334,7 +1349,7 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
     if(p.employmentId&&circumstance.taxCircumstance==='none'&&p.taxResidency!=='none')throw new TaxSelectionError('invalid_scheme');
     if(p.taxResidency==='none'&&circumstance.taxCircumstance!=='none')throw new TaxSelectionError('invalid_scheme');
     // Write person applicability before acknowledging its epoch in the employer selection; one transaction.
-    await tx.update(employeeStatutoryMy).set(circumstance).where(eq(employeeStatutoryMy.id,existing.id));
+    if(!task||!await profileTaskStoreStatutoryTx(tx,p.personId,circumstance))await tx.update(employeeStatutoryMy).set(circumstance).where(eq(employeeStatutoryMy.id,existing.id));
     if(p.employmentId){
       if(!p.expectedCompanyId||circumstance.taxCircumstance!=='none'&&!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('stale_context');
       await saveTaxSelectionMYTx(tx,ctx,{employmentId:p.employmentId,personId:p.personId,scheme:circumstance.taxCircumstance==='none'?'none':String(p.taxResidency),expectedCompanyId:p.expectedCompanyId,expectedVersion:p.expectedSelectionVersion});
@@ -1342,17 +1357,14 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
     // Scoped field owns scheme. Person-only partial writers never alter that owner; scoped edits
     // preserve legacy person provenance rather than silently changing another employer's category.
     const persisted = p.employmentId ? {...values,taxResidency:existing.taxResidency,isResident:existing.isResident} : values;
-    await tx
-      .update(employeeStatutoryMy)
-      .set({ ...persisted, updatedAt: sql`now()` })
-      .where(eq(employeeStatutoryMy.id, existing.id));
+    if(!task||!await profileTaskStoreStatutoryTx(tx,p.personId,persisted))await tx.update(employeeStatutoryMy).set({...persisted,updatedAt:sql`now()`}).where(eq(employeeStatutoryMy.id,existing.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-statutory',
       aggregateId: existing.id,
       eventType: 'employee.tax.updated',
       actor: actorOf(ctx),
-      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+      subjectEmploymentId:task?.subject.id??await subjectEmploymentForPerson(tx,ctx.tenantId,p.personId),
       // before/after of only the tax columns so a compliance auditor can reconstruct residency / relief /
       // employer-bears changes (the inputs that drive PCB) from the event log alone. These are config settings,
       // not per-payslip cleartext pay, so recording them is consistent with the other statutory setters.
@@ -1450,7 +1462,7 @@ export async function getStatutoryProfileMYTx(tx: Tx, ctx: SessionContext, perso
       .where(eq(employeeStatutoryMy.personId, personId))
       .limit(1);
     const [row]=await (opts.forUpdate?query.for('update'):query);
-    return row ?? null;
+    return row??(await profileTaskEffectSourceTx(tx,personId))?.stat??null;
   }
 
 /** Values and their exact MVCC revision come from the same RLS read/lock. A timestamp is not a revision. */
@@ -1459,7 +1471,7 @@ export function getStatutoryEditSnapshotMY(ctx: SessionContext, personId: string
     const query = tx.select({ profile: employeeStatutoryMy, revision: sql<string>`xmin::text` })
       .from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId, personId)).limit(1);
     const [row] = await (opts.forUpdate ? query.for('update') : query);
-    return row ? { profile: row.profile, rowId: row.profile.id, revision: row.revision } : null;
+    return row ? { profile: row.profile, rowId: row.profile.id, revision: row.revision } : (await profileTaskEffectSourceTx(tx,personId))?.snapshot??null;
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
@@ -1473,12 +1485,14 @@ export async function setRegistrationNumbersMY(ctx:SessionContext,p:{personId:st
   if(!Object.keys(values).length)throw new Error('Nothing to change.');
   const run=async(tx:Tx)=>{
     await statutoryWriteIntervalMYTx(tx,ctx);
-    const [before]=await tx.select({id:employeeStatutoryMy.id,epfNumber:employeeStatutoryMy.epfNumber,socsoNumber:employeeStatutoryMy.socsoNumber}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,p.personId)).limit(1).for('update');
+    const task=await profileTaskEffectSourceTx(tx,p.personId);
+    let [before]=await tx.select({id:employeeStatutoryMy.id,epfNumber:employeeStatutoryMy.epfNumber,socsoNumber:employeeStatutoryMy.socsoNumber}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,p.personId)).limit(1).for('update');
+    if(!before&&task?.stat)before=task.stat;
     if(!before)throw new NoStatutoryProfileError();
     const fields=Object.entries(values).filter(([field,value])=>before[field as 'epfNumber'|'socsoNumber']!==value).map(([field])=>field);
     if(!fields.length)return {id:before.id};
-    await tx.update(employeeStatutoryMy).set({...values,updatedAt:sql`now()`}).where(eq(employeeStatutoryMy.id,before.id));
-    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employee-statutory',aggregateId:before.id,eventType:'employee.statutory-registration.updated',actor:actorOf(ctx),subjectEmploymentId:await subjectEmploymentForPerson(tx,ctx.tenantId,p.personId),payload:{fields}});
+    if(!task||!await profileTaskStoreStatutoryTx(tx,p.personId,values))await tx.update(employeeStatutoryMy).set({...values,updatedAt:sql`now()`}).where(eq(employeeStatutoryMy.id,before.id));
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employee-statutory',aggregateId:before.id,eventType:'employee.statutory-registration.updated',actor:actorOf(ctx),subjectEmploymentId:task?.subject.id??await subjectEmploymentForPerson(tx,ctx.tenantId,p.personId),payload:{fields}});
     return {id:before.id};
   };
   return outerTx?run(outerTx):withTenant(ctx,run);
@@ -1586,8 +1600,8 @@ async function reviewedPassportSnapshotMYTx(tx:Tx,ctx:SessionContext,personId:st
 }
 export async function readReviewedPassportMYTx(tx:Tx,ctx:SessionContext,personId:string){const snapshot=await reviewedPassportSnapshotMYTx(tx,ctx,personId);return{statutoryId:snapshot.statutoryId,fields:snapshot.fields};}
 export async function prepareReviewedPassportMYTx(tx:Tx,ctx:SessionContext,p:PassportInput){
- p=structuredClone(p);const snapshot=await reviewedPassportSnapshotMYTx(tx,ctx,p.personId);if(!validatePassportProfileMY(p,snapshot.subject.nationality))throw new PassportRequiredError();
- const after=normalizedPassportValuesMY(p);return{statutoryId:snapshot.statutoryId,before:snapshot.fields,after,reviewedDigest:createHash('sha256').update(JSON.stringify(['passport:MY:existing:v1',snapshot,after])).digest('hex')};
+ p=structuredClone(p);const snapshot=await reviewedPassportSnapshotMYTx(tx,ctx,p.personId);const merged={...snapshot.fields,...Object.fromEntries(Object.entries(p).filter(([,value])=>value!==undefined))};if(!validPassportMY(merged,snapshot.subject.nationality))throw new PassportRequiredError();
+ const after=normalizedPassportValuesMY(merged);return{statutoryId:snapshot.statutoryId,before:snapshot.fields,after,reviewedDigest:createHash('sha256').update(JSON.stringify(['passport:MY:existing:v1',snapshot,after])).digest('hex')};
 }
 
 /** Existing hand opening balances only. Matching form membership uses the same person/year axis as

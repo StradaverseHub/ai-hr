@@ -78,7 +78,7 @@ export async function setStaff(
 export async function staffDirectory(ctx: SessionContext, companyId: string): Promise<{ userId: string; name: string; level: string }[]> {
   return withTenant(ctx, async (tx) => {
     const rows = (await tx.execute(sql`select user_id, full_name, level from app.lc_staff_directory(${companyId}::uuid)`)) as unknown as { user_id: string; full_name: string | null; level: string }[];
-    return rows.map((r) => ({ userId: r.user_id, name: r.full_name ?? 'User', level: r.level }));
+    return rows.map((r) => ({ userId: r.user_id, name: r.full_name ?? `User ${r.user_id.slice(0,8)}`, level: r.level }));
   });
 }
 

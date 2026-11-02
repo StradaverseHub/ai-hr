@@ -10,7 +10,7 @@ export async function GET() {
   const ctx = await getSession();
   if (!isAdmin(ctx)) return new Response(null, { status: 403 });
   const [t, english] = await Promise.all([getTranslations('payComponents'), getTranslations({ locale: 'en', namespace: 'payComponents' })]);
-  const catalogue = await listPayComponents(ctx, { includeArchived: true });
+  const catalogue = await listPayComponents(ctx, { includeArchived: true, maintenance: true });
   const bytes = await buildPayItemWorkbook(payItemVocabulary(t, english), catalogue);
   return new Response(new Uint8Array(bytes), { headers: {
     'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

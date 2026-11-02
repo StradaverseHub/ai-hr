@@ -1,3 +1,5 @@
+import {notFound} from 'next/navigation';
+import {settingsAccess} from '@/core/organisation-access';
 import { SystemLabelImportTools } from '@/components/system-label-import-tools';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -20,9 +22,12 @@ import { saveProfileOptionsAction, seedProfileOptionsAction, removeProfileOption
 // unchanged (same table, same core mutations) — only the maintenance surface moved.
 export default async function ProfileOptionsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const s = await requireAdmin();
+  if(!await settingsAccess(s,'view','systemLabels.profileOptions'))notFound();
+  const actionControls={add:await settingsAccess(s,'add','systemLabels.profileOptions'),edit:await settingsAccess(s,'edit','systemLabels.profileOptions'),delete:await settingsAccess(s,'delete','systemLabels.profileOptions')};
+  const categoryActionControls=Object.fromEntries(await Promise.all(PERSON_PROFILE_CATEGORIES.map(async category=>[category,{add:await settingsAccess(s,'add','systemLabels.profileOptions.'+category),edit:await settingsAccess(s,'edit','systemLabels.profileOptions.'+category),delete:await settingsAccess(s,'delete','systemLabels.profileOptions.'+category)}] as const)));
   const t = await getTranslations('admin.profileOptions');
   const { error } = await searchParams;
-  const all = await listAllProfileOptions(s, { activeOnly: false });
+  const all = await listAllProfileOptions(s, { activeOnly: false,maintenance:true });
   // Counted over the categories this tab still renders, so a tenant whose only rows are org values does not
   // see an empty grid with no way to seed the personal-profile defaults.
   const totalCount = PERSON_PROFILE_CATEGORIES.reduce((n, c) => n + (all[c] ?? []).length, 0);
@@ -34,20 +39,21 @@ export default async function ProfileOptionsPage({ searchParams }: { searchParam
       <SystemLabelImportTools />
       <ErrorBanner message={error} />
 
-      {totalCount === 0 ? (
+      {totalCount === 0 && (
         <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
           <p className="text-sm text-muted-foreground">{t('emptyAll')}</p>
           <form action={seedProfileOptionsAction}>
-            <Button type="submit">{t('seedDefaults')}</Button>
+            <Button type="submit" disabled={!actionControls.add||!Object.values(categoryActionControls).every(actions=>actions.add)}>{t('seedDefaults')}</Button>
           </form>
         </Card>
-      ) : (
+      )}
         <ProfileOptionsGrid
+          actionControls={actionControls}
+          categoryActionControls={categoryActionControls}
           categories={[...PERSON_PROFILE_CATEGORIES]}
           data={all}
           actions={{ save: saveProfileOptionsAction, remove: removeProfileOptionAction }}
         />
-      )}
     </div>
   );
 }

@@ -60,6 +60,13 @@ describe('templates in the Condition Builder',()=>{
 });
 
 describe('sample-value test',()=>{
+ it('hides stale sample results after a source change while retaining typed inputs',async()=>{
+  mount();fireEvent.change(source(),{target:{value:'Return {#Basic}'}});const panel=document.getElementById('formula-test-sample')!;
+  fireEvent.change(within(panel).getByRole('textbox',{name:words.testArea.fields.Basic}),{target:{value:'3000'}});
+  fireEvent.click(within(panel).getByRole('button',{name:words.testArea.run}));await within(panel).findByRole('status');
+  fireEvent.change(source(),{target:{value:'Return {#Basic} * 2'}});expect(within(panel).queryByRole('status')).toBeNull();
+  expect(within(panel).getByRole('textbox',{name:words.testArea.fields.Basic})).toHaveValue('3000');
+ });
  it('runs the unsaved source with typed values and shows the amount and each step',async()=>{
   const rendered=mount('OT_1_5');const panel=document.getElementById('formula-test-sample')!;
   for(const [field,value] of [['Basic','3,500.00'],['FixedAllowances','300.00'],['CalendarDays','31'],['Input','10']] as const)fireEvent.change(within(panel).getByLabelText(words.testArea.fields[field]),{target:{value}});

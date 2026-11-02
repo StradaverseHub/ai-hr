@@ -80,18 +80,18 @@ export async function resolveAiProviderSnapshotTx(tx: Tx, ctx: SessionContext): 
  */
 export async function resolveAiProviderCandidateSnapshotTx(tx: Tx, ctx: SessionContext, provider: 'openrouter'): Promise<AiProviderSnapshot> {
   if (!(await currentAiProviderAdminTx(tx, ctx))) return refuse();
-  let rows: { id: string; version_token: string; provider: string; model: string; api_key_ciphertext: string; provider_options: unknown }[];
+  let rows: { id: string; version_token: string; provider: string; model: string; api_key_ciphertext: string; provider_options: unknown;authority_stamp:string|null }[];
   try {
-    rows = await tx.execute(sql`select id, version_token, provider, model, api_key_ciphertext, provider_options from app.ai_provider_evaluation_candidate_v1(${provider})`) as unknown as typeof rows;
+    rows = await tx.execute(sql`select id, version_token, provider, model, api_key_ciphertext, provider_options,app.ai_configuration_evaluation_stamp() as authority_stamp from app.ai_provider_evaluation_candidate_v1(${provider})`) as unknown as typeof rows;
   } catch { return refuse(); }
-  if (rows.length !== 1 || rows[0].provider !== provider) return refuse();
+  if (rows.length !== 1 || rows[0].provider !== provider||typeof rows[0].authority_stamp!=='string'||!/^[a-f0-9]{64}$/.test(rows[0].authority_stamp)) return refuse();
   const row = rows[0];
   let configuration: ResolvedAiConfig, fingerprint: string;
   try {
     const providerOptions = readOpenRouterOptions(row.provider_options), apiKey = decryptSecret(row.api_key_ciphertext, ctx.tenantId);
     if (!OpenRouterTransportConfiguration.safeParse({ model: row.model, apiKey, routing: providerOptions.routing }).success) return refuse();
     configuration = Object.freeze({ provider, model: row.model, apiKey, providerOptions });
-    fingerprint = digest(['candidate-v1', ctx.tenantId, row.id, row.version_token, row.provider, row.model, row.api_key_ciphertext, providerOptions]);
+    fingerprint = digest(['candidate-authority-v2', ctx.tenantId, row.id, row.version_token, row.provider, row.model, row.api_key_ciphertext, providerOptions,row.authority_stamp]);
   } catch { return refuse(); }
   const snapshot = Object.freeze({ configuration, purpose: 'provider_evaluation' as const, candidate: Object.freeze({ id: row.id, version: row.version_token }), fingerprint, principal: principal(ctx), preparedAt: Date.now() });
   issued.add(snapshot);

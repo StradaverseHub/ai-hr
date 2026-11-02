@@ -352,8 +352,8 @@ export async function setAssetRequestHandler(ctx: SessionContext, number: string
     const r = await loadReq2(tx, number, true);
     await requireLevel(tx, r.companyId, LEVEL.manager, 'only a manager assigns the handler');
     if (userId) {
-      const dir = (await tx.execute(sql`select user_id from app.lc_staff_directory(${r.companyId}::uuid)`)) as unknown as { user_id: string }[];
-      if (!dir.some((d) => d.user_id === userId)) throw new LifecycleError('The handler must be an active member of the module staff.', 'conflict');
+      const [candidate]=await tx.execute<{eligible:boolean}>(sql`select app.lifecycle_handler_eligible(${userId}::uuid,${r.companyId}::uuid) as eligible`);
+      if (!candidate?.eligible) throw new LifecycleError('The handler must be an active member of the module staff.', 'conflict');
     }
     await tx.update(itAssetRequest).set({ handlerUserId: userId }).where(eq(itAssetRequest.id, r.id));
     await recordChange(tx, ctx, { refType: 'asset_request', refId: r.id, action: 'request.handler', detail: { handler: userId }, eventType: 'lifecycle-asset-request.handler-set', eventRef: { number } });

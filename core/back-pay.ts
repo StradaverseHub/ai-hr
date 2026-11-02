@@ -112,6 +112,7 @@ import {
   employment,
   employmentPayComponent,
   payComponent,
+  payrollDocumentBatch,
   payrollBatch,
   payrollBatchComponent,
   payrollIndividualTxn,
@@ -233,6 +234,7 @@ export function detectArrears(ctx: SessionContext, p: { companyId: string }): Pr
  * otherwise be paid twice, which is the exact failure the duplicate guard exists to prevent.
  */
 async function detectArrearsTx(tx: Tx, p: { companyId: string }): Promise<ArrearsCandidate[]> {
+  const payrollBatch=payrollDocumentBatch;
   const rows = await tx
     .select({
       compensationId: compensation.id,
@@ -364,6 +366,7 @@ export function ruleReadsHours(
  * Read-only: it opens no batch, writes no payslip and touches nothing the payroll engine owns.
  */
 async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Promise<ComputedLine[]> {
+  const payrollBatch=payrollDocumentBatch;
   const out: ComputedLine[] = [];
   const empIds = [...new Set(p.candidates.map((c) => c.employmentId))];
   if (empIds.length === 0) return out;
@@ -700,6 +703,7 @@ export function calculateBackPay(
 ): Promise<{ runId: string; lineCount: number; total: number }> {
   if (!isBackPayPeriod(p.targetPayPeriod)) throw new Error('back-pay-invalid-period');
   return withTenant(ctx, async (tx) => {
+    await assertBackPayActionTx(tx,p.companyId,'add');
     const candidates = await detectArrearsTx(tx, { companyId: p.companyId });
     const wanted = p.compensationIds && p.compensationIds.length > 0 ? new Set(p.compensationIds) : null;
     const selected = wanted ? candidates.filter((c) => wanted.has(c.compensationId)) : candidates;
@@ -996,6 +1000,7 @@ export function listBackPayRuns(ctx: SessionContext, p: { companyIds: string[] }
 export function verifyBackPayRun(ctx: SessionContext, p: { runId: string }): Promise<{ runId: string }> {
   return withTenant(ctx, async (tx) => {
     const run = await loadRunTx(tx, p.runId);
+    await assertBackPayActionTx(tx,run.companyId,'edit');
     if (run.status !== 'draft') throw new BackPayStatusError(run.status, 'draft');
     await tx.update(backPayRun).set({ status: 'verified', updatedAt: new Date() }).where(eq(backPayRun.id, run.id));
     await appendEvent(tx, {
@@ -1038,6 +1043,7 @@ export function approveAndPostBackPay(
   return withTenant(ctx, async (tx) => {
     await lockPayComponentCatalogTx(tx,ctx);
     const run = await loadRunTx(tx, p.runId);
+    await assertBackPayActionTx(tx,run.companyId,'execute');
     if (run.status !== 'draft' && run.status !== 'verified') throw new BackPayStatusError(run.status, 'verified');
 
     const [target] = await tx
@@ -1077,8 +1083,8 @@ export function approveAndPostBackPay(
     }
     const payable = [...netted.values()].filter((n) => Math.abs(n.amount) >= 0.01);
 
-    const earningId = await ensureBackPayComponentTx(tx, ctx, 'earning');
-    const deductionId = await ensureBackPayComponentTx(tx, ctx, 'deduction');
+    const earningId = await ensureBackPayComponentTx(tx, ctx, run.id, 'earning');
+    const deductionId = await ensureBackPayComponentTx(tx, ctx, run.id, 'deduction');
     // The transaction date is the FIRST day of the target period: the arrears belong to the month they
     // are paid in. This automatic writer keeps its established date convention.
     const txnDate = `${run.targetPayPeriod}-01`;
@@ -1136,6 +1142,7 @@ export function approveAndPostBackPay(
 export function cancelBackPayRun(ctx: SessionContext, p: { runId: string }): Promise<{ runId: string; removed: number }> {
   return withTenant(ctx, async (tx) => {
     const run = await loadRunTx(tx, p.runId);
+    await assertBackPayActionTx(tx,run.companyId,'delete');
     if (run.status === 'cancelled') throw new BackPayStatusError(run.status, 'draft|verified|posted');
 
     let removed = 0;
@@ -1192,52 +1199,15 @@ export function cancelBackPayRun(ctx: SessionContext, p: { runId: string }): Pro
  * rename them and adjust the treatment afterwards — this only seeds a sane default, and re-running it
  * never overwrites an existing row's configuration.
  */
-async function ensureBackPayComponentTx(tx: Tx, ctx: SessionContext, kind: 'earning' | 'deduction'): Promise<string> {
-  const code = kind === 'earning' ? BACK_PAY_EARNING_CODE : BACK_PAY_DEDUCTION_CODE;
-  const [existing] = await tx
-    .select({ id: payComponent.id })
-    .from(payComponent)
-    .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, code)))
-    .limit(1);
-  if (existing) return existing.id;
-  const [row] = await tx
-    .insert(payComponent)
-    .values({
-      tenantId: ctx.tenantId,
-      code,
-      name: kind === 'earning' ? 'Back Pay (Arrears)' : 'Back Pay Recovery',
-      kind: kind === 'earning' ? 'allowance' : 'deduction',
-      includedInEpf: true,
-      includedInSocsoEis: true,
-      includedInPcb: true,
-      includedInHrdfBase: true,
-      isNonPayable: false,
-      // Arrears are a settled figure for months already worked — proration would scale a debt that has
-      // already been sized. Never prorate.
-      prorates: false,
-      // ── WHY THE PCB CLASSIFICATION IS LEFT UNDECLARED, WHICH IS A DELIBERATE CHOICE ────────────────
-      // The first draft declared `pcbRemunerationType: 'additional'` on the reasoning that an arrears
-      // lump sum is additional remuneration under the LHDN computerised calculation. Tracing it through
-      // the kernel showed that routes the amount into the BONUS bucket — and the kernel's own comment
-      // there reads "Bonus is additional remuneration: EPF + PCB (difference method), EXCLUDED from
-      // SOCSO/EIS". Arrears of WAGES are not excluded from SOCSO/EIS, and the approved plan promises in
-      // as many words that the arrears "attract EPF, SOCSO and PCB in the month they are actually paid".
-      // Leaving it null makes the kernel infer the stream from the flags exactly as it does for every
-      // item the default catalog seeds (none of which declares one either): epf + socso ⇒ ordinary wage,
-      // which is EPF, SOCSO, EIS and PCB. That is the promise, and it is the conservative reading. HR can
-      // reclassify afterwards — the plan says so — but the default must not quietly drop two contributions.
-      pcbRemunerationType: null,
-      pcbExemptionCode: null,
-      displayCategory: kind === 'earning' ? 'allowance' : 'deduction',
-    })
-    .returning({ id: payComponent.id });
-  await appendEvent(tx, {
-    tenantId: ctx.tenantId,
-    aggregateType: 'pay-component',
-    aggregateId: row.id,
-    eventType: 'pay-component.created',
-    actor: actorOf(ctx),
-    payload: { code, reason: 'back-pay-first-use' },
-  });
+async function ensureBackPayComponentTx(tx: Tx, _ctx: SessionContext, runId:string, kind: 'earning' | 'deduction'): Promise<string> {
+  // The finite owner retains the original default flags, including the inferred ordinary-wage
+  // PCB stream. No catalogue payload or caller-writable permission context crosses this boundary.
+  const [row]=await tx.execute<{id:string}>(sql`select app.backpay_component(${runId}::uuid,${kind}) as id`);
+  if(!row?.id)throw new Error('Back Pay pay item source unavailable');
   return row.id;
+}
+
+async function assertBackPayActionTx(tx:Tx,companyId:string,operation:'view'|'add'|'edit'|'delete'|'execute'){
+ const [permission]=await tx.execute<{allowed:boolean}>(sql`select app.access_backpay_action(${companyId}::uuid,${operation}) as allowed`);
+ if(!permission?.allowed)throw new Error('Back Pay action unavailable');
 }

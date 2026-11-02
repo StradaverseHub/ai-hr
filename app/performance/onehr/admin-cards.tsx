@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import type { getOnehrCycle } from '@/packs/performance/service';
+import {getOnehrSetup,cycleFunctionAccess,type getOnehrCycle} from '@/packs/performance/service';
+import {getSession} from '@/lib/session';
 import { pmBands, assessmentModuleKeys, ratedPerformance, tiers, windowCells } from '@/packs/performance/onehr/model';
 import type { ProgressModule } from '@/packs/performance/onehr/progress-model';
 import { adminCardShown, adminPartShown, type AdminCardId, type AdminCycleState, type AdminPart } from '@/packs/performance/onehr/admin-sections';
@@ -41,7 +42,10 @@ const catalogueSectionOf:Record<Extract<AdminPart,`catalogue.${string}`>,Catalog
  * address) rides the forms so a save comes back to the page it was made on.
  */
 export async function adminCardRenderer(v:View,{progress,returnTo}:{progress?:ProgressQuery;returnTo?:string}={}){
-  const t=await getTranslations('onehr');const {cycle,policy}=v;
+  const t=await getTranslations('onehr'),session=await getSession();const {cycle}=v;
+  const [setup,cycleAccess]=await Promise.all([getOnehrSetup(session,cycle.id),cycleFunctionAccess(session,[cycle.companyId])]);
+  const policy=setup?.policy??v.policy;
+  const setupPart=(id:string)=>['policy','modules','windows','framework','catalogue'].includes(id)||id.startsWith('catalogue.');
   const state:AdminCycleState={status:cycle.status,policy,kpiNames:v.kpiNames.length};
   const back=returnTo?<input type="hidden" name="returnTo" value={returnTo}/>:null;
   const fields=<><input type="hidden" name="cycleId" value={cycle.id}/><input type="hidden" name="revision" value={v.revision}/>{back}</>;
@@ -93,7 +97,9 @@ export async function adminCardRenderer(v:View,{progress,returnTo}:{progress?:Pr
   };
   return {
     state,
-    card:(id:AdminCardId)=>adminCardShown(id,state)?<div key={id} data-admin-card={id}>{(whole[id]??parts[id as AdminPart])()}</div>:null,
-    part:(id:AdminPart)=>adminPartShown(id,state)?<div key={id} data-admin-part={id}>{parts[id]()}</div>:null,
+    canReadSetup:!!setup,
+    setupPart,
+    card:(id:AdminCardId)=>adminCardShown(id,state)&&(!setupPart(id)||!!setup)&&(id!=='cycleActions'||cycleAccess[0]?.canEdit)?<div key={id} data-admin-card={id}>{setupPart(id)?<fieldset disabled={!setup?.canEdit}>{(whole[id]??parts[id as AdminPart])()}</fieldset>:(whole[id]??parts[id as AdminPart])()}</div>:null,
+    part:(id:AdminPart)=>adminPartShown(id,state)&&(!setupPart(id)||!!setup)&&(id!=='cycleActions'||cycleAccess[0]?.canEdit)?<div key={id} data-admin-part={id}>{setupPart(id)?<fieldset disabled={!setup?.canEdit}>{parts[id]()}</fieldset>:parts[id]()}</div>:null,
   };
 }

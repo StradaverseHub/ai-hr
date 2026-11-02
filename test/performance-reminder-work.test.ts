@@ -14,6 +14,17 @@ function graph():ReminderWorkGraph{
 }
 const companies=new Set(['company']);
 describe('current per-login assessment reminder summary',()=>{
+ it('applies exact review View per account without borrowing feedback or another review',()=>{
+  const g=graph();g.reviews[0].taskUserIds=['employee'];g.reviews[0].facts.planStatus=null;
+  const first=assessmentReminderWork(g,companies,now),manager=first.find(actor=>actor.userId==='manager')!;
+  expect(manager.tasks.map(task=>task.key)).toEqual(['feedback']);
+  expect(first.find(actor=>actor.userId==='employee')?.tasks.map(task=>task.key)).toEqual(['own_plan']);
+  g.reviews.push({...g.reviews[0],id:'second-review',taskUserIds:['manager'],facts:{...g.reviews[0].facts,planStatus:'shared'}});
+  expect(assessmentReminderWork(g,companies,now).find(actor=>actor.userId==='manager')?.tasks.map(task=>task.key)).toEqual(['feedback','team_results','team_competency','team_plan']);
+  g.reviews[1].taskUserIds=[];
+  expect(assessmentReminderWork(g,companies,now).find(actor=>actor.userId==='manager')?.tasks.map(task=>task.key)).toEqual(['feedback']);
+ });
+
  it('combines own, team and feedback tasks once per login across multiple employments',()=>{
   const g=graph();g.reviews.push({...g.reviews[0],id:'manager-review',employmentId:'manager-job',personId:'manager-person',name:'Manager',reviewerEmploymentId:'other-job',moderatorIds:['other-job'],facts:{...g.reviews[0].facts,resultsSubmitted:false,competencyStatus:'pending',planStatus:'closed'}});
   const recipients=assessmentReminderWork(g,companies,now),manager=recipients.find(r=>r.userId==='manager')!;

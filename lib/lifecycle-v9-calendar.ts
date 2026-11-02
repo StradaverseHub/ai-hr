@@ -1,6 +1,6 @@
 import { isCalendarDate } from './calendar-date';
 import type { Case, Task } from './lifecycle-v9-model';
-type CalendarCase = Pick<Case, 'id' | 'module' | 'state' | 'facts' | 'tasks'> & { own: boolean };
+type CalendarCase = Pick<Case, 'id' | 'module' | 'state' | 'tasks'> & { own: boolean;facts:Pick<Case['facts'],'name'|'lastDay'> };
 export type LifecycleCalendarEvent = { id: string; caseId: string; date: string; text: string; kind: 'task' | 'late' | 'key' };
 const DAY = 86400000;
 const ms = (date: string) => Date.parse(date + 'T00:00:00Z');

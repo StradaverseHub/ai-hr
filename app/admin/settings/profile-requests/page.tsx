@@ -1,3 +1,5 @@
+import {notFound} from 'next/navigation';
+import {settingsAccess} from '@/core/organisation-access';
 import Link from 'next/link';
 import {listEmployees} from '@/core/read';
 import {profileRuleApprovers} from '@/lib/profile-routing-policy';
@@ -55,6 +57,8 @@ export default async function ProfileRequestSettingsPage({
   searchParams: Promise<{ error?: string; toast?: string }>;
 }) {
   const s = await requireAdmin();
+  if(!await settingsAccess(s,'view','profileRequestSettings'))notFound();
+  const canViewRouting=await settingsAccess(s,'view','profileApprovalRules');
   const t = await getTranslations('profileRequestSettings');
   // Personnel Management's own field labels. The one and only wording for these fields, on every screen.
   const tp = await getTranslations('people.detail');
@@ -74,14 +78,14 @@ export default async function ProfileRequestSettingsPage({
    */
   const raw=getSetting(s,'ess.profile_change_fields');
   const allowed=resolveEssEditableIds(raw),primaryAllowed=resolveEssPrimaryEditableIds(raw),visible=resolveEssVisibleIds(raw);
-  const routing=readProfileRoutingPolicy(s),routingEmployees=routing.rules.length?await listEmployees(s):[];
+  const routing=canViewRouting?readProfileRoutingPolicy(s):null,routingEmployees=routing?.rules.length?await listEmployees(s):[];
   const approverNames=new Map(routingEmployees.map(employee=>[employee.employmentId,`${employee.employeeCode} · ${employee.name}`]));
   const te=await getTranslations('essProfile');
   const labels=await getTranslations();
   const tabKeys=['profile','family','job','careerMovement','attendance','bankStatutory','payroll','leave','documents','qualification','others'];
   const approver = profileChangeApprover(s);
   const pendingByKey = await pendingProfileChangeCountsByKey(s);
-  const mayWrite = isGroupAdmin(s);
+  const mayWrite = isGroupAdmin(s)&&await settingsAccess(s,'edit','profileRequestSettings');
 
 
 
@@ -101,7 +105,7 @@ export default async function ProfileRequestSettingsPage({
 
       <Card className="p-5"><SectionHeader title={te('approvalRules')}/><p className="mt-2 text-sm text-muted-foreground">{te('photoEditHelp')}</p><form action={saveOwnPhotoSettingAction} className="mt-4 space-y-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="enabled" defaultChecked={getSetting(s,'ess.profile_photo_edit')===true} disabled={!mayWrite}/>{te('allowOwnPhoto')}</label>{mayWrite&&<button type="submit" className={btnPrimary}>{te('savePhotoPermission')}</button>}</form>
 
-      <div className="mt-5 space-y-3 border-t border-border pt-5"><SectionHeader title={te('namedRouting')}/><p className="text-sm text-muted-foreground">{te('anyApprover')}</p><ul className="list-inside list-disc text-sm">{routing.rules.map(rule=><li key={rule.id}>{rule.name}: {profileRuleApprovers(rule).map(id=>approverNames.get(id)??te('unavailableSelection')).join(', ')}</li>)}</ul><Link href="/admin/settings/profile-requests/rules" className={btnPrimary}>{te('manageApprovalRules')}</Link></div>
+      {routing&&<div className="mt-5 space-y-3 border-t border-border pt-5"><SectionHeader title={te('namedRouting')}/><p className="text-sm text-muted-foreground">{te('anyApprover')}</p><ul className="list-inside list-disc text-sm">{routing.rules.map(rule=><li key={rule.id}>{rule.name}: {profileRuleApprovers(rule).map(id=>approverNames.get(id)??te('unavailableSelection')).join(', ')}</li>)}</ul><Link href="/admin/settings/profile-requests/rules" className={btnPrimary}>{te('manageApprovalRules')}</Link></div>}
 
       <p className="border-t border-border pt-4 text-sm text-muted-foreground">{te('approvalAuthorityFloor')}: {t(`approverOption.${approver}`)}</p></Card>
 

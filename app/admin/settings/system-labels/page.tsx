@@ -1,3 +1,5 @@
+import {moduleFunctionAccess} from '@/core/module-action-access';
+import {organisationAccess,settingsAccess} from '@/core/organisation-access';
 import { SystemLabelImportTools } from '@/components/system-label-import-tools';
 import { getTranslations } from 'next-intl/server';
 import {requireAdmin} from '@/lib/authz';
@@ -16,7 +18,7 @@ import { EMPLOYMENT_PROFILE_CATEGORIES, listAllProfileOptions } from '@/core/pro
 // pages that may reach into it directly are the pack's own routes, and this is not one of them. Importing
 // the facade is the sanctioned path and costs nothing; the alternative would have been a new entry on
 // test/pack-drift-allowlist.json, a list documented to only ever shrink.
-import { listGradeGroups } from '@/packs/leave/service';
+import { listGradeGroupsForMaintenance } from '@/packs/leave/service';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { SystemLabelsGrid, type GridKind, type GridRecord } from '@/components/system-labels-grid';
 import { GradeLabelsGrid } from '@/components/grade-labels-grid';
@@ -50,6 +52,15 @@ export default async function SystemLabelsPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const s=await requireAdmin();
+  const canViewGradeGroups=await moduleFunctionAccess(s,'leaveConfig.gradeGroups','view');
+  const groupControls={add:await moduleFunctionAccess(s,'leaveConfig.gradeGroups','add'),edit:await moduleFunctionAccess(s,'leaveConfig.gradeGroups','edit'),delete:await moduleFunctionAccess(s,'leaveConfig.gradeGroups','delete')};
+  // Group membership needs grade references independently of Job Grade maintenance View.
+  const groupGradeOptions=canViewGradeGroups?await listJobGrades(s):[];
+  const canViewGrades=await settingsAccess(s,'view','systemLabels.jobGrade');
+  const canViewOptions=await settingsAccess(s,'view','systemLabels.profileOptions');
+  const settingsControls=async(key:string)=>({add:await settingsAccess(s,'add',key),edit:await settingsAccess(s,'edit',key),delete:await settingsAccess(s,'delete',key)});
+  const gradeControls=await settingsControls('systemLabels.jobGrade');
+  const optionControls=Object.fromEntries(await Promise.all(EMPLOYMENT_PROFILE_CATEGORIES.map(async category=>[category,await settingsControls('systemLabels.profileOptions.'+category)])));
   const { error } = await searchParams;
   const t = await getTranslations('admin.systemLabels');
   // c9986927 — the relocated organisation categories keep their own existing i18n namespace; only their
@@ -74,15 +85,15 @@ export default async function SystemLabelsPage({
       // b1b81a08 — Grades moved here from Leave Config. Archived rows load too so the grid can show and
       // restore them. NOTE: grades are TENANT-WIDE, so they must NOT pass through company Criteria —
       // job_grade has no company_id to narrow on.
-      listJobGrades(s, { includeArchived: true }),
+      canViewGrades?listJobGrades(s, { includeArchived: true }):[],
       // c9986927 — Division / Branch / Region / Line / Section / Team / Base / Category are maintained
       // here now. Like grades they are TENANT-WIDE, so they must NOT pass through company Criteria.
-      listAllProfileOptions(s, { activeOnly: false }),
+      canViewOptions?listAllProfileOptions(s, { activeOnly: false,maintenance:true }):({} as Partial<Awaited<ReturnType<typeof listAllProfileOptions>>>),
       // 9a65f808 — grade groups, maintained here now for the same reason grades are: they are the
       // tenant's grade vocabulary, TENANT-WIDE (a group carries no company), and they must NOT pass
       // through company Criteria. Archived groups arrive too — the editor badges them and the editor is
       // the only surface that can un-archive one.
-      listGradeGroups(s),
+      canViewGradeGroups?listGradeGroupsForMaintenance(s):[],
       // Head choices are database-admin scoped independently of the common workspace's company cookie.
       labelMaintenanceHeadOptions(s),
     ]);
@@ -163,8 +174,10 @@ export default async function SystemLabelsPage({
   // b1b81a08 — the Grades body. Rows go in exactly as core/read.ts returns them (id, code, name, rank,
   // archivedAt, inUse); there is no mapper and no synthetic companyId / isGlobal / assignedCompanyIds,
   // because job_grade genuinely has none of those.
+  const kindActionControls=Object.fromEntries(await Promise.all((['department','position','cost_center','business_unit'] as const).map(async kind=>[kind,Object.fromEntries(await Promise.all(companies.map(async co=>[co.id,{add:await organisationAccess(s,'add',co.id,'systemLabels.'+kind),edit:await organisationAccess(s,'edit',co.id,'systemLabels.'+kind),delete:await organisationAccess(s,'delete',co.id,'systemLabels.'+kind)}])))])));
   const gradesSlot = (
     <GradeLabelsGrid
+      actionControls={gradeControls}
       data={grades}
       // r224 — `restore` is the third action: it takes the offer the save returns when a typed code turns
       // out to belong to an archived grade, bringing that grade back in place instead of duplicating it.
@@ -193,7 +206,7 @@ export default async function SystemLabelsPage({
    * with `includeArchived: true` for the Grades GRID (which must be able to show and restore an archived
    * row), so the filter has to happen here rather than being inherited from the read.
    */
-  const gradeGroupsSlot = (
+  const gradeGroupsSlot = canViewGradeGroups ? (
     // `min-w-0 flex-1` because the rail and the body are one flex row and every other body carries it —
     // without it this card renders at its content width beside a column of empty space. The rail entry
     // already prints the title and the count, so the SectionHeader the two previous homes wrapped this in
@@ -201,8 +214,9 @@ export default async function SystemLabelsPage({
     <div className="min-w-0 flex-1">
       <Card>
         <GradeGroupConfig
+          actionControls={groupControls}
           gradeGroups={gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived }))}
-          grades={grades.filter((g) => g.archivedAt == null).map((g) => ({ id: g.id, name: g.name }))}
+          grades={groupGradeOptions.filter((g) => g.archivedAt == null).map((g) => ({ id: g.id, name: g.name }))}
           actions={{
             createGradeGroup: createGradeGroupAction,
             updateGradeGroup: updateGradeGroupAction,
@@ -211,7 +225,7 @@ export default async function SystemLabelsPage({
         />
       </Card>
     </div>
-  );
+  ) : undefined;
 
   // c9986927 — one rail entry per relocated organisation category, each with the SAME editor Profile
   // Options used (create / edit / delete / activate / deactivate, value immutability, the in-use delete
@@ -223,6 +237,7 @@ export default async function SystemLabelsPage({
     count: (profileOptions[c] ?? []).filter((r) => r.isActive).length,
     body: (
       <ProfileOptionsGrid
+        actionControls={optionControls[c]}
         key={c}
         hideRail
         categories={[c]}
@@ -254,6 +269,7 @@ export default async function SystemLabelsPage({
         data={data}
         companies={gridCompanies}
         writableCompanyIds={companies.map((c) => c.id)}
+        kindActionControls={kindActionControls}
         headByCompany={headByCompany}
         isGroupAdmin={isGroupAdmin(s)}
         actions={actions}

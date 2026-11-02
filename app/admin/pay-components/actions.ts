@@ -218,7 +218,7 @@ export async function updateComponentAction(formData: FormData) {
   try {
     // Read the authenticated tenant row; posted values cannot assert legacy status. The writer repeats
     // this exact check under its lock, so a stale form cannot clear a subsequently completed pair.
-    const existing = (await listPayComponents(s, { includeArchived: true })).find(row => row.code === input.code);
+    const existing = (await listPayComponents(s, { includeArchived: true, maintenance: true })).find(row => row.code === input.code);
     preserveLegacy = isUnchangedLegacyPcbClassification(input, existing);
   } catch (e) {
     redirect(`${PAGE}/${encodeURIComponent(input.code)}?error=${encodeURIComponent(await messageOf(e, t))}`);

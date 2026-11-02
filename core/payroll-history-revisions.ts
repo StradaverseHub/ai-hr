@@ -25,12 +25,12 @@ const emptyPlan=(sourceHash:string):HistoryRevisionPlan=>({version:1,rows:[],iss
 function seal(plan:HistoryRevisionPlan){plan.previewHash=hash(canonical({...plan,previewHash:''}));return plan;}
 async function principal(tx:Tx,ctx:SessionContext){
  if(!ctx.userId)fail('Sign in again before importing payroll history.');
- const [row]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() AND exists(select 1 from company c where c.tenant_id=app.current_tenant_id() and app.can_admin_payroll_for(c.id)) as ok`);
+ const [row]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() AND exists(select 1 from company c where c.tenant_id=app.current_tenant_id() and app.can_admin_payroll_for(c.id) and app.financial_history_function_action(c.id,'view')) as ok`);
  if(!row?.ok)fail('Access changed. Sign in again before continuing.');
 }
 async function permission(tx:Tx,ctx:SessionContext,companyId:string,kind:'import'|'revert'){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
- const [row]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${companyId}::uuid) as ok`);
+ const [row]=await tx.execute<{ok:boolean}>(sql`select app.can_admin_payroll_for(${companyId}::uuid) and app.financial_history_function_action(${companyId}::uuid,'view') as ok`);
  // The canonical resolver rechecks current scope. Preserve the original grant objects: an explicit
  // empty/narrow carrier must not borrow roles or become an accidentally empty authorized carrier.
  if(!row?.ok||!await resolvePayrollPermission(tx,ctx,kind==='import'?'payroll.history.import':'payroll.history.revert',companyId))fail('Payroll history access is unavailable for a company in this file.');
@@ -289,6 +289,8 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
    const groupKey=[row.companyId,row.period,row.cycleId].join(':');
    const group=groups.get(groupKey)??[];group.push(row);groups.set(groupKey,group);
   }
+  const selectedHistoryKeys=[...groups.values()].flat().map(row=>({companyId:row.companyId,employmentId:row.employmentId,period:row.period,cycleId:row.cycleId}));
+  await tx.execute(sql`select app.financial_history_begin(${source.id}::uuid,${JSON.stringify(selectedHistoryKeys)}::text::jsonb)`);
   for(const rows of groups.values()){
    const first=rows[0];
    const [parent]=await tx.select().from(payPeriod).where(and(eq(payPeriod.companyId,first.companyId),eq(payPeriod.period,first.period)));
@@ -363,6 +365,7 @@ export async function revertPayrollHistoryUpload(ctx:SessionContext,id:string,ex
  try{return await withTenant(ctx,async tx=>{
   await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await principal(tx,ctx);
   const [source]=await tx.select({id:attempt.id,companyIds:attempt.companyIds}).from(attempt).where(eq(attempt.id,id)).for('update');if(!source)fail('Import attempt unavailable.');const plan=await revertTargetsTx(tx,ctx,source,true);if(plan.previewHash!==expectedPreviewHash)fail('The revert preview changed. Review eligibility again before confirming.');
+  await tx.execute(sql`select app.financial_history_revert_begin(${source.id}::uuid)`);
   const changes:HistoryRevisionChange[]=[];for(const {identity,current,previous}of plan.targets){
    const [compensation]=await tx.insert(revision).values({tenantId:ctx.tenantId,recordId:identity.id,ordinal:current.ordinal+1,attemptId:id,snapshotId:previous?.snapshotId??null,previousRevisionId:current.id,kind:'revert',cycleName:previous?.cycleName??current.cycleName}).returning({id:revision.id});changes.push({recordId:identity.id,revisionId:compensation.id,previousRevisionId:current.id,snapshotId:previous?.snapshotId??null});
   }
@@ -394,5 +397,18 @@ export async function getPayrollHistoryAttempt(ctx:SessionContext,id:string){
   if(!source)return null;
   const events=await tx.select({...getTableColumns(historyEvent),actorName:sql<string|null>`app.payroll_history_actor_label(${historyEvent.attemptId},${historyEvent.actorId})`}).from(historyEvent).where(eq(historyEvent.attemptId,id)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
   return {...source,events};
+ });
+}
+
+/** Exact maintenance flags; employee/calculation readers do not depend on this projection. */
+export type PayrollHistoryFunctionActions={view:boolean;add:boolean;edit:boolean;delete:boolean};
+export async function payrollHistoryFunctionAccess(ctx:SessionContext):Promise<Record<string,PayrollHistoryFunctionActions>>{
+ assertModuleGate(ctx,'payroll');
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{id:string;view:boolean;add:boolean;edit:boolean;delete:boolean}>(sql`select c.id,
+   app.financial_history_function_action(c.id,'view') "view",app.financial_history_function_action(c.id,'add') "add",
+   app.financial_history_function_action(c.id,'edit') "edit",app.financial_history_function_action(c.id,'delete') "delete"
+   from company c where c.tenant_id=app.current_tenant_id() and app.financial_history_function_action(c.id,'view') order by c.id`);
+  return Object.fromEntries(rows.map(({id,...actions})=>[id,actions] as const));
  });
 }

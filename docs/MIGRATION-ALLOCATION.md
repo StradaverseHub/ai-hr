@@ -966,3 +966,328 @@ the then-installed ledger at integration.
 |762|1793330000329|0929_teras_review_services|0906|765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0|
 
 The SQL comments inside these files still name their original provisional numbers; the bodies are kept byte for byte.
+
+## Approved Password Policy manual unlock — 2 November 2026 (provisional)
+
+`codex/approved-board-security-20261102` appends `0935_password_account_unlock` at
+when1793330000335, index757 on its own main0899 source journal. Parent coordination scanned
+local/origin journals and found claims through0934 / when1793330000334; no other approved-item
+worker is allocating migrations. SQL SHA256 `3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa`.
+This helper preserves revoked raw identity access and checks current tenant/group-administration
+authority under the canonical access lock. Recheck all claims, aggregate journal and live watermark
+before integration/installation; adjust the unapplied index on aggregation. This is source allocation,
+with no deployment or installation authorization.
+
+## Approved administrative data-profile owner — 2 November 2026 (provisional)
+
+Security worker reserves `0936_data_permission_profiles`, index758 on its own journal,
+when1793330000336, following its0935 allocation. SQL SHA256 `59a9a1de8fd9409479b2568b72e2bd8279e5babfd6b5ddfbe37b83dd84d7bc21`.
+Parent coordinated0937 / when1793330000337 / aggregate index759 to the independent read-bypass
+worker;0938 / when1793330000338 / aggregate index760 is reserved to Security for central scope.
+These are additive uninstalled source claims. Re-audit all refs/worktree journals and live watermark
+before release; no deployment or installation is authorized.
+
+## Approved board data scope reader bypasses — 2 November 2026 (coordinated source claim)
+
+The approved-board security owner reserved `0936_data_permission_profiles` at idx758 /
+when1793330000336 and its central row-policy successor0938 at idx760 /when1793330000338.
+The delegated reader/worker work reserves `0937_data_permission_reader_bypasses` at idx759 /
+when1793330000337, between those dependencies. Its isolated branch is
+`codex/approved-board-bypasses-20261102`; it must be integrated with0936 and0938 before hosted
+migration/behavior checks. This is unapplied source only, requires the normal aggregate migration
+and release evidence, and grants no deployment authority. Existing applied SQL is unchanged.
+
+## Administrative data-profile central enforcement — 2 November 2026 (provisional)
+
+Security worker appends `0938_data_permission_enforcement`, aggregate index760,
+when1793330000338, SQL SHA256 `9e5160d512251a320473c63659db518c73978acd81347400fedc5516009d730b`. Its owned source journal leaves
+index759 reserved for the independent0937 / when1793330000337 bypass-owner migration.
+The integration owner must merge0937 in chronological order and re-audit competing claims and live
+watermark before installation. This central row-scope prerequisite does not claim that the complete
+requested action-binding expansion has passed acceptance or is ready for release.
+
+## Workforce action split — 2 November 2026 (provisional source claim)
+
+Actions owner reserves `0939_workforce_action_permissions`, aggregate idx761 /
+when1793330000339, after0938. This additive source identity includes the typed operation
+owners, exact birth/source custody and retained independent workflow witnesses. It is
+unapplied source, requires aggregate hosted migration/behavior checks and re-audit before
+installation, and grants no deployment authority. The full module-binding item is not yet
+accepted solely by this Workforce checkpoint.
+
+## Bounded approval task sources — 2 November 2026 (provisional)
+
+Parent allocation audit reserved `0940_bounded_approval_task_sources`, aggregate idx762 /
+when1793330000340, after0939's independently owned action split. It preserves exact Profile
+and Leave task responsibility through request-bound projections and native effect witnesses,
+without a general Personnel read exception. Branch `codex/approved-board-task-projections-20261102`.
+Unapplied source only; re-audit live watermark and refs before coordinated release. No installation authority.
+
+## Financial and Letters action restrictions — 2 November 2026 (provisional)
+
+Security worker reserves `0941_financial_letter_actions`, aggregate index763,
+when1793330000341, SQL SHA256 `4012362123b5bff02fa51d6532a70703e112850a7b5507c3e142bfbe6c9b15b8`. This source checkpoint depends on
+0939 Workforce action helpers and0940 bounded Profile effect proofs. Parent owns0942
+Organisation/Settings and0945 Financial setup/history;0943/0944 are independently allocated.
+The code-owned publisher requires `app.financial_letter_bindings_complete()`; this checkpoint
+intentionally does not define that final closure prerequisite while kernel action bindings remain
+in progress. A parsed migration and legacy pass do not claim completed action coverage.
+Re-audit every ref/worktree journal and installation watermark before release; no deployment is
+authorized.
+
+## Organisation and shared configuration actions — 2 November 2026 (provisional)
+
+Parent BOARD owner reserves `0942_organisation_settings_actions`, aggregate idx764 /
+when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `a38fcfdb97cba6eef541331bda99484ab02a3ad0e15a40309de56ac12a3c5cd0`.
+This is unapplied implementation source. It retains native role/company floors, separates
+reference pickers from maintenance views, guards current/proposed organisation scopes, and
+binds employee-number allocation/release to private native effects. Hosted SQL/behavior and
+populated-upgrade evidence remain pending. Shared settings coverage is still being extended;
+no completed binding or installation claim follows this checkpoint. Recheck every source
+reservation and the actual post-Noveri installation ledger before release admission.
+
+## Lifecycle, Rewards and Notice action owners — 2 November 2026 (provisional source claim)
+
+The parent reserves `0944_lifecycle_rewards_notice_actions`, aggregate idx766 /
+when1793330000344, after the independently owned0941–0943 action families. Source base is
+`e28dfce56732c3dab31ae413aa9ca7bde9a8dde0`, with qualified0940 and shared0939 prerequisites
+merged normally into `codex/approved-board-lifecycle-actions-20261102`.
+
+The fresh source audit inspected3090 local/origin refs,325 unique committed journals and284
+actual worktree journals, finding no0944 filename/timestamp claim. One unrelated conflicted
+worktree journal was also checked textually for this identity. The live watermark was **not
+verified**: this reservation is unapplied and provisional, and must be refreshed against the
+ordered applied ledger and competing claims before admission. It grants no installation authority.
+
+## Financial setup/native import boundary — 2 November 2026 (provisional)
+
+BOARD parent reserves `0945_financial_setup_actions`, aggregate idx767 /when1793330000345.
+Source SHA256 `02219f6fecd6e4bd7eee39b3d0ec169bc37d4dde5891a8c143f661bd909e057d`. Reserved0943/idx765 and0944/idx766 are integrated in their reserved timestamp order; no existing entry
+is renumbered. This is an unapplied development checkpoint, not installed or accepted source.
+Its catalogue, history, tax, formula and loan guards still require hosted qualification,
+precise module/submenu facts, and TP1/CP38/statutory input qualification and binding closure.
+`financial_setup_bindings_complete()` deliberately remains absent. The genuine owner publisher
+must refuse the incomplete family. Preserve all native self/assigned and financial calculation
+courses; new authority cannot arise from posted roles or a context flag. Re-audit current refs,
+all source claims and the post-Noveri installation ledger before any release admission.
+
+## Leave/Attendance/Claims Action source continuation — 2 November 2026
+
+Reserved `0943_leave_attendance_claim_actions`, aggregate idx765 / when1793330000343, is journaled in its existing reserved position after0942 and before0944/0945; no existing entry was renumbered. Current source SHA256 `7b95a64208a79b545b982ad50e7b974b030afdb1b9b300df048e84d3acf3475d`. Source installs dormant family definitions, exact maintained Claim configuration submenu and native Leave Type, Grade Groups and Schedule library guards, finite canonical Standard initialization, actual-root-removal Delete effect witnesses, finite actual-self/admin cancellation and confirmed reimbursement ports, private exact OLD/NEW/audit effects, and a deferred Claim payment guard consuming only genuine941 Payroll receipts. Operational Claim submission/decision, remaining Leave/Attendance, all related UI and whole module source closure remain incomplete. No publication sentinel or installed-history claim exists. Hosted exact-source qualification is required; re-audit actual ordered installation ledger and all coordinated reservations before admission. The separately reserved nine-item0946 and refreshed post-Noveri/nine watermark must be reconciled before eventual integration without rewriting applied history.
+
+
+### Private canonical Draft → Onboarding source contract (unapplied)
+
+0939 now exposes private finite active admission/completion and discard intent/completion APIs to
+0944 only. The actual bound hire source carries the access authority stamp. Discard completion
+requires the exact native discard-port DELETE receipt, queued actual source mutation and same-TX
+native discard audit; preparing alone cannot commit. The INVOKER trigger observes the actual closed
+port role and only materializes OLD source data when the private native-sync intent exists. Metadata,
+regular Personnel writes and runtime proof minting gain no authority. This source requires hosted
+native activation/discard plus 0944 exact derived-case qualification before any completion claim.
+
+
+0944's SAVE consumer derives only the native source/sync metadata/history and private-field split
+from an actual same-TX canonical Draft save. Its private physical effect context repeats actor,
+authority stamp, current/proposed Draft data scope and the actual Onboarding audit. Repeated saves
+may reach the final actual image only through that Draft's recorded OLD→NEW chain. Combined
+activation/discard closes through the canonical completed source APIs; a discard intent alone is
+insufficient. The source port returns only whether it handled the save and the effect's identifiers.
+The shared private source owner also admits ACTIVE only through the exact canonical hire receipt
+and binds final completion to the same employment/person and consumed source. It calls the existing
+joiner/manager task-actor resolver; group tasks and completed tasks retain their native semantics.
+DISCARD derives only the native case cancellation, current-request withdrawal and history from the
+actual bound source; completion requires the canonical private intent and actual closed Draft DELETE
+plus audit. Stale Draft/case company namespaces still refuse pending reviewed reconciliation.
+Refresh/backfill, raw write closure and family publication remain unfinished. This source and its positive/rollback tests require genuine hosted qualification.
+
+### Profile-change queue maintenance (unapplied source)
+
+0939 registers the company-scoped `profileChanges.maintenance` View/Edit purpose separately from
+assigned Profile task decisions and configuration screens. Its real stored/current native floor is
+Group HR; each consumed source repeats current employee data/company scope and canonical controls.
+Both SQL maintenance-flag read arms and raw route-field OLD/NEW updates use that same helper.
+The native write-only exact privacy redaction remains an independent finite course. Hosted actual
+route, photo/field approvals, private task, privacy-erasure and maintenance regression checks remain
+required. No whole Workforce/submenu publication or installed-history claim follows from this source.
+
+
+### Frozen hosted repair: proposed Draft returning image and Grade Groups variable
+
+The original integrated 7c9 qualification preserved 95 native Draft INSERT RETURNING failures at
+the new stored-source SELECT policy, and 12 configuration failures from the Grade Groups local
+`group_id`/source-column ambiguity. The Draft policy now resolves actual stored data through fresh
+SPI first, with only a private full-image/hash native Add candidate for the before-insert WCO gap;
+successful actual birth and a deferred orphan check close that candidate. Unknown companies and
+preexisting IDs are refused. Current/proposed assigned data predicates and native read admission
+still apply. Grade Groups only renames the ambiguous local; no assertion or native check is removed.
+Hosted failed/affected recovery is required; the original successful evidence remains distinct.
+
+
+### Own Claim drafts and submission source (unapplied chapter)
+
+0943 registers independent own Draft View/Add/Edit/Delete and Submit View/Execute purposes below
+own Claim View. Actual current/prior draft images repeat exact own identity and same-purpose controls;
+ordinary own work does not inherit an administrative Department AND restriction. Native Draft Delete
+now uses a finite SQL port for the exact source, all its receipts and one native audit, with private
+completion checks; raw source deletion and filed-claim content mutation are refused. Source statement
+locks precede tuple ownership. Own web form and draft/history controls now consume the real purpose flags, with six-locale rendered
+Save/Submit checks authored. Nonself submission/decisions, independent receipt management and full
+native-default/package closure remain explicitly unfinished; no module completion sentinel exists.
+
+
+### Preserved current ESS proof lanes in the0939 action split
+
+The0939 administrative value guard now composes the actual installed0683 own direct-field proof
+and approval-aware immediate/primary-only branches, retaining0939 Add/Edit/Delete admission.
+The original88-pass configuration chunk exposed three regressions from replacing that newer native
+body with the older0579 body. Existing native approval-off positive and raw approval-on negative
+assertions remain unchanged. The new maintenance-negative fixture now stores and claims real
+company HR, since its previous global HR was legitimately admitted. The birth proof fixture narrows
+its actual actor ID before the strict SQL query. Hosted affected recovery remains required.
+
+
+### Own Claim migration rehearsal correction
+
+Frozen b816 run41484074688 preserved six real locale DOM passes. Its DB stage stopped before
+any tests because a SELECT policy cast the newly introduced `claim_status.draft` enum literal inside
+the migration transaction; the comparison now uses `status::text`, preserving exactly the same rule.
+The independent compiler completed with only the actor-ID fixture error corrected in03d510.
+No DB pass or whole-compiler pass is claimed for b816; failed/affected recovery remains required.
+
+### Finite Lifecycle exception sources (unapplied)
+
+The native exception owner defines four exact View/Execute cells for three commands: additions,
+shared removals, retained provision and administrative HR removals. The last requires Lifecycle View
+and Edit parents plus the actual HR/data course. Native own-author/group eligibility selects shared
+removal before permission resolution; denial of that shared purpose never falls through to HR.
+The native command owner derives routing specificity/fallback, shared approver reuse, requester
+approval and real V9 equipment assignment from current sources under the canonical owner locks.
+The exact chosen function/native branch is recorded in the permanent audit and private admission;
+a shared-branch audit cannot close an HR-branch effect. The native Case JSON size budget is retained.
+Bounded task reviews expose only the selected workflow and its actual eligible choices. No raw case
+or Personnel read is added. These sources require hosted native/DOM/whole-compiler qualification;
+supported-cell denial proofs still require genuine reviewed component publication. Full family
+publication and the remaining raw/native boundaries remain unfinished.
+
+### Independent Payroll Claim reservation reader
+
+The existing native Claim prefill now consumes941's finite four-field Payroll source, whose shared
+SQL owners decide actual batch membership and live reservation cutoff. The duplicated TypeScript
+cutoff/scope query was removed from that reader. Ordinary own Claim View grants no financial read
+exception. Native reserve/pay/unpay/requeue ports remain Security-owned prerequisites before whole
+Claim publication; the existing AFTER financial effect and deferred money/audit checks stay in place.
+
+
+### Exact native Auto-code source witness
+
+The0939 hire source may ignore a leftover explicit Auto-mode textbox value only when private942
+`organisation_employee_code_issued(company,code)` proves that exact code was successfully issued
+in this actor/tenant/company transaction. Reserved and manual source codes remain exact. Original
+wizard Manual→Auto positive coverage is retained; new native negative cases reject posted Auto
+without an issuer and reject using a real automatic issuance to replace manual or reserved codes.
+This source depends on root942 witness89bc7e9da and requires hosted failed/affected qualification.
+
+### Current permissions repair source identities (unapplied)
+
+- `0938_data_permission_enforcement.sql`: `d41b686eec213708abc9b174762c3c9f37d7f9aba31e057854108b321b66805a`.
+- `0939_workforce_action_permissions.sql`: `76332386c23bbf15c40aeab7eebbf1c5ea29c6292e4d45bcf25fa65dde2e4d3b`.
+- `0941_financial_letter_actions.sql`: `4012362123b5bff02fa51d6532a70703e112850a7b5507c3e142bfbe6c9b15b8`.
+- `0942_organisation_settings_actions.sql`: `9342bfc0171c7af385d4e6a4f33cc787b914735635e61528c1f0eed73c5a351b`.
+- `0943_leave_attendance_claim_actions.sql`: `0147800c396f35f9bdd3b6225b0e64d6e7a86df897053d53c6ea6ff476451fc4`.
+- `0944_lifecycle_rewards_notice_actions.sql`: `7617f0b14cd0d577d921fa702be8ff54a75ee05dee7f0e681ff1e9d7e9631759`.
+- `0945_financial_setup_actions.sql`: `77ef0067c30e55a48ab591938b3a5e892ba60161036f4b23c678ed280ea5f340`.
+
+Source identities only; frozen failures remain preserved. Admission requires post-Noveri/nine ledger reconciliation without rewriting applied bytes.
+
+### Employee ID maintenance projection (independent source)
+
+The setup page uses permission-filtered maintenance rows before counts and pagination, with exact
+company/global View and separate Add/Edit/Delete controls. Creation choices include only scopes with
+native Add and View; an existing read-only form does not enable status edits or saves, while an
+independent Delete remains available. The canonical hire wizard keeps its existing runtime numbering
+rule reader. Native scope and six-locale actual-page tests require hosted qualification; this does not
+complete Organisation/Settings publication.
+
+### Login editor and native idle-policy setting (independent source)
+
+The existing idle-policy command has its own View/Edit purpose, `loginPresentation.sessionPolicy`,
+with the actual group-administrator floor and Settings parents. The editor and raw configuration
+writer repeat that purpose; the native pre-login single-limit reader remains independent. Access
+serialization precedes its custom revision lock and upsert. Login presentation and idle-policy cards
+are read only for their own View purpose and receive separate Edit controls, defaulting closed.
+The existing native bounds, optimistic revision and audit remain unchanged. Native and locale DOM
+qualification is required; no broader Settings source-completion claim follows.
+
+### Repeat generated-code custody at source completion
+
+The remaining original2185 wizard failure came from the complete effect matcher independently
+comparing the ignored Auto textbox again at Draft deletion. Binding and consumption now share one
+private helper that requires exact full private hire source/current actor/transaction and the actual
+successful942 issued code. The matcher additionally requires that source's actual bound employment
+and unchanged original data. Manual/reserved values and every other materialized field still match;
+the three native negative custody cases and existing wizard positive assertion remain unchanged.
+The maintenance fixture's actual native context now has its declared SessionContext grant type,
+retaining concrete native user/person IDs without a cast or authority assertion suppression.
+
+### Native provider configuration custody (independent source)
+
+AI configuration now retains its actual group-administrator floor in stored/current function hooks.
+The native candidate reader repeats View; candidate save/edit/remove and protocol receipt writes
+consume their real configuration operations, including Edit before synthetic evaluation transport
+and again before its receipt. Statement locks precede both upsert targets. Configuration forms use
+server Add/Edit/Delete projections, preserve independent removal, and reset typed-key/evaluation
+state when those controls change. Existing native human consent, candidate/version proofs, budgets,
+provider protocol and activation gates are preserved. No provider request or activation is performed
+by this source preparation. Hosted native and DOM qualification is required; complete publication and
+all worker/receipt revocation coverage remain separate acceptance work.
+
+Provider evaluation additionally binds the existing canonical monotone access-authority stamp into
+its candidate snapshot fingerprint before each probe. A private native receipt seal checks that stamp
+again on actual consume/promote and immutable receipt facts; revoking and restoring a role cannot
+revive an old review. Older unsealed receipts require a fresh review. New actual synthetic-transport
+cases cover both between-probe revocation and direct native consume after restoration; no provider
+transport is executed during local preparation.
+
+### Own Claim receipt source chapter (unapplied, unqualified)
+
+0943 registers exact own Receipt View/Add with the current and pure own native floor. Actual file
+construction runs in a finite SQL port, binding bytes and metadata to the real current claim, actor,
+transaction, authority stamp, actual insert and completed receipt audit. Initial draft/save/submit
+files additionally consume one private slot from their actual same-transaction source mutation and
+require its native source audit at deferred completion. A caller-supplied purpose cannot mint that
+slot. Raw receipt writes/removal and mutate-restore attempts are refused; native draft deletion retains
+its separate exact closed source proof. Receipt presence for submitting an actual own Draft returns
+only a boolean under Submit authority. The web file control consumes Receipt View; authored native
+source and six-locale DOM checks require hosted qualification. Independent nonself receipt purposes,
+nonself submission/decisions, finite Payroll writers and full package closure remain unfinished.
+
+
+### Payroll Claim reservation completes finite read/write source composition
+
+The Claim prefill adapter now passes its exact finite-source IDs to941 `payroll_claim_apply` Reserve,
+checks returned claim/employment identities, and retains its native integer-cents input accumulation
+and per-claim queued audit in the same transaction. The private941 port completion still consumes
+actual Payroll input/audit custody; no ordinary Claim View, raw metadata exemption or proposed-only
+money witness is introduced. Security checkpoint b600c025b is merged normally as the prerequisite.
+Existing Payroll Claim scope/native positive and deferred incomplete-source negatives require hosted
+qualification together; no local test or compiler execution is claimed.
+
+
+### Claim source reference custody
+
+The real Claim source guard now repeats tenant ownership of employment and Claim Type plus the
+selected Item's tenant/parent at creation and reference changes, including raw app SQL. It preserves
+historical archived references for unchanged decision/financial effects. Authored negative cases use
+actual foreign-tenant catalogue and wrong-parent Item rows and assert source/audit rollback; hosted
+qualification remains required. This adds no native actor course or publication completion marker.
+
+## Performance integration review — 3 November 2026 (not admitted)
+
+Owned integration preserves current main/alpha dfbcf85b1 complete648-entry journal
+and all SQL bytes. Published security e3b24107 contributes11 unapplied appends
+0935–0945 at original when335–345; only their journal indexes move to763–773
+after the installed main prefix. SQL bodies are unchanged. No new migration
+identity is allocated, no peer reservation edited, and no deployment/lease/admission
+is requested. Re-freeze against the actual live ledger and current peer reservations
+before any future release; historical tables above retain their original dates.

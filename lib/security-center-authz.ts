@@ -1,10 +1,11 @@
+import {internalSelected} from './internal-auth/config';
 import {redirect} from 'next/navigation';
 import {getSession} from '@/lib/session';
 import {isAdmin,isGroupAdmin,requireAdmin} from '@/lib/authz';
 import {canConfigureAccess} from '@/core/access-configuration-editor';
 export async function requireSecurityCenter(){
  const session=await getSession();
- const access={admin:isAdmin(session),configure:await canConfigureAccess(session),provision:isGroupAdmin(session)};
+ const access={admin:isAdmin(session),configure:await canConfigureAccess(session),provision:isGroupAdmin(session),passwordPolicy:isGroupAdmin(session)&&internalSelected()};
  if(!access.admin&&!access.configure)redirect('/');
  return {session,access};
 }

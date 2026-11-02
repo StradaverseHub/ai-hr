@@ -1,5 +1,6 @@
+import type {ReactElement} from 'react';
 import {beforeAll,expect,it,vi} from 'vitest';
-import {fireEvent,render,screen,within} from '@testing-library/react';
+import {fireEvent,render as renderUI,screen,within} from '@testing-library/react';
 import {CaseWorkflows} from '../app/lifecycle/v9/case-workflows';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {NextIntlClientProvider} from 'next-intl';
@@ -51,10 +52,13 @@ it('keeps closed cases from editing real email while allowing an explicit self-t
 it('opens the selected workflow from an already-mounted offboarding case and clears the selected case',async()=>{
  const {c,config}=fixture();const initial:Parameters<typeof V9Workspace>[0]['initial']={config,cases:[c],actor:{id:'hr',name:'Fictional HR'},canConfigure:true,personnelWritableKeys:[],permissions:{onboarding:false,offboarding:true,administration:true},options:{users:[],companies:[],employees:[],labels:{}}};
  render(<NextIntlClientProvider locale="en" messages={messages}><V9Workspace initial={initial} viewer={{name:'Fictional HR',employeeCode:null,employed:false}}/></NextIntlClientProvider>);
- fireEvent.click(screen.getByRole('button',{name:'Fictional person'}));expect(screen.getByRole('button',{name:/Back to list/})).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'Open workflow'}));expect(await screen.findByRole('heading',{name:'Workflows',level:1})).toBeVisible();expect(screen.queryByRole('button',{name:/Back to list/})).not.toBeInTheDocument();expect(within(screen.getByRole('dialog',{name:'Edit workflow'})).getByLabelText('Workflow name')).toHaveValue('Fictional manual workflow');
+ fireEvent.click(screen.getByRole('button',{name:'Fictional person'}));expect(screen.getAllByRole('link',{name:'Leavers'})).toHaveLength(2);fireEvent.click(screen.getByRole('button',{name:'Open workflow'}));expect(await screen.findByRole('heading',{name:'Workflows',level:1})).toBeVisible();expect(screen.queryByRole('link',{name:'Leavers'})).not.toBeInTheDocument();expect(within(screen.getByRole('dialog',{name:'Edit workflow'})).getByLabelText('Workflow name')).toHaveValue('Fictional manual workflow');
 });
 
 it('permits pending per-person editing and self-tests without offering a live start',async()=>{
  const {c,config,preview}=mailFixture();c.state='pending';const command=vi.fn().mockResolvedValue({ok:true});vi.mocked(readV9Email).mockResolvedValueOnce({ok:true,preview});render(<CaseWorkflows c={c} config={config} busy={false} command={command}/>);
  expect(screen.getByRole('button',{name:'Start now Fictional manual workflow'})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:'Edit for this person'}));expect(await screen.findByLabelText('Subject')).toHaveValue('Subject for {employee.name}');fireEvent.click(screen.getByRole('button',{name:'Cancel edit'}));const dialog=screen.getByRole('dialog',{name:'Email preview'});expect(within(dialog).getByRole('button',{name:'Send email'})).toBeDisabled();fireEvent.click(within(dialog).getByRole('button',{name:'Send test'}));expect(command).toHaveBeenCalledExactlyOnceWith({type:'emailTest',emailId:'e3'});
 });
+
+function withMessages(node:ReactElement){return <NextIntlClientProvider locale="en" messages={messages}>{node}</NextIntlClientProvider>;}
+function render(node:ReactElement){const view=renderUI(withMessages(node));return {...view,rerender:(next:ReactElement)=>view.rerender(withMessages(next))};}

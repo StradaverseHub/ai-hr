@@ -91,22 +91,23 @@ export async function resolveProfileRouteTx(tx:Tx,ctx:SessionContext,subjectId:s
 type ProfileRouteDecisionBase=Pick<typeof profileChangeRequest.$inferSelect,'employmentId'|'routeId'|'routeRevision'|'routeApproverUserId'|'routeApproverEmploymentId'|'routeContext'>;
 /** Writers pass their real row; metadata-only eligibility readers must supply the actual stored type.
  * A missing classifier must not silently route a photo request through the fields default. */
-export type ProfileRouteDecisionSubject=ProfileRouteDecisionBase&({proposed:unknown}|{requestType:ProfileRequestType});
+export type ProfileRouteDecisionSubject=ProfileRouteDecisionBase&{id?:string}&({proposed:unknown}|{requestType:ProfileRequestType});
 export async function assertProfileRouteDecisionTx(tx:Tx,ctx:SessionContext,request:ProfileRouteDecisionSubject){
  if(!request.routeId){if(request.routeApproverUserId||request.routeApproverEmploymentId||request.routeContext)throw new ProfileRoutingError('changed');return;}
+ const fingerprint=async()=>{if(!request.id)return (await subjectContext(tx,ctx,request.employmentId,todayInKualaLumpur())).fingerprint;const [row]=await tx.execute<{value:string}>(sql`select app.profile_task_route_fingerprint(${request.id}::uuid) as value`);if(!row?.value)throw new ProfileRoutingError('changed');return row.value;};
  const snapshot=request.routeContext as {version?:unknown;decisionMode?:unknown;approvers?:{userId:string;employmentId:string}[];fingerprint?:unknown}|null;
  if(snapshot?.version===3){
   if(snapshot.decisionMode!=='any'||!Array.isArray(snapshot.approvers)||!snapshot.approvers.length||snapshot.approvers.length>32)throw new ProfileRoutingError('changed');
   const assigned=snapshot.approvers.find(row=>row.userId===ctx.userId);
   if(!assigned||!z.uuid().safeParse(assigned.employmentId).success)throw new ProfileRoutingError('unauthorized');
   const principal=await namedPrincipal(tx,assigned.employmentId,request.employmentId);
-  if(principal.user_id!==assigned.userId||(await subjectContext(tx,ctx,request.employmentId,todayInKualaLumpur())).fingerprint!==snapshot.fingerprint)throw new ProfileRoutingError('changed');
+  if(principal.user_id!==assigned.userId||await fingerprint()!==snapshot.fingerprint)throw new ProfileRoutingError('changed');
   return;
  }
  const requestType='proposed' in request?profileRequestType(request.proposed):request.requestType;
  if(requestType!=='photo'&&requestType!=='fields')throw new ProfileRoutingError('changed');
  const principal=await namedPrincipal(tx,request.routeApproverEmploymentId??'',request.employmentId);
- if(ctx.userId!==request.routeApproverUserId||principal.user_id!==request.routeApproverUserId||principal.employment_id!==request.routeApproverEmploymentId||(await subjectContext(tx,ctx,request.employmentId,todayInKualaLumpur())).fingerprint!==snapshot?.fingerprint)throw new ProfileRoutingError('changed');
+ if(ctx.userId!==request.routeApproverUserId||principal.user_id!==request.routeApproverUserId||principal.employment_id!==request.routeApproverEmploymentId||await fingerprint()!==snapshot?.fingerprint)throw new ProfileRoutingError('changed');
 }
 export function profileRequestType(proposed:unknown):ProfileRequestType{return proposed&&typeof proposed==='object'&&!Array.isArray(proposed)&&'v' in proposed&&proposed.v===3?'photo':'fields';}
 /** SQL twin for bounded queue metadata: never select the proposal values/byte reference just to route it. */
@@ -121,7 +122,7 @@ export async function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRev
  try{p=structuredClone(p);}catch{throw new ProfileRoutingError('invalid');}
  return withTenant(ctx,async tx=>{
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
-  try{await assertProfilePolicyWriteAuthorityTx(tx,ctx);}catch{throw new ProfileRoutingError('unauthorized');}
+  try{await assertProfilePolicyWriteAuthorityTx(tx,ctx,'profileApprovalRules');}catch{throw new ProfileRoutingError('unauthorized');}
   const fresh=await freshProfileEditPolicyTx(tx,ctx),before=readProfileRoutingPolicy(fresh.ctx);
   if(before.revision!==p.expectedRevision||before.enabled&&!p.enabled)throw new ProfileRoutingError('changed');
   const value={version:p.version??1,enabled:p.enabled,revision:randomUUID(),rules:p.rules};
@@ -145,12 +146,15 @@ export async function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRev
 export function rerouteProfileRequest(ctx:SessionContext,p:{requestId:string;reason:string}){
  if(!p.reason.trim()||p.reason.length>2000)throw new ProfileRoutingError('reasonRequired');
  return withTenant(ctx,async tx=>{
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
   const fresh=await freshProfileEditPolicyTx(tx,ctx);
   await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
   const [row]=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,status:profileChangeRequest.status,proposed:profileChangeRequest.proposed,routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,routeApproverEmploymentId:profileChangeRequest.routeApproverEmploymentId,routeContext:profileChangeRequest.routeContext,routeHistory:profileChangeRequest.routeHistory}).from(profileChangeRequest).where(eq(profileChangeRequest.id,p.requestId)).limit(1).for('update');
   if(!row||row.status!=='pending')throw new ProfileRoutingError('changed');
+  const [admission]=await tx.execute<{allowed:boolean}>(sql`select app.workforce_profile_maintenance_allowed(${row.employmentId}::uuid,'edit') as allowed`);
+  if(!admission?.allowed)throw new ProfileRoutingError('unauthorized');
   const route=await resolveProfileRouteTx(tx,fresh.ctx,row.employmentId,profileRequestType(row.proposed))??{routeId:null,routeRevision:null,routeApproverUserId:null,routeApproverEmploymentId:null,routeContext:null};
   await tx.update(profileChangeRequest).set({...route,routeHistory:[...(Array.isArray(row.routeHistory)?row.routeHistory:[]),{before:{routeId:row.routeId,revision:row.routeRevision,approverUserId:row.routeApproverUserId,approverEmploymentId:row.routeApproverEmploymentId},after:route,reason:p.reason.trim(),changedAt:new Date().toISOString(),changedByUserId:ctx.userId}]}).where(eq(profileChangeRequest.id,row.id));
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'profile-change',aggregateId:row.id,eventType:'profile-change.rerouted',actor:actorOf(ctx),subjectEmploymentId:row.employmentId,payload:{before:{routeId:row.routeId,revision:row.routeRevision,approverUserId:row.routeApproverUserId,approverEmploymentId:row.routeApproverEmploymentId},after:{routeId:route.routeId,revision:route.routeRevision,approverUserId:route.routeApproverUserId,approverEmploymentId:route.routeApproverEmploymentId},reasonProvided:true}});
@@ -160,7 +164,7 @@ export function rerouteProfileRequest(ctx:SessionContext,p:{requestId:string;rea
 
 export function profileRouteCounts(ctx:SessionContext,companyIds?:string[]){
  return withTenant(ctx,async tx=>{
-  const rows=await tx.select({status:profileChangeRequest.status,count:sql<number>`count(*)::int`}).from(profileChangeRequest).innerJoin(employment,eq(employment.id,profileChangeRequest.employmentId)).where(and(profileRouteReaderPredicate(ctx),companyIds?.length?inArray(employment.companyId,companyIds):undefined)).groupBy(profileChangeRequest.status);
+  const rows=await tx.select({status:profileChangeRequest.status,count:sql<number>`count(*)::int`}).from(profileChangeRequest).innerJoin(sql`LATERAL app.profile_task_identity(${profileChangeRequest.id}) AS task`,sql`true`).where(and(profileRouteReaderPredicate(ctx),companyIds?.length?sql`task.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:undefined)).groupBy(profileChangeRequest.status);
   return {pending:rows.find(row=>row.status==='pending')?.count??0,approved:rows.find(row=>row.status==='approved')?.count??0,rejected:rows.find(row=>row.status==='rejected')?.count??0};
  });
 }
@@ -171,7 +175,7 @@ export function profileRerouteCandidates(ctx:SessionContext,p:{query?:string;aft
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
   const like=`%${query.replace(/[\\%_]/g,'\\$&')}%`,after=p.after?new Date(p.after.createdAt):null;
-  const rows=await tx.select({id:profileChangeRequest.id,employeeCode:employment.employeeCode,name:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest).innerJoin(employment,eq(employment.id,profileChangeRequest.employmentId)).innerJoin(person,eq(person.id,profileChangeRequest.personId)).where(and(eq(profileChangeRequest.status,'pending'),query?or(ilike(employment.employeeCode,like),ilike(person.fullName,like)):undefined,p.after&&after?or(gt(profileChangeRequest.createdAt,after),and(eq(profileChangeRequest.createdAt,after),gte(profileChangeRequest.id,p.after.id))):undefined)).orderBy(asc(profileChangeRequest.createdAt),asc(profileChangeRequest.id)).limit(51);
+  const rows=await tx.select({id:profileChangeRequest.id,employeeCode:employment.employeeCode,name:person.fullName,createdAt:profileChangeRequest.createdAt,canEdit:sql<boolean>`app.workforce_profile_maintenance_allowed(${profileChangeRequest.employmentId},'edit')`}).from(profileChangeRequest).innerJoin(employment,eq(employment.id,profileChangeRequest.employmentId)).innerJoin(person,eq(person.id,profileChangeRequest.personId)).where(and(sql`app.workforce_profile_maintenance_allowed(${profileChangeRequest.employmentId},'view')`,eq(profileChangeRequest.status,'pending'),query?or(ilike(employment.employeeCode,like),ilike(person.fullName,like)):undefined,p.after&&after?or(gt(profileChangeRequest.createdAt,after),and(eq(profileChangeRequest.createdAt,after),gte(profileChangeRequest.id,p.after.id))):undefined)).orderBy(asc(profileChangeRequest.createdAt),asc(profileChangeRequest.id)).limit(51);
   // The first omitted row is the inclusive boundary of the next page, never an inferred business identity.
   const next=rows.slice(50,51)[0];
   return {rows:rows.slice(0,50),nextCursor:next?{createdAt:next.createdAt.toISOString(),id:next.id}:null};
@@ -189,6 +193,8 @@ export function profileApproverCandidates(ctx:SessionContext){
 export function previewProfileRoutingPolicy(ctx:SessionContext,input:{enabled:boolean;rules:ProfileRouteRule[];version?:1|2|3}){
  return withTenant(ctx,async tx=>{
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
+  const [permission]=await tx.execute<{allowed:boolean}>(sql`select app.organisation_settings_function_allowed('profileApprovalRules','view',NULL) as allowed`);
+  if(!permission?.allowed)throw new ProfileRoutingError('unauthorized');
   const fresh=await freshProfileEditPolicyTx(tx,ctx);
   return previewRoutingTx(tx,fresh.ctx,{version:input.version??1,revision:readProfileRoutingPolicy(fresh.ctx).revision,enabled:input.enabled,rules:input.rules});
  });
@@ -210,4 +216,15 @@ async function previewRoutingTx(tx:Tx,ctx:SessionContext,value:ProfileRoutingPol
  const counts={matched:matches.size,missing:requestTypes.reduce((n,type)=>n+population.filter(id=>!matches.has(type+':'+id)).length,0),overlapping:[...matches.values()].filter(count=>count>1).length,ineligible};
  const fingerprint=createHash('sha256').update(JSON.stringify({actor:ctx.userId,tenant:ctx.tenantId,revision:readProfileRoutingPolicy(ctx).revision,asOf:todayInKualaLumpur(),version:value.version,enabled:value.enabled,rules:value.rules,population:[...population].sort(),snapshot,counts})).digest('hex');
  return {...counts,fingerprint};
+}
+
+/** Configuration-free queue flags. Actual rows and route writes repeat their subject admission. */
+export function profileMaintenanceAccess(ctx:SessionContext){
+ return withTenant(ctx,async tx=>{
+  const [result]=await tx.execute<{view:boolean;edit:boolean}>(sql`select app.principal_snapshot_current() and app.is_group_admin()
+   and exists(select 1 from public.company co where co.tenant_id=app.current_tenant_id() and app.access_workforce_company(co.id,'workforce.view') and app.function_action_allowed('profileChanges.maintenance','view',co.id)) as "view",
+   app.principal_snapshot_current() and app.is_group_admin()
+   and exists(select 1 from public.company co where co.tenant_id=app.current_tenant_id() and app.access_workforce_company(co.id,'workforce.edit') and app.function_action_allowed('profileChanges.maintenance','edit',co.id)) as "edit"`);
+  return {view:result?.view===true,edit:result?.edit===true};
+ });
 }

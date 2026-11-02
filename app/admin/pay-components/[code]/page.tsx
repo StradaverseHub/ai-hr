@@ -20,7 +20,7 @@ export default async function EditPayComponentPage({
   const s = await requireAdmin();
   const { code } = await params;
   const { error } = await searchParams;
-  const components = await listPayComponents(s, { includeArchived: true });
+  const components = await listPayComponents(s, { includeArchived: true, maintenance: true });
   const component = components.find((c) => c.code === decodeURIComponent(code)) ?? null;
   if (!component) notFound();
   const aiEnabled = await isAiConfigured(s);

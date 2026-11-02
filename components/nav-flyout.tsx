@@ -111,6 +111,7 @@ export function NavFlyout({
   rowBase,
   panelId,
   onToggle,
+  onOpen,
   triggerRef,
   tour,
 }: {
@@ -128,6 +129,7 @@ export function NavFlyout({
   /** id of the panel this trigger controls (aria-controls). */
   panelId: string;
   onToggle: () => void;
+  onOpen?: () => void;
   /** Registered with the sidebar so Escape can return focus here. */
   triggerRef: Ref<HTMLButtonElement>;
   tour?: string;
@@ -139,7 +141,8 @@ export function NavFlyout({
       ref={triggerRef}
       data-tour={tour}
       type="button"
-      onClick={onToggle}
+      onClick={onOpen ?? onToggle}
+      onPointerEnter={event => { if (event.pointerType === 'mouse') onOpen?.(); }}
       aria-haspopup="true"
       aria-expanded={open}
       aria-controls={panelId}

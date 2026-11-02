@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq,sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { client, withTenant } from '../db/client';
 import * as schema from '../db/schema';
@@ -12,6 +12,17 @@ const limitFor = async (tenantId: string) =>
   Number((await client.unsafe('select app.session_idle_timeout_minutes($1::uuid) as minutes', [tenantId]))[0].minutes);
 
 describe('ADR-0171 idle sign-out policy, owned by the group administrator', () => {
+  it('registers only the actual View/Edit session setting purpose under the native group floor',async()=>{
+    const ctx=groupCtx();
+    const query=sql`select app.organisation_settings_function_allowed('loginPresentation.sessionPolicy','view',NULL) as view,app.organisation_settings_function_allowed('loginPresentation.sessionPolicy','edit',NULL) as edit,app.organisation_settings_function_allowed('loginPresentation.sessionPolicy','add',NULL) as invented`;
+    expect((await withTenant(ctx,tx=>tx.execute(query)))[0]).toEqual({view:true,edit:true,invented:false});
+    const userId=await createAppUser(b.tenantId,null,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,userId));
+    const scoped={...ctx,userId,grants:[{role:'hr_admin',companyId:b.companyId}]};
+    expect((await withTenant(scoped,tx=>tx.execute(query)))[0]).toEqual({view:false,edit:false,invented:false});
+    await expect(withTenant(scoped,tx=>tx.insert(schema.sessionPolicy).values({tenantId:b.tenantId,revision:1,idleTimeoutMinutes:30}))).rejects.toThrow();
+    expect(await limitFor(b.tenantId)).toBe(15);
+  });
+
   it('defaults to 15 minutes, saves, reopens, exposes only the limit and audits the change', async () => {
     const ctx = groupCtx();
     expect(await readSessionPolicyEditor(ctx)).toEqual({ revision: 0, idleTimeoutMinutes: DEFAULT_IDLE_TIMEOUT_MINUTES });

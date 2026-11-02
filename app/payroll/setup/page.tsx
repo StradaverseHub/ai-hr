@@ -10,9 +10,6 @@ import {
 } from '@/core/payroll-readiness';
 import { statutoryPackStale } from '@/lib/statutory-readiness';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
-import { isGroupAdmin } from '@/lib/authz-model';
-import { settingEnabledOrDefault } from '@/core/entitlements';
-import { PayrollCorrectionsForm } from './corrections-form';
 
 /**
  * Feature 2.0 — Payroll Configuration landing (information architecture over existing config surfaces).
@@ -148,26 +145,12 @@ export default async function PayrollSetupPage({
     // so the card led to a screen with no EA control. Its i18n keys are retained for the future
     // dedicated statutory-mapping module; stored eaFormLine data and the EA report are untouched.
     { key: 'statutory', href: '/payroll/configuration' },
+    { key: 'corrections', href: '/payroll/setup/correction-controls' },
   ] as const;
 
   return (
     <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
-
-      <PayrollCorrectionsForm
-        enabled={settingEnabledOrDefault(s, 'payroll.reset_enabled')}
-        canEdit={isGroupAdmin(s)}
-        labels={{
-          title: t('corrections.title'),
-          label: t('corrections.label'),
-          description: t('corrections.description'),
-          scope: t('corrections.scope'),
-          readOnly: t('corrections.readOnly'),
-          save: t('corrections.save'),
-          saving: t('corrections.saving'),
-          saved: t('corrections.saved'),
-        }}
-      />
 
       {problems.length > 0 && (
         <Card className="border-amber-300 dark:border-amber-500/40">
@@ -298,7 +281,7 @@ export default async function PayrollSetupPage({
         {cards.map((c) => (
           <Card key={`${c.key}-${c.href}`} className="flex flex-col p-5">
             <h2 className="text-base font-semibold">{t(`${c.key}.title`)}</h2>
-            <p className="mt-1 flex-1 text-sm text-muted-foreground">{t(`${c.key}.desc`)}</p>
+            <p className="mt-1 flex-1 text-sm text-muted-foreground">{t(c.key === 'corrections' ? 'corrections.description' : `${c.key}.desc`)}</p>
             <Link
               href={c.href}
               className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"

@@ -4,7 +4,7 @@
  */
 import {and,asc,desc,eq,gte,lte,isNull,ne} from 'drizzle-orm';
 import type {SessionContext} from '../db/client';
-import {payslip,payrollBatch} from '../db/schema';
+import {payslip,payrollDocumentBatch as payrollBatch} from '../db/schema';
 import {withPayrollTenant} from './module-gate';
 import {myOwnEmploymentSubjectsTx} from './read';
 import {payrollPublicationState} from '../lib/payroll-publication';
