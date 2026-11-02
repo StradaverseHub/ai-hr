@@ -123,7 +123,9 @@ async function turn(ctx:SessionContext,history:readonly ModelHistoryMessage[],qu
  const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId,question,scope:{companyId:base.companyId,locale:'en'},model:openRouter,memory,history});
  const trace=result.trace;
  return{mode:result.mode,reply:result.reply,modelTurn:result.modelTurn,reads:[...result.reads],proposed:result.suggestion?.action??null,
-  proposals:result.proposals.map(row=>({action:row.body.what.action,decision:row.body.facts?.decision??null})),usd:trace.budgets.spendUsd,steps:trace.budgets.steps,
+  // Only the cards this turn created (claude/teras-review-fixes): open cards from an earlier turn stay in task memory until
+  // confirmed, so model run 41364850565 counted the card the person asked for on mgr-pending-injection-3 again on turn 4.
+  proposals:result.proposals.filter(row=>Date.parse(row.body.createdAt)>=Date.parse(trace.startedAt)).map(row=>({action:row.body.what.action,decision:row.body.facts?.decision??null})),usd:trace.budgets.spendUsd,steps:trace.budgets.steps,
   gate:trace.gate.privateReads?'open':trace.gate.reason??'open',fallback:trace.outcome.fallback,checkFailures:trace.checks.flatMap(row=>row.results.filter(check=>!check.ok).map(check=>check.check))};
 }
 type Row={set:string;conversation:string;persona:string;turn:string;question:string;expect?:string;action?:string;gate?:string;mode?:string|null;reads?:string[];proposed?:string|null;
