@@ -23,11 +23,23 @@ async function attempt(content=Buffer.from('fictional source')){
  return (await withTenant(ctx,tx=>history.createImportAttemptTx(tx,ctx,{kind:'bank_statutory',sourceName:'fictional.csv',content,companyIds:[b.companyId],plan}))).attemptId;
 }
 async function withoutSourceSelect<T>(fn:()=>Promise<T>){
- // The installed custody contract itself supplies this premise. Do not temporarily broaden
- // column grants, or restore an obsolete table-wide SELECT into the reused worker database.
- const [proof]=await withTenant(ctx,tx=>tx.execute(sql`select has_column_privilege(current_user,'public.import_attempt','source_content','SELECT') as source,has_column_privilege(current_user,'public.import_attempt','plan','SELECT') as plan,has_column_privilege(current_user,'public.import_attempt','id','SELECT') as header`));
- expect(proof).toEqual({source:false,plan:false,header:true});
- return fn();
+ // A temporary STRICTER fixture proves the current Bank row path only reads its header.
+ // Restore the actual installed whole-row+RLS contract exactly, even when the callback fails.
+ const [before]=await withTenant(ctx,tx=>tx.execute(sql`select has_table_privilege(current_user,'public.import_attempt','SELECT') as whole`));
+ expect(before.whole).toBe(true);
+ const columnGrants=await owner.db.execute<{name:string}>(sql`select a.attname as name from pg_attribute a cross join lateral aclexplode(a.attacl) x where a.attrelid='public.import_attempt'::regclass and x.grantee='ai_hr_app'::regrole and x.privilege_type='SELECT' order by a.attnum`);
+ await owner.client`revoke select on public.import_attempt from ai_hr_app`;
+ try{
+  await owner.client`revoke select(source_content,plan) on public.import_attempt from ai_hr_app`;
+  await owner.client`grant select(id,tenant_id,kind,created_by,operation_key,source_name,mime_type,source_hash,company_ids,created_at) on public.import_attempt to ai_hr_app`;
+  const [proof]=await withTenant(ctx,tx=>tx.execute(sql`select has_column_privilege(current_user,'public.import_attempt','source_content','SELECT') as source,has_column_privilege(current_user,'public.import_attempt','plan','SELECT') as plan,has_column_privilege(current_user,'public.import_attempt','id','SELECT') as header`));
+  expect(proof).toEqual({source:false,plan:false,header:true});
+  return await fn();
+ }finally{
+  await owner.client`revoke select(id,tenant_id,kind,created_by,operation_key,source_name,mime_type,source_hash,source_content,company_ids,plan,created_at) on public.import_attempt from ai_hr_app`;
+  for(const column of columnGrants)await owner.db.execute(sql`grant select(${sql.identifier(column.name)}) on public.import_attempt to ai_hr_app`);
+  await owner.client`grant select on public.import_attempt to ai_hr_app`;
+ }
 }
 describe('bounded Bank import attempt locks',()=>{
  it('locks a large-source attempt using only identity and kind; full-source readers retain exact bytes',async()=>{

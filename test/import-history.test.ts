@@ -4,6 +4,7 @@
  */
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {asc,eq,sql,and} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
@@ -54,6 +55,16 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
    expect(p).toEqual({read:true,insert:true,update:false,delete:false,rls:true});
    if(table==='import_attempt'){const [columns]=await withTenant(a,tx=>tx.execute(sql`select has_column_privilege(current_user,'public.import_attempt','id','SELECT') as metadata,has_column_privilege(current_user,'public.import_attempt','source_content','SELECT') as source,has_column_privilege(current_user,'public.import_attempt','plan','SELECT') as plan`));expect(columns).toEqual({metadata:true,source:true,plan:true});}
    if(table==='import_attempt_event'){const [columns]=await withTenant(a,tx=>tx.execute(sql`select has_column_privilege(current_user,'public.import_attempt_event','id','SELECT') as metadata,has_column_privilege(current_user,'public.import_attempt_event','reason','SELECT') as reason,has_column_privilege(current_user,'public.import_attempt_event','detail','SELECT') as detail`));expect(columns).toEqual({metadata:true,reason:true,detail:true});}
+  }
+  for(const view of ['import_attempt_history','import_attempt_event_history']){
+   const [proof]=await withTenant(a,tx=>tx.execute(sql`select
+    has_table_privilege(current_user,${'app.'+view},'SELECT') as read,
+    has_table_privilege(current_user,${'app.'+view},'INSERT') as insert,
+    has_table_privilege(current_user,${'app.'+view},'UPDATE') as update,
+    has_table_privilege(current_user,${'app.'+view},'DELETE') as delete,
+    (select reloptions @> array['security_barrier=true'] from pg_class where oid=${'app.'+view}::regclass) as barrier,
+    (select not pg_has_role(current_user,relowner,'MEMBER') from pg_class where oid=${'app.'+view}::regclass) as owner_separate`));
+   expect(proof).toEqual({read:true,insert:false,update:false,delete:false,barrier:true,owner_separate:true});
   }
   const{attemptId}=await upload(a,[row('ACME','AC001','ACME-OPS','100')]);
   await expect(withTenant(a,tx=>tx.execute(sql`update import_attempt set source_name='changed' where id=${attemptId}::uuid`))).rejects.toThrow();
@@ -287,6 +298,18 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
    expect(await withTenant(ctx,tx=>tx.execute(sql`select * from app.import_attempt_event_history where attempt_id=${attemptId}::uuid`))).toEqual([]);
    expect(await withTenant(ctx,tx=>tx.select().from(s.importAttempt).where(eq(s.importAttempt.id,attemptId)))).toEqual([]);
   }
+ });
+
+ it('refuses unsupported projection ownership and FORCE RLS before changing custody grants',async()=>{
+  const precondition=readFileSync('db/migrations/0932_import_private_custody.sql','utf8').split('--> statement-breakpoint')[0];
+  expect(precondition).toContain('DO $$');
+  await expect(withTenant(a,tx=>tx.execute(sql.raw(precondition)))).rejects.toMatchObject({cause:{message:'Import custody requires an unprivileged app role separate from the projection owner'}});
+  await expect(owner.db.transaction(async tx=>{
+   await tx.execute(sql`alter table public.import_attempt force row level security`);
+   await tx.execute(sql.raw(precondition));
+  })).rejects.toMatchObject({cause:{message:'Unsupported import custody table RLS/ownership: import_attempt'}});
+  const [restored]=await owner.db.execute(sql`select relrowsecurity as rls,relforcerowsecurity as force from pg_class where oid='public.import_attempt'::regclass`);
+  expect(restored).toEqual({rls:true,force:false});
  });
 
 });

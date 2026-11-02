@@ -1,6 +1,42 @@
 -- BK48: any-company history visibility is not custody of a whole multi-company file.
 -- Keep safe metadata through fixed views and per-company item policies; whole rows are read
 -- only by a current principal authorized for EVERY company. No historical rows change.
+-- These fixed owner projections deliberately bypass physical RLS. Refuse unsupported
+-- ownership/FORCE configurations rather than silently hiding partial metadata or recursing.
+DO $$
+DECLARE target record; helper record; privileged boolean;
+BEGIN
+ IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='ai_hr_app' AND (rolsuper OR rolbypassrls))
+  OR pg_has_role('ai_hr_app',current_user,'MEMBER') THEN
+  RAISE EXCEPTION 'Import custody requires an unprivileged app role separate from the projection owner';
+ END IF;
+ FOR target IN SELECT c.oid,c.relowner,c.relrowsecurity,c.relforcerowsecurity,c.relname
+  FROM pg_class c WHERE c.oid IN('public.import_attempt'::regclass,'public.import_attempt_event'::regclass)
+ LOOP
+  IF NOT target.relrowsecurity OR target.relforcerowsecurity
+   OR pg_has_role('ai_hr_app',target.relowner,'USAGE') THEN
+   RAISE EXCEPTION 'Unsupported import custody table RLS/ownership: %',target.relname;
+  END IF;
+  SELECT r.rolsuper OR r.rolbypassrls OR pg_has_role(r.oid,target.relowner,'USAGE') INTO privileged
+   FROM pg_roles r WHERE r.rolname=current_user;
+  IF privileged IS DISTINCT FROM true THEN
+   RAISE EXCEPTION 'Import projection owner cannot safely bypass physical RLS: %',target.relname;
+  END IF;
+  FOR helper IN SELECT p.proname,p.proowner,p.prosecdef FROM pg_proc p WHERE p.oid IN(
+   'app.import_attempt_access(uuid,text,boolean)'::regprocedure,
+   'app.information_import_history_access(uuid)'::regprocedure,
+   'app.import_attempt_actor_label(uuid,uuid)'::regprocedure)
+  LOOP
+   SELECT r.rolsuper OR r.rolbypassrls OR pg_has_role(r.oid,target.relowner,'USAGE') INTO privileged
+    FROM pg_roles r WHERE r.oid=helper.proowner;
+   IF NOT helper.prosecdef OR privileged IS DISTINCT FROM true
+    OR pg_has_role('ai_hr_app',helper.proowner,'MEMBER') THEN
+    RAISE EXCEPTION 'Unsupported import custody helper owner: %',helper.proname;
+   END IF;
+  END LOOP;
+ END LOOP;
+END $$;
+--> statement-breakpoint
 CREATE FUNCTION app.import_attempt_private(wanted uuid) RETURNS SETOF public.import_attempt
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT a.* FROM public.import_attempt a
@@ -44,7 +80,7 @@ CREATE VIEW app.import_attempt_history WITH (security_barrier=true) AS
  WHERE a.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
   AND app.import_attempt_access(a.id,'view',false)
   AND app.information_import_history_access(a.id);
-REVOKE ALL ON app.import_attempt_history FROM PUBLIC;
+REVOKE ALL ON app.import_attempt_history FROM PUBLIC,ai_hr_app;
 GRANT SELECT ON app.import_attempt_history TO ai_hr_app;
 
 --> statement-breakpoint
@@ -85,7 +121,7 @@ CREATE VIEW app.import_attempt_event_history WITH (security_barrier=true) AS
  WHERE e.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
   AND app.import_attempt_access(e.attempt_id,'view',false)
   AND app.information_import_history_access(e.attempt_id);
-REVOKE ALL ON app.import_attempt_event_history FROM PUBLIC;
+REVOKE ALL ON app.import_attempt_event_history FROM PUBLIC,ai_hr_app;
 GRANT SELECT ON app.import_attempt_event_history TO ai_hr_app;
 --> statement-breakpoint
 -- Central audit selects full payloads. It must use whole-file custody, not coarse admin
