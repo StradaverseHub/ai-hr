@@ -5,20 +5,39 @@
 !/mobile
 !/lib
 /lib/*
+# Closed shared runtime closure, checked recursively by p1-mobile-archive.test.ts.
 !/lib/bounded-body.ts
 !/lib/clock-attempt.ts
-!/lib/mobile-clock-integrity.ts
-!/lib/mobile-key-enrollment.ts
-!/lib/mobile-android-key-policy.ts
+!/lib/mobile-android-clock-policy.ts
 !/lib/mobile-android-enrollment.ts
-!/lib/mobile-integrity-contract.ts
-!/lib/mobile-connection.ts
-!/lib/mobile-workplace-setup.ts
-!/lib/mobile-design.ts
+!/lib/mobile-android-key-policy.ts
+!/lib/mobile-clock-integrity.ts
 !/lib/mobile-composition.ts
+!/lib/mobile-connection.ts
+!/lib/mobile-design.ts
+!/lib/mobile-integrity-contract.ts
+!/lib/mobile-key-enrollment.ts
+!/lib/mobile-offline-clock.ts
+!/lib/mobile-offline-context.ts
+!/lib/mobile-offline-contract.ts
+!/lib/mobile-offline-receipt.ts
+!/lib/mobile-workplace-setup.ts
 !/lib/mobile-api
 /lib/mobile-api/*
 !/lib/mobile-api/contract.ts
+!/lib/mobile-api/v2
+/lib/mobile-api/v2/*
+!/lib/mobile-api/v2/attendance.ts
+!/lib/mobile-api/v2/claims.ts
+!/lib/mobile-api/v2/common.ts
+!/lib/mobile-api/v2/directory.ts
+!/lib/mobile-api/v2/leave.ts
+!/lib/mobile-api/v2/notifications.ts
+!/lib/mobile-api/v2/pay.ts
+!/lib/mobile-api/v2/profile.ts
+!/lib/mobile-api/v2/push.ts
+!/lib/mobile-api/v2/tasks.ts
+!/lib/mobile-api/v2/team.ts
 
 # EAS replaces .gitignore when this file exists; repeat private/generated exclusions.
 **/node_modules
