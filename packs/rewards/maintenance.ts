@@ -70,7 +70,8 @@ type AccessRow = {
 };
 async function accessState(tx: Tx, unitId: string, revision: number, lock: boolean) {
     const query=tx.select().from(rewardUnit).where(and(eq(rewardUnit.id,uuid.parse(unitId)),isNull(rewardUnit.deletedAt)));
-    const [unit]=await (lock?query.for('update'):query);
+    if(lock)await tx.execute(sql`select app.reward_access_lock_unit(${unitId}::uuid)`);
+    const [unit]=await query;
     if(!unit)throw new RewardMaintenanceError('missing');
     const [scope]=await tx.execute<{ok:boolean}>(sql`select app.reward_access_scope(${unit.id}::uuid) as ok`);
     if(!scope?.ok)throw new RewardMaintenanceError('scope');

@@ -43,8 +43,9 @@ GRANT EXECUTE ON FUNCTION app.reward_access_scope(uuid),app.reward_access_manage
 CREATE FUNCTION app.reward_access_candidate_visible(wanted_unit uuid,wanted_user uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.reward_unit r JOIN public.app_user u ON u.tenant_id=r.tenant_id WHERE r.id=wanted_unit AND u.id=wanted_user
  AND r.tenant_id=app.current_tenant_id() AND app.reward_access_scope(r.id) AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
- AND (app.reward_access_manage(r.id) OR app.access_workforce_person(u.person_id,'workforce.view') OR EXISTS(SELECT 1 FROM public.reward_member m WHERE m.tenant_id=r.tenant_id AND m.unit_id=r.id AND m.user_id=u.id)
- OR EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=r.tenant_id AND e.person_id=u.person_id AND e.company_id=r.company_id)));
+ AND (app.access_workforce_person(u.person_id,'workforce.view') OR u.id=app.current_user_id()
+ OR (NOT app.reward_admin(r.company_id) AND (NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=r.tenant_id AND e.person_id=u.person_id)
+ OR EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=r.tenant_id AND e.person_id=u.person_id AND e.company_id=r.company_id)))));
 $$;
 CREATE FUNCTION app.reward_access_directory(wanted_units uuid[]) RETURNS TABLE(id uuid,name text,email text,person_id uuid) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT DISTINCT u.id,p.full_name,p.primary_email,u.person_id FROM public.app_user u JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
@@ -232,3 +233,14 @@ CREATE OR REPLACE FUNCTION app.reward_access_request_stale(wanted_request uuid) 
  AND (r.id IS NULL OR r.deleted_at IS NOT NULL OR r.status<>'draft' OR r.revision<>k.value::text::int OR app.reward_access_members_snapshot(r.id) IS DISTINCT FROM q.before_members->k.key))
  OR EXISTS(SELECT 1 FROM public.reward_access_request q CROSS JOIN LATERAL jsonb_each_text(q.people_fingerprints) p WHERE q.id=wanted_request AND q.tenant_id=app.current_tenant_id() AND app.reward_access_request_authorised(q.id) AND p.value IS DISTINCT FROM app.reward_member_people_fingerprint(split_part(p.key,':',2)::uuid,split_part(p.key,':',1)::uuid));
 $$;
+
+--> statement-breakpoint
+-- A proposal holder can take the existing access-write lock without acquiring general UPDATE privilege on a reward review.
+CREATE FUNCTION app.reward_access_lock_unit(wanted_unit uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ PERFORM 1 FROM public.reward_unit r WHERE r.id=wanted_unit AND r.tenant_id=app.current_tenant_id() AND r.deleted_at IS NULL AND app.reward_access_scope(r.id) FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'access request scope' USING ERRCODE='42501'; END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_access_lock_unit(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_access_lock_unit(uuid) TO ai_hr_app;

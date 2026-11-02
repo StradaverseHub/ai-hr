@@ -70,8 +70,8 @@ describe('Rewards authoritative immediate application and GR decisions',()=>{
   const preview=await previewRewardAccessBatch(actor,input);expect(preview.pending).toBe(true);const pending=await saveRewardAccessBatch(actor,input,preview.digest);expect(pending.pending).toBe(true);
   expect(await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.userId,target.userId!))).toHaveLength(0);
   expect((await owner.db.select().from(s.rewardMember).where(and(eq(s.rewardMember.unitId,second),eq(s.rewardMember.userId,actor.userId!))))).toHaveLength(1);
-  await expect(decideRewardAccessRequest(actor,pending.requestId,true)).rejects.toMatchObject({code:'checker'});
-  await decideRewardAccessRequest(checker,pending.requestId,true);
+  await expect(decideRewardAccessRequest(actor,pending.requestId!,true)).rejects.toMatchObject({code:'checker'});
+  await decideRewardAccessRequest(checker,pending.requestId!,true);
   expect(await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.userId,target.userId!))).toHaveLength(1);
  });
  it('refuses expired/archived roles, unreasoned SQL and direct mutation; invalidates previews when role authority changes',async()=>{
