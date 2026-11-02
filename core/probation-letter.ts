@@ -1,4 +1,4 @@
-import {probationLetterDocument} from '../lib/probation-letter-document';
+import {validateProbationLetterFields,probationLetterDocument} from '../lib/probation-letter-document';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -6,7 +6,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {withScopedLifecycleTenant} from './module-gate';
 import {assertModuleEnabled} from './entitlements';
 import {v9ConfigSchema} from '../lib/lifecycle-v9-validation';
-import {validateFieldValue,type Block,type Field,type Document} from '../lib/lifecycle-v9-model';
+import {type Block,type Field,type Document} from '../lib/lifecycle-v9-model';
 import {validateSigningRoute,signingComplete,type SigningDocument,type SigningRoute,type SigningGuardrails} from '../lib/document-signing-model';
 import {ProbationError} from '../lib/probation-model';
 import type {ProbationTemplate} from '../lib/probation-workflow';
@@ -58,7 +58,7 @@ async function renderLetter(document:Document,signing:SigningDocument|null,refer
 export function prepareProbationLetter(ctx:SessionContext,input:Parameters<typeof previewTx>[2]){return withScopedLifecycleTenant(ctx,async tx=>{
  const preview=await previewTx(tx,ctx,input);
  if(preview.blocks.some(block=>block.type==='letterhead')&&['company.name','company.regNo','company.address'].some(key=>!preview.merge[key]?.trim()))throw new ProbationError('invalid','An authorized Organisation administrator must complete the company letterhead before this letter can be prepared.');
- for(const field of preview.fields)validateFieldValue(field,preview.merge[field.pmKey??field.id]??'');
+ validateProbationLetterFields(preview.fields,preview.merge);
  const document=probationLetterDocument({id:randomUUID(),...preview,name:preview.templateName??'Probation outcome letter',createdAt:new Date().toISOString()}),basePdf=await renderLetter(document,null,'Probation outcome preparation');
  const[row]=await tx.execute<{data:ProbationLetterPreview&{partId:string;contentHash:string;contentRevision:number}}>(sql`select app.probation_prepare_letter(${input.outcomeId}::uuid,${input.templateId}::uuid,${json(input.edits)}::jsonb,${basePdf},${input.revision},${preview.sourceDigest}) as data`);
  const created=await createSigningDocumentTx(tx,ctx,{companyId:row.data.companyId,employmentId:row.data.employmentId,subjectId:row.data.partId,subjectType:'probation',contentHash:row.data.contentHash,route:row.data.route,guardrails:row.data.guardrails});
