@@ -18,10 +18,8 @@
  *  5. THE PREDICATE IS SHARED WITH READINESS. Two definitions of "has a bank account" would drift, and
  *     the drift would be invisible: the action layer closing findings the readiness screen still lists.
  */
-import fs from 'node:fs';
-import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -298,19 +296,30 @@ describe('ADR-0083 §2.5 — the action layer', () => {
     expect(r!.agreementRate).toBe(1);
   });
 
-  it('the execution loop catches PER VERDICT, so one refusal cannot discard committed work', () => {
-    // A SOURCE-SHAPE ASSERTION, and deliberately so: the case above reaches the pre-filter rather than
-    // the catch, and the only thing that reaches the catch is a genuine race inside a single call — the
-    // service refusing between the re-check and the write. That cannot be staged deterministically, and
-    // a behavioural test that silently exercises a different path would claim coverage it does not have.
-    // What matters is checkable here: each resolve is its own transaction, so a throw escaping the loop
-    // would report total failure over verdicts that had already COMMITTED.
-    const src = fs.readFileSync(path.resolve(__dirname, '../core/agent-actions.ts'), 'utf8');
-    const loop = src.slice(src.indexOf('for (const id of ids)'));
-    expect(loop).toContain('try {');
-    expect(loop).toContain('await resolveAnomalyVerdict(');
-    expect(loop.indexOf('try {')).toBeLessThan(loop.indexOf('await resolveAnomalyVerdict('));
-    expect(loop).toMatch(/\}\s*catch\b/);
+  it('does not overwrite a disposition committed while resolution waits for the verdict row', async () => {
+    const f=await flagged({withBank:true});
+    let signalHeld!:()=>void,release!:()=>void;
+    const held=new Promise<void>(resolve=>{signalHeld=resolve;}),gate=new Promise<void>(resolve=>{release=resolve;});
+    let holderPid=0;
+    const holder=owner.db.transaction(async tx=>{
+      const [pid]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);holderPid=pid.pid;
+      await tx.execute(sql`select id from payroll_anomaly_verdict where id=${f.verdictId}::uuid for update`);
+      signalHeld();await gate;
+      await tx.update(schema.payrollAnomalyVerdict).set({resolution:'accepted',resolvedAt:new Date(),resolvedByUserId:adminCtx(base).userId!}).where(eq(schema.payrollAnomalyVerdict.id,f.verdictId));
+    });
+    await held;
+    const execution=executeAction(adminCtx(base),{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]});
+    try {
+      let blocked=false;
+      for(let n=0;n<200&&!blocked;n++){
+        const [state]=await owner.db.execute<{blocked:boolean}>(sql`select exists(select 1 from pg_stat_activity where ${holderPid}=any(pg_blocking_pids(pid))) as blocked`);
+        blocked=state.blocked;if(!blocked)await new Promise(resolve=>setTimeout(resolve,20));
+      }
+      expect(blocked,'must reach actual contended verdict write/read, not an unrelated refusal').toBe(true);
+    } finally {release();await holder;}
+    expect(await execution).toEqual({closed:0,stale:1});
+    const [stored]=await owner.db.select().from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.id,f.verdictId));
+    expect(stored.resolution).toBe('accepted');
   });
 
   it('every action type is reversible and propose-only — the invariant, not a description', () => {
