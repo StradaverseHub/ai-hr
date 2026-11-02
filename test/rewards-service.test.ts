@@ -7,7 +7,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
-import { returnedRewardUnits, getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, decideRewardUnit, postRewardUnit, canPostRewardUnit, rewardPayrollChoices } from '../packs/rewards/service';
+import { returnedRewardUnits, getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, decideRewardUnit, postRewardUnit, canPostRewardUnit, rewardPayrollChoices, prepareReviewedRewardPostTx, postReviewedRewardUnitTx } from '../packs/rewards/service';
 import { emptyFacts,emptyRecommendation,visibleEntry,isSeniorPlanMember, returnedState, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { dispatchNotificationsFromSweep, renderRewardRouted } from '../core/notifications';
@@ -293,6 +293,17 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
       expect(await canPostRewardUnit(actors.bu!,unitId)).toBe(false);expect(await rewardPayrollChoices(actors.bu!,unitId)).toEqual([]);
     }finally{await owner.db.execute(sql`drop policy rewards_metadata_forbid_raw on reward_entry`);}
     expect((await view()).unit.status).toBe('draft');
+  });
+  it('observes the original app native prepare and enact under pre-existing immediate constraints',async()=>{
+    // Uses the original exported native transaction owners and their real app ACL, with no
+    // private posting constructor, new grants, bridge, policy, flag or source replacement.
+    const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)}),selection={unitId,revision,batchId:batch.batchId};
+    const baseline=await withTenant(admin,tx=>prepareReviewedRewardPostTx(tx,admin,selection));expect(baseline.reviewedDigest).toMatch(/^[a-f0-9]{64}$/);let prepared=false;
+    const receipt=await withTenant(admin,async tx=>{
+      await tx.execute(sql`set constraints all immediate`);const original=await prepareReviewedRewardPostTx(tx,admin,selection);prepared=true;
+      return postReviewedRewardUnitTx(tx,admin,selection,original.reviewedDigest);
+    });
+    expect(prepared).toBe(true);expect(receipt).toMatchObject({unitId,currentStatus:'posted',postedRevision:revision});expect((await view()).unit.status).toBe('posted');
   });
   it('owns the leave graph interval before reward funding/source/grade and payroll effects', async () => {
     const rev=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)});
