@@ -505,12 +505,13 @@
     "createLogin": "Create a Login Manually",
     "inviteUser": "Invite a User",
     "users": "Users",
-    "securityPermissions": "Security & Permissions",
+    "securityPermissions": "Role / User Groups",
     "functionAccess": "Function Access",
     "securityCenter": "Security Center",
     "aiManagementInventory": "AI inventory",
     "entra": "Microsoft Entra ID",
-    "passwordPolicy": "Password Policy"
+    "passwordPolicy": "Password Policy",
+    "dataPermissionAccess": "Data Permission Access"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -29660,7 +29661,7 @@
     }
   },
   "accessConfiguration": {
-    "title": "Security & permissions",
+    "title": "Role / User Groups",
     "description": "Manage supported group and individual permissions, with a preview before each change.",
     "groups": "User groups",
     "groupName": "Group name",
@@ -29733,7 +29734,10 @@
       "configure": "Manage security and permissions",
       "workforceView": "View employee records",
       "workforceMaintain": "Maintain employee records",
-      "profileReview": "Review eligible profile changes"
+      "profileReview": "Review eligible profile changes",
+      "workforceAdd": "Add workforce records",
+      "workforceEdit": "Edit workforce records",
+      "workforceDelete": "Delete workforce records"
     },
     "workforceReadOnly": "You can view this employee record. Your current Workforce permission does not allow changes.",
     "workforceCommandHint": "You can change the Employee ID. Other details on this page are view only.",
@@ -29762,7 +29766,13 @@
       "changed": "The employee record changed. Reopen it before saving.",
       "denied": "Your permission changed. Reopen this record to check your access.",
       "invalid": "Enter an available Employee ID using letters, numbers or dashes, up to 30 characters."
-    }
+    },
+    "matrixView": "View",
+    "matrixAdd": "Add",
+    "matrixEdit": "Edit",
+    "matrixDelete": "Delete",
+    "matrixWorkforce": "Workforce",
+    "matrixOther": "Other permissions"
   },
   "myPayslip": {
     "title": "My Payslip",
@@ -32829,7 +32839,7 @@
     "invitationSent": "Invitation sent.",
     "legacyHelp": "Choose the page for this account setup.",
     "permissions": {
-      "title": "Security & Permissions",
+      "title": "Role / User Groups",
       "description": "Configure access rules, protected groups and permissions."
     },
     "functions": {
@@ -32851,6 +32861,10 @@
     "passwordPolicy": {
       "title": "Password Policy",
       "description": "New complexity rules apply when a password is created, changed or reset. External organisation sign-ins keep their provider’s password policy."
+    },
+    "dataPermissions": {
+      "title": "Data Permission Access",
+      "description": "Choose what employee records an administrative user can reach. Function permissions and existing company authority still apply. Self-service and assigned approval responsibilities keep their own rules."
     }
   },
   "payFormula": {
@@ -33707,5 +33721,63 @@
       "unlockAction": "Unlock account",
       "unlocked": "Account unlocked."
     }
+  },
+  "dataPermissions": {
+    "title": "Data Permission Access",
+    "description": "Choose what employee records an administrative user can reach. Function permissions and existing company authority still apply. Self-service and assigned approval responsibilities keep their own rules.",
+    "search": "Search configurations",
+    "new": "New configuration",
+    "name": "Configuration name",
+    "enabled": "Enable configuration",
+    "active": "Active",
+    "inactive": "Inactive",
+    "assigned": "{count} assigned users",
+    "empty": "No configurations yet. Existing company access remains unchanged.",
+    "legacyPreset": "Use existing authorised companies",
+    "legacyHelp": "This explicit preset adds no employee conditions. It never grants additional company or function authority.",
+    "andOr": "Selected fields combine with AND. Multiple values within a field combine with OR. At least one condition is required.",
+    "unavailableValue": "Previously selected value is unavailable; remove it to replace the condition.",
+    "noValues": "No values available within your current access.",
+    "preview": "Preview configuration",
+    "retire": "Retire configuration",
+    "assignedHelp": "Remove every assignment before retiring this configuration.",
+    "assignmentTitle": "User data assignments",
+    "assignmentHelp": "One configuration per user. No assignment preserves existing company access. An assigned inactive or invalid configuration grants no administrative employee records.",
+    "user": "User",
+    "profile": "Data configuration",
+    "legacyCompany": "Existing company access (no assignment)",
+    "previewAssignment": "Preview assignment",
+    "review": "Review access change",
+    "reviewCounts": "{users} affected users. {records} employee records match within your current access.",
+    "reviewHelp": "Review the rules and assignments before saving. Company and function authority still limit every result. Changed permissions, employee values or configuration invalidate this preview.",
+    "confirm": "Confirm and save",
+    "cancel": "Cancel",
+    "saved": "Saved. Access is checked again on every request.",
+    "errors": {
+      "invalid": "Check the configuration. Assigned configurations cannot be retired.",
+      "changed": "Access or employee data changed. Reload and preview again.",
+      "forbidden": "You cannot grant access beyond your current authority.",
+      "unavailable": "The change could not be saved. Try again."
+    },
+    "fields": {
+      "company": "Company",
+      "businessUnit": "Business Unit",
+      "division": "Division",
+      "branch": "Branch",
+      "department": "Department",
+      "section": "Section",
+      "team": "Team",
+      "position": "Position",
+      "grade": "Job Grade",
+      "employmentType": "Employment Type",
+      "employmentStatus": "Employment Status",
+      "costCentre": "Cost Centre",
+      "nationality": "Nationality",
+      "gender": "Gender",
+      "maritalStatus": "Marital Status",
+      "category": "Employee Category",
+      "employeeId": "Employee ID"
+    },
+    "reviewDifference": "Within records you may inspect: {before} before, {after} after; {gained} gained and {lost} lost."
   }
 }

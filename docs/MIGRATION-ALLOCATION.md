@@ -921,7 +921,7 @@ with no deployment or installation authorization.
 ## Approved administrative data-profile owner — 2 November 2026 (provisional)
 
 Security worker reserves `0936_data_permission_profiles`, index758 on its own journal,
-when1793330000336, following its0935 allocation. SQL SHA256 `5c5767e125d425fe21ea4af0458a0714b1fe13e4531694c7488ea8561f13316b`.
+when1793330000336, following its0935 allocation. SQL SHA256 `cee095e27cf6b5c600c8fb0f03455bd12b7687f18f59786bc999f106dd20ed47`.
 Parent coordinated0937 / when1793330000337 / aggregate index759 to the independent read-bypass
 worker;0938 / when1793330000338 / aggregate index760 is reserved to Security for central scope.
 These are additive uninstalled source claims. Re-audit all refs/worktree journals and live watermark
