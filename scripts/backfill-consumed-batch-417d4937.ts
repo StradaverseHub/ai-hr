@@ -52,6 +52,8 @@ export type ConsumedBackfillReport = {
   remainingAfter: number;
   /** Eligible rows without an approved exact witness, or whose witness became stale. */
   unreviewed: number;
+  /** Operator references for rows actually changed, suitable for retaining with the repair receipt. */
+  appliedReviews: ReviewedConsumedRow[];
 };
 
 /**
@@ -75,9 +77,10 @@ export async function runConsumedBackfill(
   opts: { apply: boolean; reviewedRows?: readonly ReviewedConsumedRow[] } = { apply: false },
 ): Promise<ConsumedBackfillReport> {
   const reviewed = opts.reviewedRows ?? [];
-  if (!Array.isArray(reviewed) || reviewed.length > 5000 || new Set(reviewed.map(r => r.id)).size !== reviewed.length ||
+  if (!Array.isArray(reviewed) || reviewed.length > 5000 ||
       reviewed.some(r => !r || typeof r !== 'object' || !/^[0-9a-f-]{36}$/i.test(r.id) || !/^[0-9a-f]{64}$/.test(r.fingerprint) ||
-        typeof r.evidenceRef !== 'string' || !r.evidenceRef.trim() || r.evidenceRef.length > 1000)) {
+        typeof r.evidenceRef !== 'string' || !r.evidenceRef.trim() || r.evidenceRef.length > 1000) ||
+      new Set(reviewed.map(r => r.id)).size !== reviewed.length) {
     throw new Error('Provide unique reviewed row IDs, report fingerprints and independent evidence references.');
   }
   const owner = createDb(url);
@@ -121,6 +124,7 @@ export async function runConsumedBackfill(
       alreadyCorrect: true,
       remainingAfter: 0,
       unreviewed: 0,
+      appliedReviews: [],
     };
   }
 
@@ -167,6 +171,7 @@ export async function runConsumedBackfill(
   }));
 
   let marked = 0;
+  const appliedReviews: ReviewedConsumedRow[] = [];
   let remainingAfter = candidates.length;
 
   const approved = new Map(reviewed.map(row => [row.id, row]));
@@ -189,6 +194,7 @@ export async function runConsumedBackfill(
             AND ps.batch_id=t.batch_id AND ps.employment_id=t.employment_id RETURNING t.id
         `);
         marked += written.length;
+        if (written.length) appliedReviews.push({...review});
       }
     });
     remainingAfter = (await owner.db.execute<{ id: string }>(listSql)).length;
@@ -203,6 +209,7 @@ export async function runConsumedBackfill(
     alreadyCorrect: candidates.length === 0,
     remainingAfter,
     unreviewed: remainingAfter,
+    appliedReviews,
   };
 }
 
@@ -246,6 +253,7 @@ if (process.argv[1]?.endsWith('backfill-consumed-batch-417d4937.ts')) {
         );
       }
       if (r.apply) {
+        for (const review of r.appliedReviews) console.log(`  REVIEW ${review.id}: ${review.evidenceRef}`);
         console.log(`\nWrote ${r.marked} row(s). Still disagreeing afterwards: ${r.remainingAfter}.`);
         if (r.remainingAfter !== 0) {
           console.error('✗ Some rows still have no marker after the write — read the list above.');
