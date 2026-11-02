@@ -215,6 +215,7 @@ export const PROVIDER_WORKLOAD_AVAILABILITY=Object.freeze([
  {feature:'claims_triage',variant:'description_completeness',contracts:['claim_detail_triage_v1'],remaining:['raw_description_category_date_subject_interpretation']},
  {feature:'payroll_hypotheses',variant:'native_adjudicated_candidate_ranking',contracts:['payroll_feature_hypothesis_v1'],remaining:[]},
  {feature:'payroll_explanation',variant:'native_detector_field_selection',contracts:['payroll_detector_explanation_v1'],remaining:['arbitrary_unsupported_detector_facts']},
+ {feature:'pay_rule_draft',variant:'validated_formula_draft',contracts:['authored_pay_formula_v1'],remaining:['human_calculation_intent_review']},
  {feature:'pay_rule_draft',variant:'closed_rule_intent_with_local_parameters',contracts:['authored_pay_rule_v1'],remaining:['unstructured_rule_semantics','formula_dependencies']},
  {feature:'report_insight',variant:'closed_report_column_intent',contracts:['authored_report_plan_v1'],remaining:['unstructured_request_semantics','private_filter_values']},
  {feature:'feedback_planning',variant:'category_outline_with_local_reporter_request',contracts:['feedback_task_outline_v1'],remaining:['raw_note_semantic_implementation_inference']},

@@ -10,6 +10,7 @@ import { adjudicatePayFormulaDraft, PAY_FORMULA_DRAFT_CONTRACT, payFormulaDraftR
 
 export async function draftPayFormula(ctx: SessionContext, input: unknown) {
   const request = Object.freeze(payFormulaDraftRequest.parse(input));
+  ctx = {...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({...grant}))};
   const author = async (tx: Tx, current = ctx) => {
     await assertAiPrincipalTx(tx, current);
     await assertPayFormulaDraftAuthorTx(tx, current);

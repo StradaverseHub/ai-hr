@@ -33307,7 +33307,8 @@
         "gender": "Giới tính",
         "nationality": "Quốc tịch",
         "maritalStatus": "Tình trạng hôn nhân"
-      }
+      },
+      "conditions": "Điều kiện đã xác thực"
     }
   },
   "payrollTaxBasis": {

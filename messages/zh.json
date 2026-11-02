@@ -33307,7 +33307,8 @@
         "gender": "性别",
         "nationality": "国籍",
         "maritalStatus": "婚姻状况"
-      }
+      },
+      "conditions": "已验证的条件"
     }
   },
   "payrollTaxBasis": {

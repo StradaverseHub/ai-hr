@@ -1,7 +1,7 @@
 /** Untrusted authoring input and model output; never a payroll or activation owner. */
 import { z } from 'zod';
 import { PAY_FORMULA_FUNCTIONS, PAY_FORMULA_FIELD_TYPES } from './pay-formula-registry';
-import { analyzePayFormula, parsePayFormula, validatePayFormula } from './pay-formula-language';
+import { analyzePayFormula, parsePayFormula, printPayFormula, validatePayFormula } from './pay-formula-language';
 import { diagnosePayFormula } from './pay-formula-diagnostics';
 
 export const PAY_FORMULA_DRAFT_CONTRACT = 'authored_pay_formula_v1';
@@ -15,7 +15,7 @@ const output = z.object({
   questions: z.array(z.string().trim().min(1).max(500)).max(5),
   unsupported: z.array(z.string().trim().min(1).max(500)).max(12),
 }).strict();
-export type PayFormulaDraft = z.infer<typeof output> & { valid: boolean; variables: string[] };
+export type PayFormulaDraft = z.infer<typeof output> & { valid: boolean; variables: string[]; conditions: string[] };
 
 /** Only the explicitly disclosed requirement and public code-owned grammar metadata leave the app. */
 export function payFormulaDraftPrompt(input: unknown) {
@@ -44,10 +44,11 @@ export function adjudicatePayFormulaDraft(raw: string): PayFormulaDraft {
   if (typeof raw !== 'string' || raw.length > 48000) throw new Error('invalid_output');
   const result = output.parse(JSON.parse(raw));
   if (result.questions.length || result.unsupported.length || !result.source?.trim()) {
-    return { ...result, source: null, valid: false, variables: [] };
+    return { ...result, source: null, valid: false, variables: [], conditions: [] };
   }
   const program = parsePayFormula(result.source);
   validatePayFormula(program);
   if (diagnosePayFormula(result.source).some(problem => problem.severity === 'error')) throw new Error('invalid_output');
-  return { ...result, valid: true, variables: analyzePayFormula(program).functions };
+  return { ...result, valid: true, variables: analyzePayFormula(program).functions,
+    conditions: printPayFormula(program).split("\n").map(line=>line.trim()).filter(line=>/^(If|ElseIf) /.test(line)) };
 }

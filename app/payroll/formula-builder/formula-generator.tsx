@@ -51,6 +51,7 @@ export function FormulaGenerator({ source, disabled, apply }: {
       {result.questions.map((question,index)=><p key={'q'+index} className="text-sm">{question}</p>)}
       {result.unsupported.map((issue,index)=><p key={'u'+index} className="text-sm text-destructive">{issue}</p>)}
       {result.source && <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-muted p-3 font-mono text-xs">{result.source}</pre>}
+      {result.conditions.length>0 && <div className="space-y-1 text-sm"><p className="font-medium">{t('conditions')}</p>{result.conditions.map((condition,index)=><p className="break-words font-mono text-xs" key={index}>{condition}</p>)}</div>}
       {result.variables.length>0 && <p className="text-sm text-muted-foreground">{t('variables')}: {result.variables.join(', ')}</p>}
       <p className="text-sm">{t(result.valid ? 'valid' : 'needsClarification')}</p>
       {replace ? <div role="alertdialog" aria-label={t('replaceTitle')} className="space-y-3 rounded-lg border border-border p-3">

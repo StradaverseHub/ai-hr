@@ -33307,7 +33307,8 @@
         "gender": "பாலினம்",
         "nationality": "தேசியம்",
         "maritalStatus": "திருமண நிலை"
-      }
+      },
+      "conditions": "சரிபார்க்கப்பட்ட நிபந்தனைகள்"
     }
   },
   "payrollTaxBasis": {

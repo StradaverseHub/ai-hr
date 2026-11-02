@@ -33,7 +33,7 @@ export async function assertPayFormulaDraftAuthorTx(tx:Tx,ctx:SessionContext){aw
 export async function validatePayFormulaDraft(ctx:SessionContext,source:string){
  const program=parsePayFormula(source);
  if(diagnosePayFormula(source).some(problem=>problem.severity==='error'))throw new PayFormulaError('The proposed formula has validation errors.');
- return locked(ctx,async tx=>{await dependencySnapshotTx(tx,ctx,program);});
+ return locked(ctx,async tx=>{await dependenciesTx(tx,ctx,program);await dependencySnapshotTx(tx,ctx,program);});
 }
 async function locked<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>){return withTenant(ctx,async tx=>{await lockPayrollHistoryReadTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await authority(tx,ctx);await lockPayComponentCatalogTx(tx,ctx);return fn(tx);});}
 async function event(tx:Tx,ctx:SessionContext,p:{id:string;kind:string;revisionId?:string;testId?:string;componentId?:string;detail?:unknown}){

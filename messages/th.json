@@ -33307,7 +33307,8 @@
         "gender": "เพศ",
         "nationality": "สัญชาติ",
         "maritalStatus": "สถานภาพสมรส"
-      }
+      },
+      "conditions": "เงื่อนไขที่ตรวจสอบแล้ว"
     }
   },
   "payrollTaxBasis": {

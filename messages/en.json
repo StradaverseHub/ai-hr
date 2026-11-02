@@ -33307,7 +33307,8 @@
         "gender": "Gender",
         "nationality": "Nationality",
         "maritalStatus": "Marital status"
-      }
+      },
+      "conditions": "Verified conditions"
     }
   },
   "payrollTaxBasis": {
