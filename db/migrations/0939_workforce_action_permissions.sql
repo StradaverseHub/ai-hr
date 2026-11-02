@@ -2126,3 +2126,25 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.profile_changes_maintenance_lock() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER profile_changes_maintenance_lock BEFORE UPDATE ON public.profile_change_request FOR EACH STATEMENT EXECUTE FUNCTION app.profile_changes_maintenance_lock();
+
+
+--> statement-breakpoint
+-- Registry exists here. Only a real live installation-owned native own/assigned course may cross
+-- an administrative carrier boundary. Human positives alone cannot create that native ownership;
+-- existing inner source algebra, current principal, explicit denials and prerequisites stay intact.
+CREATE OR REPLACE FUNCTION app.access_current_capability_source(p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT (app.access_current_carrier_covers(p_company) OR (app.access_native_default_current(p_capability,p_company)
+  AND EXISTS(SELECT 1 FROM app.access_function_action action JOIN app.access_function_definition definition USING(function_key)
+   JOIN public.access_capability capability ON capability.id=action.capability_id AND capability.scope=definition.scope
+   WHERE action.capability_id=p_capability AND action.capability_id='function.'||definition.function_key||'.'||action.operation
+    AND definition.metadata->>'course' IN ('own','assigned')
+    AND (definition.scope='tenant' AND p_company IS NULL OR definition.scope='company' AND EXISTS(SELECT 1 FROM public.company company WHERE company.id=p_company AND company.tenant_id=app.current_tenant_id())))))
+ AND (app.access_native_default_current(p_capability,p_company) OR
+  EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=app.current_tenant_id() AND o.user_id=app.current_user_id() AND o.capability_id=p_capability AND o.effect='allow' AND o.retired_at IS NULL AND app.access_scope_covers(o.company_id,p_company,o.tenant_id))
+  OR EXISTS(SELECT 1 FROM public.access_effective_membership m JOIN public.access_group g ON g.tenant_id=m.tenant_id AND g.id=m.group_id JOIN public.access_group_grant a ON a.tenant_id=g.tenant_id AND a.group_id=g.id
+   WHERE m.tenant_id=app.current_tenant_id() AND m.user_id=app.current_user_id() AND g.retired_at IS NULL AND a.retired_at IS NULL AND a.capability_id=p_capability
+    AND app.access_scope_covers(m.company_id,p_company,m.tenant_id) AND app.access_scope_covers(a.company_id,p_company,m.tenant_id)
+    AND (NOT m.derived OR app.access_derived_carrier_covers(g.legacy_key,p_company))));
+$$;
+--> statement-breakpoint
