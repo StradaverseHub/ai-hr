@@ -35,10 +35,16 @@
  * - The AI conversation is switched on for the whole group by a group administrator on AI administration's Features and
  *   agents page, after the provider is set up; each person also needs Assistant access.
  * - Public holidays: "Fictional Holiday 9" nine days ahead and "Fictional Holiday 40" forty days ahead.
- * - What the product cannot do in chat today: read or import a file, show any individual's pay or a pay average, count
- *   headcount, or show identity, bank, tax, EPF or SOCSO numbers (removed before the model sees them). Leave
- *   applications are suggested as a card that opens the leave page; a prepared card exists for cancelling or changing
- *   leave, overtime requests, claim cancellation and some approval decisions. */
+ * - Pay averages (issue 13b): for people with payroll access, group figures from each company's latest closed payroll
+ *   run, withholding any group under five people. Acme's latest closed run (August 2026) pays one person, so every Acme
+ *   average is withheld: "too small to report" is the right answer here, and a published average is right only for a
+ *   group of five or more.
+ * - Leave applications (issue 10): prepared from chat as a filled Request Leave form for the person to check and
+ *   submit; when the leave type or dates are missing or unclear, one short question with the leave types numbered.
+ * - What the product cannot do in chat today: read or import a file, show any individual's pay, count headcount, or
+ *   show identity, bank, tax, EPF or SOCSO numbers (removed before the model sees them). Besides leave applications, a
+ *   prepared card exists for cancelling or changing leave, overtime requests, claim cancellation and some approval
+ *   decisions; other actions are suggested as a card that opens their page. */
 import type {SmartEvalConversation} from '../core/improvement/smart-eval-score';
 
 const journey={kind:'journey'} as const;
@@ -82,8 +88,8 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
   ideal:'Kindly says no: leave is decided by the person\'s approver, not by them or the assistant. Offers what it can do instead (apply, or show the status of their requests). One or two sentences.'}]},
  {id:'emp-ms',role:'employee',turns:[{id:'emp-ms-1',question:'Berapa baki cuti tahunan saya?',locale:'ms',kind:'answer',factor:'language',source:journey,
   ideal:'Replies in Malay: 17.25 hari cuti tahunan. One sentence.',mustMention:['17.25']}]},
- {id:'emp-zh',role:'employee',turns:[{id:'emp-zh-1',question:'帮我请明天的病假',locale:'zh',kind:'do',factor:'language',source:journey,
-  ideal:'Replies in Chinese. Offers to prepare a Medical Leave application for tomorrow (the date from today) for the person to confirm. Does not claim it is submitted.',actions:['leave.apply']}]},
+ {id:'emp-zh',role:'employee',turns:[{id:'emp-zh-1',question:'帮我请明天的病假',locale:'zh',kind:'clarify',factor:'language',source:journey,
+  ideal:'Replies in Chinese. Prepares the Medical Leave application for tomorrow (the date from today) as a filled form for the person to check and submit, or, when the leave type or date cannot be settled, asks one short question (leave types numbered as listed). Does not claim it is submitted.',actions:['leave.apply']}]},
 
  // ───────────── MANAGER (Ravi Fictional) ─────────────
  {id:'mgr-queue',role:'manager',turns:[
@@ -111,9 +117,9 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
   source:{kind:'reconstructed',issues:['13'],from:'Salary refusal unhelpful: "contact your payroll team" said to an admin.'},
   ideal:'One line: individual pay is not shown in chat; links the payroll or employee page where this administrator can already see Ravi\'s pay. Never "contact your payroll team". No figure.',
   noPayFigures:true,mustNotMention:PAY_REFUSAL_WORDING}]},
- {id:'hr-average',role:'hr_admin',turns:[{id:'hr-average-1',question:"what's the average salary in my company?",locale:'en',kind:'honest_gap',factor:'capability',
-  source:{kind:'reconstructed',issues:['13b'],from:'Pay averages, approved by the owner ("Yes, averages only"), not built yet.'},
-  ideal:'Says plainly it cannot give pay averages in chat yet, and links the payroll or report page this administrator can open. No figure, no guess, not "contact payroll".',
+ {id:'hr-average',role:'hr_admin',turns:[{id:'hr-average-1',question:"what's the average salary in my company?",locale:'en',kind:'answer',factor:'capability',
+  source:{kind:'reconstructed',issues:['13b'],from:'Pay averages, approved by the owner ("Yes, averages only"); not built at the staging check.'},
+  ideal:'Uses the pay averages: here the pay averages read withholds every Acme group, because its latest closed payroll run (August 2026) pays fewer than five people, so it says in one line that the average is not shown because the group is too small to report (privacy), may name the basis (basic pay, latest closed run, August 2026) and links the payroll or report page. A published average would be right only for a group of five or more. No individual figure, no guess, not "contact payroll".',
   noPayFigures:true,mustNotMention:PAY_REFUSAL_WORDING}]},
  {id:'hr-leave-types',role:'hr_admin',turns:[{id:'hr-leave-types-1',question:'how do I set up leave types for my company',locale:'en',kind:'guide',factor:'brevity',
   source:{kind:'reconstructed',issues:['9'],from:'Replies too wordy; raw ** and [label](/path) shown.'},
@@ -130,9 +136,9 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
   mustMention:['Nur']}]},
  {id:'hr-zh',role:'hr_admin',turns:[{id:'hr-zh-1',question:'帮我导入员工资料',locale:'zh',kind:'do',factor:'language',source:journey,
   ideal:'Replies in Chinese: yes, offers the employee import (card or page) and says in one line what the file needs. Does not claim it can read a file in chat.',actions:['employees.import']}]},
- {id:'hr-ms',role:'hr_admin',turns:[{id:'hr-ms-1',question:'Apakah gaji purata syarikat saya?',locale:'ms',kind:'honest_gap',factor:'language',
+ {id:'hr-ms',role:'hr_admin',turns:[{id:'hr-ms-1',question:'Apakah gaji purata syarikat saya?',locale:'ms',kind:'answer',factor:'language',
   source:{kind:'reconstructed',issues:['13b'],from:'Pay averages, asked in Malay.'},
-  ideal:'Replies in Malay: pay averages are not available in chat yet; links the payroll or report page this administrator can open. No figure.',noPayFigures:true}]},
+  ideal:'Replies in Malay: the pay averages read withholds every Acme group, because its latest closed payroll run (August 2026) pays fewer than five people, so the average is not shown because the group is too small to report; may name the basis and links the payroll or report page. No figure.',noPayFigures:true}]},
 
  // ───────────── PAYROLL (Fictional Payroll Partner) ─────────────
  {id:'pay-status',role:'payroll',turns:[{id:'pay-status-1',question:"is this month's payroll done?",locale:'en',kind:'answer',factor:'facts',source:journey,
@@ -145,9 +151,9 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
   source:{kind:'reconstructed',issues:['13'],from:'A pay refusal must link where the person can already see pay.'},
   ideal:'One line: individual pay is not shown in chat; links the payroll page where this payroll partner can see it. No figure, not "contact payroll".',
   noPayFigures:true,mustNotMention:PAY_REFUSAL_WORDING}]},
- {id:'pay-average',role:'payroll',turns:[{id:'pay-average-1',question:'average basic pay by department?',locale:'en',kind:'honest_gap',factor:'capability',
+ {id:'pay-average',role:'payroll',turns:[{id:'pay-average-1',question:'average basic pay by department?',locale:'en',kind:'answer',factor:'capability',
   source:{kind:'reconstructed',issues:['13b'],from:'Pay averages asked by someone with payroll access.'},
-  ideal:'Says plainly averages are not available in chat yet and links the payroll or report page they can open. No figure, no guess.',noPayFigures:true,mustNotMention:PAY_REFUSAL_WORDING}]},
+  ideal:'Uses the pay averages by department: the pay averages read withholds every Acme group, because its latest closed payroll run (August 2026) pays fewer than five people, so it says in one line that the department averages are not shown because the groups are too small to report, and links the payroll or report page. A published average would be right only for a group of five or more. No figure, no guess.',noPayFigures:true,mustNotMention:PAY_REFUSAL_WORDING}]},
  {id:'pay-run',role:'payroll',turns:[{id:'pay-run-1',question:'how do I run payroll for November?',locale:'en',kind:'guide',factor:'doing',source:journey,
   ideal:'Offers to start the November 2026 payroll run ("Yes, I can …", card) or gives at most five short steps with the payroll page. Mentions September 2026 is still open only if relevant. Short.',
   actions:['multi_cycle_payroll.create_run']}]},

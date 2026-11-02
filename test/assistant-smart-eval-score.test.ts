@@ -112,7 +112,7 @@ describe('scoring one answer',()=>{
   expect(long.findings.map(row=>row.check)).toEqual(['long']);expect(long.dims.clarity).toBe(0.3);
  });
  it('does not hold the harness\'s fixed English replies to the question\'s language',()=>{
-  expect(checkTurn(turn('emp-zh-1'),obs('For this, please contact your HR team directly.',{fixedReply:'route'})).map(row=>row.check)).toEqual(['no_card']);
+  expect(checkTurn(turn('hr-zh-1'),obs('For this, please contact your HR team directly.',{fixedReply:'route'})).map(row=>row.check)).toEqual(['no_card']);
  });
 });
 
