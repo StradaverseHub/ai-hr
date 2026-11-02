@@ -11,6 +11,9 @@ import {createDb} from '../db/client';
 it('preserves populated Native issuance, private data, identity and every applied receipt through the ordinary V9 upgrade',async()=>{
  const journalBytes=readFileSync('db/migrations/meta/_journal.json');
  const journal=JSON.parse(journalBytes.toString());
+ const acceptedEnd=journal.entries.findIndex((row:{tag:string})=>row.tag==='0946_draft_creation_cohort_custody')+1;
+ expect(acceptedEnd).toBe(650);
+ journal.entries=journal.entries.slice(0,acceptedEnd); // Later permissions have their own populated rehearsal.
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
@@ -499,7 +502,7 @@ it('preserves populated Native issuance, private data, identity and every applie
   await storage.client`insert into lc_onboarding_note(tenant_id,case_id,data) values(${tenant},${caseId},${JSON.stringify({context:'case',body:'Retain original note',by:user,mentions:[],deleted:false})}::jsonb)`;
   const before=await original(),prefix=await ledger();expect(prefix).toHaveLength(boundary);
   // Ordinary journal prefixes expose the exact before/after of each Lifecycle CHECK extension.
-  // No applied SQL is rewritten; final migration and the idempotence pass still use the real folder.
+  // No applied SQL is rewritten; final migration and rerun use the exact accepted source prefix.
   const checks=()=>storage.client<{name:string;oid:string;validated:boolean;expressionHash:string}[]>`select conname as name,oid::text as oid,convalidated as validated,encode(sha256(convert_to(conbin::text,'UTF8')),'hex') as "expressionHash" from pg_constraint where conrelid='app.assistant_own_leave_review'::regclass and contype='c' order by conname`;
   const migrateThrough=async(length:number)=>{
    writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,length)}));
@@ -527,12 +530,12 @@ it('preserves populated Native issuance, private data, identity and every applie
    expect(receiptAfter.at(-1)).toMatchObject({hash:migrationIdentity(journal.entries[checkpoint.index]).hash,created_at:String(journal.entries[checkpoint.index].when)});
    expect(await original()).toEqual(before);
   }
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  await migrateThrough(journal.entries.length);
   expect(await original()).toEqual(before);
   const after=await ledger();expect(after.slice(0,boundary)).toEqual(prefix);expect(after).toHaveLength(journal.entries.length);
   expect(after.slice(boundary).map(row=>({hash:row.hash,when:row.created_at}))).toEqual(journal.entries.slice(boundary).map((entry:{tag:string;when:number})=>({hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex'),when:String(entry.when)})));
   expect(await storage.client`select count(*)::int as count from lc_v9_case`).toEqual([{count:0}]);
   expect(await storage.client`select to_regnamespace('v9_test_fixture') as fixture,has_function_privilege('ai_hr_app','app.lc_v9_assigned_item(uuid,integer,text)','EXECUTE') as assigned`).toEqual([{fixture:null,assigned:true}]);
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await ledger()).toEqual(after);expect(await original()).toEqual(before);
+  await migrateThrough(journal.entries.length);expect(await ledger()).toEqual(after);expect(await original()).toEqual(before);
  }finally{await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();rmSync(directory,{recursive:true,force:true});}
 },180000);

@@ -26,6 +26,9 @@ it('applies the pinned payroll and authentication successor tail through the ord
  const destinationUrl=new URL(sourceUrl);destinationUrl.pathname='/'+name;
  const preDirectory=mkdtempSync(join(tmpdir(),'aihr-tax-pre0873-'));
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
+ const acceptedEnd=journal.entries.findIndex((row:{tag:string})=>row.tag==='0946_draft_creation_cohort_custody')+1;
+ expect(acceptedEnd).toBe(650);
+ journal.entries=journal.entries.slice(0,acceptedEnd); // Later permissions have their own populated rehearsal.
  const tail=[['0873_movement_exit_payroll_preservation','1793330000273'],['0874_payroll_tax_basis_corrections','1793330000274'],['0875_reward_access_request_read_role','1793330000275'],['0876_epf_manual_percentage_zero','1793330000276'],['0898_session_idle_timeout','1793330000298'],['0899_entra_workforce','1793330000299'],['0924_teras_outcome_record_mandates','1793330000324'],['0925_teras_rule_version_labels','1793330000325'],['0926_teras_worker_registry','1793330000326'],['0927_teras_conversation_switch','1793330000327'],['0928_teras_outcome_private_turns','1793330000328'],['0929_teras_review_services','1793330000329'],['0935_password_account_unlock','1793330000335'],['0946_draft_creation_cohort_custody','1793330000346']] as const;
  expect(journal.entries.slice(-tail.length).map((entry:{tag:string;when:number})=>[entry.tag,String(entry.when)])).toEqual(tail);
  // The Board successors are exact appended source, not a count-only tail adjustment.
@@ -67,7 +70,9 @@ it('applies the pinned payroll and authentication successor tail through the ord
   expect((await target.db.select().from(schema.payslip))[0]).toMatchObject({employmentId:hired.employmentId,grossPay:'5000.00',netPay:'5000.00'});
   const protectedBefore=await target.db.execute(sql`select tgname,tgenabled from pg_trigger where tgrelid='public.payroll_history_import_snapshot'::regclass and not tgisinternal order by tgname`);expect(protectedBefore.length).toBeGreaterThan(0);expect(protectedBefore.every(row=>row.tgenabled==='O')).toBe(true);
 
-  await migrate(target.db,{migrationsFolder:'db/migrations'});
+  for(const entry of journal.entries.slice(installed.length))copyFileSync(join('db/migrations',entry.tag+'.sql'),join(preDirectory,entry.tag+'.sql'));
+  writeFileSync(join(preDirectory,'meta','_journal.json'),JSON.stringify(journal));
+  await migrate(target.db,{migrationsFolder:preDirectory});
   expect(await snapshot()).toEqual(old);
   const afterLedger=await target.db.execute<{hash:string;created_at:string}>(sql`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`);
   expect(afterLedger.slice(0,-tail.length)).toEqual(beforeLedger);expect(afterLedger).toHaveLength(beforeLedger.length+tail.length);
@@ -76,7 +81,7 @@ it('applies the pinned payroll and authentication successor tail through the ord
   expect((await target.db.execute(sql`select relrowsecurity as protected from pg_class where oid='public.payroll_tax_basis_revision'::regclass`))[0]).toEqual({protected:true});
   expect((await target.db.execute(sql`select has_table_privilege('ai_hr_app','public.payroll_tax_basis_revision','SELECT') as can_read,has_table_privilege('ai_hr_app','public.payroll_tax_basis_revision','INSERT') as can_insert,has_table_privilege('ai_hr_app','public.payroll_tax_basis_revision','DELETE') as can_delete`))[0]).toEqual({can_read:true,can_insert:true,can_delete:false});
   await expect(target.db.execute(sql`update payroll_history_import_snapshot set value_hash=value_hash`)).rejects.toThrow();
-  await migrate(target.db,{migrationsFolder:'db/migrations'});expect(await target.db.execute(sql`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`)).toEqual(afterLedger);
+  await migrate(target.db,{migrationsFolder:preDirectory});expect(await target.db.execute(sql`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`)).toEqual(afterLedger);
  }finally{
   if(target)await target.client.end();await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);await admin.end();rmSync(preDirectory,{recursive:true,force:true});
  }

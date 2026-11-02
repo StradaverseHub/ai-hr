@@ -136,6 +136,19 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    join pg_proc p on p.oid=to_regprocedure(f.signature)
    cross join pg_class c where c.oid='public.access_capability'::regclass`;
   requireInstallation(functions[0]?.count===REQUIRED_FUNCTIONS.length&&functions[0].owners);
+  if(key==='all'){
+   // The full installation must cover the closed SQL registry in the same
+   // transaction. A package or completion function alone cannot omit an action.
+   const registered=await tx<{id:string}[]>`select capability_id as id from app.access_function_action order by capability_id collate "C"`;
+   const described=WORKFORCE_CAPABILITY_BINDINGS.filter(capability=>capability.id.startsWith('function.')).map(capability=>capability.id).sort();
+   requireInstallation(registered.length===described.length&&registered.every((row,index)=>row.id===described[index]));
+   const [prerequisite]=await tx<{trusted:boolean}[]>`select p.prosecdef and p.prorettype='boolean'::regtype
+    and not has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as trusted
+    from pg_proc p where p.oid='app.access_all_function_bindings_complete()'::regprocedure`;
+   requireInstallation(prerequisite?.trusted);
+   const [coverage]=await tx<{complete:boolean}[]>`select app.access_all_function_bindings_complete() as complete`;
+   requireInstallation(coverage?.complete===true);
+  }
   const nativeHooks=[...new Set(domains.flatMap(domain=>[domain.legacyParityFunction,domain.currentLegacyParityFunction,domain.functionLegacyParityFunction,domain.functionCurrentLegacyParityFunction,...(domain.functions??[]).flatMap(descriptor=>descriptor.actions.map(action=>action.delegationFloorFunction))].filter((hook):hook is string=>!!hook)))];
   for(const hook of nativeHooks){
    requireInstallation(/^app\.[a-z][a-z0-9_]*$/.test(hook));

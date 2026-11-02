@@ -186,6 +186,9 @@ function reviewRecords(value:unknown):Record<string,unknown>[] {
 
 it('upgrades the exact observed populated Board prefix without rewriting applied history, payroll, settings or sealed reviews',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as Journal;
+ const acceptedEnd=journal.entries.findIndex((row:{tag:string})=>row.tag==='0946_draft_creation_cohort_custody')+1;
+ expect(acceptedEnd).toBe(650);
+ journal.entries=journal.entries.slice(0,acceptedEnd); // Later permissions have their own populated rehearsal.
  const prefix=journal.entries.findIndex(entry=>entry.tag===TAIL[0].tag);
  expect(prefix).toBe(568);expect(witness.rows).toHaveLength(prefix);
  expect(witness.source).toBe('f752ac7f5d0323c5eae2280c3830af05b6da465f');
