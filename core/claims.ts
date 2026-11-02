@@ -3600,6 +3600,7 @@ export async function prefillClaimsForBatch(
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
     if (!batch) throw new ClaimError('Payroll batch not found');
+    await tx.execute(sql`select app.access_payroll_batch_begin(${batch.id}::uuid,'edit')`);
     if (batch.status !== 'draft') throw new ClaimError('Claims can only be prefilled onto a draft batch');
 
     // c7fdfcf6 (Payroll Schedule) — the CLAIM cut-off window for this run. A claim is queued only when it was
