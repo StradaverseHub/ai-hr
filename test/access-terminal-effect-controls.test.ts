@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {withTenant} from '../db/client';
 import {sql} from 'drizzle-orm';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {hireEmployee} from '../core/org';
 import {publishWorkforceActionPackage} from '../deploy/access/publish-workforce-capabilities';
 let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
@@ -67,4 +68,31 @@ it('keeps draft-derived admission/completion private and rejects absent native s
  expect(await ownerContext(tx=>tx`select app.workforce_draft_active_admitted(${id}::uuid,'{}'::jsonb,${employment}::uuid,${person}::uuid) as admitted,
   app.workforce_draft_active_completed(${id}::uuid,'{}'::jsonb,${employment}::uuid,${person}::uuid) as completed,
   app.workforce_draft_discard_completed(${id}::uuid,${id}::uuid,'{}'::jsonb) as discarded`)).toEqual([{admitted:false,completed:false,discarded:false}]);
+});
+
+it('keeps actual native employment revision fences and repeated read locks authority-neutral',async()=>{
+ await ownerContext(tx=>tx`select app.access_bootstrap(${b.tenantId}::uuid)`);
+ const read=()=>ownerContext(tx=>tx`select app.access_function_authority_stamp() as stamp,(select revision from access_configuration where tenant_id=${b.tenantId}::uuid) as revision,(select epoch::text from app.access_control_epoch where tenant_id=${b.tenantId}::uuid) as epoch`);
+ const [before]=await read();expect(before.stamp).toMatch(/^[a-f0-9]{64}$/);
+ await ownerContext(async tx=>{await tx`select app.access_workforce_write_lock()`;await tx`select app.access_workforce_write_lock()`;await tx`update access_configuration set revision=revision where tenant_id=${b.tenantId}::uuid`;});
+ expect(await read()).toEqual([before]);
+ const hired=await hireEmployee(adminCtx(b),{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01',person:{fullName:'Fictional source fence subject',primaryEmail:randomUUID()+'@fixture.invalid'}});
+ expect(hired.employmentId).toBeTruthy();
+ const [after]=await read();expect(after.revision).not.toBe(before.revision);expect(after.epoch).toBe(before.epoch);expect(after.stamp).toBe(before.stamp);
+});
+it('still invalidates a real role revoke and restore and configuration initialization changes',async()=>{
+ await ownerContext(async tx=>{
+  await tx`select app.access_bootstrap(${b.tenantId}::uuid)`;
+  const [before]=await tx`select app.access_function_authority_stamp() as stamp,(select epoch from app.access_control_epoch where tenant_id=${b.tenantId}::uuid) as epoch`;
+  const roles=await tx`select * from role_assignment where tenant_id=${b.tenantId}::uuid and app_user_id=${b.adminUserId}::uuid order by id`;
+  await tx`update role_assignment set role='employee' where tenant_id=${b.tenantId}::uuid and app_user_id=${b.adminUserId}::uuid and role='hr_admin'`;
+  await tx`update role_assignment set role='hr_admin' where tenant_id=${b.tenantId}::uuid and app_user_id=${b.adminUserId}::uuid and role='employee'`;
+  expect(await tx`select * from role_assignment where tenant_id=${b.tenantId}::uuid and app_user_id=${b.adminUserId}::uuid order by id`).toEqual(roles);
+  const [restored]=await tx`select app.access_function_authority_stamp() as stamp,(select epoch from app.access_control_epoch where tenant_id=${b.tenantId}::uuid) as epoch`;
+  expect(Number(restored.epoch)).toBeGreaterThan(Number(before.epoch));expect(restored.stamp).not.toBe(before.stamp);
+  await tx`update access_configuration set initialized=false where tenant_id=${b.tenantId}::uuid`;
+  await tx`update access_configuration set initialized=true where tenant_id=${b.tenantId}::uuid`;
+  const [initialized]=await tx`select app.access_function_authority_stamp() as stamp,(select epoch from app.access_control_epoch where tenant_id=${b.tenantId}::uuid) as epoch`;
+  expect(Number(initialized.epoch)).toBeGreaterThan(Number(restored.epoch));expect(initialized.stamp).not.toBe(restored.stamp);
+ });
 });
