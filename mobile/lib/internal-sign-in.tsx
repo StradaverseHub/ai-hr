@@ -31,11 +31,11 @@ export function InternalSignIn() {
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const pending = useRef(false), owner = useRef<number | null>(null);
   const probeStarted = useRef(false);
-  const [probeResult, setProbeResult] = useState('');
+  const [probeResult, setProbeResult] = useState(process.env.EXPO_PUBLIC_SIGNIN_CLIENT_PROBE === '1' ? '{"marker":"ONEHR_CLIENT_PROBE","phase":"mounting"}' : '');
   useEffect(() => {
-    if (process.env.EXPO_PUBLIC_SIGNIN_CLIENT_PROBE !== '1' || !company || probeStarted.current) return;
+    if (process.env.EXPO_PUBLIC_SIGNIN_CLIENT_PROBE !== '1' || probeStarted.current) return;
     probeStarted.current = true; pending.current = true; setBusy(true);
-    void runSignInClientProbe(company).then(setProbeResult).finally(() => { pending.current = false; setBusy(false); });
+    void runSignInClientProbe(company, setProbeResult).then(setProbeResult).finally(() => { pending.current = false; setBusy(false); });
   }, [company]);
   async function finish(result: InternalReply) {
     if (owner.current === null || !result.access_token || !result.refresh_token) return;
@@ -68,6 +68,9 @@ export function InternalSignIn() {
   const hasRecoveryCodes = Boolean(step?.recoveryCodes?.length);
   const loginDisabled = busy || !(workplaceOrganization || organization) || !username || !password;
   if (state === 'login') return <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground/>
+    {!!probeResult && <View pointerEvents="none" style={{ position: 'absolute', top: insets.top + 4, left: 8, right: 8, zIndex: 20, padding: 10, borderRadius: 8, backgroundColor: '#fff' }}>
+      <Text accessibilityLabel="Review connection diagnostic" style={{ color: '#111', fontSize: 12, lineHeight: 16 }}>{probeResult}</Text>
+    </View>}
     <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.entry, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}>
       <View style={styles.entryHeader}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Image accessible={false} source={require('../assets/onehr-icon.png')} style={{ width: 44, height: 44, borderRadius: 12 }}/><Text style={styles.wordmark}>{t('appName').endsWith('+') ? <>{t('appName').slice(0, -1)}<Text style={{ color: palette.accent }}>+</Text></> : t('appName')}</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel={companyCopy().change} disabled={busy} onPress={() => router.push('/company')} style={styles.workplace}>
@@ -75,7 +78,6 @@ export function InternalSignIn() {
         </Pressable>
       </View>
       <View style={{ flex: 1, minHeight: 120 }}/>
-      {!!probeResult && <Text accessibilityLabel="Review connection diagnostic" style={styles.body}>{probeResult}</Text>}
       <Text accessibilityRole="header" style={styles.entryTitle}>{copy.loginTitle}</Text>
       <View style={styles.pass}>
         {workplaceOrganization ? <Text style={styles.body}>{copy.organization}: {workplaceOrganization}</Text> : <View style={styles.passField}>

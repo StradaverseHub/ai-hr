@@ -1,10 +1,10 @@
 /** Temporary review-only diagnostic. Fixed invalid syntax never reaches account lookup. */
 import { fetch as nativeFetch } from 'expo/fetch';
 import { beginSignIn } from './auth';
-import { configProblem } from './config';
+import { configProblem, runtimeConnections } from './config';
 import { verifyCompanyServer } from './connection-probe';
 import { internalAuthRequest, InternalSignInError } from './internal-auth';
-import { readBoundedBody, BodyReadError } from '../../lib/bounded-body';
+import { BodyReadError } from '../../lib/bounded-body';
 import type { VerifiedCompanyProfile } from './company-profile';
 function errorKind(error: unknown): string {
   if (error instanceof BodyReadError) return 'body-read';
@@ -14,33 +14,41 @@ function errorKind(error: unknown): string {
   if (error instanceof RangeError) return 'range';
   return 'other';
 }
-export async function runSignInClientProbe(company: VerifiedCompanyProfile): Promise<string> {
+export async function runSignInClientProbe(company: VerifiedCompanyProfile | null, publish: (value: string) => void): Promise<string> {
   const result: Record<string, unknown> = { marker: 'ONEHR_CLIENT_PROBE', realCredentialsUsed: false };
   let phase = 'runtime';
+  let active = true;
+  const emit = () => { if (active) publish(JSON.stringify({...result, phase})); };
+  result.companyPresent = company !== null;
+  result.runtimeConnections = runtimeConnections;
+  emit();
+  const work = async () => {
   try {
     result.configValid = configProblem() === null;
     result.decoderPresent = typeof TextDecoder === 'function';
     result.decoderWorks = new TextDecoder('utf-8', {fatal:true}).decode(new Uint8Array([79,75])) === 'OK';
-    phase = 'company-validation';
+    if (!company) { result.outcome = 'missing-company'; return; }
+    phase = 'company-validation'; emit();
     const tracedFetch: typeof fetch = async (input, init) => {
-      phase = 'company-fetch';
+      phase = 'company-fetch'; emit();
       const response = await nativeFetch(input, init);
       result.companyStatus = response.status;
       result.bodyPresent = response.body !== null;
       result.readerPresent = typeof response.body?.getReader === 'function';
-      phase = 'company-body-or-metadata';
+      phase = 'company-body-or-metadata'; emit();
       return response;
     };
     await verifyCompanyServer(company, tracedFetch);
+    if (!active) return;
     result.companyVerified = true;
-    phase = 'invalid-login';
+    phase = 'invalid-login'; emit();
     const owner = beginSignIn();
     try {
       await internalAuthRequest('login', {organization: company.organization || 'aihr-test', username: '!diagnostic!', password: 'diagnostic-only'}, owner, async (input, init) => {
-        phase = 'login-fetch';
+        phase = 'login-fetch'; emit();
         const response = await nativeFetch(input, init);
         result.loginStatus = response.status;
-        phase = 'login-body-or-refusal';
+        phase = 'login-body-or-refusal'; emit();
         return response;
       });
       result.expectedInvalidLogin = false;
@@ -54,7 +62,15 @@ export async function runSignInClientProbe(company: VerifiedCompanyProfile): Pro
     result.outcome = 'fail'; result.phase = phase; result.errorKind = errorKind(error);
     // No exception messages, bodies, endpoints, profiles or field values leave this function.
   }
-  const output = JSON.stringify(result);
-  console.warn('ONEHR_CLIENT_PROBE ' + output);
-  return output;
+  finally { emit(); }
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([work(), new Promise<void>(resolve => {
+      timer = setTimeout(() => { result.outcome = 'diagnostic-timeout'; result.phase = phase; emit(); active = false; resolve(); }, 30_000);
+    })]);
+    const output = JSON.stringify({...result, phase});
+    publish(output);
+    return output;
+  } finally { active = false; clearTimeout(timer); }
 }
