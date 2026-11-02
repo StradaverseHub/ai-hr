@@ -3303,6 +3303,10 @@
     }
   },
   "leave": {
+    "accessFunctions": {
+      "ownApplication": "Permohonan cuti sendiri",
+      "onBehalfApplication": "Permohonan cuti bagi pihak pekerja"
+    },
     "myAbsenceTitle": "Cuti Saya",
     "inquiryMovedToTracker": "Butiran Pekerja, Baki Cuti Pekerja dan Rekod Cuti Pekerja kini dibuka dari Penjejak Cuti Pasukan; halaman ini menunjukkan cuti anda sendiri sahaja.",
     "title": "Cuti",

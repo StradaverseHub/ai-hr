@@ -487,3 +487,18 @@ describe('native own Leave application source composition',()=>{
   expect(await withTenant(self.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_own_application_allowed(${self.employmentId}::uuid,'approve') as allowed`))).toEqual([{allowed:false}]);
  });
 });
+
+it('keeps a real customer-granted manager on-behalf course and pure target floor independent of publisher tenant',async()=>{
+ const manager=await hire('manager'),subject=await hire('employee');await reportsTo(subject.employmentId,manager.employmentId);
+ const [absent]=await withTenant(manager.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(absent.allowed).toBe(false);
+ await grant({role:'manager',allowed:true});
+ const [admitted]=await withTenant(manager.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(admitted.allowed).toBe(true);
+ const foreign=await seedBase();
+ for(const ambient of ['',foreign.tenantId]){
+  const [floors]=await owner.db.transaction(async tx=>{await tx.execute(sql`select set_config('app.tenant_id',${ambient},true),set_config('app.user_id','',true),set_config('app.roles','',true),set_config('app.grants','[]',true)`);return tx.execute<{named:boolean;global:boolean;foreign:boolean}>(sql`select app.module_function_legacy_allowed(${b.tenantId}::uuid,${manager.ctx.userId}::uuid,'function.leave.onBehalf.application.add',${b.companyId}::uuid) as named,app.module_function_legacy_allowed(${b.tenantId}::uuid,${manager.ctx.userId}::uuid,'function.leave.onBehalf.application.add',null) as global,app.module_function_legacy_allowed(${foreign.tenantId}::uuid,${manager.ctx.userId}::uuid,'function.leave.onBehalf.application.add',${foreign.companyId}::uuid) as foreign`);});expect(floors).toEqual({named:true,global:false,foreign:false});
+ }
+ const stranger=await hire('employee');
+ const [notVisible]=await withTenant(stranger.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(notVisible.allowed).toBe(false);
+ await owner.db.update(schema.payrollPermissionGrant).set({allowed:false}).where(and(eq(schema.payrollPermissionGrant.tenantId,b.tenantId),eq(schema.payrollPermissionGrant.permissionKey,'leave.apply_on_behalf'),eq(schema.payrollPermissionGrant.role,'manager')));
+ const [revoked]=await withTenant(manager.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(revoked.allowed).toBe(false);
+});

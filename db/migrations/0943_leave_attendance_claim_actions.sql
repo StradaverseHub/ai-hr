@@ -1503,6 +1503,43 @@ REVOKE ALL ON FUNCTION app.leave_on_behalf_native(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.leave_on_behalf_native(uuid) TO ai_hr_app;
 
 --> statement-breakpoint
+-- Applying for another person retains the named native permission AND actual nonself
+-- employment visibility/data source. No HR-only replacement of customer-granted manager courses.
+CREATE FUNCTION app.leave_on_behalf_application_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE roles text[];company_id uuid;
+BEGIN
+ IF cap IS NULL OR cap NOT IN ('function.leave.onBehalf.application.view','function.leave.onBehalf.application.add') OR NOT EXISTS(SELECT 1 FROM public.app_user actor WHERE actor.id=u AND actor.tenant_id=t AND actor.archived_at IS NULL AND NOT app.login_blocked(u)) THEN RETURN false;END IF;
+ SELECT array_agg(DISTINCT role::text) INTO roles FROM public.role_assignment WHERE tenant_id=t AND app_user_id=u;
+ IF NOT app.leave_on_behalf_permission(t,co,roles) THEN RETURN false;END IF;
+ IF co IS NULL THEN
+  -- Global/future means a real native global company ceiling plus its future tenant permission.
+  IF NOT EXISTS(SELECT 1 FROM public.role_assignment assignment WHERE assignment.tenant_id=t AND assignment.app_user_id=u AND assignment.company_id IS NULL AND assignment.role::text IN ('hr_admin','super_admin')) THEN RETURN false;END IF;
+  FOR company_id IN SELECT company.id FROM public.company company WHERE company.tenant_id=t LOOP
+   IF NOT app.leave_on_behalf_permission(t,company_id,roles) THEN RETURN false;END IF;
+  END LOOP;RETURN true;
+ END IF;
+ RETURN EXISTS(SELECT 1 FROM public.employment subject JOIN public.app_user actor ON actor.tenant_id=subject.tenant_id AND actor.id=u WHERE subject.tenant_id=t AND subject.company_id=co AND actor.person_id IS DISTINCT FROM subject.person_id AND (app.claim_admin_subject_for(t,u,subject.id) OR app.claim_related_subject_for(t,u,subject.id)));
+END $$;
+CREATE FUNCTION app.leave_on_behalf_application_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.leave_on_behalf_application_native_allowed(t,u,cap,co) AND app.leave_on_behalf_native(co)
+ AND CASE WHEN co IS NULL THEN EXISTS(SELECT 1 FROM app.current_grants() claimed WHERE claimed.company_id IS NULL AND claimed.role IN ('hr_admin','super_admin')) ELSE EXISTS(SELECT 1 FROM public.employment subject WHERE subject.tenant_id=t AND subject.company_id=co AND NOT app.is_self_person(subject.person_id) AND app.can_see_employment(subject.id)) END;
+$$;
+REVOKE ALL ON FUNCTION app.leave_on_behalf_application_native_allowed(uuid,uuid,text,uuid),app.leave_on_behalf_application_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add'] LOOP
+  PERFORM app.register_function_action('leave.onBehalf.application',operation,'company',NULL,'app.leave_on_behalf_application_current_native_allowed','{"moduleKey":"leave","labelKey":"leave.accessFunctions.onBehalfApplication","kind":"native_acl","course":"administrative","screenKey":"leave","href":"/leave","employeeBearing":true}');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.leave_on_behalf_application_allowed(p_employment uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment subject WHERE subject.id=p_employment AND subject.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(subject.person_id) AND app.can_see_employment(subject.id) AND app.leave_on_behalf_native(subject.company_id) AND app.function_action_allowed('leave.onBehalf.application','view',subject.company_id) AND app.function_action_allowed('leave.onBehalf.application','add',subject.company_id));
+$$;
+REVOKE ALL ON FUNCTION app.leave_on_behalf_application_allowed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_on_behalf_application_allowed(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
 -- Actual own Leave application course stays independent of administrative employee scope.
 CREATE FUNCTION app.leave_own_application_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -1516,7 +1553,7 @@ $$;
 REVOKE ALL ON FUNCTION app.leave_own_application_native_allowed(uuid,uuid,text,uuid),app.leave_own_application_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 DO $$ DECLARE operation text;BEGIN
  FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
-  PERFORM app.register_function_action('leave.own.application',operation,'company',NULL,'app.leave_own_application_current_native_allowed','{"moduleKey":"leave","labelKey":"nav.myAbsence","kind":"native_acl","course":"own","screenKey":"leave","href":"/leave","employeeBearing":false}');
+  PERFORM app.register_function_action('leave.own.application',operation,'company',NULL,'app.leave_own_application_current_native_allowed','{"moduleKey":"leave","labelKey":"leave.accessFunctions.ownApplication","kind":"native_acl","course":"own","screenKey":"leave","href":"/leave","employeeBearing":false}');
  END LOOP;
 END $$;
 CREATE FUNCTION app.leave_own_application_allowed(p_employment uuid,p_operation text) RETURNS boolean
@@ -1630,12 +1667,12 @@ CREATE TRIGGER aaa_clocking_assignment_access BEFORE INSERT OR UPDATE OR DELETE 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT (cap LIKE 'function.leave.own.application.%' AND app.leave_own_application_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.clockingSites.%' AND app.clocking_site_native_allowed(t,u,cap,co)) OR (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_native_allowed(t,u,cap,co)) OR app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
+ SELECT (cap LIKE 'function.leave.onBehalf.application.%' AND app.leave_on_behalf_application_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.leave.own.application.%' AND app.leave_own_application_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.clockingSites.%' AND app.clocking_site_native_allowed(t,u,cap,co)) OR (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_native_allowed(t,u,cap,co)) OR app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT (cap LIKE 'function.leave.own.application.%' AND app.leave_own_application_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.clockingSites.%' AND app.clocking_site_current_native_allowed(t,u,cap,co)) OR (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_current_native_allowed(t,u,cap,co)) OR app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
+ SELECT (cap LIKE 'function.leave.onBehalf.application.%' AND app.leave_on_behalf_application_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.leave.own.application.%' AND app.leave_own_application_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.clockingSites.%' AND app.clocking_site_current_native_allowed(t,u,cap,co)) OR (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_current_native_allowed(t,u,cap,co)) OR app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 

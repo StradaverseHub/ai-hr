@@ -1358,3 +1358,13 @@ explicit source IDs/tenant/date without caller GUCs, so they are reused unchange
 and foreign-caller-tenant probes, actual APP positive/negative admission, scoped delegation removal
 and private-port denial cases are authored, unrun. This establishes a qualification target, not a
 claim that a genuine supported package/default installation has passed.
+
+On-behalf Leave application has its own company View/Add purpose and employee-bearing native course.
+Its pure/current hooks preserve the original configurable role permission plus actual nonself native
+recursive-manager/HOD/admin visibility and administrative profile. A global/future floor additionally
+requires the real global native company role and tenant/future permission, repeating every current
+company override; an ANY-current-company witness cannot prove it. requestLeave repeats the exact
+on-behalf source purpose after its original permission/subject gate. It does not borrow approval or
+own application authority. Distinct own/on-behalf labels exist in all six locales. Actual custom-manager
+admission/revocation and owner NULL/foreign-tenant target cases are authored, unrun. Shared raw/effect,
+selected-target UI, reviewed/assigned decisions and publication closure remain unfinished.

@@ -3303,6 +3303,10 @@
     }
   },
   "leave": {
+    "accessFunctions": {
+      "ownApplication": "Own leave applications",
+      "onBehalfApplication": "Apply leave on behalf"
+    },
     "myAbsenceTitle": "My Leave",
     "inquiryMovedToTracker": "Employee Details, Employee Balances and Employee Leave Record now open from Team Leave Tracker; this page shows your own leave only.",
     "title": "Leave",

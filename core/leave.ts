@@ -3447,6 +3447,7 @@ export async function requestLeave(
       throw new LeaveOnBehalfNotAllowedError();
     }
     if (isSelfSubject) await assertOwnLeaveApplicationActionTx(tx,p.employmentId,'add');
+    else {const [control]=await tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${p.employmentId}::uuid) as allowed`);if(control?.allowed!==true)throw new LeaveOnBehalfNotAllowedError();}
 
     await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
     const [currentSubject] = await readSubject();
