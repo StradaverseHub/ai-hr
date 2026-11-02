@@ -1880,7 +1880,9 @@
           "correctedHeading": "ที่แก้ไขแล้ว",
           "noneValue": "ไม่มี"
         },
-        "payrollClosedBadge": "ปิดงวดเงินเดือนแล้ว: {periods}"
+        "payrollClosedBadge": "ปิดงวดเงินเดือนแล้ว: {periods}",
+        "informationCorrected": "แก้ไขข้อมูลแล้ว",
+        "informationNeedsReview": "ต้องตรวจสอบการแก้ไข"
       },
       "salaryCurrency": "สกุลเงิน",
       "emergency": {

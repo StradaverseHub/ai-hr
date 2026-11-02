@@ -1880,7 +1880,9 @@
           "correctedHeading": "Corrected",
           "noneValue": "None"
         },
-        "payrollClosedBadge": "Payroll closed: {periods}"
+        "payrollClosedBadge": "Payroll closed: {periods}",
+        "informationCorrected": "Information corrected",
+        "informationNeedsReview": "Correction needs review"
       },
       "salaryCurrency": "Currency",
       "emergency": {

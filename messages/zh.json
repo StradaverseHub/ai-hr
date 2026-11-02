@@ -1880,7 +1880,9 @@
           "correctedHeading": "已更正",
           "noneValue": "无"
         },
-        "payrollClosedBadge": "薪资已关闭：{periods}"
+        "payrollClosedBadge": "薪资已关闭：{periods}",
+        "informationCorrected": "资料已更正",
+        "informationNeedsReview": "更正需要审核"
       },
       "salaryCurrency": "货币",
       "emergency": {
