@@ -57,6 +57,14 @@ it('measures the real standard-feedback reader against bounded native candidates
    const original=await perf.pendingStandardFeedbackTaskMetadata(context);expect(await candidate(context)).toEqual(original);profile.controls++;
   }
   expect(await candidate(ctx(users[0]))).toMatchObject([{id:request.id,kind:'feedback'}]);
+  // Native panel rows can be hidden by the live-card RLS arm. Owner-side candidate pruning must
+  // never turn that hidden exclusion into a stronger APP predicate and silently drop existing tasks.
+  await owner.db.insert(s.onehrPanel).values({tenantId:b.tenantId,requestId:request.id,reviewId:review.id,subjectEmploymentId:users[1].employmentId,peerEmploymentId:users[0].employmentId,relationship:'peer'});
+  const [hidden]=await withTenant(ctx(users[0]),tx=>tx.execute<{n:number}>(sql`select count(*)::int as n from performance_onehr_panel where request_id=${request.id}::uuid`));
+  expect(hidden.n).toBe(0);
+  const withHiddenPanel=await perf.pendingStandardFeedbackTaskMetadata(ctx(users[0]));expect(withHiddenPanel).toMatchObject([{id:request.id,kind:'feedback'}]);
+  expect(await candidate(ctx(users[0]))).toEqual(withHiddenPanel);profile.controls++;
+  await owner.db.delete(s.onehrPanel).where(eq(s.onehrPanel.requestId,request.id));
   const bad={...ctx(users[0]),personId:users[1].personId};await expect(candidate(bad)).rejects.toThrow();await expect(perf.pendingStandardFeedbackTaskMetadata(bad)).rejects.toThrow();profile.controls++;
   await owner.client`update app_user set archived_at=now()where id=${users[0].userId}::uuid`;
   await expect(candidate(ctx(users[0]))).rejects.toThrow();await expect(perf.pendingStandardFeedbackTaskMetadata(ctx(users[0]))).rejects.toThrow();profile.controls++;
