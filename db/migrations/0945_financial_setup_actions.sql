@@ -976,16 +976,19 @@ END $$;
 
 CREATE OR REPLACE FUNCTION app.person_void_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE exact_delta boolean;exact_actor boolean;exact_receipt boolean;without_login boolean;
 BEGIN
  IF (NEW.voided_at,NEW.voided_ic_number) IS NOT DISTINCT FROM (OLD.voided_at,OLD.voided_ic_number) THEN RETURN NEW;END IF;
  IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
- IF OLD.voided_at IS NULL AND NEW.voided_at=now() AND OLD.tenant_id=app.current_tenant_id()
-  AND (to_jsonb(NEW)-ARRAY['voided_at','voided_ic_number'])=(to_jsonb(OLD)-ARRAY['voided_at','voided_ic_number'])
-  AND NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.person_id=OLD.id)
-  AND EXISTS(SELECT 1 FROM app.import_employment_void_effect receipt WHERE receipt.transaction_id=pg_current_xact_id()
+ exact_delta:=(to_jsonb(NEW)-ARRAY['voided_at','voided_ic_number'])=(to_jsonb(OLD)-ARRAY['voided_at','voided_ic_number']);
+ exact_actor:=OLD.voided_at IS NULL AND NEW.voided_at=now() AND OLD.tenant_id=app.current_tenant_id();
+ without_login:=NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.person_id=OLD.id);
+ exact_receipt:=EXISTS(SELECT 1 FROM app.import_employment_void_effect receipt WHERE receipt.transaction_id=pg_current_xact_id()
    AND receipt.tenant_id=OLD.tenant_id AND receipt.actor_id=app.current_user_id()
-   AND receipt.person_id=OLD.id AND receipt.ic_digest IS NOT DISTINCT FROM sha256(convert_to(NEW.voided_ic_number,'UTF8'))) THEN RETURN NEW;END IF;
- RAISE EXCEPTION 'person_void_forbidden' USING ERRCODE='42501';
+   AND receipt.person_id=OLD.id AND receipt.ic_digest IS NOT DISTINCT FROM sha256(convert_to(NEW.voided_ic_number,'UTF8')));
+ IF exact_delta AND exact_actor AND without_login AND exact_receipt THEN RETURN NEW;END IF;
+ RAISE EXCEPTION 'person_void_forbidden' USING ERRCODE='42501',DETAIL=
+  format('Exact void boundary checks: delta=%s, actor=%s, no-login=%s, receipt=%s',exact_delta,exact_actor,without_login,exact_receipt);
 END $$;
 
 CREATE FUNCTION app.import_void_statutory_matches(p_old public.employee_statutory_my,p_new public.employee_statutory_my) RETURNS boolean
