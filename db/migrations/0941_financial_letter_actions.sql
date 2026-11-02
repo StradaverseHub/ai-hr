@@ -3469,3 +3469,96 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_competencies_submit(uuid,integer,jsonb,boolean,text,jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_competencies_submit(uuid,integer,jsonb,boolean,text,jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Native scorecard completeness belongs to the stored source owner; the pure TS
+-- parser remains the independent preview/oracle. No source targets leave this helper.
+CREATE FUNCTION app.financial_onehr_scorecard_complete(kpis jsonb) RETURNS void
+LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE kpi jsonb;scoring jsonb;mechanism text;total double precision:=0;weight double precision;rate jsonb;previous double precision;current_rate double precision;target double precision;multiple double precision;
+BEGIN
+ IF jsonb_typeof(kpis) IS DISTINCT FROM 'array' OR jsonb_array_length(kpis)=0 OR jsonb_array_length(kpis)>100 THEN RAISE EXCEPTION 'KPI weights must total exactly 100%%.' USING ERRCODE='22023';END IF;
+ FOR kpi IN SELECT value FROM jsonb_array_elements(kpis) LOOP
+  IF jsonb_typeof(kpi->'weightBp') IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'Invalid KPI weight' USING ERRCODE='22023';END IF;
+  weight:=(kpi->>'weightBp')::double precision;
+  IF weight<0 OR weight>10000 OR trunc(weight)<>weight THEN RAISE EXCEPTION 'Invalid KPI weight' USING ERRCODE='22023';END IF;
+  total:=total+weight;scoring:=kpi->'scoring';
+  IF mechanism IS NULL THEN mechanism:=scoring->>'mechanism';END IF;
+  IF mechanism IS DISTINCT FROM scoring->>'mechanism' THEN RAISE EXCEPTION 'A scorecard must use one mechanism.' USING ERRCODE='22023';END IF;
+  IF scoring->>'method' IS NULL OR scoring->>'method' NOT IN ('more','less') THEN RAISE EXCEPTION 'Invalid scoring method' USING ERRCODE='22023';END IF;
+  IF scoring->>'mechanism'='A' THEN
+   IF jsonb_typeof(scoring->'rates') IS DISTINCT FROM 'array' OR jsonb_array_length(scoring->'rates')<>5 THEN RAISE EXCEPTION 'Complete the required target numbers and check the threshold order.' USING ERRCODE='22023';END IF;
+   previous:=NULL;
+   FOR rate IN SELECT value FROM jsonb_array_elements(scoring->'rates') LOOP
+    IF jsonb_typeof(rate) IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'Complete the required target numbers and check the threshold order.' USING ERRCODE='22023';END IF;
+    current_rate:=(rate#>>'{}')::double precision;
+    IF previous IS NOT NULL AND (scoring->>'method'='more' AND current_rate<previous OR scoring->>'method'='less' AND current_rate>previous) THEN RAISE EXCEPTION 'Complete the required target numbers and check the threshold order.' USING ERRCODE='22023';END IF;
+    previous:=current_rate;
+   END LOOP;
+  ELSIF scoring->>'mechanism'='B' THEN
+   IF jsonb_typeof(scoring->'threshold') IS DISTINCT FROM 'number' OR jsonb_typeof(scoring->'target') IS DISTINCT FROM 'number'
+   OR scoring->>'variant' IS NULL OR scoring->>'variant' NOT IN ('base','excellence') OR scoring->>'variant'='excellence' AND jsonb_typeof(scoring->'excellence') IS DISTINCT FROM 'number'
+   OR scoring->>'multiple' IS NOT NULL AND jsonb_typeof(scoring->'multiple') IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'Complete the required target numbers and check the threshold order.' USING ERRCODE='22023';END IF;
+   target:=(scoring->>'target')::double precision;multiple:=coalesce((scoring->>'multiple')::double precision,0);
+   IF target=0 OR multiple<0 OR multiple>10000 THEN RAISE EXCEPTION 'Complete the required target numbers and check the threshold order.' USING ERRCODE='22023';END IF;
+  ELSE RAISE EXCEPTION 'A scorecard must use one mechanism.' USING ERRCODE='22023';END IF;
+ END LOOP;
+ IF total<>10000 THEN RAISE EXCEPTION 'KPI weights must total exactly 100%%.' USING ERRCODE='22023';END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_scorecard_complete(jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_scorecard_decide(wanted_review uuid,expected_revision integer,approve boolean,remark text) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;choices jsonb;own_ids uuid[];actionable uuid[]:='{}';next_kpis jsonb:='[]';kpi jsonb;chain jsonb;approvals jsonb;next_employment uuid;pending integer;acts boolean;live uuid[];stamp text:=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR scorecard actor unavailable' USING ERRCODE='42501';END IF;
+ IF approve IS NULL OR remark IS NULL OR char_length(btrim(remark))>4000 OR NOT approve AND btrim(remark)='' THEN RAISE EXCEPTION 'Explain what needs changing.' USING ERRCODE='22023';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ IF review.review_id IS NULL OR app.onehr_self_employment(review.employment_id) OR NOT app.onehr_moderator(wanted_review)
+ OR NOT app.onehr_review_task_view(wanted_review,'assigned') OR NOT app.function_action_allowed('performance.onehr.assignedReview','edit',review.company_id)
+ THEN RAISE EXCEPTION 'Scorecard decision not assigned to you' USING ERRCODE='42501';END IF;
+ IF review.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF NOT app.assessment_review_participates(wanted_review) OR cycle.status NOT IN ('open','calibration') OR EXISTS(SELECT 1 FROM public.performance_review header WHERE header.id=wanted_review AND header.tenant_id=review.tenant_id AND header.closed_at IS NOT NULL)
+ OR EXISTS(SELECT 1 FROM public.performance_onehr_result result WHERE result.review_id=wanted_review AND result.tenant_id=review.tenant_id) THEN RAISE EXCEPTION 'This assessment has been finalized.' USING ERRCODE='42501';END IF;
+ IF policy->'windows'->'pm_setting_approve'->>'opensAt' IS NOT NULL AND now()<(policy->'windows'->'pm_setting_approve'->>'opensAt')::timestamptz
+ OR policy->'windows'->'pm_setting_approve'->>'closesAt' IS NOT NULL AND now()>=(policy->'windows'->'pm_setting_approve'->>'closesAt')::timestamptz THEN RAISE EXCEPTION 'This step is closed' USING ERRCODE='42501';END IF;
+ IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(review.kpis) actual WHERE actual->>'setting'='proposed') THEN RAISE EXCEPTION 'The employee must propose the whole scorecard.' USING ERRCODE='42501';END IF;
+ PERFORM app.financial_onehr_scorecard_complete(review.kpis);
+ choices:=app.onehr_moderator_choices(wanted_review);
+ SELECT coalesce(array_agg(employment.id),'{}'::uuid[]) INTO own_ids FROM public.employment employment JOIN public.app_user account ON account.person_id=employment.person_id AND account.tenant_id=employment.tenant_id WHERE account.id=app.current_user_id() AND account.tenant_id=review.tenant_id;
+ FOR kpi IN SELECT value FROM jsonb_array_elements(review.kpis) LOOP
+  chain:=CASE WHEN jsonb_array_length(coalesce(kpi->'approvalChain','[]'::jsonb))>0 THEN kpi->'approvalChain' ELSE jsonb_build_array(jsonb_build_object('employmentId',kpi->>'moderatorEmploymentId')) END;
+  approvals:=coalesce(kpi->'settingApprovals','[]'::jsonb);pending:=(SELECT count(*) FROM jsonb_array_elements(approvals) actual WHERE actual->>'action'='approved');
+  next_employment:=CASE WHEN kpi->>'setting'='proposed' THEN (chain->pending->>'employmentId')::uuid END;
+  acts:=coalesce(next_employment=ANY(own_ids) AND EXISTS(SELECT 1 FROM jsonb_array_elements(choices) choice WHERE choice->>'id'=next_employment::text),false);
+  IF acts THEN
+   actionable:=array_append(actionable,(kpi->>'id')::uuid);
+   approvals:=approvals||jsonb_build_array(jsonb_build_object('employmentId',next_employment,'action',CASE WHEN approve THEN 'approved' ELSE 'returned' END,'remark',remark,'at',stamp));
+  END IF;
+  kpi:=kpi||jsonb_build_object('setting',CASE WHEN NOT approve THEN 'returned' WHEN acts AND jsonb_array_length(approvals)=jsonb_array_length(chain) THEN 'approved' ELSE kpi->>'setting' END,
+   'settingApprovals',approvals,'settingRemark',CASE WHEN acts OR NOT approve THEN remark ELSE coalesce(kpi->>'settingRemark','') END);
+  next_kpis:=next_kpis||jsonb_build_array(kpi);
+ END LOOP;
+ IF cardinality(actionable)=0 THEN RAISE EXCEPTION 'No proposed KPI is awaiting your turn in the approval chain.' USING ERRCODE='42501';END IF;
+ UPDATE public.performance_onehr_review actual SET kpis=next_kpis,revision=review.revision+1 WHERE actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(review.tenant_id,'onehr',wanted_review,CASE WHEN approve THEN 'onehr.scorecard-approved' ELSE 'onehr.scorecard-returned' END,'user',app.current_user_id(),review.employment_id,jsonb_build_object('reason',remark,'kpiIds',to_jsonb(actionable)));
+ IF approve THEN
+  SELECT coalesce(array_agg(chosen.id ORDER BY chosen.position),'{}'::uuid[]) INTO live FROM (
+  SELECT next_actor.id,min(item.position) AS position FROM jsonb_array_elements(next_kpis) WITH ORDINALITY item(actual,position)
+  CROSS JOIN LATERAL (SELECT CASE WHEN jsonb_array_length(coalesce(actual->'approvalChain','[]'::jsonb))>0 THEN actual->'approvalChain' ELSE jsonb_build_array(jsonb_build_object('employmentId',actual->>'moderatorEmploymentId')) END AS chain) source
+  CROSS JOIN LATERAL (SELECT count(*)::integer AS count FROM jsonb_array_elements(coalesce(actual->'settingApprovals','[]'::jsonb)) step WHERE step->>'action'='approved') approved
+  CROSS JOIN LATERAL (SELECT (source.chain->approved.count->>'employmentId')::uuid AS id) next_actor
+  WHERE actual->>'setting'='proposed' AND next_actor.id IS NOT NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(choices) choice WHERE choice->>'id'=next_actor.id::text)
+  GROUP BY next_actor.id) chosen;
+  IF cardinality(live)>0 THEN INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+   VALUES(review.tenant_id,'onehr',wanted_review,'onehr.kpi-approval-needed','user',app.current_user_id(),jsonb_build_object('employmentIds',to_jsonb(live),'phase','setting'));END IF;
+ END IF;
+ RETURN review.revision+1;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_scorecard_decide(uuid,integer,boolean,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_scorecard_decide(uuid,integer,boolean,text) TO ai_hr_app;

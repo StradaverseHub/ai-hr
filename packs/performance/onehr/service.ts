@@ -327,19 +327,8 @@ export async function approveOnehrScorecard(ctx:SessionContext,reviewId:string,e
 }
 export async function approveOnehrScorecardTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,approve:boolean,remark:string) {
   note.parse(remark);
-    const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_setting_approve',expected,'moderator');
-    if(!r.kpis.length||!r.kpis.some(k=>k.setting==='proposed'))throw Error('The employee must propose the whole scorecard.');
-    const allowed=await moderatorChoices(tx,reviewId);
-    const actionable=r.kpis.filter(k=>{const id=pendingSettingApprover(k);return id&&r.native.ownEmploymentIds.includes(id)&&allowed.some(m=>m.id===id);});
-    if(!actionable.length)throw Error('No proposed KPI is awaiting your turn in the approval chain.');
-    if(!approve&&!remark.trim())throw Error('Explain what needs changing.');validateScorecard(r.kpis);
-    const kpis=r.kpis.map(k=>{
-      const pending=pendingSettingApprover(k),acts=actionable.some(a=>a.id===k.id);
-      const settingApprovals=acts?[...(k.settingApprovals??[]),{employmentId:pending!,action:approve?'approved' as const:'returned' as const,remark,at:new Date().toISOString()}]:k.settingApprovals;
-      return {...k,setting:!approve?'returned' as const:acts&&settingApprovals!.length===kpiApprovers(k).length?'approved' as const:k.setting,settingApprovals,settingRemark:acts||!approve?remark:k.settingRemark};
-    });
-    await touchReview(tx,reviewId,{kpis});await audit(tx,ctx,reviewId,approve?'scorecard-approved':'scorecard-returned',{reason:remark,kpiIds:actionable.map(k=>k.id)});
-    if(approve)await notifyKpiApprovers(tx,ctx,reviewId,kpis,'setting');
+    uuid.parse(reviewId);z.number().int().parse(expected);
+    await tx.execute(sql`select app.onehr_scorecard_decide(${reviewId}::uuid,${expected}::integer,${approve}::boolean,${remark}::text)`);
 }
 
 export async function submitOnehrResults(ctx:SessionContext,reviewId:string,expected:number,raw:unknown,overallRemark='') {

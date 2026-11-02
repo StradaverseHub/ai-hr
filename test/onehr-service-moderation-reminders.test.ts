@@ -66,6 +66,28 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const [r]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=r.id;
   });
   afterAll(closeAll);
+  it('approves only the actual assigned setting lines against the full private scorecard source',async()=>{
+    const first=randomUUID(),second=randomUUID();
+    for(const peer of peers.slice(0,2))await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:peer.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[first,second].map((id,index)=>({id,title:index?'Other approver private target':'My assigned objective',description:index?'Unassigned narrative must remain private':'Assigned narrative',weightBp:5000,unit:'units',scoring:{mechanism:'A' as const,method:'more' as const,rates:[0,1,2,3,4]},moderatorEmploymentId:peers[index].employmentId})),true);
+    const [before]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
+    const profile=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'department',values:[b.deptB]}]};
+    await owner.client`insert into data_permission_profile(id,tenant_id,name) values(${profile},${b.tenantId},${'Fictional scorecard approver '+profile})`;
+    await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by) values(${revision},${b.tenantId},${profile},${JSON.stringify(rules)}::text::jsonb,${a.userId!})`;
+    await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${profile}`;
+    await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by) values(${b.tenantId},${peers[0].ctx.userId!},${profile},${a.userId!})`;
+    const assigned=await perf.getOnehrReviewForPurpose(peers[0].ctx,reviewId,'task');expect(assigned).not.toBeNull();expect(assigned!.kpis.map(k=>k.id)).toEqual([first]);expect(JSON.stringify(assigned)).not.toContain('Unassigned narrative must remain private');
+    expect(await withTenant(peers[0].ctx,tx=>tx.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)))).toEqual([]);
+    await perf.approveOnehrScorecard(peers[0].ctx,reviewId,before.revision,true,'Assigned target approved');
+    const [after]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));const oldKpis=before.kpis as Record<string,unknown>[],kpis=after.kpis as Record<string,unknown>[];
+    expect(after.revision).toBe(before.revision+1);expect(kpis[1]).toEqual(oldKpis[1]);expect(kpis[0]).toMatchObject({...oldKpis[0],setting:'approved',settingRemark:'Assigned target approved',settingApprovals:[{employmentId:peers[0].employmentId,action:'approved',remark:'Assigned target approved',at:expect.any(String)}]});
+    const approval=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.scorecard-approved')));expect(approval).toHaveLength(1);expect(approval[0]).toMatchObject({actorType:'user',actorId:peers[0].ctx.userId,subjectEmploymentId:subject.employmentId,payload:{reason:'Assigned target approved',kpiIds:[first]}});
+    expect((await perf.getOnehrReviewForPurpose(peers[0].ctx,reviewId,'task'))!.kpis.map(k=>k.id)).toEqual([first]);
+    await expect(perf.approveOnehrScorecard(peers[0].ctx,reviewId,after.revision,true,'Borrowed second line')).rejects.toThrow(/awaiting your turn/);
+    expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([after]);
+    await perf.approveOnehrScorecard(peers[1].ctx,reviewId,after.revision,true,'Other assigned target approved');expect((await view(self)).kpis.every(k=>k.setting==='approved')).toBe(true);
+  });
+
   it('revokes relationship-based matrix access with the edge and explicit access with HR reassignment',async()=>{
     const matrix=peers[0];
     await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:matrix.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
