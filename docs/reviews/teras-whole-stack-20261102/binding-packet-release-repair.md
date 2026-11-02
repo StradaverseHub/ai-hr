@@ -1,7 +1,7 @@
 # Binding packet: Noveri release repair on top of main 41ec7fd8
 
 > **For review, then a fresh owner approval in the Noveri session.** Nothing approval-bearing has been written for this closure.
-> - The current binding on main 41ec7fd8 (provider `ac138e6c…`, module-agent `c140847e…`, approved 2026-11-02T12:07:19Z) does **not** transfer: four provider-closure sources changed.
+> - The current binding on main 41ec7fd8 (provider `ac138e6c…`, module-agent `c140847e…`, approved 2026-11-02T12:07:19Z) does **not** transfer: five provider-closure sources changed.
 > - If the candidate head changes before the binding, every candidate value below is recomputed and this packet is reissued.
 
 ## Why
@@ -11,10 +11,12 @@ the bounded 8192 build and all three browsers passed) failed five test chunks. T
 Runs 41457586769 (guard refusal), 41459170159 (cancelled) and 41459296654 stay on record as they are.
 
 ## Candidate
-- **Branch:** `claude/noveri-release-repair`. **Candidate code head:** `26f0e781` (commits below); packet commits on top are docs only.
+- **Branch:** `claude/noveri-release-repair`. **Candidate code head:** `f2ccf38ac278fbb3cc542f716c9942eefbd63f06` (commits below); packet commits on top are docs only.
 - **Repairs:**
   1. `test/payroll-pack-drift.test.ts`: `core/setup-copilot/copilot.ts` imported `core/payroll-readiness` directly; it now takes the
-     `ReadinessCheckKey` type from `packs/payroll/service` (bb15756ed).
+     `ReadinessCheckKey` type from `packs/payroll/service` (bb15756ed). Run 41465522939 then showed a second importer,
+     `core/product-context/setup-readiness.ts`, now also through `packs/payroll/service` (f2ccf38ac). Every file changed since
+     6ea889365 was then checked against both ratchets' implementation lists (30 payroll, 25 leave modules): no direct importer remains.
   2. `test/leave-pack-drift.test.ts`: `core/proposals/leave-cancel.ts` imported `core/leave` directly. The facade `packs/leave/service`
      also carries the leave write paths, which `test/proposal-object.test.ts` forbids `core/proposals` to import, so the card now
      reads the leave type's give-back rule through a new read-only `readCancelApprovedSettingTx` in `core/read.ts`, the module that
@@ -36,31 +38,35 @@ Runs 41457586769 (guard refusal), 41459170159 (cancelled) and 41459296654 stay o
 - **Not changed:** no read, permission, provider transport, payload, contract, migration or allowlist.
 
 ## Digests (computed write-disabled, in an isolated copy of the committed source)
-| Scope | Current binding (main 41ec7fd8, both `--check` pass) | Candidate before binding (93268aea6; unchanged by the test-only commits) |
+| Scope | Current binding (main 41ec7fd8, both `--check` pass) | Candidate before binding (f2ccf38ac; the test-only commits are outside both scopes) |
 |---|---|---|
-| Provider-data closure | `ac138e6c84a4f7b5929959e95ae3592fbe25c90e95c2291c4125804aa27fd330`, 1255 files | `6d3f3ab7fe02e2f7905b1a1c33b612a147cd649da0e90a73935db5a3f89e4452`, 1255 files |
-| Module-agent scope | `c140847e07c0b0aaca0028ace69c09985182ebd466742acac77deb4213eff9a3`, 457 files | unchanged source; its `--check` passes on 93268aea6. It changes only when the approval literals and provider manifest are written, and is generated last. |
+| Provider-data closure | `ac138e6c84a4f7b5929959e95ae3592fbe25c90e95c2291c4125804aa27fd330`, 1255 files | `e8692840739a125c8f5f04c4be9a43cc6022bd2f81533a747a76f414d5716913`, 1255 files (93268aea6 computed `6d3f3ab7…` before the second payroll fix; superseded) |
+| Module-agent scope | `c140847e07c0b0aaca0028ace69c09985182ebd466742acac77deb4213eff9a3`, 457 files | unchanged source; its `--check` passes on f2ccf38ac. It changes only when the approval literals and provider manifest are written, and is generated last. |
 
 - Changed provider-closure sources: `core/company-refs.ts` (93268aea6), `core/proposals/leave-cancel.ts` (3432c661d),
-  `core/read.ts` (3432c661d), `core/setup-copilot/copilot.ts` (bb15756ed). Closure file set unchanged (0 added, 0 removed).
+  `core/read.ts` (3432c661d), `core/setup-copilot/copilot.ts` (bb15756ed), `core/product-context/setup-readiness.ts` (f2ccf38ac). Closure file set unchanged (0 added, 0 removed).
 - `provider-data-review-gate` is red on this head until the binding, as it must be.
 
 ## Focused CI (recorded as run; filled in as runs complete)
 - **41465481045** on 93268aea6: 64 files (the Teras and review set plus `proposal-leave-cancel-roundtrip` and
-  `r301-cancel-approved-leave`), typecheck, build at the admitted 8192 heap.
-- **41465522939** on 93268aea6: 19 files (the five failing files, `r302-cancel-approved-fixes`, the 13-file PR 210 set).
-- A rerun of the 19-file set on the head with the rewards test fix follows.
+  `r301-cancel-approved-leave`), typecheck PASS, build PASS at the admitted 8192 heap (`hosted-linux-16g-8192`); 63 of 64 files
+  pass; the one failure is `provider-data-review-gate`, red by design until the binding.
+- **41465522939** on 93268aea6: 19 files; 18 pass. `payroll-pack-drift` still failed on `core/product-context/setup-readiness.ts`,
+  a second direct importer the first fix missed. Fixed in f2ccf38ac. The rewards test passed here, but it was still the old
+  regex, so this run says nothing about the 26f0e7812 fix.
+- Reruns of both sets on the exact candidate head follow (64 files with typecheck and the 8192 build; then the 19 files, which
+  now include the rewards fix).
 
 ## Exact binding (proposed; written only after a fresh owner approval)
 In this order, on the candidate head:
-1. **`lib/ai/provider-data-source-manifest.ts`**, generated: `ac138e6c…` → `6d3f3ab7fe02e2f7905b1a1c33b612a147cd649da0e90a73935db5a3f89e4452`.
+1. **`lib/ai/provider-data-source-manifest.ts`**, generated: `ac138e6c…` → `e8692840739a125c8f5f04c4be9a43cc6022bd2f81533a747a76f414d5716913`.
 2. **`lib/ai/provider-data-approvals.ts`** (current sha256 `47a69b6f94b152a15a4bb579495b550c8cdee26d6c18671bba4defb0df7bf470`):
-   all 25 occurrences of `"sourceDigest": "ac138e6c…"` become `6d3f3ab7…`; the 24 historical records keep status, reviewer, evidence
+   all 25 occurrences of `"sourceDigest": "ac138e6c…"` become `e8692840…`; the 24 historical records keep status, reviewer, evidence
    and reviewedAt byte-for-byte; both pending records stay byte-identical; `teras_harness_turn_v1` keeps
    `"reviewer": "human:zenlam repository-owner provisional"`, and its `evidence` and `reviewedAt` are set at write time to the anchor
    and the actual UTC time of the fresh approval, never to 10:15:26Z or 12:07:19Z.
 3. **`docs/reviews/ai-provider-owner-approval-2026-10.md`** (current sha256 `e7517fe7136c0ec3edffcd5fbd57aaa9ca86e2dbb6f061278790d13340873c27`):
-   append `## Noveri release repair binding`, stating the closure move (`ac138e6c…` → `6d3f3ab7…`, 1255 files), the four changed
+   append `## Noveri release repair binding`, stating the closure move (`ac138e6c…` → `e8692840…`, 1255 files), the five changed
    sources and why, the route and actual time of the fresh approval, and that it covers this closure only.
 4. **`lib/ai/module-agent-source-manifest.ts`**, generated LAST.
 5. Both `--check` commands, then focused CI including `provider-data-review-gate`; then the release operator's full qualification.
