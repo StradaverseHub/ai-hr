@@ -2193,7 +2193,7 @@ GRANT EXECUTE ON FUNCTION app.leave_on_behalf_grant_set(uuid,text,boolean),app.l
 CREATE TRIGGER leave_permission_access BEFORE INSERT OR UPDATE OR DELETE ON public.payroll_permission_grant FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_statement_lock();
 
 --> statement-breakpoint
--- Company Delete owns disposal of these exact two config relations, not Clocking Edit
+-- Company Delete owns disposal of these exact company-local config relations, not Clocking Edit
 -- or an ACL mutation for a surviving scope. The native service still owns retention checks,
 -- its ordinary cascade order, the Company DELETE, and its existing audit payload.
 CREATE TABLE app.module_company_hierarchy_epoch(
@@ -2217,6 +2217,7 @@ CREATE TABLE app.module_company_cleanup(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,company_id uuid NOT NULL,
  source jsonb NOT NULL,authority_stamp text NOT NULL,hierarchy jsonb NOT NULL,usage_rows bigint NOT NULL,
  clocking_rows jsonb NOT NULL,payroll_rows jsonb NOT NULL,clocking_removed jsonb NOT NULL DEFAULT '[]',payroll_removed jsonb NOT NULL DEFAULT '[]',
+ financial_rows jsonb NOT NULL,financial_removed jsonb NOT NULL DEFAULT '{}',
  removing_children boolean NOT NULL DEFAULT false,children_consumed boolean NOT NULL DEFAULT false,company_removed boolean NOT NULL DEFAULT false,event_id uuid,restore_immediate boolean NOT NULL,completed boolean NOT NULL DEFAULT false,
  UNIQUE(xact_id,tenant_id,company_id));
 ALTER TABLE app.module_company_cleanup ENABLE ROW LEVEL SECURITY;
@@ -2230,6 +2231,26 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND app.organisation_settings_function_allowed('organization','delete',(p_source->>'id')::uuid);
 $$;
 REVOKE ALL ON FUNCTION app.module_company_cleanup_native(jsonb) FROM PUBLIC,ai_hr_app;
+-- This static list preserves the native dependency order (config before policy).
+CREATE FUNCTION app.module_company_financial_tables() RETURNS text[]
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT ARRAY['company_payroll_config','payroll_policy','payslip_information_setting','payroll_cycle','payroll_anomaly_config','leave_encashment_policy'];
+$$;
+CREATE FUNCTION app.module_company_financial_rows(p_tenant uuid,p_company uuid,p_lock boolean) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE relation text;actual_rows jsonb;result jsonb:='{}';
+BEGIN
+ FOREACH relation IN ARRAY app.module_company_financial_tables() LOOP
+  EXECUTE format('SELECT coalesce(jsonb_agg(to_jsonb(actual)),''[]'') FROM (SELECT * FROM public.%I WHERE company_id=$1%s) actual',
+   relation,CASE WHEN p_lock THEN ' FOR UPDATE' ELSE '' END)
+   INTO actual_rows USING p_company;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(actual_rows) row_image WHERE row_image->>'tenant_id' IS DISTINCT FROM p_tenant::text)
+   THEN RAISE EXCEPTION 'Company financial cleanup scope unavailable' USING ERRCODE='42501';END IF;
+  IF actual_rows<>'[]' THEN result:=result||jsonb_build_object(relation,actual_rows);END IF;
+ END LOOP;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION app.module_company_financial_tables(),app.module_company_financial_rows(uuid,uuid,boolean) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.module_company_cleanup_row_allowed(p_table text,p_old jsonb,p_active boolean DEFAULT false) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.principal_snapshot_current() AND EXISTS(
@@ -2239,12 +2260,15 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
    AND proof.authority_stamp=app.access_function_authority_stamp()
    AND CASE WHEN proof.children_consumed AND NOT p_active THEN CASE p_table
     WHEN 'clocking_location_company' THEN proof.clocking_removed @> jsonb_build_array(p_old)
-    WHEN 'payroll_permission_grant' THEN proof.payroll_removed @> jsonb_build_array(p_old) ELSE false END
+    WHEN 'payroll_permission_grant' THEN proof.payroll_removed @> jsonb_build_array(p_old)
+    ELSE p_table=ANY(app.module_company_financial_tables()) AND coalesce(proof.financial_removed->p_table @> jsonb_build_array(p_old),false) END
    WHEN proof.removing_children AND NOT proof.completed AND NOT proof.company_removed THEN
     EXISTS(SELECT 1 FROM public.company actual WHERE actual.id=proof.company_id AND actual.tenant_id=proof.tenant_id AND to_jsonb(actual)=proof.source)
     AND app.module_company_cleanup_native(proof.source)
     AND CASE p_table WHEN 'clocking_location_company' THEN proof.clocking_rows @> jsonb_build_array(p_old) AND NOT proof.clocking_removed @> jsonb_build_array(p_old)
-    WHEN 'payroll_permission_grant' THEN proof.payroll_rows @> jsonb_build_array(p_old) AND (NOT p_active OR NOT proof.payroll_removed @> jsonb_build_array(p_old)) ELSE false END
+    WHEN 'payroll_permission_grant' THEN proof.payroll_rows @> jsonb_build_array(p_old) AND (NOT p_active OR NOT proof.payroll_removed @> jsonb_build_array(p_old))
+    ELSE p_table=ANY(app.module_company_financial_tables()) AND coalesce(proof.financial_rows->p_table @> jsonb_build_array(p_old),false)
+      AND (NOT p_active OR NOT coalesce(proof.financial_removed->p_table @> jsonb_build_array(p_old),false)) END
    ELSE false END);
 $$;
 REVOKE ALL ON FUNCTION app.module_company_cleanup_row_allowed(text,jsonb,boolean) FROM PUBLIC,ai_hr_app;
@@ -2254,18 +2278,26 @@ BEGIN
  IF app.module_company_cleanup_row_allowed(TG_TABLE_NAME,to_jsonb(OLD),true) THEN
   UPDATE app.module_company_cleanup proof SET
    clocking_removed=proof.clocking_removed||CASE WHEN TG_TABLE_NAME='clocking_location_company' THEN jsonb_build_array(to_jsonb(OLD)) ELSE '[]'::jsonb END,
-   payroll_removed=proof.payroll_removed||CASE WHEN TG_TABLE_NAME='payroll_permission_grant' THEN jsonb_build_array(to_jsonb(OLD)) ELSE '[]'::jsonb END
+   payroll_removed=proof.payroll_removed||CASE WHEN TG_TABLE_NAME='payroll_permission_grant' THEN jsonb_build_array(to_jsonb(OLD)) ELSE '[]'::jsonb END,
+   financial_removed=CASE WHEN TG_TABLE_NAME=ANY(app.module_company_financial_tables()) THEN
+    jsonb_set(proof.financial_removed,ARRAY[TG_TABLE_NAME],coalesce(proof.financial_removed->TG_TABLE_NAME,'[]')||jsonb_build_array(to_jsonb(OLD)),true)
+    ELSE proof.financial_removed END
   WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=OLD.tenant_id AND proof.user_id=app.current_user_id() AND proof.company_id=OLD.company_id;
  END IF;RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION app.module_company_cleanup_child_removed() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER module_company_clocking_removed AFTER DELETE ON public.clocking_location_company FOR EACH ROW EXECUTE FUNCTION app.module_company_cleanup_child_removed();
 CREATE TRIGGER module_company_payroll_removed AFTER DELETE ON public.payroll_permission_grant FOR EACH ROW EXECUTE FUNCTION app.module_company_cleanup_child_removed();
+DO $$ DECLARE relation text;BEGIN
+ FOREACH relation IN ARRAY app.module_company_financial_tables() LOOP
+  EXECUTE format('CREATE TRIGGER module_company_financial_removed AFTER DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app.module_company_cleanup_child_removed()',relation);
+ END LOOP;
+END $$;
 -- The public admission never mutates an ACL while a live company remains. Only this
 -- actual Company DELETE statement can enter the tightly scoped child-removal phase.
 CREATE FUNCTION app.module_company_cleanup_delete_children() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE proof app.module_company_cleanup%ROWTYPE;
+DECLARE proof app.module_company_cleanup%ROWTYPE;relation text;
 BEGIN
  SELECT * INTO proof FROM app.module_company_cleanup actual WHERE actual.xact_id=pg_current_xact_id() AND actual.tenant_id=OLD.tenant_id AND actual.company_id=OLD.id FOR UPDATE;
  IF NOT FOUND THEN RETURN OLD;END IF;
@@ -2276,8 +2308,15 @@ BEGIN
  UPDATE app.module_company_cleanup SET removing_children=true WHERE id=proof.id;
  DELETE FROM public.payroll_permission_grant actual WHERE actual.tenant_id=proof.tenant_id AND actual.company_id=proof.company_id AND proof.payroll_rows @> jsonb_build_array(to_jsonb(actual));
  DELETE FROM public.clocking_location_company actual WHERE actual.tenant_id=proof.tenant_id AND actual.company_id=proof.company_id AND proof.clocking_rows @> jsonb_build_array(to_jsonb(actual));
+ FOREACH relation IN ARRAY app.module_company_financial_tables() LOOP
+  IF proof.financial_rows ? relation THEN
+   EXECUTE format('DELETE FROM public.%I actual WHERE actual.tenant_id=$1 AND actual.company_id=$2 AND $3 @> jsonb_build_array(to_jsonb(actual))',relation)
+    USING proof.tenant_id,proof.company_id,proof.financial_rows->relation;
+  END IF;
+ END LOOP;
  IF EXISTS(SELECT 1 FROM public.payroll_permission_grant actual WHERE actual.company_id=proof.company_id)
- OR EXISTS(SELECT 1 FROM public.clocking_location_company actual WHERE actual.company_id=proof.company_id) THEN RAISE EXCEPTION 'Company cleanup child set changed' USING ERRCODE='42501';END IF;
+ OR EXISTS(SELECT 1 FROM public.clocking_location_company actual WHERE actual.company_id=proof.company_id)
+ OR app.module_company_financial_rows(proof.tenant_id,proof.company_id,false)<>'{}' THEN RAISE EXCEPTION 'Company cleanup child set changed' USING ERRCODE='42501';END IF;
  UPDATE app.module_company_cleanup SET removing_children=false,children_consumed=true WHERE id=proof.id;
  PERFORM app.access_refresh_native_defaults(app.current_user_id());
  RETURN OLD;
@@ -2291,7 +2330,8 @@ BEGIN
  WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=OLD.tenant_id AND proof.user_id=app.current_user_id() AND proof.company_id=OLD.id
  AND NOT proof.removing_children AND proof.children_consumed AND NOT proof.completed AND NOT proof.company_removed AND proof.source=to_jsonb(OLD) AND proof.authority_stamp=app.access_function_authority_stamp()
  AND proof.clocking_rows @> proof.clocking_removed AND proof.clocking_removed @> proof.clocking_rows
- AND proof.payroll_rows @> proof.payroll_removed AND proof.payroll_removed @> proof.payroll_rows;
+ AND proof.payroll_rows @> proof.payroll_removed AND proof.payroll_removed @> proof.payroll_rows
+ AND proof.financial_rows @> proof.financial_removed AND proof.financial_removed @> proof.financial_rows;
  RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION app.module_company_cleanup_parent_removed() FROM PUBLIC,ai_hr_app;
@@ -2329,6 +2369,7 @@ BEGIN
  OR EXISTS(SELECT 1 FROM public.company actual WHERE actual.id=proof.company_id)
  OR EXISTS(SELECT 1 FROM public.clocking_location_company actual WHERE actual.company_id=proof.company_id)
  OR EXISTS(SELECT 1 FROM public.payroll_permission_grant actual WHERE actual.company_id=proof.company_id)
+ OR app.module_company_financial_rows(proof.tenant_id,proof.company_id,false)<>'{}'
  OR NOT EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.id=proof.event_id AND audit.tenant_id=proof.tenant_id AND audit.aggregate_id=proof.company_id
   AND audit.aggregate_type='company' AND audit.event_type='company.deleted' AND audit.actor_type='user' AND audit.actor_id=proof.user_id AND audit.subject_employment_id IS NULL
   AND audit.payload=app.module_company_cleanup_audit_payload(proof.source,proof.usage_rows)) THEN
@@ -2372,13 +2413,14 @@ CREATE TRIGGER module_company_hierarchy_epoch AFTER INSERT OR UPDATE OR DELETE O
 
 CREATE FUNCTION app.module_company_cleanup_admit(p_company uuid,p_restore_immediate boolean) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE source public.company%ROWTYPE;clocking_rows jsonb;payroll_rows jsonb;hierarchy jsonb;result uuid;stamp text;
+DECLARE source public.company%ROWTYPE;clocking_rows jsonb;payroll_rows jsonb;financial_rows jsonb;hierarchy jsonb;result uuid;stamp text;
 BEGIN
  SELECT * INTO source FROM public.company actual WHERE actual.id=p_company AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
  IF NOT FOUND OR NOT app.principal_snapshot_current() OR NOT app.is_admin_for(coalesce(source.parent_company_id,source.id)) THEN RAISE EXCEPTION 'Company cleanup unavailable' USING ERRCODE='42501';END IF;
  SELECT coalesce(jsonb_agg(to_jsonb(actual) ORDER BY actual.id),'[]') INTO clocking_rows FROM (SELECT * FROM public.clocking_location_company child WHERE child.company_id=source.id AND child.tenant_id=source.tenant_id ORDER BY child.id FOR UPDATE) actual;
  SELECT coalesce(jsonb_agg(to_jsonb(actual) ORDER BY actual.id),'[]') INTO payroll_rows FROM (SELECT * FROM public.payroll_permission_grant child WHERE child.company_id=source.id AND child.tenant_id=source.tenant_id ORDER BY child.id FOR UPDATE) actual;
- IF clocking_rows='[]' AND payroll_rows='[]' THEN RETURN NULL;END IF;
+ financial_rows:=app.module_company_financial_rows(source.tenant_id,source.id,true);
+ IF clocking_rows='[]' AND payroll_rows='[]' AND financial_rows='{}' THEN RETURN NULL;END IF;
  stamp:=app.access_function_authority_stamp();
  IF stamp IS NULL OR NOT app.module_company_cleanup_native(to_jsonb(source))
  OR EXISTS(SELECT 1 FROM public.employment actual WHERE actual.company_id=source.id)
@@ -2393,9 +2435,9 @@ BEGIN
  ) SELECT jsonb_object_agg(locked.company_id::text,locked.epoch) INTO hierarchy FROM locked;
  IF hierarchy IS NULL OR NOT hierarchy ? (source.id::text) OR source.parent_company_id IS NOT NULL AND NOT hierarchy ? (source.parent_company_id::text) THEN RAISE EXCEPTION 'Company hierarchy unavailable' USING ERRCODE='42501';END IF;
  DELETE FROM app.module_company_cleanup WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
- INSERT INTO app.module_company_cleanup(xact_id,tenant_id,user_id,company_id,source,authority_stamp,hierarchy,usage_rows,clocking_rows,payroll_rows,restore_immediate)
+ INSERT INTO app.module_company_cleanup(xact_id,tenant_id,user_id,company_id,source,authority_stamp,hierarchy,usage_rows,clocking_rows,payroll_rows,financial_rows,restore_immediate)
  VALUES(pg_current_xact_id(),source.tenant_id,app.current_user_id(),source.id,to_jsonb(source),stamp,hierarchy,
-  (SELECT count(*) FROM public.usage_snapshot usage WHERE usage.tenant_id=source.tenant_id AND usage.company_id=source.id),clocking_rows,payroll_rows,p_restore_immediate) RETURNING id INTO result;
+  (SELECT count(*) FROM public.usage_snapshot usage WHERE usage.tenant_id=source.tenant_id AND usage.company_id=source.id),clocking_rows,payroll_rows,financial_rows,p_restore_immediate) RETURNING id INTO result;
  RETURN result;
 END $$;
 REVOKE ALL ON FUNCTION app.module_company_cleanup_admit(uuid,boolean) FROM PUBLIC,ai_hr_app;

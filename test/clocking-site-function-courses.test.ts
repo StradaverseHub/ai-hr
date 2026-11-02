@@ -85,6 +85,7 @@ async function companyCleanupSources(){
 }
 it('preserves native scoped-parent Company Delete in immediate mode without granting Clocking Edit or detaching its neighbor',async()=>{
  const {child,site,leave,report}=await companyCleanupSources();
+ await owner.db.insert(s.payrollCycle).values({tenantId:b.tenantId,companyId:child.id,name:'Fictional native child cycle',code:'FIX',runType:'regular'});
  const neighbor=await setPayrollPermissionGrant(admin,{companyId:b.companyId,permissionKey:'leave.apply_on_behalf',role:'manager',allowed:true});
  expect(await clockingSiteActionAccess(companyHr,'edit')).toBe(false);
  await withTenant(companyHr,async tx=>{
@@ -92,6 +93,7 @@ it('preserves native scoped-parent Company Delete in immediate mode without gran
   await deleteCompany(companyHr,{id:child.id},tx);
  });
  expect(await owner.db.select().from(s.company).where(eq(s.company.id,child.id))).toEqual([]);
+ expect(await owner.db.select().from(s.payrollCycle).where(eq(s.payrollCycle.companyId,child.id))).toEqual([]);
  expect(await owner.db.select({companyId:s.clockingLocationCompany.companyId}).from(s.clockingLocationCompany).where(eq(s.clockingLocationCompany.clockingLocationId,site.id))).toEqual([{companyId:b.companyId}]);
  expect(await owner.db.select().from(s.clockingLocation).where(eq(s.clockingLocation.id,site.id))).toHaveLength(1);
  for(const id of [leave.id,report.id])expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id))).toEqual([]);

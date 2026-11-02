@@ -152,6 +152,7 @@ BEGIN
  PERFORM app.access_workforce_write_lock();
  IF (r->>'tenant_id')::uuid IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current()
  OR (a IS NOT NULL AND b IS NOT NULL AND (a->>'id' IS DISTINCT FROM b->>'id' OR a->>'tenant_id' IS DISTINCT FROM b->>'tenant_id')) THEN RAISE EXCEPTION 'Financial setup principal unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' AND app.module_company_cleanup_row_allowed(TG_TABLE_NAME,b) THEN RETURN NULL;END IF;
  IF TG_OP='UPDATE' AND b->>'archived_at' IS NULL AND a->>'archived_at' IS NOT NULL THEN op:='delete';END IF;
  IF TG_TABLE_NAME='payroll_cycle' AND TG_OP='INSERT' AND app.financial_setup_standard_cycle(a) THEN RETURN NULL;END IF;
  IF TG_TABLE_NAME='pay_component' THEN
@@ -172,7 +173,6 @@ BEGIN
  ELSIF TG_TABLE_NAME='payroll_cycle' THEN
   co:=(r->>'company_id')::uuid;
  ELSIF TG_TABLE_NAME IN ('payroll_policy','payroll_anomaly_config','payroll_permission_grant') THEN
-  IF TG_TABLE_NAME='payroll_permission_grant' AND TG_OP='DELETE' AND app.module_company_cleanup_row_allowed('payroll_permission_grant',b) THEN RETURN NULL;END IF;
   IF TG_TABLE_NAME='payroll_permission_grant' AND (b->>'permission_key'='leave.apply_on_behalf' OR a->>'permission_key'='leave.apply_on_behalf') THEN
    IF app.leave_permission_source_allowed(b,a) IS NOT TRUE THEN RAISE EXCEPTION 'Leave permission effect unavailable' USING ERRCODE='42501';END IF;
    RETURN NULL;
