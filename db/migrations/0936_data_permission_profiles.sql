@@ -52,7 +52,7 @@ ALTER TABLE data_permission_revision ADD CONSTRAINT data_permission_rules_valid 
 -- Code-owned typed projection. It deliberately returns no unknown or encrypted field.
 CREATE FUNCTION app.data_permission_subject_for(p_tenant uuid,p_employment uuid,p_date date DEFAULT current_date) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT jsonb_build_object('tenant',e.tenant_id::text,'company',e.company_id::text,'businessUnit',a.business_unit_id::text,
+ SELECT jsonb_build_object('tenant',e.tenant_id::text,'company',coalesce(a.company_id,e.company_id)::text,'businessUnit',a.business_unit_id::text,
  'division',e.org_division,'branch',e.org_branch,'department',a.department_id::text,'section',e.org_section,
  'team',e.org_team,'position',a.position_id::text,'grade',e.grade_id::text,'employmentType',a.employment_type::text,
  'employmentStatus',app.employment_status_on(e.blacklisted_at,e.resignation_date,e.last_working_date,e.terminated_on,
@@ -179,9 +179,9 @@ REVOKE ALL ON FUNCTION app.data_permission_fingerprint() FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.data_permission_inspect(rules jsonb) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.data_permission_delegate(rules) AND NOT EXISTS(
-  SELECT 1 FROM jsonb_array_elements(rules->'predicates')rule CROSS JOIN LATERAL jsonb_array_elements_text(rule->'values')value
-  WHERE rule->>'field'='employeeId' AND NOT EXISTS(SELECT 1 FROM public.employment e
-   WHERE e.tenant_id=app.current_tenant_id() AND e.employee_code=value
+  SELECT 1 FROM jsonb_array_elements(rules->'predicates')ruleset(rule) CROSS JOIN LATERAL jsonb_array_elements_text(ruleset.rule->'values')choices(candidate)
+  WHERE ruleset.rule->>'field'='employeeId' AND NOT EXISTS(SELECT 1 FROM public.employment e
+   WHERE e.tenant_id=app.current_tenant_id() AND e.employee_code=choices.candidate
     AND app.access_workforce_employment(e.id,'workforce.view') AND app.data_permission_matches(e.id)));
 $$;
 REVOKE ALL ON FUNCTION app.data_permission_inspect(jsonb) FROM PUBLIC,ai_hr_app;
@@ -238,9 +238,9 @@ BEGIN
  END LOOP;
  SELECT r.rules INTO held FROM public.user_data_permission_assignment a JOIN public.data_permission_profile p ON p.id=a.profile_id AND p.tenant_id=a.tenant_id
   JOIN public.data_permission_revision r ON r.id=p.active_revision_id AND r.profile_id=p.id AND r.tenant_id=p.tenant_id
-  WHERE a.user_id=p_user AND a.tenant_id=app.current_tenant_id() AND p.enabled AND p.retired_at IS NULL;
+  WHERE a.user_id=p_user AND a.tenant_id=app.current_tenant_id() AND p.retired_at IS NULL;
  IF FOUND THEN RETURN app.data_permission_delegate(held);END IF;
- RETURN NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.user_id=p_user AND a.tenant_id=app.current_tenant_id());
+ RETURN true; -- An invalid current assignment grants nothing; a permitted administrator may repair it.
 END;
 $$;
 REVOKE ALL ON FUNCTION app.data_permission_target_ceiling(uuid) FROM PUBLIC,ai_hr_app;
@@ -255,7 +255,7 @@ REVOKE ALL ON FUNCTION app.data_permission_protected(uuid) FROM PUBLIC,ai_hr_app
 CREATE FUNCTION app.data_permission_transition(command jsonb,expected_revision text,commit_change boolean DEFAULT false,expected_preview text DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();p public.data_permission_profile;
- kind text:=command->>'kind';pid uuid;uid uuid;rules jsonb;fingerprint text;revision_id uuid:=gen_random_uuid();affected integer;matched integer;
+ kind text:=command->>'kind';pid uuid;uid uuid;rules jsonb;fingerprint text;revision_id uuid:=gen_random_uuid();affected integer;matched integer;before_count integer;after_count integer;gained integer;lost integer;candidate_enabled boolean;
 BEGIN
  PERFORM app.data_permission_admin_lock();
  IF jsonb_typeof(command)<>'object' OR length(command::text)>100000 OR expected_revision IS DISTINCT FROM app.data_permission_fingerprint() THEN RAISE EXCEPTION 'changed' USING ERRCODE='40001';END IF;
@@ -299,7 +299,22 @@ BEGIN
  -- Only count subjects the acting administrator can already inspect; no hidden employee totals.
  SELECT count(*) INTO matched FROM public.employment e WHERE e.tenant_id=t AND app.access_workforce_employment(e.id,'workforce.view')
   AND app.data_permission_matches(e.id) AND rules IS NOT NULL AND app.data_permission_rules_match(rules,app.data_permission_subject(e.id));
- IF NOT commit_change THEN RETURN jsonb_build_object('fingerprint',fingerprint,'affectedUsers',CASE WHEN kind='assign' THEN 1 ELSE affected END,'matchingRecords',matched);END IF;
+ candidate_enabled:=kind='assign' OR kind IN ('create','edit') AND (command->>'enabled')::boolean;
+ IF NOT candidate_enabled THEN matched:=0;END IF;
+ WITH targets AS (SELECT uid AS user_id WHERE kind='assign' UNION SELECT a.user_id FROM public.user_data_permission_assignment a WHERE a.tenant_id=t AND a.profile_id=pid AND kind<>'assign'),
+ decisions AS (SELECT
+  (actor.person_id IS NOT DISTINCT FROM e.person_id OR app.data_permission_matches_for(actor.id,t,e.id)) AS before_allowed,
+  (actor.person_id IS NOT DISTINCT FROM e.person_id OR candidate_enabled AND rules IS NOT NULL AND app.data_permission_rules_match(rules,app.data_permission_subject(e.id))) AS after_allowed
+ FROM targets target JOIN public.app_user actor ON actor.id=target.user_id AND actor.tenant_id=t
+ CROSS JOIN public.employment e WHERE e.tenant_id=t AND e.voided_at IS NULL
+ AND app.access_workforce_employment(e.id,'workforce.view') AND app.data_permission_matches(e.id)
+ AND (actor.person_id IS NOT DISTINCT FROM e.person_id OR app.access_allowed_for_tenant(t,actor.id,'workforce.view',e.company_id)
+  OR EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.app_user_id=actor.id AND r.tenant_id=t
+   AND r.role::text IN ('hr_admin','super_admin','payroll_partner','performance_comp_partner') AND app.access_scope_covers(r.company_id,e.company_id,t))))
+ SELECT count(*) FILTER(WHERE before_allowed),count(*) FILTER(WHERE after_allowed),count(*) FILTER(WHERE NOT before_allowed AND after_allowed),count(*) FILTER(WHERE before_allowed AND NOT after_allowed)
+ INTO before_count,after_count,gained,lost FROM decisions;
+ IF NOT commit_change THEN RETURN jsonb_build_object('fingerprint',fingerprint,'affectedUsers',CASE WHEN kind='assign' THEN 1 ELSE affected END,'matchingRecords',matched,
+  'beforeRecords',before_count,'afterRecords',after_count,'gainedRecords',gained,'lostRecords',lost);END IF;
  IF fingerprint IS DISTINCT FROM expected_preview THEN RAISE EXCEPTION 'changed' USING ERRCODE='40001';END IF;
  IF kind='create' THEN
   INSERT INTO public.data_permission_profile(id,tenant_id,name) VALUES(pid,t,command->>'name');

@@ -1,3 +1,46 @@
+-- Private transaction births are temporary row identities, never function or company authority.
+CREATE TABLE app.data_permission_birth (
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,user_id uuid NOT NULL,
+ kind text NOT NULL CHECK(kind IN ('person','employment')),row_id uuid NOT NULL,person_id uuid NOT NULL,completed boolean NOT NULL DEFAULT false,
+ PRIMARY KEY(xact_id,tenant_id,user_id,kind,row_id)
+);
+ALTER TABLE app.data_permission_birth ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.data_permission_birth FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_row_born(p_kind text,p_row uuid,p_pending boolean DEFAULT false) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM app.data_permission_birth b
+ WHERE b.xact_id=pg_current_xact_id() AND b.tenant_id=app.current_tenant_id() AND b.user_id=app.current_user_id()
+ AND b.kind=p_kind AND b.row_id=p_row AND (b.completed OR p_pending));
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_row_born(text,uuid,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_employment_born(p_employment uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.data_permission_row_born('employment',p_employment,false);
+$$;
+CREATE FUNCTION app.data_permission_person_born(p_person uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.data_permission_row_born('person',p_person,false);
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_employment_born(uuid),app.data_permission_person_born(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_birth_finish() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_LEVEL='ROW' THEN
+  UPDATE app.data_permission_birth SET completed=true WHERE xact_id=pg_current_xact_id() AND tenant_id=NEW.tenant_id
+   AND user_id=app.current_user_id() AND kind=TG_TABLE_NAME AND row_id=NEW.id;
+ ELSE
+  -- INSERT ON CONFLICT DO NOTHING must never leave a forged birth for the conflicting old row.
+  DELETE FROM app.data_permission_birth WHERE xact_id=pg_current_xact_id() AND tenant_id=app.current_tenant_id()
+   AND user_id=app.current_user_id() AND kind=TG_TABLE_NAME AND NOT completed;
+ END IF;RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_birth_finish() FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
 -- Administrative data profiles narrow existing row owners. Independent own/team/approval rules remain.
 -- This file does not invent additional function authority or publish unsupported action cells.
 -- app.can_admin_employment; prior owner 0016_company_scoped_authz
@@ -237,17 +280,18 @@ $$;
 --> statement-breakpoint
 CREATE FUNCTION app.data_permission_record_read(p_employment uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment e
+ SELECT app.principal_snapshot_current() AND (NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id())
+ OR app.data_permission_row_born('employment',p_employment,true)
+ OR EXISTS(SELECT 1 FROM public.employment e
  WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
- AND (app.data_permission_matches(e.id) OR app.is_self_person(e.person_id)
-));
+ AND (app.data_permission_matches(e.id) OR app.is_self_person(e.person_id))));
 $$;
 REVOKE ALL ON FUNCTION app.data_permission_record_read(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.data_permission_record_read(uuid) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.data_permission_person_read(p_person uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND (app.is_self_person(p_person)
+ SELECT app.principal_snapshot_current() AND (app.is_self_person(p_person) OR app.data_permission_row_born('person',p_person,true)
  OR EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=app.current_tenant_id() AND app.data_permission_record_read(e.id))
  OR NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.user_id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()));
 $$;
@@ -406,6 +450,30 @@ BEGIN
  after_row:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;
  t:=coalesce((after_row->>'tenant_id')::uuid,(before_row->>'tenant_id')::uuid);
  IF t IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Data scope principal unavailable' USING ERRCODE='42501';END IF;
+ IF TG_TABLE_NAME IN ('person','employment') THEN
+  DELETE FROM app.data_permission_birth WHERE tenant_id=t AND xact_id<>pg_current_xact_id();
+  IF TG_OP='INSERT' THEN
+   subject_id:=(after_row->>'id')::uuid;
+   IF TG_TABLE_NAME='person' THEN
+    IF NOT EXISTS(SELECT 1 FROM public.person p WHERE p.id=subject_id) THEN
+     INSERT INTO app.data_permission_birth VALUES(pg_current_xact_id(),t,u,'person',subject_id,subject_id,false) ON CONFLICT DO NOTHING;
+    END IF;
+   ELSE
+    person:=(after_row->>'person_id')::uuid;
+    IF EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=t AND a.user_id=u)
+     AND NOT app.data_permission_person_born(person) AND NOT EXISTS(SELECT 1 FROM public.employment retained
+      WHERE retained.person_id=person AND retained.tenant_id=t AND app.data_permission_matches(retained.id)) THEN
+     RAISE EXCEPTION 'Existing person creation scope unavailable' USING ERRCODE='42501';END IF;
+    IF NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=subject_id) THEN
+     INSERT INTO app.data_permission_birth VALUES(pg_current_xact_id(),t,u,'employment',subject_id,person,false) ON CONFLICT DO NOTHING;
+    END IF;
+   END IF;
+  ELSIF TG_OP='UPDATE' THEN
+   -- A conflicting UPSERT is an Edit of the old row, not a newly born row.
+   DELETE FROM app.data_permission_birth WHERE xact_id=pg_current_xact_id() AND tenant_id=t AND user_id=u
+    AND kind=TG_TABLE_NAME AND row_id=(before_row->>'id')::uuid AND NOT completed;
+  END IF;
+ END IF;
  IF NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=t AND a.user_id=u) THEN
   IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
  END IF;
@@ -447,10 +515,12 @@ BEGIN
   -- The established profile guard still checks the COMPLETE delta and audit in this transaction.
   IF app.is_self_person(person) THEN RETURN NULL;END IF;
   SELECT coalesce(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(coalesce(after_row,'{}'::jsonb))d
-   WHERE d.key IN ('nationality','gender','marital_status') AND d.value IS DISTINCT FROM before_row->d.key;
+   WHERE d.value IS DISTINCT FROM before_row->d.key AND (d.key IN (SELECT column_name FROM app.access_profile_value_bindings() WHERE owner IN ('person','compliance'))
+    OR d.key IN ('address','address_line1','address_line2','address_line3','postcode','city','state','country','marital_status_source_request_id'));
   IF TG_OP='UPDATE' AND delta<>'{}'::jsonb AND (
     app.access_profile_value_approved('person',person,NULL,person,delta,false,false)
-    OR app.access_profile_marriage_delta(before_row,after_row,delta)) THEN RETURN NULL;END IF;
+    OR app.access_profile_marriage_delta(before_row,after_row,delta)
+    OR app.access_privacy_value_intent_allowed('person',before_row,after_row)) THEN RETURN NULL;END IF;
  ELSE subject_id:=CASE WHEN TG_TABLE_NAME='employment' THEN coalesce((after_row->>'id')::uuid,(before_row->>'id')::uuid)
    ELSE coalesce((after_row->>'employment_id')::uuid,(before_row->>'employment_id')::uuid) END;END IF;
  FOR proof IN SELECT * FROM app.data_permission_write_subject s WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=t AND s.user_id=u
@@ -726,3 +796,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   'roles',COALESCE((SELECT jsonb_agg(jsonb_build_array(r.id,r.app_user_id,r.role,r.company_id) ORDER BY r.id) FROM public.role_assignment r WHERE r.tenant_id=app.current_tenant_id()),'[]'::jsonb)
  )::text,'UTF8')),'hex');
 $$;
+
+--> statement-breakpoint
+CREATE TRIGGER data_permission_birth_finish AFTER INSERT ON person FOR EACH ROW EXECUTE FUNCTION app.data_permission_birth_finish();
+CREATE TRIGGER data_permission_birth_finish AFTER INSERT ON employment FOR EACH ROW EXECUTE FUNCTION app.data_permission_birth_finish();
+CREATE TRIGGER data_permission_birth_cleanup AFTER INSERT ON person FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_birth_finish();
+CREATE TRIGGER data_permission_birth_cleanup AFTER INSERT ON employment FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_birth_finish();
