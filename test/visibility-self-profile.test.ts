@@ -23,19 +23,20 @@ it('compares the exact original ordered visibility and native row predicates acr
  // Both non-self branches require an active administrative edge from an active caller employment.
  // Keep the original grants parsing/admin decision above this necessary-only check.
  const fast=` END IF;
- IF NOT performance_has_admin AND NOT EXISTS(
-  SELECT 1 FROM employment me JOIN app_user u ON u.person_id=me.person_id
-  JOIN reporting_line rl ON rl.manager_employment_id=me.id
-  WHERE u.id=app.current_user_id() AND me.tenant_id=app.current_tenant_id()
-   AND me.terminated_on IS NULL AND rl.line_type='administrative' AND rl.superseded_at IS NULL
-   AND rl.valid_from<=current_date AND(rl.valid_to IS NULL OR rl.valid_to>current_date)
- ) THEN
-  RETURN(SELECT coalesce(array_agg(DISTINCT e.id ORDER BY e.id),'{}'::uuid[])
-   FROM employment e JOIN app_user u ON u.person_id=e.person_id
-   WHERE e.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id());
+ IF NOT performance_has_admin THEN
+  WITH own AS MATERIALIZED(
+   SELECT e.id,e.terminated_on FROM employment e JOIN app_user u ON u.person_id=e.person_id
+   WHERE e.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id()
+  ) SELECT ARRAY(SELECT id FROM own ORDER BY id),EXISTS(
+   SELECT 1 FROM own me JOIN reporting_line rl ON rl.manager_employment_id=me.id
+   WHERE me.terminated_on IS NULL AND rl.line_type='administrative' AND rl.superseded_at IS NULL
+    AND rl.valid_from<=current_date AND(rl.valid_to IS NULL OR rl.valid_to>current_date)
+  ) INTO performance_self_ids,performance_has_reporting;
+  IF NOT performance_has_reporting THEN RETURN performance_self_ids; END IF;
  END IF;
   RETURN (`;
- const candidateBody=original.body.replace(anchor,fast),candidate=original.definition.replace(original.body,candidateBody);
+ const declaration='DECLARE performance_has_admin boolean := false;';expect(original.body.split(declaration)).toHaveLength(2);
+ const candidateBody=original.body.replace(declaration,declaration+'\n performance_self_ids uuid[];\n performance_has_reporting boolean;').replace(anchor,fast),candidate=original.definition.replace(original.body,candidateBody);
  const ctx=(u:typeof users[number]):SessionContext=>({tenantId:b.tenantId,userId:u.userId,personId:u.personId,roles:['employee'],grants:[{role:'employee',companyId:C.A}]});
  const universe=[...ALL_EMP,...users.map(u=>u.employmentId)];
  const profile:Record<string,unknown>={kind:'REVERSIBLE_VISIBILITY_SELF_PROFILE_NOT_CAPACITY',actors:500,contexts:CONTEXTS.length,rows:{},controls:0,restoredByteExact:false,donorDropped:false};let controls=0;
@@ -52,6 +53,13 @@ it('compares the exact original ordered visibility and native row predicates acr
   for(let i=0;i<10;i++)await tx.execute(sql`select app.visible_employment_ids()`);
   const start=performance.now();for(let i=0;i<100;i++)await tx.execute(sql`select app.visible_employment_ids()`);return performance.now()-start;
  });
+ const fallbackBurst=async()=>{
+  const out:Record<string,number>={};
+  for(const name of ['manager top (ceo)','HOD (hod)','hr_admin scoped to A'])out[name]=await withTenant(ctxByName(name),async tx=>{
+   for(let i=0;i<5;i++)await tx.execute(sql`select app.visible_employment_ids()`);
+   const started=performance.now();for(let i=0;i<30;i++)await tx.execute(sql`select app.visible_employment_ids()`);return performance.now()-started;
+  });return out;
+ };
  const readErrors=async()=>{
   const results=[];
   for(const grants of ['{broken','{}','null','[]',JSON.stringify([{role:'employee',companyId:'invalid-uuid'}])]){
@@ -64,7 +72,7 @@ it('compares the exact original ordered visibility and native row predicates acr
   return results;
  };
  try{
-  profile.rows={original:[await burst(),await burst()]};save();
+  profile.rows={original:[await burst(),await burst()]};profile.fallbackRows30ReadBurstsMs={original:await fallbackBurst()};save();
   await owner.client.unsafe(candidate);
   const [attributes]=await owner.client`select to_jsonb(p)-'prosrc'as value from pg_proc p where p.oid=${signature}::regprocedure`;expect(attributes.value).toEqual(original.attributes);
   const roles=await withTenant(ctx(users[0]),tx=>tx.execute(sql`select current_user as role`));expect(roles[0].role).toBe('ai_hr_app');
@@ -91,10 +99,10 @@ it('compares the exact original ordered visibility and native row predicates acr
    }finally{await owner.db.delete(s.reportingLine).where(eq(s.reportingLine.id,edge.id));}
    await pair(tx,[users[0].employmentId]);
   });
-  (profile.rows as Record<string,unknown>).candidate=[await burst(),await burst()];save();
+  (profile.rows as Record<string,unknown>).candidate=[await burst(),await burst()];(profile.fallbackRows30ReadBurstsMs as Record<string,unknown>).candidate=await fallbackBurst();save();
  }finally{
   await owner.client.unsafe(original.definition);await owner.client.unsafe('DROP FUNCTION app.perf_visible_original()');profile.donorDropped=true;
   const [restored]=await owner.client`select pg_get_functiondef(${signature}::regprocedure)as definition`;profile.restoredByteExact=restored.definition===original.definition;save();expect(profile.restoredByteExact).toBe(true);
  }
- (profile.rows as Record<string,unknown>).restored=[await burst(),await burst()];save();
+ (profile.rows as Record<string,unknown>).restored=[await burst(),await burst()];(profile.fallbackRows30ReadBurstsMs as Record<string,unknown>).restored=await fallbackBurst();save();
 },240000);
