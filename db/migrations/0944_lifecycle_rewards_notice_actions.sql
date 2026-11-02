@@ -3082,7 +3082,7 @@ BEGIN
  )sources(name,args,target,parameters,calls)LOOP
   SELECT p.prosrc INTO body FROM pg_proc p WHERE p.oid=to_regprocedure('app.'||spec.name||'('||spec.args||')')AND p.prosecdef AND p.provolatile='s';
   IF body IS NULL THEN RAISE EXCEPTION 'Native Rewards eligibility owner unavailable: %',spec.name;END IF;
-  SELECT array_agg(DISTINCT found[1]ORDER BY found[1])INTO actual_calls FROM regexp_matches(body,'app[.]([A-Za-z_][A-Za-z0-9_]*)[(]','g')found;
+  SELECT array_agg(DISTINCT dependency_match[1]ORDER BY dependency_match[1])INTO actual_calls FROM regexp_matches(body,'app[.]([A-Za-z_][A-Za-z0-9_]*)[(]','g')dependency_match;
   IF actual_calls IS DISTINCT FROM spec.calls OR(length(body)-length(replace(body,'app.current_tenant_id()','')))/length('app.current_tenant_id()')<>1 THEN RAISE EXCEPTION 'Native Rewards eligibility dependencies changed: %',spec.name;END IF;
   definition:=pg_get_functiondef(to_regprocedure('app.'||spec.name||'('||spec.args||')'));
   header:='FUNCTION app.'||spec.name||'(';replacement:='FUNCTION app.'||spec.target||'('||spec.parameters;
