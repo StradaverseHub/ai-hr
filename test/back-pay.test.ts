@@ -204,9 +204,15 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
     await setCompensation(a, { employmentId, basicSalary: 3300, effectiveFrom: '2026-03-21' });
     const candidates = await detectArrears(a, { companyId: base.companyId });
     expect(candidates).toHaveLength(2);
+    const runsBefore = await owner.db.select().from(schema.backPayRun);
+    await expect(calculateBackPay(a, {companyId:base.companyId,targetPayPeriod:'2026-04',compensationIds:[candidates[0].compensationId]}))
+      .rejects.toThrow('Select all salary revisions');
+    expect(await owner.db.select().from(schema.backPayRun)).toEqual(runsBefore);
     const { runId, total } = await calculateBackPay(a, { companyId: base.companyId, targetPayPeriod: '2026-04' });
     // March1–10:30000; March11–20:31000; March21–31:36300; /31=3138.71.
     expect(total).toBe(138.71);
+    const sources = await owner.db.select().from(schema.backPaySource).where(eq(schema.backPaySource.runId,runId));
+    expect(sources.map(row=>row.sourceCompensationId).sort()).toEqual(candidates.map(row=>row.compensationId).sort());
     expect((await backPayRunDetail(a, runId))!.perEmployee[0].total).toBe(138.71);
     expect(await detectArrears(a, { companyId: base.companyId })).toHaveLength(0);
     await cancelBackPayRun(a, { runId });
