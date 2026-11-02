@@ -3649,10 +3649,11 @@ export async function prefillClaimsForBatch(
 
     // Stamp the claims onto the batch (reservation) — a deliberate state change, so each gets an event.
     const allIds = [...sumByEmp.values()].flatMap((v) => v.ids);
-    await tx
-      .update(claimRequest)
-      .set({ payrollBatchId: p.batchId })
-      .where(inArray(claimRequest.id, allIds));
+    const reserved=await tx.execute<{id:string;employmentId:string}>(sql`select id,employment_id as "employmentId" from app.payroll_claim_apply(${batch.id}::uuid,'reserve',ARRAY[${sql.join(allIds.map(id=>sql`${id}::uuid`),sql`, `)}],null::uuid[])`);
+    // The finite writer owns the actual source and delta; inputs/audits above and below remain
+    // in this transaction and its deferred owner requires both before it can commit.
+    const expectedSources=new Map(due.map(source=>[source.id,source.employmentId]));
+    if(reserved.length!==due.length||reserved.some(source=>expectedSources.get(source.id)!==source.employmentId))throw new ClaimError('Payroll claim source changed');
     for (const c of due) {
       await appendEvent(tx, {
         tenantId: ctx.tenantId,

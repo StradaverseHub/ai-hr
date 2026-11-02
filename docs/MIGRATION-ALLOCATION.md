@@ -1125,3 +1125,14 @@ its separate exact closed source proof. Receipt presence for submitting an actua
 only a boolean under Submit authority. The web file control consumes Receipt View; authored native
 source and six-locale DOM checks require hosted qualification. Independent nonself receipt purposes,
 nonself submission/decisions, finite Payroll writers and full package closure remain unfinished.
+
+
+### Payroll Claim reservation completes finite read/write source composition
+
+The Claim prefill adapter now passes its exact finite-source IDs to941 `payroll_claim_apply` Reserve,
+checks returned claim/employment identities, and retains its native integer-cents input accumulation
+and per-claim queued audit in the same transaction. The private941 port completion still consumes
+actual Payroll input/audit custody; no ordinary Claim View, raw metadata exemption or proposed-only
+money witness is introduced. Security checkpoint b600c025b is merged normally as the prerequisite.
+Existing Payroll Claim scope/native positive and deferred incomplete-source negatives require hosted
+qualification together; no local test or compiler execution is claimed.
