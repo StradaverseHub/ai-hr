@@ -106,6 +106,7 @@ import {
   leaveRequestDate,
   leaveType,
   payPeriod,
+  payrollDocumentBatch,
   payrollBatch,
   payrollCycle,
   payrollEmployeeResultHistory,
@@ -908,28 +909,8 @@ export async function markRunsAffectedByEmploymentChangeTx(
     ids.push(...rows.map((r) => r.id).filter((id) => !ids.includes(id)));
   }
   if (ids.length === 0) return [];
-  const fromPeriod = p.from && /^\d{4}-\d{2}/.test(p.from) ? p.from.slice(0, 7) : null;
-  const rows = await tx
-    .select({ batchId: payslip.batchId, employmentId: payslip.employmentId })
-    .from(payslip)
-    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-    .where(
-      and(
-        inArray(payslip.employmentId, ids),
-        eq(payrollBatch.status, 'processed'),
-        fromPeriod ? gte(payrollBatch.payPeriod, fromPeriod) : undefined,
-        sql`app.can_admin_payroll_for(${payrollBatch.companyId})`,
-      ),
-    );
-  const byBatch = new Map<string, Set<string>>();
-  for (const r of rows) byBatch.set(r.batchId, (byBatch.get(r.batchId) ?? new Set<string>()).add(r.employmentId));
-  const marked: { batchId: string; employmentIds: string[] }[] = [];
-  for (const [batchId, set] of [...byBatch].sort(([a], [b]) => a.localeCompare(b))) {
-    const employmentIds = [...set].sort();
-    await markBatchNeedsRecalc(tx, ctx, { batchId, employmentIds, category: p.category });
-    marked.push({ batchId, employmentIds });
-  }
-  return marked;
+  const marked=await tx.execute<{batchId:string;employmentIds:string[]}>(sql`select batch_id as "batchId",employment_ids as "employmentIds" from app.financial_mark_source_payroll_stale(ARRAY[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${p.category},${p.from}::date)`);
+  return Array.from(marked);
 }
 
 /**
@@ -2333,7 +2314,8 @@ export async function updateBatchScope(
           ),
         );
       const valid = new Set(companyEmps.map((e) => e.id));
-      validEmploymentIds = submittedEmploymentIds.filter((id) => valid.has(id));
+      if(submittedEmploymentIds.some(id=>!valid.has(id)))throw new Error('Payroll scope unavailable');
+      validEmploymentIds = submittedEmploymentIds;
     }
     // Department ids in the scope carry through unchanged (the wizard's resume path posts explicit
     // employment ids, not department filters, but keep the department dimension intact if present).
@@ -2577,6 +2559,7 @@ export async function deleteDraftBatch(ctx: SessionContext, p: { batchId: string
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
+    await tx.execute(sql`select app.access_payroll_batch_begin(${p.batchId}::uuid,'delete')`);
     const [batch] = await tx
       .select({
         status: payrollBatch.status,
@@ -3754,6 +3737,7 @@ export async function generatePayslips(
 
 async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePayslipsParams) {
   await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
+  await tx.execute(sql`select app.access_payroll_batch_begin(${p.batchId}::uuid,'edit',${p.reprocessSubset?sql`ARRAY[${sql.join(p.reprocessSubset.employmentIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`})`);
   const subset = p.reprocessSubset ?? null;
     const [batch] = await tx.select().from(payrollBatch).where(eq(payrollBatch.id, p.batchId)).limit(1).for('update');
     if (!batch) throw new Error('batch not found');
@@ -9025,6 +9009,7 @@ export async function resetProcessedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:
   const reason=(p.reason??'').trim();
   if (!reason) throw new ResetReasonRequiredError();
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
+    await tx.execute(sql`select app.access_payroll_batch_begin(${p.batchId}::uuid,'edit')`);
     const [batch] = await tx
       .select({
         status: payrollBatch.status,
@@ -9337,6 +9322,7 @@ export async function unlockClosedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:st
   const reason = (p.reason ?? '').trim();
   if (!reason) throw new UnlockReasonRequiredError();
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
+    await tx.execute(sql`select app.access_payroll_batch_begin(${p.batchId}::uuid,'edit')`);
     const [batch] = await tx
       .select({
         status: payrollBatch.status,
@@ -10240,6 +10226,7 @@ export async function removeEmployeePayrollTx(
     };
   },
 ) {
+  await tx.execute(sql`select app.access_payroll_batch_begin(${p.batchId}::uuid,'delete',ARRAY[${sql.join(p.employmentIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`);
   const { batch, reason } = p;
   const requested = [...new Set(p.employmentIds.filter(Boolean))];
 
@@ -11458,6 +11445,7 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
  *
  *  THE RELEASE GATE BELOW IS UNCHANGED. Widening the select does not widen who may read the row. */
 export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = false) {
+  const payrollBatch=payrollDocumentBatch;
   return withTenant(ctx, async (tx) => {
     // d28501b8 r2 — the employee's own copy is the payslip they were issued, even if an import later set it
     // aside for HR. Only the self path asks; HR detail stays on the effective figures.

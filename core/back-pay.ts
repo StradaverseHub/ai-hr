@@ -112,6 +112,7 @@ import {
   employment,
   employmentPayComponent,
   payComponent,
+  payrollDocumentBatch,
   payrollBatch,
   payrollBatchComponent,
   payrollIndividualTxn,
@@ -233,6 +234,7 @@ export function detectArrears(ctx: SessionContext, p: { companyId: string }): Pr
  * otherwise be paid twice, which is the exact failure the duplicate guard exists to prevent.
  */
 async function detectArrearsTx(tx: Tx, p: { companyId: string }): Promise<ArrearsCandidate[]> {
+  const payrollBatch=payrollDocumentBatch;
   const rows = await tx
     .select({
       compensationId: compensation.id,
@@ -364,6 +366,7 @@ export function ruleReadsHours(
  * Read-only: it opens no batch, writes no payslip and touches nothing the payroll engine owns.
  */
 async function computeLinesTx(tx: Tx, p: { candidates: ArrearsCandidate[] }): Promise<ComputedLine[]> {
+  const payrollBatch=payrollDocumentBatch;
   const out: ComputedLine[] = [];
   const empIds = [...new Set(p.candidates.map((c) => c.employmentId))];
   if (empIds.length === 0) return out;
