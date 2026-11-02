@@ -79064,18 +79064,18 @@
     {
       "table": "leave_cancellation_request",
       "policy": "bounded_approval_task_read",
-      "source": "db/migrations/0940_bounded_approval_task_sources.sql",
+      "source": "db/migrations/0943_leave_attendance_claim_actions.sql",
       "owners": [
-        "app.workflow_task_reader"
+        "app.leave_cancellation_direct_task_reader"
       ]
     },
     {
       "table": "leave_cancellation_request",
       "policy": "data_permission_subject_read",
-      "source": "db/migrations/0940_bounded_approval_task_sources.sql",
+      "source": "db/migrations/0943_leave_attendance_claim_actions.sql",
       "owners": [
         "app.data_permission_record_read",
-        "app.workflow_task_reader"
+        "app.leave_cancellation_direct_task_reader"
       ]
     },
     {
