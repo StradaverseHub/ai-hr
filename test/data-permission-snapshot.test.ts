@@ -13,8 +13,8 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
  await resetDb();b=await seedBase();admin={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};await publishWorkforceCapabilities(owner.client);
  const grades=await owner.db.insert(s.jobGrade).values([{tenantId:b.tenantId,code:'SNAPA',name:'Snapshot A'},{tenantId:b.tenantId,code:'SNAPB',name:'Snapshot B'}]).returning();gradeA=grades[0].id;gradeB=grades[1].id;
- shown=(await hireEmployee(admin,{person:{fullName:'Snapshot allowed'},employeeCode:'SNAP-A',companyId:b.companyId,departmentId:b.deptA,gradeId:gradeA,employmentType:'full_time',hiredOn:'2026-01-01'})).employmentId;
- hidden=(await hireEmployee(admin,{person:{fullName:'Snapshot hidden'},employeeCode:'SNAP-B',companyId:b.companyId,departmentId:b.deptA,gradeId:gradeB,employmentType:'full_time',hiredOn:'2026-01-01'})).employmentId;
+ shown=(await hireEmployee(admin,{person:{fullName:'Snapshot allowed',primaryEmail:randomUUID()+'@example.invalid'},employeeCode:'SNAP-A',companyId:b.companyId,departmentId:b.deptA,gradeId:gradeA,employmentType:'full_time',hiredOn:'2026-01-01'})).employmentId;
+ hidden=(await hireEmployee(admin,{person:{fullName:'Snapshot hidden',primaryEmail:randomUUID()+'@example.invalid'},employeeCode:'SNAP-B',companyId:b.companyId,departmentId:b.deptA,gradeId:gradeB,employmentType:'full_time',hiredOn:'2026-01-01'})).employmentId;
  const [user]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'snapshot-'+randomUUID()}).returning();await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:b.companyId});
  limited={...admin,userId:user.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
  const profileId=randomUUID();await change({kind:'create',profileId,name:'Snapshot scope',enabled:true,rules:{legacyCompany:false,predicates:[{field:'grade',values:[gradeA]}]}});await change({kind:'assign',userId:user.id,profileId});
