@@ -9,6 +9,8 @@ import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, l
 import { randomUUID, createHash } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { resolveEntitlementsTx } from './entitlements';
+import { TENANT_STATUS_GOOD_STANDING } from './entitlement-types';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
@@ -10008,17 +10010,27 @@ export async function pairsWithLedgerRowsAfter(
  *  own empty-target guard, where it once granted the whole tenant off criteria that matched no one. So:
  *  ABSENT (`undefined`) ⇒ unscoped, exactly as the manual screen and the monthly cron call it today;
  *  PRESENT AND EMPTY ⇒ no employment at all, reported as `no_employment_in_scope`. */
-export async function accrueEarnedLeave(
-  ctx: SessionContext,
-  p: {
-    asOf: string;
-    companyIds?: string[];
-    gradeIds?: string[];
-    leaveTypeIds?: string[];
-    /** r301 — `undefined` ⇒ every employment; `[]` ⇒ NONE. See the header. */
-    employmentIds?: string[];
-    dryRun?: boolean;
-  },
+type EarnedAccrualInput = {
+  asOf: string;
+  companyIds?: string[];
+  gradeIds?: string[];
+  leaveTypeIds?: string[];
+  /** r301 — `undefined` ⇒ every employment; `[]` ⇒ NONE. See the header. */
+  employmentIds?: string[];
+  dryRun?: boolean;
+};
+
+export function accrueEarnedLeave(ctx: SessionContext, p: EarnedAccrualInput): Promise<EarnedAccrualResult> {
+  return runEarnedAccrual(ctx, p);
+}
+
+/** Server-side entry point for the scheduled job. The app connection revalidates the configured login. */
+export function accrueScheduledEarnedLeave(tenantId: string, userId: string, asOf: string): Promise<EarnedAccrualResult> {
+  return runEarnedAccrual({ tenantId, userId, roles: ['hr_admin'], grants: [{ role: 'hr_admin', companyId: null }] }, { asOf }, true);
+}
+
+async function runEarnedAccrual(
+  ctx: SessionContext, p: EarnedAccrualInput, scheduled = false,
 ): Promise<EarnedAccrualResult> {
   const scopeCompanyIds = (p.companyIds ?? []).filter(Boolean);
   const scopeGradeIds = (p.gradeIds ?? []).filter(Boolean);
@@ -10031,6 +10043,18 @@ export async function accrueEarnedLeave(
   p = { ...p, companyIds: p.companyIds?.slice(), gradeIds: p.gradeIds?.slice(), leaveTypeIds: p.leaveTypeIds?.slice(), employmentIds: p.employmentIds?.slice() };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx): Promise<EarnedAccrualResult> => {
+    if (scheduled) {
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      const [principal] = await tx.execute<{ allowed: boolean }>(sql`
+        select (app.principal_snapshot_current() and app.is_group_admin()
+          and app.data_permission_unstructured_history_read()) as allowed
+      `);
+      if (principal?.allowed !== true) throw new Error('Scheduled earned accrual principal unavailable.');
+      const snapshot = await resolveEntitlementsTx(tx, ctx.tenantId);
+      if (!TENANT_STATUS_GOOD_STANDING.has(snapshot.tenantStatus)) {
+        throw new Error('Scheduled earned accrual tenant is outside good standing.');
+      }
+    }
     await lockLeaveCohortDependenciesTx(tx, ctx, { employmentIds: scopeEmpIds === null ? undefined : scopeEmpIds, companyIds: scopeCompanyIds, gradeIds: scopeGradeIds }, !dryRun);
     await assertInformationLeavePeriodTx(tx,p.asOf,{employmentIds:scopeEmpIds===null?undefined:scopeEmpIds,companyIds:scopeCompanyIds,gradeIds:scopeGradeIds});
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
