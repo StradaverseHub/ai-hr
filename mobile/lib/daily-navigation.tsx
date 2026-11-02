@@ -14,17 +14,17 @@ const destinations = [
   { path: '/me', label: 'tabMe', icon: { ios: 'person.crop.circle', android: 'person' } },
 ] as const;
 
-/** The approved default shell. Published schema-2 navigation retains its own renderer. */
+/** Full labels take their intrinsic width; very large text wraps whole tabs instead of splitting words. */
 export function DailyNavigation({ inline = false }: { inline?: boolean } = {}) {
   const { palette, appearance } = useTenantDesign();
   const path = dailyDestinationForPath(usePathname());
   return <SafeAreaView edges={['bottom']} style={inline ? { backgroundColor: palette.bg } : { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'transparent' }}>
-    <View style={{ marginHorizontal: 12, marginBottom: 6, padding: 5, maxWidth: 560, width: '94%', alignSelf: 'center', flexDirection: 'row', borderRadius: 27, borderCurve: 'continuous', borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, boxShadow: '0px 4px 16px rgba(0,0,0,0.10)' }}>
+    <View style={{ marginHorizontal: 12, marginBottom: 6, padding: 5, maxWidth: 560, width: '94%', alignSelf: 'center', flexDirection: 'row', flexWrap: 'wrap', borderRadius: 27, borderCurve: 'continuous', borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, boxShadow: '0px 4px 16px rgba(0,0,0,0.10)' }}>
       {destinations.map(item => {
         const selected = path === item.path;
         const color = selected ? appearance === 'dark' ? palette.button : palette.text : palette.muted;
         return <Pressable key={item.path} accessibilityRole="tab" accessibilityLabel={t(item.label)} accessibilityState={{ selected }} onPress={() => router.navigate(item.path as Href)}
-          style={({ pressed }) => ({ flex: 1, minHeight: 52, paddingVertical: 7, paddingHorizontal: 2, gap: 5, alignItems: 'center', justifyContent: 'center', borderRadius: 22, opacity: pressed ? .65 : 1 })}>
+          style={({ pressed }) => ({ flexGrow: 1, flexShrink: 0, flexBasis: 'auto', minWidth: 48, maxWidth: '100%', minHeight: 52, paddingVertical: 7, paddingHorizontal: 4, gap: 5, alignItems: 'center', justifyContent: 'center', borderRadius: 22, opacity: pressed ? .65 : 1 })}>
           <SymbolView name={item.icon} tintColor={color} size={22}/>
           <Text style={{ color, fontSize: 11, fontWeight: selected ? '700' : '400', textAlign: 'center' }}>{t(item.label)}</Text>
         </Pressable>;

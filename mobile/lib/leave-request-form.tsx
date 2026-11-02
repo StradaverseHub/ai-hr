@@ -1,5 +1,5 @@
 import { useEffect,useRef,useState,type ReactNode } from 'react';
-import { AppState,Pressable,TextInput,View } from 'react-native';
+import { AppState,Pressable,TextInput,View,useWindowDimensions } from 'react-native';
 import DateTimePicker from '@expo/ui/community/datetime-picker';
 import { DesignText as Text } from './design';
 import * as DocumentPicker from 'expo-document-picker';
@@ -33,11 +33,14 @@ const fromPicker=(mode:'date'|'time',d:Date)=>mode==='date'?`${d.getFullYear()}-
  */
 export function PickerField({label,mode,value,today,disabled,onChange}:{label:string;mode:'date'|'time';value:string|undefined;today:string;disabled:boolean;onChange:(value:string)=>void}){
   const {palette}=useTenantDesign();const [open,setOpen]=useState<Date|null>(null);
+  const {width,fontScale}=useWindowDimensions();
+  // Keep a complete calendar date on one line without shrinking the user's chosen text size.
+  const fullRow=!!open||(mode==='date'&&width/Math.max(1,fontScale)<360);
   function show(){
     if(disabled)return;const seed=toPicker(mode,value,today);
     setOpen(open?null:seed);
   }
-  return <View style={{gap:6,flex:1,minWidth:open?'100%':120}}>
+  return <View style={{gap:6,flex:1,minWidth:fullRow?'100%':120}}>
     <Text style={{color:palette.muted,fontSize:14}}>{label}</Text>
     <Button title={value||t('pickerChoose')} accessibilityLabel={label} kind="quiet" disabled={disabled} onPress={show}/>
     {open&&!disabled&&<>
