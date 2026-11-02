@@ -1209,3 +1209,13 @@ All new cases still require hosted execution. Ordinary approval→reimbursement 
 outcome chain.
 Finite status transitions now refuse filed-row hard deletion and lifecycle rewinds, while Submit
 cannot silently edit the Draft's static source fields; actual native repricing fields remain allowed.
+
+Claim Types now projects exact Add/Edit/Delete into its native type/item/designed-field controls.
+Limits and Mileage project the actual dated logical resource's Add or Edit course, including prior
+versions/tombstones, through a read-only API. Both projection and serialized insertion use the same
+private resource identity/history fact; reading neither reserves the key nor takes configuration
+write locks. A denied grid row remains visible as reference, cannot change local payload state, and
+is excluded from the submitted changes; Mileage retains its values in a disabled editor. Native
+writers still recheck their current exact controls and logical course. New database projection and
+rendered control cases are authored, not executed here; genuine supported component publication and
+all remaining native Leave/Attendance/Claim source closure are still required.

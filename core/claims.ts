@@ -3787,3 +3787,12 @@ export async function claimsAnalysisSourceTx(tx:Tx,ctx:SessionContext,companyIds
  const scoped=await filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
  return {selection:'all_visible_claims',rows:scoped.map(row=>({personId:row.personId,conditions:{pending_claim_share:row.status==='pending'}}))};
 }
+
+
+/** Read-only dated-resource control projection; the locked SQL writer rechecks its actual course. */
+export function claimConfigurationWriteAccess(ctx:SessionContext,selections:readonly {kind:'claim_policy'|'claim_mileage_rate';claimTypeId:string;gradeId:string|null;claimItemId?:string|null;vehicleClass?:MileageVehicleClass}[]):Promise<boolean[]>{
+ return withTenant(ctx,tx=>Promise.all(selections.map(async selection=>{
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.claim_configuration_write_access(${selection.kind},${selection.claimTypeId}::uuid,${selection.gradeId}::uuid,${selection.claimItemId??null}::uuid,${selection.vehicleClass??null}) as allowed`);
+  return row?.allowed===true;
+ })));
+}

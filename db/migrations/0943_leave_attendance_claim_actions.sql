@@ -64,17 +64,23 @@ CREATE TABLE app.module_action_resource(tenant_id uuid NOT NULL REFERENCES publi
 --> statement-breakpoint
 REVOKE ALL ON TABLE app.module_action_resource FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- One native fact owner for dated logical resource identity/history. A read projection does not
+-- reserve a resource, take write admission, or mint a successful Add course.
+CREATE FUNCTION app.claim_configuration_resource_fact(p_kind text,p_row jsonb) RETURNS TABLE(resource_key text,existed boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE p_kind WHEN 'claim_policy' THEN jsonb_build_array(p_row->'claim_type_id',p_row->'grade_id',p_row->'claim_item_id')::text ELSE jsonb_build_array(p_row->'claim_type_id',p_row->'grade_id',p_row->'vehicle_class')::text END,
+ CASE p_kind WHEN 'claim_policy' THEN EXISTS(SELECT 1 FROM public.claim_policy p WHERE p.tenant_id=(p_row->>'tenant_id')::uuid AND p.claim_type_id=(p_row->>'claim_type_id')::uuid AND p.grade_id IS NOT DISTINCT FROM (p_row->>'grade_id')::uuid AND p.claim_item_id IS NOT DISTINCT FROM (p_row->>'claim_item_id')::uuid)
+ ELSE EXISTS(SELECT 1 FROM public.claim_mileage_rate p WHERE p.tenant_id=(p_row->>'tenant_id')::uuid AND p.claim_type_id=(p_row->>'claim_type_id')::uuid AND p.grade_id IS NOT DISTINCT FROM (p_row->>'grade_id')::uuid AND p.vehicle_class=p_row->>'vehicle_class') END
+ WHERE p_kind IN ('claim_policy','claim_mileage_rate');
+$$;
+REVOKE ALL ON FUNCTION app.claim_configuration_resource_fact(text,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.claim_configuration_insert_operation(p_kind text,p_row jsonb) RETURNS text
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE resource_key text;existed boolean;resource app.module_action_resource%ROWTYPE;
 BEGIN
- IF p_kind='claim_policy' THEN
-  resource_key:=jsonb_build_array(p_row->'claim_type_id',p_row->'grade_id',p_row->'claim_item_id')::text;
-  SELECT EXISTS(SELECT 1 FROM public.claim_policy p WHERE p.tenant_id=(p_row->>'tenant_id')::uuid AND p.claim_type_id=(p_row->>'claim_type_id')::uuid AND p.grade_id IS NOT DISTINCT FROM (p_row->>'grade_id')::uuid AND p.claim_item_id IS NOT DISTINCT FROM (p_row->>'claim_item_id')::uuid) INTO existed;
- ELSIF p_kind='claim_mileage_rate' THEN
-  resource_key:=jsonb_build_array(p_row->'claim_type_id',p_row->'grade_id',p_row->'vehicle_class')::text;
-  SELECT EXISTS(SELECT 1 FROM public.claim_mileage_rate p WHERE p.tenant_id=(p_row->>'tenant_id')::uuid AND p.claim_type_id=(p_row->>'claim_type_id')::uuid AND p.grade_id IS NOT DISTINCT FROM (p_row->>'grade_id')::uuid AND p.vehicle_class=p_row->>'vehicle_class') INTO existed;
- ELSE RAISE EXCEPTION 'Unbound configuration resource' USING ERRCODE='42501';END IF;
+ SELECT fact.resource_key,fact.existed INTO resource_key,existed FROM app.claim_configuration_resource_fact(p_kind,p_row) fact;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Unbound configuration resource' USING ERRCODE='42501';END IF;
  -- Physical unique-key conflict serializes first publication; a pre-pinned invisible winner
  -- causes40001 rather than reclassifying an existing logical object as a new Add.
  INSERT INTO app.module_action_resource AS target(tenant_id,kind,resource_key,born_xact,born_actor) VALUES((p_row->>'tenant_id')::uuid,p_kind,resource_key,CASE WHEN existed THEN '0'::xid8 ELSE pg_current_xact_id() END,app.current_user_id())
@@ -1338,3 +1344,25 @@ END $$;
 REVOKE ALL ON FUNCTION app.claim_authority_changed() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER claim_control_authority_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.claim_authority_changed();
 CREATE TRIGGER claim_native_authority_recheck AFTER UPDATE ON app.claim_native_source_epoch FOR EACH ROW EXECUTE FUNCTION app.claim_authority_changed();
+
+--> statement-breakpoint
+-- Exact, read-only control projection. Native source writers still classify under their serializing
+-- lock; this result is never a reservation or proof of a successful operation.
+CREATE FUNCTION app.claim_configuration_write_access(p_kind text,p_type uuid,p_grade uuid DEFAULT NULL,p_item uuid DEFAULT NULL,p_vehicle text DEFAULT NULL) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE key text;image jsonb;fact record;resource app.module_action_resource%ROWTYPE;operation text;
+BEGIN
+ key:=CASE p_kind WHEN 'claim_policy' THEN 'claimsConfig.limits' WHEN 'claim_mileage_rate' THEN 'claimsConfig.mileage' END;
+ IF key IS NULL OR NOT app.principal_snapshot_current() OR NOT app.module_action_allowed('claims_configuration','view',NULL) OR NOT app.function_action_allowed(key,'view',NULL)
+ OR NOT EXISTS(SELECT 1 FROM public.claim_type t WHERE t.id=p_type AND t.tenant_id=app.current_tenant_id() AND t.archived_at IS NULL)
+ OR p_grade IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.job_grade g WHERE g.id=p_grade AND g.tenant_id=app.current_tenant_id())
+ OR p_item IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.claim_item i WHERE i.id=p_item AND i.tenant_id=app.current_tenant_id() AND i.claim_type_id=p_type AND i.archived_at IS NULL)
+ OR p_kind='claim_policy' AND p_vehicle IS NOT NULL OR p_kind='claim_mileage_rate' AND(p_item IS NOT NULL OR p_vehicle IS NULL OR p_vehicle NOT IN ('any','car','motorcycle','van','lorry')) THEN RETURN false;END IF;
+ image:=jsonb_build_object('tenant_id',app.current_tenant_id(),'claim_type_id',p_type,'grade_id',p_grade,'claim_item_id',p_item,'vehicle_class',p_vehicle);
+ SELECT * INTO fact FROM app.claim_configuration_resource_fact(p_kind,image);
+ SELECT * INTO resource FROM app.module_action_resource r WHERE r.tenant_id=app.current_tenant_id() AND r.kind=p_kind AND r.resource_key=fact.resource_key;
+ operation:=CASE WHEN FOUND THEN CASE WHEN resource.born_xact=pg_current_xact_id_if_assigned() AND resource.born_actor=app.current_user_id() THEN 'add' ELSE 'edit' END WHEN fact.existed THEN 'edit' ELSE 'add' END;
+ RETURN app.module_action_allowed('claims_configuration',operation,NULL) AND app.function_action_allowed(key,operation,NULL);
+END $$;
+REVOKE ALL ON FUNCTION app.claim_configuration_write_access(text,uuid,uuid,uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_configuration_write_access(text,uuid,uuid,uuid,text) TO ai_hr_app;
