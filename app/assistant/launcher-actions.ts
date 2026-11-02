@@ -1,6 +1,7 @@
 'use server';
 
 import type { ReactNode } from 'react';
+import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 import { getBrowserCommandSession } from '@/lib/session';
@@ -78,7 +79,7 @@ async function askThroughHarness(session:SessionContext,route:Extract<Conversati
  }
 }
 const unclassifiedFailure=(error:unknown)=>{const code=(error as {code?:unknown}|null)?.code;
- return {name:error instanceof Error?error.name:typeof error,code:typeof code==='string'&&/^[A-Z0-9_]{1,40}$/.test(code)?code:null};};
+ return {name:error instanceof Error?error.name:typeof error,code:typeof code==='string'&&/^[A-Z0-9_]{1,40}$/.test(code)?code:null,supportId:randomUUID()};};
 
 /** Home chat has no posted page context. It uses exactly the same command and authoritative replay. */
 export async function askFromWorkspaceAction(input: {question:unknown;previousExchangeId?:unknown;previousConversationToken?:unknown;clarificationExchangeId?:unknown}):Promise<LauncherReply>{

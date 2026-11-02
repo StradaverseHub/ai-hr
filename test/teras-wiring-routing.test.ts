@@ -82,10 +82,10 @@ describe('switch on: the Teras harness',()=>{
    class ContinuationRefused extends Error{constructor(){super('PRIVATE continuation detail');this.name='ContinuationRefused';}}
    owner.turn.mockRejectedValueOnce(new ContinuationRefused());
    expect(await askFromWorkspaceAction({question:'What can you help me with?'})).toEqual({ok:false,message:'aiCentre.conversation.errors.provider_error'});
-   expect(logged).toHaveBeenLastCalledWith('[noveri conversation turn] unclassified failure',{name:'ContinuationRefused',code:null});
+   expect(logged).toHaveBeenLastCalledWith('[noveri conversation turn] unclassified failure',{name:'ContinuationRefused',code:null,supportId:expect.stringMatching(/^[0-9a-f-]{36}$/)});
    owner.render.mockRejectedValueOnce(Object.assign(Error('PRIVATE render detail'),{code:'22P02'}));
    expect(await askFromWorkspaceAction({question:'How much annual leave do I have?'})).toEqual({ok:false,message:'aiCentre.conversation.errors.provider_error'});
-   expect(logged).toHaveBeenLastCalledWith('[noveri conversation turn] unclassified failure',{name:'Error',code:'22P02'});
+   expect(logged).toHaveBeenLastCalledWith('[noveri conversation turn] unclassified failure',{name:'Error',code:'22P02',supportId:expect.stringMatching(/^[0-9a-f-]{36}$/)});
    expect(JSON.stringify(logged.mock.calls)).not.toMatch(/PRIVATE|help me|annual leave/);
    const {ConversationTurnError}=await import('../core/teras-wiring/turn');
    logged.mockClear();owner.turn.mockRejectedValueOnce(new (ConversationTurnError as unknown as new(code:string)=>Error)('budget_daily'));
