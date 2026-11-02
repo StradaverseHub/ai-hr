@@ -69,7 +69,10 @@ async function privateImportAttemptTx(tx:Tx,attemptId:string):Promise<ImportAtte
    source_name as "sourceName",mime_type as "mimeType",source_hash as "sourceHash",
    source_content as "sourceContent",company_ids as "companyIds",plan,created_at as "createdAt"
   from app.import_attempt_private(${attemptId}::uuid)`);
- return row?{...row,createdAt:new Date(row.createdAt)}:undefined;
+ if(!row)return undefined;
+ const createdAt=new Date(row.createdAt);
+ if(!Buffer.isBuffer(row.sourceContent)||row.plan===null||typeof row.plan!=='object'||Array.isArray(row.plan)||!Number.isFinite(createdAt.getTime()))fail('Stored import attempt unavailable.');
+ return {...row,createdAt};
 }
 
 /** Locks the attempt for confirm/revert. The row is immutable; FOR UPDATE only serializes writers. */
@@ -158,7 +161,9 @@ export async function importAttemptSource(ctx:SessionContext,id:string){
   await principalTx(tx,ctx);if(!await coversTx(tx,id,'view'))return null;
   const[row]=await tx.execute<{name:string;mimeType:string;content:Buffer;sourceHash:string}>(sql`
    select source_name as name,mime_type as "mimeType",source_content as content,source_hash as "sourceHash"
-   from app.import_attempt_private(${id}::uuid)`);return row??null;
+   from app.import_attempt_private(${id}::uuid)`);
+  if(row&&!Buffer.isBuffer(row.content))fail('Stored import source unavailable.');
+  return row??null;
  });
 }
 

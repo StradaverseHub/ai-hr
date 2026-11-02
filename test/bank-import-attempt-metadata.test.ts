@@ -1,7 +1,7 @@
 /** Real PostgreSQL column privileges prove that Bank row saves never fetch the source payload. */
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {createHash} from 'node:crypto';
-import {eq,getTableColumns,sql} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import * as history from '../core/import-history';
@@ -23,18 +23,11 @@ async function attempt(content=Buffer.from('fictional source')){
  return (await withTenant(ctx,tx=>history.createImportAttemptTx(tx,ctx,{kind:'bank_statutory',sourceName:'fictional.csv',content,companyIds:[b.companyId],plan}))).attemptId;
 }
 async function withoutSourceSelect<T>(fn:()=>Promise<T>){
- const columns=Object.values(getTableColumns(schema.importAttempt)).filter(column=>column.name!=='source_content').map(column=>sql.identifier(column.name));
- try{
-  // Privileges belong to this worker's disposable database tables; tests in this file are sequential.
-  await owner.db.execute(sql`revoke select on public.import_attempt from ai_hr_app`);
-  await owner.db.execute(sql`grant select (${sql.join(columns,sql`,`)}) on public.import_attempt to ai_hr_app`);
-  const [proof]=await withTenant(ctx,tx=>tx.execute(sql`select has_column_privilege(current_user,'public.import_attempt','source_content','SELECT') as source,has_column_privilege(current_user,'public.import_attempt','id','SELECT') as header`));
-  expect(proof).toMatchObject({source:false,header:true});
-  return await fn();
- }finally{
-  try{await owner.db.execute(sql`revoke select (${sql.join(columns,sql`,`)}) on public.import_attempt from ai_hr_app`);}
-  finally{await owner.db.execute(sql`grant select on public.import_attempt to ai_hr_app`);}
- }
+ // The installed custody contract itself supplies this premise. Do not temporarily broaden
+ // column grants, or restore an obsolete table-wide SELECT into the reused worker database.
+ const [proof]=await withTenant(ctx,tx=>tx.execute(sql`select has_column_privilege(current_user,'public.import_attempt','source_content','SELECT') as source,has_column_privilege(current_user,'public.import_attempt','plan','SELECT') as plan,has_column_privilege(current_user,'public.import_attempt','id','SELECT') as header`));
+ expect(proof).toEqual({source:false,plan:false,header:true});
+ return fn();
 }
 describe('bounded Bank import attempt locks',()=>{
  it('locks a large-source attempt using only identity and kind; full-source readers retain exact bytes',async()=>{
@@ -44,7 +37,12 @@ describe('bounded Bank import attempt locks',()=>{
    expect(row).toEqual({id,kind:'bank_statutory'});
   });
   const full=await withTenant(ctx,tx=>history.lockImportAttemptTx(tx,ctx,id,'bank_statutory'));
+  expect(Buffer.isBuffer(full.sourceContent)).toBe(true);
+  expect(full.createdAt).toBeInstanceOf(Date);expect(Number.isFinite(full.createdAt.getTime())).toBe(true);
+  expect(full.plan).toMatchObject({version:1,counts:{total:1,valid:1,invalid:0},issues:[]});
   expect(full.sourceContent.length).toBe(source.length);expect(hash(full.sourceContent)).toBe(hash(source));
+  const downloaded=await history.importAttemptSource(ctx,id);expect(Buffer.isBuffer(downloaded?.content)).toBe(true);expect(downloaded?.content.equals(source)).toBe(true);
+  const metadata=await history.getImportAttempt(ctx,id);expect(metadata?.createdAt).toBeInstanceOf(Date);expect(metadata?.plan).toEqual(full.plan);
  });
  it('saves through the native Bank writer with audit and checkpoint while source_content SELECT is forbidden',async()=>{
   const records=parseCsvRecords('full_name,email,department,hired_on,ic_number,basic_salary,employee_code\nMetadata Fixture,metadata@example.test,Finance,2026-01-05,900101105555,5000,META001').records;
