@@ -35,6 +35,10 @@ def main(args):
     child = subprocess.Popen(args[5:], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
     digest, count, deadline = hashlib.sha256(), 0, time.monotonic() + timeout
     try:
+        # Retained with WORK on uncertainty; never kill by this record without fresh identity checks.
+        with open(output + '.reader.pid', 'x') as record:
+            os.chmod(output + '.reader.pid', 0o600)
+            record.write(str(child.pid) + '\n')
         with open(output, 'xb') as target, selectors.DefaultSelector() as poll:
             os.chmod(output, 0o600)
             poll.register(child.stdout, selectors.EVENT_READ)
