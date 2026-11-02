@@ -611,3 +611,24 @@ human:zenlam repository-owner provisional, and takes evidence #noveri-release-re
 rerun.
 
 This record is not a runtime PASS, staging acceptance or deployment authorisation.
+
+## Board nine source binding
+
+At 2026-11-02T18:19:31Z (3 November MYT), the repository owner answered **“Approve both
+decisions”** to the explicit source-binding question in the BOARD chat. The reviewed candidate code
+is `90d737e288e5b59848c645a92e81ddba65a86514`; the complete packet is
+[the nine-item source-binding review](board-nine-source-binding-2026-11.md). This approves renewing
+the25 existing provider records and separately approving `authored_pay_formula_v1` for exact provider
+source `cf1ee5ad5e2e0a7073d310c6c5ca3797e46645aeb29dfc9fe40b771873407349` (1260files).
+
+The question explicitly described consented user requirement text plus public formula metadata, the
+risk of information manually typed by the author, and exclusion of fetched employee/payroll records.
+The owner selected approval of both decisions. The two unrelated pending records remain unchanged.
+Historical25 approval metadata remains intact; only their reviewed source binding moves. The new
+formula row records this actual owner decision and timestamp. This is owner provisional approval,
+not independent specialist certification. Any further covered-source change requires reassessment.
+
+No existing agent evaluation or promotion is renewed, rebound or activated. Regenerate its source
+manifest last after these literal writes, retain actual stale refusals and assess stored records
+through their authorized scoped owner. This approval is not a test PASS, staging acceptance,
+protected-ref merge, package publication or production deployment permission.

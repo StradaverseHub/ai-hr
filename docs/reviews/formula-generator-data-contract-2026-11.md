@@ -2,7 +2,13 @@
 
 ## Review status
 
-Pending human owner review. Board approval authorizes implementation, not provider egress. The runtime registry deliberately leaves `authored_pay_formula_v1` pending. No automated test, generated source digest, or this document grants approval.
+The repository owner explicitly approved this disclosure on3November2026MYT against reviewed code
+`90d737e288e5b59848c645a92e81ddba65a86514` and provider digest
+`cf1ee5ad5e2e0a7073d310c6c5ca3797e46645aeb29dfc9fe40b771873407349`.
+See [the actual decision record](ai-provider-owner-approval-2026-10.md#board-nine-source-binding)
+and [exact review packet](board-nine-source-binding-2026-11.md). The source-owned registry records
+that decision; a generated digest or automated test alone grants no approval. Deployment, authenticated
+acceptance and agent promotion remain separate. Changed covered source invalidates this binding.
 
 ## Exact outgoing content
 

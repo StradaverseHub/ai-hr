@@ -15,7 +15,7 @@ The nine board rows still read `building`; no board transition is made by prepar
 
 | Board item | Implementation |
 | --- | --- |
-|02472802-f445-40b8-b1a3-5defc7c69b59|Formula draft generator and typed sample inputs; provider egress remains pending review.|
+|02472802-f445-40b8-b1a3-5defc7c69b59|Formula draft generator and typed sample inputs; provider disclosure has the exact owner approval described below.|
 |144a85d5-c36c-4551-be53-33c1b1e77b93|Security Center navigation flyout.|
 |a30b1015-bbf1-44e2-8a58-190145fb01d9|Twelve live password-policy controls and audited manual unlock.|
 |ae5dfecc-fa84-4749-b0fc-fa61270685ca|Shared onboarding/offboarding case presentation and six-locale copy.|
@@ -47,8 +47,7 @@ original failures. After the complete frozen gate finishes, repair and rerun onl
 invalidated areas under the repository's authenticated recovery policy.
 
 The static provider-data and module-agent manifests must match this isolated source. Regeneration does
-not renew human reviews, candidate evaluations or promotions. The authored formula contract remains
-pending at `docs/reviews/formula-generator-data-contract-2026-11.md`; existing literal provider approvals
+not renew human reviews, candidate evaluations or promotions. The authored formula contract has the exact owner approval recorded at `docs/reviews/formula-generator-data-contract-2026-11.md`; existing literal provider approvals
 must be assessed against the final digest and remain refused when stale. Existing module-agent
 evaluations/promotions must likewise be assessed against the final agent source digest, never rebound
 by copying an old approval. No provider or agent activation is part of preparation.

@@ -1,6 +1,9 @@
 # Nine-item BOARD source-binding review packet
 
-Status: prepared for human review; no approval or activation recorded here. Board implementation
+Status: both provider decisions below were explicitly approved by the human owner on3NovemberMYT;
+[the actual decision record](ai-provider-owner-approval-2026-10.md#board-nine-source-binding) binds
+reviewed code `90d737e288e5b59848c645a92e81ddba65a86514` and the exact provider digest. The proposal
+below is retained as the scope the owner reviewed. No agent promotion or release acceptance is granted. Board implementation
 approval and branch/check authorization do not authorize provider disclosure. Recompute and reissue
 this packet if covered source changes. The immutable reviewable source is the post-Noveri merge on
 `codex/board-nine-release-20261102` in draft PR215; its exact committed head is recorded in the PR
@@ -156,3 +159,14 @@ The existing source-current checks remain enforced; do not widen RLS or rebind r
 |`messages/zh.json`|changed|`b39180544923299fa75909f8044eaf3415d65decccb496f161811ece92173d6e`|
 |`packs/payroll/service.ts`|changed|`c2f4d3128bce4566fc63df98301ed56c80e27ad98030de652b66a75d6a05d41e`|
 |`scripts/ai-provider-data-source-manifest.mjs`|changed|`e44aaf23501e946c2256699b35f072a7007611dcfadd49b28c38167e57d58c10`|
+
+## Recorded provider decision and resulting agent identity
+
+The actual human answer was “Approve both decisions”, recorded at2026-11-02T18:19:31Z against
+reviewed code90d737e288e5b59848c645a92e81ddba65a86514 and provider digest
+cf1ee5ad5e2e0a7073d310c6c5ca3797e46645aeb29dfc9fe40b771873407349. After writing those exact
+provider records, the module-agent manifest was generated last. Its resulting457-file digest is
+`8a2f9e258beadb7144d13d2c619516a5d642a771432f0ef352152cfef4fc6678`; both static checks pass.
+This generated identity does not grant agent evaluation or promotion approval. All stored old-source
+evaluations/promotions keep their original identities and stale refusal. The original proposed
+pre-approval08816 digest above is historical and is not substituted into any approval.
