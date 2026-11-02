@@ -2,9 +2,9 @@
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
-import {defaultPolicy,emptyFacts,emptyRecommendation,type RewardEntry} from '../packs/rewards/model';
+import {defaultPolicy,emptyFacts,emptyRecommendation,policySchema,type RewardEntry} from '../packs/rewards/model';
 import {calculateOffcycle} from '../packs/rewards/offcycle';
-import {increase,ratio} from '../packs/rewards/engine';
+import {calculateRewards,increase,ratio} from '../packs/rewards/engine';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 let ctx:SessionContext;
 beforeAll(async()=>{await migrateTestDb();await resetDb();const b=await seedBase();await setModule(b.tenantId,'rewards','active');ctx=await entitledCtx(b);});
@@ -51,4 +51,28 @@ it('matches locale-independent native Unicode casing, context and UTF16 lengths 
  // Valid PostgreSQL text excludes NUL and isolated UTF16 surrogates. Every other Unicode
  // scalar is compared in bounded blocks, independent of the database default LC_CTYPE.
  for(let start=1;start<=0x10ffff;start+=0x10000){let text='';for(let cp=start;cp<Math.min(start+0x10000,0x110000);cp++)if(cp<0xd800||cp>0xdfff)text+=String.fromCodePoint(cp);const [row]=await owner.db.execute<{value:string}>(sql`select app.reward_calc_lower(${text})as value`);const expected=text.toLowerCase(),expectedPoints=[...expected];const mismatch=[...row.value].findIndex((ch,i)=>ch!==expectedPoints[i]);expect({block:start,mismatch,units:row.value.length}).toEqual({block:start,mismatch:-1,units:expected.length});}
+});
+
+it('normalizes the annual native policy exactly and refuses malformed stored policies',async()=>{
+ const policy=defaultPolicy(2026);policy.exemptReason='  Actual approved exemption  ';policy.lumpReason='  Actual withheld provision  ';policy.payWindowKeep={example:'  Real approved retained eligibility  '};
+ const [row]=await owner.db.execute<{value:unknown}>(sql`select app.reward_calc_policy(${JSON.stringify(policy)}::jsonb)as value`);expect(row.value).toEqual(policySchema.parse(policy));
+ for(const changed of [{year:1999},{patTarget:0},{blockedFrom:'2026-12-01',blockedTo:'2026-01-01'},{joinedBefore:'2026-02-30'},{unknown:true},{lumpStepCents:500},{standardPools:[1,2]},{ranges:{bad:[100,99,101]}},{payWindowKeep:{bad:'short'}}]){
+  const malformed={...policy,...changed};expect(()=>policySchema.parse(malformed)).toThrow();await expect(owner.db.execute(sql`select app.reward_calc_policy(${JSON.stringify(malformed)}::jsonb)`)).rejects.toThrow();
+ }
+});
+it('matches the annual first-pass eligibility, source windows, native row amounts and ordered first-pass flags',async()=>{
+ const policy=defaultPolicy(2026);policy.ranges={'12':[300000,500000,700000],H:[100000,200000,300000]};
+ const firstPassCodes=new Set(['DATA-01','DATA-02','DATA-03','DATA-04','ELIG-02','PRO-01','PRO-02','PRO-03']);
+ const stable=['id','source','facts','recommendation','activeInReview','plan','incrementEligible','bonusEligible','lumpEligible','incrementReason','bonusReason','payChange','payWindowKept','bonusBasicCents'];
+ const scenarios:RewardEntry[]=[];
+ for(const talent of [null,'SSTAR','STAR','SCORE','IMPRO','PIP']as const)for(const performance of [null,'UA','ME','OU']as const){const value=entry('rating-'+talent+'-'+performance);value.facts={...value.facts,talent,performance};scenarios.push(value);}
+ for(const source of [{notice:true},{confirmedOn:null},{hiredOn:'2026-12-31'},{leftOn:'2025-12-31'},{leftOn:'2027-01-01'},{compensationId:null,basicCents:0},{grade:'H',basicCents:200000},{grade:'21'},{lastPayChange:policy.blockedFrom},{payChanges:[],lastPayChange:policy.blockedFrom},{payChanges:[{on:policy.blockedFrom,basicCents:550000,kind:'merit'},{on:policy.blockedTo,basicCents:560000,kind:'promotion'}]}]){const value=entry('source-'+scenarios.length);value.facts={...value.facts,talent:'SCORE',performance:'ME'};value.source={...value.source,...source};scenarios.push(value);}
+ for(const erDecision of ['pending','in','out']as const)for(const pipDecision of ['pending','lift','confirm']as const){const value=entry('case-'+erDecision+'-'+pipDecision);value.facts={...value.facts,talent:'STAR',performance:'AE',erCase:true,pipCase:true,erDecision,pipDecision,caseReason:'😀'.repeat(5)};scenarios.push(value);}
+ const promotion=entry('ec-promotion');promotion.facts={...promotion.facts,confidentiality:'ec',seniorPlan:true};promotion.recommendation={...promotion.recommendation,promotionGrade:'H',promotionBp:2000,reason:'short'};scenarios.push(promotion);
+ for(const controls of [{},{minimumBonusRating:'AE' as const,excludeNotice:false,excludeErCase:false},{activeAsOf:'2026-01-01',payWindowKeep:Object.fromEntries(scenarios.map(value=>[value.source.employmentId,'Actual reviewed retained eligibility']))}]){
+  const input={...policy,...controls},[native]=await owner.db.execute<{value:{rows:Record<string,unknown>[];flags:unknown[]}}>(sql`select app.reward_calc_annual_seed(${JSON.stringify(scenarios)}::jsonb,${JSON.stringify(input)}::jsonb)as value`),expected=calculateRewards(scenarios,input);
+  expect(native.value.rows.map(row=>Object.fromEntries(stable.map(key=>[key,row[key]])))).toEqual(expected.rows.map(row=>Object.fromEntries(stable.map(key=>[key,(row as unknown as Record<string,unknown>)[key]]))));
+  expect(native.value.flags).toEqual(expected.flags.filter(flag=>firstPassCodes.has(flag.code)||flag.code==='POOL-05'&&(flag.message==='Individual merit differs from the matrix.'||flag.message==='Promotion differs from the standard 10%.')));
+  for(let n=0;n<scenarios.length;n++)if(!scenarios[n].facts.seniorPlan&&!input.seniorGrades.includes(scenarios[n].source.grade))for(const key of ['meritBp','promotionBp','meritCents','promotionCents'])expect(native.value.rows[n][key]).toBe((expected.rows[n]as unknown as Record<string,unknown>)[key]);
+ }
 });

@@ -1887,7 +1887,7 @@ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
 $$;
 CREATE FUNCTION app.reward_calc_flag(severity text,code text,message text,p_entry jsonb DEFAULT NULL)RETURNS jsonb
 LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT jsonb_build_array(jsonb_build_object('severity',severity,'code',code,'message',message)||CASE WHEN p_entry IS NULL THEN'{}'::jsonb ELSE jsonb_build_object('entryId',p_entry)END);
+ SELECT jsonb_build_array(jsonb_build_object('severity',severity,'code',code,'message',message)||CASE WHEN p_entry IS NULL OR p_entry IN('null'::jsonb,'""'::jsonb)THEN'{}'::jsonb ELSE jsonb_build_object('entryId',p_entry)END);
 $$;
 -- Explicit root Unicode casing; never depend on the installation's Turkish/libc default.
 -- Hosted differential qualification must compare the runner's full scalar casing plus Sigma context.
@@ -2012,3 +2012,116 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.reward_offcycle_calculation(uuid,integer)FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_offcycle_calculation(uuid,integer)TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.reward_calc_json_integer(p_value jsonb,p_max numeric,p_min numeric DEFAULT 0)RETURNS numeric
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE value numeric;
+BEGIN
+ IF jsonb_typeof(p_value)IS DISTINCT FROM'number'THEN RAISE EXCEPTION 'Invalid reward policy number' USING ERRCODE='22023';END IF;
+ value:=app.reward_calc_integer((p_value#>>'{}')::numeric);
+ IF value<p_min OR value>p_max THEN RAISE EXCEPTION 'Invalid reward policy number' USING ERRCODE='22023';END IF;
+ RETURN value;
+END $$;
+CREATE FUNCTION app.reward_calc_vector(p_value jsonb,p_count integer,p_max numeric)RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF jsonb_typeof(p_value)IS DISTINCT FROM'array'OR jsonb_array_length(p_value)<>p_count THEN RAISE EXCEPTION 'Invalid reward policy vector' USING ERRCODE='22023';END IF;
+ PERFORM app.reward_calc_json_integer(value,p_max)FROM jsonb_array_elements(p_value);RETURN p_value;
+END $$;
+CREATE FUNCTION app.reward_calc_date(p_value jsonb)RETURNS text
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE value text:=p_value#>>'{}';day date;
+BEGIN
+ IF jsonb_typeof(p_value)IS DISTINCT FROM'string'OR value!~'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'THEN RAISE EXCEPTION 'Invalid reward policy date' USING ERRCODE='22023';END IF;
+ day:=value::date;IF to_char(day,'YYYY-MM-DD')<>value THEN RAISE EXCEPTION 'Invalid reward policy date' USING ERRCODE='22023';END IF;RETURN value;
+END $$;
+CREATE FUNCTION app.reward_calc_policy(p jsonb)RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE k text;part record;result jsonb:=p;matrix jsonb:='{}';normalized jsonb;text_value text;number_value numeric;
+BEGIN
+ IF jsonb_typeof(p)IS DISTINCT FROM'object'OR EXISTS(SELECT 1 FROM jsonb_object_keys(p)k WHERE k<>ALL(ARRAY['year','effectiveFrom','joinedBefore','confirmedBy','blockedFrom','blockedTo','unitGovernanceDigest','activeAsOf','minimumBonusRating','excludeNotice','excludeErCase','standardPools','hPools','meritMatrix','bonusMatrix','ranges','seniorGrades','seniorMembershipMode','patActual','patTarget','targetMonthsBp','multiplierBp','bonusStructure','branchFactors','branchRatings','lumpStepCents','lumpShareBp','lumpCapCents','lumpUnitCents','exemptReason','lumpReason','payWindowKeep']))THEN RAISE EXCEPTION 'Invalid reward policy' USING ERRCODE='22023';END IF;
+ PERFORM app.reward_calc_json_integer(p->'year',2200,2000);
+ FOREACH k IN ARRAY ARRAY['effectiveFrom','joinedBefore','confirmedBy','blockedFrom','blockedTo']LOOP PERFORM app.reward_calc_date(p->k);END LOOP;
+ IF p?'activeAsOf'THEN PERFORM app.reward_calc_date(p->'activeAsOf');END IF;
+ IF p->>'blockedFrom'>p->>'blockedTo'OR p?'unitGovernanceDigest'AND(jsonb_typeof(p->'unitGovernanceDigest')IS DISTINCT FROM'string'OR(p->>'unitGovernanceDigest')!~'^[a-f0-9]{64}$')OR p?'minimumBonusRating'AND coalesce(p->>'minimumBonusRating','')<>ALL(ARRAY['UA','BE','ME','AE','OU'])THEN RAISE EXCEPTION 'Invalid reward policy' USING ERRCODE='22023';END IF;
+ FOREACH k IN ARRAY ARRAY['excludeNotice','excludeErCase']LOOP IF p?k AND jsonb_typeof(p->k)IS DISTINCT FROM'boolean'THEN RAISE EXCEPTION 'Invalid reward policy' USING ERRCODE='22023';END IF;END LOOP;
+ FOREACH k IN ARRAY ARRAY['standardPools','hPools']LOOP PERFORM app.reward_calc_vector(p->k,3,100000);END LOOP;
+ FOREACH k IN ARRAY ARRAY['SSTAR','STAR','SCORE','IMPRO','PIP']LOOP matrix:=matrix||jsonb_build_object(k,app.reward_calc_vector(p->'meritMatrix'->k,3,100000));END LOOP;
+ result:=jsonb_set(result,'{meritMatrix}',matrix);
+ FOREACH k IN ARRAY ARRAY['bonusMatrix','ranges','branchFactors','branchRatings']LOOP
+  IF jsonb_typeof(p->k)IS DISTINCT FROM'object'THEN RAISE EXCEPTION 'Invalid reward policy map' USING ERRCODE='22023';END IF;
+  FOR part IN SELECT key,value FROM jsonb_each(p->k)LOOP
+   IF app.reward_calc_units(part.key)NOT BETWEEN 1 AND CASE k WHEN'branchFactors'THEN 80 WHEN'branchRatings'THEN 100 ELSE 30 END THEN RAISE EXCEPTION 'Invalid reward policy key' USING ERRCODE='22023';END IF;
+   IF k='branchRatings'THEN
+    IF jsonb_typeof(part.value)IS DISTINCT FROM'string'OR(part.value#>>'{}')<>ALL(ARRAY['UA','BE','ME','AE','OU'])THEN RAISE EXCEPTION 'Invalid reward policy branch rating' USING ERRCODE='22023';END IF;
+   ELSIF k='ranges'THEN
+    PERFORM app.reward_calc_vector(part.value,3,100000000000);
+    IF(part.value->>0)::numeric<=0 OR(part.value->>0)::numeric>(part.value->>1)::numeric OR(part.value->>1)::numeric>(part.value->>2)::numeric THEN RAISE EXCEPTION 'Invalid reward salary range' USING ERRCODE='22023';END IF;
+   ELSE PERFORM app.reward_calc_vector(part.value,5,100000);END IF;
+  END LOOP;
+ END LOOP;
+ IF jsonb_typeof(p->'seniorGrades')IS DISTINCT FROM'array'OR jsonb_array_length(p->'seniorGrades')>50 OR EXISTS(SELECT 1 FROM jsonb_array_elements(p->'seniorGrades')v WHERE jsonb_typeof(v)<>'string')OR p?'seniorMembershipMode'AND coalesce(p->>'seniorMembershipMode','')NOT IN('legacy-grades','named-members')THEN RAISE EXCEPTION 'Invalid reward Senior policy' USING ERRCODE='22023';END IF;
+ PERFORM app.reward_calc_json_integer(p->'patActual',100000000000),app.reward_calc_json_integer(p->'patTarget',100000000000,1),app.reward_calc_json_integer(p->'targetMonthsBp',100000);
+ FOREACH k IN ARRAY ARRAY['multiplierBp','lumpCapCents','lumpUnitCents']LOOP
+  IF NOT(p?k)THEN RAISE EXCEPTION 'Invalid reward policy' USING ERRCODE='22023';END IF;
+  IF p->k<>'null'::jsonb THEN PERFORM app.reward_calc_json_integer(p->k,CASE WHEN k='multiplierBp'THEN 100000 ELSE 100000000000 END);END IF;
+ END LOOP;
+ IF coalesce(p->>'bonusStructure','')NOT IN('standard','branch')THEN RAISE EXCEPTION 'Invalid reward bonus policy' USING ERRCODE='22023';END IF;
+ number_value:=app.reward_calc_json_integer(p->'lumpStepCents',100000000000,1000);
+ IF mod(number_value,1000)<>0 THEN RAISE EXCEPTION 'Invalid reward lump rounding' USING ERRCODE='22023';END IF;
+ PERFORM app.reward_calc_json_integer(p->'lumpShareBp',10000);
+ text_value:=app.reward_calc_text(p->'exemptReason',2000);IF text_value<>''AND app.reward_calc_units(text_value)<10 THEN RAISE EXCEPTION 'Invalid reward exemption' USING ERRCODE='22023';END IF;
+ result:=jsonb_set(result,'{exemptReason}',to_jsonb(text_value));
+ IF p?'lumpReason'THEN result:=jsonb_set(result,'{lumpReason}',to_jsonb(app.reward_calc_text(p->'lumpReason',1000)));END IF;
+ IF p?'payWindowKeep'THEN
+  IF jsonb_typeof(p->'payWindowKeep')IS DISTINCT FROM'object'THEN RAISE EXCEPTION 'Invalid reward pay window' USING ERRCODE='22023';END IF;
+  normalized:='{}';FOR part IN SELECT key,value FROM jsonb_each(p->'payWindowKeep')LOOP
+   text_value:=app.reward_calc_text(part.value,1000);
+   IF app.reward_calc_units(part.key)NOT BETWEEN 1 AND 64 OR app.reward_calc_units(text_value)<10 THEN RAISE EXCEPTION 'Invalid reward pay window' USING ERRCODE='22023';END IF;
+   normalized:=normalized||jsonb_build_object(part.key,text_value);
+  END LOOP;result:=jsonb_set(result,'{payWindowKeep}',normalized);
+ END IF;
+ RETURN result;
+END $$;
+--> statement-breakpoint
+-- Exact first pass of calculateRewards. Shared cohorts/budgets/bonus/lump/Senior overrides are
+-- deliberately a separate private phase; this seed is never a public final calculation result.
+CREATE FUNCTION app.reward_calc_annual_seed(p_entries jsonb,p_input jsonb)RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE policy jsonb:=app.reward_calc_policy(p_input);entry jsonb;s jsonb;r jsonb;f jsonb;rows jsonb:='[]';flags jsonb:='[]';plan text;basic numeric;left_review boolean;kept boolean;window_change jsonb;pay_change jsonb;increment_reason text;bonus_reason text;increment_eligible boolean;bonus_eligible boolean;senior boolean;salary_range jsonb;range_position integer;merit_default numeric;merit_bp numeric;promotion_bp numeric;
+BEGIN
+ IF jsonb_typeof(p_entries)IS DISTINCT FROM'array'THEN RAISE EXCEPTION 'Invalid reward entries' USING ERRCODE='22023';END IF;
+ FOR entry IN SELECT value FROM jsonb_array_elements(p_entries)LOOP
+  s:=entry->'source';r:=app.reward_calc_recommendation(entry->'recommendation');f:=app.reward_calc_facts(entry->'facts');
+  IF jsonb_typeof(s->'basicCents')IS DISTINCT FROM'number'THEN RAISE EXCEPTION 'Invalid salary snapshot' USING ERRCODE='22003';END IF;
+  basic:=app.reward_calc_integer((s->>'basicCents')::numeric,true);plan:=CASE WHEN f->>'confidentiality'='ec'THEN'ec'WHEN s->>'grade'='H'THEN'h'ELSE'standard'END;
+  IF NOT(f->>'reviewed')::boolean THEN flags:=flags||app.reward_calc_flag('block','DATA-01','Validate the reward classification and ratings before submission.',entry->'id');END IF;
+  IF coalesce(s->>'compensationId','')=''OR basic<=0 OR s->>'currency'IS DISTINCT FROM'MYR'OR coalesce(s->>'payMode','')NOT IN('monthly','custom_period')THEN flags:=flags||app.reward_calc_flag('block','DATA-02','A positive MYR monthly salary record is required for this reward policy.',entry->'id');END IF;
+  left_review:=coalesce(s->>'leftOn','')<>''AND(NOT(policy?'activeAsOf')OR s->>'leftOn'<=policy->>'activeAsOf');kept:=coalesce(policy->'payWindowKeep'->>(s->>'employmentId'),'')<>'';window_change:=NULL;
+  IF jsonb_typeof(s->'payChanges')='array'THEN SELECT change INTO window_change FROM jsonb_array_elements(s->'payChanges')WITH ORDINALITY changes(change,n)WHERE change->>'on'>=policy->>'blockedFrom'AND change->>'on'<=policy->>'blockedTo'ORDER BY n DESC LIMIT 1;
+  ELSIF coalesce(s->>'lastPayChange','')<>''AND s->>'lastPayChange'>=policy->>'blockedFrom'AND s->>'lastPayChange'<=policy->>'blockedTo'THEN window_change:=jsonb_build_object('on',s->'lastPayChange','basicCents',s->'basicCents','kind',NULL);END IF;
+  pay_change:=CASE WHEN kept THEN NULL ELSE window_change END;senior:=app.reward_calc_senior(policy,entry);increment_reason:='';
+  IF left_review THEN increment_reason:='Left or moved out';ELSIF senior THEN increment_reason:='Senior leadership plan';ELSIF(s->>'notice')::boolean THEN increment_reason:='Serving notice';ELSIF s->>'hiredOn'>=policy->>'joinedBefore'THEN increment_reason:='Joined after the increment cutoff';ELSIF coalesce(s->>'confirmedOn','')=''OR s->>'confirmedOn'>policy->>'confirmedBy'THEN increment_reason:='Not confirmed by the cutoff';ELSIF NOT kept AND(s->>'confirmationPayChange')::boolean AND s->>'confirmedOn'>=policy->>'blockedFrom'THEN increment_reason:='Confirmation included a pay change';ELSIF pay_change IS NOT NULL THEN increment_reason:='Pay change in the exclusion window';ELSIF f->>'talent'IS NULL THEN increment_reason:='No talent rating';ELSIF(f->>'erCase')::boolean AND f->>'erDecision'<>'in'THEN increment_reason:='ER case held or awaiting decision';ELSIF(f->>'pipCase')::boolean AND f->>'pipDecision'<>'lift'THEN increment_reason:='PIP confirmed or awaiting decision';ELSIF f->>'talent'IN('IMPRO','PIP')THEN increment_reason:='Nil increment rating';END IF;
+  IF(f->>'erCase')::boolean AND f->>'erDecision'='pending'OR(f->>'pipCase')::boolean AND f->>'pipDecision'='pending'THEN flags:=flags||app.reward_calc_flag('block','ELIG-02','Record the BU CEO and PBP case decision.',entry->'id');END IF;
+  IF((f->>'erCase')::boolean AND f->>'erDecision'<>'pending'OR(f->>'pipCase')::boolean AND f->>'pipDecision'<>'pending')AND app.reward_calc_units(f->>'caseReason')<10 THEN flags:=flags||app.reward_calc_flag('block','ELIG-02','Record the reason for the case decision.',entry->'id');END IF;
+  increment_eligible:=increment_reason='';bonus_reason:='';
+  IF left_review THEN bonus_reason:='Left or moved out';ELSIF senior THEN bonus_reason:='Senior leadership plan';ELSIF(s->>'notice')::boolean AND policy->'excludeNotice'IS DISTINCT FROM'false'::jsonb THEN bonus_reason:='Serving notice';ELSIF(f->>'erCase')::boolean AND policy->'excludeErCase'IS DISTINCT FROM'false'::jsonb THEN bonus_reason:='ER case';ELSIF coalesce(s->>'confirmedOn','')=''OR s->>'confirmedOn'>policy->>'confirmedBy'THEN bonus_reason:='Not confirmed by the cutoff';ELSIF f->>'performance'IS NULL THEN bonus_reason:='No performance rating';ELSIF policy?'minimumBonusRating'AND array_position(ARRAY['UA','BE','ME','AE','OU'],f->>'performance')<array_position(ARRAY['UA','BE','ME','AE','OU'],policy->>'minimumBonusRating')THEN bonus_reason:='Below the minimum bonus rating';END IF;
+  bonus_eligible:=bonus_reason='';salary_range:=policy->'ranges'->coalesce(r->>'promotionGrade',s->>'grade');
+  IF salary_range IS NULL AND increment_eligible AND plan<>'ec'THEN flags:=flags||app.reward_calc_flag('block','DATA-03','Configure the salary range for this grade.',entry->'id');END IF;
+  IF bonus_eligible AND NOT(policy->'bonusMatrix'?(s->>'grade'))AND plan<>'ec'THEN flags:=flags||app.reward_calc_flag('block','DATA-04','Configure the bonus matrix for this grade.',entry->'id');END IF;
+  range_position:=CASE WHEN salary_range IS NULL THEN 1 WHEN basic<(salary_range->>0)::numeric THEN 0 WHEN basic>(salary_range->>2)::numeric THEN 2 ELSE 1 END;
+  merit_default:=CASE WHEN increment_eligible AND f->>'talent'IS NOT NULL THEN(policy->'meritMatrix'->(f->>'talent')->>range_position)::numeric ELSE 0 END;
+  merit_bp:=CASE WHEN left_review THEN 0 WHEN plan='ec'THEN coalesce((r->>'meritBp')::numeric,merit_default)WHEN increment_eligible THEN coalesce((r->>'meritBp')::numeric,merit_default)ELSE 0 END;
+  promotion_bp:=CASE WHEN NOT left_review AND(increment_eligible OR plan='ec')AND coalesce(r->>'promotionGrade','')<>''THEN coalesce((r->>'promotionBp')::numeric,1000)ELSE 0 END;
+  IF coalesce(r->>'promotionGrade','')<>''AND NOT left_review THEN
+   IF NOT increment_eligible AND plan<>'ec'THEN flags:=flags||app.reward_calc_flag('block','PRO-03','This employee is not eligible for an annual promotion award.',entry->'id');END IF;
+   IF app.reward_calc_promotion_jump(r->>'promotionGrade',s->>'grade')IS NOT TRUE THEN flags:=flags||app.reward_calc_flag('block','PRO-01','A promotion must advance one to three grades.',entry->'id');END IF;
+   IF app.reward_calc_units(r->>'reason')<30 THEN flags:=flags||app.reward_calc_flag('block','PRO-02','A promotion needs a business case of at least 30 characters.',entry->'id');END IF;
+  END IF;
+  IF NOT left_review AND r->'meritBp'<>'null'::jsonb AND(r->>'meritBp')::numeric<>merit_default AND plan<>'ec'THEN flags:=flags||app.reward_calc_flag('exception','POOL-05','Individual merit differs from the matrix.',entry->'id');END IF;
+  IF NOT left_review AND r->'promotionBp'<>'null'::jsonb AND(r->>'promotionBp')::numeric<>1000 AND coalesce(r->>'promotionGrade','')<>''THEN flags:=flags||app.reward_calc_flag('exception','POOL-05','Promotion differs from the standard 10%.',entry->'id');END IF;
+  rows:=rows||jsonb_build_array(entry||jsonb_build_object('facts',f,'recommendation',r,'activeInReview',NOT left_review,'plan',plan,'incrementEligible',increment_eligible,'bonusEligible',bonus_eligible,'lumpEligible',NOT left_review AND NOT bonus_eligible AND NOT senior AND plan<>'ec'AND NOT(f->>'erCase')::boolean,'incrementReason',increment_reason,'bonusReason',bonus_reason,'meritBp',merit_bp,'promotionBp',promotion_bp,'specialBp',0,'payChange',CASE WHEN window_change IS NULL THEN NULL ELSE jsonb_build_object('on',window_change->'on','kind',window_change->'kind')END,'payWindowKept',kept AND window_change IS NOT NULL,'bonusBasicCents',CASE WHEN pay_change IS NOT NULL THEN(pay_change->>'basicCents')::numeric ELSE basic END,'meritCents',app.reward_calc_increase(basic,merit_bp),'promotionCents',app.reward_calc_increase(basic,promotion_bp),'specialCents',0,'newBasicCents',basic,'bonusCents',0,'standardBonusCents',0,'lumpCents',0,'bonusMultiplierBp',0));
+ END LOOP;
+ RETURN jsonb_build_object('rows',rows,'flags',flags);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_calc_json_integer(jsonb,numeric,numeric),app.reward_calc_vector(jsonb,integer,numeric),app.reward_calc_date(jsonb),app.reward_calc_policy(jsonb),app.reward_calc_annual_seed(jsonb,jsonb)FROM PUBLIC,ai_hr_app;
