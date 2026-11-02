@@ -163,6 +163,7 @@ REVOKE ALL ON FUNCTION app.data_permission_delegate(jsonb) FROM PUBLIC,ai_hr_app
 CREATE FUNCTION app.data_permission_fingerprint() RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT encode(sha256(convert_to(jsonb_build_object('access',app.access_scope_fingerprint(),
+ 'catalog',(SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.id),'[]'::jsonb) FROM public.access_capability c),
  'configuration',(SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.tenant_id),'[]'::jsonb) FROM public.access_configuration c WHERE c.tenant_id=app.current_tenant_id()),
  'groups',(SELECT coalesce(jsonb_agg(to_jsonb(g) ORDER BY g.id),'[]'::jsonb) FROM public.access_group g WHERE g.tenant_id=app.current_tenant_id()),
  'grants',(SELECT coalesce(jsonb_agg(to_jsonb(g) ORDER BY g.id),'[]'::jsonb) FROM public.access_group_grant g WHERE g.tenant_id=app.current_tenant_id()),

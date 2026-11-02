@@ -330,7 +330,7 @@ CREATE POLICY data_permission_subject_read ON toil_accrual AS RESTRICTIVE FOR SE
 CREATE POLICY data_permission_subject_read ON replacement_leave_request AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(employment_id IS NULL OR app.data_permission_record_read(employment_id));
 CREATE POLICY data_permission_subject_read ON notice_recipient AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(employment_id IS NULL OR app.data_permission_record_read(employment_id));
 CREATE POLICY data_permission_subject_read ON notice_acknowledgement AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(employment_id IS NULL OR app.data_permission_record_read(employment_id));
-CREATE POLICY data_permission_subject_read ON profile_change_request AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.data_permission_record_read(employment_id) OR app.profile_route_reader(employment_id,route_approver_user_id,route_approver_employment_id,status::text));
+CREATE POLICY data_permission_subject_read ON profile_change_request AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.data_permission_record_read(employment_id) OR app.profile_request_reader(id));
 CREATE POLICY data_permission_subject_read ON resignation_request AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(employment_id IS NULL OR app.data_permission_record_read(employment_id));
 CREATE POLICY data_permission_subject_read ON resignation_request_attachment AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(employment_id IS NULL OR app.data_permission_record_read(employment_id));
 CREATE POLICY data_permission_subject_read ON employment_review AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(employment_id IS NULL OR app.data_permission_record_read(employment_id));
@@ -802,3 +802,290 @@ CREATE TRIGGER data_permission_birth_finish AFTER INSERT ON person FOR EACH ROW 
 CREATE TRIGGER data_permission_birth_finish AFTER INSERT ON employment FOR EACH ROW EXECUTE FUNCTION app.data_permission_birth_finish();
 CREATE TRIGGER data_permission_birth_cleanup AFTER INSERT ON person FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_birth_finish();
 CREATE TRIGGER data_permission_birth_cleanup AFTER INSERT ON employment FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_birth_finish();
+--> statement-breakpoint
+-- An exact stored approval responsibility is distinct from general administrative data access.
+-- No legacy/unrouted request or caller-provided assignee identity can create this exception.
+CREATE FUNCTION app.data_permission_profile_responsibility(p_request uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE q public.profile_change_request;candidate jsonb;approver uuid;
+BEGIN
+ SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id)
+  OR NOT app.access_profile_review_permitted(q.employment_id) THEN RETURN false;END IF;
+ IF q.route_context->'version'='3'::jsonb THEN
+  IF q.route_context->>'decisionMode' IS DISTINCT FROM 'any' OR jsonb_typeof(q.route_context->'approvers') IS DISTINCT FROM 'array'
+   OR jsonb_array_length(q.route_context->'approvers') NOT BETWEEN 1 AND 32 THEN RETURN false;END IF;
+  FOR candidate IN SELECT value FROM jsonb_array_elements(q.route_context->'approvers') LOOP
+   IF candidate->>'userId'=app.current_user_id()::text THEN approver:=(candidate->>'employmentId')::uuid;EXIT;END IF;
+  END LOOP;
+ ELSE
+  IF q.route_id IS NULL OR q.route_approver_user_id IS DISTINCT FROM app.current_user_id() THEN RETURN false;END IF;
+  approver:=q.route_approver_employment_id;
+ END IF;
+ IF approver IS NULL THEN RETURN false;END IF;
+ RETURN EXISTS(SELECT 1 FROM public.employment a JOIN public.app_user u ON u.person_id=a.person_id AND u.tenant_id=a.tenant_id
+  JOIN public.employment subject ON subject.id=q.employment_id AND subject.tenant_id=a.tenant_id
+  WHERE a.id=approver AND a.tenant_id=q.tenant_id AND u.id=app.current_user_id() AND a.person_id<>subject.person_id
+   AND app.is_admin_for(subject.company_id) AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND a.blacklisted_at IS NULL
+   AND a.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+   AND (least(a.resignation_date,a.last_working_date,a.terminated_on) IS NULL OR least(a.resignation_date,a.last_working_date,a.terminated_on)>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+   AND (NOT EXISTS(SELECT 1 FROM public.tenant_setting t WHERE t.tenant_id=q.tenant_id AND t.key='ess.profile_change_approver' AND t.value='"group_admin"'::jsonb) OR app.is_group_admin())
+   AND (SELECT count(*) FROM public.app_user other WHERE other.tenant_id=a.tenant_id AND other.person_id=a.person_id AND other.archived_at IS NULL AND NOT app.login_blocked(other.id))=1);
+EXCEPTION WHEN invalid_text_representation THEN RETURN false;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_profile_responsibility(uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- app.profile_request_assignee; prior owner 0683_profile_field_approvals
+CREATE OR REPLACE FUNCTION app.profile_request_assignee(p_request uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE q public.profile_change_request;principal jsonb;
+BEGIN
+ SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id) OR (NOT app.can_admin_employment(q.employment_id) AND NOT app.data_permission_profile_responsibility(q.id))
+  OR NOT app.access_profile_review_permitted(q.employment_id) THEN RETURN false;END IF;
+ IF q.route_context->'version'='3'::jsonb THEN
+  IF q.route_context->>'decisionMode' IS DISTINCT FROM 'any' OR jsonb_typeof(q.route_context->'approvers') IS DISTINCT FROM 'array'
+   OR jsonb_array_length(q.route_context->'approvers') NOT BETWEEN 1 AND 32 THEN RETURN false;END IF;
+  FOR principal IN SELECT a FROM jsonb_array_elements(q.route_context->'approvers') a LOOP
+   IF principal->>'userId'=app.current_user_id()::text AND EXISTS(SELECT 1 FROM app.profile_route_principal((principal->>'employmentId')::uuid,q.employment_id) p WHERE p.user_id=app.current_user_id()) THEN RETURN true;END IF;
+  END LOOP;
+  RETURN false;
+ END IF;
+ IF q.route_id IS NULL AND EXISTS(SELECT 1 FROM app.profile_legacy_unassigned_request l WHERE l.request_id=q.id) THEN RETURN true;END IF;
+ RETURN app.profile_route_reader(q.employment_id,q.route_approver_user_id,q.route_approver_employment_id,q.status::text);
+EXCEPTION WHEN invalid_text_representation THEN RETURN false;
+END;$$;
+--> statement-breakpoint
+
+--> statement-breakpoint
+-- app.access_profile_value_begin; prior owner 0683_profile_field_approvals
+CREATE OR REPLACE FUNCTION app.access_profile_value_begin(p_request uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE q public.profile_change_request%ROWTYPE;r jsonb;route_enabled boolean;route_digest text;proposal_digest text;prepared boolean;actor uuid;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN; END IF;
+ PERFORM app.access_profile_policy_write_lock();
+ IF app.principal_snapshot_current() IS NOT TRUE OR app.current_user_id() IS NULL THEN
+  RAISE EXCEPTION 'Profile decision principal unavailable' USING ERRCODE='42501'; END IF;
+ SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND OR q.status<>'pending' OR q.proposed->'v'='3'::jsonb
+  OR app.access_profile_review_permitted(q.employment_id) IS NOT TRUE OR (app.can_admin_employment(q.employment_id) IS NOT TRUE AND NOT app.data_permission_profile_responsibility(q.id))
+  OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=q.employment_id AND e.tenant_id=q.tenant_id AND e.person_id=q.person_id) THEN
+  RAISE EXCEPTION 'Profile decision write unavailable' USING ERRCODE='42501'; END IF;
+ SELECT value INTO r FROM public.tenant_setting WHERE tenant_id=q.tenant_id AND key='ess.profile_change_routing';
+ IF r IS NOT NULL AND r<>'null'::jsonb AND (jsonb_typeof(r) IS DISTINCT FROM 'object' OR r->'version' NOT IN ('1'::jsonb,'2'::jsonb,'3'::jsonb)
+  OR r->'version' IS NULL OR jsonb_typeof(r->'enabled') IS DISTINCT FROM 'boolean') THEN
+  RAISE EXCEPTION 'Profile decision route unavailable' USING ERRCODE='42501'; END IF;
+ route_enabled:=COALESCE(r->'enabled'='true'::jsonb,false);
+ proposal_digest:=encode(sha256(convert_to(q.proposed::text,'UTF8')),'hex');
+ route_digest:=encode(sha256(convert_to(jsonb_build_array(q.route_id,q.route_revision,q.route_approver_user_id,q.route_approver_employment_id,q.route_context)::text,'UTF8')),'hex');
+ SELECT EXISTS(SELECT 1 FROM app.access_profile_value_approval p WHERE p.xact_id=pg_current_xact_id() AND p.request_id=q.id
+  AND p.tenant_id=q.tenant_id AND p.user_id=app.current_user_id() AND p.proposal_hash=proposal_digest AND p.route_hash=route_digest) INTO prepared;
+ IF q.route_id IS NOT NULL THEN
+  IF (q.route_context->'version'='3'::jsonb AND NOT app.profile_request_assignee(q.id)) OR
+   (q.route_context->'version' IS DISTINCT FROM '3'::jsonb AND (q.route_approver_user_id IS DISTINCT FROM app.current_user_id()
+   OR NOT EXISTS(SELECT 1 FROM app.profile_route_principal(q.route_approver_employment_id,q.employment_id) p WHERE p.user_id=app.current_user_id()))) THEN
+   RAISE EXCEPTION 'Profile decision route changed' USING ERRCODE='42501'; END IF;
+  -- The first preparation locks and validates the BEFORE snapshot. Revalidating after applying a
+  -- requested nationality/gender change would incorrectly invalidate its own authorized decision.
+  IF NOT prepared AND (q.route_context->>'fingerprint' IS DISTINCT FROM app.access_profile_route_fingerprint(q.employment_id)) THEN
+   RAISE EXCEPTION 'Profile decision subject changed' USING ERRCODE='42501'; END IF;
+ ELSIF (route_enabled AND NOT EXISTS(SELECT 1 FROM app.profile_legacy_unassigned_request l WHERE l.request_id=q.id)) OR q.route_approver_user_id IS NOT NULL OR q.route_approver_employment_id IS NOT NULL THEN
+  RAISE EXCEPTION 'Profile decision route changed' USING ERRCODE='42501';
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.tenant_setting WHERE tenant_id=q.tenant_id AND key='ess.profile_change_approver' AND value='"group_admin"'::jsonb)
+  AND app.is_group_admin() IS NOT TRUE THEN RAISE EXCEPTION 'Profile decision group scope required' USING ERRCODE='42501'; END IF;
+ INSERT INTO app.access_profile_value_actor VALUES(pg_current_xact_id(),q.tenant_id,app.current_user_id()) ON CONFLICT DO NOTHING;
+ SELECT user_id INTO actor FROM app.access_profile_value_actor WHERE xact_id=pg_current_xact_id() AND tenant_id=q.tenant_id;
+ IF actor IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'Profile write principal changed' USING ERRCODE='42501'; END IF;
+ INSERT INTO app.access_profile_value_approval(xact_id,tenant_id,request_id,user_id,proposal_hash,route_hash)
+  VALUES(pg_current_xact_id(),q.tenant_id,q.id,app.current_user_id(),proposal_digest,route_digest) ON CONFLICT DO NOTHING;
+ IF NOT EXISTS(SELECT 1 FROM app.access_profile_value_approval p WHERE p.xact_id=pg_current_xact_id() AND p.request_id=q.id
+  AND p.tenant_id=q.tenant_id AND p.user_id=app.current_user_id() AND p.proposal_hash=proposal_digest AND p.route_hash=route_digest) THEN
+  RAISE EXCEPTION 'Profile decision preparation changed' USING ERRCODE='42501'; END IF;
+END; $$;
+--> statement-breakpoint
+
+--> statement-breakpoint
+-- app.profile_route_principal; prior owner 0579_configurable_access
+CREATE OR REPLACE FUNCTION app.profile_route_principal(p_approver uuid,p_subject uuid)
+RETURNS TABLE(user_id uuid,employment_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT u.id,a.id FROM employment a JOIN app_user u ON u.person_id=a.person_id AND u.tenant_id=a.tenant_id
+ JOIN employment s ON s.id=p_subject AND s.tenant_id=a.tenant_id
+ WHERE a.id=p_approver AND a.tenant_id=app.current_tenant_id() AND a.person_id<>s.person_id
+ AND (app.is_self_person(s.person_id) OR app.can_admin_employment(s.id) OR u.id=app.current_user_id() AND EXISTS(SELECT 1 FROM public.profile_change_request q WHERE q.employment_id=s.id AND q.tenant_id=s.tenant_id AND app.data_permission_profile_responsibility(q.id)))
+ AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND a.blacklisted_at IS NULL
+ AND a.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+ AND (LEAST(a.resignation_date,a.last_working_date,a.terminated_on) IS NULL OR LEAST(a.resignation_date,a.last_working_date,a.terminated_on)>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+ AND EXISTS(SELECT 1 FROM role_assignment r WHERE r.tenant_id=a.tenant_id AND r.app_user_id=u.id AND r.role IN ('hr_admin','super_admin')
+  AND (r.company_id IS NULL OR r.company_id=s.company_id OR app.is_company_descendant(s.company_id,r.company_id)))
+ AND (NOT EXISTS(SELECT 1 FROM tenant_setting t WHERE t.tenant_id=a.tenant_id AND t.key='ess.profile_change_approver' AND t.value='"group_admin"'::jsonb) OR EXISTS(SELECT 1 FROM role_assignment g WHERE g.tenant_id=a.tenant_id AND g.app_user_id=u.id AND (g.role='super_admin' OR g.role='hr_admin' AND g.company_id IS NULL)))
+ AND app.access_profile_review_for_user(u.id,s.id)
+ AND (SELECT count(*) FROM app_user other WHERE other.tenant_id=a.tenant_id AND other.person_id=a.person_id AND other.archived_at IS NULL AND NOT app.login_blocked(other.id))=1;
+$$;
+--> statement-breakpoint
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.profile_route_reader(p_subject uuid,p_assigned_user uuid,p_assigned_employment uuid,p_status text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT (app.can_admin_employment(p_subject) AND (
+  (p_assigned_user IS NOT NULL AND p_assigned_user=app.current_user_id() AND NOT app.login_blocked(p_assigned_user)
+    AND EXISTS(SELECT 1 FROM app.profile_route_principal(p_assigned_employment,p_subject) p WHERE p.user_id=p_assigned_user))
+  OR (p_assigned_user IS NULL AND (p_status<>'pending' OR NOT EXISTS(SELECT 1 FROM tenant_setting t WHERE t.tenant_id=app.current_tenant_id() AND t.key='ess.profile_change_routing') OR EXISTS(SELECT 1 FROM tenant_setting t WHERE t.tenant_id=app.current_tenant_id() AND t.key='ess.profile_change_routing' AND t.value->>'version' IN ('1','2') AND t.value->'enabled'='false'::jsonb)))
+  OR (app.is_group_admin() AND current_setting('app.profile_route_maintenance',true)='on')
+ )) OR (p_assigned_user=app.current_user_id() AND EXISTS(SELECT 1 FROM public.profile_change_request q
+ WHERE q.employment_id=p_subject AND q.tenant_id=app.current_tenant_id() AND q.route_approver_user_id=p_assigned_user
+ AND q.route_approver_employment_id=p_assigned_employment AND q.status::text=p_status AND app.data_permission_profile_responsibility(q.id))); $$;
+--> statement-breakpoint
+-- Promoting a scoped account into the protected recovery role must not strand that role behind an
+-- older restrictive profile. Clear/review its data assignment explicitly before granting recovery.
+CREATE FUNCTION app.data_permission_protected_assignment_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE row_value jsonb;target_user uuid;t uuid;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ row_value:=CASE WHEN TG_OP='DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;t:=(row_value->>'tenant_id')::uuid;
+ target_user:=CASE TG_TABLE_NAME WHEN 'app_user' THEN (row_value->>'id')::uuid WHEN 'role_assignment' THEN (row_value->>'app_user_id')::uuid ELSE (row_value->>'user_id')::uuid END;
+ IF t IS DISTINCT FROM app.current_tenant_id() THEN RAISE EXCEPTION 'Data recovery principal unavailable' USING ERRCODE='42501';END IF;
+ IF app.data_permission_protected(target_user) AND EXISTS(SELECT 1 FROM public.user_data_permission_assignment a
+  LEFT JOIN public.data_permission_profile p ON p.id=a.profile_id AND p.tenant_id=a.tenant_id
+  LEFT JOIN public.data_permission_revision r ON r.id=p.active_revision_id AND r.profile_id=p.id AND r.tenant_id=p.tenant_id
+  WHERE a.user_id=target_user AND a.tenant_id=t AND (p.id IS NULL OR NOT p.enabled OR p.retired_at IS NOT NULL
+   OR r.id IS NULL OR NOT app.data_permission_rules_valid(r.rules) OR r.rules->>'legacyCompany' IS DISTINCT FROM 'true')) THEN
+  RAISE EXCEPTION 'Data recovery assignment unavailable' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_protected_assignment_guard() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER data_permission_recovery_assignment AFTER INSERT OR UPDATE ON role_assignment DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.data_permission_protected_assignment_guard();
+CREATE CONSTRAINT TRIGGER data_permission_recovery_assignment AFTER INSERT OR UPDATE ON access_membership DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.data_permission_protected_assignment_guard();
+CREATE CONSTRAINT TRIGGER data_permission_recovery_assignment AFTER UPDATE ON app_user DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.data_permission_protected_assignment_guard();
+--> statement-breakpoint
+-- Native RR report/ESS readers keep consistent source snapshots. A cheap committed generation
+-- fence around that snapshot detects authority changes before any result is returned to its caller.
+CREATE TABLE app.data_permission_read_generation (
+ tenant_id uuid PRIMARY KEY REFERENCES public.tenant(id) ON DELETE CASCADE,generation bigint NOT NULL DEFAULT 1
+);
+ALTER TABLE app.data_permission_read_generation ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.data_permission_read_generation FROM PUBLIC,ai_hr_app;
+INSERT INTO app.data_permission_read_generation(tenant_id) SELECT id FROM public.tenant;
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_read_generation_bump() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid;query text;columns text[]:=string_to_array(coalesce(TG_ARGV[0],''),',');
+BEGIN
+ IF TG_TABLE_NAME='access_capability' THEN UPDATE app.data_permission_read_generation SET generation=generation+1;RETURN NULL;END IF;
+ IF TG_TABLE_NAME='tenant' THEN
+  IF TG_OP='INSERT' THEN INSERT INTO app.data_permission_read_generation(tenant_id) SELECT id FROM new_rows ON CONFLICT DO NOTHING;
+  ELSIF TG_OP='UPDATE' THEN UPDATE app.data_permission_read_generation g SET generation=g.generation+1 WHERE g.tenant_id IN(SELECT id FROM new_rows);END IF;
+  RETURN NULL;
+ END IF;
+ IF TG_OP='UPDATE' AND cardinality(columns)>0 THEN
+  query:='SELECT DISTINCT n.tenant_id FROM new_rows n JOIN old_rows o USING(id) WHERE EXISTS(SELECT 1 FROM unnest($1::text[]) column_name WHERE to_jsonb(n)->column_name IS DISTINCT FROM to_jsonb(o)->column_name)';
+ ELSE query:='SELECT DISTINCT tenant_id FROM '||CASE WHEN TG_OP='DELETE' THEN 'old_rows' ELSE 'new_rows' END;END IF;
+ FOR t IN EXECUTE query USING columns LOOP
+  INSERT INTO app.data_permission_read_generation SELECT t,1 WHERE EXISTS(SELECT 1 FROM public.tenant tenant_row WHERE tenant_row.id=t) ON CONFLICT(tenant_id) DO UPDATE SET generation=app.data_permission_read_generation.generation+1;
+ END LOOP;RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_read_generation_bump() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_read_stamp() RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.principal_snapshot_current() OR app.current_agent_principal() IS NOT NULL THEN
+  encode(sha256(convert_to(jsonb_build_array(g.tenant_id,g.generation,app.current_user_id(),app.current_agent_principal(),current_date)::text,'UTF8')),'hex') ELSE NULL END
+ FROM app.data_permission_read_generation g WHERE g.tenant_id=app.current_tenant_id();
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_read_stamp() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.data_permission_read_stamp() TO ai_hr_app;
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON person REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('nationality,gender,marital_status');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON person REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('nationality,gender,marital_status');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON person REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('nationality,gender,marital_status');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON employment REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('person_id,company_id,grade_id,org_division,org_branch,org_section,org_team,employment_category,employee_code,hired_on,join_date,blacklisted_at,resignation_date,last_working_date,terminated_on,final_confirmation_date,confirmation_date,probation_end_date,provisional_end_on,voided_at');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON employment REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('person_id,company_id,grade_id,org_division,org_branch,org_section,org_team,employment_category,employee_code,hired_on,join_date,blacklisted_at,resignation_date,last_working_date,terminated_on,final_confirmation_date,confirmation_date,probation_end_date,provisional_end_on,voided_at');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON employment REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('person_id,company_id,grade_id,org_division,org_branch,org_section,org_team,employment_category,employee_code,hired_on,join_date,blacklisted_at,resignation_date,last_working_date,terminated_on,final_confirmation_date,confirmation_date,probation_end_date,provisional_end_on,voided_at');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON assignment REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('employment_id,company_id,business_unit_id,department_id,position_id,cost_center_id,employment_type,valid_from,valid_to,superseded_at');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON assignment REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('employment_id,company_id,business_unit_id,department_id,position_id,cost_center_id,employment_type,valid_from,valid_to,superseded_at');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON assignment REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('employment_id,company_id,business_unit_id,department_id,position_id,cost_center_id,employment_type,valid_from,valid_to,superseded_at');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON company REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('parent_company_id,archived_at');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON company REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('parent_company_id,archived_at');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON company REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('parent_company_id,archived_at');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON app_user REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('person_id,archived_at');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON app_user REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('person_id,archived_at');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON app_user REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('person_id,archived_at');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON tenant REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON tenant REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON role_assignment REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON role_assignment REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON role_assignment REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON access_configuration REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON access_configuration REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON access_configuration REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON access_group REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON access_group REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON access_group REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON access_group_grant REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON access_group_grant REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON access_group_grant REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON access_membership REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON access_membership REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON access_membership REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON access_user_override REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON access_user_override REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON access_user_override REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON access_capability REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON access_capability REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON access_capability REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON data_permission_profile REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON data_permission_profile REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON data_permission_profile REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON data_permission_revision REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON data_permission_revision REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON data_permission_revision REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON user_data_permission_assignment REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON user_data_permission_assignment REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON user_data_permission_assignment REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON reporting_line REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON reporting_line REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON reporting_line REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON department REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON department REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('company_id,parent_department_id,business_unit_id,head_employment_id,is_global,archived_at');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON department REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON business_unit REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON business_unit REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('company_id,head_employment_id,is_global,archived_at');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON business_unit REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON tenant_module REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON tenant_module REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON tenant_module REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON tenant_setting REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON tenant_setting REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON tenant_setting REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON letter_capability_grant REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON letter_capability_grant REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON letter_capability_grant REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON payroll_permission_grant REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON payroll_permission_grant REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON payroll_permission_grant REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_identity_generation_bump() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid;query text;
+BEGIN
+ IF TG_TABLE_NAME='app_external_identity' THEN
+  query:='SELECT DISTINCT u.tenant_id FROM public.app_user u JOIN '||CASE WHEN TG_OP='DELETE' THEN 'old_rows' ELSE 'new_rows' END||' binding ON binding.app_user_id=u.id';
+  IF TG_OP='UPDATE' THEN query:=query||' UNION SELECT DISTINCT u.tenant_id FROM public.app_user u JOIN old_rows binding ON binding.app_user_id=u.id';END IF;
+ ELSE
+  query:='SELECT DISTINCT u.tenant_id FROM public.app_user u JOIN public.app_external_identity binding ON binding.app_user_id=u.id JOIN '||CASE WHEN TG_OP='DELETE' THEN 'old_rows' ELSE 'new_rows' END||' credential ON credential.owner_id::text=binding.subject WHERE credential.record_key LIKE ''credential:%''';
+ END IF;
+ FOR t IN EXECUTE query LOOP UPDATE app.data_permission_read_generation SET generation=generation+1 WHERE tenant_id=t;END LOOP;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_identity_generation_bump() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER data_permission_identity_generation_insert AFTER INSERT ON app_external_identity REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();
+CREATE TRIGGER data_permission_identity_generation_update AFTER UPDATE ON app_external_identity REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();
+CREATE TRIGGER data_permission_identity_generation_delete AFTER DELETE ON app_external_identity REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();
+CREATE TRIGGER data_permission_credential_generation_update AFTER UPDATE ON app_internal_auth_record REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();
+CREATE TRIGGER data_permission_credential_generation_delete AFTER DELETE ON app_internal_auth_record REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();
