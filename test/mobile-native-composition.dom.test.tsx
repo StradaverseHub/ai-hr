@@ -10,7 +10,7 @@ import { MOBILE_DESTINATIONS, newMobileBlock } from '../lib/mobile-composition';
 import * as v2tasks from '../lib/mobile-api/v2/tasks';
 import { UnavailableError } from '../mobile/lib/errors';
 
-const taskRow = (kind: string, name: string) => ({ id: `${kind}-one`, kind, subject: { name, code: null }, createdAt: '2026-10-28T01:00:00.000Z', nativeDecision: kind === 'leave', webPath: kind === 'leave' ? null : '/approvals' });
+const taskRow = (kind: v2tasks.TaskKind, name: string | null): v2tasks.TaskItemV2 => ({ id: `${kind}-one`, kind, subject: { name, code: null }, createdAt: '2026-10-28T01:00:00.000Z', nativeDecision: kind === 'leave', webPath: kind === 'leave' ? null : '/approvals' });
 type TasksRead = { loading: boolean; error: Error | null; data: { items: ReturnType<typeof taskRow>[]; nextCursor: string | null } | null };
 function fixture() {
   const design = mobileDesignTemplate('editorial'), calls: string[] = [], push = vi.fn(), v2params: unknown[] = [], v2schemas: unknown[] = [];
