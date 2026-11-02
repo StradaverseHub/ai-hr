@@ -585,6 +585,19 @@ BEGIN
  IF NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR TG_OP='DELETE' OR NEW.letter_id IS NULL THEN RAISE EXCEPTION 'Letter delivery consequence unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='UPDATE' AND (NEW.status<>'cancelled' OR NEW.lease_token IS NOT NULL OR NEW.lease_until IS NOT NULL
   OR data-ARRAY['status','lease_token','lease_until','last_error'] IS DISTINCT FROM to_jsonb(OLD)-ARRAY['status','lease_token','lease_until','last_error']) THEN RAISE EXCEPTION 'Letter cancellation consequence unavailable' USING ERRCODE='42501';END IF;
+ -- Native draft creation is an Add consequence, not a fabricated Edit/Approve.
+ IF TG_OP='INSERT' AND NEW.kind='notification' AND NEW.status='pending' AND NEW.attempts=0 AND NEW.lease_token IS NULL AND NEW.lease_until IS NULL THEN
+  IF NEW.payload->>'purpose'='draftCreated' AND app.letter_function_action('letterGenerate','view',NEW.company_id) AND app.letter_function_action('letterGenerate','add',NEW.company_id)
+  AND app.access_letter_action(NEW.company_id,'generate','add') AND app.letter_draft_created_job_current(NEW.tenant_id,NEW.id)
+  AND EXISTS(SELECT 1 FROM app.financial_letter_proposed_birth birth JOIN public.letter_record actual ON actual.id=birth.letter_id AND actual.tenant_id=birth.tenant_id AND actual.company_id=birth.company_id AND actual.batch_id=birth.batch_id AND actual.created_by=birth.user_id
+   WHERE birth.transaction_id=pg_current_xact_id() AND birth.tenant_id=NEW.tenant_id AND birth.user_id=app.current_user_id() AND birth.letter_id=NEW.letter_id AND birth.company_id=NEW.company_id AND birth.completed AND app.data_permission_matches(birth.employment_id))
+  AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.id=NEW.source_event_id AND audit.tenant_id=NEW.tenant_id AND audit.aggregate_type='letter' AND audit.aggregate_id=NEW.letter_id AND audit.event_type='letter.draft.batch-created' AND audit.actor_type='user' AND audit.actor_id=app.current_user_id() AND app.financial_audit_written(audit.id)) THEN RETURN NULL;END IF;
+  -- Employee acknowledgement/signature owns a separate, exact recipient consequence.
+  IF NEW.payload->>'purpose'='recipientAcknowledgement' AND app.letter_recipient_function_action('execute') AND app.letter_acknowledgement_job_current(NEW.tenant_id,NEW.id)
+  AND EXISTS(SELECT 1 FROM public.letter_recipient_event action JOIN public.domain_event audit ON audit.id=NEW.source_event_id AND audit.tenant_id=action.tenant_id AND audit.aggregate_id=action.letter_id AND audit.aggregate_type='letter'
+   WHERE action.id::text=NEW.payload->>'recipientEventId' AND action.tenant_id=NEW.tenant_id AND action.letter_id=NEW.letter_id AND action.actor_id=app.current_user_id() AND action.kind IN ('acknowledged','signed')
+   AND audit.actor_type='user' AND audit.actor_id=action.actor_id AND audit.event_type='letter.recipient.'||action.kind AND app.financial_audit_written(audit.id)) THEN RETURN NULL;END IF;
+ END IF;
  IF NOT EXISTS(SELECT 1 FROM app.letter_operation_effect proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.letter_id=NEW.letter_id AND proof.company_id=NEW.company_id
   AND app.access_letter_action(proof.company_id,proof.native_capability,proof.operation)
   AND app.letter_function_action(app.financial_letter_native_function(proof.native_capability,proof.operation),proof.operation,proof.company_id)
@@ -861,7 +874,7 @@ BEGIN
  IF inserted IS NULL THEN RETURN NULL;END IF;
  -- A transaction below the global snapshot xmin has no live/deferred consumer. Do
  -- this once per transaction, retaining every in-flight actor's exact receipts.
- FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody'] LOOP
+ FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody','financial_letter_proposed_birth','financial_claim_port_effect'] LOOP
   EXECUTE format('DELETE FROM app.%I WHERE transaction_id<$1',table_name) USING oldest;
  END LOOP;
  DELETE FROM app.financial_receipt_epoch WHERE transaction_id<oldest;
@@ -2293,3 +2306,270 @@ LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp
 REVOKE ALL ON FUNCTION app.payroll_claim_prefill_sources(uuid),app.payroll_claim_linked_sources(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.payroll_claim_prefill_sources(uuid),app.payroll_claim_linked_sources(uuid,text) TO ai_hr_app;
 CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_claim_source_custody FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+
+-- Finite financial writes consume actual locked native sources; the app never receives claim metadata.
+CREATE TABLE app.financial_claim_port_effect(
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,batch_id uuid NOT NULL,claim_id uuid NOT NULL,mode text NOT NULL,
+ before_row jsonb NOT NULL,after_row jsonb NOT NULL,source_hash text NOT NULL,
+ PRIMARY KEY(transaction_id,tenant_id,user_id,claim_id,source_hash,mode)
+);
+ALTER TABLE app.financial_claim_port_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_claim_port_effect FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_claim_port_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.transaction_id<>pg_current_xact_id() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.user_id IS DISTINCT FROM app.current_user_id()
+ OR NOT app.financial_claim_payment_approved(NEW.claim_id,NEW.before_row,NEW.after_row)
+ OR NOT EXISTS(SELECT 1 FROM app.financial_claim_source_custody source WHERE source.transaction_id=NEW.transaction_id AND source.tenant_id=NEW.tenant_id AND source.user_id=NEW.user_id AND source.batch_id=NEW.batch_id AND source.claim_id=NEW.claim_id
+ AND source.source_hash=NEW.source_hash AND source.source_row=NEW.before_row AND source.source_kind=CASE NEW.mode WHEN 'reserve' THEN 'reserve' WHEN 'unpay' THEN 'linked-paid' ELSE 'linked-approved' END)
+ THEN RAISE EXCEPTION 'Payroll claim consequence incomplete' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_claim_port_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER financial_claim_port_complete AFTER INSERT ON app.financial_claim_port_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_claim_port_complete();
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_claim_port_effect FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+CREATE FUNCTION app.payroll_claim_apply(p_batch uuid,p_mode text,p_claims uuid[] DEFAULT NULL,p_employments uuid[] DEFAULT NULL) RETURNS TABLE(id uuid,employment_id uuid)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE candidate public.claim_request%ROWTYPE;changed public.claim_request%ROWTYPE;actual_ids uuid[];period text;before_row jsonb;wanted_source_kind text;
+BEGIN
+ IF p_mode IS NULL OR p_mode NOT IN ('reserve','pay','unpay','requeue') OR p_mode='reserve' AND p_claims IS NULL
+ OR p_claims IS NOT NULL AND (array_position(p_claims,NULL) IS NOT NULL OR cardinality(p_claims)<>(SELECT count(DISTINCT value) FROM unnest(p_claims) value))
+ OR p_employments IS NOT NULL AND array_position(p_employments,NULL) IS NOT NULL
+ THEN RAISE EXCEPTION 'Payroll claim operation unavailable' USING ERRCODE='42501';END IF;
+ -- This source owner acquires Access before actual batch and deterministic claim locks,
+ -- repeats current native intent/data ceilings and seals real cutoff only for new reservations.
+ SELECT coalesce(array_agg(source.id ORDER BY source.id),'{}'::uuid[]) INTO actual_ids
+ FROM app.financial_claim_sources_capture(p_batch,CASE p_mode WHEN 'reserve' THEN 'reserve' ELSE 'linked' END,CASE p_mode WHEN 'unpay' THEN 'paid' ELSE 'approved' END) source
+ WHERE (p_claims IS NULL OR source.id=ANY(p_claims)) AND (p_employments IS NULL OR source.employment_id=ANY(p_employments));
+ IF p_claims IS NOT NULL AND cardinality(actual_ids)<>cardinality(p_claims) THEN RAISE EXCEPTION 'Payroll claim source changed' USING ERRCODE='42501';END IF;
+ SELECT batch.pay_period INTO period FROM public.payroll_batch batch WHERE batch.id=p_batch AND batch.tenant_id=app.current_tenant_id();
+ wanted_source_kind:=CASE p_mode WHEN 'reserve' THEN 'reserve' WHEN 'unpay' THEN 'linked-paid' ELSE 'linked-approved' END;
+ FOR candidate IN SELECT claim.* FROM public.claim_request claim WHERE claim.tenant_id=app.current_tenant_id() AND claim.id=ANY(actual_ids) ORDER BY claim.id FOR UPDATE
+ LOOP
+  before_row:=to_jsonb(candidate);
+  IF NOT EXISTS(SELECT 1 FROM app.financial_claim_source_custody source WHERE source.transaction_id=pg_current_xact_id() AND source.tenant_id=candidate.tenant_id AND source.user_id=app.current_user_id() AND source.batch_id=p_batch AND source.claim_id=candidate.id AND source.source_kind=wanted_source_kind AND source.source_row=before_row)
+  THEN RAISE EXCEPTION 'Payroll claim source changed' USING ERRCODE='42501';END IF;
+  IF p_mode='reserve' THEN
+   UPDATE public.claim_request claim SET payroll_batch_id=p_batch WHERE claim.id=candidate.id AND claim.tenant_id=candidate.tenant_id RETURNING claim.* INTO changed;
+  ELSIF p_mode='pay' THEN
+   UPDATE public.claim_request claim SET status='paid',paid_at=now(),payout_ref='payroll:'||period WHERE claim.id=candidate.id AND claim.tenant_id=candidate.tenant_id RETURNING claim.* INTO changed;
+  ELSIF p_mode='unpay' THEN
+   UPDATE public.claim_request claim SET status='approved',paid_at=NULL,payout_ref=NULL WHERE claim.id=candidate.id AND claim.tenant_id=candidate.tenant_id RETURNING claim.* INTO changed;
+  ELSE
+   UPDATE public.claim_request claim SET payroll_batch_id=NULL WHERE claim.id=candidate.id AND claim.tenant_id=candidate.tenant_id RETURNING claim.* INTO changed;
+  END IF;
+  IF changed.id IS NULL THEN RAISE EXCEPTION 'Payroll claim write unavailable' USING ERRCODE='42501';END IF;
+  INSERT INTO app.financial_claim_port_effect VALUES(pg_current_xact_id(),candidate.tenant_id,app.current_user_id(),p_batch,candidate.id,p_mode,before_row,to_jsonb(changed),encode(sha256(convert_to(before_row::text,'UTF8')),'hex'));
+  id:=changed.id;employment_id:=changed.employment_id;RETURN NEXT;
+ END LOOP;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.payroll_claim_apply(uuid,text,uuid[],uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.payroll_claim_apply(uuid,text,uuid[],uuid[]) TO ai_hr_app;
+-- Reset custody hashes every locked actual row, including non-paid linked rows, without returning content.
+CREATE FUNCTION app.payroll_claim_source_hashes(p_batch uuid) RETURNS TABLE(id uuid,source_hash text)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE candidate public.claim_request%ROWTYPE;operation text;batch_company uuid;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ SELECT batch.company_id INTO batch_company FROM public.payroll_batch batch WHERE batch.id=p_batch AND batch.tenant_id=app.current_tenant_id() AND batch.status IN ('draft','processed') FOR UPDATE;
+ operation:=CASE WHEN app.financial_batch_intent_allowed(p_batch,'edit') THEN 'edit' WHEN app.financial_batch_intent_allowed(p_batch,'delete') THEN 'delete' END;
+ IF batch_company IS NULL OR operation IS NULL OR NOT app.financial_batch_subjects_allowed(p_batch) OR NOT app.function_action_allowed('payroll.process','view',batch_company) THEN RAISE EXCEPTION 'Payroll claim source unavailable' USING ERRCODE='42501';END IF;
+ FOR candidate IN SELECT claim.* FROM public.claim_request claim WHERE claim.tenant_id=app.current_tenant_id() AND claim.payroll_batch_id=p_batch ORDER BY claim.id LIMIT 10001 FOR UPDATE NOWAIT
+ LOOP
+  IF NOT app.access_financial_action_employment('payroll',candidate.employment_id,operation) THEN RAISE EXCEPTION 'Payroll claim subject unavailable' USING ERRCODE='42501';END IF;
+  id:=candidate.id;source_hash:=encode(sha256(convert_to(to_jsonb(candidate)::text,'UTF8')),'hex');RETURN NEXT;
+ END LOOP;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.payroll_claim_source_hashes(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.payroll_claim_source_hashes(uuid) TO ai_hr_app;
+
+
+--> statement-breakpoint
+-- Actual BEFORE-row custody permits only its own INSERT RETURNING row; successful
+-- materialization and the real complete-batch event must still close in this transaction.
+CREATE TABLE app.financial_letter_proposed_birth(
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,letter_id uuid NOT NULL,company_id uuid NOT NULL,employment_id uuid NOT NULL,batch_id uuid NOT NULL,row_hash text NOT NULL,completed boolean NOT NULL DEFAULT false,
+ PRIMARY KEY(transaction_id,tenant_id,user_id,letter_id)
+);
+ALTER TABLE app.financial_letter_proposed_birth ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_letter_proposed_birth FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_letter_proposed_birth_capture() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_user_id() IS NULL THEN RETURN NEW;END IF;
+ IF NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.created_by IS DISTINCT FROM app.current_user_id()
+ OR NOT app.letter_function_action('letterGenerate','add',NEW.company_id) OR NOT app.letter_function_action('letterGenerate','view',NEW.company_id)
+ OR NOT app.access_letter_action(NEW.company_id,'generate','add') OR NOT app.data_permission_matches(NEW.employment_id)
+ OR NEW.confidential AND NOT app.can_admin_payroll_for(NEW.company_id)
+ OR NOT EXISTS(SELECT 1 FROM public.letter_generation_batch parent JOIN public.employment subject ON subject.id=NEW.employment_id AND subject.tenant_id=parent.tenant_id AND subject.company_id=parent.company_id
+ WHERE parent.id=NEW.batch_id AND parent.tenant_id=NEW.tenant_id AND parent.company_id=NEW.company_id AND parent.created_by=NEW.created_by
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements_text(parent.selection->'employmentIds') selected(value) WHERE selected.value=subject.id::text))
+ OR EXISTS(SELECT 1 FROM public.letter_record existing WHERE existing.id=NEW.id)
+ THEN RAISE EXCEPTION 'Letter proposed birth unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO app.financial_letter_proposed_birth VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id,NEW.company_id,NEW.employment_id,NEW.batch_id,encode(sha256(convert_to(to_jsonb(NEW)::text,'UTF8')),'hex'),false);
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_proposed_birth_capture() FROM PUBLIC,ai_hr_app;
+-- Sort after the native letter_insert_binding trigger, which validates the draft and parent.
+CREATE TRIGGER z_financial_letter_proposed_birth BEFORE INSERT ON letter_record FOR EACH ROW EXECUTE FUNCTION app.financial_letter_proposed_birth_capture();
+CREATE FUNCTION app.financial_letter_proposed_birth_finish() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_LEVEL='ROW' THEN
+  UPDATE app.financial_letter_proposed_birth SET completed=true WHERE transaction_id=pg_current_xact_id() AND tenant_id=NEW.tenant_id AND user_id=app.current_user_id() AND letter_id=NEW.id AND row_hash=encode(sha256(convert_to(to_jsonb(NEW)::text,'UTF8')),'hex');
+ ELSE
+  DELETE FROM app.financial_letter_proposed_birth WHERE transaction_id=pg_current_xact_id() AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND NOT completed;
+ END IF;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_proposed_birth_finish() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_letter_proposed_birth_finish AFTER INSERT ON letter_record FOR EACH ROW EXECUTE FUNCTION app.financial_letter_proposed_birth_finish();
+CREATE TRIGGER financial_letter_proposed_birth_cleanup AFTER INSERT ON letter_record FOR EACH STATEMENT EXECUTE FUNCTION app.financial_letter_proposed_birth_finish();
+CREATE FUNCTION app.letter_record_birth_read(p_row jsonb) RETURNS boolean
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.principal_snapshot_current() OR p_row->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR p_row->>'created_by' IS DISTINCT FROM app.current_user_id()::text THEN RETURN false;END IF;
+ RETURN EXISTS(SELECT 1 FROM app.financial_letter_proposed_birth proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+ AND proof.letter_id=(p_row->>'id')::uuid AND proof.company_id=(p_row->>'company_id')::uuid AND proof.employment_id=(p_row->>'employment_id')::uuid AND proof.batch_id=(p_row->>'batch_id')::uuid AND proof.row_hash=encode(sha256(convert_to(p_row::text,'UTF8')),'hex')
+ AND app.letter_function_action('letterGenerate','view',proof.company_id) AND app.letter_function_action('letterGenerate','add',proof.company_id) AND app.access_letter_action(proof.company_id,'generate','add') AND app.data_permission_matches(proof.employment_id)
+ AND (NOT (p_row->>'confidential')::boolean OR app.can_admin_payroll_for(proof.company_id)));
+END;
+$$;
+REVOKE ALL ON FUNCTION app.letter_record_birth_read(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_record_birth_read(jsonb) TO ai_hr_app;
+ALTER POLICY letter_record_read ON letter_record USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND
+ ((app.letter_permission(company_id,'read') AND app.letter_staff_scope(company_id,created_by,batch_id,id) AND (NOT confidential OR app.can_admin_payroll_for(company_id))) OR
+ (state IN ('issued','void') AND EXISTS(SELECT 1 FROM public.employment self WHERE self.id=employment_id AND self.tenant_id=letter_record.tenant_id AND app.is_self_person(self.person_id))) OR app.letter_record_birth_read(to_jsonb(letter_record))));
+CREATE FUNCTION app.financial_letter_proposed_birth_validate() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM app.financial_letter_proposed_birth proof JOIN public.letter_record actual ON actual.id=proof.letter_id AND actual.tenant_id=proof.tenant_id AND actual.company_id=proof.company_id AND actual.employment_id=proof.employment_id AND actual.batch_id=proof.batch_id AND actual.created_by=proof.user_id
+ JOIN public.letter_generation_batch parent ON parent.id=proof.batch_id AND parent.tenant_id=proof.tenant_id AND parent.created_by=proof.user_id
+ WHERE proof.transaction_id=NEW.transaction_id AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.user_id AND proof.letter_id=NEW.letter_id AND proof.completed
+ AND proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+ AND app.letter_function_action('letterGenerate','add',proof.company_id) AND app.data_permission_matches(proof.employment_id)
+ AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.tenant_id=proof.tenant_id AND audit.aggregate_type='letter' AND audit.aggregate_id=proof.batch_id AND audit.event_type='letter.batch.created' AND audit.actor_type='user' AND audit.actor_id=proof.user_id AND app.financial_audit_written(audit.id)
+ AND (audit.payload->>'count')::integer=jsonb_array_length(parent.selection->'employmentIds') AND (audit.payload->>'count')::integer=(SELECT count(*) FROM public.letter_record member WHERE member.batch_id=proof.batch_id AND member.tenant_id=proof.tenant_id))) THEN
+  RAISE EXCEPTION 'Letter birth did not complete' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_proposed_birth_validate() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER financial_letter_proposed_birth_complete AFTER INSERT ON app.financial_letter_proposed_birth DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_letter_proposed_birth_validate();
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_letter_proposed_birth FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+
+--> statement-breakpoint
+-- Queued reminder metadata has a separate native dispatcher course. No raw
+-- recipient or assessment-row exception is added to the generic data policies.
+CREATE FUNCTION app.onehr_reminder_dispatch_source(p_recipient uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('recipient',jsonb_build_object('id',recipient.id,'userId',recipient.user_id,'employmentId',recipient.employment_id,'outcome',recipient.outcome),
+ 'run',jsonb_build_object('id',run.id,'tenantId',run.tenant_id,'cycleId',run.cycle_id,'mode',run.mode),
+ 'tenantEpoch',coalesce((SELECT epoch.revision FROM public.performance_assessment_reminder_epoch epoch WHERE epoch.tenant_id=run.tenant_id AND epoch.scope_id='00000000-0000-0000-0000-000000000000'),0),
+ 'cycleEpoch',coalesce((SELECT epoch.revision FROM public.performance_assessment_reminder_epoch epoch WHERE epoch.tenant_id=run.tenant_id AND epoch.scope_id=run.cycle_id),0))
+ FROM public.performance_assessment_reminder_recipient recipient JOIN public.performance_assessment_reminder_run run ON run.id=recipient.run_id AND run.tenant_id=recipient.tenant_id
+ JOIN public.performance_onehr_cycle config ON config.cycle_id=run.cycle_id AND config.tenant_id=run.tenant_id
+ JOIN public.employment subject ON subject.id=recipient.employment_id AND subject.tenant_id=recipient.tenant_id
+ JOIN public.domain_event event ON event.id=recipient.source_event_id AND event.tenant_id=recipient.tenant_id AND event.aggregate_id=recipient.id AND event.aggregate_type='assessment-reminder' AND event.event_type='assessment.reminder-queued' AND event.actor_id IS NOT DISTINCT FROM run.actor_user_id
+ WHERE recipient.id=p_recipient AND recipient.tenant_id=app.current_tenant_id()
+ AND (app.assessment_dispatcher_scope() OR app.onehr_cycle_admin(run.cycle_id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_dispatch_source(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_dispatch_source(uuid) TO ai_hr_app;
+CREATE FUNCTION app.onehr_reminder_dispatch_update(p_recipient uuid,p_expected jsonb,p_outcome text,p_tasks jsonb,p_words jsonb,p_until timestamptz,p_tenant_epoch bigint,p_cycle_epoch bigint) RETURNS boolean
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source jsonb;recipient public.performance_assessment_reminder_recipient%ROWTYPE;now_at timestamptz;deadline timestamptz;boundary timestamptz;words jsonb:=nullif(p_words,'null'::jsonb);
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ source:=app.onehr_reminder_dispatch_source(p_recipient);IF source IS NULL OR source IS DISTINCT FROM p_expected THEN RETURN false;END IF;
+ SELECT * INTO recipient FROM public.performance_assessment_reminder_recipient actual WHERE actual.id=p_recipient AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ source:=app.onehr_reminder_dispatch_source(p_recipient);
+ IF source IS NULL OR source IS DISTINCT FROM p_expected OR recipient.outcome<>'queued' THEN RETURN false;END IF;
+ IF p_outcome IS NULL OR p_outcome NOT IN ('queued','changed','noPendingWork','noConsent','cooldown') THEN RAISE EXCEPTION 'Reminder projection outcome unavailable' USING ERRCODE='42501';END IF;
+ IF p_outcome<>'queued' THEN
+  UPDATE public.performance_assessment_reminder_recipient actual SET outcome=p_outcome,tasks='[]',mail_words=NULL,prepared_at=NULL,prepared_until=NULL WHERE actual.id=recipient.id;
+  RETURN true;
+ END IF;
+ now_at:=clock_timestamp();deadline:=now_at+interval '60 seconds';
+ SELECT min(module.expires_at) INTO boundary FROM public.tenant_module module WHERE module.tenant_id=recipient.tenant_id AND module.expires_at>now_at;IF boundary IS NOT NULL THEN deadline:=least(deadline,boundary);END IF;
+ SELECT min(cell.value::timestamptz) INTO boundary FROM public.performance_onehr_cycle config CROSS JOIN LATERAL jsonb_each(coalesce(config.policy->'windows','{}'::jsonb)) window_entry CROSS JOIN LATERAL jsonb_each_text(window_entry.value) cell
+ WHERE config.cycle_id=(source->'run'->>'cycleId')::uuid AND config.tenant_id=recipient.tenant_id AND cell.key IN ('opensAt','closesAt') AND cell.value::timestamptz>now_at;IF boundary IS NOT NULL THEN deadline:=least(deadline,boundary);END IF;
+ IF p_until IS NULL OR p_until<=now_at OR p_until>deadline OR p_tenant_epoch IS DISTINCT FROM (source->>'tenantEpoch')::bigint OR p_cycle_epoch IS DISTINCT FROM (source->>'cycleEpoch')::bigint
+ OR jsonb_typeof(p_tasks) IS DISTINCT FROM 'array' OR jsonb_array_length(p_tasks) NOT BETWEEN 1 AND 16 OR octet_length(p_tasks::text)>20000
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_tasks) task WHERE jsonb_typeof(task)<>'object' OR NOT app.access_command_keys(task,ARRAY['key','count','closesAt','people']) OR NOT task ?& ARRAY['key','count','closesAt']
+ OR task->>'key' NOT IN ('own_results','own_checkin','own_competency','own_plan','feedback','team_setting','team_results','team_competency','team_plan','team_career','hod_performance','hod_potential','bu_performance','bu_potential','bg_talent','group_performance')
+ OR jsonb_typeof(task->'count') IS DISTINCT FROM 'number' OR (task->>'count')::numeric NOT BETWEEN 1 AND 1000000 OR (task->>'count')::numeric<>trunc((task->>'count')::numeric)
+ OR task->'closesAt'<>'null'::jsonb AND jsonb_typeof(task->'closesAt') IS DISTINCT FROM 'string'
+ OR task ? 'people' AND (jsonb_typeof(task->'people') IS DISTINCT FROM 'array' OR jsonb_array_length(task->'people')>3 OR EXISTS(SELECT 1 FROM jsonb_array_elements(task->'people') name WHERE jsonb_typeof(name)<>'string' OR length(name#>>'{}') NOT BETWEEN 1 AND 200)))
+ OR words IS NOT NULL AND (jsonb_typeof(words)<>'object' OR NOT app.access_command_keys(words,ARRAY['subject','opening']) OR NOT words ?& ARRAY['subject','opening'] OR jsonb_typeof(words->'subject')<>'string' OR jsonb_typeof(words->'opening')<>'string' OR length(words->>'subject') NOT BETWEEN 1 AND 20000 OR length(words->>'opening') NOT BETWEEN 1 AND 30000 OR words->>'subject' ~ E'[\r\n]')
+ THEN RAISE EXCEPTION 'Reminder bounded projection unavailable' USING ERRCODE='42501';END IF;
+ UPDATE public.performance_assessment_reminder_recipient actual SET tasks=p_tasks,mail_words=words,prepared_at=now_at,prepared_until=p_until,tenant_epoch=p_tenant_epoch,cycle_epoch=p_cycle_epoch WHERE actual.id=recipient.id;
+ RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint) TO ai_hr_app;
+-- The delayed-notice reader needs workflow flags and actual assigned IDs, never
+-- raw self/manager answers, KPI amounts, review text or a stored performance band.
+-- Notification eligibility belongs to each actual recipient, never to the dispatcher.
+CREATE FUNCTION app.financial_onehr_target_task_view(t uuid,u uuid,r uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce((SELECT c.supported=false OR app.access_allowed_for_tenant(t,u,c.id,subject.company_id)
+ FROM public.performance_review review JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ CROSS JOIN LATERAL (SELECT app.financial_onehr_review_course_for(t,u,review.id) AS course) native
+ JOIN app.access_function_action action ON action.function_key=CASE native.course WHEN 'self' THEN 'performance.onehr.selfReview' WHEN 'assigned' THEN 'performance.onehr.assignedReview' END AND action.operation='view'
+ JOIN public.access_capability c ON c.id=action.capability_id
+ WHERE review.id=r AND review.tenant_id=t AND native.course IN ('self','assigned')),false);
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_target_task_view(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_review_task_recipient_access(p_cycle uuid,p_user uuid DEFAULT NULL) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(jsonb_object_agg(review.id::text,(SELECT coalesce(jsonb_agg(account.id ORDER BY account.id),'[]'::jsonb)
+ FROM public.app_user account WHERE account.tenant_id=review.tenant_id AND (p_user IS NULL OR account.id=p_user)
+ AND app.financial_onehr_target_task_view(review.tenant_id,account.id,review.id))),'{}'::jsonb)
+ FROM public.performance_review review JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
+ JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ JOIN public.review_cycle cycle ON cycle.id=review.cycle_id AND cycle.tenant_id=review.tenant_id
+ WHERE review.cycle_id=p_cycle AND review.tenant_id=app.current_tenant_id() AND cycle.status IN ('open','calibration')
+ AND (app.assessment_dispatcher_scope() OR app.onehr_cycle_admin(cycle.id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id)) AND app.assessment_review_participates(review.id);
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_task_recipient_access(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_task_recipient_access(uuid,uuid) TO ai_hr_app;
+
+CREATE FUNCTION app.onehr_review_notice_source(p_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH source AS MATERIALIZED (
+  SELECT assessment.*,review.reviewer_employment_id,review.closed_at,cycle.period_end,config.policy,
+   app.financial_onehr_effective_reviewer_of(review.tenant_id,review.id,NULL,NULL) AS effective_reviewer,
+   app.onehr_moderator_choices(review.id) AS moderators
+  FROM public.performance_onehr_review assessment JOIN public.performance_review review ON review.id=assessment.review_id AND review.tenant_id=assessment.tenant_id
+  JOIN public.review_cycle cycle ON cycle.id=review.cycle_id AND cycle.tenant_id=review.tenant_id JOIN public.performance_onehr_cycle config ON config.cycle_id=cycle.id AND config.tenant_id=cycle.tenant_id
+  WHERE review.id=p_review AND review.tenant_id=app.current_tenant_id() AND cycle.status IN ('open','calibration') AND app.assessment_review_participates(review.id)
+  AND (app.assessment_dispatcher_scope() OR app.onehr_review_header(review.id) IS NOT NULL)
+ ), candidates AS (
+  SELECT (moderator->>'id')::uuid AS id FROM source CROSS JOIN LATERAL jsonb_array_elements(source.moderators) moderator
+  UNION SELECT effective_reviewer FROM source WHERE effective_reviewer IS NOT NULL
+ )
+ SELECT jsonb_build_object('reviewId',source.review_id,'employmentId',source.employment_id,'reviewerEmploymentId',source.effective_reviewer,
+ 'policy',jsonb_build_object('kind',source.policy->'kind','modules',source.policy->'modules','windows',source.policy->'windows'),
+ 'frozen',source.closed_at IS NOT NULL OR EXISTS(SELECT 1 FROM public.performance_onehr_result result WHERE result.review_id=source.review_id AND result.tenant_id=source.tenant_id),
+ 'moderatorIds',(SELECT coalesce(jsonb_agg(moderator->'id'),'[]'::jsonb) FROM jsonb_array_elements(source.moderators) moderator),
+ 'liveIds',(SELECT coalesce(jsonb_agg(DISTINCT employment.id ORDER BY employment.id),'[]'::jsonb) FROM candidates JOIN public.employment employment ON employment.id=candidates.id AND employment.tenant_id=source.tenant_id
+ JOIN public.app_user account ON account.person_id=employment.person_id AND account.tenant_id=employment.tenant_id WHERE account.archived_at IS NULL AND NOT app.login_blocked(account.id) AND (employment.terminated_on IS NULL OR employment.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND NOT app.assessment_unit_out(source.cycle_id,employment.id)
+ AND app.financial_onehr_target_task_view(source.tenant_id,account.id,source.review_id)
+ -- Employment-addressed notices are visible to every active account of that person.
+ AND NOT EXISTS(SELECT 1 FROM public.app_user other WHERE other.tenant_id=employment.tenant_id AND other.person_id=employment.person_id
+ AND other.archived_at IS NULL AND NOT app.login_blocked(other.id) AND NOT app.financial_onehr_target_task_view(source.tenant_id,other.id,source.review_id))),
+ 'facts',jsonb_build_object('competenciesAssigned',jsonb_array_length(source.competencies)>0,'competencyStatus',source.competency_status,'resultsSubmitted',source.results_submitted_at IS NOT NULL,'managerPerformance',NULL,'managerComplete',source.manager_performance IS NOT NULL,
+ 'planStatus',(SELECT plan.status FROM public.performance_onehr_plan plan WHERE plan.tenant_id=source.tenant_id AND plan.employment_id=source.employment_id AND plan.plan_year=extract(year from source.period_end)::integer+CASE WHEN source.policy->>'kind'='year_end' THEN 1 ELSE 0 END),
+ 'kpis',(SELECT coalesce(jsonb_agg(jsonb_build_object('hrOwned',coalesce((kpi->>'hrOwned')::boolean,false),'setting',kpi->'setting','locked',kpi->'locked','moderatorEmploymentId',kpi->'moderatorEmploymentId','checkIn',kpi->'checkIn' IS NOT NULL AND kpi->'checkIn'<>'null'::jsonb,
+ 'approvalChain',(SELECT coalesce(jsonb_agg(jsonb_build_object('employmentId',step->'employmentId','at',step->'at') ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(coalesce(kpi->'approvalChain','[]'::jsonb)) WITH ORDINALITY item(step,position)),
+ 'settingApprovals',(SELECT coalesce(jsonb_agg(jsonb_build_object('action',step->'action') ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(coalesce(kpi->'settingApprovals','[]'::jsonb)) WITH ORDINALITY item(step,position))) ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(source.kpis) WITH ORDINALITY item(kpi,position)))) FROM source;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_notice_source(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_notice_source(uuid) TO ai_hr_app;

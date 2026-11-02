@@ -546,10 +546,10 @@ async function transitionCycle(
 ) {
   return withTenant(ctx, async (tx) => {
     const cycle = await loadCycle(tx, cycleId);
-    await assertCycleFunctionTx(tx,cycle.companyId,'edit');
     if (!canAdminPerfCtx(ctx, cycle.companyId)) {
       throw new PerfError('Only an admin or performance & comp partner can change a cycle status');
     }
+    await assertCycleFunctionTx(tx,cycle.companyId,'edit');
     if (!from.includes(cycle.status)) {
       throw new PerfError(`Cannot move a ${cycle.status} cycle to ${to}`);
     }

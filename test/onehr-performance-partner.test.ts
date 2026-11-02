@@ -142,14 +142,24 @@ describe('OneHR performance partner (ADR-0142)', () => {
       const userId=await createAppUser(b.tenantId,identity.personId,'employee');await restrict(userId);
       const actor={...a,userId,personId:identity.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
       const [target]=await owner.db.execute<{manager:boolean;effective:boolean;foreign:boolean}>(sql`select app.financial_onehr_manager_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid) as manager,app.financial_onehr_effective_reviewer_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid) as effective,app.financial_onehr_manager_for(${randomUUID()}::uuid,${userId}::uuid,${reviewId}::uuid) as foreign`);expect(target).toEqual({manager:!self,effective:!self,foreign:false});
-      const [floor]=await owner.db.execute<{self:boolean;assigned:boolean}>(sql`select app.financial_function_legacy_allowed(${b.tenantId}::uuid,${userId}::uuid,'function.performance.onehr.selfReview.view',${b.companyId}::uuid) as self,app.financial_function_legacy_allowed(${b.tenantId}::uuid,${userId}::uuid,'function.performance.onehr.assignedReview.view',${b.companyId}::uuid) as assigned`);expect(floor).toEqual({self,assigned:!self});
-      const [actual]=await withTenant(actor,tx=>tx.execute<{self:boolean;assigned:boolean}>(sql`select app.onehr_review_task_view(${reviewId}::uuid,'self') as self,app.onehr_review_task_view(${reviewId}::uuid,'assigned') as assigned`));expect(actual).toEqual(floor);
+      const [floor]=await owner.db.execute<{self:boolean;assigned:boolean}>(sql`select app.financial_function_legacy_allowed(${b.tenantId}::uuid,${userId}::uuid,'function.performance.onehr.selfReview.view',${b.companyId}::uuid) as self,app.financial_function_legacy_allowed(${b.tenantId}::uuid,${userId}::uuid,'function.performance.onehr.assignedReview.view',${b.companyId}::uuid) as assigned`);const own=await owner.db.select({id:schema.onehrReview.reviewId}).from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,onehrCycleId),eq(schema.onehrReview.employmentId,identity.employmentId)));expect(own).toHaveLength(1);expect(floor).toEqual({self:true,assigned:!self});
+      const [actual]=await withTenant(actor,tx=>tx.execute<{self:boolean;assigned:boolean}>(sql`select app.onehr_review_task_view(${reviewId}::uuid,'self') as self,app.onehr_review_task_view(${reviewId}::uuid,'assigned') as assigned`));expect(actual).toEqual({self,assigned:!self});
       await expect(withTenant(actor,tx=>tx.execute(sql`select app.financial_onehr_manager_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid)`))).rejects.toThrow();
       const [task]=await withTenant(actor,tx=>tx.execute<{header:{name:string;ownEmploymentIds:string[]}|null;self:boolean;master:boolean}>(sql`select app.onehr_review_header(${reviewId}::uuid) as header,app.onehr_self_employment(${subject.employmentId}::uuid) as self,exists(select 1 from employment where id=${subject.employmentId}::uuid) as master`));
       expect(task.header).not.toBeNull();expect(task.header!.name).toBe('Partner subject');expect(task.self).toBe(self);expect(task.master).toBe(self);
       const view=await perf.getOnehrReview(actor,reviewId);expect(view).not.toBeNull();expect(view!.self).toBe(self);
       if(self){const personal=await perf.getAssessmentPersonalRecord(actor,reviewId);expect(personal.currentId).toBe(reviewId);expect(personal.current).not.toBeNull();}
     }
+  });
+
+  it('binds dispatch task authority to the actual review and current active recipient',async()=>{
+    const userId=await createAppUser(b.tenantId,subject.personId,'employee');
+    const allowed=async(userId:string)=>{const [row]=await owner.db.execute<{ok:boolean}>(sql`select app.financial_onehr_target_task_view(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid) as ok`);return row.ok;};
+    expect(await allowed(userId)).toBe(true);
+    expect(await allowed(partner.userId!)).toBe(false);
+    await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,userId));
+    expect(await allowed(userId)).toBe(false);
+    const [privilege]=await owner.db.execute<{ok:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_target_task_view(uuid,uuid,uuid)','EXECUTE') as ok`);expect(privilege.ok).toBe(false);
   });
 
   // ───────────────────────────── TS gates (UX mirror) ─────────────────────────────

@@ -5,7 +5,7 @@ import { assessmentReminderMailSchema,assessmentReminderTaskKeys,type Assessment
 export type ReminderWorkGraph={
  cycle:{id:string;companyId:string|null;name:string;periodEnd:string;policy:Pick<Policy,'kind'|'modules'|'windows'>};
  actors:{userId:string;personId:string;name:string;employmentIds:string[];cycleAdmin:boolean}[];
- reviews:{id:string;companyId:string;employmentId:string;personId:string;name:string;reviewerEmploymentId:string|null;moderatorIds:string[];frozen:boolean;facts:ReviewWorkFacts}[];
+ reviews:{id:string;companyId:string;employmentId:string;personId:string;name:string;reviewerEmploymentId:string|null;moderatorIds:string[];taskUserIds?:string[];frozen:boolean;facts:ReviewWorkFacts}[];
  panels:{id:string;employmentId:string;reviewId:string}[];
  sessions:{id:string;companyId:string|null;tier:Tier;reviewerUserIds:string[];adminUserIds:string[];lockedAt:unknown;performanceLockedAt:unknown;potentialLockedAt:unknown;entries:CalibrationWorkEntry[]}[];
 };
@@ -34,6 +34,7 @@ export function assessmentReminderWork(graph:ReminderWorkGraph,enabledCompanies:
   const candidates=new Map<string,typeof graph.actors[number]>();
   for(const id of new Set([review.employmentId,review.reviewerEmploymentId,...review.moderatorIds].filter((id):id is string=>!!id)))for(const actor of byEmployment.get(id)??[])candidates.set(actor.userId,actor);
   for(const actor of candidates.values()){
+   if(review.taskUserIds&&!review.taskUserIds.includes(actor.userId))continue;
    const self=actor.personId===review.personId,manager=!self&&actor.employmentIds.includes(review.reviewerEmploymentId??''),assigned=actor.employmentIds.some(id=>review.moderatorIds.includes(id));
    if(self&&bgOnly.has(actor.userId)||!self&&!manager&&!assigned)continue;
    const parts=reviewWorkspaceParts(policy,review.facts,{self,manager,employmentIds:actor.employmentIds});
