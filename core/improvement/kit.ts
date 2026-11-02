@@ -27,8 +27,9 @@ import type {BaselineIdeal} from './corpus-shape';
 export type KitDeclaration=Readonly<{name:string;purpose:string;input:readonly SemanticInput[];
  /** The native owner function the capability runs, as path#export. Must be one of the entity's owners. */
  owner:OwnerAnchor;
- /** Offered only where `module` is enabled for the caller (null: no module), and only to administrators when `admin`. */
- permission:Readonly<{module:string|null;admin:boolean}>;
+ /** Offered only where `module` is enabled for the caller (null: no module), and only to administrators when `admin`.
+  * `access: 'payroll'` offers it only to callers with payroll access (an administrator or a payroll partner) instead. */
+ permission:Readonly<{module:string|null;admin:boolean;access?:'payroll'}>;
  entity:SemanticEntity}>;
 
 export type KitCorpusTurn=Readonly<{id:string;question:string;category:'explanation'|'negative'|'action';ideal:BaselineIdeal;
@@ -37,14 +38,14 @@ export type KitCorpusTurn=Readonly<{id:string;question:string;category:'explanat
 export type KitCard=Readonly<{renderer:'teras.read-card';title:string;page:string;
  /** Field paths the card may show: every class but `never`. Bands still show as bands to the model. */
  fields:readonly string[]}>;
-export type KitBinding<T>=Readonly<{name:string;module:string|null;admin:boolean;
+export type KitBinding<T>=Readonly<{name:string;module:string|null;admin:boolean;access?:'payroll';
  run(ctx:SessionContext,input:Record<string,unknown>,scope:Readonly<{companyId:string;locale?:string}>):Promise<T>}>;
 export type OwnerCall<T>=(ctx:SessionContext,args:Readonly<Record<string,string|undefined>>,scope:Readonly<{companyId:string;locale?:string}>)=>Promise<T>;
 export const STANDARD_CONTRACTS=Object.freeze(['acts_as_person','no_identifiers','other_person_refusal','no_overclaim','minimum_fields'] as const);
 export type StandardContract=(typeof STANDARD_CONTRACTS)[number];
 
 export type KitCapability=Readonly<{declaration:KitDeclaration;read:SemanticRead;toolSpec:AiToolSpec;registryRow:CapabilityRow;
- binding:Readonly<{name:string;module:string|null;admin:boolean;owner:OwnerAnchor}>;
+ binding:Readonly<{name:string;module:string|null;admin:boolean;access?:'payroll';owner:OwnerAnchor}>;
  card:KitCard;review:Readonly<{route:string;label:string}>;corpus:readonly KitCorpusTurn[];contracts:readonly StandardContract[];
  /** Runs `owner` as the caller with only the declared inputs, as strings (absent or non-string inputs are undefined). */
  bind<T>(owner:OwnerCall<T>):KitBinding<T>}>;
@@ -64,7 +65,8 @@ function check(declaration:KitDeclaration):void{
  if(!entity.owners.includes(declaration.owner))throw new KitRefused('owner_not_declared_by_entity');
  if(!LINKABLE_PAGES.some(([path])=>path===entity.page))throw new KitRefused('page_not_linkable');
  if(entity.audience==='self'&&!OWN_SCOPES.has(entity.rls))throw new KitRefused('own_audience_wider_scope');
- if(permission.admin!==(entity.audience==='admin'))throw new KitRefused('admin_permission_audience_mismatch');
+ // An administrator audience needs an elevated offer: administrators only, or payroll access; never both at once.
+ if((permission.admin||permission.access==='payroll')!==(entity.audience==='admin')||(permission.admin&&permission.access!==undefined))throw new KitRefused('admin_permission_audience_mismatch');
  if(permission.module!==entity.module)throw new KitRefused('module_mismatch');
  for(const input of declaration.input)if(SUBJECT_INPUT.test(input.name)&&!input.identifier)throw new KitRefused('subject_input_not_a_handle');
 }
@@ -84,11 +86,11 @@ export function kitCapability(declaration:KitDeclaration):KitCapability{
  const declared=new Set(declaration.input.map(input=>input.name));
  const capability:KitCapability={declaration,read,toolSpec:{name:read.name,description:describeRead(read,entity),inputSchema:readInputSchema(read)},
   registryRow:readRegistryRow(read,entity),
-  binding:{name:read.name,module:declaration.permission.module,admin:declaration.permission.admin,owner:declaration.owner},
+  binding:{name:read.name,module:declaration.permission.module,admin:declaration.permission.admin,...(declaration.permission.access?{access:declaration.permission.access}:{}),owner:declaration.owner},
   card:{renderer:'teras.read-card',title:entity.label,page:entity.page,fields:leafPaths(disclosableFields(entity.fields))},
   review:{route:entity.page,label:`Open your ${label} in the product`},corpus,contracts:STANDARD_CONTRACTS,
   bind<T>(owner:OwnerCall<T>):KitBinding<T>{
-   return Object.freeze({name:read.name,module:declaration.permission.module,admin:declaration.permission.admin,
+   return Object.freeze({name:read.name,module:declaration.permission.module,admin:declaration.permission.admin,...(declaration.permission.access?{access:declaration.permission.access}:{}),
     run:(ctx:SessionContext,input:Record<string,unknown>,scope:Readonly<{companyId:string;locale?:string}>)=>
      owner(ctx,Object.freeze(Object.fromEntries([...declared].map(name=>[name,typeof input?.[name]==='string'?input[name] as string:undefined]))),scope)});
   }};

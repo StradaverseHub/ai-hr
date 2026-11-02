@@ -10,6 +10,8 @@
 export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=Object.freeze({
  'corpus':[
  'action:approvals.leave.decide',
+ // AI Centre issue 13b gave /payroll/reports its semantic entry (pay_aggregate); its corpus turn is still to be written.
+ 'page:/payroll/reports',
  ],
  'guide,corpus':[
  'page:/personnel',
@@ -47,7 +49,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/control-tower/exceptions','page:/control-tower/how-it-works','page:/delegations','page:/feedback','page:/knowledge-base','page:/leave/credit',
  'page:/leave/details','page:/leave/employee-balances','page:/leave/history','page:/leave/tracker','page:/lifecycle','page:/lifecycle/onboarding',
  'page:/manage/my-team','page:/me','page:/me/notifications','page:/me/performance','page:/me/tax-relief','page:/notices','page:/payroll',
- 'page:/payroll/back-pay','page:/payroll/history-import','page:/payroll/payment-submission','page:/payroll/pcb-detail','page:/payroll/reports',
+ 'page:/payroll/back-pay','page:/payroll/history-import','page:/payroll/payment-submission','page:/payroll/pcb-detail',
  'page:/payroll/setup','page:/payroll/statutory-adjustment','page:/payroll/statutory-detail','page:/payroll/statutory-forms',
  'page:/payroll/transaction-view','page:/payroll/transactions','page:/payroll/transactions/individual','page:/performance','page:/reports',
  'page:/rewards','page:/roster',

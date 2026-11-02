@@ -15,6 +15,7 @@ import {DISCLOSURE_CLASSES,type CapabilityRow,type ConnectToolSpec,type Disclosu
 import {EXPLAIN_ENTITIES,EXPLAIN_READS} from './entities-explain';
 import {SETUP_ENTITIES,SETUP_READS} from './entities-setup';
 import {RECOMMEND_ENTITIES} from './entities-recommend';
+import {METRIC_ENTITIES,METRIC_READS} from './entities-metrics';
 
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 const object=(properties:Record<string,unknown>,required:string[]=Object.keys(properties)):AiJsonSchema=>({type:'object',properties,required,additionalProperties:false});
@@ -104,16 +105,16 @@ export function connectToolSpecs():readonly ConnectToolSpec[]{
 export const referencedPages=():readonly string[]=>Object.freeze([...new Set([...SEMANTIC_ENTITIES.map(entity=>entity.page),...SEMANTIC_ACTIONS.map(action=>action.reviewRoute)])]);
 
 /** ADR-0170 step 4 — the model as the Teras harness reads it: the declared entities (step 4's field additions
- * are declared in ./entities.ts since integration), plus the explainer and setup co-pilot entities. The
+ * are declared in ./entities.ts since integration), plus the explainer, setup co-pilot, step 5 and pay-average entities. The
  * production catalogue outputs above are unchanged; the Teras harness disclosure (disclosure.ts) discloses by these. */
 let terasModel:readonly SemanticEntity[]|undefined;
 export function terasEntities():readonly SemanticEntity[]{
- terasModel??=freeze([...SEMANTIC_ENTITIES,...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...RECOMMEND_ENTITIES]);
+ terasModel??=freeze([...SEMANTIC_ENTITIES,...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...RECOMMEND_ENTITIES,...METRIC_ENTITIES]);
  return terasModel;
 }
 export const terasEntity=(id:EntityId):SemanticEntity=>{const entity=terasEntities().find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};
-/** The step 4 capabilities: harness-only reads, never in the production catalogue. */
-export const TERAS_READS:readonly SemanticRead[]=Object.freeze([...EXPLAIN_READS,...SETUP_READS]);
+/** The step 4 capabilities and the governed pay averages (issue 13b): harness-only reads, never in the production catalogue. */
+export const TERAS_READS:readonly SemanticRead[]=Object.freeze([...EXPLAIN_READS,...SETUP_READS,...METRIC_READS]);
 let terasSpecs:readonly AiToolSpec[]|undefined;
 export function terasToolSpecs():readonly AiToolSpec[]{
  terasSpecs??=freeze(TERAS_READS.map(read=>({name:read.name,description:describe(read,terasEntity(read.entity)),inputSchema:inputSchema(read)})));
