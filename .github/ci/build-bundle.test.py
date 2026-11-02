@@ -164,6 +164,36 @@ class BundleTests(unittest.TestCase):
         m,archive,manifest=self.packed();bundle.unpack(archive,manifest,self.destination,self.target)
         self.assertEqual((self.destination/'server/app/page.js').stat().st_nlink,1)
 
+    def test_adjacent_small_payloads_reduce_archive_without_changing_any_installed_file(self):
+        # Independent incompressible copies, separated by more than DEFLATE's 32 KiB
+        # window in path order. Ordering can save bytes without deleting or linking files.
+        payload = b''.join(hashlib.sha256(str(i).encode()).digest() for i in range(768))
+        build = self.source/'.next/server/app'
+        for i in range(8):
+            (build/f'{i}-copy.js').write_bytes(payload)
+            (build/f'{i}-gap.js').write_bytes(bytes((b+i)%256 for b in payload)*3)
+        baseline = self.root/'baseline'
+        with mock.patch.object(bundle,'compression_order',side_effect=lambda files:files):
+            before = bundle.pack(self.source,baseline)
+        after,archive,manifest = self.packed()
+        self.assertLess(after['archiveBytes'],before['archiveBytes']-len(payload)*4)
+        for key in ['files','directories','aliases','unpackedBytes','format','capacityProfile']:
+            self.assertEqual(after[key],before[key])
+        bundle.unpack(archive,manifest,self.destination,self.target)
+        bundle.verify_directory(self.destination,manifest,self.target)
+        for row in after['files']:
+            installed = self.destination/row['path']
+            self.assertEqual(installed.read_bytes(),(self.source/'.next'/row['path']).read_bytes())
+            self.assertEqual(installed.stat().st_nlink,1)
+        second = bundle.pack(self.source,self.root/'second')
+        self.assertEqual(after,second)
+
+    def test_compression_order_keeps_large_members_and_complete_original_inventory(self):
+        files=[('a', (1,1,20,1,1),0o644),('b',(1,2,40000,1,1),0o755),
+               ('c',(1,3,20,1,1),0o755),('d',(1,4,0,1,1),0o644)]
+        self.assertEqual(bundle.compression_order(files),[files[0],files[2],files[1],files[3]])
+        self.assertEqual(files[1][1][2],40000)
+
     def test_changed_runtime_package_code_refuses_even_with_unchanged_package_json(self):
         m,archive,manifest=self.packed();(self.target/'node_modules/.store/fontkit/index.js').write_text('changed runtime code')
         self.refuses_extract(archive,manifest)
