@@ -293,7 +293,9 @@ describe('first-party authentication with real private storage and existing HR b
     expect(text).toContain('Fictional Bahasa recovery');expect(text).not.toContain('Fictional English recovery');expect(text).toMatch(/#token=[A-Za-z0-9_-]{43}/);
   });
   it('recovery keeps MFA, consumes its link once and invalidates every prior session', async () => {
-    const { signedIn } = await enroll(); const c = (await credentialByLogin('alpha', 'owner'))!;
+    const { signedIn } = await enroll(false, true);
+    expect(signedIn.remembered_device_token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const c = (await credentialByLogin('alpha', 'owner'))!;
     await writeRecord(client, 'email-state', { active: { config: { host: 'smtp.invalid' } }, revision: 'test', drafts: {} }, null);
     const design=defaultEmailDocument('recovery');design.blocks[0]={...design.blocks[0],type:'header',label:'Fictional account-tenant design',style:{}};
     await saveEmailDesign(adminCtx(base),'recovery','en',design,0);
@@ -313,7 +315,7 @@ describe('first-party authentication with real private storage and existing HR b
     await completeRecovery(token, 'A replacement secure phrase 556!', signedIn.recoveryCodes![0]);
     expect(await readSession(signedIn.access_token)).toBeNull(); expect((await credentialByLogin('alpha', 'owner'))?.totpSecret).toBe(c.totpSecret);
     await expect(completeRecovery(token, 'Yet another secure phrase 337!', signedIn.recoveryCodes![1])).rejects.toMatchObject({ code: 'invalidChallenge' });
-    const login = await startLogin({ organization: 'alpha', username: 'owner', password: 'A replacement secure phrase 556!', native: false }); expect(login.step).toBe('mfa');
+    const login = await startLogin({ organization: 'alpha', username: 'owner', password: 'A replacement secure phrase 556!', native: false, rememberedDevice: signedIn.remembered_device_token }); expect(login.step).toBe('mfa');
     expect(await readRecord(client, `recovery:${digest(token)}`)).toBeNull();
   });
   it('shares the recovery limit between explicit and default organization codes', async () => {
