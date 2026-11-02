@@ -1,146 +1,155 @@
-# Personnel native projection investigation
+# Personnel native projection: qualified private current-actor plan
 
-This is private native-query evidence, not a source integration or release witness.
-The retained reader still exceeds its one-second diagnostic read budget at65,536
-permitted records (2,212.63ms versus former3,642.67ms); both original500-user
-activity profiles remain FAIL. See the [retained reader review](system-performance-personnel-page-review-20261102.md).
-No staging mutation, provider binding refresh, migration allocation or deployment.
+Private source1c7b1c282940652763dd9d6338eac7a53f62c3c2 /
+[41478857295](https://github.com/StradaverseHub/ai-hr/actions/runs/41478857295)
+passes all four selected native tests and the whole compiler. At8,192 permitted
+records, same-run mean native reads fall8,800.47→482.92ms with the wide interface,
+311.40ms with a bounded variant. These are component measurements, not application
+integration, rendered-page p95, millions of Personnel records or500-user acceptance.
+All public functions stay unchanged; only disposable private helpers implement the
+experiment. System Optimization remains outside release admission. No full-load
+repeat, provider binding, staging action, migration allocation or deployment.
 
-## Ownership and causal source
+## Measurements and causal distinctions
 
-Security owns `app.access_workforce_list_rows()` and the underlying subject/principal
-policy. Published605baf23cac704409386ae55bbf37f5fd1f66d5b contains the new employee
-and reporting-manager data-permission predicates. Read-only observed7f8d942b has an
-identical projection section and complete0936 policy; other0938/DB-client contracts
-have changed. Latest read-only owner observationef5be2d12295f0228fa53b3ff8faf38b22df1ce2 is clean locally but unpublished: remote remains605b. Its full projection section and complete0936 still match. Other owner work remains untouched; this is not a frozen handoff.
+Four alternating-order rounds compare the unchanged owner, statement-proof reuse,
+reordered subject construction, a proof-gated current-actor path and its bounded
+variant. All comparisons assert full JSON equality and independent IDs/counts.
 
-The605b snapshot cannot reach native tests:0941 references the absent
-`app.access_current_capability_source` dependency. Its compiler also lacks
-`access-action-presentation` and `function-action-contract` modules. These are
-inherited snapshot failures, not proof against the query algorithm.
+|Permitted records|Unchanged owner|Proof-only wide|Reordered-subject wide|Current-actor wide|Current-actor bounded|
+|---|---|---|---|---|---|
+|512|561.66ms|171.13ms|149.70ms|36.79ms|58.91ms|
+|8,192|8,800.47ms|2,656.23ms|2,295.57ms|482.92ms|311.40ms|
 
-Published ancestor7cfcebef22e7b2acfcd7a7ea86de35a5059ef1bd precedes that unrelated
-financial migration. Its complete0936, projection section, DB-client read-snapshot
-wrapper and Access lock owner are byte-identical to605b. The private experiment
-uses that complete ancestor, not selected migration omissions or foreign WIP.
-Complete current-owner compatibility remains outstanding. Actual projection body
-SHA256 is guarded at runtime:
-`c46bc8f629c6c5f51675548e90bd2a8348feb1dc91f3a72c81d37a25a88db23a`.
+The wide/current-actor plan lowers elapsed time94.51% against the owner in this run;
+bounded96.46%. All four wide reads are477.68–489.69ms and bounded306.19–317.09ms,
+below the diagnostic1,000ms single-read budget. This does not establish the original
+HTTP/browser/500-user threshold. Do not compare percentages across different runs,
+fixtures or the older0676 permission model.
 
-All helpers are temporary test-owned functions in a disposable hosted database.
-The public definition and full pg_proc attributes are snapshotted and compared
-unchanged afterward. Private helpers use the same SQL/STABLE/SECURITY DEFINER/search
-path boundary, receive only explicit APP execute rights, and are dropped. No shared
-source function, grant, policy or applied SQL file is edited.
+A separate8,192-record sample counts8,196→3 principal proofs and8,194→0 repeated
+per-record actor-eligibility queries for wide/current-actor. The actor is still
+validated by the native proof; the complete target/profile ceiling remains. The
+bounded variant retains26 original wrapper/actor checks for its25 wide rows plus
+the actual reporting manager. Nested times overlap: they are not additive CPU or
+exclusive wall-time attribution.
 
-## Tested designs
+Configured-profile512-record means are210.85ms proof-only,211.56ms reordered and
+87.95ms current-actor. Configured subject construction and the entire typed rule
+matcher remain active; there is no duplicate profile precheck. One additional
+profile lookup for a deliberately void-person target reflects lookup reordering,
+not a second lookup per valid record. PostgreSQL peak757,817,344bytes, zero OOM/cap
+events, unchanged standard hosted execution/profile2/JIT/240-second test bound.
 
-The first design returns typed minimal rows for exact counts/filtering/status and
-constructs the original wide JSON only for selected page IDs. It retains the complete
-native FROM/JOIN/tenant/void and employee/manager permission predicates. It does not
-show a relevant gain on the new permission model: partial matched means512 records
-552.12→568.23ms;4,096 records4,372.28→4,270.60ms. It fails its unchanged240-second
-qualification bound after22 passing comparisons, so it is not qualified or adopted.
+## Semantic boundary
 
-The next design distinguishes that paging change from redundant principal work.
-`data_permission_matches` is guarded to have the exact supplied wrapper body:
-principal proof AND the complete per-subject matcher. A MATERIALIZED CTE evaluates
-the existing zero-argument STABLE principal proof once per calling SQL statement;
-every employee and reporting manager still uses the complete unmodified subject
-matcher. A later statement creates a fresh proof. No permission result is retained
-between statements, transactions, callers or requests.
+The existing zero-argument `principal_snapshot_current` proof includes the removed
+per-record eligibility condition for the actual current user/tenant: an existing,
+nonarchived account with `login_blocked` false. The inspected account helper uses
+`current_date`; no changing wall-clock predicate is assumed constant. A MATERIALIZED
+CTE computes the existing STABLE proof for this statement. A CASE gate controls all
+calls to the private actor-proven helper with fixed current user/tenant arguments.
+There is no caller-supplied `authorized` flag or permission cache between statements.
 
-This relies on the declared STABLE/read-only contract of the supplied SQL owners,
-not an IMMUTABLE or application permission cache. PostgreSQL16 documents that STABLE
-calls use the calling query's snapshot and can be evaluated once for identical
-arguments ([function volatility](https://www.postgresql.org/docs/16/xfunc-volatility.html)).
-Native revocation/rebinding/error controls must still pass before accepting the
-transformation. Neither design is adopted merely from this semantic argument.
+Only that closed current-actor path can omit the duplicate eligibility query.
+**The general recipient matcher keeps its actor check and remains byte-identical.**
+Do not replace it with the actor-proven body: configuration callers may evaluate
+another recipient, whose eligibility is not proved by the current actor's proof.
+The private underlying helper has no APP execute grant; a real APP call refuses42501
+and rolls back. Granted test projection/ceiling wrappers bind the actual current
+context and enforce the native proof before reaching it.
 
-The comparison includes the original wide owner, the full-width statement-proof
-variant, and the typed/bounded variant with that same proof. Full-width comparison
-isolates proof factoring from paging. Alternating execution order, exact returned
-JSON, independent page IDs/totals/status counts and native nested-call counters
-separate evidence from a source-only theory. Nested execution times overlap and
-must not be summed as CPU or exclusive wall time.
+The subject plan performs the same single profile lookup before subject construction.
+Without an assigned profile, the former17-field JSON is only needed to establish
+that the employment/person belong to the requested tenant and neither is void.
+The new branch checks exactly that validity. For configured profiles, the complete
+original subject projection, revision/enable/retire checks and typed rules remain.
+Employee, reporting-manager and company/purpose predicates are retained. Runtime
+hashes guard the supplied principal, general matcher, subject and projection bodies.
+PostgreSQL16 documents the statement-snapshot and repeat-call contract for STABLE
+functions ([function volatility](https://www.postgresql.org/docs/16/xfunc-volatility.html));
+native mutable-authority/error tests supplement that semantic argument.
 
-## Frozen attempts and recovery
+All26 projection comparisons and37 null/missing/foreign/void/date matcher cases
+pass, along with actual APP role, exact page IDs/order/counts/status facets/filters,
+manager hiding, malformed-grant SQL errors, native22012 rollback and recovery.
+Later statements of the same physical transaction observe profile changes, new
+assignments, role revocation and actor rebinding. The three actual read-only RR
+snapshot tests pass. Public definitions/full pg_proc attributes, owners and ACLs
+compare unchanged after all private helpers are dropped.
 
-|Candidate / run|Outcome|
+This is a simple fictional organization and a gender-profile configured timing
+sample. Full17-field/date/hierarchy/sort-tie/closed-write/transaction-birth and live
+installation ownership qualification is still required on the combined current
+source. Owner-seeded retained/negative fixtures do not prove hiring or void-command
+throughput. The all-equal owner assumption was asserted only in the disposable
+fixture; installed privileges, RLS ownership and the final private API are not inferred.
+
+## Ownership, review artifact and exact missing publication
+
+The private experiment uses published7cfcebef22e7b2acfcd7a7ea86de35a5059ef1bd, before
+an unrelated incomplete financial migration. Its complete0936, projection section,
+read-snapshot wrapper and Access lock owner match published605baf23. The latter fails
+migration and compiler prerequisites below. Latest read-only local owner observation
+is cleaneaab8f346c5991005b196c77af0e4d5029ad2ea9, but remote still resolves605b.
+Its complete0936 and projection section remain identical; other contracts differ.
+No foreign WIP/source is copied or independently edited, and no handoff is inferred.
+
+|Absent from published605b|Local introduction, not a cherry-pick instruction|
 |---|---|
-|4b2032670 / [41465947112](https://github.com/StradaverseHub/ai-hr/actions/runs/41465947112)|FAIL before native tests: inherited0941 missing helper; whole compiler FAIL on two inherited missing modules.|
-|13bff41dd / [41466679502](https://github.com/StradaverseHub/ai-hr/actions/runs/41466679502)|FAIL: prototype240s timeout; partial timings above. Three inherited snapshot tests fail setup23502 because fictional people omit required emails. Public function unchanged/helpers dropped.|
-|da3b6f40f / [41469030254](https://github.com/StradaverseHub/ai-hr/actions/runs/41469030254)|Three snapshot tests PASS after fictional-email-only fixture repair. Native prototype FAIL on missing test statistics extension; whole compiler PASS. Overall workflow remains FAIL; partial readings are not qualification.|
-|24cdd317c / [41469752734](https://github.com/StradaverseHub/ai-hr/actions/runs/41469752734)|PASS: all26 native comparison cases, same-transaction profile/role/actor freshness, rollback/error recovery, unchanged public definition/attributes and private helper removal. Sole diff fromda3b is disposable statistics-extension initialization; compiler/three snapshot passes retain their exactda3b source.|
+|0939 `app.access_current_capability_source(text,uuid)` / Workforce operation owners|180c2c0bf371dbfebb46596c93c818fa96b247da|
+|`lib/access-action-presentation.ts`|620f6f618d2d911e12d438aa37d8312bdba07fc6|
+|`deploy/access/function-action-contract.ts`|d582c3224e027836da246f9fbc6e561d06ba6647|
 
-The native test keeps all original cases within the same240-second bound: repeated
-scope/transition controls use512 retained records before the4,096 timed population.
-No case or assertion is removed. Additional controls cover actual APP role,
-reporting-manager hiding, archived/foreign principals, actor rebinding, profile and
-role revocation on later statements of the same physical transaction, malformed
-grants, native22012 rollback and subsequent recovery. Exact name/company sorting,
-filters, pages, counts, un-narrowed status facets and real foreign/empty scopes remain.
-This is still a simple fictional organization, not every hierarchy/profile/date
-combination, million-record acceptance or a500-user concurrency test.
+Later dependent owner commits also exist. These three introductions alone are not a
+complete candidate. Adoption needs owner incorporation or an explicit frozen seam
+in a complete published candidate, preserving the final private API/owner/ACL boundary.
 
-Standard hosted runner, existing PostgreSQL profile2/caps, JIT on and original test
-bounds remain unchanged. The native-only recovery retains the three unaffected
-snapshot passes and leaves the planned frozen compiler undisturbed. Compiler and
-native receipts are never relabelled to another source or promoted to release proof.
+Prepared privately, not applied:
+`/private/tmp/aihr-personnel-current-actor-proposal-20261103.md` and its derivation
+receipt `/private/tmp/aihr-personnel-current-actor-proposal-identity-20261103.json`.
+The artifact contains the exact tested temporary helper/projection/wrapper logic;
+it is not a production migration. Artifact SHA256:
+`8d12e5ebc15d464d3ee113cd531b8b07f08bdc3aeb0d48d052b1a09c55181fa2`.
+Private helper body SHA256:
+`5c6b35385c04bc0d7fb9e58bb31713591f62d77d1d34b272710a7aa3464282b8`.
+Private projection body SHA256:
+`cda2699e0fad943241413bccfbfa5f588637847a316030eb75f10e40a0c5ae89`.
+The earlier, simpler statement-proof-only review patch remains preserved under
+`/private/tmp/aihr-personnel-statement-proof-605b.proposed.patch`; it is not relabelled
+as the current actor-proven implementation.
 
-## Qualified component result
+## Retained attempts and original failures
 
-All native controls finish within the unchanged bound. Same-run four-pair alternating
-means, in milliseconds:
+|Frozen source / run|Disposition|
+|---|---|
+|4b2032670 / [41465947112](https://github.com/StradaverseHub/ai-hr/actions/runs/41465947112)|FAIL before native tests: inherited0941 missing helper; compiler FAIL on two missing owner modules.|
+|13bff41dd / [41466679502](https://github.com/StradaverseHub/ai-hr/actions/runs/41466679502)|FAIL:240s native timeout after22 comparisons; three inherited snapshot fixtures fail23502 from missing fictional emails. Partial512/4,096 timings show no relevant bounded-only gain.|
+|da3b6f40f / [41469030254](https://github.com/StradaverseHub/ai-hr/actions/runs/41469030254)|Overall FAIL: missing test statistics extension. Three repaired-fixture snapshot checks and whole compiler PASS retain their exact source.|
+|24cdd317c / [41469752734](https://github.com/StradaverseHub/ai-hr/actions/runs/41469752734)|Native26-case PASS after one-line disposable extension setup.4,096 owner3,215.04→proof-wide919.89ms; earlier compiler evidence not relabelled.|
+|fa18aabbe / [41473236653](https://github.com/StradaverseHub/ai-hr/actions/runs/41473236653)|Native26-case PASS;8,192 owner8,307.91→proof-wide2,389.80/bounded2,185.83ms. All exceed1s: budget FAIL despite functional PASS.|
+|96a7e260a / [41475782350](https://github.com/StradaverseHub/ai-hr/actions/runs/41475782350)|Four native tests/whole compiler PASS;37 matcher cases added.8,192 proof2,670.45→reordered-wide2,304.90ms, bounded2,083.46ms: budget still FAIL. Configured209.48→210.26ms is within this four-pair sample's noise.|
+|1c7b1c282 / [41478857295](https://github.com/StradaverseHub/ai-hr/actions/runs/41478857295)|Four native tests/whole compiler PASS; proof-gated current-actor results and boundaries above. Component only.|
 
-|Permitted records|Unchanged wide owner|Statement-proof wide variant|Statement-proof bounded variant|
-|---|---|---|---|
-|512|406.45|121.17|135.32|
-|4,096|3,215.04|919.89|859.68|
+The retained composed reader's65,536-record1s failure (2,212.63ms versus3,642.67ms)
+and both original29f500-user failures remain unchanged. Neither private component
+nor a workflow's functional PASS becomes capacity acceptance. No new500 pair follows
+until an actually integrated frozen candidate has justified gain and all correctness
+controls, with original routes, CRUD/processing/browser/audit/rollback/tenant/principal,
+resources, thresholds, pacing and timeouts preserved. Both rejected formula plans
+stay rejected. No provider-binding/source-consent authority transfers.
 
-At4,096 the wide variant reduces elapsed time71.39%; bounded73.26%. All four wide
-reads are915.82–924.04ms and bounded853.02–866.35ms. These are native single-reader
-observations on this policy snapshot, not page p95, concurrency or million-record
-acceptance. Do not compare their percentages to the older0676/retained-reader model.
+## Independent Home diagnosis from retained load evidence
 
-An independently separated4,096-record read records4,099 nested principal-proof
-queries for the unchanged owner,3 for the full-width variant and31 for bounded.
-Data-match-wrapper queries are4,097/0/26 respectively, including the one actual
-manager. The complete underlying subject matcher remains active in every design.
-This identifies repeated proof/wrapper work as a relevant bottleneck; it does not
-allocate all saved wall time to one function or turn nested SQL time into CPU.
-PostgreSQL peak630,054,912bytes, no cap/OOM events. Original resource budgets remain.
+Original29f artifacts retain three loaded Home failures in each profile, each with
+nine timeout sections. Loaded initial Home TTFB is41.50–44.65seconds at1s activity,
+44.78–50.13seconds at5s. Captured failed Home fetches number48/52, span
+2,750.11–2,810.05ms /2,760.51–2,816.72ms and have no captured HTTP-error response.
+They are consistent with the unchanged2,800ms client read deadline. Extra request
+events lack phase IDs, so not all are assigned exclusively to the three rendered
+alerts. The observer and deadline owner match original29f byte-for-byte.
 
-The simpler full-width change is prepared for review: existing public signature and
-wide projection remain, with a statement-local principal CTE and exact expansion of
-the guarded wrapper at the existing employee/manager predicates. The extra bounded
-interface is not adopted merely for its smaller additional component gain. Both
-still require broader scale and current-source integration qualification; building
-all wide rows remains O(permitted workforce). The old65,536-record reader failure
-and original two500-user failures remain unchanged.
-
-Prepared privately, **not applied**:
-`/private/tmp/aihr-personnel-statement-proof-605b.proposed.patch`.
-Patch SHA256:
-`19b52384747df70322a0ec0c65f72b893bade2effdcb0c214474d1281fc98fd1`.
-Proposed body SHA256:
-`4b3e4609c75a4bd6674ac271f12f9deb0f11019003e7c7df8c372c7e7f019f65`.
-Derivation receipt:
-`/private/tmp/aihr-personnel-statement-proof-605b.proposal-identity.json`.
-The patch reproduces the tested full-width transformation from the guarded original
-body, changing no declaration/owner/ACL or other0938 statement. No migration is
-allocated and no source-bound provider approval is changed.
-
-## Adoption boundary
-
-No new full500 pair follows an incomplete or unqualified prototype. A demonstrated
-relevant gain with complete native controls can support a review-only proposal;
-the owner must supply a complete published frozen integration seam or incorporate
-the exact change. The current published605b still lacks the0939 helper and the two
-compiler modules above; local unpublished ownership work is not borrowed. Verify
-that the installed projection owner can execute the private subject matcher under
-its existing ACL; broad APP execute grants are not part of this proposal. Current full profile/field/date/void/refusal and protected-write/birth/snapshot
-contracts still need qualification on that combined source, including populated
-upgrade checks, duplicate sort-name boundaries and broader organization/date shapes. Applied SQL identity and allocation rules remain in force. Original
-load resources, thresholds, pacing, coverage and timeouts stay fixed. Both rejected
-formula alternatives remain rejected; no provider-binding approval transfers.
+This classifies retained failures; it is not a new load test or exclusive SQL cause.
+The slow initial TTFB requires server rendering/auth/admission investigation as well
+as card readers. Raising deadlines or suppressing alerts does not establish the
+speed target. No app route, original workload, coverage or assertion changes.

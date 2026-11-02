@@ -135,14 +135,15 @@ provider egress remains blocked for this source.
 
 ## Native current-policy follow-up
 
-A private prototype on a published policy-equivalent security snapshot now qualifies
-statement-local principal-proof reuse:4,096 records3,215.04→919.89ms for the same wide
-projection (71.39% lower),859.68ms for a bounded variant. All26 native comparisons,
-same-transaction profile/role/actor revocation and native error/rollback controls pass;
-public source stays unchanged. The full-width variant is a review-only proposal,
-not integrated application code, full-current-owner or500-user acceptance. Exact
-failures, identities, proof-counter measurements and required ownership handoff are
-in the [native projection review](system-performance-personnel-native-projection-20261102.md).
+Private1c7b1c282/41478857295 now passes four native tests and whole compiler.8,192
+records measure8,800.47→482.92ms wide or311.40ms bounded with a statement-proof-gated
+current-actor path. All26 projection/37 matcher cases, mutable authority, rollback,
+actual APP42501 direct-helper denial and unchanged public catalog pass. These are
+private component results: no shared/public function or primary app implementation
+changes, and neither original500 profile is accepted. The general recipient matcher
+keeps its account checks. Exact ownership, source identities, missing published
+contracts and adoption limits are in the
+[native projection review](system-performance-personnel-native-projection-20261102.md).
 
 ## Live observation and remaining work
 

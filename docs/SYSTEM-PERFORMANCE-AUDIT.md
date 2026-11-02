@@ -21,15 +21,18 @@ single-HR-reader fixtures do not qualify the newer security policy or million-re
 Personnel capacity. The existing full wide projection before paging is the next
 native owner seam; see the same Personnel review for immutable identities and bounds.
 
-A private current-policy native follow-up now qualifies a simpler statement-local
-principal-proof variant:4,096 records3,215.04→919.89ms (71.39% lower); bounded variant
-859.68ms. Native24cdd317c/41469752734 passes26 comparisons and same-transaction
-profile/role/actor freshness plus error/rollback/public-identity controls;da3b whole
-compiler and3 snapshot passes retain their original source. A separate sample reduces
-principal-proof queries4,099→3 for the wide variant. This is not primary application
-integration or whole-system acceptance. Review-only patch waits for a complete
-published security-owner incorporation/frozen seam; its published605b currently
-fails migration/compiler prerequisites. See [native projection review](reviews/system-performance-personnel-native-projection-20261102.md).
+Latest private native source1c7b1c282 /41478857295 passes four selected tests and
+whole compiler. At8,192 permitted records, same-run mean owner8,800.47ms falls to
+482.92ms for a proof-gated current-actor wide plan,311.40ms bounded; all four new
+reads are below the1s diagnostic budget. All26 projection/37 target-date cases,
+mutable same-transaction authority, native errors/rollback and actual APP42501
+private-helper denial pass. The general recipient matcher and every public function
+remain unchanged. This is private component evidence, not primary app integration,
+rendered-page/500-user acceptance or a million-Personnel result. Earlier24cd/da3b
+proof evidence andfa18/96a7 larger-volume failures retain their original identities.
+The security branch is still published at incomplete605b; exact absent contracts
+and local introduction commits are recorded for owner incorporation/frozen handoff.
+See [native projection review](reviews/system-performance-personnel-native-projection-20261102.md).
 
 The primary draft now includes this qualified Personnel change and the genuine
 self-approval test-fixture repair alongside its earlier performance work. The punch-audit, shell and authentication variants
