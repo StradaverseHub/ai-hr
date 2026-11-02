@@ -69,9 +69,9 @@ export default async function ShiftSettingsPage({
         actions={
           // af7a8eb4 — the reporter's own wording, and the string the rule library next door already shows.
           // `addShift` ("Add shift") stays as the FORM's submit label.
-          {canAdd===true && <Link href="/admin/attendance/new" className={btnPrimary}>
+          canAdd===true && <Link href="/admin/attendance/new" className={btnPrimary}>
             {tr('addNew')}
-          </Link>}
+          </Link>
         }
       />
       <ErrorBanner message={error} />
