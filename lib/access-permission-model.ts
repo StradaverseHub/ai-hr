@@ -2,7 +2,7 @@
  * Scope evidence is supplied by app.is_company_descendant, not a second JavaScript organisation tree.
  * This model is source-only until all registered bindings are enforced by their domain owners.
  */
-export type AccessCapability={id:string;scope:'tenant'|'company';supported:boolean;bindings:readonly {owner:string;operation:string}[]};
+export type AccessCapability={id:string;scope:'tenant'|'company';supported:boolean;bindings:readonly {owner:string;operation:string}[];prerequisites?:readonly string[];presentation?:{key:string;moduleKey:string;labelKey:string;kind:'screen'|'submenu'|'native_acl';course:'administrative'|'own'|'assigned';screenKey?:string;href?:string}};
 export type CapabilityGrant={capabilityId:string;companyId:string|null};
 export type AccessGroup={id:string;name:string;retired:boolean;systemAdministrator:boolean;grants:readonly CapabilityGrant[]};
 export type UserCapabilityOverride=CapabilityGrant&{userId:string;effect:'allow'|'deny'};
@@ -28,11 +28,15 @@ export function resolveAccessCapability(snapshot:AccessSnapshot,catalog:readonly
  const definition=catalog.find(item=>item.id===capabilityId);
  if(!definition?.supported||!definition.bindings.length)return {allowed:false,reason:'unsupported',sources:[]};
  if(snapshot.tenantId!==target.tenantId||snapshot.tenantId!==evidence.tenantId||!snapshot.users.some(user=>user.id===userId&&user.active)||definition.scope==='company'&&target.companyId===null||definition.scope==='tenant'&&target.companyId!==null)return {allowed:false,reason:'unavailable',sources:[]};
- if(/^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$/.test(capabilityId)){
+ if(/^.+\.(add|edit|delete|approve|issue|execute)$/.test(capabilityId)){
   const view=resolveAccessCapability(snapshot,catalog,userId,capabilityId.slice(0,capabilityId.lastIndexOf('.'))+'.view',target,evidence);
   if(!view.allowed)return view;
   const legacy=resolveAccessCapability(snapshot,catalog,userId,'workforce.maintain',target,evidence);
   if(capabilityId.startsWith('workforce.')&&legacy.reason==='denied')return legacy;
+ }
+ for(const required of definition.prerequisites??[]){
+  const prerequisite=catalog.find(item=>item.id===required);
+  const result=resolveAccessCapability(snapshot,catalog,userId,required,{...target,companyId:prerequisite?.scope==='tenant'?null:target.companyId},evidence);if(!result.allowed)return result;
  }
  const memberships=snapshot.memberships.filter(row=>row.userId===userId);
  const sources:AccessSource[]=[];
@@ -51,8 +55,9 @@ export function resolveAccessCapability(snapshot:AccessSnapshot,catalog:readonly
 /** A grant ceiling applies to each precise target; a scoped holder cannot delegate a tenant grant. */
 export function assertAccessGrantCeiling(snapshot:AccessSnapshot,catalog:readonly AccessCapability[],actorUserId:string,grants:readonly CapabilityGrant[],evidence:CompanyScopeEvidence){
  for(const grant of grants){
-  if(/^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$/.test(grant.capabilityId))assertAccessGrantCeiling(snapshot,catalog,actorUserId,[{capabilityId:grant.capabilityId.slice(0,grant.capabilityId.lastIndexOf('.'))+'.view',companyId:grant.companyId}],evidence);
+  if(/^.+\.(add|edit|delete|approve|issue|execute)$/.test(grant.capabilityId))assertAccessGrantCeiling(snapshot,catalog,actorUserId,[{capabilityId:grant.capabilityId.slice(0,grant.capabilityId.lastIndexOf('.'))+'.view',companyId:grant.companyId}],evidence);
   const capability=catalog.find(item=>item.id===grant.capabilityId);if(!capability?.supported||!capability.bindings.length)throw new AccessPermissionError('unsupported');
+  for(const required of capability.prerequisites??[]){const prerequisite=catalog.find(item=>item.id===required);assertAccessGrantCeiling(snapshot,catalog,actorUserId,[{capabilityId:required,companyId:prerequisite?.scope==='tenant'?null:grant.companyId}],evidence);}
   if(capability.scope==='company'&&grant.companyId===null){
    // A global grant covers future companies too: enumeration of today's children cannot prove it.
    const memberIds=new Set(snapshot.memberships.filter(row=>row.userId===actorUserId&&row.companyId===null).map(row=>row.groupId));

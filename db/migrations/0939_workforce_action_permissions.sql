@@ -2,6 +2,109 @@
 INSERT INTO access_capability(id,scope,supported,bindings) VALUES
  ('workforce.add','company',false,'[]'),('workforce.edit','company',false,'[]'),('workforce.delete','company',false,'[]');
 --> statement-breakpoint
+-- Positive function grants remain independent of legacy HR roles. Only a genuinely narrowed
+-- principal carrier is scope-clamped; a full Employee-A carrier may still hold an explicit B grant.
+CREATE FUNCTION app.access_current_grants_full() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND NOT EXISTS(SELECT 1 FROM app.principal(app.current_user_id()) p CROSS JOIN LATERAL jsonb_array_elements(p.grants) actual
+  WHERE NOT EXISTS(SELECT 1 FROM app.current_grants() claimed WHERE claimed.role=actual->>'role'
+   AND (claimed.company_id IS NOT DISTINCT FROM nullif(actual->>'companyId','')::uuid OR app.access_scope_covers(claimed.company_id,nullif(actual->>'companyId','')::uuid,app.current_tenant_id()))));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_current_grants_full() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_current_carrier_covers(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND (app.access_current_grants_full() OR EXISTS(SELECT 1 FROM app.current_grants() g WHERE app.access_scope_covers(g.company_id,p_company,app.current_tenant_id())));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_current_carrier_covers(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_derived_carrier_covers(p_legacy text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.current_grants() g WHERE (g.role=p_legacy OR p_legacy='system_administrator' AND g.role IN ('hr_admin','super_admin')) AND app.access_scope_covers(g.company_id,p_company,app.current_tenant_id()));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_derived_carrier_covers(text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_current_capability_source(p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.access_current_carrier_covers(p_company) AND (
+  EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=app.current_tenant_id() AND o.user_id=app.current_user_id() AND o.capability_id=p_capability AND o.effect='allow' AND o.retired_at IS NULL AND app.access_scope_covers(o.company_id,p_company,o.tenant_id))
+  OR EXISTS(SELECT 1 FROM public.access_effective_membership m JOIN public.access_group g ON g.tenant_id=m.tenant_id AND g.id=m.group_id JOIN public.access_group_grant a ON a.tenant_id=g.tenant_id AND a.group_id=g.id
+   WHERE m.tenant_id=app.current_tenant_id() AND m.user_id=app.current_user_id() AND g.retired_at IS NULL AND a.retired_at IS NULL AND a.capability_id=p_capability
+    AND app.access_scope_covers(m.company_id,p_company,m.tenant_id) AND app.access_scope_covers(a.company_id,p_company,m.tenant_id)
+    AND (NOT m.derived OR app.access_derived_carrier_covers(g.legacy_key,p_company))));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_current_capability_source(text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Code-owned function definitions. These are installation facts, never customer configuration.
+ALTER TABLE public.access_capability ADD COLUMN prerequisites jsonb NOT NULL DEFAULT '[]'::jsonb CHECK(jsonb_typeof(prerequisites)='array');
+--> statement-breakpoint
+CREATE TABLE app.access_function_definition(
+ function_key text PRIMARY KEY,scope text NOT NULL CHECK(scope IN ('tenant','company')),
+ metadata jsonb NOT NULL CHECK(jsonb_typeof(metadata)='object')
+);
+CREATE TABLE app.access_function_action(
+ function_key text NOT NULL REFERENCES app.access_function_definition(function_key),
+ operation text NOT NULL CHECK(operation IN ('view','add','edit','delete','approve','issue','execute')),
+ capability_id text UNIQUE NOT NULL REFERENCES public.access_capability(id),
+ parent_capability text REFERENCES public.access_capability(id),delegation_floor_function text,
+ PRIMARY KEY(function_key,operation)
+);
+REVOKE ALL ON app.access_function_definition,app.access_function_action FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.register_function_action(p_key text,p_operation text,p_scope text,p_parent text DEFAULT NULL,p_floor text DEFAULT NULL,p_metadata jsonb DEFAULT '{}'::jsonb) RETURNS void
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE cap text:='function.'||p_key||'.'||p_operation;existing app.access_function_definition%ROWTYPE;requirements jsonb:='[]';
+BEGIN
+ IF current_user IS DISTINCT FROM pg_get_userbyid((SELECT relowner FROM pg_class WHERE oid='public.access_capability'::regclass)) OR NOT app.acting_as_owner()
+  OR p_key !~ '^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*$' OR length(p_key)>160 OR p_operation NOT IN ('view','add','edit','delete','approve','issue','execute') OR p_scope NOT IN ('tenant','company')
+  THEN RAISE EXCEPTION 'Invalid function registration' USING ERRCODE='42501'; END IF;
+ SELECT * INTO existing FROM app.access_function_definition WHERE function_key=p_key;
+ IF NOT FOUND THEN
+  IF coalesce(p_metadata->>'kind','') NOT IN ('screen','submenu','native_acl') OR coalesce(p_metadata->>'course','') NOT IN ('administrative','own','assigned') OR coalesce(p_metadata->>'moduleKey','')='' OR coalesce(p_metadata->>'labelKey','')='' THEN RAISE EXCEPTION 'Missing function metadata'; END IF;
+  INSERT INTO app.access_function_definition VALUES(p_key,p_scope,p_metadata);
+ ELSIF existing.scope<>p_scope OR (p_metadata<>'{}'::jsonb AND existing.metadata<>p_metadata) THEN RAISE EXCEPTION 'Function definition drift'; END IF;
+ IF p_parent IS NOT NULL THEN
+  IF NOT EXISTS(SELECT 1 FROM public.access_capability WHERE id=p_parent AND (scope=p_scope OR scope='tenant')) OR p_parent=cap THEN RAISE EXCEPTION 'Invalid function prerequisite'; END IF;
+  requirements:=jsonb_build_array(p_parent);
+ END IF;
+ IF p_operation<>'view' THEN
+  IF NOT EXISTS(SELECT 1 FROM app.access_function_action WHERE function_key=p_key AND operation='view') THEN RAISE EXCEPTION 'Register View first'; END IF;
+  requirements:=requirements||jsonb_build_array('function.'||p_key||'.view');
+ END IF;
+ IF p_floor IS NOT NULL AND (p_floor !~ '^app\.[a-z][a-z0-9_]*$' OR NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_class c ON c.oid='public.access_capability'::regclass WHERE p.oid=to_regprocedure(p_floor||'(uuid,uuid,text,uuid)') AND p.proowner=c.relowner AND p.prosecdef AND NOT has_function_privilege('ai_hr_app',p.oid,'EXECUTE'))) THEN RAISE EXCEPTION 'Untrusted function native floor'; END IF;
+ IF EXISTS(SELECT 1 FROM public.access_capability WHERE id=cap) THEN RAISE EXCEPTION 'Duplicate function registration'; END IF;
+ INSERT INTO public.access_capability(id,scope,supported,bindings,prerequisites) VALUES(cap,p_scope,false,'[]',requirements);
+ INSERT INTO app.access_function_action VALUES(p_key,p_operation,cap,p_parent,p_floor);
+END; $$;
+REVOKE ALL ON FUNCTION app.register_function_action(text,text,text,text,text,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.function_action_allowed(p_key text,p_operation text,p_company uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce((SELECT app.principal_snapshot_current() AND ((d.scope='tenant' AND p_company IS NULL) OR (d.scope='company' AND EXISTS(SELECT 1 FROM public.company co WHERE co.id=p_company AND co.tenant_id=app.current_tenant_id())))
+  AND (NOT c.supported OR app.access_allowed_for(app.current_user_id(),c.id,p_company))
+  FROM app.access_function_action a JOIN app.access_function_definition d USING(function_key) JOIN public.access_capability c ON c.id=a.capability_id
+  WHERE a.function_key=p_key AND a.operation=p_operation),false);
+$$;
+REVOKE ALL ON FUNCTION app.function_action_allowed(text,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.function_action_allowed(text,text,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_function_delegation_floor(p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected app.access_function_action%ROWTYPE;allowed boolean;
+BEGIN
+ SELECT * INTO selected FROM app.access_function_action WHERE capability_id=p_capability;
+ IF NOT FOUND THEN RETURN p_capability NOT LIKE 'function.%'; END IF;
+ IF selected.delegation_floor_function IS NULL THEN RETURN false; END IF;
+ EXECUTE format('SELECT %s($1,$2,$3,$4)',selected.delegation_floor_function) INTO allowed USING app.current_tenant_id(),app.current_user_id(),coalesce(selected.parent_capability,p_capability),p_company;
+ RETURN allowed IS TRUE;
+END; $$;
+REVOKE ALL ON FUNCTION app.access_function_delegation_floor(text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+
 CREATE OR REPLACE FUNCTION app.access_allowed_for_tenant(p_tenant uuid,p_user uuid,p_capability text,p_company uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(
@@ -9,7 +112,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   JOIN public.access_capability c ON c.id=p_capability
   WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL
    AND NOT app.login_blocked(u.id) AND s.initialized AND c.supported AND jsonb_array_length(c.bindings)>0
-   AND (c.id !~ '^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$' OR (app.access_allowed_for_tenant(p_tenant,p_user,split_part(c.id,'.',1)||'.view',p_company) AND NOT EXISTS(SELECT 1 FROM public.access_user_override legacy WHERE legacy.tenant_id=p_tenant AND legacy.user_id=p_user AND legacy.capability_id='workforce.maintain' AND c.id LIKE 'workforce.%' AND legacy.effect='deny' AND legacy.retired_at IS NULL AND app.access_scope_covers(legacy.company_id,p_company,p_tenant))))
+   AND (c.id !~ '^.+\.(add|edit|delete|approve|issue|execute)$' OR (app.access_allowed_for_tenant(p_tenant,p_user,regexp_replace(c.id,'[^.]+$','view'),p_company) AND NOT EXISTS(SELECT 1 FROM public.access_user_override legacy WHERE legacy.tenant_id=p_tenant AND legacy.user_id=p_user AND legacy.capability_id='workforce.maintain' AND c.id LIKE 'workforce.%' AND legacy.effect='deny' AND legacy.retired_at IS NULL AND app.access_scope_covers(legacy.company_id,p_company,p_tenant))))
+   AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements_text(c.prerequisites) needed(id) JOIN public.access_capability prerequisite ON prerequisite.id=needed.id WHERE NOT app.access_allowed_for_tenant(p_tenant,p_user,needed.id,CASE WHEN prerequisite.scope='tenant' THEN NULL ELSE p_company END))
    AND ((c.scope='tenant' AND p_company IS NULL) OR (c.scope='company' AND p_company IS NOT NULL))
    AND NOT EXISTS(SELECT 1 FROM public.access_user_override o
     WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.effect='deny' AND o.retired_at IS NULL
@@ -27,6 +131,14 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
       AND app.access_scope_covers(a.company_id,p_company,u.tenant_id))
    )
  );
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_allowed_for(p_user uuid,p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.access_allowed_for_tenant(app.current_tenant_id(),p_user,p_capability,p_company)
+ AND (p_user IS DISTINCT FROM app.current_user_id() OR (app.access_current_capability_source(p_capability,p_company)
+  AND NOT EXISTS(SELECT 1 FROM public.access_capability c CROSS JOIN LATERAL jsonb_array_elements_text(c.prerequisites) needed(id) JOIN public.access_capability prerequisite ON prerequisite.id=needed.id WHERE c.id=p_capability AND NOT app.access_allowed_for(p_user,needed.id,CASE WHEN prerequisite.scope='tenant' THEN NULL ELSE p_company END))
+  AND (p_capability !~ '^.+\.(add|edit|delete|approve|issue|execute)$' OR app.access_allowed_for(p_user,regexp_replace(p_capability,'[^.]+$','view'),p_company))));
 $$;
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.access_workforce_legacy_command_company(p_company uuid) RETURNS boolean
@@ -590,7 +702,7 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'Hire source unavailable' USING ERRCODE='42501';END IF;
  hash:=encode(sha256(convert_to(to_jsonb(d)::text,'UTF8')),'hex');
  IF EXISTS(SELECT 1 FROM app.workforce_hire_source s WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=d.tenant_id AND s.user_id=app.current_user_id() AND (s.draft_id<>d.id OR s.source_hash<>hash OR s.employment_id IS NOT NULL)) THEN RAISE EXCEPTION 'Hire source changed' USING ERRCODE='40001';END IF;
- DELETE FROM app.workforce_hire_source WHERE tenant_id=d.tenant_id AND xact_id<>pg_current_xact_id();
+ DELETE FROM app.workforce_hire_source WHERE tenant_id=d.tenant_id AND xact_id<pg_snapshot_xmin(pg_current_snapshot());
  INSERT INTO app.workforce_hire_source(xact_id,tenant_id,user_id,draft_id,company_id,source_hash,source,employment_id) VALUES(pg_current_xact_id(),d.tenant_id,app.current_user_id(),d.id,p_company,hash,to_jsonb(d),NULL) ON CONFLICT DO NOTHING;
 END;
 $$;
@@ -795,22 +907,51 @@ $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_workforce_draft_delete_allowed(uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+CREATE TABLE app.workforce_draft_birth(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,user_id uuid NOT NULL,draft_id uuid NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,draft_id));
+--> statement-breakpoint
+REVOKE ALL ON TABLE app.workforce_draft_birth FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_record_draft_birth() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_user_id() IS NULL OR app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ DELETE FROM app.workforce_draft_birth WHERE tenant_id=NEW.tenant_id AND xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.workforce_draft_birth VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id) ON CONFLICT DO NOTHING;
+ RETURN NEW;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_record_draft_birth() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER workforce_draft_birth AFTER INSERT ON employee_draft FOR EACH ROW EXECUTE FUNCTION app.access_workforce_record_draft_birth();
+--> statement-breakpoint
 CREATE FUNCTION app.access_workforce_draft_action_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE company uuid;author uuid;action text;own boolean;
+DECLARE company uuid;author uuid;action text;own boolean;initial boolean:=false;
 BEGIN
  IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
  PERFORM app.access_workforce_write_lock();
  company:=CASE WHEN TG_OP='DELETE' THEN OLD.company_id ELSE NEW.company_id END;
  author:=CASE WHEN TG_OP='DELETE' THEN OLD.created_by_person_id ELSE NEW.created_by_person_id END;
  action:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+ IF TG_OP='INSERT' AND NEW.created_by_person_id IS DISTINCT FROM (SELECT u.person_id FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id()) THEN
+  RAISE EXCEPTION 'Draft author unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='UPDATE' THEN
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.created_by_person_id IS DISTINCT FROM OLD.created_by_person_id THEN
+   RAISE EXCEPTION 'Draft identity cannot be reassigned' USING ERRCODE='42501';END IF;
+  IF NEW.data->'creationDefaultsVersion' IS DISTINCT FROM OLD.data->'creationDefaultsVersion' THEN RAISE EXCEPTION 'Draft creation cohort cannot be reassigned' USING ERRCODE='42501';END IF;
+  initial:=EXISTS(SELECT 1 FROM app.workforce_draft_birth b WHERE b.xact_id=pg_current_xact_id() AND b.tenant_id=OLD.tenant_id AND b.user_id=app.current_user_id() AND b.draft_id=OLD.id)
+   AND app.access_workforce_draft_action(OLD.company_id,'add') AND app.access_workforce_draft_action(NEW.company_id,'add');
+ END IF;
+
  IF TG_OP='DELETE' AND EXISTS(SELECT 1 FROM app.workforce_hire_source hs WHERE hs.xact_id=pg_current_xact_id() AND hs.tenant_id=OLD.tenant_id AND hs.user_id=app.current_user_id() AND hs.draft_id=OLD.id AND hs.employment_id IS NOT NULL) THEN
   IF NOT app.access_workforce_consumed_draft(to_jsonb(OLD)) THEN RAISE EXCEPTION 'Hire source effects incomplete' USING ERRCODE='42501';END IF;
   UPDATE app.workforce_hire_source SET consumed=true WHERE xact_id=pg_current_xact_id() AND tenant_id=OLD.tenant_id AND user_id=app.current_user_id() AND draft_id=OLD.id;
   RETURN OLD;
  END IF;
- own:=app.access_profile_request_own(author) AND NOT EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.user_id=app.current_user_id() AND o.tenant_id=app.current_tenant_id() AND o.retired_at IS NULL AND o.effect='deny' AND o.capability_id IN ('workforce.'||action,'workforce.view','workforce.maintain') AND app.access_scope_covers(o.company_id,company,app.current_tenant_id()));
- IF (TG_OP='DELETE' AND app.access_workforce_draft_delete_allowed(OLD.id)) OR (TG_OP<>'DELETE' AND (own OR app.access_workforce_draft_action(company,action) OR TG_OP='UPDATE' AND app.access_workforce_draft_action(company,'add'))) THEN
+ own:=app.access_profile_request_own(author) AND NOT EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.user_id=app.current_user_id() AND o.tenant_id=app.current_tenant_id() AND o.retired_at IS NULL AND o.effect='deny' AND o.capability_id IN ('workforce.'||action,'workforce.view','workforce.maintain') AND (app.access_scope_covers(o.company_id,company,app.current_tenant_id()) OR TG_OP='UPDATE' AND app.access_scope_covers(o.company_id,OLD.company_id,app.current_tenant_id())));
+ IF (TG_OP='DELETE' AND app.access_workforce_draft_delete_allowed(OLD.id))
+  OR (TG_OP='INSERT' AND (own OR app.access_workforce_draft_action(company,'add')))
+  OR (TG_OP='UPDATE' AND (own OR initial OR (app.access_workforce_draft_action(OLD.company_id,'edit') AND app.access_workforce_draft_action(NEW.company_id,'edit')))) THEN
   IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
  END IF;
  IF TG_OP='DELETE' AND app.access_workforce_consumed_draft(to_jsonb(OLD)) THEN
@@ -827,7 +968,7 @@ CREATE OR REPLACE FUNCTION app.access_can_delegate(p_capability text,p_company u
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.access_capability c
   JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id()
-  WHERE c.id=p_capability AND (p_capability !~ '^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$' OR app.access_can_delegate(split_part(p_capability,'.',1)||'.view',p_company)) AND c.supported AND jsonb_array_length(c.bindings)>0
+  WHERE c.id=p_capability AND app.access_function_delegation_floor(p_capability,p_company) AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements_text(c.prerequisites) needed(id) JOIN public.access_capability prerequisite ON prerequisite.id=needed.id WHERE NOT app.access_can_delegate(needed.id,CASE WHEN prerequisite.scope='tenant' THEN NULL ELSE p_company END)) AND app.access_current_capability_source(p_capability,p_company) AND (p_capability NOT IN ('workforce.add','workforce.edit','workforce.delete','workforce.maintain') OR CASE WHEN p_company IS NULL THEN app.is_group_admin() ELSE app.is_admin_for(p_company) END) AND (p_capability !~ '^.+\.(add|edit|delete|approve|issue|execute)$' OR app.access_can_delegate(regexp_replace(p_capability,'[^.]+$','view'),p_company)) AND c.supported AND jsonb_array_length(c.bindings)>0
    AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
    AND CASE WHEN c.scope='tenant' THEN p_company IS NULL AND app.access_allowed_for(u.id,c.id,NULL)
     WHEN p_company IS NOT NULL THEN app.access_allowed_for(u.id,c.id,p_company)
@@ -909,7 +1050,7 @@ BEGIN
  IF EXISTS(SELECT 1 FROM app.access_privacy_value_intent i WHERE i.xact_id=pg_current_xact_id()
   AND i.tenant_id=selected.tenant_id AND i.user_id=app.current_user_id() AND i.person_id=selected.person_id) THEN
   RAISE EXCEPTION 'Privacy erasure already prepared' USING ERRCODE='40001'; END IF;
- DELETE FROM app.access_privacy_value_intent WHERE tenant_id=selected.tenant_id AND xact_id<>pg_current_xact_id();
+ DELETE FROM app.access_privacy_value_intent WHERE tenant_id=selected.tenant_id AND xact_id<pg_snapshot_xmin(pg_current_snapshot());
  SELECT to_jsonb(p) INTO original FROM public.person p WHERE p.id=selected.person_id AND p.tenant_id=selected.tenant_id FOR UPDATE;
  IF original IS NULL THEN RAISE EXCEPTION 'Privacy erasure subject unavailable' USING ERRCODE='42501'; END IF;
  FOR field IN SELECT value FROM jsonb_array_elements(policy->'fields') LOOP
@@ -1096,3 +1237,115 @@ END; $$;
 REVOKE ALL ON FUNCTION app.access_workforce_hire_source_complete() FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE CONSTRAINT TRIGGER workforce_hire_source_complete AFTER INSERT OR UPDATE ON app.workforce_hire_source DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_workforce_hire_source_complete();
+
+--> statement-breakpoint
+-- Preserve the restricted child-owned source port and its exact guard; only the new
+-- server-owned literal cohort1 is exempted from the anti-amplification numeric fence.
+DO $cohort_upgrade$
+DECLARE prior_role text:=pg_catalog.current_setting('role');
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p WHERE p.oid=to_regprocedure('app._draft_discard_source_snapshot(uuid,uuid)')
+  AND p.proowner='ai_hr_draft_discard_port'::regrole AND p.prosecdef
+  AND encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')='c3a2744b7924ff9e4313c579dc9d831c5101a5d2b265dcad380cbab63b645ca9')
+  OR pg_catalog.has_schema_privilege('ai_hr_draft_discard_port','app','CREATE') THEN
+  RAISE EXCEPTION 'Draft discard cohort upgrade requires the exact existing child owner' USING ERRCODE='42501';END IF;
+ GRANT CREATE ON SCHEMA app TO ai_hr_draft_discard_port;
+ PERFORM pg_catalog.set_config('role','ai_hr_draft_discard_port',true);
+ EXECUTE $definition$
+CREATE OR REPLACE FUNCTION app._draft_discard_source_snapshot(p_draft uuid,p_company uuid) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET row_security=on AS $$
+DECLARE d public.employee_draft%ROWTYPE; rev text; physical tid; row_hash text; company_name text;
+ counter_json jsonb; counter_rev text; counter_kind text:='none'; digest text; private jsonb;
+BEGIN
+ IF current_user<>'ai_hr_draft_discard_port' OR NOT pg_catalog.row_security_active('public.employee_draft'::regclass)
+  OR NOT app.principal_snapshot_current() OR app.is_admin() IS NOT TRUE OR p_company IS NULL THEN
+  RAISE EXCEPTION 'Draft discard unavailable' USING ERRCODE='42501';END IF;
+ -- The outer source owner joins canonical Lifecycle before this source lock.
+ PERFORM app.access_workforce_write_lock();
+ IF NOT ((SELECT pg_catalog.array_agg(a.attname::text ORDER BY a.attname) FROM pg_catalog.pg_attribute a WHERE a.attrelid='public.employee_draft'::regclass AND a.attnum>0 AND NOT a.attisdropped)
+  IS NOT DISTINCT FROM ARRAY['company_id','created_at','created_by_person_id','current_step','data','id','label','reserved_at','reserved_config_id','reserved_employee_code','reserved_number','tenant_id','updated_at']::text[]) THEN RAISE EXCEPTION 'Draft source out of bounds' USING ERRCODE='54000';END IF;
+ -- Project only metadata/storage guards first; never move a large data value to the receiver.
+ SELECT x.xmin::text,x.ctid INTO rev,physical FROM public.employee_draft x
+ WHERE x.id=p_draft AND x.tenant_id=app.current_tenant_id() AND x.company_id=p_company
+ FOR UPDATE OF x NOWAIT;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Draft discard unavailable' USING ERRCODE='42501';END IF;
+ IF EXISTS(SELECT 1 FROM public.employee_draft x WHERE x.id=p_draft AND (
+  pg_catalog.pg_column_compression(x.data) IS NOT NULL OR pg_catalog.pg_column_size(x.data)>65536
+  OR pg_catalog.pg_column_compression(x.label) IS NOT NULL OR pg_catalog.pg_column_size(x.label)>8000
+  OR pg_catalog.pg_column_compression(x.reserved_employee_code) IS NOT NULL OR coalesce(pg_catalog.pg_column_size(x.reserved_employee_code),0)>2048)) THEN
+  RAISE EXCEPTION 'Draft source out of bounds' USING ERRCODE='54000';END IF;
+ -- The uncompressed binary datum is now bounded. Only the exact server-owned root cohort1 numeric leaf is allowed; all other numeric leaves remain refused.
+ IF EXISTS(SELECT 1 FROM public.employee_draft x WHERE x.id=p_draft AND pg_catalog.jsonb_path_exists(CASE WHEN x.data->'creationDefaultsVersion'='1'::jsonb THEN x.data-'creationDefaultsVersion' ELSE x.data END,'strict $.** ? (@.type() == "number")')) THEN
+  RAISE EXCEPTION 'Draft source out of bounds' USING ERRCODE='54000';END IF;
+ SELECT x.* INTO d FROM public.employee_draft x WHERE x.id=p_draft;
+ IF d.company_id IS DISTINCT FROM p_company OR pg_catalog.length(d.label)>2000 OR coalesce(pg_catalog.length(d.reserved_employee_code),0)>512
+  OR d.reserved_number IS NOT NULL AND coalesce(d.reserved_employee_code,'')='' THEN
+  RAISE EXCEPTION 'Draft source out of bounds' USING ERRCODE='54000';END IF;
+ IF EXISTS(SELECT 1 FROM public.company c WHERE c.id=p_company AND c.tenant_id=d.tenant_id AND
+  (pg_catalog.pg_column_compression(c.legal_name) IS NOT NULL OR pg_catalog.pg_column_size(c.legal_name)>8000)) THEN
+  RAISE EXCEPTION 'Draft source out of bounds' USING ERRCODE='54000';END IF;
+ SELECT c.legal_name INTO company_name FROM public.company c WHERE c.id=p_company AND c.tenant_id=d.tenant_id;
+ IF company_name IS NULL OR pg_catalog.length(company_name)>2000 THEN RAISE EXCEPTION 'Draft discard unavailable' USING ERRCODE='42501';END IF;
+ row_hash:=app._draft_discard_row_digest(d,rev);
+ IF coalesce(d.reserved_employee_code,'')<>'' AND d.reserved_number IS NOT NULL THEN
+  IF d.reserved_config_id IS NOT NULL THEN
+   counter_kind:='configured';
+   PERFORM 1 FROM public.employee_id_config c WHERE c.id=d.reserved_config_id AND c.tenant_id=d.tenant_id FOR UPDATE OF c NOWAIT;
+   IF EXISTS(SELECT 1 FROM public.employee_id_config c WHERE c.id=d.reserved_config_id AND c.tenant_id=d.tenant_id AND (
+    pg_catalog.pg_column_compression(c.template_name) IS NOT NULL OR coalesce(pg_catalog.pg_column_size(c.template_name),0)>8000
+    OR pg_catalog.pg_column_compression(c.prefix) IS NOT NULL OR pg_catalog.pg_column_size(c.prefix)>8000
+    OR pg_catalog.pg_column_compression(c.suffix) IS NOT NULL OR pg_catalog.pg_column_size(c.suffix)>8000
+    OR pg_catalog.pg_column_compression(c.status) IS NOT NULL OR pg_catalog.pg_column_size(c.status)>8000)) THEN
+    RAISE EXCEPTION 'Draft source out of bounds' USING ERRCODE='54000';END IF;
+   SELECT (pg_catalog.to_jsonb(c)-'created_at'-'updated_at')||pg_catalog.jsonb_build_object(
+    'created_at',pg_catalog.to_char(c.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+    'updated_at',pg_catalog.to_char(c.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')),c.xmin::text
+   INTO counter_json,counter_rev FROM public.employee_id_config c WHERE c.id=d.reserved_config_id AND c.tenant_id=d.tenant_id FOR UPDATE OF c NOWAIT;
+  ELSE
+   counter_kind:='legacy';
+   SELECT pg_catalog.to_jsonb(c),c.xmin::text INTO counter_json,counter_rev FROM public.tenant_counter c
+   WHERE c.tenant_id=d.tenant_id AND c.kind='employee_code' FOR UPDATE OF c NOWAIT;
+  END IF;
+ END IF;
+ private:=pg_catalog.jsonb_build_object('rowDigest',row_hash,'counterKind',counter_kind,'counterBefore',counter_json,
+  'counterXmin',counter_rev,'configId',d.reserved_config_id,'number',d.reserved_number,'code',d.reserved_employee_code,
+  'authorIsActor',coalesce(d.created_by_person_id IS NOT NULL AND d.created_by_person_id=(SELECT a.person_id FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=d.tenant_id),false));
+ digest:=pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array('draft-discard-source:v1',row_hash,rev,physical::text,
+  private,p_company,company_name)::text,'UTF8')),'hex');
+ private:=private||pg_catalog.jsonb_build_object('sourceDigest',digest);
+ RETURN pg_catalog.jsonb_build_object('draftId',d.id,'companyId',p_company,'companyName',company_name,'label',d.label,
+  'reservedEmployeeCode',d.reserved_employee_code,'reservedNumber',d.reserved_number,'sourceDigest',digest,
+  'nativeRowDigest',row_hash,'xmin',rev,'ctid',physical::text,
+  'counterBeforeDigest',pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.jsonb_build_array(counter_kind,counter_json,counter_rev)::text,'UTF8')),'hex'),
+  'private',private);
+END $$;
+$definition$;
+ PERFORM pg_catalog.set_config('role',prior_role,true);
+ REVOKE CREATE ON SCHEMA app FROM ai_hr_draft_discard_port;
+END $cohort_upgrade$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_configuration_state() RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id(); result jsonb;
+BEGIN
+ IF NOT app.access_allowed_for(app.current_user_id(),'access.configure',NULL) THEN
+  RAISE EXCEPTION 'access configuration unavailable' USING ERRCODE='42501';
+ END IF;
+ SELECT jsonb_build_object(
+  'snapshot',jsonb_build_object('tenantId',t,'revision',s.revision,
+   'users',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',u.id,'active',u.archived_at IS NULL AND NOT app.login_blocked(u.id)) ORDER BY u.id) FROM public.app_user u WHERE u.tenant_id=t),'[]'::jsonb),
+   'groups',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',g.id,'name',g.name,'retired',g.retired_at IS NOT NULL,'systemAdministrator',g.system_administrator,
+    'grants',COALESCE((SELECT jsonb_agg(jsonb_build_object('capabilityId',a.capability_id,'companyId',a.company_id) ORDER BY a.capability_id,a.company_id NULLS FIRST) FROM public.access_group_grant a WHERE a.tenant_id=t AND a.group_id=g.id AND a.retired_at IS NULL),'[]'::jsonb)) ORDER BY g.id) FROM public.access_group g WHERE g.tenant_id=t),'[]'::jsonb),
+   'memberships',COALESCE((SELECT jsonb_agg(jsonb_build_object('userId',m.user_id,'groupId',m.group_id,'companyId',m.company_id,'derived',m.derived) ORDER BY m.user_id,m.group_id,m.company_id NULLS FIRST,m.derived) FROM public.access_effective_membership m WHERE m.tenant_id=t),'[]'::jsonb),
+   'overrides',COALESCE((SELECT jsonb_agg(jsonb_build_object('userId',o.user_id,'capabilityId',o.capability_id,'companyId',o.company_id,'effect',o.effect) ORDER BY o.user_id,o.capability_id,o.company_id NULLS FIRST) FROM public.access_user_override o WHERE o.tenant_id=t AND o.retired_at IS NULL),'[]'::jsonb)),
+  'catalog',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id,'scope',c.scope,'supported',c.supported,'bindings',c.bindings,'prerequisites',c.prerequisites,'presentation',(SELECT d.metadata||jsonb_build_object('key',d.function_key) FROM app.access_function_action a JOIN app.access_function_definition d USING(function_key) WHERE a.capability_id=c.id)) ORDER BY c.id) FROM public.access_capability c),'[]'::jsonb),
+  'companyIds',COALESCE((SELECT jsonb_agg(c.id ORDER BY c.id) FROM public.company c WHERE c.tenant_id=t),'[]'::jsonb),
+  'coverage',COALESCE((SELECT jsonb_agg(jsonb_build_object('ancestor',a.id,'company',c.id) ORDER BY a.id,c.id) FROM public.company a JOIN public.company c ON a.tenant_id=c.tenant_id WHERE a.tenant_id=t AND a.id<>c.id AND app.is_company_descendant(c.id,a.id)),'[]'::jsonb),
+  'recoveryUserIds',COALESCE((SELECT jsonb_agg(u.id ORDER BY u.id) FROM public.app_user u WHERE u.tenant_id=t AND app.access_recovery_available(u.id)),'[]'::jsonb),
+  'scopeFingerprint',app.access_scope_fingerprint()
+ ) INTO result FROM public.access_configuration s WHERE s.tenant_id=t AND s.initialized;
+ IF result IS NULL THEN RAISE EXCEPTION 'access configuration unavailable' USING ERRCODE='42501'; END IF;
+ RETURN result;
+END;
+$$;
