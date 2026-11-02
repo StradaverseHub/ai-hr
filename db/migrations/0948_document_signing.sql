@@ -89,6 +89,27 @@ BEGIN
  INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(app.current_tenant_id(),'document-signing',p_id,CASE p_operation WHEN 'create' THEN 'document-signing.created' WHEN 'revise' THEN 'document-signing.revised' ELSE 'document-signing.rerouted' END,'user',app.current_user_id(),p_employment,jsonb_build_object('documentId',p_id,'revision',new_revision));
  RETURN p_id;
 END $$;
+CREATE FUNCTION app.document_signature_valid(p_signature jsonb) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE value text;image bytea;width bigint;height bigint;
+BEGIN
+ IF jsonb_typeof(p_signature) IS DISTINCT FROM 'object' OR p_signature-'method'-'value'-'consent'<>'{}'::jsonb
+ OR jsonb_typeof(p_signature->'method') IS DISTINCT FROM 'string' OR jsonb_typeof(p_signature->'value') IS DISTINCT FROM 'string'
+ OR p_signature->'consent' IS DISTINCT FROM 'true'::jsonb THEN RETURN false;END IF;
+ value:=p_signature->>'value';
+ IF length(btrim(value))=0 OR length(value)>500000 THEN RETURN false;END IF;
+ IF p_signature->>'method'='typed' THEN RETURN length(value)<=200 AND value!~'[[:cntrl:]]';END IF;
+ IF p_signature->>'method' IS DISTINCT FROM 'drawn' OR value!~'^data:image/png;base64,[A-Za-z0-9+/]+={0,2}$' THEN RETURN false;END IF;
+ image:=decode(split_part(value,',',2),'base64');
+ IF octet_length(image)<57 OR encode(substring(image FROM 1 FOR 16),'hex')<>'89504e470d0a1a0a0000000d49484452'
+ OR encode(substring(image FROM octet_length(image)-11 FOR 12),'hex')<>'0000000049454e44ae426082' THEN RETURN false;END IF;
+ width:=get_byte(image,16)::bigint*16777216+get_byte(image,17)::bigint*65536+get_byte(image,18)::bigint*256+get_byte(image,19);
+ height:=get_byte(image,20)::bigint*16777216+get_byte(image,21)::bigint*65536+get_byte(image,22)::bigint*256+get_byte(image,23);
+ RETURN width BETWEEN 1 AND 2048 AND height BETWEEN 1 AND 1024 AND width*height<=2097152;
+EXCEPTION WHEN OTHERS THEN RETURN false;
+END $$;
+REVOKE ALL ON FUNCTION app.document_signature_valid(jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.document_signing_act(p_id uuid,p_action jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE d document_signing_document;step jsonb;prior jsonb;stage integer;v_action jsonb;v_name text;v_person uuid;new_data jsonb;content jsonb;route_allowed boolean;
