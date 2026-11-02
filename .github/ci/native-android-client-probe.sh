@@ -13,6 +13,7 @@ export JAVA_HOME="$JAVA_HOME_17_X64"
 export PATH="$JAVA_HOME/bin:$PATH"
 java -version
 df -h .
+npm ci --prefix source --ignore-scripts --no-audit --no-fund
 npm ci --prefix source/mobile --no-audit --no-fund
 npm --prefix source/mobile run eas-build-post-install
 npm --prefix source/mobile run typecheck
