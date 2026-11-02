@@ -16,9 +16,9 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(659); // Canonical642 plus seventeen frozen performance appends.
+ expect(journal.entries).toHaveLength(660); // Canonical642 plus eighteen frozen performance appends.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(88);
+ expect(journal.entries.slice(boundary)).toHaveLength(89);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');

@@ -1,3 +1,25 @@
+## Feedback-only development qualification — 2 November 2026 (UNAPPLIED)
+
+Retained baseline7490 (application07f) excludes rejected authentication reservation,
+Onboarding and bell compositions. This candidate carries only the already-owned
+0934_standard_feedback_task_plan reservation,idx792/when1793330000334, SQL SHA256
+`ebd03d4204bbb7f3ad0896a2ff56e9e77f8c2d17467cffc36c02352f4636e4a8`.
+The08:38:49UTC refreshed all-ref/WIP scan covers1816 heads,320 journals,399 migration
+trees,263 worktrees and584 variants with zero parse errors. Maximum934/792/334 is
+this existing owned append; no new reservation or foreign migration is adopted.
+Fresh main6ea889365/alpha cf6949d92 are intentionally not integrated into this causal
+experiment. All659 inherited entries and SQL bodies remain exact; the strict
+Lifecycle upgrade fixture expects660 total/89 after its frozen boundary.
+
+The function is STABLE SECURITY INVOKER and retains the complete former selection,
+caller RLS, timestamp conversion and ordering. Earlier native516 controls/500 principals
+and populated upgrade recovery qualified its identical SQL/caller/test bytes on a
+base containing the unaccepted auth experiment. This isolated source requires its
+own affected hosted checks and original500-user1s/5s qualification. Existing642-row
+live-ledger verification is historical development evidence, not release admission;
+refresh the installation and all reservations before any later integration. Neither
+source reservation nor metadata generation authorizes provider egress or deployment.
+
 ## Performance reconciliation after Entra — 2 November 2026 (UNAPPLIED)
 
 Canonical main/alpha are50ea247177a9fe1373d3e79d9c742f0fc399ebb7. Independent read-only

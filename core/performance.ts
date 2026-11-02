@@ -2510,14 +2510,10 @@ export type FeedbackRequestRow = { requestId: string; subject: string; cycleName
 export function pendingStandardFeedbackTaskMetadata(ctx:SessionContext):Promise<AssignedPersonalTaskMetadata[]>{
   return withTenant(ctx,async tx=>{
     await assertAssignedWorkPrincipalTx(tx,ctx);
-    const rows=await tx.select({id:peerFeedbackRequest.id,subjectName:peerFeedbackRequest.subjectName,
-      sourceUpdatedAt:peerFeedbackRequest.createdAt}).from(peerFeedbackRequest)
-      .where(and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),
-        sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${peerFeedbackRequest.peerEmploymentId}
-          AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`,
-        sql`NOT EXISTS (SELECT 1 FROM public.performance_onehr_panel panel WHERE panel.request_id=${peerFeedbackRequest.id})`,
-        sql`NOT EXISTS (SELECT 1 FROM public.performance_review review JOIN public.performance_onehr_cycle cycle ON cycle.cycle_id=review.cycle_id WHERE review.id=${peerFeedbackRequest.reviewId})`))
-      .orderBy(desc(peerFeedbackRequest.createdAt),peerFeedbackRequest.id);
+    const rows=await tx.select({id:sql<string>`metadata.id`,subjectName:sql<string>`metadata.subject_name`,
+      sourceUpdatedAt:sql`metadata.source_updated_at`.mapWith(peerFeedbackRequest.createdAt)})
+      .from(sql`app.standard_feedback_task_metadata(${ctx.tenantId}::uuid) metadata`)
+      .orderBy(desc(sql`metadata.source_updated_at`),sql`metadata.id`);
     return rows.map(row=>({...row,kind:'feedback' as const,linkPath:`/me/performance#feedback-${row.id}`}));
   });
 }

@@ -135,5 +135,13 @@ export const PERFORMANCE_MIGRATION_TAIL = [
     "version": "7",
     "breakpoints": true,
     "hash": "c3a25c73da238c7528be641e4e3d13676c8ec45e82e02d3aa21bb9a48d5d4b47"
+  },
+  {
+    "idx": 792,
+    "version": "7",
+    "when": 1793330000334,
+    "tag": "0934_standard_feedback_task_plan",
+    "breakpoints": true,
+    "hash": "ebd03d4204bbb7f3ad0896a2ff56e9e77f8c2d17467cffc36c02352f4636e4a8"
   }
 ] as const;
