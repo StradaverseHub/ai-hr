@@ -49,8 +49,8 @@ export async function createImportAttemptTx<P extends ImportPlanBase>(tx:Tx,ctx:
  if(input.content.length>(input.kind==='bank_statutory'?BANK_IMPORT_MAX_BYTES:IMPORT_SOURCE_MAX_BYTES))fail(input.kind==='bank_statutory'?'Choose a file no larger than 128 MiB.':'Choose a file no larger than 10 MB.');
  await principalTx(tx,ctx);
  const sourceHash=importSourceHash(input.content),operationKey=input.operationKey&&uuid.test(input.operationKey)?input.operationKey:randomUUID();
- const[prior]=await tx.select({id:attempt.id,sourceHash:attempt.sourceHash,kind:attempt.kind,plan:attempt.plan}).from(attempt).where(and(eq(attempt.createdBy,ctx.userId!),eq(attempt.operationKey,operationKey)));
- if(prior){if(prior.sourceHash!==sourceHash||prior.kind!==input.kind)fail('This upload operation already identifies a different file.');return{attemptId:prior.id,plan:prior.plan as P,existing:true};}
+ const[prior]=await tx.select({id:attempt.id,sourceHash:attempt.sourceHash,kind:attempt.kind}).from(attempt).where(and(eq(attempt.createdBy,ctx.userId!),eq(attempt.operationKey,operationKey)));
+ if(prior){if(prior.sourceHash!==sourceHash||prior.kind!==input.kind)fail('This upload operation already identifies a different file.');const retained=await privateImportAttemptTx(tx,prior.id);if(!retained)fail('Import attempt unavailable.');return{attemptId:prior.id,plan:retained.plan as P,existing:true};}
  const companyIds=[...new Set(input.companyIds)].sort();
  const[created]=await tx.insert(attempt).values({tenantId:ctx.tenantId,kind:input.kind,createdBy:ctx.userId!,operationKey,sourceName:importSourceName(input.sourceName,'import'),mimeType:importMimeType(input.sourceName),sourceHash,sourceContent:input.content,companyIds,plan:input.plan as unknown as Record<string,unknown>}).returning({id:attempt.id});
  // An attempt naming no company (an unreadable file) is its creator's own; the event policy admits that.
@@ -60,11 +60,18 @@ export async function createImportAttemptTx<P extends ImportPlanBase>(tx:Tx,ctx:
 }
 
 export type ImportAttemptRow=typeof attempt.$inferSelect;
+/** Fixed all-company accessor; ordinary column SELECT never exposes source bytes or full plans. */
+async function privateImportAttemptTx(tx:Tx,attemptId:string){
+ const [row]=await tx.select(getTableColumns(attempt)).from(sql`app.import_attempt_private(${attemptId}::uuid) as import_attempt`);
+ return row;
+}
+
 /** Locks the attempt for confirm/revert. The row is immutable; FOR UPDATE only serializes writers. */
 export async function lockImportAttemptTx(tx:Tx,ctx:SessionContext,attemptId:string,kind:ImportKind):Promise<ImportAttemptRow>{
  if(!uuid.test(attemptId))fail('Import attempt unavailable.');
  await principalTx(tx,ctx);
- const[row]=await tx.select().from(attempt).where(eq(attempt.id,attemptId)).for('update');
+ await lockImportAttemptHeaderTx(tx,ctx,attemptId,kind);
+ const row=await privateImportAttemptTx(tx,attemptId);
  if(!row||row.kind!==kind)fail('Import attempt unavailable.');return row;
 }
 /** Same principal/RLS checks and writer lock, without reloading the upload for every Bank row. */
@@ -98,7 +105,7 @@ export async function recordImportFailure(ctx:SessionContext,attemptId:string,im
  });}catch(recordError){console.error('[import history failure audit]',recordError);}
 }
 
-const listColumns={id:attempt.id,kind:attempt.kind,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdAt:attempt.createdAt,createdByName:sql<string|null>`app.import_attempt_actor_label(${attempt.id},${attempt.createdBy})`};
+const listColumns={id:attempt.id,kind:attempt.kind,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:sql<ImportPlanBase>`app.import_attempt_history_plan(${attempt.id})`,createdBy:attempt.createdBy,createdAt:attempt.createdAt,createdByName:sql<string|null>`app.import_attempt_actor_label(${attempt.id},${attempt.createdBy})`};
 async function companyNamesTx(tx:Tx,ids:string[]){
  if(!ids.length)return new Map<string,string>();
  const rows=await tx.select({id:company.id,name:company.legalName,label:company.companyLabel}).from(company).where(inArray(company.id,ids));
@@ -143,7 +150,7 @@ export async function importAttemptSource(ctx:SessionContext,id:string){
  if(!uuid.test(id))return null;
  return withTenant(ctx,async tx=>{
   await principalTx(tx,ctx);if(!await coversTx(tx,id,'view'))return null;
-  const[row]=await tx.select({name:attempt.sourceName,mimeType:attempt.mimeType,content:attempt.sourceContent,sourceHash:attempt.sourceHash}).from(attempt).where(eq(attempt.id,id));return row??null;
+  const[row]=await tx.select({name:attempt.sourceName,mimeType:attempt.mimeType,content:attempt.sourceContent,sourceHash:attempt.sourceHash}).from(sql`app.import_attempt_private(${id}::uuid) as import_attempt`);return row??null;
  });
 }
 
@@ -180,7 +187,7 @@ export async function previewImportRevert(ctx:SessionContext,attemptId:string,ha
  if(!uuid.test(attemptId))fail('Import attempt unavailable.');
  return withTenant(ctx,async tx=>{
   await handler.lock?.(tx,ctx);await principalTx(tx,ctx);
-  const[source]=await tx.select().from(attempt).where(eq(attempt.id,attemptId));if(!source||source.kind!==handler.kind)fail('Import attempt unavailable.');
+  const source=await privateImportAttemptTx(tx,attemptId);if(!source||source.kind!==handler.kind)fail('Import attempt unavailable.');
   const plan=await revertPlanTx(tx,ctx,source,handler,false);
   return{attemptId,kind:source.kind,eligible:plan.blockers.length===0,items:plan.inspection,blockers:plan.blockers,previewHash:plan.previewHash};
  });
