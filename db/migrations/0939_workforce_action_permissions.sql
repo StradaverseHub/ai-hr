@@ -1586,3 +1586,64 @@ BEGIN
 END; $$;
 REVOKE ALL ON FUNCTION app.access_configuration_transition_preview(uuid,text,jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.access_configuration_transition_preview(uuid,text,jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Exact native Workforce screen. Dormant registrations do not activate incomplete submenu coverage.
+-- Independent employee/assigned services retain their own final effect owners.
+CREATE FUNCTION app.workforce_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$'
+ AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.role_assignment r ON r.tenant_id=actor.tenant_id AND r.app_user_id=actor.id
+  WHERE actor.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
+   AND r.role::text IN ('hr_admin','super_admin') AND CASE WHEN co IS NULL THEN r.company_id IS NULL ELSE app.access_scope_covers(r.company_id,co,t) END);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.workforce_function_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
+ AND app.workforce_function_legacy_allowed(t,u,cap,co)
+ AND CASE WHEN co IS NULL THEN EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('hr_admin','super_admin') AND g.company_id IS NULL)
+  ELSE app.is_admin_for(co) END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.workforce_function_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_function_delegation_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
+ AND CASE WHEN cap='workforce.view' THEN true
+  WHEN cap IN ('workforce.add','workforce.edit','workforce.delete') THEN
+   CASE WHEN co IS NULL THEN app.is_group_admin() ELSE app.is_admin_for(co) END ELSE false END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.workforce_function_delegation_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+  PERFORM app.register_function_action('workforceRecords',operation,'company','workforce.'||operation,'app.workforce_function_delegation_allowed',
+   '{"moduleKey":"workforce","labelKey":"accessConfiguration.capabilities.workforceView","kind":"screen","course":"administrative","screenKey":"workforceRecords","href":"/admin/personnel","employeeBearing":true}'::jsonb);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_projection_company(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.function_action_allowed('workforceRecords','view',p_company) AND EXISTS(
+  SELECT 1 FROM public.company co JOIN public.app_user u ON u.tenant_id=co.tenant_id
+  JOIN public.access_capability c ON c.id='workforce.view'
+  WHERE co.id=p_company AND co.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id()
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND CASE WHEN c.supported THEN app.access_allowed_for(u.id,c.id,co.id)
+    ELSE app.access_workforce_company(co.id,c.id) END);
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_action_company(p_company uuid,p_action text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_action IN ('add','edit','delete') AND (app.access_workforce_owner_company(p_company) OR
+ app.function_action_allowed('workforceRecords',p_action,p_company) AND
+ CASE WHEN EXISTS(SELECT 1 FROM public.access_capability c WHERE c.id='workforce.'||p_action AND c.supported)
+ THEN app.principal_snapshot_current() AND app.access_workforce_projection_company(p_company)
+  AND app.access_allowed_for(app.current_user_id(),'workforce.'||p_action,p_company)
+ ELSE app.access_workforce_legacy_command_company(p_company) END);
+$$;

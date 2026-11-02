@@ -8,6 +8,7 @@
  *
  *     level 0 none · 1 agent · 2 manager · 3 admin (hr_admin / super_admin, company-scoped)
  */
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import { sql, eq } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -15,7 +16,10 @@ import { lcHistory, person } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { withLifecycleTenant } from './module-gate';
 
-export const withTenant = withLifecycleTenant;
+/** Join authority before any native row/audit lock, including read-only reviewed composition. */
+export async function withTenant<T>(ctx:SessionContext,run:(tx:Tx)=>Promise<T>):Promise<T>{
+ return withLifecycleTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return run(tx);});
+}
 
 export class LifecycleError extends Error {
   constructor(message: string, readonly code: 'invalid' | 'forbidden' | 'not_found' | 'conflict' = 'invalid') {

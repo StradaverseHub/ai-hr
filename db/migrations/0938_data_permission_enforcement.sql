@@ -1139,3 +1139,39 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION app.data_permission_function_target_ceiling(uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Audit/access ordering: never wait for Access after taking an unrelated data lock. Native
+-- Workforce commands already take Access first. An audit-first native/raw writer joins that
+-- order without waiting, BEFORE the audit-chain owner. Its event tenant (not a claim or actor)
+-- selects the lock, including owner/system and multi-tenant INSERTs. Contention rolls back the
+-- statement with PostgreSQL's retryable lock-not-available state; it grants no business authority.
+CREATE FUNCTION app.audit_access_order_lock_for(p_tenant uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF p_tenant IS NULL THEN RAISE EXCEPTION 'Audit tenant unavailable' USING ERRCODE='42501';END IF;
+ IF NOT pg_try_advisory_xact_lock(hashtextextended('access-configuration:'||p_tenant::text,0)) THEN
+  RAISE EXCEPTION 'Audit access ordering busy. Retry the transaction.' USING ERRCODE='55P03';
+ END IF;
+END;$$;
+CREATE FUNCTION app.audit_access_order_lock() RETURNS void
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.audit_access_order_lock_for(app.current_tenant_id());
+$$;
+CREATE FUNCTION app.audit_access_order_event() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app.audit_access_order_lock_for(NEW.tenant_id);RETURN NEW;
+END;$$;
+REVOKE ALL ON FUNCTION app.audit_access_order_lock_for(uuid),app.audit_access_order_lock(),app.audit_access_order_event() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER a00_audit_access_order BEFORE INSERT ON public.domain_event FOR EACH ROW EXECUTE FUNCTION app.audit_access_order_event();
+--> statement-breakpoint
+-- Bank's private head/preimage owner can acquire the audit lock before inserting an event. It
+-- must join the same order before that acquisition, preserving its existing try-only audit mode,
+-- head selection and hash owner. Refuse predecessor drift rather than silently omitting the fence.
+DO $audit_order$ DECLARE source text;anchor text:=E'BEGIN\n IF p_try THEN';BEGIN
+ SELECT pg_get_functiondef('app._domain_event_next(uuid,boolean)'::regprocedure) INTO source;
+ IF (length(source)-length(replace(source,anchor,'')))/length(anchor)<>1 THEN
+  RAISE EXCEPTION 'Audit head owner ordering anchor changed';END IF;
+ EXECUTE replace(source,anchor,E'BEGIN\n PERFORM app.audit_access_order_lock_for(p_tenant);\n IF p_try THEN');
+END $audit_order$;

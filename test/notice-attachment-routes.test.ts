@@ -17,6 +17,11 @@ describe('Notice attachment HTTP boundaries',()=>{
   expect(result.status).toBe(201);expect(mocks.add).toHaveBeenCalledWith({tenantId:'tenant',userId:'actual'},'notice',1,{uploadKey:'intent',fileName:'fictional.txt',content:Buffer.from('Content')},{attach:false});
   expect(result.headers.get('cache-control')).toBe('private, no-store');
  });
+ it('passes the explicit finite append request through the same reauthorized native writer',async()=>{
+  const data=new FormData();data.set('file',new File(['Content'],'fictional.txt'));data.set('uploadKey','intent');data.set('contentVersion','1');data.set('attachNow','true');
+  expect((await POST(new Request(url,{method:'POST',body:data,headers:{origin:'http://localhost:3197'}}),{params})).status).toBe(201);
+  expect(mocks.add).toHaveBeenLastCalledWith({tenantId:'tenant',userId:'actual'},'notice',1,{uploadKey:'intent',fileName:'fictional.txt',content:Buffer.from('Content')},{attach:true});
+ });
  it('reauthorizes downloads and sends private attachment-only nosniff bytes with a safe filename',async()=>{
   const input={params:Promise.resolve({id:'notice',attachmentId:'asset'})};mocks.read.mockResolvedValue(null);
   expect((await GET(new Request(url),input)).status).toBe(404);

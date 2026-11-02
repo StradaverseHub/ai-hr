@@ -1,3 +1,4 @@
+import {lockAccessConfigurationTx} from '../../../core/access-configuration-lock';
 import {joinerPageSections} from '../../../lib/onboarding-page-access';
 import type {Config as NativeConfig} from '../../../lib/onboarding-model';
 import { v9CompanySigners, v9SignatoryTitle } from '../../../lib/lifecycle-v9-signatories';
@@ -59,6 +60,7 @@ async function configTx(tx: Tx, ctx: SessionContext, lock = false): Promise<M.Co
   return { ...row.data, groups: shared?.data.groups ?? [], groupsRevision: shared?.revision ?? 0 };
 }
 async function lockTx(tx: Tx, ctx: SessionContext): Promise<void> {
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext('audit-chain:' || ${ctx.tenantId}::uuid::text))`);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':onboarding'},0))`);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'lifecycle-v9:' + ctx.tenantId},0))`);
@@ -725,7 +727,7 @@ export async function v9OwnWork(ctx: SessionContext): Promise<OwnCase[]> {
 }
 export async function v9OwnTask(ctx: SessionContext, input: { caseId: string; revision: number; taskId: string; status: 'todo' | 'progress' | 'done'; reason: string }): Promise<void> {
   input = z.object({ caseId: z.string().uuid(), revision: z.number().int().positive(), taskId: commandId, status: z.enum(['todo', 'progress', 'done']), reason: reasonText }).strict().parse(input);
-  const native = await withLifecycleTenant(ctx, async tx => { await actor(tx, ctx); const [row] = await tx.execute<{ native: boolean }>(sql`select exists(select 1 from lc_onboarding_case where id=${input.caseId}::uuid and tenant_id=${ctx.tenantId}::uuid) as native`); return row?.native; });
+  const native = await withLifecycleTenant(ctx, async tx => { await actor(tx, ctx); const [row] = await tx.execute<{ native: boolean }>(sql`select app.onboarding_assigned_task_identity(${input.caseId}::uuid,${input.taskId}) as native`); return row?.native; });
   if (native) { await onboardingCommand(ctx, input.caseId, input.revision, { type: 'task', taskId: input.taskId, status: input.status }); return; }
   await withLifecycleTenant(ctx, async tx => {
     await lockTx(tx, ctx); await actor(tx, ctx);

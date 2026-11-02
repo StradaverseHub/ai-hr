@@ -4553,6 +4553,20 @@
       "breakpoints": true
     },
     {
+      "idx": 765,
+      "version": "7",
+      "when": 1793330000343,
+      "tag": "0943_leave_attendance_claim_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 766,
+      "version": "7",
+      "when": 1793330000344,
+      "tag": "0944_lifecycle_rewards_notice_actions",
+      "breakpoints": true
+    },
+    {
       "idx": 767,
       "version": "7",
       "when": 1793330000345,
