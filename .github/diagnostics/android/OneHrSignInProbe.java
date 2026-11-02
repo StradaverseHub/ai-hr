@@ -48,4 +48,29 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
     getUiDevice().pressBack();
     System.out.println("ONEHR_PROBE {\"kind\":\"publicUsernameRestoration\",\"exactMatch\":true,\"passwordOrMfaRead\":false,\"signInSubmitted\":false}");
   }
+  public void testClientDiagnostic() throws Exception {
+    setupBounded();
+    assertEquals("Wrong foreground app; do not act", "ai.stradaverse.aihr.test", getUiDevice().getCurrentPackageName());
+    UiObject report=new UiObject(new UiSelector().description("Review connection diagnostic").className("android.widget.TextView"));
+    assertTrue("Review diagnostic not available",report.exists());
+    org.json.JSONObject input=new org.json.JSONObject(report.getText());
+    assertEquals("ONEHR_CLIENT_PROBE",input.optString("marker"));
+    org.json.JSONObject output=new org.json.JSONObject();
+    output.put("marker","ONEHR_CLIENT_PROBE");
+    for(String key:new String[]{"realCredentialsUsed","configValid","decoderPresent","decoderWorks","bodyPresent","readerPresent","companyVerified","expectedInvalidLogin"}) {
+      if(input.has(key)) { assertTrue(input.get(key) instanceof Boolean); output.put(key,input.getBoolean(key)); }
+    }
+    for(String key:new String[]{"companyStatus","loginStatus"}) {
+      if(input.has(key)) { int status=input.getInt(key); assertTrue(status>=100 && status<=599);output.put(key,status); }
+    }
+    for(String key:new String[]{"outcome","phase","errorKind"}) {
+      if(input.has(key)) {
+        String value=input.getString(key);
+        assertTrue(value.matches("pass|unexpected|fail|runtime|company-validation|company-fetch|company-body-or-metadata|invalid-login|login-fetch|login-body-or-refusal|body-read|reference|type|json-syntax|range|other"));
+        output.put(key,value);
+      }
+    }
+    System.out.println("ONEHR_CLIENT_PROBE "+output.toString());
+  }
+
 }
