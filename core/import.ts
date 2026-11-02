@@ -176,8 +176,8 @@ type ResolvedRow = {
    *  unless the row supplied at least one passport cell (an all-blank block must not clear anything). */
   passport?: {
     passportNumber: string;
-    passportIssueDate: string;
-    passportExpiryDate: string;
+    passportIssueDate?: string;
+    passportExpiryDate?: string;
     passportIssuingCountry?: string;
     passportIssuingCountryCode?:string;passportRemark?:string;
   };
@@ -779,20 +779,11 @@ async function analyze(
       norm(rec.passport_expiry_date) !== '' ||
       norm(rec.passport_issuing_country) !== '' || norm(rec.passport_issuing_country_code)!=='' || norm(rec.passport_remark)!=='';
     let passport: ResolvedRow['passport'];
-    if (passportTouched) {
-      if (!passportNumber || !passportIssue || !passportExpiry) {
-        errors.push('passport_number, passport_issue_date and passport_expiry_date must be provided together');
-      } else if (passportExpiry < passportIssue) {
-        errors.push('passport_expiry_date must be on or after passport_issue_date');
-      } else {
-        passport = {
-          passportNumber,
-          passportIssueDate: passportIssue,
-          passportExpiryDate: passportExpiry,
-          passportIssuingCountry: passportCountry.kind === 'ok' ? passportCountry.value : undefined,
-          passportIssuingCountryCode:norm(rec.passport_issuing_country_code)||undefined,passportRemark:norm(rec.passport_remark)||undefined,
-        };
-      }
+    const passportValues={passportNumber:passportNumber||undefined,passportIssueDate:passportIssue,passportExpiryDate:passportExpiry,passportIssuingCountry:passportCountry.kind==='ok'?passportCountry.value:undefined,passportIssuingCountryCode:norm(rec.passport_issuing_country_code)||undefined,passportRemark:norm(rec.passport_remark)||undefined};
+    if(passportIssue&&passportExpiry&&passportExpiry<passportIssue)errors.push('passport_expiry_date must be on or after passport_issue_date');
+    if(passportTouched||norm(rec.nationality)) {
+      if(!pack.statutory.validatePassport({personId:'00000000-0000-0000-0000-000000000000',...passportValues},norm(rec.nationality)))errors.push('passport_number is required for non-Malaysian employees; check supplied passport dates and country code');
+      else if(passportTouched&&passportNumber)passport={...passportValues,passportNumber};
     }
 
     const bankExtra=personnelBankValues(rec);errors.push(...bankExtra.errors);
@@ -1389,7 +1380,7 @@ export async function commitEmployeeImport(
       const { employmentId, personId } = await hireEmployee(ctx, {...row.hire,initialTaxScheme:row.initialTaxScheme}, tx);
       if(allocationPreview)await writeNewEmployeeCostAllocationsTx(tx,ctx,allocationPreview.groups,index,employmentId);
       let familyCount=0;
-      await pack.statutory.set(ctx, { personId, ...row.statutory }, tx);
+      await (pack.statutory.initializeForHire??pack.statutory.set)(ctx, { personId, ...row.statutory }, tx);
       if(row.oldIcNumber)await pack.statutory.setIc(ctx,{personId,icNumber:row.statutory.icNumber??'',oldIcNumber:row.oldIcNumber},tx);
       if(row.bankExtra)await pack.statutory.setBank(ctx,{personId,...row.bankExtra},tx);
       if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,employmentId,row.operations);

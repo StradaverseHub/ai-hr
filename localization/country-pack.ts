@@ -285,6 +285,8 @@ export interface CountryPackClient {
    * hires created there arrived with an empty SOCSO/EIS number.
    */
   statutory: {
+    validatePassport?: (value: {passportNumber?:string|null;passportIssueDate?:string|null;passportExpiryDate?:string|null;passportRemark?:string|null;passportIssuingCountry?:string|null;passportIssuingCountryCode?:string|null},nationality?:string|null)=>boolean;
+    creationDefaults?: {subjectToSkbbk?:boolean};
     /**
      * The SOCSO & EIS number to show/persist: for a local employee with a blank number, their
      * (normalised) national ID — the scheme registers locals under it. Returns undefined when the
@@ -396,6 +398,7 @@ export interface CountryPack {
    */
   statutory: {
     set: MyStatutoryModule['setStatutoryProfileMY'];
+    initializeForHire?:MyStatutoryModule['initializeHiredStatutoryMY'];
     /** Actual country-owned one-Tx read/modify/write interval for split-card pass-through. */
     withWrite?:MyStatutoryModule['withStatutoryProfileWriteMY'];
     /** Optional trusted human full-row reviewed source; never a generic model executor. */
