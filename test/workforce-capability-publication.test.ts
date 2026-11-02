@@ -6,7 +6,7 @@ import {eq,sql} from 'drizzle-orm';
 import {migrateTestDb,resetDb,seedBase,adminCtx,owner,closeAll,type Base} from './harness';
 import {client,db} from '../db/client';
 import {appUser,tenant} from '../db/schema';
-import {publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS,WORKFORCE_CAPABILITY_BINDINGS_SHA256} from '../deploy/access/publish-workforce-capabilities';
+import {publishWorkforceActionPackage as publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS_V2 as WORKFORCE_CAPABILITY_BINDINGS,WORKFORCE_ACTION_PACKAGE_BINDINGS_SHA256 as WORKFORCE_CAPABILITY_BINDINGS_SHA256} from '../deploy/access/publish-workforce-capabilities';
 import {workforceCompanies} from '../core/workforce-access';
 import {readAccessConfigurationEditor} from '../core/access-configuration-editor';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';

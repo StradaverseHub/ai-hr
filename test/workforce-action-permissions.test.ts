@@ -6,7 +6,7 @@ import {withTenant} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,setEmploymentGrade} from '../core/org';
 import {saveEmployeeDraft,completeEmployeeDraft,getEmployeeDraft,discardEmployeeDraft} from '../core/employee-draft';
-import {publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS} from '../deploy/access/publish-workforce-capabilities';
+import {publishWorkforceActionPackage as publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS_V2 as WORKFORCE_CAPABILITY_BINDINGS} from '../deploy/access/publish-workforce-capabilities';
 import {maintainWorkforceRecord,workforceEditor} from '../core/workforce-maintenance';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';

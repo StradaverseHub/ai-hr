@@ -1,6 +1,7 @@
 /** Restricted storage-owner installation step, never an application permission editor. */
 import {createHash} from 'node:crypto';
 import type {Sql} from 'postgres';
+import {functionActionCapabilities,type FunctionActionDescriptor} from './function-action-contract';
 import {FINANCIAL_LETTER_CAPABILITY_PUBLICATION} from './financial-letter-capability-bindings';
 import {ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION} from './organisation-settings-capability-bindings';
 
@@ -49,7 +50,7 @@ export const WORKFORCE_CAPABILITY_BINDINGS_V2=[...WORKFORCE_CAPABILITY_BINDINGS_
   {owner:'core/workforce-commands.ts',operation:'typed-native-admission'},
  ]})),
 ] as const;
-type DomainPublication={capabilities:readonly {id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[]}[];requiredFunctions:readonly string[];legacyGroups:Record<string,readonly string[]>;legacyParityFunction?:string;delegationFloorFunction?:string};
+export type DomainPublication={capabilities:readonly {id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[]}[];requiredFunctions:readonly string[];legacyGroups:Record<string,readonly string[]>;legacyParityFunction?:string;delegationFloorFunction?:string;functions?:readonly FunctionActionDescriptor[];functionLegacyParityFunction?:string};
 export const ACTION_DOMAIN_PUBLICATIONS:readonly DomainPublication[]=[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION];
 export const WORKFORCE_CAPABILITY_BINDINGS=[...WORKFORCE_CAPABILITY_BINDINGS_V2,...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.capabilities)];
 export const WORKFORCE_CAPABILITY_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,capabilities:WORKFORCE_CAPABILITY_BINDINGS})).digest('hex');
@@ -66,11 +67,10 @@ const WORKFORCE_REQUIRED_FUNCTIONS=[
  'app.access_profile_value_begin(uuid)','app.access_profile_value_audit()',
  'app.access_withdraw_profile_requests(jsonb,text)',
 ] as const;
-const REQUIRED_FUNCTIONS=[...WORKFORCE_REQUIRED_FUNCTIONS,...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.requiredFunctions)];
 function requireInstallation(value:unknown):asserts value{
  if(!value)throw new Error('Workforce capability installation refused; review exact owner, catalogue, bindings and tenant readiness.');
 }
-type CapabilityRow={id:string;scope:string;supported:boolean;bindings:unknown};
+type CapabilityRow={id:string;scope:string;supported:boolean;bindings:unknown;prerequisites:unknown};
 function exactBindings(actual:unknown,expected:readonly {owner:string;operation:string}[]){
  return Array.isArray(actual)&&actual.length===expected.length&&actual.every((row,index)=>row&&typeof row==='object'&&Object.keys(row).sort().join(',')==='operation,owner'&&row.owner===expected[index].owner&&row.operation===expected[index].operation);
 }
@@ -78,7 +78,22 @@ function exactBindings(actual:unknown,expected:readonly {owner:string;operation:
  * superuser/BYPASSRLS/role inheritance. There is no ai_hr_app definer, new grant or runtime route.
  * One transaction publishes an exact version, invalidates previews and fences pre-pinned writers.
  */
-export async function publishWorkforceCapabilities(owner:Sql){
+export const WORKFORCE_ACTION_PACKAGE_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,package:'workforce',capabilities:WORKFORCE_CAPABILITY_BINDINGS_V2})).digest('hex');
+export function publishWorkforceActionPackage(owner:Sql){return publishActionCapabilityPackage(owner,'workforce');}
+export type ActionCapabilityPackage='workforce'|'financial_letters'|'organisation_settings';
+/** Restricted component publication uses the same real transaction, owner checks and fences as
+ * the full installer. Callers choose a fixed source package, never submit bindings or prerequisites. */
+export function publishActionCapabilityPackage(owner:Sql,key:ActionCapabilityPackage){
+ if(!['workforce','financial_letters','organisation_settings'].includes(key))throw new Error('Unknown code-owned action package');
+ return installActionCapabilities(owner,key);
+}
+export function publishWorkforceCapabilities(owner:Sql){return installActionCapabilities(owner,'all');}
+async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'all'){
+ const ACTION_DOMAIN_PUBLICATIONS=key==='workforce'?[]:key==='financial_letters'?[FINANCIAL_LETTER_CAPABILITY_PUBLICATION]:key==='organisation_settings'?[ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION]:[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION];
+ const includeWorkforce=key==='all'||key==='workforce';
+ const WORKFORCE_CAPABILITY_BINDINGS:{id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[];prerequisites?:readonly string[]}[]=[...(includeWorkforce?WORKFORCE_CAPABILITY_BINDINGS_V2:[]),...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>[...domain.capabilities,...functionActionCapabilities((domain as DomainPublication).functions??[])])];
+ const REQUIRED_FUNCTIONS=[...new Set([...(includeWorkforce?WORKFORCE_REQUIRED_FUNCTIONS:[]),...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.requiredFunctions),...(ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[]).flatMap(domain=>domain.functions?.length?[...(domain.functionLegacyParityFunction?[domain.functionLegacyParityFunction+'(uuid,uuid,text,uuid)']:[]),...domain.functions.flatMap(descriptor=>descriptor.actions.flatMap(action=>action.delegationFloorFunction?[action.delegationFloorFunction+'(uuid,uuid,text,uuid)']:[]))]:[]),...(key==='all'?['app.access_all_function_bindings_complete()']:[])])];
+ const WORKFORCE_CAPABILITY_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,...(key==='all'?{}:{package:key}),capabilities:WORKFORCE_CAPABILITY_BINDINGS})).digest('hex');
  return owner.begin(async tx=>{
   await tx`set local lock_timeout='10s'`;await tx`set local statement_timeout='60s'`;
   const [authority]=await tx<{actual:boolean}[]>`select current_user=session_user
@@ -90,16 +105,25 @@ export async function publishWorkforceCapabilities(owner:Sql){
   // so no concurrently created tenant is missed or enters an inverted lock order.
   await tx`lock table public.tenant in share mode`;
   await tx`lock table public.access_capability in share row exclusive mode`;
-  const rows=await tx<CapabilityRow[]>`select id,scope,supported,bindings from public.access_capability
+  const rows=await tx<CapabilityRow[]>`select id,scope,supported,bindings,prerequisites from public.access_capability
    where id=any(${WORKFORCE_CAPABILITY_BINDINGS.map(item=>item.id)}::text[]) order by id for update`;
   requireInstallation(rows.length===WORKFORCE_CAPABILITY_BINDINGS.length);
   const expected=[...WORKFORCE_CAPABILITY_BINDINGS].sort((a,b)=>a.id.localeCompare(b.id));
-  requireInstallation(rows.every((row,index)=>row.id===expected[index].id&&row.scope===expected[index].scope));
+  requireInstallation(rows.every((row,index)=>row.id===expected[index].id&&row.scope===expected[index].scope&&JSON.stringify(row.prerequisites)===JSON.stringify(expected[index].prerequisites??[])));
+  for(const domain of ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[]){
+   for(const descriptor of domain.functions??[]){
+    for(const action of descriptor.actions){
+     const [registered]=await tx<{correct:boolean}[]>`select d.scope=${descriptor.scope} and d.metadata->>'moduleKey'=${descriptor.moduleKey} and d.metadata->>'labelKey'=${descriptor.labelKey} and d.metadata->>'kind'=${descriptor.kind} and d.metadata->>'course'=${descriptor.course} and a.parent_capability is not distinct from ${action.parentCapability??null} and a.delegation_floor_function is not distinct from ${action.delegationFloorFunction??null} as correct from app.access_function_definition d join app.access_function_action a using(function_key) where d.function_key=${descriptor.key} and a.operation=${action.operation}`;
+     requireInstallation(registered?.correct);
+    }
+   }
+  }
   const already=rows.every((row,index)=>row.supported&&exactBindings(row.bindings,expected[index].bindings));
   const uninstalled=rows.every(row=>!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0);
   const knownV1=rows.every(row=>{const old=WORKFORCE_CAPABILITY_BINDINGS_V1.find(item=>item.id===row.id);return old?row.supported&&exactBindings(row.bindings,old.bindings):!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0;});
   const knownV2=rows.every(row=>{const old=WORKFORCE_CAPABILITY_BINDINGS_V2.find(item=>item.id===row.id);return old?row.supported&&exactBindings(row.bindings,old.bindings):!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0;});
-  requireInstallation(already||uninstalled||knownV1||knownV2); // Refuse partial/unknown versions without overwriting them.
+  const knownComponents=rows.every((row,index)=>row.supported?exactBindings(row.bindings,expected[index].bindings):Array.isArray(row.bindings)&&row.bindings.length===0)&&[...new Set(rows.map(row=>row.id.split('.')[0]))].every(prefix=>{const group=rows.filter(row=>row.id.startsWith(prefix+'.'));return group.every(row=>row.supported)||group.every(row=>!row.supported);});
+  requireInstallation(already||uninstalled||knownV1||knownV2||knownComponents); // Refuse partial/unknown versions without overwriting them.
   const functions=await tx<{count:number;owners:boolean}[]>`select count(*)::integer as count,
    coalesce(bool_and(p.proowner=c.relowner),false) as owners
    from unnest(${[...REQUIRED_FUNCTIONS]}::text[]) f(signature)
@@ -120,7 +144,7 @@ export async function publishWorkforceCapabilities(owner:Sql){
   requireInstallation(readiness?.ready); // Never mint a recovery administrator or default grant here.
   // One-time exact legacy parity: preserve every old fact and copy its active scope/effect.
   // Refuse unknown prepublication action facts rather than silently broadening/narrowing a holder.
-  if(!rows.find(row=>row.id==='workforce.add')?.supported){
+  if(includeWorkforce&&!rows.find(row=>row.id==='workforce.add')?.supported){
   const [parity]=await tx<{ok:boolean}[]>`select not exists(select 1 from access_group_grant n where n.capability_id in ('workforce.add','workforce.edit','workforce.delete') and n.retired_at is null
    and not exists(select 1 from access_group_grant old where old.tenant_id=n.tenant_id and old.group_id=n.group_id and old.capability_id='workforce.maintain' and old.company_id is not distinct from n.company_id and old.retired_at is null))
    and not exists(select 1 from access_user_override n where n.capability_id in ('workforce.add','workforce.edit','workforce.delete') and n.retired_at is null
@@ -159,6 +183,22 @@ export async function publishWorkforceCapabilities(owner:Sql){
     }
    }
   }
+  // Exact function parity is independent of family defaults: a family can contain several
+  // different native ACL purposes. Only the source-owned native parity hook can seed a cell.
+  for(const domain of ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[]){
+   if(!domain.functions?.length)continue;
+   const hook=domain.functionLegacyParityFunction;
+   requireInstallation(hook&&/^app\.[a-z][a-z0-9_]*$/.test(hook));
+   for(const capability of functionActionCapabilities(domain.functions)){
+    if(rows.find(row=>row.id===capability.id)?.supported)continue;
+    const scope=capability.scope==='tenant'?'select null::uuid as id':'select c.id from public.company c where c.tenant_id=u.tenant_id';
+    await tx.unsafe(`insert into public.access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+     select u.tenant_id,u.id,$1,scope.id,'allow' from public.app_user u cross join lateral (${scope}) scope
+     where u.archived_at is null and not app.login_blocked(u.id) and ${hook}(u.tenant_id,u.id,$1,scope.id)
+     and not exists(select 1 from public.access_user_override o where o.tenant_id=u.tenant_id and o.user_id=u.id and o.capability_id=$1 and o.retired_at is null and app.access_scope_covers(o.company_id,scope.id,u.tenant_id))
+     on conflict do nothing`,[capability.id]);
+   }
+  }
   // Bind serialized JSON as text before converting it. Drizzle replaces the client's JSON
   // serializer, whereas the standalone installer retains postgres.js's JSON.stringify serializer.
   // A JSONB-typed parameter would therefore encode these strings twice in the real installer.
@@ -174,7 +214,7 @@ export async function publishWorkforceCapabilities(owner:Sql){
    if(!revision.length){const bumped=await tx`update app.access_profile_write_generation set generation=generation+1 where tenant_id=${tenant.id}::uuid returning tenant_id`;requireInstallation(bumped.length===1);}
    await tx`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
     values(${tenant.id}::uuid,'access-configuration',${tenant.id}::uuid,'access-configuration.capabilities-published','system',null,
-     ${JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,capabilities:WORKFORCE_CAPABILITY_BINDINGS.map(c=>c.id),legacyRolesChanged:false})}::text::jsonb)`;
+     ${JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,package:key,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,capabilities:WORKFORCE_CAPABILITY_BINDINGS.map(c=>c.id),legacyRolesChanged:false})}::text::jsonb)`;
   }
   return {version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,changed:true,capabilities:WORKFORCE_CAPABILITY_BINDINGS.length,tenantsFenced:tenants.length};
  });

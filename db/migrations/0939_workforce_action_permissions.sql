@@ -1349,3 +1349,28 @@ BEGIN
  RETURN result;
 END;
 $$;
+
+--> statement-breakpoint
+-- Global company authority includes future companies. A scoped allow cannot prove it, and any
+-- retained company denial blocks it. This pure target calculation is separate from current claims.
+CREATE FUNCTION app.access_global_for_tenant(p_tenant uuid,p_user uuid,p_capability text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.access_capability c JOIN public.app_user u ON u.id=p_user AND u.tenant_id=p_tenant JOIN public.access_configuration configuration ON configuration.tenant_id=u.tenant_id
+ WHERE c.id=p_capability AND c.scope='company' AND c.supported AND jsonb_array_length(c.bindings)>0 AND configuration.initialized AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ AND NOT EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=p_tenant AND o.user_id=p_user AND o.capability_id=c.id AND o.effect='deny' AND o.retired_at IS NULL)
+ AND (EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=p_tenant AND o.user_id=p_user AND o.capability_id=c.id AND o.effect='allow' AND o.company_id IS NULL AND o.retired_at IS NULL)
+ OR EXISTS(SELECT 1 FROM public.access_effective_membership m JOIN public.access_group g ON g.tenant_id=m.tenant_id AND g.id=m.group_id JOIN public.access_group_grant a ON a.tenant_id=g.tenant_id AND a.group_id=g.id WHERE m.tenant_id=p_tenant AND m.user_id=p_user AND m.company_id IS NULL AND g.retired_at IS NULL AND a.capability_id=c.id AND a.company_id IS NULL AND a.retired_at IS NULL))
+ AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements_text(c.prerequisites) needed(id) JOIN public.access_capability prerequisite ON prerequisite.id=needed.id WHERE NOT CASE WHEN prerequisite.scope='tenant' THEN app.access_allowed_for_tenant(p_tenant,p_user,needed.id,NULL) ELSE app.access_global_for_tenant(p_tenant,p_user,needed.id) END)
+ AND (c.id !~ '^.+\.(add|edit|delete|approve|issue|execute)$' OR app.access_global_for_tenant(p_tenant,p_user,regexp_replace(c.id,'[^.]+$','view'))));
+$$;
+REVOKE ALL ON FUNCTION app.access_global_for_tenant(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.function_global_action_allowed(p_key text,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce((SELECT app.principal_snapshot_current() AND (NOT c.supported OR
+ (app.access_current_capability_source(c.id,NULL) AND app.access_global_for_tenant(app.current_tenant_id(),app.current_user_id(),c.id)
+ AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements_text(c.prerequisites) needed(id) JOIN public.access_capability prerequisite ON prerequisite.id=needed.id WHERE NOT app.access_current_capability_source(needed.id,NULL))))
+ FROM app.access_function_action a JOIN app.access_function_definition d USING(function_key) JOIN public.access_capability c ON c.id=a.capability_id WHERE a.function_key=p_key AND a.operation=p_operation AND d.scope='company'),false);
+$$;
+REVOKE ALL ON FUNCTION app.function_global_action_allowed(text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.function_global_action_allowed(text,text) TO ai_hr_app;
