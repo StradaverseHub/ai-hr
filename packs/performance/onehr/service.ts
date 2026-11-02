@@ -1146,17 +1146,8 @@ export async function commentAssessmentCareerProfile(ctx:SessionContext,reviewId
 export async function commentAssessmentCareerProfileTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number|null,comment:string) {
  note.parse(comment);
 
-  const r=await loadReview(tx,reviewId);
-  if(await isSelf(tx,r.row.employmentId)||!r.cycle.policy.modules.idp||!await isEffectiveReviewer(tx,reviewId)&&!await isModerator(tx,reviewId))throw Error('Only the assigned manager may comment on the career profile.');
-  await requireParticipant(tx,reviewId);
-  if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_review');
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`career:${r.row.employmentId}`},0))`);
-  const [profile]=await tx.select().from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId)).for('update');
-  if((profile?.revision??null)!==expected)throw Error('The career profile changed. Reload before commenting.');
-  const data={reviewId,managerComment:comment,managerUserId:ctx.userId!,managerCommentAt:new Date(),revision:(profile?.revision??0)+1,updatedAt:new Date()};
-  if(profile)await tx.update(assessmentCareerProfile).set(data).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
-  else await tx.insert(assessmentCareerProfile).values({...data,tenantId:ctx.tenantId,employmentId:r.row.employmentId,career:{aspiration:'',mobility:null,mobilityNote:'',targetProfileId:null,selfProfileId:null}});
-  await audit(tx,ctx,reviewId,'career-profile-commented');
+  uuid.parse(reviewId);if(expected!==null)z.number().int().parse(expected);
+  await tx.execute(sql`select app.onehr_career_comment(${reviewId}::uuid,${expected}::integer,${comment}::text)`);
 }
 
 

@@ -3725,3 +3725,39 @@ EXCEPTION WHEN numeric_value_out_of_range THEN
 END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_ieee(text,double precision,double precision) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.onehr_career_comment(wanted_review uuid,expected_revision integer,comment text) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;profile public.performance_assessment_career_profile%ROWTYPE;next_revision integer;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR career actor unavailable' USING ERRCODE='42501';END IF;
+ IF comment IS NULL OR char_length(btrim(comment))>4000 THEN RAISE EXCEPTION 'Invalid career comment' USING ERRCODE='22023';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ IF review.review_id IS NULL OR app.onehr_self_employment(review.employment_id) OR NOT (app.onehr_effective_reviewer(wanted_review) OR app.onehr_moderator(wanted_review))
+ OR NOT app.onehr_review_task_view(wanted_review,'assigned') OR NOT app.function_action_allowed('performance.onehr.assignedReview','edit',review.company_id)
+ THEN RAISE EXCEPTION 'Only the assigned manager may comment on the career profile.' USING ERRCODE='42501';END IF;
+ IF policy->'modules'->>'idp' IS DISTINCT FROM 'true' OR NOT app.assessment_review_participates(wanted_review) OR cycle.status NOT IN ('open','calibration') THEN RAISE EXCEPTION 'This assessment period is read-only.' USING ERRCODE='42501';END IF;
+ IF policy->'windows'->'idp_review'->>'opensAt' IS NOT NULL AND now()<(policy->'windows'->'idp_review'->>'opensAt')::timestamptz
+ OR policy->'windows'->'idp_review'->>'closesAt' IS NOT NULL AND now()>=(policy->'windows'->'idp_review'->>'closesAt')::timestamptz THEN RAISE EXCEPTION 'This step is closed' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('career:'||review.employment_id::text,0));
+ SELECT * INTO profile FROM public.performance_assessment_career_profile actual WHERE actual.employment_id=review.employment_id AND actual.tenant_id=review.tenant_id FOR UPDATE;
+ IF profile.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'The career profile changed. Reload before commenting.' USING ERRCODE='40001';END IF;
+ next_revision:=coalesce(profile.revision,0)+1;
+ IF profile.employment_id IS NULL THEN
+  INSERT INTO public.performance_assessment_career_profile(tenant_id,employment_id,review_id,career,manager_comment,manager_user_id,manager_comment_at,revision,updated_at)
+  VALUES(review.tenant_id,review.employment_id,wanted_review,jsonb_build_object('aspiration','','mobility',NULL,'mobilityNote','','targetProfileId',NULL,'selfProfileId',NULL),comment,app.current_user_id(),clock_timestamp(),next_revision,clock_timestamp());
+ ELSE
+  UPDATE public.performance_assessment_career_profile actual SET review_id=wanted_review,manager_comment=comment,manager_user_id=app.current_user_id(),manager_comment_at=clock_timestamp(),revision=next_revision,updated_at=clock_timestamp()
+  WHERE actual.employment_id=review.employment_id AND actual.tenant_id=review.tenant_id;
+ END IF;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+ VALUES(review.tenant_id,'onehr',wanted_review,'onehr.career-profile-commented','user',app.current_user_id(),'{}'::jsonb);
+ RETURN next_revision;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_career_comment(uuid,integer,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_career_comment(uuid,integer,text) TO ai_hr_app;

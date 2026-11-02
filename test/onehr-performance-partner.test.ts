@@ -188,6 +188,14 @@ describe('OneHR performance partner (ADR-0142)', () => {
         const [reviewBefore]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
         expect(await refusal(withTenant(mixed,tx=>tx.update(schema.onehrReview).set({profileMatch:'Borrowed administrative profile match'}).where(eq(schema.onehrReview.reviewId,reviewId))),'42501')).toContain('OneHR administrative data unavailable');
         expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([reviewBefore]);
+        expect(await withTenant(mixed,tx=>tx.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)))).toEqual([]);
+        await perf.commentAssessmentCareerProfile(mixed,reviewId,before.revision,'Native assigned manager career comment');
+        const [commented]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));
+        expect(commented).toEqual({...before,reviewId,managerComment:'Native assigned manager career comment',managerUserId:userId,managerCommentAt:expect.any(Date),updatedAt:expect.any(Date),revision:before.revision+1});
+        const comments=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented')));expect(comments).toHaveLength(1);expect(comments[0]).toMatchObject({actorType:'user',actorId:userId,payload:{}});
+        await expect(perf.commentAssessmentCareerProfile(partner,reviewId,commented.revision,'Borrowed administrative comment')).rejects.toThrow();
+        expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([commented]);
+
       }
     }
   });
