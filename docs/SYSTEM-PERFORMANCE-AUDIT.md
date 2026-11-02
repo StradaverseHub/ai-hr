@@ -1,3 +1,26 @@
+## Current-main Personnel search: eager population removed; scoped checks pass
+
+Separate candidate `1c0d1f52e` has exact app source `b95f5feab`; it extends the
+qualified current-main projection repair without transferring the diverged umbrella
+branch. The Personnel listing no longer reads/sends every employee for search before
+typing. At16,384 visible records the old five-field population serializes2,842,625bytes;
+on-demand search returns at most eight (1,389bytes here),99.951% less raw JSON.
+The endpoint re-resolves current session/Workforce/top-bar scope; no-store, ranking,
+revocation, stale-response, company-scope reset and unsaved-edit controls pass.
+
+Originalc27c/41492832404 passes184 affected checks in15 files and whole compiler;
+normalizedb95f/41494579818 passes61 affected rechecks in5 files and fresh whole compiler.
+Fixture-only1c0d/41496602245 passes the direct same-run bounded comparison:
+470.89→444.86ms mean,5.53% lower, all four alternating pairs improve. Earlier bounded
+versus full-reader cost increases remain recorded; full-reader timings exclude client
+matching. No cross-run speed percentage, whole-page p95 or500-user gain is inferred.
+See [current-main search review](reviews/system-performance-personnel-current-main-search-20261103.md).
+
+Native database functions/migrations/locks/auth/human bindings remain unchanged.
+Published security605b still lacks three contracts; private native integration stays
+held. Both original500 profiles remain failed,0/2 accepted. No new full pair,
+main/alpha integration, release/staging admission, binding refresh or deployment.
+
 ## Current-main Personnel candidate: focused checks and whole compiler pass
 
 A minimal five-file candidate `3eab8c7b8` on fresh main `dfbcf85b1` passes all123
