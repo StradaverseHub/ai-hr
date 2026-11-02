@@ -528,17 +528,64 @@ export function countEmployeesByStatus(
   });
 }
 
-/** Personnel page seam: preserves the existing authorized reads before projection reuse. */
+/** Personnel page rows, exact total and facets reuse one authorized native projection.
+ * No persistent/result cache: all consumers share this single caller-scoped statement. */
 export async function personnelListPage(
   ctx: SessionContext,
   page: Parameters<typeof listEmployeesPage>[1],
   facets: EmployeeListFilters,
 ) {
-  const [listing, headcount] = await Promise.all([
-    listEmployeesPage(ctx, page, 'workforce'),
-    countEmployeesByStatus(ctx, facets, 'workforce'),
-  ]);
-  return {...listing, headcount};
+  return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    const columns = workforceListColumns();
+    const pageWhere = workforceListWhere(page, columns) ?? sql`true`;
+    const facetWhere = workforceListWhere(facets, columns) ?? sql`true`;
+    const pageNameSort = page.sort === 'company' ? sql`lower(${columns.name})` : columns.name;
+    const pageOrder = page.sort === 'company'
+      ? sql`lower(${workforceListValue('company')}), ${pageNameSort}` : pageNameSort;
+    const aggregateOrder = page.sort === 'company'
+      ? sql`page_rows.company_sort, page_rows.name_sort` : sql`page_rows.name_sort`;
+    const [result] = await tx.execute<{
+      rows: EmployeeListRow[];
+      total: number;
+      status_counts: {status: EmploymentStatus; count: number}[];
+    }>(sql`
+      with workforce_projection(value) as materialized (
+        select workforce_row.value from ${workforceListSource}
+      )
+      select coalesce((
+        select jsonb_agg(page_rows.value order by ${aggregateOrder})
+        from (
+          select workforce_row.value,
+            lower(${workforceListValue('company')}) as company_sort,
+            ${pageNameSort} as name_sort
+          from workforce_projection as workforce_row
+          where ${pageWhere}
+          order by ${pageOrder}
+          limit ${page.limit} offset ${page.offset}
+        ) page_rows
+      ), '[]'::jsonb) as rows,
+      (select count(distinct ${workforceListUuid('employmentId')})::int
+        from workforce_projection as workforce_row where ${pageWhere}) as total,
+      coalesce((
+        select jsonb_agg(jsonb_build_object('status', facet_counts.status, 'count', facet_counts.count))
+        from (
+          select ${columns.status} as status,
+            count(distinct ${workforceListUuid('employmentId')})::int as count
+          from workforce_projection as workforce_row where ${facetWhere}
+          group by 1
+        ) facet_counts
+      ), '[]'::jsonb) as status_counts
+    `);
+    const byStatus: Partial<Record<EmploymentStatus, number>> = {};
+    let total = 0;
+    for (const row of result.status_counts) {
+      const count = Number(row.count);
+      byStatus[row.status] = count;
+      total += count;
+    }
+    return {rows: result.rows, total: Number(result.total), headcount: {total, byStatus}};
+  });
 }
 
 /** Paginated + searchable employee list for the People page. Returns the page rows plus the
