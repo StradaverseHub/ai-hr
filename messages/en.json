@@ -33629,5 +33629,32 @@
       "forbidden": "You do not have permission to change this policy.",
       "unavailable": "Password settings are unavailable. Try again."
     }
+  },
+  "workflowModules": {
+    "label": "Workflow module",
+    "legacy": "Onboarding & offboarding",
+    "probation": "Probation",
+    "contract_staff": "Contract Management"
+  },
+  "workflowEditor": {
+    "required": "Required",
+    "close": "Close workflow",
+    "view": "Workflow view",
+    "steps": "Steps",
+    "history": "Run history",
+    "when": "When",
+    "onlyIf": "Only if",
+    "then": "Then"
+  },
+  "documentSigning": {
+    "title": "Your signature",
+    "method": "Signature method",
+    "typed": "Type signature",
+    "drawn": "Draw signature",
+    "fullName": "Type your full name",
+    "canvas": "Draw your signature",
+    "clear": "Clear signature",
+    "consent": "I confirm this is my signature and agree to sign this document.",
+    "submit": "Sign and submit"
   }
 }

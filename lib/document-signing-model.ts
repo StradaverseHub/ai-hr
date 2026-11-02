@@ -86,9 +86,9 @@ export function recordAcknowledgementDecline(document:SigningDocument,input:{id:
   const action:SigningAction={id:input.id,stepId:step.id,contentRevision:document.contentRevision,contentHash:document.contentHash,actorId:input.actorId,actorPersonId:input.actorPersonId,actorName:input.actorName,representedId:step.holderId,role:step.role,at:input.at,action:'declined',comment:input.reason.trim(),signature:null};
   return{...document,actions:[...document.actions,action]};
 }
-export function reviseSigningDocument(document: SigningDocument, hash: string): SigningDocument {
+export function reviseSigningDocument(document: SigningDocument, hash: string, route?:SigningRoute): SigningDocument {
   if (!/^[a-f0-9]{64}$/.test(hash)||hash===document.contentHash) invalid('A new content fingerprint is required.');
-  return {...document,contentRevision:document.contentRevision+1,contentHash:hash};
+  return {...document,contentRevision:document.contentRevision+1,contentHash:hash,...(route?{route:structuredClone(route)}:{})};
 }
 export function replacePendingSigner(document: SigningDocument, rules: SigningGuardrails, input: {stepId:string;holderId:string;holderPersonId?:string;reason:string;kind:'delegation'|'holder_changed'|'missing_holder'}): SigningDocument {
   if (!input.holderId||!input.reason.trim()||!['delegation','holder_changed','missing_holder'].includes(input.kind)) invalid('A replacement holder and recorded reason are required.');

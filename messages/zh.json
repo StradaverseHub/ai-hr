@@ -33629,5 +33629,32 @@
       "forbidden": "您无权更改此策略。",
       "unavailable": "密码设置暂不可用。请重试。"
     }
+  },
+  "workflowModules": {
+    "label": "工作流模块",
+    "legacy": "入职与离职",
+    "probation": "试用期",
+    "contract_staff": "合同管理"
+  },
+  "workflowEditor": {
+    "required": "必需",
+    "close": "关闭工作流",
+    "view": "工作流视图",
+    "steps": "步骤",
+    "history": "运行历史",
+    "when": "何时",
+    "onlyIf": "仅当",
+    "then": "然后"
+  },
+  "documentSigning": {
+    "title": "您的签名",
+    "method": "签名方式",
+    "typed": "输入签名",
+    "drawn": "手写签名",
+    "fullName": "输入您的全名",
+    "canvas": "手写您的签名",
+    "clear": "清除签名",
+    "consent": "我确认这是我的签名，并同意签署本文件。",
+    "submit": "签署并提交"
   }
 }

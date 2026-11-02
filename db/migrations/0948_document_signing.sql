@@ -61,7 +61,7 @@ BEGIN
  IF p_data->>'tenantId' IS DISTINCT FROM app.current_tenant_id()::text OR p_data->>'companyId' IS DISTINCT FROM p_company::text OR p_data->>'subjectId' IS DISTINCT FROM p_subject::text OR p_data->>'subjectType' IS DISTINCT FROM 'probation' THEN RAISE EXCEPTION 'Signing subject mismatch'; END IF;
  IF to_regprocedure('app.probation_signing_guardrails(uuid)') IS NULL OR to_regprocedure('app.probation_signing_route_allowed(uuid,jsonb)') IS NULL OR to_regprocedure('app.probation_signing_content(uuid)') IS NULL THEN RAISE EXCEPTION 'Signing subject adapter is unavailable'; END IF;
  EXECUTE 'SELECT app.probation_signing_content($1)' INTO content USING p_subject;
- IF content IS NULL OR content->>'contentHash' IS DISTINCT FROM p_data->>'contentHash' OR content->>'contentRevision' IS DISTINCT FROM p_data->>'contentRevision' THEN RAISE EXCEPTION 'Signing content changed'; END IF;
+ IF content IS NULL OR content->>'companyId' IS DISTINCT FROM p_company::text OR content->>'employmentId' IS DISTINCT FROM p_employment::text OR content->>'contentHash' IS DISTINCT FROM p_data->>'contentHash' OR content->>'contentRevision' IS DISTINCT FROM p_data->>'contentRevision' THEN RAISE EXCEPTION 'Signing content changed'; END IF;
  EXECUTE 'SELECT app.probation_signing_guardrails($1)' INTO expected_rules USING p_subject;
  EXECUTE 'SELECT app.probation_signing_route_allowed($1,$2)' INTO route_allowed USING p_subject,p_data->'route';
  IF expected_rules IS NULL OR expected_rules<>p_rules OR NOT coalesce(route_allowed,false) THEN RAISE EXCEPTION 'Signing subject policy or current route changed'; END IF;
@@ -76,7 +76,7 @@ BEGIN
   IF NOT FOUND OR old.subject_id<>p_subject OR old.employment_id<>p_employment OR old.company_id<>p_company OR old.revision IS DISTINCT FROM p_expected OR old.guardrails<>p_rules OR btrim(coalesce(p_reason,''))='' THEN RAISE EXCEPTION 'Signing revision changed or reason missing'; END IF;
   IF p_data->'actions' IS DISTINCT FROM old.data->'actions' THEN RAISE EXCEPTION 'Signing history is immutable'; END IF;
   IF p_operation='revise' THEN
-   IF (p_data->>'contentRevision')::integer<>(old.data->>'contentRevision')::integer+1 OR p_data->>'contentHash'=old.data->>'contentHash' OR p_data->'route'<>old.data->'route' THEN RAISE EXCEPTION 'Invalid content revision'; END IF;
+   IF (p_data->>'contentRevision')::integer<>(old.data->>'contentRevision')::integer+1 OR p_data->>'contentHash'=old.data->>'contentHash' THEN RAISE EXCEPTION 'Invalid content revision'; END IF;
   ELSE
    IF p_data->>'contentRevision'<>old.data->>'contentRevision' OR p_data->>'contentHash'<>old.data->>'contentHash' THEN RAISE EXCEPTION 'Rerouting cannot change signed content'; END IF;
    IF EXISTS(SELECT 1 FROM jsonb_array_elements(old.data->'route'->'steps') s WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p_data->'route'->'steps') n WHERE (n-'holderId'-'holderPersonId'-'representedId')=(s-'holderId'-'holderPersonId'-'representedId'))) OR jsonb_array_length(p_data->'route'->'steps')<>jsonb_array_length(old.data->'route'->'steps') THEN RAISE EXCEPTION 'Rerouting cannot remove or change required steps'; END IF;
@@ -91,7 +91,7 @@ BEGIN
 END $$;
 CREATE FUNCTION app.document_signing_act(p_id uuid,p_action jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE d document_signing_document;step jsonb;prior jsonb;stage integer;v_action jsonb;v_name text;v_person uuid;new_data jsonb;content jsonb;route_allowed boolean;
+DECLARE d document_signing_document;step jsonb;prior jsonb;stage integer;v_action jsonb;v_name text;v_person uuid;new_data jsonb;content jsonb;route_allowed boolean;v_png bytea;v_width bigint;v_height bigint;
 BEGIN
  -- All subject writers lock the source part before the signing document.
  SELECT * INTO d FROM document_signing_document WHERE id=p_id AND tenant_id=app.current_tenant_id();
@@ -99,13 +99,13 @@ BEGIN
  EXECUTE 'SELECT app.probation_signing_content($1)' INTO content USING d.subject_id;
  SELECT * INTO d FROM document_signing_document WHERE id=p_id AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF NOT FOUND OR NOT app.document_signing_subject_access(d.subject_type,d.subject_id,CASE WHEN p_action->>'action'='declined' THEN 'decline' ELSE 'sign' END) THEN RAISE EXCEPTION 'Signing action not permitted'; END IF;
- IF jsonb_typeof(p_action) IS DISTINCT FROM 'object' OR coalesce(p_action->>'id','')='' OR coalesce(p_action->>'stepId','')='' OR length(p_action->>'id')>200 OR jsonb_typeof(p_action->'comment') IS DISTINCT FROM 'string' THEN RAISE EXCEPTION 'Invalid signing action shape'; END IF;
- IF content IS NULL OR content->>'contentHash' IS DISTINCT FROM d.data->>'contentHash' OR content->>'contentRevision' IS DISTINCT FROM d.data->>'contentRevision' THEN RAISE EXCEPTION 'Signing content changed'; END IF;
+ IF jsonb_typeof(p_action) IS DISTINCT FROM 'object' OR jsonb_typeof(p_action->'id') IS DISTINCT FROM 'string' OR jsonb_typeof(p_action->'stepId') IS DISTINCT FROM 'string' OR jsonb_typeof(p_action->'contentRevision') IS DISTINCT FROM 'number' OR coalesce(p_action->>'id','')='' OR coalesce(p_action->>'stepId','')='' OR length(p_action->>'id')>200 OR jsonb_typeof(p_action->'comment') IS DISTINCT FROM 'string' THEN RAISE EXCEPTION 'Invalid signing action shape'; END IF;
+ IF content IS NULL OR content->>'companyId' IS DISTINCT FROM d.company_id::text OR content->>'employmentId' IS DISTINCT FROM d.employment_id::text OR content->>'contentHash' IS DISTINCT FROM d.data->>'contentHash' OR content->>'contentRevision' IS DISTINCT FROM d.data->>'contentRevision' THEN RAISE EXCEPTION 'Signing content changed'; END IF;
  EXECUTE 'SELECT app.probation_signing_route_allowed($1,$2)' INTO route_allowed USING d.subject_id,d.data->'route';
  IF route_allowed IS NOT TRUE THEN RAISE EXCEPTION 'Current signing holders changed'; END IF;
  SELECT person_id INTO v_person FROM app_user WHERE id=app.current_user_id() AND tenant_id=app.current_tenant_id();
  IF v_person IS NULL OR p_action->>'actorPersonId' IS DISTINCT FROM v_person::text THEN RAISE EXCEPTION 'Verified signer person changed'; END IF;
- IF p_action->>'actorId' IS DISTINCT FROM app.current_user_id()::text OR p_action->>'contentHash' IS DISTINCT FROM d.data->>'contentHash' OR p_action->>'contentRevision' IS DISTINCT FROM d.data->>'contentRevision' THEN RAISE EXCEPTION 'Signer or document revision changed'; END IF;
+ IF p_action->>'actorId' IS DISTINCT FROM app.current_user_id()::text OR p_action->>'contentHash' IS DISTINCT FROM d.data->>'contentHash' OR p_action->'contentRevision' IS DISTINCT FROM d.data->'contentRevision' THEN RAISE EXCEPTION 'Signer or document revision changed'; END IF;
  SELECT a INTO prior FROM jsonb_array_elements(d.data->'actions') a WHERE a->>'id'=p_action->>'id';
  IF prior IS NOT NULL THEN
   IF (prior-'at'-'actorName')=(p_action-'at'-'actorName') THEN RETURN d.data; END IF;
@@ -120,9 +120,16 @@ BEGIN
  ELSIF p_action->>'action'='returned' THEN
   IF btrim(coalesce(p_action->>'comment',''))='' OR p_action->'signature' IS DISTINCT FROM 'null'::jsonb THEN RAISE EXCEPTION 'A return reason is required'; END IF;
  ELSIF p_action->>'action'='signed' THEN
-  IF p_action->'signature'->>'consent' IS DISTINCT FROM 'true' OR coalesce(p_action->'signature'->>'method','') NOT IN ('typed','drawn') OR jsonb_typeof(p_action->'signature'->'value') IS DISTINCT FROM 'string' OR length(btrim(coalesce(p_action->'signature'->>'value','')))=0 OR length(p_action->'signature'->>'value')>500000 THEN RAISE EXCEPTION 'A valid signature and consent are required'; END IF;
+  IF p_action->'signature'->'consent' IS DISTINCT FROM 'true'::jsonb OR coalesce(p_action->'signature'->>'method','') NOT IN ('typed','drawn') OR jsonb_typeof(p_action->'signature'->'value') IS DISTINCT FROM 'string' OR length(btrim(coalesce(p_action->'signature'->>'value','')))=0 OR length(p_action->'signature'->>'value')>500000 THEN RAISE EXCEPTION 'A valid signature and consent are required'; END IF;
   IF p_action->'signature'->>'method'='typed' AND (length(p_action->'signature'->>'value')>200 OR p_action->'signature'->>'value' ~ '[[:cntrl:]]') THEN RAISE EXCEPTION 'Invalid typed signature'; END IF;
   IF p_action->'signature'->>'method'='drawn' AND p_action->'signature'->>'value' !~ '^data:image/png;base64,[A-Za-z0-9+/]+={0,2}$' THEN RAISE EXCEPTION 'Invalid drawn signature'; END IF;
+  IF p_action->'signature'->>'method'='drawn' THEN
+   v_png:=decode(split_part(p_action->'signature'->>'value',',',2),'base64');
+   IF octet_length(v_png)<24 OR encode(substring(v_png from 1 for 16),'hex')<>'89504e470d0a1a0a0000000d49484452' THEN RAISE EXCEPTION 'Invalid drawn signature header'; END IF;
+   v_width:=get_byte(v_png,16)::bigint*16777216+get_byte(v_png,17)::bigint*65536+get_byte(v_png,18)::bigint*256+get_byte(v_png,19);
+   v_height:=get_byte(v_png,20)::bigint*16777216+get_byte(v_png,21)::bigint*65536+get_byte(v_png,22)::bigint*256+get_byte(v_png,23);
+   IF v_width NOT BETWEEN 1 AND 2048 OR v_height NOT BETWEEN 1 AND 1024 OR v_width*v_height>2097152 THEN RAISE EXCEPTION 'Invalid drawn signature dimensions'; END IF;
+  END IF;
   IF step->>'kind'='approve' AND d.guardrails->>'independentApprovalFromRole' IS NOT NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'actions') a WHERE a->>'role'=d.guardrails->>'independentApprovalFromRole' AND a->>'action'='signed' AND a->>'actorPersonId'=v_person::text AND a->>'contentRevision'=d.data->>'contentRevision' AND a->>'contentHash'=d.data->>'contentHash') AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'route'->'steps') other_step WHERE other_step->>'kind'='approve' AND other_step->>'required'='true' AND other_step->>'holderPersonId'<>v_person::text) THEN RAISE EXCEPTION 'A distinct approving person is required'; END IF;
  ELSE RAISE EXCEPTION 'Invalid signing action'; END IF;
  SELECT p.full_name INTO v_name FROM app_user u JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id();

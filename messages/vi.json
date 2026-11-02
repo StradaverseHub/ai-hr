@@ -33629,5 +33629,32 @@
       "forbidden": "Bạn không có quyền thay đổi chính sách này.",
       "unavailable": "Không thể truy cập cài đặt mật khẩu. Hãy thử lại."
     }
+  },
+  "workflowModules": {
+    "label": "Mô-đun quy trình",
+    "legacy": "Tiếp nhận & nghỉ việc",
+    "probation": "Thử việc",
+    "contract_staff": "Quản lý hợp đồng"
+  },
+  "workflowEditor": {
+    "required": "Bắt buộc",
+    "close": "Đóng quy trình",
+    "view": "Chế độ xem quy trình",
+    "steps": "Các bước",
+    "history": "Lịch sử chạy",
+    "when": "Khi nào",
+    "onlyIf": "Chỉ khi",
+    "then": "Sau đó"
+  },
+  "documentSigning": {
+    "title": "Chữ ký của bạn",
+    "method": "Phương thức ký",
+    "typed": "Nhập chữ ký",
+    "drawn": "Vẽ chữ ký",
+    "fullName": "Nhập họ và tên của bạn",
+    "canvas": "Vẽ chữ ký của bạn",
+    "clear": "Xóa chữ ký",
+    "consent": "Tôi xác nhận đây là chữ ký của tôi và đồng ý ký tài liệu này.",
+    "submit": "Ký và gửi"
   }
 }
