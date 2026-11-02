@@ -25,8 +25,8 @@ for(const key of Object.keys(env))if(key.startsWith('WORKOS_')||key==='SHARE_PAS
 env.SHARE_PASSWORD='';env.DEV_USER_ID='';
 const workers=Number(process.env.PERF_APP_WORKERS||'1');assert([1,2].includes(workers));
 // Diagnostic-only envelope probes; SQL, policies, application/workload behavior and budgets unchanged.
-const applicationReference='07f07749fc3c9ea74c7769c032812723a4c74961';
-const diagnosticPaths=new Set(['db/client.ts','db/transaction-profile.ts','lib/session.ts','scripts/performance/system-runner.mjs','scripts/performance/transaction-profile-preload.mjs','scripts/performance/transaction-timing-collector.mjs','test/performance-transaction-timing.test.ts','test/performance-transaction-timing-native.test.ts','test/r394-with-tenant-one-round-trip.test.ts']);
+const applicationReference='0c1a49a4cc9524914b57bf1fb3676616ea212c19';
+const diagnosticPaths=new Set(['db/client.ts','db/transaction-profile.ts','lib/session.ts','scripts/performance/system-runner.mjs','scripts/performance/transaction-profile-preload.mjs','scripts/performance/transaction-timing-collector.mjs','test/performance-transaction-timing.test.ts','test/performance-transaction-timing-native.test.ts','test/r394-with-tenant-one-round-trip.test.ts','lib/ai/provider-data-source-manifest.ts','lib/ai/module-agent-source-manifest.ts']);
 const changedPaths=git('diff','--name-only',applicationReference,'HEAD').split('\n').filter(Boolean);
 assert(changedPaths.every(path=>path.startsWith('docs/')||diagnosticPaths.has(path)),'Unexpected non-diagnostic source change');
 
