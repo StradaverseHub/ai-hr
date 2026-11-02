@@ -8,10 +8,22 @@ Group administrators see eligible staff under **Pending activation**. Each perso
 2. Choose the invitation workflow or the manual username/temporary-password workflow if available on this installation.
 3. Review the role and company scope. Employee access is the default; elevated access must be deliberate.
 4. For invitations, choose the email language, check delivery readiness and use the existing pending invitation state before sending another. An invitation retry retains its chosen language.
-5. For manual creation, verify the person's identity and email ownership, supply a compliant temporary password and confirm private delivery. The employee must change it at first login. Do not put credentials in notes, feedback or knowledge-base articles.
+5. For manual creation, verify the person's identity and email ownership, supply a compliant temporary password and confirm private delivery. The employee follows the first-login password-change and verification steps required by the active policy. Do not put credentials in notes, feedback or knowledge-base articles.
 6. If setup remains pending, use its resume action. Do not create a second person/account to work around a partial setup.
 
 Manual enrollment requires the supported identity configuration and a verified group-administrator session. A company-scoped HR grant, demo identity or unsupported provider session does not enable it. Manual account creation does not reset an existing person's credentials.
+
+## Review password policy and a locked account
+
+With a current group-administrator session, open **System Configuration → Security Center → [Password Policy](/admin/security-center/password-policy)**. This page is available for the installation's embedded HR login. A company-scoped administrator or a different identity provider does not gain access through this link.
+
+1. Review all twelve controls: minimum and maximum length; uppercase, lowercase, number and special-character requirements; expiry; password history; failed-login lockout; automatic unlock; forced first-login change; and first-reset verification. Review the additional counts, intervals and time units shown for enabled controls.
+2. Decide the policy for the whole organization before selecting **Save**. It affects this tenant's logins, not just one company or the account you are viewing. Existing legacy requirements remain authoritative until an explicit save; review the entire form rather than assuming the displayed choices are already active.
+3. If validation refuses the change, correct the indicated values. If another administrator has changed the policy, reload and review their current values before deciding what to save. A successful save is audited; navigating away does not undo it.
+
+For a locked account, first verify the person's identity and the reason for the lock. An authorized group administrator can open [Users](/admin/users), select the exact internal-login user in **Unlock account**, and confirm the manual unlock. The action is audited. It clears the failed-login lock; it does not reset the password, change roles or bypass MFA and other access checks. Automatic unlock follows only an explicitly enabled policy and its configured waiting period; viewing guidance never triggers it.
+
+Assistant guidance only explains these controls and their location. It does not read passwords, change policy, reset credentials or unlock an account for you. Use the existing recovery process when a password needs resetting; do not create a replacement login.
 
 ## Create a user without an employee record
 
