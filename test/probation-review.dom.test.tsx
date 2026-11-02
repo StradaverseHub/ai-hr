@@ -1,0 +1,47 @@
+import {beforeEach,describe,expect,it,vi} from 'vitest';
+import {fireEvent,render,screen,within,waitFor} from '@testing-library/react';
+import {NextIntlClientProvider} from 'next-intl';
+import messages from '../messages/en.json';
+import {PartEditor} from '../app/lifecycle/probation/part-editor';
+import {createProbationCase,DEFAULT_PROBATION_CONFIG,probationRoute} from '../lib/probation-model';
+import {DEFAULT_PROBATION_FORM} from '../lib/probation-form';
+import type {ProbationCaseView,ProbationPartView,ProbationPersonnel} from '../packs/probation/service';
+const mocks=vi.hoisted(()=>({save:vi.fn(),act:vi.fn(),refresh:vi.fn(),push:vi.fn()}));
+vi.mock('../app/lifecycle/probation/actions',()=>({saveDraft:mocks.save,performReview:mocks.act}));
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh,push:mocks.push})}));
+const staff='11111111-1111-4111-8111-111111111111',manager='22222222-2222-4222-8222-222222222222';
+function fixture(){
+ let serial=10;const id=()=>`00000000-0000-4000-8000-${String(serial++).padStart(12,'0')}`;
+ const record=createProbationCase({id:id(),employmentId:id(),companyId:id(),sourceKey:'fictional',startOn:'2026-11-02',endOn:'2027-05-01',months:6,grade:'12',explicitNoProbation:false,config:DEFAULT_PROBATION_CONFIG,nextId:id,isWorking:()=>true})!;
+ const facts:ProbationPersonnel={employmentId:record.employmentId,personId:id(),companyId:record.companyId,employeeName:'Fictional Employee',employeeCode:'EX001',companyName:'Fictional Company',startOn:record.startOn,endOn:record.endOn,grade:'12',gradeId:id(),currentGradeId:id(),employmentType:'full_time',probationMonths:6,probationUnit:'month',probationValue:6,explicitNoProbation:false,unknownPeriod:false,confirmationOn:null,resignationOn:null,terminatedOn:null,departmentId:id(),businessUnitId:id(),businessGroupId:id(),businessGroup:'Fictional Group',department:'Fictional Department',businessUnit:'Fictional Unit',title:'Fictional Role',division:null,holders:{employee:staff,lm:manager,hod:null,pbp:null}};
+ const parts:ProbationPartView[]=record.parts.map(p=>({...p,state:'issued',storageRevision:1,contentRevision:1,selfVisible:true,managerVisible:false,canEditEmployee:p.type!==1,canEditManager:false,managerIssues:[],employeeIssues:DEFAULT_PROBATION_FORM.criteria.map(c=>c.id+':unrated'),allowedCommands:[],signing:null,route:probationRoute(p.type,{employee:staff,lm:manager,hod:null,pbp:null,gbs:null})}));
+ const view:ProbationCaseView={record:{...record,facts,parts},parts,form:DEFAULT_PROBATION_FORM,roles:['employee'],files:[],followups:[],outcomes:[],holderNames:{[staff]:'Fictional Employee',[manager]:'Fictional Manager'}};
+ return{view,part:parts.find(p=>p.type===2)!};
+}
+function show(view:ProbationCaseView,part:ProbationPartView){return render(<NextIntlClientProvider locale="en" messages={messages}><PartEditor view={view} part={part} actor={{id:staff,name:'Fictional Employee'}}/></NextIntlClientProvider>);}
+beforeEach(()=>{vi.clearAllMocks();mocks.save.mockResolvedValue({ok:true,result:2});mocks.act.mockResolvedValue({ok:true,result:{revision:2}});});
+describe('probation reviewer interactions',()=>{
+ it('starts unrated, requires evidence for a low rating and preserves private manager drafts',()=>{
+  const{view,part}=fixture();show(view,part);
+  expect(screen.getAllByRole('radio').every(r=>!(r as HTMLInputElement).checked)).toBe(true);
+  const criterion=within(screen.getByRole('heading',{name:'Employee assessment'}).closest('section')!).getByRole('group',{name:/KPI Achievement Progress/});fireEvent.click(within(criterion).getByRole('radio',{name:/1 · Unacceptable/}));
+  expect(within(criterion).getByRole('textbox',{name:/Evidence and examples/})).toBeRequired();
+  expect(screen.getByText("The manager's submitted assessment is not available yet.")).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'Record completed review'})).not.toBeInTheDocument();
+ });
+ it('retains entered ratings and error recovery when the guarded save fails',async()=>{
+  mocks.save.mockResolvedValue({ok:false,detail:'The review changed. Reload before saving.'});const{view,part}=fixture();show(view,part);
+  const criterion=within(screen.getByRole('heading',{name:'Employee assessment'}).closest('section')!).getByRole('group',{name:/KPI Achievement Progress/});fireEvent.click(within(criterion).getByRole('radio',{name:/3 · Meets Expectations/}));fireEvent.click(screen.getByRole('button',{name:'Save draft'}));
+  await screen.findByRole('alert');expect(within(criterion).getByRole('radio',{name:/3 · Meets Expectations/})).toBeChecked();expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();expect(mocks.refresh).not.toHaveBeenCalled();
+ });
+ it('locks submitted self-ratings and saves only the permitted acknowledgement comment contribution',async()=>{
+  const{view,part}=fixture();part.staffSubmittedAt='2026-12-01T01:00:00Z';part.managerSubmittedAt='2026-12-02T01:00:00Z';part.managerVisible=true;part.allowedCommands=['acknowledge','return'];part.state='pending_ack';
+  const hash='a'.repeat(64);part.signing={id:'signing',document:{tenantId:'tenant',companyId:view.record.companyId,subjectId:part.id,subjectType:'probation',contentRevision:1,contentHash:hash,route:part.route,actions:[{id:'manager-signed',stepId:part.route.steps.find(s=>s.role==='lm')!.id,contentRevision:1,contentHash:hash,actorId:manager,actorPersonId:'manager-person',actorName:'Fictional Manager',representedId:manager,role:'lm',at:'2026-12-02T01:00:00Z',action:'signed',comment:'',signature:{method:'typed',value:'Fictional Manager',consent:true}}]}};
+  show(view,part);expect(screen.queryByRole('radio')).not.toBeInTheDocument();fireEvent.change(screen.getByRole('textbox',{name:'Employee comments'}),{target:{value:'The review was discussed; I have noted the feedback.'}});fireEvent.click(screen.getByRole('button',{name:'Save draft'}));
+  await waitFor(()=>expect(mocks.save).toHaveBeenCalled());expect(mocks.save.mock.calls[0][0].patch).toEqual({employeeComments:'The review was discussed; I have noted the feedback.'});
+ });
+ it('does not offer a signature or privileged state change to a read-only viewer',()=>{
+  const{view,part}=fixture();view.roles=['hod'];part.canEditEmployee=false;part.selfVisible=false;part.allowedCommands=[];show(view,part);
+  expect(screen.queryByRole('button',{name:'Save draft'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Sign and submit'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Unlock the selected owner\'s fields'})).not.toBeInTheDocument();
+ });
+});

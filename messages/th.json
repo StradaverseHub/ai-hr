@@ -34006,6 +34006,16 @@
       "override_justification": "Explain why the proposed outcome differs from the score suggestion.",
       "kpis": "Complete the KPI accountabilities, targets and dates.",
       "support": "Complete the planned support."
+    },
+    "scope": {
+      "savedGroup": "Configured business group",
+      "grade": "Grade code · blank for all",
+      "kpiOverrides": "KPI-gate exceptions by scope",
+      "routeOverrides": "Approval routes by scope and outcome",
+      "priority": "More-specific matching rules take priority. For equally specific matches, the last rule wins.",
+      "rule": "Rule {index}",
+      "planMonths": "Probation-plan months · blank for all",
+      "addRule": "Add scoped rule"
     }
   }
 }
