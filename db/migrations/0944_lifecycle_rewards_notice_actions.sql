@@ -1935,7 +1935,7 @@ BEGIN
   plan:=CASE WHEN f->>'confidentiality'='ec'THEN'ec'WHEN s->>'grade'='H'THEN'h'ELSE'standard'END;
   IF NOT(f->>'reviewed')::boolean OR coalesce(s->>'compensationId','')=''OR basic<=0 OR s->>'currency'IS DISTINCT FROM'MYR'OR coalesce(s->>'payMode','')NOT IN('monthly','custom_period')THEN flags:=flags||app.reward_calc_flag('block','OC-03','Verify the employee and their current MYR monthly salary.',entry->'id');END IF;
   IF(s->>'notice')::boolean OR(f->>'erCase')::boolean AND f->>'erDecision'<>'in'OR(f->>'pipCase')::boolean AND f->>'pipDecision'<>'lift'THEN flags:=flags||app.reward_calc_flag('block','OC-04','Resolve employee eligibility before submitting this request.',entry->'id');END IF;
-  IF app.reward_calc_units(r->>'reason')<CASE WHEN coalesce(r->>'promotionGrade','')<>''THEN 30 ELSE 10 END THEN flags:=flags||app.reward_calc_flag('block','OC-05',CASE WHEN coalesce(r->>'promotionGrade','')<>''THEN'Record a promotion business case of at least 30 characters.'ELSE'Record an increment reason of at least 10 characters.'END,entry->'id');END IF;
+  IF app.reward_calc_units(r->>'reason')<(CASE WHEN coalesce(r->>'promotionGrade','')<>''THEN 30 ELSE 10 END) THEN flags:=flags||app.reward_calc_flag('block','OC-05',CASE WHEN coalesce(r->>'promotionGrade','')<>''THEN'Record a promotion business case of at least 30 characters.'ELSE'Record an increment reason of at least 10 characters.'END,entry->'id');END IF;
   merit_bp:=coalesce((r->>'meritBp')::numeric,0);promotion_bp:=CASE WHEN coalesce(r->>'promotionGrade','')<>''THEN coalesce((r->>'promotionBp')::numeric,1000)ELSE 0 END;special_bp:=coalesce((r->>'specialBp')::numeric,0);
   IF coalesce(r->>'promotionGrade','')<>''THEN
    IF app.reward_calc_promotion_jump(r->>'promotionGrade',s->>'grade')IS NOT TRUE THEN flags:=flags||app.reward_calc_flag('block','OC-06','A promotion must advance one to three grades.',entry->'id');END IF;
@@ -1943,7 +1943,7 @@ BEGIN
   END IF;
   merit:=app.reward_calc_increase(basic,merit_bp);promotion:=app.reward_calc_increase(basic,promotion_bp);special:=app.reward_calc_increase(basic,special_bp);delta:=app.reward_calc_integer(merit+promotion+special);
   IF delta=0 THEN flags:=flags||app.reward_calc_flag('block','OC-08','Enter a positive salary increase.',entry->'id');END IF;
-  IF plan<>'ec'AND CASE WHEN coalesce(r->>'promotionGrade','')<>''THEN delta::double precision*10>=basic::double precision*3 ELSE delta::double precision*10>basic::double precision END THEN flags:=flags||app.reward_calc_flag('warning','INC-01','Increase exceeds the individual review threshold.',entry->'id');END IF;
+  IF plan<>'ec'AND(CASE WHEN coalesce(r->>'promotionGrade','')<>''THEN delta::double precision*10>=basic::double precision*3 ELSE delta::double precision*10>basic::double precision END) THEN flags:=flags||app.reward_calc_flag('warning','INC-01','Increase exceeds the individual review threshold.',entry->'id');END IF;
   IF coalesce((r->>'bonusCents')::numeric,0)<>0 OR coalesce((r->>'lumpCents')::numeric,0)<>0 OR r->'multiplierBp'<>'null'::jsonb THEN flags:=flags||app.reward_calc_flag('block','OC-09','Off-cycle reviews support salary changes only.');END IF;
   IF plan='ec'AND exception_reason=''THEN flags:=flags||app.reward_calc_flag('block','OC-10','An EC-plan off-cycle award requires an ad-hoc budget exception.');END IF;
   budget:=budgets->plan;budget:=jsonb_set(budget,'{payrollCents}',to_jsonb(app.reward_calc_integer((budget->>'payrollCents')::numeric+basic)));budget:=jsonb_set(budget,'{used,0}',to_jsonb(app.reward_calc_integer((budget->'used'->>0)::numeric+delta)));budgets:=jsonb_set(budgets,ARRAY[plan],budget);
@@ -2075,7 +2075,7 @@ BEGIN
  FOREACH k IN ARRAY ARRAY['bonusMatrix','ranges','branchFactors','branchRatings']LOOP
   IF jsonb_typeof(p->k)IS DISTINCT FROM'object'THEN RAISE EXCEPTION 'Invalid reward policy map' USING ERRCODE='22023';END IF;
   FOR part IN SELECT key,value FROM jsonb_each(p->k)LOOP
-   IF app.reward_calc_units(part.key)NOT BETWEEN 1 AND CASE k WHEN'branchFactors'THEN 80 WHEN'branchRatings'THEN 100 ELSE 30 END THEN RAISE EXCEPTION 'Invalid reward policy key' USING ERRCODE='22023';END IF;
+   IF app.reward_calc_units(part.key)NOT BETWEEN 1 AND(CASE k WHEN'branchFactors'THEN 80 WHEN'branchRatings'THEN 100 ELSE 30 END) THEN RAISE EXCEPTION 'Invalid reward policy key' USING ERRCODE='22023';END IF;
    IF k='branchRatings'THEN
     IF jsonb_typeof(part.value)IS DISTINCT FROM'string'OR(part.value#>>'{}')<>ALL(ARRAY['UA','BE','ME','AE','OU'])THEN RAISE EXCEPTION 'Invalid reward policy branch rating' USING ERRCODE='22023';END IF;
    ELSIF k='ranges'THEN
@@ -2187,7 +2187,7 @@ BEGIN
    special_bp:=CASE WHEN basic<>0 THEN app.reward_calc_ratio(special,10000,basic,true)ELSE 0 END;new_basic:=app.reward_calc_integer(basic+(row_value->>'meritCents')::numeric+(row_value->>'promotionCents')::numeric+special);
    row_value:=row_value||jsonb_build_object('specialCents',special,'specialBp',special_bp,'newBasicCents',new_basic);rows:=jsonb_set(rows,ARRAY[n::text],row_value);
    IF coalesce(s->>'leftOn','')=''AND r->'specialBp'<>'null'::jsonb AND special<>catch_up+top_up AND plan<>'ec'THEN flags:=flags||app.reward_calc_flag('exception','POOL-05','Special adjustment differs from the calculated amount.',row_value->'id');END IF;
-   IF plan<>'ec'AND CASE WHEN coalesce(r->>'promotionGrade','')<>''THEN(new_basic-basic)::double precision*10>=basic::double precision*3 ELSE(new_basic-basic)::double precision*10>basic::double precision END THEN flags:=flags||app.reward_calc_flag('warning','INC-01','Increase exceeds the individual review threshold.',row_value->'id');END IF;
+   IF plan<>'ec'AND(CASE WHEN coalesce(r->>'promotionGrade','')<>''THEN(new_basic-basic)::double precision*10>=basic::double precision*3 ELSE(new_basic-basic)::double precision*10>basic::double precision END) THEN flags:=flags||app.reward_calc_flag('warning','INC-01','Increase exceeds the individual review threshold.',row_value->'id');END IF;
    IF salary_range IS NOT NULL AND new_basic>(salary_range->>2)::numeric THEN flags:=flags||app.reward_calc_flag('review','RANGE-01','New salary is above the range maximum.',row_value->'id');END IF;
   END LOOP;
  END LOOP;
