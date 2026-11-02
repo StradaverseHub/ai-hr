@@ -1,3 +1,4 @@
+import {pgErrorChain} from '../lib/db-error';
 import {publishWorkforceForDataFixture} from './helpers/workforce-publication-fixture';
 /** Actual shared-site native courses. Publication stays incomplete until its genuine owners close. */
 import {randomUUID} from 'node:crypto';
@@ -54,8 +55,9 @@ it('refuses raw company unticking and site removal while actual employee assignm
  // Scoped HR may read the site while the assigned employee stays hidden. The protected group
  // administrator retains the separate native write course; actual assignment blockers still apply.
  const clipped=await listClockingLocationsForMaintenance(companyHr);expect(clipped.find(row=>row.id===site.id)?.assignedCount).toBe(0);
- await expect(withTenant(admin,tx=>tx.delete(s.clockingLocationCompany).where(and(eq(s.clockingLocationCompany.clockingLocationId,site.id),eq(s.clockingLocationCompany.companyId,b.companyId))))).rejects.toThrow('Clocking site company is in use');
- await expect(withTenant(admin,tx=>tx.delete(s.clockingLocation).where(eq(s.clockingLocation.id,site.id)))).rejects.toThrow('Clocking site is in use');
+ const blocked=async(run:Promise<unknown>,message:string)=>{const error=await run.then(()=>null,error=>error);expect(pgErrorChain(error)).toContainEqual(expect.objectContaining({code:'42501',message}));};
+ await blocked(withTenant(admin,tx=>tx.delete(s.clockingLocationCompany).where(and(eq(s.clockingLocationCompany.clockingLocationId,site.id),eq(s.clockingLocationCompany.companyId,b.companyId)))),'Clocking site company is in use');
+ await blocked(withTenant(admin,tx=>tx.delete(s.clockingLocation).where(eq(s.clockingLocation.id,site.id))),'Clocking site is in use');
  expect(await owner.db.select().from(s.clockingLocationCompany).where(eq(s.clockingLocationCompany.clockingLocationId,site.id))).toHaveLength(1);
 });
 it('rejects forged cross-tenant parents and immutable company-link rewrites without changing native references',async()=>{
