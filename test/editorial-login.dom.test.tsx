@@ -4,19 +4,31 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { InternalAuthForm } from '../app/login/internal-form';
 import { loginStoryAt, loginSwirlPoint, LOGIN_STORY } from '../lib/login-story';
-import en from '../messages/en.json';
-import ms from '../messages/ms.json';
-import zh from '../messages/zh.json';
-import ta from '../messages/ta.json';
-import th from '../messages/th.json';
-import viCopy from '../messages/vi.json';
+import enBase from '../messages/en.json';
+import enEditorial from '../messages/login-editorial/en.json';
+const en = { ...enBase, loginEditorial: enEditorial };
+import msBase from '../messages/ms.json';
+import msEditorial from '../messages/login-editorial/ms.json';
+const ms = { ...msBase, loginEditorial: msEditorial };
+import zhBase from '../messages/zh.json';
+import zhEditorial from '../messages/login-editorial/zh.json';
+const zh = { ...zhBase, loginEditorial: zhEditorial };
+import taBase from '../messages/ta.json';
+import taEditorial from '../messages/login-editorial/ta.json';
+const ta = { ...taBase, loginEditorial: taEditorial };
+import thBase from '../messages/th.json';
+import thEditorial from '../messages/login-editorial/th.json';
+const th = { ...thBase, loginEditorial: thEditorial };
+import viCopyBase from '../messages/vi.json';
+import viCopyEditorial from '../messages/login-editorial/vi.json';
+const viCopy = { ...viCopyBase, loginEditorial: viCopyEditorial };
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 vi.mock('next/image', () => ({ default: ({ unoptimized: _unoptimized, ...props }: Record<string, unknown>) => <img {...props}/> }));
 vi.mock('../app/i18n-actions', () => ({ setLocale: vi.fn() }));
 const fetcher = vi.fn<typeof fetch>();
 function mount(organization = '') {
   vi.stubGlobal('fetch', fetcher);
-  return render(<NextIntlClientProvider locale="en" messages={en}><InternalAuthForm organization={organization} returnTo="/me"/></NextIntlClientProvider>);
+  return render(<NextIntlClientProvider locale="en" messages={enBase}><InternalAuthForm organization={organization} returnTo="/me"/></NextIntlClientProvider>);
 }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); fetcher.mockReset(); });
 describe('Editorial workspace entrance', () => {

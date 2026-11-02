@@ -3,14 +3,16 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { InternalAuthForm } from '../app/login/internal-form';
-import en from '../messages/en.json';
+import enBase from '../messages/en.json';
+import enEditorial from '../messages/login-editorial/en.json';
+const en = { ...enBase, loginEditorial: enEditorial };
 vi.mock('next/image', () => ({ default: (props: Record<string, unknown>) => <img {...props}/> }));
 const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => navigation }));
 const fetcher = vi.fn<typeof fetch>();
 async function view(props: Parameters<typeof InternalAuthForm>[0] = {},locale='en') {
   vi.stubGlobal('fetch', fetcher);
-  const result = render(<NextIntlClientProvider locale={locale} messages={en}><InternalAuthForm organization="alpha" {...props}/></NextIntlClientProvider>);
+  const result = render(<NextIntlClientProvider locale={locale} messages={enBase}><InternalAuthForm organization="alpha" {...props}/></NextIntlClientProvider>);
   if (!props.mode || props.mode === 'login') await userEvent.click(screen.getByRole('button', { name: en.loginEditorial.continueLabel }));
   return result;
 }

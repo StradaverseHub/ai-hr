@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import en from '../messages/en.json';
+import enBase from '../messages/en.json';
+import enEditorial from '../messages/login-editorial/en.json';
+const en = { ...enBase, loginEditorial: enEditorial };
 import { activationLoginHref } from '../lib/internal-auth/login-navigation';
 vi.mock('../lib/internal-auth/config', () => ({ internalSelected: () => true, internalConfig: () => ({ organization: 'installation' }) }));
 vi.mock('../lib/internal-auth/web-session', () => ({ currentInternalIdentity: async () => null }));
@@ -15,7 +17,7 @@ vi.mock('next/image', () => ({ default: (props: Record<string, unknown>) => <img
 import LoginPage from '../app/login/page';
 afterEach(cleanup);
 async function show(organization?: string | string[]) {
-  render(<NextIntlClientProvider locale="en" messages={en}>{await LoginPage({ searchParams: Promise.resolve({ organization }) })}</NextIntlClientProvider>);
+  render(<NextIntlClientProvider locale="en" messages={enBase}>{await LoginPage({ searchParams: Promise.resolve({ organization }) })}</NextIntlClientProvider>);
 }
 describe('activation to login handoff', () => {
   it('prefills the customer organization carried by the activation destination, leaving credentials empty', async () => {

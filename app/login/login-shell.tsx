@@ -4,11 +4,12 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Pause, Play } from 'lucide-react';
 import type { LoginPresentation } from '@/lib/login-presentation';
+import { LoginEditorialMessages } from './editorial-messages';
 import { NoveriStory } from './noveri-story';
 import { LoginLanguage } from './login-language';
 import { aiCentreName } from '@/lib/ai-centre/brand';
 
-export function LoginShell({ children, presentation }: { children: ReactNode; presentation?: LoginPresentation }) {
+function LoginShellContent({ children, presentation }: { children: ReactNode; presentation?: LoginPresentation }) {
   const t = useTranslations('loginPresentation');
   const common = useTranslations('common');
   const editorial = useTranslations('loginEditorial');
@@ -60,4 +61,8 @@ export function LoginShell({ children, presentation }: { children: ReactNode; pr
       </footer>
     </div>
   </main>;
+}
+
+export function LoginShell(props: Parameters<typeof LoginShellContent>[0]) {
+  return <LoginEditorialMessages><LoginShellContent {...props}/></LoginEditorialMessages>;
 }

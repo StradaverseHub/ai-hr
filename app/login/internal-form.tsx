@@ -8,9 +8,10 @@ import { LoginShell } from './login-shell';
 import type { LoginPresentation } from '@/lib/login-presentation';
 import { useTranslations,useLocale } from 'next-intl';
 import { LoginWorkspaceStep } from './workspace-step';
+import { LoginEditorialMessages } from './editorial-messages';
 
 type Reply = { step: string; organization?: string; challenge?: string; secret?: string; qr?: string; account?: string; recoveryCodes?: string[]; error?: string };
-export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation, entraError = false, idleSignedOut = false }: {
+function InternalAuthFields({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation, entraError = false, idleSignedOut = false }: {
   presentation?: LoginPresentation; entraError?:boolean; idleSignedOut?:boolean; organization?: string; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
 }) {
   const t = useTranslations('internalAuth'),locale=useLocale();
@@ -124,4 +125,8 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
       {state.step==='login'&&<form action="/login/entra/start" method="get" className="login-microsoft-form"><input type="hidden" name="organization" value={microsoftOrganization}/><input type="hidden" name="returnTo" value={returnTo}/><button className="login-microsoft" disabled={busy||!microsoftOrganization.trim()}><svg aria-hidden viewBox="0 0 20 20" width={18} height={18}><path fill="#f25022" d="M1 1h8v8H1z"/><path fill="#7fba00" d="M11 1h8v8h-8z"/><path fill="#00a4ef" d="M1 11h8v8H1z"/><path fill="#ffb900" d="M11 11h8v8h-8z"/></svg>{t('microsoft')}</button></form>}
     </section>
   </LoginShell>;
+}
+
+export function InternalAuthForm(props: Parameters<typeof InternalAuthFields>[0]) {
+  return <LoginEditorialMessages><InternalAuthFields {...props}/></LoginEditorialMessages>;
 }
