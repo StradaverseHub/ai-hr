@@ -567,6 +567,9 @@ describe('Formula evidence retains a company independently of its current employ
     expect(await owner.db.select().from(schema.assignment).where(eq(schema.assignment.companyId,target))).toHaveLength(0);
     expect(await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.companyId,target))).toHaveLength(0);
     expect(await owner.db.select().from(schema.payPeriod).where(eq(schema.payPeriod.companyId,target))).toHaveLength(0);
+    // A real calculation needs a reviewed tax selection. Remove this separate fixture reference
+    // only after reset/deletion so the retained Formula row remains the sole historical blocker.
+    if(kind==='evaluation')await owner.db.delete(schema.employmentTaxSelectionMy).where(and(eq(schema.employmentTaxSelectionMy.companyId,target),eq(schema.employmentTaxSelectionMy.employmentId,employee.employmentId)));
     expect(await owner.db.select().from(schema.employmentTaxSelectionMy).where(eq(schema.employmentTaxSelectionMy.companyId,target))).toHaveLength(0);
     const evidence=async()=>kind==='test'
       ? owner.db.select().from(schema.payFormulaTest).where(eq(schema.payFormulaTest.companyId,target))

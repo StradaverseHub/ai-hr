@@ -31,7 +31,7 @@ import { businessUnit, payslipInformationSetting, payrollHistoryEffectiveBatch }
 import { randomUUID } from 'node:crypto';
 import {readPayrollOvertimePatternCashTx, OvertimePayrollError, type OvertimePayrollErrorCode} from './payroll-overtime-pattern';
 import {OvertimeOwnerError} from '../packs/attendance/service';
-import { type SQLWrapper, and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { type SessionContext, type Tx } from '../db/client';
 import { pricesChildReliefFromGrid } from './dependents';
@@ -176,7 +176,7 @@ const filterRunTypeSql = sql`app.payroll_filter_run_type(${payrollBatch.historyI
 /** Optional period narrowing on a 'YYYY-MM' pay-period column (default payroll_batch.pay_period; the
  *  Individual inquiry passes the txn row's own pay_period so unattached rows filter too): year+month →
  *  exact month; year only → that year; month only → that month across years. */
-function periodFilter(year?: number, month?: number, col: SQLWrapper = payrollBatch.payPeriod) {
+function periodFilter(year?: number, month?: number, col: typeof payrollBatch.payPeriod | typeof payrollIndividualTxn.payPeriod | typeof payrollDocumentBatch.payPeriod = payrollBatch.payPeriod) {
   const mm = month != null ? String(month).padStart(2, '0') : null;
   if (year != null && mm) return eq(col, `${year}-${mm}`);
   if (year != null) return like(col, `${year}-%`);
