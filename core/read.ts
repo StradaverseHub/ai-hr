@@ -555,6 +555,19 @@ export function countEmployeesByStatus(
   });
 }
 
+/** Personnel's list, exact pager total and un-narrowed status facets are one read contract. */
+export async function personnelListPage(
+  ctx: SessionContext,
+  page: Parameters<typeof listEmployeesPage>[1],
+  facets: EmployeeListFilters,
+) {
+  const [listing, headcount] = await Promise.all([
+    listEmployeesPage(ctx, page, 'workforce'),
+    countEmployeesByStatus(ctx, facets, 'workforce'),
+  ]);
+  return { ...listing, headcount };
+}
+
 /** Paginated + searchable employee list for the People page. Returns the page rows plus the
  *  total match count (for the pager). Search matches name or email (case-insensitive). The
  *  unpaginated `listEmployees` stays for callers that genuinely need the whole set (transfer
