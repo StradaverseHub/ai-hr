@@ -610,7 +610,12 @@ describe('Formula evidence retains a company independently of its current employ
       const receipt=await getFormulaEvaluation(ctx,evaluationId!);expect(receipt).not.toBeNull();
       expect(receipt).toMatchObject({id:evaluationId,formulaId:'RETAINED_COMPANY',revisionId:saved.revisionId,
         companyId:target,employmentId:employee.employmentId,componentCode:'RETENTION_VALUE',period:'2026-05',amount:'1',
-        payload:{explanations:tested.explanations,reads:expect.any(Array),sources:expect.any(Array)}});
+        payload:{explanations:tested.explanations,reads:expect.any(Array),sources:{
+          catalog:{code:'RETENTION_VALUE',rule:{kind:'formula_builder',formulaId:'RETAINED_COMPANY'}},
+          context:{companyId:target,employmentId:employee.employmentId,period:'2026-05',currentCode:'RETENTION_VALUE'},
+          providerVersion:'native-payroll-sources-1',sourceFingerprint:expect.stringMatching(/^[a-f0-9]{64}$/),
+          sourceEvidence:expect.arrayContaining([{field:'profile.personal_details.nationality',owner:'person-current'}]),
+        }}});
       expect(receipt!.payload.explanations).toContain(privateValue);
       expect(receipt!.contentHash).toMatch(/^[a-f0-9]{64}$/);
       expect(receipt!.payload).toMatchObject({contentHash:receipt!.contentHash});
