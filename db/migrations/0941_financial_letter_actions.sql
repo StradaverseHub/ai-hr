@@ -1730,3 +1730,72 @@ END $$;
 
 --> statement-breakpoint
 CREATE POLICY financial_letter_signature_read ON letter_asset AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(kind<>'signature' OR owner_user_id=app.current_user_id() AND app.letter_function_action('letterSettings.signature','view',company_id));
+
+--> statement-breakpoint
+-- A native role ACL applies to future accounts too. An actor with Department/Grade/etc predicates
+-- cannot create a role-wide administrative reader for unknown future employees in the company.
+CREATE FUNCTION app.financial_letter_native_acl_company_ceiling(p_company uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE rules jsonb;
+BEGIN
+ IF NOT app.principal_snapshot_current() THEN RETURN false;END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id()) THEN RETURN true;END IF;
+ SELECT revision.rules INTO rules FROM public.user_data_permission_assignment a JOIN public.data_permission_profile profile ON profile.id=a.profile_id AND profile.tenant_id=a.tenant_id AND profile.enabled AND profile.retired_at IS NULL
+ JOIN public.data_permission_revision revision ON revision.id=profile.active_revision_id AND revision.profile_id=profile.id AND revision.tenant_id=profile.tenant_id
+ WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id();
+ IF rules IS NULL OR NOT app.data_permission_rules_valid(rules) THEN RETURN false;END IF;
+ IF (rules->>'legacyCompany')::boolean THEN RETURN true;END IF;
+ RETURN NOT EXISTS(SELECT 1 FROM jsonb_array_elements(rules->'predicates') field WHERE field->>'field'<>'company')
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements(rules->'predicates') field CROSS JOIN LATERAL jsonb_array_elements_text(field->'values') selected(value) WHERE field->>'field'='company' AND app.access_scope_covers(selected.value::uuid,p_company,app.current_tenant_id()));
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_native_acl_company_ceiling(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_letter_delegate_cell(p_key text,p_operation text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.letter_function_action(p_key,p_operation,p_company) AND EXISTS(SELECT 1 FROM app.access_function_action action JOIN public.access_capability capability ON capability.id=action.capability_id
+ WHERE action.function_key=p_key AND action.operation=p_operation AND (NOT capability.supported OR app.access_can_delegate(capability.id,p_company)));
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_delegate_cell(text,text,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_letter_native_grant_ceiling() RETURNS trigger
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE value jsonb:=CASE WHEN TG_OP='DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;co uuid:=(value->>'company_id')::uuid;role_name text:=value->>'role';native text:=value->>'capability';granting boolean;recipient uuid;key text;operation text;keys text[];operations text[];
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF value->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Letter native grant source unavailable' USING ERRCODE='42501';END IF;
+ granting:=CASE WHEN TG_OP='DELETE' THEN role_name IN ('hr_admin','super_admin') ELSE (value->>'allowed')::boolean END;
+ IF TG_WHEN='BEFORE' AND granting THEN
+  IF NOT app.letter_current_native_permission(app.current_tenant_id(),app.current_user_id(),co,native) THEN RAISE EXCEPTION 'Letter native authority ceiling' USING ERRCODE='42501';END IF;
+  CASE native
+  WHEN 'read' THEN keys:=ARRAY['letterFields','letterTemplates','letterGenerate','letterApproval','letterRegister','letterReports'];operations:=ARRAY['view'];
+  WHEN 'template' THEN keys:=ARRAY['letterFields','letterTemplates'];operations:=ARRAY['view','add','edit','delete'];
+  WHEN 'generate' THEN keys:=ARRAY['letterGenerate'];operations:=ARRAY['view','add','edit','delete'];
+  WHEN 'approve' THEN keys:=ARRAY['letterApproval'];operations:=ARRAY['view','approve'];
+  WHEN 'issue' THEN keys:=ARRAY['letterRegister'];operations:=ARRAY['view','issue','delete'];
+  WHEN 'report' THEN keys:=ARRAY['letterReports'];operations:=ARRAY['view'];
+  WHEN 'settings' THEN keys:=ARRAY['letterSettings'];operations:=ARRAY['view','add','edit','delete'];
+  ELSE RAISE EXCEPTION 'Unknown native Letter authority' USING ERRCODE='42501';END CASE;
+  FOREACH key IN ARRAY keys LOOP FOREACH operation IN ARRAY operations LOOP
+   IF NOT app.financial_letter_delegate_cell(key,operation,co) THEN RAISE EXCEPTION 'Letter function delegation ceiling' USING ERRCODE='42501';END IF;
+  END LOOP;END LOOP;
+  IF native='template' AND NOT app.financial_letter_delegate_cell('letterTemplates','approve',co) OR native='approve' AND (NOT app.financial_letter_delegate_cell('letterSettings.signature','view',co) OR NOT app.financial_letter_delegate_cell('letterSettings.signature','add',co)) THEN RAISE EXCEPTION 'Letter function delegation ceiling' USING ERRCODE='42501';END IF;
+  IF native IN ('read','generate','issue','report') AND NOT app.financial_letter_native_acl_company_ceiling(co) THEN RAISE EXCEPTION 'Letter future recipient data ceiling' USING ERRCODE='42501';END IF;
+ END IF;
+ -- The role's actual before and after recipients are checked against their retained administrative
+ -- profile; own/assigned-only recipients keep their independent course. No group or override is minted.
+ FOR recipient IN SELECT DISTINCT assignment.app_user_id FROM public.role_assignment assignment JOIN public.app_user account ON account.id=assignment.app_user_id AND account.tenant_id=assignment.tenant_id AND account.archived_at IS NULL
+ WHERE assignment.tenant_id=app.current_tenant_id() AND assignment.role::text=role_name AND app.access_scope_covers(assignment.company_id,co,assignment.tenant_id) LOOP
+  IF NOT app.data_permission_function_target_ceiling(recipient) THEN RAISE EXCEPTION 'Letter recipient data ceiling' USING ERRCODE='42501';END IF;
+ END LOOP;
+ IF TG_WHEN='AFTER' THEN
+  FOR recipient IN SELECT DISTINCT assignment.app_user_id FROM public.role_assignment assignment JOIN public.app_user account ON account.id=assignment.app_user_id AND account.tenant_id=assignment.tenant_id AND account.archived_at IS NULL
+  WHERE assignment.tenant_id=app.current_tenant_id() AND assignment.role::text=role_name AND app.access_scope_covers(assignment.company_id,co,assignment.tenant_id) LOOP
+   PERFORM app.access_refresh_native_defaults(recipient);
+  END LOOP;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_native_grant_ceiling() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_letter_native_grant_before BEFORE INSERT OR UPDATE OR DELETE ON letter_capability_grant FOR EACH ROW EXECUTE FUNCTION app.financial_letter_native_grant_ceiling();
+CREATE TRIGGER financial_letter_native_grant_after AFTER INSERT OR UPDATE OR DELETE ON letter_capability_grant FOR EACH ROW EXECUTE FUNCTION app.financial_letter_native_grant_ceiling();

@@ -5,6 +5,7 @@ import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import type {LetterCapability} from '../lib/letter-workflow';
+import {saveLetterPermission,readLetterPermissions} from '../core/letters';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,userId:string;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -46,4 +47,12 @@ it('current narrowed company claims cannot borrow the stored global native role 
 it('My Letters keeps the signed-in empty-route course and private native hooks remain unavailable to runtime SQL',async()=>{
  const ctx=await context(),[own]=await withTenant(ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.letter_recipient_function_action('view') as allowed`));expect(own.allowed).toBe(true);
  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.financial_function_legacy_allowed(${b.tenantId}::uuid,${userId}::uuid,'function.letterApproval.view',${b.companyId}::uuid)`))).rejects.toThrow();
+});
+
+it('a native Settings-only writer can manage the same configuration course but cannot grant native Issue authority it does not hold',async()=>{
+ await acl('settings');const ctx=await context();
+ await expect(saveLetterPermission(ctx,{companyId:b.companyId,role:'manager',capability:'issue',allowed:true})).rejects.toThrow();
+ await saveLetterPermission(ctx,{companyId:b.companyId,role:'manager',capability:'settings',allowed:true});
+ const grants=await readLetterPermissions(ctx,b.companyId);expect(grants).toContainEqual({role:'manager',capability:'settings',allowed:true});
+ expect(grants.some(grant=>grant.role==='manager'&&grant.capability==='issue')).toBe(false);
 });
