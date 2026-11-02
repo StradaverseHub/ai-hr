@@ -654,3 +654,14 @@ human reviewer/evidence/time metadata remain unchanged. No new human or speciali
 fabricated. Agent source is regenerated last; existing evaluations/promotions are never rebound.
 Actual affected checks, trusted-main full proof, staging arrival and acceptance remain mandatory.
 No current deployment, failure waiver or production installation is authorized by this record.
+
+
+### BOARD public guidance repair binding
+
+The [public page guidance completion](board-nine-repair-source-binding-2026-11.md#public-page-guidance-completion)
+records assessed provider source `31fd5a9e…`, the two public declarations/literal results, unchanged
+purpose/data category and technical reassessment under standing direct human repair/release authority.
+The 26 approved rows receive digest-only substitutions; historical human metadata and both pending
+rows remain unchanged. No fresh human exact-hash review, specialist certification, native action
+approval or old agent evaluation/promotion renewal is claimed. Hosted qualification and actual
+staging acceptance remain required.
