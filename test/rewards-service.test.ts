@@ -22,6 +22,11 @@ import {calculateOffcycle,offcycleRoute} from '../packs/rewards/offcycle';
 import {emptyGovernance,effectiveRewardPolicy,confirmedSeniorAwards,governanceBasis,maySeeSeniorAmounts} from '../packs/rewards/governance-model';
 
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
+
+async function expectPgRefusal(query: Promise<unknown>, code: string, message: string) {
+  await expect(query.then(() => [], pgErrorChain)).resolves.toContainEqual(expect.objectContaining({ code, message }));
+}
+
 /** Independent native oracle reads fixture-owned stored facts; production cannot call it. */
 async function calculationOracle(actor:SessionContext,id:string){
  const [unit]=await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id,id)),entries=await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,id)).orderBy(schema.rewardEntry.id);
@@ -173,7 +178,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const original=await view();await owner.db.update(schema.rewardEntry).set({source:{...original.rows[0].source,grade:'21'}}).where(eq(schema.rewardEntry.id,original.rows[0].id));
     const v = await view();
     await expect(getRewardSeniorMembership(actors.bu!, unitId)).rejects.toThrow(/Group Rewards/);
-    await expect(owner.withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_senior_membership_metadata(${unitId}::uuid)`))).rejects.toThrow('Group Rewards');
+    await expectPgRefusal(owner.withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_senior_membership_metadata(${unitId}::uuid)`)), '42501', 'Group Rewards membership access is required.');
     await expect(previewRewardSeniorMembership(actors.bu!, unitId, v.unit.revision, { employmentIds: [], adoptLegacy: false })).rejects.toThrow(/Group Rewards/);
     const userId = actors.bu!.userId!;
     await setRewardMember(admin, unitId, v.unit.revision, userId, 'gr');
@@ -358,13 +363,17 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)}),expected=await calculationOracle(admin,unitId);
     const snapshot=async()=>({units:await owner.db.select().from(schema.rewardUnit),entries:await owner.db.select().from(schema.rewardEntry),decisions:await owner.db.select().from(schema.rewardDecision),compensation:await owner.db.select().from(schema.compensation),inputs:await owner.db.select().from(schema.payrollInput),events:await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id)}),before=await snapshot();
     const admit=(actor:SessionContext,rev=revision,batchId:string|null=batch.batchId)=>owner.withTenant(actor,tx=>tx.execute<{value:{alreadyPosted:boolean;authorityStamp:string;decisionDigest:string;calculation:{rows:unknown[];flags:unknown[];budgets:typeof expected.budgets};postingAwards:Record<string,unknown>}}>(sql`select app.reward_post_admission(${unitId}::uuid,${rev},${batchId}::uuid)as value`));
-    const [result]=await admit(admin);expect(result.value.alreadyPosted).toBe(false);expect(result.value.authorityStamp).toMatch(/^[a-f0-9]{64}$/);expect(result.value.decisionDigest).toBe(expected.unit.approvedDigest);expect(result.value.calculation.rows).toEqual(expected.rows);expect(result.value.calculation.flags).toEqual(expected.flags);expect(result.value.calculation.budgets.standard).toEqual(expected.budgets.standard);expect(result.value.calculation.budgets.h).toEqual(expected.budgets.h);expect(result.value.postingAwards).toEqual({});expect(await snapshot()).toEqual(before);
+    const [result]=await admit(admin);expect(result.value.alreadyPosted).toBe(false);expect(result.value.authorityStamp).toMatch(/^[a-f0-9]{64}$/);expect(result.value.decisionDigest).toBe(expected.unit.approvedDigest);// The engine spreads its input row. The posting calculator receives business fields, not storage metadata.
+    const expectedRows=expected.rows.map(({createdAt:_created,updatedAt:_updated,tenantId:_tenant,unitId:_unit,employmentId:_employment,enactedCompensationId:_enacted,...row})=>row);
+    expect(result.value.calculation.rows).toEqual(expectedRows);expect(result.value.calculation.flags).toEqual(expected.flags);expect(result.value.calculation.budgets.standard).toEqual(expected.budgets.standard);expect(result.value.calculation.budgets.h).toEqual(expected.budgets.h);expect(result.value.postingAwards).toEqual({});expect(await snapshot()).toEqual(before);
     await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_post_admission(${unitId}::uuid,${revision},${batch.batchId}::uuid)`))).rejects.toThrow();
-    await expect(admit(actors.bu!)).rejects.toThrow('assigned payroll');await expect(admit(admin,revision+1)).rejects.toThrow('another session');await expect(admit(admin,revision,null)).rejects.toThrow('draft payroll batch');
-    await expect(owner.withTenant(admin,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','not-a-valid-agent',true)`);await tx.execute(sql`select app.reward_post_admission(${unitId}::uuid,${revision},${batch.batchId}::uuid)`);})).rejects.toThrow('current human');
+    await expectPgRefusal(admit(actors.bu!), '42501', 'The assigned payroll role is required.');
+    await expectPgRefusal(admit(admin,revision+1), '40001', 'This review changed in another session. Reload before saving.');
+    await expectPgRefusal(admit(admin,revision,null), '42501', 'Select a draft payroll batch for the bonus and lump-sum awards.');
+    await expectPgRefusal(owner.withTenant(admin,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','not-a-valid-agent',true)`);await tx.execute(sql`select app.reward_post_admission(${unitId}::uuid,${revision},${batch.batchId}::uuid)`);}), '42501', 'A current human Rewards principal is required');
     expect(await snapshot()).toEqual(before);
     await postRewardUnit(admin,unitId,revision,batch.batchId);const posted=await snapshot();
-    const [retry]=await admit(admin,revision,null);expect(retry.value).toEqual({alreadyPosted:true,unitId,revision});await expect(admit(actors.bu!,revision,null)).rejects.toThrow('assigned payroll');expect(await snapshot()).toEqual(posted);
+    const [retry]=await admit(admin,revision,null);expect(retry.value).toEqual({alreadyPosted:true,unitId,revision});await expectPgRefusal(admit(actors.bu!,revision,null), '42501', 'The assigned payroll role is required.');expect(await snapshot()).toEqual(posted);
   });
   it('posts exactly once, adds awards to existing payroll and preserves unrelated inputs', async () => {
     const rev = await approve();
@@ -415,9 +424,12 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const firstRevision=await approve();current=await view();expect(current.rows.map(row=>({before:row.source.basicCents,after:row.newBasicCents,bonus:row.bonusCents,lump:row.lumpCents}))).toEqual([{before:500000,after:500000,bonus:0,lump:0}]);
     await owner.withTenant(admin,async tx=>{
       await tx.execute(sql`set constraints app.rewards_post_native_effect immediate`);await tx.execute(sql`select app.reward_post_native(${unitId}::uuid,${firstRevision},null)`);
-      await tx.execute(sql`savepoint actual_next_posting`);let refusal:unknown;
-      try{await tx.execute(sql`select app.reward_post_context_begin(${secondId}::uuid,${secondRevision},null)`);}catch(error){refusal=error;}
-      await tx.execute(sql`rollback to savepoint actual_next_posting`);await tx.execute(sql`release savepoint actual_next_posting`);
+      let refusal:unknown;
+      // postgres.js records the first failed query in its current transaction scope.
+      // Give the intentionally failing probe a driver-owned savepoint scope.
+      try {
+        await tx.transaction(nested => nested.execute(sql`select app.reward_post_context_begin(${secondId}::uuid,${secondRevision},null)`));
+      } catch (error) { refusal=error; }
       expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward posting construction is incomplete'}));
       const diagnostics:Record<string,unknown>[]=[];let link=refusal;for(let depth=0;depth<4&&link&&typeof link==='object';depth++){diagnostics.push(link as Record<string,unknown>);link=(link as {cause?:unknown}).cause;}
       expect(diagnostics).toContainEqual(expect.objectContaining({schema_name:'app',table_name:'reward_post_native_context',constraint_name:'rewards_post_native_effect'}));
@@ -482,7 +494,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(await view()).toEqual(before);expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batch.batchId))).toEqual(inputs);expect(await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id)).toEqual(events);
     await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_post_sources(${unitId}::uuid,${revision},${batch.batchId}::uuid)`))).rejects.toThrow();
     await setCompensation(admin,{employmentId,basicSalary:5500,effectiveFrom:`${year-1}-01-01`});
-    await expect(prepare()).rejects.toThrow('Salary data changed');await expect(postRewardUnit(admin,unitId,revision,batch.batchId)).rejects.toThrow('Salary data changed');expect((await view()).unit.status).toBe('approved');expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batch.batchId))).toEqual(inputs);
+    await expectPgRefusal(prepare(), '42501', 'Salary data changed after the snapshot. Return and refresh the review.');await expect(postRewardUnit(admin,unitId,revision,batch.batchId)).rejects.toThrow('Salary data changed');expect((await view()).unit.status).toBe('approved');expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batch.batchId))).toEqual(inputs);
   });
   it('preserves the original native NaN payroll carry behavior in private source preparation',async()=>{
     const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)});
@@ -496,7 +508,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)});
     await owner.db.execute(sql`update compensation set monthly_allowance='NaN'::numeric where employment_id=${employmentId}::uuid and valid_to is null and superseded_at is null`);
     const before=await view(),salaries=await owner.db.select().from(schema.compensation),events=await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id);
-    await expect(owner.withTenant(admin,async tx=>{const [context]=await tx.execute<{id:string}>(sql`select app.reward_post_context_begin(${unitId}::uuid,${revision},${batch.batchId}::uuid)as id`);await tx.execute(sql`select app.reward_post_salary(${context.id}::uuid,${before.rows[0].id}::uuid)`);})).rejects.toThrow('Monthly allowance must be a number');
+    await expectPgRefusal(owner.withTenant(admin,async tx=>{const [context]=await tx.execute<{id:string}>(sql`select app.reward_post_context_begin(${unitId}::uuid,${revision},${batch.batchId}::uuid)as id`);await tx.execute(sql`select app.reward_post_salary(${context.id}::uuid,${before.rows[0].id}::uuid)`);}), '22003', 'Monthly allowance must be a number — a blank or unparseable amount cannot be stored on a salary record');
     await expect(postRewardUnit(admin,unitId,revision,batch.batchId)).rejects.toThrow('Monthly allowance must be a number');expect(await view()).toEqual(before);expect(await owner.db.select().from(schema.compensation)).toEqual(salaries);expect(await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id)).toEqual(events);
   });
   it('a changed salary rejects posting without writing any award', async () => {

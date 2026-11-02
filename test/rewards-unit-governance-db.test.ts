@@ -1,3 +1,4 @@
+import {pgErrorChain} from '../lib/db-error';
 import {ensureAgentPrincipal,agentContext} from '../core/agent-principal';
 import {resolveEntitlementsTx} from '../core/entitlements';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
@@ -112,9 +113,9 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   await saveRewardSeniorAward(gr,unitId,(await view()).unit.revision,{entryId,newBasicCents:550000,incrementBp:null,bonusCents:123400,approvalReference:'FICTIONAL-EVIDENCE',approvalDate:today,reason:'Fictional independently retained approval evidence',evidence:[{name:'fictional-decision.png',mime:'image/png',content}]});
   const [file]=await owner.db.select({id:schema.rewardSeniorEvidence.id}).from(schema.rewardSeniorEvidence).where(eq(schema.rewardSeniorEvidence.unitId,unitId));
   const expected=await readRewardSeniorEvidence(ctro,unitId,file.id),[bounded]=await owner.withTenant(ctro,tx=>tx.execute<{value:unknown}>(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)as value`));expect(bounded.value).toEqual(expected);expect(expected).toEqual({name:'fictional-decision.png',mime:'image/png',content});
-  await expect(withTenant(ctro,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow();await expect(owner.withTenant(bu,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow('evidence is restricted');
+  await expect(withTenant(ctro,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow();await expect(owner.withTenant(bu,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`)).then(() => [], pgErrorChain)).resolves.toContainEqual(expect.objectContaining({code:'42501',message:'Senior plan evidence is restricted.'}));
   const [employee]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employeeId)),ownUser=await createAppUser(b.tenantId,employee.personId,'employee'),own={...gr,userId:ownUser,personId:employee.personId,roles:['employee'],grants:undefined};
-  await setRewardMember(gr,unitId,(await view()).unit.revision,ownUser,'ctro');await expect(readRewardSeniorEvidence(own,unitId,file.id)).rejects.toThrow('Evidence is not available');await expect(owner.withTenant(own,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow('Evidence is not available');
+  await setRewardMember(gr,unitId,(await view()).unit.revision,ownUser,'ctro');await expect(readRewardSeniorEvidence(own,unitId,file.id)).rejects.toThrow('Evidence is not available');await expect(owner.withTenant(own,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`)).then(() => [], pgErrorChain)).resolves.toContainEqual(expect.objectContaining({code:'42501',message:'Evidence is not available.'}));
   await setRewardMember(gr,unitId,(await view()).unit.revision,ctro.userId!,'ctro',true);await expect(owner.withTenant(ctro,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow();
  });
  it('refuses Senior confirmation after the live grade code changes under the same grade UUID',async()=>{
@@ -216,7 +217,7 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   const [beforePrivateEffects]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batchId));expect(beforePrivateEffects.bonusAmount).toBe('55.00');expect(beforePrivateEffects.rewardProvenance).toEqual([]);expect((await view()).unit.status).toBe('approved');
   const gradeId=(await view()).rows[0].source.gradeId!;
   await updateJobGrade(gr,{id:gradeId,name:'Changed fictional grade',code:'JG12'});
-  await expect(privateSources()).rejects.toThrow('grade changed');
+  await expect(privateSources().then(() => [], pgErrorChain)).resolves.toContainEqual(expect.objectContaining({code:'42501',message:'The Senior employee grade changed after the snapshot. Return and refresh the review.'}));
   await expect(postRewardUnit(postingActor,unitId,revision,batchId)).rejects.toThrow(/grade changed/);
   const [unchanged]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batchId));expect(unchanged.bonusAmount).toBe('55.00');expect(unchanged.rewardProvenance).toEqual([]);
   const compensationBeforeRetry=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,employeeId));expect(compensationBeforeRetry.filter(row=>row.validTo===null&&row.supersededAt===null).map(row=>row.basicSalary)).toEqual(['5000.00']);
