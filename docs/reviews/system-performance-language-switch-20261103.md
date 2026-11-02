@@ -88,9 +88,36 @@ and measured build RSS budget. It does not alter that guard or its ceiling, skip
 TypeScript or change the runtime4-GiB heap, pool10 or PostgreSQL resource profile.
 Baseline **502dba4448640152e5dfdf0171da3dbace98b885** /
 [41509413854](https://github.com/StradaverseHub/ai-hr/actions/runs/41509413854)
-is running first. Candidate harness48f90 has exactly329c application code. Run
-candidate timing only after usable baseline preparation; retain each original
-failure/source rather than relabel or blindly repeat the passing focused compiler.
+was cancelled unfinished after review found the diagnostic used people.adminTitle
+instead of the page's actual people.list.adminTitle. This could have admitted an
+untranslated heading; no speed or heading correctness evidence is adopted from it.
+Artifact /private/tmp/aihr-language-baseline-502d-cancelled-attempt1 is retained.
+
+Harness-only **b9bbb53551da26ba9f53667709a6009c5538d069** fixes that namespace and
+refuses empty/nonstring expected headings independently for every locale. Its baseline
+ce4f18cae /41510160121 and candidate41511154455 were cancelled unfinished after a
+further review identified the initial welcome tour for freshly provisioned users.
+The existing whole-system browser visit dismisses this through the real Skip button;
+the first language-only derivative had omitted that interaction. No browser/timing
+acceptance is adopted. The baseline's migrations/catalogs/fixture finish successfully;
+its production build is interrupted. Candidate fixture preparation is interrupted.
+Retained artifacts: /private/tmp/aihr-language-ce4f-cancelled-attempt1 and
+/private/tmp/aihr-language-b9bb-cancelled-attempt1.
+
+Harness-only **424c37e3d5605c1bbefbf35774d8f1a74fee37eb** adds the existing real Skip
+interaction before measurements, independent actor identity/nonempty Personnel-row
+checks, each translated-screen screenshot and a failure screenshot. It does not set
+an onboarding flag directly, alter auth or suppress application errors. Timing starts
+after that normal first-login setup.
+
+Corrected baseline **e494a38acc23e67d2974000d439436a8afd8479e** /
+[41511950334](https://github.com/StradaverseHub/ai-hr/actions/runs/41511950334) and
+candidate **424c37e3d5605c1bbefbf35774d8f1a74fee37eb** /
+[41511960054](https://github.com/StradaverseHub/ai-hr/actions/runs/41511960054)
+are queued/running on standard runners. Their harness bytes and resource budgets are
+identical; only the two application files in329c differ. Neither uses a paid/larger
+runner. The passing focused compiler is retained on329c; actual build/browser
+outcomes remain pending.
 
 No language-speed percentage, completed browser acceptance, deployment, staging slot,
 approval binding refresh or production-equivalent infrastructure is claimed.

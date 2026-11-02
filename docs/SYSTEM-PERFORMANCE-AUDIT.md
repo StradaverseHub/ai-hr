@@ -24,7 +24,11 @@ same-language rewrites, prevents duplicate submissions and indicates pending wor
 **19 affected checks and whole compiler pass**. Authenticated six-language browser
 timing remains unverified: strict migration/fixture setup now passes, but baseline
 41506755351 fails at the build compiler’s6144-MiB heap. The existing guarded8192-MiB
-build allowance and RSS measurement are applied to baseline **41509413854**, now running.
+build allowance and RSS measurement are applied. Baseline41509413854 was cancelled
+after review caught a wrong diagnostic heading namespace; corrected nonempty actual
+translated-heading diagnostic pair41510160121/41511154455 was cancelled unfinished
+after catching the omitted first-login tour dismissal. The corrected exact-UI pair
+**41511950334/41511960054** is queued/running on identical standard-runner profiles.
 The application runtime stays4GiB/pool10. No timing gain is inferred from unit checks.
 See [language review](reviews/system-performance-language-switch-20261103.md).
 
