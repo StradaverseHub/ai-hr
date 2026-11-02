@@ -7,7 +7,7 @@
  * the production Assistant (outside the provider privacy closure until the ADR-0169 §5.1 review passes). */
 import type {SessionContext} from '../../db/client';
 import {isAdmin} from '../../lib/authz-model';
-import {payrollReadiness,type ReadinessCheckKey,type ReadinessStatus} from '../payroll-readiness';
+import {payrollReadiness,type ReadinessCheckKey,type ReadinessStatus} from '../../packs/payroll/service';
 import {recordReadiness,type ReadinessGapId} from '../record-readiness';
 import {moduleReadiness,type ModuleReadiness} from './module-readiness';
 
