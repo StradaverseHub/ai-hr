@@ -1,3 +1,4 @@
+import {assertModuleFunctionTx,ModuleActionError} from './module-action-access';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import { tenantMutation } from '../db/tenant-mutation';
 /**
@@ -84,27 +85,38 @@ export type GradeGroupRow = {
 };
 
 export async function listGradeGroups(ctx: SessionContext): Promise<GradeGroupRow[]> {
+  return withTenant(ctx,listGradeGroupsTx);
+}
+
+async function listGradeGroupsTx(tx:Tx):Promise<GradeGroupRow[]> {
   // Read-only — no events (CLAUDE.md skip rule).
-  return withTenant(ctx, async (tx) => {
-    const groups = await tx
-      .select({ id: gradeGroup.id, name: gradeGroup.name, archivedAt: gradeGroup.archivedAt })
-      .from(gradeGroup)
-      .orderBy(asc(gradeGroup.name));
-    const members = await tx
-      .select({ gradeGroupId: gradeGroupMember.gradeGroupId, gradeId: gradeGroupMember.gradeId })
-      .from(gradeGroupMember);
-    const byGroup = new Map<string, string[]>();
-    for (const m of members) {
-      const arr = byGroup.get(m.gradeGroupId);
-      if (arr) arr.push(m.gradeId);
-      else byGroup.set(m.gradeGroupId, [m.gradeId]);
-    }
-    return groups.map((g) => ({
-      id: g.id,
-      name: g.name,
-      archived: g.archivedAt != null,
-      gradeIds: byGroup.get(g.id) ?? [],
-    }));
+  const groups = await tx
+    .select({ id: gradeGroup.id, name: gradeGroup.name, archivedAt: gradeGroup.archivedAt })
+    .from(gradeGroup)
+    .orderBy(asc(gradeGroup.name));
+  const members = await tx
+    .select({ gradeGroupId: gradeGroupMember.gradeGroupId, gradeId: gradeGroupMember.gradeId })
+    .from(gradeGroupMember);
+  const byGroup = new Map<string, string[]>();
+  for (const m of members) {
+    const arr = byGroup.get(m.gradeGroupId);
+    if (arr) arr.push(m.gradeId);
+    else byGroup.set(m.gradeGroupId, [m.gradeId]);
+  }
+  return groups.map((g) => ({
+    id: g.id,
+    name: g.name,
+    archived: g.archivedAt != null,
+    gradeIds: byGroup.get(g.id) ?? [],
+  }));
+}
+
+/** Maintenance projection; routing and entitlement metadata retain their independent read course. */
+export async function listGradeGroupsForMaintenance(ctx:SessionContext):Promise<GradeGroupRow[]> {
+  return withTenant(ctx,async tx=>{
+    const [result]=await tx.execute<{allowed:boolean}>(sql`select app.module_function_allowed('leaveConfig.gradeGroups','view',NULL) as allowed`);
+    if(!result?.allowed)throw new ModuleActionError();
+    return listGradeGroupsTx(tx);
   });
 }
 
@@ -117,7 +129,7 @@ export async function createGradeGroup(
   const name = cleanName(p.name, 'Grade group name');
   const gradeIds = [...new Set((p.gradeIds ?? []).filter(Boolean))];
   return tenantMutation(ctx, existingTx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertModuleFunctionTx(tx,'leaveConfig.gradeGroups','add');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(gradeGroup)
@@ -151,7 +163,7 @@ export async function updateGradeGroup(
   const name = cleanName(p.name, 'Grade group name');
   const gradeIds = p.gradeIds === undefined ? undefined : [...new Set(p.gradeIds.filter(Boolean))];
   return tenantMutation(ctx, existingTx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertModuleFunctionTx(tx,'leaveConfig.gradeGroups','edit');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // ae5b84d5: capture the BEFORE membership inside this tx — the action fires the cohort recalc over the
     // UNION of before/after grade ids, so both a grade that LEFT the group and one that JOINED are trued up
@@ -186,7 +198,7 @@ export async function updateGradeGroup(
 export async function deleteGradeGroup(ctx: SessionContext, p: { id: string }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertModuleFunctionTx(tx,'leaveConfig.gradeGroups','delete');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // 6e9a126e RELEASE THREE — THIS GUARD WAS REPOINTED, NOT DELETED, AND THAT IS THE WHOLE POINT.
     //
