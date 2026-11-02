@@ -1,6 +1,11 @@
 name: mobile-android-backup-review
 run-name: Android backup artifact review · c3b72a116
 on:
+  push:
+    branches: [codex/mobile-android-review-controller-20261102]
+    paths:
+      - .github/workflows/mobile-android-backup-review.yml
+      - .github/ci/native-android-backup-review.sh
   workflow_dispatch:
 permissions:
   contents: read
