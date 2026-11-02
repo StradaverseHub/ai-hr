@@ -143,8 +143,10 @@ export function ListRow({ label, value, onPress, accessibilityLabel }: { label: 
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? (value ? `${label}, ${value}` : label)} onPress={onPress}
       style={({ pressed }) => [styles.listRow, { borderColor: palette.border }, pressed && { opacity: 0.6 }]}>
-      <Text style={{ color: palette.text, fontSize: 16, flex: 1 }}>{label}</Text>
-      {value ? <Text style={{ color: palette.muted, fontSize: 15, flexShrink: 1, textAlign: 'right', maxWidth: '48%', fontVariant: ['tabular-nums'] }}>{value}</Text> : null}
+      <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 12, rowGap: 4 }}>
+        <Text style={{ color: palette.text, fontSize: 16, flexGrow: 1, flexShrink: 0, flexBasis: 'auto', maxWidth: '100%' }}>{label}</Text>
+        {value ? <Text style={{ color: palette.muted, fontSize: 15, flexGrow: 1, flexShrink: 0, flexBasis: 'auto', textAlign: 'right', maxWidth: '100%', fontVariant: ['tabular-nums'] }}>{value}</Text> : null}
+      </View>
       <Text style={{ color: palette.muted, fontSize: 20 }}>›</Text>
     </Pressable>
   );
