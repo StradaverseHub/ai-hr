@@ -1825,6 +1825,11 @@ async function decide(
     await lockTp1YearTx(tx,ctx,personId,current.assessmentYear);
     const [live]=await tx.select().from(tp1Relief).where(and(eq(tp1Relief.id,current.id),eq(tp1Relief.personId,personId))).limit(1);
     if(!live || tp1Revision(live)!==tp1Revision(current))throw new Tp1ChangedError();
+    // Submission does not reserve annual relief. Another month may have been approved
+    // since this row was submitted, so admission belongs inside the person/year lock.
+    if (status === 'approved' && isTp1Categories2026(live.categories)) {
+      assertWithinRemaining(live.categories, await accumulatedInTx(tx, personId, live.assessmentYear, live.deductionMonth));
+    }
     await tx
       .update(tp1Relief)
       .set({ status, ...stamps })
