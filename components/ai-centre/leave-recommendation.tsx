@@ -10,7 +10,9 @@ import type { LeaveRecommendationView } from '@/app/assistant/centre/recommendat
 export function LeaveRecommendationLink({ leaveRequestId }: { leaveRequestId: string }) {
   const t = useTranslations('aiCentre.recommendation');
   return (
-    <Link href={`/assistant?view=inbox&recommend=${leaveRequestId}#recommendation-${leaveRequestId}`} prefetch={false} data-recommendation-loader
+    // No fragment and no scroll: the panel opens in place under its row (staging acceptance, 3 November 2026: the
+    // fragment scrolled the page and carried the tab row out of view). Focus moves to it on arrival (FocusOnMount).
+    <Link href={`/assistant?view=inbox&recommend=${leaveRequestId}`} scroll={false} prefetch={false} data-recommendation-loader
       className="ml-12 inline-flex min-h-9 items-center gap-1.5 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <Sparkles aria-hidden className="size-3.5" />{t('show')}
     </Link>
@@ -21,7 +23,7 @@ export function LeaveRecommendationLink({ leaveRequestId }: { leaveRequestId: st
 export function RecommendationPanel({ view, id }: { view: LeaveRecommendationView; id?: string }) {
   const t = useTranslations('aiCentre.recommendation');
   return (
-    <section id={id} role="status" data-recommendation={view.kind === 'recommendation' ? view.verdict : 'unavailable'}
+    <section id={id} tabIndex={id ? -1 : undefined} role="status" data-recommendation={view.kind === 'recommendation' ? view.verdict : 'unavailable'}
       className="ml-12 mt-1 rounded-lg border border-border bg-muted/40 p-3 text-xs">
       {view.kind === 'unavailable' ? <p className="text-muted-foreground">{t(`unavailable.${view.reason}`)}</p> : <>
         <p className="flex items-center gap-1.5 text-sm font-medium">

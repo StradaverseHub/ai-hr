@@ -15,6 +15,9 @@ import { ProposalCard } from '@/components/ai-centre/proposal-card';
 import { LeaveRecommendationLink, RecommendationPanel } from '@/components/ai-centre/leave-recommendation';
 import { digestPreview, latestDailyDigest } from '@/core/digest/daily-digest';
 import { readLeaveRecommendation } from './recommendation';
+import { workerRunGate } from '@/core/agent-registry/controls';
+import { RECOMMENDER_WORKER } from '@/core/recommenders/leave-decision';
+import { FocusOnMount } from '@/components/ai-centre/focus-on-mount';
 
 type Finding = { key: 'exceptions' | 'proposals' | 'readiness'; count: number; blocking?: number; href: string };
 
@@ -60,8 +63,12 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
     admin ? settle(() => recordReadiness(session, { peopleLimit: 0 })) : null,
   ]);
   const failed = [tasks, exceptions, proposals, readiness].some(result => result && !result.ok);
+  // The recommendation is offered only while its worker may run, read through the same gate the recommender
+  // checks (staging acceptance, 3 November 2026: the link was offered and then said it was switched off).
+  const recommender = tasks.ok && tasks.value.some(task => task.kind === 'leave')
+    ? await workerRunGate(session, RECOMMENDER_WORKER).then(gate => gate.run).catch(() => false) : false;
   // The one recommendation the approver asked to open, if it is a leave request in their own queue.
-  const opened = tasks.ok && recommend && tasks.value.some(task => task.kind === 'leave' && task.id === recommend)
+  const opened = recommender && tasks.ok && recommend && tasks.value.some(task => task.kind === 'leave' && task.id === recommend)
     ? { id: recommend, view: await readLeaveRecommendation(session, recommend) } : null;
 
   const decisions: PendingTaskItem[] = tasks.ok ? tasks.value : [];
@@ -140,7 +147,9 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
                   <ProposalCard tone="decide" icon={task.kind === 'noticeAcknowledgement' ? <ListChecks /> : <CalendarCheck />} title={taskTitle(task)}
                     meta={[t('inbox.items.fromApprovals'), f.dateTime(new Date(task.createdAt), { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' })]}
                     href={task.linkPath} cta={t('inbox.items.review')} awaitingLabel={t('card.awaiting')} prepared={approvalPrepared} />
-                  {task.kind === 'leave' && (opened?.id === task.id ? <RecommendationPanel id={`recommendation-${task.id}`} view={opened.view} /> : <LeaveRecommendationLink leaveRequestId={task.id} />)}
+                  {task.kind === 'leave' && (opened?.id === task.id
+                    ? <><RecommendationPanel id={`recommendation-${task.id}`} view={opened.view} /><FocusOnMount targetId={`recommendation-${task.id}`} /></>
+                    : recommender ? <LeaveRecommendationLink leaveRequestId={task.id} /> : null)}
                 </li>
               ))}</ul>
             </section>

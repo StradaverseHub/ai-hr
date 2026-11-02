@@ -59,6 +59,8 @@ vi.mock('../../core/digest/daily-digest', () => ({
   latestDailyDigest: async () => null,
 }));
 vi.mock('../../app/assistant/centre/recommendation', () => ({ readLeaveRecommendation: vi.fn() }));
+// The recommender's gate is open in this matrix, so each approver's card offers the recommendation as in production.
+vi.mock('../../core/agent-registry/controls', async original => ({ ...(await original<typeof import('../../core/agent-registry/controls')>()), workerRunGate: async () => ({ run: true, reasons: [] }) }));
 
 import { AiCentreTabs } from '../../components/ai-centre/centre-tabs';
 import { AiCentreInbox } from '../../app/assistant/centre/inbox';

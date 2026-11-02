@@ -15,7 +15,9 @@ import { aiReviewDomHtml, captureAiReviewScreenshots } from './helpers/ai-review
 import { enWithAiCentre } from './helpers/ai-centre-messages';
 import { AI_FEATURES } from '../lib/ai/features';
 
-const state = vi.hoisted(() => ({ admin: false, group: false, tasks: [] as unknown[], recommendation: null as unknown }));
+const state = vi.hoisted(() => ({ admin: false, group: false, tasks: [] as unknown[], recommendation: null as unknown, recommender: true }));
+// The recommender's own gate, as the Inbox reads it; the rest of the registry stays real.
+vi.mock('../core/agent-registry/controls', async original => ({ ...(await original<typeof import('../core/agent-registry/controls')>()), workerRunGate: async () => ({ run: state.recommender, reasons: state.recommender ? [] : ['switched_off'] }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: 'en', messages: enWithAiCentre as never, namespace }),
@@ -105,7 +107,8 @@ describe('AI centre step 5, rendered per role', () => {
     expect(tile).toHaveAttribute('href', '#inbox-decide');
     expect(tile).toHaveTextContent(enWithAiCentre.aiCentre.digest.approvals);
     expect(tile.querySelector('.text-lg')).toHaveTextContent('1');
-    expect(closed.container.querySelector('[data-recommendation-loader]')).toHaveAttribute('href', `/assistant?view=inbox&recommend=${LEAVE_ID}#recommendation-${LEAVE_ID}`);
+    // In place: no fragment to scroll to, and the link keeps the page where it is (staging acceptance, 3 November 2026).
+    expect(closed.container.querySelector('[data-recommendation-loader]')).toHaveAttribute('href', `/assistant?view=inbox&recommend=${LEAVE_ID}`);
     expect(closed.container.querySelector('[data-recommendation]')).toBeNull();
     closed.unmount();
     const view = wrap(<div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="inbox" isAdmin={false} />{await AiCentreInbox({ session, recommend: LEAVE_ID })}</div>);
@@ -118,7 +121,25 @@ describe('AI centre step 5, rendered per role', () => {
     expect(within(panel).getAllByText(/version/)).toHaveLength(1);
     expect(panel.textContent).not.toMatch(/reject/i);
     expect(view.container.querySelectorAll('[data-proposal-card] button, [data-proposal-card] form')).toHaveLength(0);
+    // The panel opens under its own row and takes focus, so a screen reader lands on it without the page moving.
+    expect(panel.closest('li')?.querySelector('[data-proposal-card]')).not.toBeNull();
+    expect(panel).toHaveAttribute('tabindex', '-1');await new Promise(resolve => setTimeout(resolve, 0));expect(document.activeElement).toBe(panel);
+    expect(view.container.querySelector('[data-ai-centre-tabs] a[aria-current="page"]')).toHaveAttribute('href', '/assistant?view=inbox');
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-step5-approver-inbox', FICTION, 'atelier');
+  }, 120000);
+
+  it('recommender switched off: no recommendation is offered, and a hand-made recommend link opens nothing', async () => {
+    Object.assign(state, { admin: false, group: false, recommender: false, tasks: [{ id: LEAVE_ID, kind: 'leave', subjectName: 'Fictional Person C', createdAt: '2026-11-01T02:00:00.000Z', linkPath: `/approvals?kind=leave&id=${LEAVE_ID}` }],
+      recommendation: { kind: 'unavailable', reason: 'switched_off' } });
+    try {
+      const closed = wrap(await AiCentreInbox({ session }));
+      expect(closed.container.querySelector('[data-proposal-card]')).not.toBeNull();
+      expect(closed.container.querySelector('[data-recommendation-loader]')).toBeNull();
+      closed.unmount();
+      const opened = wrap(await AiCentreInbox({ session, recommend: LEAVE_ID }));
+      expect(opened.container.querySelector('[data-recommendation]')).toBeNull();
+      expect(opened.container.textContent).not.toContain(enWithAiCentre.aiCentre.recommendation.unavailable.switched_off);
+    } finally { state.recommender = true; }
   }, 120000);
 
   it('company HR administrator: Workers without the registry or a worker switch', async () => {
