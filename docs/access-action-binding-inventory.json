@@ -507,6 +507,7 @@
             "app.employment_status_on",
             "app.is_company_descendant",
             "app.is_self_person",
+            "app.leave_own_request_view_allowed",
             "app.lock_attendance_policy_raw_context",
             "app.login_blocked",
             "app.principal_snapshot_current",
@@ -609,6 +610,7 @@
         "app.employment_status_on",
         "app.is_company_descendant",
         "app.is_self_person",
+        "app.leave_own_request_view_allowed",
         "app.lock_attendance_policy_raw_context",
         "app.login_blocked",
         "app.principal_snapshot_current",
@@ -5545,7 +5547,9 @@
             "app.current_user_id",
             "app.is_company_descendant",
             "app.is_self_person",
+            "app.leave_employee_records_subject_allowed",
             "app.leave_own_application_allowed",
+            "app.leave_own_request_view_allowed",
             "app.login_blocked",
             "app.own_leave_request_approvals",
             "app.own_leave_request_cancellations",
@@ -5591,6 +5595,7 @@
             "app.employment_status_on",
             "app.is_company_descendant",
             "app.is_self_person",
+            "app.leave_employee_records_subject_allowed",
             "app.leave_on_behalf_application_allowed",
             "app.leave_on_behalf_native",
             "app.leave_own_application_allowed",
@@ -5645,9 +5650,11 @@
         "app.is_admin_for",
         "app.is_company_descendant",
         "app.is_self_person",
+        "app.leave_employee_records_subject_allowed",
         "app.leave_on_behalf_application_allowed",
         "app.leave_on_behalf_native",
         "app.leave_own_application_allowed",
+        "app.leave_own_request_view_allowed",
         "app.login_blocked",
         "app.own_earned_credit_actors",
         "app.own_leave_request_approvals",
@@ -6248,6 +6255,8 @@
             "app.employment_confirmation_date",
             "app.employment_status_on",
             "app.is_admin_for",
+            "app.leave_employee_records_company_allowed",
+            "app.leave_employee_records_subject_allowed",
             "app.login_blocked",
             "app.principal_snapshot_current",
             "app/leave/employee-balances/page.tsx:scopedAdmin",
@@ -6286,6 +6295,8 @@
         "app.employment_confirmation_date",
         "app.employment_status_on",
         "app.is_admin_for",
+        "app.leave_employee_records_company_allowed",
+        "app.leave_employee_records_subject_allowed",
         "app.login_blocked",
         "app.principal_snapshot_current",
         "app/leave/employee-balances/page.tsx:scopedAdmin",
@@ -6332,6 +6343,10 @@
             "app.current_user_id",
             "app.is_admin_for",
             "app.is_company_descendant",
+            "app.leave_employee_record_cancel_allowed",
+            "app.leave_employee_records_company_allowed",
+            "app.leave_employee_records_subject_allowed",
+            "app.leave_own_application_allowed",
             "app.login_blocked",
             "app.principal_snapshot_current",
             "app.proven_company_date_points",
@@ -6369,6 +6384,10 @@
         "app.current_user_id",
         "app.is_admin_for",
         "app.is_company_descendant",
+        "app.leave_employee_record_cancel_allowed",
+        "app.leave_employee_records_company_allowed",
+        "app.leave_employee_records_subject_allowed",
+        "app.leave_own_application_allowed",
         "app.login_blocked",
         "app.principal_snapshot_current",
         "app.proven_company_date_points",
@@ -6414,6 +6433,7 @@
             "app.current_user_id",
             "app.is_company_descendant",
             "app.is_self_person",
+            "app.leave_employee_record_cancel_allowed",
             "app.leave_own_application_allowed",
             "app.login_blocked",
             "app.own_reporting_managers",
@@ -6449,6 +6469,7 @@
         "app.current_user_id",
         "app.is_company_descendant",
         "app.is_self_person",
+        "app.leave_employee_record_cancel_allowed",
         "app.leave_own_application_allowed",
         "app.login_blocked",
         "app.own_reporting_managers",
@@ -8089,6 +8110,8 @@
             "app.is_company_descendant",
             "app.is_self_person",
             "app.leave_calendar_presence",
+            "app.leave_employee_records_subject_allowed",
+            "app.leave_own_application_allowed",
             "app.login_blocked",
             "app.my_team_authorized_subject_ids",
             "app.my_team_has_role_for",
@@ -8204,6 +8227,8 @@
         "app.is_company_descendant",
         "app.is_self_person",
         "app.leave_calendar_presence",
+        "app.leave_employee_records_subject_allowed",
+        "app.leave_own_application_allowed",
         "app.login_blocked",
         "app.my_team_authorized_subject_ids",
         "app.my_team_has_role_for",
@@ -34938,6 +34963,8 @@
         "app.is_company_descendant",
         "app.is_group_admin",
         "app.leave_calendar_presence",
+        "app.leave_employee_records_subject_allowed",
+        "app.leave_own_application_allowed",
         "app.login_blocked",
         "app.onehr_admin",
         "app.onehr_cycle_admin",
@@ -36940,6 +36967,7 @@
         "app.employment_status_on",
         "app.is_company_descendant",
         "app.is_self_person",
+        "app.leave_own_request_view_allowed",
         "app.lock_attendance_policy_raw_context",
         "app.login_blocked",
         "app.principal_snapshot_current",
@@ -44790,7 +44818,7 @@
     {
       "path": "app/leave/actions.ts",
       "entry": "previewLeaveDeductionAction",
-      "line": 58,
+      "line": 57,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -44826,7 +44854,7 @@
     {
       "path": "app/leave/actions.ts",
       "entry": "leaveApplySummaryAction",
-      "line": 98,
+      "line": 97,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -44853,7 +44881,7 @@
     {
       "path": "app/leave/actions.ts",
       "entry": "requestLeaveAction",
-      "line": 126,
+      "line": 125,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -44896,6 +44924,7 @@
         "leaveSharedGroupMember",
         "leaveType",
         "new Set(grants.map(g=>g.role))",
+        "p.document.content",
         "replacementHoliday",
         "reportingLine",
         "rosterAssignment",
@@ -44909,7 +44938,7 @@
     {
       "path": "app/leave/actions.ts",
       "entry": "requestLeaveCancellationAction",
-      "line": 307,
+      "line": 298,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -44954,7 +44983,7 @@
     {
       "path": "app/leave/actions.ts",
       "entry": "adminCancelLeaveAction",
-      "line": 336,
+      "line": 327,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -44962,6 +44991,7 @@
         "app.employment_confirmation_date",
         "app.employment_status_on",
         "app.is_self_person",
+        "app.leave_employee_record_cancel_allowed",
         "app.leave_payroll_coverage",
         "app.login_blocked",
         "app.marriage_leave_revert_single",
@@ -44990,7 +45020,7 @@
     {
       "path": "app/leave/actions.ts",
       "entry": "editLeaveAction",
-      "line": 373,
+      "line": 364,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -45035,20 +45065,19 @@
     {
       "path": "app/leave/actions.ts",
       "entry": "cancelOwnLeaveAction",
-      "line": 403,
+      "line": 394,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
         "app.employment_confirmation_date",
         "app.employment_status_on",
-        "app.leave_own_application_allowed"
+        "app.leave_own_application_allowed",
+        "app.leave_own_withdraw"
       ],
       "tables": [
-        "domainEvent",
         "employment",
         "entitlementEligibilityRule",
         "entitlementTemplate",
-        "leaveLedger",
         "leaveRequest",
         "leaveType"
       ],
@@ -45060,7 +45089,7 @@
     {
       "path": "app/leave/actions.ts",
       "entry": "leaveCreditDayKindAction",
-      "line": 433,
+      "line": 424,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -45081,7 +45110,7 @@
     {
       "path": "app/leave/actions.ts",
       "entry": "leaveCreditExtendedDayAction",
-      "line": 456,
+      "line": 447,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -45104,7 +45133,7 @@
     {
       "path": "app/leave/actions.ts",
       "entry": "submitReplacementLeaveRequestAction",
-      "line": 482,
+      "line": 473,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -45134,7 +45163,7 @@
     {
       "path": "app/leave/actions.ts",
       "entry": "decideReplacementLeaveRequestAction",
-      "line": 564,
+      "line": 555,
       "surface": "server-action",
       "owners": [
         "app.can_decide_via_delegation",
@@ -45433,6 +45462,8 @@
         "app.employment_confirmation_date",
         "app.employment_status_on",
         "app.is_admin_for",
+        "app.leave_employee_records_company_allowed",
+        "app.leave_employee_records_subject_allowed",
         "app.login_blocked",
         "app.principal_snapshot_current",
         "app/leave/employee-balances/export/route.ts:scopedSession",
@@ -45471,6 +45502,8 @@
         "app.employment_confirmation_date",
         "app.employment_status_on",
         "app.is_admin_for",
+        "app.leave_employee_records_company_allowed",
+        "app.leave_employee_records_subject_allowed",
         "app.login_blocked",
         "app.principal_snapshot_current",
         "app/leave/employee-balances/page.tsx:scopedAdmin",
@@ -45512,6 +45545,9 @@
         "app.current_user_id",
         "app.is_admin_for",
         "app.is_company_descendant",
+        "app.leave_employee_records_company_allowed",
+        "app.leave_employee_records_subject_allowed",
+        "app.leave_own_application_allowed",
         "app.login_blocked",
         "app.principal_snapshot_current",
         "app.proven_company_date_points",
@@ -45552,6 +45588,10 @@
         "app.current_user_id",
         "app.is_admin_for",
         "app.is_company_descendant",
+        "app.leave_employee_record_cancel_allowed",
+        "app.leave_employee_records_company_allowed",
+        "app.leave_employee_records_subject_allowed",
+        "app.leave_own_application_allowed",
         "app.login_blocked",
         "app.principal_snapshot_current",
         "app.proven_company_date_points",
@@ -45592,7 +45632,9 @@
         "app.current_user_id",
         "app.is_company_descendant",
         "app.is_self_person",
+        "app.leave_employee_records_subject_allowed",
         "app.leave_own_application_allowed",
+        "app.leave_own_request_view_allowed",
         "app.login_blocked",
         "app.own_leave_request_approvals",
         "app.own_leave_request_cancellations",
@@ -45638,6 +45680,7 @@
         "app.employment_status_on",
         "app.is_company_descendant",
         "app.is_self_person",
+        "app.leave_employee_records_subject_allowed",
         "app.leave_on_behalf_application_allowed",
         "app.leave_on_behalf_native",
         "app.leave_own_application_allowed",
@@ -45692,6 +45735,7 @@
         "app.current_user_id",
         "app.is_company_descendant",
         "app.is_self_person",
+        "app.leave_employee_record_cancel_allowed",
         "app.leave_own_application_allowed",
         "app.login_blocked",
         "app.own_reporting_managers",
@@ -49109,7 +49153,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myPreviewLeaveDeduction",
-      "line": 117,
+      "line": 116,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -49145,7 +49189,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myRequestLeave",
-      "line": 142,
+      "line": 141,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -49188,6 +49232,7 @@
         "leaveSharedGroupMember",
         "leaveType",
         "new Set(grants.map(g=>g.role))",
+        "p.document.content",
         "replacementHoliday",
         "reportingLine",
         "rosterAssignment",
@@ -49201,7 +49246,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myEditLeave",
-      "line": 228,
+      "line": 223,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -49251,7 +49296,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myCancelLeave",
-      "line": 268,
+      "line": 263,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -49260,15 +49305,14 @@
         "app.employment_status_on",
         "app.is_self_person",
         "app.leave_own_application_allowed",
+        "app.leave_own_withdraw",
         "app.login_blocked",
         "app.principal_snapshot_current"
       ],
       "tables": [
-        "domainEvent",
         "employment",
         "entitlementEligibilityRule",
         "entitlementTemplate",
-        "leaveLedger",
         "leaveRequest",
         "leaveType",
         "new Set(grants.map(g=>g.role))"
@@ -49281,7 +49325,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myRequestLeaveCancellation",
-      "line": 282,
+      "line": 277,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -49331,7 +49375,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "localizeLeaveError",
-      "line": 305,
+      "line": 300,
       "surface": "server-action",
       "owners": [
         "app.employment_confirmation_date",
@@ -49350,7 +49394,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myRequestCorrection",
-      "line": 554,
+      "line": 549,
       "surface": "server-action",
       "owners": [
         "app.attendance_payroll_protection",
@@ -49417,7 +49461,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myCancelAttendanceRequest",
-      "line": 615,
+      "line": 610,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -49441,7 +49485,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myRequestOvertime",
-      "line": 686,
+      "line": 681,
       "surface": "server-action",
       "owners": [
         "app.attendance_payroll_protection",
@@ -49508,7 +49552,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myWithdrawOvertimePlan",
-      "line": 768,
+      "line": 763,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -49532,7 +49576,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myUpdateContact",
-      "line": 781,
+      "line": 776,
       "surface": "server-action",
       "owners": [
         "app.access_profile_policy_write_lock",
@@ -49564,7 +49608,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myRequestProfileChange",
-      "line": 810,
+      "line": 805,
       "surface": "server-action",
       "owners": [],
       "tables": [],
@@ -49575,7 +49619,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myTp1FormAction",
-      "line": 841,
+      "line": 836,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -49602,7 +49646,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "mySubmitResignation",
-      "line": 869,
+      "line": 864,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -49632,7 +49676,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myWithdrawResignation",
-      "line": 903,
+      "line": 898,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -49655,7 +49699,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myCheckIn",
-      "line": 947,
+      "line": 942,
       "surface": "server-action",
       "owners": [],
       "tables": [],
@@ -49666,7 +49710,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myCheckOut",
-      "line": 952,
+      "line": 947,
       "surface": "server-action",
       "owners": [],
       "tables": [],
@@ -49677,7 +49721,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myCreateGoal",
-      "line": 972,
+      "line": 967,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -49701,7 +49745,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myUpdateGoalProgress",
-      "line": 993,
+      "line": 988,
       "surface": "server-action",
       "owners": [],
       "tables": [
@@ -49717,7 +49761,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "mySubmitPeerFeedback",
-      "line": 1009,
+      "line": 1004,
       "surface": "server-action",
       "owners": [
         "app.performance_feedback_framework"
@@ -49735,7 +49779,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myDeclinePeerFeedback",
-      "line": 1025,
+      "line": 1020,
       "surface": "server-action",
       "owners": [
         "app.performance_feedback_framework"
@@ -49752,7 +49796,7 @@
     {
       "path": "app/me/actions.ts",
       "entry": "myEditGoal",
-      "line": 1036,
+      "line": 1031,
       "surface": "server-action",
       "owners": [],
       "tables": [
@@ -50871,6 +50915,8 @@
         "app.is_company_descendant",
         "app.is_self_person",
         "app.leave_calendar_presence",
+        "app.leave_employee_records_subject_allowed",
+        "app.leave_own_application_allowed",
         "app.login_blocked",
         "app.my_team_authorized_subject_ids",
         "app.my_team_has_role_for",
@@ -67090,6 +67136,7 @@
         "leaveRequestDate",
         "leaveSharedGroupMember",
         "leaveType",
+        "p.document.content",
         "replacementHoliday",
         "reportingLine",
         "rosterAssignment",
@@ -67108,14 +67155,12 @@
       "subject": "own_employment",
       "owners": [
         "app.current_tenant_id",
-        "app.leave_own_application_allowed"
+        "app.leave_own_application_allowed",
+        "app.leave_own_withdraw"
       ],
       "tables": [
-        "domainEvent",
         "employment",
-        "leaveLedger",
-        "leaveRequest",
-        "leaveType"
+        "leaveRequest"
       ],
       "boundaries": []
     },
