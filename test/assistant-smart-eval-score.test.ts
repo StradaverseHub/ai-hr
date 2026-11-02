@@ -159,6 +159,8 @@ describe('comparing runs',()=>{
   const report=compareSmartRuns([base,big],'small');
   // Baseline 50, best 75: 25 of the 50 lost points, 50%. Question b: best 50, below 75.
   expect(report.best).toBe('big');expect(report.recovered.overall).toBe(50);expect(report.designLimited).toEqual([{id:'b',best:50,factor:'facts'}]);
+  // Baseline loses 50 on a and 50 on b. The best answer per question recovers 50 (a) and 0 (b): 50%. b is design-limited: 50 of 100 lost.
+  expect(report.recovered.bestOfEach).toBe(50);expect(report.designLimitedShare).toBe(50);
   expect(pickExamples(report,1)).toEqual(['a']);
   const text=renderSmartComparison(report,[base,big],['a']);
   expect(text).toContain('| small | small-run | 1 | 50 |');expect(text).toContain('| big | big-run | 1 | 75 |');expect(text).toContain('### a (employee, en, journey)');

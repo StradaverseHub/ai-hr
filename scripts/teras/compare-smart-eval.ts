@@ -82,7 +82,11 @@ export function summariseSmartRun(outputs:readonly SmartEvalOutput[]):RunSummary
 
 export type ComparisonReport=Readonly<{baseline:string;best:string|null;models:readonly RunSummary[];
  /** Share of the baseline's lost score (100 − baseline) the best model recovers. Low means the rest is design. */
- recovered:Readonly<{overall:number|null;byFactor:Readonly<Record<string,number|null>>;byDimension:Readonly<Record<string,number|null>>}>;
+ recovered:Readonly<{overall:number|null;byFactor:Readonly<Record<string,number|null>>;byDimension:Readonly<Record<string,number|null>>;
+  /** Upper bound: the share recovered if every question took whichever other model answered it best (chosen afterwards). */
+  bestOfEach:number|null}>;
+ /** Share of the baseline's lost score that falls on the design-limited questions below. */
+ designLimitedShare:number|null;
  /** Questions no model answers well (best mean overall below GOOD): limited by the design, not the model. */
  designLimited:readonly Readonly<{id:string;best:number|null;factor:string}>[];
  judges:readonly string[];sets:readonly string[];specs:readonly string[]}>;
@@ -102,8 +106,12 @@ export function compareSmartRuns(outputs:readonly SmartEvalOutput[],baselineMode
  const ids=[...new Set(outputs.flatMap(output=>output.rows.map(row=>row.turn)))];
  const designLimited=ids.map(id=>{const scores=models.map(row=>row.perQuestion[id]).filter((value):value is number=>value!==null&&value!==undefined);
   return{id,best:scores.length?Math.max(...scores):null,factor:factorOf.get(id)??''};}).filter(row=>row.best!==null&&row.best<GOOD*100);
- return Object.freeze({baseline,best:best?.model??null,models:Object.freeze(models),recovered:Object.freeze({overall:recover(base.overall,best?.overall??null),byFactor:Object.freeze(byFactor),byDimension:Object.freeze(byDimension)}),
-  designLimited:Object.freeze(designLimited),judges:[...new Set(outputs.map(output=>output.judge.model+' v'+output.judge.version+' '+output.judge.promptDigest.slice(0,12)))],
+ let lost=0,bestOf=0,limited=0;const limitedIds=new Set(designLimited.map(row=>row.id));
+ for(const id of ids){const own=base.perQuestion[id];if(own===null||own===undefined)continue;lost+=100-own;if(limitedIds.has(id))limited+=100-own;
+  const others=rest.map(row=>row.perQuestion[id]).filter((value):value is number=>value!==null&&value!==undefined);if(others.length)bestOf+=Math.max(0,Math.max(...others)-own);}
+ const share=(part:number)=>lost>0?Math.round((part/lost)*1000)/10:null;
+ return Object.freeze({baseline,best:best?.model??null,models:Object.freeze(models),recovered:Object.freeze({overall:recover(base.overall,best?.overall??null),byFactor:Object.freeze(byFactor),byDimension:Object.freeze(byDimension),bestOfEach:rest.length?share(bestOf):null}),
+  designLimited:Object.freeze(designLimited),designLimitedShare:share(limited),judges:[...new Set(outputs.map(output=>output.judge.model+' v'+output.judge.version+' '+output.judge.promptDigest.slice(0,12)))],
   sets:[...new Set(outputs.map(output=>output.set.digest.slice(0,12)+' ('+output.set.turns+' turns)'))],specs:[...new Set(outputs.map(output=>'v'+output.spec.version+' '+output.spec.digest.slice(0,12)))]});
 }
 
@@ -130,7 +138,8 @@ export function renderSmartComparison(report:ComparisonReport,outputs:readonly S
  lines.push('','## By role and language','','| Group | '+models.map(row=>row.model).join(' | ')+' |','|---|'+models.map(()=>'---|').join(''));
  const groups=[...new Set(models.flatMap(row=>[...Object.keys(row.byRole).map(key=>'role '+key),...Object.keys(row.byLocale).map(key=>'language '+key),...Object.keys(row.bySource).map(key=>'source '+key)]))];
  for(const name of groups){const [kind,key]=name.split(' ');const pick=(row:RunSummary)=>kind==='role'?row.byRole[key]:kind==='language'?row.byLocale[key]:row.bySource[key];lines.push(`| ${name} | ${models.map(row=>cell(pick(row))).join(' | ')} |`);}
- lines.push('','## Model or design','',`The best model recovers ${cell(report.recovered.overall,'%')} of the score the baseline loses. By dimension: ${DIMS.map(dimension=>dimension+' '+cell(report.recovered.byDimension[dimension],'%')).join(', ')}.`,'');
+ lines.push('','## Model or design','',`The best model recovers ${cell(report.recovered.overall,'%')} of the score the baseline loses. By dimension: ${DIMS.map(dimension=>dimension+' '+cell(report.recovered.byDimension[dimension],'%')).join(', ')}.`,
+  `Even choosing, for every question afterwards, whichever other model answered it best recovers at most ${cell(report.recovered.bestOfEach,'%')}. ${cell(report.designLimitedShare,'%')} of the baseline's lost score is on questions no model answers well.`,'');
  lines.push(`Questions no model answers well (best below ${GOOD*100}): ${report.designLimited.length?report.designLimited.map(row=>`${row.id} (${row.factor}, best ${row.best})`).join('; '):'none'}.`,'');
  lines.push('## Deterministic findings (count of answers)','','| Check | '+models.map(row=>row.model).join(' | ')+' |','|---|'+models.map(()=>'---|').join(''));
  for(const check of [...new Set(models.flatMap(row=>Object.keys(row.findings)))].sort())lines.push(`| ${check} | ${models.map(row=>cell(row.findings[check]??0)).join(' | ')} |`);
