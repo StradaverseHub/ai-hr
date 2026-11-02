@@ -388,6 +388,7 @@ CREATE OR REPLACE FUNCTION app.entra_configure(p_org text,p_directory uuid,p_mod
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE old public.entra_connector%ROWTYPE; t uuid:=app.current_tenant_id();
 BEGIN
+ PERFORM app.access_workforce_write_lock();
  IF NOT app.entra_admin() OR NOT app.organisation_settings_function_allowed('entra','edit',NULL) THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('entra-config:'||t,0));
  SELECT * INTO old FROM public.entra_connector WHERE tenant_id=t FOR UPDATE;
@@ -407,6 +408,7 @@ CREATE OR REPLACE FUNCTION app.entra_bind(p_person uuid,p_user uuid,p_object uui
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE c public.entra_connector%ROWTYPE; u public.app_user%ROWTYPE; iss text;
 BEGIN
+ PERFORM app.access_workforce_write_lock();
  IF NOT app.entra_admin() OR NOT app.organisation_settings_function_allowed('entra','edit',NULL) THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
  SELECT * INTO c FROM public.entra_connector WHERE tenant_id=app.current_tenant_id() AND enabled FOR SHARE;
  IF NOT FOUND THEN RAISE EXCEPTION 'entra_forbidden'; END IF;
@@ -429,6 +431,7 @@ $$;
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.entra_retry(p_person uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
+ PERFORM app.access_workforce_write_lock();
  IF NOT app.entra_admin() OR NOT app.organisation_settings_function_allowed('entra','edit',NULL) THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
  -- Uncertain creates have no safe receipt: do not blindly replay them. IT reconciles upstream first.
  UPDATE public.entra_workforce SET status=CASE WHEN last_status='awaiting-sync' AND submitted_revision=revision THEN 'awaiting-sync' WHEN status='rejected' OR last_location IS NULL THEN 'pending' ELSE 'submitted' END,
@@ -507,3 +510,19 @@ BEGIN
 END;$$;
 REVOKE ALL ON FUNCTION app.ai_configuration_evaluation_authority_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER ai_configuration_protocol_authority AFTER INSERT OR UPDATE ON public.ai_provider_protocol_evaluation FOR EACH ROW EXECUTE FUNCTION app.ai_configuration_evaluation_authority_guard();
+
+--> statement-breakpoint
+-- Reconciliation is an administrative mutation, independent of status View.
+CREATE OR REPLACE FUNCTION app.entra_reconcile_hold(p_person uuid,p_day date) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.entra_admin() OR NOT app.organisation_settings_function_allowed('entra','edit',NULL) THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
+ UPDATE public.entra_workforce SET status='awaiting-sync',last_active=app.entra_active(tenant_id,person_id,p_day),
+ submitted_revision=revision,next_at=now()
+ WHERE tenant_id=app.current_tenant_id() AND person_id=p_person AND status='uncertain' AND last_location IS NULL
+ AND lease_until IS NULL;
+ IF NOT FOUND THEN RAISE EXCEPTION 'entra_conflict'; END IF;
+ PERFORM app.append_auth_event(app.current_tenant_id(),'entra-workforce',p_person,'entra.reconciliation-requested','user',app.current_user_id(),NULL);
+END;
+$$;

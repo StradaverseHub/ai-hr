@@ -46,6 +46,20 @@ describe('Entra actual app-role and durable lifecycle',()=>{
   await expect(saveConnector({...adminCtx(base),userId:randomUUID(),grants:[{role:'employee',companyId:base.companyId}]},config,config.revision)).rejects.toThrow();
   expect(hire.personId).toBeTruthy();
  });
+ it('retains native reconciliation and refuses a stale administrator without changing its row or audit',async()=>{
+  const hire=await employee(),ctx=adminCtx(base);
+  await owner.client`update entra_workforce set status='uncertain',last_location=null,lease=null,lease_until=null where tenant_id=${base.tenantId}::uuid and person_id=${hire.personId}::uuid`;
+  await withTenant(ctx,tx=>tx.execute(sql`select app.entra_reconcile_hold(${hire.personId}::uuid,${todayInKualaLumpur()}::date)`));
+  const [reconciled]=await owner.client`select status,submitted_revision,revision from entra_workforce where tenant_id=${base.tenantId}::uuid and person_id=${hire.personId}::uuid`;
+  expect(reconciled.status).toBe('awaiting-sync');expect(reconciled.submitted_revision).toBe(reconciled.revision);
+  expect(await owner.client`select event_type from domain_event where tenant_id=${base.tenantId}::uuid and aggregate_id=${hire.personId}::uuid and event_type='entra.reconciliation-requested'`).toHaveLength(1);
+  await owner.client`update entra_workforce set status='uncertain' where tenant_id=${base.tenantId}::uuid and person_id=${hire.personId}::uuid`;
+  await owner.client`update app_user set archived_at=now() where id=${ctx.userId!}::uuid`;
+  const before=await owner.client`select * from entra_workforce where tenant_id=${base.tenantId}::uuid and person_id=${hire.personId}::uuid`;
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.entra_reconcile_hold(${hire.personId}::uuid,${todayInKualaLumpur()}::date)`))).rejects.toThrow();
+  expect(await owner.client`select * from entra_workforce where tenant_id=${base.tenantId}::uuid and person_id=${hire.personId}::uuid`).toEqual(before);
+  expect(await owner.client`select event_type from domain_event where tenant_id=${base.tenantId}::uuid and aggregate_id=${hire.personId}::uuid and event_type='entra.reconciliation-requested'`).toHaveLength(1);
+ });
  it('creates one baseline employee identity after confirmed provisioning, rotates refresh and revokes replayed families',async()=>{
   const hire=await employee(),work=await claim(),object=randomUUID();
   const args=[base.tenantId,hire.personId,work.revision,work.lease,object];
