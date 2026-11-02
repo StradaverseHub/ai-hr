@@ -4245,3 +4245,50 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND app.onehr_manager(panel.review_id) AND app.onehr_review_task_view(panel.review_id,'assigned')
  AND NOT EXISTS(SELECT 1 FROM public.employment subject WHERE subject.id=panel.subject_employment_id AND subject.tenant_id=panel.tenant_id AND app.is_self_person(subject.person_id));
 $$;
+
+--> statement-breakpoint
+-- Private phase owner for exact current review-task metadata. The unchanged TS
+-- workspace derivation remains its independent parity oracle before queue adoption.
+CREATE FUNCTION app.financial_onehr_review_task_pending(source jsonb,recipient uuid,task text,at_time timestamptz) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE facts jsonb;policy jsonb;kpis jsonb;kpi jsonb;chain jsonb;pending text;approved integer;eligible boolean:=false;cell text;reviewer text;
+BEGIN
+ IF source IS NULL OR recipient IS NULL OR task IS NULL OR task NOT IN ('setting','results','competencies','plan') OR at_time IS NULL THEN RETURN false;END IF;
+ facts:=source->'facts';policy:=source->'policy';kpis:=coalesce(facts->'kpis','[]'::jsonb);reviewer:=source->>'reviewerEmploymentId';
+ IF NOT coalesce(source->'liveIds' @> to_jsonb(ARRAY[recipient]),false) OR source->>'frozen'='true' AND task<>'plan' THEN RETURN false;END IF;
+ IF recipient::text IS DISTINCT FROM reviewer THEN
+  IF NOT coalesce(source->'moderatorIds' @> to_jsonb(ARRAY[recipient]),false) OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(kpis) item
+   WHERE coalesce((item->>'hrOwned')::boolean,false)=false AND (jsonb_array_length(coalesce(item->'approvalChain','[]'::jsonb))>0 AND EXISTS(SELECT 1 FROM jsonb_array_elements(item->'approvalChain') step WHERE step->>'employmentId'=recipient::text)
+    OR jsonb_array_length(coalesce(item->'approvalChain','[]'::jsonb))=0 AND item->>'moderatorEmploymentId'=recipient::text)) THEN RETURN false;END IF;
+ END IF;
+ IF task='competencies' THEN
+  eligible:=policy->'modules'->>'tm'='true' AND facts->>'competenciesAssigned'='true' AND facts->>'competencyStatus'='submitted' AND recipient::text=reviewer;cell:='tc_approve';
+ ELSIF task='plan' THEN
+  eligible:=policy->'modules'->>'idp'='true' AND policy->>'kind'='year_end' AND facts->>'planStatus'='shared';cell:='idp_review';
+ ELSE
+  IF policy->'modules'->>'pm' IS DISTINCT FROM 'true' OR jsonb_array_length(kpis)=0 OR EXISTS(SELECT 1 FROM jsonb_array_elements(kpis) item WHERE item->>'setting' IN ('draft','returned')) THEN RETURN false;END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(kpis) item WHERE item->>'setting'='proposed') THEN
+   IF task<>'setting' THEN RETURN false;END IF;cell:='pm_setting_approve';
+   FOR kpi IN SELECT value FROM jsonb_array_elements(kpis) LOOP
+    IF kpi->>'setting'<>'proposed' THEN CONTINUE;END IF;
+    chain:=CASE WHEN jsonb_array_length(coalesce(kpi->'approvalChain','[]'::jsonb))>0 THEN kpi->'approvalChain' WHEN kpi->>'moderatorEmploymentId' IS NOT NULL THEN jsonb_build_array(jsonb_build_object('employmentId',kpi->'moderatorEmploymentId')) ELSE '[]'::jsonb END;
+    SELECT count(*)::integer INTO approved FROM jsonb_array_elements(coalesce(kpi->'settingApprovals','[]'::jsonb)) step WHERE step->>'action'='approved';
+    IF chain->approved->>'employmentId'=recipient::text THEN eligible:=true;EXIT;END IF;
+   END LOOP;
+  ELSE
+   IF task<>'results' OR policy->>'kind'='quarterly' OR facts->>'managerComplete'='true' OR coalesce(facts->>'managerPerformance','')<>'' OR facts->>'resultsSubmitted' IS DISTINCT FROM 'true' THEN RETURN false;END IF;cell:='pm_approve';
+   FOR kpi IN SELECT value FROM jsonb_array_elements(kpis) LOOP
+    IF coalesce((kpi->>'hrOwned')::boolean,false) OR coalesce((kpi->>'locked')::boolean,false) THEN CONTINUE;END IF;
+    IF jsonb_array_length(coalesce(kpi->'approvalChain','[]'::jsonb))>0 THEN
+     SELECT step->>'employmentId' INTO pending FROM jsonb_array_elements(kpi->'approvalChain') WITH ORDINALITY input(step,position) WHERE step->>'at' IS NULL OR step->>'at'='' ORDER BY position LIMIT 1;
+    ELSE pending:=kpi->>'moderatorEmploymentId';END IF;
+    IF pending=recipient::text THEN eligible:=true;EXIT;END IF;
+   END LOOP;
+  END IF;
+ END IF;
+ IF NOT coalesce(eligible,false) THEN RETURN false;END IF;
+ RETURN (policy->'windows'->cell->>'opensAt' IS NULL OR at_time>=(policy->'windows'->cell->>'opensAt')::timestamptz)
+ AND (policy->'windows'->cell->>'closesAt' IS NULL OR at_time<(policy->'windows'->cell->>'closesAt')::timestamptz);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_review_task_pending(jsonb,uuid,text,timestamptz) FROM PUBLIC,ai_hr_app;
