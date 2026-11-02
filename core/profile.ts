@@ -516,7 +516,7 @@ export async function decideProfileChange(
      */
     await assertProfileChangeDecisionAuthorityTx(tx,ctx,req,p.decision);
 
-    if(p.decision==='approved'&&!isProfilePhotoProposal(req.proposed)){await tx.execute(sql`select app.access_profile_value_begin(${req.id}::uuid)`);await profileTaskProjectionTx(tx,req.id,true);}
+    if(p.decision==='approved'&&!isProfilePhotoProposal(req.proposed)){await tx.execute(sql`select app.access_profile_value_begin(${req.id}::uuid)`);const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_employment(${req.employmentId}::uuid) as allowed`);if(scope?.allowed!==true)await profileTaskProjectionTx(tx,req.id,true);}
     if(p.decision==='approved'&&isProfilePhotoProposal(req.proposed)){
       const {applyProfilePhotoProposalTx}=await import('./person-photo');await applyProfilePhotoProposalTx(tx,ctx,req);
     }else if(p.decision==='approved'&&req.proposed&&typeof req.proposed==='object'&&!Array.isArray(req.proposed)&&'v' in req.proposed&&req.proposed.v===2){

@@ -34,6 +34,7 @@ CREATE FUNCTION app.profile_task_projection(p_request uuid,p_prepare boolean DEF
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE q public.profile_change_request;subject record;p public.person;st public.employee_statutory_my;stat_revision text;
  fields jsonb;entry jsonb;b record;owners text[];master jsonb;stat jsonb;source jsonb;projected jsonb;before_value jsonb;expected text;
+ register_entry jsonb;register_field jsonb;register_row jsonb;register_revision text;
  dependents jsonb:='[]'::jsonb;qualifications jsonb:='[]'::jsonb;emergency jsonb:='[]'::jsonb;
 BEGIN
  PERFORM app.access_profile_policy_write_lock();
@@ -89,6 +90,25 @@ BEGIN
      expected:='profile-row:v1:'||encode(sha256(convert_to(array_to_json(ARRAY['profile-row:v1',q.tenant_id::text,q.person_id::text,q.employment_id::text,subject.country,'statutory',st.id::text,stat_revision,b.field_id])::text,'UTF8')),'hex');
     ELSE expected:='sha256:'||encode(sha256(convert_to(coalesce(before_value,'null'::jsonb)::text,'UTF8')),'hex');END IF;
     IF entry->>'before' IS DISTINCT FROM expected THEN RAISE EXCEPTION 'Profile task source changed' USING ERRCODE='40001';END IF;
+   END LOOP;
+  END IF;
+  IF q.proposed->'v'='2'::jsonb THEN
+   FOR register_entry IN SELECT value FROM jsonb_array_elements(coalesce(q.proposed->'registers','[]'::jsonb)) LOOP
+    IF register_entry->>'id' IS NULL THEN CONTINUE;END IF;
+    register_row:=NULL;register_revision:=NULL;
+    IF register_entry->>'kind'='dependent' THEN SELECT to_jsonb(d),d.xmin::text INTO register_row,register_revision FROM public.employee_dependent d WHERE d.id=(register_entry->>'id')::uuid AND d.person_id=q.person_id AND d.tenant_id=q.tenant_id AND d.archived_at IS NULL FOR UPDATE;
+    ELSIF register_entry->>'kind'='qualification' THEN SELECT to_jsonb(d) INTO register_row FROM public.employee_qualification d WHERE d.id=(register_entry->>'id')::uuid AND d.employment_id=q.employment_id AND d.tenant_id=q.tenant_id AND d.archived_at IS NULL FOR UPDATE;
+    ELSIF register_entry->>'kind'='emergency' THEN SELECT to_jsonb(d) INTO register_row FROM public.person_emergency_contact d WHERE d.id=(register_entry->>'id')::uuid AND d.person_id=q.person_id AND d.tenant_id=q.tenant_id AND d.archived_at IS NULL FOR UPDATE;END IF;
+    IF register_row IS NULL THEN RAISE EXCEPTION 'Profile register source changed' USING ERRCODE='40001';END IF;
+    FOR register_field IN SELECT value FROM jsonb_array_elements(register_entry->'fields') LOOP
+     SELECT * INTO b FROM app.access_profile_value_bindings() WHERE field_id=register_field->>'fieldId' AND owner=register_entry->>'kind';
+     IF b.field_id IS NULL THEN RAISE EXCEPTION 'Profile register field unavailable' USING ERRCODE='42501';END IF;
+     IF register_field->>'before' LIKE 'profile-row:v1:%' THEN
+      IF register_entry->>'kind'<>'dependent' OR register_revision IS NULL THEN RAISE EXCEPTION 'Profile register source changed' USING ERRCODE='40001';END IF;
+      expected:='profile-row:v1:'||encode(sha256(convert_to(array_to_json(ARRAY['profile-row:v1',q.tenant_id::text,q.person_id::text,q.employment_id::text,subject.country,register_entry->>'kind',register_entry->>'id',register_revision,b.field_id])::text,'UTF8')),'hex');
+     ELSE expected:='sha256:'||encode(sha256(convert_to(coalesce(register_row->b.column_name,'null'::jsonb)::text,'UTF8')),'hex');END IF;
+     IF register_field->>'before' IS DISTINCT FROM expected THEN RAISE EXCEPTION 'Profile register source changed' USING ERRCODE='40001';END IF;
+    END LOOP;
    END LOOP;
   END IF;
   source:=jsonb_build_object('projection',projected,'person',to_jsonb(p),'statutory',to_jsonb(st));
@@ -321,3 +341,122 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.profile_task_statutory_effect_complete() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER profile_task_statutory_effect_complete AFTER INSERT ON app.profile_task_statutory_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.profile_task_statutory_effect_complete();
+--> statement-breakpoint
+-- Native-normalized register effects stay bound to the exact stored request. General register rows
+-- are never exposed; the existing deferred approved-value guard owns all resulting row deltas.
+CREATE FUNCTION app.profile_task_store_register(p_person uuid,p_kind text,p_row uuid,p_client text,p_values jsonb) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE context jsonb;q public.profile_change_request;entry jsonb;binding record;pair record;patch jsonb:='{}'::jsonb;physical text;subject_column text;subject uuid;sets text;columns text;values_sql text;row_id uuid;cleared uuid;
+BEGIN
+ context:=app.profile_task_effect_source(p_person);IF context IS NULL THEN RETURN NULL;END IF;
+ SELECT request.* INTO q FROM app.profile_task_before c JOIN public.profile_change_request request ON request.id=c.request_id AND request.tenant_id=c.tenant_id WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND request.person_id=p_person;
+ SELECT value INTO entry FROM jsonb_array_elements(q.proposed->'registers') WHERE value->>'kind'=p_kind AND (p_row IS NOT NULL AND value->>'id'=p_row::text OR p_row IS NULL AND value->>'id' IS NULL AND value->>'clientId'=p_client);
+ IF entry IS NULL OR jsonb_typeof(p_values) IS DISTINCT FROM 'object' OR octet_length(p_values::text)>65536 THEN RAISE EXCEPTION 'Profile register effect unavailable' USING ERRCODE='42501';END IF;
+ physical:=CASE p_kind WHEN 'dependent' THEN 'employee_dependent' WHEN 'qualification' THEN 'employee_qualification' WHEN 'emergency' THEN 'person_emergency_contact' END;
+ IF physical IS NULL THEN RAISE EXCEPTION 'Profile register effect unavailable' USING ERRCODE='42501';END IF;
+ subject_column:=CASE WHEN p_kind='qualification' THEN 'employment_id' ELSE 'person_id' END;subject:=CASE WHEN p_kind='qualification' THEN q.employment_id ELSE q.person_id END;
+ FOR pair IN SELECT key,value FROM jsonb_each(p_values) LOOP
+  SELECT * INTO binding FROM app.access_profile_value_bindings() b WHERE b.owner=p_kind AND b.field_name=pair.key;
+  IF binding.column_name IS NULL THEN RAISE EXCEPTION 'Profile register effect field unavailable' USING ERRCODE='42501';END IF;
+  patch:=patch||jsonb_build_object(binding.column_name,pair.value);
+ END LOOP;
+ IF patch='{}'::jsonb THEN RAISE EXCEPTION 'Empty profile effect' USING ERRCODE='42501';END IF;
+ -- A transfer is part of the canonical Highest/Primary owner, not an unrelated sibling edit.
+ IF p_kind='qualification' AND patch->'is_highest'='true'::jsonb THEN
+  UPDATE public.employee_qualification SET is_highest=false,updated_at=now() WHERE tenant_id=q.tenant_id AND employment_id=q.employment_id AND is_highest AND archived_at IS NULL AND (p_row IS NULL OR id<>p_row) RETURNING id INTO cleared;
+ ELSIF p_kind='emergency' AND patch->>'priority'='primary' THEN
+  UPDATE public.person_emergency_contact SET priority='secondary',updated_at=now() WHERE tenant_id=q.tenant_id AND person_id=q.person_id AND priority='primary' AND archived_at IS NULL AND (p_row IS NULL OR id<>p_row) RETURNING id INTO cleared;
+ END IF;
+ IF p_row IS NULL THEN
+  SELECT string_agg(format('%I',key),','),string_agg(format('(jsonb_populate_record(NULL::public.%I,$1)).%I',physical,key),',') INTO columns,values_sql FROM jsonb_object_keys(patch)key;
+  EXECUTE format('INSERT INTO public.%I(tenant_id,%I,%s) SELECT $2,$3,%s RETURNING id',physical,subject_column,columns,values_sql) INTO row_id USING patch,q.tenant_id,subject;
+ ELSE
+  SELECT string_agg(format('%I=(jsonb_populate_record(NULL::public.%I,$1)).%I',key,physical,key),',') INTO sets FROM jsonb_object_keys(patch)key;
+  EXECUTE format('UPDATE public.%I SET %s,updated_at=now() WHERE id=$2 AND tenant_id=$3 AND %I=$4 AND archived_at IS NULL RETURNING id',physical,sets,subject_column) INTO row_id USING patch,p_row,q.tenant_id,subject;
+  IF row_id IS NULL THEN RAISE EXCEPTION 'Profile register unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ RETURN jsonb_build_object('id',row_id,'clearedId',cleared);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.profile_task_store_register(uuid,text,uuid,text,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.profile_task_store_register(uuid,text,uuid,text,jsonb) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.profile_task_family_sync(p_person uuid) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE context jsonb;request uuid;before_row jsonb;after_row jsonb;delta jsonb;result jsonb;
+BEGIN
+ context:=app.profile_task_effect_source(p_person);IF context IS NULL THEN RETURN NULL;END IF;
+ SELECT q.id INTO request FROM app.profile_task_before c JOIN public.profile_change_request q ON q.id=c.request_id AND q.tenant_id=c.tenant_id
+ WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND q.person_id=p_person
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements(q.proposed->'registers')r WHERE r->>'kind'='dependent');
+ IF request IS NULL THEN RETURN NULL;END IF;
+ SELECT to_jsonb(s) INTO before_row FROM public.employee_statutory_my s WHERE s.person_id=p_person AND s.tenant_id=app.current_tenant_id() FOR UPDATE;
+ result:=app.my_sync_family_child_relief(p_person);
+ SELECT to_jsonb(s) INTO after_row FROM public.employee_statutory_my s WHERE s.person_id=p_person AND s.tenant_id=app.current_tenant_id();
+ SELECT coalesce(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(after_row)d WHERE d.key<>ALL(ARRAY['id','tenant_id','person_id','created_at','updated_at']) AND d.value IS DISTINCT FROM before_row->d.key;
+ IF delta<>'{}'::jsonb THEN INSERT INTO app.profile_task_statutory_effect(xact_id,tenant_id,user_id,request_id,row_id,inserted,delta)VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),request,(after_row->>'id')::uuid,false,delta);END IF;
+ RETURN result;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.profile_task_family_sync(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+DO $$ DECLARE definition text; BEGIN
+ definition:=pg_get_functiondef('app.access_family_relief_sync(uuid)'::regprocedure);
+ IF position('DECLARE direct boolean;' IN definition)=0 OR position('BEGIN' IN definition)=0 THEN RAISE EXCEPTION 'Family sync owner changed';END IF;
+ definition:=replace(definition,'BEGIN','BEGIN'||E'\n result:=app.profile_task_family_sync(p_person);IF result IS NOT NULL THEN RETURN result;END IF;');
+ EXECUTE definition;
+END $$;
+--> statement-breakpoint
+CREATE TABLE app.profile_task_photo_effect(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,request_id uuid NOT NULL,person_id uuid NOT NULL,proposal_hash text NOT NULL,route_hash text NOT NULL,content_hash text NOT NULL,audited boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,request_id));
+ALTER TABLE app.profile_task_photo_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.profile_task_photo_effect FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.profile_task_store_photo(p_request uuid) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE q public.profile_change_request;photo public.profile_photo_proposal;oldphoto public.person_photo;baseline text;
+BEGIN
+ PERFORM app.access_profile_policy_write_lock();
+ SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF q.id IS NULL OR q.status<>'pending' OR q.proposed->'v' IS DISTINCT FROM '3'::jsonb OR q.proposed->>'kind' IS DISTINCT FROM 'photo' OR q.proposed->>'fieldId' IS DISTINCT FROM 'profile.personal_details.photo'
+ OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id) OR NOT app.profile_request_assignee(q.id) OR NOT app.profile_photo_proposal_allowed()
+ OR q.route_context->>'fingerprint' IS DISTINCT FROM app.access_profile_route_fingerprint(q.employment_id)
+ OR NOT EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id WHERE e.id=q.employment_id AND e.person_id=q.person_id AND e.tenant_id=q.tenant_id AND e.blacklisted_at IS NULL AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (least(e.resignation_date,e.last_working_date,e.terminated_on)IS NULL OR least(e.resignation_date,e.last_working_date,e.terminated_on)>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RAISE EXCEPTION 'Profile photo task unavailable' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('person-photo:'||q.tenant_id::text||':'||q.person_id::text,0));
+ SELECT * INTO oldphoto FROM public.person_photo WHERE person_id=q.person_id AND tenant_id=q.tenant_id FOR UPDATE;
+ baseline:=encode(sha256(convert_to(CASE WHEN oldphoto.person_id IS NULL THEN 'absent:' ELSE oldphoto.mime_type||':' END,'UTF8')||coalesce(oldphoto.content,''::bytea)),'hex');
+ IF baseline IS DISTINCT FROM q.proposed->>'baselineHash' THEN RAISE EXCEPTION 'Profile photo changed' USING ERRCODE='40001';END IF;
+ SELECT * INTO photo FROM public.profile_photo_proposal WHERE request_id=q.id AND tenant_id=q.tenant_id;
+ IF photo.request_id IS NULL THEN RAISE EXCEPTION 'Profile photo bytes unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO app.profile_task_photo_effect(xact_id,tenant_id,user_id,request_id,person_id,proposal_hash,route_hash,content_hash)
+ VALUES(pg_current_xact_id(),q.tenant_id,app.current_user_id(),q.id,q.person_id,encode(sha256(convert_to(q.proposed::text,'UTF8')),'hex'),encode(sha256(convert_to(jsonb_build_array(q.route_id,q.route_revision,q.route_approver_user_id,q.route_approver_employment_id,q.route_context)::text,'UTF8')),'hex'),encode(sha256(photo.content),'hex'));
+ INSERT INTO public.person_photo(tenant_id,person_id,content,file_name,mime_type,size_bytes,uploaded_by_user_id)
+ VALUES(q.tenant_id,q.person_id,photo.content,'profile-photo'||CASE WHEN photo.mime_type='image/png'THEN '.png' ELSE '.jpg' END,photo.mime_type,photo.size_bytes,app.current_user_id())
+ ON CONFLICT(person_id)DO UPDATE SET content=excluded.content,file_name=excluded.file_name,mime_type=excluded.mime_type,size_bytes=excluded.size_bytes,uploaded_by_user_id=excluded.uploaded_by_user_id,updated_at=now();
+ RETURN jsonb_build_object('personId',q.person_id,'mimeType',photo.mime_type,'sizeBytes',photo.size_bytes);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.profile_task_store_photo(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.profile_task_store_photo(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.profile_task_photo_approved(p_person uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM app.profile_task_photo_effect effect JOIN public.profile_change_request q ON q.id=effect.request_id AND q.tenant_id=effect.tenant_id AND q.person_id=effect.person_id
+ JOIN public.person_photo photo ON photo.person_id=q.person_id AND photo.tenant_id=q.tenant_id
+ WHERE effect.xact_id=pg_current_xact_id() AND effect.tenant_id=app.current_tenant_id() AND effect.user_id=app.current_user_id() AND effect.person_id=p_person AND effect.audited AND q.status='approved'
+ AND effect.proposal_hash=encode(sha256(convert_to(q.proposed::text,'UTF8')),'hex') AND effect.route_hash=encode(sha256(convert_to(jsonb_build_array(q.route_id,q.route_revision,q.route_approver_user_id,q.route_approver_employment_id,q.route_context)::text,'UTF8')),'hex') AND effect.content_hash=encode(sha256(photo.content),'hex'));
+$$;
+REVOKE ALL ON FUNCTION app.profile_task_photo_approved(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.profile_task_photo_audit()RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.aggregate_type='profile-change' AND NEW.event_type='profile-change.approved' AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() THEN
+  UPDATE app.profile_task_photo_effect SET audited=true WHERE xact_id=pg_current_xact_id() AND tenant_id=NEW.tenant_id AND user_id=NEW.actor_id AND request_id=NEW.aggregate_id;
+ END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.profile_task_photo_audit() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER profile_task_photo_audit AFTER INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.profile_task_photo_audit();
+--> statement-breakpoint
+CREATE FUNCTION app.profile_task_photo_complete()RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN IF NOT app.profile_task_photo_approved(NEW.person_id)THEN RAISE EXCEPTION 'Profile photo completion unavailable' USING ERRCODE='42501';END IF;RETURN NULL;END $$;
+REVOKE ALL ON FUNCTION app.profile_task_photo_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER profile_task_photo_complete AFTER INSERT ON app.profile_task_photo_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.profile_task_photo_complete();

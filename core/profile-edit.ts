@@ -20,7 +20,7 @@ import {freshProfileEditPolicyTx,type ProfilePresentationPolicy} from './profile
 import {packFor} from '../localization/registry';
 import {updatePersonProfilePartial,type PersonProfileFields} from './org';
 import {setPersonComplianceFields,requestProfileChange,updateOwnContact} from './profile';
-import {addDependent,updateDependent,validateDependentInputTx,childAgeYears,isChildReliefEligible,type DependentInput} from './dependents';
+import {addDependent,updateDependent,validateDependentInputTx,normaliseDependentPatchTx,syncChildReliefFromFamily,childAgeYears,isChildReliefEligible,type DependentInput} from './dependents';
 import {addQualification,updateQualification,validateQualificationInputTx} from './qualifications';
 import {addEmergencyContact,updateEmergencyContact,validateEmergencyContactInputTx} from './emergency-contacts';
 import {assertProfileValueAllowed} from './profile-options';
@@ -262,6 +262,22 @@ function emergencyInput(values:Record<string,unknown>){
 }
 async function applyRegisterTx(tx:Tx,ctx:SessionContext,subject:{id:string;personId:string},row:EssRegisterChange){
  const values=patch(row.fields);
+ const task=await profileTaskEffectSourceTx(tx,subject.personId,subject.id);
+ if(task){
+  const existing=row.kind==='dependent'?task.dependents.find(item=>item.record.id===row.id)?.record:row.kind==='qualification'?task.qualifications.find(item=>item.id===row.id):task.emergency.find(item=>item.id===row.id);
+  if(row.id&&!existing)throw new EssProfileError('stale',row.fields.map(field=>field.fieldId));
+  const normalized=row.kind==='dependent'?await normaliseDependentPatchTx(tx,row.id?values:dependentInput(values),existing&&'fullName'in existing&&'relationship'in existing?{fullName:existing.fullName,relationship:existing.relationship!}:undefined)
+   :row.kind==='qualification'?await validateQualificationInputTx(tx,row.id?values:qualificationInput(values),existing&&'qualification'in existing?existing:undefined)
+   :await validateEmergencyContactInputTx(tx,subject.personId,row.id?values:emergencyInput(values),existing&&'relationship'in existing?existing:undefined);
+  const [stored]=await tx.execute<{value:{id:string;clearedId:string|null}}>(sql`select app.profile_task_store_register(${subject.personId}::uuid,${row.kind},${row.id}::uuid,${row.clientId??null},${JSON.stringify(normalized)}::jsonb) as value`);
+  if(!stored?.value?.id)throw new EssProfileError('unavailable');
+  const facts=normalized as Record<string,unknown>;
+  const added=row.id===null,kind=row.kind,event=row.kind==='dependent'?'dependent':row.kind==='qualification'?'qualification':'emergency-contact';
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:kind==='dependent'?'employee-dependent':kind==='qualification'?'employee-qualification':'person-emergency-contact',aggregateId:stored.value.id,eventType:`${event}.${added?'added':'updated'}`,actor:actorOf(ctx),subjectEmploymentId:subject.id,
+   payload:added?(kind==='dependent'?{relationship:facts.relationship,isBeneficiary:'isBeneficiary'in normalized?normalized.isBeneficiary??false:false}:kind==='qualification'?{qualification:'qualification'in normalized?normalized.qualification:null,isHighest:'isHighest'in normalized?normalized.isHighest??false:false,...(stored.value.clearedId?{clearedHighestId:stored.value.clearedId}:{})}:{relationship:facts.relationship,priority:'priority'in normalized?normalized.priority:null,...(stored.value.clearedId?{demotedId:stored.value.clearedId}:{})}):{diff:Object.keys(normalized),...(stored.value.clearedId?{[kind==='qualification'?'clearedHighestId':'demotedId']:stored.value.clearedId}:{})}});
+  if(kind==='dependent')await syncChildReliefFromFamily(ctx,subject.personId,tx);
+  return;
+ }
  if(row.kind==='dependent'){
   if(values.childReliefPercentage!==undefined&&values.childReliefPercentage!==null)values.childReliefPercentage=number(values,'childReliefPercentage')??null;
   if(row.id)await updateDependent(ctx,{id:row.id,...values},tx);else await addDependent(ctx,{personId:subject.personId,...dependentInput(values)},tx);

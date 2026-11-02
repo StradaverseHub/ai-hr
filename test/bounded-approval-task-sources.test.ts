@@ -9,6 +9,9 @@ import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit
 import {saveProfileVisibilityPolicy} from '../core/profile-edit-policy';
 import {decideProfileChange,listProfileChangeRequests,pendingProfileTaskMetadata} from '../core/profile';
 import {previewProfileRoutingPolicy,saveProfileRoutingPolicy,profileRouteCounts} from '../core/profile-routing';
+import {addDependent} from '../core/dependents';
+import {setTenantSetting} from '../core/tenant-settings';
+import {setOwnPersonPhoto,getPersonPhoto} from '../core/person-photo';
 import {decideLeave} from '../core/leave';
 import {listLeaveRequests} from '../core/read';
 import {essVisibleFields} from '../lib/personnel-ess-contract';
@@ -24,7 +27,7 @@ async function employee(code:string,role:'employee'|'hr_admin'|'manager'='employ
  if(role==='hr_admin')await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,userId));
  return{...hire,ctx:{...adminCtx(b),userId,personId:hire.personId,roles:[role],grants:[{role,companyId:role==='hr_admin'?b.companyId:null}]} as SessionContext};
 }
-async function restrict(actor:Awaited<ReturnType<typeof employee>>,code:string){const id=randomUUID(),rev=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Task scope '+id})`;await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${rev},${b.tenantId},${id},${owner.client.json({legacyCompany:false,predicates:[{field:'employeeId',values:[code]}]})},${root.userId!})`;await owner.client`update data_permission_profile set enabled=true,active_revision_id=${rev}where id=${id}`;await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${actor.ctx.userId!},${id},${root.userId!})`;}
+async function restrict(actor:Awaited<ReturnType<typeof employee>>,code:string){const id=randomUUID(),rev=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Task scope '+id})`;await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${rev},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'employeeId',values:[code]}]})}::jsonb,${root.userId!})`;await owner.client`update data_permission_profile set enabled=true,active_revision_id=${rev}where id=${id}`;await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${actor.ctx.userId!},${id},${root.userId!})`;}
 async function phoneRequest(field=phone,value="0123456789"){
  const subject=await employee('TASK-SUBJECT'),approver=await employee('TASK-APPROVER','hr_admin'),outsider=await employee('TASK-OUTSIDER','hr_admin');
  await saveProfileVisibilityPolicy(root,{policy:{version:5,fields:Object.fromEntries(essVisibleFields().map(field=>[field.id,field.ess.binding&&['immediate','approval'].includes(field.ess.edit)?'editable':'viewOnly'])),primaryOnly:[],groups:{},approvals:{[field]:{required:true,attachmentRequired:false}}},withdrawnReason:'Fixture policy'});
@@ -57,7 +60,22 @@ it('uses the actual request balance for a manager decision while keeping the raw
 });
 
 it('applies an exact assigned bank correction without exposing identity or sibling statutory fields',async()=>{
- const bank='bank_statutory.bank_information.bankname';const {subject,approver,id}=await phoneRequest(bank,'Fictional corrected bank');
+ const bank='bank_statutory.bank_information.bankname';const {subject,approver,id}=await phoneRequest(bank,'Maybank');
  await decideProfileChange(approver.ctx,{requestId:id,decision:'approved'});
- const [row]=await owner.db.select().from(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,subject.personId));expect(row.bankName).toBe('Fictional corrected bank');expect(row.bankAccountNo).toBe('123456789');await noRaw(approver.ctx,subject);
+ const [row]=await owner.db.select().from(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,subject.personId));expect(row.bankName).toBe('Maybank');expect(row.bankAccountNo).toBe('123456789');await noRaw(approver.ctx,subject);
+});
+
+it('applies only the selected dependent correction through the native register validator',async()=>{
+ const {subject,approver,id}=await phoneRequest();await decideProfileChange(approver.ctx,{requestId:id,decision:'rejected',reason:'Register fixture'});
+ const child=await addDependent(root,{personId:subject.personId,fullName:'Fictional child',relationship:'child'}),sibling=await addDependent(root,{personId:subject.personId,fullName:'Unrelated family',relationship:'parent'}),field='family.family_and_dependents.fullname';
+ const view=await readOwnProfileWorkspace(subject.ctx,{employmentId:subject.employmentId}),record=view.registers.find(row=>row.id===child.id)!;
+ const submitted=await submitOwnProfileEdit(subject.ctx,{employmentId:subject.employmentId,proposal:{v:2,fields:[],registers:[{kind:'dependent',id:child.id,clientId:child.id,fields:[{fieldId:field,before:record.baselines[field],value:'Fictional corrected child'}]}]}});expect(submitted.requestId).toBeTruthy();
+ await decideProfileChange(approver.ctx,{requestId:submitted.requestId!,decision:'approved'});
+ const rows=await owner.db.select().from(s.employeeDependent);expect(rows.find(row=>row.id===child.id)?.fullName).toBe('Fictional corrected child');expect(rows.find(row=>row.id===sibling.id)?.fullName).toBe('Unrelated family');await noRaw(approver.ctx,subject);
+});
+it('applies exact stored photo bytes for its named task while keeping the master photo hidden',async()=>{
+ const {subject,approver,id}=await phoneRequest();await decideProfileChange(approver.ctx,{requestId:id,decision:'rejected',reason:'Photo fixture'});await setTenantSetting(root,{key:'ess.profile_photo_edit',value:true});
+ const png=Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c636000020000050001a5f645400000000049454e44ae426082','hex');
+ const submitted=await setOwnPersonPhoto(subject.ctx,{employmentId:subject.employmentId,content:png,fileName:'fictional.png'});await decideProfileChange(approver.ctx,{requestId:submitted.requestId,decision:'approved'});
+ expect((await owner.db.select().from(s.personPhoto).where(eq(s.personPhoto.personId,subject.personId)))[0].content).toEqual(png);expect(await getPersonPhoto(approver.ctx,subject.personId)).toBeNull();await noRaw(approver.ctx,subject);
 });
