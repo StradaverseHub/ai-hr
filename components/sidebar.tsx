@@ -593,6 +593,7 @@ export function Sidebar({
   isAdmin,
   canConfigureIdentityEmail = false,
   canConfigureLoginPresentation = false,
+  canConfigurePasswordPolicy = false,
   canPreviewIdentityEmail = false,
   canApprove = false,
   hasAssignedAttendanceApproval = false,
@@ -629,6 +630,7 @@ export function Sidebar({
   canProvisionUsers?: boolean;
   canConfigureIdentityEmail?: boolean;
   canConfigureLoginPresentation?: boolean;
+  canConfigurePasswordPolicy?: boolean;
   /** Actual HR administrator access, independent of the broader partner administration rail. */
   canPreviewIdentityEmail?: boolean;
   /** Manager-and-up: shows the Approvals inbox. */
@@ -772,7 +774,7 @@ export function Sidebar({
   };
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
-  const securityAccess={admin:canAdministerSecurity,configure:canConfigureAccess,provision:canProvisionUsers,passwordPolicy:canConfigureLoginPresentation};
+  const securityAccess={admin:canAdministerSecurity,configure:canConfigureAccess,provision:canProvisionUsers,passwordPolicy:canConfigurePasswordPolicy};
   const canSeeChild = (c: ChildItem) =>
     (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
   // The former audience inventory still supplies its original visibility boundaries.
