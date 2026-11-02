@@ -1,35 +1,36 @@
-## Current repair: Home subject admission; native red retained, qualification running
+## Current repair: Home correctness qualified; visibility hot-path experiment running
 
-Both original feedback-only500 failures below remain terminal and unchanged. No
-repeat load has been started. Retained artifacts show all nine Home card categories
-timing out,plus Access-configuration/audit waits. Ranked next causes are repeated
-transaction admission before Home reads,long shared-barrier holds,and repeated
-permission-query work. The common Home own-subject facade has a concrete native seam.
-
-Original probe630a2d5b1ce320ac4236f0d84405743a844a7ff5 /
+Home sourcef27429d82ebcc5598b9ea443434a7920bfaedbd3 passes
+[41421768400](https://github.com/StradaverseHub/ai-hr/actions/runs/41421768400):
+109 database and75 other checks across28 affected files plus the whole compiler.
+Native APP setup is2→1 with populated subject/dated-company parity; archive/rebind
+committed before the new final principal check is refused. No result cache or
+atomic lock against later revocation is claimed. The original630a red
 [41421047287](https://github.com/StradaverseHub/ai-hr/actions/runs/41421047287)
-finishes FAIL: actual APP setup count2 versus required1,with populated own-subject
-and dated-company parity. Its independent forged-person/foreign-selector/stale-role
-controls pass. A second real failure reveals the old path can return a selected
-subject when account archival commits after its entry proof and before inventory
-SQL. Both failures are preserved; the archive expectation is not weakened.
-Artifacts: /private/tmp/aihr-home-subject-red-630a-attempt1.
+retains both actual failures (2 setups and mid-read archive selection).
 
-Repairf27429d82ebcc5598b9ea443434a7920bfaedbd3 on retained04283/application07f
-shares ordinary withTenant setup between the unchanged entry proof and existing
-myOwnEmploymentSubjectsTx owner. It revalidates principal/person after inventory,
-refusing account archive/rebind committed before that final check. This is not a
-permission-result cache or an atomic lock against subsequent revocation. Existing
-selection,dated proof,RLS,error and role-resolution owners remain. No applied SQL,
-migration allocation,auth implementation,layout,resource or timeout changes.
+Paired40-read bursts are former322.35/314.63ms,current332.14/288.35ms. One is
+slower and the other faster; this is not consistent performance evidence. No full
+500-user pair is scheduled for this source merely because its counter improved.
+It remains correctness-qualified development outside release admission.
+Artifacts: /private/tmp/aihr-home-subject-{red-630a,f274}-attempt1.
 
-Affected28-file native/Home/privacy/route qualification and whole compiler are running
-in[41421768400](https://github.com/StradaverseHub/ai-hr/actions/runs/41421768400).
-The native probe also measures paired populated former/current read bursts after
-verifying2→1 setup. A counter reduction alone will not justify another load pair.
-Both canonical manifest checks pass,module last; their digests are unchanged because
-this Home source lies outside their existing scopes. Literal approvals are unchanged.
-No accepted capacity gain,release admission,queue entry,merge or deployment.
+Retained load artifacts rank repeated admission,long Access/audit holds and repeated
+permission-query work. Reversible profile1db8c5dbf4c693bcc9042f9611a1cda6b777c7de /
+[41423425905](https://github.com/StradaverseHub/ai-hr/actions/runs/41423425905)
+now tests a necessary-only self-visibility branch on an independent retained07f
+baseline,excluding every unaccepted app variant. The original grants parsing/admin
+decision remains; any active administrative caller edge retains the full original
+query. Native500-principal and existing hierarchy/HOD contexts compare exact ordered
+outputs against a private original donor and independent can_see_employment rows.
+Live line/context changes and malformed inputs are checked; original function and
+attributes are restored and the donor dropped in finally. No application/migration
+implementation or reservation exists for this experiment yet; outcome pending.
+
+Both original feedback-only500 failures below remain unchanged. No blind rerun,
+resource/timeout/workload change,applied SQL edit,literal approval refresh,release
+admission,queue entry,merge or deployment. Both canonical manifest checks pass,
+module last,with unchanged digests for the Home repair.
 
 ## Current result: feedback-only500 qualification fails; release admission remains held
 
