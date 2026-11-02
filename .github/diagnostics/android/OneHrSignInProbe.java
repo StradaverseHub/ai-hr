@@ -50,6 +50,7 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
   }
   /** Exercise the actual normal form with guaranteed-invalid syntax; never read a password. */
   public void testFixedInvalidLogin() throws Exception {
+    System.out.println("ONEHR_FORM_STEP starting"); System.out.flush();
     setupBounded();
     UiSelector scope=new UiSelector().packageName("ai.stradaverse.aihr.test");
     UiObject username=new UiObject(scope.className("android.widget.EditText").description("Username"));
@@ -58,18 +59,25 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
     UiObject submit=new UiObject(scope.description("Sign in"));
     String restore=getParams().getString("restoreUsername", "");
     assertTrue(restore.matches("[A-Za-z0-9._@+-]{3,64}"));
+    System.out.println("ONEHR_FORM_STEP staging-guard"); System.out.flush();
     assertTrue("Expected signed staging workplace",organization.exists());
     assertTrue("Expected enabled normal login form",username.exists() && username.isEnabled() && password.exists() && password.isEnabled());
     boolean submitted=false,restored=false,cleared=false;
     String stage="not-submitted";
     try {
+      System.out.println("ONEHR_FORM_STEP enter-fixed-username"); System.out.flush();
       assertTrue(username.setText("!diagnostic!"));
+      System.out.println("ONEHR_FORM_STEP enter-synthetic-password"); System.out.flush();
       assertTrue(password.setText("diagnostic-only"));
+      UiObject keyboard=new UiObject(new UiSelector().packageNameMatches("com[.](google[.])?android[.]inputmethod[.].*"));
+      if(keyboard.exists())getUiDevice().pressBack();
+      System.out.println("ONEHR_FORM_STEP verify-submit"); System.out.flush();
       long limit=SystemClock.uptimeMillis()+5000;
       while(SystemClock.uptimeMillis()<limit && !submit.isEnabled())SystemClock.sleep(100);
       assertTrue("Normal submit remains disabled",submit.isEnabled());
       assertEquals("Only deliberately invalid username may be submitted", "!diagnostic!", username.getText());
       assertTrue("Normal submit could not be clicked",submit.click());submitted=true;
+      System.out.println("ONEHR_FORM_STEP awaiting-public-result"); System.out.flush();
       limit=SystemClock.uptimeMillis()+25000;
       while(SystemClock.uptimeMillis()<limit) {
         if(new UiObject(scope.textContains("The organization, username or password is incorrect")).exists()){stage="invalidLogin";break;}
@@ -79,6 +87,7 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
       }
       if(stage.equals("not-submitted"))stage="no-public-result";
     } finally {
+      System.out.println("ONEHR_FORM_STEP clearing-synthetic-input"); System.out.flush();
       if(password.exists() && password.isEnabled())cleared=password.setText("");
       if(username.exists() && username.isEnabled()) {
         if(username.setText(restore))restored=restore.equals(username.getText());
