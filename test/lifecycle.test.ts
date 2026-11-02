@@ -10,7 +10,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { withLifecycleTenant } from '../core/module-gate';
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
-import { hireEmployee } from '../core/org';
+import { hireEmployee,setEmploymentBlacklist } from '../core/org';
 import { ModuleNotEnabledError } from '../core/entitlements';
 import {
   LifecycleError, addComment, advanceAssetRequest, assetHistory, bulkAssetStatus, cancelAssetRequest, cancelCase, cancelRequisition, createAssetRequest,
@@ -579,7 +579,7 @@ describe('Lifecycle module', () => {
       await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'employeeId',values:['NO-OTHER-PERSON']}]})}::text::jsonb,${admin.userId!})`;
       await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
       await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${manager.userId!},${id},${admin.userId!})`;
-      const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional other company handler'}).returning();
+      const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional other company handler',primaryEmail:randomUUID()+'@fixture.invalid'}).returning();
       const elsewhere=await createAppUser(b.tenantId,person.id,'employee');await setStaff(admin,{userId:elsewhere,companyId:companyB,level:'agent'});
       const candidates=await withTenant(manager,tx=>tx.execute<{user_id:string;full_name:string|null}>(sql`select user_id,full_name from app.lc_staff_directory(${b.companyId}::uuid)`));
       expect(candidates.find(row=>row.user_id===agent.userId)).toEqual({user_id:agent.userId,full_name:null});
@@ -591,6 +591,23 @@ describe('Lifecycle module', () => {
       await rejects(setAssetRequestHandler(manager,request.number,requester.userId!),/module staff/);
       await rejects(setAssetRequestHandler(manager,request.number,elsewhere),/module staff/);
       expect((await getAssetRequest(manager,request.number)).request.handlerUserId).toBe(agent.userId);
+    });
+    it('binds global handler membership to a real tenant company and current candidate availability',async()=>{
+      const eligible=async(company=b.companyId)=>(await withTenant(manager,tx=>tx.execute<{eligible:boolean}>(sql`select app.lifecycle_handler_eligible(${agent.userId!}::uuid,${company}::uuid) as eligible`)))[0]!.eligible;
+      expect(await eligible()).toBe(true);
+      const names=await withTenant(manager,tx=>tx.execute<{user_id:string;full_name:string|null}>(sql`select user_id,full_name from app.lc_staff_directory(${b.companyId}::uuid)`));
+      expect(names.find(row=>row.user_id===agent.userId)?.full_name).toBe('Alice Agent');
+      const foreign=await seedBase();
+      for(const company of [foreign.companyId,randomUUID()]){
+        expect(await eligible(company)).toBe(false);
+        expect(await withTenant(manager,tx=>tx.execute(sql`select * from app.lc_staff_directory(${company}::uuid)`))).toEqual([]);
+      }
+      await setStaff(admin,{userId:agent.userId!,companyId:null,level:null});expect(await eligible()).toBe(false);
+      await setStaff(admin,{userId:agent.userId!,companyId:null,level:'agent'});expect(await eligible()).toBe(true);
+      await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,agent.userId!));expect(await eligible()).toBe(false);
+      await owner.db.update(schema.appUser).set({archivedAt:null}).where(eq(schema.appUser.id,agent.userId!));
+      await setEmploymentBlacklist(admin,{employmentId:ids['Alice Agent']!.employmentId,blacklisted:true,reason:'Fictional unavailable handler fixture'});expect(await eligible()).toBe(false);
+      expect((await withTenant(manager,tx=>tx.execute<{user_id:string}>(sql`select user_id from app.lc_staff_directory(${b.companyId}::uuid)`))).some(row=>row.user_id===agent.userId)).toBe(false);
     });
     it('rejection is final, and the handler must be module staff', async () => {
       const item = await catalogue('HW-003');
