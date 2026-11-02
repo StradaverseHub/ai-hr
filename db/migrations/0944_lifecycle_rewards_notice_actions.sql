@@ -2789,7 +2789,7 @@ END $$;
 CREATE FUNCTION app.reward_post_native_validate()RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- RAISE EXCEPTION 'Reward posting construction is incomplete' USING ERRCODE='42501';
+ RAISE EXCEPTION 'Reward posting construction is incomplete' USING ERRCODE='42501',SCHEMA='app',TABLE='reward_post_native_context',CONSTRAINT=TG_NAME;
 END $$;
 CREATE CONSTRAINT TRIGGER rewards_post_native_effect AFTER INSERT ON app.reward_post_native_context DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.reward_post_native_validate();
 CREATE CONSTRAINT TRIGGER rewards_post_native_completed AFTER UPDATE ON app.reward_post_native_context DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.completed AND NOT NEW.active)EXECUTE FUNCTION app.reward_post_native_validate();
@@ -2896,7 +2896,7 @@ DECLARE proof app.reward_post_native_context;unit public.reward_unit;plan jsonb;
 BEGIN
  SELECT c.* INTO proof FROM app.reward_post_native_context c WHERE c.id=NEW.id;
  IF proof.id IS NULL THEN RETURN NULL;END IF;
- IF proof.active OR NOT proof.completed THEN RAISE EXCEPTION 'Reward posting construction is incomplete' USING ERRCODE='42501';END IF;
+ IF proof.active OR NOT proof.completed THEN RAISE EXCEPTION 'Reward posting construction is incomplete' USING ERRCODE='42501',SCHEMA='app',TABLE='reward_post_native_context',CONSTRAINT=TG_NAME;END IF;
  IF nullif(current_setting('app.agent_principal_id',true),'')IS NOT NULL THEN RAISE EXCEPTION 'Reward posting authority changed' USING ERRCODE='42501';END IF;
  IF app.current_agent_principal()IS NOT NULL OR NOT app.principal_snapshot_current()OR proof.xact_id<>pg_current_xact_id()OR proof.tenant_id IS DISTINCT FROM app.current_tenant_id()OR proof.user_id IS DISTINCT FROM app.current_user_id()OR proof.admission->>'authorityStamp'IS DISTINCT FROM app.access_function_authority_stamp()THEN RAISE EXCEPTION 'Reward posting authority changed' USING ERRCODE='42501';END IF;
  SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=proof.unit_id AND u.tenant_id=proof.tenant_id AND u.deleted_at IS NULL;
@@ -2948,13 +2948,27 @@ BEGIN
 END $$;
 CREATE FUNCTION app.reward_post_native(p_unit uuid,p_revision integer,p_batch uuid DEFAULT NULL)RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE context_id uuid;proof app.reward_post_native_context;plan jsonb;before_unit public.reward_unit;after_unit public.reward_unit;posted_id uuid;senior_ids jsonb;posted_time timestamptz;
+DECLARE context_id uuid;proof app.reward_post_native_context;plan jsonb;before_unit public.reward_unit;after_unit public.reward_unit;posted_id uuid;senior_ids jsonb;posted_time timestamptz;own_immediate boolean:=false;refusal_schema text;refusal_table text;refusal_constraint text;refusal_message text;
 BEGIN
  -- Keep the tenant Access/audit order before source, credit and financial row acquisition.
  PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();
  PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
- context_id:=app.reward_post_context_begin(p_unit,p_revision,p_batch);
- IF context_id IS NULL THEN RETURN jsonb_build_object('alreadyPosted',true);END IF;
+ -- This is a real admission/construction attempt, not a mode probe or fabricated row.
+ -- Only the actual owned INSERT-orphan constraint proves that its caller mode is IMMEDIATE.
+ -- Its failed child transaction rolls back the insertion and all source work performed there.
+ BEGIN
+  context_id:=app.reward_post_context_begin(p_unit,p_revision,p_batch);
+ EXCEPTION WHEN SQLSTATE '42501' THEN
+  GET STACKED DIAGNOSTICS refusal_schema=SCHEMA_NAME,refusal_table=TABLE_NAME,refusal_constraint=CONSTRAINT_NAME,refusal_message=MESSAGE_TEXT;
+  IF refusal_schema IS DISTINCT FROM'app'OR refusal_table IS DISTINCT FROM'reward_post_native_context'OR refusal_constraint IS DISTINCT FROM'rewards_post_native_effect'OR refusal_message IS DISTINCT FROM'Reward posting construction is incomplete'THEN RAISE;END IF;
+  own_immediate:=true;
+ END;
+ IF own_immediate THEN
+  SET CONSTRAINTS app.rewards_post_native_effect DEFERRED;
+  -- Re-adjudicate actual locked sources after rollback; no failed admission/source image is reused.
+  context_id:=app.reward_post_context_begin(p_unit,p_revision,p_batch);
+ END IF;
+ IF context_id IS NULL THEN IF own_immediate THEN SET CONSTRAINTS app.rewards_post_native_effect IMMEDIATE;END IF;RETURN jsonb_build_object('alreadyPosted',true);END IF;
  SELECT c.* INTO proof FROM app.reward_post_native_context c WHERE c.id=context_id;
  FOR plan IN SELECT value FROM jsonb_array_elements(proof.source_plan->'sourcePlan')ORDER BY value->'employmentBefore'->>'id'COLLATE "C" LOOP
   PERFORM app.reward_post_salary(context_id,(plan->>'entryId')::uuid);
@@ -2969,6 +2983,9 @@ BEGIN
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
  VALUES(proof.tenant_id,'reward-unit',proof.unit_id,'reward-unit.posted','user',proof.user_id,jsonb_build_object('batchId',p_batch,'revision',p_revision,'seniorPlanEntryIds',senior_ids))RETURNING id INTO posted_id;
  UPDATE app.reward_post_native_context c SET active=false,completed=true,posted_event_id=posted_id,effects=c.effects||jsonb_build_object('unit',jsonb_build_object('before',to_jsonb(before_unit),'after',to_jsonb(after_unit)))WHERE c.id=context_id;
+ -- Restore exactly the one constraint whose prior IMMEDIATE mode was proven above.
+ -- This forces the finished effect through the unchanged full validator before returning.
+ IF own_immediate THEN SET CONSTRAINTS app.rewards_post_native_effect IMMEDIATE;END IF;
  RETURN jsonb_build_object('alreadyPosted',false);
 END $$;
 CREATE FUNCTION app.reward_post_authority_changed()RETURNS trigger

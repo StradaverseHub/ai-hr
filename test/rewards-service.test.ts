@@ -379,6 +379,52 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(Number(input.bonusAmount)).toBe(10055); expect(Number(input.overtimeAmount)).toBe(123); expect(Number(input.tp1Deduction)).toBe(44); expect(Number(input.zakat)).toBe(9);
     expect((await view()).unit.status).toBe('posted');
   });
+  it.each(['all','owned']as const)('preserves actual private posting under prior %s immediate constraints without an execution lease',async mode=>{
+    // Original unchanged app prepare/enact positive is separately established at350cb7e0e.
+    // This still qualifies private construction only; actual APP financial qualification uses
+    // the eventual reviewed production port, never a private fixture grant.
+    const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)});
+    await owner.withTenant(admin,async tx=>{
+      if(mode==='all')await tx.execute(sql`set constraints all immediate`);else await tx.execute(sql`set constraints app.rewards_post_native_effect immediate`);
+      const [result]=await tx.execute<{value:{alreadyPosted:boolean}}>(sql`select app.reward_post_native(${unitId}::uuid,${revision},${batch.batchId}::uuid)as value`);expect(result.value).toEqual({alreadyPosted:false});
+      const [proof]=await tx.execute<{completed:number;active:number}>(sql`select count(*)filter(where completed)::integer as completed,count(*)filter(where active)::integer as active from app.reward_post_native_context where unit_id=${unitId}::uuid and xact_id=pg_current_xact_id()`);expect(proof).toEqual({completed:1,active:0});
+    });
+    expect((await view()).unit.status).toBe('posted');expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batch.batchId))).toHaveLength(1);
+  });
+  it.each(['all','owned']as const)('preserves the caller completed-constraint mode after owned insert restoration (%s)',async mode=>{
+    const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)}),before=await view(),salaries=await owner.db.select().from(schema.compensation),inputs=await owner.db.select().from(schema.payrollInput),events=await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id);let posted=false,restored=false;let refusal:unknown;
+    try{await owner.withTenant(admin,async tx=>{
+      if(mode==='all')await tx.execute(sql`set constraints all immediate`);else await tx.execute(sql`set constraints app.rewards_post_native_effect immediate`);
+      await tx.execute(sql`select app.reward_post_native(${unitId}::uuid,${revision},${batch.batchId}::uuid)`);posted=true;
+      const changed=await tx.execute(sql`update role_assignment set role='manager'where tenant_id=${b.tenantId}::uuid and app_user_id=${admin.userId!}::uuid and role='hr_admin' returning id`);expect(changed).toHaveLength(1);
+      const repaired=await tx.execute(sql`update role_assignment set role='hr_admin'where tenant_id=${b.tenantId}::uuid and app_user_id=${admin.userId!}::uuid and role='manager' returning id`);expect(repaired).toHaveLength(1);restored=true;
+    });}catch(error){refusal=error;}
+    expect(posted).toBe(true);expect(restored).toBe(mode==='owned');expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward posting authority changed'}));expect(await view()).toEqual(before);expect(await owner.db.select().from(schema.compensation)).toEqual(salaries);expect(await owner.db.select().from(schema.payrollInput)).toEqual(inputs);expect(await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id)).toEqual(events);
+  });
+  it('restores the proven insert constraint to immediate before a second genuinely admitted posting construction',async()=>{
+    const first=await view(),reason='Actual zero-change reviewed unit';
+    await configureRewardFixture(admin,unitId,first.unit.revision,{...first.unit.policy,targetMonthsBp:0});
+    let current=await view();await saveRewardEntry(admin,unitId,current.unit.revision,current.rows[0].id,{...current.rows[0].recommendation,meritBp:0,reason});
+    // A distinct genuine native cycle uses the original employee's older snapshot. Current
+    // reviewer employments were created later and do not manufacture zero-pay roster rows.
+    const secondId=await createRewardUnit(admin,{name:'Actual constraint restoration review',year,companyId:b.companyId,businessUnitId:first.unit.businessUnitId,snapshotDate:`${year-1}-12-31`});
+    for(const role of ['bu','bg','ctro','ec','payroll']as const)await setRewardMember(admin,secondId,(await getRewardUnit(admin,secondId)).unit.revision,actors[role]!.userId!,role);
+    let second=await getRewardUnit(admin,secondId);expect(second.rows).toHaveLength(1);
+    await configureRewardFixture(admin,secondId,second.unit.revision,{...second.unit.policy,effectiveFrom:today,targetMonthsBp:0,patActual:100,patTarget:100,ranges:{'12':[300000,500000,700000]}});
+    second=await getRewardUnit(admin,secondId);await saveRewardEntry(admin,secondId,second.unit.revision,second.rows[0].id,{...second.rows[0].recommendation,meritBp:0,reason},{...emptyFacts(),reviewed:true,talent:'SCORE',performance:'ME'});await refreshRewardFixtureBudget(admin,secondId);
+    const secondRevision=(await getRewardUnit(admin,secondId)).unit.revision;await decideRewardUnit(actors.bu!,secondId,secondRevision,'submit',reason);for(const role of ['bg','gr','ctro','ec']as const)await decideRewardUnit(actors[role]!,secondId,secondRevision,'approve',reason);
+    const firstRevision=await approve();current=await view();expect(current.rows.map(row=>({before:row.source.basicCents,after:row.newBasicCents,bonus:row.bonusCents,lump:row.lumpCents}))).toEqual([{before:500000,after:500000,bonus:0,lump:0}]);
+    await owner.withTenant(admin,async tx=>{
+      await tx.execute(sql`set constraints app.rewards_post_native_effect immediate`);await tx.execute(sql`select app.reward_post_native(${unitId}::uuid,${firstRevision},null)`);
+      await tx.execute(sql`savepoint actual_next_posting`);let refusal:unknown;
+      try{await tx.execute(sql`select app.reward_post_context_begin(${secondId}::uuid,${secondRevision},null)`);}catch(error){refusal=error;}
+      await tx.execute(sql`rollback to savepoint actual_next_posting`);await tx.execute(sql`release savepoint actual_next_posting`);
+      expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward posting construction is incomplete'}));
+      const diagnostics:Record<string,unknown>[]=[];let link=refusal;for(let depth=0;depth<4&&link&&typeof link==='object';depth++){diagnostics.push(link as Record<string,unknown>);link=(link as {cause?:unknown}).cause;}
+      expect(diagnostics).toContainEqual(expect.objectContaining({schema_name:'app',table_name:'reward_post_native_context',constraint_name:'rewards_post_native_effect'}));
+    });
+    expect((await view()).unit.status).toBe('posted');expect((await getRewardUnit(admin,secondId)).unit.status).toBe('approved');
+  });
   it('privately closes captured posting construction under owner inspection without granting an app mutation port',async()=>{
     // This qualifies private construction only; owner sessions do not establish the app's
     // financial guard positive. The eventual public finite owner must use its real reviewed ACL.
