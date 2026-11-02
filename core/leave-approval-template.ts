@@ -135,9 +135,7 @@ function assignmentBucketFilter(
 }
 
 /** List the tenant's templates (active first, then by name), each with its live assignment count. */
-export async function listApprovalTemplates(ctx: SessionContext): Promise<ApprovalTemplate[]> {
-  return withTenant(ctx, async (tx) => {
-    await assertApprovalTemplateActionTx(tx,'view');
+async function listApprovalTemplatesTx(tx:Tx):Promise<ApprovalTemplate[]> {
     const rows = await tx
       .select({
         id: leaveApprovalTemplate.id,
@@ -162,7 +160,11 @@ export async function listApprovalTemplates(ctx: SessionContext): Promise<Approv
       active: r.active,
       assignedCount: Number(r.assignedCount ?? 0),
     }));
-  });
+}
+/** Native routing/catalogue reference course, independent of the maintenance screen's View. */
+export function listApprovalTemplates(ctx:SessionContext){return withTenant(ctx,listApprovalTemplatesTx);}
+export function listApprovalTemplatesForMaintenance(ctx:SessionContext){
+ return withTenant(ctx,async tx=>{await assertApprovalTemplateActionTx(tx,'view');return listApprovalTemplatesTx(tx);});
 }
 
 /** One assignment row for the assignments screen: which template covers which (company, leave-type).

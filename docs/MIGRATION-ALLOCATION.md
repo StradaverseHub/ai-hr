@@ -1368,3 +1368,11 @@ Company OLD plus current native company Edit; root owns its 0942 Company-guard c
 is not app-executable and grants no general Company mutation. Native scope/reference/refusal cases
 are authored but unrun. Company assignment/escalation UI projections, root guard integration and
 live Leave command closure remain outstanding; no Leave completion claim or sentinel is added.
+
+Template and escalation maintenance reads have explicit facades over shared native reference query
+owners. The existing Leave Types approval readout and runtime reference consumers keep their native
+reference course, so a maintenance View denial never becomes a false fallback chain/policy. The main
+Approval screen projects Template View before rendering that maintenance section and filters each
+escalation section by exact company View; its editor receives exact Edit and defaults missing flags
+to disabled. The company escalation DOM controls and shared-reference facade checks are authored,
+not executed. Assignment picker/course preview and the remaining native command chapters are open.

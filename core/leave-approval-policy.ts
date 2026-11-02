@@ -810,12 +810,7 @@ export type LeaveEscalationPolicy = {
 };
 
 /** A company's approval-escalation settings, for the admin editor and the nightly sweep. */
-export async function getLeaveEscalationPolicy(
-  ctx: SessionContext,
-  companyId: string,
-): Promise<LeaveEscalationPolicy> {
-  return withTenant(ctx, async (tx) => {
-    await assertLeaveApprovalCompanyTx(tx,'leaveApproval.escalation','view',companyId);
+async function leaveEscalationPolicyTx(tx:Tx,companyId:string):Promise<LeaveEscalationPolicy> {
     const [co] = await tx
       .select({
         enabled: company.escalationEnabled,
@@ -837,7 +832,11 @@ export async function getLeaveEscalationPolicy(
       target,
       targetRole,
     };
-  });
+}
+/** Native routing/readout reference, independent of escalation maintenance. */
+export function getLeaveEscalationPolicy(ctx:SessionContext,companyId:string){return withTenant(ctx,tx=>leaveEscalationPolicyTx(tx,companyId));}
+export function getLeaveEscalationPolicyForMaintenance(ctx:SessionContext,companyId:string){
+ return withTenant(ctx,async tx=>{await assertLeaveApprovalCompanyTx(tx,'leaveApproval.escalation','view',companyId);return leaveEscalationPolicyTx(tx,companyId);});
 }
 
 /** Save a company's approval-escalation settings. NOT part of the rule matrix — escalation is one number
