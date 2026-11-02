@@ -1,4 +1,4 @@
-import {boundedUniqueName} from '../lib/bounded-unique-name';
+import {boundedUniqueName,boundedNamePrefix} from '../lib/bounded-unique-name';
 import { lockLeaveDependenciesTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 /**
  * r424 (feedback 50ed39e1) — Attendance File Structure Mapping, Import Clocking Data, and Import Logs.
@@ -302,7 +302,7 @@ export async function duplicateClockingMapping(ctx: SessionContext, id: string, 
   const taken = new Set((await listClockingMappings(ctx)).map((m) => m.name.toLowerCase()));
   const suffix = ` (${copyWord})`;
   if (suffix.length >= NAME_MAX) throw new ClockingMappingError('nameTaken');
-  let name = src.name.slice(0, NAME_MAX - suffix.length) + suffix;
+  let name = boundedNamePrefix(src.name, NAME_MAX - suffix.length) + suffix;
   const { id: _id, createdAt: _c, updatedAt: _u, lastUsedAt: _l, ...rest } = src;
   // The unique index remains authoritative if another administrator inserts after discovery.
   for (let attempt=0;attempt<10;attempt++) {
