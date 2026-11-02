@@ -8,7 +8,14 @@ Both one-worker pairs finish as FAIL. Import-only3c [1s41364525515](https://gith
 
 Combined07f [1s41365830387](https://github.com/StradaverseHub/ai-hr/actions/runs/41365830387)/[5s41365832879](https://github.com/StradaverseHub/ai-hr/actions/runs/41365832879) both exceed that600s HTTP parent, at610.119s/610.118s. Their last snapshots are441 completed/2 failed/57 active and262/0/238, respectively. Both retain three loaded Home-card failures; neither has final browser/audit accounting or valid final p95. Two Personnel draft-delete55P03 lock-timeout records are captured in1s. Partial five-second zero-failure counts do not prove a successful500-user run.
 
-Same-source07f two-worker experiments [1s41366258087](https://github.com/StradaverseHub/ai-hr/actions/runs/41366258087)/[5s41366260955](https://github.com/StradaverseHub/ai-hr/actions/runs/41366260955) remain active. They retain the same total10 app connections/4GiB heap, standard four-CPU host, approximately2GiB PostgreSQL and two-million-row workload. Their topology change is a separate configuration experiment. **0/2 targets accepted; no deployment or production-equivalent/500-browser claim.** Source-bound provider approvals remain unchanged and egress blocked.
+Same-source07f two-worker experiments also FAIL with complete accounting:
+
+|Activity|Completed/failed|Read/write p95|Browsers|HTTP stage|
+|---|---|---|---|---|
+|1s [41366258087](https://github.com/StradaverseHub/ai-hr/actions/runs/41366258087)|417/83|65.36s/86.01s|4/6|594.18s; within600s|
+|5s [41366260955](https://github.com/StradaverseHub/ai-hr/actions/runs/41366260955)|406/94|57.75s/87.93s|5/6|596.54s; within600s|
+
+Both have three loaded Home-card failures and two valid audit chains with no interior unchained entries. Errors are82/90 aborts and1/4 native Personnel draft-delete refusals, respectively. The same-source one-worker runs are incomplete, so no final same-source p95 percentage comparison is valid. Two workers share the same total10 app connections/4GiB heap, standard four-CPU host and approximately2GiB PostgreSQL; end-of-window combined app RSS is about3.1GiB. This configuration shows no accepted speed benefit and is not selected for deployment; retain the one-worker baseline. **All six new full-load workflows have finished;0/2 activity targets accepted. No deployment or production-equivalent/500-browser claim.** Provider approval bindings remain unchanged and combined-source egress blocked.
 
 ## Completed d91 whole-system pair — targets still unmet
 
