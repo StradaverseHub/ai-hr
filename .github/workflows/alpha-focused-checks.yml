@@ -49,17 +49,22 @@ on:
         default: false
         type: boolean
       model_eval:
-        description: Optional OpenRouter model id for the fictional-data Assistant ceiling probe (protected assistant-eval environment); empty skips
+        description: Requested fictional-data model evaluation with approved model/profile and spend setup; empty stays inert
+        required: false
+        default: ''
+        type: string
+      eval_profile:
+        description: Fixed source-owned profile matching the selected evaluation carrier
         required: false
         default: ''
         type: string
       eval_budget_usd:
-        description: Hard spend cap in USD for model_eval (maximum 50)
+        description: Requested total allocation in USD for model_eval (maximum 15; verified spend setup required)
         required: false
-        default: '20'
+        default: '15'
         type: string
       eval_allowed_providers:
-        description: Optional comma-separated OpenRouter upstream providers for model_eval
+        description: One exact reviewed OpenRouter upstream endpoint for model_eval
         required: false
         default: ''
         type: string
@@ -129,6 +134,9 @@ jobs:
       AIHR_QUALIFY_RESTRICTED_PORT: ${{ inputs.qualify_restricted_port_prerequisites }}
       AIHR_RESTRICTED_PORT_TYPECHECK: ${{ inputs.run_typecheck }}
       AIHR_EVAL_MODEL: ${{ inputs.model_eval }}
+      AIHR_EVAL_PROFILE: ${{ inputs.eval_profile }}
+      AIHR_EVAL_PROVIDER: openrouter
+      AIHR_EVAL_PATH: production
       AIHR_EVAL_BUDGET_USD: ${{ inputs.eval_budget_usd }}
       AIHR_EVAL_ALLOWED_PROVIDERS: ${{ inputs.eval_allowed_providers }}
     steps:

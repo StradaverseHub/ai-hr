@@ -46,8 +46,8 @@ export function createModelEvalSession(carrier:string){
   throw Error('Controller and carrier evaluation plan differ.');
  const ledger=createEvalLedger(plan),observed=new Map<string,number>(),terminal=new Map<string,string>();
  const attempts:{caseId:string;requestId:string;requestDigest:string;configurationDigest:string;ceilingNanos:string}[]=[];
- const sent:string[]=[];
- let guard:ReturnType<typeof createNativeEvalBudget>|null=null,receipt:Record<string,unknown>|null=null;
+ const sent:{caseId:string;body:string}[]=[],consumedPosts=new Set<string>();
+ let guard:ReturnType<typeof createNativeEvalBudget>|null=null,receipt:Record<string,unknown>|null=null,persisted=false;
  const getGuard=()=>{
   if(!nativeOwner)throw Error('Original native spend proof owner unavailable.');
   return guard??=createNativeEvalBudget({allocationNanos:usdToNanos(String(request.budgetUsd)),maxAttempts:1500,nativeDispatch:nativeOwner});
@@ -62,42 +62,50 @@ export function createModelEvalSession(carrier:string){
   });
  };
  if(activeRuntime)throw Error('Only one model evaluation may own this process.');
- activeRuntime={dispatch};
+ const runtime={dispatch};activeRuntime=runtime;
  const realFetch=globalThis.fetch;
  const observer:typeof fetch=async(input,init)=>{
+  if(activeRuntime!==runtime)throw Error('Evaluation lifetime is closed.');
   const raw=typeof input==='string'?input:input instanceof URL?input.href:input.url;
   const url=new URL(raw),method=(init?.method??(input instanceof Request?input.method:'GET')).toUpperCase();
   if(url.origin!=='https://openrouter.ai'||url.username||url.password||url.hash)throw Error('Unapproved evaluation network destination.');
   if(method==='POST'){
    const scope=scopes.getStore();
    if(url.pathname!=='/api/v1/chat/completions'||url.search||!scope?.attemptId
-    ||!attempts.some(row=>row.requestId===scope.attemptId&&row.caseId===scope.id)||typeof init?.body!=='string')
+    ||consumedPosts.has(scope.attemptId)||!attempts.some(row=>row.requestId===scope.attemptId&&row.caseId===scope.id)||typeof init?.body!=='string')
     throw Error('Unreserved evaluation inference refused.');
    const body=JSON.parse(init.body) as {model?:string};
    if(body.model!==request.model)throw Error('Unapproved evaluation model.');
-   observed.set(scope.id,(observed.get(scope.id)??0)+1);sent.push(init.body);
-  }else if(method!=='GET'||url.pathname!=='/api/v1/generation'||[...url.searchParams.keys()].join(',')!=='id'||!url.searchParams.get('id')){
+   consumedPosts.add(scope.attemptId);
+   observed.set(scope.id,(observed.get(scope.id)??0)+1);sent.push({caseId:scope.id,body:init.body});
+  }else if(method!=='GET'||url.pathname!=='/api/v1/generation'||[...url.searchParams.keys()].join(',')!=='id'||!url.searchParams.get('id')
+   ||!scopes.getStore()?.attemptId||!consumedPosts.has(scopes.getStore()!.attemptId!)){
    throw Error('Unapproved evaluation metadata request.');
   }
   return realFetch(input,init);
  };
  globalThis.fetch=observer;
  function finish(){
-  if(receipt)return receipt;
+  if(receipt&&persisted)return receipt;
+  if(!receipt){
   const outcomes=ledger.finalize('not executed or prerequisite unavailable');
   const snapshot=guard?.snapshot()??{allocationNanos:usdToNanos(String(request.budgetUsd)),reservedNanos:0n,remainingNanos:usdToNanos(String(request.budgetUsd)),attempts:0,maxAttempts:1500};
   receipt={schemaVersion:1,request,files:[carrier],planHash:plan.planHash,corpusReviewDigest:plan.corpusReviewDigest,
    plannedCaseIds:cases.map(row=>row.id),productionReviewed:true,path:'production',outcomes,
    budget:{kind:'native_owned_no_refund_lifetime_reservations',identity:request.identity,
     snapshot:Object.fromEntries(Object.entries(snapshot).map(([key,value])=>[key,typeof value==='bigint'?String(value):value])),attempts:attempts.slice()}};
+  }
+  try{
   const directory=process.env.AIHR_FOCUSED_EVIDENCE_DIR??(process.env.RUNNER_TEMP?join(process.env.RUNNER_TEMP,'aihr-focused'):null);
   if(!directory)throw Error('Hosted evaluation evidence directory unavailable.');
   mkdirSync(directory,{recursive:true});
   const definition=EVAL_CARRIERS[carrier as keyof typeof EVAL_CARRIERS];
   writeFileSync(join(directory,definition.receiptFile),JSON.stringify(receipt,null,2)+'\n',{flag:'wx',mode:0o600});
-  if(globalThis.fetch===observer)globalThis.fetch=realFetch;
-  activeRuntime=null;
-  return receipt;
+  persisted=true;return receipt;
+  }finally{
+   if(globalThis.fetch===observer)globalThis.fetch=realFetch;
+   if(activeRuntime===runtime)activeRuntime=null;
+  }
  }
  return Object.freeze({request,plan,
   id(set:string,conversationId:string,turnId:string,repeat=0){
@@ -109,23 +117,23 @@ export function createModelEvalSession(carrier:string){
     ledger.finish({id,status:'dependency_unavailable',reason:'previous planned turn did not complete'});terminal.set(id,'dependency_unavailable');
     throw Error('evaluation_dependency_unavailable');
    }
-   ledger.start(id);
+   ledger.start(id);const started=performance.now();
    try{
     const value=await scopes.run({id},work),grade=judge(value);
-    ledger.finish({id,status:'completed',providerCalls:observed.get(id)??0,
+    ledger.finish({id,status:'completed',elapsedMs:performance.now()-started,providerCalls:observed.get(id)??0,
      security:{passed:grade.findings.length===0,findings:[...grade.findings]},
      criteria:row.quality.criteria.map(criterion=>({id:criterion,status:grade.criteria[criterion]??'review_required'}))});
     terminal.set(id,'completed');return value;
    }catch(error){
     const budget=error instanceof Error&&(error.name==='AiSpendControlError'||/allocation unavailable/.test(error.message));
-    ledger.finish({id,status:budget?'budget_refused':'error',reason:budget?'native or lifetime allocation refused':'case execution failed',providerCalls:observed.get(id)??0});
+    ledger.finish({id,status:budget?'budget_refused':'error',reason:budget?'native or lifetime allocation refused':'case execution failed',elapsedMs:performance.now()-started,providerCalls:observed.get(id)??0});
     terminal.set(id,budget?'budget_refused':'error');throw error;
    }
   },
-  sentText:()=>Object.freeze(sent.slice()),finish,
+  sentText:(id=scopes.getStore()?.id)=>Object.freeze(sent.filter(row=>!id||row.caseId===id).map(row=>row.body)),finish,
   assertExecution(){
    const result=finish(),outcomes=result.outcomes as {status:string;providerCalls?:number;security?:{passed:boolean}}[];
-   if(outcomes.some(row=>row.status!=='completed'||row.security?.passed!==true)||![...observed.values()].some(count=>count>0))
+   if(outcomes.some((row,index)=>row.status!=='completed'||row.security?.passed!==true||cases[index].requiresModel&&(row.providerCalls??0)===0)||![...observed.values()].some(count=>count>0))
     throw Error('Evaluation is incomplete or unsafe; see every planned outcome in its receipt.');
   },
  });

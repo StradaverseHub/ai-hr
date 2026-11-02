@@ -3,7 +3,7 @@ run-name: Eval contract tests only · ${{ github.sha }}
 on:
   push:
     branches: [codex/audit-eval-hardening-20261103]
-    paths: ['.github/ci/focused-checks*', '.github/ci/eval/**', '.github/workflows/audit-ai-eval-contracts.yml']
+    paths: ['.github/ci/focused-checks*', '.github/ci/eval/**', '.github/workflows/audit-ai-eval-contracts.yml', 'test/eval-plans/**']
 permissions: {contents: read}
 concurrency:
   group: audit-ai-eval-contracts-${{ github.ref }}
@@ -19,3 +19,5 @@ jobs:
         with: {node-version: '22.23.3'}
       - name: Actual focused-result admission regressions
         run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/eval/contract.test.mjs .github/ci/eval/attempt-budget.test.mjs .github/ci/eval/provider-metadata.test.mjs
+      - name: Exact frozen source plans (no app or provider execution)
+        run: node .github/ci/eval/check-plans.mjs

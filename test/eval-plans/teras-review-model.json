@@ -1,0 +1,3932 @@
+{
+ "schemaVersion": 1,
+ "carrier": "test/review/teras-review-model.eval.test.ts",
+ "profileId": "teras-review-model-full-v1",
+ "model": "openai/gpt-6-luna",
+ "repeats": 1,
+ "reviewId": "docs/reviews/ai-eval-corpus-contract-20261103.md#rubric-contract",
+ "sources": [
+  {
+   "path": "test/assistant-production-baseline-corpus.ts",
+   "sha256": "ac9c2e088b6043658044265eecfb762f09b88983fb71eae9075dde95391c9c69"
+  },
+  {
+   "path": "test/explainer-corpus.ts",
+   "sha256": "252debb51f322ac15ed4d7195137f15e9957cc858dd5c2c92af997810462eae7"
+  },
+  {
+   "path": "test/harness-sensitive-corpus.ts",
+   "sha256": "611fd293643fbc8dfd9f75113ecc80aa0c4020f7974a891f2351a3c986873c76"
+  },
+  {
+   "path": "test/assistant-behaviour-score.ts",
+   "sha256": "db6e392820f5587d54ddee88023065e4dc72b2067e2099ee78e2d3fddd5b6a3f"
+  },
+  {
+   "path": "test/assistant-corpus-review.ts",
+   "sha256": "9bc606d64f034fff30a6ae80068468b703b66c0357a6d789ea9634234acbdc74"
+  },
+  {
+   "path": "test/helpers/ai-eval-session.ts",
+   "sha256": "291cea08298b7bdc861c1e9d0b11f55eb2b4ba1c9522904c3209e05692caaf5e"
+  },
+  {
+   "path": "test/helpers/ai-eval-native-budget.ts",
+   "sha256": "d99346fbda13e0c0b67c6f07ada82441e9fb5335176cf31a662a300236300d6e"
+  },
+  {
+   "path": "test/helpers/ai-eval-hr-snapshot.ts",
+   "sha256": "dfc361929aaaa69f7756694c001ff107f1caf6424b502d6497f25d78fb3682b1"
+  },
+  {
+   "path": "test/helpers/ai-eval-grade.ts",
+   "sha256": "42fd71cc69c5bd440e8142831ecf2491c6276b3552865f093ec47f80443546a1"
+  },
+  {
+   "path": "docs/reviews/ai-eval-corpus-contract-20261103.md",
+   "sha256": "f82fac7d65790d805d26db99124c5b07efe86f3d3e847a54a2fcc45609a44737"
+  },
+  {
+   "path": "test/review/teras-review-model.eval.test.ts",
+   "sha256": "e43104fdeb3c26a52e71265fd3387a687c60dd5c7e505d7c34c0021c96af5c99"
+  },
+  {
+   "path": "test/review/teras-review-unseen-corpus.ts",
+   "sha256": "cf2c1844d4c79c94e73bc649fcd544d465b0c4aa2c72373636ee2d6ca9f293a7"
+  }
+ ],
+ "cases": [
+  {
+   "id": "baseline:controls:control-leave:0",
+   "set": "baseline",
+   "conversationId": "controls",
+   "turnId": "control-leave",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:controls:control-claims:0",
+   "set": "baseline",
+   "conversationId": "controls",
+   "turnId": "control-claims",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:controls:control-overtime:0",
+   "set": "baseline",
+   "conversationId": "controls",
+   "turnId": "control-overtime",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:leave-continuity:leave-annual:0",
+   "set": "baseline",
+   "conversationId": "leave-continuity",
+   "turnId": "leave-annual",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:leave-continuity:leave-pending:0",
+   "set": "baseline",
+   "conversationId": "leave-continuity",
+   "turnId": "leave-pending",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "baseline:leave-continuity:leave-annual:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:leave-continuity:leave-correct:0",
+   "set": "baseline",
+   "conversationId": "leave-continuity",
+   "turnId": "leave-correct",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "baseline:leave-continuity:leave-pending:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:leave-paraphrase:para-remaining:0",
+   "set": "baseline",
+   "conversationId": "leave-paraphrase",
+   "turnId": "para-remaining",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:leave-paraphrase:para-days-left:0",
+   "set": "baseline",
+   "conversationId": "leave-paraphrase",
+   "turnId": "para-days-left",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:leave-paraphrase:para-typo:0",
+   "set": "baseline",
+   "conversationId": "leave-paraphrase",
+   "turnId": "para-typo",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:leave-paraphrase:para-malay:0",
+   "set": "baseline",
+   "conversationId": "leave-paraphrase",
+   "turnId": "para-malay",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:explain-change:explain-start:0",
+   "set": "baseline",
+   "conversationId": "explain-change",
+   "turnId": "explain-start",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:explain-change:explain-why:0",
+   "set": "baseline",
+   "conversationId": "explain-change",
+   "turnId": "explain-why",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "baseline:explain-change:explain-start:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:multi-part:multi-claims-holiday:0",
+   "set": "baseline",
+   "conversationId": "multi-part",
+   "turnId": "multi-claims-holiday",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:pay-change:pay-exact:0",
+   "set": "baseline",
+   "conversationId": "pay-change",
+   "turnId": "pay-exact",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:pay-change:pay-ordinary:0",
+   "set": "baseline",
+   "conversationId": "pay-change",
+   "turnId": "pay-ordinary",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:analysis:analysis-change:0",
+   "set": "baseline",
+   "conversationId": "analysis",
+   "turnId": "analysis-change",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:action:action-natural:0",
+   "set": "baseline",
+   "conversationId": "action",
+   "turnId": "action-natural",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "baseline:negatives:neg-named:0",
+   "set": "baseline",
+   "conversationId": "negatives",
+   "turnId": "neg-named",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "negative-safety"
+    ]
+   }
+  },
+  {
+   "id": "baseline:negatives:neg-injection:0",
+   "set": "baseline",
+   "conversationId": "negatives",
+   "turnId": "neg-injection",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "negative-safety"
+    ]
+   }
+  },
+  {
+   "id": "baseline:negatives:neg-file:0",
+   "set": "baseline",
+   "conversationId": "negatives",
+   "turnId": "neg-file",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "negative-safety"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-start:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-start",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-onboarding:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-onboarding",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-start:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-attendance:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-attendance",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-onboarding:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-leave:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-leave",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-attendance:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-payroll-pre:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-payroll-pre",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-leave:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-payroll-ready:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-payroll-ready",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-payroll-pre:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-missing-data:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-missing-data",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-payroll-ready:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-set-entitlement:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-set-entitlement",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-missing-data:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-create-shift:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-create-shift",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-set-entitlement:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-who-away:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-who-away",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-create-shift:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-who-away-ops:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-who-away-ops",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-who-away:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-progress:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-progress",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-who-away-ops:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-backref:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-backref",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-progress:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:admin-setup:adm-thanks:0",
+   "set": "complex",
+   "conversationId": "admin-setup",
+   "turnId": "adm-thanks",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:admin-setup:adm-backref:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-hi:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-hi",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-balance:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-balance",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-hi:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-annual:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-annual",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-balance:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-pending:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-pending",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-annual:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-requests:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-requests",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-pending:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-cancel-backref:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-cancel-backref",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-requests:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-switch-claims:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-switch-claims",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-cancel-backref:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-holiday:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-holiday",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-switch-claims:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-plan:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-plan",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-holiday:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-payslip:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-payslip",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-plan:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-pay-why:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-pay-why",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-payslip:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-manager:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-manager",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-pay-why:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-back-leave:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-back-leave",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-manager:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:employee-long:emp-summary:0",
+   "set": "complex",
+   "conversationId": "employee-long",
+   "turnId": "emp-summary",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "complex:employee-long:emp-back-leave:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:multi-function:mf-apply-and-balance:0",
+   "set": "complex",
+   "conversationId": "multi-function",
+   "turnId": "mf-apply-and-balance",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:multi-function:mf-overview:0",
+   "set": "complex",
+   "conversationId": "multi-function",
+   "turnId": "mf-overview",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:multi-function:mf-compare-years:0",
+   "set": "complex",
+   "conversationId": "multi-function",
+   "turnId": "mf-compare-years",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:multi-function:mf-long-weekends:0",
+   "set": "complex",
+   "conversationId": "multi-function",
+   "turnId": "mf-long-weekends",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:multi-function:mf-entitlement-why:0",
+   "set": "complex",
+   "conversationId": "multi-function",
+   "turnId": "mf-entitlement-why",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:approver-actions:apr-exact:0",
+   "set": "complex",
+   "conversationId": "approver-actions",
+   "turnId": "apr-exact",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:approver-actions:apr-bulk:0",
+   "set": "complex",
+   "conversationId": "approver-actions",
+   "turnId": "apr-bulk",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:approver-actions:apr-attendance:0",
+   "set": "complex",
+   "conversationId": "approver-actions",
+   "turnId": "apr-attendance",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:approver-actions:apr-team-leave:0",
+   "set": "complex",
+   "conversationId": "approver-actions",
+   "turnId": "apr-team-leave",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "complex:approver-actions:apr-terminate:0",
+   "set": "complex",
+   "conversationId": "approver-actions",
+   "turnId": "apr-terminate",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "negative-safety"
+    ]
+   }
+  },
+  {
+   "id": "parity:admin-parity:pa-position:0",
+   "set": "parity",
+   "conversationId": "admin-parity",
+   "turnId": "pa-position",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:admin-parity:pa-payroll-close:0",
+   "set": "parity",
+   "conversationId": "admin-parity",
+   "turnId": "pa-payroll-close",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:admin-parity:pa-bank:0",
+   "set": "parity",
+   "conversationId": "admin-parity",
+   "turnId": "pa-bank",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:admin-parity:pa-transfer:0",
+   "set": "parity",
+   "conversationId": "admin-parity",
+   "turnId": "pa-transfer",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:admin-parity:pa-leave-adjust:0",
+   "set": "parity",
+   "conversationId": "admin-parity",
+   "turnId": "pa-leave-adjust",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:admin-parity:pa-pay-code:0",
+   "set": "parity",
+   "conversationId": "admin-parity",
+   "turnId": "pa-pay-code",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:admin-parity:pa-reporting:0",
+   "set": "parity",
+   "conversationId": "admin-parity",
+   "turnId": "pa-reporting",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:admin-parity:pa-emergency:0",
+   "set": "parity",
+   "conversationId": "admin-parity",
+   "turnId": "pa-emergency",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:admin-parity:pa-run:0",
+   "set": "parity",
+   "conversationId": "admin-parity",
+   "turnId": "pa-run",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:admin-parity:pa-article:0",
+   "set": "parity",
+   "conversationId": "admin-parity",
+   "turnId": "pa-article",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:employee-parity:pe-leave:0",
+   "set": "parity",
+   "conversationId": "employee-parity",
+   "turnId": "pe-leave",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:employee-parity:pe-correction:0",
+   "set": "parity",
+   "conversationId": "employee-parity",
+   "turnId": "pe-correction",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:employee-parity:pe-claim-submit:0",
+   "set": "parity",
+   "conversationId": "employee-parity",
+   "turnId": "pe-claim-submit",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:employee-parity:pe-review-ack:0",
+   "set": "parity",
+   "conversationId": "employee-parity",
+   "turnId": "pe-review-ack",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:employee-parity:pe-email-prefs:0",
+   "set": "parity",
+   "conversationId": "employee-parity",
+   "turnId": "pe-email-prefs",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "parity:employee-parity:pe-profile:0",
+   "set": "parity",
+   "conversationId": "employee-parity",
+   "turnId": "pe-profile",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:why-statutory:why-epf:0",
+   "set": "explainer",
+   "conversationId": "why-statutory",
+   "turnId": "why-epf",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:why-statutory:why-socso-followup:0",
+   "set": "explainer",
+   "conversationId": "why-statutory",
+   "turnId": "why-socso-followup",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "explainer:why-statutory:why-epf:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:why-statutory:why-pcb-period:0",
+   "set": "explainer",
+   "conversationId": "why-statutory",
+   "turnId": "why-pcb-period",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:why-statutory:why-unreleased:0",
+   "set": "explainer",
+   "conversationId": "why-statutory",
+   "turnId": "why-unreleased",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:why-entitlement:why-annual-days:0",
+   "set": "explainer",
+   "conversationId": "why-entitlement",
+   "turnId": "why-annual-days",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:why-entitlement:why-medical-days:0",
+   "set": "explainer",
+   "conversationId": "why-entitlement",
+   "turnId": "why-medical-days",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:why-attendance:why-late-dated:0",
+   "set": "explainer",
+   "conversationId": "why-attendance",
+   "turnId": "why-late-dated",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:why-attendance:why-late-undated:0",
+   "set": "explainer",
+   "conversationId": "why-attendance",
+   "turnId": "why-late-undated",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:why-attendance:why-overtime:0",
+   "set": "explainer",
+   "conversationId": "why-attendance",
+   "turnId": "why-overtime",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:why-negative:why-colleague-late:0",
+   "set": "explainer",
+   "conversationId": "why-negative",
+   "turnId": "why-colleague-late",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "negative-safety"
+    ]
+   }
+  },
+  {
+   "id": "explainer:why-negative:why-colleague-epf:0",
+   "set": "explainer",
+   "conversationId": "why-negative",
+   "turnId": "why-colleague-epf",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "negative-safety"
+    ]
+   }
+  },
+  {
+   "id": "explainer:copilot:copilot-next:0",
+   "set": "explainer",
+   "conversationId": "copilot",
+   "turnId": "copilot-next",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:copilot:copilot-first-payroll:0",
+   "set": "explainer",
+   "conversationId": "copilot",
+   "turnId": "copilot-first-payroll",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:copilot:copilot-logins:0",
+   "set": "explainer",
+   "conversationId": "copilot",
+   "turnId": "copilot-logins",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:copilot:copilot-claims:0",
+   "set": "explainer",
+   "conversationId": "copilot",
+   "turnId": "copilot-claims",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "explainer:copilot:copilot-login-names:0",
+   "set": "explainer",
+   "conversationId": "copilot",
+   "turnId": "copilot-login-names",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "observable-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:crisis-en:crisis-en:0",
+   "set": "sensitive",
+   "conversationId": "crisis-en",
+   "turnId": "crisis-en",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:crisis-en-leave:crisis-en-leave:0",
+   "set": "sensitive",
+   "conversationId": "crisis-en-leave",
+   "turnId": "crisis-en-leave",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:crisis-ms:crisis-ms:0",
+   "set": "sensitive",
+   "conversationId": "crisis-ms",
+   "turnId": "crisis-ms",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:crisis-zh:crisis-zh:0",
+   "set": "sensitive",
+   "conversationId": "crisis-zh",
+   "turnId": "crisis-zh",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:crisis-vi:crisis-vi:0",
+   "set": "sensitive",
+   "conversationId": "crisis-vi",
+   "turnId": "crisis-vi",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-en:harass-en:0",
+   "set": "sensitive",
+   "conversationId": "harass-en",
+   "turnId": "harass-en",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-en-bully:harass-en-bully:0",
+   "set": "sensitive",
+   "conversationId": "harass-en-bully",
+   "turnId": "harass-en-bully",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-ms:harass-ms:0",
+   "set": "sensitive",
+   "conversationId": "harass-ms",
+   "turnId": "harass-ms",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-zh:harass-zh:0",
+   "set": "sensitive",
+   "conversationId": "harass-zh",
+   "turnId": "harass-zh",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-vi:harass-vi:0",
+   "set": "sensitive",
+   "conversationId": "harass-vi",
+   "turnId": "harass-vi",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:grievance-en:grievance-en:0",
+   "set": "sensitive",
+   "conversationId": "grievance-en",
+   "turnId": "grievance-en",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:grievance-en-named:grievance-en-named:0",
+   "set": "sensitive",
+   "conversationId": "grievance-en-named",
+   "turnId": "grievance-en-named",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:grievance-ms:grievance-ms:0",
+   "set": "sensitive",
+   "conversationId": "grievance-ms",
+   "turnId": "grievance-ms",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:grievance-zh:grievance-zh:0",
+   "set": "sensitive",
+   "conversationId": "grievance-zh",
+   "turnId": "grievance-zh",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:grievance-vi:grievance-vi:0",
+   "set": "sensitive",
+   "conversationId": "grievance-vi",
+   "turnId": "grievance-vi",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:medical-en:medical-en:0",
+   "set": "sensitive",
+   "conversationId": "medical-en",
+   "turnId": "medical-en",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:medical-en-leave:medical-en-leave:0",
+   "set": "sensitive",
+   "conversationId": "medical-en-leave",
+   "turnId": "medical-en-leave",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:medical-ms:medical-ms:0",
+   "set": "sensitive",
+   "conversationId": "medical-ms",
+   "turnId": "medical-ms",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:medical-zh:medical-zh:0",
+   "set": "sensitive",
+   "conversationId": "medical-zh",
+   "turnId": "medical-zh",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:medical-vi:medical-vi:0",
+   "set": "sensitive",
+   "conversationId": "medical-vi",
+   "turnId": "medical-vi",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:termination-en:termination-en:0",
+   "set": "sensitive",
+   "conversationId": "termination-en",
+   "turnId": "termination-en",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:termination-en-forced:termination-en-forced:0",
+   "set": "sensitive",
+   "conversationId": "termination-en-forced",
+   "turnId": "termination-en-forced",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:termination-ms:termination-ms:0",
+   "set": "sensitive",
+   "conversationId": "termination-ms",
+   "turnId": "termination-ms",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:termination-zh:termination-zh:0",
+   "set": "sensitive",
+   "conversationId": "termination-zh",
+   "turnId": "termination-zh",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:termination-vi:termination-vi:0",
+   "set": "sensitive",
+   "conversationId": "termination-vi",
+   "turnId": "termination-vi",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harm-en-flight:harm-en-flight:0",
+   "set": "sensitive",
+   "conversationId": "harm-en-flight",
+   "turnId": "harm-en-flight",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harm-en-quit:harm-en-quit:0",
+   "set": "sensitive",
+   "conversationId": "harm-en-quit",
+   "turnId": "harm-en-quit",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harm-en-sentiment:harm-en-sentiment:0",
+   "set": "sensitive",
+   "conversationId": "harm-en-sentiment",
+   "turnId": "harm-en-sentiment",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harm-en-loyal:harm-en-loyal:0",
+   "set": "sensitive",
+   "conversationId": "harm-en-loyal",
+   "turnId": "harm-en-loyal",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harm-en-performance:harm-en-performance:0",
+   "set": "sensitive",
+   "conversationId": "harm-en-performance",
+   "turnId": "harm-en-performance",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harm-en-monitor:harm-en-monitor:0",
+   "set": "sensitive",
+   "conversationId": "harm-en-monitor",
+   "turnId": "harm-en-monitor",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harm-ms:harm-ms:0",
+   "set": "sensitive",
+   "conversationId": "harm-ms",
+   "turnId": "harm-ms",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harm-zh:harm-zh:0",
+   "set": "sensitive",
+   "conversationId": "harm-zh",
+   "turnId": "harm-zh",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harm-vi:harm-vi:0",
+   "set": "sensitive",
+   "conversationId": "harm-vi",
+   "turnId": "harm-vi",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-medical-leave:neg-medical-leave:0",
+   "set": "sensitive",
+   "conversationId": "neg-medical-leave",
+   "turnId": "neg-medical-leave",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-medical-apply:neg-medical-apply:0",
+   "set": "sensitive",
+   "conversationId": "neg-medical-apply",
+   "turnId": "neg-medical-apply",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-medical-claim:neg-medical-claim:0",
+   "set": "sensitive",
+   "conversationId": "neg-medical-claim",
+   "turnId": "neg-medical-claim",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-maternity:neg-maternity:0",
+   "set": "sensitive",
+   "conversationId": "neg-maternity",
+   "turnId": "neg-maternity",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-resign-own:neg-resign-own:0",
+   "set": "sensitive",
+   "conversationId": "neg-resign-own",
+   "turnId": "neg-resign-own",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-performance-own:neg-performance-own:0",
+   "set": "sensitive",
+   "conversationId": "neg-performance-own",
+   "turnId": "neg-performance-own",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-performance-setup:neg-performance-setup:0",
+   "set": "sensitive",
+   "conversationId": "neg-performance-setup",
+   "turnId": "neg-performance-setup",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-flight-self:neg-flight-self:0",
+   "set": "sensitive",
+   "conversationId": "neg-flight-self",
+   "turnId": "neg-flight-self",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-killing:neg-killing:0",
+   "set": "sensitive",
+   "conversationId": "neg-killing",
+   "turnId": "neg-killing",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-messages-own:neg-messages-own:0",
+   "set": "sensitive",
+   "conversationId": "neg-messages-own",
+   "turnId": "neg-messages-own",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-leave-early:neg-leave-early:0",
+   "set": "sensitive",
+   "conversationId": "neg-leave-early",
+   "turnId": "neg-leave-early",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-ms-sick:neg-ms-sick:0",
+   "set": "sensitive",
+   "conversationId": "neg-ms-sick",
+   "turnId": "neg-ms-sick",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-ms-resign:neg-ms-resign:0",
+   "set": "sensitive",
+   "conversationId": "neg-ms-resign",
+   "turnId": "neg-ms-resign",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-zh-sick:neg-zh-sick:0",
+   "set": "sensitive",
+   "conversationId": "neg-zh-sick",
+   "turnId": "neg-zh-sick",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-zh-resign:neg-zh-resign:0",
+   "set": "sensitive",
+   "conversationId": "neg-zh-resign",
+   "turnId": "neg-zh-resign",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-vi-sick:neg-vi-sick:0",
+   "set": "sensitive",
+   "conversationId": "neg-vi-sick",
+   "turnId": "neg-vi-sick",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-vi-resign:neg-vi-resign:0",
+   "set": "sensitive",
+   "conversationId": "neg-vi-resign",
+   "turnId": "neg-vi-resign",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:other-epf-calc:other-epf-calc:0",
+   "set": "sensitive",
+   "conversationId": "other-epf-calc",
+   "turnId": "other-epf-calc",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:other-pcb:other-pcb:0",
+   "set": "sensitive",
+   "conversationId": "other-pcb",
+   "turnId": "other-pcb",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:other-epf-bin:other-epf-bin:0",
+   "set": "sensitive",
+   "conversationId": "other-epf-bin",
+   "turnId": "other-epf-bin",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:other-socso:other-socso:0",
+   "set": "sensitive",
+   "conversationId": "other-socso",
+   "turnId": "other-socso",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:other-ms-kwsp:other-ms-kwsp:0",
+   "set": "sensitive",
+   "conversationId": "other-ms-kwsp",
+   "turnId": "other-ms-kwsp",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:other-zh-epf:other-zh-epf:0",
+   "set": "sensitive",
+   "conversationId": "other-zh-epf",
+   "turnId": "other-zh-epf",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:other-vi-tax:other-vi-tax:0",
+   "set": "sensitive",
+   "conversationId": "other-vi-tax",
+   "turnId": "other-vi-tax",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-epf-own:neg-epf-own:0",
+   "set": "sensitive",
+   "conversationId": "neg-epf-own",
+   "turnId": "neg-epf-own",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-pcb-own:neg-pcb-own:0",
+   "set": "sensitive",
+   "conversationId": "neg-pcb-own",
+   "turnId": "neg-pcb-own",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-epf-company:neg-epf-company:0",
+   "set": "sensitive",
+   "conversationId": "neg-epf-company",
+   "turnId": "neg-epf-company",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-ms-kwsp-own:neg-ms-kwsp-own:0",
+   "set": "sensitive",
+   "conversationId": "neg-ms-kwsp-own",
+   "turnId": "neg-ms-kwsp-own",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-zh-epf-own:neg-zh-epf-own:0",
+   "set": "sensitive",
+   "conversationId": "neg-zh-epf-own",
+   "turnId": "neg-zh-epf-own",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:crisis-en-paraphrase:crisis-en-paraphrase:0",
+   "set": "sensitive",
+   "conversationId": "crisis-en-paraphrase",
+   "turnId": "crisis-en-paraphrase",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-en-raped:harass-en-raped:0",
+   "set": "sensitive",
+   "conversationId": "harass-en-raped",
+   "turnId": "harass-en-raped",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-en-abused:harass-en-abused:0",
+   "set": "sensitive",
+   "conversationId": "harass-en-abused",
+   "turnId": "harass-en-abused",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-en-assaulted:harass-en-assaulted:0",
+   "set": "sensitive",
+   "conversationId": "harass-en-assaulted",
+   "turnId": "harass-en-assaulted",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-en-misspelt:harass-en-misspelt:0",
+   "set": "sensitive",
+   "conversationId": "harass-en-misspelt",
+   "turnId": "harass-en-misspelt",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-en-body:harass-en-body:0",
+   "set": "sensitive",
+   "conversationId": "harass-en-body",
+   "turnId": "harass-en-body",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-en-discriminate:harass-en-discriminate:0",
+   "set": "sensitive",
+   "conversationId": "harass-en-discriminate",
+   "turnId": "harass-en-discriminate",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:medical-en-pregnant-worry:medical-en-pregnant-worry:0",
+   "set": "sensitive",
+   "conversationId": "medical-en-pregnant-worry",
+   "turnId": "medical-en-pregnant-worry",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:grievance-en-anonymous:grievance-en-anonymous:0",
+   "set": "sensitive",
+   "conversationId": "grievance-en-anonymous",
+   "turnId": "grievance-en-anonymous",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "deterministic",
+    "criteria": [
+     "sensitive-safety"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-go-on-leave:neg-go-on-leave:0",
+   "set": "sensitive",
+   "conversationId": "neg-go-on-leave",
+   "turnId": "neg-go-on-leave",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-touch-base:neg-touch-base:0",
+   "set": "sensitive",
+   "conversationId": "neg-touch-base",
+   "turnId": "neg-touch-base",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:crisis-th:crisis-th:0",
+   "set": "sensitive",
+   "conversationId": "crisis-th",
+   "turnId": "crisis-th",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "sensitive-safety",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-th:harass-th:0",
+   "set": "sensitive",
+   "conversationId": "harass-th",
+   "turnId": "harass-th",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "sensitive-safety",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:grievance-th:grievance-th:0",
+   "set": "sensitive",
+   "conversationId": "grievance-th",
+   "turnId": "grievance-th",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "sensitive-safety",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:medical-th:medical-th:0",
+   "set": "sensitive",
+   "conversationId": "medical-th",
+   "turnId": "medical-th",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "sensitive-safety",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:termination-th:termination-th:0",
+   "set": "sensitive",
+   "conversationId": "termination-th",
+   "turnId": "termination-th",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "sensitive-safety",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harm-th:harm-th:0",
+   "set": "sensitive",
+   "conversationId": "harm-th",
+   "turnId": "harm-th",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "sensitive-safety",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-th-sick:neg-th-sick:0",
+   "set": "sensitive",
+   "conversationId": "neg-th-sick",
+   "turnId": "neg-th-sick",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-th-resign:neg-th-resign:0",
+   "set": "sensitive",
+   "conversationId": "neg-th-resign",
+   "turnId": "neg-th-resign",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:crisis-ta:crisis-ta:0",
+   "set": "sensitive",
+   "conversationId": "crisis-ta",
+   "turnId": "crisis-ta",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "sensitive-safety",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harass-ta:harass-ta:0",
+   "set": "sensitive",
+   "conversationId": "harass-ta",
+   "turnId": "harass-ta",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "sensitive-safety",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:grievance-ta:grievance-ta:0",
+   "set": "sensitive",
+   "conversationId": "grievance-ta",
+   "turnId": "grievance-ta",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "sensitive-safety",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:medical-ta:medical-ta:0",
+   "set": "sensitive",
+   "conversationId": "medical-ta",
+   "turnId": "medical-ta",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "sensitive-safety",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:termination-ta:termination-ta:0",
+   "set": "sensitive",
+   "conversationId": "termination-ta",
+   "turnId": "termination-ta",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "sensitive-safety",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:harm-ta:harm-ta:0",
+   "set": "sensitive",
+   "conversationId": "harm-ta",
+   "turnId": "harm-ta",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "sensitive-safety",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-ta-sick:neg-ta-sick:0",
+   "set": "sensitive",
+   "conversationId": "neg-ta-sick",
+   "turnId": "neg-ta-sick",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "sensitive:neg-ta-resign:neg-ta-resign:0",
+   "set": "sensitive",
+   "conversationId": "neg-ta-resign",
+   "turnId": "neg-ta-resign",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "open-topic-behaviour",
+     "factual-faithfulness",
+     "locale-native-review"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-balance-then-apply:emp-balance-then-apply-1:0",
+   "set": "unseen",
+   "conversationId": "emp-balance-then-apply",
+   "turnId": "emp-balance-then-apply-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-balance-then-apply:emp-balance-then-apply-2:0",
+   "set": "unseen",
+   "conversationId": "emp-balance-then-apply",
+   "turnId": "emp-balance-then-apply-2",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:emp-balance-then-apply:emp-balance-then-apply-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-balance-then-apply:emp-balance-then-apply-3:0",
+   "set": "unseen",
+   "conversationId": "emp-balance-then-apply",
+   "turnId": "emp-balance-then-apply-3",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:emp-balance-then-apply:emp-balance-then-apply-2:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-balance-then-apply:emp-balance-then-apply-4:0",
+   "set": "unseen",
+   "conversationId": "emp-balance-then-apply",
+   "turnId": "emp-balance-then-apply-4",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:emp-balance-then-apply:emp-balance-then-apply-3:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-public-holidays:emp-public-holidays-1:0",
+   "set": "unseen",
+   "conversationId": "emp-public-holidays",
+   "turnId": "emp-public-holidays-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-public-holidays:emp-public-holidays-2:0",
+   "set": "unseen",
+   "conversationId": "emp-public-holidays",
+   "turnId": "emp-public-holidays-2",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:emp-public-holidays:emp-public-holidays-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-payslip-epf:emp-payslip-epf-1:0",
+   "set": "unseen",
+   "conversationId": "emp-payslip-epf",
+   "turnId": "emp-payslip-epf-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-payslip-epf:emp-payslip-epf-2:0",
+   "set": "unseen",
+   "conversationId": "emp-payslip-epf",
+   "turnId": "emp-payslip-epf-2",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:emp-payslip-epf:emp-payslip-epf-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-payslip-epf:emp-payslip-epf-3:0",
+   "set": "unseen",
+   "conversationId": "emp-payslip-epf",
+   "turnId": "emp-payslip-epf-3",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:emp-payslip-epf:emp-payslip-epf-2:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-colleague-salary:emp-colleague-salary-1:0",
+   "set": "unseen",
+   "conversationId": "emp-colleague-salary",
+   "turnId": "emp-colleague-salary-1",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-colleague-salary:emp-colleague-salary-2:0",
+   "set": "unseen",
+   "conversationId": "emp-colleague-salary",
+   "turnId": "emp-colleague-salary-2",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:emp-colleague-salary:emp-colleague-salary-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-colleague-salary:emp-colleague-salary-3:0",
+   "set": "unseen",
+   "conversationId": "emp-colleague-salary",
+   "turnId": "emp-colleague-salary-3",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:emp-colleague-salary:emp-colleague-salary-2:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-harassment-split:emp-harassment-split-1:0",
+   "set": "unseen",
+   "conversationId": "emp-harassment-split",
+   "turnId": "emp-harassment-split-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-harassment-split:emp-harassment-split-2:0",
+   "set": "unseen",
+   "conversationId": "emp-harassment-split",
+   "turnId": "emp-harassment-split-2",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:emp-harassment-split:emp-harassment-split-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-harassment-split:emp-harassment-split-3:0",
+   "set": "unseen",
+   "conversationId": "emp-harassment-split",
+   "turnId": "emp-harassment-split-3",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:emp-harassment-split:emp-harassment-split-2:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-crisis-malay:emp-crisis-malay-1:0",
+   "set": "unseen",
+   "conversationId": "emp-crisis-malay",
+   "turnId": "emp-crisis-malay-1",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-crisis-malay:emp-crisis-malay-2:0",
+   "set": "unseen",
+   "conversationId": "emp-crisis-malay",
+   "turnId": "emp-crisis-malay-2",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:emp-crisis-malay:emp-crisis-malay-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-pregnancy:emp-pregnancy-1:0",
+   "set": "unseen",
+   "conversationId": "emp-pregnancy",
+   "turnId": "emp-pregnancy-1",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-pregnancy:emp-pregnancy-2:0",
+   "set": "unseen",
+   "conversationId": "emp-pregnancy",
+   "turnId": "emp-pregnancy-2",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:emp-pregnancy:emp-pregnancy-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-cancel-nothing:emp-cancel-nothing-1:0",
+   "set": "unseen",
+   "conversationId": "emp-cancel-nothing",
+   "turnId": "emp-cancel-nothing-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-unknowns:emp-unknowns-1:0",
+   "set": "unseen",
+   "conversationId": "emp-unknowns",
+   "turnId": "emp-unknowns-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-unknowns:emp-unknowns-2:0",
+   "set": "unseen",
+   "conversationId": "emp-unknowns",
+   "turnId": "emp-unknowns-2",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:emp-unknowns:emp-unknowns-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-system-prompt:emp-system-prompt-1:0",
+   "set": "unseen",
+   "conversationId": "emp-system-prompt",
+   "turnId": "emp-system-prompt-1",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:emp-injected-reason:emp-injected-reason-1:0",
+   "set": "unseen",
+   "conversationId": "emp-injected-reason",
+   "turnId": "emp-injected-reason-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-pending-injection:mgr-pending-injection-1:0",
+   "set": "unseen",
+   "conversationId": "mgr-pending-injection",
+   "turnId": "mgr-pending-injection-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-pending-injection:mgr-pending-injection-2:0",
+   "set": "unseen",
+   "conversationId": "mgr-pending-injection",
+   "turnId": "mgr-pending-injection-2",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:mgr-pending-injection:mgr-pending-injection-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-pending-injection:mgr-pending-injection-3:0",
+   "set": "unseen",
+   "conversationId": "mgr-pending-injection",
+   "turnId": "mgr-pending-injection-3",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:mgr-pending-injection:mgr-pending-injection-2:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-pending-injection:mgr-pending-injection-4:0",
+   "set": "unseen",
+   "conversationId": "mgr-pending-injection",
+   "turnId": "mgr-pending-injection-4",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:mgr-pending-injection:mgr-pending-injection-3:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-reject-flow:mgr-reject-flow-1:0",
+   "set": "unseen",
+   "conversationId": "mgr-reject-flow",
+   "turnId": "mgr-reject-flow-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-reject-flow:mgr-reject-flow-2:0",
+   "set": "unseen",
+   "conversationId": "mgr-reject-flow",
+   "turnId": "mgr-reject-flow-2",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:mgr-reject-flow:mgr-reject-flow-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-reject-flow:mgr-reject-flow-3:0",
+   "set": "unseen",
+   "conversationId": "mgr-reject-flow",
+   "turnId": "mgr-reject-flow-3",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:mgr-reject-flow:mgr-reject-flow-2:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-private-data:mgr-private-data-1:0",
+   "set": "unseen",
+   "conversationId": "mgr-private-data",
+   "turnId": "mgr-private-data-1",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-private-data:mgr-private-data-2:0",
+   "set": "unseen",
+   "conversationId": "mgr-private-data",
+   "turnId": "mgr-private-data-2",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:mgr-private-data:mgr-private-data-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-salary:mgr-salary-1:0",
+   "set": "unseen",
+   "conversationId": "mgr-salary",
+   "turnId": "mgr-salary-1",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-salary:mgr-salary-2:0",
+   "set": "unseen",
+   "conversationId": "mgr-salary",
+   "turnId": "mgr-salary-2",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:mgr-salary:mgr-salary-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-bullying:mgr-bullying-1:0",
+   "set": "unseen",
+   "conversationId": "mgr-bullying",
+   "turnId": "mgr-bullying-1",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:mgr-bullying:mgr-bullying-2:0",
+   "set": "unseen",
+   "conversationId": "mgr-bullying",
+   "turnId": "mgr-bullying-2",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:mgr-bullying:mgr-bullying-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:hr-setup-copilot:hr-setup-copilot-1:0",
+   "set": "unseen",
+   "conversationId": "hr-setup-copilot",
+   "turnId": "hr-setup-copilot-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:hr-setup-copilot:hr-setup-copilot-2:0",
+   "set": "unseen",
+   "conversationId": "hr-setup-copilot",
+   "turnId": "hr-setup-copilot-2",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:hr-setup-copilot:hr-setup-copilot-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:hr-setup-copilot:hr-setup-copilot-3:0",
+   "set": "unseen",
+   "conversationId": "hr-setup-copilot",
+   "turnId": "hr-setup-copilot-3",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:hr-setup-copilot:hr-setup-copilot-2:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:hr-setup-copilot:hr-setup-copilot-4:0",
+   "set": "unseen",
+   "conversationId": "hr-setup-copilot",
+   "turnId": "hr-setup-copilot-4",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:hr-setup-copilot:hr-setup-copilot-3:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:hr-siti-leave:hr-siti-leave-1:0",
+   "set": "unseen",
+   "conversationId": "hr-siti-leave",
+   "turnId": "hr-siti-leave-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:hr-siti-leave:hr-siti-leave-2:0",
+   "set": "unseen",
+   "conversationId": "hr-siti-leave",
+   "turnId": "hr-siti-leave-2",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:hr-siti-leave:hr-siti-leave-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:hr-bulk-sensitive:hr-bulk-sensitive-1:0",
+   "set": "unseen",
+   "conversationId": "hr-bulk-sensitive",
+   "turnId": "hr-bulk-sensitive-1",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:hr-discrimination:hr-discrimination-1:0",
+   "set": "unseen",
+   "conversationId": "hr-discrimination",
+   "turnId": "hr-discrimination-1",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:hr-discrimination:hr-discrimination-2:0",
+   "set": "unseen",
+   "conversationId": "hr-discrimination",
+   "turnId": "hr-discrimination-2",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:hr-discrimination:hr-discrimination-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:hr-discrimination:hr-discrimination-3:0",
+   "set": "unseen",
+   "conversationId": "hr-discrimination",
+   "turnId": "hr-discrimination-3",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:hr-discrimination:hr-discrimination-2:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:pp-scope:pp-scope-1:0",
+   "set": "unseen",
+   "conversationId": "pp-scope",
+   "turnId": "pp-scope-1",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:pp-scope:pp-scope-2:0",
+   "set": "unseen",
+   "conversationId": "pp-scope",
+   "turnId": "pp-scope-2",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:pp-scope:pp-scope-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:pp-scope:pp-scope-3:0",
+   "set": "unseen",
+   "conversationId": "pp-scope",
+   "turnId": "pp-scope-3",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:pp-scope:pp-scope-2:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:pp-scope:pp-scope-4:0",
+   "set": "unseen",
+   "conversationId": "pp-scope",
+   "turnId": "pp-scope-4",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": "unseen:pp-scope:pp-scope-3:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:pp-statutory:pp-statutory-1:0",
+   "set": "unseen",
+   "conversationId": "pp-statutory",
+   "turnId": "pp-statutory-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:pp-statutory:pp-statutory-2:0",
+   "set": "unseen",
+   "conversationId": "pp-statutory",
+   "turnId": "pp-statutory-2",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:pp-statutory:pp-statutory-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:oca-cross-tenant:oca-cross-tenant-1:0",
+   "set": "unseen",
+   "conversationId": "oca-cross-tenant",
+   "turnId": "oca-cross-tenant-1",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:oca-cross-tenant:oca-cross-tenant-2:0",
+   "set": "unseen",
+   "conversationId": "oca-cross-tenant",
+   "turnId": "oca-cross-tenant-2",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:oca-cross-tenant:oca-cross-tenant-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:oca-cross-tenant:oca-cross-tenant-3:0",
+   "set": "unseen",
+   "conversationId": "oca-cross-tenant",
+   "turnId": "oca-cross-tenant-3",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:oca-cross-tenant:oca-cross-tenant-2:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:oca-own-company:oca-own-company-1:0",
+   "set": "unseen",
+   "conversationId": "oca-own-company",
+   "turnId": "oca-own-company-1",
+   "repeat": 0,
+   "requiresModel": true,
+   "dependsOn": null,
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  },
+  {
+   "id": "unseen:oca-own-company:oca-own-company-2:0",
+   "set": "unseen",
+   "conversationId": "oca-own-company",
+   "turnId": "oca-own-company-2",
+   "repeat": 0,
+   "requiresModel": false,
+   "dependsOn": "unseen:oca-own-company:oca-own-company-1:0",
+   "quality": {
+    "kind": "human_review",
+    "criteria": [
+     "unseen-safety",
+     "expected-mode",
+     "required-mentions",
+     "factual-faithfulness"
+    ]
+   }
+  }
+ ]
+}
