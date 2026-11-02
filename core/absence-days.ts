@@ -414,9 +414,21 @@ export async function absenceBreakdownByEmployment(
     }),
   );
 
-  const periodsByEmployment = rotations.versions.length ? await liveArrangementsTx(tx, empIds) : new Map();
+  const periodsByEmployment = readSchedule ? await liveArrangementsTx(tx, empIds) : new Map();
   const datedIds = [...new Set([...periodsByEmployment.values()].flatMap(periods=>periods.map((p:{shiftId:string})=>p.shiftId)))];
-  const datedRules = datedIds.length ? await tx.select({id:shift.id,ruleId:shift.ruleId}).from(shift).where(inArray(shift.id,datedIds)) : [];
+  const datedRules = datedIds.length ? await tx.select({
+    id: shift.id, ruleId: shift.ruleId, pattern: shift.weeklyPattern,
+    halfPattern: shift.halfPattern, offPattern: shift.offPattern,
+  }).from(shift).where(inArray(shift.id, datedIds)) : [];
+  const datedShiftById = new Map(datedRules.map(row => [row.id, row]));
+  const ordinaryPatternOn = (id: string, date: string) => {
+    const period = pickArrangementOn(periodsByEmployment.get(id), date);
+    if (!period) return patternByEmp.get(id);
+    const dated = datedShiftById.get(period.shiftId);
+    if (!dated) return undefined;
+    const ruleId = groupOfEmp.get(id) ?? dated.ruleId ?? tenantDefaultRuleId;
+    return weekPatternFor(ruleId ? weekOfRule.get(ruleId) : null, dated);
+  };
   const ruleByShift = new Map(datedRules.map(s=>[s.id,s.ruleId]));
   const rotationOn = (id:string,date:string) => {
     const period = pickArrangementOn(periodsByEmployment.get(id),date);
@@ -509,8 +521,7 @@ export async function absenceBreakdownByEmployment(
     const recorded = recordedByEmp.get(e.employmentId) ?? new Set<string>();
     const markedAbsent = markedAbsentByEmp.get(e.employmentId) ?? new Set<string>();
     const roster = rosterByEmp.get(e.employmentId);
-    const pattern = patternByEmp.get(e.employmentId);
-    const hasDefaultShift = e.defaultShiftId != null && patternByEmp.has(e.employmentId);
+    const hasDefaultShift = e.defaultShiftId != null || periodsByEmployment.has(e.employmentId);
     const companyDays = daysByCompany.get(e.companyId) ?? DEFAULT_WORKING_DAYS;
 
     const from = e.hiredOn > periodStart ? e.hiredOn : periodStart;
@@ -552,7 +563,10 @@ export async function absenceBreakdownByEmployment(
       if (dateCorrection) isScheduled=dateCorrection.working;
       else if (ra) isScheduled = !ra.isRestDay && ra.hasShift;
       else if (rotated) isScheduled = isWorkingDayKind(rotated.day.kind);
-      else if (hasDefaultShift) isScheduled = pattern != null && isWorkingDayKind(shiftDayKindFor(pattern, d));
+      else if (hasDefaultShift) {
+        const pattern = ordinaryPatternOn(e.employmentId, d);
+        isScheduled = pattern != null && isWorkingDayKind(shiftDayKindFor(pattern, d));
+      }
       else isScheduled = companyDays.includes(isoWeekdayOf(d));
       if (!isScheduled) continue;
 
