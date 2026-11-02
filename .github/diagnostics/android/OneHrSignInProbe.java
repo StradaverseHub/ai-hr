@@ -54,7 +54,7 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
     UiSelector scope=new UiSelector().packageName("ai.stradaverse.aihr.test");
     UiObject username=new UiObject(scope.className("android.widget.EditText").description("Username"));
     UiObject password=new UiObject(scope.className("android.widget.EditText").description("Password"));
-    UiObject organization=new UiObject(scope.textContains("Organization: aihr-test"));
+    UiObject organization=new UiObject(scope.text("Organization code: aihr-test"));
     UiObject submit=new UiObject(scope.description("Sign in"));
     String restore=getParams().getString("restoreUsername", "");
     assertTrue(restore.matches("[A-Za-z0-9._@+-]{3,64}"));
@@ -68,6 +68,7 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
       long limit=SystemClock.uptimeMillis()+5000;
       while(SystemClock.uptimeMillis()<limit && !submit.isEnabled())SystemClock.sleep(100);
       assertTrue("Normal submit remains disabled",submit.isEnabled());
+      assertEquals("Only deliberately invalid username may be submitted", "!diagnostic!", username.getText());
       assertTrue("Normal submit could not be clicked",submit.click());submitted=true;
       limit=SystemClock.uptimeMillis()+25000;
       while(SystemClock.uptimeMillis()<limit) {
