@@ -5,7 +5,7 @@ import {eq} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,updatePersonProfilePartial} from '../core/org';
-import {createRewardUnit,getRewardUnit,saveRewardEntry,refreshRewardSources} from '../packs/rewards/service';
+import {createRewardUnit,getRewardUnit,saveRewardEntry,refreshRewardSources,getRewardSeniorMembership,previewRewardSeniorMembership,saveRewardSeniorMembership,confirmRewardGovernance} from '../packs/rewards/service';
 import {setRewardMember} from './rewards-access-fixture';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgErrorChain} from '../lib/db-error';
@@ -35,6 +35,15 @@ it('keeps only actual current unit membership, with no raw subject access and im
  await saveRewardEntry(root,unit,reviewed.unit.revision,entry.id,entry.recommendation,{...entry.facts,reviewed:true});
  await setRewardMember(root,unit,(await getRewardUnit(root,unit)).unit.revision,reviewer.ctx.userId!,'bg');
  await setRewardMember(root,second,(await getRewardUnit(root,second)).unit.revision,other.ctx.userId!,'bg');
+ // BU's real review gate requires an independently checked Senior selection even when
+ // this ordinary fixture selects nobody. Use a different actual GR login and the native
+ // preview/save/confirm course; do not manufacture public flags or bypass the gate.
+ const checker=await actor('REWARD-INDEPENDENT-GR');
+ await setRewardMember(root,unit,(await getRewardUnit(root,unit)).unit.revision,checker.ctx.userId!,'gr');
+ const membership=await getRewardSeniorMembership(root,unit),selection={employmentIds:[],adoptLegacy:membership.mode==='legacy-grades'},preview=await previewRewardSeniorMembership(root,unit,membership.revision,selection);
+ await saveRewardSeniorMembership(root,unit,membership.revision,selection,preview.digest);
+ await expect(confirmRewardGovernance(root,unit,(await getRewardUnit(root,unit)).unit.revision,'selection')).rejects.toThrow('different Group Rewards');
+ await confirmRewardGovernance(checker.ctx,unit,(await getRewardUnit(root,unit)).unit.revision,'selection');
  for(const [person,code] of [[reviewer,'REWARD-REVIEWER'],[other,'REWARD-OTHER'],[manager,'REWARD-MANAGER']] as const)await restrict(person.ctx.userId!,code);
  const raw=await withTenant(reviewer.ctx,async tx=>({people:await tx.select().from(s.person).where(eq(s.person.id,subject.personId)),employments:await tx.select().from(s.employment).where(eq(s.employment.id,subject.employmentId)),entries:await tx.select({employmentId:s.rewardEntry.employmentId}).from(s.rewardEntry).where(eq(s.rewardEntry.unitId,unit))}));
  expect(raw.people).toEqual([]);expect(raw.employments).toEqual([]);expect(raw.entries.map(row=>row.employmentId)).toContain(subject.employmentId);
