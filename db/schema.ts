@@ -6021,6 +6021,7 @@ export const employeeDocument = pgTable(
       .notNull()
       .references(() => employment.id),
     letterArtifactId:uuid('letter_artifact_id').references(():AnyPgColumn=>letterArtifact.id),
+    contractDocumentId:uuid('contract_document_id'),
     title: text('title').notNull(),
     category: text('category'),
     description: text('description'),

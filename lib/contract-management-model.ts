@@ -33,10 +33,10 @@ export type ContractCase={
 };
 function day(value:string):void{if(!isCalendarDate(value))refuse('Enter a valid contract date.');}
 export function contractCents(value:string):bigint{
-  if(!/^(0|[1-9]\d{0,12})$/.test(value))refuse('Enter a non-negative amount with no more than two decimal places.');return BigInt(value);
+  if(!/^(0|[1-9]\d{0,11})$/.test(value))refuse('Enter a non-negative amount with no more than two decimal places.');return BigInt(value);
 }
 export function parseContractAmount(value:string):string{
-  if(!/^(0|[1-9]\d{0,10})(\.\d{1,2})?$/.test(value))refuse('Enter a valid RM amount with no more than two decimal places.');
+  if(!/^(0|[1-9]\d{0,9})(\.\d{1,2})?$/.test(value))refuse('Enter a valid RM amount with no more than two decimal places.');
   const [whole,fraction='']=value.split('.');return (BigInt(whole)*BigInt(100)+BigInt(fraction.padEnd(2,'0'))).toString();
 }
 export function contractPayChanged(term:ContractTerm,decision:ContractDecision):boolean{return contractCents(term.salaryCents)!==contractCents(decision.salaryCents)||contractCents(term.allowanceCents)!==contractCents(decision.allowanceCents);}

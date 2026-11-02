@@ -3659,3 +3659,11 @@ export async function setDesignatedPaymaster(
     return { id: p.personId, designatedPaymasterEmploymentId: p.designatedPaymasterEmploymentId };
   });
 }
+
+/** Accepted contract effects accept only the immutable case ID. The native owner rechecks
+ * the real session actor, nominated scoped HR principal, source preimage and payroll locks. */
+export async function applyAcceptedContractRecordsTx(tx:Tx,ctx:SessionContext,caseId:string):Promise<{status:string;receipt?:Record<string,unknown>;error?:string}>{
+ if(!/^[0-9a-f-]{36}$/i.test(caseId))throw new Error('Invalid contract case.');
+ const [row]=await tx.execute<{result:{status:string;receipt?:Record<string,unknown>;error?:string}}>(sql`select app.contract_apply_records(${caseId}::uuid) as result where app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id() is not distinct from ${ctx.userId??null}::uuid`);
+ if(!row)throw new Error('Contract transaction identity mismatch.');return row.result;
+}
