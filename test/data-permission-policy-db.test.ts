@@ -2,7 +2,7 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,db as runtimeDb,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {listEmployees} from '../core/read';
@@ -73,6 +73,14 @@ describe('assigned data rules intersect actual native company scope',()=>{
   }
   const foreign=await seedBase();await expect(change({kind:'create',profileId:randomUUID(),name:'Foreign company rule',enabled:true,rules:rule([{field:'company',values:[foreign.companyId]}])})).rejects.toThrow();await expectVisible(limited,[0]);
  });
+ it('checks both current and proposed grade and shared-person values at native write commit',async()=>{
+  await assign(await profile(rule([{field:'grade',values:[grades[0]]},{field:'nationality',values:['Malaysia']}])));
+  await expect(withTenant(limited,tx=>tx.update(s.employment).set({gradeId:grades[1]}).where(eq(s.employment.id,people[0].id)))).rejects.toThrow();
+  await expect(withTenant(limited,tx=>tx.update(s.person).set({nationality:'Singapore'}).where(eq(s.person.id,people[0].personId)))).rejects.toThrow();
+  const [employment]=await owner.db.select({grade:s.employment.gradeId}).from(s.employment).where(eq(s.employment.id,people[0].id));
+  const [person]=await owner.db.select({nationality:s.person.nationality}).from(s.person).where(eq(s.person.id,people[0].personId));
+  expect(employment.grade).toBe(grades[0]);expect(person.nationality).toBe('Malaysia');await expectVisible(limited,[0]);
+ });
  it('invalidates a preview when the subject values change before commit',async()=>{
   const rules=rule([{field:'grade',values:[grades[0]]}]),id=await profile(rules),state=await readDataPermissions(admin);
   const command:DataPermissionCommand={kind:'edit',profileId:id,name:'Changed independent scope',enabled:true,rules:rule([{field:'grade',values:[grades[1]]}])};
@@ -105,6 +113,15 @@ describe('assigned data rules intersect actual native company scope',()=>{
  });
  it('rejects a cross-tenant principal even when its posted role claims administrator',async()=>{
   const foreign=await seedBase();await expect(readDataPermissions({...admin,tenantId:foreign.tenantId})).rejects.toThrow();
+ });
+ it('refuses profile commits under an old repeatable-read snapshot',async()=>{
+  const state=await readDataPermissions(admin),command:DataPermissionCommand={kind:'create',profileId:randomUUID(),name:'Repeatable read refusal',enabled:true,rules:rule([{field:'company',values:[b.companyId]}])};
+  const preview=await previewDataPermission(admin,state.revision,command);
+  await expect(runtimeDb.transaction(async tx=>{
+   await tx.execute(sql`select set_config('app.tenant_id',${b.tenantId},true),set_config('app.user_id',${admin.userId!},true),set_config('app.roles','hr_admin',true),set_config('app.grants',${JSON.stringify(admin.grants)},true)`);
+   return tx.execute(sql`select app.data_permission_transition(${JSON.stringify(command)}::jsonb,${state.revision},true,${preview.fingerprint})`);
+  },{isolationLevel:'repeatable read'})).rejects.toThrow();
+  expect((await readDataPermissions(admin)).profiles.some(profile=>profile.id===command.profileId)).toBe(false);
  });
  it('never lets the runtime write profile tables or invoke private evaluators directly',async()=>{
   await expect(withTenant(limited,tx=>tx.execute(sql`delete from user_data_permission_assignment where user_id=${limited.userId!}::uuid`))).rejects.toThrow();
