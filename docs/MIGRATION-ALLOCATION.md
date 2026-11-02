@@ -1133,7 +1133,7 @@ This source depends on root942 witness89bc7e9da and requires hosted failed/affec
 - `0938_data_permission_enforcement.sql`: `d41b686eec213708abc9b174762c3c9f37d7f9aba31e057854108b321b66805a`.
 - `0939_workforce_action_permissions.sql`: `b572e6105861c458c61bd1c4dce18424c41f88a5b35699d2c4af9ebf52397e3b`.
 - `0941_financial_letter_actions.sql`: `485fb3ff0f977a943c736e6b5d181bcc4bbe52dc5f8148d668f5128bdacb9f7a`.
-- `0942_organisation_settings_actions.sql`: `0c268b9a28c6512ead695c577e235dde77438d54e77721d1d669d13caf0eac00`.
+- `0942_organisation_settings_actions.sql`: `5a4073709ec5b8b4fbf544eaedb07c06d4476a775e281212399f33661be97c07`.
 - `0943_leave_attendance_claim_actions.sql`: `7b95a64208a79b545b982ad50e7b974b030afdb1b9b300df048e84d3acf3475d`.
 - `0944_lifecycle_rewards_notice_actions.sql`: `3ef5430b333e3c3287f9217172809aaf39aa8efbfa5aa15df1dcef3eb41b3ddf`.
 - `0945_financial_setup_actions.sql`: `77ef0067c30e55a48ab591938b3a5e892ba60161036f4b23c678ed280ea5f340`.
@@ -1148,3 +1148,13 @@ native Add and View; an existing read-only form does not enable status edits or 
 independent Delete remains available. The canonical hire wizard keeps its existing runtime numbering
 rule reader. Native scope and six-locale actual-page tests require hosted qualification; this does not
 complete Organisation/Settings publication.
+
+### Login editor and native idle-policy setting (independent source)
+
+The existing idle-policy command has its own View/Edit purpose, `loginPresentation.sessionPolicy`,
+with the actual group-administrator floor and Settings parents. The editor and raw configuration
+writer repeat that purpose; the native pre-login single-limit reader remains independent. Access
+serialization precedes its custom revision lock and upsert. Login presentation and idle-policy cards
+are read only for their own View purpose and receive separate Edit controls, defaulting closed.
+The existing native bounds, optimistic revision and audit remain unchanged. Native and locale DOM
+qualification is required; no broader Settings source-completion claim follows.

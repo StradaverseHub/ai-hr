@@ -574,6 +574,20 @@ const sourceFunctions=[
  ],
  "screenKey": "profileApprovalRules",
  "floor": "app.organisation_settings_delegation_allowed"
+},
+{
+ "key": "loginPresentation.sessionPolicy",
+ "scope": "tenant",
+ "parent": "settings",
+ "labelKey": "sessionTimeout.settingsTitle",
+ "kind": "submenu",
+ "href": "/admin/settings/login",
+ "operations": [
+  "view",
+  "edit"
+ ],
+ "screenKey": "loginPresentation",
+ "floor": "app.organisation_settings_delegation_allowed"
 }
 ] as const;
 export const ORGANISATION_SETTINGS_FUNCTIONS:readonly FunctionActionDescriptor[]=sourceFunctions.map(row=>({
@@ -601,6 +615,7 @@ export const ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION = {
    {owner:'core/employee-id-config.ts',operation:'native-global-configuration-not-private-number-allocation'},
    {owner:'core/people-general.ts',operation:'native-revisioned-policy'},
    {owner:'app.organisation_settings_write_guard',operation:'dashboard-login-provider-email-entra-tenant-setting'},
+   {owner:'core/session-policy.ts',operation:'exact-editor-course-not-runtime-authentication-limit'},
    {owner:'app.email_design_admin',operation:'native-template-view'},
    {owner:'app.entra_configure',operation:'native-directory-configuration'},
    {owner:'app.entra_bind',operation:'native-explicit-account-binding'},

@@ -5,13 +5,14 @@ import { inputCls, btnPrimary } from '@/components/ui';
 import type { LoginPresentation } from '@/lib/login-presentation';
 import { saveLoginPresentationAction, type LoginPresentationResult } from './actions';
 
-export function LoginPresentationForm({ presentation, revision }: { presentation: LoginPresentation; revision: number }) {
+export function LoginPresentationForm({ presentation, revision, canEdit=false }: { presentation: LoginPresentation; revision: number; canEdit?:boolean }) {
   const t = useTranslations('loginPresentation');
   const [state, action, pending] = useActionState(saveLoginPresentationAction, { status: 'idle' } as LoginPresentationResult);
   const [type, setType] = useState(presentation.mediaType);
   const [mediaUrl, setMediaUrl] = useState(presentation.mediaUrl);
   const [alt, setAlt] = useState(presentation.alt);
-  return <form action={action} className="space-y-6">
+  return <form action={action}>
+    <fieldset disabled={!canEdit||pending} className="space-y-6">
     <input type="hidden" name="revision" value={state.revision ?? revision}/>
     <label className="block space-y-2"><span className="text-sm font-medium">{t('mediaType')}</span>
       <select name="mediaType" className={inputCls} value={type} onChange={event => setType(event.target.value as LoginPresentation['mediaType'])}>
@@ -36,5 +37,6 @@ export function LoginPresentationForm({ presentation, revision }: { presentation
       <button type="submit" disabled={pending} className={btnPrimary}>{t(pending ? 'saving' : 'save')}</button>
       {state.status !== 'idle' && <p role={state.status === 'saved' ? 'status' : 'alert'} className={`text-sm ${state.status === 'saved' ? 'text-foreground' : 'text-destructive'}`}>{t(`result.${state.status}`)}</p>}
     </div>
+    </fieldset>
   </form>;
 }
