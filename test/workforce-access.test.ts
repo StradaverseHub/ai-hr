@@ -16,7 +16,7 @@ import {toCsv} from '../lib/csv';
 import {setCompensation} from '../core/comp';
 import {setEmploymentTestRecord} from '../core/employment-test-record';
 import {setPersonPhoto} from '../core/person-photo';
-import {listEmployees,listWorkforcePickOptions,listWorkforcePickPageTx,readWorkforcePickRowsTx,listEmployeesPage,countEmployeesByStatus,employeeDetail,type EmployeeListFilters} from '../core/read';
+import {listEmployees,listWorkforcePickOptions,listWorkforcePickPageTx,searchWorkforceEmployeesTx,readWorkforcePickRowsTx,listEmployeesPage,countEmployeesByStatus,employeeDetail,type EmployeeListFilters} from '../core/read';
 import {workforceRecord} from '../core/workforce-record';
 import {WORKFORCE_PROFILE_FIELDS} from '../lib/workforce-record-fields';
 import {workforceCompanies,workforceViewScope,workforceCommandAccess,WorkforceAccessError} from '../core/workforce-access';
@@ -78,6 +78,19 @@ describe('fresh Workforce-purpose record consumers',()=>{
   expect(await pick(randomUUID())).toEqual({rows:[],nextCursor:null});expect(await pick(undefined,[])).toEqual({rows:[],nextCursor:null});
   expect((await withTenant(ctx,tx=>readWorkforcePickRowsTx(ctx,tx,[first.employmentId]))).map(row=>row.employmentId)).toEqual([first.employmentId]);
   await override(b.adminUserId,'workforce.view',b.companyId,'deny');expect(await pick()).toEqual({rows:[],nextCursor:null});expect(await withTenant(ctx,tx=>readWorkforcePickRowsTx(ctx,tx,[first.employmentId]))).toEqual([]);
+ });
+
+ it('ranks folded employee codes, bounds results and rechecks Workforce grants for remote search',async()=>{
+  const exact=await hire('ZZZ exact code'),prefix=await hire('YYY prefix code');
+  await setEmployeeCode(admin(),{employmentId:exact.employmentId,employeeCode:'LOAD-LOOKUP-0008'});await setEmployeeCode(admin(),{employmentId:prefix.employmentId,employeeCode:'LOAD-LOOKUP-00081'});
+  for(let i=0;i<10;i++)await hire('LOADLOOKUP0008 match '+i);
+  await activate();const ctx=admin();
+  const search=(q:string,ids=[b.companyId])=>withTenant(ctx,tx=>searchWorkforceEmployeesTx(ctx,tx,ids,q));
+  const rows=await search('loadlookup0008');expect(rows).toHaveLength(8);
+  expect(rows.slice(0,2).map(row=>row.employmentId)).toEqual([exact.employmentId,prefix.employmentId]);
+  expect(await search('%_')).toEqual([]);expect(await search('loadlookup0008',[])).toEqual([]);
+  expect(await search('   ')).toEqual([]);await expect(search('x'.repeat(201))).rejects.toThrow('Invalid employee search');
+  await override(b.adminUserId,'workforce.view',b.companyId,'deny');expect(await search('loadlookup0008')).toEqual([]);
  });
 
  it('filters the picker by the canonical branch, department and inclusive hire-date range',async()=>{

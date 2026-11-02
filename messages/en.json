@@ -773,7 +773,8 @@
       "placeholder": "Search employee ID or name…",
       "resultsLabel": "Employee search results",
       "noMatches": "No employee matches that.",
-      "currentTag": "Current"
+      "currentTag": "Current",
+      "loadFailed": "Employee search could not be loaded. Try again."
     },
     "detail": {
       "incentiveDeclarations": {

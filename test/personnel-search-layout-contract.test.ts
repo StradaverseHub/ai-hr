@@ -41,8 +41,9 @@ describe('c002b3c3 · the switcher is mounted on both screens and stays an RSC-s
     // The filter panel is a different control answering a different question; both stay.
     expect(src).toContain('<FilterPanel');
     expect(src).toContain('dataTour="people-search"');
-    // It searches the whole reachable set, narrowed by the active company context — not the page.
-    expect(src).toContain('listWorkforcePickOptions(session, scopeIds)');
+    // Search remains whole-scope, but is requested only when typed rather than preloaded.
+    expect(src).toContain('<EmployeeSwitcher remote');
+    expect(src).not.toContain('listWorkforcePickOptions(session, scopeIds)');
   });
 
   it('the profile mounts it and keeps the open tab across the jump', () => {
