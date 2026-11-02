@@ -4,8 +4,8 @@ import {assertModuleEnabled} from './entitlements';
 import {withProbationTenant,probationAdministrationOptions,ProbationError} from './probation';
 import {probationWorkflowIssues,type ProbationWorkflow,type ProbationTemplate} from '../lib/probation-workflow';
 export type {ProbationWorkflow,ProbationTemplate};
-type Definition<T>={id:string;companyId:string;key:string;version:number;state:'draft'|'published';data:T};
-export function listProbationWorkflows(ctx:SessionContext){return withProbationTenant(ctx,tx=>tx.execute<Definition<ProbationWorkflow>>(sql`select id,company_id as "companyId",definition_key as key,version,state,data from probation_builder_definition where tenant_id=${ctx.tenantId}::uuid and kind='workflow' order by company_id,definition_key,version desc`));}
+type Definition<T>={id:string;companyId:string;key:string;version:number;state:'draft'|'published'|'retired';retirementReason:string|null;data:T};
+export function listProbationWorkflows(ctx:SessionContext){return withProbationTenant(ctx,tx=>tx.execute<Definition<ProbationWorkflow>>(sql`select id,company_id as "companyId",definition_key as key,version,state,retirement_reason as "retirementReason",data from probation_builder_definition where tenant_id=${ctx.tenantId}::uuid and kind='workflow' order by company_id,definition_key,version desc`));}
 export async function probationWorkflowWorkspace(ctx:SessionContext){const options=await probationAdministrationOptions(ctx);return{companies:options.companies,workflows:await listProbationWorkflows(ctx)};}
 export function saveProbationWorkflow(ctx:SessionContext,input:{companyId:string;workflow:ProbationWorkflow;publish:boolean;expectedVersion:number}){return withProbationTenant(ctx,async tx=>{
  assertModuleEnabled(ctx,'lifecycle',input.companyId);const issues=probationWorkflowIssues(input.workflow);if(input.publish&&issues.length)throw new ProbationError('invalid',issues.join(' '));

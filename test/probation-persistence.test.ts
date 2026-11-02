@@ -9,7 +9,7 @@ import {recordDocumentSigningActionTx} from '../packs/document-signing/service';
 import {notificationStillTargets} from '../core/notifications';
 import {PROBATION_WORKFLOW_EVENTS} from '../lib/probation-workflow';
 import {newProbationLetterTemplate} from '../lib/probation-letter-template';
-import {probationCase,saveProbationDraft,requestProbationDateShift,applyProbationDateShift,previewProbationWorkflow,uploadProbationEvidence,actOnProbation,saveProbationLetterTemplate,prepareProbationLetter,readProbationLetter,actOnProbationLetter,releaseProbationLetter,probationIntakeWorkspace,saveProbationIntakeDisposition,uploadProbationCutoverEvidence,readProbationCutoverEvidence,prepareProbationCutover,approveProbationCutover,activatePreparedProbationCutover,saveProbationWorkflow,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,applyProbationLegacyReconciliation,probationIntakeCompanies,probationNavigationAccess,probationInbox,supersedeProbationDateShift,pauseProbationCompany,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision} from '../packs/probation/service';
+import {probationCase,saveProbationDraft,requestProbationDateShift,applyProbationDateShift,previewProbationWorkflow,uploadProbationEvidence,actOnProbation,saveProbationLetterTemplate,prepareProbationLetter,readProbationLetter,actOnProbationLetter,releaseProbationLetter,probationIntakeWorkspace,saveProbationIntakeDisposition,uploadProbationCutoverEvidence,readProbationCutoverEvidence,prepareProbationCutover,approveProbationCutover,activatePreparedProbationCutover,saveProbationWorkflow,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,applyProbationLegacyReconciliation,probationIntakeCompanies,probationNavigationAccess,probationInbox,supersedeProbationDateShift,pauseProbationCompany,reconcileProbationDates,probationPublicationRetirement,retireProbationPublication,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision} from '../packs/probation/service';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {adminCtx,closeAll,setModule,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {bootstrapProbationPreparer,installProbationDrafts,probationSetup,saveProbationConfiguration,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,canConfigureProbationWorkflows,sweepProbation} from '../packs/probation/service';
@@ -35,6 +35,10 @@ describe('native probation configuration custody and default-off authority',()=>
   await bootstrapProbationPreparer(admin,{companyId:b.companyId,userId:admin.userId!,reason:'Named configuration preparer'});
   await expect(withTenant(admin,tx=>tx.execute(sql`insert into probation_activation(tenant_id,company_id,enabled) values(${b.tenantId}::uuid,${b.companyId}::uuid,true)`))).rejects.toThrow();
   await expect(saveProbationConfiguration(admin,{companyId:b.companyId,kind:'settings',data:{...DEFAULT_PROBATION_CONFIG,gradeHEnabled:true,gradeHFormPublished:true},publish:true,expectedVersion:0})).rejects.toThrow();
+  await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_config_write(${b.companyId}::uuid,'settings',${JSON.stringify({...DEFAULT_PROBATION_CONFIG,eligibleGrades:['12','H']})}::jsonb,true,0)`))).rejects.toThrow();
+  await saveProbationConfiguration(admin,{companyId:b.companyId,kind:'form',data:{...DEFAULT_PROBATION_FORM,targetGrades:['H']},publish:true,expectedVersion:0});
+  await saveProbationConfiguration(admin,{companyId:b.companyId,kind:'settings',data:{...DEFAULT_PROBATION_CONFIG,gradeHEnabled:true,gradeHFormPublished:false},publish:true,expectedVersion:0});
+  expect((await probationSetup(admin,b.companyId)).settings?.data).toMatchObject({gradeHEnabled:true,gradeHFormPublished:true});
   const route=defaultProbationRoutes();route.parts['1'].steps.find(s=>s.role==='employee')!.stage=0;
   await expect(saveProbationConfiguration(admin,{companyId:b.companyId,kind:'route',data:route,publish:true,expectedVersion:0})).rejects.toThrow();
   await saveProbationConfiguration(admin,{companyId:b.companyId,kind:'route',data:defaultProbationRoutes(),publish:true,expectedVersion:0});
@@ -104,6 +108,9 @@ describe('purpose-bound canonical date adjustments',()=>{
   const requestId=await requestProbationDateShift(admin,{caseId:ids.caseId,revision:1,newEndOn:'2027-01-31',reason:'Approved long leave; preserve submitted reviews'});
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_date_shift_intent(${requestId}::uuid)`))).rejects.toThrow(); // source mint is private to the real owner executor
   expect(await probationIntakeCompanies(peer.ctx)).toContainEqual({id:b.companyId,name:expect.any(String),canPrepare:false});expect((await probationNavigationAccess(peer.ctx)).intake).toBe(true);
+  await owner.db.execute(sql`update probation_access set department_id=${b.deptB}::uuid where tenant_id=${b.tenantId}::uuid and user_id=${peer.userId}::uuid and role='gbs'`);
+  await expect(applyProbationDateShift(peer.ctx,{caseId:ids.caseId,requestId,revision:1})).rejects.toThrow();
+  await owner.db.execute(sql`update probation_access set department_id=null where tenant_id=${b.tenantId}::uuid and user_id=${peer.userId}::uuid and role='gbs'`);
   expect(await applyProbationDateShift(peer.ctx,{caseId:ids.caseId,requestId,revision:1})).toMatchObject({queued:true,alreadyApplied:false});
   const[notApplied]=await owner.db.execute<{end:string|null}>(sql`select extended_confirmation_date::text as end from employment where id=${staff.employmentId}::uuid`);expect(notApplied.end).toBeNull();
   expect((await probationCase(peer.ctx,ids.caseId)).dateAdjustments[0].status).toBe('queued');
@@ -217,7 +224,8 @@ describe('Part 1 actual acknowledgement contribution',()=>{
 
 
 describe('reviewed existing-cohort activation and legacy ownership handoff',()=>{
- it.each([false,true])('keeps cutover and legacy evidence intact (paper final: %s)',async paperFinal=>{
+ it.each(['unfinished','paper-final','existing-extension'] as const)('keeps reviewed cutover and legacy evidence intact for %s',async scenario=>{
+  const paperFinal=scenario==='paper-final',existingExtension=scenario==='existing-extension';
   const savedOrigin=process.env.AUTH_PUBLIC_ORIGIN,savedKey=process.env.AUTH_SESSION_KEY;process.env.AUTH_PUBLIC_ORIGIN='https://probation-staging.example.test';process.env.AUTH_SESSION_KEY='a'.repeat(64);
   try{
    const{ids,staff,manager,peer}=await privateCase();await owner.db.execute(sql`delete from probation_rater_draft where part_id=${ids.part}::uuid`);await owner.db.execute(sql`delete from probation_part where id=${ids.part}::uuid`);await owner.db.execute(sql`delete from probation_case where id=${ids.caseId}::uuid`);await owner.db.execute(sql`update probation_activation set enabled=false where tenant_id=${b.tenantId}::uuid`);
@@ -225,12 +233,16 @@ describe('reviewed existing-cohort activation and legacy ownership handoff',()=>
    const grade=randomUUID();await owner.db.execute(sql`insert into job_grade(id,tenant_id,code,name) values(${grade}::uuid,${b.tenantId}::uuid,'12','Fictional Grade 12')`);await owner.db.execute(sql`update employment set grade_id=${grade}::uuid,probation_months=3,probation_unit='month',probation_value=3,probation_end_date='2026-03-31' where id=${staff.employmentId}::uuid`);
    await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'pbp','2026-01-01','Actual intake PBP'),(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'gbs','2026-01-01','Actual intake People Ops')`);
    const legacy=await startReview(admin,{employmentId:staff.employmentId});const[event]=await owner.db.execute<{id:string}>(sql`select id from domain_event where aggregate_id=${legacy.reviewId}::uuid and event_type='employment-review.started'`);expect(await withTenant(admin,tx=>notificationStillTargets(tx,event.id,'review.started','review',manager.employmentId))).toBe(true);
+   if(existingExtension)await owner.db.execute(sql`update employment set extended_confirmation_date='2026-06-30' where id=${staff.employmentId}::uuid`);
    const{PDFDocument}=await import('pdf-lib'),pdf=await PDFDocument.create();pdf.addPage();const evidenceId=await uploadProbationCutoverEvidence(admin,{employmentId:staff.employmentId,name:'original-offline-p1.pdf',content:Buffer.from(await pdf.save()),reason:'Original completed paper Part 1, reviewed by actual PBP'});
    expect((await readProbationCutoverEvidence(admin,{employmentId:staff.employmentId,evidenceId})).name).toBe('original-offline-p1.pdf');await expect(readProbationCutoverEvidence(staff.ctx,{employmentId:staff.employmentId,evidenceId})).rejects.toThrow();
    let candidate=(await probationIntakeWorkspace(admin,b.companyId)).candidates.find(c=>c.source.employmentId===staff.employmentId)!;expect(candidate.classification).toBe('held');
-   const finalEvidence=paperFinal?await uploadProbationCutoverEvidence(admin,{employmentId:staff.employmentId,name:'original-offline-final.pdf',content:Buffer.from(await pdf.save()),reason:'Original final paper review'}):null;
-   await saveProbationIntakeDisposition(admin,{employmentId:staff.employmentId,revision:0,sourceDigest:candidate.sourceDigest,kind:'unfinished',reason:'Verified existing employee stage and original PDF',validatedUnknown:false,exclusionFlags:{noProbation:false,internalTransfer:false,rehire:false,confirmedOnHire:false},parts:[{type:1,cycle:0,status:'completed_offline',evidenceId},{type:3,cycle:0,status:paperFinal?'completed_offline':'unfinished',evidenceId:finalEvidence}]});
-   if(finalEvidence){
+   const originalFinal=await PDFDocument.create();originalFinal.addPage();originalFinal.addPage();
+   const finalEvidence=paperFinal||existingExtension?await uploadProbationCutoverEvidence(admin,{employmentId:staff.employmentId,name:'original-offline-final.pdf',content:Buffer.from(await originalFinal.save()),reason:'Original final paper review'}):null;
+   const extensionEventIds=existingExtension?[candidate.source.extensionHistory!.find(e=>e.kind==='current_source')!.id]:[];
+   if(existingExtension)expect(candidate.stageOptions).toContainEqual({extensionCount:1,requiredParts:[{type:1,cycle:0,requiresOffline:false},{type:3,cycle:0,requiresOffline:true},{type:3,cycle:1,requiresOffline:false}]});
+   await saveProbationIntakeDisposition(admin,{employmentId:staff.employmentId,revision:0,sourceDigest:candidate.sourceDigest,kind:'unfinished',reason:'Verified existing employee stage and original PDF',validatedUnknown:false,extensionCount:existingExtension?1:0,extensionEventIds,validatedHistory:existingExtension,exclusionFlags:{noProbation:false,internalTransfer:false,rehire:false,confirmedOnHire:false},parts:[{type:1,cycle:0,status:'completed_offline',evidenceId},{type:3,cycle:0,status:finalEvidence?'completed_offline':'unfinished',evidenceId:finalEvidence},...(existingExtension?[{type:3 as const,cycle:1,status:'unfinished' as const,evidenceId:null}]:[])]});
+   if(paperFinal&&finalEvidence){
     const staged=(await probationIntakeWorkspace(admin,b.companyId)).candidates.find(c=>c.source.employmentId===staff.employmentId)!;
     expect(staged.classification).toBe('held');
     await proposeProbationOfflineFinalDecision(admin,{employmentId:staff.employmentId,entryId:staged.disposition!.id,revision:staged.disposition!.revision,evidenceId:finalEvidence,outcome:'other',extensionMonths:null,reason:'Original paper decision needs PBP interpretation'});
@@ -245,7 +257,14 @@ describe('reviewed existing-cohort activation and legacy ownership handoff',()=>
    const activation=activatePreparedProbationCutover({...admin,userId:undefined,roles:[],grants:undefined},guardedOwner,{id:plan.id,digest:plan.digest,installationReceipt:{origin:'https://probation-staging.example.test',reference:'Fictional staging dispatch-held and owner sign-off receipt'}});await hasLock;
    const competing=startReview(admin,{employmentId:staff.employmentId}).then(()=>'',error=>String(error));let waiting=false;for(let i=0;i<100&&!waiting;i++){const[row]=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_locks where locktype='advisory' and not granted and database=(select oid from pg_database where datname=current_database())) as waiting`);waiting=row.waiting;if(!waiting)await new Promise(resolve=>setTimeout(resolve,10));}release();expect(waiting).toBe(true);expect((await activation).alreadyApplied).toBe(false);expect(await competing).toContain('Probation module');
    expect(await withTenant(admin,tx=>notificationStillTargets(tx,event.id,'review.started','review',manager.employmentId))).toBe(false);expect(await pendingManagerReviewsFor(manager.ctx,manager.employmentId)).toEqual([]);
-   const[imported]=await owner.db.execute<{id:string;files:number}>(sql`select c.id,(select count(*)::integer from probation_file f where f.case_id=c.id and f.kind='offline' and f.employee_document_id is not null) as files from probation_case c where c.employment_id=${staff.employmentId}::uuid`);expect(imported.files).toBe(paperFinal?2:1);const[summaries]=await owner.db.execute<{count:number}>(sql`select count(*)::integer as count from probation_activation_summary where batch_id=${plan.id}::uuid`);expect(summaries.count).toBe(paperFinal?0:1);
+   const[imported]=await owner.db.execute<{id:string;files:number}>(sql`select c.id,(select count(*)::integer from probation_file f where f.case_id=c.id and f.kind='offline' and f.employee_document_id is not null) as files from probation_case c where c.employment_id=${staff.employmentId}::uuid`);expect(imported.files).toBe(paperFinal||existingExtension?2:1);const[summaries]=await owner.db.execute<{count:number}>(sql`select count(*)::integer as count from probation_activation_summary where batch_id=${plan.id}::uuid`);expect(summaries.count).toBe(paperFinal?0:1);
+   if(existingExtension){
+    const view=await probationCase(admin,imported.id);
+    expect(view.record).toMatchObject({extensionCount:1,originalEndOn:'2026-03-31',endOn:'2026-06-30',state:'extended'});
+    expect(view.parts.filter(p=>p.type===3)).toMatchObject([{cycle:0,state:'completed_offline',signing:null},{cycle:1,state:'issued'}]);
+    expect(view.parts.every(p=>!p.offlineDecision)).toBe(true);
+    return;
+   }
    if(paperFinal){
     const final=async(ctx:SessionContext)=>(await probationCase(ctx,imported.id)).parts.find(part=>part.type===3)!;
     expect((await final(staff.ctx)).offlineDecision).toBeNull();
@@ -262,6 +281,15 @@ describe('reviewed existing-cohort activation and legacy ownership handoff',()=>
    }
    await owner.db.execute(sql`update probation_activation set enabled=false where tenant_id=${b.tenantId}::uuid`);expect(await withTenant(admin,tx=>notificationStillTargets(tx,event.id,'review.started','review',manager.employmentId))).toBe(false);
    const history=await probationCase(staff.ctx,imported.id);expect(history.runtimeEnabled).toBe(false);expect(history.parts.every(part=>part.allowedCommands.length===0&&!part.canEditEmployee&&!part.canEditManager)).toBe(true);expect((await probationNavigationAccess(staff.ctx)).page).toBe(true);expect((await probationInbox(staff.ctx)).count).toBe(0);await expect(withTenant(staff.ctx,tx=>tx.execute(sql`select app.probation_save_draft(${history.parts.find(p=>p.type===3)!.id}::uuid,'employee','{}'::jsonb,1)`))).rejects.toThrow();
+   await owner.db.execute(sql`update employment set probation_end_date='2026-04-10' where id=${staff.employmentId}::uuid`);
+   const paused=await probationCase(admin,imported.id);
+   expect(paused).toMatchObject({runtimeEnabled:false,sourceChanged:true,canReconcileDates:true});
+   await expect(reconcileProbationDates(staff.ctx,{caseId:imported.id,revision:paused.record.revision,reason:'Employee cannot approve schedule review'})).rejects.toThrow();
+   expect(await reconcileProbationDates(admin,{caseId:imported.id,revision:paused.record.revision,reason:'Reviewed changed canonical Personnel period during pause'})).toEqual({queued:true});
+   const held=await prepareProbationCutover(admin,b.companyId);
+   expect(held.snapshot).toMatchObject({planComplete:false,reactivation:[{id:imported.id,status:'held',pendingWork:[{kind:'schedule_reconciliation',state:'pending'}]}]});
+   await sweepProbation({...admin,userId:undefined,roles:[],grants:undefined},owner);
+   expect(await probationCase(admin,imported.id)).toMatchObject({runtimeEnabled:false,sourceChanged:false,record:{endOn:'2026-04-10'}});
    const resumed=await prepareProbationCutover(admin,b.companyId);
    expect(resumed.snapshot).toMatchObject({mode:'reactivation',planComplete:true,imports:[],reactivation:[{id:imported.id,status:'preserved'}]});
    expect(resumed.snapshot.wouldFire.every(o=>o.dueOn>=resumed.snapshot.activationOn)).toBe(true);
@@ -294,5 +322,23 @@ describe('canonical employer transfer boundary',()=>{
   await sweepProbation({...admin,userId:undefined,roles:[],grants:undefined},owner);
   const [stored]=await owner.db.execute<{held:boolean;cases:number}>(sql`select data->>'sourceCompanyMoved'='true' as held,(select count(*)::integer from probation_case where employment_id=${staff.employmentId}::uuid) as cases from probation_case where id=${ids.caseId}::uuid`);
   expect(stored).toEqual({held:true,cases:1});
+ });
+});
+
+
+describe('probation publication retirement custody',()=>{
+ it('blocks future selection with a new version while preserving pinned forms and historic bytes',async()=>{
+  const {ids,staff}=await privateCase();
+  const form={companyId:b.companyId,kind:'form' as const,versionId:ids.form};
+  expect(await probationPublicationRetirement(staff.ctx,form)).toEqual({canRetire:false,expectedVersion:0});
+  expect(await probationPublicationRetirement(admin,form)).toEqual({canRetire:true,expectedVersion:1});
+  await expect(retireProbationPublication(admin,{...form,expectedVersion:0,reason:'Stale version'})).rejects.toThrow();
+  const retired=await retireProbationPublication(admin,{...form,expectedVersion:1,reason:'Replace the regular grade form after approval'});
+  expect(retired.version).toBe(2);
+  expect((await probationSetup(admin,b.companyId)).form).toBeNull();
+  expect((await probationCase(staff.ctx,ids.caseId)).form).toMatchObject({name:DEFAULT_PROBATION_FORM.name});
+  expect(await probationPublicationRetirement(admin,form)).toEqual({canRetire:false,expectedVersion:0});
+  const [versions]=await owner.db.execute<{published:string;reason:string;unchanged:boolean}>(sql`select original.state as published,tombstone.retirement_reason as reason,original.data=tombstone.data as unchanged from probation_configuration original join probation_configuration tombstone on tombstone.id=${retired.id}::uuid and tombstone.tenant_id=original.tenant_id where original.id=${ids.form}::uuid`);
+  expect(versions).toEqual({published:'published',reason:'Replace the regular grade form after approval',unchanged:true});
  });
 });
