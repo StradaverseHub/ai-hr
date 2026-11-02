@@ -288,7 +288,8 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     // silently return an empty roster. It adds no role, grant, bypass or private execution lease.
     await owner.db.execute(sql`create policy rewards_metadata_forbid_raw on reward_entry as restrictive for select to ai_hr_app using(length(id::text)/0>0)`);
     try{
-      await expect(withTenant(admin,tx=>tx.select({id:schema.rewardEntry.id}).from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)))).rejects.toThrow('division by zero');
+      let refusal:unknown;try{await withTenant(admin,tx=>tx.select({id:schema.rewardEntry.id}).from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)));}catch(error){refusal=error;}
+      expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'22012',message:'division by zero'}));
       expect(await canPostRewardUnit(admin,unitId)).toBe(true);expect(await rewardPayrollChoices(admin,unitId)).toEqual([{id:batch.batchId,period:today.slice(0,7)}]);
       expect(await canPostRewardUnit(actors.bu!,unitId)).toBe(false);expect(await rewardPayrollChoices(actors.bu!,unitId)).toEqual([]);
     }finally{await owner.db.execute(sql`drop policy rewards_metadata_forbid_raw on reward_entry`);}
