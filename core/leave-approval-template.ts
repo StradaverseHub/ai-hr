@@ -1,3 +1,4 @@
+import {assertLeaveApprovalCompanyTx} from './leave-approval-action-access';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 /**
  * 6fadb036 (R17) — Approval Workflow Enhancement under Leave Config.
@@ -198,7 +199,7 @@ export async function listTemplateAssignments(ctx: SessionContext): Promise<Temp
         maxDays: leaveApprovalPolicy.maxDays,
       })
       .from(leaveApprovalPolicy)
-      .where(and(eq(leaveApprovalPolicy.active, true), sql`${leaveApprovalPolicy.templateId} is not null`));
+      .where(and(eq(leaveApprovalPolicy.active, true), sql`${leaveApprovalPolicy.templateId} is not null`,sql`app.leave_approval_company_allowed('leaveApproval.assignments','view',${leaveApprovalPolicy.companyId})`));
     return rows.map((r) => ({
       ruleId: r.ruleId,
       templateId: r.templateId as string,
@@ -280,6 +281,7 @@ export async function listOrgScopedApprovalRules(ctx: SessionContext): Promise<O
       .where(
         and(
           eq(leaveApprovalPolicy.active, true),
+          sql`app.leave_approval_company_allowed('leaveApproval.assignments','view',${leaveApprovalPolicy.companyId})`,
           sql`(${leaveApprovalPolicy.businessUnitId} is not null
                or ${leaveApprovalPolicy.departmentId} is not null
                or ${leaveApprovalPolicy.positionId} is not null)`,
@@ -768,6 +770,7 @@ export async function assignApprovalTemplate(
               ),
             )
             .limit(1);
+          await assertLeaveApprovalCompanyTx(tx,'leaveApproval.assignments',existing?'edit':'add',companyId);
           let ruleId: string;
           let created: boolean;
           if (existing) {
@@ -840,6 +843,7 @@ export async function unassignApprovalTemplate(ctx: SessionContext, ruleId: stri
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertLeaveApprovalCompanyTx(tx,'leaveApproval.assignments','delete',companyId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .select({ templateId: leaveApprovalPolicy.templateId, leaveTypeId: leaveApprovalPolicy.leaveTypeId })

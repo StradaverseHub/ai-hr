@@ -1232,3 +1232,14 @@ and refuses an unauthorized drawer/save path. Native routing references remain i
 maintenance list's View. Native company-HR/member/raw-refusal and rendered course cases are authored
 but unrun. Company assignment/escalation controls and live Leave operations remain unfinished; this
 chapter does not complete or publish the Leave component.
+
+Leave Approval assignments and escalation have independent company View and native-admin operations.
+Assignment Add is a real new row; replacement/reactivation is Edit; unassignment/archive is Delete.
+Actual OLD and NEW company scopes, identity and tenant-owned template/type/organization references
+are repeated by the raw assignment guard; maintenance lists repeat exact View while runtime routing
+keeps its own reference source. The real escalation setter repeats exact company View/Edit. A private
+actual-OLD/NEW helper permits only the five native escalation columns and requires the full stored
+Company OLD plus current native company Edit; root owns its 0942 Company-guard composition. This helper
+is not app-executable and grants no general Company mutation. Native scope/reference/refusal cases
+are authored but unrun. Company assignment/escalation UI projections, root guard integration and
+live Leave command closure remain outstanding; no Leave completion claim or sentinel is added.

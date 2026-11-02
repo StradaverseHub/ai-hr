@@ -1318,14 +1318,70 @@ CREATE TRIGGER module_leave_approval_template_lock BEFORE INSERT OR UPDATE OR DE
 CREATE TRIGGER module_leave_approval_template_action BEFORE INSERT OR UPDATE OR DELETE ON public.leave_approval_template FOR EACH ROW EXECUTE FUNCTION app.leave_approval_template_guard();
 
 --> statement-breakpoint
+-- Per-company approval assignment is independent of tenant template maintenance.
+CREATE FUNCTION app.leave_approval_company_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap IN ('function.leaveApproval.assignments.view','function.leaveApproval.assignments.add','function.leaveApproval.assignments.edit','function.leaveApproval.assignments.delete','function.leaveApproval.escalation.view','function.leaveApproval.escalation.edit')
+ AND EXISTS(SELECT 1 FROM public.company c WHERE c.id=co AND c.tenant_id=t)
+ AND EXISTS(SELECT 1 FROM public.app_user actor WHERE actor.id=u AND actor.tenant_id=t AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id))
+ AND(split_part(cap,'.',4)='view' OR app.module_action_legacy_allowed(t,u,'leave.'||split_part(cap,'.',4),co));
+$$;
+CREATE FUNCTION app.leave_approval_company_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.leave_approval_company_native_allowed(t,u,cap,co)
+ AND(split_part(cap,'.',4)='view' OR app.is_admin_for(co));
+$$;
+REVOKE ALL ON FUNCTION app.leave_approval_company_native_allowed(uuid,uuid,text,uuid),app.leave_approval_company_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE key text;operation text;BEGIN
+ FOREACH key IN ARRAY ARRAY['assignments','escalation'] LOOP
+  FOREACH operation IN ARRAY (CASE key WHEN 'assignments' THEN ARRAY['view','add','edit','delete'] ELSE ARRAY['view','edit'] END) LOOP
+   PERFORM app.register_function_action('leaveApproval.'||key,operation,'company',NULL,'app.leave_approval_company_current_native_allowed',jsonb_build_object('moduleKey','leave','labelKey',CASE key WHEN 'assignments' THEN 'leaveApproval.assignmentTemplateTitle' ELSE 'leaveApproval.escalationTitle' END,'kind','native_acl','course','administrative','screenKey','leaveApproval','href','/admin/leave-config/approval-chains','employeeBearing',false));
+  END LOOP;
+ END LOOP;
+END $$;
+CREATE FUNCTION app.leave_approval_company_allowed(p_key text,p_operation text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.leave_approval_company_current_native_allowed(app.current_tenant_id(),app.current_user_id(),'function.'||p_key||'.'||p_operation,p_company)
+ AND app.function_action_allowed(p_key,'view',p_company) AND app.function_action_allowed(p_key,p_operation,p_company);
+$$;
+REVOKE ALL ON FUNCTION app.leave_approval_company_allowed(text,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_approval_company_allowed(text,text,uuid) TO ai_hr_app;
+CREATE FUNCTION app.leave_approval_assignment_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+ image public.leave_approval_policy%ROWTYPE;
+BEGIN
+ IF TG_OP='DELETE' THEN image:=OLD;ELSE image:=NEW;END IF;
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_OP='UPDATE' AND OLD.active AND NOT NEW.active THEN operation:='delete';END IF;
+ IF image.tenant_id IS DISTINCT FROM app.current_tenant_id() OR TG_OP='UPDATE' AND ROW(OLD.id,OLD.tenant_id) IS DISTINCT FROM ROW(NEW.id,NEW.tenant_id)
+ OR NOT app.leave_approval_company_allowed('leaveApproval.assignments',operation,image.company_id)
+ OR TG_OP='UPDATE' AND NOT app.leave_approval_company_allowed('leaveApproval.assignments',operation,OLD.company_id)
+ OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=image.company_id AND c.tenant_id=image.tenant_id)
+ OR image.leave_type_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.leave_type r WHERE r.id=image.leave_type_id AND r.tenant_id=image.tenant_id)
+ OR image.template_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.leave_approval_template r WHERE r.id=image.template_id AND r.tenant_id=image.tenant_id)
+ OR image.grade_group_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.grade_group r WHERE r.id=image.grade_group_id AND r.tenant_id=image.tenant_id)
+ OR image.grade_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.job_grade r WHERE r.id=image.grade_id AND r.tenant_id=image.tenant_id)
+ OR image.business_unit_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.business_unit r WHERE r.id=image.business_unit_id AND r.tenant_id=image.tenant_id)
+ OR image.department_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.department r WHERE r.id=image.department_id AND r.tenant_id=image.tenant_id)
+ OR image.position_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.position r WHERE r.id=image.position_id AND r.tenant_id=image.tenant_id)
+ THEN RAISE EXCEPTION 'Leave approval assignment action unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_approval_assignment_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_leave_approval_assignment_lock BEFORE INSERT OR UPDATE OR DELETE ON public.leave_approval_policy FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+CREATE TRIGGER module_leave_approval_assignment_action BEFORE INSERT OR UPDATE OR DELETE ON public.leave_approval_policy FOR EACH ROW EXECUTE FUNCTION app.leave_approval_assignment_guard();
+
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
+ SELECT app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
+ SELECT app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 
@@ -1408,3 +1464,15 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.claim_configuration_write_access(text,uuid,uuid,uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.claim_configuration_write_access(text,uuid,uuid,uuid,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Consumed only by the native Company source guard with actual OLD/NEW images. This owns no
+-- general Company mutation, employee access or runtime routing grant.
+CREATE FUNCTION app.leave_approval_escalation_source_allowed(p_before jsonb,p_after jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_before->>'id'=p_after->>'id' AND p_before->>'tenant_id'=app.current_tenant_id()::text
+ AND p_before-ARRAY['escalation_enabled','escalate_after_days','escalation_target','escalation_target_role','escalation_updated_at'] = p_after-ARRAY['escalation_enabled','escalate_after_days','escalation_target','escalation_target_role','escalation_updated_at']
+ AND EXISTS(SELECT 1 FROM public.company actual WHERE actual.id=(p_before->>'id')::uuid AND actual.tenant_id=app.current_tenant_id() AND to_jsonb(actual)=p_before)
+ AND app.leave_approval_company_allowed('leaveApproval.escalation','edit',(p_before->>'id')::uuid);
+$$;
+REVOKE ALL ON FUNCTION app.leave_approval_escalation_source_allowed(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
