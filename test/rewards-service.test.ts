@@ -1,7 +1,7 @@
 import {configureRewardFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -308,12 +308,41 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId, batch.batchId))).toEqual([]);
     expect((await view()).unit.status).toBe('approved');
   });
+  it('derives bounded annual calculations from actual governance and native membership without exporting hidden inputs',async()=>{
+    for(const actor of [admin,actors.bu!,actors.bg!,actors.ctro!,actors.ec!,actors.pbp!]){
+      const expected=await getRewardUnit(actor,unitId),[native]=await withTenant(actor,tx=>tx.execute<{value:Record<string,unknown>&{rows:Record<string,unknown>[]}}>(sql`select app.reward_annual_calculation(${unitId}::uuid,${expected.unit.revision})as value`));
+      expect(native.value.rows).toEqual(expected.rows.map(row=>Object.fromEntries(Object.keys(native.value.rows[0]).map(key=>[key,(row as unknown as Record<string,unknown>)[key]]))));
+      for(const key of ['budgets','flags','poolStatus','suggestedMultiplierBp','suggestion','suggestedLumpCents','lumpUnitCents','lumpWorking','bonusCounts','payWindow','route','hiddenCount'])expect(native.value[key]).toEqual((expected as unknown as Record<string,unknown>)[key]);
+      await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_calc_annual_unit(${unitId}::uuid,${expected.unit.revision})`))).rejects.toThrow();
+    }
+    const actual=await view(),recipient=actual.rows[0];
+    await owner.db.update(schema.rewardEntry).set({source:{...recipient.source,personId:admin.personId!}}).where(eq(schema.rewardEntry.id,recipient.id));
+    await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_annual_calculation(${unitId}::uuid,${actual.unit.revision})`))).rejects.toThrow();
+    await owner.db.update(schema.rewardEntry).set({source:recipient.source}).where(eq(schema.rewardEntry.id,recipient.id));
+    expect((await view()).rows[0].source).toEqual(recipient.source);
+  });
   it('posts an approved off-cycle increase once and retains its funding consumption', async () => {
     const rev = await approve(); const batch = await createBatch(admin, { companyId: b.companyId, payPeriod: today.slice(0, 7) });
     await postRewardUnit(admin, unitId, rev, batch.batchId);
     const parent = await view();
     const childId = await createOffcycleReview(actors.bu!, unitId, { kind: 'adhoc', entryIds: [parent.rows[0].id], effectiveFrom: `${year + 1}-02-01`, exceptionReason: '' });
     let child = await getRewardUnit(actors.bu!, childId);
+    const [nativeCalculation]=await withTenant(actors.bu!,tx=>tx.execute<{value:{rows:typeof child.rows;budgets:typeof child.budgets;flags:typeof child.flags;route:typeof child.route;hiddenCount:number}}>(sql`select app.reward_offcycle_calculation(${childId}::uuid,${child.unit.revision})as value`));
+    expect(nativeCalculation.value.rows).toEqual(child.rows.map(row=>Object.fromEntries(Object.keys(nativeCalculation.value.rows[0]).map(key=>[key,(row as unknown as Record<string,unknown>)[key]]))));
+    expect(nativeCalculation.value.budgets).toEqual(child.budgets);expect(nativeCalculation.value.flags).toEqual(child.flags);expect(nativeCalculation.value.route).toEqual(child.route);expect(nativeCalculation.value.hiddenCount).toBe(child.hiddenCount);
+    await expect(withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_offcycle_calculation(${childId}::uuid,${child.unit.revision+1})`))).rejects.toThrow();
+    await expect(withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_offcycle_calculation(${unitId}::uuid,${parent.unit.revision})`))).rejects.toThrow();
+    const sourcePerson=child.rows[0].source.personId,ownLogin=await createAppUser(b.tenantId,sourcePerson,'employee');
+    const selfReviewer:SessionContext={...admin,userId:ownLogin,personId:sourcePerson,roles:['employee'],grants:undefined};
+    await expect(withTenant(selfReviewer,tx=>tx.execute(sql`select app.reward_offcycle_calculation(${childId}::uuid,${child.unit.revision})`))).rejects.toThrow();
+    await setRewardMember(admin,childId,(await getRewardUnit(admin,childId)).unit.revision,ownLogin,'bu');
+    child=await getRewardUnit(actors.bu!,childId);
+    const ownProjection=await getRewardUnit(selfReviewer,childId),[bounded]=await withTenant(selfReviewer,tx=>tx.execute<{value:{rows:unknown[];budgets:typeof child.budgets;flags:typeof child.flags;hiddenCount:number}}>(sql`select app.reward_offcycle_calculation(${childId}::uuid,${child.unit.revision})as value`));
+    expect(bounded.value.rows).toEqual([]);expect(bounded.value.budgets).toEqual(ownProjection.budgets);expect(bounded.value.flags).toEqual(ownProjection.flags);expect(bounded.value.hiddenCount).toBe(1);
+    for(const secret of [sourcePerson,child.rows[0].source.employmentId,child.rows[0].source.name,child.rows[0].id])expect(JSON.stringify(bounded.value)).not.toContain(secret);
+    await setRewardMember(admin,childId,(await getRewardUnit(admin,childId)).unit.revision,ownLogin,'bu',true);
+    child=await getRewardUnit(actors.bu!,childId);
+    await expect(withTenant(selfReviewer,tx=>tx.execute(sql`select app.reward_offcycle_calculation(${childId}::uuid,${child.unit.revision})`))).rejects.toThrow();
     await saveRewardEntry(actors.bu!, childId, child.unit.revision, child.rows[0].id, { ...child.rows[0].recommendation, meritBp: 100, reason: 'Expanded responsibilities' });
     child = await getRewardUnit(actors.bu!, childId);
     await decideRewardUnit(actors.bu!, childId, child.unit.revision, 'submit', 'Reviewed recommendations');
