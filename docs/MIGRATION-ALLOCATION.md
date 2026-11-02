@@ -1080,3 +1080,12 @@ any tests because a SELECT policy cast the newly introduced `claim_status.draft`
 the migration transaction; the comparison now uses `status::text`, preserving exactly the same rule.
 The independent compiler completed with only the actor-ID fixture error corrected in03d510.
 No DB pass or whole-compiler pass is claimed for b816; failed/affected recovery remains required.
+
+
+### Independent Payroll Claim reservation reader
+
+The existing native Claim prefill now consumes941's finite four-field Payroll source, whose shared
+SQL owners decide actual batch membership and live reservation cutoff. The duplicated TypeScript
+cutoff/scope query was removed from that reader. Ordinary own Claim View grants no financial read
+exception. Native reserve/pay/unpay/requeue ports remain Security-owned prerequisites before whole
+Claim publication; the existing AFTER financial effect and deferred money/audit checks stay in place.

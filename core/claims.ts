@@ -41,8 +41,6 @@ export type { ClaimMileageStamp, ClaimRateConfig };
 import { toCsv } from '../lib/csv';
 import { assertCanDecide, filterDelegationOrgScopeTx,isApprovalDecisionRefusal,assertAssignedWorkPrincipalTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
-import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
-import { calendarWindowFor } from './payroll-policy-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {myOwnEmploymentSubjectsTx} from './read';
@@ -3602,40 +3600,9 @@ export async function prefillClaimsForBatch(
     await tx.execute(sql`select app.access_payroll_batch_begin(${batch.id}::uuid,'edit')`);
     if (batch.status !== 'draft') throw new ClaimError('Claims can only be prefilled onto a draft batch');
 
-    // c7fdfcf6 (Payroll Schedule) — the CLAIM cut-off window for this run. A claim is queued only when it was
-    // DECIDED (approved) on or before the window's close; approvals after the cut-off roll to the next run. The
-    // filter is an UPPER bound only (older still-unscheduled claims catch up, unchanged). Applied ONLY when a
-    // real (non-calendar) claim cut-off is configured — with no cut-off, claims are queued by status alone, exactly
-    // as before (byte-identical: the plain calendar month is NOT imposed as a new filter).
-    const claimWindow = await resolveBatchCutOffWindow(tx, batch.companyId, 'claim', batch.payPeriod);
-    const calWindow = calendarWindowFor(batch.payPeriod);
-    const claimCutOffActive = claimWindow.end !== calWindow.end || claimWindow.start !== calWindow.start;
-    // Inclusive end-of-day upper bound on the approval timestamp (UTC — matches how decided_at is stored).
-    const claimDecidedUpperBound = claimCutOffActive
-      ? lte(claimRequest.decidedAt, sql`${`${claimWindow.end}T23:59:59.999Z`}::timestamptz`)
-      : undefined;
-
-    // Money-safety fix (Payroll Process wizard plan): narrow to the batch's scope (departments' current
-    // assignees ∪ explicit individuals) EXACTLY the way generatePayslips resolves it, so this button never
-    // reserves — and later marks paid — a claim belonging to someone who isn't actually in the run. No
-    // scope ⇒ whole company (unchanged today's behaviour).
-    const { filter: scopeFilter } = await resolveBatchScopeFilter(tx, (batch.scope ?? null) as BatchScope | null);
-
-    // Approved + taxable + unscheduled claims for employees of this batch's company (and scope, if any).
-    const due = await tx
-      .select({ id: claimRequest.id, employmentId: claimRequest.employmentId, amount: claimRequest.amount })
-      .from(claimRequest)
-      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
-      .where(
-        and(
-          eq(employment.companyId, batch.companyId),
-          eq(claimRequest.status, 'approved'),
-          eq(claimRequest.taxable, true),
-          isNull(claimRequest.payrollBatchId),
-          scopeFilter,
-          claimDecidedUpperBound,
-        ),
-      );
+    // The finite Payroll source owns actual membership, approved/taxable/unscheduled state and
+    // the live native reservation cutoff. Ordinary own Claim View cannot clip this purpose.
+    const due=await tx.execute<{id:string;employmentId:string;amount:string}>(sql`select source.id,source.employment_id as "employmentId",source.amount from app.payroll_claim_prefill_sources(${batch.id}::uuid) source`);
     if (due.length === 0) return { applied: 0, claims: 0, total: 0 };
 
     // Sum per employment, and remember which claim ids belong to each.
