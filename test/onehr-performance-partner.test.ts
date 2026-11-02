@@ -146,6 +146,7 @@ describe('OneHR performance partner (ADR-0142)', () => {
       const [task]=await withTenant(actor,tx=>tx.execute<{header:{name:string;ownEmploymentIds:string[]}|null;self:boolean;master:boolean}>(sql`select app.onehr_review_header(${reviewId}::uuid) as header,app.onehr_self_employment(${subject.employmentId}::uuid) as self,exists(select 1 from employment where id=${subject.employmentId}::uuid) as master`));
       expect(task.header).not.toBeNull();expect(task.header!.name).toBe('Partner subject');expect(task.self).toBe(self);expect(task.master).toBe(false);
       const view=await perf.getOnehrReview(actor,reviewId);expect(view).not.toBeNull();expect(view!.self).toBe(self);
+      if(self){const personal=await perf.getAssessmentPersonalRecord(actor,reviewId);expect(personal.currentId).toBe(reviewId);expect(personal.current).not.toBeNull();}
     }
   });
 

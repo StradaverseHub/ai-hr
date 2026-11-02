@@ -2158,7 +2158,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.onehr_review_task_view(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_review_task_view(uuid,text) TO ai_hr_app;
-CREATE OR REPLACE FUNCTION app.onehr_review_header(wanted_review uuid) RETURNS jsonb
+CREATE FUNCTION app.onehr_review_task_header(wanted_review uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT jsonb_build_object('reviewerEmploymentId',review.reviewer_employment_id,'closedAt',review.closed_at,'name',person.full_name,
  'ownEmploymentIds',(SELECT coalesce(jsonb_agg(own.id),'[]'::jsonb) FROM public.employment own WHERE own.person_id=account.person_id AND own.tenant_id=account.tenant_id))
@@ -2170,4 +2170,5 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  WHEN app.onehr_manager(review.id) OR app.onehr_effective_reviewer(review.id) OR app.onehr_moderator(review.id) THEN app.onehr_review_task_view(review.id,'assigned')
  ELSE app.onehr_cycle_admin(review.cycle_id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id) END;
 $$;
-CREATE POLICY financial_onehr_review_read ON performance_onehr_review AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.onehr_review_header(review_id) IS NOT NULL);
+REVOKE ALL ON FUNCTION app.onehr_review_task_header(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_task_header(uuid) TO ai_hr_app;
