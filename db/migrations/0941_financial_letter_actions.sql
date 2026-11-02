@@ -1189,6 +1189,13 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_te
 DECLARE function_key text:=regexp_replace(substr(p_capability,10),'\.[^.]+$','');operation text:=substring(p_capability from '[^.]+$');native text;selected uuid;family text;required text[]:='{}';alternatives text[]:='{}';passed boolean:=false;
 BEGIN
  IF p_capability NOT LIKE 'function.%' OR p_current AND (p_tenant IS DISTINCT FROM app.current_tenant_id() OR p_user IS DISTINCT FROM app.current_user_id() OR NOT app.principal_snapshot_current()) THEN RETURN false;END IF;
+ IF function_key='performance.onehr.setup' THEN
+  IF operation NOT IN ('view','add','edit') OR NOT EXISTS(SELECT 1 FROM public.app_user u JOIN public.role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
+   WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND r.role::text=ANY(CASE WHEN operation='add' THEN ARRAY['hr_admin','super_admin','performance_comp_partner'] ELSE ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner'] END)
+   AND (p_company IS NULL AND r.company_id IS NULL AND (operation<>'add' OR r.role::text IN ('hr_admin','super_admin')) OR p_company IS NOT NULL AND app.access_scope_covers(r.company_id,p_company,p_tenant))) THEN RETURN false;END IF;
+  RETURN NOT p_current OR app.performance_current_native_roles(p_company,CASE WHEN operation='add' AND p_company IS NULL THEN ARRAY['hr_admin','super_admin'] WHEN operation='add' THEN ARRAY['hr_admin','super_admin','performance_comp_partner'] ELSE ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner'] END);
+ END IF;
  IF function_key='myLetters' THEN
   RETURN p_company IS NULL AND operation IN ('view','execute') AND EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL AND NOT app.login_blocked(u.id));
  END IF;
@@ -1906,3 +1913,49 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_performance_cycle_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER financial_performance_cycle_guard BEFORE INSERT OR UPDATE OR DELETE ON review_cycle FOR EACH ROW EXECUTE FUNCTION app.financial_performance_cycle_guard();
+
+--> statement-breakpoint
+-- OneHR setup has its own native course. Performance Partner must not acquire the
+-- unrelated Performance & Compensation family or its generic cycle writers.
+CREATE FUNCTION app.financial_delegate_onehr_setup(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_function_native(t,u,'function.performance.onehr.setup.'||substring(cap from '[^.]+$'),co,true);
+$$;
+REVOKE ALL ON FUNCTION app.financial_delegate_onehr_setup(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('performance.onehr.setup',operation,'company',NULL,'app.financial_delegate_onehr_setup',
+ '{"moduleKey":"performance_compensation","labelKey":"onehr.policy","kind":"native_acl","course":"administrative","screenKey":"performance","href":"/performance","employeeBearing":true}'::jsonb)
+FROM unnest(ARRAY['view','add','edit']) operation;
+CREATE FUNCTION app.onehr_setup_function_action(co uuid,operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_function_native(app.current_tenant_id(),app.current_user_id(),'function.performance.onehr.setup.'||operation,co,true)
+ AND CASE WHEN co IS NOT NULL THEN app.function_action_allowed('performance.onehr.setup','view',co) AND app.function_action_allowed('performance.onehr.setup',operation,co)
+ ELSE app.financial_letter_capability_allowed_current('function.performance.onehr.setup.view',NULL)
+ AND app.financial_letter_capability_allowed_current('function.performance.onehr.setup.'||operation,NULL) END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_setup_function_action(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_setup_function_action(uuid,text) TO ai_hr_app;
+CREATE FUNCTION app.financial_onehr_setup_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE native public.review_cycle%ROWTYPE;operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' ELSE 'edit' END;profile jsonb;selected text;subject public.employment%ROWTYPE;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO native FROM public.review_cycle c WHERE c.id=NEW.cycle_id AND c.tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NEW.tenant_id IS DISTINCT FROM native.tenant_id OR TG_OP='UPDATE' AND (NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.cycle_id IS DISTINCT FROM OLD.cycle_id)
+ OR NOT app.onehr_cycle_admin(native.id) OR NOT app.onehr_setup_function_action(native.company_id,operation) THEN
+  RAISE EXCEPTION 'OneHR setup action unavailable' USING ERRCODE='42501';END IF;
+ IF EXISTS(SELECT 1 FROM public.performance_review r JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ WHERE r.cycle_id=native.id AND r.tenant_id=native.tenant_id AND (NOT app.onehr_setup_function_action(e.company_id,operation) OR NOT app.data_permission_matches(e.id))) THEN
+  RAISE EXCEPTION 'OneHR setup recipient scope unavailable' USING ERRCODE='42501';END IF;
+ FOR profile IN SELECT value FROM jsonb_array_elements(coalesce(NEW.policy->'profiles','[]'::jsonb)||coalesce(CASE WHEN TG_OP='UPDATE' THEN OLD.policy->'profiles' END,'[]'::jsonb)) LOOP
+  IF profile->>'companyId' IS NOT NULL AND NOT app.onehr_setup_function_action((profile->>'companyId')::uuid,operation) THEN RAISE EXCEPTION 'OneHR profile company unavailable' USING ERRCODE='42501';END IF;
+  FOR selected IN SELECT jsonb_array_elements_text(coalesce(profile->'employmentIds','[]'::jsonb)) LOOP
+   SELECT * INTO subject FROM public.employment e WHERE e.id=selected::uuid AND e.tenant_id=native.tenant_id AND e.voided_at IS NULL;
+   IF NOT FOUND OR NOT app.onehr_setup_function_action(subject.company_id,operation) OR NOT app.data_permission_matches(subject.id) THEN RAISE EXCEPTION 'OneHR profile recipient unavailable' USING ERRCODE='42501';END IF;
+  END LOOP;
+ END LOOP;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_setup_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_onehr_setup_guard BEFORE INSERT OR UPDATE ON performance_onehr_cycle FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_setup_guard();

@@ -23,7 +23,7 @@ import { assignRole, createCompany, createDepartment, revokeRole } from '../core
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import * as perf from '../packs/performance/service';
-import { defaultPolicy } from '../packs/performance/onehr/model';
+import { defaultPolicy,policySchema } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import { createRewardUnit } from '../packs/rewards/service';
 import { canAdminOnehr, canManagePayroll, canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin } from '../lib/authz-model';
@@ -109,6 +109,18 @@ describe('OneHR performance partner (ADR-0142)', () => {
     partner = await partnerCtx(b.companyId, partnerPerson.personId);
   });
   afterAll(closeAll);
+
+  it('keeps OneHR setup native Edit separate from generic cycle creation and other-company policy recipients',async()=>{
+    const [source]=await withTenant(partner,tx=>tx.execute<{view:boolean;edit:boolean;add:boolean;generic:boolean}>(sql`select app.onehr_setup_function_action(${b.companyId}::uuid,'view') as view,app.onehr_setup_function_action(${b.companyId}::uuid,'edit') as edit,app.onehr_setup_function_action(${b.companyId}::uuid,'add') as add,app.performance_cycle_function_action(${b.companyId}::uuid,'edit') as generic`));
+    expect(source).toEqual({view:true,edit:true,add:false,generic:false});
+    const [before]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,onehrCycleId));
+    await perf.updateAssessmentModules(partner,onehrCycleId,before.revision,{...policySchema.parse(before.policy).modules,pm:false});
+    const [changed]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,onehrCycleId));
+    expect(changed.revision).toBe(before.revision+1);expect(policySchema.parse(changed.policy).modules.pm).toBe(false);
+    const foreignPolicy=policySchema.parse({...policySchema.parse(changed.policy),profiles:[{id:randomUUID(),name:'Fictional other-company competency profile',companyId:coB,grade:'12',competencies:[]}]});
+    expect(await refusal(withTenant(partner,tx=>tx.update(schema.onehrCycle).set({policy:foreignPolicy,revision:changed.revision+1}).where(eq(schema.onehrCycle.cycleId,onehrCycleId))))).toMatch(/OneHR profile company unavailable|outside.*scope|profile company/i);
+    const [after]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,onehrCycleId));expect(after).toEqual(changed);
+  });
 
   // ───────────────────────────── TS gates (UX mirror) ─────────────────────────────
   it('narrowed Partner-A claims cannot borrow stored global Partner through retained global Employee',async()=>{

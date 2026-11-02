@@ -83,6 +83,10 @@ async function managerPanelPeers(tx:Tx,reviewId:string){
 async function setManagerPanelMember(tx:Tx,requestId:string,archived:boolean,relationship:string|null=null){await tx.execute(sql`select app.onehr_manager_panel_member(${requestId}::uuid,${archived}::boolean,${relationship}::text)`);}
 async function canWritePlanRemark(tx:Tx,reviewId:string){const [r]=await tx.execute<{ok:boolean}>(sql`select app.assessment_plan_remark_writer(${reviewId}::uuid) as ok`);return !!r?.ok;}
 async function requireAdmin(tx: Tx, cycleId: string) { if (!await isAdmin(tx,cycleId)) throw Error('Performance administrator access is required.'); }
+async function requireSetupAction(tx:Tx,cycleId:string,operation:'add'|'edit') {
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.onehr_setup_function_action(c.company_id,${operation}) as allowed from review_cycle c where c.id=${cycleId}::uuid and c.tenant_id=app.current_tenant_id()`);
+ if(!row?.allowed)throw Error('OneHR setup action unavailable.');
+}
 /**
  * ADR-0142: a performance partner administers OneHR assessments but never writes the kernel review. Decide that
  * by the ACTOR's authority over the subject's company, not by whether RLS let the UPDATE through: a partner who
@@ -209,6 +213,7 @@ export async function configureOnehrCycle(ctx:SessionContext,cycleId:string,expe
       if(profile.employmentIds?.length){const selected=await tx.select({id:onehrEmployment.id,companyId:onehrEmployment.companyId}).from(onehrEmployment).where(inArray(onehrEmployment.id,profile.employmentIds));if(selected.length!==new Set(profile.employmentIds).size||profile.companyId&&selected.some(e=>e.companyId!==profile.companyId))throw Error('Profile assignments must use visible native employments in the configured company.');}
     }
     const [existing]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));
+    await requireSetupAction(tx,cycleId,existing?'edit':'add');
     if(raw!=null)await publishAssessmentCatalogueTx(tx,ctx,cycleId,existing?policySchema.parse(existing.policy):defaultPolicy(framework),policy);
     if(existing){revision(existing.revision,expected!);await tx.update(onehrCycle).set({policy,revision:existing.revision+1}).where(eq(onehrCycle.cycleId,cycleId));}
     else {if(expected!=null)throw Error('Reload before configuring this cycle.');await tx.insert(onehrCycle).values({tenantId:ctx.tenantId,cycleId,policy});}
@@ -222,7 +227,7 @@ export async function updateAssessmentFramework(ctx:SessionContext,cycleId:strin
  return withPerformanceTenant(ctx,async tx=>{
   if(!ctx.userId)throw Error('Sign in to edit the leadership framework.');
   const [scope]=await tx.execute<{ok:boolean}>(sql`select app.is_group_admin() as ok`);if(!scope?.ok)throw Error('Only group HR administrators may change the leadership framework.');
-  await requireAdmin(tx,cycleId);const cycle=await loadCycle(tx,cycleId,true);revision(cycle.config.revision,expected);
+  await requireAdmin(tx,cycleId);await requireSetupAction(tx,cycleId,'edit');const cycle=await loadCycle(tx,cycleId,true);revision(cycle.config.revision,expected);
   if(!['draft','open','calibration'].includes(cycle.native.status))throw Error('The archived leadership framework is read-only.');
   const next=editLeadershipFramework(cycle.policy,edit,()=>randomUUID());
   await publishAssessmentCatalogueTx(tx,ctx,cycleId,cycle.policy,next);
@@ -235,7 +240,7 @@ export async function updateAssessmentFramework(ctx:SessionContext,cycleId:strin
 export async function updateAssessmentModules(ctx:SessionContext,cycleId:string,expected:number,raw:unknown) {
  const modules=policySchema.shape.modules.parse(raw);
  return withPerformanceTenant(ctx,async tx=>{
-  uuid.parse(cycleId);await requireAdmin(tx,cycleId);const cycle=await loadCycle(tx,cycleId,true);revision(cycle.config.revision,expected);
+  uuid.parse(cycleId);await requireAdmin(tx,cycleId);await requireSetupAction(tx,cycleId,'edit');const cycle=await loadCycle(tx,cycleId,true);revision(cycle.config.revision,expected);
   if(!['open','calibration'].includes(cycle.native.status))throw Error('Change modules only in an active cycle.');
   await tx.update(onehrCycle).set({policy:{...cycle.policy,modules},revision:cycle.config.revision+1}).where(eq(onehrCycle.cycleId,cycleId));
   await audit(tx,ctx,cycleId,'modules-updated',{previous:cycle.policy.modules,next:modules});
@@ -246,7 +251,7 @@ export async function updateAssessmentModules(ctx:SessionContext,cycleId:string,
 export async function updateOnehrWindows(ctx:SessionContext,cycleId:string,expected:number,raw:unknown,reason:string) {
   const windows=policySchema.shape.windows.parse(raw);z.string().trim().min(1).max(4000).parse(reason);
   return withPerformanceTenant(ctx,async tx=>{
-    uuid.parse(cycleId);await requireAdmin(tx,cycleId);const cycle=await loadCycle(tx,cycleId,true);revision(cycle.config.revision,expected);
+    uuid.parse(cycleId);await requireAdmin(tx,cycleId);await requireSetupAction(tx,cycleId,'edit');const cycle=await loadCycle(tx,cycleId,true);revision(cycle.config.revision,expected);
     if(!['open','calibration'].includes(cycle.native.status))throw Error('Change active-cycle deadlines only; closed periods are read-only.');
     await tx.update(onehrCycle).set({policy:{...cycle.policy,windows},revision:cycle.config.revision+1}).where(eq(onehrCycle.cycleId,cycleId));
     await audit(tx,ctx,cycleId,'windows-updated',{reason,previous:cycle.policy.windows,next:windows});
