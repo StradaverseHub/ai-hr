@@ -49,11 +49,11 @@ async function admitQuestion(question:string,operation:'conversation'|'draft'='c
 const holdRows=()=>owner.db.execute<{root:string;state:string;reserved:string;confirmed:string|null}>(sql`
   select root_id::text as root,state,reserved_nanos::text as reserved,confirmed_nanos::text as confirmed
   from app.ai_spend_reservation where tenant_id=${ctx.tenantId}::uuid order by created_at,run_id`);
-const allocation=(nanos=15_000_000_000n)=>createNativeEvalBudget({allocationNanos:nanos,maxAttempts:10,nativeDispatch:withReviewedAiSpendDispatch});
+const allocation=(nanos=BigInt('15000000000'))=>createNativeEvalBudget({allocationNanos:nanos,maxAttempts:10,nativeDispatch:withReviewedAiSpendDispatch});
 
 describe('evaluation lifetime adapter after actual native proof admission',()=>{
   it('different actual question roots share one lifetime allowance; the second dispatch never reaches HTTP',async()=>{
-    const guard=allocation(10_000_000_000n),http=vi.fn(async()=>new Response('fictional response'));
+    const guard=allocation(BigInt('10000000000')),http=vi.fn(async()=>new Response('fictional response'));
     const first=await admitQuestion('Fictional first turn');
     expect(await guard.dispatch(first.envelope,configuration,first.request,http)).toBeInstanceOf(Response);
     // Complete only the token run. No receipt exists, so its actual monetary allocation stays held.
@@ -61,9 +61,9 @@ describe('evaluation lifetime adapter after actual native proof admission',()=>{
     const second=await admitQuestion('Fictional second turn');expect(second.rootId).not.toBe(first.rootId);
     await expect(guard.dispatch(second.envelope,configuration,second.request,http)).rejects.toThrow();
     expect(http).toHaveBeenCalledOnce();
-    expect(guard.snapshot()).toMatchObject({reservedNanos:6_000_000_000n,remainingNanos:4_000_000_000n,attempts:1});
+    expect(guard.snapshot()).toMatchObject({reservedNanos:BigInt('6000000000'),remainingNanos:BigInt('4000000000'),attempts:1});
     expect(guard.attemptEvidence()).toEqual([{requestId:'native_1',requestDigest:first.request.inputDigest,
-      configurationDigest:aiSpendConfigurationDigest(configuration),ceilingNanos:6_000_000_000n}]);
+      configurationDigest:aiSpendConfigurationDigest(configuration),ceilingNanos:BigInt('6000000000')}]);
     expect(await holdRows()).toHaveLength(2);
     expect((await holdRows()).every(row=>row.state==='held'&&row.confirmed===null&&row.reserved==='6000000000')).toBe(true);
   });
@@ -82,7 +82,7 @@ describe('evaluation lifetime adapter after actual native proof admission',()=>{
     const guard=allocation(),admitted=await admitQuestion('Fictional failed attempt');
     const http=vi.fn(async()=>{throw Error('Fictional HTTP abort');});
     await expect(guard.dispatch(admitted.envelope,configuration,admitted.request,http)).rejects.toThrow('Fictional HTTP abort');
-    expect(http).toHaveBeenCalledOnce();expect(guard.snapshot().reservedNanos).toBe(6_000_000_000n);
+    expect(http).toHaveBeenCalledOnce();expect(guard.snapshot().reservedNanos).toBe(BigInt('6000000000'));
     expect(await holdRows()).toEqual([{root:admitted.rootId,state:'held',reserved:'6000000000',confirmed:null}]);
   });
 

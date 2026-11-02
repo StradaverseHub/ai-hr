@@ -28,7 +28,7 @@
   },
   {
    "path": "test/helpers/ai-eval-session.ts",
-   "sha256": "291cea08298b7bdc861c1e9d0b11f55eb2b4ba1c9522904c3209e05692caaf5e"
+   "sha256": "b83c579c03f72b59108d2920019186d13afc5971a0c20c5132a7022c2b992b81"
   },
   {
    "path": "test/helpers/ai-eval-native-budget.ts",

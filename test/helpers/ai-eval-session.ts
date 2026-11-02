@@ -89,7 +89,7 @@ export function createModelEvalSession(carrier:string){
   if(receipt&&persisted)return receipt;
   if(!receipt){
   const outcomes=ledger.finalize('not executed or prerequisite unavailable');
-  const snapshot=guard?.snapshot()??{allocationNanos:usdToNanos(String(request.budgetUsd)),reservedNanos:0n,remainingNanos:usdToNanos(String(request.budgetUsd)),attempts:0,maxAttempts:1500};
+  const snapshot=guard?.snapshot()??{allocationNanos:usdToNanos(String(request.budgetUsd)),reservedNanos:BigInt('0'),remainingNanos:usdToNanos(String(request.budgetUsd)),attempts:0,maxAttempts:1500};
   receipt={schemaVersion:1,request,files:[carrier],planHash:plan.planHash,corpusReviewDigest:plan.corpusReviewDigest,
    plannedCaseIds:cases.map(row=>row.id),productionReviewed:true,path:'production',outcomes,
    budget:{kind:'native_owned_no_refund_lifetime_reservations',identity:request.identity,
