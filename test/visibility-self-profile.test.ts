@@ -72,7 +72,7 @@ it('compares the exact original ordered visibility and native row predicates acr
   for(const context of CONTEXTS){
    await withTenant(context,async tx=>{
     const actual=await pair(tx);
-    const [row]=await tx.execute(sql`select array(select id from unnest(${universe}::uuid[])id where app.can_see_employment(id)order by id)as ids`);expect(actual).toEqual(row.ids);controls++;
+    const [row]=await tx.execute(sql`select array(select id from unnest(ARRAY[${sql.join(universe.map(id=>sql`${id}::uuid`),sql`, `)}])id where app.can_see_employment(id)order by id)as ids`);expect(actual).toEqual(row.ids);controls++;
    });
   }
   const hod=await withTenant(ctxByName('HOD (hod)'),tx=>pair(tx));for(const id of [E.hod,E.hodsub,E.hSub,E.hA1,E.hSubTerminated])expect(hod).toContain(id);
