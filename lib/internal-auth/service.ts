@@ -1,4 +1,5 @@
-import { passwordChangeRequired, replacePassword } from './password-policy';
+import { passwordChangeRequired, replacePassword, effectivePasswordPolicy } from './password-policy';
+import {admitPasswordAttempt} from './login-lockout';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { generateSecret, verify } from 'otplib';
 import { client } from '../../db/client';
@@ -13,7 +14,7 @@ export { assertActiveCredential } from './credential';
 export type { Credential } from './credential';
 
 type Challenge = { subject: string; version: string; phase: 'password' | 'enroll' | 'mfa'; attempts: number; native: boolean; expiresAt: number;
-  secret?: string; mfaPassed?: boolean; invitation?: string };
+  secret?: string; mfaPassed?: boolean; invitation?: string; recoveryCodes?: string[] };
 /** lastActivity (web only, ADR-0171): the last reported user activity; absent on sessions created before idle sign-out. */
 type Session = { subject: string; version: string; family: string; native: boolean; absoluteExpiry: number; lastActivity?: number };
 type Refresh = Session & { used: boolean };
@@ -72,23 +73,31 @@ export async function startLogin(input: { organization: string; username: string
   await takeRate(`login:${org}:${username}`, 10);
   const c = await credentialByLogin(org, username);
   const matched = await passwordMatches(input.password, c?.password || DUMMY_PASSWORD_HASH);
+  if (c?.enabled && !matched) await authTransaction(c.subject,async tx=>{
+    const current=await readRecord<Credential>(tx,credentialKey(c.subject),true);
+    if(current?.enabled&&current.password===c.password)await admitPasswordAttempt(tx,current,false);
+  });
   if (!c?.enabled || !matched) {
     await client.unsafe("select app.append_auth_event(NULL,'internal-login',$1::uuid,'app-user.login-refused','external',NULL,$2::jsonb)",
       [randomUUID(), JSON.stringify({ loginHash: digest(`${org}\0${username}`), reason: 'invalidCredentials' })]);
     throw new InternalAuthError('invalidLogin');
   }
-  return authTransaction(c.subject, async tx => {
+  const outcome = await authTransaction(c.subject, async tx => {
     const current = await readRecord<Credential>(tx, credentialKey(c.subject), true);
     if (!current?.enabled || current.version !== c.version || current.password !== c.password) throw new InternalAuthError('invalidLogin');
     const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [current.issuer, current.subject]);
     if (!principal[0] || principal[0].tenant_id !== current.tenantId) throw new InternalAuthError('invalidLogin');
+    if(!await admitPasswordAttempt(tx,current,true))return null;
     const raw = opaque();
-    const phase = current.totpSecret ? 'mfa' : await passwordChangeRequired(tx, current) ? 'password' : 'enroll';
+    const requirements=(await effectivePasswordPolicy(tx,current.tenantId)).requirements;
+    const phase = current.totpSecret ? 'mfa' : requirements?.firstResetVerification ? 'enroll' : await passwordChangeRequired(tx, current) ? 'password' : 'enroll';
     const challenge: Challenge = { subject: c.subject, version: c.version, phase, attempts: 0, native: input.native, expiresAt: Date.now() + CHALLENGE_LIFE,
       ...(phase === 'enroll' ? { secret: generateSecret() } : {}) };
     await writeRecord(tx, `challenge:${digest(raw)}`, challenge, c.subject, challenge.expiresAt);
     return reply(raw, current, challenge);
   });
+  if(!outcome)throw new InternalAuthError('invalidLogin');
+  return outcome;
 }
 async function withChallenge(raw: string, native: boolean, operation: (tx: AuthSql, c: Credential, challenge: Challenge, key: string) => Promise<AuthReply | { failure: true }>) {
   if (!validOpaque(raw)) throw new InternalAuthError('invalidChallenge');
@@ -116,7 +125,7 @@ export async function changeInitialPassword(raw: string, password: string, nativ
     await revokeCredentialsSessions(tx, c.subject);
     await writeRecord(tx, credentialKey(c.subject), c, c.subject);
     await audit(tx, c, 'app-user.password-reset');
-    if (c.totpSecret && ch.mfaPassed) return makeSession(tx, c, ch.native);
+    if (c.totpSecret && ch.mfaPassed) return makeSession(tx, c, ch.native, ch.recoveryCodes);
     ch.version = c.version; ch.phase = 'enroll'; ch.secret = generateSecret();
     await writeRecord(tx, key, ch, c.subject, ch.expiresAt);
     return reply(raw, c, ch);
@@ -167,7 +176,7 @@ export async function verifyMfa(raw: string, code: string, native = false): Prom
     }
     await writeRecord(tx, credentialKey(c.subject), c, c.subject);
     if (await passwordChangeRequired(tx, c)) {
-      ch.phase = 'password'; ch.mfaPassed = true;
+      ch.phase = 'password'; ch.mfaPassed = true; if(codes)ch.recoveryCodes=codes;
       await writeRecord(tx, key, ch, c.subject, ch.expiresAt);
       return reply(raw, c, ch);
     }
@@ -291,6 +300,7 @@ export async function updateDisabledCredential(subject: string, operation: 'pass
     } else if (operation === 'enable') {
       const p = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
       if (!c.password || !p[0] || p[0].tenant_id !== c.tenantId || !c.mustChange) throw new InternalAuthError('conflict');
+      c.mustChange=(await effectivePasswordPolicy(tx,c.tenantId)).requirements?.forceFirstChange??true;
       c.enabled = true;
     } else {
       await deleteRecord(tx, loginKey(c.organization, c.username)); await deleteRecord(tx, key); return;

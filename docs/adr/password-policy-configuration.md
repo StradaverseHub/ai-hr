@@ -1,0 +1,13 @@
+# Tenant password-policy configuration
+
+Status: implementation of approved board item a30b1015; no deployment authority.
+
+The existing encrypted password-policy record remains the sole tenant owner. Its revision, group-administrator authorization, transaction and audit are retained. A record without `requirements` retains the installed 14-character/128-code-unit safety policy and permanent password-history refusal. Existing expiry days and calendar months retain their exact meaning. Opening the new page only prepares a draft; only an explicit authorized save installs configurable requirements. New drafts use 8–32 characters, first-login change enabled and optional controls disabled.
+
+The requirements object has independent switches and retained bounded numeric values. Password creation and replacement validate it in the canonical credential owners used by browser and native clients. Complexity changes apply on the next password change. Existing hash-input byte/NUL safety and username/email exclusion remain. History count denotes previous passwords in addition to current-password refusal. Configured history stores up to 100 ordered memory-hard fingerprints, with a bounded initial hash bridge for the current password whose plaintext predates the configured window. Old permanent markers cease to participate after explicit policy save.
+
+Failed password attempts use encrypted subject-owned state under the existing subject transaction lock. A failure commits its counter before returning the same generic invalid-login response used for unknown and disabled accounts. Exact unlock time is admitted; success clears counters. Account lockout and ingress abuse budgets are independent. Manual unlock is a fresh group-administrator transaction, exact tenant identity and subject lock, with a non-secret audit event.
+
+Force-change off applies to newly issued administrator credentials; existing must-change flags persist. First-login verification enrolls and verifies an authenticator before password replacement, with recovery codes carried through the completed challenge. Previously enrolled authenticator or one-time recovery proof is required for reset. A reset never erases an existing factor based on email alone. Separate mandatory ordinary-login MFA remains unchanged. External-provider password policy remains owned by that provider.
+
+No auth record is exposed to client components. Policy audit includes settings/revision, never credential material. Revision mismatch refuses stale saves. Dedicated Password Policy navigation requires current group administration and embedded authentication; direct service authorization repeats current database principal and tenant checks.

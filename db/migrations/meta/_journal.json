@@ -4495,6 +4495,20 @@
       "when": 1793330000299,
       "tag": "0899_entra_workforce",
       "breakpoints": true
+    },
+    {
+      "idx": 757,
+      "version": "7",
+      "when": 1793330000335,
+      "tag": "0935_password_account_unlock",
+      "breakpoints": true
+    },
+    {
+      "idx": 758,
+      "version": "7",
+      "when": 1793330000336,
+      "tag": "0936_data_permission_profiles",
+      "breakpoints": true
     }
   ]
 }
