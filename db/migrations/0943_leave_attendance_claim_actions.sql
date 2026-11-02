@@ -1562,6 +1562,25 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.leave_own_application_allowed(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.leave_own_application_allowed(uuid,text) TO ai_hr_app;
+-- Pending INSERT is an application course. Approved/cancelled native split/import constructors
+-- are separate owners and must not inherit this permission or its completion claim.
+CREATE FUNCTION app.leave_pending_application_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE own_subject boolean;
+BEGIN
+ IF app.access_workforce_storage_owner() OR NEW.status::text<>'pending' THEN RETURN NEW;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN RAISE EXCEPTION 'Leave application subject unavailable' USING ERRCODE='42501';END IF;
+ SELECT app.is_self_person(subject.person_id) INTO own_subject FROM public.employment subject WHERE subject.id=NEW.employment_id AND subject.tenant_id=NEW.tenant_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Leave application subject unavailable' USING ERRCODE='42501';END IF;
+ IF own_subject THEN
+  IF app.leave_own_application_allowed(NEW.employment_id,'add') IS NOT TRUE THEN RAISE EXCEPTION 'Own Leave application action unavailable' USING ERRCODE='42501';END IF;
+ ELSIF app.leave_on_behalf_application_allowed(NEW.employment_id) IS NOT TRUE THEN RAISE EXCEPTION 'On-behalf Leave application unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_pending_application_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_leave_pending_application BEFORE INSERT ON public.leave_request FOR EACH ROW EXECUTE FUNCTION app.leave_pending_application_guard();
+
 
 --> statement-breakpoint
 -- Shared Clocking Sites retain the original group-admin write ceiling and ANY-HR maintenance

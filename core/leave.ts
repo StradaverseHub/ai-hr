@@ -12341,3 +12341,13 @@ export function leaveApplicationAddAccess(ctx:SessionContext,employmentIds:reado
   return rows.map(row=>row.id);
  });
 }
+
+/** Function projections for already-native-visible request IDs; status/lifecycle eligibility stays
+ * with the existing history/calendar owner and is repeated by the mutation kernel. */
+export function ownLeaveRequestActionAccess(ctx:SessionContext,requestIds:readonly string[]):Promise<Record<string,{canEdit:boolean;canDelete:boolean}>>{
+ const ids=[...new Set(requestIds)];if(!ids.length)return Promise.resolve({});
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{id:string;canEdit:boolean;canDelete:boolean}>(sql`select request.id::text as id,app.leave_own_application_allowed(request.employment_id,'edit') as "canEdit",app.leave_own_application_allowed(request.employment_id,'delete') as "canDelete" from public.leave_request request join jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) selected(id) on request.id=selected.id::uuid where request.tenant_id=${ctx.tenantId}::uuid`);
+  return Object.fromEntries(rows.map(row=>[row.id,{canEdit:row.canEdit===true,canDelete:row.canDelete===true}]));
+ });
+}

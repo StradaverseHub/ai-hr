@@ -1502,3 +1502,20 @@ Denied target options are absent while independently permitted own/nonself choic
 native target filtering and rendered denied/allowed dialog/field cases are authored, unrun. Home
 shortcuts, existing pending Edit/Delete affordances, separate give-back and assigned decision UI,
 shared raw/effect closure and genuine supported publication still require subsequent work.
+
+The raw pending Leave request INSERT now repeats actual source tenant/employment and the exact own
+or on-behalf Add course before row creation, closing the visible-manager-without-on-behalf-permission
+route. A real APP raw refusal case first proves the report is visible, then checks 42501 and no row.
+The guard deliberately does not relabel approved/cancelled split or historical import rows. This
+pending action admission is not a proof of submitted audit/date/document/ledger business effects;
+those finite source and terminal obligations, read courses and other raw operations remain open.
+
+Own pending Edit/withdraw UI now uses a read-only actual request-ID function projection, with no
+employee fields or new write/Access lock. The actual history RSC renders each dialog only when its
+operation is strictly true; the Tracker adds exact Delete IDs to its existing own/pending/plain/native
+eligibility predicate before the real self-withdraw control is emitted. Original approved give-back
+and other-person HR cancellation remain separate. Original client dialog APIs and the frozen r397
+historical fixture are preserved; no fabricated fixture flags are introduced. Actual own-versus-visible
+report/unknown request projections and real Tracker denied/allowed withdrawal confirmation cases are
+authored, unrun. Genuine supported per-operation denial and remaining raw/effect/read/native courses
+still require qualification and source closure.
