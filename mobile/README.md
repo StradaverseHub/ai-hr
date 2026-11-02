@@ -82,6 +82,17 @@ UNKNOWN until checked on staging and physical devices:
 | Offline, timeout, HR-server 429/5xx, rotated/expired/revoked refresh handle | Required | Required |
 | Another employee/company/tenant and offboarded account | Required | Required |
 
+Android backup policy: `allowBackup=false` is reinforced by explicit legacy,
+cloud-backup and device-transfer exclusions for all app storage domains, including
+shared preferences, databases, private/external files and device-protected storage.
+`build-config/with-private-android-backup.cjs` owns the generated manifest references
+and XML; SecureStore's default shared-preferences inclusion is disabled. Widget
+attendance snapshots and offline operations must not migrate to another installation.
+The Expo-mod regression checks generated files with SecureStore applied in either
+order. OEM device-transfer/restore behavior and the final distributed artifact still
+require separate verification; source rules do not establish an observed transfer result.
+See [Android backup rules](https://developer.android.com/identity/data/autobackup).
+
 RECOMMENDATION: use synthetic employee data until this matrix and the server authorization suite
 pass against the intended embedded HR installation. `docs/WORKOS-CUTOVER.md` records the staging
 host and the separate production TLS requirement. Confirm the environment rather than reusing a
