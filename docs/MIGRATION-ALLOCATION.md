@@ -5,6 +5,26 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Nine-item BOARD split: draft cohort custody — 2 November 2026 (provisional)
+
+The user requested the unfinished permissions item continue separately while the other nine
+implementations prepare for release. Fresh read-only audit of1858 heads,329 journal blobs and295
+registered worktrees observed maximum filename0945,idx792 and timestamp1793330000345; retained at
+`/private/tmp/aihr-nine-allocation-audit-20261102.json`. This source reserves
+`0946_draft_creation_cohort_custody`,idx793/when1793330000346, SQL SHA256
+`cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390`.
+It changes only the exact restricted0859 function's root-literal1 numeric exception, preserving
+applied0859 bytes, child ownership, ACL, RLS settings, compression/size checks and all other numeric
+refusals. New SKBBK drafts require this compatibility repair even without the permission overhaul.
+Password unlock0935 retains its existing reservation and SQL bytes.
+
+This is not an installed migration or staging admission. Noveri's full handback still precedes BOARD.
+Before release, refresh the actual live ordered ledger/watermark and source claims. The separately
+continued0936–0945 permissions reservations remain unapplied and must be relocated above the actual
+post-nine accepted journal tail before their later release; their0939 cohort upgrade must reuse or
+recognize this compatible source instead of requiring the obsolete0859 function body. Preserve every
+then-applied prefix and SQL byte. The permissions continuation owner was explicitly notified.
+
 ## Idle sign-out policy — 2 November 2026 (provisional source claim)
 
 `claude/idle-session-timeout` appends `0898_session_idle_timeout` (ADR-0171) as journal idx755 /
