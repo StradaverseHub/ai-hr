@@ -15,7 +15,7 @@ import type {SessionContext} from '../../db/client';
 import {isAdmin} from '../../lib/authz-model';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {isModuleEnabled} from '../entitlements';
-import type {ReadinessCheckKey} from '../payroll-readiness';
+import type {ReadinessCheckKey} from '../../packs/payroll/service';
 import {setupReadiness,type SetupReadiness} from '../product-context/setup-readiness';
 import {coverageReadiness,type CoverageReadiness,type Refused} from '../product-context/coverage-readiness';
 import {SETUP_STAGES,type SetupStage,type SetupStatus} from '../semantic-model/entities-setup';
