@@ -15,7 +15,7 @@ import { hireEmployee, setReportingLine } from '../core/org';
 import {assignRole} from '../core/admin';
 import { setCompensation } from '../core/comp';
 import * as perf from '../packs/performance/service';
-import { defaultPolicy, policySchema, type KPI } from '../packs/performance/onehr/model';
+import { defaultPolicy, goalSchema, policySchema, type KPI } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import {technicalProfilePlan} from '../packs/performance/onehr/career-model';
 import sourceGolden from './fixtures/onehr/source-golden.json';
@@ -508,13 +508,26 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const plan=(await view()).plans[0];expect(plan.planYear).toBe(year+1);
     await expect(withTenant(self,tx=>tx.update(schema.onehrPlan).set({career:{aspiration:'Rewrite after sharing'}}).where(eq(schema.onehrPlan.id,plan.id)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/definitions are immutable/)})});
     await perf.reviewOnehrPlan(mgr,plan.id,plan.revision,'Agreed','Discussed development and mobility',true);
-    await perf.updateOnehrGoalProgress(self,plan.id,(await view()).plans[0].revision,goalId,'in_progress');
+    const [beforeProgress]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));
+    for(const actor of [self,a]){expect(await withTenant(actor,tx=>tx.select({id:schema.onehrPlan.id}).from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id)))).toEqual([{id:plan.id}]);await expect(withTenant(actor,tx=>tx.update(schema.onehrPlan).set({goals:beforeProgress.goals.map(goal=>({...goal,status:'done' as const}))}).where(eq(schema.onehrPlan.id,plan.id)))).rejects.toThrow(/Development progress source unavailable/);}
+    await expect(perf.updateOnehrGoalProgress(mgr,plan.id,beforeProgress.revision,goalId,'done')).rejects.toThrow(/Plan not found/);await expect(withTenant(self,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_goal_progress(${plan.id}::uuid,${beforeProgress.revision}::integer,${goalId}::text,'done','Forged actor',NULL::uuid)`);})).rejects.toThrow(/actor unavailable/);expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id))).toEqual([beforeProgress]);
+    const progressNote='﻿Native captured progress　';await perf.updateOnehrGoalProgress(self,plan.id,(await view()).plans[0].revision,goalId,'in_progress',progressNote);
+    const [afterProgress]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));const progressAt=afterProgress.goals.find(goal=>goal.id===goalId)!.progressAt!;expect(afterProgress).toEqual({...beforeProgress,goals:beforeProgress.goals.map(goal=>goalSchema.parse(goal)).map(goal=>goal.id===goalId?{...goal,status:'in_progress',progressNote,progressAt,checkins:[...(goal.checkins??[]),{status:'in_progress',note:progressNote,at:progressAt}]}:goal),revision:beforeProgress.revision+1});
+    const progressEvents=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,plan.id),eq(schema.domainEvent.eventType,'onehr.goal-progress-updated')));expect(progressEvents).toHaveLength(1);expect(progressEvents[0]).toMatchObject({actorType:'user',actorId:self.userId,subjectEmploymentId:null,payload:{goalId,previous:'not_started',status:'in_progress',note:progressNote,reviewId}});
+    await withTenant(self,async tx=>{await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`select app.onehr_goal_progress(${plan.id}::uuid,${afterProgress.revision}::integer,${goalId}::text,'in_progress','Immediate native progress',NULL::uuid)`);});const [immediateProgress]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));const immediateAt=immediateProgress.goals.find(goal=>goal.id===goalId)!.progressAt!;expect(immediateProgress).toEqual({...afterProgress,goals:afterProgress.goals.map(goal=>goalSchema.parse(goal)).map(goal=>goal.id===goalId?{...goal,status:'in_progress',progressNote:'Immediate native progress',progressAt:immediateAt,checkins:[...(goal.checkins??[]),{status:'in_progress',note:'Immediate native progress',at:immediateAt}]}:goal),revision:afterProgress.revision+1});
     await expect(perf.saveOnehrPlan(self,reviewId,(await view()).plans[0].revision,{career:{aspiration:'Changed',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[]})).rejects.toThrow(/locked/);
-    await perf.acknowledgeOnehrPlan(self,plan.id,(await view()).plans[0].revision);expect((await view()).plans[0].acknowledgedAt).not.toBeNull();
+    const [beforeAck]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));
+    for(const actor of [self,a])await expect(withTenant(actor,tx=>tx.update(schema.onehrPlan).set({acknowledgedAt:new Date(),revision:beforeAck.revision+1}).where(eq(schema.onehrPlan.id,plan.id)))).rejects.toThrow(/Own acknowledgement source unavailable/);
+    const [adminAck]=await withTenant(a,tx=>tx.execute<{allowed:boolean}>(sql`select app.onehr_plan_acknowledgement_action(${plan.id}::uuid,'edit') as allowed`));expect(adminAck.allowed).toBe(false);
+    await expect(withTenant(self,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_plan_acknowledge(${plan.id}::uuid,${beforeAck.revision}::integer,false,NULL::uuid,NULL::text)`);})).rejects.toThrow(/actor unavailable/);
+    expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id))).toEqual([beforeAck]);
+    expect(await perf.acknowledgeOnehrPlan(self,plan.id,(await view()).plans[0].revision)).toBeUndefined();expect((await view()).plans[0].acknowledgedAt).not.toBeNull();
+    const [afterAck]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));expect(afterAck).toEqual({...beforeAck,acknowledgedAt:afterAck.acknowledgedAt,revision:beforeAck.revision+1});const ordinaryAck=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,plan.id),eq(schema.domainEvent.eventType,'onehr.plan-acknowledged')));expect(ordinaryAck).toHaveLength(1);expect(ordinaryAck[0]).toMatchObject({actorType:'user',actorId:self.userId,subjectEmploymentId:null,payload:{}});
     await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
     await expect(perf.saveOnehrPlan(self,reviewId,(await view(self)).plans[0].revision,input)).rejects.toThrow(/read-only/);
     await expect(perf.reviewOnehrPlan(mgr,plan.id,(await view()).plans[0].revision,'Rewrite','Another conversation',true)).rejects.toThrow(/read-only/);
     await expect(perf.updateOnehrGoalProgress(self,plan.id,(await view()).plans[0].revision,goalId,'done')).rejects.toThrow(/active assessment/);
+    const repeated=await withTenant(self,async tx=>{await tx.execute(sql`set constraints all immediate`);return perf.acknowledgeOnehrPlanTx(tx,self,plan.id,afterAck.revision);});expect(repeated).toMatchObject({planId:plan.id,employmentId:subject.employmentId,planRevision:afterAck.revision+1,eventId:null});expect(repeated.acknowledgedAt).toBeInstanceOf(Date);expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id))).toEqual([{...afterAck,acknowledgedAt:repeated.acknowledgedAt,revision:afterAck.revision+1}]);
   });
   it('allows an early manager career comment, audited HR correction, and explicit HR plan reopening',async()=>{
     await perf.commentAssessmentCareerProfile(mgr,reviewId,null,'Discuss possible learning assignments.');
@@ -538,7 +551,14 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     plan=(await view(self)).plans[0];expect(plan.status).toBe('closed');
     await expect(perf.reopenAssessmentPlan(mgr,plan.id,plan.revision)).rejects.toThrow(/administrator/);
     await expect(perf.reopenAssessmentPlan(a,plan.id,plan.revision-1)).rejects.toThrow(/changed/);
+    const [beforeReopen]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));expect(await withTenant(a,tx=>tx.select({id:schema.onehrPlan.id}).from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id)))).toEqual([{id:plan.id}]);
+    await expect(withTenant(a,tx=>tx.update(schema.onehrPlan).set({status:'draft',revision:beforeReopen.revision+1}).where(eq(schema.onehrPlan.id,plan.id)))).rejects.toThrow(/Plan reopening source unavailable/);
+    await expect(withTenant(a,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_plan_reopen(${plan.id}::uuid,${plan.revision}::integer)`);})).rejects.toThrow(/actor unavailable/);
+    expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id))).toEqual([beforeReopen]);
     await perf.reopenAssessmentPlan(a,plan.id,plan.revision);
+    const [afterReopen]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));expect(afterReopen).toEqual({...beforeReopen,status:'draft',acknowledgedAt:null,revision:beforeReopen.revision+1});const reopenedEvents=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,plan.id),eq(schema.domainEvent.eventType,'onehr.plan-reopened')));expect(reopenedEvents).toHaveLength(1);expect(reopenedEvents[0]).toMatchObject({actorType:'user',actorId:a.userId,subjectEmploymentId:subject.employmentId,payload:{previousStatus:beforeReopen.status,planYear:beforeReopen.planYear}});
+    const [firstReopenEffect]=await owner.db.execute<{consumed:boolean;eventId:string}>(sql`select consumed,event_id as "eventId" from app.financial_onehr_plan_effect where plan_id=${plan.id}::uuid`);expect(firstReopenEffect).toEqual({consumed:true,eventId:reopenedEvents[0].id});
+    await perf.reopenAssessmentPlan(a,plan.id,afterReopen.revision);expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id))).toEqual([afterReopen]);
     const reopened=(await view(self)).plans[0];expect(reopened).toMatchObject({status:'draft',conversation:'Recorded career discussion',acknowledgedAt:null});
     expect((await view(mgr)).plans).toEqual([]);expect((await view(a)).plans.some(p=>p.id===plan.id)).toBe(true);
     await perf.saveOnehrPlan(self,reviewId,reopened.revision,{career:{...career,aspiration:'Revised after HR reopened'},careerRevision:(await view(self)).careerProfile!.revision,goals:[{id:randomUUID(),area:'Teaching',dueOn:'',onJob:'Coach a colleague',fromOthers:'',formalLearning:'',status:'not_started'}]},true);
@@ -547,6 +567,8 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     profile=(await view(self)).careerProfile!;
     await perf.saveAssessmentCareerProfile(a,reviewId,profile.revision,{...career,aspiration:'Current profile correction after archive'});
     expect((await view(self)).careerProfile?.career.aspiration).toBe('Current profile correction after archive');
+    const [archivedPlan]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));await withTenant(a,async tx=>{await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`select app.onehr_plan_reopen(${plan.id}::uuid,${archivedPlan.revision}::integer)`);});expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id))).toEqual([{...archivedPlan,status:'draft',acknowledgedAt:null,revision:archivedPlan.revision+1}]);
+    const effects=await owner.db.execute<{consumed:boolean;eventType:string}>(sql`select effect.consumed,event.event_type as "eventType" from app.financial_onehr_plan_effect effect join public.domain_event event on event.id=effect.event_id and event.tenant_id=effect.tenant_id where effect.plan_id=${plan.id}::uuid`);expect(effects).toHaveLength(1);expect(effects.every(item=>item.consumed&&item.eventType==='onehr.plan-reopened')).toBe(true);
     expect((await view(self)).plans[0].career).toMatchObject({aspiration:'Revised after HR reopened'});
   });
   it('carries the career profile across periods and separates career comments from yearly goals',async()=>{
@@ -596,7 +618,13 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.confirmOnehrPerformance(mgr,reviewId,(await view()).revision,'ME','')).rejects.toThrow(/does not produce/);
     await expect(perf.saveOnehrKpiCheckIn(mgr,reviewId,(await view()).revision,id,'on_track','')).rejects.toThrow(/not assigned/);
     await expect(perf.freezeOnehrReview(a,reviewId,(await view(a)).revision)).rejects.toThrow(/every quarterly/);
+    const [beforeCheckin]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
+    await expect(perf.saveOnehrKpiCheckIn(a,reviewId,beforeCheckin.revision,id,'on_track','Administrative borrowing')).rejects.toThrow(/not assigned/);
+    await expect(withTenant(self,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_kpi_checkin(${reviewId}::uuid,${beforeCheckin.revision}::integer,${id}::uuid,'on_track','Forged actor')`);})).rejects.toThrow(/actor unavailable/);
+    expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([beforeCheckin]);
     await perf.saveOnehrKpiCheckIn(self,reviewId,(await view(self)).revision,id,'at_risk','Dependency needs support');
+    const [afterCheckin]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));const checkIn=afterCheckin.kpis.find(item=>item.id===id)!.checkIn!;expect(checkIn).toMatchObject({answer:'at_risk',note:'Dependency needs support',userId:self.userId});expect(checkIn.at).toMatch(/Z$/);
+    expect(afterCheckin).toEqual({...beforeCheckin,kpis:beforeCheckin.kpis.map(item=>item.id===id?{...item,checkIn}:item),revision:beforeCheckin.revision+1});const firstEvents=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.kpi-checkin-saved')));expect(firstEvents).toHaveLength(1);expect(firstEvents[0]).toMatchObject({actorType:'user',actorId:self.userId,subjectEmploymentId:subject.employmentId,payload:{kpiId:id,previous:null,next:checkIn}});
     await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     const label=(await view(self)).kpis[0].title,message=`Set ${label} to off track`;
     vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');

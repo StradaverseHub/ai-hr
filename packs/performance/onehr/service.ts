@@ -369,13 +369,8 @@ export async function saveOnehrKpiCheckIn(ctx:SessionContext,reviewId:string,exp
  return withPerformanceTenant(ctx,tx=>saveOnehrKpiCheckInTx(tx,ctx,reviewId,expected,kpiId,answer,text));
 }
 export async function saveOnehrKpiCheckInTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,kpiId:string,answer:typeof checkInAnswers[number],text:string) {
- uuid.parse(kpiId);z.enum(checkInAnswers).parse(answer);note.parse(text);
-  const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_results',expected,'self');
-  if(!r.cycle.policy.modules.pm||r.cycle.policy.kind!=='quarterly')throw Error('KPI status check-ins belong to quarterly cycles.');
-  const k=r.kpis.find(k=>k.id===kpiId);if(!k||k.setting!=='approved')throw Error('Agree the KPI before checking in.');
-  const checkIn={answer,note:text,at:new Date().toISOString(),userId:ctx.userId!};
-  await touchReview(tx,reviewId,{kpis:r.kpis.map(k=>k.id===kpiId?{...k,checkIn}:k)});
-  await audit(tx,ctx,reviewId,'kpi-checkin-saved',{kpiId,previous:k.checkIn??null,next:checkIn});
+ uuid.parse(reviewId);uuid.parse(kpiId);z.number().int().parse(expected);z.enum(checkInAnswers).parse(answer);note.parse(text);
+ await tx.execute(sql`select app.onehr_kpi_checkin(${reviewId}::uuid,${expected}::integer,${kpiId}::uuid,${answer}::text,${text}::text)`);
 }
 export async function moderateOnehrKpi(ctx:SessionContext,reviewId:string,expected:number,kpiId:string,actual:number,remark:string) {
  return withPerformanceTenant(ctx,tx=>moderateOnehrKpiTx(tx,ctx,reviewId,expected,kpiId,actual,remark));
@@ -1128,14 +1123,8 @@ export async function reviewOnehrPlanTx(tx:Tx,ctx:SessionContext,planId:string,e
 }
 
 export async function updateOnehrGoalProgress(ctx:SessionContext,planId:string,expected:number,goalId:string,status:'not_started'|'in_progress'|'done'|'dropped',progressNote='',activeReviewId?:string) {
-  uuid.parse(planId);uuid.parse(goalId);z.enum(['not_started','in_progress','done','dropped']).parse(status);z.string().trim().max(2000).parse(progressNote);
-  return withPerformanceTenant(ctx,async tx=>{const [plan]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');if(!plan||!await isSelf(tx,plan.employmentId))throw Error('Plan not found.');revision(plan.revision,expected);if(plan.status==='draft')throw Error('Share the plan before updating progress.');
-    const r=await loadReview(tx,activeReviewId??plan.reviewId);const year=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
-    if(r.row.employmentId!==plan.employmentId||year!==plan.planYear||!r.cycle.policy.modules.idp||!['open','calibration'].includes(r.cycle.native.status))throw Error('Check in through an active assessment period for this plan year.');
-    await requireParticipant(tx,r.row.reviewId);
-    const now=new Date().toISOString();
-    const goals=z.array(goalSchema).parse(plan.goals);if(!goals.some(g=>g.id===goalId))throw Error('Goal not found.');const previous=goals.find(g=>g.id===goalId)!.status;
-    await tx.update(onehrPlan).set({goals:goals.map(g=>g.id===goalId?{...g,status,progressNote,progressAt:now,checkins:[...(g.checkins??[]),{status,note:progressNote,at:now}]}:g),revision:plan.revision+1}).where(eq(onehrPlan.id,planId));await audit(tx,ctx,planId,'goal-progress-updated',{goalId,previous,status,note:progressNote,reviewId:r.row.reviewId});});
+  uuid.parse(planId);uuid.parse(goalId);z.number().int().parse(expected);z.enum(['not_started','in_progress','done','dropped']).parse(status);z.string().trim().max(2000).parse(progressNote);if(activeReviewId)uuid.parse(activeReviewId);
+  return withPerformanceTenant(ctx,async tx=>{await tx.execute(sql`select app.onehr_goal_progress(${planId}::uuid,${expected}::integer,${goalId}::text,${status}::text,${progressNote}::text,${activeReviewId??null}::uuid)`);});
 }
 /** Minimal own-plan facts for an explicit acknowledgement. The native permission is current self,
  * exact revision and closed plan; it deliberately does not infer approval of ratings or add a new
@@ -1144,7 +1133,7 @@ async function ownOnehrPlanAcknowledgementSourceTx(tx:Tx,ctx:SessionContext,plan
  uuid.parse(planId);assertModuleEnabled(ctx,'performance');
  const query=tx.select({planId:onehrPlan.id,reviewId:onehrPlan.reviewId,employmentId:onehrPlan.employmentId,planYear:onehrPlan.planYear,
   status:onehrPlan.status,planRevision:onehrPlan.revision,acknowledgedAt:onehrPlan.acknowledgedAt,conversationHeldOn:onehrPlan.conversationHeldOn,planVersion:sql<string>`${onehrPlan}.xmin::text`})
-  .from(onehrPlan).where(and(eq(onehrPlan.id,planId),eq(onehrPlan.tenantId,ctx.tenantId),
+  .from(onehrPlan).where(and(eq(onehrPlan.id,planId),eq(onehrPlan.tenantId,ctx.tenantId),sql`app.onehr_plan_acknowledgement_action(${onehrPlan.id},'view')`,
    // Reviewed own-only selection must exclude a visible subordinate BEFORE taking its row lock.
    // The canonical isSelf check below still adjudicates; this predicate only narrows lock admission.
    noWait?sql<boolean>`exists(select 1 from employment e join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id
@@ -1159,33 +1148,19 @@ export type ReviewedOnehrPlanAcknowledgement={employmentId:string;planVersion:st
  * carries safe revision/time metadata and own subject, enabling exact terminal reconciliation. */
 export async function acknowledgeOnehrPlanTx(tx:Tx,ctx:SessionContext,planId:string,expected:number,reviewed?:ReviewedOnehrPlanAcknowledgement){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const id=planId,expectedRevision=expected,checked=reviewed?{...reviewed}:undefined;
+ uuid.parse(id);z.number().int().parse(expectedRevision);assertModuleEnabled(ctx,'performance');
  await lockAccessConfigurationTx(tx,ctx.tenantId);
- const plan=await ownOnehrPlanAcknowledgementSourceTx(tx,ctx,id,Boolean(checked));revision(plan.planRevision,expectedRevision);
- if(checked&&(checked.employmentId!==plan.employmentId||checked.planVersion!==plan.planVersion||plan.acknowledgedAt!==null))throw Error('This record changed. Reload before saving.');
- if(plan.status!=='closed')throw Error('A recorded career conversation is required.');
- const acknowledgedAt=new Date(),planRevision=plan.planRevision+1;
- await tx.update(onehrPlan).set({acknowledgedAt,revision:planRevision}).where(eq(onehrPlan.id,id));
- let eventId:string|null=null;
- if(checked)eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onehr',aggregateId:id,eventType:'onehr.plan-acknowledged',actor:actorOf(ctx),subjectEmploymentId:plan.employmentId,
-  payload:{version:1,planRevision,acknowledgedAt:acknowledgedAt.toISOString()}},{returnId:true});
- else await audit(tx,ctx,id,'plan-acknowledged');
- return {planId:id,employmentId:plan.employmentId,reviewId:plan.reviewId,planRevision,acknowledgedAt,eventId};
+ const [source]=await tx.execute<{value:{planId:string;employmentId:string;reviewId:string;planRevision:number;acknowledgedAt:string;eventId:string|null}}>(sql`select app.onehr_plan_acknowledge(${id}::uuid,${expectedRevision}::integer,${Boolean(checked)}::boolean,${checked?.employmentId??null}::uuid,${checked?.planVersion??null}::text) as value`);
+ if(!source?.value)throw Error('Plan acknowledgement unavailable.');
+ return {...source.value,acknowledgedAt:new Date(source.value.acknowledgedAt)};
 }
 export async function acknowledgeOnehrPlan(ctx:SessionContext,planId:string,expected:number):Promise<void> {
  const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))},id=planId,expectedRevision=expected;uuid.parse(id);
  await withPerformanceTenant(current,tx=>acknowledgeOnehrPlanTx(tx,current,id,expectedRevision));
 }
 export async function reopenAssessmentPlan(ctx:SessionContext,planId:string,expected:number){
- uuid.parse(planId);
- return withPerformanceTenant(ctx,async tx=>{
-  const [plan]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');
-  if(!plan)throw Error('Plan not found in your scope.');
-  const r=await loadReview(tx,plan.reviewId);await requireAdmin(tx,r.row.cycleId);
-  if(await isSelf(tx,plan.employmentId))throw Error('Ask another administrator to reopen your plan.');revision(plan.revision,expected);
-  if(plan.status==='draft')return;
-  await tx.update(onehrPlan).set({status:'draft',acknowledgedAt:null,revision:plan.revision+1}).where(eq(onehrPlan.id,planId));
-  await audit(tx,ctx,planId,'plan-reopened',{previousStatus:plan.status,planYear:plan.planYear});
- });
+ uuid.parse(planId);z.number().int().parse(expected);
+ return withPerformanceTenant(ctx,async tx=>{await tx.execute(sql`select app.onehr_plan_reopen(${planId}::uuid,${expected}::integer)`);});
 }
 async function validateEvidenceLinks(r:Awaited<ReturnType<typeof loadReview>>,links:z.infer<typeof evidenceLinkSchema>[]){
  for(const link of links)if(link.kind==='kpi'?!r.kpis.some(k=>k.id===link.id&&!k.hrOwned):link.kind==='skill'?!r.competencies.some(c=>c.id===link.id):!(r.row.statements as Statement[]).some(s=>s.principle===link.id))throw Error('Choose an employee-owned KPI, assigned competency or leadership principle.');
@@ -1499,6 +1474,7 @@ export async function saveAssessmentDraft(ctx:SessionContext,reviewId:string,exp
 }
 
 export async function saveAssessmentDraftTx(tx:Tx,ctx:SessionContext,reviewId:string,expectedReview:number,expectedDraft:number|null,raw:unknown,contextId=reviewId) {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
   uuid.parse(reviewId);uuid.parse(contextId);const payload=assessmentDraftSchema.parse(raw);assertOverallRemark(payload.remark);
   if(!ctx.userId)throw Error('Sign in to save your draft.');
   let reviewRevision=expectedReview;
