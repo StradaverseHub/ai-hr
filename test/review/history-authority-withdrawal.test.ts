@@ -104,7 +104,8 @@ beforeEach(async()=>{
  vi.stubEnv('AI_CONFIG_SECRET','fictional-history-config-0123456789abcdef');
  vi.stubEnv('TERAS_PROPOSAL_SECRET','fictional-history-secret-0123456789abcdef');
  await resetDb();b=await seedBase();
- for(const code of ['assistant','leave'])await setModule(b.tenantId,code,'active');
+ // Leave is core and always enabled; the real DB forbids a tenant_module row for it.
+ await setModule(b.tenantId,'assistant','active');
  await seedEntitlement(adminCtx(b),{leaveTypeId:b.annualLeaveTypeId,annualDays:20,validFrom:'2020-01-01'});
  const [otherCompany]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Cedar Company'}).returning({id:schema.company.id});companyB=otherCompany.id;
  const [departmentB]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:companyB,name:'Fictional Cedar Department'}).returning({id:schema.department.id});
