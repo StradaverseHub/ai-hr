@@ -461,6 +461,23 @@ lifecycle rule changes. The accepted baseline has no new migrations. The integra
 requires its own exact-source qualification against the handed-back baseline; member results
 remain attributed to their original sources and are not aggregate release evidence.
 
+## Technical source binding — 2 November 2026, native mobile approval workspaces
+
+The repository owner explicitly answered “Approve exact binding refresh” in the MOBILE chat at
+2026-11-01T18:25:16Z, for reviewed source `28ca1e91bc493d9261a6f57490d8e3236baa7cba` and
+digest `1988479aa817a581a016138b3fb09e989159856edb17955d4c67aeca35f5b586`. The reviewed dependency closure is 1149 files,
+from 1141 / `c9c5944d9756718e34b08826b1773339ea7430687209992efd5ab84c2aea177d`. The exact five changed and
+eight added covered files, retained boundaries and original failed verification are recorded in
+[the technical review packet](mobile-native-approval-source-binding-2026-11.md). No provider serializer,
+protected-input contract descriptor, prompt, transport, model or spending control changes. Three
+mobile POST entry points are internal clients of existing services and grant no agent decision authority.
+
+Under that actual approval, only the SAME24 active sourceDigest literals are refreshed. Original
+statuses, reviewer identities, evidence anchors and human review timestamps remain unchanged; both
+pending records remain byte-identical. This is a source binding refresh within existing scope, not
+privacy-specialist certification, fresh runtime PASS, staging acceptance or production authority.
+Further covered source changes require another exact review.
+
 ## Exact technical review — accepted PASSWORD CHANGE baseline plus Entra
 
 The aggregate adopts accepted main/alpha `29393c2a50242f76b1f454a8b08073aa90524688`

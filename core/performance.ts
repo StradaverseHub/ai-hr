@@ -598,8 +598,10 @@ export async function submitManagerReview(
     recommendedMeritPct?: number | null;
     recommendedBonus?: number | null;
   },
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
+    await tx.select({id:performanceReview.id}).from(performanceReview).where(eq(performanceReview.id,p.reviewId)).for('update');
     const { review, cycle } = await loadReview(tx, p.reviewId);
     if (cycle.status !== 'open') throw new PerfError(`The cycle is ${cycle.status}; reviews can only be edited while it is open`);
     if (review.status !== 'manager_review' && review.status !== 'self_review') {
@@ -664,7 +666,8 @@ export async function submitManagerReview(
       });
     }
     return { status: 'submitted' as const };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /** Minimal standard-cycle acknowledgement source. Caller owns Access before subject reads; cycle
@@ -840,8 +843,10 @@ export async function submitStageSelf(
 export async function submitStageManager(
   ctx: SessionContext,
   p: { reviewId: string; stage: 'mid_year' | 'year_end'; managerRating: number; managerComments?: string; overallRating?: number },
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
+    await tx.select({id:performanceReview.id}).from(performanceReview).where(eq(performanceReview.id,p.reviewId)).for('update');
     const { review, cycle, subjectPersonId } = await loadReview(tx, p.reviewId);
     if (cycle.status !== 'open') throw new PerfError(`The cycle is ${cycle.status}; reviews can only be edited while it is open`);
     if (!cycleHasStage(cycle.stages, p.stage)) throw new PerfError(`This cycle does not run the ${p.stage} stage`);
@@ -905,7 +910,8 @@ export async function submitStageManager(
       payload: { cycleId: review.cycleId, stage: p.stage },
     });
     return { stage: p.stage };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 // ───────────────────────────── Goal-setting + lock (G2) ─────────────────────────────
@@ -1707,8 +1713,8 @@ export type ReviewView = {
 
 /** One review, shaped for the viewer. The subject never sees the manager's draft (until release)
  *  nor the comp recommendation (ever); manager/admin see everything. RLS already gates row access. */
-export function reviewForViewer(ctx: SessionContext, reviewId: string): Promise<ReviewView | null> {
-  return withTenant(ctx, async (tx) => {
+export function reviewForViewer(ctx: SessionContext, reviewId: string, outerTx?:Tx): Promise<ReviewView | null> {
+  const run=async (tx:Tx):Promise<ReviewView|null> => {
     const [r] = await tx
       .select({
         review: performanceReview,
@@ -1791,7 +1797,8 @@ export function reviewForViewer(ctx: SessionContext, reviewId: string): Promise<
       canManagerSubmit: canManage && (rv.status === 'manager_review' || rv.status === 'self_review'),
       canAcknowledge: isSubject && released && rv.status === 'submitted',
     };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
 /** The signed-in employee's own reviews (for /me). Released-gated like reviewForViewer. */

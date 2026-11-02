@@ -285,7 +285,10 @@ export async function saveOnehrKpisTx(tx:Tx,ctx:SessionContext,reviewId:string,e
 }
 export async function approveOnehrScorecard(ctx:SessionContext,reviewId:string,expected:number,approve:boolean,remark:string) {
   note.parse(remark);
-  return withPerformanceTenant(ctx,async tx=>{
+  return withPerformanceTenant(ctx,tx=>approveOnehrScorecardTx(tx,ctx,reviewId,expected,approve,remark));
+}
+export async function approveOnehrScorecardTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,approve:boolean,remark:string) {
+  note.parse(remark);
     const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_setting_approve',expected,'moderator');
     if(!r.kpis.length||!r.kpis.some(k=>k.setting==='proposed'))throw Error('The employee must propose the whole scorecard.');
     const allowed=await moderatorChoices(tx,reviewId);
@@ -299,8 +302,8 @@ export async function approveOnehrScorecard(ctx:SessionContext,reviewId:string,e
     });
     await touchReview(tx,reviewId,{kpis});await audit(tx,ctx,reviewId,approve?'scorecard-approved':'scorecard-returned',{reason:remark,kpiIds:actionable.map(k=>k.id)});
     if(approve)await notifyKpiApprovers(tx,ctx,reviewId,kpis,'setting');
-  });
 }
+
 export async function submitOnehrResults(ctx:SessionContext,reviewId:string,expected:number,raw:unknown,overallRemark='') {
   note.parse(overallRemark);
   const inputs=z.array(z.object({id:uuid,actual:z.number().finite(),note})).parse(raw);
@@ -687,7 +690,7 @@ export async function lockOnehrCalibration(ctx:SessionContext,sessionId:string,e
  if(reviewId&&companyId)throw Error('Choose one person or one business unit to lock.');
  return withPerformanceTenant(ctx,tx=>lockOnehrCalibrationTx(tx,ctx,sessionId,expected,overrideReason,axis,reviewId,companyId));
 }
-async function lockOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:string,expected:number,overrideReason:string,axis:Axis,reviewId?:string,companyId?:string) {
+export async function lockOnehrCalibrationTx(tx:Tx,ctx:SessionContext,sessionId:string,expected:number,overrideReason:string,axis:Axis,reviewId?:string,companyId?:string) {
   const {session,cycle}=await loadCalibration(tx,sessionId,expected);if(!['open','calibration'].includes(cycle.native.status))throw Error('Closed calibration periods are read-only.');const {pm,pot}=needsAxes(cycle.policy,axis,session.tier);
   if(!pm&&!pot)throw Error('This assessment axis is disabled.');if(session.lockedAt||pm&&session.performanceLockedAt||pot&&session.potentialLockedAt)throw Error('Calibration axis is already locked.');calibrationWindows(cycle.policy,session.tier as Tier,axis);
   const [own]=await tx.execute<{present:boolean}>(sql`select app.onehr_cohort_own(${sessionId}::uuid) as present`);if(!reviewId&&!companyId&&own?.present)throw Error('A reviewer cannot lock their own calibration.');

@@ -15,9 +15,11 @@ import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
+import { setRestDay } from '../core/roster';
+import { setCompensation } from '../core/comp';
 import { endReportingLine, hireEmployee, setReportingLine } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
-import { decideLeave, requestLeave, requestLeaveCancellation } from '../packs/leave/service';
+import { decideLeave, requestLeave, requestLeaveCancellation, setToilPolicy } from '../packs/leave/service';
 import { listLeaveRequests } from '../core/read';
 import {
   checkIn, checkOut, decideAttendanceCorrection, listAttendanceCorrections, reassignAttendanceWorkflowStageToHr, requestAttendanceCorrection,
@@ -29,7 +31,7 @@ import { listPendingTasks } from '../core/approvals-inbox';
 import { isModuleEnabled } from '../core/entitlements';
 import { AuthRequiredError } from '../lib/auth-errors';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { adminCtx, closeAll, createAppUser, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let caller: SessionContext;
 let blocked = false;
@@ -40,7 +42,7 @@ const decision = await import('../app/api/mobile/v2/tasks/[kind]/[id]/decision/r
 const document = await import('../app/api/mobile/v2/tasks/[kind]/[id]/document/route');
 
 type Role = 'employee' | 'manager' | 'hr_admin' | 'super_admin';
-type Kind = 'leave' | 'leaveCancellation' | 'attendance';
+type Kind = 'leave' | 'leaveCancellation' | 'attendance' | 'replacementLeave';
 let base: Base;
 const TODAY = todayInKualaLumpur();
 const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -353,7 +355,7 @@ describe('leave decisions', () => {
     caller = colleague.ctx;
     expect(await (await fetchDoc(id)).json()).toEqual({ outcome: 'refused', code: 'not_assigned' });
     caller = manager.ctx;
-    expect((await document.GET(new Request(`${URL0}/attendance/${id}/document`))).status).toBe(400);
+    expect(await (await document.GET(new Request(`${URL0}/attendance/${id}/document`))).json()).toEqual({outcome:'refused',code:'not_assigned'});
   });
 });
 
@@ -446,4 +448,126 @@ describe('attendance decisions (clock corrections and overtime share one decider
     expect(['workday', 'rest_day', 'holiday']).toContain(seen.body.task.dayType);
     expect((await post(manager, 'attendance', id, { requestId: randomUUID(), decision: 'reject', reason: 'Not planned', expected: seen.body.task.expected })).body).toEqual({ outcome: 'accepted', status: 'rejected' });
   });
+});
+
+
+describe('native replacement leave', () => {
+  async function request() {
+    await setModule(base.tenantId,'toil','active');
+    for (const who of [employee,manager,colleague,hr]) who.ctx = {...who.ctx,entitlements:harnessSnapshot(base.tenantId)};
+    const [r] = await owner.db.insert(schema.replacementLeaveRequest).values({tenantId:base.tenantId,employmentId:employee.employmentId,unit:'day',totalDays:'1',totalHours:'8',submittedOn:TODAY,reason:'Worked a rest day'}).returning({id:schema.replacementLeaveRequest.id});
+    await owner.db.insert(schema.replacementLeaveRequestDate).values({tenantId:base.tenantId,requestId:r.id,subjectEmploymentId:employee.employmentId,workedDate:WORKED,days:'1',sourceType:'non_working_day'});
+    return r.id;
+  }
+  it('keeps old clients on web and exposes full review to opted-in assigned managers', async () => {
+    const id=await request(); caller=manager.ctx;
+    const old=await get(''); expect(old.body.items.find((x:any)=>x.id===id).nativeDecision).toBe(false);
+    const current=await get('?native=expanded'); expect(current.body.items.find((x:any)=>x.id===id).nativeDecision).toBe(true);
+    const d=await detail(manager,'replacementLeave',id);
+    expect(d.body.outcome).toBe('found');expect(d.body.task.totalDays).toBe(1);expect(d.body.task.employeeReason).toBe('Worked a rest day');
+    expect(d.body.task.dates[0]).toMatchObject({workedDate:WORKED,days:1,sourceType:'non_working_day'});
+    expect(d.body.task.dates[0].claimReview).toBeTruthy();
+  });
+  it('rejects atomically and replays the same receipt without a second decision',async()=>{
+    const id=await request(),requestId=randomUUID();
+    const first=await decide(manager,'replacementLeave',id,{requestId,decision:'reject'});
+    expect(first.body).toEqual({outcome:'accepted',status:'rejected'});
+    const replay=await post(manager,'replacementLeave',id,{requestId,decision:'reject',expected:{status:'pending'}});
+    expect(replay.body).toEqual(first.body);
+    const conflict=await post(manager,'replacementLeave',id,{requestId,decision:'approve',expected:{status:'pending'}});
+    expect(conflict.body.code).toBe('request_conflict');
+    expect((await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId,employee.employmentId)))).toHaveLength(0);
+  });
+  it('approval invokes the credit owner and a retry cannot mint twice',async()=>{
+    const id=await request();
+    await setCompensation(adminCtx(base),{employmentId:employee.employmentId,basicSalary:8000,monthlyAllowance:0,effectiveFrom:'2024-01-01'});
+    await setToilPolicy(adminCtx(base),{companyId:base.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true});
+    const requestId=randomUUID();const refused=await decide(manager,'replacementLeave',id,{requestId});
+    expect(refused.body).toMatchObject({outcome:'refused',code:'decision_refused'});
+    expect(await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId,employee.employmentId))).toHaveLength(0);
+    await setRestDay(adminCtx(base),{employmentId:employee.employmentId,shiftDate:WORKED});
+    const answer=await decide(manager,'replacementLeave',id,{requestId});
+    expect(answer.body).toEqual({outcome:'accepted',status:'approved'});
+    const replay=await post(manager,'replacementLeave',id,{requestId,decision:'approve',expected:{status:'pending'}});expect(replay.body).toEqual(answer.body);
+    const credits=await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId,employee.employmentId));expect(credits).toHaveLength(1);
+  });
+  it('refuses self, unassigned and guessed requests; revoked bearer cannot decide',async()=>{
+    const id=await request();
+    expect((await detail(employee,'replacementLeave',id)).body.code).toBe('self_approval');
+    expect((await detail(colleague,'replacementLeave',id)).body.code).toBe('not_assigned');
+    expect((await detail(manager,'replacementLeave',randomUUID())).body.code).toBe('not_assigned');
+    blocked=true;expect((await post(manager,'replacementLeave',id,{requestId:randomUUID(),decision:'approve',expected:{status:'pending'}})).status).toBe(401);
+  });
+});
+
+
+describe('native employment review workspaces',()=>{
+ const read=()=>import('../app/api/mobile/v2/review-workspaces/[kind]/[id]/route');
+ const write=()=>import('../app/api/mobile/v2/review-workspaces/[kind]/[id]/decision/route');
+ async function seedReview(){const [r]=await owner.db.insert(schema.employmentReview).values({tenantId:base.tenantId,employmentId:employee.employmentId,personId:employee.personId,managerEmploymentId:manager.employmentId,reviewType:'probation',status:'pending_manager',endDate:MON,dueDate:TODAY}).returning({id:schema.employmentReview.id});return r.id;}
+ async function readAs(who:Person,kind:string,id:string){caller=who.ctx;const response=await (await read()).GET(new Request(`https://hr.example.com/api/mobile/v2/review-workspaces/${kind}/${id}`));return {status:response.status,body:await response.json()};}
+ async function writeAs(who:Person,kind:string,id:string,body:unknown){caller=who.ctx;const response=await (await write()).POST(new Request(`https://hr.example.com/api/mobile/v2/review-workspaces/${kind}/${id}/decision`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));return {status:response.status,body:await response.json()};}
+ it('records the manager recommendation and advisory HR extension through their owners; both receipts replay',async()=>{
+  const id=await seedReview();const initial=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee.employmentId));
+  const d=await readAs(manager,'managerReview',id);expect(d.body.outcome).toBe('found');expect(d.body.workspace).toMatchObject({reviewType:'probation',endDate:MON,dueDate:TODAY});
+  const first={requestId:randomUUID(),expected:d.body.workspace.expected,action:'recommend_extend',comments:'Needs more observation'};
+  const result=await writeAs(manager,'managerReview',id,first);expect(result.body).toEqual({outcome:'accepted',status:'pending_hr'});
+  expect((await writeAs(manager,'managerReview',id,first)).body).toEqual(result.body);
+  const h=await readAs(hr,'hrReview',id);expect(h.body.workspace.managerComments).toBe('Needs more observation');
+  const final={requestId:randomUUID(),expected:h.body.workspace.expected,action:'extend',extendToDate:addDays(MON,30),comments:'Advisory extension'};
+  expect((await writeAs(hr,'hrReview',id,final)).body).toEqual({outcome:'accepted',status:'completed'});
+  expect((await writeAs(hr,'hrReview',id,final)).body).toEqual({outcome:'accepted',status:'completed'});
+  const [record]=await owner.db.select().from(schema.employmentReview).where(eq(schema.employmentReview.id,id));expect(record).toMatchObject({status:'completed',decision:'extend',extendToDate:addDays(MON,30)});
+  const current=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee.employmentId));expect(current).toEqual(initial);
+ });
+ it('refuses unrelated and self actors, wrong stages, invalid dates and forged actions without advancing the review',async()=>{
+  const id=await seedReview();expect((await readAs(colleague,'managerReview',id)).body.code).toBe('not_assigned');expect((await readAs(employee,'managerReview',id)).body.code).toBe('not_assigned');
+  expect((await readAs(manager,'hrReview',id)).body.code).toBe('not_assigned');
+  expect((await writeAs(manager,'managerReview',id,{requestId:randomUUID(),expected:{status:'pending_manager'},action:'confirm'})).body.code).toBe('stale_step');
+  expect((await writeAs(hr,'hrReview',id,{requestId:randomUUID(),expected:{status:'pending_hr'},action:'extend',extendToDate:'2026-02-30'})).status).toBe(400);
+  expect((await writeAs(manager,'managerReview',id,{requestId:randomUUID(),expected:{status:'pending_manager'},action:'make_admin'})).status).toBe(400);
+  const [r]=await owner.db.select().from(schema.employmentReview).where(eq(schema.employmentReview.id,id));expect(r.status).toBe('pending_manager');
+ });
+});
+
+describe('native request workspaces',()=>{
+ const read=()=>import('../app/api/mobile/v2/request-workspaces/[kind]/[id]/route');
+ const write=()=>import('../app/api/mobile/v2/request-workspaces/[kind]/[id]/decision/route');
+ const requestDocument=()=>import('../app/api/mobile/v2/request-workspaces/[kind]/[id]/document/route');
+ async function documentAs(who:Person,kind:string,id:string,attachment:string){caller=who.ctx;return (await requestDocument()).GET(new Request(`https://hr.example.com/api/mobile/v2/request-workspaces/${kind}/${id}/document?attachment=${encodeURIComponent(attachment)}`));}
+ async function readAs(who:Person,kind:string,id:string){caller=who.ctx;const response=await (await read()).GET(new Request(`https://hr.example.com/api/mobile/v2/request-workspaces/${kind}/${id}`));return {status:response.status,body:await response.json()};}
+ async function writeAs(who:Person,kind:string,id:string,body:unknown){caller=who.ctx;const response=await (await write()).POST(new Request(`https://hr.example.com/api/mobile/v2/request-workspaces/${kind}/${id}/decision`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));return {status:response.status,body:await response.json()};}
+ it('accepts a resignation with its fixed last day, preserves its consequence and replays safely',async()=>{
+  const {submitResignation,addResignationAttachment}=await import('../core/offboarding');const request=await submitResignation(employee.ctx,{employmentId:employee.employmentId,lastWorkingDay:addDays(MON,45),reason:'Synthetic resignation'});
+  const id=request.requestId,png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+kZVsAAAAASUVORK5CYII=','base64');
+  const attachment=await addResignationAttachment(employee.ctx,{resignationRequestId:id,fileName:'synthetic.png',mimeType:'image/png',content:png});
+  const file=await documentAs(hr,'resignation',id,attachment.id);expect(file.status).toBe(200);expect(file.headers.get('content-type')).toBe('image/png');expect(file.headers.get('cache-control')).toBe('private, no-store');expect(Buffer.from(await file.arrayBuffer())).toEqual(png);
+  expect(await (await documentAs(colleague,'resignation',id,attachment.id)).json()).toEqual({outcome:'refused',code:'not_assigned'});
+  expect(await (await documentAs(hr,'resignation',id,randomUUID())).json()).toEqual({outcome:'refused',code:'no_document'});
+  const seen=await readAs(hr,'resignation',id);expect(seen.body.outcome).toBe('found');expect(seen.body.workspace.lastWorkingDay).toBe(addDays(MON,45));
+  expect((await readAs(colleague,'resignation',id)).body.code).toBe('not_assigned');
+  const body={requestId:randomUUID(),action:'approve',expected:seen.body.workspace.expected};
+  const answer=await writeAs(hr,'resignation',id,body);expect(answer.body).toEqual({outcome:'accepted',status:'accepted'});
+  expect((await writeAs(hr,'resignation',id,body)).body).toEqual(answer.body);
+  const [e]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee.employmentId));expect(e.terminatedOn).toBe(addDays(MON,45));
+ });
+ it('shows full versioned notice text, acknowledges only its recipient and replays its receipt',async()=>{
+  const {createNotice,publishNotice}=await import('../core/notice');
+  const {id:noticeId}=await createNotice(adminCtx(base),{title:'Synthetic safety notice',body:'Full notice body\n\nSecond paragraph.',startOn:TODAY,endOn:addDays(TODAY,30),targetMode:'individual',employmentIds:[employee.employmentId],requiresAcknowledgement:true});await publishNotice(adminCtx(base),noticeId);
+  const [n]=await owner.db.select().from(schema.notice).where(eq(schema.notice.id,noticeId));const id=`${noticeId}:${employee.employmentId}:${n.contentVersion}`;
+  const seen=await readAs(employee,'noticeAcknowledgement',id);expect(seen.body.workspace.body).toBe('Full notice body\n\nSecond paragraph.');
+  expect((await readAs(colleague,'noticeAcknowledgement',id)).body.code).toBe('not_assigned');
+  const body={requestId:randomUUID(),action:'acknowledge',expected:seen.body.workspace.expected};const answer=await writeAs(employee,'noticeAcknowledgement',id,body);expect(answer.body).toEqual({outcome:'accepted',status:'acknowledged'});expect((await writeAs(employee,'noticeAcknowledgement',id,body)).body).toEqual(answer.body);
+ });
+ it('shows before/after profile values and applies the canonical approval once',async()=>{
+  const {saveProfileVisibilityPolicy}=await import('../core/profile-edit-policy');const {essVisibleFields}=await import('../lib/personnel-ess-contract');const {readOwnProfileWorkspace,submitOwnProfileEdit}=await import('../core/profile-edit');
+  const field='profile.contact_and_permanent_address.phone';
+  await saveProfileVisibilityPolicy({...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]},{policy:{version:5,fields:Object.fromEntries(essVisibleFields().map(f=>[f.id,f.ess.binding&&['immediate','approval'].includes(f.ess.edit)?'editable':'viewOnly'])),primaryOnly:[],groups:{},approvals:{[field]:{required:true,attachmentRequired:false}}},withdrawnReason:'Synthetic policy'});
+  const w=await readOwnProfileWorkspace(employee.ctx,{employmentId:employee.employmentId});const result=await submitOwnProfileEdit(employee.ctx,{employmentId:employee.employmentId,proposal:{v:2,fields:[{fieldId:field,before:w.baselines[field],value:'0123456789'}],registers:[]}});
+  const id=result.requestId!;const seen=await readAs(hr,'profile',id);expect(seen.body.outcome).toBe('found');expect(seen.body.workspace.lines[0].after).toBe('0123456789');
+  expect((await readAs(colleague,'profile',id)).body.code).toBe('not_assigned');expect((await readAs(employee,'profile',id)).body.code).toBe('not_assigned');
+  const rejected=await writeAs(hr,'profile',id,{requestId:randomUUID(),action:'reject',expected:seen.body.workspace.expected});expect(rejected.body.code).toBe('reason_required');
+  const body={requestId:randomUUID(),action:'approve',expected:seen.body.workspace.expected};expect((await writeAs(hr,'profile',id,body)).body).toEqual({outcome:'accepted',status:'approved'});expect((await writeAs(hr,'profile',id,body)).body).toEqual({outcome:'accepted',status:'approved'});
+  const [p]=await owner.db.select().from(schema.person).where(eq(schema.person.id,employee.personId));expect(p.phone).toBe('0123456789');
+ });
 });
