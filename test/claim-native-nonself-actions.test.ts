@@ -1,6 +1,6 @@
 /** Real native hierarchy/assignment courses. No fabricated publication, completion or default rows. */
 import {randomUUID} from 'node:crypto';
-import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
@@ -10,10 +10,13 @@ import {createClaimType,submitClaim,decideClaim,listClaimsForEmployment,listPend
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand,type DataPermissionState,type DataPermissionPreview} from '../core/data-permissions';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {publishWorkforceForDataFixture} from './helpers/workforce-publication-fixture';
 let b:Base,admin:SessionContext,typeId:string;
 type Actor={ctx:SessionContext;personId:string;employmentId:string;userId:string};
 let top:Actor,middle:Actor,leaf:Actor,peer:Actor,stranger:Actor;
+const publicationCleanups:(()=>Promise<void>)[]=[];
 beforeAll(migrateTestDb);afterAll(closeAll);
+afterEach(async()=>{for(const clean of publicationCleanups.splice(0).reverse())await clean();});
 async function actor(name:string,departmentId:string,manager?:string):Promise<Actor>{
  const hired=await hireEmployee(admin,{person:{fullName:'Fictional '+name,primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,departmentId,employmentType:'full_time',hiredOn:'2026-01-01',reportingManagerEmploymentId:manager});
  const userId=await createAppUser(b.tenantId,hired.personId,'employee');
@@ -248,6 +251,7 @@ async function nativeDataTransitionTx(tx:Tx,command:DataPermissionCommand){
  expect(done.value.revision).toBeTruthy();
 }
 it('requeues a genuine APP-session decision after early flush and canonical assign/restore without owner elevation',async()=>{
+ await publishWorkforceForDataFixture(admin,publicationCleanups);
  const profileId=randomUUID(),create:DataPermissionCommand={kind:'create',profileId,name:'Fictional actual APP data control',enabled:true,rules:{legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptB]}]}};
  const state=await readDataPermissions(admin),preview=await previewDataPermission(admin,state.revision,create);await saveDataPermission(admin,state.revision,create,preview.fingerprint);
  const assignments=(await readDataPermissions(admin)).assignments,pending=await submitClaim(admin,submission());
@@ -267,6 +271,7 @@ it('requeues a genuine APP-session decision after early flush and canonical assi
 });
 
 for(const course of ['receipt','cancel','reimburse'] as const)it(`requeues genuine APP-session ${course} completion after early flush and canonical control restore`,async()=>{
+ await publishWorkforceForDataFixture(admin,publicationCleanups);
  const profileId=randomUUID(),create:DataPermissionCommand={kind:'create',profileId,name:'Fictional actual APP retained '+course,enabled:true,rules:{legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptB]}]}};
  const state=await readDataPermissions(admin),preview=await previewDataPermission(admin,state.revision,create);await saveDataPermission(admin,state.revision,create,preview.fingerprint);
  const assignments=(await readDataPermissions(admin)).assignments,pending=await submitClaim(admin,submission());

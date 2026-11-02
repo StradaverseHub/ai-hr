@@ -82,7 +82,7 @@ import {seedPayComponentCatalog,createBatch,deleteDraftBatch,generatePayslips,re
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import { saveReplacementHolidayPolicy } from '../core/holiday-replacements';
 import { saveOvertimePatternDraft } from '../packs/attendance/service';
-import { adminCtx, entitledCtx, setModule, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, entitledCtx, setModule, setSetting, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import {
   COMPANY_CONFIG_DEPENDENTS,
   COMPANY_REFERRERS,
@@ -555,7 +555,8 @@ describe('Formula evidence retains a company independently of its current employ
       expect(evaluation).toMatchObject({companyId:target,employmentId:employee.employmentId,revisionId:saved.revisionId});
       evaluationId=evaluation.id;
       // The native reset and draft delete remove the run; its immutable evidence remains.
-      await resetProcessedBatch(ctx,{batchId,reason:'Fictional retained evidence replay'});
+      await setSetting(b.tenantId,'payroll.reset_enabled',true);
+      await resetProcessedBatch(await entitledCtx(b),{batchId,reason:'Fictional retained evidence replay'});
       await deleteDraftBatch(ctx,{batchId});
     }
     // Fixture a later transfer without erasing or editing any retained Formula receipt. This isolates
