@@ -533,20 +533,30 @@ BEGIN
  UPDATE probation_part SET data=data||jsonb_build_object('route',p_route,'routeOverride',true,'routeReason',p_reason),revision=revision+1,content_revision=content_revision+1 WHERE id=p.id;
  PERFORM app.probation_audit(c.id,p.id,'route_changed',p_reason);
 END $$;
-CREATE FUNCTION app.probation_personnel_source(p_employment uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+CREATE FUNCTION app.probation_personnel_source_unchecked(p_employment uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE e employment;a assignment;g job_grade;p person;h jsonb;original_grade uuid;day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
 BEGIN
  SELECT * INTO e FROM employment WHERE id=p_employment AND tenant_id=app.current_tenant_id();
- IF NOT FOUND OR NOT(app.probation_storage_runner() OR app.probation_company_entitled(e.company_id) AND (
-  app.probation_role(e.id,'gbs') OR app.probation_role(e.id,'pbp') OR app.probation_role(e.id,'lm') OR app.probation_role(e.id,'employee') OR app.probation_role(e.id,'hod') OR app.probation_config_admin(e.company_id)
-  OR EXISTS(SELECT 1 FROM probation_case c WHERE c.employment_id=e.id AND c.tenant_id=e.tenant_id AND c.company_id=e.company_id AND app.probation_case_company_current(c.id) AND app.probation_case_access(c.id))
- )) THEN RAISE EXCEPTION 'Personnel record unavailable for probation';END IF;
+ IF NOT FOUND THEN RETURN NULL;END IF;
  SELECT * INTO a FROM assignment WHERE employment_id=e.id AND tenant_id=e.tenant_id AND superseded_at IS NULL AND valid_from<=day AND (valid_to IS NULL OR valid_to>day) ORDER BY valid_from DESC,id LIMIT 1;
  SELECT (payload->>'gradeId')::uuid INTO original_grade FROM domain_event WHERE tenant_id=e.tenant_id AND subject_employment_id=e.id AND event_type='employment.hired' AND payload->>'gradeId' IS NOT NULL ORDER BY sequence LIMIT 1;
  SELECT * INTO g FROM job_grade WHERE id=coalesce(original_grade,e.grade_id) AND tenant_id=e.tenant_id;
  SELECT * INTO p FROM person WHERE id=e.person_id AND tenant_id=e.tenant_id;h:=app.probation_holders(e.id);
  RETURN jsonb_build_object('employmentId',e.id,'personId',e.person_id,'companyId',e.company_id,'employeeName',p.full_name,'employeeCode',e.employee_code,'companyName',(SELECT legal_name FROM company WHERE id=e.company_id AND tenant_id=e.tenant_id),'startOn',coalesce(e.join_date,e.hired_on),'endOn',coalesce(e.final_confirmation_date,e.extended_confirmation_date,e.confirmation_date,e.probation_end_date,e.provisional_end_on),'grade',regexp_replace(upper(coalesce(g.code,'')),'^(JG|GRADE)[ -]*','','g'),'gradeId',coalesce(original_grade,e.grade_id),'currentGradeId',e.grade_id,'employmentType',a.employment_type,'explicitNoProbation',(coalesce(e.probation_value,-1)=0 OR coalesce(e.probation_months,-1)=0),'eligibilityReviewRequired',app.probation_intake_eligibility_review(e.id),'unknownPeriod',(coalesce(e.final_confirmation_date,e.extended_confirmation_date,e.confirmation_date,e.probation_end_date,e.provisional_end_on) IS NULL AND e.probation_value IS NULL AND e.probation_months IS NULL),'probationMonths',CASE WHEN e.probation_unit='month' THEN e.probation_value WHEN e.probation_unit IS NULL THEN e.probation_months ELSE NULL END,'probationUnit',e.probation_unit,'probationValue',e.probation_value,'extendedEndOn',e.extended_confirmation_date,'originalEndOn',coalesce(e.probation_end_date,e.provisional_end_on),'extensionHistory',app.probation_intake_extension_history(e.id),'confirmationOn',e.confirmation_date,'terminatedOn',e.terminated_on,'resignationOn',e.resignation_date,'departmentId',a.department_id,'businessGroupId',(SELECT coalesce(parent_company_id,id) FROM company WHERE id=e.company_id AND tenant_id=e.tenant_id),'businessGroup',(SELECT bg.legal_name FROM company co JOIN company bg ON bg.id=coalesce(co.parent_company_id,co.id) AND bg.tenant_id=co.tenant_id WHERE co.id=e.company_id AND co.tenant_id=e.tenant_id),'businessUnitId',a.business_unit_id,'department',(SELECT name FROM department WHERE id=a.department_id),'businessUnit',(SELECT name FROM business_unit WHERE id=a.business_unit_id),'title',(SELECT title FROM position WHERE id=a.position_id),'division',e.org_division,'holders',h-ARRAY['companyId','departmentId','businessUnitId','pbpAmbiguous']);
 END $$;
+CREATE FUNCTION app.probation_personnel_source(p_employment uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE e employment;
+BEGIN
+ SELECT * INTO e FROM employment WHERE id=p_employment AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NOT(app.probation_storage_runner() OR app.probation_company_entitled(e.company_id) AND (
+  app.probation_role(e.id,'gbs') OR app.probation_role(e.id,'pbp') OR app.probation_role(e.id,'lm') OR app.probation_role(e.id,'employee') OR app.probation_role(e.id,'hod') OR app.probation_config_admin(e.company_id)
+  OR EXISTS(SELECT 1 FROM probation_case c WHERE c.employment_id=e.id AND c.tenant_id=e.tenant_id AND c.company_id=e.company_id AND app.probation_case_company_current(c.id) AND app.probation_case_access(c.id))
+ )) THEN RAISE EXCEPTION 'Personnel record unavailable for probation';END IF;
+ RETURN app.probation_personnel_source_unchecked(p_employment);
+END $$;
+REVOKE ALL ON FUNCTION app.probation_personnel_source_unchecked(uuid) FROM PUBLIC,ai_hr_app;
+
 CREATE FUNCTION app.probation_escalated_signer(p_case uuid,p_holder uuid,p_seen uuid[]) RETURNS uuid
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE c probation_case;identity uuid;employment_id uuid;visited uuid[]:='{}';next_holder uuid;count integer;depth integer;
@@ -695,7 +705,7 @@ DECLARE o probation_occurrence;c probation_case;p probation_part;h jsonb;
 BEGIN
  SELECT * INTO o FROM probation_occurrence WHERE id=p_occurrence AND tenant_id=app.current_tenant_id() AND source_event_id=p_event AND state='scheduled';IF NOT FOUND THEN RETURN;END IF;
  SELECT * INTO c FROM probation_case WHERE id=o.case_id AND tenant_id=o.tenant_id;
- IF app.probation_case_company_current(c.id) IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM probation_activation WHERE tenant_id=c.tenant_id AND company_id=c.company_id AND enabled AND activation_on<=o.due_on AND o.created_at>=updated_at) OR c.data->>'state' IN('withdrawn','confirmed','not_confirmed') AND o.kind<>'letter_released' THEN RETURN;END IF;
+ IF app.probation_case_access(c.id) IS NOT TRUE OR app.probation_case_company_current(c.id) IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM probation_activation WHERE tenant_id=c.tenant_id AND company_id=c.company_id AND enabled AND activation_on<=o.due_on AND o.created_at>=updated_at) OR c.data->>'state' IN('withdrawn','confirmed','not_confirmed') AND o.kind<>'letter_released' THEN RETURN;END IF;
  SELECT * INTO p FROM probation_part WHERE id=o.part_id AND tenant_id=o.tenant_id;IF o.kind='route_attention' AND coalesce(p.data->>'state','') NOT IN('pending_ack','pending_approval') THEN RETURN;END IF;IF o.kind='letter_returned' AND (p.data->>'state' IS DISTINCT FROM 'returned' OR NOT EXISTS(SELECT 1 FROM probation_outcome x WHERE x.letter_part_id=p.id AND x.tenant_id=p.tenant_id)) OR o.kind='letter_release_pending' AND NOT EXISTS(SELECT 1 FROM probation_outcome x WHERE x.letter_part_id=p.id AND x.tenant_id=p.tenant_id AND x.released_at IS NULL) THEN RETURN;END IF;h:=app.probation_holders(c.employment_id);
  IF o.kind IN('kpi_assigned','kpi_reminder','kpi_overdue','review_issued','review_reminder','review_due','approval_pending') THEN
  IF o.kind IN('review_reminder','review_due') AND (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date>(p.data->>'dueOn')::date THEN RETURN;END IF;
@@ -1328,7 +1338,7 @@ DECLARE c probation_case;p probation_part;source jsonb;condition jsonb;event tex
 BEGIN
  SELECT * INTO c FROM probation_case WHERE id=p_case AND tenant_id=app.current_tenant_id();SELECT * INTO p FROM probation_part WHERE id=p_part AND case_id=c.id AND tenant_id=c.tenant_id;IF c.id IS NULL OR p.id IS NULL THEN RETURN jsonb_build_object('matches',false);END IF;
  IF app.probation_case_company_current(c.id) IS NOT TRUE THEN RETURN jsonb_build_object('matches',true,'ready',false,'holdReason','The employing company changed. This case is historical.','id',p.id,'partId',p.id,'type',p.data->'type','dueOn',p.data->>'dueOn','state',p.data->>'state','messages','[]'::jsonb);END IF;
- source:=app.probation_personnel_source(c.employment_id);condition:=coalesce(p_definition->'conditions','{}');event:=p_definition->'trigger'->>'event';
+ source:=app.probation_personnel_source_unchecked(c.employment_id);condition:=coalesce(p_definition->'conditions','{}');event:=p_definition->'trigger'->>'event';
  IF condition->>'businessGroupId' IS NOT NULL AND condition->>'businessGroupId' IS DISTINCT FROM source->>'businessGroupId' OR condition->>'businessUnitId' IS NOT NULL AND condition->>'businessUnitId' IS DISTINCT FROM source->>'businessUnitId' OR condition->>'departmentId' IS NOT NULL AND condition->>'departmentId' IS DISTINCT FROM source->>'departmentId' OR condition->>'grade' IS NOT NULL AND condition->>'grade' IS DISTINCT FROM c.data->>'gradeAtStart' OR condition->>'part' IS NOT NULL AND condition->>'part' IS DISTINCT FROM p.data->>'type' OR (event LIKE 'letter\_%') IS DISTINCT FROM (p.data->>'documentKind'='letter') AND coalesce(p.data->>'documentKind','review')<>'review' OR event LIKE 'letter\_%' AND coalesce(p.data->>'documentKind','review')<>'letter' THEN RETURN jsonb_build_object('matches',false);END IF;
  IF source->>'resignationOn' IS NOT NULL OR source->>'terminatedOn' IS NOT NULL OR c.data->>'state' IN('withdrawn','confirmed','not_confirmed') THEN ready:=false;hold:='The source is no longer an active probation case.';
  ELSIF source->>'startOn' IS DISTINCT FROM c.data->>'startOn' OR source->>'endOn' IS NOT NULL AND source->>'endOn' IS DISTINCT FROM c.data->>'endOn' THEN ready:=false;hold:='Canonical Personnel dates require reconciliation.';
@@ -1382,7 +1392,7 @@ CREATE FUNCTION app.probation_review_transition(p_part uuid) RETURNS void LANGUA
 DECLARE p probation_part;c probation_case;d document_signing_document;w probation_builder_definition;plan jsonb;message jsonb;users jsonb;roles jsonb;key text;occurrence uuid;event_id uuid;configured boolean:=false;
 BEGIN
  PERFORM app.probation_write_lock();SELECT * INTO p FROM probation_part WHERE id=p_part AND tenant_id=app.current_tenant_id() FOR UPDATE;SELECT * INTO c FROM probation_case WHERE id=p.case_id AND tenant_id=p.tenant_id;SELECT * INTO d FROM document_signing_document WHERE tenant_id=p.tenant_id AND subject_type='probation' AND subject_id=p.id;
- IF p.id IS NULL OR coalesce(p.data->>'documentKind','review')<>'review' OR app.probation_active_user() IS NOT TRUE OR NOT(app.probation_case_access(c.id)) THEN RAISE EXCEPTION 'Current scoped review actor required';END IF;PERFORM app.probation_assert_case_runtime(c.id);
+ IF p.id IS NULL OR coalesce(p.data->>'documentKind','review')<>'review' OR app.probation_active_user() IS NOT TRUE OR NOT(app.probation_case_access(c.id) OR app.probation_actor_just_signed(p.id)) THEN RAISE EXCEPTION 'Current scoped review actor required';END IF;PERFORM app.probation_assert_case_runtime(c.id);
  IF d.id IS NULL OR p.data->>'managerSubmittedAt' IS NULL OR p.data->>'state' IN('locked','completed_offline','cancelled','returned') THEN RETURN;END IF;
  SELECT coalesce(jsonb_agg(DISTINCT party.user_id),'[]'),coalesce(jsonb_agg(DISTINCT party.role),'[]') INTO users,roles FROM app.probation_pending_parties(p.id) party;IF jsonb_array_length(users)=0 THEN RETURN;END IF;
  FOR w IN SELECT * FROM probation_builder_definition WHERE tenant_id=c.tenant_id AND company_id=c.company_id AND kind='workflow' AND state='published' AND data->'trigger'->>'event'='approval_pending' AND c.data->'workflowIds'?id::text LOOP
@@ -2256,7 +2266,7 @@ DECLARE d document_signing_document;resolved jsonb;step jsonb;steps jsonb:='[]';
 BEGIN
  SELECT * INTO d FROM document_signing_document WHERE tenant_id=app.current_tenant_id() AND subject_type='probation' AND subject_id=p_subject;
  IF d.id IS NULL THEN RETURN NULL;END IF;
- resolved:=app.probation_resolved_route(p_subject);
+ resolved:=app.probation_resolve_route_unchecked(p_subject);
  FOR step IN SELECT value FROM jsonb_array_elements(resolved->'steps') LOOP
   IF NOT app.document_signing_step_fulfilled(d.data,step) THEN
    SELECT u.person_id INTO identity FROM app_user u WHERE u.id=(step->>'holderId')::uuid AND u.tenant_id=d.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
@@ -2365,3 +2375,21 @@ BEGIN
    AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'route'->'steps') earlier WHERE earlier->>'required'='true' AND (earlier->>'stage')::integer<(step->>'stage')::integer AND NOT app.document_signing_step_fulfilled(d.data,earlier)));
 END $$;
 REVOKE ALL ON FUNCTION app.probation_current_escalated_actor(uuid) FROM PUBLIC,ai_hr_app;
+
+
+-- Finish the transition caused by the temporary approver's actual signing action.
+-- The private revision's transaction ID is the proof, not an app-supplied event.
+CREATE FUNCTION app.probation_actor_just_signed(p_part uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.probation_active_user() AND EXISTS(
+  SELECT 1 FROM document_signing_document d
+   JOIN document_signing_revision r ON r.document_id=d.id AND r.tenant_id=d.tenant_id AND r.revision=d.revision
+   CROSS JOIN LATERAL (SELECT (r.data->'actions')->(-1) AS action) latest
+  WHERE d.tenant_id=app.current_tenant_id() AND d.subject_type='probation' AND d.subject_id=p_part
+   AND r.actor_kind='user' AND r.actor_user_id=app.current_user_id() AND r.reason='Recorded signing action'
+   AND r.xmin::text::bigint=mod(pg_current_xact_id_if_assigned()::text::bigint,4294967296)
+   AND latest.action->>'actorId'=app.current_user_id()::text AND latest.action->>'role' IN('hod','pbp')
+   AND latest.action->>'action' IN('signed','returned') AND latest.action->>'contentHash'=d.data->>'contentHash'
+   AND latest.action->>'contentRevision'=d.data->>'contentRevision')
+$$;
+REVOKE ALL ON FUNCTION app.probation_actor_just_signed(uuid) FROM PUBLIC,ai_hr_app;
