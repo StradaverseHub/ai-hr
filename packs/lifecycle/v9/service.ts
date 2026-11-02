@@ -321,11 +321,16 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
 }
 
 export async function v9CreateOffboarding(ctx: SessionContext, input: { employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string }): Promise<string> {
+  return withLifecycleTenant(ctx, tx => v9CreateOffboardingTx(tx, ctx, input));
+}
+/** Canonical case construction for purpose-bound callers already holding an authorised tenant transaction.
+ * Existing date, administrator, duplicate-exit and identity rules remain authoritative. */
+export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string }):Promise<string>{
   input = z.object({ employmentId: z.string().uuid(), type: z.enum(['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation']), noticeDate: z.string(), lastDay: z.string() }).strict().parse(input);
   identifier(input.employmentId);
   if (!M.validDate(input.lastDay) || !M.validDate(input.noticeDate)) throw new M.V9Error('Enter valid notice and last working dates.');
   if (input.lastDay < input.noticeDate) throw new M.V9Error('Last working day cannot be before notice date.');
-  return withLifecycleTenant(ctx, async tx => {
+
     await lockTx(tx, ctx);
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('Set up V9 first.');
     const [employee] = await tx.execute<{ id: string; company_id: string; person_id: string; name: string; employee_no: string; hired_on: string; grade_id: string | null; confirmation_date: string | null; final_confirmation_date: string | null; probation_end_date: string | null; provisional_end_on: string | null }>(sql`select e.id,e.company_id,e.person_id,p.full_name as name,e.employee_code as employee_no,coalesce(e.join_date,e.hired_on)::text as hired_on,e.grade_id,e.confirmation_date::text,e.final_confirmation_date::text,e.probation_end_date::text,e.provisional_end_on::text from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.id=${input.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid for update of e`);
@@ -342,7 +347,6 @@ export async function v9CreateOffboarding(ctx: SessionContext, input: { employme
     c.sourceRevision = createHash('sha256').update(JSON.stringify({ employee, assignment })).digest('hex');
     await tx.execute(sql`insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,data) values(${id}::uuid,${ctx.tenantId}::uuid,${employee.company_id}::uuid,${employee.id}::uuid,'off',${number},${JSON.stringify(c)}::jsonb)`);
     await record(tx, ctx, id, employee.id, 'created'); return id;
-  });
 }
 export type Command = CaseNoteCommand
   | { type: 'pmPush'; id: string }
