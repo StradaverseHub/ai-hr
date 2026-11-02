@@ -11,8 +11,8 @@ REVOKE ALL ON app.financial_audit_effect FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.financial_audit_record() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF NOT app.acting_as_owner() AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() AND NEW.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
- AND (NEW.event_type LIKE 'payroll-batch.%' OR NEW.event_type LIKE 'payroll.individual-txn.%' OR NEW.event_type LIKE 'back-pay.%' OR NEW.event_type LIKE 'loan.%' OR NEW.event_type LIKE 'claim-request.%' OR NEW.event_type LIKE 'letter.%' OR NEW.event_type LIKE 'employment-pay-component.%' OR NEW.event_type='employee.tax.updated') THEN
+ IF NOT app.access_workforce_storage_owner() AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() AND NEW.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+ AND (NEW.event_type LIKE 'payroll-batch.%' OR NEW.event_type LIKE 'payroll.individual-txn.%' OR NEW.event_type LIKE 'back-pay.%' OR NEW.event_type='pay-component.created' OR NEW.event_type LIKE 'loan.%' OR NEW.event_type LIKE 'claim-request.%' OR NEW.event_type LIKE 'letter.%' OR NEW.event_type LIKE 'employment-pay-component.%' OR NEW.event_type='employee.tax.updated') THEN
   INSERT INTO app.financial_audit_effect VALUES(pg_current_xact_id(),NEW.tenant_id,NEW.actor_id,NEW.id) ON CONFLICT DO NOTHING;
  END IF;RETURN NEW;
 END;
@@ -331,7 +331,7 @@ CREATE FUNCTION app.access_financial_write_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE row_data jsonb;old_data jsonb;operation text;subject uuid;boundary boolean;
 BEGIN
- IF app.acting_as_owner() THEN RETURN NULL;END IF;
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
  IF TG_OP='DELETE' THEN row_data:=to_jsonb(OLD);ELSE row_data:=to_jsonb(NEW);END IF;
  IF TG_OP='UPDATE' THEN old_data:=to_jsonb(OLD);END IF;
  IF row_data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RAISE EXCEPTION 'Financial action unavailable' USING ERRCODE='42501';END IF;
@@ -405,7 +405,7 @@ DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_json
  target uuid:=coalesce(NEW.person_id,OLD.person_id);delta jsonb;relevant boolean;operation text;
  ignored text[]:=ARRAY['id','tenant_id','person_id','created_at','updated_at','ic_number','old_ic_number','passport_number','passport_issue_date','passport_expiry_date','passport_issuing_country_code','passport_issuing_country','passport_remark','bank_name','bank_account_no','enable_custom_holder_name','custom_holder_name','enable_custom_holder_id','custom_holder_id'];
 BEGIN
- IF app.acting_as_owner() THEN RETURN NULL;END IF;
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
  SELECT coalesce(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(after_row)d WHERE d.key NOT IN ('id','tenant_id','person_id','created_at','updated_at') AND d.value IS DISTINCT FROM before_row->d.key;
  IF TG_OP='INSERT' THEN before_row:='{"tax_category":1,"tax_applicability_epoch":0,"num_children":0,"child_relief_mode":"manual","is_resident":true,"tax_residency":"resident","employer_bears_tax":false,"eis_eligible":true,"socso_category":"auto","eis_category":"auto","subject_to_socso":true,"subject_to_skbbk":false,"employer_bears_socso":false,"employer_bears_eis":false,"employer_bears_skbbk":false,"employer_bears_epf":false,"epf_citizenship":"citizen","epf_mode":"auto","enable_custom_holder_name":false,"enable_custom_holder_id":false,"zakat_active":false,"disabled_individual":false,"disabled_spouse":false}'::jsonb;END IF;
  SELECT EXISTS(SELECT 1 FROM jsonb_each(CASE WHEN TG_OP='DELETE' THEN before_row ELSE after_row END)d WHERE d.key<>ALL(ignored) AND (TG_OP='DELETE' OR d.value IS DISTINCT FROM coalesce(before_row->d.key,'null'::jsonb))) INTO relevant;
@@ -609,7 +609,7 @@ DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_json
  after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
  data jsonb:=CASE WHEN TG_OP='DELETE' THEN before_row ELSE after_row END;co uuid;old_co uuid;batch uuid;
 BEGIN
- IF app.acting_as_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;END IF;
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;END IF;
  IF data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Financial context unavailable' USING ERRCODE='42501';END IF;
  co:=(data->>'company_id')::uuid;old_co:=(before_row->>'company_id')::uuid;
  batch:=CASE WHEN TG_TABLE_NAME='payroll_batch' THEN (data->>'id')::uuid ELSE (data->>'batch_id')::uuid END;
@@ -628,7 +628,7 @@ DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_json
  after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
  data jsonb:=CASE WHEN TG_OP='DELETE' THEN before_row ELSE after_row END;context app.financial_kernel_context;operation text;
 BEGIN
- IF app.acting_as_owner() THEN RETURN NULL;END IF;
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
  SELECT * INTO context FROM app.financial_kernel_context proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.table_name=TG_TABLE_NAME
  AND proof.before_hash=encode(sha256(convert_to(before_row::text,'UTF8')),'hex') AND proof.after_hash=encode(sha256(convert_to(after_row::text,'UTF8')),'hex');
  IF context.company_id IS NULL THEN RAISE EXCEPTION 'Financial consequence unavailable' USING ERRCODE='42501';END IF;
@@ -723,7 +723,7 @@ DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_json
  after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
  data jsonb:=CASE WHEN TG_OP='DELETE' THEN before_row ELSE after_row END;source_category text;categories text[];subject uuid;person uuid;starts date;
 BEGIN
- IF app.acting_as_owner() OR app.current_user_id() IS NULL OR before_row-ARRAY['created_at','updated_at','recorded_at'] IS NOT DISTINCT FROM after_row-ARRAY['created_at','updated_at','recorded_at'] THEN RETURN NULL;END IF;
+ IF app.access_workforce_storage_owner() OR app.current_user_id() IS NULL OR before_row-ARRAY['created_at','updated_at','recorded_at'] IS NOT DISTINCT FROM after_row-ARRAY['created_at','updated_at','recorded_at'] THEN RETURN NULL;END IF;
  IF data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RAISE EXCEPTION 'Source mutation tenant changed' USING ERRCODE='42501';END IF;
  CASE TG_TABLE_NAME
  WHEN 'compensation' THEN source_category:='compensation';subject:=(data->>'employment_id')::uuid;starts:=least((before_row->>'valid_from')::date,(after_row->>'valid_from')::date);
@@ -839,7 +839,7 @@ BEGIN
  IF inserted IS NULL THEN RETURN NULL;END IF;
  -- A transaction below the global snapshot xmin has no live/deferred consumer. Do
  -- this once per transaction, retaining every in-flight actor's exact receipts.
- FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting'] LOOP
+ FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect'] LOOP
   EXECUTE format('DELETE FROM app.%I WHERE transaction_id<$1',table_name) USING oldest;
  END LOOP;
  DELETE FROM app.financial_receipt_epoch WHERE transaction_id<oldest;
@@ -892,7 +892,7 @@ CREATE FUNCTION app.financial_loan_repayment_record() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE before_row jsonb:=to_jsonb(OLD);after_row jsonb:=to_jsonb(NEW);batch uuid;mode text;amount numeric;count_delta integer;operation text;
 BEGIN
- IF app.acting_as_owner() OR TG_OP<>'UPDATE' OR NOT app.principal_snapshot_current() THEN RETURN NULL;END IF;
+ IF app.access_workforce_storage_owner() OR TG_OP<>'UPDATE' OR NOT app.principal_snapshot_current() THEN RETURN NULL;END IF;
  IF OLD.status='reserved' AND NEW.status='applied' AND OLD.reserved_batch_id=NEW.applied_batch_id
  AND before_row-ARRAY['status','applied_batch_id','applied_amount','applied_at'] IS NOT DISTINCT FROM after_row-ARRAY['status','applied_batch_id','applied_amount','applied_at']
  AND NEW.applied_at IS NOT NULL AND NEW.applied_amount>=0 AND NEW.applied_amount<=OLD.due_amount THEN
@@ -919,7 +919,7 @@ CREATE FUNCTION app.financial_loan_counter_record() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE proof app.financial_loan_repayment_effect;expected_amount numeric;expected_count integer;expected_status text;
 BEGIN
- IF app.acting_as_owner() OR NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR to_jsonb(NEW)-ARRAY['outstanding_balance','instalments_paid','status','updated_at'] IS DISTINCT FROM to_jsonb(OLD)-ARRAY['outstanding_balance','instalments_paid','status','updated_at'] THEN RETURN NULL;END IF;
+ IF app.access_workforce_storage_owner() OR NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR to_jsonb(NEW)-ARRAY['outstanding_balance','instalments_paid','status','updated_at'] IS DISTINCT FROM to_jsonb(OLD)-ARRAY['outstanding_balance','instalments_paid','status','updated_at'] THEN RETURN NULL;END IF;
  FOR proof IN SELECT * FROM app.financial_loan_repayment_effect e WHERE e.transaction_id=pg_current_xact_id() AND e.tenant_id=NEW.tenant_id AND e.user_id=app.current_user_id() AND e.loan_id=NEW.id AND NOT e.consumed ORDER BY e.repayment_id FOR UPDATE LOOP
   expected_amount:=CASE proof.mode WHEN 'apply' THEN greatest(0,OLD.outstanding_balance-proof.amount) ELSE OLD.outstanding_balance+proof.amount END;
   expected_count:=greatest(0,OLD.instalments_paid+proof.count_delta);
@@ -968,7 +968,7 @@ DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_json
  after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
  data jsonb:=CASE WHEN TG_OP='DELETE' THEN before_row ELSE after_row END;mode text;batch uuid;
 BEGIN
- IF app.acting_as_owner() OR NOT app.principal_snapshot_current() OR data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RETURN NULL;END IF;
+ IF app.access_workforce_storage_owner() OR NOT app.principal_snapshot_current() OR data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RETURN NULL;END IF;
  IF TG_OP='INSERT' AND NEW.status='scheduled' AND NEW.reserved_batch_id IS NULL AND NEW.applied_batch_id IS NULL AND NEW.applied_amount=0 THEN mode:='shortfall-created';
  ELSIF TG_OP='DELETE' AND OLD.status='scheduled' AND OLD.applied_batch_id IS NULL AND OLD.applied_amount=0 THEN mode:='shortfall-removed';
  ELSIF TG_OP='UPDATE' AND OLD.status='scheduled' AND NEW.status='skipped' AND after_row-'status' IS NOT DISTINCT FROM before_row-'status' THEN mode:='auto-stop';
@@ -989,7 +989,7 @@ DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_json
  after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
  data jsonb:=CASE WHEN TG_OP='DELETE' THEN before_row ELSE after_row END;aux app.financial_loan_auxiliary;proof app.financial_loan_repayment_effect;operation text;
 BEGIN
- IF app.acting_as_owner() THEN RETURN NULL;END IF;
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
  IF data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Loan repayment action unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='UPDATE' AND EXISTS(SELECT 1 FROM unnest(ARRAY['id','tenant_id','loan_id','employment_id','sequence_no','created_at'])field(name) WHERE before_row->field.name IS DISTINCT FROM after_row->field.name) THEN RAISE EXCEPTION 'Loan schedule identity changed' USING ERRCODE='42501';END IF;
  IF to_regprocedure('app.financial_loan_schedule_approved(jsonb,jsonb)') IS NOT NULL THEN
@@ -1033,7 +1033,7 @@ CREATE FUNCTION app.financial_claim_effect_record() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE before_row jsonb:=to_jsonb(OLD);after_row jsonb:=to_jsonb(NEW);batch uuid;mode text;operation text;period text;
 BEGIN
- IF app.acting_as_owner() OR NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN RETURN NULL;END IF;
+ IF app.access_workforce_storage_owner() OR NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN RETURN NULL;END IF;
  IF OLD.status='approved' AND NEW.status='approved' AND OLD.payroll_batch_id IS NULL AND NEW.payroll_batch_id IS NOT NULL AND OLD.taxable
  AND after_row-'payroll_batch_id' IS NOT DISTINCT FROM before_row-'payroll_batch_id' THEN mode:='reserve';batch:=NEW.payroll_batch_id;
  ELSIF OLD.status='approved' AND NEW.status='paid' AND OLD.payroll_batch_id IS NOT NULL AND NEW.payroll_batch_id=OLD.payroll_batch_id AND OLD.taxable AND NEW.paid_at IS NOT NULL
@@ -1134,7 +1134,7 @@ DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_json
  after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
  data jsonb:=CASE WHEN TG_OP='DELETE' THEN before_row ELSE after_row END;operation text;
 BEGIN
- IF app.acting_as_owner() THEN RETURN NULL;END IF;
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
  IF data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR TG_OP='UPDATE' AND EXISTS(SELECT 1 FROM unnest(ARRAY['id','tenant_id','employment_id','component_id','created_at','recorded_at'])field(name) WHERE before_row->field.name IS DISTINCT FROM after_row->field.name) THEN RAISE EXCEPTION 'Fixed transaction identity changed' USING ERRCODE='42501';END IF;
  operation:=CASE WHEN TG_OP='DELETE' THEN 'delete' WHEN TG_OP='INSERT' THEN 'add' WHEN OLD.superseded_at IS NULL AND NEW.superseded_at IS NOT NULL THEN 'delete' ELSE 'edit' END;
  IF TG_OP='UPDATE' AND OLD.superseded_at IS NULL AND NEW.superseded_at IS NOT NULL AND EXISTS(SELECT 1 FROM public.employment_pay_component c WHERE c.tenant_id=NEW.tenant_id AND c.employment_id=NEW.employment_id AND c.component_id=NEW.component_id AND c.id<>NEW.id AND c.valid_from<=OLD.valid_from AND app.financial_letter_born('employment_pay_component',c.id)='add') THEN operation:='edit';END IF;
@@ -1275,7 +1275,7 @@ DECLARE b jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) EN
  d jsonb:=CASE WHEN TG_OP='DELETE' THEN b ELSE a END;co uuid;old_co uuid;batch uuid;mode text;operation text;
  run public.payroll_batch;
 BEGIN
- IF app.acting_as_owner() THEN RETURN NULL;END IF;
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
  IF NOT app.principal_snapshot_current() OR d->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RAISE EXCEPTION 'Individual transaction action unavailable' USING ERRCODE='42501';END IF;
  co:=(d->>'company_id')::uuid;old_co:=(b->>'company_id')::uuid;
  IF co IS NULL THEN SELECT company_id INTO co FROM public.payroll_batch WHERE id=(d->>'batch_id')::uuid AND tenant_id=app.current_tenant_id();END IF;
@@ -1314,7 +1314,7 @@ DECLARE b jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) EN
  a jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
  d jsonb:=CASE WHEN TG_OP='DELETE' THEN b ELSE a END;proof app.financial_individual_effect;operation text;
 BEGIN
- IF app.acting_as_owner() THEN RETURN NULL;END IF;
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
  SELECT * INTO proof FROM app.financial_individual_effect e WHERE e.transaction_id=pg_current_xact_id() AND e.tenant_id=app.current_tenant_id() AND e.user_id=app.current_user_id() AND e.row_id=(d->>'id')::uuid
  AND e.before_hash=encode(sha256(convert_to(b::text,'UTF8')),'hex') AND e.after_hash=encode(sha256(convert_to(a::text,'UTF8')),'hex');
  IF proof.row_id IS NULL OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Individual transaction source unavailable' USING ERRCODE='42501';END IF;
@@ -1366,7 +1366,7 @@ DECLARE a jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) EN
  b jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
  d jsonb:=CASE WHEN TG_OP='DELETE' THEN b ELSE a END;run public.back_pay_run;operation text;total numeric;period text;txn uuid;source jsonb;
 BEGIN
- IF app.acting_as_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;END IF;
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;END IF;
  PERFORM app.access_workforce_write_lock();
  IF d->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.principal_snapshot_current() OR TG_OP='DELETE' THEN RAISE EXCEPTION 'Back Pay action unavailable' USING ERRCODE='42501';END IF;
  IF TG_TABLE_NAME='back_pay_run' THEN
@@ -1452,3 +1452,67 @@ REVOKE ALL ON FUNCTION app.financial_backpay_scope_allowed(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.financial_backpay_scope_allowed(uuid) TO ai_hr_app;
 CREATE POLICY financial_backpay_read ON back_pay_run AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.financial_backpay_scope_allowed(id));
 CREATE POLICY financial_backpay_read ON back_pay_line AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.financial_backpay_scope_allowed(run_id) AND app.data_permission_matches(employment_id));
+
+--> statement-breakpoint
+-- First-use Back Pay pay items are a finite consequence of the admitted posting command. Runtime
+-- supplies only the actual run and one fixed kind; it cannot submit catalogue values or mint proofs.
+CREATE TABLE app.financial_backpay_catalog_effect(
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,run_id uuid NOT NULL,
+ component_id uuid NOT NULL,after_hash text NOT NULL,PRIMARY KEY(transaction_id,tenant_id,user_id,run_id,component_id)
+);
+ALTER TABLE app.financial_backpay_catalog_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_backpay_catalog_effect FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.backpay_component(p_run uuid,p_kind text) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE run public.back_pay_run;component public.pay_component;code text;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':pay-component-catalog',0));
+ SELECT * INTO run FROM public.back_pay_run WHERE id=p_run AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF p_kind IS NULL OR p_kind NOT IN ('earning','deduction') OR run.id IS NULL OR run.status NOT IN ('draft','verified')
+ OR NOT app.access_backpay_action(run.company_id,'execute') OR NOT app.financial_backpay_scope_allowed(run.id) THEN RAISE EXCEPTION 'Back Pay pay item source unavailable' USING ERRCODE='42501';END IF;
+ code:=CASE p_kind WHEN 'earning' THEN 'BACKPAY' ELSE 'BACKPAY_RECOVERY' END;
+ SELECT * INTO component FROM public.pay_component c WHERE c.tenant_id=run.tenant_id AND c.code=code;
+ IF FOUND THEN RETURN component.id;END IF;
+ INSERT INTO public.pay_component(tenant_id,code,name,kind,included_in_epf,included_in_socso_eis,included_in_pcb,included_in_hrdf_base,is_non_payable,prorates,pcb_remuneration_type,pcb_exemption_code,display_category)
+ VALUES(run.tenant_id,code,CASE p_kind WHEN 'earning' THEN 'Back Pay (Arrears)' ELSE 'Back Pay Recovery' END,
+  CASE p_kind WHEN 'earning' THEN 'allowance'::public.pay_component_kind ELSE 'deduction'::public.pay_component_kind END,
+  true,true,true,true,false,false,NULL,NULL,CASE p_kind WHEN 'earning' THEN 'allowance' ELSE 'deduction' END)
+ RETURNING * INTO component;
+ INSERT INTO app.financial_backpay_catalog_effect VALUES(pg_current_xact_id(),run.tenant_id,app.current_user_id(),run.id,component.id,encode(sha256(convert_to(to_jsonb(component)::text,'UTF8')),'hex'));
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+ VALUES(run.tenant_id,'pay-component',component.id,'pay-component.created','user',app.current_user_id(),jsonb_build_object('code',code,'reason','back-pay-first-use'));
+ RETURN component.id;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.backpay_component(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.backpay_component(uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.financial_backpay_catalog_run_complete(p_run uuid,p_component uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.back_pay_run run
+ WHERE run.id=p_run AND run.tenant_id=app.current_tenant_id() AND run.status='posted' AND run.approved_by_user_id=app.current_user_id()
+ AND app.access_backpay_action(run.company_id,'execute') AND app.financial_backpay_scope_allowed(run.id)
+ AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.tenant_id=run.tenant_id AND audit.aggregate_id=run.id AND audit.aggregate_type='back-pay-run' AND audit.actor_type='user' AND audit.actor_id=app.current_user_id() AND audit.event_type='back-pay.posted' AND app.financial_audit_written(audit.id))
+ AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.tenant_id=run.tenant_id AND audit.aggregate_id=p_component AND audit.aggregate_type='pay-component' AND audit.actor_type='user' AND audit.actor_id=app.current_user_id() AND audit.event_type='pay-component.created' AND audit.payload->>'reason'='back-pay-first-use' AND app.financial_audit_written(audit.id)));
+$$;
+REVOKE ALL ON FUNCTION app.financial_backpay_catalog_run_complete(uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_backpay_catalog_approved(p_before jsonb,p_after jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT (p_before IS NULL OR p_before='{}'::jsonb) AND p_after IS NOT NULL
+ AND EXISTS(SELECT 1 FROM app.financial_backpay_catalog_effect proof WHERE proof.transaction_id=pg_current_xact_id()
+ AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.component_id=(p_after->>'id')::uuid
+ AND proof.after_hash=encode(sha256(convert_to(p_after::text,'UTF8')),'hex') AND app.financial_backpay_catalog_run_complete(proof.run_id,proof.component_id));
+$$;
+REVOKE ALL ON FUNCTION app.financial_backpay_catalog_approved(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_backpay_catalog_finish() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.transaction_id<>pg_current_xact_id() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.user_id IS DISTINCT FROM app.current_user_id()
+ OR NOT app.financial_backpay_catalog_run_complete(NEW.run_id,NEW.component_id) THEN RAISE EXCEPTION 'Back Pay catalogue consequence is incomplete' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_backpay_catalog_finish() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER financial_backpay_catalog_complete AFTER INSERT ON app.financial_backpay_catalog_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_backpay_catalog_finish();
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_backpay_catalog_effect FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();

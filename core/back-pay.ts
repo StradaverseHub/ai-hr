@@ -1083,8 +1083,8 @@ export function approveAndPostBackPay(
     }
     const payable = [...netted.values()].filter((n) => Math.abs(n.amount) >= 0.01);
 
-    const earningId = await ensureBackPayComponentTx(tx, ctx, 'earning');
-    const deductionId = await ensureBackPayComponentTx(tx, ctx, 'deduction');
+    const earningId = await ensureBackPayComponentTx(tx, ctx, run.id, 'earning');
+    const deductionId = await ensureBackPayComponentTx(tx, ctx, run.id, 'deduction');
     // The transaction date is the FIRST day of the target period: the arrears belong to the month they
     // are paid in. This automatic writer keeps its established date convention.
     const txnDate = `${run.targetPayPeriod}-01`;
@@ -1199,53 +1199,11 @@ export function cancelBackPayRun(ctx: SessionContext, p: { runId: string }): Pro
  * rename them and adjust the treatment afterwards — this only seeds a sane default, and re-running it
  * never overwrites an existing row's configuration.
  */
-async function ensureBackPayComponentTx(tx: Tx, ctx: SessionContext, kind: 'earning' | 'deduction'): Promise<string> {
-  const code = kind === 'earning' ? BACK_PAY_EARNING_CODE : BACK_PAY_DEDUCTION_CODE;
-  const [existing] = await tx
-    .select({ id: payComponent.id })
-    .from(payComponent)
-    .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, code)))
-    .limit(1);
-  if (existing) return existing.id;
-  const [row] = await tx
-    .insert(payComponent)
-    .values({
-      tenantId: ctx.tenantId,
-      code,
-      name: kind === 'earning' ? 'Back Pay (Arrears)' : 'Back Pay Recovery',
-      kind: kind === 'earning' ? 'allowance' : 'deduction',
-      includedInEpf: true,
-      includedInSocsoEis: true,
-      includedInPcb: true,
-      includedInHrdfBase: true,
-      isNonPayable: false,
-      // Arrears are a settled figure for months already worked — proration would scale a debt that has
-      // already been sized. Never prorate.
-      prorates: false,
-      // ── WHY THE PCB CLASSIFICATION IS LEFT UNDECLARED, WHICH IS A DELIBERATE CHOICE ────────────────
-      // The first draft declared `pcbRemunerationType: 'additional'` on the reasoning that an arrears
-      // lump sum is additional remuneration under the LHDN computerised calculation. Tracing it through
-      // the kernel showed that routes the amount into the BONUS bucket — and the kernel's own comment
-      // there reads "Bonus is additional remuneration: EPF + PCB (difference method), EXCLUDED from
-      // SOCSO/EIS". Arrears of WAGES are not excluded from SOCSO/EIS, and the approved plan promises in
-      // as many words that the arrears "attract EPF, SOCSO and PCB in the month they are actually paid".
-      // Leaving it null makes the kernel infer the stream from the flags exactly as it does for every
-      // item the default catalog seeds (none of which declares one either): epf + socso ⇒ ordinary wage,
-      // which is EPF, SOCSO, EIS and PCB. That is the promise, and it is the conservative reading. HR can
-      // reclassify afterwards — the plan says so — but the default must not quietly drop two contributions.
-      pcbRemunerationType: null,
-      pcbExemptionCode: null,
-      displayCategory: kind === 'earning' ? 'allowance' : 'deduction',
-    })
-    .returning({ id: payComponent.id });
-  await appendEvent(tx, {
-    tenantId: ctx.tenantId,
-    aggregateType: 'pay-component',
-    aggregateId: row.id,
-    eventType: 'pay-component.created',
-    actor: actorOf(ctx),
-    payload: { code, reason: 'back-pay-first-use' },
-  });
+async function ensureBackPayComponentTx(tx: Tx, _ctx: SessionContext, runId:string, kind: 'earning' | 'deduction'): Promise<string> {
+  // The finite owner retains the original default flags, including the inferred ordinary-wage
+  // PCB stream. No catalogue payload or caller-writable permission context crosses this boundary.
+  const [row]=await tx.execute<{id:string}>(sql`select app.backpay_component(${runId}::uuid,${kind}) as id`);
+  if(!row?.id)throw new Error('Back Pay pay item source unavailable');
   return row.id;
 }
 
