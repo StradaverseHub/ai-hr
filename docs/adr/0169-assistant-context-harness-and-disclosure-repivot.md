@@ -193,3 +193,34 @@ Focused passes are development evidence; release follows CI policy.
 - Run-to-run variance.
 
 Nothing in this record authorises a disclosure change, deployment or production contact.
+
+## 8. Addendum (3 November 2026): pay averages
+
+**Owner decision:** "Yes, averages only" (AI Centre round, issue 13b). This is §2.2's first governed metric: a named measure with small-group suppression, never free-form queries. It adds no disclosure class and does not by itself authorise real data reaching a provider: §5.1 still gates that.
+
+**What is computed, and by whom.** The payroll pack's owner (`packs/payroll/pay-averages.ts` `payAverages`, through `packs/payroll/service`) computes every figure. The model only words them. It reports:
+- headcount, average and median of **one** measure, `basic_pay_paid`: the Basic figure each payslip of the company's latest closed regular run prints (the payslip and Payroll Register figure). This is prorated for joiners and leavers, and is rate × days or hours for daily and hourly pay. It is taken before unpaid leave and every other deduction, and it excludes allowances, overtime, bonus and claims;
+- by company, and optionally by the person's current department;
+- with averages rounded half up to the cent and medians to the nearest 10 currency units, so an odd group's median is never one person's exact pay.
+
+**Who may ask.** Only a caller with payroll access: an HR administrator or a payroll partner (`canManagePayroll`). The harness offers the read only to them. Each company is then admitted by the database's own payroll scope (`app.can_admin_payroll_for`, the payslip RLS owner), for a current principal, with the payroll module enabled. The read runs as the caller under RLS. Everyone else is refused in one sentence, and a company filter outside the scope gets the same sentence, so the refusal is not an existence oracle.
+
+**Suppression**, decided over the caller's whole scope before any filter selects what is returned:
+1. Any group of fewer than 5 people is withheld (people, not payslips; each person counts once per company).
+2. Differencing: a group whose complement within its parent is 1–4 people is withheld. The parent is the company for a department, and all companies combined for a company.
+3. Complementary suppression: within a parent, the withheld groups must be none, or at least two groups holding at least 5 people together. Otherwise the smallest published group is withheld too, so no single withheld cell can be recovered as the total minus the rest.
+4. A withheld company withholds all its departments.
+5. The all-companies total covers the caller's whole scope whatever the filter. It is published only when the companies share one currency.
+
+A withheld group carries a reason and no headcount or figure.
+
+**What reaches the provider.** The `pay_aggregates` tool result is declared as entity `pay_aggregate` (`core/semantic-model/entities-metrics.ts`):
+- every headcount, average and median is `bands`: a placeholder plus its band, restored locally for the person;
+- company and department names are `minimum`, kept for this administrator audience;
+- no person, id, name or single person's figure is in the result;
+- the trace records counts, paths and digests only.
+
+**Residual risks** (not addressed here):
+- a group whose members all earn the same reveals each member's pay through its average;
+- results compared across months, or between callers with different scopes, can be differenced;
+- the department is the current assignment, not the one at the run date.
