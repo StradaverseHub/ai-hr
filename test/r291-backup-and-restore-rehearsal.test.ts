@@ -274,10 +274,12 @@ describe('backup-db.sh — the destination is the owner\'s decision, and its abs
   });
 
   it('a custom shipper is handed the file and the destination, and the pruner the policy', () => {
-    const trace = path.join(TMP, 'ship-trace');
+    const trace = path.join(TMP, 'ship-trace'), store=path.join(TMP,'custom-store');
+    fs.mkdirSync(store,{mode:0o700});
     const r = backup({
       BACKUP_DEST: 'owner-chosen://bucket/prefix',
-      BACKUP_SHIP_CMD: `printf 'ship %s %s\\n' "$(basename "$1")" "$2" >> '${trace}'`,
+      BACKUP_SHIP_CMD: `printf 'ship %s %s\\n' "$(basename "$1")" "$2" >> '${trace}'; cp "$1" '${store}/'`,
+      BACKUP_READ_CMD: `cat '${store}/'"$2"`,
       BACKUP_PRUNE_CMD: `printf 'prune %s %s %s %s\\n' "$1" "$2" "$3" "$4" >> '${trace}'`,
       BACKUP_RETAIN_DAYS: '30',
       BACKUP_RETAIN_MIN: '9',

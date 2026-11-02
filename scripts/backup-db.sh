@@ -18,7 +18,7 @@
 #   2. holds ONE repeatable-read snapshot and, inside it, both dumps the database AND measures it
 #   3. writes a manifest beside the dump: per-table row counts, RLS flags, policy counts, the ACL
 #      grantee roles, and what the application role can see through RLS
-#   4. ships both to an OFF-BOX destination and reads back the size to prove they arrived
+#   4. ships both OFF-BOX and independently reads back exact bytes and SHA-256
 #   5. prunes old backups AT THE DESTINATION, by the timestamp in the filename, never below a floor
 #   6. exits non-zero and writes a machine-readable status file on every failure
 #
@@ -58,6 +58,8 @@
 #   BACKUP_SHIP_CMD       optional shipper: run as `sh -c "$CMD" _ <local-file> <dest>` for each file.
 #                         This is the hook for object storage — S3, B2, rclone, restic. Nothing of the
 #                         sort is assumed or configured here.
+#   BACKUP_READ_CMD       required for a custom shipper: raw bytes on stdout for <dest> <name>.
+#   BACKUP_READBACK_TIMEOUT absolute seconds per readback, 1–3600 (default 300).
 #   BACKUP_PRUNE_CMD      optional pruner for a custom shipper: `sh -c "$CMD" _ <dest> <cutoff-stamp>
 #                         <keep-min> <name-prefix>`. Without it, retention is SKIPPED and said so.
 #   BACKUP_RETAIN_DAYS    default 14.   BACKUP_RETAIN_MIN  default 7 (a floor, see "RETENTION").
@@ -393,26 +395,36 @@ fi
 ship_one "$DUMP" "$DUMP_NAME" || die 8 ship "shipping $DUMP_NAME to $DEST failed. Nothing was pruned; the staged copy is kept at $DUMP."
 ship_one "$MANIFEST" "$MANIFEST_NAME" || die 8 ship "shipping $MANIFEST_NAME to $DEST failed (the dump itself arrived). A dump with no manifest cannot be verified by the rehearsal, so this is a failure too."
 
-# ARRIVAL IS PROVEN, NOT ASSUMED. rsync and cp both exit 0 on a destination that silently discarded
-# the bytes (a full disk that reports success, a path that is a symlink into /dev/null, an ssh command
-# that ran somewhere other than where you think). Read the size back.
+# Independently read BOTH objects back. A transport exit or same-length file is not byte proof.
+# A custom reader writes raw object bytes to stdout; the trusted local verifier owns bounds/hash.
 STAGE=verify-arrival
-if [ "$DEST_KIND" = "custom" ]; then
-  if [ -n "${BACKUP_VERIFY_CMD:-}" ]; then
-    sh -c "$BACKUP_VERIFY_CMD" _ "$DEST" "$DUMP_NAME" "$DUMP_BYTES" "$DUMP_SHA" \
-      || die 8 verify-arrival "BACKUP_VERIFY_CMD says $DUMP_NAME did not arrive intact at $DEST."
-    ok "arrival verified by BACKUP_VERIFY_CMD"
-  else
-    warn "BACKUP_SHIP_CMD is set but BACKUP_VERIFY_CMD is not: arrival is taken on the shipper's word.
-   Set BACKUP_VERIFY_CMD to close this, or the first thing you will learn about a broken uploader is
-   from the rehearsal."
-  fi
-else
-  REMOTE_BYTES="$(dest_run "wc -c < '$DEST_PATH/$DUMP_NAME'" 2>/dev/null | tr -d ' ')"
-  [ "$REMOTE_BYTES" = "$DUMP_BYTES" ] || die 8 verify-arrival \
-    "$DUMP_NAME is $DUMP_BYTES bytes here and ${REMOTE_BYTES:-absent} bytes at the destination."
-  ok "arrival verified: $REMOTE_BYTES bytes at the destination"
+readback_one() {
+  local source="$1" name="$2" bytes="$3" digest="$4" target="$WORK/readback-$2"
+  case "$DEST_KIND" in
+    custom)
+      [ -n "${BACKUP_READ_CMD:-}" ] || return 1
+      python3 "$ROOT/scripts/backup-readback.py" "$bytes" "$digest" "$target" "${BACKUP_READBACK_TIMEOUT:-300}" -- \
+        sh -c "$BACKUP_READ_CMD" _ "$DEST" "$name" ;;
+    local)
+      python3 "$ROOT/scripts/backup-readback.py" "$bytes" "$digest" "$target" "${BACKUP_READBACK_TIMEOUT:-300}" -- \
+        cat "$DEST_PATH/$name" ;;
+    remote)
+      python3 "$ROOT/scripts/backup-readback.py" "$bytes" "$digest" "$target" "${BACKUP_READBACK_TIMEOUT:-300}" -- \
+        ssh $SSH_OPTS "$DEST_HOST" "cat '$DEST_PATH/$name'" ;;
+  esac
+}
+readback_one "$DUMP" "$DUMP_NAME" "$DUMP_BYTES" "$DUMP_SHA" \
+  || die 8 verify-arrival "Independent readback of $DUMP_NAME failed. Nothing was pruned; staged recovery files are retained. Custom destinations require BACKUP_READ_CMD."
+MANIFEST_BYTES="$(blib_bytes "$MANIFEST")"
+MANIFEST_SHA="$(blib_sha256 "$MANIFEST")"
+readback_one "$MANIFEST" "$MANIFEST_NAME" "$MANIFEST_BYTES" "$MANIFEST_SHA" \
+  || die 8 verify-arrival "Independent readback of $MANIFEST_NAME failed. Nothing was pruned; staged recovery files are retained."
+# Existing custom verification remains an optional additional owner check, never arrival authority.
+if [ "$DEST_KIND" = "custom" ] && [ -n "${BACKUP_VERIFY_CMD:-}" ]; then
+  sh -c "$BACKUP_VERIFY_CMD" _ "$DEST" "$DUMP_NAME" "$DUMP_BYTES" "$DUMP_SHA" \
+    || die 8 verify-arrival "Additional BACKUP_VERIFY_CMD refused the independently read dump."
 fi
+ok 'dump and manifest independently read back with exact byte counts and SHA-256'
 
 # ── 9. retention ─────────────────────────────────────────────────────────────────────────────────
 #
