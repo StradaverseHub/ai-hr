@@ -1,3 +1,4 @@
+import {requireTestingAdministrationTx} from './system-testing-access';
 /** Canonical extension of core/system-testing: immutable instructions, assignments and personal saves. */
 import {randomUUID} from 'node:crypto';
 import { and, desc, eq, sql } from 'drizzle-orm';
@@ -27,6 +28,8 @@ function administrator(ctx: SessionContext): string {
   return actor;
 }
 async function libraryLock(tx: Tx, ctx: SessionContext) {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await requireTestingAdministrationTx(tx);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`testing-library:${ctx.tenantId}`},0))`);
 }
 async function caseLock(tx: Tx, ctx: SessionContext, caseId: string) {
@@ -87,6 +90,8 @@ export async function publishTestInstructionTx(tx: Tx, ctx: SessionContext, p: {
   const actor = administrator(ctx), definition = parseInstruction(p.definition);
   if (!isTestableModule(ctx, definition.moduleCode) || definition.screenKeys.some(key => !SCREENS.some(screen => screen.screenKey === key))) throw new TestingRefusal('invalid');
   if (p.provenance.kind === 'catalogue') { testingSemanticId.parse(p.provenance.semanticId); testingSourceRef.parse(p.provenance.sourceRef); testingHash.parse(p.provenance.catalogueHash); testingHash.parse(p.provenance.sourceContentHash); testingHash.parse(p.provenance.guideSourceHash); }
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await requireTestingAdministrationTx(tx);
   const c = await caseLock(tx, ctx, p.caseId);
   if (c.currentVersionId !== p.expectedVersionId || c.draftRevision !== p.expectedDraftRevision) throw new TestingRefusal('stale_instructions');
   const [count] = await tx.select({ ordinal: sql<number>`coalesce(max(${testCaseVersion.ordinal}),0)` }).from(testCaseVersion).where(eq(testCaseVersion.testCaseId, c.id));
@@ -228,6 +233,7 @@ export async function listTestingAssignments(ctx: SessionContext, p: { team?: bo
   const tester = p.team ? p.testerUserId ?? null : actor;
   if (tester) testingAccountId.parse(tester);
   return withTenant(ctx, async tx => {
+    if(p.team)await requireTestingAdministrationTx(tx);
     const base = assignmentRowsSql(ctx,p,tester);
     const filter = sql`WHERE (${p.status ?? null}::text IS NULL OR status=${p.status ?? null}::text)`;
     const summary = await tx.execute(sql`${base} SELECT status,count(*)::integer AS n FROM rows GROUP BY status ORDER BY status`) as unknown as { status: ExecutionStatus; n: number }[];
@@ -241,6 +247,7 @@ export async function getTestingExecution(ctx: SessionContext, executionId: stri
   if (options.team) administrator(ctx);
   if(options.beforeRevision!==undefined&&(!Number.isInteger(options.beforeRevision)||options.beforeRevision<1))throw new TestingRefusal('invalid');
   return withTenant(ctx, async tx => {
+    if(options.team)await requireTestingAdministrationTx(tx);
     const [e] = await tx.select().from(testExecution).where(and(eq(testExecution.id, executionId), options.team ? undefined : eq(testExecution.testerUserId, actor)));
     if (!e) throw new TestingRefusal('not_found');
     const [a] = await tx.select().from(testAssignment).where(eq(testAssignment.id, e.assignmentId));

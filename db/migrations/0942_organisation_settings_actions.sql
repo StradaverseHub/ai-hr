@@ -605,3 +605,56 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.home_card_interactions_summary() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.home_card_interactions_summary() TO ai_hr_app;
+
+--> statement-breakpoint
+-- Administrative reads cannot borrow this actor's independently assigned tester
+-- course. Original permissive policies still establish every native own-row fact.
+CREATE POLICY settings_testing_execution_read ON public.test_execution AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR tester_user_id=app.current_user_id());
+CREATE POLICY settings_testing_run_read ON public.test_run AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR app.testing_owns_execution(execution_id));
+CREATE POLICY settings_testing_attachment_read ON public.test_execution_attachment AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR app.testing_owns_execution(execution_id));
+-- Retired legacy observation creation has no native command. Actual assigned
+-- execution/run creation remains its independent existing native owner.
+CREATE POLICY settings_testing_run_insert ON public.test_run AS RESTRICTIVE FOR INSERT TO ai_hr_app
+ WITH CHECK(execution_id IS NOT NULL AND app.testing_owns_execution(execution_id));
+CREATE POLICY settings_testing_run_update ON public.test_run AS RESTRICTIVE FOR UPDATE TO ai_hr_app
+ USING(app.testing_owns_execution(execution_id) OR execution_id IS NULL AND app.organisation_settings_function_allowed('systemTesting','edit',NULL))
+ WITH CHECK(app.testing_owns_execution(execution_id) OR execution_id IS NULL AND app.organisation_settings_function_allowed('systemTesting','edit',NULL));
+DO $$ DECLARE relation_name text;BEGIN
+ FOREACH relation_name IN ARRAY ARRAY['test_case','test_case_version','test_assignment','test_catalogue_update'] LOOP
+  EXECUTE format('CREATE TRIGGER organisation_settings_upsert_lock BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION app.organisation_settings_upsert_lock()',relation_name);
+ END LOOP;
+END $$;
+
+--> statement-breakpoint
+-- Own tester commands keep their exact native assignment/course. Join Access
+-- before the original case/run locks, without granting master-table mutation.
+ALTER FUNCTION app.testing_lock_own_assignment(uuid) RENAME TO organisation_testing_assignment_lock_native;
+REVOKE ALL ON FUNCTION app.organisation_testing_assignment_lock_native(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.testing_lock_own_assignment(p_assignment_id uuid) RETURNS TABLE(case_id uuid,assignment_id uuid)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ RETURN QUERY SELECT * FROM app.organisation_testing_assignment_lock_native(p_assignment_id);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.testing_lock_own_assignment(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.testing_lock_own_assignment(uuid) TO ai_hr_app;
+ALTER FUNCTION app.testing_next_run_no(uuid) RENAME TO organisation_testing_run_no_native;
+REVOKE ALL ON FUNCTION app.organisation_testing_run_no_native(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.testing_next_run_no(case_id uuid) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.testing_live_principal() OR NOT (
+  app.organisation_settings_function_allowed('systemTesting','view',NULL)
+  OR EXISTS(SELECT 1 FROM public.test_assignment assignment JOIN public.test_case source ON source.id=assignment.test_case_id AND source.tenant_id=assignment.tenant_id
+   WHERE assignment.test_case_id=case_id AND assignment.tenant_id=app.current_tenant_id() AND assignment.tester_user_id=app.current_user_id() AND assignment.active AND assignment.target_version_id=source.current_version_id)
+ ) THEN RAISE EXCEPTION 'Testing case is not assigned' USING ERRCODE='42501';END IF;
+ RETURN app.organisation_testing_run_no_native(case_id);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.testing_next_run_no(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.testing_next_run_no(uuid) TO ai_hr_app;

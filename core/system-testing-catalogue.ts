@@ -1,3 +1,5 @@
+import {requireTestingAdministrationTx} from './system-testing-access';
+import {settingsAccessTx} from './organisation-access';
 /** Catalogue updates extend the canonical System Testing case/version owner, never a second library. */
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -22,6 +24,7 @@ function admin(ctx: SessionContext): string {
   return ctx.userId;
 }
 async function lock(tx: Tx, ctx: SessionContext) {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`testing-library:${ctx.tenantId}`},0))`);
 }
 async function librarySnapshotTx(tx: Tx, ctx: SessionContext): Promise<LibraryCaseSnapshot[]> {
@@ -41,6 +44,7 @@ export async function previewTestingCatalogue(ctx: SessionContext, options: { le
   if ((options.legacyMappings?.length ?? 0) > 200) throw new TestingRefusal('limit');
   const mappings = canonicalLegacyMappings(options.legacyMappings ?? []);
   return withTenant(ctx, async tx => {
+    await requireTestingAdministrationTx(tx);
     const library = await librarySnapshotTx(tx, ctx);
     const history = await tx.select({ id: testCatalogueUpdate.id, updateHash: testCatalogueUpdate.updateHash, previewHash: testCatalogueUpdate.previewHash, catalogueHash: testCatalogueUpdate.catalogueHash, sourceRef: testCatalogueUpdate.sourceRef, sourceContentHash: testCatalogueUpdate.sourceContentHash, createdAt: testCatalogueUpdate.createdAt, confirmedByUserId: testCatalogueUpdate.confirmedByUserId, appliedCount: sql<number>`jsonb_array_length(${testCatalogueUpdate.result})` }).from(testCatalogueUpdate).where(eq(testCatalogueUpdate.tenantId, ctx.tenantId)).orderBy(desc(testCatalogueUpdate.createdAt), desc(testCatalogueUpdate.id)).limit(201);
     const actorNames = await testingActorNamesTx(tx, ctx, history.map(row => row.confirmedByUserId));
@@ -59,6 +63,7 @@ export async function confirmTestingCatalogue(ctx: SessionContext, raw: ConfirmT
 }
 async function confirmTx(tx: Tx, ctx: SessionContext, p: ConfirmTestingCatalogueInput) {
   const actor = admin(ctx);
+  await requireTestingAdministrationTx(tx);
   const updateHash = testingDigest({ previewHash: p.expectedPreviewHash, semanticIds: [...p.semanticIds].sort(), replaceLocal: [...p.replaceLocal].sort(), distinctLegacy: [...p.distinctLegacy].sort(), legacyMappings: canonicalLegacyMappings(p.legacyMappings) });
   const [prior] = await tx.select().from(testCatalogueUpdate).where(and(eq(testCatalogueUpdate.updateHash, updateHash),sql`octet_length(${testCatalogueUpdate.result}::text)<=8388608`)).limit(1);
   if (prior) return { status: 'unchanged' as const, updateId: prior.id, results: prior.result };
@@ -89,6 +94,8 @@ async function confirmTx(tx: Tx, ctx: SessionContext, p: ConfirmTestingCatalogue
 export async function preloadTestingCatalogue(ctx: SessionContext): Promise<{ status: 'initialized' | 'already_initialized' | 'review_required'; added: number }> {
   admin(ctx);
   return withTenant(ctx, async tx => {
+    await requireTestingAdministrationTx(tx);
+    if(!await settingsAccessTx(tx,'add','systemTesting')||!await settingsAccessTx(tx,'edit','systemTesting'))return {status:'review_required',added:0};
     await lock(tx, ctx);
     const [existing] = await tx.select({ id: testCatalogueUpdate.id }).from(testCatalogueUpdate).where(eq(testCatalogueUpdate.tenantId, ctx.tenantId)).limit(1);
     if (existing) return { status: 'already_initialized', added: 0 };
@@ -105,6 +112,7 @@ export async function getTestingCatalogueUpdate(ctx: SessionContext, updateId: s
   admin(ctx);
   testingUuid.parse(updateId);
   return withTenant(ctx, async tx => {
+    await requireTestingAdministrationTx(tx);
     const [row] = await tx.select().from(testCatalogueUpdate).where(and(eq(testCatalogueUpdate.id,updateId),sql`octet_length(${testCatalogueUpdate.result}::text)<=8388608`)).limit(1);
     if (!row) throw new TestingRefusal('not_found');
     return row;

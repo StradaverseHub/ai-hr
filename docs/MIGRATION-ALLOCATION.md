@@ -1133,9 +1133,9 @@ This source depends on root942 witness89bc7e9da and requires hosted failed/affec
 - `0938_data_permission_enforcement.sql`: `d41b686eec213708abc9b174762c3c9f37d7f9aba31e057854108b321b66805a`.
 - `0939_workforce_action_permissions.sql`: `21e42a337ca5abd835140c7b4b3c981d06da6fe1aa52d96a26eaa5381deba812`.
 - `0941_financial_letter_actions.sql`: `6fff8285b7afd0cf188e1abc386d4616cffea3b756b05e349bb5178c6d755e4c`.
-- `0942_organisation_settings_actions.sql`: `dcdd32575cb9a2c0b914b0ef4ab712e0b58e47160d6309540ffb4d09ca8740c9`.
+- `0942_organisation_settings_actions.sql`: `19efb2fe8a2d54510f18cb4f9e0929e4d0e788000300cc839620d5565bc8e7d3`.
 - `0943_leave_attendance_claim_actions.sql`: `0147800c396f35f9bdd3b6225b0e64d6e7a86df897053d53c6ea6ff476451fc4`.
-- `0944_lifecycle_rewards_notice_actions.sql`: `2b1203307d8b613fdf038d47af70590e5e1ad1f20954e681f4140acc8100d250`.
+- `0944_lifecycle_rewards_notice_actions.sql`: `db746154bbd86cca6d6615fb48e7aa0c7768953cc6ec2d0b5194904f3377d6ac`.
 - `0945_financial_setup_actions.sql`: `77ef0067c30e55a48ab591938b3a5e892ba60161036f4b23c678ed280ea5f340`.
 
 Source identities only; frozen failures remain preserved. Admission requires post-Noveri/nine ledger reconciliation without rewriting applied bytes.
@@ -1263,3 +1263,11 @@ The Home content route checks its company View directly and does not read the se
 ### Frozen 88b5 / 55bd original qualification and parser recovery
 
 All five original focused batches completed and retain their failed workflow identities: finance41499128275, personnel41499140177, Rewards41499151961, settings41499162683 at88b5b085bae5c5fc201cdb7751e5438c4927b3d6, and OneHR41499340355 at55bd92fa1233b18b598414fd1299c1265008381d. Both requested whole compilers passed. Native suites did not run: migration0944 failed parsing an unparenthesized SQL CASE inside PL/pgSQL IF. The isolated recovery parenthesizes four CASE expressions without changing calculation oracles or assertions. New native qualification must run against its own frozen source. No provider approvals, applied SQL, live ledger or activation changed.
+
+### System Testing administrative and assigned courses
+
+Administrative library/team/catalogue reads now select fresh setup View before counts and source hydration. Authors receive separate draft/publish controls; Add-only creates drafts, while subsequent publication and existing instructions require Edit. Assignment creation, reactivation and unassignment retain their actual Add/Edit/Delete classifications. Read-only visits never preload the catalogue. Native execution/run/attachment reads preserve actual own tester branches and narrow only administrative reads. Retired legacy run creation remains unavailable through app SQL. The original own-assignment lock and run-number owners are private behind Access-first finite ports, with original native assigned eligibility retained. Real assigned saves, forged administrative reads/counter calls, private-port denials and six-locale read-only editor regressions await hosted qualification.
+
+### Frozen 5d51 original follow-up outcomes
+
+All six planned runs completed at5d51003e8368d4ffbc7358a142ddf2015860909b:41501771883/41501782418/41501796709/41501807777/41501818240/41501828775. Native migrations reached a second parser error in0944 at the local `leading` identifier. Pure/UI evidence retains Rewards25, settings15 and OneHR22 passes; UI57pass/7Dashboard async-fixture failures; whole compiler failed only the Dashboard fixture namespace type. Original logs/artifacts remain preserved. Recovery renames only that local identifier, qualifies three ambiguous normalizer aliases, and gives the dashboard permission fixture a typed namespace and synchronous Pager boundary; assertions remain strict. Rewards consumer and private mutation chapters remain held pending genuine native parity.

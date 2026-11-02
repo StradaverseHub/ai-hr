@@ -35,6 +35,27 @@ function observation(f: Awaited<ReturnType<typeof setup>>, status: 'passed' | 'f
   return { executionId: f.execution.executionId, assignmentId: f.a.assignmentId, versionId: f.version.versionId, expectedRevision: 0, status, actualResult: status === 'failed' ? 'The fictional value was not retained.' : 'The fictional value was retained.', comments: 'Fictional observation', defectNotes: 'Fictional save/reopen failed.', improvementNotes: 'Make the fictional save status clearer.' };
 }
 describe('personal System Testing isolation and immutable instructions', () => {
+  it('keeps real assigned work available while forged administrative library and team reads refuse',async()=>{
+    const f=await setup(),forged={...one,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+    expect((await listTestingAssignments(one)).rows.map(row=>row.assignmentId)).toContain(f.a.assignmentId);
+    expect((await getTestingExecution(one,f.execution.executionId)).execution.id).toBe(f.execution.executionId);
+    for(const read of [()=>listTestingLibrary(forged),()=>getTestingLibraryCase(forged,f.draft.caseId),()=>listTestingTesterOptions(forged),()=>listTestingAssignments(forged,{team:true}),()=>getTestingExecution(forged,f.execution.executionId,{team:true})]){
+      await expect(read()).rejects.toMatchObject({code:'not_assigned'});
+    }
+    expect((await getTestingExecution(one,f.execution.executionId)).execution.revision).toBe(0);
+    const unassigned=await createAppUser(b.tenantId,null,'employee'),forgedUnassigned={...one,userId:unassigned,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+    await expect(withTenant(forgedUnassigned,tx=>tx.execute(sql`select app.testing_next_run_no(${f.draft.caseId}::uuid)`))).rejects.toThrow();
+    await expect(withTenant(one,tx=>tx.execute(sql`select * from app.organisation_testing_assignment_lock_native(${f.a.assignmentId}::uuid)`))).rejects.toThrow();
+    await expect(withTenant(one,tx=>tx.execute(sql`select app.organisation_testing_run_no_native(${f.draft.caseId}::uuid)`))).rejects.toThrow();
+  });
+  it('refuses retired raw legacy observation creation while preserving the actual assigned writer',async()=>{
+    const f=await setup();
+    const before=await owner.db.select().from(s.testRun).where(eq(s.testRun.tenantId,b.tenantId));
+    await expect(withTenant(admin,tx=>tx.insert(s.testRun).values({tenantId:b.tenantId,testCaseId:f.draft.caseId,runNo:42,outcome:'pass',actualResult:'Forged retired legacy observation',runByUserId:admin.userId!,versionId:f.version.versionId}))).rejects.toThrow();
+    expect(await owner.db.select().from(s.testRun).where(eq(s.testRun.tenantId,b.tenantId))).toEqual(before);
+    await saveTestingExecution(one,observation(f));
+    expect((await getTestingExecution(one,f.execution.executionId)).execution.revision).toBe(1);
+  });
   it('returns a newly inserted own execution without accepting an own tester ID on another assignment',async()=>{
     const f=await setup();
     const returned=await withTenant(one,tx=>tx.insert(s.testExecution).values({tenantId:b.tenantId,assignmentId:f.a.assignmentId,versionId:f.version.versionId,testerUserId:one.userId!,attemptNo:2})

@@ -1,3 +1,4 @@
+import {requireTestingAdministrationTx} from './system-testing-access';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 /**
@@ -222,6 +223,7 @@ export async function listTestCases(
   assertTestingAccess(ctx);
   const filter = p.moduleCode?.trim() || null;
   return withCanonicalAiReadTx(ctx, existingTx, 'system_testing', withTenant, async (tx) => {
+    await requireTestingAdministrationTx(tx);
     const rows = (await tx.execute(sql`
       SELECT c.id,
              c.case_no,
@@ -313,6 +315,7 @@ export async function getTestCase(
 ): Promise<{ testCase: TestCaseDetail; runs: TestRunRow[] } | null> {
   assertTestingAccess(ctx);
   return withTenant(ctx, async (tx) => {
+    await requireTestingAdministrationTx(tx);
     const [row] = await tx.select().from(testCase).where(eq(testCase.id, caseId)).limit(1);
     if (!row) return null;
     const runs = await tx
@@ -494,6 +497,7 @@ export async function raiseRunAsFeedback(
   assertTestingAccess(ctx);
 
   return withTenant(ctx, async (tx) => {
+    await requireTestingAdministrationTx(tx);
     const [run] = await tx.select().from(testRun).where(eq(testRun.id, p.runId)).for('update');
     if (!run) throw new SystemTestingError('That test run no longer exists.');
     if (run.executionId) throw new SystemTestingError('Raise personal execution feedback from its own execution review.');
