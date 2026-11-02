@@ -9,7 +9,7 @@ import { v9OwnTask, onboardingSetup, onboardingContext, onboardingList, onboardi
 import { appendEvent, actorOf } from '../db/events';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { dayDate,decide as canonicalDecide,assignApproval as canonicalAssignApproval } from '../lib/onboarding-model';
+import { dayDate,decide as canonicalDecide,assignApproval as canonicalAssignApproval,cancelCase as canonicalCancelCase } from '../lib/onboarding-model';
 import { onboardingConfigSchema } from '../lib/onboarding-validation';
 describe('V3.1 onboarding database and authorization', () => {
     let b: Base, admin: SessionContext, tech: SessionContext, other: SessionContext;
@@ -262,6 +262,35 @@ describe('V3.1 onboarding database and authorization', () => {
         expect((await owner.db.select().from(schema.employeeDraft)).filter(row=>row.label==='Revoked source fixture')).toEqual([]);
         const retried=await saveEmployeeDraft(admin,{data:input,currentStep:1});
         expect((await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.sourceDraftId,retried.id)))).toHaveLength(1);
+    });
+    it('derives DISCARD cancellation from the actual source and preserves native request and private history',async()=>{
+        const context=await onboardingContext(admin),config=structuredClone(context.config);config.catalogue[0]!.workflow='standard';
+        await onboardingSaveConfig(admin,context.revision,config);
+        const row=await prepared(),[before]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id));
+        const privateBefore=await owner.db.select().from(schema.lcOnboardingPrivate).where(eq(schema.lcOnboardingPrivate.caseId,row.case.id));
+        const actor=(await onboardingContext(admin)).actor;
+        expect(before!.data.requisitions[0]!.items[0]!.steps.some(step=>step.status==='pending')).toBe(true);
+        await discardEmployeeDraft(admin,row.case.sourceDraftId!);
+        const [after]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id));
+        const entry=after!.data.history.at(-1)!,expected=structuredClone(before!.data);
+        canonicalCancelCase(expected,'Personnel draft discarded',actor,{now:entry.at,today:todayInKualaLumpur(),id:()=>entry.id,nextNumber:()=>'',leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:[]});
+        expect(after!.data).toEqual(expected);expect(after!.revision).toBe(before!.revision+1);
+        expect(await owner.db.select().from(schema.lcOnboardingPrivate).where(eq(schema.lcOnboardingPrivate.caseId,row.case.id))).toEqual(privateBefore);
+        const revisions=await owner.db.select().from(schema.lcOnboardingCaseRevision).where(eq(schema.lcOnboardingCaseRevision.caseId,row.case.id));
+        expect(revisions.find(revision=>revision.revision===before!.revision)?.data).toEqual(before!.data);
+        expect(await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.id,row.case.sourceDraftId!))).toEqual([]);
+    });
+    it('refuses a DISCARD source cancellation without the actual native delete even when its onboarding audit exists',async()=>{
+        const saved=await draft(),[before]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.sourceDraftId,saved.id));
+        await expect(withTenant(admin,async tx=>{
+            const [effect]=await tx.execute<{case_id:string;company_id:string;did_change:boolean}>(sql`select * from app.onboarding_sync_discarded_draft(${saved.id}::uuid)`);
+            expect(effect).toMatchObject({case_id:before!.id,did_change:true});
+            await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'onboarding-case',aggregateId:effect!.case_id,eventType:'onboarding.source_discarded',actor:actorOf(admin),payload:{caseId:effect!.case_id,companyId:effect!.company_id}});
+        })).rejects.toThrow();
+        expect(await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,before!.id))).toEqual([before]);
+        expect(await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.id,saved.id))).toHaveLength(1);
+        await discardEmployeeDraft(admin,saved.id);
+        expect(await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.id,saved.id))).toEqual([]);
     });
     it('rolls a real saved-source effect back without its matching onboarding audit',async()=>{
         const id=randomUUID();
