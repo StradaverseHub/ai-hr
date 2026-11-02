@@ -31,9 +31,21 @@ jobs:
         run: |
           # The dialog fix already moved both consumers to @expo/ui. Remove the unused
           # native package rather than forcing its incompatible Windows optional peer.
-          if rg -l '@react-native-community/datetimepicker' app lib; then exit 1; fi
+          if grep -R -l '@react-native-community/datetimepicker' app lib; then exit 1; fi
           node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));delete p.dependencies['@react-native-community/datetimepicker'];fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
-          ./node_modules/.bin/expo install expo@58.0.22 --fix
+          set +e
+          ./node_modules/.bin/expo install expo@58.0.22 --fix > "$RUNNER_TEMP/sdk58-alignment.log" 2>&1
+          result=$?
+          set -e
+          cat "$RUNNER_TEMP/sdk58-alignment.log"
+          if [ "$result" -ne 0 ]; then
+            # npm may retain SDK57 peers while Expo has already written the complete SDK58
+            # manifest. Resolve that manifest cleanly, with all peer checks still enforced.
+            grep -q 'ERESOLVE' "$RUNNER_TEMP/sdk58-alignment.log"
+            node -e "const p=require('./package.json');if(p.dependencies.expo!=='58.0.22'||!p.dependencies['react-native'].startsWith('0.88.'))process.exit(1)"
+            rm -rf node_modules package-lock.json
+            npm install --no-audit --no-fund
+          fi
       - name: Check aligned SDK packages and widget entry
         working-directory: source/mobile
         run: |
