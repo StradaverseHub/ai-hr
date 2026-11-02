@@ -1984,3 +1984,45 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_setup_read(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_setup_read(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Task identity is a bounded read owner, never an exception on the raw masters or
+-- administrative projections. Preserve historical self and actual assigned work.
+CREATE FUNCTION app.onehr_self_employment(p_employment uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+ WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_self_employment(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_self_employment(uuid) TO ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_review_header(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('reviewerEmploymentId',r.reviewer_employment_id,'closedAt',r.closed_at,'name',p.full_name,
+ 'ownEmploymentIds',(SELECT coalesce(jsonb_agg(own.id),'[]'::jsonb) FROM public.employment own WHERE own.person_id=u.person_id AND own.tenant_id=u.tenant_id))
+ FROM public.performance_review r JOIN public.performance_onehr_cycle config ON config.cycle_id=r.cycle_id AND config.tenant_id=r.tenant_id
+ JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=r.tenant_id
+ WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ AND (e.person_id=u.person_id OR app.onehr_manager(r.id) OR app.onehr_effective_reviewer(r.id) OR app.onehr_moderator(r.id)
+ OR app.onehr_cycle_admin(r.cycle_id) AND app.onehr_admin(e.company_id) AND app.data_permission_matches(e.id));
+$$;
+--> statement-breakpoint
+-- Administration can no longer recover an excluded master through the old role-only
+-- projection. The exact participant header above remains its separate native source.
+CREATE OR REPLACE FUNCTION app.onehr_employment_facts() RETURNS TABLE(id uuid,tenant_id uuid,person_id uuid,company_id uuid,employee_code text,grade_id uuid,hired_on date,confirmation_date date,terminated_on date)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT e.id,e.tenant_id,e.person_id,e.company_id,e.employee_code,e.grade_id,e.hired_on,e.confirmation_date,e.terminated_on FROM public.employment e
+ WHERE cardinality((SELECT app.onehr_partner_company_ids()))>0 AND e.tenant_id=app.current_tenant_id()
+ AND e.company_id=ANY((SELECT app.onehr_partner_company_ids())::uuid[]) AND app.data_permission_matches(e.id);
+$$;
+CREATE OR REPLACE FUNCTION app.onehr_assignment_facts() RETURNS TABLE(id uuid,tenant_id uuid,employment_id uuid,department_id uuid,position_id uuid,valid_from date,valid_to date,superseded_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT a.id,a.tenant_id,a.employment_id,a.department_id,a.position_id,a.valid_from,a.valid_to,a.superseded_at FROM public.assignment a JOIN public.employment e ON e.id=a.employment_id AND e.tenant_id=a.tenant_id
+ WHERE cardinality((SELECT app.onehr_partner_company_ids()))>0 AND a.tenant_id=app.current_tenant_id()
+ AND e.company_id=ANY((SELECT app.onehr_partner_company_ids())::uuid[]) AND app.data_permission_matches(e.id);
+$$;
+CREATE OR REPLACE FUNCTION app.onehr_person_labels(employment_ids uuid[]) RETURNS TABLE(employment_id uuid,person_id uuid,full_name text,preferred_name text,employee_code text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT e.id,p.id,p.full_name,p.preferred_name,e.employee_code FROM public.employment e JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ WHERE e.id=ANY(employment_ids) AND e.tenant_id=app.current_tenant_id() AND app.onehr_admin(e.company_id) AND app.data_permission_matches(e.id);
+$$;

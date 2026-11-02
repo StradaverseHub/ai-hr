@@ -59,7 +59,7 @@ async function audit(tx: Tx, ctx: SessionContext, id: string, event: string, pay
   await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'onehr', aggregateId: id, eventType: `onehr.${event}`, actor: actorOf(ctx), subjectEmploymentId:review?.employmentId??plan?.employmentId, payload });
 }
 async function isSelf(tx: Tx, employmentId: string) {
-  const [r] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from employment e join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id where e.id=${employmentId}::uuid and e.tenant_id=app.current_tenant_id() and u.id=app.current_user_id() and u.archived_at is null and not app.login_blocked(u.id)) as ok`); return !!r?.ok;
+  const [r] = await tx.execute<{ ok: boolean }>(sql`select app.onehr_self_employment(${employmentId}::uuid) as ok`); return !!r?.ok;
 }
 async function isAdmin(tx: Tx, cycleId: string) { const [r] = await tx.execute<{ok:boolean}>(sql`select app.onehr_cycle_admin(${cycleId}::uuid) as ok`); return !!r?.ok; }
 async function isManager(tx: Tx, reviewId: string) { const [r] = await tx.execute<{ok:boolean}>(sql`select app.onehr_manager(${reviewId}::uuid) as ok`); return !!r?.ok; }
