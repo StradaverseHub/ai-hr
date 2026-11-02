@@ -15,6 +15,8 @@ def main(args):
     expected_size, expected_hash, output, timeout = int(args[0]), args[1], args[2], int(args[3])
     if expected_size < 0 or len(expected_hash) != 64 or not 1 <= timeout <= 3600:
         raise ValueError('invalid readback bounds')
+    # Do not inherit automatic child reaping; group custody requires an unreaped leader.
+    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
     child = subprocess.Popen(args[5:], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
     digest, count, deadline = hashlib.sha256(), 0, time.monotonic() + timeout
     try:

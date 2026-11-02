@@ -33,9 +33,10 @@ export async function preparePooledFixture(tx:Tx,tenantId:string,today:string,so
   {id:randomUUID(),tenantId,name:names[0],totalLimitDays:'10.00',maxDaysPerApplication:'3.00',essPlacement:'secondary'},
   {id:randomUUID(),tenantId,name:names[1],totalLimitDays:'6.00',maxDaysPerApplication:null,essPlacement:'secondary'},
  ]).returning();
+ const pooled=groups.find(group=>group.name===names[0])!,standaloneGroup=groups.find(group=>group.name===names[1])!;
  const members=await tx.insert(s.leaveSharedGroupMember).values([
-  {tenantId,groupId:groups[0].id,leaveTypeId:pool.id},{tenantId,groupId:groups[0].id,leaveTypeId:borrower.id},
-  {tenantId,groupId:groups[0].id,leaveTypeId:also.id},{tenantId,groupId:groups[1].id,leaveTypeId:standalone.id},
+  {tenantId,groupId:pooled.id,leaveTypeId:pool.id},{tenantId,groupId:pooled.id,leaveTypeId:borrower.id},
+  {tenantId,groupId:pooled.id,leaveTypeId:also.id},{tenantId,groupId:standaloneGroup.id,leaveTypeId:standalone.id},
  ]).returning();
  await tx.update(s.leaveType).set({balanceSourceTypeId:pool.id}).where(eq(s.leaveType.id,borrower.id));
  const employees=await tx.select({id:s.employment.id}).from(s.employment).where(and(eq(s.employment.tenantId,tenantId),sql`${s.employment.terminatedOn} is null`));
