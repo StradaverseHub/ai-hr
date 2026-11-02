@@ -966,3 +966,21 @@ the then-installed ledger at integration.
 |762|1793330000329|0929_teras_review_services|0906|765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0|
 
 The SQL comments inside these files still name their original provisional numbers; the bodies are kept byte for byte.
+
+## AI Centre stored chats (issue 8) — 3 November 2026 (provisional source claim)
+
+Branch `claude/noveri-chats` (cut from `claude/noveri-staging-fix` 858c1d25b, journal ending
+`0929_teras_review_services` idx762 / when1793330000329) appends `0952_teras_chats` as idx763 / when1793330000352.
+The handoff's earlier number 0936 is taken (`0936_data_permission_profiles`). A fresh fetch on 3 November 2026 and a
+scan of every origin ref (1459 refs, 442 distinct migration trees) and every registered worktree (348, including their
+uncommitted files) found file claims through `0951_payroll_reprocess_correction_lineage` (with 0949 and 0950 present
+only as uncommitted files in `/private/tmp/aihr-approved-*` worktrees) and journal `when` values through
+1793330000351; no allocation document on any origin ref reserves a higher number. This claim therefore takes the next
+file number and the next `when` above every claimed one. Development source only: no installation priority, no
+deployment; the idx is this branch's own journal position and must be re-frozen above the then-installed ledger at
+integration. Sibling AI Centre round branches cut from the same base may claim the same next number; reconcile at
+integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|763|1793330000352|0952_teras_chats|e320362770eedfafd2e9260d82713b1c669f056a296db979a1f5295e785b401b|

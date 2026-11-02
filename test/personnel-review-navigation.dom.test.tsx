@@ -3,9 +3,11 @@
 import React from 'react';
 import {cleanup,render,screen} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {withAiCentre} from './helpers/ai-centre-messages';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 const fixture=vi.hoisted(()=>({allowed:true,locale:'en',actions:['employees.workforce_profile.maintain','employees.code.maintain'] as string[],navigation:vi.fn(),scope:vi.fn(),savedChats:vi.fn(),selectedChat:vi.fn(()=>{throw Error('No selected chat read in navigation fixture');})}));
-const copies:Record<string,unknown>={en,ms,zh,ta,th,vi:viMessages};
+// The AI Centre catalogue is merged as i18n/request.ts does: the page title reads aiCentre.genericName (673fb7e42).
+const copies:Record<string,unknown>={en:withAiCentre('en',en),ms:withAiCentre('ms',ms),zh:withAiCentre('zh',zh),ta:withAiCentre('ta',ta),th:withAiCentre('th',th),vi:withAiCentre('vi',viMessages)};
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>Object.assign((key:string,values?:Record<string,string|number>)=>{let value:unknown=copies[fixture.locale];for(const name of (namespace+'.'+key).split('.'))value=(value as Record<string,unknown>)?.[name];if(typeof value!=='string')throw Error('Missing translation '+namespace+'.'+key);return value.replace(/\{(\w+)\}/g,(_,name:string)=>String(values?.[name]??name));},{has:()=>false})}));
 vi.mock('next/link',()=>({default:({children,...props}:React.AnchorHTMLAttributes<HTMLAnchorElement>)=><a {...props}>{children}</a>}));
 vi.mock('../components/ui',()=>({Card:({children}:React.PropsWithChildren)=><div>{children}</div>,PageHeader:()=>null,ErrorBanner:()=>null}));

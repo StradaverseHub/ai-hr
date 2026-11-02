@@ -106,6 +106,14 @@ describe('floating Assistant',()=>{
   await waitFor(()=>expect(screen.getByText('ANSWER CARD')).toBeInTheDocument());
   expect(screen.getByRole('link',{name:copy.openInAssistant})).toHaveAttribute('href','/assistant?e=exchange-9');
  });
+ it('opens a stored AI Centre chat in Ask, so the panel\'s conversation continues there (issue 18)',async()=>{
+  state.ask.mockResolvedValue({ok:true,exchangeId:'teras-turn-7',chatId:'0c4a7100-0000-4000-8000-000000000007',conversationToken:'tc1.proof',answer:<p>STORED ANSWER</p>});show();
+  fireEvent.click(screen.getByRole('button',{name:copy.open}));
+  fireEvent.change(screen.getByLabelText(copy.question),{target:{value:'Where is my leave balance?'}});
+  fireEvent.click(screen.getByRole('button',{name:copy.send}));
+  await waitFor(()=>expect(screen.getByText('STORED ANSWER')).toBeInTheDocument());
+  expect(screen.getByRole('link',{name:copy.openInAssistant})).toHaveAttribute('href','/assistant?chat=0c4a7100-0000-4000-8000-000000000007');
+ });
  it('shows a refusal as an alert and keeps the window usable',async()=>{
   state.ask.mockResolvedValue({ok:false,message:en.assistant.err_budget_daily});show();
   fireEvent.click(screen.getByRole('button',{name:copy.open}));

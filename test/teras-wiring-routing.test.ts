@@ -1,11 +1,14 @@
 /** ADR-0169 §5.1 wiring — the live chat command routes on the tenant's Noveri conversation switch. Owners are
- * stubbed: askAssistant's own gates are proved by its suites, the turn by test/teras-conversation-turn.test.ts and
- * the switch by test/teras-conversation-switch.test.ts. Fictional values only.
+ * stubbed: askAssistant's own gates are proved by its suites, the turn by test/teras-conversation-turn.test.ts,
+ * the switch by test/teras-conversation-switch.test.ts and the chat store by test/teras-chats.test.ts. Fictional
+ * values only.
  *
  * Switch off: the closed grammar is called with exactly the arguments it received before wiring, and its reply
- * is returned unchanged; no harness module runs. Switch on: the turn runs and the closed grammar is never called. */
+ * is returned unchanged; no harness module runs. Switch on: the turn runs and the closed grammar is never called.
+ * AI Centre issues 8 and 18: an answered harness turn is stored under its conversation (words withheld for a routed or
+ * refused turn) and the reply names the stored chat, which Ask reopens and continues. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const owner=vi.hoisted(()=>({session:vi.fn(),ask:vi.fn(),workspace:vi.fn(),reply:vi.fn(),route:vi.fn(),turn:vi.fn(),render:vi.fn()}));
+const owner=vi.hoisted(()=>({session:vi.fn(),ask:vi.fn(),workspace:vi.fn(),reply:vi.fn(),route:vi.fn(),turn:vi.fn(),render:vi.fn(),record:vi.fn(),reopen:vi.fn(),issue:vi.fn()}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(namespace:string)=>Object.assign((key:string)=>`${namespace}.${key}`,{has:(key:string)=>key.startsWith('err_')||key.startsWith('errors.')})}));
 vi.mock('../lib/session',()=>({getBrowserCommandSession:owner.session}));
@@ -18,19 +21,26 @@ vi.mock('../lib/scope',()=>({getScopeIds:async(ids:string[])=>ids}));
 vi.mock('../core/teras-wiring/switch',()=>({conversationRoute:owner.route}));
 vi.mock('../core/teras-wiring/turn',()=>({runConversationTurn:owner.turn,ConversationTurnError:class extends Error{constructor(readonly code:string){super(code);}}}));
 vi.mock('../components/ai-centre/conversation-reply',()=>({ConversationReply:owner.render}));
-import {askFromLauncherAction,askFromWorkspaceAction} from '../app/assistant/launcher-actions';
+vi.mock('../core/teras-chats',()=>({recordChatTurn:owner.record,reopenOwnChat:owner.reopen}));
+vi.mock('../core/teras-wiring/history',()=>({issueConversationContinuation:owner.issue}));
+import {askFromLauncherAction,askFromWorkspaceAction,openStoredChatAction} from '../app/assistant/launcher-actions';
 
 const session={tenantId:'00000000-0000-4000-8000-0000000000aa',userId:'00000000-0000-4000-8000-0000000000bb'};
 const SCOPE=JSON.stringify(['00000000-0000-4000-8000-00000000c0aa']);
 const permit=Object.freeze({});
+const CHAT='00000000-0000-4000-8000-0000000c4a71';
+const MODEL_TURN=[{role:'user',content:'How much leave do I have?',side:'model'},{role:'assistant',content:'You have [an earlier figure] days.',side:'model'}];
+const harnessTurn=(over:Record<string,unknown>={})=>({turnId:'turn-1',continuation:'tc1.model-side.signature',reply:'You have 12 days.',modelTurn:MODEL_TURN,
+ sensitive:false,refused:false,trace:{conversationId:CHAT},...over});
 beforeEach(()=>{
  for(const fn of Object.values(owner))fn.mockReset();
  owner.session.mockResolvedValue(session);
  owner.ask.mockResolvedValue({exchangeId:'closed-1',conversationToken:'closed-proof'});
  owner.workspace.mockResolvedValue({history:[{id:'closed-1',grounded:null}]});
  owner.reply.mockResolvedValue('closed grammar reply');
- owner.turn.mockResolvedValue({turnId:'turn-1',continuation:'tc1.model-side.signature'});
+ owner.turn.mockResolvedValue(harnessTurn());
  owner.render.mockResolvedValue('harness reply');
+ owner.record.mockResolvedValue(CHAT);
 });
 
 describe('switch off: the closed grammar, unchanged',()=>{
@@ -58,7 +68,7 @@ describe('switch off: the closed grammar, unchanged',()=>{
 describe('switch on: the Teras harness',()=>{
  it('runs the turn with the switch permit, the company scope and the model-side continuation; never the closed grammar',async()=>{
   owner.route.mockResolvedValue({route:'harness',permit,attestedProvider:null,explainers:false});
-  expect(await askFromWorkspaceAction({question:' How much leave do I have? '})).toEqual({ok:true,exchangeId:'teras-turn-1',answer:'harness reply',conversationToken:'tc1.model-side.signature'});
+  expect(await askFromWorkspaceAction({question:' How much leave do I have? '})).toEqual({ok:true,exchangeId:'teras-turn-1',answer:'harness reply',conversationToken:'tc1.model-side.signature',chatId:CHAT});
   expect(owner.turn).toHaveBeenCalledWith(session,{route:'harness',permit,attestedProvider:null,explainers:false},{question:'How much leave do I have?',companyId:'00000000-0000-4000-8000-00000000c0aa',locale:'en'});
   await askFromWorkspaceAction({question:'And next month?',previousExchangeId:'teras-turn-1',previousConversationToken:'tc1.model-side.signature'});
   expect(owner.turn.mock.calls[1][2]).toMatchObject({continuation:'tc1.model-side.signature'});
@@ -94,3 +104,76 @@ describe('switch on: the Teras harness',()=>{
   }finally{logged.mockRestore();}
  });
 });
+
+describe('stored chats (AI Centre issues 8 and 18)',()=>{
+ const harness={route:'harness' as const,permit,attestedProvider:null,explainers:false};
+ it('stores the answered turn under its conversation and scope, and names the stored chat in the reply',async()=>{
+  owner.route.mockResolvedValue(harness);
+  expect(await askFromLauncherAction({question:' How much leave do I have? ',path:'/leave'})).toMatchObject({ok:true,chatId:CHAT,conversationToken:'tc1.model-side.signature'});
+  expect(owner.record).toHaveBeenCalledExactlyOnceWith(session,{conversationId:CHAT,conversationScope:SCOPE,companyId:'00000000-0000-4000-8000-00000000c0aa',
+   question:'How much leave do I have?',reply:'You have 12 days.',modelRows:[{role:'user',content:'How much leave do I have?'},{role:'assistant',content:'You have [an earlier figure] days.'}],withheld:false});
+ });
+ it('withholds the words of a routed or refused turn: only the marker is recorded',async()=>{
+  owner.route.mockResolvedValue(harness);
+  for(const over of [{sensitive:true},{refused:true},{sensitive:true,crisis:true}]){
+   owner.record.mockClear();owner.turn.mockResolvedValueOnce(harnessTurn(over));
+   expect(await askFromWorkspaceAction({question:'My manager is harassing me.'})).toMatchObject({ok:true,chatId:CHAT});
+   expect(owner.record.mock.calls[0][1]).toMatchObject({withheld:true});
+  }
+ });
+ it('never changes the reply when storage fails or stores nothing, and stores no turn whose reply could not be shown',async()=>{
+  owner.route.mockResolvedValue(harness);
+  const logged=vi.spyOn(console,'error').mockImplementation(()=>{});
+  try{
+   owner.record.mockRejectedValueOnce(Object.assign(Error('PRIVATE store detail How much leave'),{code:'23514'}));
+   expect(await askFromWorkspaceAction({question:'How much leave do I have?'})).toEqual({ok:true,exchangeId:'teras-turn-1',answer:'harness reply',conversationToken:'tc1.model-side.signature'});
+   expect(logged).toHaveBeenLastCalledWith('[noveri conversation turn] chat not stored',{name:'Error',code:'23514',supportId:expect.stringMatching(/^[0-9a-f-]{36}$/)});
+   expect(JSON.stringify(logged.mock.calls)).not.toMatch(/PRIVATE|How much leave/);
+   owner.record.mockResolvedValueOnce(null);
+   expect(await askFromWorkspaceAction({question:'How much leave do I have?'})).not.toHaveProperty('chatId');
+   owner.record.mockClear();owner.render.mockRejectedValueOnce(Error('PRIVATE render detail'));
+   expect(await askFromWorkspaceAction({question:'How much leave do I have?'})).toEqual({ok:false,message:'aiCentre.conversation.errors.provider_error'});
+   expect(owner.record).not.toHaveBeenCalled();
+  }finally{logged.mockRestore();}
+ });
+ it('reopens a stored chat for Ask: its words without the withheld turn, a fresh continuation on the harness route, read-only otherwise',async()=>{
+  owner.reopen.mockResolvedValue({chatId:CHAT,companyId:'00000000-0000-4000-8000-00000000c0aa',earlierTurns:0,
+   turns:[{seq:1,withheld:false,question:'How much leave do I have?',reply:'You have **12** days.'},{seq:2,withheld:true},{seq:3,withheld:false,question:'And next month?',reply:'The same.'}],
+   history:[{role:'user',content:'How much leave do I have?'},{role:'assistant',content:'You have [an earlier figure] days.'}]});
+  owner.issue.mockReturnValue('tc1.reopened.signature');
+  owner.route.mockResolvedValue(harness);
+  const reopened=await openStoredChatAction({chatId:CHAT});
+  expect(owner.reopen).toHaveBeenCalledExactlyOnceWith(session,CHAT,SCOPE);
+  expect(owner.issue).toHaveBeenCalledExactlyOnceWith(session,CHAT,[{role:'user',content:'How much leave do I have?',side:'model'},{role:'assistant',content:'You have [an earlier figure] days.',side:'model'}]);
+  expect(reopened).toMatchObject({ok:true,chatId:CHAT,conversationToken:'tc1.reopened.signature'});
+  if(!reopened.ok)throw Error('Expected a reopened chat.');
+  expect(reopened.turns.map(turn=>[turn.id,turn.question])).toEqual([[`teras-chat-${CHAT}-1`,'How much leave do I have?'],[`teras-chat-${CHAT}-3`,'And next month?']]);
+  expect(JSON.stringify(reopened.turns)).not.toContain('harass');
+  // The switch closed (or unreadable): the chat opens read-only, with no continuation.
+  owner.issue.mockClear();
+  for(const route of [async()=>({route:'closed'}),async()=>{throw Error('PRIVATE switch failure');}]){
+   owner.route.mockImplementationOnce(route);
+   const readOnly=await openStoredChatAction({chatId:CHAT});
+   expect(readOnly).toMatchObject({ok:true,chatId:CHAT});expect(readOnly).not.toHaveProperty('conversationToken');
+  }
+  expect(owner.issue).not.toHaveBeenCalled();
+  // Refused by the owner (another login, scope or role, expired, no grant): one closed message.
+  owner.reopen.mockRejectedValueOnce(Error('PRIVATE refusal'));
+  expect(await openStoredChatAction({chatId:CHAT})).toEqual({ok:false,message:'assistant.workspace.conversation.unavailable'});
+ });
+ it('the panel and Ask continue one stored chat: the panel names it, Ask reopens it and the next turn goes on in it',async()=>{
+  owner.route.mockResolvedValue(harness);
+  const panel=await askFromLauncherAction({question:'How much leave do I have?',path:'/leave'});
+  if(!panel.ok||!panel.chatId)throw Error('Expected a stored panel turn.');
+  owner.reopen.mockResolvedValue({chatId:panel.chatId,companyId:'00000000-0000-4000-8000-00000000c0aa',earlierTurns:0,
+   turns:[{seq:1,withheld:false,question:'How much leave do I have?',reply:'You have 12 days.'}],history:[{role:'user',content:'How much leave do I have?'}]});
+  owner.issue.mockReturnValue('tc1.reopened.signature');
+  const ask=await openStoredChatAction({chatId:panel.chatId});
+  if(!ask.ok||!ask.conversationToken)throw Error('Expected a continuable chat.');
+  // The Ask page seeds the conversation with exchangeId 'teras-chat-<id>' and the fresh continuation.
+  await askFromWorkspaceAction({question:'And next month?',previousExchangeId:'teras-chat-'+panel.chatId,previousConversationToken:ask.conversationToken});
+  expect(owner.turn.mock.calls.at(-1)?.[2]).toMatchObject({question:'And next month?',continuation:'tc1.reopened.signature'});
+  expect(owner.record.mock.calls.map(call=>call[1].conversationId)).toEqual([panel.chatId,panel.chatId]);
+ });
+});
+

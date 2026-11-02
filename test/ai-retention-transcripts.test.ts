@@ -20,7 +20,8 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();base=await seedBase();
  const hired=await hireEmployee(adminCtx(base),{person:{fullName:'Fictional transcript owner',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  userId=await createAppUser(base.tenantId,hired.personId,'employee');});
-const zero={reviews:0,feedback:0,transcripts:0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0};
+// chats: AI Centre stored chats the same runner hard-deletes (migration 0952); none exist in these fixtures.
+const zero={reviews:0,feedback:0,transcripts:0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,chats:0};
 async function exchange(tenantId:string,user:string,ageDays:number){const id=randomUUID();await owner.db.execute(sql`insert into public.assistant_exchange(id,tenant_id,app_user_id,asked_at,question,answer,tool_calls,disclosure_receipt,error,provider,model,turn_count,input_tokens,output_tokens,cached_input_tokens)
  values(${id}::uuid,${tenantId}::uuid,${user}::uuid,clock_timestamp()-make_interval(days=>${ageDays}),'FICTIONAL PRIVATE QUESTION','FICTIONAL PRIVATE ANSWER','[{"name":"fixture","input":{"private":"FICTIONAL INPUT"},"rowCount":1}]'::jsonb,'FICTIONAL SEALED PROOF','FICTIONAL GENERIC ERROR','openai','fictional-model',2,11,3,2)`);return id;}
 /** In-window consent opinion linked to an exchange; only the exchange's retirement may remove it. */

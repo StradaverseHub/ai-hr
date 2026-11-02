@@ -10,7 +10,7 @@ import {ThinkingIndicator} from './thinking-indicator';
 import { askFromLauncherAction } from '@/app/assistant/launcher-actions';
 import { aiCentreName } from '@/lib/ai-centre/brand';
 
-type Turn = { id: number; question: string; area: PageArea | null; stale?: true; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true } | { ok: false; message: string } };
+type Turn = { id: number; question: string; area: PageArea | null; stale?: true; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true; chatId?: string } | { ok: false; message: string } };
 
 /** The floating Assistant. Rendered only when the shell decided this login may see it (see
  * core/assistant-launcher.ts); every question still goes through the Assistant's own checks. It opens as a
@@ -123,7 +123,8 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
             {!turn.reply ? <ThinkingIndicator label={t('working')}/>
               : !turn.reply.ok ? <p role="alert">{turn.reply.message}</p>
               : <div className="space-y-2">{turn.reply.answer ?? <p className="text-muted-foreground">{t('noCard')}</p>}
-                  <Link href={`/assistant?e=${encodeURIComponent(turn.reply.exchangeId)}`} className="inline-flex min-h-11 items-center text-xs font-medium text-primary hover:underline">{t('openInAssistant')}</Link></div>}
+                  {/* AI Centre issue 18: a stored chat opens in Ask and continues there; a closed-grammar exchange opens as before. */}
+                  <Link href={turn.reply.chatId ? `/assistant?chat=${encodeURIComponent(turn.reply.chatId)}` : `/assistant?e=${encodeURIComponent(turn.reply.exchangeId)}`} className="inline-flex min-h-11 items-center text-xs font-medium text-primary hover:underline">{t('openInAssistant')}</Link></div>}
           </fieldset>
         </div>)}
       </div>
