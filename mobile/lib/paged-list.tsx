@@ -139,10 +139,10 @@ export function PagedList<T>({ list, keyOf, renderItem, header, emptyText, conte
       renderItem={({ item }) => renderItem(item)}
       contentContainerStyle={contentContainerStyle}
       ListHeaderComponent={<View>{header}{list.error || list.loading ? <LoadState loading={list.loading} error={list.error} hasData={hasData} onRetry={list.retry} /> : null}</View>}
-      ListEmptyComponent={list.empty ? <Muted>{emptyText ?? t('listEmpty')}</Muted> : null}
+      ListEmptyComponent={list.empty ? <Muted>{emptyText ?? t('listEmpty')}</Muted> : undefined}
       ListFooterComponent={list.moreError
         ? <View><Muted>{t('listMoreFailed')}</Muted><Button title={t('retry')} kind="quiet" onPress={list.retryMore} /></View>
-        : list.loadingMore ? <Muted>{t('listLoadingMore')}</Muted> : null}
+        : list.loadingMore ? <Muted>{t('listLoadingMore')}</Muted> : undefined}
       onEndReached={list.loadMore}
       onEndReachedThreshold={0.5}
       refreshControl={<RefreshControl refreshing={list.refreshing} onRefresh={list.refresh} />}

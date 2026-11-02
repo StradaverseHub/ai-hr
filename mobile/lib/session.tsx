@@ -44,7 +44,7 @@ async function reassertScreenProtection() {
   try { await ScreenCapture.preventScreenCaptureAsync(`aihr-session-${protectionRound}`); }
   catch { /* No key window yet: the next foreground (or the launch assertion) retries. */ }
 }
-function visibility(value: string | null): Visibility {
+function visibility(value: string | null | undefined): Visibility {
   return value === 'active' ? 'active' : value === 'inactive' ? 'inactive' : 'background';
 }
 
