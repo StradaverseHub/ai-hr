@@ -146,7 +146,8 @@ describe('the eleven formerly fixture-blocked native approval kinds', () => {
 
 async function performanceFixture(onehr = true) {
   const [grade] = await owner.db.insert(s.jobGrade).values({ tenantId: b.tenantId, code: '12', name: 'Synthetic grade' }).returning();
-  for (const who of [employee, manager]) await owner.db.update(s.employment).set({ gradeId: grade.id }).where(eq(s.employment.id, who.employmentId));
+  // Opening a cycle initializes every eligible employee, including the negative-test actors.
+  for (const who of [employee, manager, hr, outsider]) await owner.db.update(s.employment).set({ gradeId: grade.id }).where(eq(s.employment.id, who.employmentId));
   const { cycleId } = await perf.createCycle(root, { name: 'Synthetic mobile journey', companyId: b.companyId, periodStart: `${year}-01-01`, periodEnd: `${year}-12-31` });
   if (onehr) {
     const policy = defaultPolicy(framework);
