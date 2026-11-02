@@ -4530,3 +4530,51 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_plan_acknowledgement_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER z_financial_onehr_plan_acknowledgement_guard BEFORE INSERT OR UPDATE ON public.performance_onehr_plan FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_plan_acknowledgement_guard();
+
+--> statement-breakpoint
+-- Preserve the native Zod string contract, including ISO year 0000 (which is
+-- valid in the source schema but cannot be validated through a PostgreSQL date cast).
+CREATE FUNCTION app.financial_onehr_iso_date(value text) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE y integer;m integer;d integer;maximum integer;
+BEGIN
+ IF value IS NULL OR value!~'^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN RETURN false;END IF;
+ y:=substring(value,1,4)::integer;m:=substring(value,6,2)::integer;d:=substring(value,9,2)::integer;
+ IF m NOT BETWEEN 1 AND 12 THEN RETURN false;END IF;
+ maximum:=CASE WHEN m=2 THEN CASE WHEN y%400=0 OR y%4=0 AND y%100<>0 THEN 29 ELSE 28 END WHEN m IN (4,6,9,11) THEN 30 ELSE 31 END;
+ RETURN d BETWEEN 1 AND maximum;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_iso_date(text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_iso_datetime(value text) RETURNS boolean
+LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(app.financial_onehr_iso_date(substring(value,1,10)) AND value~'^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]+)?Z$',false);
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_iso_datetime(text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_uuid_text(value text) RETURNS boolean
+LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(value~'^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',false);
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_uuid_text(text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_goal(p_goal jsonb) RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE normalized jsonb;history jsonb:='[]'::jsonb;entry jsonb;
+BEGIN
+ IF jsonb_typeof(p_goal) IS DISTINCT FROM 'object' OR NOT (p_goal ?& ARRAY['id','area','dueOn','onJob','fromOthers','formalLearning','status','managerComment'])
+ OR EXISTS(SELECT 1 FROM jsonb_each(p_goal) field WHERE field.key=ANY(ARRAY['id','area','dueOn','onJob','fromOthers','formalLearning','status','managerComment','progressNote','progressAt','editedByName','editedAt']) AND jsonb_typeof(field.value) IS DISTINCT FROM 'string')
+ OR NOT app.financial_onehr_uuid_text(p_goal->>'id') OR p_goal->>'status' NOT IN ('not_started','in_progress','done','dropped') OR p_goal->>'dueOn'<>'' AND NOT app.financial_onehr_iso_date(p_goal->>'dueOn')
+ OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(p_goal->>'area'))>300 OR EXISTS(SELECT 1 FROM jsonb_each(p_goal) field WHERE field.key=ANY(ARRAY['onJob','fromOthers','formalLearning','managerComment','progressNote']) AND app.financial_onehr_utf16_length(app.financial_onehr_js_trim(field.value#>>'{}'))>4000)
+ OR p_goal ? 'editedByName' AND app.financial_onehr_utf16_length(p_goal->>'editedByName')>300 OR p_goal ? 'progressAt' AND NOT app.financial_onehr_iso_datetime(p_goal->>'progressAt') OR p_goal ? 'editedAt' AND NOT app.financial_onehr_iso_datetime(p_goal->>'editedAt') THEN RAISE EXCEPTION 'Invalid stored development goal' USING ERRCODE='22023';END IF;
+ IF p_goal ? 'checkins' THEN
+  IF jsonb_typeof(p_goal->'checkins') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Invalid development check-in history' USING ERRCODE='22023';END IF;
+  FOR entry IN SELECT value FROM jsonb_array_elements(p_goal->'checkins') LOOP
+   IF jsonb_typeof(entry) IS DISTINCT FROM 'object' OR NOT (entry ?& ARRAY['status','note','at']) OR jsonb_typeof(entry->'status') IS DISTINCT FROM 'string' OR entry->>'status' NOT IN ('not_started','in_progress','done','dropped') OR jsonb_typeof(entry->'note') IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(entry->>'note'))>4000 OR jsonb_typeof(entry->'at') IS DISTINCT FROM 'string' OR NOT app.financial_onehr_iso_datetime(entry->>'at') THEN RAISE EXCEPTION 'Invalid development check-in history' USING ERRCODE='22023';END IF;
+   history:=history||jsonb_build_array(jsonb_build_object('status',entry->'status','note',app.financial_onehr_js_trim(entry->>'note'),'at',entry->'at'));
+  END LOOP;
+ END IF;
+ SELECT jsonb_object_agg(field.key,CASE WHEN field.key=ANY(ARRAY['area','onJob','fromOthers','formalLearning','managerComment','progressNote']) THEN to_jsonb(app.financial_onehr_js_trim(field.value#>>'{}')) WHEN field.key='checkins' THEN history ELSE field.value END) INTO normalized
+ FROM jsonb_each(p_goal) field WHERE field.key=ANY(ARRAY['id','area','dueOn','onJob','fromOthers','formalLearning','status','managerComment','progressNote','progressAt','checkins','editedByName','editedAt']);
+ RETURN normalized;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_goal(jsonb) FROM PUBLIC,ai_hr_app;
