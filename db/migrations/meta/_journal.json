@@ -4558,6 +4558,13 @@
       "when": 1793330000344,
       "tag": "0944_lifecycle_rewards_notice_actions",
       "breakpoints": true
+    },
+    {
+      "idx": 767,
+      "version": "7",
+      "when": 1793330000345,
+      "tag": "0945_financial_setup_actions",
+      "breakpoints": true
     }
   ]
 }

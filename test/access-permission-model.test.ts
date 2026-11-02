@@ -70,3 +70,28 @@ it('retains a recovery administrator who can actually open and save access confi
  const before=snapshot(),after={...before,overrides:[{userId:'admin',capabilityId:'access.configure',companyId:null,effect:'deny' as const}]};
  expect(()=>assertSystemAdministratorSurvives(before,after,catalog,evidence)).toThrow(/lastAdministrator/);
 });
+
+describe('precise submenu prerequisites',()=>{
+ const ids=['payroll.view','payroll.add','function.payroll.individualTransactions.view','function.payroll.individualTransactions.add','function.payroll.process.view','function.payroll.process.add'];
+ const definitions:AccessCapability[]=ids.map(id=>({id,scope:'company',supported:true,bindings:[{owner:'model-fixture',operation:'test'}],prerequisites:id.startsWith('function.')?[id.endsWith('.view')?'payroll.view':'payroll.add']:[]}));
+ const source=()=>{const value=snapshot();value.groups=value.groups.map((group,index)=>index===1?{...group,grants:ids.map(capabilityId=>({capabilityId,companyId:'parent'}))}:group);return value;};
+ it('denies one submenu without revoking another and keeps the exact submenu View floor',()=>{
+  const value=source();value.overrides=[{userId:'worker',capabilityId:'function.payroll.process.add',companyId:'child',effect:'deny'}];
+  expect(resolveAccessCapability(value,definitions,'worker','function.payroll.process.add',target,evidence).allowed).toBe(false);
+  expect(resolveAccessCapability(value,definitions,'worker','function.payroll.individualTransactions.add',target,evidence).allowed).toBe(true);
+  value.overrides=[...value.overrides,{userId:'worker',capabilityId:'function.payroll.individualTransactions.view',companyId:'child',effect:'deny'}];
+  expect(resolveAccessCapability(value,definitions,'worker','function.payroll.individualTransactions.add',target,evidence)).toMatchObject({allowed:false,reason:'denied'});
+ });
+ it('enforces parent module denial and its delegation ceiling',()=>{
+  const value=source();value.overrides=[{userId:'worker',capabilityId:'payroll.add',companyId:'child',effect:'deny'}];
+  expect(resolveAccessCapability(value,definitions,'worker','function.payroll.individualTransactions.add',target,evidence).allowed).toBe(false);
+  expect(()=>assertAccessGrantCeiling(value,definitions,'worker',[{capabilityId:'function.payroll.individualTransactions.add',companyId:'child'}],evidence)).toThrow('ceiling');
+ });
+});
+
+it('keeps live native authority separate from individual overrides and lets an explicit denial win',()=>{
+ const value=snapshot();value.groups=value.groups.filter(group=>group.systemAdministrator);value.nativeDefaults=[{userId:'worker',capabilityId:'workforce.view',companyId:'child'}];
+ const inherited=resolveAccessCapability(value,catalog,'worker','workforce.view',target,evidence);expect(inherited.allowed).toBe(true);expect(inherited.sources).toMatchObject([{nativeDerived:true,effect:'allow'}]);expect(value.overrides).toEqual([]);
+ value.overrides=[{userId:'worker',capabilityId:'workforce.view',companyId:'child',effect:'deny'}];expect(resolveAccessCapability(value,catalog,'worker','workforce.view',target,evidence).reason).toBe('denied');
+ value.overrides=[];value.nativeDefaults=[];expect(resolveAccessCapability(value,catalog,'worker','workforce.view',target,evidence).allowed).toBe(false);
+});

@@ -164,6 +164,7 @@ import {
   payComponent,
   leaveSharedGroup,
   leaveSharedGroupMember,
+  payrollDocumentBatch,
   payrollBatch,
   payrollCycle,
   payrollPolicy,
@@ -6381,6 +6382,7 @@ export function concurrentEmploymentPersons(ctx: SessionContext) {
 
 /** The current principal's payslips (RLS already restricts to own employment). */
 export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly = false, existingTx?: Tx) {
+  const payrollBatch=payrollDocumentBatch;
   return withReadTx(ctx, existingTx, async (tx) => {
     if(existingTx)await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);else await lockPayrollHistoryReadTx(tx,ctx.tenantId);
     if (employmentIds.length === 0) return [];
@@ -6429,6 +6431,7 @@ export function myOwnPayslips(ctx:SessionContext,employmentIds:string[]) {
 
 /** Own current/historical released run index. No caller-provided employment population. */
 export function myReleasedPayslipRuns(ctx:SessionContext, existingTx?: Tx) {
+  const payrollBatch=payrollDocumentBatch;
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
 
   assertModuleGate(ctx,'payroll');
@@ -6488,6 +6491,7 @@ export function myTaxRelief(
   employmentIds: string[],
   year?: number,
 ): Promise<TaxReliefResult> {
+  const payrollBatch=payrollDocumentBatch;
   const taxYear = year ?? new Date().getFullYear();
   return withTenant(ctx, async (tx): Promise<TaxReliefResult> => {
     if (employmentIds.length === 0) return { year: taxYear, rows: [], ytd: 0 };

@@ -92,6 +92,7 @@ import {
   jobGrade,
   loanRepayment,
   payComponent,
+  payrollDocumentBatch,
   payrollBatch,
   payrollBatchComponent,
   payrollCycle,
@@ -1050,6 +1051,7 @@ export function listProcessedPayslipsAcross(
     limit?: number;
   },
 ): Promise<ProcessedPayslipViewRow[]> {
+  const payrollBatch=payrollDocumentBatch;
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
   const cycle = cleanRunType(p.cycle);
   const limit = Number.isInteger(p.limit) && p.limit! > 0 ? p.limit! : undefined;
@@ -1177,6 +1179,7 @@ export function listPayslipRunsFor(
   ctx: SessionContext,
   p: { companyIds: string[]; employmentId: string },
 ): Promise<PayslipRunRow[]> {
+  const payrollBatch=payrollDocumentBatch;
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
   return withTenant(ctx, async (tx) => {
     const rows=await tx
@@ -1298,6 +1301,7 @@ export function listPayrollRegisterAcross(
   ctx: SessionContext,
   p: { companyIds: string[]; year?: number; month?: number; cycle?: string },
 ): Promise<PayrollRegisterRow[]> {
+  const payrollBatch=payrollDocumentBatch;
   if (p.companyIds.length === 0) return Promise.resolve([]);
   const cycle = cleanRunType(p.cycle);
   return withTenant(ctx, async (tx) => {
@@ -1532,6 +1536,7 @@ export function payslipForReview(
   ctx: SessionContext,
   p: { companyIds: string[]; payslipId: string },
 ): Promise<PayslipReviewRow | null> {
+  const payrollBatch=payrollDocumentBatch;
   if (p.companyIds.length === 0) return Promise.resolve(null); // fail closed — no scope, no payslip
   return withTenant(ctx, async (tx) => {
     const [liveRow] = await tx
@@ -2020,6 +2025,7 @@ const cleanZakatStatus = (v: unknown): 'processed' | 'closed' | undefined =>
 /** Shared query for the Zakat "Applied in payroll" history AND its CSV export (one source of truth). Zakat
  *  actually deducted (`payslip.statutory->>'zakat' > 0`) across processed runs in the scoped companies. */
 function queryZakatTxns(tx: Tx, p: ZakatTxnFilter): Promise<ZakatTxnViewRow[]> {
+  const payrollBatch=payrollDocumentBatch;
   const cycle = cleanRunType(p.cycle);
   const status = cleanZakatStatus(p.status);
   return tx

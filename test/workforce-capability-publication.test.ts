@@ -6,7 +6,7 @@ import {eq,sql} from 'drizzle-orm';
 import {migrateTestDb,resetDb,seedBase,adminCtx,owner,closeAll,type Base} from './harness';
 import {client,db} from '../db/client';
 import {appUser,tenant} from '../db/schema';
-import {publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS,WORKFORCE_CAPABILITY_BINDINGS_SHA256} from '../deploy/access/publish-workforce-capabilities';
+import {publishWorkforceActionPackage as publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS_V2 as WORKFORCE_CAPABILITY_BINDINGS,WORKFORCE_ACTION_PACKAGE_BINDINGS_SHA256 as WORKFORCE_CAPABILITY_BINDINGS_SHA256} from '../deploy/access/publish-workforce-capabilities';
 import {workforceCompanies} from '../core/workforce-access';
 import {readAccessConfigurationEditor} from '../core/access-configuration-editor';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
@@ -89,4 +89,34 @@ it('fences an actual pre-pinned repeatable-read maintenance transaction after pu
  await reached;try{expect(pinnedReached).toBe(true);await publishWorkforceCapabilities(owner.client);}finally{resume();}
  const error=await outcome;let code:string|undefined;for(let e=error;e&&typeof e==='object';e=e.cause){if(typeof e.code==='string'){code=e.code;break;}}
  expect(code).toBe('40001');
+});
+
+it('keeps unknown function keys closed and rejects runtime registry mutation',async()=>{
+ const result=await client.begin(async tx=>{
+  const ctx=adminCtx(b);await tx`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${b.adminUserId},true)`;
+  return tx`select app.function_action_allowed('unregistered.fixture','add',${b.companyId}::uuid) as bounded,app.function_global_action_allowed('unregistered.fixture','add') as global`;
+ });
+ expect(result[0]).toMatchObject({bounded:false,global:false});
+ await expect(client`select app.register_function_action('unregistered.fixture','view','company',NULL,NULL,'{}'::jsonb)`).rejects.toMatchObject({code:'42501'});
+});
+
+
+it('registers exact mixed-case native submenu IDs while preserving closed grammar and operations',async()=>{
+ const metadata={moduleKey:'financial',labelKey:'nav.payComponents',kind:'submenu',course:'administrative'};
+ // Preserve the production key's exact mixed-case grammar without colliding with its migration.
+ await owner.client.begin(async tx=>{
+  await tx`select app.register_function_action('payComponents.catalogueRegistrationRegression','view','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`;
+  await tx`select app.register_function_action('payComponents.catalogueRegistrationRegression','add','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`;
+  const rows=await tx`select id,prerequisites,supported from access_capability where id like 'function.payComponents.catalogueRegistrationRegression.%' order by id`;
+  expect(rows).toEqual([
+   {id:'function.payComponents.catalogueRegistrationRegression.add',prerequisites:['function.payComponents.catalogueRegistrationRegression.view'],supported:false},
+   {id:'function.payComponents.catalogueRegistrationRegression.view',prerequisites:[],supported:false},
+  ]);
+ });
+ for(const key of ['payComponents..catalogue','payComponents.catalogueRegistrationRegression.','payComponents/catalogue']){
+  await expect(owner.client`select app.register_function_action(${key},'view','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`).rejects.toMatchObject({code:'42501'});
+ }
+ await expect(owner.client`select app.register_function_action('payComponents.invalidOperation','VIEW','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`).rejects.toMatchObject({code:'42501'});
+ await expect(owner.client`insert into access_capability(id,scope) values('Legacy.MixedCase','tenant')`).rejects.toMatchObject({code:'23514'});
+ await expect(owner.client`insert into access_capability(id,scope) values('function.payComponents.catalogueRegistrationRegression.destroy','tenant')`).rejects.toMatchObject({code:'23514'});
 });

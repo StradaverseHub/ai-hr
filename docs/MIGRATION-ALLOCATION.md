@@ -940,7 +940,7 @@ and release evidence, and grants no deployment authority. Existing applied SQL i
 ## Administrative data-profile central enforcement — 2 November 2026 (provisional)
 
 Security worker appends `0938_data_permission_enforcement`, aggregate index760,
-when1793330000338, SQL SHA256 `4f6e420f99ce792b628e86e21cfd0f89ef5fd16a689b6c53d3a613580d174b42`. Its owned source journal leaves
+when1793330000338, SQL SHA256 `9e5160d512251a320473c63659db518c73978acd81347400fedc5516009d730b`. Its owned source journal leaves
 index759 reserved for the independent0937 / when1793330000337 bypass-owner migration.
 The integration owner must merge0937 in chronological order and re-audit competing claims and live
 watermark before installation. This central row-scope prerequisite does not claim that the complete
@@ -966,7 +966,7 @@ Unapplied source only; re-audit live watermark and refs before coordinated relea
 ## Financial and Letters action restrictions — 2 November 2026 (provisional)
 
 Security worker reserves `0941_financial_letter_actions`, aggregate index763,
-when1793330000341, SQL SHA256 `22f31fc660d771383ab50c6ecd12d18c6dde6aa31d13f5e04739eefec2f44a5e`. This source checkpoint depends on
+when1793330000341, SQL SHA256 `bcd2cf16a305427c6b721133d58b0fa996eb12a1e79d46ac332384a816581c94`. This source checkpoint depends on
 0939 Workforce action helpers and0940 bounded Profile effect proofs. Parent owns0942
 Organisation/Settings and0945 Financial setup/history;0943/0944 are independently allocated.
 The code-owned publisher requires `app.financial_letter_bindings_complete()`; this checkpoint
@@ -978,7 +978,7 @@ authorized.
 ## Organisation and shared configuration actions — 2 November 2026 (provisional)
 
 Parent BOARD owner reserves `0942_organisation_settings_actions`, aggregate idx764 /
-when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `135ccc711c6d3bfc801df1dd55c4a6b6834ff85dd08a069a032309696948d369`.
+when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `6fd3aa99be497c6660792e7f7aa7d02e30b1ac95d1fcdc9a43cb1077ba75a5d1`.
 This is unapplied implementation source. It retains native role/company floors, separates
 reference pickers from maintenance views, guards current/proposed organisation scopes, and
 binds employee-number allocation/release to private native effects. Hosted SQL/behavior and
@@ -998,3 +998,16 @@ actual worktree journals, finding no0944 filename/timestamp claim. One unrelated
 worktree journal was also checked textually for this identity. The live watermark was **not
 verified**: this reservation is unapplied and provisional, and must be refreshed against the
 ordered applied ledger and competing claims before admission. It grants no installation authority.
+
+## Financial setup/native import boundary — 2 November 2026 (provisional)
+
+BOARD parent reserves `0945_financial_setup_actions`, aggregate idx767 /when1793330000345.
+Source SHA256 `11f14fccf4292453dbbcd779578e3ee6bfab244d7ea640b117c069d166f9814f`. Reserved0943/idx765 and0944/idx766 remain with
+parallel owners and must be inserted in timestamp order during integration; no existing entry
+is renumbered. This is an unapplied development checkpoint, not installed or accepted source.
+Its catalogue, history, tax, formula and loan guards still require hosted qualification,
+precise module/submenu facts, and TP1/CP38/statutory input qualification and binding closure.
+`financial_setup_bindings_complete()` deliberately remains absent. The genuine owner publisher
+must refuse the incomplete family. Preserve all native self/assigned and financial calculation
+courses; new authority cannot arise from posted roles or a context flag. Re-audit current refs,
+all source claims and the post-Noveri installation ledger before any release admission.

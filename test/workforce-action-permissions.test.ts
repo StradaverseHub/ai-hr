@@ -4,9 +4,10 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import * as s from '../db/schema';
+import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand} from '../core/data-permissions';
 import {hireEmployee,setEmploymentGrade} from '../core/org';
 import {saveEmployeeDraft,completeEmployeeDraft,getEmployeeDraft,discardEmployeeDraft} from '../core/employee-draft';
-import {publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS} from '../deploy/access/publish-workforce-capabilities';
+import {publishWorkforceActionPackage as publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS_V2 as WORKFORCE_CAPABILITY_BINDINGS} from '../deploy/access/publish-workforce-capabilities';
 import {maintainWorkforceRecord,workforceEditor} from '../core/workforce-maintenance';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
@@ -128,4 +129,31 @@ describe('genuine Workforce operations',()=>{
   const context=await ctx();const draft=await saveEmployeeDraft(context,{data:{profile:{fullName:'Fictional retained source',primaryEmail:randomUUID()+'@fixture.invalid'},employment:{companyId:b.companyId}},currentStep:0});
   await deny('delete');await expect(discardEmployeeDraft(await ctx(),draft.id)).rejects.toThrow();expect(await getEmployeeDraft(await ctx(),draft.id)).not.toBeNull();
  });
+});
+
+
+it('checks newly administrative recipients in previews and direct SQL without persisting a failed proposal',async()=>{
+ const root=await ctx();
+ const [limited,target]=await owner.db.insert(s.appUser).values([{tenantId:b.tenantId,workosUserId:'limited_config_'+randomUUID()},{tenantId:b.tenantId,workosUserId:'future_admin_'+randomUUID()}]).returning();
+ await owner.db.insert(s.roleAssignment).values([{tenantId:b.tenantId,appUserId:limited.id,role:'hr_admin',companyId:null},{tenantId:b.tenantId,appUserId:target.id,role:'employee',companyId:null}]);
+ const profileId=randomUUID();
+ const dataChange=async(command:DataPermissionCommand)=>{const state=await readDataPermissions(root),preview=await previewDataPermission(root,state.revision,command);await saveDataPermission(root,state.revision,command,preview.fingerprint);};
+ await dataChange({kind:'create',profileId,name:'Fictional configurator department',enabled:true,rules:{legacyCompany:false,predicates:[{field:'department',values:[b.deptA]}]}});
+ await dataChange({kind:'assign',userId:limited.id,profileId});
+ const groupId=randomUUID();
+ for(const command of [{kind:'createGroup' as const,groupId,name:'Fictional employee function role'},{kind:'replaceGroupGrants' as const,groupId,grants:[{capabilityId:'workforce.view',companyId:b.companyId},{capabilityId:'workforce.add',companyId:b.companyId}]}]){
+  const state=await withTenant(root,tx=>accessConfigurationStore.loadCurrent(tx,root)),edit={expectedRevision:state.snapshot.revision,command};const preview=await previewAccessConfiguration(root,edit,accessConfigurationStore);await saveAccessConfiguration(root,{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);
+ }
+ const actor={...root,userId:limited.id,grants:[{role:'hr_admin',companyId:null}]};
+ const command={kind:'setMembership' as const,groupId,userId:target.id,companyId:b.companyId,enabled:true};
+ const state=await withTenant(actor,tx=>accessConfigurationStore.loadCurrent(tx,actor));
+ const before=await owner.client`select * from access_membership where tenant_id=${b.tenantId}::uuid order by id`;
+ await expect(previewAccessConfiguration(actor,{expectedRevision:state.snapshot.revision,command},accessConfigurationStore)).rejects.toThrow('ceiling');
+ await expect(withTenant(actor,tx=>tx.execute(sql`select app.access_configuration_commit(${state.snapshot.revision}::uuid,${state.scopeFingerprint},${JSON.stringify(command)}::jsonb,${randomUUID()}::uuid)`))).rejects.toThrow();
+ expect(await owner.client`select * from access_membership where tenant_id=${b.tenantId}::uuid order by id`).toEqual(before);
+ await dataChange({kind:'assign',userId:target.id,profileId});
+ const next=await withTenant(actor,tx=>accessConfigurationStore.loadCurrent(tx,actor)),edit={expectedRevision:next.snapshot.revision,command};const preview=await previewAccessConfiguration(actor,edit,accessConfigurationStore);
+ expect(await owner.client`select * from access_membership where tenant_id=${b.tenantId}::uuid order by id`).toEqual(before);
+ await saveAccessConfiguration(actor,{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);
+ expect(await owner.client`select user_id from access_membership where tenant_id=${b.tenantId}::uuid and group_id=${groupId}::uuid and retired_at is null`).toMatchObject([{user_id:target.id}]);
 });
