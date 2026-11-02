@@ -9,6 +9,9 @@ import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit
 import {saveProfileVisibilityPolicy} from '../core/profile-edit-policy';
 import {decideProfileChange,listProfileChangeRequests,pendingProfileTaskMetadata} from '../core/profile';
 import {previewProfileRoutingPolicy,saveProfileRoutingPolicy,profileRouteCounts} from '../core/profile-routing';
+import {setCompensation} from '../core/comp';
+import {setStatutoryProfileMY} from '../localization/my/statutory';
+import {createBatch,generatePayslips} from '../core/payroll';
 import {addQualification} from '../core/qualifications';
 import {addDependent} from '../core/dependents';
 import {setTenantSetting} from '../core/tenant-settings';
@@ -55,13 +58,15 @@ it('never turns task preparation into arbitrary fields, a different person, or a
 it('uses the actual request balance for a manager decision while keeping the raw ledger hidden',async()=>{
  const subject=await employee('LEAVE-SUBJECT'),manager=await employee('LEAVE-MANAGER','manager');await setReportingLine(root,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2024-01-01'});
  await owner.db.insert(s.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,entryType:'accrual',days:'10.00',effectiveOn:'2026-01-01'});
+ await setCompensation(root,{employmentId:subject.employmentId,basicSalary:4000,monthlyAllowance:0,effectiveFrom:'2024-01-01'});await setStatutoryProfileMY(root,{personId:subject.personId,icNumber:'900101015201'});await owner.db.update(s.leaveType).set({paid:false,sendToPayroll:true}).where(eq(s.leaveType.id,b.annualLeaveTypeId));
+ const processed=await createBatch(root,{companyId:b.companyId,payPeriod:todayInKualaLumpur().slice(0,7),scope:{employmentIds:[subject.employmentId]}});await generatePayslips(root,{batchId:processed.batchId});
  const date=todayInKualaLumpur(),[request]=await owner.db.insert(s.leaveRequest).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date,days:'1.00',status:'pending'}).returning();await restrict(manager,'LEAVE-MANAGER');await noRaw(manager.ctx,subject);
  expect(await withTenant(manager.ctx,tx=>tx.select().from(s.leaveLedger).where(eq(s.leaveLedger.employmentId,subject.employmentId)))).toEqual([]);expect((await listLeaveRequests(manager.ctx,undefined,20,{requestId:request.id})).map(row=>row.id)).toEqual([request.id]);
  const unrelated=await employee('LEAVE-NO-TASK');await setReportingLine(root,{subordinateEmploymentId:unrelated.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2024-01-01'});expect(await withTenant(manager.ctx,tx=>tx.execute(sql`select * from app.delegated_approval_subject(${unrelated.employmentId}::uuid,'leave','leave.application')`))).toEqual([]);
  const [balance]=await withTenant(manager.ctx,tx=>tx.execute<{value:string}>(sql`select app.leave_task_balance(${request.id}::uuid,${b.annualLeaveTypeId}::uuid) as value`));expect(Number(balance.value)).toBe(10);
  await expect(withTenant(manager.ctx,tx=>tx.insert(s.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,entryType:'debit',days:'-1.00',sourceRequestId:request.id,effectiveOn:date}))).rejects.toThrow();
  await owner.db.update(s.leaveType).set({maxDaysPerLeaveYear:'0.50'}).where(eq(s.leaveType.id,b.annualLeaveTypeId));await expect(decideLeave(manager.ctx,{leaveRequestId:request.id,decision:'approved',deciderEmploymentId:manager.employmentId})).rejects.toBeInstanceOf(LeaveYearApplicationLimitExceededError);await owner.db.update(s.leaveType).set({maxDaysPerLeaveYear:null}).where(eq(s.leaveType.id,b.annualLeaveTypeId));
- await decideLeave(manager.ctx,{leaveRequestId:request.id,decision:'approved',deciderEmploymentId:manager.employmentId});const [after]=await owner.client`select sum(days)::text as value from leave_ledger where employment_id=${subject.employmentId} and leave_type_id=${b.annualLeaveTypeId}`;expect(Number(after.value)).toBe(9);await noRaw(manager.ctx,subject);
+ await decideLeave(manager.ctx,{leaveRequestId:request.id,decision:'approved',deciderEmploymentId:manager.employmentId});const [after]=await owner.client`select sum(days)::text as value from leave_ledger where employment_id=${subject.employmentId} and leave_type_id=${b.annualLeaveTypeId}`;expect(Number(after.value)).toBe(9);expect((await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,processed.batchId)))[0].needsRecalcAt).not.toBeNull();expect((await owner.client`select count(*)::int as n from app.leave_task_effect where tenant_id=${b.tenantId}`)[0].n).toBe(0);await noRaw(manager.ctx,subject);
 });
 
 it('applies an exact assigned bank correction without exposing identity or sibling statutory fields',async()=>{

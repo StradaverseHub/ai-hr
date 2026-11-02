@@ -725,3 +725,28 @@ DO $$ DECLARE definition text;needle text:='app.can_see_employment(lr.employment
  IF position(needle IN definition)=0 THEN RAISE EXCEPTION 'Leave payroll effect owner changed';END IF;
  definition:=replace(definition,needle,needle||' OR (action=''approval'' AND app.leave_task_effect_pending(lr.id))');EXECUTE definition;
 END $$;
+--> statement-breakpoint
+CREATE TABLE app.leave_task_payroll_effect(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,request_id uuid NOT NULL,batch_id uuid NOT NULL,before_hash text NOT NULL,after_hash text NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,request_id,batch_id,before_hash,after_hash));
+ALTER TABLE app.leave_task_payroll_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.leave_task_payroll_effect FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+DO $$ DECLARE definition text;needle text:='ELSE recalc_employment_ids END WHERE id=b.id;'; BEGIN
+ definition:=pg_get_functiondef('app.record_leave_payroll_effect(uuid,uuid,text,jsonb,text)'::regprocedure);
+ IF position(needle IN definition)=0 THEN RAISE EXCEPTION 'Leave payroll follow-up storage owner changed';END IF;
+ definition:=replace(definition,needle,needle||E'\n IF app.leave_task_effect_pending(lr.id) THEN INSERT INTO app.leave_task_payroll_effect VALUES(pg_current_xact_id(),lr.tenant_id,app.current_user_id(),lr.id,b.id,encode(sha256(convert_to(to_jsonb(b)::text,''UTF8'')),''hex''),(SELECT encode(sha256(convert_to(to_jsonb(actual)::text,''UTF8'')),''hex'') FROM public.payroll_batch actual WHERE actual.id=b.id AND actual.tenant_id=b.tenant_id))ON CONFLICT DO NOTHING;END IF;');EXECUTE definition;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.leave_task_payroll_approved(p_batch uuid,p_before jsonb,p_after jsonb)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM app.leave_task_payroll_effect e JOIN app.leave_task_effect task ON task.xact_id=e.xact_id AND task.tenant_id=e.tenant_id AND task.user_id=e.user_id AND task.request_id=e.request_id
+ WHERE e.xact_id=pg_current_xact_id() AND e.tenant_id=app.current_tenant_id() AND e.user_id=app.current_user_id() AND e.batch_id=p_batch
+ AND e.before_hash=encode(sha256(convert_to(p_before::text,'UTF8')),'hex') AND e.after_hash=encode(sha256(convert_to(p_after::text,'UTF8')),'hex') AND app.leave_task_effect_approved(task.ledger_id));
+$$;
+REVOKE ALL ON FUNCTION app.leave_task_payroll_approved(uuid,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.leave_task_cleanup()RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ DELETE FROM app.leave_task_payroll_effect WHERE xact_id=pg_current_xact_id() AND tenant_id=NEW.tenant_id AND user_id=NEW.actor_id AND request_id=NEW.aggregate_id;
+ DELETE FROM app.leave_task_effect WHERE xact_id=pg_current_xact_id() AND tenant_id=NEW.tenant_id AND user_id=NEW.actor_id AND request_id=NEW.aggregate_id;
+ RETURN NULL;
+END $$;
