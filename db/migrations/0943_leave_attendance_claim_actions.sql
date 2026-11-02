@@ -2634,3 +2634,25 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.leave_own_withdraw(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.leave_own_withdraw(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- The application Leave ledger is append-only; native reversals are new entries.
+-- Owner-only reset/maintenance retains its original physical authority.
+REVOKE UPDATE,DELETE ON public.leave_ledger FROM ai_hr_app;
+CREATE TRIGGER aaa_leave_ledger_access BEFORE INSERT OR UPDATE OR DELETE ON public.leave_ledger FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_statement_lock();
+CREATE FUNCTION app.leave_ledger_source_identity() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()
+ OR NOT EXISTS(SELECT 1 FROM public.employment subject WHERE subject.id=NEW.employment_id AND subject.tenant_id=NEW.tenant_id)
+ OR NOT EXISTS(SELECT 1 FROM public.leave_type actual WHERE actual.id=NEW.leave_type_id AND actual.tenant_id=NEW.tenant_id)
+ OR (NEW.source_request_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.leave_request actual WHERE actual.id=NEW.source_request_id AND actual.tenant_id=NEW.tenant_id AND actual.employment_id=NEW.employment_id))
+ OR (NEW.adjustment_batch_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.leave_adjustment_batch actual WHERE actual.id=NEW.adjustment_batch_id AND actual.tenant_id=NEW.tenant_id))
+ OR (NEW.bf_import_run_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.leave_bf_import_run actual WHERE actual.id=NEW.bf_import_run_id AND actual.tenant_id=NEW.tenant_id)) THEN
+  RAISE EXCEPTION 'Leave ledger source unavailable' USING ERRCODE='42501';
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_ledger_source_identity() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_leave_ledger_source_identity BEFORE INSERT ON public.leave_ledger FOR EACH ROW EXECUTE FUNCTION app.leave_ledger_source_identity();

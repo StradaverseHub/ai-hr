@@ -607,3 +607,13 @@ it('requeues a completed own withdrawal if its actual request changes after an e
  const [persisted]=await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId));expect(persisted).toMatchObject({status:'pending',reason:null});
  expect(await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.self-cancelled')))).toEqual([]);
 });
+
+it('retains native Leave ledger entries and rejects physical app rewrites or a different request subject',async()=>{
+ const subject=await hire('employee'),other=await hire('employee'),typeId=await leaveType();
+ const {leaveRequestId}=await requestLeave(other.ctx,{employmentId:other.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const [entry]=await owner.db.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:typeId,entryType:'accrual',days:'2.00',effectiveOn:START}).returning();
+ expect(await withTenant(subject.ctx,tx=>tx.update(schema.leaveLedger).set({days:'100.00'}).where(eq(schema.leaveLedger.id,entry.id))).then(()=>null,pgSqlState)).toBe('42501');
+ expect(await withTenant(subject.ctx,tx=>tx.delete(schema.leaveLedger).where(eq(schema.leaveLedger.id,entry.id))).then(()=>null,pgSqlState)).toBe('42501');
+ expect(await withTenant(subject.ctx,tx=>tx.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:typeId,entryType:'debit',days:'1.00',sourceRequestId:leaveRequestId,effectiveOn:START})).then(()=>null,pgSqlState)).toBe('42501');
+ expect(await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId,subject.employmentId))).toEqual([entry]);
+});
