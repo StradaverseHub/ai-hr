@@ -626,3 +626,17 @@ A research pass over US and China platforms, standards, HR vendors, regulation, 
 The §10.4 triggers, plus: the Malaysia AI Governance Bill is tabled; any HR vendor ships decision-job delegation (none found); each MCP or A2A specification release (now roughly quarterly).
 
 Nothing in this section authorises a disclosure change, deployment or production contact.
+
+## Owner clarification — restart conversation history when access changes (3 November 2026)
+
+The owner answered: **“Restart history when access changes.”** A signed model-side continuation is therefore bound
+to the current tenant, login, person, roles and company grants using the existing task-memory authority key. A changed
+authority starts a fresh conversation for the current question, without resending prior history or loading the old
+conversation's task memory. Equivalent role/grant ordering preserves normal continuation. An authentic, unexpired
+legacy token without this authority witness also restarts; invalid signatures, malformed tokens, other logins/tenants
+and expired tokens retain their refusal behavior. Native session/principal owners still establish current authority;
+conversation history never refreshes or grants it.
+
+The two-hour continuation lifetime, ordinary transcript/task-memory retention and erasure owners remain unchanged.
+Restarting does not delete or rewrite old records. This clarification does not approve a new source digest, provider
+disclosure purpose, model-quality result, merge or deployment.

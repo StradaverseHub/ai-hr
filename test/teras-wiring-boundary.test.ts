@@ -1,6 +1,7 @@
 /** ADR-0169 §5.1 wiring — boundaries and pure rules, no database and no provider: who may import the harness and
  * the wiring, the single-use tenant-bound permit, the signed model-side history, the provider compliance rule,
  * the provider-data contract's conversion, and the staging operator path's refusals. Fictional values only. */
+import {createHmac} from 'node:crypto';
 import {readdirSync,readFileSync,statSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterEach,describe,expect,it,vi} from 'vitest';
@@ -99,6 +100,68 @@ describe('model-side history',()=>{
   expect(kept.history.map(row=>row.content)).toEqual(long.slice(-MAX_HISTORY_MESSAGES).map(row=>row.content));
   await expect(runTurn({enabled:HARNESS_TEST_ONLY,ctx:employee,conversationId:'c',question:'And next month?',scope:SCOPE,model:scriptedModel([]),memory:new InMemoryTaskMemoryStore(),tools:fakeTools().provider,
    history:[{role:'assistant',content:'You have 17.25 days.'}] as never})).rejects.toBeInstanceOf(PersonSideHistory);
+ });
+});
+
+describe('current-authority continuation restart',()=>{
+ const id='0b6f5e3a-1c2d-4e5f-8a9b-0c1d2e3f4a5b',now=1000;
+ const history:readonly ModelHistoryMessage[]=[{role:'user',content:'Prior question',side:'model'},{role:'assistant',content:'Prior authorized context',side:'model'}];
+ // Independent old-wire encoder also lets malformed-but-authentic tokens reach the
+ // structural guard, instead of merely proving that tampered HMACs refuse.
+ const signed=(prefix:string,value:unknown)=>{
+  const payload=Buffer.from(JSON.stringify(value)).toString('base64url');
+  const key=createHmac('sha256',SECRET).update('teras:conversation-history:v1').digest();
+  return prefix+'.'+payload+'.'+createHmac('sha256',key).update(payload).digest('base64url');
+ };
+ const payloadOf=(token:string)=>JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString()) as Record<string,unknown>;
+ it('keeps reordered equivalent roles and company grants in the same conversation with unchanged expiry',()=>{
+  vi.stubEnv('TERAS_PROPOSAL_SECRET',SECRET);
+  const ctx:SessionContext={...employee,roles:['hr_admin','manager'],grants:[{role:'hr_admin',companyId:TENANT_A},{role:'manager',companyId:TENANT_B}]};
+  const token=issueConversationContinuation(ctx,id,history,now);
+  expect(token.startsWith('tc2.')).toBe(true);
+  const reordered={...ctx,roles:[...ctx.roles!].reverse(),grants:[...ctx.grants!].reverse()};
+  expect(verifyConversationContinuation(reordered,token,now+2*60*60*1000-1)).toEqual({conversationId:id,history});
+  expect(()=>verifyConversationContinuation(reordered,token,now+2*60*60*1000)).toThrow(ContinuationRefused);
+ });
+ it('restarts for same-login role, person and company-scope changes instead of refusing the next question',()=>{
+  vi.stubEnv('TERAS_PROPOSAL_SECRET',SECRET);
+  const ctx:SessionContext={...employee,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:TENANT_A},{role:'hr_admin',companyId:TENANT_B}]};
+  const token=issueConversationContinuation(ctx,id,history,now);
+  for(const changed of [
+   {...ctx,roles:['employee'],grants:[{role:'employee',companyId:TENANT_A}]},
+   {...ctx,personId:otherPerson.personId},
+   {...ctx,grants:[{role:'hr_admin',companyId:TENANT_A}]},
+   {...ctx,grants:[...ctx.grants!,{role:'hr_admin',companyId:SCOPE.companyId}]},
+  ] satisfies SessionContext[]){
+   const restarted=verifyConversationContinuation(changed,token,now+1);
+   expect(restarted.conversationId).not.toBe(id);expect(restarted.history).toEqual([]);
+  }
+ });
+ it('authenticates valid legacy history before restarting and never relaxes identity or malformed-token refusals',()=>{
+  vi.stubEnv('TERAS_PROPOSAL_SECRET',SECRET);
+  const legacy={v:1,t:employee.tenantId,u:employee.userId,c:id,h:history.map(({role,content})=>({role,content})),e:now+2*60*60*1000};
+  const token=signed('tc1',legacy),restarted=verifyConversationContinuation(employee,token,now+1);
+  expect(restarted.conversationId).not.toBe(id);expect(restarted.history).toEqual([]);
+  for(const ctx of [otherTenant,otherPerson])expect(()=>verifyConversationContinuation(ctx,token,now+1)).toThrow(ContinuationRefused);
+  expect(()=>verifyConversationContinuation(employee,token,legacy.e)).toThrow(ContinuationRefused);
+  expect(()=>verifyConversationContinuation(employee,token.slice(0,-1)+'!',now+1)).toThrow(ContinuationRefused);
+  for(const malformed of [{...legacy,h:[{role:'tool',content:'not history'}]}, {...legacy,v:2}, {...legacy,extra:true}])
+   expect(()=>verifyConversationContinuation(employee,signed('tc1',malformed),now+1)).toThrow(ContinuationRefused);
+ });
+ it('refuses signed malformed history, authority and wire versions BEFORE an authority-mismatch restart',()=>{
+  vi.stubEnv('TERAS_PROPOSAL_SECRET',SECRET);
+  const original=payloadOf(issueConversationContinuation(employee,id,history,now));
+  const mismatched={...original,a:'0'.repeat(64)};
+  expect(verifyConversationContinuation(employee,signed('tc2',mismatched),now+1).history).toEqual([]);
+  for(const malformed of [
+   {...mismatched,h:null},{...mismatched,h:[{role:'tool',content:'invalid'}]},
+   {...mismatched,h:[{role:'assistant'}]}, {...mismatched,h:[{role:'assistant',content:'x'.repeat(8001)}]},
+   {...mismatched,h:[{role:'assistant',content:'x',extra:'unrecognized'}]},
+   {...mismatched,v:1},{...mismatched,v:3},{...mismatched,a:null},{...mismatched,a:'invalid'},
+   {...mismatched,extra:true},Object.fromEntries(Object.entries(mismatched).filter(([key])=>key!=='a')),
+  ])expect(()=>verifyConversationContinuation(employee,signed('tc2',malformed),now+1)).toThrow(ContinuationRefused);
+  expect(()=>verifyConversationContinuation(employee,signed('tc1',original),now+1)).toThrow(ContinuationRefused);
+  expect(()=>verifyConversationContinuation(employee,signed('tc3',original),now+1)).toThrow(ContinuationRefused);
  });
 });
 
