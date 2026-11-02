@@ -1647,3 +1647,106 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   AND app.access_allowed_for(app.current_user_id(),'workforce.'||p_action,p_company)
  ELSE app.access_workforce_legacy_command_company(p_company) END);
 $$;
+
+--> statement-breakpoint
+-- Private final-effect control ceiling. This is NOT positive authorization and cannot authorize a
+-- regular write/delegation. A module must seal actual positive admission and exact native effects first.
+CREATE FUNCTION app.access_capability_denial_clear(p_capability text,p_company uuid,p_seen text[],p_enforce boolean) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected public.access_capability%ROWTYPE;required jsonb;parent public.access_capability%ROWTYPE;view_id text;
+BEGIN
+ IF p_capability IS NULL OR p_capability=ANY(p_seen) OR cardinality(p_seen)>1000 THEN RETURN false;END IF;
+ SELECT c.* INTO selected FROM public.access_capability c WHERE c.id=p_capability;
+ IF NOT FOUND OR jsonb_typeof(selected.prerequisites)<>'array' OR jsonb_typeof(selected.bindings)<>'array'
+  OR selected.scope='tenant' AND p_company IS NOT NULL OR selected.scope='company' AND (p_company IS NULL OR NOT EXISTS(SELECT 1 FROM public.company co WHERE co.id=p_company AND co.tenant_id=app.current_tenant_id())) THEN RETURN false;END IF;
+ IF selected.supported THEN
+  IF jsonb_array_length(selected.bindings)=0 OR EXISTS(SELECT 1 FROM jsonb_array_elements(selected.bindings) binding WHERE jsonb_typeof(binding)<>'object' OR jsonb_typeof(binding->'owner') IS DISTINCT FROM 'string' OR jsonb_typeof(binding->'operation') IS DISTINCT FROM 'string' OR coalesce(binding->>'owner','')='' OR coalesce(binding->>'operation','')='') THEN RETURN false;END IF;
+  IF p_enforce AND (NOT EXISTS(SELECT 1 FROM public.access_configuration configuration WHERE configuration.tenant_id=app.current_tenant_id() AND configuration.initialized)
+   OR EXISTS(SELECT 1 FROM public.access_user_override denial WHERE denial.tenant_id=app.current_tenant_id() AND denial.user_id=app.current_user_id() AND denial.retired_at IS NULL AND denial.effect='deny' AND (denial.capability_id=p_capability OR p_capability IN ('workforce.add','workforce.edit','workforce.delete') AND denial.capability_id='workforce.maintain') AND app.access_scope_covers(denial.company_id,p_company,denial.tenant_id))) THEN RETURN false;END IF;
+ ELSIF jsonb_array_length(selected.bindings)<>0 THEN RETURN false;END IF;
+ p_seen:=p_seen||p_capability;
+ FOR required IN SELECT value FROM jsonb_array_elements(selected.prerequisites) LOOP
+  IF jsonb_typeof(required)<>'string' THEN RETURN false;END IF;
+  SELECT c.* INTO parent FROM public.access_capability c WHERE c.id=required#>>'{}';
+  IF NOT FOUND OR selected.scope='tenant' AND parent.scope<>'tenant'
+   OR p_enforce AND selected.supported AND NOT parent.supported
+   OR NOT app.access_capability_denial_clear(parent.id,CASE WHEN parent.scope='tenant' THEN NULL ELSE p_company END,p_seen,p_enforce AND selected.supported) THEN RETURN false;END IF;
+ END LOOP;
+ IF p_capability ~ '^.+\.(add|edit|delete|approve|issue|execute)$' THEN
+  view_id:=regexp_replace(p_capability,'[^.]+$','view');
+  SELECT c.* INTO parent FROM public.access_capability c WHERE c.id=view_id;
+  IF NOT FOUND OR selected.scope<>parent.scope OR p_enforce AND selected.supported AND NOT parent.supported
+   OR NOT app.access_capability_denial_clear(view_id,p_company,p_seen,p_enforce AND selected.supported) THEN RETURN false;END IF;
+ END IF;
+ RETURN true;
+END; $$;
+REVOKE ALL ON FUNCTION app.access_capability_denial_clear(text,uuid,text[],boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.function_action_denial_clear(p_key text,p_operation text,p_company uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.app_user actor WHERE actor.id=app.current_user_id() AND actor.tenant_id=app.current_tenant_id() AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id))
+ AND coalesce((SELECT definition.scope=capability.scope AND action.capability_id='function.'||p_key||'.'||p_operation
+  AND definition.metadata->>'kind' IN ('screen','submenu','native_acl') AND definition.metadata->>'course' IN ('administrative','own','assigned')
+  AND coalesce(definition.metadata->>'moduleKey','')<>'' AND coalesce(definition.metadata->>'labelKey','')<>''
+  AND app.access_capability_denial_clear(action.capability_id,p_company,ARRAY[]::text[],true)
+  FROM app.access_function_action action JOIN app.access_function_definition definition USING(function_key)
+  JOIN public.access_capability capability ON capability.id=action.capability_id WHERE action.function_key=p_key AND action.operation=p_operation),false);
+$$;
+REVOKE ALL ON FUNCTION app.function_action_denial_clear(text,text,uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Unlike broad employee-data read generations this epoch changes only on authority/control facts.
+-- Actual mutate→restore statements remain visible to terminal-effect admission stamps in the same TX.
+CREATE TABLE app.access_control_epoch(tenant_id uuid PRIMARY KEY REFERENCES public.tenant(id) ON DELETE CASCADE,epoch bigint NOT NULL DEFAULT 1);
+ALTER TABLE app.access_control_epoch ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.access_control_epoch FROM PUBLIC,ai_hr_app;
+INSERT INTO app.access_control_epoch(tenant_id) SELECT id FROM public.tenant;
+--> statement-breakpoint
+CREATE FUNCTION app.access_control_epoch_bump() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE affected uuid;query text;has_rows boolean;
+BEGIN
+ IF TG_ARGV[0]='global' THEN
+  IF TG_OP='INSERT' THEN EXECUTE 'SELECT EXISTS(SELECT 1 FROM new_rows)' INTO has_rows;
+  ELSIF TG_OP='DELETE' THEN EXECUTE 'SELECT EXISTS(SELECT 1 FROM old_rows)' INTO has_rows;
+  ELSE EXECUTE 'SELECT EXISTS(SELECT 1 FROM old_rows UNION ALL SELECT 1 FROM new_rows)' INTO has_rows;END IF;
+  IF has_rows THEN UPDATE app.access_control_epoch SET epoch=epoch+1;END IF;RETURN NULL;
+ END IF;
+ IF TG_TABLE_NAME='tenant' THEN
+  INSERT INTO app.access_control_epoch(tenant_id) SELECT id FROM new_rows ON CONFLICT DO NOTHING;RETURN NULL;
+ END IF;
+ query:=CASE TG_OP WHEN 'INSERT' THEN 'SELECT DISTINCT tenant_id FROM new_rows' WHEN 'DELETE' THEN 'SELECT DISTINCT tenant_id FROM old_rows' ELSE 'SELECT tenant_id FROM old_rows UNION SELECT tenant_id FROM new_rows' END;
+ FOR affected IN EXECUTE query LOOP
+  INSERT INTO app.access_control_epoch AS current_epoch(tenant_id,epoch) SELECT affected,1 WHERE EXISTS(SELECT 1 FROM public.tenant t WHERE t.id=affected)
+  ON CONFLICT(tenant_id) DO UPDATE SET epoch=current_epoch.epoch+1;
+ END LOOP;RETURN NULL;
+END; $$;
+REVOKE ALL ON FUNCTION app.access_control_epoch_bump() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER access_control_epoch_tenant AFTER INSERT ON public.tenant REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.access_control_epoch_bump('tenant');
+DO $$ DECLARE relation_name text;BEGIN
+ FOREACH relation_name IN ARRAY ARRAY['app_user','role_assignment','access_configuration','access_group','access_group_grant','access_membership','access_user_override','data_permission_profile','data_permission_revision','user_data_permission_assignment'] LOOP
+  EXECUTE format('CREATE TRIGGER access_control_epoch_insert AFTER INSERT ON public.%I REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.access_control_epoch_bump(''tenant'')',relation_name);
+  EXECUTE format('CREATE TRIGGER access_control_epoch_update AFTER UPDATE ON public.%I REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.access_control_epoch_bump(''tenant'')',relation_name);
+  EXECUTE format('CREATE TRIGGER access_control_epoch_delete AFTER DELETE ON public.%I REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.access_control_epoch_bump(''tenant'')',relation_name);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+DO $$ DECLARE relation_name text;schema_name text;BEGIN
+ FOREACH relation_name IN ARRAY ARRAY['access_capability','access_function_definition','access_function_action','access_native_capability_default','access_default_capability_grant'] LOOP
+  schema_name:=CASE WHEN relation_name='access_capability' THEN 'public' ELSE 'app' END;
+  EXECUTE format('CREATE TRIGGER access_control_epoch_insert AFTER INSERT ON %I.%I REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.access_control_epoch_bump(''global'')',schema_name,relation_name);
+  EXECUTE format('CREATE TRIGGER access_control_epoch_update AFTER UPDATE ON %I.%I REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.access_control_epoch_bump(''global'')',schema_name,relation_name);
+  EXECUTE format('CREATE TRIGGER access_control_epoch_delete AFTER DELETE ON %I.%I REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.access_control_epoch_bump(''global'')',schema_name,relation_name);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.access_function_authority_stamp() RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.principal_snapshot_current() THEN encode(sha256(convert_to(jsonb_build_object(
+  'tenant',epoch.tenant_id,'user',app.current_user_id(),'epoch',epoch.epoch,'date',current_date,
+  'claimedRoles',current_setting('app.roles',true),'claimedGrants',(SELECT coalesce(jsonb_agg(jsonb_build_array(g.role,g.company_id) ORDER BY g.role,g.company_id),'[]'::jsonb) FROM app.current_grants() g),
+  'configuration',(SELECT jsonb_build_array(configuration.revision,configuration.initialized) FROM public.access_configuration configuration WHERE configuration.tenant_id=epoch.tenant_id)
+ )::text,'UTF8')),'hex') ELSE NULL END FROM app.access_control_epoch epoch WHERE epoch.tenant_id=app.current_tenant_id();
+$$;
+REVOKE ALL ON FUNCTION app.access_function_authority_stamp() FROM PUBLIC,ai_hr_app;
