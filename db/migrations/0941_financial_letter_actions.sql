@@ -2760,6 +2760,33 @@ REVOKE ALL ON FUNCTION app.onehr_review_notice_source(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_review_notice_source(uuid) TO ai_hr_app;
 
 --> statement-breakpoint
+-- Administrative review is an independently selected native course, including
+-- when the same actor is also self/assigned. It grants no task or writer authority.
+SELECT app.register_function_action('performance.onehr.reviewAdministration','view','company',NULL,'app.financial_delegate_onehr_review',jsonb_build_object(
+ 'moduleKey','performance_compensation','labelKey','onehr.nativeWorkflow','kind','native_acl','course','administrative','href','/performance','employeeBearing',true));
+CREATE FUNCTION app.onehr_review_administration(wanted_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_human_principal_current() AND EXISTS(SELECT 1 FROM public.performance_review review
+ JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
+ JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id()
+ AND app.onehr_cycle_admin(review.cycle_id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id)
+ AND app.function_action_allowed('performance.onehr.reviewAdministration','view',subject.company_id));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_administration(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_administration(uuid) TO ai_hr_app;
+CREATE FUNCTION app.onehr_review_administration_header(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('reviewerEmploymentId',review.reviewer_employment_id,'closedAt',review.closed_at,'name',person.full_name,
+ 'ownEmploymentIds',(SELECT coalesce(jsonb_agg(own.id),'[]'::jsonb) FROM public.employment own JOIN public.app_user account ON account.person_id=own.person_id AND account.tenant_id=own.tenant_id WHERE account.id=app.current_user_id() AND account.tenant_id=review.tenant_id))
+ FROM public.performance_review review JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ JOIN public.person person ON person.id=subject.person_id AND person.tenant_id=subject.tenant_id
+ WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id() AND app.onehr_review_administration(review.id);
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_administration_header(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_administration_header(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
 -- Frozen provenance is not a participant field API. Existence guards and released
 -- bands have distinct bounded readers, so a manager needs no raw result row grant.
 CREATE FUNCTION app.financial_onehr_result_admin(p_review uuid) RETURNS boolean
@@ -2777,7 +2804,7 @@ CREATE FUNCTION app.onehr_result_card(wanted_review uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.financial_onehr_native_result_card(wanted_review) WHERE app.principal_snapshot_current() AND EXISTS(
  SELECT 1 FROM public.performance_review review WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id()
- AND (app.onehr_self_employment(review.employment_id) OR app.financial_onehr_result_admin(review.id)));
+ AND (app.onehr_self_employment(review.employment_id) OR app.onehr_review_administration(review.id)));
 $$;
 REVOKE ALL ON FUNCTION app.onehr_result_card(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_result_card(uuid) TO ai_hr_app;
@@ -2846,7 +2873,7 @@ $$;
 REVOKE ALL ON FUNCTION app.onehr_report_result(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_report_result(uuid) TO ai_hr_app;
 CREATE FUNCTION app.onehr_result_administration(wanted_review uuid) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_result_admin(wanted_review); $$;
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.onehr_review_administration(wanted_review); $$;
 REVOKE ALL ON FUNCTION app.onehr_result_administration(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_result_administration(uuid) TO ai_hr_app;
 CREATE POLICY financial_onehr_result_read ON public.performance_onehr_result AS RESTRICTIVE FOR SELECT TO ai_hr_app
@@ -3234,33 +3261,6 @@ $$;
 --> statement-breakpoint
 ALTER POLICY data_permission_subject_read ON public.performance_calibration_group_member
  USING(employment_id IS NULL OR app.data_permission_record_read(employment_id) OR app.onehr_reminder_graph_fact_read(tenant_id,'groupMember',to_jsonb(performance_calibration_group_member.*)));
-
---> statement-breakpoint
--- Administrative review is an independently selected native course, including
--- when the same actor is also self/assigned. It grants no task or writer authority.
-SELECT app.register_function_action('performance.onehr.reviewAdministration','view','company',NULL,'app.financial_delegate_onehr_review',jsonb_build_object(
- 'moduleKey','performance_compensation','labelKey','onehr.nativeWorkflow','kind','native_acl','course','administrative','href','/performance','employeeBearing',true));
-CREATE FUNCTION app.onehr_review_administration(wanted_review uuid) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.financial_human_principal_current() AND EXISTS(SELECT 1 FROM public.performance_review review
- JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
- JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
- WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id()
- AND app.onehr_cycle_admin(review.cycle_id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id)
- AND app.function_action_allowed('performance.onehr.reviewAdministration','view',subject.company_id));
-$$;
-REVOKE ALL ON FUNCTION app.onehr_review_administration(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.onehr_review_administration(uuid) TO ai_hr_app;
-CREATE FUNCTION app.onehr_review_administration_header(wanted_review uuid) RETURNS jsonb
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT jsonb_build_object('reviewerEmploymentId',review.reviewer_employment_id,'closedAt',review.closed_at,'name',person.full_name,
- 'ownEmploymentIds',(SELECT coalesce(jsonb_agg(own.id),'[]'::jsonb) FROM public.employment own JOIN public.app_user account ON account.person_id=own.person_id AND account.tenant_id=own.tenant_id WHERE account.id=app.current_user_id() AND account.tenant_id=review.tenant_id))
- FROM public.performance_review review JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
- JOIN public.person person ON person.id=subject.person_id AND person.tenant_id=subject.tenant_id
- WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id() AND app.onehr_review_administration(review.id);
-$$;
-REVOKE ALL ON FUNCTION app.onehr_review_administration_header(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.onehr_review_administration_header(uuid) TO ai_hr_app;
 
 --> statement-breakpoint
 -- A task reader receives the native fields for its actual course. Raw subject
