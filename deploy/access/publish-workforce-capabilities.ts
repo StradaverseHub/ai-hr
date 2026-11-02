@@ -55,6 +55,7 @@ export const ACTION_DOMAIN_PUBLICATIONS:readonly DomainPublication[]=[FINANCIAL_
 export const WORKFORCE_CAPABILITY_BINDINGS=[...WORKFORCE_CAPABILITY_BINDINGS_V2,...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.capabilities)];
 export const WORKFORCE_CAPABILITY_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,capabilities:WORKFORCE_CAPABILITY_BINDINGS})).digest('hex');
 const WORKFORCE_REQUIRED_FUNCTIONS=[
+ 'app.workforce_full_import_allowed(uuid,text)',
  'app.access_workforce_statutory_action_guard()','app.access_workforce_photo_action_guard()','app.access_workforce_hire_effects_match(jsonb,uuid)','app.access_configuration_delegation_preview(jsonb)',
  'app.access_workforce_action_company(uuid,text)','app.access_workforce_action_employment(uuid,text)','app.access_workforce_action_person(uuid,text)',
  'app.access_workforce_projection_company(uuid)','app.access_workforce_list_rows()',
