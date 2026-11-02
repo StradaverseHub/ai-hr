@@ -13,6 +13,11 @@ import {parseCsvRecords} from '../lib/csv';
 import * as s from '../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
 const WORKER_SOURCE='968354c00a71df7baccd499eb60757a3307ed61e';
+// The dependency security update is an exact reviewed graph, not permission for arbitrary drift.
+// The archived worker below retains its original package/lock while executing copied current deps.
+const REVIEWED_SECURITY_GRAPH={source:'c58c30efd6bc81b20bb4b5a82b026b93c7297760',baseline:'8b676f25c006dd9a95dfd30bb6005e558923980a',
+ lockSha256:'0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd',
+ baselineLockSha256:'959230b1c75266db4c15f8df1c9aa4317e74f887d8899f4c05aace77b5fe9a62'} as const;
 // Copied from the actual corrected V2 controller policy, not a fixture-only root expansion.
 // This source fixture never substitutes for that controller's authenticated extracted-packet boot proof.
 const PACKET_POLICY={controller:'567ec0908a24e21078e458ec1e93e696cafeb0a8',formatSha256:'07fa30e623f192ed8231ed42de4a606ed8251539db95389ec7ad6b50ff166369',
@@ -59,7 +64,16 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
  expect(oldPackage.scripts['db:migrate']).toBe(WORKER_MIGRATION_COMMAND);
  expect(webPackage.scripts['db:migrate']).toBe(WEB_MIGRATION_COMMAND);
  for(const input of REVIEWED_MIGRATION_INPUTS)expect(createHash('sha256').update(readFileSync(input.path)).digest('hex'),input.path).toBe(input.sha256);
- expect({...webPackage,scripts:{...webPackage.scripts,'db:migrate':WORKER_MIGRATION_COMMAND}}).toEqual({...oldPackage,dependencies:{...oldPackage.dependencies,'server-only':'0.0.1'},devDependencies:{...oldPackage.devDependencies,ajv:'8.20.0'}});
+ expect(oldPackage).toMatchObject({dependencies:{next:'16.3.8',nodemailer:'10.1.0'},devDependencies:{'eslint-config-next':'16.3.8'}});
+ expect({...webPackage,scripts:{...webPackage.scripts,'db:migrate':WORKER_MIGRATION_COMMAND}}).toEqual({...oldPackage,
+  dependencies:{...oldPackage.dependencies,'server-only':'0.0.1',next:'16.4.1',nodemailer:'10.1.4'},
+  devDependencies:{...oldPackage.devDependencies,ajv:'8.20.0','eslint-config-next':'16.4.1'}});
+ const securityLock=execFileSync('git',['show',REVIEWED_SECURITY_GRAPH.source+':pnpm-lock.yaml'],{encoding:'utf8'});
+ expect(createHash('sha256').update(securityLock).digest('hex')).toBe(REVIEWED_SECURITY_GRAPH.lockSha256);
+ expect(readFileSync('pnpm-lock.yaml','utf8'),'only the exact reviewed security dependency graph').toBe(securityLock);
+ expect(execFileSync('git',['rev-parse',REVIEWED_SECURITY_GRAPH.source+'^'],{encoding:'utf8'}).trim()).toBe(REVIEWED_SECURITY_GRAPH.baseline);
+ const baselineLock=execFileSync('git',['show',REVIEWED_SECURITY_GRAPH.baseline+':pnpm-lock.yaml'],{encoding:'utf8'});
+ expect(createHash('sha256').update(baselineLock).digest('hex')).toBe(REVIEWED_SECURITY_GRAPH.baselineLockSha256);
  const additions=[
   '      server-only:\n        specifier: 0.0.1\n        version: 0.0.1\n',
   '  server-only@0.0.1:\n    resolution: {integrity: sha512-qepMx2JxAa5jjfzxG79yPPq+8BuFToHd1hm7kI+Z4zAq1ftQiP7HcxMhDDItrbtwVeLg/cY2JnKnrcFkmiswNA==}\n\n',
@@ -72,7 +86,8 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
   '  fast-uri@3.1.9: {}\n\n',
   '  json-schema-traverse@1.0.0: {}\n\n',
  ];
- let lock=readFileSync('pnpm-lock.yaml','utf8');
+ // Retain the original historical comparison against the exact pre-security baseline.
+ let lock=baselineLock;
  for(const block of additions){expect(lock.split(block)).toHaveLength(2);lock=lock.replace(block,'');}
  expect(lock).toBe(execFileSync('git',['show',WORKER_SOURCE+':pnpm-lock.yaml'],{encoding:'utf8'}));
 
@@ -118,6 +133,7 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
   const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
   if(evidence){mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,'worker-cross-version.json'),JSON.stringify({
    kind:'GIT_SOURCE_CROSS_VERSION_FIXTURE_NOT_PACKET_OR_LIVE_ACCEPTANCE',workerSource:WORKER_SOURCE,webSource:process.env.AIHR_CI_HEAD,
+   reviewedCurrentDependencyGraph:REVIEWED_SECURITY_GRAPH,executedDependencyOrigin:'copied-current-reviewed-node_modules-not-historical-worker-packet',
    correctedRootPolicy:PACKET_POLICY,actualPacketExecuted:false,authenticatedCorrectedPacketProofRequired:true,
    schemaEntries:schema.ledger,unchangedSourcePaths:unchanged.filter(path=>path!=='db/client.ts'),reviewedWebTypeOnlyChange:{path:'db/client.ts',workerDeclaration:WORKER_AGENT_ENABLEMENT,webDeclaration:WEB_AGENT_ENABLEMENT,allOtherBytesIdentical:true,executedArchivedBytes:WORKER_SOURCE},reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:WORKER_SOURCE},reviewedWebMigrationEntryChange:{workerCommand:WORKER_MIGRATION_COMMAND,webCommand:WEB_MIGRATION_COMMAND,inputs:REVIEWED_MIGRATION_INPUTS,executedArchivedPackageAndLock:WORKER_SOURCE,workerTickUsesPackageMigrationCommand:false},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
    newWebAdmission:true,humanCommandFixture:true,canonicalWrite:true,tenantDenial:true,newProcessReplay:true,historyItems:history.length,

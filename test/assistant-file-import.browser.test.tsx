@@ -1,6 +1,6 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {page} from 'vitest/browser';
-import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {PDFDocument,StandardFonts} from 'pdf-lib';
 import en from '../messages/en.json';
@@ -8,6 +8,8 @@ import '../app/globals.css';
 import '../app/atelier.css';
 vi.mock('@/app/assistant/file-import-actions',()=>({prepareAssistantImportAction:async()=>({ok:true,draft:{columns:['employee_no','amount'],rows:[['E001','-25.50']],spans:[]}})}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:()=>{}})}));
+// Observe the real decoder promise; spy mode preserves its implementation and PDF worker.
+vi.mock('../lib/assistant-import-file',{spy:true});
 const {AssistantFileImport}=await import('../components/assistant/file-import');
 const {AssistantImportHandoffProvider}=await import('../components/assistant/import-handoff');
 const {readAssistantImportFile}=await import('../lib/assistant-import-file');
@@ -35,7 +37,19 @@ for(const [width,height] of [[1280,900],[390,844]]){
  it(`shows a reviewable PDF draft without page overflow at ${width}px`,async()=>{
   await page.viewport(width,height);document.documentElement.setAttribute('data-ui-theme','atelier');
   render(<NextIntlClientProvider locale="en" messages={en}><main style={{maxWidth:768,margin:'auto',padding:16}}><AssistantImportHandoffProvider><AssistantFileImport/></AssistantImportHandoffProvider></main></NextIntlClientProvider>);
-  fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[await textPdf('Employee E001 amount -25.50')]}});
+  const file=await textPdf('Employee E001 amount -25.50'),reader=vi.mocked(readAssistantImportFile);
+  reader.mockClear();
+  // File decoding is an async operation, not a one-second DOM-render contract. Await the
+  // actual selected-file read (including worker cleanup), then assert the rendered result.
+  // The original whole-case timeout and every UI/layout assertion remain unchanged.
+  await act(async()=>{
+   fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[file]}});
+   expect(reader).toHaveBeenCalledExactlyOnceWith(file);
+   const [read]=reader.mock.results;
+   if(!read||read.type!=='return')throw Error('File selection did not start the real decoder');
+   const source=await read.value;
+   expect(source.parts[0].text).toContain('E001');expect(source.parts[0].text).toContain('-25.50');
+  });
   await screen.findByText('payroll.pdf');
   fireEvent.change(screen.getByLabelText(copy.target),{target:{value:'payroll_history'}});
   fireEvent.change(screen.getByLabelText(copy.request),{target:{value:'Prepare these payroll history records'}});
