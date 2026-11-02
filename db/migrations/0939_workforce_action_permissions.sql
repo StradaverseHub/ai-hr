@@ -776,6 +776,15 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.access_workforce_draft_action(uuid,text) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+CREATE FUNCTION app.access_workforce_draft_delete_allowed(p_draft uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employee_draft d WHERE d.id=p_draft AND d.tenant_id=app.current_tenant_id()
+  AND (app.access_workforce_draft_action(d.company_id,'delete') OR (app.access_profile_request_own(d.created_by_person_id)
+   AND NOT EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.user_id=app.current_user_id() AND o.tenant_id=d.tenant_id AND o.retired_at IS NULL AND o.effect='deny' AND o.capability_id IN ('workforce.delete','workforce.view','workforce.maintain') AND app.access_scope_covers(o.company_id,d.company_id,d.tenant_id)))));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_draft_delete_allowed(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.access_workforce_draft_action_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE company uuid;author uuid;action text;own boolean;
@@ -791,7 +800,7 @@ BEGIN
   RETURN OLD;
  END IF;
  own:=app.access_profile_request_own(author) AND NOT EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.user_id=app.current_user_id() AND o.tenant_id=app.current_tenant_id() AND o.retired_at IS NULL AND o.effect='deny' AND o.capability_id IN ('workforce.'||action,'workforce.view','workforce.maintain') AND app.access_scope_covers(o.company_id,company,app.current_tenant_id()));
- IF own OR app.access_workforce_draft_action(company,action) OR TG_OP='UPDATE' AND app.access_workforce_draft_action(company,'add') THEN
+ IF (TG_OP='DELETE' AND app.access_workforce_draft_delete_allowed(OLD.id)) OR (TG_OP<>'DELETE' AND (own OR app.access_workforce_draft_action(company,action) OR TG_OP='UPDATE' AND app.access_workforce_draft_action(company,'add'))) THEN
   IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
  END IF;
  IF TG_OP='DELETE' AND app.access_workforce_consumed_draft(to_jsonb(OLD)) THEN
