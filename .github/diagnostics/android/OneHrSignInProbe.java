@@ -48,6 +48,18 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
     getUiDevice().pressBack();
     System.out.println("ONEHR_PROBE {\"kind\":\"publicUsernameRestoration\",\"exactMatch\":true,\"passwordOrMfaRead\":false,\"signInSubmitted\":false}");
   }
+  private void keyboardText(UiObject object,String value) throws Exception {
+    assertTrue("Expected scoped control",object.exists() && object.isEnabled());
+    assertTrue("Focus scoped control",object.click());
+    assertTrue(getUiDevice().pressKeyCode(android.view.KeyEvent.KEYCODE_A,android.view.KeyEvent.META_CTRL_ON));
+    assertTrue(getUiDevice().pressDelete());
+    if(!value.isEmpty()) {
+      Process input=new ProcessBuilder("/system/bin/input","text",value).start();
+      assertTrue("Normal keyboard input bounded",input.waitFor(8,java.util.concurrent.TimeUnit.SECONDS));
+      assertEquals("Normal keyboard input succeeded",0,input.exitValue());
+    }
+    SystemClock.sleep(300);
+  }
   /** Exercise the actual normal form with guaranteed-invalid syntax; never read a password. */
   public void testFixedInvalidLogin() throws Exception {
     System.out.println("ONEHR_FORM_STEP starting"); System.out.flush();
@@ -66,9 +78,9 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
     String stage="not-submitted";
     try {
       System.out.println("ONEHR_FORM_STEP enter-fixed-username"); System.out.flush();
-      assertTrue(username.setText("!diagnostic!"));
+      keyboardText(username,"!diagnostic!");
       System.out.println("ONEHR_FORM_STEP enter-synthetic-password"); System.out.flush();
-      assertTrue(password.setText("diagnostic-only"));
+      keyboardText(password,"diagnostic-only");
       UiObject keyboard=new UiObject(new UiSelector().packageNameMatches("com[.](google[.])?android[.]inputmethod[.].*"));
       if(keyboard.exists())getUiDevice().pressBack();
       System.out.println("ONEHR_FORM_STEP verify-submit"); System.out.flush();
@@ -88,9 +100,9 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
       if(stage.equals("not-submitted"))stage="no-public-result";
     } finally {
       System.out.println("ONEHR_FORM_STEP clearing-synthetic-input"); System.out.flush();
-      if(password.exists() && password.isEnabled())cleared=password.setText("");
+      if(password.exists() && password.isEnabled()){keyboardText(password,"");cleared=true;}
       if(username.exists() && username.isEnabled()) {
-        if(username.setText(restore))restored=restore.equals(username.getText());
+        keyboardText(username,restore);restored=restore.equals(username.getText());
       }
       System.out.println("ONEHR_FIXED_INVALID {\"submitted\":"+submitted+",\"stage\":\""+stage+"\",\"passwordClearedThroughNormalControl\":"+cleared+",\"knownUsernameRestoredExactly\":"+restored+",\"passwordOrMfaRead\":false}");
     }
