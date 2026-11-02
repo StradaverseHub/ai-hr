@@ -149,6 +149,10 @@ describe('owner rule: restart model-side history after access changes',()=>{
  });
  it('continues fresh after real company-B grant withdrawal without resending previously authorized B content',async()=>{
   const first=await firstTurn();
+  const previous=verifyConversationContinuation(viewer,first.continuation);
+  const [oldMemory]=await owner.db.select().from(terasTaskMemory).where(and(eq(terasTaskMemory.tenantId,b.tenantId),
+   eq(terasTaskMemory.appUserId,viewerId),eq(terasTaskMemory.conversationId,previous.conversationId)));
+  expect(oldMemory).toBeDefined();
   await owner.db.delete(schema.roleAssignment).where(and(eq(schema.roleAssignment.appUserId,viewerId),eq(schema.roleAssignment.companyId,companyB)));
   expect((await authority(viewer)).current).toBe(false); // Old snapshot genuinely lost authority.
   const fresh=await freshSession(viewerId);
@@ -160,8 +164,15 @@ describe('owner rule: restart model-side history after access changes',()=>{
   expect(visible).toEqual([]); // No independent permission/RLS fixture escape.
   const second=await turn(fresh,'And what next?',first.continuation);
   expect(second.reply).toBe('I can continue with the current context.');expect(sent).toHaveLength(3);
-  // Intended RED on unchanged source: current tc1 verifier accepts the old same-login history.
+  // Hosted RED41484503406 reached this boundary: old history survived real grant withdrawal.
   expect(JSON.stringify(sent[2].turns)).not.toContain(B_NAME);
   expect(sent[2].turns.map(row=>row.role)).toEqual(['user']);
+  const restarted=verifyConversationContinuation(fresh,second.continuation);
+  expect(restarted.conversationId).not.toBe(previous.conversationId);
+  const memories=await owner.db.select().from(terasTaskMemory).where(and(eq(terasTaskMemory.tenantId,b.tenantId),eq(terasTaskMemory.appUserId,viewerId)));
+  expect(memories.find(row=>row.conversationId===previous.conversationId)).toEqual(oldMemory);
+  expect(memories.find(row=>row.conversationId===restarted.conversationId)?.memory).toMatchObject({
+   authorityKey:authorityKey(fresh),turns:1,goal:'And what next?',
+  });
  });
 });
