@@ -11,17 +11,18 @@ import {LetterConditionBuilder,type ConditionLabels} from './condition-builder';
 
 export type LetterEditorLabels={body:string;toolbar:string;bold:string;italic:string;underline:string;paragraph:string;heading:string;bulletList:string;orderedList:string;table:string;addRow:string;deleteRow:string;addColumn:string;deleteColumn:string;deleteTable:string;undo:string;redo:string;field:string;insertField:string;conditional:string;then:string;otherwise:string;editCondition:string;apply:string;cancel:string;invalid:string;pasteHelp:string;condition:ConditionLabels};
 /** The parent receives every edit, including invalid edits, and must disable save when valid=false. */
-export function LetterRichEditor({initial,fields,language,labels,onChange}:{initial:LetterDocument;fields:LetterField[];language:LetterDocument['language'];labels:LetterEditorLabels;onChange:(json:JSONContent,valid:boolean)=>void}){
+export function LetterRichEditor({initial,fields,language,labels,onChange,readOnly=false}:{initial:LetterDocument;fields:LetterField[];language:LetterDocument['language'];labels:LetterEditorLabels;readOnly?:boolean;onChange:(json:JSONContent,valid:boolean)=>void}){
  const id=useId(),dialog=useRef<HTMLDialogElement>(null),[field,setField]=useState(''),[condition,setCondition]=useState<LetterCondition>({type:'present',field:fields[0]?.key??''}),[editing,setEditing]=useState<number|null>(null),[error,setError]=useState(false),[conditionError,setConditionError]=useState(false);
  // initial is a saved version, not a controlled value: switching versions remounts this component.
  const [content]=useState(()=>letterDocumentToEditor(initial,fields));
  const notify=useRef(onChange);useEffect(()=>{notify.current=onChange;},[onChange]);
- const editor=useEditor({immediatelyRender:false,extensions:letterEditorExtensions(labels),content,
+ const editor=useEditor({immediatelyRender:false,editable:!readOnly,extensions:letterEditorExtensions(labels),content,
   editorProps:{attributes:{id,role:'textbox','aria-label':labels.body,'aria-multiline':'true',class:'min-h-64 p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring [&_h1]:text-2xl [&_h2]:text-xl [&_h3]:text-lg [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_table]:w-full [&_table]:table-fixed [&_table]:border-collapse [&_td]:border [&_td]:p-2 [&_th]:border [&_th]:p-2'},
    transformPastedHTML(html){try{return sanitiseLetterPaste(html);}catch{setError(true);return '';}}},
   onUpdate({editor:current}){const json=current.getJSON();let valid=true;try{letterDocumentFromEditor(json,fields,language);}catch{valid=false;}setError(!valid);onChange(json,valid);},
  });
  useEffect(()=>{if(!editor)return;const json=editor.getJSON();let valid=true;try{letterDocumentFromEditor(json,fields,language);}catch{valid=false;}setError(!valid);notify.current(json,valid);},[editor,fields,language]);
+ useEffect(()=>{editor?.setEditable(!readOnly);},[editor,readOnly]);
  const state=useEditorState({editor,selector:({editor:current})=>current?{bold:current.isActive('bold'),italic:current.isActive('italic'),underline:current.isActive('underline'),bulletList:current.isActive('bulletList'),orderedList:current.isActive('orderedList'),table:current.isActive('table'),conditional:current.isActive('letterConditional'),undo:current.can().undo(),redo:current.can().redo()}:null});
  const button='min-h-11 rounded border px-3 text-sm aria-pressed:bg-primary/10 disabled:opacity-50';
  function showCondition(edit:boolean){

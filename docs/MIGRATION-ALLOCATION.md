@@ -971,6 +971,8 @@ The SQL comments inside these files still name their original provisional number
 
 Fresh main/alpha baseline dfbcf85b1, journal through0929 idx762/when1793330000329. A full local/origin ref and registered worktree journal scan found competing claims through0946/when1793330000346. Rewards owns0947/when347 on its independent branch. This lifecycle branch reserves0948_document_signing atidx763/when1793330000348. Probation0949/when349 and Contract Management0950/when350 are coordinated subsequent independent builds; Payroll reserves0951/when351 only if needed. Aggregate integration must reindex the union and recheck current refs/live ordered ledger; none is applied by this reservation. Existing applied bytes and prefix remain unchanged.
 
+- 2026-11-03: Contract Management source reserves `0950_contract_management`, `when=1793330000350`, provisional branch journal idx764 after0948. Parent scanned registered and origin journals before reservation;0947 Rewards and0949 probation are separately owned. Reindex only journal positions at aggregate integration; recheck live ledger before any installation. No SQL applied by this branch.
+
 ## Approved Lifecycle effect boundary — 3 November 2026 (provisional source)
 
 A fresh scan of336 unique committed journals plus registered worktree journals found foreign

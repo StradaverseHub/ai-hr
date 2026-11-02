@@ -24,19 +24,20 @@ export type ContractApprovalStep={
   id:string;name:string;stage:number;holderIds:string[];quorum:'any'|'all';when:'always'|'pay_changed';
   state:'pending'|'approved'|'rejected'|'skipped';actions:{actorId:string;action:'approve'|'reject';comment:string;at:string}[];
 };
+export type ContractDecisionDraft={kind:'renew'|'end';months:number|null;basicSalary:string;fixedAllowance:string;reason:string;savedBy:string;savedAt:string;sourceRevision:string};
 export type ContractCase={
   id:string;number:string;term:ContractTerm;revision:number;state:ContractState;settings:ContractSettings;
-  decision:ContractDecision|null;decisionHistory:ContractDecision[];approvals:ContractApprovalStep[];
+  decision:ContractDecision|null;decisionDraft?:ContractDecisionDraft|null;decisionHistory:ContractDecision[];approvals:ContractApprovalStep[];
   document:{id:string;hash:string;templateId:string;templateVersion:number;decisionRevision:number;issuedAt:string|null;acceptedAt:string|null;declinedAt:string|null;declineReason:string|null}|null;
   effects:{personnel:string|null;payroll:string|null;verificationTask:string|null;offboarding:string|null;manualHandoff:string|null};
   sourceRetirementApprovalId:string|null;healthCompletedAt:string|null;
 };
 function day(value:string):void{if(!isCalendarDate(value))refuse('Enter a valid contract date.');}
 export function contractCents(value:string):bigint{
-  if(!/^(0|[1-9]\d{0,12})$/.test(value))refuse('Enter a non-negative amount with no more than two decimal places.');return BigInt(value);
+  if(!/^(0|[1-9]\d{0,11})$/.test(value))refuse('Enter a non-negative amount with no more than two decimal places.');return BigInt(value);
 }
 export function parseContractAmount(value:string):string{
-  if(!/^(0|[1-9]\d{0,10})(\.\d{1,2})?$/.test(value))refuse('Enter a valid RM amount with no more than two decimal places.');
+  if(!/^(0|[1-9]\d{0,9})(\.\d{1,2})?$/.test(value))refuse('Enter a valid RM amount with no more than two decimal places.');
   const [whole,fraction='']=value.split('.');return (BigInt(whole)*BigInt(100)+BigInt(fraction.padEnd(2,'0'))).toString();
 }
 export function contractPayChanged(term:ContractTerm,decision:ContractDecision):boolean{return contractCents(term.salaryCents)!==contractCents(decision.salaryCents)||contractCents(term.allowanceCents)!==contractCents(decision.allowanceCents);}
@@ -66,7 +67,7 @@ export function proposeContractDecision(record:ContractCase,input:{kind:'renew'|
 }
 export function confirmContractDecision(record:ContractCase,input:{actorId:string;at:string;steps:ContractApprovalStep[]}):ContractCase{
   const decision=record.decision;if(!decision||record.state!=='decision_pending')throw new ContractManagementError('conflict','There is no submitted decision to confirm.');
-  if(!input.actorId||input.actorId===decision.submittedBy)throw new ContractManagementError('forbidden','A separate People BP must confirm the submitted decision.');
+  if(!input.actorId||decision.kind==='renew'&&input.actorId===decision.submittedBy)throw new ContractManagementError('forbidden','A separate People BP must confirm the submitted decision.');
   const payChanged=contractPayChanged(record.term,decision),ids=new Set<string>();
   const steps=input.steps.map(s=>{
     if(!s.id||ids.has(s.id)||!s.name||!Number.isSafeInteger(s.stage)||s.stage<0||!['any','all'].includes(s.quorum)||!['always','pay_changed'].includes(s.when))refuse('Choose a valid published approval route.');ids.add(s.id);
@@ -89,7 +90,7 @@ export function actOnContractApproval(record:ContractCase,input:{stepId:string;a
   const approvals=record.approvals.map(s=>s.id===step.id?{...s,state,actions}:s);
   return{...record,revision:record.revision+1,approvals,state:input.action==='reject'?'decision_pending':record.state,decision:input.action==='reject'?{...record.decision,confirmedBy:null,confirmedAt:null}:record.decision};
 }
-export function contractApprovalsComplete(record:ContractCase):boolean{return !!record.decision?.confirmedAt&&record.approvals.length>0&&record.approvals.every(s=>s.state==='approved'||s.state==='skipped');}
+export function contractApprovalsComplete(record:ContractCase):boolean{return !!record.decision?.confirmedAt&&(record.approvals.length>0||!!record.sourceRetirementApprovalId&&!!record.healthCompletedAt)&&record.approvals.every(s=>s.state==='approved'||s.state==='skipped');}
 export function issueContractDocument(record:ContractCase,document:NonNullable<ContractCase['document']>):ContractCase{
   if(record.state!=='in_approval'||!contractApprovalsComplete(record)||!record.decision||document.decisionRevision!==record.decision.revision||!document.issuedAt||document.acceptedAt||document.declinedAt||!/^[a-f0-9]{64}$/.test(document.hash)||!Number.isSafeInteger(document.templateVersion)||document.templateVersion<1)throw new ContractManagementError('conflict','Complete approvals and generate the current contract before issuing it.');
   if(record.document?.issuedAt)throw new ContractManagementError('conflict','An issued contract is immutable.');
@@ -113,4 +114,14 @@ export function contractAlertDue(record:ContractCase,today:string,activationOn:s
   if(today===addDaysIso(record.term.endOn,-record.settings.firstAlertDays))return'first';
   if(today===addDaysIso(record.term.endOn,-record.settings.reminderDays))return'reminder';
   return today>addDaysIso(record.term.endOn,-record.settings.decisionDueDays)?'decision_overdue':null;
+}
+
+/** Source authority and health-check provenance are verified by the native intake owner before calling. */
+export function admitApprovedRetirement(record:ContractCase,input:{approvalId:string;actorId:string;approvedAt:string;healthCompletedAt:string}):ContractCase{
+ if(record.term.kind!=='post_retirement'||record.term.version!==1||record.sourceRetirementApprovalId!==input.approvalId||!input.actorId||!Number.isFinite(Date.parse(input.approvedAt))||!Number.isFinite(Date.parse(input.healthCompletedAt))||record.decision||!['upcoming','decision_pending'].includes(record.state))throw new ContractManagementError('forbidden','Verify the first approved retirement contract and completed health check.');
+ return {...record,revision:record.revision+1,state:'in_approval',healthCompletedAt:input.healthCompletedAt,decision:{revision:1,kind:'renew',months:null,startOn:record.term.startOn,endOn:record.term.endOn,salaryCents:record.term.salaryCents,allowanceCents:record.term.allowanceCents,reason:'Approved first post-retirement contract',submittedBy:input.actorId,submittedAt:input.approvedAt,confirmedBy:input.actorId,confirmedAt:input.approvedAt},approvals:[]};
+}
+export function attachContractDraft(record:ContractCase,document:NonNullable<ContractCase['document']>):ContractCase{
+ if(record.state!=='in_approval'||!record.decision?.confirmedAt||document.decisionRevision!==record.decision.revision||document.issuedAt||document.acceptedAt||document.declinedAt||record.document?.issuedAt||!/^[a-f0-9]{64}$/.test(document.hash))throw new ContractManagementError('conflict','Only the current approved decision may generate a draft contract.');
+ return {...record,revision:record.revision+1,document:structuredClone(document)};
 }

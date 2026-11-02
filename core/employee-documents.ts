@@ -393,3 +393,10 @@ export function getEmployeeDocument(
     return { content: row.content as Buffer, fileName: row.fileName, mimeType: row.mimeType, employmentId: row.employmentId };
   });
 }
+
+/** File only bytes frozen by an accepted/released contract document; no caller file data. */
+export async function fileAcceptedContractDocumentTx(tx:Tx,ctx:SessionContext,documentId:string):Promise<string>{
+ if(!/^[0-9a-f-]{36}$/i.test(documentId))throw new Error('Invalid contract document.');
+ const [row]=await tx.execute<{id:string}>(sql`select app.contract_file_document(${documentId}::uuid) as id where app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id() is not distinct from ${ctx.userId??null}::uuid`);
+ if(!row?.id)throw new Error('Contract transaction identity or filing authority unavailable.');return row.id;
+}
