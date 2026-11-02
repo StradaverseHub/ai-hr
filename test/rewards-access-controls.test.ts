@@ -1,3 +1,4 @@
+import {pgErrorChain} from '../lib/db-error';
 import {setRewardMember as grantCheckedFixtureSeat} from './rewards-access-fixture';
 import {migrateRewardMembershipFixture} from './rewards-shared-policy-fixture';
 import {randomUUID} from 'node:crypto';
@@ -151,8 +152,13 @@ describe('Rewards two-person access and live People eligibility',()=>{
  });
  it('does not reactivate bootstrap authority by forging a review timestamp in a later transaction',async()=>{
   await owner.db.delete(s.rewardMember).where(eq(s.rewardMember.unitId,unitId));
-  await withTenant(admin,tx=>tx.update(s.rewardUnit).set({createdAt:new Date('2200-01-01')}).where(eq(s.rewardUnit.id,unitId)));
+  const before=await owner.db.select().from(s.rewardUnit).where(eq(s.rewardUnit.id,unitId));
+  let refusal:unknown;try{await withTenant(admin,tx=>tx.update(s.rewardUnit).set({createdAt:new Date('2200-01-01')}).where(eq(s.rewardUnit.id,unitId)));}catch(error){refusal=error;}
+  expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward review ownership is immutable'}));
+  expect(await owner.db.select().from(s.rewardUnit).where(eq(s.rewardUnit.id,unitId))).toEqual(before);
+  expect(await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.unitId,unitId))).toEqual([]);
   await expect(withTenant(admin,tx=>tx.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:admin.userId!,role:'gr'}))).rejects.toThrow();
+  expect(await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.unitId,unitId))).toEqual([]);
  });
  it('uses inclusive access windows and removes coverage as soon as People records notice',async()=>{
   await confirmBuOpening();
