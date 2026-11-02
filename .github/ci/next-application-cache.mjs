@@ -1,7 +1,7 @@
 /** Normal canonical build with optional authenticated application graph input. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {readFileSync,writeFileSync,mkdirSync,readdirSync,lstatSync,realpathSync,existsSync,rmSync,statfsSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdirSync,readdirSync,lstatSync,realpathSync,existsSync,rmSync,statfsSync,appendFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -11,6 +11,7 @@ import {hash,assertNextAncestry,validateNextState} from './next-build-cache-poli
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,NEXT_APPLICATION_SEED,NEXT_APPLICATION_CODE,assertManagedNextInvocation,validateManagedNextOrigin,verifyNextPublisherTree,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {measuredCommand} from './diagnostics/compiler-incremental.mjs';
 import {cacheArtifactCandidates} from './cache-artifact-discovery.mjs';
+import {assertBuildHeapEnvironment,parseMaxRssKiB,parseMemAvailableKiB,rssVerdict,BUILD_RSS_WARN_KIB,BUILD_RSS_FAIL_KIB} from './build-heap.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const REPO='StradaverseHub/ai-hr';
 const save=(path,value)=>writeFileSync(path,JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
@@ -88,18 +89,24 @@ export async function managedApplicationBuild(){
  assert(lstatSync('/usr/bin/prlimit').isFile(),'Bounded Linux canonical build required');
  const report={kind:'CANONICAL_CI_APPLICATION_COMPILER_STATE_NOT_RELEASE',releaseAuthorized:false,source:e.AIHR_CI_HEAD,controller:e.AIHR_CI_CONTROL_HEAD,
   runId:e.GITHUB_RUN_ID,attempt:'1',startedAt:new Date().toISOString(),cachePublishPermitted:admission.publish,lookup:[],phases:[],diskSamples:[],
-  cacheHit:false,exitCode:1,capacityProfile:e.AIHR_CI_CAPACITY_PROFILE,buildOutputRetainedForOptionalCompilerCache:true};
+  cacheHit:false,exitCode:1,capacityProfile:e.AIHR_CI_CAPACITY_PROFILE,buildOutputRetainedForOptionalCompilerCache:true,
+  memory:{nodeOptions:e.NODE_OPTIONS,heapMb:assertBuildHeapEnvironment(e),heapProfile:e.AIHR_CI_BUILD_HEAP_PROFILE??'default-6144',rssBudgetKiB:{warn:BUILD_RSS_WARN_KIB,fail:BUILD_RSS_FAIL_KIB},minMemAvailableKiB:null,peakRssKiB:null,verdict:null}};
  let timer,recordIdentity,nextIdentity,stateBytes,envelope,logText,build,context;
  const sample=label=>{
   const volumes=[source,temp,homedir()].map(path=>{const s=statfsSync(path);return {path,availableBytes:s.bavail*s.bsize};});
   assert(volumes.every(v=>Number.isSafeInteger(v.availableBytes)&&v.availableBytes>=0),'Actual filesystem sample required');
-  report.diskSamples.push({label,at:new Date().toISOString(),volumes});return Math.min(...volumes.map(v=>v.availableBytes));
+  report.diskSamples.push({label,at:new Date().toISOString(),volumes});
+  try{const a=parseMemAvailableKiB(readFileSync('/proc/meminfo','utf8'));report.memory.minMemAvailableKiB=Math.min(report.memory.minMemAvailableKiB??a,a);}catch{}
+  return Math.min(...volumes.map(v=>v.availableBytes));
  };
  const command=async(name,bin,args,timeoutMs)=>{
   const row={name,startedAt:new Date().toISOString()};report.phases.push(row);
   const log=join(out,name+'.log');
   Object.assign(row,await measuredCommand('/usr/bin/time',['-v','/usr/bin/prlimit','--fsize=1073741824','--',bin,...args],{cwd:source,env:e,log,timeoutMs}),{endedAt:new Date().toISOString()});
   const text=bounded(log).toString('utf8');
+  // GNU time -v appends ru_maxrss: the largest single waited descendant, recorded even when the build fails.
+  try{row.peakRssKiB=parseMaxRssKiB(text);}catch(error){row.peakRssError=String(error);}
+  if(name==='canonical-build'&&row.peakRssKiB){report.memory.peakRssKiB=row.peakRssKiB;report.memory.verdict=rssVerdict(row.peakRssKiB);}
   assert(row.code===0&&row.signal===null&&!row.timedOut,'Actual '+name+' failed');
   return {row,text};
  };
@@ -121,6 +128,13 @@ export async function managedApplicationBuild(){
   assertNextBuildSource(source,e);
   const actual=await command('canonical-build','pnpm',['exec','tsx',join(ROOT,'.github/ci/build-production.mjs'),'--ci',output],720000);
   report.actualCanonicalBuild=actual.row;logText=actual.text;
+  assert(report.memory.verdict!==null,'Canonical build peak RSS telemetry required');
+  // The release verifier accepts an exact artifact inventory, so canonical telemetry goes to the log, the step summary
+  // and the optional compiler-graph producer report rather than a new artifact.
+  const memoryLine=`next build memory: heap=${e.NODE_OPTIONS} (${report.memory.heapProfile}); peak RSS=${report.memory.peakRssKiB} KiB; min MemAvailable=${report.memory.minMemAvailableKiB} KiB; budget warn>${BUILD_RSS_WARN_KIB} fail>${BUILD_RSS_FAIL_KIB} KiB; verdict=${report.memory.verdict}`;
+  console.log(memoryLine);if(e.GITHUB_STEP_SUMMARY)try{appendFileSync(e.GITHUB_STEP_SUMMARY,memoryLine+'\n');}catch{}
+  if(report.memory.verdict==='warn')console.log(`::warning::Canonical next build peak RSS ${report.memory.peakRssKiB} KiB exceeds the ${BUILD_RSS_WARN_KIB} KiB warning budget`);
+  assert(report.memory.verdict!=='fail','Canonical next build peak RSS exceeds the '+BUILD_RSS_FAIL_KIB+' KiB budget');
   assert(/\bCompiled successfully in /.test(logText)&&/Finished TypeScript in /.test(logText)
    &&!/Skipping validation of types|Finished TypeScript config validation|\berror TS\d+:/.test(logText),'Actual canonical application compiler must run');
   report.buildLogSha256=hash(Buffer.from(logText));recordIdentity=owned(recordDir);
