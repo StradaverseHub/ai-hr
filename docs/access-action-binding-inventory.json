@@ -79995,7 +79995,7 @@
       "source": "db/migrations/0938_data_permission_enforcement.sql",
       "owners": [
         "app.data_permission_record_read",
-        "app.profile_route_reader"
+        "app.profile_request_reader"
       ]
     },
     {
