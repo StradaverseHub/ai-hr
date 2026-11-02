@@ -38,10 +38,13 @@ it('uses canonical profile subset semantics for a potential administrative recip
  const recipient=await createAppUser(b.tenantId,null,'manager'),profileId=randomUUID();
  const [legacy]=await owner.withTenant(admin,tx=>tx.execute<{named:boolean;future:boolean}>(sql`select app.native_permission_future_company_ceiling(${b.companyId}::uuid) as named,app.native_permission_future_company_ceiling(null) as future`));expect(legacy).toEqual({named:true,future:true});
  await data({kind:'create',profileId,name:'Fictional potential administrative ceiling',enabled:true,rules:{legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptA]}]}});
- await data({kind:'assign',userId:b.adminUserId,profileId});
- const [unbounded]=await owner.withTenant(admin,tx=>tx.execute<{current:boolean;potential:boolean;future:boolean}>(sql`select app.data_permission_function_target_ceiling(${recipient}::uuid) as "current",app.native_permission_recipient_data_ceiling(${recipient}::uuid) as potential,app.native_permission_future_company_ceiling(${b.companyId}::uuid) as future`));expect(unbounded).toEqual({current:true,potential:false,future:false});
+ const restrictedUser=await createAppUser(b.tenantId,null,'hr_admin');
+ await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,restrictedUser));
+ const restricted:SessionContext={...admin,userId:restrictedUser,personId:null,grants:[{role:'hr_admin',companyId:b.companyId}]};
+ await data({kind:'assign',userId:restrictedUser,profileId});
+ const [unbounded]=await owner.withTenant(restricted,tx=>tx.execute<{current:boolean;potential:boolean;future:boolean}>(sql`select app.data_permission_function_target_ceiling(${recipient}::uuid) as "current",app.native_permission_recipient_data_ceiling(${recipient}::uuid) as potential,app.native_permission_future_company_ceiling(${b.companyId}::uuid) as future`));expect(unbounded).toEqual({current:true,potential:false,future:false});
  await data({kind:'assign',userId:recipient,profileId});
- const [bounded]=await owner.withTenant(admin,tx=>tx.execute<{potential:boolean}>(sql`select app.native_permission_recipient_data_ceiling(${recipient}::uuid) as potential`));expect(bounded.potential).toBe(true);
+ const [bounded]=await owner.withTenant(restricted,tx=>tx.execute<{potential:boolean}>(sql`select app.native_permission_recipient_data_ceiling(${recipient}::uuid) as potential`));expect(bounded.potential).toBe(true);
  await expect(withTenant(admin,tx=>tx.execute(sql`select app.native_permission_recipient_data_ceiling(${recipient}::uuid)`))).rejects.toThrow();
 });
 it('fails unknown key and foreign scope closed while leaving report keys available to their separate owner',async()=>{
