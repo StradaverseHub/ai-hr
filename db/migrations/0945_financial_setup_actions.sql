@@ -173,6 +173,10 @@ BEGIN
  ELSIF TG_TABLE_NAME='payroll_cycle' THEN
   co:=(r->>'company_id')::uuid;
  ELSIF TG_TABLE_NAME IN ('payroll_policy','payroll_anomaly_config','payroll_permission_grant') THEN
+  IF TG_TABLE_NAME='payroll_permission_grant' AND (app.report_permission_key(b->>'permission_key') OR app.report_permission_key(a->>'permission_key')) THEN
+   IF app.report_permission_source_allowed(b,a) IS NOT TRUE THEN RAISE EXCEPTION 'Report permission effect unavailable' USING ERRCODE='42501';END IF;
+   RETURN NULL;
+  END IF;
   IF TG_TABLE_NAME='payroll_permission_grant' AND (b->>'permission_key'='leave.apply_on_behalf' OR a->>'permission_key'='leave.apply_on_behalf') THEN
    IF app.leave_permission_source_allowed(b,a) IS NOT TRUE THEN RAISE EXCEPTION 'Leave permission effect unavailable' USING ERRCODE='42501';END IF;
    RETURN NULL;
@@ -1002,3 +1006,217 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND app.report_category_current(app.current_tenant_id(),app.current_user_id(),'function.reportCategories.'||p_category||'.view',p_company)
  AND app.function_action_allowed('reportCategories.'||p_category,'view',p_company);
 $$;
+
+
+--> statement-breakpoint
+-- Native Report ACL mutation: compare the complete old/proposed native role
+-- sets and retain an exact row+audit receipt. No category can borrow Leave's
+-- distinct role algebra or a CompanyDelete receipt for a surviving company.
+CREATE FUNCTION app.report_permission_key(p_key text) RETURNS boolean
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(p_key IN ('report.read.personnel','report.read.compensation','report.read.identity','report.read.bank','report.read.statutory','report.read.confidential_hr'),false);
+$$;
+REVOKE ALL ON FUNCTION app.report_permission_key(text) FROM PUBLIC,ai_hr_app;
+CREATE TABLE app.report_permission_mutation(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,
+ grant_id uuid NOT NULL,before_row jsonb,after_row jsonb,authority_stamp text NOT NULL,
+ scopes jsonb NOT NULL,scope_nodes uuid[] NOT NULL,active boolean NOT NULL DEFAULT true,born boolean NOT NULL DEFAULT false,
+ event_id uuid,completed boolean NOT NULL DEFAULT false,scope_changed boolean NOT NULL DEFAULT false,
+ CHECK(before_row IS NOT NULL OR after_row IS NOT NULL));
+CREATE INDEX report_permission_mutation_transaction ON app.report_permission_mutation(xact_id,tenant_id,grant_id);
+ALTER TABLE app.report_permission_mutation ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.report_permission_mutation FROM PUBLIC,ai_hr_app;
+
+
+CREATE FUNCTION app.report_permission_controls_clear(p_key text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.report_permission_key(p_key) AND CASE WHEN p_company IS NOT NULL THEN
+  app.function_action_denial_clear('reportCategories.'||split_part(p_key,'.',3),'view',p_company)
+ ELSE app.principal_snapshot_current() AND EXISTS(
+  SELECT 1 FROM app.access_function_action action JOIN app.access_function_definition definition USING(function_key)
+   JOIN public.access_capability capability ON capability.id=action.capability_id
+   WHERE action.function_key='reportCategories.'||split_part(p_key,'.',3) AND action.operation='view'
+    AND capability.id='function.'||action.function_key||'.view' AND definition.scope='company' AND capability.scope='company'
+    AND definition.metadata->>'kind'='native_acl' AND definition.metadata->>'course'='administrative'
+    AND action.parent_capability IS NULL AND capability.prerequisites='[]'::jsonb
+    AND CASE WHEN capability.supported THEN
+     EXISTS(SELECT 1 FROM public.access_configuration configuration WHERE configuration.tenant_id=app.current_tenant_id() AND configuration.initialized)
+     AND jsonb_array_length(capability.bindings)>0 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(capability.bindings) binding
+      WHERE jsonb_typeof(binding)<>'object' OR coalesce(binding->>'owner','')='' OR coalesce(binding->>'operation','')='')
+     AND NOT EXISTS(SELECT 1 FROM public.access_user_override denial WHERE denial.tenant_id=app.current_tenant_id()
+      AND denial.user_id=app.current_user_id() AND denial.capability_id=capability.id AND denial.effect='deny' AND denial.retired_at IS NULL)
+    ELSE capability.bindings='[]'::jsonb END) END;
+$$;
+REVOKE ALL ON FUNCTION app.report_permission_controls_clear(text,uuid) FROM PUBLIC,ai_hr_app;
+
+CREATE FUNCTION app.report_permission_admit(p_before jsonb,p_after jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();scope record;recipient record;result jsonb:='[]'::jsonb;
+ key text:=coalesce(p_after,p_before)->>'permission_key';category text:=split_part(key,'.',3);
+ cap text:='function.reportCategories.'||category||'.view';
+ op text:=CASE WHEN p_before IS NULL THEN 'add' WHEN p_after IS NULL THEN 'delete' ELSE 'edit' END;
+BEGIN
+ IF NOT app.principal_snapshot_current() OR NOT app.is_admin() OR app.access_function_authority_stamp() IS NULL
+ OR NOT app.report_permission_key(key) OR NOT app.financial_setup_catalog_function('payComponents.catalogue',op)
+ OR (coalesce(p_after,p_before)->>'tenant_id')::uuid IS DISTINCT FROM t THEN RAISE EXCEPTION 'Report permission administration unavailable' USING ERRCODE='42501';END IF;
+ FOR scope IN
+  SELECT changed.company_id,bool_or(changed.before_allowed IS DISTINCT FROM changed.after_allowed) AS changes_role,
+   bool_or(changed.after_allowed AND NOT changed.before_allowed) AS widens
+  FROM app.native_permission_override_role_changes(t,key,p_before,p_after) changed GROUP BY changed.company_id
+ LOOP
+  IF NOT app.report_permission_controls_clear(key,scope.company_id) OR scope.changes_role AND NOT app.native_permission_future_company_ceiling(scope.company_id) THEN RAISE EXCEPTION 'Report permission scope unavailable' USING ERRCODE='42501';END IF;
+  IF scope.widens
+   AND EXISTS(SELECT 1 FROM public.access_capability capability WHERE capability.id=cap AND capability.supported)
+   AND (app.access_can_delegate(cap,scope.company_id) IS NOT TRUE
+     OR app.report_category_current(t,app.current_user_id(),cap,scope.company_id) IS NOT TRUE
+     OR scope.company_id IS NULL AND app.function_global_action_allowed('reportCategories.'||category,'view') IS NOT TRUE) THEN
+   RAISE EXCEPTION 'Report permission widening unavailable' USING ERRCODE='42501';END IF;
+  result:=result||jsonb_build_array(scope.company_id);
+ END LOOP;
+ FOR recipient IN SELECT DISTINCT user_id FROM app.native_permission_override_recipients(t,key,p_before,p_after) WHERE before_allowed IS DISTINCT FROM after_allowed LOOP
+  IF NOT app.native_permission_recipient_data_ceiling(recipient.user_id) THEN RAISE EXCEPTION 'Report permission recipient unavailable' USING ERRCODE='42501';END IF;
+ END LOOP;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION app.report_permission_admit(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+
+-- Bind hierarchy only for actual affected scopes and the actual actor/changed recipients'
+-- company predicates. This is source freshness, not a second data-ceiling implementation.
+CREATE FUNCTION app.report_permission_scope_nodes(p_before jsonb,p_after jsonb,p_scopes jsonb) RETURNS uuid[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH RECURSIVE affected_users(user_id) AS(
+  SELECT app.current_user_id() UNION SELECT recipient.user_id FROM app.native_permission_override_recipients(app.current_tenant_id(),coalesce(p_after,p_before)->>'permission_key',p_before,p_after) recipient
+  WHERE recipient.before_allowed IS DISTINCT FROM recipient.after_allowed
+ ),roots(id) AS(
+  SELECT scope.value::uuid FROM jsonb_array_elements_text(p_scopes) scope WHERE scope.value IS NOT NULL
+  UNION SELECT candidate.value::uuid FROM affected_users actor JOIN public.user_data_permission_assignment assignment ON assignment.tenant_id=app.current_tenant_id() AND assignment.user_id=actor.user_id
+  JOIN public.data_permission_profile profile ON profile.id=assignment.profile_id AND profile.tenant_id=assignment.tenant_id AND profile.enabled AND profile.retired_at IS NULL
+  JOIN public.data_permission_revision revision ON revision.id=profile.active_revision_id AND revision.tenant_id=profile.tenant_id AND revision.profile_id=profile.id
+  CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN app.data_permission_rules_valid(revision.rules) THEN revision.rules->'predicates' ELSE '[]'::jsonb END) predicate
+  CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN predicate->>'field'='company' THEN predicate->'values' ELSE '[]'::jsonb END) candidate
+ ),lineage(id,parent_company_id) AS(
+  SELECT company.id,company.parent_company_id FROM public.company company JOIN roots ON roots.id=company.id WHERE company.tenant_id=app.current_tenant_id()
+  UNION SELECT parent.id,parent.parent_company_id FROM lineage child JOIN public.company parent ON parent.id=child.parent_company_id AND parent.tenant_id=app.current_tenant_id()
+ ) SELECT coalesce(array_agg(lineage.id ORDER BY lineage.id),'{}'::uuid[]) FROM lineage;
+$$;
+REVOKE ALL ON FUNCTION app.report_permission_scope_nodes(jsonb,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.report_permission_source_allowed(p_before jsonb,p_after jsonb,p_active boolean DEFAULT false) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.is_admin() AND EXISTS(
+  SELECT 1 FROM app.report_permission_mutation proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+  AND proof.before_row IS NOT DISTINCT FROM p_before AND proof.after_row IS NOT DISTINCT FROM p_after
+  AND proof.authority_stamp=app.access_function_authority_stamp() AND (CASE WHEN p_active THEN proof.active ELSE proof.active OR proof.completed END));
+$$;
+REVOKE ALL ON FUNCTION app.report_permission_source_allowed(jsonb,jsonb,boolean) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.report_permission_row_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE b jsonb:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;a jsonb:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ IF app.report_permission_key(b->>'permission_key') OR app.report_permission_key(a->>'permission_key') THEN
+  IF TG_OP='DELETE' AND app.module_company_cleanup_row_allowed('payroll_permission_grant',b,true) THEN RETURN OLD;END IF;
+  IF app.report_permission_source_allowed(b,a,true) IS NOT TRUE THEN RAISE EXCEPTION 'Report permission source unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.report_permission_row_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER report_permission_source BEFORE INSERT OR UPDATE OR DELETE ON public.payroll_permission_grant FOR EACH ROW EXECUTE FUNCTION app.report_permission_row_guard();
+CREATE FUNCTION app.report_permission_row_born() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE b jsonb:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;a jsonb:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN
+  UPDATE app.report_permission_mutation proof SET born=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+   AND proof.active AND proof.before_row IS NOT DISTINCT FROM b AND proof.after_row IS NOT DISTINCT FROM a AND proof.authority_stamp=app.access_function_authority_stamp();
+ END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.report_permission_row_born() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER report_permission_born AFTER INSERT OR UPDATE OR DELETE ON public.payroll_permission_grant FOR EACH ROW EXECUTE FUNCTION app.report_permission_row_born();
+
+CREATE FUNCTION app.report_permission_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.report_permission_mutation%ROWTYPE;scope jsonb;event_name text;expected_payload jsonb;key text;op text;
+BEGIN
+ SELECT * INTO proof FROM app.report_permission_mutation actual WHERE actual.id=NEW.id;
+ IF NOT FOUND OR NOT proof.completed OR NOT proof.born OR proof.active OR proof.scope_changed OR proof.xact_id<>pg_current_xact_id() OR proof.tenant_id IS DISTINCT FROM app.current_tenant_id() OR proof.user_id IS DISTINCT FROM app.current_user_id()
+ OR proof.authority_stamp IS DISTINCT FROM app.access_function_authority_stamp() OR NOT app.principal_snapshot_current() OR NOT app.is_admin() THEN RAISE EXCEPTION 'Report permission completion unavailable' USING ERRCODE='42501';END IF;
+ event_name:=CASE WHEN proof.before_row IS NULL THEN 'created' WHEN proof.after_row IS NULL THEN 'deleted' ELSE 'updated' END;
+ key:=coalesce(proof.after_row,proof.before_row)->>'permission_key';
+ op:=CASE event_name WHEN 'created' THEN 'add' WHEN 'deleted' THEN 'delete' ELSE 'edit' END;
+ IF NOT app.financial_setup_catalog_function('payComponents.catalogue',op) THEN RAISE EXCEPTION 'Report permission controls changed' USING ERRCODE='42501';END IF;
+ expected_payload:=jsonb_build_object('permissionKey',key,'role',coalesce(proof.after_row,proof.before_row)->>'role');
+ IF proof.after_row IS NOT NULL THEN expected_payload:=expected_payload||jsonb_build_object('companyId',proof.after_row->'company_id','allowed',proof.after_row->'allowed');END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.id=proof.event_id AND audit.tenant_id=proof.tenant_id AND audit.aggregate_type='payroll-permission-grant' AND audit.aggregate_id=proof.grant_id
+ AND audit.event_type='payroll-permission-grant.'||event_name AND audit.actor_type='user' AND audit.actor_id=proof.user_id AND audit.subject_employment_id IS NULL AND audit.payload=expected_payload) THEN RAISE EXCEPTION 'Report permission audit unavailable' USING ERRCODE='42501';END IF;
+ FOR scope IN SELECT value FROM jsonb_array_elements(proof.scopes) LOOP
+  IF NOT app.report_permission_controls_clear(key,(scope#>>'{}')::uuid) THEN RAISE EXCEPTION 'Report permission controls changed' USING ERRCODE='42501';END IF;
+ END LOOP;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.report_permission_complete() FROM PUBLIC,ai_hr_app;
+-- Insert completion evidence only AFTER the finite row and native audit have completed. Thus
+-- caller SET CONSTRAINTS ALL IMMEDIATE is valid without altering any constraint mode.
+CREATE CONSTRAINT TRIGGER report_permission_complete AFTER UPDATE ON app.report_permission_mutation DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.completed) EXECUTE FUNCTION app.report_permission_complete();
+CREATE FUNCTION app.report_permission_authority_changed() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.epoch IS DISTINCT FROM OLD.epoch THEN UPDATE app.report_permission_mutation proof SET completed=proof.completed WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.completed;END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.report_permission_authority_changed() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER report_permission_authority_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.report_permission_authority_changed();
+
+CREATE FUNCTION app.report_permission_write(p_delete uuid,p_company uuid,p_key text,p_role text,p_allowed boolean) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE prior public.payroll_permission_grant%ROWTYPE;proposed public.payroll_permission_grant%ROWTYPE;
+ b jsonb;a jsonb;proof_id uuid;scopes jsonb;audit_id uuid;event_name text;payload jsonb;
+BEGIN
+ PERFORM app.audit_access_order_lock_for(app.current_tenant_id());PERFORM app.access_workforce_write_lock();
+ IF NOT app.principal_snapshot_current() OR NOT app.is_admin() THEN RAISE EXCEPTION 'Report permission administration unavailable' USING ERRCODE='42501';END IF;
+ IF p_delete IS NOT NULL THEN
+  SELECT * INTO prior FROM public.payroll_permission_grant actual WHERE actual.id=p_delete AND actual.tenant_id=app.current_tenant_id() AND app.report_permission_key(actual.permission_key) FOR UPDATE;
+  IF NOT FOUND THEN RETURN NULL;END IF;
+  b:=to_jsonb(prior);
+ ELSE
+  IF NOT app.report_permission_key(p_key) OR p_role IS NULL OR p_role NOT IN ('employee','manager','hr_admin','super_admin','payroll_partner','performance_comp_partner') OR p_allowed IS NULL
+  OR p_company IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.company actual WHERE actual.id=p_company AND actual.tenant_id=app.current_tenant_id()) THEN RAISE EXCEPTION 'Report permission target unavailable' USING ERRCODE='42501';END IF;
+  SELECT * INTO prior FROM public.payroll_permission_grant actual WHERE actual.tenant_id=app.current_tenant_id() AND actual.permission_key=p_key AND actual.company_id IS NOT DISTINCT FROM p_company AND actual.role=p_role FOR UPDATE;
+  IF FOUND THEN b:=to_jsonb(prior);proposed:=prior;ELSE proposed.id:=gen_random_uuid();proposed.tenant_id:=app.current_tenant_id();proposed.company_id:=p_company;proposed.permission_key:=p_key;proposed.role:=p_role;proposed.created_at:=now();END IF;
+  proposed.allowed:=p_allowed;proposed.updated_at:=now();a:=to_jsonb(proposed);
+ END IF;
+ scopes:=app.report_permission_admit(b,a);
+ DELETE FROM app.report_permission_mutation WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.report_permission_mutation(xact_id,tenant_id,user_id,grant_id,before_row,after_row,authority_stamp,scopes,scope_nodes)
+ VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),coalesce(proposed.id,prior.id),b,a,app.access_function_authority_stamp(),scopes,app.report_permission_scope_nodes(b,a,scopes)) RETURNING id INTO proof_id;
+ IF a IS NULL THEN DELETE FROM public.payroll_permission_grant WHERE id=prior.id AND tenant_id=prior.tenant_id;
+ ELSIF b IS NULL THEN INSERT INTO public.payroll_permission_grant(id,tenant_id,company_id,permission_key,role,allowed,created_at,updated_at)
+  VALUES(proposed.id,proposed.tenant_id,proposed.company_id,proposed.permission_key,proposed.role,proposed.allowed,proposed.created_at,proposed.updated_at);
+ ELSE UPDATE public.payroll_permission_grant SET allowed=proposed.allowed,updated_at=proposed.updated_at WHERE id=prior.id AND tenant_id=prior.tenant_id;END IF;
+ IF NOT EXISTS(SELECT 1 FROM app.report_permission_mutation actual WHERE actual.id=proof_id AND actual.born) THEN RAISE EXCEPTION 'Report permission effect unavailable' USING ERRCODE='42501';END IF;
+ event_name:=CASE WHEN b IS NULL THEN 'created' WHEN a IS NULL THEN 'deleted' ELSE 'updated' END;
+ payload:=jsonb_build_object('permissionKey',coalesce(a,b)->>'permission_key','role',coalesce(a,b)->>'role');
+ IF a IS NOT NULL THEN payload:=payload||jsonb_build_object('companyId',a->'company_id','allowed',a->'allowed');END IF;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(app.current_tenant_id(),'payroll-permission-grant',coalesce(proposed.id,prior.id),'payroll-permission-grant.'||event_name,'user',app.current_user_id(),NULL,payload) RETURNING id INTO audit_id;
+ UPDATE app.report_permission_mutation SET active=false,event_id=audit_id,completed=true WHERE id=proof_id;
+ PERFORM app.access_refresh_native_defaults(app.current_user_id());
+ RETURN coalesce(proposed.id,prior.id);
+END $$;
+REVOKE ALL ON FUNCTION app.report_permission_write(uuid,uuid,text,text,boolean) FROM PUBLIC,ai_hr_app;
+
+CREATE FUNCTION app.report_permission_grant_set(p_company uuid,p_key text,p_role text,p_allowed boolean) RETURNS uuid
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.report_permission_write(NULL,p_company,p_key,p_role,p_allowed);$$;
+CREATE FUNCTION app.report_permission_grant_delete(p_id uuid) RETURNS boolean
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.report_permission_write(p_id,NULL,NULL,NULL,NULL) IS NOT NULL;$$;
+REVOKE ALL ON FUNCTION app.report_permission_grant_set(uuid,text,text,boolean),app.report_permission_grant_delete(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.report_permission_grant_set(uuid,text,text,boolean),app.report_permission_grant_delete(uuid) TO ai_hr_app;
+CREATE FUNCTION app.report_permission_hierarchy_recheck() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_OP='INSERT' OR NEW.epoch IS DISTINCT FROM OLD.epoch THEN
+  UPDATE app.report_permission_mutation proof SET scope_changed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id
+   AND proof.completed AND NOT proof.scope_changed AND (NEW.company_id=ANY(proof.scope_nodes) OR proof.scopes @> '[null]'::jsonb);
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.report_permission_hierarchy_recheck() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER report_permission_hierarchy_recheck AFTER INSERT OR UPDATE ON app.module_company_hierarchy_epoch FOR EACH ROW EXECUTE FUNCTION app.report_permission_hierarchy_recheck();

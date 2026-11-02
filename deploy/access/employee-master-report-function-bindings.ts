@@ -21,5 +21,6 @@ export const REPORT_CATEGORY_FUNCTIONS:readonly FunctionActionDescriptor[]=
    {owner:'core/payroll.ts',operation:'scope-narrowed-native-category-resolution'},
    {owner:'core/employee-master-access.ts',operation:'authorized-fields-before-report-output'},
    {owner:'app.pay_formula_trace_access',operation:'exact-stored-formula-read-categories'},
+   {owner:'app.report_permission_admit',operation:'actual-role-set-widening-and-data-ceilings'},
   ]}],
  }));

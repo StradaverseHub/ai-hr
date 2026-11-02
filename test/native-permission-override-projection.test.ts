@@ -1,4 +1,5 @@
 /** PRIVATE actual/proposed native key facts; these helpers do not authorize a write. */
+import {pgErrorChain} from '../lib/db-error';
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
@@ -90,4 +91,23 @@ it('rechecks a completed company Leave override after actual hierarchy move and 
  })).rejects.toThrow('Leave permission completion unavailable');
  expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.tenantId,b.tenantId))).toEqual([]);
  expect(await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType,'payroll-permission-grant.created'))).toEqual([]);
+});
+
+it('seals the real report category change and canonical audit under immediate constraints',async()=>{
+ let id:string|undefined;
+ await withTenant(admin,async tx=>{
+  await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
+  const [result]=await tx.execute<{id:string}>(sql`select app.report_permission_grant_set(${b.companyId}::uuid,'report.read.bank','hr_admin',false) as id`);
+  id=result.id;
+ });
+ expect(id).toBeTruthy();
+ const [stored]=await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id!));
+ expect(stored).toMatchObject({companyId:b.companyId,permissionKey:'report.read.bank',role:'hr_admin',allowed:false});
+ const [audit]=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,id!));
+ expect(audit).toMatchObject({aggregateType:'payroll-permission-grant',eventType:'payroll-permission-grant.created',actorId:admin.userId,
+  payload:{companyId:b.companyId,permissionKey:'report.read.bank',role:'hr_admin',allowed:false}});
+ const raw=await withTenant(admin,tx=>tx.execute(sql`update public.payroll_permission_grant set allowed=true where id=${id!}::uuid`)).then(()=>null,error=>error);
+ expect(pgErrorChain(raw)).toContainEqual(expect.objectContaining({code:'42501',message:'Report permission source unavailable'}));
+ expect(await deletePayrollPermissionGrant(admin,{id:id!})).toEqual({deleted:true});
+ expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id!))).toEqual([]);
 });
