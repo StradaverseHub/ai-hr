@@ -22,13 +22,14 @@ CREATE TABLE app.profile_task_before (
 ALTER TABLE app.profile_task_before ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.profile_task_before FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
-CREATE FUNCTION app.profile_task_camel_row(p_owner text,p_row jsonb) RETURNS jsonb
+CREATE FUNCTION app.profile_task_register_projection(p_owner text,p_row jsonb,p_fields jsonb)RETURNS jsonb
 LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT coalesce((SELECT jsonb_object_agg(b.field_name,p_row->b.column_name) FROM app.access_profile_value_bindings() b
- WHERE (b.owner=p_owner OR p_owner='person' AND b.owner='compliance' OR p_owner='statutory' AND b.owner IN ('bank','identity','passport','registration','taxLegacy')) AND p_row ? b.column_name),'{}'::jsonb)
- || jsonb_build_object('id',p_row->'id','tenantId',p_row->'tenant_id','personId',p_row->'person_id','employmentId',p_row->'employment_id','archivedAt',p_row->'archived_at','createdAt',p_row->'created_at','updatedAt',p_row->'updated_at');
+ SELECT coalesce((SELECT jsonb_object_agg(b.field_name,p_row->b.column_name) FROM app.access_profile_value_bindings()b
+ WHERE b.owner=p_owner AND (EXISTS(SELECT 1 FROM jsonb_array_elements(p_fields)f WHERE f->>'fieldId'=b.field_id)
+ OR p_owner='dependent' AND b.field_name IN ('fullName','relationship') OR p_owner='qualification' AND b.field_name IN ('qualification','fromYm','toYm','graduationDate','isHighest') OR p_owner='emergency' AND b.field_name IN ('fullName','relationship','priority'))),'{}'::jsonb)
+ ||jsonb_build_object('id',p_row->'id','tenantId',p_row->'tenant_id','personId',p_row->'person_id','employmentId',p_row->'employment_id','archivedAt',p_row->'archived_at');
 $$;
-REVOKE ALL ON FUNCTION app.profile_task_camel_row(text,jsonb) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION app.profile_task_register_projection(text,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.profile_task_projection(p_request uuid,p_prepare boolean DEFAULT false) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -69,11 +70,11 @@ BEGIN
   FOR entry IN SELECT value FROM jsonb_array_elements(coalesce(q.proposed->'registers','[]'::jsonb)) LOOP
    IF entry->>'id' IS NULL THEN CONTINUE;END IF;
    IF entry->>'kind'='dependent' THEN
-    SELECT dependents||coalesce(jsonb_agg(jsonb_build_object('record',app.profile_task_camel_row('dependent',to_jsonb(d)),'revision',d.xmin::text)),'[]'::jsonb) INTO dependents FROM public.employee_dependent d WHERE d.id=(entry->>'id')::uuid AND d.person_id=q.person_id AND d.tenant_id=q.tenant_id AND d.archived_at IS NULL;
+    SELECT dependents||coalesce(jsonb_agg(jsonb_build_object('record',app.profile_task_register_projection('dependent',to_jsonb(d),entry->'fields'),'revision',d.xmin::text)),'[]'::jsonb) INTO dependents FROM public.employee_dependent d WHERE d.id=(entry->>'id')::uuid AND d.person_id=q.person_id AND d.tenant_id=q.tenant_id AND d.archived_at IS NULL;
    ELSIF entry->>'kind'='qualification' THEN
-    SELECT qualifications||coalesce(jsonb_agg(app.profile_task_camel_row('qualification',to_jsonb(d))),'[]'::jsonb) INTO qualifications FROM public.employee_qualification d WHERE d.id=(entry->>'id')::uuid AND d.employment_id=q.employment_id AND d.tenant_id=q.tenant_id AND d.archived_at IS NULL;
+    SELECT qualifications||coalesce(jsonb_agg(app.profile_task_register_projection('qualification',to_jsonb(d),entry->'fields')),'[]'::jsonb) INTO qualifications FROM public.employee_qualification d WHERE d.id=(entry->>'id')::uuid AND d.employment_id=q.employment_id AND d.tenant_id=q.tenant_id AND d.archived_at IS NULL;
    ELSIF entry->>'kind'='emergency' THEN
-    SELECT emergency||coalesce(jsonb_agg(app.profile_task_camel_row('emergency',to_jsonb(d))),'[]'::jsonb) INTO emergency FROM public.person_emergency_contact d WHERE d.id=(entry->>'id')::uuid AND d.person_id=q.person_id AND d.tenant_id=q.tenant_id AND d.archived_at IS NULL;
+    SELECT emergency||coalesce(jsonb_agg(app.profile_task_register_projection('emergency',to_jsonb(d),entry->'fields')),'[]'::jsonb) INTO emergency FROM public.person_emergency_contact d WHERE d.id=(entry->>'id')::uuid AND d.person_id=q.person_id AND d.tenant_id=q.tenant_id AND d.archived_at IS NULL;
    END IF;
   END LOOP;
  END IF;
@@ -180,7 +181,7 @@ BEGIN
  ELSIF p_kind='leave.replacement' THEN
   SELECT q.employment_id INTO target FROM public.replacement_leave_request q WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id();
  ELSIF p_kind='claims.claim' THEN
-  SELECT q.employment_id INTO target FROM public.claim_request q WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id() AND q.status<>'draft';
+  SELECT q.employment_id INTO target FROM public.claim_request q WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id() AND q.status::text<>'draft';
  ELSIF p_kind='attendance.workflow' THEN
   SELECT q.correction_id INTO parent FROM public.attendance_workflow_request q WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id();
   RETURN parent IS NOT NULL AND app.workflow_task_reader('attendance.correction',parent);
@@ -442,6 +443,11 @@ BEGIN
   IF (SELECT count(*) FROM jsonb_object_keys(raw->'groups'))>128
    OR EXISTS(SELECT 1 FROM jsonb_each(raw->'groups') g WHERE length(g.key) NOT BETWEEN 1 AND 200 OR g.value NOT IN ('"editable"'::jsonb,'"viewOnly"'::jsonb,'"hide"'::jsonb)) THEN RETURN false; END IF;
  END IF;
+ IF raw->'version'='5'::jsonb THEN
+  IF jsonb_typeof(raw->'approvals') IS DISTINCT FROM 'object' THEN RETURN false;END IF;
+  IF (SELECT count(*) FROM jsonb_object_keys(raw->'approvals'))>512 OR EXISTS(SELECT 1 FROM jsonb_each(raw->'approvals')a WHERE length(a.key) NOT BETWEEN 1 AND 200 OR jsonb_typeof(a.value) IS DISTINCT FROM 'object' OR jsonb_typeof(a.value->'required') IS DISTINCT FROM 'boolean' OR jsonb_typeof(a.value->'attachmentRequired') IS DISTINCT FROM 'boolean')THEN RETURN false;END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_each(raw->'approvals')a WHERE (SELECT count(*) FROM jsonb_object_keys(a.value))<>2)THEN RETURN false;END IF;
+ END IF;
  cap:=raw->'fields'->>p_field;
  IF cap IS NULL OR cap='hide' THEN RETURN false; END IF;
  IF raw->'version' IN ('4'::jsonb,'5'::jsonb) AND (COALESCE(raw->'groups'->>('tab:'||b.tab_name),'editable')<>'editable'
@@ -526,7 +532,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  OR wanted_module='leave' AND wanted_task='leave.application' AND EXISTS(SELECT 1 FROM public.leave_request q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND app.workflow_task_reader(wanted_task,q.id))
  OR wanted_module='leave' AND wanted_task='leave.cancellation' AND EXISTS(SELECT 1 FROM public.leave_cancellation_request q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND app.workflow_task_reader(wanted_task,q.id))
  OR wanted_module='leave' AND wanted_task='leave.replacement' AND EXISTS(SELECT 1 FROM public.replacement_leave_request q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND app.workflow_task_reader(wanted_task,q.id))
- OR wanted_module='claims' AND wanted_task='claims.claim' AND EXISTS(SELECT 1 FROM public.claim_request q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND q.status<>'draft' AND app.workflow_task_reader(wanted_task,q.id))
+ OR wanted_module='claims' AND wanted_task='claims.claim' AND EXISTS(SELECT 1 FROM public.claim_request q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND q.status::text<>'draft' AND app.workflow_task_reader(wanted_task,q.id))
  OR wanted_module='attendance' AND wanted_task='attendance.correction' AND EXISTS(SELECT 1 FROM public.attendance_correction q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND app.workflow_task_reader(wanted_task,q.id)));
 $$;
 --> statement-breakpoint

@@ -22,7 +22,7 @@ let b:Base,root:SessionContext;
 const phone='profile.contact_and_permanent_address.phone';
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();root={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};});
 async function employee(code:string,role:'employee'|'hr_admin'|'manager'='employee'){
- const hire=await hireEmployee(root,{person:{fullName:'Fictional '+code,primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01',employeeCode:code,grantLeaveTypes:[{id:b.annualLeaveTypeId,code:"AL"}]});
+ const hire=await hireEmployee(root,{person:{fullName:'Fictional '+code,primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01',employeeCode:code});
  const userId=await createAppUser(b.tenantId,hire.personId,role);
  if(role==='hr_admin')await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,userId));
  return{...hire,ctx:{...adminCtx(b),userId,personId:hire.personId,roles:[role],grants:[{role,companyId:role==='hr_admin'?b.companyId:null}]} as SessionContext};
