@@ -10,6 +10,7 @@ it('the real EAS archive implementation produces isolated input that typechecks 
   const source = resolve('.'), work = mkdtempSync(join(tmpdir(), 'aihr-eas-archive-'));
   const tool = join(work, 'oracle'), archive = join(work, 'archive');
   try {
+    if (process.env.RUNNER_TEMP) mkdirSync(join(process.env.RUNNER_TEMP, 'aihr-focused'), { recursive: true });
     mkdirSync(tool);
     for (const file of ['package.json', 'package-lock.json']) {
       copyFileSync(join(source, 'test/fixtures/eas-archive-tool', file), join(tool, file));
