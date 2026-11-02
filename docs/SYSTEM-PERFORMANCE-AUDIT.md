@@ -25,11 +25,16 @@ same-language rewrites, prevents duplicate submissions and indicates pending wor
 terminal: baseline41511950334 CANCELLED at its20-minute job budget; candidate41511960054
 FAIL. Both builds pass, but both hit the unchanged90-second initial Personnel request
 timeout before any language change. No language-speed improvement is established.
-Candidate full-capture CPU is95.99% idle, including the failed screenshot wait; this
-suggests waiting but does not identify a database cause. A single metadata-only
-wait/HTTP diagnostic19b4f9088 /41515969705 is queued/running without changing app code,
-permissions, load data, runtime resources or action deadlines. No original500 pair
-has been restarted. See [language review](reviews/system-performance-language-switch-20261103.md).
+Candidate full-capture CPU is95.99% idle, including failed screenshot wait. The single
+metadata-only diagnostic19b4f9088 /41515969705 now fails at the same initial deadline
+and identifies repeated per-claim subject lookups:108 samples,98 exact scalar-query
+hash matches, growing98.7s transaction with statement ages resetting below30ms,
+nine idle app connections and zero observed blockers/advisory locks. App/permission
+code, data volume, resources and action deadlines stay unchanged. A counted-preview/
+batch-check proposal is prepared; specific compatibility/ownership handoff from the
+security owner remains pending before shared task functions change. No new500 pair
+has been started; this single-page cause does not replace the original load-lock
+analysis. See [language review](reviews/system-performance-language-switch-20261103.md).
 
 Next: consume a compatible corrected frozen native owner source, pass actual
 installation/auth/scope/audit/rollback/processing controls, then rerun the original

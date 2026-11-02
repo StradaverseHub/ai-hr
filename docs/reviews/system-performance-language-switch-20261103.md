@@ -155,11 +155,48 @@ acceptance. The failure screenshot capture alone is bounded10seconds to avoid a
 second90-second metadata wait after the original navigation already failed.
 
 [41515969705](https://github.com/StradaverseHub/ai-hr/actions/runs/41515969705)
-is the single affected-area diagnostic. No matched-pair or original500-user retry is
-started. Both generated source manifest checks retain exact b95f digests; no approved
-binding or native owner function changes. Freshly fetched main is b39f910b4 while
-alpha remains dfbcf85b1; the matched pair is intentionally retained on its original
+is terminal **FAIL** at the unchanged initial90-second Personnel navigation deadline.
+Its migrations/fixture/build pass; the observer closes normally and owned DB cleanup
+reports success. There are108 snapshots, zero observer errors, zero blocking-PID
+observations and zero advisory locks. Nine app connections sit idle in the steady
+state; the tenth repeatedly runs a short statement in one growing transaction.
+
+The independently reconstructed static subject-lookup template from assertCanDecide,
+`select "person_id" from "employment" where "employment"."id" = $1 limit $2`, hashes to
+**a32da93df33eb9e95b2e0606dd740b5a96c9a54552407f682315300586986ee1**. That exactly
+matches98 active observations. Query ages reset between0.000320 and0.029228seconds
+while transaction age grows to98.715708seconds. These are sampled executions, not
+an exact call count. The initial native delegated-subject metadata query appears
+before this repeated lookup. The source path is global layout -> listPendingTasks ->
+Claims pending metadata -> actionablePendingClaimIds -> assertCanDecide for every
+pending claim. The fixture has100k pending Claims across two tenants. This identifies
+a concrete repeated per-claim query bottleneck in the initial page path. It does not
+reclassify the original concurrent tenant lock failures or certify language speed.
+The request receives no response-header event before abort; zero locale actions run.
+
+Complete artifact: /private/tmp/aihr-language-wait-19b4-attempt1. Independent result:
+/private/tmp/aihr-language-initial-wait-result-20261103.json. Fresh main at inspection
+is b39f910b4 while alpha remains dfbcf85b1; this source/evidence stays on its original
 base, not silently rebased or adopted as current-main qualification.
+
+The retained29f8 branch already contains employment-grained batching and counted
+shell previews. That is a source donor, not an accepted500-user aggregate. A blanket
+port would overlap the security owner's typed Claim/workflow_task_reader contract.
+A specific compatible source/function handoff was requested under the human's
+existing owner-coordination authorization. No core/claims.ts, core/approvals.ts,
+permanent native function, foreign WIP or approved binding has been edited. The
+reviewable API/invariant/test proposal is
+/private/tmp/aihr-performance-counted-task-preview-contract-proposal-20261103.md;
+source/coordination handoff is
+/private/tmp/aihr-performance-language-initial-navigation-owner-handoff-20261103.md.
+
+Next app work depends on that compatible interface/ownership handoff. Preserve exact
+full task totals and access to full task readers, self/current-assignment/date/org
+checks, per-record data-purpose RLS and fresh native authority on every statement.
+No source-profile retry, original500-user rerun or deployment is started while that
+boundary remains unresolved. All three language-related runs above remain failed or
+cancelled on their exact identities; neither this diagnostic nor the private native
+read gains establish original500-user acceptance.
 
 No language-speed percentage, completed browser acceptance, deployment, staging slot,
 approval binding refresh or production-equivalent infrastructure is claimed.
