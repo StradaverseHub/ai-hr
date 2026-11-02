@@ -110,6 +110,58 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
     assertTrue("Restore only known nonsecret username",restored);
     assertTrue("Clear only synthetic password through normal control",cleared);
   }
+  private static final class ScopedNode extends UiObject {
+    ScopedNode(UiSelector selector){super(selector);}
+    android.view.accessibility.AccessibilityNodeInfo node(){return findAccessibilityNodeInfo(0);}
+  }
+  private android.view.accessibility.AccessibilityNodeInfo labelNode(String label) {
+    android.view.accessibility.AccessibilityNodeInfo n=new ScopedNode(new UiSelector().packageName("ai.stradaverse.aihr.test").description(label)).node();
+    if(n==null)n=new ScopedNode(new UiSelector().packageName("ai.stradaverse.aihr.test").text(label)).node();
+    return n;
+  }
+  private boolean signedShell() {
+    for(String label:new String[]{"Home","Clock","Leave","Approvals","Me"}) {
+      android.view.accessibility.AccessibilityNodeInfo n=labelNode(label);
+      if(n==null || !n.isVisibleToUser())return false;
+    }
+    return true;
+  }
+  public void testNavigateReadonly() throws Exception {
+    setupBounded();
+    String label=getParams().getString("destination", "");
+    assertTrue(java.util.Arrays.asList("Home","Clock","Leave","Approvals","Me","My profile","Attendance","Inbox","Settings","Leave history","Back").contains(label));
+    android.view.accessibility.AccessibilityNodeInfo n=labelNode(label);
+    boolean found=n!=null && n.isEnabled() && n.isVisibleToUser();
+    if(found)for(int i=0;i<3 && (n.getActions() & android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)==0;i++) {
+      android.view.accessibility.AccessibilityNodeInfo parent=n.getParent();
+      if(parent==null || !"ai.stradaverse.aihr.test".contentEquals(parent.getPackageName()))break;
+      n=parent;
+    }
+    boolean supported=found && (n.getActions() & android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)!=0;
+    boolean acted=supported && n.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK);
+    org.json.JSONObject out=new org.json.JSONObject();out.put("destination",label);out.put("found",found);out.put("clickSupported",supported);out.put("activated",acted);
+    System.out.println("ONEHR_READONLY_NAV "+out.toString());
+    assertTrue("Known read-only navigation action",acted);
+  }
+  public void testReadSignedinText() throws Exception {
+    setupBounded();org.json.JSONObject out=new org.json.JSONObject();boolean allowed=signedShell();out.put("signedInShellVerified",allowed);
+    out.put("inputValuesRead",false);org.json.JSONArray rows=new org.json.JSONArray();
+    if(allowed)for(int i=0;i<120;i++) {
+      android.view.accessibility.AccessibilityNodeInfo n=new ScopedNode(new UiSelector().packageName("ai.stradaverse.aihr.test").className("android.widget.TextView").instance(i)).node();
+      if(n==null)break;
+      if(n.isPassword() || !n.isVisibleToUser())continue;
+      CharSequence text=n.getText();if(text==null || text.length()==0)continue;
+      android.graphics.Rect r=new android.graphics.Rect();n.getBoundsInScreen(r);org.json.JSONObject row=new org.json.JSONObject();row.put("text",text.toString().substring(0,Math.min(text.length(),500)));row.put("bounds",new org.json.JSONArray(new int[]{r.left,r.top,r.right,r.bottom}));rows.put(row);
+    }
+    out.put("text",rows);System.out.println("ONEHR_SIGNEDIN_TEXT "+out.toString());
+  }
+  public void testScrollSignedin() throws Exception {
+    setupBounded();assertTrue("Only signed-in review pages",signedShell());String direction=getParams().getString("direction","forward");assertTrue(direction.equals("forward") || direction.equals("backward"));
+    android.view.accessibility.AccessibilityNodeInfo n=new ScopedNode(new UiSelector().packageName("ai.stradaverse.aihr.test").scrollable(true)).node();
+    int action=direction.equals("forward")?android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD:android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD;
+    boolean moved=n!=null && n.isEnabled() && n.isVisibleToUser() && n.performAction(action);
+    System.out.println("ONEHR_READONLY_SCROLL {\"activated\":"+moved+"}");
+  }
   public void testCompareUsernameOnly() throws Exception {
     setupBounded();
     String expected=getParams().getString("expectedUsername", "");
