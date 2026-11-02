@@ -690,6 +690,7 @@ export async function discardEmployeeDraft(
       .from(employeeDraft)
       .where(eq(employeeDraft.id, id))
       .limit(1);
+    if (!row) throw new Error('Draft not found (or not visible).');
     await tx.execute(sql`select app.organisation_prepare_draft_number_release(${id}::uuid)`);
     await onboardingSyncDraftTx(ctx,tx,id,'discard');
     let deleted: { id: string }[];

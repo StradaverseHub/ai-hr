@@ -989,7 +989,7 @@ reservation and the actual post-Noveri installation ledger before release admiss
 ## Financial setup/native import boundary — 2 November 2026 (provisional)
 
 BOARD parent reserves `0945_financial_setup_actions`, aggregate idx767 /when1793330000345.
-Source SHA256 `2e1adfc10a365fd4aa21e29a0b5a67acf3637f47e3b2ec9342d66dbee978f49b`. Reserved0943/idx765 and0944/idx766 remain with
+Source SHA256 `d16d845671d6a3999681635330640a7fcd70f056d1bc734fb8b1e94b7fc6d2fc`. Reserved0943/idx765 and0944/idx766 remain with
 parallel owners and must be inserted in timestamp order during integration; no existing entry
 is renumbered. This is an unapplied development checkpoint, not installed or accepted source.
 Its catalogue, history, tax, formula and loan guards still require hosted qualification,

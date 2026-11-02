@@ -76,6 +76,8 @@ BEGIN
    IF r->>'kind'='linked' AND app.financial_setup_born('pay_component',(r->>'component_id')::uuid) THEN op:='add';END IF;
   END IF;
   IF TG_TABLE_NAME='pay_formula_accumulation' AND TG_OP='INSERT' AND EXISTS(SELECT 1 FROM public.pay_formula_accumulation prior WHERE prior.tenant_id=app.current_tenant_id() AND prior.code=r->>'code' AND prior.ordinal<(r->>'ordinal')::integer) THEN op:='edit';END IF;
+ ELSIF TG_TABLE_NAME='payroll_cycle' THEN
+  co:=(r->>'company_id')::uuid;
  ELSIF TG_TABLE_NAME IN ('payroll_policy','payroll_anomaly_config','payroll_permission_grant') THEN
   co:=(r->>'company_id')::uuid;catalogue:=co IS NULL OR TG_TABLE_NAME='payroll_permission_grant';
   IF TG_TABLE_NAME='payroll_policy' AND NOT app.is_admin_for(co) THEN RAISE EXCEPTION 'Native payroll policy administration unavailable' USING ERRCODE='42501';END IF;
