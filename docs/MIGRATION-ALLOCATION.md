@@ -1181,3 +1181,10 @@ state when those controls change. Existing native human consent, candidate/versi
 provider protocol and activation gates are preserved. No provider request or activation is performed
 by this source preparation. Hosted native and DOM qualification is required; complete publication and
 all worker/receipt revocation coverage remain separate acceptance work.
+
+Provider evaluation additionally binds the existing canonical monotone access-authority stamp into
+its candidate snapshot fingerprint before each probe. A private native receipt seal checks that stamp
+again on actual consume/promote and immutable receipt facts; revoking and restoring a role cannot
+revive an old review. Older unsealed receipts require a fresh review. New actual synthetic-transport
+cases cover both between-probe revocation and direct native consume after restoration; no provider
+transport is executed during local preparation.

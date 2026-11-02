@@ -475,3 +475,35 @@ CREATE TRIGGER ai_configuration_native_write_guard AFTER INSERT OR UPDATE OR DEL
 CREATE TRIGGER ai_configuration_native_write_guard AFTER INSERT OR UPDATE OR DELETE ON public.ai_provider_protocol_evaluation FOR EACH ROW EXECUTE FUNCTION app.ai_configuration_native_write_guard();
 CREATE TRIGGER organisation_settings_upsert_lock BEFORE INSERT OR UPDATE OR DELETE ON public.ai_provider_candidate FOR EACH STATEMENT EXECUTE FUNCTION app.organisation_settings_upsert_lock();
 CREATE TRIGGER organisation_settings_upsert_lock BEFORE INSERT OR UPDATE OR DELETE ON public.ai_provider_protocol_evaluation FOR EACH STATEMENT EXECUTE FUNCTION app.organisation_settings_upsert_lock();
+
+--> statement-breakpoint
+-- A restored control must not revive a provider review made before its revocation.
+CREATE FUNCTION app.ai_configuration_evaluation_stamp() RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app._ai_provider_evaluation_actor_valid() AND app.organisation_settings_function_allowed('aiConfig','edit',NULL) THEN app.access_function_authority_stamp() END;
+$$;
+REVOKE ALL ON FUNCTION app.ai_configuration_evaluation_stamp() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.ai_configuration_evaluation_stamp() TO ai_hr_app;
+CREATE TABLE app.ai_configuration_evaluation_authority(
+ evaluation_id uuid PRIMARY KEY REFERENCES public.ai_provider_protocol_evaluation(id) ON DELETE CASCADE,
+ tenant_id uuid NOT NULL,user_id uuid NOT NULL,source jsonb NOT NULL,authority_stamp text NOT NULL
+);
+ALTER TABLE app.ai_configuration_evaluation_authority ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.ai_configuration_evaluation_authority FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.ai_configuration_evaluation_authority_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE stamp text;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ stamp:=app.ai_configuration_evaluation_stamp();
+ IF stamp IS NULL OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.evaluated_by_user_id IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'Provider review authority unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='INSERT' THEN
+  INSERT INTO app.ai_configuration_evaluation_authority VALUES(NEW.id,NEW.tenant_id,NEW.evaluated_by_user_id,to_jsonb(NEW),stamp);
+ ELSIF NOT EXISTS(SELECT 1 FROM app.ai_configuration_evaluation_authority proof WHERE proof.evaluation_id=NEW.id AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.evaluated_by_user_id AND proof.authority_stamp=stamp
+  AND (proof.source-ARRAY['consumed_at','consumed_tx','promoted_at'])=(to_jsonb(NEW)-ARRAY['consumed_at','consumed_tx','promoted_at'])) THEN
+  RAISE EXCEPTION 'Provider review authority changed; evaluate again' USING ERRCODE='40001';
+ END IF;
+ RETURN NULL;
+END;$$;
+REVOKE ALL ON FUNCTION app.ai_configuration_evaluation_authority_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER ai_configuration_protocol_authority AFTER INSERT OR UPDATE ON public.ai_provider_protocol_evaluation FOR EACH ROW EXECUTE FUNCTION app.ai_configuration_evaluation_authority_guard();

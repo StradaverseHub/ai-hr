@@ -1,6 +1,7 @@
 /** Authored UNRUN. Actual app-role custody/governance transactions; ONLY provider transport mocked.
  * Requires the coordinated provider-readiness draft in the test migration journal first.
  */
+import {pgSqlState} from '../lib/db-error';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
@@ -36,6 +37,31 @@ async function evaluateWithSyntheticSpend(...args:Parameters<typeof evaluateProv
 
 
 describe('explicit candidate evaluation and activation', () => {
+  it('rejects revoke-and-restore between real synthetic probes before the next admission',async()=>{
+    await candidate();const ctx=adminCtx(base),mock=syntheticProviderTransport(),original=mock.draft.getMockImplementation()!;
+    mock.draft.mockImplementationOnce(async(cfg,args)=>{
+      const result=await original(cfg,args);
+      await owner.db.update(schema.roleAssignment).set({companyId:base.companyId}).where(eq(schema.roleAssignment.appUserId,ctx.userId!));
+      await owner.db.update(schema.roleAssignment).set({companyId:null}).where(eq(schema.roleAssignment.appUserId,ctx.userId!));
+      return result;
+    });
+    try{await expect(evaluateWithSyntheticSpend(ctx,await syntheticConsentFor(ctx))).rejects.toThrow();expect(mock.draft).toHaveBeenCalledOnce();expect(mock.conversation).not.toHaveBeenCalled();expect(await receipts()).toEqual([]);expect(await config()).toBeNull();}
+    finally{mock.restore();}
+  });
+
+  it('does not revive a real evaluated receipt after native authority is revoked and restored',async()=>{
+    await candidate();const ctx=adminCtx(base),proof=await evaluateSyntheticCandidate(ctx);
+    const roles=await owner.db.select().from(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,ctx.userId!));expect(roles.length).toBeGreaterThan(0);
+    await owner.db.update(schema.roleAssignment).set({companyId:base.companyId}).where(eq(schema.roleAssignment.appUserId,ctx.userId!));
+    for(const role of roles)await owner.db.update(schema.roleAssignment).set({companyId:role.companyId}).where(eq(schema.roleAssignment.id,role.id));
+    await expect(setActiveProvider(ctx,{provider:'openrouter',evaluationReceipt:proof.receipt})).rejects.toThrow();
+    expect((await receipts())[0].consumed_at).toBeNull();expect(await config()).toBeNull();
+    const row=(await receipts())[0];
+    const [stored]=await owner.db.execute<{candidate_fingerprint:string;principal_fingerprint:string}>(sql`select candidate_fingerprint,principal_fingerprint from ai_provider_protocol_evaluation where id=${row.id}::uuid`);
+    let refused:unknown;try{await withTenant(ctx,tx=>tx.execute(sql`select app.ai_provider_evaluation_consume_v1(${row.id}::uuid,${stored.candidate_fingerprint},${stored.principal_fingerprint})`));}catch(error){refused=error;}
+    expect(pgSqlState(refused)).toBe('40001');expect((await receipts())[0].consumed_at).toBeNull();
+  });
+
   it('saves/edit candidates without changing live configuration or admitting model work', async () => {
     const ctx = adminCtx(base);
     await saveAiProviderConfig(ctx,{provider:'openai',model:'fictional-direct',apiKey:'fixture-live-key',makeActive:true});
