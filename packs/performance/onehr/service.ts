@@ -51,6 +51,15 @@ const uuid = z.uuid();
 const note = z.string().trim().max(4000);
 const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex');
 function revision(actual: number, expected: number) { if (!Number.isInteger(expected) || actual !== expected) throw Error('This record changed. Reload before saving.'); }
+/** Finite owner refusals retain the former human service error contract, without
+ * Drizzle's query/parameter envelope. Unknown infrastructure failures stay intact. */
+async function onehrMutation<T>(run:()=>Promise<T>):Promise<T>{
+ try{return await run();}catch(error){
+  const cause=error instanceof Error?(error as Error&{cause?:unknown}).cause:undefined;
+  if(cause instanceof Error){const code=(cause as Error&{code?:unknown}).code;if(typeof code==='string'&&['42501','40001','22023'].includes(code))throw cause;}
+  throw error;
+ }
+}
 async function audit(tx: Tx, ctx: SessionContext, id: string, event: string, payload: Record<string, unknown> = {}) {
   // Subject-scoped events are readable by the employee. Panel counts and calibration details stay admin-only.
   const subjectScoped=['kpi-checkin-saved','scorecard-proposed','scorecard-approved','scorecard-returned','results-submitted','competencies-submitted','plan-shared','plan-reviewed','plan-closed','plan-reopened','development-goal-reviewed','result-released','result-revoked'].includes(event);
@@ -190,7 +199,7 @@ async function pruneModerationDraftTx(tx:Tx,ctx:SessionContext,reviewId:string,k
  if(!draft)return;const payload=assessmentDraftSchema.parse(draft.payload);if(payload.kind!=='moderation')return;
  const lines=payload.lines.filter(l=>l.id!==kpiId);
  if(!lines.length)await clearAssessmentDraftTx(tx,ctx,reviewId,'moderation');
- else await tx.update(assessmentDraft).set({payload:{...payload,lines,remark:''},revision:draft.revision+1,reviewRevision,updatedAt:new Date()}).where(eq(assessmentDraft.id,draft.id));
+ else await onehrMutation(()=>tx.update(assessmentDraft).set({payload:{...payload,lines,remark:''},revision:draft.revision+1,reviewRevision,updatedAt:new Date()}).where(eq(assessmentDraft.id,draft.id)));
 }
 
 /** Called by the existing cycle opener inside its transaction. No second roster or identity master. */
@@ -340,7 +349,7 @@ export async function approveOnehrScorecard(ctx:SessionContext,reviewId:string,e
 export async function approveOnehrScorecardTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,approve:boolean,remark:string) {
   note.parse(remark);
     uuid.parse(reviewId);z.number().int().parse(expected);
-    await tx.execute(sql`select app.onehr_scorecard_decide(${reviewId}::uuid,${expected}::integer,${approve}::boolean,${remark}::text)`);
+    await onehrMutation(()=>tx.execute(sql`select app.onehr_scorecard_decide(${reviewId}::uuid,${expected}::integer,${approve}::boolean,${remark}::text)`));
 }
 
 export async function submitOnehrResults(ctx:SessionContext,reviewId:string,expected:number,raw:unknown,overallRemark='') {
@@ -370,7 +379,7 @@ export async function saveOnehrKpiCheckIn(ctx:SessionContext,reviewId:string,exp
 }
 export async function saveOnehrKpiCheckInTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,kpiId:string,answer:typeof checkInAnswers[number],text:string) {
  uuid.parse(reviewId);uuid.parse(kpiId);z.number().int().parse(expected);z.enum(checkInAnswers).parse(answer);note.parse(text);
- await tx.execute(sql`select app.onehr_kpi_checkin(${reviewId}::uuid,${expected}::integer,${kpiId}::uuid,${answer}::text,${text}::text)`);
+ await onehrMutation(()=>tx.execute(sql`select app.onehr_kpi_checkin(${reviewId}::uuid,${expected}::integer,${kpiId}::uuid,${answer}::text,${text}::text)`));
 }
 export async function moderateOnehrKpi(ctx:SessionContext,reviewId:string,expected:number,kpiId:string,actual:number,remark:string) {
  return withPerformanceTenant(ctx,tx=>moderateOnehrKpiTx(tx,ctx,reviewId,expected,kpiId,actual,remark));
@@ -420,7 +429,7 @@ export async function submitOnehrCompetenciesTx(tx:Tx,ctx:SessionContext,reviewI
     uuid.parse(reviewId);z.number().int().parse(expected);
     const r=await loadReviewTaskFields(tx,reviewId);if(!r)throw Error('Assessment not assigned to you.');
     const sections=competencySectionsFor(rawSections,r.competencies);assertOverallRemark(overallRemark,!manager);
-    await tx.execute(sql`select app.onehr_competencies_submit(${reviewId}::uuid,${expected}::integer,${JSON.stringify(answers)}::jsonb,${manager}::boolean,${overallRemark}::text,${JSON.stringify(sections)}::jsonb)`);
+    await onehrMutation(()=>tx.execute(sql`select app.onehr_competencies_submit(${reviewId}::uuid,${expected}::integer,${JSON.stringify(answers)}::jsonb,${manager}::boolean,${overallRemark}::text,${JSON.stringify(sections)}::jsonb)`));
 }
 
 export async function assignOnehrPanel(ctx:SessionContext,reviewId:string,expected:number,raw:unknown,purpose:'assigned'|'administration'='assigned') {
@@ -429,14 +438,14 @@ export async function assignOnehrPanel(ctx:SessionContext,reviewId:string,expect
 export async function assignOnehrPanelTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,raw:unknown,purpose:'assigned'|'administration'='assigned') {
  const inputs=z.array(z.object({employmentId:uuid,relationship:z.enum(['line_manager','matrix_manager','peer','direct_report'])})).max(30).parse(raw);
  uuid.parse(reviewId);z.number().int().parse(expected);z.enum(['assigned','administration']).parse(purpose);
- await tx.execute(sql`select app.onehr_panel_assign(${reviewId}::uuid,${expected}::integer,${JSON.stringify(inputs)}::jsonb,${purpose}::text)`);
+ await onehrMutation(()=>tx.execute(sql`select app.onehr_panel_assign(${reviewId}::uuid,${expected}::integer,${JSON.stringify(inputs)}::jsonb,${purpose}::text)`));
 }
 export async function changeAssessmentPanelState(ctx:SessionContext,reviewId:string,expected:number,requestId:string,operation:'archive'|'restore'|'reset',reason=''){
  return withPerformanceTenant(ctx,tx=>changeAssessmentPanelStateTx(tx,ctx,reviewId,expected,requestId,operation,reason));
 }
 export async function changeAssessmentPanelStateTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,requestId:string,operation:'archive'|'restore'|'reset',reason=''){
  uuid.parse(reviewId);uuid.parse(requestId);z.number().int().parse(expected);z.enum(['archive','restore','reset']).parse(operation);note.parse(reason);
- await tx.execute(sql`select app.onehr_panel_state(${reviewId}::uuid,${expected}::integer,${requestId}::uuid,${operation}::text,${reason}::text)`);
+ await onehrMutation(()=>tx.execute(sql`select app.onehr_panel_state(${reviewId}::uuid,${expected}::integer,${requestId}::uuid,${operation}::text,${reason}::text)`));
 }
 /** The keeping writer's archive body: the row stays, with its time, reason and audit, and leaves scoring. The 0540
  * release trigger revokes a released anonymous report. Callers own the admin, state, frozen and lock checks. */
@@ -476,14 +485,14 @@ export async function submitOnehrFeedback(ctx:SessionContext,requestId:string,ra
   const principleComments=z.record(z.string().max(200),z.string().trim().max(2000)).parse(comments);
   return withPerformanceTenant(ctx,async tx=>{
     uuid.parse(requestId);
-    await tx.execute(sql`select app.onehr_feedback_apply(${requestId}::uuid,true,${JSON.stringify(answers)}::jsonb,${remark}::text,${JSON.stringify(principleComments)}::jsonb)`);
+    await onehrMutation(()=>tx.execute(sql`select app.onehr_feedback_apply(${requestId}::uuid,true,${JSON.stringify(answers)}::jsonb,${remark}::text,${JSON.stringify(principleComments)}::jsonb)`));
   });
 }
 
 export async function declineOnehrFeedback(ctx:SessionContext,requestId:string) {
  return withPerformanceTenant(ctx,async tx=>{
   uuid.parse(requestId);
-  await tx.execute(sql`select app.onehr_feedback_apply(${requestId}::uuid,false,NULL::jsonb,NULL::text,NULL::jsonb)`);
+  await onehrMutation(()=>tx.execute(sql`select app.onehr_feedback_apply(${requestId}::uuid,false,NULL::jsonb,NULL::text,NULL::jsonb)`));
  });
 }
 
@@ -1088,7 +1097,7 @@ export async function commentAssessmentCareerProfileTx(tx:Tx,ctx:SessionContext,
  note.parse(comment);
 
   uuid.parse(reviewId);if(expected!==null)z.number().int().parse(expected);
-  await tx.execute(sql`select app.onehr_career_comment(${reviewId}::uuid,${expected}::integer,${comment}::text)`);
+  await onehrMutation(()=>tx.execute(sql`select app.onehr_career_comment(${reviewId}::uuid,${expected}::integer,${comment}::text)`));
 }
 
 
@@ -1120,12 +1129,12 @@ export async function reviewOnehrPlan(ctx:SessionContext,planId:string,expected:
 export async function reviewOnehrPlanTx(tx:Tx,ctx:SessionContext,planId:string,expected:number,comment:string,conversation:string,close=false,activeReviewId?:string,heldOn?:string|null) {
   uuid.parse(planId);z.number().int().parse(expected);note.parse(comment);note.parse(conversation);assertOverallRemark(comment);if(heldOn)z.iso.date().parse(heldOn);
 
-    await tx.execute(sql`select app.onehr_plan_review(${planId}::uuid,${expected}::integer,${comment}::text,${conversation}::text,${close}::boolean,${activeReviewId??null}::uuid,${heldOn??null}::date,${heldOn!==undefined}::boolean)`);
+    await onehrMutation(()=>tx.execute(sql`select app.onehr_plan_review(${planId}::uuid,${expected}::integer,${comment}::text,${conversation}::text,${close}::boolean,${activeReviewId??null}::uuid,${heldOn??null}::date,${heldOn!==undefined}::boolean)`));
 }
 
 export async function updateOnehrGoalProgress(ctx:SessionContext,planId:string,expected:number,goalId:string,status:'not_started'|'in_progress'|'done'|'dropped',progressNote='',activeReviewId?:string) {
   uuid.parse(planId);uuid.parse(goalId);z.number().int().parse(expected);z.enum(['not_started','in_progress','done','dropped']).parse(status);z.string().trim().max(2000).parse(progressNote);if(activeReviewId)uuid.parse(activeReviewId);
-  return withPerformanceTenant(ctx,async tx=>{await tx.execute(sql`select app.onehr_goal_progress(${planId}::uuid,${expected}::integer,${goalId}::text,${status}::text,${progressNote}::text,${activeReviewId??null}::uuid)`);});
+  return withPerformanceTenant(ctx,async tx=>{await onehrMutation(()=>tx.execute(sql`select app.onehr_goal_progress(${planId}::uuid,${expected}::integer,${goalId}::text,${status}::text,${progressNote}::text,${activeReviewId??null}::uuid)`));});
 }
 /** Minimal own-plan facts for an explicit acknowledgement. The native permission is current self,
  * exact revision and closed plan; it deliberately does not infer approval of ratings or add a new
@@ -1151,7 +1160,7 @@ export async function acknowledgeOnehrPlanTx(tx:Tx,ctx:SessionContext,planId:str
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const id=planId,expectedRevision=expected,checked=reviewed?{...reviewed}:undefined;
  uuid.parse(id);z.number().int().parse(expectedRevision);assertModuleEnabled(ctx,'performance');
  await lockAccessConfigurationTx(tx,ctx.tenantId);
- const [source]=await tx.execute<{value:{planId:string;employmentId:string;reviewId:string;planRevision:number;acknowledgedAt:string;eventId:string|null}}>(sql`select app.onehr_plan_acknowledge(${id}::uuid,${expectedRevision}::integer,${Boolean(checked)}::boolean,${checked?.employmentId??null}::uuid,${checked?.planVersion??null}::text) as value`);
+ const [source]=await onehrMutation(()=>tx.execute<{value:{planId:string;employmentId:string;reviewId:string;planRevision:number;acknowledgedAt:string;eventId:string|null}}>(sql`select app.onehr_plan_acknowledge(${id}::uuid,${expectedRevision}::integer,${Boolean(checked)}::boolean,${checked?.employmentId??null}::uuid,${checked?.planVersion??null}::text) as value`));
  if(!source?.value)throw Error('Plan acknowledgement unavailable.');
  return {...source.value,acknowledgedAt:new Date(source.value.acknowledgedAt)};
 }
@@ -1161,7 +1170,7 @@ export async function acknowledgeOnehrPlan(ctx:SessionContext,planId:string,expe
 }
 export async function reopenAssessmentPlan(ctx:SessionContext,planId:string,expected:number){
  uuid.parse(planId);z.number().int().parse(expected);
- return withPerformanceTenant(ctx,async tx=>{await tx.execute(sql`select app.onehr_plan_reopen(${planId}::uuid,${expected}::integer)`);});
+ return withPerformanceTenant(ctx,async tx=>{await onehrMutation(()=>tx.execute(sql`select app.onehr_plan_reopen(${planId}::uuid,${expected}::integer)`));});
 }
 async function validateEvidenceLinks(r:Awaited<ReturnType<typeof loadReview>>,links:z.infer<typeof evidenceLinkSchema>[]){
  for(const link of links)if(link.kind==='kpi'?!r.kpis.some(k=>k.id===link.id&&!k.hrOwned):link.kind==='skill'?!r.competencies.some(c=>c.id===link.id):!(r.row.statements as Statement[]).some(s=>s.principle===link.id))throw Error('Choose an employee-owned KPI, assigned competency or leadership principle.');
@@ -1466,7 +1475,7 @@ export async function onehrReportResultsTx(tx:Tx,reviewIds:string[]) {
 }
 
 async function clearAssessmentDraftTx(tx:Tx,ctx:SessionContext,reviewId:string,kind:DraftKind,contextId=reviewId) {
-  await tx.delete(assessmentDraft).where(and(eq(assessmentDraft.reviewId,reviewId),eq(assessmentDraft.actorUserId,ctx.userId!),eq(assessmentDraft.kind,kind),eq(assessmentDraft.contextId,contextId)));
+  await onehrMutation(()=>tx.delete(assessmentDraft).where(and(eq(assessmentDraft.reviewId,reviewId),eq(assessmentDraft.actorUserId,ctx.userId!),eq(assessmentDraft.kind,kind),eq(assessmentDraft.contextId,contextId))));
 }
 
 /** Private autosave. It cannot publish results, approve a rating, or become another actor's AI context. */
@@ -1514,7 +1523,7 @@ export async function saveAssessmentDraftTx(tx:Tx,ctx:SessionContext,reviewId:st
   // Keep a single master for the author's words; numeric draft values remain private in the draft.
   if(payload.kind==='moderation'){await saveReviewerRemarkTx(tx,ctx,reviewId,payload.remark);payload.remark='';}
   const data={payload,reviewRevision,updatedAt:new Date()};
-  const [saved]=prior?await tx.update(assessmentDraft).set({...data,revision:prior.revision+1}).where(eq(assessmentDraft.id,prior.id)).returning():await tx.insert(assessmentDraft).values({...data,tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,contextId,kind:payload.kind}).returning();
+  const [saved]=prior?await onehrMutation(()=>tx.update(assessmentDraft).set({...data,revision:prior.revision+1}).where(eq(assessmentDraft.id,prior.id)).returning()):await onehrMutation(()=>tx.insert(assessmentDraft).values({...data,tenantId:ctx.tenantId,reviewId,actorUserId:ctx.userId!,contextId,kind:payload.kind}).returning());
   return {revision:saved.revision,updatedAt:saved.updatedAt};
 }
 
@@ -1708,7 +1717,7 @@ export async function assignAssessmentKpiModerator(ctx:SessionContext,reviewId:s
  uuid.parse(kpiId);uuid.parse(moderatorEmploymentId);
  return withPerformanceTenant(ctx,async tx=>{
   uuid.parse(reviewId);z.number().int().parse(expected);
-  await tx.execute(sql`select app.onehr_kpi_moderator_assign(${reviewId}::uuid,${expected}::integer,${kpiId}::uuid,${moderatorEmploymentId}::uuid)`);
+  await onehrMutation(()=>tx.execute(sql`select app.onehr_kpi_moderator_assign(${reviewId}::uuid,${expected}::integer,${kpiId}::uuid,${moderatorEmploymentId}::uuid)`));
  });
 }
 /** The single KPI moderator writer's body: replaces one untouched line's whole approval chain. Refuses an acted-on
@@ -1754,7 +1763,7 @@ export async function editAssessmentDevelopmentGoalTx(tx:Tx,ctx:SessionContext,r
  const patch=goalSchema.pick({area:true,dueOn:true,onJob:true,fromOthers:true,formalLearning:true,managerComment:true}).parse(raw);if(!patch.area.trim())throw Error('Name the development goal.');
 
   uuid.parse(reviewId);z.number().int().parse(expected);
-  await tx.execute(sql`select app.onehr_plan_goal_review(${reviewId}::uuid,${planId}::uuid,${expected}::integer,${goalId}::uuid,${JSON.stringify(patch)}::jsonb)`);
+  await onehrMutation(()=>tx.execute(sql`select app.onehr_plan_goal_review(${reviewId}::uuid,${planId}::uuid,${expected}::integer,${goalId}::uuid,${JSON.stringify(patch)}::jsonb)`));
 }
 
 
@@ -1902,6 +1911,6 @@ export async function assignAssessmentProfile(ctx:SessionContext,reviewId:string
  uuid.parse(profileId);
  return withPerformanceTenant(ctx,async tx=>{
   uuid.parse(reviewId);z.number().int().parse(expected);
-  await tx.execute(sql`select app.onehr_profile_assign(${reviewId}::uuid,${expected}::integer,${profileId}::uuid)`);
+  await onehrMutation(()=>tx.execute(sql`select app.onehr_profile_assign(${reviewId}::uuid,${expected}::integer,${profileId}::uuid)`));
  });
 }

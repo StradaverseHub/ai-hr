@@ -121,7 +121,7 @@ describe('D-TM-01: a line manager cannot read raw 360 panel rows',()=>{
     // The old component writer is private; actual manager assignment remains
     // covered below, including submitted preservation and remove/restore output.
     const pending=String(rows.find(r=>r.submitted_at==null)!.request_id);
-    const before=await ownedRows();for(const ctx of [mgr,self,a,...peers.map(p=>p.ctx)])await expect(setMember(ctx,pending,true)).rejects.toThrow(/permission denied/);
+    const before=await ownedRows();for(const ctx of [mgr,self,a,...peers.map(p=>p.ctx)])await expect(setMember(ctx,pending,true)).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:expect.stringMatching(/permission denied/)})});
     expect(await ownedRows()).toEqual(before);
   });
 
@@ -129,7 +129,7 @@ describe('D-TM-01: a line manager cannot read raw 360 panel rows',()=>{
     const [before]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));const one=[{employmentId:peers[0].employmentId,relationship:'peer'}];
     await expect(perf.assignOnehrPanel(a,reviewId,before.revision,one)).rejects.toThrow(/not assigned to you/);
     await expect(perf.assignOnehrPanel(mgr,reviewId,before.revision,one,'administration')).rejects.toThrow(/not assigned to you/);
-    await expect(withTenant(mgr,tx=>tx.execute(sql`select app.onehr_panel_assign(${reviewId}::uuid,${before.revision}::integer,${JSON.stringify(one)}::jsonb,'unknown')`))).rejects.toThrow(/purpose/);
+    await expect(withTenant(mgr,tx=>tx.execute(sql`select app.onehr_panel_assign(${reviewId}::uuid,${before.revision}::integer,${JSON.stringify(one)}::jsonb,'unknown')`))).rejects.toMatchObject({cause:expect.objectContaining({code:'22023',message:expect.stringMatching(/purpose/)})});
     await assignRole(a,{appUserId:mgr.userId!,role:'hr_admin'});const mixed={...mgr,roles:['manager','hr_admin'],grants:[{role:'manager',companyId:null},{role:'hr_admin',companyId:null}]};
     await expect(perf.assignOnehrPanel(mixed,reviewId,before.revision,one)).rejects.toThrow(/smaller than/);
     expect(await ownedRows()).toEqual([]);expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([before]);
