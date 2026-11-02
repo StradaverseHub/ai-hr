@@ -1060,3 +1060,14 @@ completion checks; raw source deletion and filed-claim content mutation are refu
 locks precede tuple ownership. Own web form and draft/history controls now consume the real purpose flags, with six-locale rendered
 Save/Submit checks authored. Nonself submission/decisions, independent receipt management and full
 native-default/package closure remain explicitly unfinished; no module completion sentinel exists.
+
+
+### Preserved current ESS proof lanes in the0939 action split
+
+The0939 administrative value guard now composes the actual installed0683 own direct-field proof
+and approval-aware immediate/primary-only branches, retaining0939 Add/Edit/Delete admission.
+The original88-pass configuration chunk exposed three regressions from replacing that newer native
+body with the older0579 body. Existing native approval-off positive and raw approval-on negative
+assertions remain unchanged. The new maintenance-negative fixture now stores and claims real
+company HR, since its previous global HR was legitimately admitted. The birth proof fixture narrows
+its actual actor ID before the strict SQL query. Hosted affected recovery remains required.

@@ -120,6 +120,10 @@ describe('independent own photo and hidden payloads',()=>{
 describe('maintenance source admission stays separate from assigned tasks',()=>{
  it('does not turn a caller-set maintenance flag into assigned reroute authority',async()=>{
   const employee=await worker('Fictional Source Subject'),hr=await worker('Fictional Assigned HR','hr_admin');
+  // createAppUser defaults HR to the genuine global recovery course. This negative actor is
+  // an actual company-scoped assignee, with its claimed grants matching the stored role.
+  await owner.db.update(roleAssignment).set({companyId:b.companyId}).where(and(eq(roleAssignment.appUserId,hr.ctx.userId),eq(roleAssignment.role,'hr_admin')));
+  hr.ctx.grants=[{role:'hr_admin',companyId:b.companyId}];
   await saveProfileRoutingPolicy(group(),{expectedRevision:EMPTY_PROFILE_ROUTING.revision,enabled:true,rules:[rule(employee.employmentId,hr.employmentId)]});
   const submitted=await submitOwnProfileEdit(employee.ctx,{employmentId:employee.employmentId,proposal:await proposed(employee.ctx,employee.employmentId)});
   expect((await listProfileChangeRequests(hr.ctx,{status:'pending'})).map(row=>row.id)).toContain(submitted.requestId);
