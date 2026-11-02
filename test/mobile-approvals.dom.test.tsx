@@ -124,6 +124,27 @@ describe('approvals list', () => {
     expect(f.apiGetV2).not.toHaveBeenCalled();
   });
 
+  it('keeps replacement leave on the web and never formats it as attendance', async () => {
+    const f = fixture();
+    const task = v2tasks.ReplacementTaskDetailV2.parse({
+      kind: 'replacementLeave', id: ID, subject: { name: 'Aisyah', code: null },
+      createdAt: '2026-10-28T01:00:00.000Z', reasonRequiredToReject: true,
+      unit: 'day', totalDays: 1, totalHours: 0, submittedOn: '2026-10-28', employeeReason: null,
+      dates: [], expected: { status: 'pending' },
+    });
+    expect(f.taskLine(task)).toBe('task_replacementLeave');
+    const replacement = v2tasks.TaskItemV2.parse(item({ kind: 'replacementLeave', nativeDecision: true, webPath: null }));
+    expect(f.decidesNatively(replacement)).toBe(false);
+    expect(() => f.taskPath('replacementLeave', ID)).toThrow();
+    f.apiGetPage.mockResolvedValueOnce({ items: [replacement], nextCursor: null });
+    render(<f.ApprovalsScreen />);
+    fireEvent.click(await screen.findByRole('link', { name: 'openOnWeb: task_replacementLeave · Aisyah' }));
+    expect(f.openURL).toHaveBeenCalledWith('https://hr.test/approvals');
+    expect(f.push).not.toHaveBeenCalled();
+    expect(f.apiGetV2).not.toHaveBeenCalled();
+    expect(f.apiPostV2).not.toHaveBeenCalled();
+  });
+
   it('never builds a path or a web URL from anything but a native kind, a UUID and a relative path', () => {
     const f = fixture();
     expect(() => f.taskPath('profile', ID)).toThrow();

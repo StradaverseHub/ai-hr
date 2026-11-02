@@ -26834,7 +26834,7 @@
     "passwordHelp": "Gunakan sekurang-kurangnya 14 aksara. Jangan sertakan nama pengguna atau alamat e-mel anda.",
     "passwordTitle": "Pilih kata laluan anda",
     "enrollTitle": "Sediakan pengesah anda",
-    "enrollHelp": "Imbas kod QR ini dalam aplikasi pengesah atau masukkan kunci persediaan secara manual. Kemudian masukkan kod enam digit semasa.",
+    "enrollHelp": "Buka aplikasi pengesah anda dahulu, pilih Tambah akaun, kemudian gunakan pengimbas dalam aplikasi itu untuk mengimbas kod QR ini. Anda juga boleh memasukkan kunci persediaan manual. Kembali ke sini dan masukkan kod enam digit semasa.",
     "qrAlt": "Kod QR persediaan pengesah",
     "manualKey": "Kunci persediaan manual",
     "code": "Kod pengesah enam digit",
@@ -26871,7 +26871,8 @@
       "rateLimited": "Terlalu banyak percubaan. Sila tunggu sebelum mencuba lagi.",
       "unavailable": "Log masuk atau pemulihan tidak tersedia buat sementara waktu. Cuba kemudian atau hubungi pentadbir.",
       "conflict": "Nama pengguna ini tidak boleh didaftarkan. Pilih nama lain atau hubungi pentadbir.",
-      "forbidden": "Permintaan ini tidak dapat disahkan. Buka aplikasi secara terus dan cuba lagi."
+      "forbidden": "Permintaan ini tidak dapat disahkan. Buka aplikasi secara terus dan cuba lagi.",
+      "authenticatorUnavailable": "Tidak dapat membuka pengesah. Buka aplikasi pengesah anda dan masukkan kunci persediaan manual, kemudian kembali ke sini dengan kod enam digitnya."
     },
     "switchAccountTitle": "Gunakan akaun lain",
     "switchAccountHelp": "Jemputan ini adalah untuk organisasi atau e-mel disahkan yang berbeza. Log keluar untuk menyediakan atau log masuk ke akaun yang dijemput. Akaun HR semasa anda kekal berasingan.",
@@ -26881,7 +26882,9 @@
     "signingInHelp": "Membawa anda ke AIHR.",
     "idleSignedOut": "Anda telah dilog keluar selepas tempoh tidak aktif. Log masuk semula untuk meneruskan.",
     "microsoft": "Teruskan dengan Microsoft",
-    "microsoftError": "Log masuk Microsoft tidak dapat diselesaikan. Semak organisasi dan akaun yang dipautkan, kemudian cuba lagi."
+    "microsoftError": "Log masuk Microsoft tidak dapat diselesaikan. Semak organisasi dan akaun yang dipautkan, kemudian cuba lagi.",
+    "openAuthenticator": "Buka pengesah",
+    "samePhoneHelp": "Membuat persediaan pada telefon ini? Buka pengesah lalainya di bawah. Pada iPhone, ini mungkin membuka Apple Passwords. Jika ia tidak dibuka, masukkan kunci persediaan manual dalam aplikasi pengesah anda."
   },
   "aiManagement": {
     "title": "Pengurusan AI",

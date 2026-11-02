@@ -8,6 +8,7 @@ import {BUILD_ARTIFACT,inspectCiBuildPacket,bindCiBuildSource} from './build-art
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {randomUUID} from 'node:crypto';
 import {createPlan,hash} from './plan.mjs';
+import {admitAiManifests} from './ai-manifest-admission.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {REPOSITORY,validateRun,validateJobs,validateArtifacts,verifyArtifactBytes,validateProof} from './release-policy.mjs';
 export const controllerRoot=fileURLToPath(new URL('../../',import.meta.url));
@@ -16,6 +17,7 @@ export function cleanHead(cwd){const sha=git(cwd,'rev-parse','HEAD');if(!/^[0-9a
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024*1024,timeout:60000}));
 function pages(path,key){const all=[];for(let page=1;page<=10;page++){const data=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);if(!Array.isArray(data[key]))throw Error('Missing API inventory');all.push(...data[key]);if(data[key].length<100)return all;}throw Error('API inventory exceeded bound');}
 export async function sourceBoundBuild({candidatePath,dir,p,jobs}){
+ admitAiManifests(candidatePath,p.candidate);
  const producers=jobs.filter(j=>j.name==='build');
  if(producers.length!==1||producers[0].run_id!==p.runId||producers[0].head_sha!==p.controller)throw Error('Build producing job identity differs');
  const job=producers[0],packet=inspectCiBuildPacket(join(dir,BUILD_ARTIFACT),{...p,producerStartedAt:job.started_at,producerCompletedAt:job.completed_at});

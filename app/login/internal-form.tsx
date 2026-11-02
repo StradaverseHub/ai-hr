@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import Image from 'next/image';
+import { authenticatorSetupUri } from '@/lib/authenticator-setup';
 import { useRouter } from 'next/navigation';
 import { activationLoginHref } from '@/lib/internal-auth/login-navigation';
 import { Eye, EyeOff } from 'lucide-react';
@@ -98,6 +99,10 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         </>}
         {state.step === 'enroll' && <div className="space-y-4">
           <p className="text-sm leading-relaxed text-muted-foreground">{t('enrollHelp')}</p>
+          {state.secret && <div className="space-y-2">
+            <p id="authenticator-handoff-help" className="text-sm leading-relaxed text-muted-foreground">{t('samePhoneHelp')}</p>
+            <a className="login-authenticator" href={authenticatorSetupUri(state.secret, state.account)} aria-describedby="authenticator-handoff-help" referrerPolicy="no-referrer">{t('openAuthenticator')}</a>
+          </div>}
           {state.qr && <Image src={state.qr} alt={t('qrAlt')} width={224} height={224} unoptimized className="mx-auto rounded-lg bg-white"/>}
           <p className="text-xs font-medium text-muted-foreground">{t('manualKey')}</p><code className="block break-all rounded-lg bg-muted p-3 text-sm">{state.secret}</code>
         </div>}
