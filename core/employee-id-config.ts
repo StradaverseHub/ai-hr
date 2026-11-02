@@ -411,7 +411,7 @@ export type ConfigRow = {
 
 /** List all Employee-ID configs (optionally scoped to a set of companies — GLOBAL configs are always
  *  included). Joins the company name for display. */
-export async function listConfigs(ctx: SessionContext, companyIds?: string[], outerTx?:Tx): Promise<ConfigRow[]> {
+async function listConfigRows(ctx: SessionContext, companyIds?: string[], outerTx?:Tx,maintenance=false): Promise<ConfigRow[]> {
   const run=async(tx:Tx)=>{
     const rows = await tx
       .select({
@@ -431,6 +431,7 @@ export async function listConfigs(ctx: SessionContext, companyIds?: string[], ou
       })
       .from(employeeIdConfig)
       .leftJoin(company, eq(company.id, employeeIdConfig.companyId))
+      .where(maintenance?sql`app.organisation_settings_function_allowed(case when ${employeeIdConfig.companyId} is null then 'employeeIdConfig.global' else 'employeeIdConfig.company' end,'view',${employeeIdConfig.companyId})`:undefined)
       .orderBy(sql`${employeeIdConfig.companyId} is not null`, employeeIdConfig.prefix);
     return rows
       .filter((r) => r.companyId == null || !companyIds || companyIds.includes(r.companyId))
@@ -440,6 +441,22 @@ export async function listConfigs(ctx: SessionContext, companyIds?: string[], ou
       }));
   };
   return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+/** Runtime hire rule discovery is independent of configuration-screen View. */
+export function listConfigs(ctx:SessionContext,companyIds?:string[],outerTx?:Tx){return listConfigRows(ctx,companyIds,outerTx);}
+/** Filter before pagination/counts; runtime callers never inherit these maintenance restrictions. */
+export function listConfigsForMaintenance(ctx:SessionContext,companyIds?:string[]){return listConfigRows(ctx,companyIds,undefined,true);}
+export async function employeeIdMaintenanceActions(ctx:SessionContext){
+ return withTenant(ctx,tx=>tx.execute<{companyId:string|null;view:boolean;add:boolean;edit:boolean;delete:boolean}>(sql`
+  select scope.company_id as "companyId",
+   app.organisation_settings_function_allowed(scope.key,'view',scope.company_id) as view,
+   app.organisation_settings_function_allowed(scope.key,'add',scope.company_id) as add,
+   app.organisation_settings_function_allowed(scope.key,'edit',scope.company_id) as edit,
+   app.organisation_settings_function_allowed(scope.key,'delete',scope.company_id) as delete
+  from (select id as company_id,'employeeIdConfig.company' as key from public.company where tenant_id=${ctx.tenantId}::uuid
+   union all select null::uuid,'employeeIdConfig.global') scope
+ `));
 }
 
 export async function getConfig(ctx: SessionContext, id: string): Promise<ConfigRow | null> {

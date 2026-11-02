@@ -1139,3 +1139,12 @@ This source depends on root942 witness89bc7e9da and requires hosted failed/affec
 - `0945_financial_setup_actions.sql`: `77ef0067c30e55a48ab591938b3a5e892ba60161036f4b23c678ed280ea5f340`.
 
 Source identities only; frozen failures remain preserved. Admission requires post-Noveri/nine ledger reconciliation without rewriting applied bytes.
+
+### Employee ID maintenance projection (independent source)
+
+The setup page uses permission-filtered maintenance rows before counts and pagination, with exact
+company/global View and separate Add/Edit/Delete controls. Creation choices include only scopes with
+native Add and View; an existing read-only form does not enable status edits or saves, while an
+independent Delete remains available. The canonical hire wizard keeps its existing runtime numbering
+rule reader. Native scope and six-locale actual-page tests require hosted qualification; this does not
+complete Organisation/Settings publication.

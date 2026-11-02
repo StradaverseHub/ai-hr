@@ -44,3 +44,17 @@ it('keeps profile configuration readable by scoped HR while writes retain actual
  await withTenant(adminCtx(b),tx=>tx.execute(sql`insert into tenant_setting(tenant_id,key,value,source,updated_by) values(${b.tenantId}::uuid,'ess.profile_photo_edit','true'::jsonb,'customer',${adminCtx(b).userId}::uuid) on conflict(tenant_id,key) do update set value=excluded.value`));
  let error:unknown;try{await withTenant(adminCtx(b),tx=>tx.execute(sql`update tenant_setting set key='ess.profile_change_approver' where key='ess.profile_photo_edit'`));}catch(cause){error=cause;}expect(pgSqlState(error)).toBe('42501');
 });
+
+it('separates Employee ID maintenance rows from the numbering rule needed by a scoped native hire',async()=>{
+ const {createConfig,listConfigs,listConfigsForMaintenance,employeeIdMaintenanceActions,resolveEmployeeIdRule}=await import('../core/employee-id-config');
+ const global=await createConfig(adminCtx(b),{prefix:'GLOBAL',allowManualOverride:true});
+ const local=await createConfig(adminCtx(b),{companyId:b.companyId,prefix:'LOCAL',allowManualOverride:true});
+ const userId=await createAppUser(b.tenantId,null,'hr_admin');
+ await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,userId));
+ const scoped={...adminCtx(b),userId,personId:null,grants:[{role:'hr_admin',companyId:b.companyId}]};
+ const maintenance=await listConfigsForMaintenance(scoped,[b.companyId]);expect(maintenance.map(row=>row.id)).toEqual([local.id]);
+ const runtime=await listConfigs(scoped,[b.companyId]);expect(runtime.map(row=>row.id)).toContain(global.id);expect(resolveEmployeeIdRule(runtime,b.companyId).prefix).toBe('LOCAL');
+ const actions=await employeeIdMaintenanceActions(scoped);
+ expect(actions.find(row=>row.companyId===null)).toMatchObject({view:false,add:false,edit:false,delete:false});
+ expect(actions.find(row=>row.companyId===b.companyId)).toMatchObject({view:true,add:true,edit:true,delete:true});
+});
