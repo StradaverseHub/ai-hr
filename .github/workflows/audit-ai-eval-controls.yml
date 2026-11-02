@@ -3,7 +3,7 @@ run-name: Non-billable eval preflight · ${{ github.sha }}
 on:
   push:
     branches: [codex/audit-eval-hardening-20261103]
-    paths: ['.github/ci/eval/**', '.github/workflows/audit-ai-eval-controls.yml']
+    paths: ['.github/ci/eval/provider-metadata.mjs', '.github/workflows/audit-ai-eval-controls.yml']
 permissions: {contents: read}
 concurrency:
   group: audit-ai-eval-preflight
