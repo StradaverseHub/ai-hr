@@ -28,7 +28,12 @@ jobs:
           npm ci --prefix source/mobile --no-audit --no-fund
       - name: Evaluate stable SDK58 alignment through the official Expo installer
         working-directory: source/mobile
-        run: ./node_modules/.bin/expo install expo@58.0.22 --fix
+        run: |
+          # The dialog fix already moved both consumers to @expo/ui. Remove the unused
+          # native package rather than forcing its incompatible Windows optional peer.
+          if rg -l '@react-native-community/datetimepicker' app lib; then exit 1; fi
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));delete p.dependencies['@react-native-community/datetimepicker'];fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+          ./node_modules/.bin/expo install expo@58.0.22 --fix
       - name: Check aligned SDK packages and widget entry
         working-directory: source/mobile
         run: |
