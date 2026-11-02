@@ -617,3 +617,19 @@ it('retains native Leave ledger entries and rejects physical app rewrites or a d
  expect(await withTenant(subject.ctx,tx=>tx.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:typeId,entryType:'debit',days:'1.00',sourceRequestId:leaveRequestId,effectiveOn:START})).then(()=>null,pgSqlState)).toBe('42501');
  expect(await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId,subject.employmentId))).toEqual([entry]);
 });
+
+it('commits the captured supporting file with the real application and rolls back a refused file write',async()=>{
+ const subject=await hire('employee'),typeId=await leaveType();
+ const apply={employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END};
+ await expect(requestLeave(subject.ctx,{...apply,document:{fileName:'Invalid\0name.pdf',mimeType:'application/pdf',content:Buffer.from('Fictional PDF')}})).rejects.toThrow();
+ expect(await requestCount(subject.employmentId)).toBe(0);
+ expect(await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.subjectEmploymentId,subject.employmentId),eq(schema.domainEvent.aggregateType,'leave-request')))).toEqual([]);
+ const content=Buffer.from('Fictional original PDF');
+ const pending=requestLeave(subject.ctx,{...apply,document:{fileName:'fictional.pdf',mimeType:'application/pdf',content}});
+ content.fill(0);
+ const {leaveRequestId}=await pending;
+ const [attachment]=await owner.db.select().from(schema.leaveRequestAttachment).where(eq(schema.leaveRequestAttachment.leaveRequestId,leaveRequestId));
+ expect(attachment).toMatchObject({fileName:'fictional.pdf',employmentId:subject.employmentId,uploadedByUserId:subject.ctx.userId,content:Buffer.from('Fictional original PDF')});
+ const audit=await owner.db.select({event:schema.domainEvent.eventType}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,leaveRequestId));
+ expect(audit.map(row=>row.event).sort()).toEqual(['leave-request.document.attached','leave-request.submitted']);
+});

@@ -10,7 +10,6 @@ import { listLeaveTypes, myEmployment,myOwnEmploymentSubjects } from '@/core/rea
 import {
   // 65f466e2 — role-aware identity, replacing a dead `code === 'EMERGENCY'` comparison.
   leaveTypeIs,
-  addLeaveAttachment,
   adminCancelLeave,
   cancelOwnLeave,
   editLeaveRequest,
@@ -187,12 +186,10 @@ export async function requestLeaveAction(formData: FormData) {
       const ownActive=await myOwnEmploymentSubjects(session,{profileEdit:true});
       selectedOwnReturnId=ownActive.find(row=>row.employmentId===postedEmploymentId)?.employmentId;
     }
-    // Orphan-prevention: validate the file BEFORE requestLeave commits the row + event, so a
-    // disallowed/oversized file is rejected with no committed pending request left behind.
+    // Keep the localized preflight; the native command also revalidates and stores the file atomically.
     if (attach) {
       if (!selected) {
-        // The posted type isn't in the projection — we can't resolve its mime/size rule. Let requestLeave
-        // reject the unknown type (it will) and never call addLeaveAttachment for an unresolved type.
+        // An unresolved posted type cannot provide a document rule.
         throw new Error('Leave type not found.');
       }
       validateLeaveDocument(
@@ -217,13 +214,18 @@ export async function requestLeaveAction(formData: FormData) {
     }
     refusedEmploymentId = employmentId;
     refusedOnBehalf = employmentId !== ownEmploymentId&&selectedOwnReturnId===undefined;
+    const document = attach && file instanceof File ? {
+      fileName: file.name,
+      mimeType: file.type || 'application/octet-stream',
+      content: Buffer.from(await file.arrayBuffer()),
+    } : undefined;
     const res = await requestLeave(session, {
       employmentId,
       leaveTypeId,
       startDate: String(formData.get('startDate')),
       endDate: String(formData.get('endDate')),
       reason: (formData.get('reason') as string) || undefined,
-      hasDocument: attach,
+      document,
       employeeRemark: isEL ? undefined : employeeRemark,
       durationType,
       fromTime: durationType === 'hourly' && fromTime !== '' ? fromTime : undefined,
@@ -237,17 +239,6 @@ export async function requestLeaveAction(formData: FormData) {
       // on-behalf admin path bypasses the limit anyway (isAdmin override), but pass it for correctness/parity.
       today: todayInKualaLumpur(),
     });
-    if (attach && file instanceof File) {
-      // Same server-action session that just created the row, so the new pending request is visible to this
-      // RLS session (transitively, also for the on-behalf-of admin). Order matters: addLeaveAttachment
-      // requires status==='pending', which is exactly the state requestLeave leaves it in.
-      await addLeaveAttachment(session, {
-        leaveRequestId: res.leaveRequestId,
-        fileName: file.name,
-        mimeType: file.type || 'application/octet-stream',
-        content: Buffer.from(await file.arrayBuffer()),
-      });
-    }
     const w = res.holidayWarnings?.[0];
     if (w) {
       warnQuery = `?warnHoliday=1&loaded=${w.loaded}&state=${encodeURIComponent(w.state ?? '')}&year=${w.year}`;

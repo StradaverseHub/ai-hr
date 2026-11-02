@@ -3371,7 +3371,7 @@ export async function requestLeave(
 ): Promise<RequestLeaveResult> {
   p = { ...p,
     overrideConsent: Array.isArray(p.overrideConsent) ? p.overrideConsent.slice() : p.overrideConsent,
-    ...(p.document ? { document: { ...p.document } } : {}) };
+    ...(p.document ? { document: { ...p.document, content: Buffer.from(p.document.content) } } : {}) };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   if (reviewedOwnLeave) {
     if (!Array.isArray(reviewedOwnLeave.holidayWarnings)) throw new LeaveReviewedEffectError('unsupported');
@@ -5212,7 +5212,9 @@ export async function addLeaveAttachment(
   ctx: SessionContext,
   p: { leaveRequestId: string; fileName: string; mimeType: string; content: Buffer },
 ): Promise<{ id: string }> {
-  return withTenant(ctx, tx => addLeaveAttachmentTx(tx, ctx, p));
+  const document = { ...p, content: Buffer.from(p.content) };
+  const actor = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  return withTenant(actor, tx => addLeaveAttachmentTx(tx, actor, document));
 }
 
 async function addLeaveAttachmentTx(tx: Tx, ctx: SessionContext, p: { leaveRequestId: string; fileName: string; mimeType: string; content: Buffer }): Promise<{ id: string }> {
