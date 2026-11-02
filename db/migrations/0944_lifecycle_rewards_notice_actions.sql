@@ -3244,8 +3244,8 @@ REVOKE ALL ON FUNCTION app.reward_configuration_review(uuid)FROM PUBLIC,ai_hr_ap
 --> statement-breakpoint
 -- Distinct real configuration read purposes. They stay dormant and private; defining View
 -- does not assert that policy/member mutation purposes are closed or publication is complete.
-SELECT app.register_function_action('rewards.configuration.assigned','view','company',NULL,'app.rewards_function_legacy_allowed','{"moduleKey":"rewards","labelKey":"rewards.configuration","kind":"native_acl","course":"assigned","screenKey":"rewardsAdmin","href":"/rewards","employeeBearing":false}'::jsonb);
-SELECT app.register_function_action('rewards.configuration.administration','view','company','rewards.view','app.rewards_function_legacy_allowed','{"moduleKey":"rewards","labelKey":"rewards.configuration","kind":"native_acl","course":"administrative","screenKey":"rewardsAdmin","href":"/rewards","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('rewards.configuration.assigned','view','company',NULL,'app.rewards_function_legacy_allowed','{"moduleKey":"rewards","labelKey":"rewards.configuration","kind":"native_acl","course":"assigned","screenKey":"rewards","href":"/rewards","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('rewards.configuration.administration','view','company','rewards.view','app.rewards_function_legacy_allowed','{"moduleKey":"rewards","labelKey":"rewards.configuration","kind":"native_acl","course":"administrative","screenKey":"rewardsAdmin","href":"/admin/rewards","employeeBearing":false}'::jsonb);
 
 --> statement-breakpoint
 -- Cancellation is the original actor-only unit course (0839), not an employee-data read.
