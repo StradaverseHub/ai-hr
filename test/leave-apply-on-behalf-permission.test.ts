@@ -23,10 +23,11 @@ import { and, eq,sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { canApplyLeaveOnBehalf, decideLeave, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess,ownLeaveRequestActionAccess } from '../core/leave';
+import { canApplyLeaveOnBehalf, decideLeave, editLeaveRequest, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess,ownLeaveRequestActionAccess } from '../core/leave';
 import { countLeaveRequestsByStatus, listEmployees, listLeaveRequestsPage, reportingLinesFor } from '../core/read';
 import { ownLeaveRejections } from '../core/my-leave';
 import { ownLeaveRequestsPage } from '../core/mobile-leave-history';
+import { pgSqlState } from '../lib/db-error';
 import { PAYROLL_PERMISSION_DEFAULTS, PAYROLL_PERMISSION_KEYS,decidePayrollPermission } from '../lib/payroll-permissions';
 import {withTenant,type SessionContext} from '../db/client';
 import { readFileSync } from 'node:fs';
@@ -544,4 +545,18 @@ it('keeps the own history list, counts, mobile nomination and rejection reason o
  await decideLeave(adminCtx(b),{leaveRequestId:other.leaveRequestId,decision:'rejected',rejectReason:'Fictional report reason'});
  await decideLeave(adminCtx(b),{leaveRequestId:own.leaveRequestId,decision:'rejected',rejectReason:'Fictional own reason'});
  expect(await ownLeaveRejections(manager.ctx,ids)).toEqual(new Map([[own.leaveRequestId,{reason:'Fictional own reason',dates:[]}]]));
+});
+
+it('preserves native pending edits but rejects raw non-own edits, forged decision fields and physical deletion',async()=>{
+ const subject=await hire('employee'),typeId=await leaveType();
+ const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const setReason=(ctx:SessionContext)=>withTenant(ctx,tx=>tx.update(schema.leaveRequest).set({reason:'Fictional forged edit'}).where(eq(schema.leaveRequest.id,leaveRequestId)));
+ expect(await setReason(adminCtx(b)).then(()=>null,pgSqlState)).toBe('42501');
+ expect(await withTenant(subject.ctx,tx=>tx.update(schema.leaveRequest).set({decidedAt:new Date()}).where(eq(schema.leaveRequest.id,leaveRequestId))).then(()=>null,pgSqlState)).toBe('42501');
+ expect(await withTenant(subject.ctx,tx=>tx.delete(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId))).then(()=>null,pgSqlState)).toBe('42501');
+ const [untouched]=await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId));expect(untouched).toMatchObject({reason:null,status:'pending',decidedAt:null});
+ await expect(editLeaveRequest(subject.ctx,{leaveRequestId,leaveTypeId:typeId,startDate:START,endDate:END,reason:'Fictional native edit'})).resolves.toMatchObject({leaveRequestId});
+ const [changed]=await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId));expect(changed).toMatchObject({employmentId:subject.employmentId,reason:'Fictional native edit',status:'pending',decidedAt:null});
+ const [audit]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.edited')));
+ expect(audit).toMatchObject({actorId:subject.ctx.userId,subjectEmploymentId:subject.employmentId,payload:{after:{reason:'Fictional native edit'}}});
 });

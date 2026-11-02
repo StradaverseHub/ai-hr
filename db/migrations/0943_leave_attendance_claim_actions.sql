@@ -2453,3 +2453,30 @@ DO $own_history$ DECLARE predecessor record;source text;definition text;anchor t
   EXECUTE replace(definition,anchor,anchor||E'\n      AND app.leave_own_application_allowed(lr.employment_id,''view'')');
  END LOOP;
 END $own_history$;
+
+--> statement-breakpoint
+-- Leave source writers join Access before taking any request/date tuple. This also
+-- serializes the existing Personnel availability nominations with actual source changes.
+CREATE TRIGGER aaa_leave_request_access BEFORE INSERT OR UPDATE OR DELETE ON public.leave_request FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_statement_lock();
+CREATE TRIGGER aaa_leave_request_date_access BEFORE INSERT OR UPDATE OR DELETE ON public.leave_request_date FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_statement_lock();
+-- No application command physically deletes a Leave request. Withdrawal and all other
+-- cancellations retain the row and its native audit. The storage owner retains maintenance.
+REVOKE DELETE ON public.leave_request FROM ai_hr_app;
+CREATE FUNCTION app.leave_request_edit_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE edit_fields text[]:=ARRAY['leave_type_id','start_date','end_date','days','duration_type','hours','from_time','to_time','reason','employee_remark','unpaid_days'];
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF (NEW.id,NEW.tenant_id,NEW.employment_id) IS DISTINCT FROM (OLD.id,OLD.tenant_id,OLD.employment_id)
+ OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN RAISE EXCEPTION 'Leave request identity unavailable' USING ERRCODE='42501';END IF;
+ IF OLD.status::text='pending' AND NEW.status::text='pending' THEN
+  IF app.leave_own_application_allowed(OLD.employment_id,'edit') IS NOT TRUE OR OLD.parent_group_id IS NOT NULL
+   OR (to_jsonb(NEW)-edit_fields) IS DISTINCT FROM (to_jsonb(OLD)-edit_fields)
+   OR EXISTS(SELECT 1 FROM public.leave_request_date day_row WHERE day_row.tenant_id=OLD.tenant_id AND day_row.leave_request_id=OLD.id)
+   OR NOT EXISTS(SELECT 1 FROM public.leave_type actual WHERE actual.tenant_id=NEW.tenant_id AND actual.id=NEW.leave_type_id) THEN
+   RAISE EXCEPTION 'Own Leave request edit unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_request_edit_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_leave_request_edit BEFORE UPDATE ON public.leave_request FOR EACH ROW EXECUTE FUNCTION app.leave_request_edit_guard();
