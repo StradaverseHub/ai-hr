@@ -19197,8 +19197,11 @@
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
+        "app.data_permission_unstructured_history_read",
         "app.employment_confirmation_date",
         "app.employment_status_on",
+        "app.is_group_admin",
+        "app.principal_snapshot_current",
         "app/admin/actions.ts:requireAdmin"
       ],
       "tables": [
@@ -19224,8 +19227,11 @@
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
+        "app.data_permission_unstructured_history_read",
         "app.employment_confirmation_date",
         "app.employment_status_on",
+        "app.is_group_admin",
+        "app.principal_snapshot_current",
         "app/admin/actions.ts:requireAdmin"
       ],
       "tables": [
@@ -19367,9 +19373,11 @@
         "app.access_workforce_employment",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.data_permission_unstructured_history_read",
         "app.employment_confirmation_date",
         "app.employment_status_on",
         "app.is_admin_for",
+        "app.is_group_admin",
         "app.login_blocked",
         "app.principal_snapshot_current",
         "app/admin/actions.ts:requireAdmin"
@@ -24253,8 +24261,11 @@
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
+        "app.data_permission_unstructured_history_read",
         "app.employment_confirmation_date",
         "app.employment_status_on",
+        "app.is_group_admin",
+        "app.principal_snapshot_current",
         "app/admin/leave-config/earned-accrual/actions.ts:requireAdmin"
       ],
       "tables": [
@@ -25163,8 +25174,11 @@
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
+        "app.data_permission_unstructured_history_read",
         "app.employment_confirmation_date",
         "app.employment_status_on",
+        "app.is_group_admin",
+        "app.principal_snapshot_current",
         "app/admin/leave/generate/actions.ts:requireAdmin"
       ],
       "tables": [
