@@ -216,3 +216,16 @@ it('matches prospective draft current and proposed data scope instead of accepti
  expect(await getEmployeeDraft(actor,draft.id)).toBeNull();
  await expect(saveEmployeeDraft(actor,{id:draft.id,data,currentStep:2})).rejects.toThrow();
 });
+
+it('returns only the actual native Add image and cannot turn a conflicting ID into a birth read grant',async()=>{
+ const actor=await ctx(),draft=await saveEmployeeDraft(actor,{data:{profile:{fullName:'Fictional returning source'},employment:{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time'}},currentStep:1});
+ const [source]=await owner.db.select().from(s.employeeDraft).where(eq(s.employeeDraft.id,draft.id));
+ const proof=await owner.client`select proof.born,proof.source=to_jsonb(actual) as same from app.workforce_draft_read_birth proof join employee_draft actual on actual.id=proof.draft_id and actual.tenant_id=proof.tenant_id where proof.tenant_id=${b.tenantId}::uuid and proof.user_id=${actor.userId}::uuid and proof.draft_id=${draft.id}::uuid`;
+ expect(proof).toEqual([{born:true,same:true}]);
+ let failure:unknown;try{await withTenant(actor,tx=>tx.insert(s.employeeDraft).values({...source,label:'Forbidden conflicting image'}).onConflictDoNothing().returning({id:s.employeeDraft.id}));}catch(error){failure=error;}
+ const messages:string[]=[];for(let error=failure;error&&typeof error==='object';error=(error as {cause?:unknown}).cause)messages.push(String((error as {message?:unknown}).message));
+ expect(messages.join('\n')).toContain('Draft birth source unavailable');
+ expect(await owner.db.select().from(s.employeeDraft).where(eq(s.employeeDraft.id,draft.id))).toEqual([source]);
+ await expect(withTenant(actor,tx=>tx.execute(sql`insert into app.workforce_draft_read_birth(xact_id,tenant_id,user_id,draft_id,source,source_hash) values(pg_current_xact_id(),${b.tenantId}::uuid,${actor.userId}::uuid,${randomUUID()}::uuid,'{}','forged')`))).rejects.toThrow();
+ expect(await withTenant(actor,tx=>tx.execute<{allowed:boolean}>(sql`select app.data_permission_draft_read(${randomUUID()}::uuid) as allowed`))).toEqual([{allowed:false}]);
+});

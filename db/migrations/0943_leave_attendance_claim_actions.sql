@@ -574,7 +574,7 @@ CREATE TRIGGER module_grade_group_action BEFORE INSERT OR UPDATE OR DELETE ON pu
 --> statement-breakpoint
 CREATE FUNCTION app.module_grade_group_member_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE row_image jsonb;group_id uuid;operation text;deferred_check boolean:=TG_WHEN='AFTER';
+DECLARE row_image jsonb;selected_group_id uuid;operation text;deferred_check boolean:=TG_WHEN='AFTER';
 BEGIN
  IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
  PERFORM app.access_workforce_write_lock();
@@ -582,11 +582,11 @@ BEGIN
  FOR row_image IN SELECT image FROM (VALUES(CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END),(CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END)) images(image) WHERE image IS NOT NULL LOOP
   IF row_image->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RAISE EXCEPTION 'Grade group member identity unavailable' USING ERRCODE='42501';END IF;
   IF TG_OP<>'DELETE' AND (NOT EXISTS(SELECT 1 FROM public.grade_group parent WHERE parent.id=(row_image->>'grade_group_id')::uuid AND parent.tenant_id=app.current_tenant_id()) OR NOT EXISTS(SELECT 1 FROM public.job_grade grade WHERE grade.id=(row_image->>'grade_id')::uuid AND grade.tenant_id=app.current_tenant_id())) THEN RAISE EXCEPTION 'Grade group member source unavailable' USING ERRCODE='42501';END IF;
-  group_id:=(row_image->>'grade_group_id')::uuid;operation:='edit';
-  IF EXISTS(SELECT 1 FROM app.module_grade_group_source source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=app.current_tenant_id() AND source.user_id=app.current_user_id() AND source.group_id=group_id AND source.operation='add') THEN operation:='add';
-  ELSIF TG_OP='DELETE' AND NOT EXISTS(SELECT 1 FROM public.grade_group parent WHERE parent.id=group_id AND parent.tenant_id=app.current_tenant_id()) THEN
+  selected_group_id:=(row_image->>'grade_group_id')::uuid;operation:='edit';
+  IF EXISTS(SELECT 1 FROM app.module_grade_group_source source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=app.current_tenant_id() AND source.user_id=app.current_user_id() AND source.group_id=selected_group_id AND source.operation='add') THEN operation:='add';
+  ELSIF TG_OP='DELETE' AND NOT EXISTS(SELECT 1 FROM public.grade_group parent WHERE parent.id=selected_group_id AND parent.tenant_id=app.current_tenant_id()) THEN
    operation:='delete';
-   IF deferred_check AND NOT EXISTS(SELECT 1 FROM app.module_grade_group_source source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=app.current_tenant_id() AND source.user_id=app.current_user_id() AND source.group_id=group_id AND source.operation='delete') THEN RAISE EXCEPTION 'Grade group deletion source unavailable' USING ERRCODE='42501';END IF;
+   IF deferred_check AND NOT EXISTS(SELECT 1 FROM app.module_grade_group_source source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=app.current_tenant_id() AND source.user_id=app.current_user_id() AND source.group_id=selected_group_id AND source.operation='delete') THEN RAISE EXCEPTION 'Grade group deletion source unavailable' USING ERRCODE='42501';END IF;
   END IF;
   IF NOT app.module_action_allowed('leave_configuration',operation,NULL) OR NOT app.function_action_allowed('leaveConfig.gradeGroups',operation,NULL) THEN RAISE EXCEPTION 'Grade group member action unavailable' USING ERRCODE='42501';END IF;
  END LOOP;

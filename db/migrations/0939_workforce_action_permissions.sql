@@ -1804,11 +1804,65 @@ BEGIN
 END; $$;
 REVOKE ALL ON FUNCTION app.data_permission_draft_matches(uuid,uuid,jsonb) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- INSERT RETURNING checks SELECT policies before the new heap tuple is visible. A finite
+-- final BEFORE image bridges only that real native Add; it never replaces stored-source scope.
+CREATE TABLE app.workforce_draft_read_birth(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,draft_id uuid NOT NULL,source jsonb NOT NULL,source_hash text NOT NULL,born boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,draft_id));
+REVOKE ALL ON app.workforce_draft_read_birth FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_read_birth_prepare() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE own boolean;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()
+  OR NEW.created_by_person_id IS DISTINCT FROM (SELECT actor.person_id FROM public.app_user actor WHERE actor.id=app.current_user_id() AND actor.tenant_id=NEW.tenant_id)
+  OR NOT app.data_permission_draft_matches(NEW.tenant_id,app.current_user_id(),to_jsonb(NEW))
+  OR (NEW.company_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.company company WHERE company.id=NEW.company_id AND company.tenant_id=NEW.tenant_id))
+  OR EXISTS(SELECT 1 FROM public.employee_draft existing WHERE existing.id=NEW.id) THEN RAISE EXCEPTION 'Draft birth source unavailable' USING ERRCODE='42501';END IF;
+ own:=app.access_profile_request_own(NEW.created_by_person_id) AND NOT EXISTS(SELECT 1 FROM public.access_user_override denial WHERE denial.user_id=app.current_user_id() AND denial.tenant_id=NEW.tenant_id AND denial.retired_at IS NULL AND denial.effect='deny' AND denial.capability_id IN ('workforce.add','workforce.view','workforce.maintain') AND app.access_scope_covers(denial.company_id,NEW.company_id,NEW.tenant_id));
+ IF NOT(own OR app.access_workforce_draft_action(NEW.company_id,'add')) THEN RAISE EXCEPTION 'Draft birth Add unavailable' USING ERRCODE='42501';END IF;
+ DELETE FROM app.workforce_draft_read_birth WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.workforce_draft_read_birth(xact_id,tenant_id,user_id,draft_id,source,source_hash) VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id,to_jsonb(NEW),encode(sha256(convert_to(to_jsonb(NEW)::text,'UTF8')),'hex'));
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_read_birth_prepare() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER zzz_workforce_draft_read_birth BEFORE INSERT ON public.employee_draft FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_read_birth_prepare();
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_read_birth_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ UPDATE app.workforce_draft_read_birth proof SET born=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.draft_id=NEW.id AND proof.source=to_jsonb(NEW) AND proof.source_hash=encode(sha256(convert_to(to_jsonb(NEW)::text,'UTF8')),'hex');
+ IF NOT FOUND THEN RAISE EXCEPTION 'Draft successful birth source unavailable' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_read_birth_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER workforce_draft_read_birth AFTER INSERT ON public.employee_draft FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_read_birth_record();
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_read_birth_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM app.workforce_draft_read_birth proof WHERE proof.xact_id=NEW.xact_id AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.user_id AND proof.draft_id=NEW.draft_id AND proof.source=NEW.source AND proof.source_hash=NEW.source_hash AND proof.born) THEN RAISE EXCEPTION 'Draft birth effects incomplete' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_read_birth_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER workforce_draft_read_birth_complete AFTER INSERT ON app.workforce_draft_read_birth DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_read_birth_complete();
+--> statement-breakpoint
 CREATE FUNCTION app.data_permission_draft_read(p_draft uuid) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employee_draft source WHERE source.id=p_draft AND source.tenant_id=app.current_tenant_id()
-  AND app.access_workforce_draft(source.company_id,source.created_by_person_id,'read') AND app.data_permission_draft_matches(source.tenant_id,app.current_user_id(),to_jsonb(source)));
-$$;
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source jsonb;
+BEGIN
+ IF NOT app.principal_snapshot_current() THEN RETURN false;END IF;
+ -- A fresh SPI snapshot selects the actual stored image first, including this command's changes.
+ SELECT to_jsonb(actual) INTO source FROM public.employee_draft actual WHERE actual.id=p_draft AND actual.tenant_id=app.current_tenant_id();
+ IF NOT FOUND THEN
+  SELECT proof.source INTO source FROM app.workforce_draft_read_birth proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft AND proof.source->>'id'=p_draft::text AND proof.source->>'tenant_id'=proof.tenant_id::text AND proof.source_hash=encode(sha256(convert_to(proof.source::text,'UTF8')),'hex') AND NOT proof.born;
+  IF NOT FOUND THEN RETURN false;END IF;
+ END IF;
+ IF source->>'company_id' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.company company WHERE company.id=(source->>'company_id')::uuid AND company.tenant_id=app.current_tenant_id()) THEN RETURN false;END IF;
+ RETURN app.access_workforce_draft((source->>'company_id')::uuid,(source->>'created_by_person_id')::uuid,'read') AND app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),source);
+END $$;
 REVOKE ALL ON FUNCTION app.data_permission_draft_read(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.data_permission_draft_read(uuid) TO ai_hr_app;
 CREATE POLICY data_permission_draft_read ON public.employee_draft AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.data_permission_draft_read(id));
