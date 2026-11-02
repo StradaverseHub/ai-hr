@@ -132,7 +132,7 @@
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockPayrollHistoryReadTx } from './payroll-history-lock';
 import { CORE_MODULE_CODES, MODULE_CATALOG } from '../packs/catalog';
-import { assertModuleEnabled, type EntitledContext } from './entitlements';
+import { assertModuleEnabled, isModuleEnabled, type EntitledContext } from './entitlements';
 
 const CORE = new Set<string>(CORE_MODULE_CODES);
 const CATALOGUED = new Set<string>(MODULE_CATALOG.map((m) => m.code));
@@ -193,3 +193,10 @@ export const withPerformanceTenant = withModuleTenant('performance');
 export const withLifecycleTenant = withModuleTenant('lifecycle');
 
 export const withRewardsTenant = withModuleTenant('rewards');
+
+/** Admission for additive Lifecycle modules whose native owners check each target company.
+ * This does not grant company scope and leaves the legacy onb/off gate unchanged. */
+export async function withScopedLifecycleTenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>):Promise<T>{
+ if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')&&!(ctx.entitlements?.scopedModules.lifecycle??[]).some(companyId=>isModuleEnabled(ctx,'lifecycle',companyId)))assertModuleEnabled(ctx,'lifecycle');
+ return withTenant(ctx,fn);
+}
