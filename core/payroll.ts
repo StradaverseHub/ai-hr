@@ -2334,6 +2334,10 @@ export async function updateBatchScope(
         );
       const valid = new Set(companyEmps.map((e) => e.id));
       validEmploymentIds = submittedEmploymentIds.filter((id) => valid.has(id));
+      // Explicit stale/nonmember IDs are not the legacy empty = whole-company intent.
+      if (validEmploymentIds.length === 0) {
+        throw new Error('Select at least one employee in the payroll company and period.');
+      }
     }
     // Department ids in the scope carry through unchanged (the wizard's resume path posts explicit
     // employment ids, not department filters, but keep the department dimension intact if present).
