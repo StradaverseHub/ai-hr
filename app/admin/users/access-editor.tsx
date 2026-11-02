@@ -55,7 +55,17 @@ function AccessConfigurationEditorDraft({snapshot,capabilities,users,companies,p
   const targetScope=actionScope(domain);
   invalidate();setGrants(rows=>{
    let next=rows.filter(row=>row.capabilityId!==domain+'.'+action||row.companyId!==targetScope);
-   if(action==='view'&&!checked)next=next.filter(row=>!['add','edit','delete','approve','issue','execute'].some(operation=>row.capabilityId===domain+'.'+operation)||row.companyId!==targetScope);
+   if(!checked){
+    // Remove every dependent cell at this scope, including children of a cleared family View.
+    // A tenant prerequisite also governs company-scoped descendants; unrelated company grants stay.
+    const removed=new Set([domain+'.'+action]);let changed=true;
+    while(changed){changed=false;for(const definition of capabilities){
+     if(removed.has(definition.id))continue;
+     const view=definition.id.replace(/[^.]+$/,'view');
+     if((definition.prerequisites??[]).some(id=>removed.has(id))||definition.id!==view&&removed.has(view)){removed.add(definition.id);changed=true;}
+    }}
+    next=next.filter(row=>!removed.has(row.capabilityId)||(targetScope!==null&&row.companyId!==targetScope));
+   }
    if(checked){
     const add=(id:string)=>{const definition=capabilities.find(capability=>capability.id===id);if(!definition)return;const companyId=definition.scope==='tenant'?null:targetScope;if(next.some(row=>row.capabilityId===id&&row.companyId===companyId))return;next.push({capabilityId:id,companyId});for(const required of definition.prerequisites??[])add(required);};
     add(domain+'.'+action);if(action!=='view')add(domain+'.view');
