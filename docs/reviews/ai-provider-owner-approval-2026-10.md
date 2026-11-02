@@ -665,3 +665,13 @@ The 26 approved rows receive digest-only substitutions; historical human metadat
 rows remain unchanged. No fresh human exact-hash review, specialist certification, native action
 approval or old agent evaluation/promotion renewal is claimed. Hosted qualification and actual
 staging acceptance remain required.
+
+
+### BOARD closed public offer binding
+
+The [closed public offer correction](board-nine-repair-source-binding-2026-11.md#closed-public-offer-correction)
+records assessed provider `f91c384a…`, exact spec-9 public names and unchanged private-read/native
+boundaries. It is a technical same-purpose reassessment under the already verified standing human
+fix/release authority. Only 26 digest values change; original human metadata and pending records
+remain intact. No fresh human exact-hash review, private-data expansion, new action permission or
+old evaluation/promotion renewal is claimed. Actual hosted qualification and staging acceptance remain required.

@@ -136,3 +136,51 @@ blind retry, new recovery framework, fabricated combined PASS or waiver. Officia
 isolated sole lease, exact staging arrival/ledger and authenticated acceptance remain required.
 
 After the actual 26 literal substitutions, the agent manifest was generated last: `d7652b20458ce6de55f01649b15f038db54c492187e6de80f93c5b53aecaad12` (457 files). Both canonical static checks pass. This source identity grants no evaluation, promotion or staging acceptance.
+
+
+## Closed public offer correction
+
+The affected [41516713708](https://github.com/StradaverseHub/ai-hr/actions/runs/41516713708) is an
+original terminal failure at candidate `7f2b7d983e09e96945d1712e1cf9da0f24c0c1e8`: 87 unit/DOM
+and 349 database assertions pass, one new actual-harness assertion fails. DOD, guide, schema and
+native-owner checks pass. Both public calls are `not_offered` for the unchanged question “Where are
+Password Policy and Correction Controls, and who confirms changes?” The conservative proper-name
+gate yields `other_person`, private reads false, actions true; the guides were incorrectly read
+bindings. All planned jobs finished and original reports/logs are retained before correction.
+
+Code checkpoint `d49e8b51a20e975ba8c30f3142096681f10f06c8` changes only two provider-covered
+production files relative to that candidate: `core/harness/spec.ts` and `core/harness/tools.ts`.
+The source membership remains the same 1,260 files; independent reconstruction reproduces provider
+`f91c384a76c4cd3933ff0fb6be807add9f2821475436f563bbf43c2d20afbf2f`, replacing the prior `31fd5a9e…`.
+
+Spec version 9 appends exactly the two reviewed guide names to its closed public-context list.
+Its digest is `50ffa246fb253b9ab00b3009428ecf89ad68612c125ea2fe14ad1f678444d45c`.
+History rows 1–8 remain unchanged; the added test reconstructs the exact version-8 digest after
+removing only those two names and restoring version 8. Native bindings use that exact closed list
+to classify these two capabilities as context, retaining their entities and disclosure checks.
+All previous private Teras capabilities remain read bindings and stay unavailable when private
+reads are closed. Public guidance no longer enters the private-read task-memory authorization set;
+no private-memory authority is expanded.
+
+This deliberately changes public declarations/results and control flow on eligible nonfixed gated
+turns. It remains the same public product-guidance purpose, with no new sensitive dataset or native
+write authority. Native administrator/module checks, empty schemas, literal payloads and human
+boundaries are unchanged. No gate, runner, request patterns, sensitive notes, provider budgets or
+31/32 tool limits change. Existing sensitive categories keep their actual prior behavior: only the
+already fixed categories have zero model calls; no blanket claim about all sensitive turns is made.
+The actual failing question retains private reads false and actions true. A separate actions-false
+fixture proves action tools remain withheld there. Tests preserve the original two expected `ok`
+calls and prove private-owner non-execution, caller narrowing and declared disclosure.
+
+Independent technical review finds this within the standing direct human same-purpose fix/release
+authority above, not fresh human exact-hash review or specialist certification. The 26 approved
+literal records receive only the assessed digest; every other approval-file byte remains unchanged,
+including historical human metadata, and both pending records stay byte-identical/refused. Old
+agent evaluations/promotions are not renewed. `core/harness/spec.ts` is provider-covered, not directly
+in the agent file set; the generated provider manifest changes the agent identity. Prebinding agent
+identity is `9f8fdbd88009d7f3662946ad05ebecdd487291818832187527b7d62779dac4e2` (457 files).
+Regenerate the agent manifest last after those literal substitutions. Source review and hashing are
+not hosted qualification, application acceptance or staging deployment evidence. Preserve both
+original failed runs and use the supported qualification/admission route described above.
+
+After those actual26 substitutions, the agent manifest was generated last: `a4a5ca6815303fc67b2b98c0355363c56df071701d7fbb91d3301f420530d3c4` (457 files). Both canonical source checks pass; stored agent records retain their original source identities.
