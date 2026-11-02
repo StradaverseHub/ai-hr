@@ -1,4 +1,4 @@
-import { getOnehrReview } from '@/packs/performance/service';
+import { getOnehrReviewForPurpose } from '@/packs/performance/service';
 import { OnehrReviewView } from '../../onehr/review-view';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -57,15 +57,17 @@ export default async function ReviewPage({
   searchParams,
 }: {
   params: Promise<{ reviewId: string }>;
-  searchParams: Promise<{ error?: string; toast?: string }>;
+  searchParams: Promise<{ error?: string; toast?: string; purpose?: string | string[] }>;
 }) {
   const t = await getTranslations('performance.review');
   const tl = await getTranslations('performance.lifecycle');
   const s = await getSession();
   const { reviewId } = await params;
-  const { error, toast } = await searchParams;
-  const onehr = await getOnehrReview(s, reviewId);
-  if (onehr) return <OnehrReviewView v={onehr} error={error}/>;
+  const { error, toast, purpose } = await searchParams;
+  if(purpose!==undefined&&purpose!=='task'&&purpose!=='administration')notFound();
+  const onehr = await getOnehrReviewForPurpose(s, reviewId,purpose);
+  if (onehr) return <OnehrReviewView v={onehr} error={error} returnTo={`/performance/review/${reviewId}${purpose==='administration'?'?purpose=administration':''}`}/>;
+  if(purpose!==undefined)notFound();
   const r = await reviewForViewer(s, reviewId);
   if (!r) notFound();
   const scale = r.ratingScale;

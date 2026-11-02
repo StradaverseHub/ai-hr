@@ -126,6 +126,29 @@ describe('OneHR performance partner (ADR-0142)', () => {
     const [after]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,onehrCycleId));expect(after).toEqual(changed);
   });
 
+  it('selects Administrative review independently of native assigned task authority',async()=>{
+    const [native]=await withTenant(partner,tx=>tx.execute<{admin:boolean;task:boolean}>(sql`select app.onehr_review_administration(${reviewId}::uuid) as admin,app.onehr_review_task_view(${reviewId}::uuid,'assigned') as task`));
+    expect(native).toEqual({admin:true,task:false});
+    const administration=await perf.getOnehrReviewForPurpose(partner,reviewId,'administration');expect(administration).not.toBeNull();expect(administration!.reviewId).toBe(reviewId);expect(administration!.admin).toBe(true);
+    expect(await perf.getOnehrReviewForPurpose(partner,reviewId,undefined)).toBeNull();
+    expect(await perf.getOnehrReviewForPurpose(partner,reviewId,['task','administration'])).toBeNull();
+    expect(await perf.getOnehrReviewForPurpose(partner,reviewId,'unknown')).toBeNull();
+    expect(await perf.getOnehrReviewForPurpose(partner,randomUUID(),'administration')).toBeNull();
+    const userId=await createAppUser(b.tenantId,manager.personId,'employee');
+    const actor={...a,userId,personId:manager.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+    expect((await perf.getOnehrReviewForPurpose(actor,reviewId,'task'))?.reviewId).toBe(reviewId);
+    expect(await perf.getOnehrReviewForPurpose(actor,reviewId,'administration')).toBeNull();
+    await assignRole(a,{appUserId:userId,role:'performance_partner',companyId:b.companyId});
+    const mixed={...actor,roles:['employee','performance_partner'],grants:[{role:'employee',companyId:null},{role:'performance_partner',companyId:b.companyId}]};
+    const assigned=await perf.getOnehrReviewForPurpose(mixed,reviewId,'task'),administrative=await perf.getOnehrReviewForPurpose(mixed,reviewId,'administration');
+    expect(assigned?.manager).toBe(true);expect(assigned?.admin).toBe(false);expect(administrative?.manager).toBe(true);expect(administrative?.admin).toBe(true);
+    const [grant]=await owner.db.select({id:schema.roleAssignment.id}).from(schema.roleAssignment).where(and(eq(schema.roleAssignment.appUserId,userId),eq(schema.roleAssignment.role,'performance_partner'),eq(schema.roleAssignment.companyId,b.companyId)));expect(grant).toBeDefined();
+    await revokeRole(a,{roleAssignmentId:grant.id});
+    expect(await perf.getOnehrReviewForPurpose(mixed,reviewId,'administration')).toBeNull();
+    // Refresh to the actual retained Employee course; revoked admin claims do not become an assignment.
+    expect((await perf.getOnehrReviewForPurpose(actor,reviewId,'task'))?.reviewId).toBe(reviewId);
+  });
+
   it('profile-fences administrative OneHR masters while preserving exact self and assigned review identity',async()=>{
     const restrict=async(userId:string)=>{
       const id=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'department',values:[b.deptB]}]};
@@ -157,6 +180,8 @@ describe('OneHR performance partner (ADR-0142)', () => {
       }else{
         await assignRole(a,{appUserId:userId,role:'performance_partner',companyId:b.companyId});
         const mixed={...actor,roles:['employee','performance_partner'],grants:[{role:'employee',companyId:null},{role:'performance_partner',companyId:b.companyId}]};
+        expect(await perf.getOnehrReviewForPurpose(mixed,reviewId,'administration')).toBeNull();
+        expect((await perf.getOnehrReviewForPurpose(mixed,reviewId,'task'))?.reviewId).toBe(reviewId);
         const [before]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));expect(before).toBeDefined();
         expect(await refusal(withTenant(mixed,tx=>tx.update(schema.assessmentCareerProfile).set({career:{...(before.career as Record<string,unknown>),aspiration:'Borrowed admin rewrite'}}).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))),'42501')).toContain('Career administrative data unavailable');
         expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([before]);

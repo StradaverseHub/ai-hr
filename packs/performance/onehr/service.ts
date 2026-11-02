@@ -112,11 +112,13 @@ async function loadReview(tx: Tx, reviewId: string, lock = false) {
   const cycle=await loadCycle(tx,row.cycleId);
   return {row,native:header.value,cycle,kpis:z.array(kpiSchema).parse(row.kpis),competencies:z.array(competencySchema).parse(row.competencies)};
 }
-async function loadReviewTaskFields(tx:Tx,reviewId:string){
+async function loadReviewTaskFields(tx:Tx,reviewId:string,purpose:'task'|'administration'='task'){
  uuid.parse(reviewId);
  const fields=Object.entries(getTableColumns(onehrReview)).map(([key,column])=>sql`${sql.identifier(column.name)} as ${sql.identifier(key)}`);
- const [row]=await tx.execute<typeof onehrReview.$inferSelect>(sql`select ${sql.join(fields,sql`, `)} from app.onehr_review_task_fields(${reviewId}::uuid)`);if(!row)return null;
- const [header]=await tx.execute<{value:{reviewerEmploymentId:string|null;closedAt:string|null;name:string;ownEmploymentIds:string[]}|null}>(sql`select app.onehr_review_task_header(${reviewId}::uuid) as value`);if(!header?.value)return null;
+ const source=purpose==='administration'?sql`app.onehr_review_administration_fields(${reviewId}::uuid)`:sql`app.onehr_review_task_fields(${reviewId}::uuid)`;
+ const [row]=await tx.execute<typeof onehrReview.$inferSelect>(sql`select ${sql.join(fields,sql`, `)} from ${source}`);if(!row)return null;
+ const headerSource=purpose==='administration'?sql`app.onehr_review_administration_header(${reviewId}::uuid)`:sql`app.onehr_review_task_header(${reviewId}::uuid)`;
+ const [header]=await tx.execute<{value:{reviewerEmploymentId:string|null;closedAt:string|null;name:string;ownEmploymentIds:string[]}|null}>(sql`select ${headerSource} as value`);if(!header?.value)return null;
  const cycle=await loadCycle(tx,row.cycleId);
  return {row,native:header.value,cycle,kpis:z.array(kpiSchema).parse(row.kpis),competencies:z.array(competencySchema).parse(row.competencies)};
 }
@@ -1380,15 +1382,28 @@ function reviewProfile(profile:Policy['profiles'][number]){const visible={...pro
 type ResultCard={id:string;digest:string|null;frozen:boolean;performanceReleasedAt:string|null;potentialReleasedAt:string|null;talentReleasedAt:string|null;feedbackReleasedAt:string|null;result:Pick<FrozenResult,'performance'|'potential'|'talent'|'performanceSource'|'potentialSource'|'feedback'|'anonymousFeedback'>};
 /** Own-person projection returns only expressly released ratings and anonymous feedback. */
 export async function getOnehrReview(ctx:SessionContext,reviewId:string) {return withPerformanceTenant(ctx,tx=>getOnehrReviewTx(tx,ctx,reviewId));}
-export async function getOnehrReviewTx(tx:Tx,ctx:SessionContext,reviewId:string) {
-    const r=await loadReviewTaskFields(tx,reviewId);if(!r)return null;
-    const [scope]=await tx.execute<{admin:boolean}>(sql`select app.onehr_result_administration(${reviewId}::uuid) as admin`);
-    const self=await isSelf(tx,r.row.employmentId),manager=!self&&await isManager(tx,reviewId),admin=!self&&!!scope?.admin,moderator=!self&&!manager&&await isModerator(tx,reviewId),reviewer=!self&&!manager&&await isEffectiveReviewer(tx,reviewId);if(!self&&!manager&&!admin&&!moderator&&!reviewer)throw Error('Assessment is not assigned to you.');
+export async function getOnehrReviewTx(tx:Tx,ctx:SessionContext,reviewId:string) {return reviewForPurposeTx(tx,ctx,reviewId,'task');}
+/** The route selects a course explicitly; an unavailable selected course never falls back. */
+export async function getOnehrReviewForPurpose(ctx:SessionContext,reviewId:string,purpose:unknown){
+ if(purpose!==undefined&&purpose!=='task'&&purpose!=='administration')return null;
+ return withPerformanceTenant(ctx,async tx=>{
+  if(purpose!=='administration'){
+   const [task]=await tx.execute<{ok:boolean}>(sql`select app.onehr_review_task_view(${reviewId}::uuid,'self') or app.onehr_review_task_view(${reviewId}::uuid,'assigned') as ok`);if(!task?.ok)return null;
+  }
+  return reviewForPurposeTx(tx,ctx,reviewId,purpose==='administration'?'administration':'task');
+ });
+}
+export async function getOnehrAdministrativeReview(ctx:SessionContext,reviewId:string){return withPerformanceTenant(ctx,tx=>reviewForPurposeTx(tx,ctx,reviewId,'administration'));}
+async function reviewForPurposeTx(tx:Tx,ctx:SessionContext,reviewId:string,purpose:'task'|'administration') {
+    const r=await loadReviewTaskFields(tx,reviewId,purpose);if(!r)return null;
+    const [scope]=await tx.execute<{admin:boolean;task:boolean}>(sql`select app.onehr_review_administration(${reviewId}::uuid) as admin,app.onehr_review_task_view(${reviewId}::uuid,'self') or app.onehr_review_task_view(${reviewId}::uuid,'assigned') as task`);
+    const self=await isSelf(tx,r.row.employmentId),manager=!self&&await isManager(tx,reviewId),admin=!!scope?.admin&&(purpose==='administration'||!scope.task),moderator=!self&&!manager&&await isModerator(tx,reviewId),reviewer=!self&&!manager&&await isEffectiveReviewer(tx,reviewId);if(!self&&!manager&&!admin&&!moderator&&!reviewer)throw Error('Assessment is not assigned to you.');
     // D-P1-22: PM stays with the stored reviewer and the approvers; the one-level-up reviewer sees competencies and plans.
     const pmHidden=(moderator||reviewer)&&!admin,tmHidden=moderator&&!reviewer&&!admin;
     const name={name:r.native.name};const moderators=await moderatorChoices(tx,reviewId);
     const stored=await frozenReviewTx(tx,reviewId);
-    const [card]=await tx.execute<{value:ResultCard|null}>(sql`select app.onehr_task_result_card(${reviewId}::uuid) as value`);
+    const cardSource=purpose==='administration'?sql`app.onehr_result_card(${reviewId}::uuid)`:sql`app.onehr_task_result_card(${reviewId}::uuid)`;
+    const [card]=await tx.execute<{value:ResultCard|null}>(sql`select ${cardSource} as value`);
     const record=card?.value;
     const result=record?.result as ResultCard['result']|undefined;
     // WP-E (E-1): a leader who is not a cycle administrator reads a frozen band only once it is released to
