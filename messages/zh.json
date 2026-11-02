@@ -33965,7 +33965,7 @@
     "previewSource": "审核人事来源",
     "verifiedSource": "当前已核验来源",
     "sourceEnded": "此雇佣关系已结束。继续前请审核人事来源。",
-    "retirementNote": "退休后首份合同的简化流程需要真实的退休批准和已完成的健康检查证据，由PBP记录，并由People Ops独立核验。没有证据时，请使用正常审批流程。",
+    "retirementNote": "请先记录之前的批准。此个案须等待完成健康检查并由 People Ops 独立核实。无法证实之前的批准时，请使用常规流程。",
     "readEvidence": "加载退休证据",
     "verifiedRetirement": "已核验的退休证据保管记录",
     "normalFlow": "使用正常决定及审批流程",
@@ -34043,6 +34043,16 @@
       "signatureEscalationDays": "签名升级处理（提前天数）",
       "minimumTermMonths": "最短续签期限（月）",
       "dailyHour": "每日同步时间（MYT）"
-    }
+    },
+    "awaitingHealth": "等待完成健康检查",
+    "optionalHealth": "稍后附上健康检查记录",
+    "attachHealth": "附上已完成的健康检查记录",
+    "attachHealthHelp": "从 P-file 中选择已完成的健康检查 PDF。它必须与之前的批准文件分开。",
+    "awaitingEvidenceVerification": "等待 People Ops 独立核实",
+    "withdrawEvidence": "撤回未核实的证据",
+    "withdrawEvidenceReason": "撤回证据的原因",
+    "chooseVerifiedEvidence": "请选择已核实的退休证据",
+    "retirementEvidencePending": "打开此个案前，请先审核已记录的退休证据。",
+    "acceptancePaused": "此工作流程的签署已暂停。您仍可拒绝此邀约。"
   }
 }

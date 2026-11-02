@@ -16,9 +16,9 @@ import {ContractSignature} from '../app/lifecycle/contracts/signature';
 import {ContractCases} from '../app/lifecycle/contracts/cases';
 import {ContractCaseDetail} from '../app/lifecycle/contracts/[caseId]/detail';
 import {ContractSettingsEditor} from '../app/lifecycle/contracts/settings/settings';
-const mocks=vi.hoisted(()=>({command:vi.fn(),refresh:vi.fn(),push:vi.fn()}));
+const mocks=vi.hoisted(()=>({command:vi.fn(),retirement:vi.fn(),refresh:vi.fn(),push:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh,push:mocks.push}),usePathname:()=>'/lifecycle/contracts'}));
-vi.mock('../app/lifecycle/contracts/actions',()=>({runContractCommand:mocks.command,readContractLetterEditor:vi.fn(),readContractRetirementContext:vi.fn()}));
+vi.mock('../app/lifecycle/contracts/actions',()=>({runContractCommand:mocks.command,readContractLetterEditor:vi.fn(),readContractRetirementContext:mocks.retirement}));
 vi.mock('../components/letters/rich-editor',()=>({LetterRichEditor:()=>null}));
 const companyId='11111111-1111-4111-8111-111111111111',employeeId='22222222-2222-4222-8222-222222222222',caseId='33333333-3333-4333-8333-333333333333',documentId='44444444-4444-4444-8444-444444444444';
 const source:ContractSource={employmentId:employeeId,companyId,personId:employeeId,name:'Fictional Employee',employeeId:'FIX-001',designation:'Coordinator',grade:'G',department:'Operations',businessGroup:'Fictional Group',company:'Fictional Company',manager:'Fictional Manager',signatoryName:'Verified Signatory',signatoryTitle:'Director',startOn:'2026-01-01',endOn:'2026-12-31',salaryCents:'500000',allowanceCents:'10000',allowanceComponentId:employeeId,sourceRevision:'a'.repeat(64),sourceIssue:null,ended:false};
@@ -29,7 +29,7 @@ function amendmentView(status:'pending'|'failed'='pending'){const v=view();v.emp
 const localeMessages={en:messages,ms,zh,vi:viMessages,th,ta};
 const companies=[{id:companyId,name:source.company,configure:false,gbs:false,pbp:false,canIntake:false,canCapturePbp:false}];
 const wrap=(node:ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages}>{node}</NextIntlClientProvider>);
-beforeEach(()=>{mocks.command.mockReset();mocks.refresh.mockReset();mocks.command.mockResolvedValue({ok:true,result:{}});});
+beforeEach(()=>{mocks.command.mockReset();mocks.retirement.mockReset();mocks.refresh.mockReset();mocks.command.mockResolvedValue({ok:true,result:{}});});
 describe('Contract Management scoped interactions',()=>{
  it('filters the real assigned list and keeps expiry unsigned distinct from an end decision',async()=>{
   const r=record();r.term.endOn='2026-10-31';wrap(<ContractCases today="2026-11-03" companies={companies} rows={[{record:r,source,sourceConflict:null,lastSyncedAt:'2026-11-03 06:00:00.123456+08'}]}/>);
@@ -116,6 +116,45 @@ describe('Contract Management scoped interactions',()=>{
  });
  it.each([{patch:{allowanceCents:null},message:'sourceIncomplete'},{patch:{salaryCents:null,sourceIssue:'unsupported_pay_basis'},message:'sourcePayBasisUnsupported'},{patch:{sourceIssue:'unsupported_currency'},message:'sourceCurrencyUnsupported'}] as const)('blocks incomplete or unsupported intake: $message',async({patch,message})=>{
   mocks.command.mockResolvedValue({ok:true,result:{...source,...patch}});wrap(<ContractIntake companies={[{...companies[0],canIntake:true}]} employees={[{companyId,rows:[{id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}]}]}/>);await userEvent.selectOptions(screen.getByLabelText(messages.contractManagement.employee),employeeId);await userEvent.click(screen.getByRole('button',{name:messages.contractManagement.previewSource}));await waitFor(()=>expect(screen.getByText(messages.contractManagement[message])).toBeInTheDocument());expect(screen.getByRole('button',{name:messages.contractManagement.openCase})).toBeDisabled();expect(mocks.command).toHaveBeenCalledTimes(1);if(message==='sourceCurrencyUnsupported')expect(screen.queryByText(/RM\s*5,000\.00/)).not.toBeInTheDocument();
+ });
+ it('keeps decline available when the pinned workflow pauses signature collection',async()=>{
+  const v=view(),m=messages.contractManagement;
+  v.record.state='e_acceptance';v.acceptancePaused=true;
+  v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'e'.repeat(64),issuedAt:'2026-11-03T06:00:00Z',releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];
+  bindCurrentDocument(v);
+  wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);
+  expect(screen.getByText(m.acceptancePaused)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('checkbox',{name:m.reviewedDocument}));
+  expect(screen.queryByRole('button',{name:m.acceptSign})).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText(m.declineReason),{target:{value:'I decline the revised offer.'}});
+  await userEvent.click(screen.getByRole('button',{name:m.decline}));
+  expect(mocks.command).toHaveBeenCalledWith('accept',expect.objectContaining({documentId,action:'decline',hash:'e'.repeat(64),signature:null}));
+ });
+ it('holds all intake kinds when the source has unverified retirement evidence',async()=>{
+  const m=messages.contractManagement,pending={...source,retirementHealthPending:true};
+  mocks.command.mockResolvedValue({ok:true,result:pending});
+  wrap(<ContractIntake companies={[{...companies[0],canIntake:true}]} employees={[{companyId,rows:[{id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}]}]}/>);
+  await userEvent.selectOptions(screen.getByLabelText(m.employee),employeeId);
+  await userEvent.click(screen.getByRole('button',{name:m.previewSource}));
+  await waitFor(()=>expect(screen.getByText(m.retirementEvidencePending)).toBeInTheDocument());
+  expect(screen.getByLabelText(m.contractType)).toBeDisabled();
+  expect(screen.getByLabelText(m.contractType)).toHaveValue('post_retirement');
+  expect(screen.getByRole('button',{name:m.openCase})).toBeDisabled();
+  expect(mocks.retirement).not.toHaveBeenCalled();
+ });
+ it('opens required retirement intake only with both references from the selected verified evidence',async()=>{
+  const m=messages.contractManagement,verified={...source,retirementHealthPending:false,retirementProofRequired:true};
+  mocks.command.mockResolvedValueOnce({ok:true,result:verified}).mockResolvedValueOnce({ok:true,result:{id:caseId}});
+  mocks.retirement.mockResolvedValue({ok:true,choices:{source:verified,retirements:[],documents:[{id:documentId,title:'Approved retirement terms',fileName:'approval.pdf'}],canCapture:false,canVerify:true},evidence:[{id:caseId,approvalDocumentId:documentId,healthDocumentId:companyId,verifiedBy:employeeId,sourceRevision:source.sourceRevision,approvalEventId:companyId,healthEventId:documentId}]});
+  wrap(<ContractIntake companies={[{...companies[0],canIntake:true}]} employees={[{companyId,rows:[{id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}]}]}/>);
+  await userEvent.selectOptions(screen.getByLabelText(m.employee),employeeId);
+  await userEvent.click(screen.getByRole('button',{name:m.previewSource}));
+  await userEvent.click(await screen.findByRole('button',{name:m.readEvidence}));
+  const select=await screen.findByLabelText(m.verifiedRetirement),open=screen.getByRole('button',{name:m.openCase});
+  expect(open).toBeDisabled();
+  await userEvent.selectOptions(select,caseId);
+  await userEvent.click(open);
+  expect(mocks.command).toHaveBeenCalledWith('intake',{employmentId:employeeId,kind:'post_retirement',sourceRevision:source.sourceRevision,retirementApprovalId:companyId,healthCheckId:documentId});
  });
  it('uses the safe retirement approval flag for employee progress without a source approval UUID',()=>{
   const v=view();v.record.state='e_acceptance';v.record.term.kind='post_retirement';v.record.retirementApproved=true;v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'f'.repeat(64),issuedAt:'2026-11-03T06:00:00Z',releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];bindCurrentDocument(v);v.record.decision={...v.record.decision!,months:null,startOn:source.startOn,endOn:source.endOn};wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getAllByRole('listitem')[2]).toHaveTextContent(messages.contractManagement.document);

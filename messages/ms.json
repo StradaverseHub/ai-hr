@@ -33965,7 +33965,7 @@
     "previewSource": "Semak sumber Personel",
     "verifiedSource": "Sumber semasa yang disahkan",
     "sourceEnded": "Pekerjaan ini telah tamat. Semak sumber Personelnya sebelum meneruskan.",
-    "retirementNote": "Laluan ringkas kontrak pertama selepas persaraan memerlukan kelulusan persaraan sebenar dan bukti pemeriksaan kesihatan lengkap, direkodkan PBP serta disahkan People Ops secara bebas. Tanpa bukti, gunakan aliran kelulusan biasa.",
+    "retirementNote": "Rekodkan kelulusan terdahulu dahulu. Kes ini menunggu pemeriksaan kesihatan yang selesai dan pengesahan bebas oleh People Ops. Gunakan proses biasa apabila kelulusan terdahulu tidak dapat dibuktikan.",
     "readEvidence": "Muatkan bukti persaraan",
     "verifiedRetirement": "Jagaan persaraan yang disahkan",
     "normalFlow": "Gunakan aliran keputusan dan kelulusan biasa",
@@ -34043,6 +34043,16 @@
       "signatureEscalationDays": "Eskalasi tandatangan (hari sebelum)",
       "minimumTermMonths": "Tempoh pembaharuan minimum (bulan)",
       "dailyHour": "Jam penyegerakan harian (MYT)"
-    }
+    },
+    "awaitingHealth": "Menunggu pemeriksaan kesihatan yang selesai",
+    "optionalHealth": "Lampirkan pemeriksaan kesihatan kemudian",
+    "attachHealth": "Lampirkan pemeriksaan kesihatan yang selesai",
+    "attachHealthHelp": "Pilih PDF pemeriksaan kesihatan yang selesai daripada P-file. Dokumen itu mesti berasingan daripada kelulusan terdahulu.",
+    "awaitingEvidenceVerification": "Menunggu pengesahan bebas oleh People Ops",
+    "withdrawEvidence": "Tarik balik bukti yang belum disahkan",
+    "withdrawEvidenceReason": "Sebab menarik balik bukti",
+    "chooseVerifiedEvidence": "Pilih bukti persaraan yang disahkan",
+    "retirementEvidencePending": "Semak bukti persaraan yang direkodkan sebelum membuka kes ini.",
+    "acceptancePaused": "Tandatangan dijeda untuk aliran kerja ini. Anda masih boleh menolak tawaran."
   }
 }

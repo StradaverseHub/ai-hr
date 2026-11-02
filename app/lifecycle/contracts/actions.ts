@@ -3,7 +3,7 @@ import {revalidatePath} from 'next/cache';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import * as owner from '@/packs/contracts/service';
 import {z} from 'zod';
-export type ContractCommand='previewIntake'|'intake'|'previewDecision'|'decision'|'confirm'|'approval'|'generate'|'accept'|'release'|'retry'|'handoff'|'reconcile'|'verifyRecords'|'setup'|'configure'|'role'|'captureEvidence'|'verifyEvidence'|'amendEnd'|'refreshApprovers'|'saveDecisionDraft'|'revokeRole';
+export type ContractCommand='previewIntake'|'intake'|'previewDecision'|'decision'|'confirm'|'approval'|'generate'|'accept'|'release'|'retry'|'handoff'|'reconcile'|'verifyRecords'|'setup'|'configure'|'role'|'captureEvidence'|'attachHealth'|'withdrawEvidence'|'verifyEvidence'|'amendEnd'|'refreshApprovers'|'saveDecisionDraft'|'revokeRole';
 /** Every request authenticates again; the owner independently validates scope, capability and revision. */
 export async function runContractCommand(command:ContractCommand,input:unknown){
  const session=await requireScopedLifecycleModule();if(!session)return{ok:false as const,error:'session'};
@@ -29,6 +29,8 @@ export async function runContractCommand(command:ContractCommand,input:unknown){
    case 'configure':result=await owner.saveContractConfiguration(session,input);break;
    case 'role':result=await owner.assignContractRole(session,input);break;
    case 'captureEvidence':result=await owner.captureContractRetirementEvidence(session,input);break;
+   case 'attachHealth':await owner.attachContractRetirementHealth(session,input);break;
+   case 'withdrawEvidence':await owner.withdrawContractRetirementEvidence(session,input);break;
    case 'verifyEvidence':result=await owner.verifyContractRetirementEvidence(session,input);break;
    case 'amendEnd':result=await owner.amendContractEnd(session,input);break;
    case 'refreshApprovers':result=await owner.refreshContractApprovers(session,input);break;
@@ -40,7 +42,7 @@ export async function runContractCommand(command:ContractCommand,input:unknown){
 }
 export async function readContractRetirementContext(employmentId:string){
  const session=await requireScopedLifecycleModule();if(!session)return{ok:false as const,error:'session'};
- try{z.uuid().parse(employmentId);const choices=await owner.contractRetirementChoices(session,employmentId),evidence=(await owner.contractRetirementEvidence(session)).filter(row=>row.employmentId===employmentId);return{ok:true as const,choices,evidence};}catch{return{ok:false as const,error:'failed'};}
+ try{z.uuid().parse(employmentId);const choices=await owner.contractRetirementChoices(session,employmentId),evidence=await owner.contractRetirementEvidence(session,employmentId);return{ok:true as const,choices,evidence};}catch{return{ok:false as const,error:'failed'};}
 }
 
 export async function readContractLetterEditor(caseId:string,type:'renewal'|'end'|'declined'|'retirement'){
