@@ -76,9 +76,11 @@ describe('turn harness over native owners',()=>{
   const asAdmin=await turn(hr,'Is payroll ready this month?',[{calls:[{name:'setup_readiness'}]},{final:{reply:'Here is what is still needed.',mode:'guide'}}]);
   expect(asAdmin.result.trace.calls[0].status).toBe('ok');expect(asAdmin.result.reads).toEqual(['setup_readiness']);
   const date=todayInKualaLumpur(new Date(Date.now()+20*86400000));
+  // Issue 10: a leave application without its leave type is asked about, not suggested; nothing is prepared.
   const suggest=await turn(employee,'Apply annual leave for me on '+date+'.',[{calls:[{name:'suggest_action',args:{action:'leave.apply',details:{date}}}]},
-   {final:{reply:'Open /assistant/leave to choose the details and confirm.',mode:'propose'}}]);
-  expect(suggest.result.suggestion).toMatchObject({action:'leave.apply',reviewRoute:'/assistant/leave'});expect(suggest.result.proposals).toEqual([]);
+   {final:{reply:'Which leave type would you like to apply for?',mode:'clarify'}}]);
+  expect(suggest.result.trace.calls[0]).toMatchObject({tool:'suggest_action',status:'refused'});
+  expect(suggest.result.suggestion).toBeNull();expect(suggest.result.proposals).toEqual([]);
   expect(suggest.result.trace.outcome.fallback).toBe(false);
  });
 });

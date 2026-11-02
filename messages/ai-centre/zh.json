@@ -462,6 +462,8 @@
       "routed": "已转给您的人事团队：助手不处理此类话题。",
       "routedCrisis": "如果您身处危险，请立即联系紧急服务。",
       "days": "{count, plural, other {# 天}}",
+      "leaveApplyTitle": "{leaveType}，{start}（{duration, select, half_day_am {半天，上午} half_day_pm {半天，下午} other {{days, plural, other {# 天}}}}）",
+      "leaveApplyRangeTitle": "{leaveType}，{start} – {end}（{days, plural, other {# 天}}）",
       "review": "审核",
       "open": "打开",
       "expires": "{time} 过期",

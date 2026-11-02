@@ -12,7 +12,9 @@
  *  - suggest_action: the caller's current action catalogue (core/product-context/actions.ts). A suggestion
  *    is a pointer to the review page where the person completes and confirms. For the leave cards (step 2)
  *    the native preparer may also issue a signed proposal (core/proposals/suggested.ts) from the caller's own
- *    records and words; it saves a review, never a change, and the person confirms on the review page.
+ *    records and words; it saves a review, never a change, and the person confirms on the review page. A leave
+ *    application (issue 10) with details missing or unclear returns them, with the leave types numbered, so the
+ *    person is asked one question; nothing is suggested until it is clear.
  * No binding changes HR data; the only write is the review custody row a native preparer saves for a proposal.
  * Tests may pass their own provider; production wiring will not. */
 import {and,eq,inArray,sql} from 'drizzle-orm';
@@ -30,6 +32,7 @@ import {terasCapabilitiesFor} from '../explainers/capabilities';
 import {SEMANTIC_READS} from '../semantic-model/entities';
 import type {EntityId} from '../semantic-model/types';
 import {asksToBypassReview,prepareSuggestedProposal} from '../proposals/suggested';
+import {LEAVE_APPLY_FORM_ROUTE} from '../proposals/leave-apply';
 import type {Proposal} from '../proposals/proposal';
 import {HARNESS_SPEC} from './spec';
 
@@ -53,7 +56,10 @@ export type ToolCandidates=Readonly<{bindings:readonly ToolBinding[];
  destinations:readonly string[]}>;
 export type ToolProvider=(ctx:SessionContext,scope:ToolScope,actions:boolean)=>Promise<ToolCandidates>;
 
-const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change from available_actions. Nothing is prepared or submitted.';
+const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change from available_actions. For leave.apply, details may carry leaveType, startDate and endDate (YYYY-MM-DD), durationType (full_day, half_day_am or half_day_pm) and reason, each only from the person\'s own words; leave out what they did not say. Nothing is submitted.';
+/** Issue 10: a leave application from chat with details missing or unclear. One question, never a guess. */
+const ASK_NOTE='Some details for this leave application are missing or unclear (listed in missing). Nothing is prepared. Ask the person one short question for them; when options are listed, show them numbered as given and ask for the number. Never guess a leave type or a date.';
+const FORM_NOTE='The leave application is filled in on the Request Leave form for the person to check and submit there. Nothing is submitted until they do.';
 const CHOOSE_NOTE='Several leave requests are waiting for this person\'s decision, numbered in pending. Nothing is prepared. List them by number (applicant, leave type, days and when it starts) and ask which number they want to approve; never choose one yourself. When they say which, suggest again with that number as request in details. Requests not listed are on the review page.';
 /** Entities whose rows name other people the caller may see (core/semantic-model/entities.ts). */
 /** Review H5 (runs 41343676782 and 41360905376): an approver asking what is "pending for me" was answered from their own
@@ -107,12 +113,17 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
    if(typeof input.action==='string'&&/^approvals\..+\.decide$/.test(input.action)&&asksToBypassReview(scope.personWords))
     return{ok:false,refusal:'review_required',content:{ok:false,note:'The person asked to skip the review or to decide in bulk. Nothing is suggested: every decision is checked and confirmed one at a time on its review page. Say so briefly.'}};
    const result=suggestAction(catalogue,input.action,input.details);
-   if(result.suggested){const outcome=await prepareSuggestedProposal(ctx,result.action,input.details,scope.personWords);
+   if(result.suggested){const outcome=await prepareSuggestedProposal(ctx,result.action,input.details,scope.personWords,undefined,scope.locale);
+    // A leave application with details missing or unclear: the person is asked, and nothing is suggested yet.
+    if(outcome?.kind==='ask')return{ok:false,refusal:'missing_details',content:{suggested:false,action:result.action,reason:'missing_details',missing:outcome.missing,
+     ...(outcome.options.length?{options:outcome.options}:{}),note:ASK_NOTE}};
     const suggestion={action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard};
     // Several pending: the person chooses; the model lists them and asks, and nothing is prepared (ADR-0170 §3.15).
     if(outcome?.kind==='choose')return{ok:true,content:{...result,pending:outcome.pending,...(outcome.more?{notListed:outcome.more}:{}),note:CHOOSE_NOTE},suggestion};
     const proposal=outcome?.kind==='proposal'?outcome.proposal:null;
-    return{ok:true,content:{...result,note:proposal?'A review item is ready; the person checks and confirms it on the review page. Nothing is submitted until they do.':'The person completes and confirms this on the review page; nothing is prepared or submitted.'},
+    const note=!proposal?'The person completes and confirms this on the review page; nothing is prepared or submitted.'
+     :proposal.body.review.route===LEAVE_APPLY_FORM_ROUTE?FORM_NOTE:'A review item is ready; the person checks and confirms it on the review page. Nothing is submitted until they do.';
+    return{ok:true,content:{...result,note},
      suggestion,...(proposal?{proposal}:{})};}
    return{ok:false,refusal:result.reason,content:{...result,note:result.reason==='missing_details'?'Ask the person for the missing details. Do not say anything is prepared.':'This change is not available to this person here.'}};}}]:[];
  return Object.freeze({bindings:Object.freeze([...context,...reads,...teras,...suggest]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),

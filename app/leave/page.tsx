@@ -65,6 +65,7 @@ import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
 import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 import { RequestLeaveDialog } from '@/components/leave/request-leave-dialog';
+import { leaveApplyPrefill } from '@/lib/leave-apply-prefill';
 // 296fc027 — the employee replacement-leave request: the button beside "+ Request Leave" and the action it posts
 // to. The availability read that decides whether to offer it is asked in ./my-leave-data.ts (r397).
 import { ReplacementLeaveRequestDialog } from '@/components/leave/replacement-leave-request-dialog';
@@ -175,6 +176,10 @@ export default async function LeavePage({
      */
     apply?: string;
     applyType?: string;
+    // Issue 10 — the end date and duration a leave application prepared in chat opens the form on (Edit), parsed by
+    // lib/leave-apply-prefill.ts. Seeds only, prefixed like applyType for the same reason.
+    applyEnd?: string;
+    applyDuration?: string;
     employmentId?:string|string[];
   }>;
 }) {
@@ -187,6 +192,7 @@ export default async function LeavePage({
   // not a UTC clock that would allow/block a day near KL midnight. The default-date on the apply form uses it too.
   const today = todayInKualaLumpur();
   const sp = await searchParams;
+  const applyStart = /^\d{4}-\d{2}-\d{2}$/.test(sp.start ?? '') ? sp.start! : today;
   if (!sp.apply && !sp.applyType && ['hTab', 'hType', 'hFrom', 'hTo'].some((key) => key in sp)) {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(sp)) for (const one of Array.isArray(value) ? value : value ? [value] : []) query.append(key, one);
@@ -658,7 +664,9 @@ export default async function LeavePage({
                   // 2166ef79 — `?start=` when My Attendance sent the employee here to explain an absent
                   // day, otherwise today, exactly as before. Shape-checked, never passed through raw: this
                   // value seeds a date input and rides no further.
-                  startDefault={/^\d{4}-\d{2}-\d{2}$/.test(sp.start ?? '') ? sp.start! : today}
+                  startDefault={applyStart}
+                  // Issue 10 — the end date and duration, when a chat card's Edit sent the employee here. Seeds only.
+                  {...leaveApplyPrefill(sp, applyStart)}
                   // 76dbcaa1 — `?type=` when a named Apply action sent the employee here (the Special
                   // Leave details screen has one per reason). Shape-checked like `?start=` above and never
                   // trusted: LeaveDurationFields falls back to the first option if the id is not one the

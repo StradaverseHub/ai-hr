@@ -14,16 +14,21 @@
  *    (`request` in details), which picks the request at that place in the same order now. A number or date the
  *    model passes counts only when the person's own words this turn contain it; otherwise it is ignored and the
  *    person is asked. A rejection needs the person's own reason, so it is never prepared here.
- *  - leave.apply: not prepared from a turn. It needs the person's leave type selection and their own text,
- *    which only the review page collects; the suggestion stays a pointer.
- * Returns null when neither a proposal nor a choice is issued; never throws. */
+ *  - leave.apply (issue 10): the caller's own leave only. The model names a leave type, dates, a duration and at most
+ *    a reason; the type resolves only against the caller's own apply menu, and the reason counts only when it is the
+ *    person's own words this turn. Missing or unclear details are asked for in one question (the menu numbered when
+ *    the type is unclear); otherwise ./leave-apply.ts issues the review proposal (one full day) or the form proposal.
+ * Returns null when neither a proposal, a choice nor a question is issued; never throws. */
 import {and,eq,inArray} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {leaveRequest,leaveType} from '../../db/schema';
 import {readAssignedLeaveModuleActionChoices} from '../assistant-actions/module-action-server';
 import {listLeaveRequests} from '../read';
 import {todayInKualaLumpur} from '../../lib/hr-date';
+import {isCalendarDate,LEAVE_APPLY_MAX_DAYS,leaveApplyDaySpan,prepareLeaveApplyFormProposal,prepareLeaveApplyProposal} from './leave-apply';
 import {prepareLeaveCancelProposal} from './leave-cancel';
+import {isChatLeaveDuration,readOwnLeaveApplyMenu,type ChatLeaveDuration,type OwnLeaveApplyType} from '../assistant-actions/own-leave-apply-form';
+import {OWN_LEAVE_ACTION,OWN_LEAVE_CONTRACT_VERSION} from '../../lib/assistant-actions/own-leave-contract';
 import {prepareLeaveDecideProposal} from './leave-decide';
 import type {Proposal} from './proposal';
 import {PENDING_STARTS} from '../semantic-model/entities-recommend';
@@ -103,13 +108,69 @@ export function pendingStarts(startDate:string,today:string):PendingStart{
  const weekOf=(day:number)=>Math.floor((day+3)/7),weeks=weekOf(start)-weekOf(now);
  return weeks===0?'this_week':weeks===1?'next_week':weeks<=4?'in_2_to_4_weeks':'later';
 }
-export type SuggestedOutcome=Readonly<{kind:'proposal';proposal:Proposal}>|Readonly<{kind:'choose';pending:readonly PendingChoice[];more:number}>;
+/** The details a chat card needs; the person is asked for any of these that is missing or unclear. */
+export const LEAVE_APPLY_DETAILS=['leaveType','startDate','endDate','durationType'] as const;
+export type LeaveApplyDetail=typeof LEAVE_APPLY_DETAILS[number];
+/** One numbered leave type from the caller's own apply menu, in the menu's fixed order. */
+export type LeaveApplyOption=Readonly<{option:number;leaveType:string}>;
+export type ChatLeaveApplyOutcome=Readonly<{kind:'proposal';proposal:Proposal}>
+ |Readonly<{kind:'ask';missing:readonly LeaveApplyDetail[];options:readonly LeaveApplyOption[]}>;
+
+const normalise=(value:string)=>value.normalize('NFKC').toLowerCase().replace(/\b(?:leave|cuti)\b/g,' ').replace(/[^\p{L}\p{N}]+/gu,'');
+const squash=(value:string)=>value.normalize('NFKC').toLowerCase().replace(/\s+/g,' ').trim();
+/** The leave type the model named, against the caller's own menu: an exact name or code first, then the one name that
+ * contains it ("annual" in "Annual Leave"); or the number the person chose from the listed options, when the
+ * person's own words this turn say that number. Several or none is unclear. */
+function matchLeaveType(types:readonly OwnLeaveApplyType[],given:string,personWords:string|undefined):OwnLeaveApplyType|null{
+ const asked=given.trim();
+ if(/^\d{1,2}$/.test(asked)){const number=Number(asked);return wordsNameNumber(personWords,number)&&number>=1&&number<=types.length?types[number-1]:null;}
+ const key=normalise(asked);if(!key)return null;
+ const exact=types.filter(type=>normalise(type.name)===key||normalise(type.code)===key);
+ if(exact.length)return exact.length===1?exact[0]:null;
+ const partial=types.filter(type=>normalise(type.name).includes(key));
+ return partial.length===1?partial[0]:null;
+}
+const optionsFor=(types:readonly OwnLeaveApplyType[]):readonly LeaveApplyOption[]=>Object.freeze(types.map((type,index)=>Object.freeze({option:index+1,leaveType:type.name.slice(0,64)})));
+
+/** A leave application from a chat turn, for the caller's own leave only. `details` is the model's suggestion
+ * (leaveType, startDate or date, endDate, durationType, reason); the leave type is resolved only against the
+ * caller's own apply menu, and a reason is kept only when it is the person's own words this turn. Missing or
+ * unclear details are asked for (with the menu numbered when the leave type is unclear), never guessed. Null when
+ * the caller cannot apply here at all (the suggestion stays a pointer). Throws a pause, as the owners do. */
+export async function prepareChatLeaveApplyProposal(ctx:SessionContext,details:Readonly<Record<string,unknown>>,personWords:string|undefined,locale?:string,now:Date=new Date()):Promise<ChatLeaveApplyOutcome|null>{
+ const menu=await readOwnLeaveApplyMenu(ctx,locale,now);
+ if(menu.kind!=='menu'||!menu.types.length)return null;
+ const text=(key:string)=>typeof details[key]==='string'?(details[key] as string).trim():'';
+ const missing:LeaveApplyDetail[]=[];
+ const type=text('leaveType')?matchLeaveType(menu.types,text('leaveType'),personWords):null;
+ if(!type)missing.push('leaveType');
+ const start=text('startDate')||text('date'),end=text('endDate')||start,duration=text('durationType')||'full_day';
+ if(!isCalendarDate(start))missing.push('startDate');
+ else if(!isCalendarDate(end)||end<start||leaveApplyDaySpan(start,end)>LEAVE_APPLY_MAX_DAYS)missing.push('endDate');
+ if(!isChatLeaveDuration(duration))missing.push('durationType');
+ else if(duration!=='full_day'&&isCalendarDate(start)&&end!==start)missing.push('endDate');
+ else if(type&&duration!=='full_day'&&!type.durations.includes(duration))missing.push('durationType');
+ if(missing.length)return Object.freeze({kind:'ask' as const,missing:Object.freeze([...new Set(missing)]),options:missing.includes('leaveType')?optionsFor(menu.types):Object.freeze([])});
+ const chosen=type!,durationType=duration as ChatLeaveDuration;
+ if(durationType==='full_day'&&start===end){
+  const reason=text('reason'),own=reason.length>0&&reason.length<=2000&&typeof personWords==='string'&&squash(personWords).includes(squash(reason));
+  const review=await prepareLeaveApplyProposal(ctx,{nomination:{action:OWN_LEAVE_ACTION,contractVersion:OWN_LEAVE_CONTRACT_VERSION,employmentId:menu.employmentId,leaveTypeId:chosen.id,date:start,durationType:'full_day'},
+   selection:{employmentId:menu.employmentId,leaveTypeId:chosen.id},humanText:own?{reason}:{}},locale);
+  if(review.kind==='proposal')return review;
+ }
+ const form=await prepareLeaveApplyFormProposal(ctx,{leaveTypeId:chosen.id,startDate:start,endDate:end,durationType},locale,now);
+ return form.kind==='proposal'?form:null;
+}
+
+export type SuggestedOutcome=Readonly<{kind:'proposal';proposal:Proposal}>|Readonly<{kind:'choose';pending:readonly PendingChoice[];more:number}>
+ |Extract<ChatLeaveApplyOutcome,{kind:'ask'}>;
 /** At most this many pending requests are listed; the rest are counted and left to the Approvals page. */
 export const MAX_PENDING_CHOICES=10;
 
-export async function prepareSuggestedProposal(ctx:SessionContext,action:string,details:unknown,personWords:string|undefined,now:Date=new Date()):Promise<SuggestedOutcome|null>{
+export async function prepareSuggestedProposal(ctx:SessionContext,action:string,details:unknown,personWords:string|undefined,now:Date=new Date(),locale?:string):Promise<SuggestedOutcome|null>{
  try{
   const given=details&&typeof details==='object'&&!Array.isArray(details)?details as Record<string,unknown>:{};
+  if(action==='leave.apply')return await prepareChatLeaveApplyProposal(ctx,given,personWords,locale,now);
   if(action==='leave.cancel'){
    if(!ctx.personId)return null;
    const today=todayInKualaLumpur(now),date=isDate(given.startDate)?given.startDate:null;

@@ -462,6 +462,8 @@
       "routed": "ส่งต่อให้ทีม HR ของคุณแล้ว: ผู้ช่วยไม่จัดการหัวข้อนี้",
       "routedCrisis": "หากคุณตกอยู่ในอันตราย โปรดติดต่อหน่วยฉุกเฉินทันที",
       "days": "{count, plural, other {# วัน}}",
+      "leaveApplyTitle": "{leaveType}, {start} ({duration, select, half_day_am {ครึ่งวัน ช่วงเช้า} half_day_pm {ครึ่งวัน ช่วงบ่าย} other {{days, plural, other {# วัน}}}})",
+      "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, other {# วัน}})",
       "review": "ตรวจสอบ",
       "open": "เปิด",
       "expires": "หมดอายุ {time}",

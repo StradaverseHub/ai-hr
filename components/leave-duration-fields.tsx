@@ -123,6 +123,8 @@ export type LeaveTypeOption = {
 export function LeaveDurationFields({
   types,
   startDefault,
+  endDefault,
+  durationDefault,
   defaultTypeId,
   layout = 'grid',
   showDocumentFields = false,
@@ -136,6 +138,10 @@ export function LeaveDurationFields({
   /** 76dbcaa1 — the leave type to open on, when the employee arrived from a named Apply action. */
   defaultTypeId?: string | null;
   startDefault?: string;
+  /** Issue 10 — SEEDED like defaultTypeId: the end date and duration a chat card's Edit opens the form on. A duration
+   *  the selected type does not allow still falls back to full_day below; the service remains the guard. */
+  endDefault?: string;
+  durationDefault?: Duration;
   /** 'grid' = two-up for the /leave page; 'stack' = single-column for the /me sidebar. */
   layout?: 'grid' | 'stack';
   /** Supporting-document config: render the doc/remark fields here (and hide them for EMERGENCY). */
@@ -197,9 +203,9 @@ export function LeaveDurationFields({
   const [typeId, setTypeId] = useState(
     (defaultTypeId && types.some((t) => t.id === defaultTypeId) ? defaultTypeId : types[0]?.id) ?? '',
   );
-  const [duration, setDuration] = useState<Duration>('full_day');
+  const [duration, setDuration] = useState<Duration>(durationDefault ?? 'full_day');
   const [start, setStart] = useState(startDefault ?? '');
-  const [end, setEnd] = useState(startDefault ?? '');
+  const [end, setEnd] = useState(endDefault ?? startDefault ?? '');
   const [employmentId, setEmploymentId] = useState(employeeOptions?.[0]?.id ?? ownEmploymentId ?? '');
   // Hourly-leave time window (0129): the two time pickers are controlled so we can show a live "Total: Nh"
   // as the user picks. This client total is DISPLAY-ONLY — the server recomputes hours authoritatively from

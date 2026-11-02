@@ -462,6 +462,8 @@
       "routed": "Sent to your HR team: this topic is not handled by the assistant.",
       "routedCrisis": "If you are in danger, contact emergency services now.",
       "days": "{count, plural, one {# day} other {# days}}",
+      "leaveApplyTitle": "{leaveType}, {start} ({duration, select, half_day_am {half day, morning} half_day_pm {half day, afternoon} other {{days, plural, one {# day} other {# days}}}})",
+      "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, one {# day} other {# days}})",
       "review": "Review",
       "open": "Open",
       "expires": "Expires {time}",

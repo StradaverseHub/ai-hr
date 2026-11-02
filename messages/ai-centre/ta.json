@@ -462,6 +462,8 @@
       "routed": "உங்கள் மனிதவளக் குழுவுக்கு அனுப்பப்பட்டது: இந்தத் தலைப்பை உதவியாளர் கையாள்வதில்லை.",
       "routedCrisis": "நீங்கள் ஆபத்தில் இருந்தால், இப்போதே அவசர சேவைகளைத் தொடர்புகொள்ளுங்கள்.",
       "days": "{count, plural, one {# நாள்} other {# நாட்கள்}}",
+      "leaveApplyTitle": "{leaveType}, {start} ({duration, select, half_day_am {அரை நாள், காலை} half_day_pm {அரை நாள், மதியம்} other {{days, plural, one {# நாள்} other {# நாட்கள்}}}})",
+      "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, one {# நாள்} other {# நாட்கள்}})",
       "review": "மதிப்பாய்வு",
       "open": "திற",
       "expires": "{time} அன்று காலாவதியாகும்",

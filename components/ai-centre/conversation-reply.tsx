@@ -3,6 +3,7 @@ import { getFormatter, getTranslations } from 'next-intl/server';
 import { CalendarDays, ShieldCheck } from 'lucide-react';
 import type { ConversationTurn } from '@/core/teras-wiring/turn';
 import { ruleVersionLabel } from '@/lib/ai-centre/rule-version';
+import { leaveApplyCardTitle } from '@/lib/ai-centre/leave-apply-title';
 import { ProposalCard, type ProposalCheck } from './proposal-card';
 import { RecommendationPanel } from './leave-recommendation';
 import { ConversationSuggestions } from '@/components/assistant/chat-reply-boundary';
@@ -49,10 +50,13 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
           typeof facts.days === 'number' ? t('days', { count: facts.days }) : undefined,
           facts.outcome ? label('outcomes', facts.outcome, words(facts.outcome)) : undefined].filter((line): line is string => Boolean(line));
         const recommendation = body.recommendation;
+        // Issue 10: a leave application names its own type, dates and days; every other card keeps its action title.
+        const title = leaveApplyCardTitle(body, (key, values) => t(key, values), (date, options) => format.dateTime(date, options))
+          ?? label('actions', body.what.action.replace(/\./g, '_'), t('actions.fallback'));
         return (
           <div key={body.id} className="space-y-1">
             <ProposalCard icon={<CalendarDays />} tone={body.what.effect === 'decide' ? 'decide' : 'prepared'}
-              title={label('actions', body.what.action.replace(/\./g, '_'), t('actions.fallback'))} meta={meta} checks={checks}
+              title={title} meta={meta} checks={checks}
               href={body.review.href} cta={t('review')}
               expires={t('expires', { time: format.dateTime(new Date(body.expiresAt), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) })}
               prepared={{ summary: t('howPrepared'), rows: [[t('preparedBy'), t('preparedByValue')], [t('confirmOn'), t('confirmOnValue')]] }} />
