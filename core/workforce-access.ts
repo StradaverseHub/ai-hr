@@ -81,3 +81,27 @@ export async function assertWorkforceFullImportTx(tx:Tx,ctx:SessionContext,compa
  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.workforce_full_import_allowed(${companyId}::uuid,'add') as allowed`);
  if(row?.allowed!==true)throw new WorkforceAccessError();
 }
+
+export async function assertWorkforceSectionImportCompanyTx(tx:Tx,ctx:SessionContext,companyId:string){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.workforce_section_import_allowed(${companyId}::uuid,'execute') as allowed`);
+ if(row?.allowed!==true)throw new WorkforceAccessError();
+}
+/** The original canonical hire receipt, never a caller newEmployees flag, identifies
+ * register materialization inside a genuinely admitted new-employee import. */
+export async function assertWorkforceRegisterImportTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.workforce_section_import_allowed(subject.company_id,'execute') or app.access_workforce_initial_employment(subject.id) and app.workforce_full_import_allowed(subject.company_id,'add') as allowed from public.employment subject where subject.id=${employmentId}::uuid and subject.tenant_id=${ctx.tenantId}::uuid`);
+ if(row?.allowed!==true)throw new WorkforceAccessError();
+}
+
+export function workforceImportAccess(ctx:SessionContext){return withTenant(ctx,async tx=>{
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ return Array.from(await tx.execute<{id:string;canCreate:boolean;canExecute:boolean}>(sql`select id,app.workforce_full_import_allowed(id,'add') as "canCreate",app.workforce_section_import_allowed(id,'execute') as "canExecute" from public.company where tenant_id=${ctx.tenantId}::uuid and app.workforce_section_import_allowed(id,'view') order by id`));
+});}
+
+export async function assertWorkforceSectionImportEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ const [subject]=await tx.execute<{companyId:string}>(sql`select company_id as "companyId" from public.employment where id=${employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+ if(!subject)throw new WorkforceAccessError();
+ await assertWorkforceSectionImportCompanyTx(tx,ctx,subject.companyId);
+}

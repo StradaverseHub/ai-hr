@@ -51,7 +51,7 @@ import { bankStatutoryChoices } from '@/lib/bank-statutory-import';
  * list of fields that will move. A row that matches nobody is shown as "Not found" rather than quietly
  * dropped, because a mistyped Employee ID is the single likeliest error in a bulk update.
  */
-export function SectionImport({ section, reference, onCommitPendingChange }: { section: ImportSection; reference: ImportReference; onCommitPendingChange?: (pending: boolean) => void }) {
+export function SectionImport({ section, reference, onCommitPendingChange,canImport }: { canImport:boolean;section: ImportSection; reference: ImportReference; onCommitPendingChange?: (pending: boolean) => void }) {
   const t = useTranslations('people.import');
   const nricMessage = useNricPolicyMessage();
   const nricTexts = useTranslations('peopleGeneral');
@@ -251,7 +251,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
   };
 
   const commit = () => {
-    if (commitPending.current || pending || reading || !preview) return;
+    if (canImport!==true || commitPending.current || pending || reading || !preview) return;
     commitPending.current = true;
     setCommitting(true);
     onCommitPendingChange?.(true);
@@ -467,7 +467,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
         </Card>
       )}
 
-      {preview && !result && <SectionPreview preview={preview} onImport={commit} onDownloadErrors={downloadErrors} busy={pending} />}
+      {preview && !result && <SectionPreview canImport={canImport} preview={preview} onImport={commit} onDownloadErrors={downloadErrors} busy={pending} />}
     </div>
   );
 }
@@ -485,11 +485,13 @@ function StepHeading({ num, label }: { num: number; label: string }) {
 }
 
 function SectionPreview({
+  canImport,
   preview,
   onImport,
   onDownloadErrors,
   busy,
 }: {
+  canImport:boolean;
   preview: SectionImportPreview;
   onImport: () => void;
   onDownloadErrors: () => void;
@@ -618,7 +620,7 @@ function SectionPreview({
           <span className="font-semibold uppercase tracking-wide">{t('stepNum', { num: 5 })}</span> ·{' '}
           {preview.fileErrors.length > 0 ? t('step5Blocked') : t('sectionStep5Hint')}
         </span>
-        <Button onClick={onImport} disabled={busy || preview.updateCount === 0 || preview.fileErrors.length > 0} size="sm">
+        <Button onClick={onImport} disabled={canImport!==true || busy || preview.updateCount === 0 || preview.fileErrors.length > 0} size="sm">
           {busy ? t('importing') : isPersonnelRegisterKind(preview.section)?t('importValid',{count:preview.updateCount}):t('sectionImportButton', { count: preview.updateCount })}
         </Button>
       </div>

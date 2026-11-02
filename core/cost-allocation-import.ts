@@ -4,7 +4,7 @@ import {and,asc,eq,inArray,isNull,lte,gt,or,sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,costCenter,employment,employmentCostAllocationHead,employmentCostAllocationSet as allocationSet,employmentCostAllocationRow as allocationRow} from '../db/schema';
-import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
+import {assertWorkforceCompanyTx,workforceEmploymentPredicate,assertWorkforceSectionImportCompanyTx,assertWorkforceSectionImportEmploymentTx,assertWorkforceRegisterImportTx,assertWorkforceFullImportTx} from './workforce-access';
 import {lockLabelCriteriaTx,visibleLabelIdsCondition} from './system-labels';
 import {provenCompanyDatesTx} from './employment-company';
 import {prepareCostAllocationsTx,saveEmploymentCostAllocations} from './employment-cost-allocations';
@@ -18,9 +18,9 @@ type CompanyRef={id:string;name:string;label:string|null;registration:string|nul
 /** The Company Code shown to users: the company label, else its registration number, else its legal name. */
 export const allocationCompanyCode=(c:Pick<CompanyRef,'name'|'label'|'registration'>)=>c.label?.trim()||c.registration?.trim()||c.name;
 /** Live companies the actor can maintain allocations for. Archived companies are never candidates. */
-async function maintainableCompaniesTx(tx:Tx):Promise<CompanyRef[]>{
+async function maintainableCompaniesTx(tx:Tx,initialCreation=false):Promise<CompanyRef[]>{
  return tx.select({id:company.id,name:company.legalName,label:company.companyLabel,registration:company.registrationNo}).from(company)
-  .where(and(isNull(company.archivedAt),sql`app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.legalName),asc(company.id));
+  .where(and(isNull(company.archivedAt),sql`(app.access_workforce_company(${company.id},'workforce.maintain') and app.workforce_section_import_allowed(${company.id},'view') or ${initialCreation} and app.workforce_full_import_allowed(${company.id},'add'))`)).orderBy(asc(company.legalName),asc(company.id));
 }
 /** Payroll-history matcher rules: label, registration number or legal name; the internal id is never accepted. */
 export function matchAllocationCompany(companies:CompanyRef[],raw:string):{company:CompanyRef}|{error:'missing'|'unknown'|'ambiguous'}{
@@ -28,8 +28,8 @@ export function matchAllocationCompany(companies:CompanyRef[],raw:string):{compa
  const candidates=companies.filter(c=>[c.label,c.registration,c.name].some(v=>companyCodeKey(v)===code));
  return candidates.length===1?{company:candidates[0]}:{error:candidates.length?'ambiguous':'unknown'};
 }
-export async function costAllocationReferencesTx(tx:Tx,ctx:SessionContext,companyId:string){
- z.uuid().parse(companyId);await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');const[live]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,companyId),isNull(company.archivedAt)));if(!live)throw new CostAllocationError('scope');
+export async function costAllocationReferencesTx(tx:Tx,ctx:SessionContext,companyId:string,initialCreation=false){
+ z.uuid().parse(companyId);if(initialCreation)await assertWorkforceFullImportTx(tx,ctx,companyId);else await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');const[live]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,companyId),isNull(company.archivedAt)));if(!live)throw new CostAllocationError('scope');
  return tx.select({companyId:sql<string>`${companyId}`,id:costCenter.id,code:costCenter.code,label:costCenter.label}).from(costCenter).where(and(isNull(costCenter.archivedAt),visibleLabelIdsCondition(costCenter,'cost_center',[companyId]))).orderBy(asc(costCenter.code),asc(costCenter.id));
 }
 export function costAllocationReferences(ctx:SessionContext,companyId:string){return withTenant(ctx,tx=>costAllocationReferencesTx(tx,ctx,companyId));}
@@ -50,7 +50,7 @@ const companyLabel=(c:CompanyRef)=>`${allocationCompanyCode(c)} (${c.name})`;
 
 export async function previewCostAllocationImportTx(tx:Tx,ctx:SessionContext,records:AllocationImportRecords,newEmployees?:NewAllocationEmployee[]):Promise<AllocationImportPreview>{
  if(records.length>5000)throw new CostAllocationError('invalid');await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLabelCriteriaTx(tx,ctx.tenantId);
- const companies=await maintainableCompaniesTx(tx);
+ const companies=await maintainableCompaniesTx(tx,newEmployees!==undefined);
  const groups=new Map<string,AllocationImportGroup>(),snapshots:unknown[]=[];
  for(const[at,r]of records.entries()){
   if(Object.values(r).every(v=>!String(v??'').trim()))continue;
@@ -71,7 +71,7 @@ export async function previewCostAllocationImportTx(tx:Tx,ctx:SessionContext,rec
   if(!z.iso.date().safeParse(g.effectiveDate).success){g.errors.push(`${rows}: Effective Date must be a date in YYYY-MM-DD form.`);continue;}
   if(!isValidEmployeeCode(g.employeeCode)){g.errors.push(`${rows}: Employee ID is missing or invalid.`);continue;}
   try{
-   let references=referenceCache.get(co.id);if(!references){references=await costAllocationReferencesTx(tx,ctx,co.id);referenceCache.set(co.id,references);snapshots.push([co.id,references]);}
+   let references=referenceCache.get(co.id);if(!references){references=await costAllocationReferencesTx(tx,ctx,co.id,newEmployees!==undefined);referenceCache.set(co.id,references);snapshots.push([co.id,references]);}
    const inputRows=g.rowNums.map(n=>records[n-2]);
    if(g.operation==='replace')for(const[i,r]of inputRows.entries()){const found=references.filter(c=>c.code.trim().toLowerCase()===r.cost_center_code?.trim().toLowerCase());if(found.length!==1)g.errors.push(`Row ${g.rowNums[i]} (${r.cost_center_code}): this Cost Center Code is not available for ${companyLabel(co)}.`);else {g.rows.push({costCenterId:found[0].id,percentage:r.percentage});(g.displayRows??=[]).push({code:found[0].code,percentage:r.percentage});}}
    if(!g.errors.length)normalizedAllocationRows(g.rows,g.operation);
@@ -178,6 +178,7 @@ export async function confirmCostAllocationUpload(ctx:SessionContext,input:{atte
     let revision=await headRevisionTx(tx,employmentId);
     if(revision!==ordered[0].expectedRevision)throw new CostAllocationError('changed');
     for(const g of ordered){
+     await assertWorkforceSectionImportEmploymentTx(tx,ctx,employmentId);await assertWorkforceSectionImportCompanyTx(tx,ctx,g.companyId);
      const before=await allocationAtTx(tx,employmentId,g.effectiveDate),beforeRevision=revision;
      const saved=await saveEmploymentCostAllocations(ctx,{employmentId,effectiveDate:g.effectiveDate,expectedRevision:revision,operation:g.operation,rows:g.rows},{existingTx:tx,source:'allocation-import'});revision=saved.revision;
      const after=await allocationAtTx(tx,employmentId,g.effectiveDate),common={effectiveDate:g.effectiveDate,employeeCode:g.employeeCode,companyCode:g.companyCode};
@@ -251,6 +252,7 @@ export const costAllocationRevertHandler:ImportRevertHandler={
   for(const[employmentId,list]of [...byEmployment.entries()].sort(([a],[b])=>a.localeCompare(b))){
    let revision=await headRevisionTx(tx,employmentId);
    for(const i of [...list].sort((a,b)=>itemState(b.after).headRevision-itemState(a.after).headRevision)){
+    await assertWorkforceSectionImportEmploymentTx(tx,ctx,employmentId);if(!i.companyId)throw new CostAllocationError('scope');await assertWorkforceSectionImportCompanyTx(tx,ctx,i.companyId);
     const before=itemState(i.before),after=itemState(i.after);
     const rows=before.rows.map(r=>({costCenterId:r.costCenterId,percentage:formatAllocationPercent(r.hundredths)}));
     const saved=await saveEmploymentCostAllocations(ctx,{employmentId,effectiveDate:after.effectiveDate,expectedRevision:revision,operation:rows.length?'replace':'clear',rows},{existingTx:tx,source:'import-revert'});revision=saved.revision;restored++;
@@ -261,6 +263,7 @@ export const costAllocationRevertHandler:ImportRevertHandler={
 };
 /** Called only inside the actual employee creation transaction, after its assignment spine exists. */
 export async function writeNewEmployeeCostAllocationsTx(tx:Tx,ctx:SessionContext,groups:AllocationImportGroup[],employeeIndex:number,employmentId:string){
+ await assertWorkforceRegisterImportTx(tx,ctx,employmentId);
  let revision=0;for(const g of groups.filter(g=>g.newEmployeeIndex===employeeIndex).sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate))){
   if(g.errors.length)throw new CostAllocationError('invalid');await saveEmploymentCostAllocations(ctx,{employmentId,effectiveDate:g.effectiveDate,expectedRevision:revision,operation:g.operation,rows:g.rows},{existingTx:tx,source:'employee-import'});revision++;
  }

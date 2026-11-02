@@ -79,12 +79,13 @@ export function EmployeeImport({
   companies,
   defaultCompanyId,
   reference,
-  onCommitPendingChange,
+  onCommitPendingChange,canImport,
 }: {
   companies: { id: string; name: string }[];
   defaultCompanyId: string;
   /** Live catalog values for the Excel template's Reference sheet (d8471481). */
   reference: ImportReference;
+  canImport:boolean;
   onCommitPendingChange?: (pending: boolean) => void;
 }) {
   const t = useTranslations('people.import');
@@ -424,7 +425,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   };
 
   const commit = () => {
-    if (commitPending.current || pending || reading || evaluationStatus.blocked || evaluationStatus.committed || !preview) return;
+    if (canImport!==true || commitPending.current || pending || reading || evaluationStatus.blocked || evaluationStatus.committed || !preview) return;
     commitPending.current = true;
     setCommitting(true);
     onCommitPendingChange?.(true);
@@ -844,6 +845,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
 
       {preview && !result && (
         <PreviewTable
+          canImport={canImport}
           preview={preview}
           onImport={commit}
           onDownloadErrors={downloadErrors}
@@ -912,11 +914,13 @@ function StepHeading({ num, label }: { num: number; label: string }) {
 }
 
 function PreviewTable({
+  canImport,
   preview,
   onImport,
   onDownloadErrors,
   busy,
 }: {
+  canImport:boolean;
   preview: ImportPreview;
   onImport: () => void;
   onDownloadErrors: (rows: ImportPreview['rows']) => void;
@@ -1096,7 +1100,7 @@ function PreviewTable({
         </span>
         <Button
           onClick={onImport}
-          disabled={busy || preview.validCount === 0 || preview.fileErrors.length > 0}
+          disabled={canImport!==true || busy || preview.validCount === 0 || preview.fileErrors.length > 0}
           size="sm"
         >
           {busy ? t('importing') : t('importValid', { count: preview.validCount })}

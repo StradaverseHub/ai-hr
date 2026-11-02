@@ -1625,7 +1625,7 @@ REVOKE ALL ON FUNCTION app.profile_changes_maintenance_native(uuid,uuid,text,uui
 --> statement-breakpoint
 CREATE FUNCTION app.workforce_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT ((cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$' OR cap ~ '^function\.workforceImports\.(view|add)$')
+ SELECT ((cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$' OR cap ~ '^function\.workforceImports\.(view|add|execute)$')
  AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.role_assignment r ON r.tenant_id=actor.tenant_id AND r.app_user_id=actor.id
   WHERE actor.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
    AND r.role::text IN ('hr_admin','super_admin') AND CASE WHEN co IS NULL THEN r.company_id IS NULL ELSE app.access_scope_covers(r.company_id,co,t) END)) OR app.profile_changes_maintenance_native(t,u,cap,co);
@@ -2316,3 +2316,31 @@ END $$;
 REVOKE ALL ON FUNCTION app.employee_master_schedule_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER aaa_employee_master_schedule_access BEFORE INSERT OR UPDATE OR DELETE ON public.custom_report_schedule FOR EACH STATEMENT EXECUTE FUNCTION app.employee_master_write_fence();
 CREATE TRIGGER employee_master_schedule_action BEFORE INSERT OR UPDATE OR DELETE ON public.custom_report_schedule FOR EACH ROW EXECUTE FUNCTION app.employee_master_schedule_guard();
+
+--> statement-breakpoint
+-- Existing-employee import execution is distinct from new-employee Add. Both
+-- retain the actual record/field owners and every current/proposed data check.
+SELECT app.register_function_action('workforceImports','execute','company','workforce.edit','app.workforce_function_delegation_allowed',
+ '{"moduleKey":"workforce","labelKey":"people.import.title","kind":"submenu","course":"administrative","screenKey":"personnelAdmin","href":"/admin/personnel/import","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.workforce_section_import_allowed(p_company uuid,p_operation text DEFAULT 'view') RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','execute') AND app.workforce_full_import_allowed(p_company,'view')
+ AND (p_operation='view' OR app.function_action_allowed('workforceImports','execute',p_company)
+  AND app.access_workforce_action_company(p_company,'edit'));
+$$;
+REVOKE ALL ON FUNCTION app.workforce_section_import_allowed(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.workforce_section_import_allowed(uuid,text) TO ai_hr_app;
+-- Keep the original native point reader and its Data-aware Workforce projection
+-- intact behind one private OID. The public import reader adds only its own View
+-- course; it cannot be used as an alternate read after that function is denied.
+ALTER FUNCTION app.bank_import_subjects(jsonb) RENAME TO workforce_bank_import_subjects_native;
+REVOKE ALL ON FUNCTION app.workforce_bank_import_subjects_native(jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.bank_import_subjects(p_codes jsonb)
+RETURNS TABLE(employment_id uuid,person_id uuid,company_id uuid,employee_code text,hired_on date,
+ card_id text,attendance_photo_setting text,payment_method text,full_name text,primary_email text,phone text,country text,statutory jsonb)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT native.* FROM app.workforce_bank_import_subjects_native(p_codes) native
+ WHERE app.workforce_section_import_allowed(native.company_id,'view');
+$$;
+REVOKE ALL ON FUNCTION app.bank_import_subjects(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.bank_import_subjects(jsonb) TO ai_hr_app;

@@ -1,3 +1,4 @@
+import {assertWorkforceSectionImportCompanyTx,assertWorkforceSectionImportEmploymentTx} from './workforce-access';
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {employment} from '../db/schema';
@@ -17,7 +18,7 @@ export async function previewInformationUpload(ctx:SessionContext,input:{name:st
   const co=companies[0];companyIds.add(co.id);
   if(row.errors.length)continue;
   try{
-   const matches=await withTenant(ctx,tx=>tx.select({id:employment.id}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.companyId,co.id),eq(employment.employeeCode,row.employeeCode))).limit(2));
+   const matches=await withTenant(ctx,tx=>tx.select({id:employment.id}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.companyId,co.id),sql`app.workforce_section_import_allowed(${employment.companyId},'view')`,eq(employment.employeeCode,row.employeeCode))).limit(2));
    if(matches.length!==1)throw new InformationCorrectionError('Employee ID is unknown or ambiguous within the existing company.');
    targets.set(matches[0].id,[...(targets.get(matches[0].id)??[]),row.row]);
    const changes:InformationChanges={};
@@ -60,6 +61,9 @@ export async function confirmInformationUpload(ctx:SessionContext,input:{attempt
     if(!allowed?.ok||held.createdBy!==ctx.userId)throw new ImportHistoryError('Your permission for this import changed.');
     const prior=(await importAttemptItemsTx(tx,held.id)).find(item=>item.itemKey===String(row.row));
     if(prior){if(prior.status==='failed')throw new ImportHistoryError(prior.errors.join(' '));return;}
+    await assertWorkforceSectionImportEmploymentTx(tx,ctx,preview.employmentId);
+    if(preview.before.companyId)await assertWorkforceSectionImportCompanyTx(tx,ctx,preview.before.companyId);
+    if(preview.after.companyId)await assertWorkforceSectionImportCompanyTx(tx,ctx,preview.after.companyId);
     const changes=Object.fromEntries(preview.changed.map(f=>[f,preview.after[f]])) as InformationChanges;
     const saved=await correctInformationTx(tx,ctx,{employmentId:preview.employmentId,changes,reason:preview.reason,fingerprint:preview.fingerprint,method:'excel',batchId:held.id,filename:held.sourceName});
     if(!saved.changed)throw new ImportHistoryError('The employee no longer needs this correction. Review again.');

@@ -19,7 +19,7 @@ const sectionPreview:SectionImportPreview={section:'qualification',total:1,updat
 const employeePreview:ImportPreview={companyId:'c1',total:1,validCount:1,missingColumns:[],fileErrors:[],rows:[{rowNum:1,fullName:'Fictional Employee',email:'fictional@demo.test',ok:true,errors:[],warnings:[],company:'Fixture'}],dependents:{total:0,validCount:0,missingColumns:[],rows:[]}};
 function deferred<T>(){let resolve!:(v:T)=>void;let reject!:(e:Error)=>void;const promise=new Promise<T>((r,j)=>{resolve=r;reject=j});return{promise,resolve,reject};}
 function pick(name:string){fireEvent.change(document.querySelector('input[type="file"]')!,{target:{files:[new File(['fixture'],name,{type:'text/csv'})]}});}
-function mount(kind:'section'|'employee') {render(<NextIntlClientProvider locale="en" messages={messages}>{kind==='section'?<SectionImport section="qualification" reference={reference}/>:<EmployeeImport companies={[{id:'c1',name:'Fixture'}]} defaultCompanyId="c1" reference={reference}/>}</NextIntlClientProvider>);}
+function mount(kind:'section'|'employee') {render(<NextIntlClientProvider locale="en" messages={messages}>{kind==='section'?<SectionImport canImport={true} section="qualification" reference={reference}/>:<EmployeeImport canImport={true} companies={[{id:'c1',name:'Fixture'}]} defaultCompanyId="c1" reference={reference}/>}</NextIntlClientProvider>);}
 beforeEach(()=>{vi.resetAllMocks();mocks.read.mockImplementation(async(file:File)=>({name:file.name,text:file.name,dependentsText:'',extraTexts:{}}));
   // 524303d9 — an employee file upload posts its original bytes to the Import History upload route; the
   // fixture answers that route with the same commit mock, so success and failure stay the commit's own.
@@ -50,7 +50,7 @@ describe.each(['section','employee'] as const)('%s import input ownership',kind=
   });
   it.each(['success','failure'] as const)('keeps submitted input fixed until Apply reports its real %s',async outcome=>{
     const saving=deferred<unknown>();mocks.validate.mockResolvedValue(preview);mocks.commit.mockReturnValue(saving.promise);
-    render(<NextIntlClientProvider locale="en" messages={messages}><ImportWorkbench companies={[{id:'c1',name:'Fixture'}]} defaultCompanyId="c1" reference={reference}/></NextIntlClientProvider>);
+    render(<NextIntlClientProvider locale="en" messages={messages}><ImportWorkbench canCreate={true} canExecute={true} createCompanyIds={['c1']} companies={[{id:'c1',name:'Fixture'}]} defaultCompanyId="c1" reference={reference}/></NextIntlClientProvider>);
     if(kind==='section')fireEvent.click(screen.getByRole('radio',{name:/^Qualifications /}));
     pick('submitted.csv');const apply=await screen.findByRole('button',{name:'Import 1 valid'});await waitFor(()=>expect(apply).toBeEnabled());fireEvent.click(apply);await waitFor(()=>expect(mocks.commit).toHaveBeenCalledOnce());
     expect(screen.getByLabelText('CSV data')).toBeDisabled();expect(document.querySelector('input[type="file"]')).toBeDisabled();for(const radio of screen.getAllByRole('radio'))expect(radio).toBeDisabled();

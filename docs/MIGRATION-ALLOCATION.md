@@ -1538,3 +1538,17 @@ Access ordering and then retains the existing write-lock/revision fence; pre-hel
 a blocking Access upgrade. No role/admission authority is changed. A real APP native scope writer
 positive and completed-decision→early-flush→scope revoke/restore rollback case is authored, unrun.
 The whole source row is restored before final validation, so the monotone epoch/requeue is material.
+
+### Existing-employee import purpose and native constructors
+
+The import function now separates new-employee Add from existing-employee Execute. Section and
+register reads repeat View, and actual writes repeat Execute plus unchanged record/field authority.
+Genuine new-employee register/allocation materialization uses the original same-transaction hire
+receipt and actual Add; a caller newEmployees flag is never write authority. The public bank point
+reader retains its original implementation behind a private OID and repeats import View.
+Movement and information corrections check actual before/proposed company purposes; allocation
+commit/revert retains exact current/historical company checks. The workbench offers the actual
+current company scopes and independent write flags while retaining template/preview reads.
+Native fixtures remain explicit UI projections, not storage grants. New code and affected original
+import suites require hosted qualification; remaining history/source courses and complete publication
+are not claimed by this checkpoint.

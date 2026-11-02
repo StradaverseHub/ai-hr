@@ -12,7 +12,7 @@ const HISTORY='/admin/personnel/import/history';
  * ac6645ec — one template for every company and movement type: no company or type is chosen first. The
  * upload is recorded in Import History; confirming names only the checked attempt and the chosen employees.
  */
-export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(pending:boolean)=>void}){
+export function MovementImport({onCommitPendingChange,canImport}:{canImport:boolean;onCommitPendingChange?:(pending:boolean)=>void}){
  const t=useTranslations('people.import.movement'),labels=useTranslations();
  const word=(key:string,fallback:string)=>t.has(`sheet.${key}`)?t(`sheet.${key}`):fallback;
  const [file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<MovementImportPreview|null>(null),[result,setResult]=useState<MovementImportResult|null>(null);
@@ -26,6 +26,7 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
  const reset=()=>{revision.current++;setPreview(null);setResult(null);setAttempt(null);setSelected([]);setAcknowledge(false);setClosedPayroll(false);setError(null);};
  useEffect(()=>()=>{revision.current++;},[]);
  const run=async(operation:'preview'|'apply'|'download')=>{
+  if(operation==='apply'&&canImport!==true)return;
   if(pending.current)return;pending.current=true;setBusy(true);setError(null);const current=revision.current;
   if(operation==='apply')onCommitPendingChange?.(true);
   if(operation==='preview'){setPreview(null);setResult(null);setAttempt(null);setSelected([]);setAcknowledge(false);setClosedPayroll(false);}
@@ -79,7 +80,7 @@ export function MovementImport({onCommitPendingChange}:{onCommitPendingChange?:(
     {excludedEmployees>0&&<label className="flex items-start gap-2 text-sm"><input className="mt-1" type="checkbox" disabled={busy} checked={acknowledge} onChange={e=>setAcknowledge(e.target.checked)}/>{t('excludeConfirmation',{count:preview!.employees.filter(e=>!selected.includes(movementEmployeeKey(e))).reduce((n,e)=>n+e.rows.length,0)})}</label>}
     {closedPeriods.length>0&&<div className="space-y-1 rounded-lg border border-amber-500/60 p-3 text-sm"><p className="font-medium">{t('sheet.closedPayrollTitle',{periods:closedPeriods.join(', ')})}</p><p className="text-muted-foreground">{t('sheet.closedPayrollBody')}</p>
      <label className="flex items-start gap-2"><input className="mt-1" type="checkbox" name="acknowledgeClosedPayroll" disabled={busy} checked={closedPayroll} onChange={e=>setClosedPayroll(e.target.checked)}/>{t('sheet.closedPayrollAcknowledge')}</label></div>}
-    <Button type="button" disabled={busy||!canCommit} onClick={()=>void run('apply')}>{busy?t('working'):t('confirm')}</Button>
+    <Button type="button" disabled={canImport!==true||busy||!canCommit} onClick={()=>void run('apply')}>{busy?t('working'):t('confirm')}</Button>
    </>}
    {employees.some(e=>e.rows.some(r=>r.errors.length))&&<Button type="button" variant="secondary" disabled={busy} onClick={errorsCsv}>{t('downloadErrors')}</Button>}
   </Card>}
