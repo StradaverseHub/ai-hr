@@ -244,15 +244,27 @@ async function requireAdmin(tx: Tx, companyId: string) {
   const [r] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${companyId}::uuid) as ok`);
   if (!r?.ok) throw new RewardError('Company administrator access is required.');
 }
-async function load(tx: Tx, unitId: string, lock = false) {
+async function loadReviewUnit(tx: Tx, unitId: string, lock = false) {
   idSchema.parse(unitId);
   const query = tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId));
   const [unit] = await (lock ? query.for('update') : query);
   if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
   const roles = await rolesFor(tx, unitId);
   if (!roles.length) throw new RewardError('Ask an administrator to assign your Reward Desk role for this unit.');
+  return { unit, roles };
+}
+async function load(tx: Tx, unitId: string, lock = false) {
+  const {unit,roles}=await loadReviewUnit(tx,unitId,lock);
   const entries = await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId, unitId)).orderBy(asc(rewardEntry.id));
   return { unit, roles, entries };
+}
+type NativeReviewCalculation=Omit<ReturnType<typeof calculateRewards>,'budgets'|'poolStatus'|'suggestion'>&{
+ budgets:Pick<ReturnType<typeof calculateRewards>['budgets'],'standard'|'h'>;poolStatus?:string;suggestion?:RewardMultiplierSuggestion|null;
+ hiddenCount:number;route:RewardRole[];bonusCounts:Record<'standard'|'h',{eligible:number;increases:number;reductions:number;lump:number}|null>;payWindow:Record<'standard'|'h',{count:number;payrollCents:number}|null>;
+};
+async function nativeReviewCalculationTx(tx:Tx,unit:typeof rewardUnit.$inferSelect):Promise<NativeReviewCalculation>{
+ const [row]=await tx.execute<{value:NativeReviewCalculation}>(unit.kind==='annual'?sql`select app.reward_annual_calculation(${unit.id}::uuid,${unit.revision})as value`:sql`select app.reward_offcycle_calculation(${unit.id}::uuid,${unit.revision})as value`);
+ if(!row?.value)throw new RewardError('Reward calculation unavailable.');return row.value;
 }
 function assertRevision(unit: typeof rewardUnit.$inferSelect, revision: number) {
   if (!Number.isInteger(revision) || unit.revision !== revision) throw new RewardError('This review changed in another session. Reload before saving.');
@@ -296,18 +308,10 @@ export async function getRewardUnit(ctx: SessionContext, unitId: string) {
  */
 async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string) {
   {
-    const { unit, roles, entries } = await load(tx, unitId);
-    const calculated = await calculateUnit(tx, unit, entries);
+    const { unit, roles } = await loadReviewUnit(tx, unitId);
     const state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId),effectivePolicy=state?effectiveRewardPolicy(unit.policy,state):publicState?{...unit.policy,multiplierBp:publicState.multiplierBp,branchRatings:publicState.branchRatings,targetMonthsBp:publicState.targetMonthsBp}:unit.policy;
     if(publicState&&!publicState.selectionConfirmed&&roles.includes('bu')&&!roles.includes('gr'))throw new RewardError('Senior plan membership awaits independent Group Rewards confirmation before the BU review can open.');
-    const visible = calculated.rows.filter(e => visibleEntry(e, roles, ctx.personId)).map(entry=>{
-      if(maySeeSeniorAmounts(roles)||!isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade))return entry;
-      return {...entry,recommendation:emptyRecommendation(),newBasicCents:entry.source.basicCents,bonusCents:0,meritCents:0,promotionCents:0,specialCents:0,lumpCents:0};
-    });
-    const visibleIds = new Set(visible.map(e => e.id));
-    const flags = calculated.flags.filter(f => !f.entryId || visibleIds.has(f.entryId));
-    const hiddenBlocks = calculated.flags.filter(f => f.entryId && !visibleIds.has(f.entryId) && f.severity === 'block').length;
-    if (hiddenBlocks) flags.push({ severity: 'block', code: 'ACCESS-01', message: 'A restricted record needs review by its authorised reviewer.' });
+    const calculated=await nativeReviewCalculationTx(tx,unit),visible=calculated.rows,flags=calculated.flags;
     const [cycle] = await tx.select().from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
     const [bu] = await tx.select({ name: businessUnitDisplayName }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
     // 9070acae: a review is always one company and one unit; the page names both on every save.
@@ -315,7 +319,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string) {
     const members = await tx.select({ id: rewardMember.id, role: rewardMember.role, userId: rewardMember.userId }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
     const decisions = await decisionHistory(tx, unitId, members);
     const returned = returnedProjection(unit, decisions[0]);
-    const route: RewardRole[] = unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] : offcycleRoute(unit.kind, unit.offcycle!, entries);
+    const route=calculated.route;
     // The latest decision is the one that moved the review to its current step (or returned it).
     const entered = decisions[0] && decisions[0].toStage === unit.status ? todayInKualaLumpur(new Date(decisions[0].createdAt)) : null;
     const calendar = await calendarTx(tx, unit.cycleId, unit.companyId);
@@ -324,27 +328,15 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string) {
     const payrollDue = rewardStageDue(calendar, { kind: unit.kind, status: 'approved', returned: false, enteredOn: null });
     // EC totals are derived ONLY from the rows the viewer may see (including the own-person exclusion).
     const ecRows = visible.filter(e => e.plan === 'ec');
-    const bonusCounts = (plan: 'standard' | 'h') => {
-      const group = calculated.rows.filter(e => e.plan === plan&&!isSeniorPlanMember(unit.policy,e.facts,e.source.grade));
-      // Do not infer confidential category membership from the visible subset or expose hidden counts.
-      if (group.some(e => !visibleIds.has(e.id))) return null;
-      return { eligible: group.filter(e => e.bonusEligible).length,
-        increases: group.filter(e => e.bonusCents > e.standardBonusCents).length,
-        reductions: group.filter(e => e.bonusCents < e.standardBonusCents).length,
-        lump: group.filter(e => e.lumpCents > 0).length };
-    };
-    // 8ad87ae8: people left out of the salary-increase base for a pay change, under the same hidden-record rule.
-    const payWindow = (plan: 'standard' | 'h') => calculated.rows.some(e => e.plan === plan && !visibleIds.has(e.id)) ? null
-      : { count: calculated.budgets[plan].excludedCount, payrollCents: calculated.budgets[plan].excludedPayrollCents };
     // 4e3e1af7: who withheld the unit lump sum and when; the name only where the viewer may see that person.
     const [lumpDecision] = unit.policy.lumpUnitCents === 0 ? await tx.select({ at: domainEvent.occurredAt, actorName: person.fullName }).from(domainEvent)
       .leftJoin(appUser, eq(appUser.id, domainEvent.actorId)).leftJoin(person, and(eq(person.id, appUser.personId), visibleSeatHolder))
       .where(and(eq(domainEvent.aggregateType, 'reward-unit'), eq(domainEvent.aggregateId, unitId), eq(domainEvent.eventType, 'reward-unit.lump-updated'))).orderBy(desc(domainEvent.occurredAt)).limit(1) : [];
     return { unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
-      rows: visible, flags, hiddenCount: entries.length - visible.length,
+      rows: visible, flags, hiddenCount: calculated.hiddenCount,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
-      bonusCounts: { standard: bonusCounts('standard'), h: bonusCounts('h') },
-      payWindow: { standard: payWindow('standard'), h: payWindow('h') },
+      bonusCounts: calculated.bonusCounts,
+      payWindow: calculated.payWindow,
       lumpDecision: unit.policy.lumpUnitCents === 0 ? { at: lumpDecision ? todayInKualaLumpur(new Date(lumpDecision.at)) : null, actorName: lumpDecision?.actorName ?? null, reason: unit.policy.lumpReason ?? null } : null,
       ec: roles.some(r => ['gr', 'ctro', 'ec'].includes(r)) ? { count: ecRows.length, referenceCents: Math.round(ecRows.reduce((v, e) => v + e.source.basicCents, 0) * .07), incrementCents: ecRows.reduce((v, e) => v + e.newBasicCents - e.source.basicCents, 0), bonusCents: ecRows.reduce((v, e) => v + e.bonusCents + e.lumpCents, 0) } : null,
       suggestedLumpCents: calculated.suggestedLumpCents, lumpUnitCents: calculated.lumpUnitCents,

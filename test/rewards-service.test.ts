@@ -8,13 +8,35 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
 import { returnedRewardUnits, getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
-import { emptyFacts, returnedState, type RewardRole } from '../packs/rewards/model';
+import { emptyFacts,emptyRecommendation,visibleEntry,isSeniorPlanMember, returnedState, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { dispatchNotificationsFromSweep, renderRewardRouted } from '../core/notifications';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
+import {calculateRewards} from '../packs/rewards/engine';
+import {calculateOffcycle,offcycleRoute} from '../packs/rewards/offcycle';
+import {emptyGovernance,effectiveRewardPolicy,confirmedSeniorAwards,governanceBasis,maySeeSeniorAmounts} from '../packs/rewards/governance-model';
 
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
+/** Independent native oracle reads fixture-owned stored facts; production cannot call it. */
+async function calculationOracle(actor:SessionContext,id:string){
+ const [unit]=await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id,id)),entries=await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,id)).orderBy(schema.rewardEntry.id);
+ const roleRows=await withTenant(actor,tx=>tx.execute<{role:RewardRole}>(sql`select app.reward_roles(${id}::uuid)as role`)),roles=roleRows.map(row=>row.role);
+ const [privateState]=roles.includes('gr')?await owner.db.select().from(schema.rewardGovernance).where(eq(schema.rewardGovernance.unitId,id)):[],[publicState]=await owner.db.select().from(schema.rewardGovernancePublic).where(eq(schema.rewardGovernancePublic.unitId,id));
+ const state=privateState?.state??null,pub=publicState?.snapshot??null,awardRows=maySeeSeniorAmounts(roles)?await owner.db.select().from(schema.rewardSeniorAward).where(eq(schema.rewardSeniorAward.unitId,id)):[];
+ const policy=state?effectiveRewardPolicy(unit.policy,state):pub?{...unit.policy,patActual:0,patTarget:100,targetMonthsBp:pub.targetMonthsBp,multiplierBp:pub.multiplierBp,branchRatings:pub.branchRatings,exemptReason:''}:unit.policy;
+ const [funding]=unit.kind==='annual'?[]:await withTenant(actor,tx=>tx.execute<{value:{standard:number;h:number;duplicate:boolean}}>(sql`select app.reward_funding(${id}::uuid,false)as value`));
+ const calculated=unit.kind==='annual'?calculateRewards(entries,policy,{poolStatus:pub?.status??'legacy',...(pub?{bonusPools:pub.pools}:{}),seniorAwards:confirmedSeniorAwards({...(state??emptyGovernance()),awards:Object.fromEntries(awardRows.map(row=>[row.entryId,row.award]))},entries)}):calculateOffcycle(entries,unit.policy,unit.kind,unit.offcycle!,funding.value);
+ if(unit.kind==='annual'&&pub&&pub.basis!==governanceBasis(unit.policy,entries))calculated.flags.push({severity:'block',code:'PAT-STALE',message:'Eligibility or employee source facts changed. Group Rewards must review and refresh the unit budget inputs.'});
+ if(funding?.value.duplicate)calculated.flags.push({severity:'block',code:'OC-12',message:'An employee already has an open off-cycle request against this annual review.'});
+ const visible=calculated.rows.filter(row=>visibleEntry(row,roles,actor.personId)).map(row=>maySeeSeniorAmounts(roles)||!isSeniorPlanMember(unit.policy,row.facts,row.source.grade)?row:{...row,recommendation:emptyRecommendation(),newBasicCents:row.source.basicCents,bonusCents:0,meritCents:0,promotionCents:0,specialCents:0,lumpCents:0});
+ const ids=new Set(visible.map(row=>row.id)),flags=calculated.flags.filter(flag=>!flag.entryId||ids.has(flag.entryId));
+ if(calculated.flags.some(flag=>flag.entryId&&!ids.has(flag.entryId)&&flag.severity==='block'))flags.push({severity:'block',code:'ACCESS-01',message:'A restricted record needs review by its authorised reviewer.'});
+ const count=(plan:'standard'|'h')=>{const group=calculated.rows.filter(row=>row.plan===plan&&!isSeniorPlanMember(unit.policy,row.facts,row.source.grade));return group.some(row=>!ids.has(row.id))?null:{eligible:group.filter(row=>row.bonusEligible).length,increases:group.filter(row=>row.bonusCents>row.standardBonusCents).length,reductions:group.filter(row=>row.bonusCents<row.standardBonusCents).length,lump:group.filter(row=>row.lumpCents>0).length};};
+ const window=(plan:'standard'|'h')=>calculated.rows.some(row=>row.plan===plan&&!ids.has(row.id))?null:{count:calculated.budgets[plan].excludedCount,payrollCents:calculated.budgets[plan].excludedPayrollCents};
+ return{...calculated,unit,rows:visible,flags,budgets:{standard:calculated.budgets.standard,h:calculated.budgets.h},poolStatus:pub?.status??'legacy',suggestion:roles.includes('gr')&&'suggestion'in calculated?calculated.suggestion:null,hiddenCount:entries.length-visible.length,route:unit.kind==='annual'?['bu','bg','gr','ctro','ec']:offcycleRoute(unit.kind,unit.offcycle!,entries),bonusCounts:{standard:count('standard'),h:count('h')},payWindow:{standard:window('standard'),h:window('h')}};
+}
+
 describe('Rewards persistence, authorization and atomic enactment', () => {
   let b: Base, admin: SessionContext, unitId: string, employmentId: string;
   const actors: Partial<Record<RewardRole, SessionContext>> = {};
@@ -310,11 +332,19 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
   });
   it('derives bounded annual calculations from actual governance and native membership without exporting hidden inputs',async()=>{
     for(const actor of [admin,actors.bu!,actors.bg!,actors.ctro!,actors.ec!,actors.pbp!]){
-      const expected=await getRewardUnit(actor,unitId),[native]=await withTenant(actor,tx=>tx.execute<{value:Record<string,unknown>&{rows:Record<string,unknown>[]}}>(sql`select app.reward_annual_calculation(${unitId}::uuid,${expected.unit.revision})as value`));
+      const expected=await calculationOracle(actor,unitId),actualProjection=await getRewardUnit(actor,unitId),[native]=await withTenant(actor,tx=>tx.execute<{value:Record<string,unknown>&{rows:Record<string,unknown>[]}}>(sql`select app.reward_annual_calculation(${unitId}::uuid,${expected.unit.revision})as value`));
       expect(native.value.rows).toEqual(expected.rows.map(row=>Object.fromEntries(Object.keys(native.value.rows[0]).map(key=>[key,(row as unknown as Record<string,unknown>)[key]]))));
-      for(const key of ['budgets','flags','poolStatus','suggestedMultiplierBp','suggestion','suggestedLumpCents','lumpUnitCents','lumpWorking','bonusCounts','payWindow','route','hiddenCount'])expect(native.value[key]).toEqual((expected as unknown as Record<string,unknown>)[key]);
+      for(const key of ['budgets','flags','poolStatus','suggestedMultiplierBp','suggestion','suggestedLumpCents','lumpUnitCents','lumpWorking','bonusCounts','payWindow','route','hiddenCount']){expect(native.value[key]).toEqual((expected as unknown as Record<string,unknown>)[key]);expect((actualProjection as unknown as Record<string,unknown>)[key]).toEqual((expected as unknown as Record<string,unknown>)[key]);}
       await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_calc_annual_unit(${unitId}::uuid,${expected.unit.revision})`))).rejects.toThrow();
     }
+    // Deny every raw pay-row SELECT to the app role: the real review read must still
+    // calculate its authorized bounded result through the private owner, with no raw fallback.
+    const boundedOracle=await calculationOracle(actors.bu!,unitId);
+    await owner.client`create policy reward_native_read_fixture on public.reward_entry as restrictive for select to ai_hr_app using(false)`;
+    try{
+      expect(await withTenant(actors.bu!,tx=>tx.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)))).toEqual([]);
+      const bounded=await getRewardUnit(actors.bu!,unitId);expect(bounded.rows.map(row=>row.source)).toEqual(boundedOracle.rows.map(row=>row.source));expect(bounded.budgets).toEqual(boundedOracle.budgets);expect(bounded.flags).toEqual(boundedOracle.flags);
+    }finally{await owner.client`drop policy reward_native_read_fixture on public.reward_entry`;}
     const actual=await view(),recipient=actual.rows[0];
     await owner.db.update(schema.rewardEntry).set({source:{...recipient.source,personId:admin.personId!}}).where(eq(schema.rewardEntry.id,recipient.id));
     await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_annual_calculation(${unitId}::uuid,${actual.unit.revision})`))).rejects.toThrow();
@@ -328,8 +358,9 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const childId = await createOffcycleReview(actors.bu!, unitId, { kind: 'adhoc', entryIds: [parent.rows[0].id], effectiveFrom: `${year + 1}-02-01`, exceptionReason: '' });
     let child = await getRewardUnit(actors.bu!, childId);
     const [nativeCalculation]=await withTenant(actors.bu!,tx=>tx.execute<{value:{rows:typeof child.rows;budgets:typeof child.budgets;flags:typeof child.flags;route:typeof child.route;hiddenCount:number}}>(sql`select app.reward_offcycle_calculation(${childId}::uuid,${child.unit.revision})as value`));
-    expect(nativeCalculation.value.rows).toEqual(child.rows.map(row=>Object.fromEntries(Object.keys(nativeCalculation.value.rows[0]).map(key=>[key,(row as unknown as Record<string,unknown>)[key]]))));
-    expect(nativeCalculation.value.budgets).toEqual(child.budgets);expect(nativeCalculation.value.flags).toEqual(child.flags);expect(nativeCalculation.value.route).toEqual(child.route);expect(nativeCalculation.value.hiddenCount).toBe(child.hiddenCount);
+    const oracle=await calculationOracle(actors.bu!,childId);
+    expect(nativeCalculation.value.rows).toEqual(oracle.rows.map(row=>Object.fromEntries(Object.keys(nativeCalculation.value.rows[0]).map(key=>[key,(row as unknown as Record<string,unknown>)[key]]))));
+    expect(nativeCalculation.value.budgets).toEqual(oracle.budgets);expect(nativeCalculation.value.flags).toEqual(oracle.flags);expect(nativeCalculation.value.route).toEqual(oracle.route);expect(nativeCalculation.value.hiddenCount).toBe(oracle.hiddenCount);
     await expect(withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_offcycle_calculation(${childId}::uuid,${child.unit.revision+1})`))).rejects.toThrow();
     await expect(withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_offcycle_calculation(${unitId}::uuid,${parent.unit.revision})`))).rejects.toThrow();
     const sourcePerson=child.rows[0].source.personId,ownLogin=await createAppUser(b.tenantId,sourcePerson,'employee');
@@ -337,7 +368,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await expect(withTenant(selfReviewer,tx=>tx.execute(sql`select app.reward_offcycle_calculation(${childId}::uuid,${child.unit.revision})`))).rejects.toThrow();
     await setRewardMember(admin,childId,(await getRewardUnit(admin,childId)).unit.revision,ownLogin,'bu');
     child=await getRewardUnit(actors.bu!,childId);
-    const ownProjection=await getRewardUnit(selfReviewer,childId),[bounded]=await withTenant(selfReviewer,tx=>tx.execute<{value:{rows:unknown[];budgets:typeof child.budgets;flags:typeof child.flags;hiddenCount:number}}>(sql`select app.reward_offcycle_calculation(${childId}::uuid,${child.unit.revision})as value`));
+    const ownProjection=await calculationOracle(selfReviewer,childId),[bounded]=await withTenant(selfReviewer,tx=>tx.execute<{value:{rows:unknown[];budgets:typeof child.budgets;flags:typeof child.flags;hiddenCount:number}}>(sql`select app.reward_offcycle_calculation(${childId}::uuid,${child.unit.revision})as value`));
     expect(bounded.value.rows).toEqual([]);expect(bounded.value.budgets).toEqual(ownProjection.budgets);expect(bounded.value.flags).toEqual(ownProjection.flags);expect(bounded.value.hiddenCount).toBe(1);
     for(const secret of [sourcePerson,child.rows[0].source.employmentId,child.rows[0].source.name,child.rows[0].id])expect(JSON.stringify(bounded.value)).not.toContain(secret);
     await setRewardMember(admin,childId,(await getRewardUnit(admin,childId)).unit.revision,ownLogin,'bu',true);
