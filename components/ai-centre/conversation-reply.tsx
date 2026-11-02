@@ -3,7 +3,7 @@ import { getFormatter, getTranslations } from 'next-intl/server';
 import { CalendarDays, ShieldCheck } from 'lucide-react';
 import type { ConversationTurn } from '@/core/teras-wiring/turn';
 import { ruleVersionLabel } from '@/lib/ai-centre/rule-version';
-import { leaveApplyCardTitle } from '@/lib/ai-centre/leave-apply-title';
+import { leaveApplyCardTitle, LEAVE_APPLY_TITLE_DATE } from '@/lib/ai-centre/leave-apply-title';
 import { ProposalCard, type ProposalCheck } from './proposal-card';
 import { RecommendationPanel } from './leave-recommendation';
 import { ConversationSuggestions } from '@/components/assistant/chat-reply-boundary';
@@ -51,7 +51,7 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
           facts.outcome ? label('outcomes', facts.outcome, words(facts.outcome)) : undefined].filter((line): line is string => Boolean(line));
         const recommendation = body.recommendation;
         // Issue 10: a leave application names its own type, dates and days; every other card keeps its action title.
-        const title = leaveApplyCardTitle(body, (key, values) => t(key, values), (date, options) => format.dateTime(date, options))
+        const title = leaveApplyCardTitle(body, (key, values) => t(key, values), date => format.dateTime(date, LEAVE_APPLY_TITLE_DATE))
           ?? label('actions', body.what.action.replace(/\./g, '_'), t('actions.fallback'));
         return (
           <div key={body.id} className="space-y-1">

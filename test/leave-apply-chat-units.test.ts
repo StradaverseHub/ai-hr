@@ -21,8 +21,8 @@ const CATALOGUES:Record<string,AbstractIntlMessages>={en,ms,zh,vi:vi_,ta,th} as 
 const day=(locale:string,iso:string)=>new Intl.DateTimeFormat(locale,LEAVE_APPLY_TITLE_DATE).format(new Date(iso+'T00:00:00.000Z'));
 function title(locale:string,facts:Record<string,unknown>,durationType='full_day'){
  const t=createTranslator({locale,messages:CATALOGUES[locale],namespace:'aiCentre.conversation',onError:error=>{throw error;}});
- return leaveApplyCardTitle({what:{action:'leave.apply',selectors:{durationType}},facts:facts as never},(key,values)=>t(key,values),
-  (date,options)=>new Intl.DateTimeFormat(locale,options).format(date));
+ return leaveApplyCardTitle({what:{action:'leave.apply',selectors:{durationType}},facts:facts as never},(key,values)=>t(key as never,values as never),
+  date=>new Intl.DateTimeFormat(locale,LEAVE_APPLY_TITLE_DATE).format(date));
 }
 const ONE={leaveType:'Annual Leave',startDate:'2026-11-05',endDate:'2026-11-05',days:1};
 const RANGE={leaveType:'Annual Leave',startDate:'2026-11-09',endDate:'2026-11-11',days:3};
@@ -38,15 +38,16 @@ describe('the card title names the leave type, dates and days in every locale',(
   expect(title('en',{...RANGE,days:1.5})).toBe('Annual Leave, Mon, Nov 9 – Wed, Nov 11 (1.5 days)');
  });
  it.each([
-  ['ms','1 hari','3 hari','separuh hari, pagi',', ',' (',')'],
-  ['zh','1 天','3 天','半天，上午','，','（','）'],
-  ['vi','1 ngày','3 ngày','nửa ngày, buổi sáng',', ',' (',')'],
-  ['ta','1 நாள்','3 நாட்கள்','அரை நாள், காலை',', ',' (',')'],
-  ['th','1 วัน','3 วัน','ครึ่งวัน ช่วงเช้า',', ',' (',')'],
- ])('%s',(locale,one,three,half,comma,open,close)=>{
+  ['ms','1 hari','3 hari','separuh hari, pagi','separuh hari, petang',', ',' (',')'],
+  ['zh','1 天','3 天','半天，上午','半天，下午','，','（','）'],
+  ['vi','1 ngày','3 ngày','nửa ngày, buổi sáng','nửa ngày, buổi chiều',', ',' (',')'],
+  ['ta','1 நாள்','3 நாட்கள்','அரை நாள், காலை','அரை நாள், மதியம்',', ',' (',')'],
+  ['th','1 วัน','3 วัน','ครึ่งวัน ช่วงเช้า','ครึ่งวัน ช่วงบ่าย',', ',' (',')'],
+ ])('%s',(locale,one,three,half,afternoon,comma,open,close)=>{
   expect(title(locale,ONE)).toBe(`Annual Leave${comma}${day(locale,'2026-11-05')}${open}${one}${close}`);
   expect(title(locale,RANGE)).toBe(`Annual Leave${comma}${day(locale,'2026-11-09')} – ${day(locale,'2026-11-11')}${open}${three}${close}`);
   expect(title(locale,HALF,'half_day_am')).toBe(`Annual Leave${comma}${day(locale,'2026-11-05')}${open}${half}${close}`);
+  expect(title(locale,HALF,'half_day_pm')).toBe(`Annual Leave${comma}${day(locale,'2026-11-05')}${open}${afternoon}${close}`);
  });
  it('keeps the generic title for any other card, or one without its facts',()=>{
   const t=()=>{throw Error('not called');},format=()=>{throw Error('not called');};
@@ -54,10 +55,10 @@ describe('the card title names the leave type, dates and days in every locale',(
   expect(leaveApplyCardTitle({what:{action:'leave.apply',selectors:{}},facts:{leaveType:'Annual Leave',startDate:'2026-11-05'}},t,format)).toBeNull();
   expect(leaveApplyCardTitle({what:{action:'leave.apply',selectors:{}}},t,format)).toBeNull();
  });
- it('defines both titles in all six AI Centre catalogues',()=>{
+ it('defines all four titles in all six AI Centre catalogues',()=>{
   for(const [locale,messages] of Object.entries(CATALOGUES)){
    const conversation=(messages as {aiCentre:{conversation:Record<string,unknown>}}).aiCentre.conversation;
-   for(const key of ['leaveApplyTitle','leaveApplyRangeTitle'])expect(typeof conversation[key],locale+' '+key).toBe('string');
+   for(const key of ['leaveApplyTitle','leaveApplyRangeTitle','leaveApplyMorningTitle','leaveApplyAfternoonTitle'])expect(typeof conversation[key],locale+' '+key).toBe('string');
    if(locale!=='en')expect(conversation.leaveApplyTitle,locale).not.toBe((en as {aiCentre:{conversation:Record<string,unknown>}}).aiCentre.conversation.leaveApplyTitle);
   }
  });
