@@ -3,6 +3,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {hireEmployee,setEmploymentGrade,setEmploymentInfo} from '../core/org';
 import {archiveCompany} from '../core/admin';
+import {setAppUserArchived} from '../core/auth';
 import {createMovementEvent} from '../core/movement';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 import {setCompensation} from '../core/comp';
@@ -218,6 +219,19 @@ describe('isolated Contract Staff native custody',()=>{
  it('requires linked human reviewers and pins maker identity before later approval',async()=>{
   const f=await liveModule();await expect(assignContractRole(admin,{companyId:b.companyId,businessUnitId:null,userId:admin.userId!,role:'legal',from:`${year}-01-01`,to:null,reason:'An unlinked setup account cannot be a human signoff'})).rejects.toMatchObject({cause:{code:'23514'}});
   const view=await contractCase(f.manager.ctx,f.caseId);await submitContractDecision(f.manager.ctx,{caseId:f.caseId,revision:view.record.revision,kind:'renew',months:6,basicSalary:'5000.00',fixedAllowance:'0.00',reason:'Terms submitted by this actual verified person'});const submitted=await contractCase(f.pbp,f.caseId);expect(submitted.record.decision?.submittedPersonId).toBe(f.manager.personId);const other=await account('Fictional corrected account binding');await owner.db.update(S.appUser).set({personId:other.personId}).where(eq(S.appUser.id,f.manager.ctx.userId!));const changed=await contractCase(f.pbp,f.caseId);expect(changed.sourceConflict).toContain('identity');await expect(confirmContractDecision(f.pbp,{caseId:f.caseId,revision:changed.record.revision,workflowId:f.renewalId})).rejects.toMatchObject({cause:{code:'40001'}});expect((await contractInbox(f.pbp)).items.some(i=>i.kind==='reconciliation')).toBe(true);
+ });
+ it('routes a blocked employee login to People Ops without accepting or reopening the account',async()=>{
+  const f=await liveModule(),view=await issuedRenewal(f),document=view.documents.find(d=>d.id===view.record.document?.id)!;
+  await setAppUserArchived(admin,{appUserId:f.subject.ctx.userId!,archived:true});
+  const [blocked]=await owner.db.execute<{blocked:boolean}>(sql`select app.login_blocked(${f.subject.ctx.userId}::uuid) as blocked`);expect(blocked.blocked).toBe(true);
+  await expect(withTenant(f.subject.ctx,tx=>tx.execute(sql`select app.contract_accept_document(${f.caseId}::uuid,${view.record.revision},${document.id}::uuid,${document.hash},'accept','',${JSON.stringify({method:'typed',value:'Fictional contract employee',consent:true})}::jsonb,NULL)`))).rejects.toMatchObject({cause:{code:'42501'}});
+  const held=await contractCase(f.gbs,f.caseId);expect(held.employeeIdentityUnavailable).toBe(true);expect(held.record.state).toBe('e_acceptance');
+  expect((await contractInbox(f.gbs)).items).toContainEqual(expect.objectContaining({caseId:f.caseId,kind:'reconciliation'}));
+  const [retained]=await owner.db.execute<{signature:unknown}>(sql`select signature from contract_document where id=${document.id}::uuid`);expect(retained.signature).toBeNull();
+  expect((await owner.db.execute<{blocked:boolean}>(sql`select app.login_blocked(${f.subject.ctx.userId}::uuid) as blocked`))[0].blocked).toBe(true);
+  await setAppUserArchived(admin,{appUserId:f.subject.ctx.userId!,archived:false});
+  expect((await contractCase(f.gbs,f.caseId)).employeeIdentityUnavailable).toBe(false);
+  expect((await contractCase(f.subject.ctx,f.caseId)).record.document?.hash).toBe(document.hash);
  });
  it('retains authorised history while an archived company stops runtime mutations and intake navigation',async()=>{
   const f=await liveModule(),view=await issuedRenewal(f);await archiveCompany(admin,{id:b.companyId,archived:true});const history=await contractCase(f.gbs,f.caseId);expect(history.writable).toBe(false);expect(history.documents.some(d=>d.id===view.record.document?.id)).toBe(true);const nav=await contractNavigationAccess(f.gbs);expect(nav).toMatchObject({page:true,configure:false,intake:false});await expect(assignContractRole(admin,{companyId:b.companyId,businessUnitId:null,userId:f.legal.userId!,role:'legal',from:`${year}-01-01`,to:null,reason:'Archived companies cannot gain new active review assignments'})).rejects.toMatchObject({cause:{code:'42501'}});
