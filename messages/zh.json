@@ -33704,6 +33704,7 @@
     "defaultSubject": "合同员工任务",
     "defaultBody": "打开合同管理以查看分配给您的任务。",
     "recipient": {
+      "employee": "员工",
       "manager": "直属经理",
       "pbp": "指定PBP",
       "ceo": "事业部 / 业务组首席执行官",

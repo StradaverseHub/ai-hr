@@ -33704,6 +33704,7 @@
     "defaultSubject": "Tugas kakitangan kontrak",
     "defaultBody": "Buka Pengurusan Kontrak untuk menyemak tugas anda.",
     "recipient": {
+      "employee": "Pekerja",
       "manager": "Pengurus langsung",
       "pbp": "PBP yang ditugaskan",
       "ceo": "CEO BU / BG",

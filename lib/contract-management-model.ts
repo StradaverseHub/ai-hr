@@ -26,6 +26,7 @@ export type ContractApprovalStep={
 };
 export type ContractDecisionDraft={kind:'renew'|'end';months:number|null;basicSalary:string;fixedAllowance:string;reason:string;savedBy:string;savedAt:string;sourceRevision:string};
 export type ContractCase={
+ expiredUnsignedAt?:string;
   id:string;number:string;term:ContractTerm;revision:number;state:ContractState;settings:ContractSettings;
   decision:ContractDecision|null;requiresResubmission?:boolean;decisionDraft?:ContractDecisionDraft|null;decisionHistory:ContractDecision[];approvals:ContractApprovalStep[];
   document:{id:string;hash:string;templateId:string;templateVersion:number;decisionRevision:number;issuedAt:string|null;acceptedAt:string|null;declinedAt:string|null;declineReason:string|null}|null;

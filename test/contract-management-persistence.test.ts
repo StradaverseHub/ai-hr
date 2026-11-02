@@ -1,26 +1,28 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
-import {hireEmployee,setEmploymentInfo} from '../core/org';
+import {hireEmployee,setEmploymentGrade,setEmploymentInfo} from '../core/org';
 import {archiveCompany} from '../core/admin';
 import {createMovementEvent} from '../core/movement';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 import {setCompensation} from '../core/comp';
+import {dispatchNotificationsFromSweep} from '../core/notifications';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {LetterDocument} from '../lib/letter-model';
 import {withTenant,type SessionContext} from '../db/client';
 import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
 import * as S from '../db/schema';
-import {contractNavigationAccess,contractInbox,reconcileContractSource,contractCompanies,canConfigureContractWorkflows,setupContractManagement,contractWorkflowWorkspace,assignContractRole,captureContractRetirementEvidence,saveContractTemplate,publishContractTemplate,saveContractWorkflow,saveContractConfiguration,contractSettings,intakeContract,previewContractIntake,contractCase,contractCases,submitContractDecision,confirmContractDecision,decideContractApproval,acceptContract,retryContractRecords,amendContractEnd,contractLetterEditor,sweepContractManagement} from '../packs/contracts/service';
+import {contractNavigationAccess,contractInbox,reconcileContractSource,contractCompanies,canConfigureContractWorkflows,setupContractManagement,contractWorkflowWorkspace,assignContractRole,captureContractRetirementEvidence,saveContractTemplate,publishContractTemplate,saveContractWorkflow,saveContractConfiguration,contractSettings,intakeContract,previewContractIntake,contractCase,contractCases,submitContractDecision,confirmContractDecision,decideContractApproval,acceptContract,retryContractRecords,amendContractEnd,contractLetterEditor,releaseContractLetter,handoffContract,sweepContractManagement} from '../packs/contracts/service';
 let b:Base,admin:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=await entitledCtx(b);});
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
 async function account(name:string){const [p]=await owner.db.insert(S.person).values({tenantId:b.tenantId,fullName:name,primaryEmail:randomUUID()+'@contract.test'}).returning();const userId=await createAppUser(b.tenantId,p.id,'employee');return {...admin,userId,personId:p.id,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;}
-async function employee(name:string,manager?:string,contract=false){const e=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@contract.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:contract?'contract':'full_time',hiredOn:`${year}-01-01`,provisionalEndOn:contract?`${year}-12-31`:undefined,reportingManagerEmploymentId:manager});const userId=await createAppUser(b.tenantId,e.personId,'employee');return {...e,ctx:{...admin,userId,personId:e.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext};}
+async function employee(name:string,manager?:string,contract=false,hireYear=year){const e=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@contract.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:contract?'contract':'full_time',hiredOn:`${hireYear}-01-01`,provisionalEndOn:contract?`${year}-12-31`:undefined,reportingManagerEmploymentId:manager});const userId=await createAppUser(b.tenantId,e.personId,'employee');return {...e,ctx:{...admin,userId,personId:e.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext};}
 const letter=(renewal:boolean):LetterDocument=>({version:1,language:'en',blocks:(renewal?['employee.name','employee.id','contract.newStart','contract.newEnd','pay.basicSalary','pay.fixedAllowance']:['employee.name','employee.id','contract.lastWorkingDay']).map(key=>({type:'paragraph',content:[{type:'field',key}]}))});
-async function liveModule(){
- const manager=await employee('Fictional line manager'),chief=await employee('Fictional independent chief'),subject=await employee('Fictional contract employee',manager.employmentId,true),pbp=await account('Fictional assigned PBP'),gbs=await account('Fictional GBS owner'),legal=await account('Fictional independent Legal');
+async function liveModule(endApproval=false,priorStart=false,manualGrade=false){
+ const manager=await employee('Fictional line manager'),chief=await employee('Fictional independent chief'),subject=await employee('Fictional contract employee',manager.employmentId,true,priorStart?year-1:year),pbp=await account('Fictional assigned PBP'),gbs=await account('Fictional GBS owner'),legal=await account('Fictional independent Legal');
+ if(manualGrade){const [grade]=await owner.db.insert(S.jobGrade).values({tenantId:b.tenantId,code:'H',name:'Fictional Grade H'}).returning();await setEmploymentGrade(admin,{employmentId:subject.employmentId,gradeId:grade.id});}
  await setCompensation(admin,{employmentId:subject.employmentId,basicSalary:5000,monthlyAllowance:17,effectiveFrom:`${year}-01-01`});
  const [component]=await owner.db.insert(S.payComponent).values({tenantId:b.tenantId,code:'CONTRACT_FIXED',name:'Contract fixed allowance',kind:'allowance'}).returning();
  await v9Setup(admin);const native=(await v9Workspace(admin)).config!;const groupId=randomUUID();await v9SaveConfig(admin,native.revision,{...native,groups:[...native.groups,{id:groupId,name:'Fictional actual People Ops group',members:[gbs.userId!],limit:10}],peopleOpsGroup:groupId,bpRules:[{rules:{company:[b.companyId]},userId:pbp.userId!}]});
@@ -28,8 +30,8 @@ async function liveModule(){
  for(const [actor,role] of [[pbp,'pbp'],[gbs,'gbs'],[legal,'legal']] as const)await assignContractRole(admin,{companyId:b.companyId,businessUnitId:null,userId:actor.userId,role,from:`${year}-01-01`,to:null,reason:'Confirmed independent company contract role'});
  for(const type of ['renewal','end','declined','retirement'] as const){const id=randomUUID();await saveContractTemplate(gbs,{id,companyId:b.companyId,type,expectedRevision:0,document:letter(type==='renewal'),signatoryName:'Authorised legal entity signatory',signatoryTitle:'Director',letterhead:null,submit:true});await publishContractTemplate(legal,{id,revision:1,approve:true,reason:'Wording and signatory independently reviewed'});}
  const workspace=await contractWorkflowWorkspace(admin);let renewalId='',endId='';
- for(const row of workspace.workflows){const draft={...row.draft,steps:row.draft.steps.map(step=>step.type==='request_approval'&&step.approver.type==='employee_record'&&step.approver.field==='ceo'?{...step,approver:{type:'named_employee' as const,userIds:[chief.ctx.userId!]}}:step)};await saveContractWorkflow(admin,{companyId:b.companyId,id:row.id,expectedRevision:row.revision,draft,publish:true});if(draft.conditions.some(c=>c.field==='decision'&&c.value==='renew'))renewalId=row.id;if(draft.conditions.some(c=>c.field==='decision'&&c.value==='end'))endId=row.id;}
- const [configuration]=(await contractSettings(admin)).configurations;await saveContractConfiguration(admin,{companyId:b.companyId,expectedRevision:configuration.revision,data:{...configuration.data,ownersConfirmed:true},runtimeEnabled:true,activationOn:today,effectPrincipalId:admin.userId});
+ for(const row of workspace.workflows){const draft={...row.draft,steps:row.draft.steps.map(step=>step.type==='request_approval'&&step.approver.type==='employee_record'&&step.approver.field==='ceo'?{...step,approver:{type:'named_employee' as const,userIds:[chief.ctx.userId!]}}:step)};if(endApproval&&draft.conditions.some(c=>c.field==='decision'&&c.value==='end'))draft.steps.splice(1,0,{id:randomUUID(),type:'request_approval',name:'Independent ending review',approver:{type:'named_employee',userIds:[chief.ctx.userId!]},quorum:'all',conditions:[],reminderDays:2,escalationDays:3,escalationTarget:{type:'employee_record',field:'pbp'},rejectedWorkflowId:null});await saveContractWorkflow(admin,{companyId:b.companyId,id:row.id,expectedRevision:row.revision,draft,publish:true});if(draft.conditions.some(c=>c.field==='decision'&&c.value==='renew'))renewalId=row.id;if(draft.conditions.some(c=>c.field==='decision'&&c.value==='end'))endId=row.id;}
+ const [configuration]=(await contractSettings(admin)).configurations;await saveContractConfiguration(admin,{companyId:b.companyId,expectedRevision:configuration.revision,data:{...configuration.data,ownersConfirmed:true,endApprovalEnabled:endApproval},runtimeEnabled:true,activationOn:today,effectPrincipalId:admin.userId});
  const source=await previewContractIntake(gbs,subject.employmentId);const {id:caseId}=await intakeContract(gbs,{employmentId:subject.employmentId,kind:'maternity_cover',sourceRevision:source.sourceRevision});
  return {manager,chief,subject,pbp,gbs,legal,caseId,renewalId,endId};
 }
@@ -92,6 +94,95 @@ describe('isolated Contract Staff native custody',()=>{
   const editable=await contractLetterEditor(f.gbs,f.caseId,'end');expect(editable.body).toEqual(letter(false));expect(editable.templateVersion).toBe(1);
  });
 
+ it.each(['end','end_with_approval','decline'] as const)('files and hands off the exact %s letter with a real employee release occurrence',async branch=>{
+  const f=await liveModule(branch==='end_with_approval');
+  const maintenance={...admin,userId:undefined,personId:null,roles:[],grants:[]};
+  if(branch==='decline'){
+   const view=await issuedRenewal(f),issued=view.documents.find(d=>d.id===view.record.document?.id)!;
+   await acceptContract(f.subject.ctx,{caseId:f.caseId,revision:view.record.revision,documentId:issued.id,hash:issued.hash,action:'decline',reason:'I decline the renewal under the offered terms',signature:null});
+  }else{
+   let view=await contractCase(f.pbp,f.caseId);
+   await submitContractDecision(f.pbp,{caseId:f.caseId,revision:view.record.revision,kind:'end',months:null,basicSalary:'5000',fixedAllowance:'0',reason:'Agreed cover period has ended'});
+   view=await contractCase(f.pbp,f.caseId);await confirmContractDecision(f.pbp,{caseId:f.caseId,revision:view.record.revision,workflowId:f.endId});
+   if(branch==='end_with_approval'){
+    await sweepContractManagement(maintenance,owner);view=await contractCase(f.chief.ctx,f.caseId);
+    expect(view.record.state).toBe('in_approval');expect(view.choices.approvalStepIds).toHaveLength(1);expect(view.documents.find(d=>d.type==='end')?.issuedAt).toBeNull();
+    await decideContractApproval(f.chief.ctx,{caseId:f.caseId,revision:view.record.revision,stepId:view.choices.approvalStepIds[0],decisionRevision:view.record.decision!.revision,approve:true,comment:'Ending letter independently reviewed'});
+   }
+  }
+  await sweepContractManagement(maintenance,owner);
+  const ending=await contractCase(f.gbs,f.caseId),letter=ending.documents.find(d=>d.type===(branch==='decline'?'declined':'end')&&!d.supersededAt)!;
+  expect(ending.record.state).toBe('ending');expect(letter).toBeTruthy();
+  await releaseContractLetter(f.gbs,{caseId:f.caseId,revision:ending.record.revision,documentId:letter.id,hash:letter.hash,reason:'Current reviewed letter approved for employee release'});
+  await sweepContractManagement(maintenance,owner);await sweepContractManagement(maintenance,owner);
+  const finished=await contractCase(f.gbs,f.caseId);expect(finished.record.state).toBe('handed_off');
+  expect((await contractCase(f.subject.ctx,f.caseId)).documents.find(d=>d.id===letter.id)?.releasedAt).toBeTruthy();
+  const [file]=await owner.db.execute<{id:string}>(sql`select id from employee_document where tenant_id=${b.tenantId}::uuid and contract_document_id=${letter.id}::uuid`);
+  expect(file.id).toBeTruthy();
+  const exits=await owner.db.execute<{data:{contractSourceLetter:unknown;facts:{lastDay:string;noticeDate:string}}}>(sql`select data from lc_v9_case where tenant_id=${b.tenantId}::uuid and data->>'contractSourceCaseId'=${f.caseId}`);
+  expect(exits).toHaveLength(1);expect(exits[0].data.contractSourceLetter).toEqual({documentId:letter.id,employeeDocumentId:file.id,hash:letter.hash});
+  expect(exits[0].data.facts).toMatchObject({lastDay:ending.record.term.endOn,noticeDate:today});
+  const messages=await owner.db.execute<{source_event_id:string}>(sql`select source_event_id from contract_message where case_id=${f.caseId}::uuid and recipient_user_id=${f.subject.ctx.userId}::uuid and occurrence_key like 'letter-released:%' and source_event_id is not null`);
+  expect(messages).toHaveLength(1);
+  await setModule(b.tenantId,'notifications','active');
+  const notificationOwner={...(await entitledCtx(b)),userId:undefined,personId:null};
+  await dispatchNotificationsFromSweep(notificationOwner,owner);await dispatchNotificationsFromSweep(notificationOwner,owner);
+  expect(await owner.db.execute(sql`select id from notification where tenant_id=${b.tenantId}::uuid and recipient_employment_id=${f.subject.employmentId}::uuid and source_event_id=${messages[0].source_event_id}::uuid`)).toHaveLength(1);
+ });
+ it('requires a distinct Grade H manual receipt without creating a V9 exit',async()=>{
+  const f=await liveModule(false,false,true),maintenance={...admin,userId:undefined,personId:null,roles:[],grants:[]};
+  let view=await contractCase(f.pbp,f.caseId);await submitContractDecision(f.pbp,{caseId:f.caseId,revision:view.record.revision,kind:'end',months:null,basicSalary:'5000',fixedAllowance:'0',reason:'Grade H contract ends on the recorded date'});
+  view=await contractCase(f.pbp,f.caseId);await confirmContractDecision(f.pbp,{caseId:f.caseId,revision:view.record.revision,workflowId:f.endId});
+  await sweepContractManagement(maintenance,owner);view=await contractCase(f.gbs,f.caseId);const letter=view.documents.find(d=>d.type==='end')!;
+  await releaseContractLetter(f.gbs,{caseId:f.caseId,revision:view.record.revision,documentId:letter.id,hash:letter.hash,reason:'Approved for exact employee release'});
+  await sweepContractManagement(maintenance,owner);expect((await contractCase(f.gbs,f.caseId)).record.state).toBe('ending');
+  await expect(handoffContract(f.subject.ctx,{caseId:f.caseId,manualReason:'Cannot attest on behalf of People Ops'})).rejects.toMatchObject({cause:{code:'42501'}});
+  await handoffContract(f.gbs,{caseId:f.caseId,manualReason:'Recorded People Ops handoff outside V9'});
+  await handoffContract(f.gbs,{caseId:f.caseId,manualReason:'Retry must not replace the original manual receipt'});
+  const finished=await contractCase(f.gbs,f.caseId);expect(finished.record.state).toBe('handed_off');expect(finished.effects.find(e=>e.kind==='manual_handoff')?.receipt).toMatchObject({manualHandoff:true,confirmedBy:f.gbs.userId,letterDocumentId:letter.id,letterHash:letter.hash,reason:'Recorded People Ops handoff outside V9'});
+  expect(await owner.db.execute(sql`select id from lc_v9_case where tenant_id=${b.tenantId}::uuid and data->>'contractSourceCaseId'=${f.caseId}`)).toHaveLength(0);
+ });
+ it('blocks confirmation when the published workflow condition removes its required record step',async()=>{
+  const f=await liveModule();
+  const row=(await contractWorkflowWorkspace(admin)).workflows.find(w=>w.id===f.renewalId)!;
+  const draft={...row.draft,steps:row.draft.steps.map(step=>step.type==='update_record'?{...step,conditions:[{field:'payChanges' as const,op:'is' as const,value:'true'}]}:step)};
+  await saveContractWorkflow(admin,{companyId:b.companyId,id:row.id,expectedRevision:row.revision,draft,publish:true});
+  let view=await contractCase(f.manager.ctx,f.caseId);
+  await submitContractDecision(f.manager.ctx,{caseId:f.caseId,revision:view.record.revision,kind:'renew',months:6,basicSalary:'5000.00',fixedAllowance:'0.00',reason:'Keep current approved terms for the cover'});
+  view=await contractCase(f.pbp,f.caseId);expect(view.choices.routes.find(r=>r.id===f.renewalId)?.blockedReason).toMatch(/required Contract step/);
+  await expect(confirmContractDecision(f.pbp,{caseId:f.caseId,revision:view.record.revision,workflowId:f.renewalId})).rejects.toMatchObject({cause:{code:'23514'}});
+  expect((await contractCase(f.pbp,f.caseId)).record.state).toBe('decision_pending');
+ });
+ it('audits unsigned expiry once and retains the active approval and employment',async()=>{
+  const f=await liveModule(false,true),maintenance={...admin,userId:undefined,personId:null,roles:[],grants:[]};
+  let view=await contractCase(f.pbp,f.caseId);
+  const endOn=new Date(Date.parse(today)-86400000).toISOString().slice(0,10);
+  await amendContractEnd(f.pbp,{caseId:f.caseId,revision:view.record.revision,endOn,reason:'Actual shortened cover period retained from Personnel'});
+  await sweepContractManagement(maintenance,owner);
+  view=await contractCase(f.manager.ctx,f.caseId);expect(view.record.expiredUnsignedAt).toBeTruthy();
+  await submitContractDecision(f.manager.ctx,{caseId:f.caseId,revision:view.record.revision,kind:'renew',months:6,basicSalary:'5000.00',fixedAllowance:'0.00',reason:'Continue the cover with a reviewed renewal'});
+  view=await contractCase(f.pbp,f.caseId);await confirmContractDecision(f.pbp,{caseId:f.caseId,revision:view.record.revision,workflowId:f.renewalId});
+  await sweepContractManagement(maintenance,owner);await sweepContractManagement(maintenance,owner);
+  const pending=await contractCase(f.chief.ctx,f.caseId);expect(pending.record.state).toBe('in_approval');expect(pending.choices.approvalStepIds).toHaveLength(1);
+  expect(await owner.db.execute(sql`select id from contract_case_activity where case_id=${f.caseId}::uuid and action='expiry.unsigned'`)).toHaveLength(1);
+  const [actual]=await owner.db.select().from(S.employment).where(eq(S.employment.id,f.subject.employmentId));expect(actual).toMatchObject({contractEndDate:endOn,terminatedOn:null,lastWorkingDate:null});
+ });
+ it('holds late Offboarding with the real notice and end dates while preserving the released letter',async()=>{
+  const f=await liveModule(false,true),maintenance={...admin,userId:undefined,personId:null,roles:[],grants:[]};
+  const endOn=new Date(Date.parse(today)-86400000).toISOString().slice(0,10);
+  let view=await contractCase(f.pbp,f.caseId);
+  await amendContractEnd(f.pbp,{caseId:f.caseId,revision:view.record.revision,endOn,reason:'Actual earlier cover end retained from Personnel'});
+  await sweepContractManagement(maintenance,owner);view=await contractCase(f.pbp,f.caseId);
+  await submitContractDecision(f.pbp,{caseId:f.caseId,revision:view.record.revision,kind:'end',months:null,basicSalary:'5000',fixedAllowance:'0',reason:'Cover has ended; release the actual letter'});
+  view=await contractCase(f.pbp,f.caseId);await confirmContractDecision(f.pbp,{caseId:f.caseId,revision:view.record.revision,workflowId:f.endId});
+  await sweepContractManagement(maintenance,owner);view=await contractCase(f.gbs,f.caseId);const letter=view.documents.find(d=>d.type==='end')!;
+  await releaseContractLetter(f.gbs,{caseId:f.caseId,revision:view.record.revision,documentId:letter.id,hash:letter.hash,reason:'Released on the actual review date'});
+  await sweepContractManagement(maintenance,owner);
+  const held=await contractCase(f.gbs,f.caseId);expect(held.record.state).toBe('ending');expect(held.effects.find(e=>e.kind==='offboarding')?.status).toBe('failed');
+  expect(held.documents.find(d=>d.id===letter.id)).toMatchObject({hash:letter.hash,employeeDocumentId:expect.any(String)});
+  expect(await owner.db.execute(sql`select id from lc_v9_case where tenant_id=${b.tenantId}::uuid and data->>'contractSourceCaseId'=${f.caseId}`)).toHaveLength(0);
+  const [actual]=await owner.db.select().from(S.employment).where(eq(S.employment.id,f.subject.employmentId));expect(actual).toMatchObject({contractEndDate:endOn,lastWorkingDate:null,terminatedOn:null});
+ });
  it('keeps canonical People Ops and PBP ownership authoritative across alternate logins and removal',async()=>{
   const f=await liveModule();const [otherCompany]=await owner.db.insert(S.company).values({tenantId:b.tenantId,legalName:'Fictional company outside Contract opt-in'}).returning();expect((await contractCompanies(f.gbs)).map(c=>c.id)).not.toContain(otherCompany.id);const [scope]=await withTenant(f.gbs,tx=>tx.execute<{allowed:boolean}>(sql`select app.contract_has_role(${otherCompany.id}::uuid,NULL,'gbs') as allowed`));expect(scope.allowed).toBe(false);const altGbsId=await createAppUser(b.tenantId,f.gbs.personId!,'employee'),altPbpId=await createAppUser(b.tenantId,f.pbp.personId!,'employee');
   for(const [userId,role] of [[altGbsId,'gbs'],[altPbpId,'pbp']] as const)await expect(assignContractRole(admin,{companyId:b.companyId,businessUnitId:null,userId,role,from:`${year}-01-01`,to:null,reason:'An alternate login cannot invent canonical custody'})).rejects.toMatchObject({cause:{code:'23514'}});
