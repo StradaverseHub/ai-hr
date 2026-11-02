@@ -4995,6 +4995,17 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           for(const key of postNumericOptions)current.inputs.options[key]=round2(current.inputs.options[key]+saved.options[key]);
           for(const key of DELTA_KEYS)current.paid[key]=round2((current.paid[key]??0)+Number((r.statutory as Record<string,unknown>)[key]??0));
           postEarlierByEmp.set(r.employmentId,current);
+          // These are independent cash owners. Carry their consumed annual exemptions into
+          // the existing roomFor ledger; noncash ownership is added by its existing fold below.
+          const declared=(r.statutory as {exemptionUsed?:Record<string,number>}).exemptionUsed??{};
+          const nonCash=readPcbNonCash((r.statutory as {pcbNonCash?:unknown}).pcbNonCash);
+          const used=exemptUsedByEmp.get(r.employmentId)??{};
+          for(const [code,amount] of Object.entries(declared)){
+            const nc=round2((nonCash?.ownedEaEntries??[]).filter(entry=>entry.exemptionCode===code).reduce((sum,entry)=>sum+entry.exemptAmount,0));
+            if(typeof amount!=='number'||!Number.isFinite(amount)||amount<nc)throw new PayrollTaxBasisError('Earlier outstanding-payment exemption ownership is unavailable.');
+            used[code]=round2((used[code]??0)+amount-nc);
+          }
+          exemptUsedByEmp.set(r.employmentId,used);
         }
         const cur = earlierRunByEmp.get(r.employmentId) ?? { additional: 0, overtime: 0 };
         cur.additional = round2(cur.additional + Number(r.bonus));
@@ -8060,7 +8071,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         const after=sl.statutory as Record<string,unknown>;
         const inputs=(st:Record<string,unknown>|undefined)=>{
           const saved=(st?.postEmploymentPayment as {statutoryInputs?:PostInputs}|undefined)?.statutoryInputs;
-          return saved?.options?[saved.wages,saved.additional,saved.overtime,saved.lp,saved.zakat,...postNumericOptions.map(key=>saved.options[key]),...DELTA_KEYS.map(key=>Number(st?.[key]??0))]:null;
+          return saved?.options?[saved.wages,saved.additional,saved.overtime,saved.lp,saved.zakat,...postNumericOptions.map(key=>saved.options[key]),...DELTA_KEYS.map(key=>Number(st?.[key]??0)),Object.entries((st?.exemptionUsed??{}) as Record<string,unknown>).sort(([a],[b])=>a.localeCompare(b))]:null;
         };
         if(JSON.stringify(inputs(before))===JSON.stringify(inputs(after)))continue;
         const later=await tx.select({id:payrollBatch.id,status:payrollBatch.status}).from(payrollBatch).innerJoin(payslip,eq(payslip.batchId,payrollBatch.id))

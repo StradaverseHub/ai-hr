@@ -59,6 +59,17 @@ describe('source-owned outstanding payments after resignation',()=>{
   await closeBatch(ctx,{batchId:second.batchId});await owner.db.update(S.payrollIndividualTxn).set({amount:'900.00'}).where(eq(S.payrollIndividualTxn.id,firstSources[0]));
   await expect(reprocessSelectedEmployees(ctx,{batchId:first.batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()})).rejects.toMatchObject({code:'LATER_CYCLE_FINALIZED'});expect(await result(first.batchId)).toEqual(a);expect(await result(second.batchId)).toEqual(z);
  });
+ it('shares annual cash exemption headroom across cycles and invalidates later allocations when earlier exempt cash changes',async()=>{
+  await owner.db.update(S.payComponent).set({includedInPcb:true,pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TRA_BUSINESS',prorates:false}).where(eq(S.payComponent.id,reimbursement));
+  const post=async(cycleId:string)=>createIndividualTxnsBulk(ctx,{companyId:b.companyId,payPeriod:'2026-11',intendedCycleId:cycleId,employmentIds:[employmentId],rows:[{kind:'earning',componentId:reimbursement,txnDate:'2026-10-12',amount:4000}]});
+  const sources=await post(monthly);const first=await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-11',payrollCycleId:monthly});await generatePayslips(ctx,{batchId:first.batchId});
+  const off=(await listPayrollCycles(ctx,b.companyId)).find(c=>c.runType==='off_cycle')!;await post(off.id);const second=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:'2026-11',runType:'off_cycle',payrollCycleId:off.id});await generatePayslips(ctx,{batchId:second.batchId});
+  const a=(await result(first.batchId)).statutory as {bases:{pcb:number};exemptionUsed:Record<string,number>},z=(await result(second.batchId)).statutory as typeof a;
+  expect(a.bases.pcb+z.bases.pcb).toBe(2000);expect(a.exemptionUsed.PCB_TRA_BUSINESS+z.exemptionUsed.PCB_TRA_BUSINESS).toBe(6000);
+  await owner.db.update(S.payrollIndividualTxn).set({amount:'5000.00'}).where(eq(S.payrollIndividualTxn.id,sources.ids[0]));await reprocessSelectedEmployees(ctx,{batchId:first.batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()});
+  const [stale]=await owner.db.select().from(S.payrollBatch).where(eq(S.payrollBatch.id,second.batchId));expect(stale.recalcEmploymentIds).toContain(employmentId);await reprocessSelectedEmployees(ctx,{batchId:second.batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()});
+  const updated=(await result(second.batchId)).statutory as typeof a;expect(updated.exemptionUsed.PCB_TRA_BUSINESS).toBe(1000);expect(updated.bases.pcb).toBe(3000);
+ });
  it('fails closed on missing historical pay provenance and rolls back attachment and consumption',async()=>{
   const sources=await outstanding();await owner.db.update(S.compensation).set({validFrom:'2026-11-01'}).where(eq(S.compensation.employmentId,employmentId));
   const run=await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-11',payrollCycleId:monthly});expect((await preProcessAdvisory(ctx,run.batchId)).missingCompensation.map(e=>e.employmentId)).toEqual([employmentId]);await expect(generatePayslips(ctx,{batchId:run.batchId})).rejects.toThrow();
