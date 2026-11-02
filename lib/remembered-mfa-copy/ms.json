@@ -6,7 +6,7 @@
   "effect": "Perubahan tetapan ini memerlukan semua peranti yang diingati mengesahkan semula pada log masuk seterusnya.",
   "rememberWeb": "Ingat pelayar ini selama {days} hari",
   "rememberNative": "Ingat telefon ini selama {days} hari",
-  "personalOnly": "Pilih hanya pada peranti milik anda. Tetapan semula kata laluan dan perubahan keselamatan memerlukan pengesahan semula.",
+  "personalOnly": "Pilih hanya pada peranti milik anda. Tetapan semula kata laluan dan perubahan keselamatan memerlukan pengesahan semula. Kod pemulihan tidak akan mengingati peranti ini.",
   "save": "Simpan",
   "saving": "Menyimpan…",
   "saved": "Disimpan.",

@@ -6,7 +6,7 @@
   "effect": "Thay đổi cài đặt này sẽ yêu cầu mọi thiết bị đã ghi nhớ xác thực lại vào lần đăng nhập tiếp theo.",
   "rememberWeb": "Ghi nhớ trình duyệt này trong {days} ngày",
   "rememberNative": "Ghi nhớ điện thoại này trong {days} ngày",
-  "personalOnly": "Chỉ chọn trên thiết bị bạn kiểm soát. Đặt lại mật khẩu và thay đổi bảo mật yêu cầu xác thực lại.",
+  "personalOnly": "Chỉ chọn trên thiết bị bạn kiểm soát. Đặt lại mật khẩu và thay đổi bảo mật yêu cầu xác thực lại. Mã khôi phục không ghi nhớ thiết bị này.",
   "save": "Lưu",
   "saving": "Đang lưu…",
   "saved": "Đã lưu.",

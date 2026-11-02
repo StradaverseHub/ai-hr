@@ -6,7 +6,7 @@
   "effect": "Changing this setting asks every remembered device to verify again at its next sign-in.",
   "rememberWeb": "Remember this browser for {days} days",
   "rememberNative": "Remember this phone for {days} days",
-  "personalOnly": "Only choose this on a device you control. Password resets and security changes require verification again.",
+  "personalOnly": "Only choose this on a device you control. Password resets and security changes require verification again. Recovery codes do not remember this device.",
   "save": "Save",
   "saving": "Saving…",
   "saved": "Saved.",
