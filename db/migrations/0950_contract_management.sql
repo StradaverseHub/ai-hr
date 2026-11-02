@@ -746,7 +746,7 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.contract_mark_unsigned_expiry(uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.contract_run_workflow(wanted_case uuid,wanted_workflow uuid,p_event text) RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE c public.contract_case;w public.contract_workflow;v public.contract_workflow_version;s jsonb;resolver jsonb;recipient uuid;message_id uuid;event_id uuid;occurrence text;due_days integer;today date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;count_created integer:=0;
+DECLARE c public.contract_case;w public.contract_workflow;v public.contract_workflow_version;s jsonb;resolver jsonb;recipient uuid;message_id uuid;event_id uuid;occurrence text;due_days integer;scheduled_day date;today date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;count_created integer:=0;
 BEGIN
  PERFORM app.contract_lock_authority_sources();SELECT * INTO c FROM public.contract_case WHERE id=wanted_case AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF app.contract_date_amendment_pending(wanted_case) THEN RETURN 0;END IF;
@@ -761,9 +761,9 @@ BEGIN
  IF due_days IS NULL THEN RETURN 0; END IF;
  IF c.data->>'state'='upcoming' THEN PERFORM app.contract_commit_case(c.id,c.data||jsonb_build_object('state','decision_pending'),'expiry.alert-due');SELECT * INTO c FROM public.contract_case WHERE id=c.id; END IF;
  IF extract(hour from now() AT TIME ZONE 'Asia/Kuala_Lumpur')<coalesce((c.data->'settings'->>'dailyHour')::integer,6) THEN RETURN 0;END IF;
- IF (SELECT cfg.activation_on FROM public.contract_configuration cfg WHERE cfg.company_id=c.company_id AND cfg.tenant_id=c.tenant_id)>
- CASE WHEN coalesce(v.definition->'trigger'->>'repeatUntil','decision')<>'none' AND today>(c.data->'term'->>'endOn')::date-(c.data->'settings'->>'decisionDueDays')::integer
- THEN today ELSE (c.data->'term'->>'endOn')::date-due_days END THEN RETURN 0;END IF;
+ scheduled_day:=CASE WHEN coalesce(v.definition->'trigger'->>'repeatUntil','decision')<>'none' AND today>(c.data->'term'->>'endOn')::date-(c.data->'settings'->>'decisionDueDays')::integer
+ THEN today ELSE (c.data->'term'->>'endOn')::date-due_days END;
+ IF (SELECT cfg.activation_on FROM public.contract_configuration cfg WHERE cfg.company_id=c.company_id AND cfg.tenant_id=c.tenant_id)>scheduled_day THEN RETURN 0;END IF;
  occurrence:=p_event||':'||CASE WHEN v.definition->'trigger'->>'repeatUntil'='none' THEN 'once' WHEN today>(c.data->'term'->>'endOn')::date-(c.data->'settings'->>'decisionDueDays')::integer THEN 'daily:'||today::text ELSE due_days::text END||':'||(c.data->'term'->>'sourceRevision');
  ELSIF p_event='decisionSubmitted' THEN IF c.data->'decision'->>'confirmedAt' IS NULL OR c.workflow_id IS DISTINCT FROM w.id THEN RETURN 0; END IF;occurrence:=p_event||':'||(c.data->'decision'->>'revision')||':'||(c.data->>'state');
  ELSIF p_event='approvalRejected' THEN IF c.data->>'state'<>'decision_pending' OR c.data->'rejectedWorkflow'->>'id' IS DISTINCT FROM w.id::text OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(c.data->'approvals') a WHERE a->>'state'='rejected') THEN RETURN 0; END IF;occurrence:=p_event||':'||(c.data->'decision'->>'revision');
