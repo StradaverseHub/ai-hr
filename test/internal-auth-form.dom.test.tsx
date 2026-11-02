@@ -9,7 +9,9 @@ const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => navigation }));
 const fetcher = vi.fn<typeof fetch>();
 function view(props: Parameters<typeof InternalAuthForm>[0] = {},locale='en') {
-  vi.stubGlobal('fetch', fetcher);
+  // Public availability has its own response; auth assertions still observe every credential request.
+  vi.stubGlobal('fetch', (input:RequestInfo|URL,init?:RequestInit)=>String(input).startsWith('/login/entra/options?')
+    ?Promise.resolve(Response.json({microsoft:false})):fetcher(input,init));
   return render(<NextIntlClientProvider locale={locale} messages={en}><InternalAuthForm organization="alpha" {...props}/></NextIntlClientProvider>);
 }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); fetcher.mockReset(); navigation.replace.mockReset(); window.history.replaceState(null, '', '/'); });

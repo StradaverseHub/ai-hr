@@ -10,16 +10,17 @@ import { ENTRA_FLOW_COOKIE, startEntraLogin, completeEntraLogin, nativeLaunch, e
 import { EntraError } from '@/lib/entra/model';
 const headers={'cache-control':'no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff'};
 const admit=createRequestAdmission(8),admitSource=createScopedAdmission(4);
+const admitOptions=createRequestAdmission(4),admitOptionsSource=createScopedAdmission(2);
 const rateResponse=(error:unknown)=>error instanceof RequestBudgetExceeded?error.retryAfter:typeof error==='object'&&error!==null&&'code' in error&&error.code==='rateLimited'?60:null;
 const cookie={httpOnly:true,secure:true,sameSite:'lax' as const,path:'/'};
 export const runtime='nodejs';
 export async function GET(req:NextRequest,{params}:{params:Promise<{operation:string}>}) {
   if(!internalSelected()||!internalReady())return new NextResponse(null,{status:404,headers});
-  const {operation}=await params;
+  const {operation}=await params,options=operation==='options';
   let release:(()=>void)|undefined,releaseSource:(()=>void)|undefined;
   try {
-    release=admit();const source=trustedRequestSource(req);if(source)releaseSource=admitSource(source);
-    await takeRate(`entra-get:${source||'global'}`,120,60_000);
+    release=(options?admitOptions:admit)();const source=trustedRequestSource(req);if(source)releaseSource=(options?admitOptionsSource:admitSource)(source);
+    await takeRate(`${options?'entra-options':'entra-get'}:${source||'global'}`,120,60_000);
     if(operation==='options')return NextResponse.json({microsoft:await microsoftLoginEnabled(req.nextUrl.searchParams.get('organization')||'')},{headers});
     if(operation==='start'){
       const result=await startEntraLogin(req.nextUrl.searchParams.get('organization')||'',req.nextUrl.searchParams.get('returnTo')||'/',req.nextUrl.searchParams.get('ticket')||undefined);
