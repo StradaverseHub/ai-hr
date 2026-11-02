@@ -2425,12 +2425,13 @@ async function enforceLeaveYearApplicationLimit(
   const limit = Number(lt.maxDaysPerLeaveYear);
   if (!Number.isFinite(limit) || limit <= 0) return;
 
-  const [emp] = await tx
+  let [emp] = await tx
     .select({ companyId: employment.companyId, hiredOn: employment.hiredOn })
     .from(employment)
     .where(eq(employment.id, p.employmentId))
     .limit(1);
-  if (!emp) return;
+  if(!emp&&p.excludeRequestId){const [task]=await tx.execute<{employment_id:string;company_id:string;hired_on:string}>(sql`select * from app.leave_task_subject(${p.excludeRequestId}::uuid)`);if(task?.employment_id===p.employmentId)emp={companyId:task.company_id,hiredOn:task.hired_on};}
+  if(!emp)throw new Error('Leave task subject unavailable');
   const [co] = await tx
     .select({ leaveCycle: company.leaveCycle })
     .from(company)
