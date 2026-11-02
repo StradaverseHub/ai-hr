@@ -84,6 +84,13 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
         output.put(key,value);
       }
     }
+    if(input.has("publicTransportFailure")) {
+      String detail=input.getString("publicTransportFailure");
+      assertTrue(detail.length()<=240);
+      assertFalse(detail.contains("http://")||detail.contains("https://")||detail.contains("@"));
+      assertFalse(java.util.regex.Pattern.compile("\\b\\d{1,3}(?:\\.\\d{1,3}){3}\\b").matcher(detail).find());
+      output.put("publicTransportFailure",detail);
+    }
     System.out.println("ONEHR_CLIENT_PROBE "+output.toString());
   }
 
