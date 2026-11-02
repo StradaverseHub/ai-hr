@@ -23,3 +23,7 @@ This is development infrastructure only. It changes no applied SQL, migration jo
 ## Verification plan
 
 Run admission and existing renderer controller regressions on a standard hosted runner, then the unchanged production build and complete migration/seed/rendered journey at the frozen repair head. Separately run focused/full prerequisite regressions and whole-repository type checking on hosted Actions. Preserve terminal failures before further repairs; report each run's exact candidate/controller. No local tests, build or database reset.
+
+## First hosted repair attempt
+
+At `636a6fd6dcaaec2a940c291595e45e86d68fe10c`, run 41385071450 passed 157 assertions across the existing two prerequisite suites and whole-repository type checking. Run 41385055018 passed 89 controller regressions and the unchanged 6144 MB production build, then refused bootstrap before migrations. Its checkout logs independently show both origins as `https://github.com/StradaverseHub/ai-hr`, without `.git`; the admission originally accepted only the suffixed form. Accepting these two exact canonical HTTPS forms fixes that mismatch, with hosted-form and lookalike-origin regression coverage. The failed run remains failed. Rerun the affected walkthrough and controller checks; retain the unaffected prerequisite/compiler evidence.

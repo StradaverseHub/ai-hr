@@ -27,7 +27,7 @@ export function inspectOrchestratorBootstrap({env,platform,cwd,realpath,read,git
  for(const [path,sha]of [[source,env.AIHR_CI_HEAD],[controller,env.AIHR_CI_CONTROL_HEAD]]){
   need(realpath(path)===path&&git(path,['rev-parse','--show-toplevel']).trim()===path&&git(path,['rev-parse','HEAD']).trim()===sha,'actual checkout');
   need(git(path,['status','--porcelain','--untracked-files=no']).trim()==='','dirty checkout');
-  need(git(path,['remote','get-url','origin']).trim().toLowerCase()==='https://github.com/stradaversehub/ai-hr.git','origin');
+  need(/^https:\/\/github\.com\/stradaversehub\/ai-hr(?:\.git)?$/i.test(git(path,['remote','get-url','origin']).trim()),'origin');
  }
  need(evidenceDirectory===join(temp,context.evidence)&&realpath(evidenceDirectory)===evidenceDirectory,'direct evidence directory');
  const eventPath=env.GITHUB_EVENT_PATH;

@@ -13,7 +13,7 @@ function fixture(){
   if(args.join(' ')==='rev-parse --show-toplevel')return path;
   if(args.join(' ')==='rev-parse HEAD')return path.endsWith('/source')?head:controller;
   if(args[0]==='status')return '';
-  if(args[0]==='remote')return 'https://github.com/StradaverseHub/ai-hr.git';
+  if(args[0]==='remote')return 'https://github.com/StradaverseHub/ai-hr';
   throw Error('Unexpected Git command');
  },inspect:name=>{assert.equal(name,'aihr-ci-12345-1-db-1');inspections++;return container;},evidenceDirectory:temp+'/orchestrator-production-renderer',adminUrl:'postgres://postgres@127.0.0.1:5433/postgres'};
  return {input,event,container,inspections:()=>inspections};
@@ -22,6 +22,10 @@ test('only the exact job-owned hosted fictional target is admitted, without rele
  const f=fixture(),result=inspectOrchestratorBootstrap(f.input);
  assert.equal(result.candidate,'a'.repeat(40));assert.equal(result.controller,'b'.repeat(40));assert.equal(result.releaseAuthorized,false);assert.equal(f.inspections(),1);
  f.container.Config.Cmd.unshift('postgres');assert.deepEqual(inspectOrchestratorBootstrap(f.input),result);
+});
+test('accepts the same canonical origin with .git and refuses lookalikes',()=>{
+ for(const origin of ['https://github.com/StradaverseHub/ai-hr.git','https://github.com/StradaverseHub/ai-hr']){const f=fixture(),git=f.input.git;f.input.git=(path,args)=>args[0]==='remote'?origin:git(path,args);assert.equal(inspectOrchestratorBootstrap(f.input).releaseAuthorized,false);}
+ for(const origin of ['https://github.com/StradaverseHub/ai-hr.evil','https://github.com/StradaverseHub/ai-hr/other','https://github.com.evil/StradaverseHub/ai-hr','git@github.com:fork/ai-hr.git']){const f=fixture(),git=f.input.git;f.input.git=(path,args)=>args[0]==='remote'?origin:git(path,args);assert.throws(()=>inspectOrchestratorBootstrap(f.input));assert.equal(f.inspections(),0);}
 });
 const badEnv={GITHUB_ACTIONS:'false',CI:'false',RUNNER_ENVIRONMENT:'self-hosted',RUNNER_OS:'macOS',GITHUB_REPOSITORY:'fork/ai-hr',GITHUB_REPOSITORY_ID:'1',GITHUB_EVENT_NAME:'push',GITHUB_WORKFLOW:'alpha-staging',GITHUB_JOB:'unit',GITHUB_RUN_ID:'0',GITHUB_RUN_ATTEMPT:'0',AIHR_CI_HEAD:'bad',AIHR_CI_CONTROL_HEAD:'bad',GITHUB_SHA:'c'.repeat(40),GIT_DIR:'/tmp/git',GIT_WORK_TREE:'/tmp/tree',GIT_INDEX_FILE:'/tmp/index',AIHR_FOCUSED_EVIDENCE_DIR:'/tmp/evidence',AIHR_CI_ROLE_MODE:'full',AIHR_CI_DISPOSABLE_ROLE_MODE:'full',TEST_DB_NAMESPACE:'aifocus',AIHR_CI_UNIT:'db-2',NODE_ENV:'production',AIHR_CI_PG_PROFILE:'legacy-2g',AIHR_CI_PG_CONFIGURED_CAP_BYTES:'2147483648',AIHR_CI_PG_PEAK_BUDGET_BYTES:'4294967296',AIHR_CI_PG_JIT:'off',AIHR_CI_PG_MEMORY_GIB:'2',DATABASE_URL:'postgres://ai_hr_app@staging/live',TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',TEST_MIGRATION_DATABASE_URL:'postgres://postgres:secret@127.0.0.1:5433/ai_hr_orchestrator_browser',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/main',GITHUB_REF:'refs/tags/release',GITHUB_EVENT_PATH:'/tmp/event.json'};
 for(const [key,value]of Object.entries(badEnv))test('refuses '+key+' before container inspection',()=>{const f=fixture();f.input.env[key]=value;assert.throws(()=>inspectOrchestratorBootstrap(f.input));assert.equal(f.inspections(),0);});
