@@ -15,6 +15,7 @@ Read only records relevant to the task. A newer decision supersedes an older one
 
 ## Index
 
+- [Lossless source-map transport (isolated qualification; release admission unchanged)](lossless-map-transport.md)
 - [ADR-0001: Bitemporal effective dating on the organizational core](0001-bitemporal-effective-dating.md)
 - [ADR-0002: Multi-tenancy via `tenant_id` + Row-Level Security](0002-multitenancy-rls.md)
 - [ADR-0003: Organizational & identity model + typed reporting graph](0003-organizational-model.md)

@@ -152,6 +152,27 @@ class MapBundleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             maps.read_manifest(self.root/'legacy'/path.name)
 
+    def test_nonprimary_map_change_after_prehash_refuses_and_cleans_only_new_output(self):
+        original_order = maps.base.compression_order
+        observed = []
+
+        def change_duplicate_before_tar_order(files):
+            if not observed:
+                observed.append(True)
+                duplicate = self.build/self.map_paths[1]
+                data = duplicate.read_bytes()
+                duplicate.write_bytes(bytes([data[0] ^ 1]) + data[1:])
+                self.assertEqual(duplicate.stat().st_size, len(self.payload))
+            return original_order(files)
+
+        with mock.patch.object(maps.base, 'compression_order', side_effect=change_duplicate_before_tar_order):
+            with self.assertRaises((ValueError, OSError)):
+                maps.pack(self.source, self.output)
+        self.assertTrue(observed, 'mutation must reach the post-prehash ordering seam')
+        self.assertFalse(self.output.exists())
+        self.assertEqual((self.active/'BUILD_ID').read_bytes(), b'old-build\n')
+        self.assertEqual((self.active/'keep').read_bytes(), b'old serving bytes')
+
     def test_copy_table_must_be_exact_canonical_map_only_no_chains_or_forward_references(self):
         original, archive, path = self.packed()
         variants = [
@@ -198,7 +219,7 @@ class MapBundleTests(unittest.TestCase):
         original, archive, path = self.packed()
         members = self.physical_members(original)
         primary = next(i for i, (info, _) in enumerate(members) if info.name == self.map_paths[0])
-        for kind in ['corrupt-primary', 'missing', 'extra', 'duplicate', 'hardlink', 'symlink', 'pax', 'gnu-longname', 'fifo']:
+        for kind in ['corrupt-primary', 'missing', 'extra', 'duplicate', 'copied-map-payload', 'hardlink', 'symlink', 'pax', 'gnu-longname', 'fifo']:
             with self.subTest(kind=kind):
                 current = copy.deepcopy(members)
                 if kind == 'corrupt-primary':
@@ -211,6 +232,13 @@ class MapBundleTests(unittest.TestCase):
                     current.append((info, b''))
                 elif kind == 'duplicate':
                     current.append(copy.deepcopy(current[primary]))
+                elif kind == 'copied-map-payload':
+                    # Even correct bytes and rebound archive hashes cannot introduce an
+                    # independent physical body for a destination declared as a map copy.
+                    row = next(row for row in original['files'] if row['path'] == self.map_paths[1])
+                    info = tarfile.TarInfo(row['path'])
+                    info.size, info.mode = row['size'], row['mode']
+                    current.append((info, self.payload))
                 else:
                     info, data = current[primary]
                     info.type = {'hardlink': tarfile.LNKTYPE, 'symlink': tarfile.SYMTYPE, 'pax': tarfile.XHDTYPE,
@@ -297,6 +325,31 @@ class MapBundleTests(unittest.TestCase):
                     self.assertTrue((moved/'BUILD_ID').exists())
                 else:
                     self.assertFalse(self.destination.exists())
+
+    def test_copied_destination_readback_detects_postwrite_corruption(self):
+        manifest, archive, path = self.packed()
+        original_chmod = maps.os.chmod
+        observed = []
+        copied = self.destination/self.map_paths[1]
+
+        def corrupt_after_chmod(file, mode, *args, **kwargs):
+            result = original_chmod(file, mode, *args, **kwargs)
+            if Path(file) == copied and not observed:
+                observed.append(True)
+                data = copied.read_bytes()
+                self.assertEqual(data, self.payload)
+                copied.write_bytes(bytes([data[0] ^ 1]) + data[1:])
+                self.assertEqual(copied.stat().st_size, len(self.payload))
+            return result
+
+        with mock.patch.object(maps.os, 'chmod', side_effect=corrupt_after_chmod):
+            with self.assertRaises((ValueError, OSError)):
+                maps.unpack(archive, path, self.destination, self.runtime)
+        self.assertTrue(observed, 'corruption must occur after the actual duplicate write and chmod')
+        self.assertFalse(self.destination.exists())
+        self.assertEqual((self.build/self.map_paths[0]).read_bytes(), self.payload)
+        self.assertEqual((self.active/'BUILD_ID').read_bytes(), b'old-build\n')
+        self.assertEqual((self.active/'keep').read_bytes(), b'old serving bytes')
 
     @unittest.skipUnless(sys.platform == 'linux', 'actual atomic activation fixture requires Linux')
     def test_extracted_maps_survive_actual_atomic_activate_and_rollback(self):
