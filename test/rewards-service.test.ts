@@ -120,6 +120,18 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await saveRewardSeniorMembership(admin, unitId, after.unit.revision, deselect, next.digest);
     expect((await getRewardSeniorMembership(admin, unitId)).rows[0].member).toBe(false);
   });
+  it('differentially prepares bounded configuration metadata without an employee/pay roster or PAT disclosure to HR-only',async()=>{
+    const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Actual configuration administrator',primaryEmail:'configuration@rewards.test'}).returning();
+    const userId=await createAppUser(b.tenantId,person.id,'hr_admin'),hr={...admin,userId,personId:person.id,roles:['hr_admin']as SessionContext['roles'],grants:undefined};
+    for(const actor of [admin,hr]){
+      const expected=await getRewardConfiguration(actor,unitId),[result]=await owner.withTenant(actor,tx=>tx.execute<{value:typeof expected}>(sql`select app.reward_configuration_review(${unitId}::uuid)as value`));
+      const normalize=(value:typeof expected)=>({...value,unit:{...value.unit,createdAt:new Date(value.unit.createdAt).toISOString(),updatedAt:new Date(value.unit.updatedAt).toISOString(),postedAt:value.unit.postedAt?new Date(value.unit.postedAt).toISOString():null,deletedAt:value.unit.deletedAt?new Date(value.unit.deletedAt).toISOString():null}});
+      expect(normalize(result.value)).toEqual(normalize(expected));expect(result.value).not.toHaveProperty('rows');expect(result.value.members.length).toBeGreaterThan(0);
+      if(actor===hr)expect(result.value).toMatchObject({canReadPat:false,canConfigure:false,canManageMembers:true,unit:{policy:{patActual:0,patTarget:100}}});
+      await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_configuration_review(${unitId}::uuid)`))).rejects.toThrow();
+    }
+    await expect(owner.withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_configuration_review(${unitId}::uuid)`))).rejects.toThrow();
+  });
   it('refuses duplicate, unavailable, stale and altered-preview selections with no writes', async () => {
     const original=await view();await owner.db.update(schema.rewardEntry).set({source:{...original.rows[0].source,grade:'21'}}).where(eq(schema.rewardEntry.id,original.rows[0].id));
     const before = await view(), rev = before.unit.revision;

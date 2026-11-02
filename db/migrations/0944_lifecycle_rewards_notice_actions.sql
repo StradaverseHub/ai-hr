@@ -3199,3 +3199,35 @@ BEGIN
  'pools',jsonb_build_object('standard',calculation->'budgets'->'standard'->'bonusPoolCents','h',calculation->'budgets'->'h'->'bonusPoolCents'),'branches',branches,'senior',senior,'totals',CASE WHEN can_amounts THEN jsonb_build_object('count',senior_count,'incrementCents',increment_total,'bonusCents',bonus_total)ELSE NULL END,'history',history);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_governance_history_visible(jsonb,uuid[],uuid[]),app.reward_governance_review(uuid)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Configuration metadata is a distinct native course: an actual Group Rewards assignee may
+-- inspect its unit without borrowing company administration, while an unassigned administrator
+-- remains subject to the existing administrative View ceiling. No employee/pay roster is read.
+-- This private owner awaits exact configuration descriptors and independent consumer qualification.
+CREATE FUNCTION app.reward_configuration_review(p_unit uuid)RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;actor public.app_user;roles text[];administrator boolean;is_gr boolean;state jsonb;policy jsonb;unit_projection jsonb;members jsonb;cycle jsonb;label text;
+BEGIN
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
+ SELECT u.* INTO actor FROM public.app_user u WHERE u.id=app.current_user_id()AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
+ SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL;
+ IF actor.id IS NULL OR unit.id IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
+ roles:=ARRAY(SELECT app.reward_roles(unit.id));administrator:=app.reward_admin(unit.company_id);is_gr:='gr'=ANY(roles);
+ IF NOT administrator AND NOT is_gr THEN RAISE EXCEPTION 'Rewards configuration requires company administrator or Group Rewards access.' USING ERRCODE='42501';END IF;
+ -- Eligibility selects the native course once. A denied assigned course cannot retry through HR.
+ IF is_gr THEN
+  IF app.function_action_allowed('rewards.review','view',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward review function unavailable' USING ERRCODE='42501';END IF;
+  SELECT g.state INTO state FROM public.reward_governance g WHERE g.unit_id=unit.id AND g.tenant_id=unit.tenant_id;
+ ELSIF app.lifecycle_reward_notice_action('rewards','view',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Rewards configuration unavailable' USING ERRCODE='42501';END IF;
+ policy:=app.reward_calc_effective_policy(unit.policy,state);
+ IF NOT is_gr THEN policy:=policy||jsonb_build_object('patActual',0,'patTarget',100);END IF;
+ -- An explicit field list prevents a future private unit column becoming public implicitly.
+ unit_projection:=jsonb_build_object('deletedAt',unit.deleted_at,'deletedBy',unit.deleted_by,'kind',unit.kind,'parentUnitId',unit.parent_unit_id,'createdBy',unit.created_by,'offcycle',unit.offcycle,'fundingCents',unit.funding_cents,'reservedCents',unit.reserved_cents,'id',unit.id,'tenantId',unit.tenant_id,'cycleId',unit.cycle_id,'companyId',unit.company_id,'businessUnitId',unit.business_unit_id,'policy',policy,'policyGroupVersionId',unit.policy_group_version_id,'status',unit.status,'revision',unit.revision,'snapshotDate',unit.snapshot_date,'approvedDigest',unit.approved_digest,'postedBatchId',unit.posted_batch_id,'postedAt',unit.posted_at,'createdAt',unit.created_at,'updatedAt',unit.updated_at);
+ SELECT jsonb_build_object('name',c.name,'year',c.year)INTO cycle FROM public.reward_cycle c WHERE c.id=unit.cycle_id AND c.tenant_id=unit.tenant_id;
+ SELECT coalesce(nullif(trim(b.label),''),b.code)INTO label FROM public.business_unit b WHERE b.id=unit.business_unit_id AND b.tenant_id=unit.tenant_id;
+ IF cycle IS NULL OR label IS NULL THEN RAISE EXCEPTION 'Rewards configuration unavailable' USING ERRCODE='42501';END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',m.id,'userId',m.user_id,'role',m.role)ORDER BY m.role COLLATE"C",m.user_id),'[]'::jsonb)INTO members FROM public.reward_member m WHERE m.unit_id=unit.id AND m.tenant_id=unit.tenant_id;
+ RETURN jsonb_build_object('unit',unit_projection,'cycle',cycle,'name',label,'members',members,'canReadPat',is_gr,'policyOrigin',app.reward_policy_unit_origin(unit.id),'canConfigure',is_gr AND unit.status='draft'AND unit.kind='annual','canManageMembers',administrator AND unit.status='draft');
+END $$;
+REVOKE ALL ON FUNCTION app.reward_configuration_review(uuid)FROM PUBLIC,ai_hr_app;
