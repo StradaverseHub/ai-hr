@@ -30,8 +30,10 @@ vi.mock('../lib/scope', () => ({getScopeIds: async () => state.scope}));
 vi.mock('../core/onboarding', () => ({getOnboardingStatus: async () => true}));
 vi.mock('../core/letter-navigation', () => ({letterNavigation: async () => []}));
 vi.mock('../core/approvals-inbox', () => ({pendingTaskSummary:async(...args:unknown[])=>({items:await state.pending(...args),total:0,approvalCount:0})}));
-vi.mock('../packs/lifecycle/service', () => ({onboardingNavigation: state.nav, onboardingTasks: state.tasks,
-  onboardingNotices: state.notices, onboardingUnreadNoticeCount: state.noticeCount}));
+vi.mock('../packs/lifecycle/service', () => ({onboardingShellState: async(ctx:unknown)=>{
+ const [navigation,tasks,unread,history,unreadCount]=await Promise.all([state.nav(ctx),state.tasks(ctx),state.notices(ctx),state.notices(ctx,true),state.noticeCount(ctx)]);
+ return {navigation,tasks,unread,history,unreadCount};
+}}));
 vi.mock('../packs/performance/service', () => ({latestOnehrAdminCycleId: async () => null, adminSectionHref: () => ''}));
 vi.mock('../core/notifications', () => ({dispatchNotifications: state.dispatch, notificationBellState: async(ctx:unknown,opts:Record<string,unknown>={})=>{
  const [unread,taskUnread,items,taskItems,history]=await Promise.all([

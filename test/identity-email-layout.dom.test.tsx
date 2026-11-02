@@ -15,7 +15,7 @@ vi.mock('../lib/scope',()=>({getScopeIds:async()=>m.scopeIds}));
 vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=>m.theme}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[],listApprovalHistory:async()=>[]}));
 vi.mock('../core/onboarding',()=>({getOnboardingStatus:async()=>m.onboarded}));
-vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:async()=>[],onboardingUnreadNoticeCount:async()=>0,onboardingNotices:async()=>[],onboardingNavigation:async()=>({module:false,master:false,requisitions:false,joiners:0,checklists:0})}));
+vi.mock('../packs/lifecycle/service',()=>({onboardingShellState:async()=>({navigation:{module:false,master:false,requisitions:false,joiners:0,checklists:0},tasks:[],unread:[],history:[],unreadCount:0})}));
 vi.mock('../components/onboarding-tour',()=>({OnboardingTour:()=>null}));
 vi.mock('../core/assistant-launcher',()=>({assistantLauncherFor:async()=>null}));
 vi.mock('../core/assistant-grant',()=>({mayUseAssistant:async()=>({allowed:false,reason:'no_grant'})}));

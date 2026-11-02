@@ -57,7 +57,7 @@ import {workforceViewScope} from '@/core/workforce-access';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import { pendingTaskSummary } from '@/core/approvals-inbox';
-import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
+import { onboardingShellState } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
@@ -226,13 +226,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
   const onboardingNoticesEnabled = isModuleEnabledOrFalse(session, 'lifecycle');
-  const [onboardingNav, onboardingQueue, onboardingUnread, onboardingRead, onboardingUnreadCount] = await Promise.all([
-    onboardingNoticesEnabled ? onboardingNavigation(session) : Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false,records:false},master:false,requisitions:false,joiners:0,checklists:0}),
-    onboardingNoticesEnabled ? onboardingTasks(session) : Promise.resolve([]),
-    onboardingNoticesEnabled ? onboardingNotices(session) : Promise.resolve([]),
-    onboardingNoticesEnabled ? onboardingNotices(session, true) : Promise.resolve([]),
-    onboardingNoticesEnabled ? onboardingUnreadNoticeCount(session) : Promise.resolve(0),
-  ]);
+  const {navigation:onboardingNav,tasks:onboardingQueue,unread:onboardingUnread,history:onboardingRead,unreadCount:onboardingUnreadCount} = onboardingNoticesEnabled
+    ? await onboardingShellState(session)
+    : {navigation:{module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false,records:false},master:false,requisitions:false,joiners:0,checklists:0},tasks:[],unread:[],history:[],unreadCount:0};
   const onboardingAccess=onboardingNav.module;
   // Profile Changes now has its own Personnel queue. Count only tasks this inbox actually opens;
   // My tasks and the bell still contain every canonical task, without another query.
