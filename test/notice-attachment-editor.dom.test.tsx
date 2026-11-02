@@ -23,6 +23,16 @@ describe('Notice editor staged file selection',()=>{
   await act(async()=>finish({ok:true,json:async()=>({attachment})}));
   expect(p.onUploaded).toHaveBeenCalledWith(attachment);expect(p.onBusyChange).toHaveBeenLastCalledWith(false);expect(screen.getByRole('status').textContent).toBe(labels.saveHint);
  });
+ it('completes an Add-only attachment without exposing removal or requiring an unavailable body edit',async()=>{
+  const attachment={id:'new-asset',fileName:'fictional.txt',mimeType:'text/plain',byteLength:9};
+  vi.mocked(fetch).mockResolvedValue({ok:true,json:async()=>({attachment})} as Response);
+  const p=props();render(<NoticeAttachmentEditor {...p} items={[{...attachment,id:'retained'}]} allowRemoval={false} attachImmediately/>);
+  expect(screen.queryByRole('button',{name:labels.remove+': '+attachment.fileName})).toBeNull();
+  fireEvent.change(screen.getByLabelText(labels.choose),{target:{files:[new File(['Fictional'],'fictional.txt')]}});fireEvent.click(screen.getByRole('button',{name:labels.add}));
+  await waitFor(()=>expect(p.onUploaded).toHaveBeenCalledWith(attachment));
+  expect((vi.mocked(fetch).mock.calls[0][1]!.body as FormData).get('attachNow')).toBe('true');
+  expect(screen.queryByText(labels.saveHint)).toBeNull();
+ });
  it('retains the selected upload intent on a failed response and displays only safe localized wording',async()=>{
   vi.mocked(fetch).mockResolvedValue({ok:false,json:async()=>({error:'changed',details:'PRIVATE SERVER DETAIL'})} as Response);
   render(<NoticeAttachmentEditor {...props()}/>);fireEvent.change(screen.getByLabelText(labels.choose),{target:{files:[new File(['Fictional'],'fictional.txt')]}});fireEvent.click(screen.getByRole('button',{name:labels.add}));

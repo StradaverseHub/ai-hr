@@ -150,7 +150,7 @@ export default async function NoticeDetailPage({
       <Card>
         <SectionHeader title={t('setupTitle')} />
         <div className="px-4 pb-4 pt-3">
-          <NoticeForm key={n.contentVersion} readOnly={!actions.edit}
+          <NoticeForm key={n.contentVersion} readOnly={!actions.edit} canAttach={actions.attach}
             authoring={{groupAllowed:authoring.groupAllowed,companies:authoring.companies.map(c=>({value:c.id,label:c.name})),owner:{companyId:n.ownerCompanyId,label:n.ownerCompanyId?(n.ownerCompanyName??t('authoringCompanyUnavailable')):t('groupAuthoring')}}}
             action={updateNoticeAction}
             values={{

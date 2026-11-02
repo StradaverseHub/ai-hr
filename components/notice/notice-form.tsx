@@ -123,8 +123,10 @@ export function NoticeForm({
   labels,
   authoring,
   readOnly=false,
+  canAttach,
 }: {
   readOnly?:boolean;
+  canAttach?:boolean;
   action: Action;
   values: NoticeFormValues;
   /** The notice id, on the EDIT screen only — posted as a hidden field so one form serves create + update. */
@@ -283,9 +285,13 @@ export function NoticeForm({
         <p className="max-w-prose text-sm text-muted-foreground">{labels.acknowledgementHelp}</p>
       </section>
 
-      <NoticeAttachmentEditor locale={labels.attachmentLocale} noticeId={idField} contentVersion={values.contentVersion??0} items={attachmentIds.map(id=>attachments.find(item=>item.id===id)??{id,fileName:labels.attachments.unavailable,mimeType:'application/octet-stream',byteLength:0})} labels={labels.attachments}
+      </fieldset>
+      <fieldset disabled={canAttach===false||(canAttach===undefined&&readOnly)} className="contents">
+      <NoticeAttachmentEditor allowRemoval={!readOnly} attachImmediately={readOnly&&canAttach===true} locale={labels.attachmentLocale} noticeId={idField} contentVersion={values.contentVersion??0} items={attachmentIds.map(id=>attachments.find(item=>item.id===id)??{id,fileName:labels.attachments.unavailable,mimeType:'application/octet-stream',byteLength:0})} labels={labels.attachments}
         onBusyChange={setAttachmentBusy} onUploaded={item=>{setAttachments(prior=>[...prior.filter(row=>row.id!==item.id),item]);setAttachmentIds(prior=>prior.includes(item.id)?prior:[...prior,item.id]);}} onRemove={id=>setAttachmentIds(prior=>prior.filter(item=>item!==id))}/>
 
+      </fieldset>
+      <fieldset disabled={readOnly} className="contents">
       {/* ── Section 2 — content ────────────────────────────────────────────────────────────────────── */}
       <section className="space-y-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

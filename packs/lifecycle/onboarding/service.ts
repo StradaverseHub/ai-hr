@@ -1,3 +1,4 @@
+import {lockAccessConfigurationTx} from '../../../core/access-configuration-lock';
 import {JOINER_SECTION_PRESETS,joinerPageSections,joinerRecordAccess} from '../../../lib/onboarding-page-access';
 import {projectJoinerPage} from '../../../lib/onboarding-page-projection';
 import { defaultV9CaseFields } from '../../../lib/lifecycle-v9-case-form';
@@ -369,6 +370,28 @@ export type OnboardingCommand = ({ type: 'equipmentBulk' } & M.EquipmentBulk) | 
 export async function onboardingCommand(ctx: SessionContext, id: string, revision: number, command: OnboardingCommand) {
     command = onboardingCommandSchema.parse(command);
     jsonSize(command);
+    if(command.type==='task'){
+        const taskCommand=command;
+        return withTenant(ctx,async tx=>{
+            let result:{revision:number;employment_id:string|null;company_id:string};
+            try{
+                [result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_assigned_task_update(${id}::uuid,${revision},${taskCommand.taskId},${taskCommand.status})`);
+            }catch(error){
+                const pg=(error as {cause?:{message?:string;code?:string};message?:string;code?:string}).cause??error as {message?:string;code?:string};
+                M.fail(pg.message??'This task is unavailable.',pg.code==='40001'?'conflict':pg.code==='42501'?'forbidden':'invalid');
+            }
+            if(!result)M.fail('This task is unavailable.','forbidden');
+            await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onboarding-case',aggregateId:id,eventType:'onboarding.task',actor:actorOf(ctx),subjectEmploymentId:result.employment_id,payload:{caseId:id,companyId:result.company_id}});
+            // A real assigned task needs no general case/Personnel read. Preserve the ordinary visible
+            // HR follow-up only where its independent administrative row/action course still applies.
+            const [followup]=await tx.execute<{allowed:boolean}>(sql`select ${result.employment_id}::uuid is not null and app.can_admin_employment(${result.employment_id}::uuid) and app.lifecycle_reward_notice_action('lifecycle','edit',${result.company_id}::uuid) as allowed`);
+            if(followup?.allowed){
+                const {config}=await configTx(tx,ctx),actor=await actorTx(tx,ctx,config,result.company_id);
+                if(config.v9ChecklistRevision&&actor.hr){const {v9NativeTransitionTx}=await import('../v9/service');return{revision:(await v9NativeTransitionTx(ctx,tx,id)).revision};}
+            }
+            return{revision:result.revision};
+        });
+    }
     return withTenant(ctx, async (tx) => {
         // Serialise assignment/load decisions within the tenant, including simultaneous submissions.
         await lockOnboardingTx(tx, ctx.tenantId);
@@ -454,9 +477,6 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
             }
             case 'reopen':
                 M.reopenCase(c, actor, env);
-                break;
-            case 'task':
-                M.setTask(config, c, command.taskId, command.status, actor, env);
                 break;
             case 'assignTask':
                 M.manualTask(config, c, command.taskId, command.user, actor, env, command.roundRobin);
@@ -550,6 +570,7 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
  * interleaving and fails if the two ever drift apart.
  */
 async function lockOnboardingTx(tx: Tx, tenantId: string) {
+    await lockAccessConfigurationTx(tx,tenantId);
     await tx.execute(sql `select pg_advisory_xact_lock(hashtext('audit-chain:' || ${tenantId}::uuid::text))`);
     await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${tenantId + ':onboarding'},0))`);
 }
@@ -923,6 +944,7 @@ export type OnboardingTask = {
     context?: string;
     lockReason?: string;
 };
+type AssignedChecklistRow={case_id:string;revision:number;updated_at:Date|string;joiner:string;business_group:string;join_date:string;task_id:string;title:string;task_by:string;gate:boolean;opens_on:string|null;due_on:string|null;status:string;handed:boolean|null};
 export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTask[]> {
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config), today = todayInKualaLumpur();
@@ -944,9 +966,6 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
             for (const t of c.tasks) {
                 if (t.status === 'done')
                     continue;
-                const locked = !!(t.opensOn && t.opensOn > today || t.gate && !r?.handedAt), lockReason = t.gate && !r?.handedAt ? 'After Day 1 handover' : t.opensOn && t.opensOn > today ? 'Opens ' + t.opensOn.split('-').reverse().join('/') : undefined;
-                if (t.assignee === actor.id)
-                    add({ kind: t.by === 'joiner' && t.gate ? 'acknowledgement' : 'checklist', title: t.name, taskId: t.id, due: t.dueOn, status: t.status, assigned: true, locked, lockReason });
                 if (t.by !== 'group' && !t.assignee && t.failure && actor.module)
                     add({ kind: 'owner', title: 'Link the Personnel account: ' + t.name, taskId: t.id, due: t.dueOn, team: true });
                 if (t.by === 'group' && !t.assignee && actor.module && (t.failure || t.dueOn <= M.dayDate(today, 8)))
@@ -979,6 +998,14 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
                     add({ kind: 'mention', title: n.name + ' mentioned you', noteId: n.id, context: n.context, tagged: true, assigned: true, overdue: within });
                 }
         }
+        // Fixed actual-assignee projection also covers a task whose subject is outside the user's
+        // general data profile. It returns no private case, note, document or sibling-task payload.
+        const own=await tx.execute<AssignedChecklistRow>(sql`select * from app.onboarding_assigned_task_rows()`);
+        for(const row of own){
+            const kind=row.task_by==='joiner'&&row.gate?'acknowledgement':'checklist',due=row.due_on??row.join_date;
+            const locked=Boolean(row.opens_on&&row.opens_on>today||row.gate&&!row.handed),lockReason=row.gate&&!row.handed?'After Day 1 handover':row.opens_on&&row.opens_on>today?'Opens '+row.opens_on.split('-').reverse().join('/'):undefined;
+            out.push({id:row.case_id+':'+kind+':'+row.task_id,caseId:row.case_id,revision:row.revision,kind,title:row.title,joiner:row.joiner,businessGroup:row.business_group,joinDate:row.join_date,due,overdue:Boolean(due&&due<today),assigned:true,tagged:false,team:false,taskId:row.task_id,status:row.status,locked,lockReason});
+        }
         return out.sort((a, b) => Number(b.overdue) - Number(a.overdue) || (a.due || '9999').localeCompare(b.due || '9999') || a.id.localeCompare(b.id));
     });
 }
@@ -994,8 +1021,10 @@ export async function onboardingAssignedTaskMetadata(ctx:SessionContext):Promise
                 .where(and(eq(cases.tenantId,ctx.tenantId),inArray(cases.id,ids.slice(start,start+1000)))).orderBy(cases.id);
             for(const row of rows)updated.set(row.id,row.updatedAt);
         }
+        const actual=await tx.execute<AssignedChecklistRow>(sql`select * from app.onboarding_assigned_task_rows()`);
+        const actualTasks=new Map(actual.map(row=>[row.case_id+':'+row.task_id,row.updated_at instanceof Date?row.updated_at:new Date(row.updated_at)]));
         return assigned.flatMap(item=>{
-            const sourceUpdatedAt=updated.get(item.caseId);if(!sourceUpdatedAt)return [];
+            const sourceUpdatedAt=item.taskId&&(item.kind==='checklist'||item.kind==='acknowledgement')?actualTasks.get(item.caseId+':'+item.taskId):updated.get(item.caseId);if(!sourceUpdatedAt)return [];
             const dueDate=(item.kind==='checklist'||item.kind==='acknowledgement')&&M.validDate(item.due)?item.due:undefined;
             return [{id:item.id,kind:'onboarding' as const,subjectName:item.title+' · '+item.joiner,sourceUpdatedAt,
                 linkPath:'/tasks#'+encodeURIComponent('onboarding-'+item.id),...(dueDate?{dueDate}:{})}];

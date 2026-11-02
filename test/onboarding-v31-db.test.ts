@@ -1,10 +1,11 @@
+import {randomUUID} from 'node:crypto';
 import { afterAll, beforeEach, describe, it, expect } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { hireEmployee } from '../core/org';
-import { onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingAssignedTaskMetadata, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingSyncDraftTx, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
+import { v9OwnTask, onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingAssignedTaskMetadata, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingSyncDraftTx, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
 import { appendEvent, actorOf } from '../db/events';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -211,6 +212,33 @@ describe('V3.1 onboarding database and authorization', () => {
         await saveEmployeeDraft(admin, { id: d.id, data: { profile: { fullName: 'Updated Hire', primaryEmail: 'new@test.invalid' }, employment: { companyId: b.companyId } }, currentStep: 1 });
         expect(await onboardingList(admin)).toHaveLength(1);
         expect((await onboardingList(admin))[0]!.case.source.fullName).toBe('Updated Hire');
+    });
+    it('projects and completes only an actual assigned task outside general data scope, with a required native audit',async()=>{
+        const context=await onboardingContext(admin),config=structuredClone(context.config);
+        config.groups.push({id:'private-sibling-team',name:'Fictional sibling team',limit:8,members:[other.userId!]});
+        config.checklists[0]!.tasks.push({id:'sibling',name:'PRIVATE other assigned checklist',by:'group',group:'private-sibling-team',method:'rr',opens:null,due:1,gate:false});
+        await onboardingSaveConfig(admin,context.revision,config);
+        const saved=await saveEmployeeDraft(admin,{data:{profile:{fullName:'Fictional hidden task subject',employeeCode:'HIDDEN-TASK-SUBJECT',primaryEmail:'hidden-task-subject@fixture.invalid'},employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'5000'}},currentStep:5});
+        const active=await completeEmployeeDraft(admin,saved.id);let row=(await onboardingList(admin))[0]!;
+        await onboardingCommand(admin,row.case.id,row.revision,{type:'saveSubmit',patch:{hiring:'new_hire',local:{supervisor:'Manager'},selected:['m365']}});row=(await onboardingList(admin))[0]!;
+        for(const actor of [tech,other]){
+            const id=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Checklist scope '+id})`;
+            await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'employeeId',values:['ONLY-OWN-SELF-COURSE']}]})}::text::jsonb,${admin.userId!})`;
+            await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
+            await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${actor.userId!},${id},${admin.userId!})`;
+        }
+        expect(await withTenant(tech,tx=>tx.select().from(schema.employment).where(eq(schema.employment.id,active.employmentId)))).toEqual([]);
+        expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)))).toEqual([]);
+        const queue=await onboardingTasks(tech);expect(queue.filter(task=>task.kind==='checklist').map(task=>task.taskId)).toEqual(['welcome']);expect(JSON.stringify(queue)).not.toContain('PRIVATE other assigned checklist');
+        expect((await onboardingAssignedTaskMetadata(tech)).map(task=>task.id)).toContain(row.case.id+':checklist:welcome');
+        await expect(onboardingCommand(other,row.case.id,row.revision,{type:'task',taskId:'welcome',status:'done'})).rejects.toThrow();
+        await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_assigned_task_update(${row.case.id}::uuid,${row.revision},'welcome','done')`))).rejects.toThrow();
+        expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
+        await v9OwnTask(tech,{caseId:row.case.id,revision:row.revision,taskId:'welcome',status:'done',reason:''});
+        const updated=(await onboardingList(admin))[0]!;expect(updated.case.tasks.find(task=>task.id==='welcome')).toMatchObject({status:'done',completedBy:tech.userId});
+        expect(updated.case.tasks.find(task=>task.id==='sibling')?.status).toBe('todo');
+        expect((await onboardingTasks(tech)).some(task=>task.taskId==='welcome')).toBe(false);
+        expect((await owner.client`select count(*)::int as count from app.lifecycle_native_effect_context`)[0].count).toBe(0);
     });
     it('preserves the same case when Personnel activates its draft', async () => {
         const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Activation Hire', employeeCode: 'ONB-ACT-1', primaryEmail: 'activation@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });

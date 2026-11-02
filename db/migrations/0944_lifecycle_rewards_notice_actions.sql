@@ -31,7 +31,7 @@ ALTER POLICY data_permission_subject_read ON reward_entry USING(app.principal_sn
 -- Committed membership/configuration changes invalidate pre-pinned native read snapshots too.
 -- These are authority records; an assigned-work decision may not replay a revoked old membership.
 DO $$ DECLARE owned_table text; BEGIN
- FOREACH owned_table IN ARRAY ARRAY['reward_member','lc_staff','lc_onboarding_config','lc_v9_config']LOOP
+ FOREACH owned_table IN ARRAY ARRAY['reward_member','lc_staff','lc_onboarding_config','lc_v9_config','lc_onboarding_case']LOOP
   EXECUTE format('CREATE TRIGGER action_authority_generation_insert AFTER INSERT ON public.%I REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('''')',owned_table);
   EXECUTE format('CREATE TRIGGER action_authority_generation_update AFTER UPDATE ON public.%I REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('''')',owned_table);
   EXECUTE format('CREATE TRIGGER action_authority_generation_delete AFTER DELETE ON public.%I REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('''')',owned_table);
@@ -195,8 +195,8 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE result uuid;
 BEGIN
  IF NOT app.principal_snapshot_current() OR app.current_user_id() IS NULL OR p_case IS NULL
-  OR p_purpose NOT IN('own-daa','own-document','assigned-task','own-return-report','assigned-item','own-equipment-receipt')
-  OR p_event NOT IN('lifecycle-case.daa-submitted','lifecycle-v9.employeeDocumentSigned','lifecycle-v9.employeeDocumentSaved','lifecycle-v9.assignedTaskUpdated','lifecycle-v9.returnReported','lifecycle-v9.providingTeamItemUpdated','lifecycle-v9.equipmentReceipt')
+  OR p_purpose NOT IN('own-daa','own-document','assigned-task','own-return-report','assigned-item','own-equipment-receipt','assigned-onboarding-task')
+  OR p_event NOT IN('lifecycle-case.daa-submitted','lifecycle-v9.employeeDocumentSigned','lifecycle-v9.employeeDocumentSaved','lifecycle-v9.assignedTaskUpdated','lifecycle-v9.returnReported','lifecycle-v9.providingTeamItemUpdated','lifecycle-v9.equipmentReceipt','onboarding.task')
   OR EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND c.active)
  THEN RAISE EXCEPTION 'Invalid native Lifecycle effect context' USING ERRCODE='42501';END IF;
  INSERT INTO app.lifecycle_native_effect_context(xact_id,tenant_id,user_id,purpose,case_id,event_type)
@@ -375,7 +375,66 @@ DO $$ DECLARE body text;anchor text:=' IF app.lifecycle_native_effect_approved(T
  IF strpos(body,anchor)=0 THEN RAISE EXCEPTION 'Lifecycle action guard changed before own-request binding';END IF;
  EXECUTE replace(body,anchor,anchor||E'\n IF TG_TABLE_NAME=''it_asset_request'' AND app.lifecycle_own_request_effect(before_row,after_row)THEN RETURN NULL;END IF;\n IF TG_TABLE_NAME=''lc_history'' AND TG_OP=''INSERT'' AND app.principal_snapshot_current() AND data->>''ref_type''=''asset_request'' AND data->>''action'' IN(''request.created'',''request.cancelled'') AND(data->>''actor_user_id'')::uuid=app.current_user_id() AND EXISTS(SELECT 1 FROM public.it_asset_request q JOIN public.domain_event e ON e.aggregate_id=q.id AND e.tenant_id=q.tenant_id WHERE q.id=(data->>''ref_id'')::uuid AND q.tenant_id=app.current_tenant_id() AND q.requester_user_id=app.current_user_id() AND q.xmin::text=pg_current_xact_id()::text AND e.actor_type=''user'' AND e.actor_id=app.current_user_id() AND e.event_type=CASE WHEN data->>''action''=''request.created'' THEN ''lifecycle-asset-request.created'' ELSE ''lifecycle-asset-request.cancelled'' END AND e.xmin::text=pg_current_xact_id()::text)THEN RETURN NULL;END IF;');
 END $$;
-
+--> statement-breakpoint
+CREATE FUNCTION app.lifecycle_legacy_record_read(p_table text,p_row jsonb)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND(p_row->>'tenant_id')::uuid=app.current_tenant_id()
+ AND(app.lifecycle_reward_notice_action('lifecycle','view',app.lifecycle_legacy_row_company(p_table,p_row))
+  OR p_table='it_asset_request' AND(p_row->>'requester_user_id')::uuid=app.current_user_id());
+$$;
+REVOKE ALL ON FUNCTION app.lifecycle_legacy_record_read(text,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lifecycle_legacy_record_read(text,jsonb) TO ai_hr_app;
+DO $$ DECLARE owned_table text;BEGIN
+ FOREACH owned_table IN ARRAY ARRAY['lc_case','lc_case_step','lc_comment','lc_history','it_requisition','it_requisition_item','it_asset','it_asset_request']LOOP
+  EXECUTE format('CREATE POLICY lifecycle_action_read ON public.%I AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.lifecycle_legacy_record_read(%L,to_jsonb(%I)))',owned_table,owned_table,owned_table);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+-- Minimal dispatch fact, bound to the actual stored assignee. It is not a case directory.
+CREATE FUNCTION app.onboarding_assigned_task_identity(p_case uuid,p_task text)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.lc_onboarding_case c
+ JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=c.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM jsonb_array_elements(c.data->'tasks')t WHERE t->>'id'=p_task AND t->>'assignee'=u.id::text));
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_assigned_task_identity(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_assigned_task_identity(uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+-- The live assigned-task mutation port. The former M.setTask production branch now delegates here;
+-- only one task's status/completion facts and its native task.status history entry can change.
+CREATE FUNCTION app.onboarding_assigned_task_update(p_case uuid,p_revision integer,p_task text,p_status text)
+RETURNS TABLE(revision integer,employment_id uuid,company_id uuid)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE c public.lc_onboarding_case;target jsonb;target_index bigint;current_request jsonb;tasks jsonb;entry jsonb;actor_name text;stamp text;effect uuid;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
+ PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
+ IF NOT app.principal_snapshot_current() OR app.current_user_id() IS NULL OR p_revision IS NULL OR p_revision<1 OR p_status IS NULL OR p_status NOT IN('todo','progress','done')THEN RAISE EXCEPTION 'Task not available' USING ERRCODE='42501';END IF;
+ SELECT x.* INTO c FROM public.lc_onboarding_case x WHERE x.id=p_case AND x.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF c.id IS NULL OR c.data->>'state'<>'submitted'THEN RAISE EXCEPTION 'Task not available' USING ERRCODE='42501';END IF;
+ IF c.revision<>p_revision THEN RAISE EXCEPTION 'This case changed. Reload it before trying again.' USING ERRCODE='40001';END IF;
+ SELECT task,n INTO target,target_index FROM jsonb_array_elements(c.data->'tasks')WITH ORDINALITY t(task,n)WHERE task->>'id'=p_task ORDER BY n LIMIT 1;
+ IF target IS NULL OR target->>'assignee' IS DISTINCT FROM app.current_user_id()::text THEN RAISE EXCEPTION 'Only the assigned person can update this task' USING ERRCODE='42501';END IF;
+ IF p_status='done' AND(nullif(target->>'documentTemplate','') IS NOT NULL OR target->>'by'='joiner' AND coalesce((target->>'gate')::boolean,false))THEN RAISE EXCEPTION 'Complete the linked document or device acknowledgement to finish this task' USING ERRCODE='23514';END IF;
+ IF nullif(target->>'opensOn','') IS NOT NULL AND target->>'opensOn'>to_char((now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date,'YYYY-MM-DD')THEN RAISE EXCEPTION 'This task has not opened yet' USING ERRCODE='23514';END IF;
+ SELECT r INTO current_request FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY requests(r,n)WHERE r->>'cancelledAt' IS NULL ORDER BY n LIMIT 1;
+ IF coalesce((target->>'gate')::boolean,false)AND current_request->>'handedAt' IS NULL THEN RAISE EXCEPTION 'Record the Day 1 handover first' USING ERRCODE='23514';END IF;
+ SELECT coalesce(p.full_name,'User '||left(u.id::text,8))INTO actor_name FROM public.app_user u LEFT JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
+ WHERE u.id=app.current_user_id() AND u.tenant_id=c.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
+ IF actor_name IS NULL THEN RAISE EXCEPTION 'Your login is not available' USING ERRCODE='42501';END IF;
+ stamp:=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+ SELECT jsonb_agg(CASE WHEN n=target_index THEN task||jsonb_build_object('status',p_status,'completedAt',CASE WHEN p_status='done'THEN stamp ELSE NULL END,'completedBy',CASE WHEN p_status='done'THEN app.current_user_id() ELSE NULL END)ELSE task END ORDER BY n)
+ INTO tasks FROM jsonb_array_elements(c.data->'tasks')WITH ORDINALITY t(task,n);
+ entry:=jsonb_build_object('id',gen_random_uuid(),'at',stamp,'by',app.current_user_id(),'name',actor_name,'action','task.status','detail',(target->>'name')||' · '||p_status);
+ effect:=app.lifecycle_native_effect_begin('assigned-onboarding-task',c.id,'onboarding.task');
+ INSERT INTO public.lc_onboarding_case_revision(tenant_id,case_id,company_id,revision,data)VALUES(c.tenant_id,c.id,c.company_id,c.revision,c.data)ON CONFLICT DO NOTHING;
+ UPDATE public.lc_onboarding_case x SET data=c.data||jsonb_build_object('tasks',tasks,'history',coalesce(c.data->'history','[]'::jsonb)||jsonb_build_array(entry)),revision=c.revision+1,updated_at=clock_timestamp()WHERE x.id=c.id AND x.tenant_id=c.tenant_id;
+ PERFORM app.lifecycle_native_effect_complete(effect);
+ RETURN QUERY SELECT c.revision+1,c.employment_id,c.company_id;
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_assigned_task_update(uuid,integer,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_assigned_task_update(uuid,integer,text,text) TO ai_hr_app;
 --> statement-breakpoint
 -- A handler picker exposes actual eligible native workflow identities, not a general employee
 -- directory. Keep eligibility independent of whether the caller may see a candidate's Person name.
@@ -398,3 +457,18 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.lifecycle_handler_eligible(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.lifecycle_handler_eligible(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.onboarding_assigned_task_rows()
+RETURNS TABLE(case_id uuid,revision integer,updated_at timestamptz,joiner text,business_group text,join_date text,task_id text,title text,task_by text,gate boolean,opens_on text,due_on text,status text,handed boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT c.id,c.revision,c.updated_at,coalesce(c.data->'local'->>'fullName',c.data->'source'->>'fullName',''),
+ coalesce(c.data->'local'->>'businessGroup',c.data->'source'->>'businessGroup',''),coalesce(c.data->'local'->>'joinDate',c.data->'source'->>'joinDate',''),
+ t.task->>'id',t.task->>'name',t.task->>'by',coalesce((t.task->>'gate')::boolean,false),t.task->>'opensOn',t.task->>'dueOn',t.task->>'status',
+ (SELECT r->>'handedAt' IS NOT NULL FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY requests(r,n)WHERE r->>'cancelledAt' IS NULL ORDER BY n LIMIT 1)
+ FROM public.lc_onboarding_case c JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=c.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ CROSS JOIN LATERAL jsonb_array_elements(c.data->'tasks')WITH ORDINALITY t(task,n)
+ WHERE c.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND c.data->>'state'='submitted' AND t.task->>'status'<>'done' AND t.task->>'assignee'=u.id::text
+ ORDER BY c.id,t.n;
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_assigned_task_rows() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_assigned_task_rows() TO ai_hr_app;
