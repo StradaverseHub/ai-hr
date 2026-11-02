@@ -8,8 +8,8 @@ import com.android.uiautomator.testrunner.UiAutomatorTestCase;
 
 /** Shell test utility, not app code. No hierarchy/screenshot/password/MFA reads. */
 public final class OneHrSignInProbe extends UiAutomatorTestCase {
-  private UiObject byText(String value) { return getUiDevice().findObject(new UiSelector().textContains(value)); }
-  private UiObject field(String label) { return getUiDevice().findObject(new UiSelector().className("android.widget.EditText").description(label)); }
+  private UiObject byText(String value) { return new UiObject(new UiSelector().textContains(value)); }
+  private UiObject field(String label) { return new UiObject(new UiSelector().className("android.widget.EditText").description(label)); }
   private void setupBounded() {
     Configurator.getInstance().setWaitForIdleTimeout(0).setWaitForSelectorTimeout(2500).setActionAcknowledgmentTimeout(2500);
   }
@@ -38,7 +38,7 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
       assertTrue(field("Username").setText("!diagnostic!"));
       assertTrue(field("Password").setText("diagnostic-only"));
       getUiDevice().pressBack();
-      UiObject submit=getUiDevice().findObject(new UiSelector().description("Sign in").clickable(true));
+      UiObject submit=new UiObject(new UiSelector().description("Sign in").clickable(true));
       assertTrue("Submit unavailable", submit.exists() && submit.isEnabled());
       assertTrue(submit.click());
       for(int i=0;i<35;i++) {
