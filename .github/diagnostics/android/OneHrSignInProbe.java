@@ -34,7 +34,7 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
   public void testControls() throws Exception {
     setupBounded();
     assertEquals("Wrong foreground app; do not act", "ai.stradaverse.aihr.test", getUiDevice().getCurrentPackageName());
-    UiObject submit=new UiObject(new UiSelector().description("Sign in").clickable(true));
+    UiObject submit=new UiObject(new UiSelector().description("Sign in"));
     System.out.println("ONEHR_PROBE {\"kind\":\"publicControlMetadata\",\"width\":"+getUiDevice().getDisplayWidth()+",\"height\":"+getUiDevice().getDisplayHeight()+","+control("username",field("Username"))+","+control("password",field("Password"))+","+control("submit",submit)+",\"fieldValuesRead\":false}");
   }
   public void testRestoreUsernameOnly() throws Exception {
