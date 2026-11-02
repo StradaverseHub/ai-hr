@@ -40,14 +40,16 @@ it('matches actual off-cycle rows, independent H/standard funding, all ordered f
  const promotion=entry('promotion');promotion.recommendation={...promotion.recommendation,promotionGrade:'14',promotionBp:1500,specialBp:300,reason:'A supported real promotion business case',currentRoleSummary:'Current analyst responsibilities for one operating team.',proposedRoleSummary:'Lead analyst responsibilities across three operating teams.'};
  const invalidPromotion=structuredClone(promotion);invalidPromotion.id='invalid';invalidPromotion.source.grade='H';invalidPromotion.recommendation.currentRoleSummary=' SAME '+ 'X'.repeat(40);invalidPromotion.recommendation.proposedRoleSummary='same '+ 'x'.repeat(40);
  const utf16=entry('utf16');utf16.recommendation={...utf16.recommendation,reason:'😀'.repeat(5),promotionGrade:'13',currentRoleSummary:'😀'.repeat(15),proposedRoleSummary:'😀'.repeat(15)+'x'};
- const cases=[[],[ordinary],[h],[ec],[own],[ineligible],[promotion],[invalidPromotion],[utf16],[ordinary,h,ec,own,ineligible,promotion]];
+ const unicodeFinal=structuredClone(promotion);unicodeFinal.id='unicode-final';unicodeFinal.recommendation.currentRoleSummary='A'.repeat(30)+'\uA7CEΣ';unicodeFinal.recommendation.proposedRoleSummary='a'.repeat(30)+'\uA7CFς';
+ const unicodeFollowed=structuredClone(promotion);unicodeFollowed.id='unicode-followed';unicodeFollowed.recommendation.currentRoleSummary='A'.repeat(30)+'Σ\uA7CE';unicodeFollowed.recommendation.proposedRoleSummary='a'.repeat(30)+'σ\uA7CF';
+ const cases=[[],[ordinary],[h],[ec],[own],[ineligible],[promotion],[invalidPromotion],[utf16],[ordinary,h,ec,own,ineligible,promotion],[unicodeFinal],[unicodeFollowed]];
  for(const entries of cases)for(const kind of ['adhoc','midyear']as const)for(const details of [{exceptionReason:'',bgOrigin:false},{exceptionReason:'Actual separately reviewed budget exception',bgOrigin:true},{exceptionReason:'short',bgOrigin:false}])for(const funding of [{standard:0,h:100000},{standard:100000,h:0}])expect(await native(entries,kind,details,funding)).toEqual(calculateOffcycle(entries,defaultPolicy(2026),kind,details,funding));
  for(const bad of [{meritBp:-1},{meritBp:0.1},{bonusCents:100000000001},{unknown:true},{reason:'x'.repeat(4001)}]){
   const malformed=entry('malformed');malformed.recommendation={...malformed.recommendation,...bad};expect(()=>calculateOffcycle([malformed],defaultPolicy(2026),'adhoc',{exceptionReason:'',bgOrigin:false},{standard:0,h:0})).toThrow();await expect(native([malformed],'adhoc',{exceptionReason:'',bgOrigin:false},{standard:0,h:0})).rejects.toThrow();
  }
 });
 it('matches locale-independent native Unicode casing, context and UTF16 lengths before any consumer cutover',async()=>{
- const contexts=['İ','I','ΟΣ','ΟΣΑ','AΣ\u0301','𐐀','Straße','Σ\u0345','\u1f88','\u212a','😀'.repeat(15)];
+ const contexts=['İ','I','ΟΣ','ΟΣΑ','AΣ\u0301','𐐀','Straße','Σ\u0345','\u1f88','\u212a','😀'.repeat(15),'\uA7CEΣ','A\uA7CEΣ','AΣ\uA7CE','\uA7D2Σ','AΣ\uA7D4','\u0345Σ','A\u0345Σ','AΣ\u0345','AΣ\u0345A'];
  for(const text of contexts){const [row]=await owner.db.execute<{value:string;units:number}>(sql`select app.reward_calc_lower(${text})as value,to_jsonb(app.reward_calc_units(${text}))as units`);expect({text,value:row.value,units:row.units}).toEqual({text,value:text.toLowerCase(),units:text.length});}
  // Valid PostgreSQL text excludes NUL and isolated UTF16 surrogates. Every other Unicode
  // scalar is compared in bounded blocks, independent of the database default LC_CTYPE.
@@ -63,6 +65,16 @@ it('matches locale-independent native Unicode casing, context and UTF16 lengths 
    console.info('Rewards Unicode parity first mismatch',JSON.stringify({node:process.versions.node,unicode:process.versions.unicode,icu:process.versions.icu,database,block:start,outputIndex:mismatch,input:code(inputPoint),expected:code(expectedPoints[mismatch]),actual:code(actualPoints[mismatch]),window:{expected:expectedPoints.slice(Math.max(0,mismatch-3),mismatch+4).map(code),actual:actualPoints.slice(Math.max(0,mismatch-3),mismatch+4).map(code)},probes}));
   }
   expect({block:start,mismatch,units:row.value.length}).toEqual({block:start,mismatch:-1,units:expected.length});}
+});
+
+
+it('matches Final Sigma around every native Cased or Case_Ignorable scalar, including overlapping properties',async()=>{
+ const contextual=/[\p{Cased}\p{Case_Ignorable}]/u;let batch='',batchNumber=0;
+ const compare=async()=>{if(!batch)return;const expected=batch.toLowerCase(),[row]=await owner.db.execute<{value:string}>(sql`select app.reward_calc_lower(${batch})as value`),expectedPoints=[...expected],mismatch=[...row.value].findIndex((point,index)=>point!==expectedPoints[index]);expect({batch:batchNumber,mismatch,units:row.value.length}).toEqual({batch:batchNumber,mismatch:-1,units:expected.length});batch='';batchNumber++;};
+ // The properties come from the independent CURRENT Node runtime, not the generated SQL
+ // data. U+0001 separates probes so a neighboring test scalar cannot supply Sigma context.
+ for(let cp=1;cp<=0x10ffff;cp++){if(cp>=0xd800&&cp<=0xdfff)continue;const scalar=String.fromCodePoint(cp);if(!contextual.test(scalar))continue;batch+='AΣ'+scalar+'\u0001'+scalar+'Σ\u0001A'+scalar+'Σ\u0001';if(batch.length>=0x10000)await compare();}
+ await compare();expect(batchNumber).toBeGreaterThan(0);
 });
 
 it('normalizes the annual native policy exactly and refuses malformed stored policies',async()=>{
