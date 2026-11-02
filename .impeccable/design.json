@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-25T15:49:05.310Z",
+  "generatedAt": "2026-11-02T04:45:17.467420+00:00",
   "title": "Design System: AIHR",
   "extensions": {
     "colorMeta": {
@@ -216,58 +216,58 @@
       },
       "login-ink": {
         "role": "primary",
-        "displayName": "Login Ink",
+        "displayName": "Editorial plum",
         "tonalRamp": [
-          "oklch(15.00% 0.1015 282.18)",
-          "oklch(26.43% 0.1015 282.18)",
-          "oklch(37.86% 0.1015 282.18)",
-          "oklch(49.29% 0.1015 282.18)",
-          "oklch(60.71% 0.1015 282.18)",
-          "oklch(72.14% 0.1015 282.18)",
-          "oklch(83.57% 0.1015 282.18)",
-          "oklch(95.00% 0.1015 282.18)"
+          "oklch(15.00% 0.0485 286.43)",
+          "oklch(26.43% 0.0485 286.43)",
+          "oklch(37.86% 0.0485 286.43)",
+          "oklch(49.29% 0.0485 286.43)",
+          "oklch(60.71% 0.0485 286.43)",
+          "oklch(72.14% 0.0485 286.43)",
+          "oklch(83.57% 0.0485 286.43)",
+          "oklch(95.00% 0.0485 286.43)"
         ]
       },
       "login-hover": {
-        "role": "neutral",
-        "displayName": "Login Hover",
+        "role": "primary",
+        "displayName": "Editorial plum hover",
         "tonalRamp": [
-          "oklch(15.00% 0.1142 283.59)",
-          "oklch(26.43% 0.1142 283.59)",
-          "oklch(37.86% 0.1142 283.59)",
-          "oklch(49.29% 0.1142 283.59)",
-          "oklch(60.71% 0.1142 283.59)",
-          "oklch(72.14% 0.1142 283.59)",
-          "oklch(83.57% 0.1142 283.59)",
-          "oklch(95.00% 0.1142 283.59)"
+          "oklch(15.00% 0.0473 293.95)",
+          "oklch(26.43% 0.0473 293.95)",
+          "oklch(37.86% 0.0473 293.95)",
+          "oklch(49.29% 0.0473 293.95)",
+          "oklch(60.71% 0.0473 293.95)",
+          "oklch(72.14% 0.0473 293.95)",
+          "oklch(83.57% 0.0473 293.95)",
+          "oklch(95.00% 0.0473 293.95)"
         ]
       },
       "login-muted": {
         "role": "neutral",
-        "displayName": "Login Muted",
+        "displayName": "Editorial muted ink",
         "tonalRamp": [
-          "oklch(15.00% 0.0159 281.25)",
-          "oklch(26.43% 0.0159 281.25)",
-          "oklch(37.86% 0.0159 281.25)",
-          "oklch(49.29% 0.0159 281.25)",
-          "oklch(60.71% 0.0159 281.25)",
-          "oklch(72.14% 0.0159 281.25)",
-          "oklch(83.57% 0.0159 281.25)",
-          "oklch(95.00% 0.0159 281.25)"
+          "oklch(15.00% 0.0299 285.29)",
+          "oklch(26.43% 0.0299 285.29)",
+          "oklch(37.86% 0.0299 285.29)",
+          "oklch(49.29% 0.0299 285.29)",
+          "oklch(60.71% 0.0299 285.29)",
+          "oklch(72.14% 0.0299 285.29)",
+          "oklch(83.57% 0.0299 285.29)",
+          "oklch(95.00% 0.0299 285.29)"
         ]
       },
       "login-line": {
         "role": "neutral",
-        "displayName": "Login Line",
+        "displayName": "Workspace hairline",
         "tonalRamp": [
-          "oklch(15.00% 0.0297 292.43)",
-          "oklch(26.43% 0.0297 292.43)",
-          "oklch(37.86% 0.0297 292.43)",
-          "oklch(49.29% 0.0297 292.43)",
-          "oklch(60.71% 0.0297 292.43)",
-          "oklch(72.14% 0.0297 292.43)",
-          "oklch(83.57% 0.0297 292.43)",
-          "oklch(95.00% 0.0297 292.43)"
+          "oklch(15.00% 0.0284 287.96)",
+          "oklch(26.43% 0.0284 287.96)",
+          "oklch(37.86% 0.0284 287.96)",
+          "oklch(49.29% 0.0284 287.96)",
+          "oklch(60.71% 0.0284 287.96)",
+          "oklch(72.14% 0.0284 287.96)",
+          "oklch(83.57% 0.0284 287.96)",
+          "oklch(95.00% 0.0284 287.96)"
         ]
       },
       "login-focus": {
@@ -339,12 +339,54 @@
           "oklch(83.57% 0.1578 48.14)",
           "oklch(95.00% 0.1578 48.14)"
         ]
+      },
+      "login-story-ground": {
+        "role": "neutral",
+        "displayName": "Noveri charcoal",
+        "tonalRamp": [
+          "oklch(15.00% 0.0045 264.44)",
+          "oklch(26.43% 0.0045 264.44)",
+          "oklch(37.86% 0.0045 264.44)",
+          "oklch(49.29% 0.0045 264.44)",
+          "oklch(60.71% 0.0045 264.44)",
+          "oklch(72.14% 0.0045 264.44)",
+          "oklch(83.57% 0.0045 264.44)",
+          "oklch(95.00% 0.0045 264.44)"
+        ]
+      },
+      "login-story-ink": {
+        "role": "neutral",
+        "displayName": "Noveri pale ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.0013 286.38)",
+          "oklch(26.43% 0.0013 286.38)",
+          "oklch(37.86% 0.0013 286.38)",
+          "oklch(49.29% 0.0013 286.38)",
+          "oklch(60.71% 0.0013 286.38)",
+          "oklch(72.14% 0.0013 286.38)",
+          "oklch(83.57% 0.0013 286.38)",
+          "oklch(95.00% 0.0013 286.38)"
+        ]
+      },
+      "login-story-muted": {
+        "role": "neutral",
+        "displayName": "Noveri slate captions",
+        "tonalRamp": [
+          "oklch(15.00% 0.0166 266.25)",
+          "oklch(26.43% 0.0166 266.25)",
+          "oklch(37.86% 0.0166 266.25)",
+          "oklch(49.29% 0.0166 266.25)",
+          "oklch(60.71% 0.0166 266.25)",
+          "oklch(72.14% 0.0166 266.25)",
+          "oklch(83.57% 0.0166 266.25)",
+          "oklch(95.00% 0.0166 266.25)"
+        ]
       }
     },
     "typographyMeta": {
       "headline": {
-        "displayName": "Public headline",
-        "purpose": "Responsive public form title."
+        "displayName": "Editorial workspace headline",
+        "purpose": "Public-login Baskervville headline; locale overrides remain in login.css."
       },
       "title": {
         "displayName": "Operational title",
@@ -361,6 +403,10 @@
       "table-label": {
         "displayName": "Table heading",
         "purpose": "Sentence-case table columns."
+      },
+      "login-auth-title": {
+        "displayName": "Editorial account title",
+        "purpose": "Subsequent public authentication states."
       }
     },
     "shadows": [
@@ -400,6 +446,26 @@
         "name": "ease-snappy",
         "value": "cubic-bezier(.23,1,.32,1)",
         "purpose": "Existing rail chevron and shared-button easing."
+      },
+      {
+        "name": "login-control-transition",
+        "value": "140ms ease",
+        "purpose": "Public primary control background; disabled under reduced motion."
+      },
+      {
+        "name": "login-story-intro",
+        "value": "2600ms",
+        "purpose": "Fictional AI centre illustration before the vortex."
+      },
+      {
+        "name": "login-story-swirl",
+        "value": "1800ms",
+        "purpose": "Actual-image mesh vortex into the measured Interfaces SVG centre; clears fully."
+      },
+      {
+        "name": "login-story-end",
+        "value": "19900ms",
+        "purpose": "Once-only explanatory story ends. Stop/Replay; static reduced-motion; hidden/small screens stop."
       }
     ],
     "breakpoints": [
@@ -409,11 +475,22 @@
       },
       {
         "name": "public-split",
-        "value": "768px"
+        "value": "1023px",
+        "purpose": "At or below this width, public login is form-only."
       },
       {
         "name": "shell-breadcrumb",
         "value": "1024px"
+      },
+      {
+        "name": "public-short",
+        "value": "600px",
+        "purpose": "At or below this viewport height, public login is form-only."
+      },
+      {
+        "name": "public-narrow",
+        "value": "360px",
+        "purpose": "Narrow workspace headline sizing; Malay has its own 2.5rem override."
       }
     ]
   },
@@ -465,21 +542,45 @@
       "description": "Flat card with the shared sentence-case header strip.",
       "html": "<section class=\"ds-card\"><header class=\"ds-card-head\">Welcome media</header><div class=\"ds-card-body\">Choose the image, GIF or video shown before sign-in.</div></section>",
       "css": ".ds-card{font-family:var(--font-sans,system-ui,sans-serif);border:1px solid var(--border,#e8e8eb);border-radius:.75rem;background:var(--card,#fff);color:var(--foreground,#1c1c1f);box-shadow:none}.ds-card-head{padding:.75rem 1rem;border-bottom:1px solid var(--border,#e8e8eb);border-radius:.6875rem .6875rem 0 0;background:var(--sidebar,#f8f8f9);font-size:.8125rem;font-weight:600}.ds-card-body{padding:1rem;font-size:.875rem;line-height:1.25rem}"
+    },
+    {
+      "name": "Editorial Continue",
+      "kind": "button",
+      "refersTo": "login-continue",
+      "description": "Public workspace-step arrow; disabled until code is nonempty.",
+      "html": "<button class=\"ds-login-continue\" aria-label=\"Continue\"><svg width=\"23\" height=\"23\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M5 12h14m-7-7 7 7-7 7\"/></svg></button>",
+      "css": ".ds-login-continue{display:grid;place-items:center;width:3.0625rem;height:3.0625rem;border:0;border-radius:50%;background:#2b2944;color:#fff;cursor:pointer;transition:background-color 140ms ease}.ds-login-continue:hover:not(:disabled){background:#47415d}.ds-login-continue:focus-visible{outline:2px solid #7764c2;outline-offset:4px}.ds-login-continue:active:not(:disabled){transform:translateY(1px)}.ds-login-continue:disabled{opacity:.5;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-login-continue{transition:none}.ds-login-continue:active:not(:disabled){transform:none}}"
+    },
+    {
+      "name": "Editorial workspace input",
+      "kind": "input",
+      "refersTo": "login-workspace-input",
+      "description": "Underline-only workspace field; account credentials are a later step.",
+      "html": "<label class=\"ds-login-workspace\">Workspace code<span class=\"ds-login-entry\"><input placeholder=\"Your workspace code\" autocomplete=\"organization\"></span></label>",
+      "css": ".ds-login-workspace{display:flex;flex-direction:column;gap:.875rem;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:.8125rem;font-weight:600;color:#2b2944}.ds-login-entry{display:flex;padding-bottom:1rem;border-bottom:1px solid #858497}.ds-login-workspace input{width:100%;height:3.0625rem;padding:0;border:0;border-radius:0;background:transparent;color:#2b2944;font:inherit;font-size:1.4375rem;font-weight:400}.ds-login-workspace input::placeholder{color:#737184;opacity:1}.ds-login-workspace input:focus-visible{outline:2px solid #7764c2;outline-offset:4px}"
+    },
+    {
+      "name": "Editorial sign-in button",
+      "kind": "button",
+      "refersTo": "login-submit",
+      "description": "Full-width public credential submission.",
+      "html": "<button class=\"ds-login-submit\">Sign in</button>",
+      "css": ".ds-login-submit{display:flex;align-items:center;justify-content:center;width:100%;min-height:3.25rem;border:0;border-radius:.375rem;padding:.75rem 1rem;background:#2b2944;color:#fff;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;font-size:.9375rem;font-weight:550;transition:background-color 140ms ease}.ds-login-submit:hover:not(:disabled){background:#47415d}.ds-login-submit:focus-visible{outline:2px solid #7764c2;outline-offset:4px}.ds-login-submit:disabled{opacity:.5;cursor:not-allowed}.ds-login-submit:active:not(:disabled){transform:translateY(1px)}@media(prefers-reduced-motion:reduce){.ds-login-submit{transition:none}.ds-login-submit:active:not(:disabled){transform:none}}"
     }
   ],
   "narrative": {
     "northStar": "Atelier / Maker's Mark",
-    "overview": "Atelier is the default authenticated workspace: neutral surfaces, compact controls, a quiet navigation rail and fire-orange actions. The existing Maker's Mark supplies its signature. This records the implemented system alongside the supported Classic and Monolith choices; light/dark remains an independent setting.\n\nPublic sign-in is a distinct, owner-specified indigo-and-white surface with AIHR identity. Its palette is scoped locally and remains light across app themes. Its typography resolves the existing font variable. The login composition belongs to its surface brief, not to every future screen.",
+    "overview": "Atelier is the default authenticated workspace: neutral surfaces, compact controls, a quiet navigation rail and fire-orange actions. The existing Maker's Mark supplies its signature. This records the implemented system alongside the supported Classic and Monolith choices; light/dark remains an independent setting.\n\nPublic sign-in is the owner-selected Editorial surface: white, plum ink, self-hosted Baskervville headings and system UI body. Its palette remains local and independent of saved app themes. The restrained form sits beside a charcoal Noveri demonstration; this composition belongs to its surface brief, not to every future screen.\n\nPerformance & Talent is the second scoped surface (D-P1-32 D3, APR-025, ADR-0152). Every page under `/performance`, employee and administration, renders inside `<div data-area-theme=\"performance\">` (app/performance/layout.tsx), and app/performance/area-theme.css re-declares the app's own tokens there: a navy band with the area title, white 12px cards on a light grey page, navy headings and primary, hairline rows, red for AI actions with the app's own sparkles icon, pills, segmented tabs and a stage rail (`pt-*` classes). The area looks the same in Classic, Monolith and Atelier: the `monolith:` and `atelier:` variants do not match inside it and the themes' structural rules are reverted there. It has its own navy-tinted dark variant; light/dark stays the user's setting. Control sizes follow the source on a fine pointer and keep 44px targets on a coarse one. Portaled overlays (dialogs, menus, toasts) render outside the wrapper and keep the user's theme. No logo or client name is drawn.",
     "keyCharacteristics": [
       "Flat shell and cards with hairline boundaries.",
       "Compact sentence-case operational hierarchy.",
-      "Orange action/focus accent in Atelier; independent indigo sign-in.",
+      "Orange action/focus accent in Atelier; independent plum Editorial sign-in.",
       "Human-confirmation signature and semantic status labels."
     ],
     "rules": [
       {
         "name": "The Scoped Accent Rule",
-        "body": "Use Atelier orange for actions, focus and small emphasis; keep public sign-in indigo inside its own surface.",
+        "body": "Use Atelier orange for actions, focus and small emphasis; keep public sign-in plum inside its own surface.",
         "section": "colors"
       },
       {
@@ -495,7 +596,7 @@
       "Do retain visible keyboard focus and the reduced-motion path."
     ],
     "donts": [
-      "Don't apply the public login split or indigo palette to authenticated screens by default.",
+      "Don't apply the public login split or plum palette to authenticated screens by default.",
       "Don't replace the existing Atelier identity or restyle Classic and Monolith through unscoped overrides.",
       "Don't treat the presence of a dark palette as a completed contrast audit."
     ]

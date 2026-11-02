@@ -17,6 +17,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
   const [microsoftOrganization,setMicrosoftOrganization]=useState(organization);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
+  const visitedWorkspace = useRef(false);
   const router = useRouter();
   const copy = useTranslations('loginPresentation');
   const editorial = useTranslations('loginEditorial');
@@ -25,7 +26,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
   const [state, setState] = useState<Reply>({ step: mode });
   const [resetToken, setResetToken] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  useEffect(() => { if (workspaceReady) heading.current?.focus({ preventScroll: true }); }, [workspaceReady]);
+  useEffect(() => { if (workspaceReady) heading.current?.focus({ preventScroll: true }); }, [workspaceReady, state.step]);
   useEffect(() => {
     if (mode !== 'recovery') return;
     const token = new URLSearchParams(window.location.hash.slice(1)).get('token');
@@ -69,13 +70,13 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
     <div className="login-workspace-container">
       {idleSignedOut && <p role="status" data-idle-signed-out className="login-notice">{t('idleSignedOut')}</p>}
       {entraError && <p role="alert" className="login-notice">{t('microsoftError')}</p>}
-      <LoginWorkspaceStep organization={microsoftOrganization} onChange={setMicrosoftOrganization} onContinue={() => setWorkspaceReady(true)}/>
+      <LoginWorkspaceStep organization={microsoftOrganization} onChange={setMicrosoftOrganization} focusOnMount={visitedWorkspace.current} onContinue={() => { visitedWorkspace.current = true; setWorkspaceReady(true); }}/>
     </div>
   </LoginShell>;
   return <LoginShell presentation={presentation}>
     <section aria-labelledby="internal-auth-title" className="login-auth space-y-8">
       <header className="space-y-3">
-        <h1 ref={heading} tabIndex={-1} id="internal-auth-title">{state.step === 'login' ? editorial('accountTitle') : t(title)}</h1>
+        <h1 ref={heading} tabIndex={-1} className="outline-none" id="internal-auth-title">{state.step === 'login' ? editorial('accountTitle') : t(title)}</h1>
         {state.step === 'login' && <><p>{editorial('accountSubtitle')}</p><div className="login-workspace-context"><span>{microsoftOrganization}</span><button type="button" onClick={() => setWorkspaceReady(false)}>{editorial('changeOrganization')}</button></div></>}
       </header>
       {idleSignedOut && state.step === 'login' && !error && <p role="status" data-idle-signed-out className="rounded-lg border border-border bg-muted/40 p-3 text-sm">{t('idleSignedOut')}</p>}

@@ -42,6 +42,7 @@ describe('Editorial workspace entrance', () => {
     await user.type(screen.getByLabelText(en.internalAuth.username), 'first-user');
     await user.type(screen.getByLabelText(en.internalAuth.password), 'Private first password');
     await user.click(screen.getByRole('button', { name: en.loginEditorial.changeOrganization }));
+    expect(screen.getByLabelText(en.loginEditorial.workspaceLabel)).toHaveFocus();
     await user.clear(screen.getByLabelText(en.loginEditorial.workspaceLabel));
     await user.type(screen.getByLabelText(en.loginEditorial.workspaceLabel), 'customer-b');
     await user.click(screen.getByRole('button', { name: en.loginEditorial.continueLabel }));

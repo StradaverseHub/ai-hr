@@ -5,6 +5,7 @@
 /* Public sign-in has a stable, local palette, independent of all saved workspace themes. */
 .login-shell {
   --login-ink: #2b2944; --login-muted: #646477; --login-line: #858497; --login-focus: #7764c2;
+  --ring: #7764c2;
   display: grid; grid-template-columns: minmax(0, 5fr) minmax(25rem, 3fr); min-height: 100dvh;
   background: #fff; color: var(--login-ink); color-scheme: light; isolation: isolate;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', var(--font-sans), sans-serif;
@@ -59,6 +60,8 @@
 .login-footer-help > div p + p { margin-top: .75rem; }
 .login-form-content h1:not(.login-editorial-title) { color: var(--login-ink); font-family: 'Login Baskervville', Georgia, var(--font-sans), serif; font-size: clamp(2rem, 3.1vw, 2.875rem); font-weight: 400; line-height: 1.12; letter-spacing: -.02em; overflow-wrap: anywhere; }
 .login-auth header > p { color: var(--login-muted); font-size: .875rem; line-height: 1.6; }
+/* Programmatic heading focus announces a new step; only interactive controls need an outline. */
+.login-shell .login-auth h1[tabindex='-1']:focus { outline: none; }
 .login-workspace-context { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; font-size: .75rem; }
 .login-workspace-context span { max-width: 100%; overflow-wrap: anywhere; color: #5b586d; }
 .login-workspace-context button { min-height: 2.75rem; text-decoration: underline; text-underline-offset: .2em; }
@@ -84,6 +87,7 @@
 .login-animation-start { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 1rem; width: 100%; aspect-ratio: 16/10; color: #fff; }
 .login-shell :lang(ta) .login-editorial-title, .login-shell :lang(th) .login-editorial-title,
 html:lang(ta) .login-editorial-title, html:lang(th) .login-editorial-title { font-family: var(--font-sans), sans-serif; font-size: clamp(2.3rem, 4vw, 3.6rem); line-height: 1.25; letter-spacing: 0; }
+html:lang(ms) .login-editorial-title { font-size: clamp(2.5rem, 4.7vw, 4.25rem); overflow-wrap: normal; }
 @media (max-width: 1023px), (max-height: 600px) {
   .login-shell { display: flex; flex-direction: column; }
   .login-welcome { display: none; }
@@ -95,6 +99,10 @@ html:lang(ta) .login-editorial-title, html:lang(th) .login-editorial-title { fon
   .login-editorial-title { font-size: 3.75rem; }
   .login-workspace-form { margin-top: 2.75rem; }
   .login-editorial-footer { width: 100%; max-width: 28rem; align-self: center; padding-bottom: 1.5rem; }
+}
+@media (max-width: 360px) {
+  .login-form-content .login-editorial-title { font-size: 3rem; }
+  html:lang(ms) .login-form-content .login-editorial-title { font-size: 2.5rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   .login-shell *, .login-shell *::before, .login-shell *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
