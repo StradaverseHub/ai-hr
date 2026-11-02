@@ -79,7 +79,9 @@ describe('AI centre screens', () => {
     const cards = view.container.querySelectorAll('[data-proposal-card]');
     expect(cards).toHaveLength(5);
     for (const card of cards) { expect(card.querySelector('form, button')).toBeNull(); expect(card.querySelectorAll('a')).toHaveLength(1); }
-    expect(view.container.querySelector('a[href="/approvals?kind=leave&id=a1"]')).not.toBeNull();
+    // The Review link keeps the deciding page and adds only the allow-listed Inbox origin (01dee6a05, the way back).
+    expect(view.container.querySelector('a[href="/approvals?kind=leave&id=a1&from=ai-inbox"]')).not.toBeNull();
+    expect(view.container.querySelector('a[href="/approvals?kind=leave&id=a1"]')).toBeNull();
     expect(view.container.querySelector('a[href="/control-tower/exceptions"]')).not.toBeNull();
     expect(within(view.container.querySelector('nav[data-ai-centre-tabs]') as HTMLElement).getByRole('link', { current: 'page' })).toHaveAttribute('href', '/assistant?view=inbox');
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), locale, 'ai-centre-inbox', FICTION, 'atelier');

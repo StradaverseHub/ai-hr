@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 /** A same-app path the reply may link to: one leading slash and no scheme, host or backslash. The reply checks
- * (core/harness/reply-checks.ts destination_links) have already refused any path that is not one of this person's
+ * (the harness's destination_links check, reached only through core/teras-wiring) have already refused any path that is not one of this person's
  * product destinations before the reply reaches here; this is the renderer's own floor. */
 export const isInAppPath = (href: string | undefined): href is string =>
   typeof href === 'string' && /^\/(?![\/\\])[A-Za-z0-9\-._~%/?=&#[\]]*$/.test(href) && !/[\\]|^\/{2}/.test(href);
