@@ -48,6 +48,46 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
     getUiDevice().pressBack();
     System.out.println("ONEHR_PROBE {\"kind\":\"publicUsernameRestoration\",\"exactMatch\":true,\"passwordOrMfaRead\":false,\"signInSubmitted\":false}");
   }
+  /** Exercise the actual normal form with guaranteed-invalid syntax; never read a password. */
+  public void testFixedInvalidLogin() throws Exception {
+    setupBounded();
+    UiSelector scope=new UiSelector().packageName("ai.stradaverse.aihr.test");
+    UiObject username=new UiObject(scope.className("android.widget.EditText").description("Username"));
+    UiObject password=new UiObject(scope.className("android.widget.EditText").description("Password"));
+    UiObject organization=new UiObject(scope.textContains("Organization: aihr-test"));
+    UiObject submit=new UiObject(scope.description("Sign in"));
+    String restore=getParams().getString("restoreUsername", "");
+    assertTrue(restore.matches("[A-Za-z0-9._@+-]{3,64}"));
+    assertTrue("Expected signed staging workplace",organization.exists());
+    assertTrue("Expected enabled normal login form",username.exists() && username.isEnabled() && password.exists() && password.isEnabled());
+    boolean submitted=false,restored=false,cleared=false;
+    String stage="not-submitted";
+    try {
+      assertTrue(username.setText("!diagnostic!"));
+      assertTrue(password.setText("diagnostic-only"));
+      long limit=SystemClock.uptimeMillis()+5000;
+      while(SystemClock.uptimeMillis()<limit && !submit.isEnabled())SystemClock.sleep(100);
+      assertTrue("Normal submit remains disabled",submit.isEnabled());
+      assertTrue("Normal submit could not be clicked",submit.click());submitted=true;
+      limit=SystemClock.uptimeMillis()+25000;
+      while(SystemClock.uptimeMillis()<limit) {
+        if(new UiObject(scope.textContains("The organization, username or password is incorrect")).exists()){stage="invalidLogin";break;}
+        if(new UiObject(scope.textContains("Sign-in or recovery is temporarily unavailable")).exists()){stage="unavailable";break;}
+        if(new UiObject(scope.textContains("Too many attempts")).exists()){stage="rateLimited";break;}
+        SystemClock.sleep(200);
+      }
+      if(stage.equals("not-submitted"))stage="no-public-result";
+    } finally {
+      if(password.exists() && password.isEnabled())cleared=password.setText("");
+      if(username.exists() && username.isEnabled()) {
+        if(username.setText(restore))restored=restore.equals(username.getText());
+      }
+      System.out.println("ONEHR_FIXED_INVALID {\"submitted\":"+submitted+",\"stage\":\""+stage+"\",\"passwordClearedThroughNormalControl\":"+cleared+",\"knownUsernameRestoredExactly\":"+restored+",\"passwordOrMfaRead\":false}");
+    }
+    assertEquals("Expected native invalid-login refusal", "invalidLogin",stage);
+    assertTrue("Restore only known nonsecret username",restored);
+    assertTrue("Clear only synthetic password through normal control",cleared);
+  }
   public void testScopedReviewState() throws Exception {
     setupBounded();
     UiSelector scope=new UiSelector().packageName("ai.stradaverse.aihr.test");
