@@ -1,12 +1,13 @@
 import {initializeRewardGovernanceFixture} from './rewards-governance-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import type { SessionContext } from '../db/client';
+import { and,eq,sql } from 'drizzle-orm';
+import {pgErrorChain} from '../lib/db-error';
+import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { createRewardUnit, getRewardUnit, importRewardFacts, refreshRewardSources, saveRewardEntry } from '../packs/rewards/service';
+import { createRewardUnit, getRewardUnit, importRewardFacts, importRewardFactsTx, refreshRewardSources, saveRewardEntry } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -82,6 +83,22 @@ describe('Rewards derived confidentiality', () => {
     expect((await row('bgReport'))!.facts.confidentiality).toBe('ec');
   });
 
+  it('preserves the original two-target facts import and advances the unit once',async()=>{
+    const before=await view(),chosen=[(await row('bgReport'))!,(await row('ecReport'))!],input=chosen.map((entry,i)=>({employmentId:entry.source.employmentId,facts:{...entry.facts,branch:'Actual distinct branch '+i},eventType:'Caller field must not control the native audit'})),rollback=new Error('Original multi-target facts import rollback');let expected:(typeof schema.rewardEntry.$inferSelect)[]|undefined;
+    try{await withTenant(admin,async tx=>{await importRewardFactsTx(tx,admin,unitId,before.unit.revision,input);expected=await tx.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)).orderBy(schema.rewardEntry.id);throw rollback;});}catch(error){expect(error).toBe(rollback);}expect(expected).toBeDefined();expect((await view()).unit).toEqual(before.unit);
+    await owner.withTenant(admin,async tx=>{await tx.execute(sql`select app.reward_facts_import_command(${unitId}::uuid,${before.unit.revision},${JSON.stringify(input)}::jsonb)`);await tx.execute(sql`set constraints all immediate`);const [counts]=await tx.execute<{targets:number;receipts:number}>(sql`select (select count(*)::integer from app.reward_entry_native_target a where a.effect_id=e.id)as targets,(select count(*)::integer from app.reward_entry_native_receipt r where r.effect_id=e.id)as receipts from app.reward_entry_native_effect e where e.xact_id=pg_current_xact_id()and e.unit_id=${unitId}::uuid and e.completed and not e.active`);expect(counts).toEqual({targets:2,receipts:3});});
+    const actual=await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)).orderBy(schema.rewardEntry.id),stripTime=(entry:typeof schema.rewardEntry.$inferSelect)=>{const{updatedAt:_time,...rest}=entry;return rest;};expect(actual.map(stripTime)).toEqual(expected!.map(stripTime));expect((await view()).unit.revision).toBe(before.unit.revision+1);
+    const audits=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.facts-imported')));expect(audits).toHaveLength(1);expect(audits[0]).toMatchObject({actorId:admin.userId,actorType:'user',payload:{count:2,revision:before.unit.revision+1}});
+  });
+  it('retains real derived OLD/proposed confidentiality and independent EC bonus editing in the private ports',async()=>{
+    const before=await view(),bg=(await row('bgReport'))!,ec=(await row('ecReport'))!;
+    for(const facts of [{...bg.facts,confidentiality:'standard' as const},{...bg.facts,seniorPlan:!bg.facts.seniorPlan}]){for(const query of [sql`select app.reward_entry_save_command(${unitId}::uuid,${before.unit.revision},${bg.id}::uuid,${JSON.stringify(bg.recommendation)}::jsonb,${JSON.stringify(facts)}::jsonb)`,sql`select app.reward_facts_import_command(${unitId}::uuid,${before.unit.revision},${JSON.stringify([{employmentId:emp.bgReport.employmentId,facts}])}::jsonb)`]){let refusal:unknown;try{await owner.withTenant(admin,tx=>tx.execute(query));}catch(error){refusal=error;}expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501'}));expect((await view()).unit).toEqual(before.unit);expect((await view()).rows).toEqual(before.rows);}}
+    for(const hidden of [bg,ec]){let refusal:unknown;try{await owner.withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_entry_save_command(${unitId}::uuid,${before.unit.revision},${hidden.id}::uuid,${JSON.stringify(hidden.recommendation)}::jsonb)`));}catch(error){refusal=error;}expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501'}));}
+    await owner.withTenant(actors.ec!,async tx=>{await tx.execute(sql`select app.reward_entry_save_command(${unitId}::uuid,${before.unit.revision},${ec.id}::uuid,${JSON.stringify({...ec.recommendation,bonusCents:123400,reason:'Actual private confidential award'})}::jsonb)`);await tx.execute(sql`set constraints all immediate`);});const saved=await view();expect(saved.rows.find(entry=>entry.id===ec.id)?.recommendation.bonusCents).toBe(123400);expect((await view(actors.bu)).rows.map(entry=>entry.id)).not.toContain(ec.id);
+    const plain=(await row('plain'))!;let refusal:unknown;try{await owner.withTenant(admin,tx=>tx.execute(sql`select app.reward_entry_save_command(${unitId}::uuid,${saved.unit.revision},${plain.id}::uuid,${JSON.stringify({...plain.recommendation,bonusCents:123400})}::jsonb)`));}catch(error){refusal=error;}expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Use the bonus multiplier for a standard or JG H employee.'}));expect((await view()).unit).toEqual(saved.unit);
+    const ownUser=await createAppUser(b.tenantId,emp.ecReport.personId,'employee');await setRewardMember(admin,unitId,(await view()).unit.revision,ownUser,'gr');const own:SessionContext={...admin,userId:ownUser,personId:emp.ecReport.personId,roles:['employee'],grants:undefined},current=await view();expect((await view(own)).rows.map(entry=>entry.id)).not.toContain(ec.id);
+    for(const query of [sql`select app.reward_entry_save_command(${unitId}::uuid,${current.unit.revision},${ec.id}::uuid,${JSON.stringify(ec.recommendation)}::jsonb)`,sql`select app.reward_facts_import_command(${unitId}::uuid,${current.unit.revision},${JSON.stringify([{employmentId:emp.ecReport.employmentId,facts:ec.facts}])}::jsonb)`]){let ownRefusal:unknown;try{await owner.withTenant(own,tx=>tx.execute(query));}catch(error){ownRefusal=error;}expect(pgErrorChain(ownRefusal)).toContainEqual(expect.objectContaining({code:'42501'}));}expect((await view()).unit).toEqual(current.unit);expect((await view()).rows).toEqual(current.rows);
+  });
   it('re-derives when the BG seat changes person, keeping a stricter manual marking', async () => {
     const plain = (await row('plain'))!;
     await saveRewardEntry(admin, unitId, (await view()).unit.revision, plain.id, plain.recommendation, { ...plain.facts, confidentiality: 'ec' });
@@ -103,7 +120,8 @@ describe('Rewards derived confidentiality', () => {
     await line('plain', 'chairman', today);
     await refreshRewardSources(admin, unitId, (await view()).unit.revision);
     expect((await row('plain'))!.facts.confidentiality).toBe('ec');
-    const self = { ...actors.ctro!, personId: emp.ecReport.personId };
+    await seat('ctro', emp.ecReport.personId, 'Actual own-row reviewer');
+    const self = actors.ctro!;
     expect((await view(self)).rows.map(r => r.source.employmentId)).not.toContain(emp.ecReport.employmentId);
   });
 });

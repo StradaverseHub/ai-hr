@@ -65780,6 +65780,7 @@
       "tables": [
         "businessUnit",
         "company",
+        "dep",
         "domainEvent",
         "rewardCalendar",
         "rewardCycle",
@@ -65888,6 +65889,7 @@
       "tables": [
         "businessUnit",
         "company",
+        "dep",
         "domainEvent",
         "rewardCalendar",
         "rewardCycle",

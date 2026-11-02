@@ -738,7 +738,12 @@ const confidentialityFloorMessage = 'This person is marked confidential from the
 export async function saveRewardEntry(ctx: SessionContext, unitId: string, revision: number, entryId: string, recommendation: unknown, facts?: unknown) {
   idSchema.parse(entryId); const rec = recommendationSchema.parse(recommendation);
   const validatedFacts = facts === undefined ? undefined : factsSchema.parse(facts);
-  return withRewardsTenant(ctx, async tx => {
+  return withRewardsTenant(ctx,tx=>saveRewardEntryTx(tx,ctx,unitId,revision,entryId,rec,validatedFacts));
+}
+
+/** Original native entry algorithm on a supplied transaction; no private SQL command cutover. */
+export async function saveRewardEntryTx(tx:Tx,ctx:SessionContext,unitId:string,revision:number,entryId:string,recommendation:unknown,facts?:unknown){
+  assertModuleGate(ctx,'rewards');idSchema.parse(entryId);const rec=recommendationSchema.parse(recommendation),validatedFacts=facts===undefined?undefined:factsSchema.parse(facts);
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
     const entry = entries.find(e => e.id === entryId);
     if (!entry || !visibleEntry(entry, roles, ctx.personId)) throw new RewardError('This reward record is not available to you.');
@@ -754,12 +759,16 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
     if (validatedFacts && belowConfidentialityFloor(validatedFacts, entry.source)) throw new RewardError(confidentialityFloorMessage);
     await tx.update(rewardEntry).set({ recommendation: rec, ...(validatedFacts ? { facts: validatedFacts } : {}), updatedAt: new Date() }).where(eq(rewardEntry.id, entryId));
     await touch(tx, unitId); await stamp(tx, ctx, unitId, 'recommendation-updated', { entryId, revision: unit.revision + 1 });
-  });
 }
 
 export async function importRewardFacts(ctx: SessionContext, unitId: string, revision: number, rows: { employmentId: string; facts: RewardFacts }[]) {
   const input = z.array(z.object({ employmentId: idSchema, facts: factsSchema })).min(1).max(10000).parse(rows);
-  return withRewardsTenant(ctx, async tx => {
+  return withRewardsTenant(ctx,tx=>importRewardFactsTx(tx,ctx,unitId,revision,input));
+}
+
+/** Original atomic import algorithm; every native row check remains before commit. */
+export async function importRewardFactsTx(tx:Tx,ctx:SessionContext,unitId:string,revision:number,rows:{employmentId:string;facts:RewardFacts}[]){
+  assertModuleGate(ctx,'rewards');const input=z.array(z.object({employmentId:idSchema,facts:factsSchema})).min(1).max(10000).parse(rows);
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
     if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may import ratings and classifications.');
     const seen = new Set<string>();
@@ -772,7 +781,6 @@ export async function importRewardFacts(ctx: SessionContext, unitId: string, rev
       await tx.update(rewardEntry).set({ facts: row.facts, updatedAt: new Date() }).where(eq(rewardEntry.id, e.id));
     }
     await touch(tx, unitId); await stamp(tx, ctx, unitId, 'facts-imported', { count: input.length, revision: unit.revision + 1 });
-  });
 }
 
 /** 40bf44f7 — what a source refresh changes, by category. `other` is a source change outside the six named

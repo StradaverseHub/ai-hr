@@ -2446,3 +2446,116 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.workforce_draft_create_current(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.workforce_draft_create_current(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- The encrypted review retains the human content. Only fingerprints and the
+-- stored native identity cross the qualification pre-effect boundary.
+CREATE TABLE app.assistant_qualification_binding (
+ review_id uuid PRIMARY KEY REFERENCES app.assistant_own_leave_review(id) ON DELETE CASCADE,
+ command_digest text NOT NULL CHECK (command_digest ~ '^[a-f0-9]{64}$'),
+ source_digest text NOT NULL CHECK (source_digest ~ '^[a-f0-9]{64}$'),
+ armed_xact xid8
+);
+ALTER TABLE app.assistant_qualification_binding ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.assistant_qualification_binding FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.assistant_qualification_source_digest(p_employment uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET TimeZone='UTC' AS $$
+ SELECT encode(sha256(convert_to(coalesce(jsonb_agg(jsonb_build_array(q.value,q.revision) ORDER BY q.id),'[]'::jsonb)::text,'UTF8')),'hex')
+ FROM (
+  SELECT actual.id,to_jsonb(actual) AS value,actual.xmin::text AS revision
+  FROM public.employee_qualification actual
+  WHERE actual.tenant_id=app.current_tenant_id() AND actual.employment_id=p_employment AND actual.archived_at IS NULL
+  ORDER BY actual.id LIMIT 101
+ ) q
+ HAVING count(*)<=100;
+$$;
+REVOKE ALL ON FUNCTION app.assistant_qualification_source_digest(uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+ALTER FUNCTION app.assistant_assigned_review_prepare(text,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text)
+ RENAME TO assistant_assigned_review_prepare_before_qualification;
+REVOKE ALL ON FUNCTION app.assistant_assigned_review_prepare_before_qualification(text,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.assistant_assigned_review_prepare(
+ p_kind text,p_id uuid,p_person uuid,p_employment uuid,p_company uuid,p_subject_person uuid,p_subject uuid,
+ p_intent_digest text,p_reviewed_digest text,p_kid text,p_wrapped_dek text,p_ciphertext text
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF p_kind='employees.qualification.maintain' THEN
+  RAISE EXCEPTION 'Qualification protected prepare required' USING ERRCODE='42501';
+ END IF;
+ RETURN app.assistant_assigned_review_prepare_before_qualification(
+  p_kind,p_id,p_person,p_employment,p_company,p_subject_person,p_subject,p_intent_digest,p_reviewed_digest,p_kid,p_wrapped_dek,p_ciphertext
+ );
+END;
+$$;
+REVOKE ALL ON FUNCTION app.assistant_assigned_review_prepare(text,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_assigned_review_prepare(text,uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_qualification_prepare(
+ p_id uuid,p_person uuid,p_employment uuid,p_company uuid,p_subject_person uuid,p_subject uuid,
+ p_command_digest text,p_intent_digest text,p_reviewed_digest text,p_kid text,p_wrapped_dek text,p_ciphertext text
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE captured_source_digest text;prepared jsonb;
+BEGIN
+ PERFORM app.access_profile_policy_write_lock();
+ IF p_command_digest IS NULL OR p_command_digest !~ '^[a-f0-9]{64}$' THEN
+  RAISE EXCEPTION 'Qualification prepare unavailable' USING ERRCODE='42501';
+ END IF;
+ captured_source_digest:=app.assistant_qualification_source_digest(p_employment);
+ IF captured_source_digest IS NULL THEN RAISE EXCEPTION 'Qualification prepare unavailable' USING ERRCODE='42501';END IF;
+ prepared:=app.assistant_assigned_review_prepare_before_qualification(
+  'employees.qualification.maintain',p_id,p_person,p_employment,p_company,p_subject_person,p_subject,
+  p_intent_digest,p_reviewed_digest,p_kid,p_wrapped_dek,p_ciphertext
+ );
+ INSERT INTO app.assistant_qualification_binding(review_id,command_digest,source_digest)
+ VALUES(p_id,p_command_digest,captured_source_digest);
+ IF app.assistant_qualification_source_digest(p_employment) IS DISTINCT FROM captured_source_digest
+ OR NOT EXISTS(SELECT 1 FROM app.assistant_own_leave_review r
+  JOIN app.assistant_qualification_binding binding ON binding.review_id=r.id
+  JOIN app.assistant_own_leave_review_content content ON content.action_id=r.id
+  WHERE r.id=p_id AND r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id()
+   AND r.action_kind='employees.qualification.maintain' AND r.state='awaiting_confirmation'
+   AND r.employment_id=p_employment AND r.company_id=p_company AND r.person_id IS NOT DISTINCT FROM p_person
+   AND r.decision_subject_person_id=p_subject_person AND r.receipt_subject_kind='employment' AND r.receipt_subject_id=p_subject
+   AND r.intent_digest=p_intent_digest AND r.reviewed_digest=p_reviewed_digest AND clock_timestamp()<r.expires_at
+   AND binding.command_digest=p_command_digest AND binding.source_digest=captured_source_digest AND binding.armed_xact IS NULL
+   AND content.kid=p_kid AND content.wrapped_dek=p_wrapped_dek AND content.ciphertext=p_ciphertext) THEN
+  RAISE EXCEPTION 'Qualification prepare source changed' USING ERRCODE='42501';
+ END IF;
+ RETURN prepared;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.assistant_qualification_prepare(uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_qualification_prepare(uuid,uuid,uuid,uuid,uuid,uuid,text,text,text,text,text,text) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.assistant_qualification_arm(p_id uuid,p_employment uuid,p_command_digest text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE reviewed app.assistant_own_leave_review%ROWTYPE;
+BEGIN
+ PERFORM app.access_profile_policy_write_lock();
+ SELECT * INTO reviewed FROM app.assistant_own_leave_review r
+ WHERE r.id=p_id AND r.tenant_id=app.current_tenant_id() AND r.user_id=app.current_user_id()
+  AND r.action_kind='employees.qualification.maintain' AND r.state='awaiting_confirmation'
+  AND r.employment_id=p_employment AND r.receipt_subject_kind='employment' AND r.receipt_subject_id=p_employment
+ FOR UPDATE NOWAIT;
+ IF NOT FOUND OR clock_timestamp()>=reviewed.expires_at OR NOT app.principal_snapshot_current()
+ OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=reviewed.tenant_id
+  AND e.company_id=reviewed.company_id AND e.person_id=reviewed.decision_subject_person_id
+  AND NOT app.is_self_person(e.person_id) AND app.data_permission_matches(e.id))
+ OR NOT app.is_admin() OR NOT app.access_workforce_employment(p_employment,'workforce.maintain')
+ OR nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL THEN
+  RAISE EXCEPTION 'Qualification confirmation unavailable' USING ERRCODE='42501';
+ END IF;
+ UPDATE app.assistant_qualification_binding b SET armed_xact=pg_current_xact_id()
+ WHERE b.review_id=p_id AND b.command_digest=p_command_digest
+  AND b.source_digest=app.assistant_qualification_source_digest(p_employment)
+  AND b.armed_xact IS DISTINCT FROM pg_current_xact_id();
+ IF NOT FOUND THEN RAISE EXCEPTION 'Qualification reviewed command changed' USING ERRCODE='42501';END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.assistant_qualification_arm(uuid,uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_qualification_arm(uuid,uuid,text) TO ai_hr_app;

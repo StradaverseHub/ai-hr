@@ -882,9 +882,10 @@ describe('V3.1 onboarding database and authorization', () => {
         // An assigned nonauthor only has the finite current-note course, so the raw UPDATE finds no row.
         expect(await withTenant(tech, tx => tx.execute(change))).toEqual([]);
         const secondAdmin:SessionContext={...admin,userId:await createAppUser(b.tenantId,null,'hr_admin'),personId:null};
-        const raw=await withTenant(secondAdmin,tx=>tx.execute(sql `select id from lc_onboarding_note where id=${n!.id}::uuid`));
-        expect(raw).toEqual([{id:n!.id}]);
-        await expect(withTenant(secondAdmin,tx=>tx.execute(change))).rejects.toThrow();
+        const read=sql `select id from lc_onboarding_note where id=${n!.id}::uuid`;
+        expect(await withTenant(admin,tx=>tx.execute(read))).toEqual([{id:n!.id}]);
+        expect(await withTenant(secondAdmin,tx=>tx.execute(read))).toEqual([]);
+        expect(await withTenant(secondAdmin,tx=>tx.execute(change))).toEqual([]);
         expect(await owner.db.select().from(schema.lcOnboardingNote)).toEqual([n]);
     });
 });
