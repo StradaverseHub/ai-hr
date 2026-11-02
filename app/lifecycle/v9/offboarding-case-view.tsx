@@ -1,7 +1,7 @@
 'use client';
 import {useLocale} from 'next-intl';
 import {useOnboardingCopy} from '@/lib/onboarding-copy';
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {Button, Field} from '@/components/ui';
 import {OnboardingBreadcrumb, OnboardingBadge} from '@/components/onboarding-workspace';
@@ -32,6 +32,7 @@ export function OffboardingCaseView({c, config, users, actor, personnelWritableK
 }){
  const copy=useOnboardingCopy(),locale=useLocale();
  const [editing,setEditing]=useState(c.state==='pending'),[error,setError]=useState('');
+ useEffect(()=>{setEditing(c.state==='pending');},[c.id,c.state]);
  const state=M.work(c),tasks=caseTasksByDue(c.tasks),next=tasks.find(task=>!M.isResolved(task.status)),first=c.log[0];
  const userName=(id:string|null)=>users.find(user=>user.id===id)?.name??'Unassigned';
  const groupName=(id:string|null)=>config.groups.find(group=>group.id===id)?.name??'Unassigned team';

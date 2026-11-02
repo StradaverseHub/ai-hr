@@ -63,3 +63,11 @@ it.each(['en','ms','zh','ta','th','vi'])('captures paired real case adapters in 
  expect(onboard.container.querySelectorAll('.lifecycle-case-task')).toHaveLength(1);
  await captureAiReviewScreenshots(aiReviewDomHtml(onboard.container),locale,'lifecycle-case-onboarding');
 },120_000);
+
+it('ends shared detail editing when the mounted case becomes closed',()=>{
+ const c=fictionalV9Case(),props={config:v9Defaults(),users:[],actor:{id:'owner',name:'Fictional HR'},personnelWritableKeys:[],busy:false,command:vi.fn().mockResolvedValue({ok:true}),onDocument:vi.fn(),onReason:vi.fn(),onOpenWorkflow:vi.fn(),onBack:vi.fn(),today:'2026-11-02'};
+ const view=render(<NextIntlClientProvider locale="en" messages={messages}><OffboardingCaseView c={c} {...props}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Edit details'}));expect(screen.getByRole('combobox',{name:'Case type *'})).toBeEnabled();
+ view.rerender(<NextIntlClientProvider locale="en" messages={messages}><OffboardingCaseView c={{...c,state:'cancelled',revision:2}} {...props}/></NextIntlClientProvider>);
+ expect(screen.getByRole('combobox',{name:'Case type *'})).toBeDisabled();expect(screen.queryByRole('textbox',{name:'Reason for changing case details'})).not.toBeInTheDocument();
+});
