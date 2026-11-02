@@ -6,7 +6,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
-import {createBatch,createAdditionalRun,generatePayslips,preProcessAdvisory,batchScopeHeadcount,reprocessSelectedEmployees,removeEmployeePayroll} from '../core/payroll';
+import {closeBatch,createBatch,createAdditionalRun,generatePayslips,preProcessAdvisory,batchScopeHeadcount,reprocessSelectedEmployees,removeEmployeePayroll} from '../core/payroll';
 import {seedPayrollCycleCatalog,listPayrollCycles} from '../core/payroll-cycle';
 import {createIndividualTxn,createIndividualTxnsBulk} from '../core/payroll-individual-txn';
 import {setEmploymentPayComponent} from '../core/pay-components';
@@ -32,7 +32,7 @@ describe('source-owned outstanding payments after resignation',()=>{
   expect(await listEmployeesForPayrollRun(ctx,b.companyId,'2026-11',monthly)).toHaveLength(0);
   const sources=await outstanding();const candidates=await listEmployeesForPayrollRun(ctx,b.companyId,'2026-11',monthly);expect(candidates.map(e=>e.employmentId)).toEqual([employmentId]);expect(candidates[0].outstandingOnly).toBe(true);
   const run=await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-11',payrollCycleId:monthly});expect(await batchScopeHeadcount(ctx,run.batchId)).toBe(1);expect((await preProcessAdvisory(ctx,run.batchId)).missingCompensation).toEqual([]);
-  await generatePayslips(ctx,{batchId:run.batchId});const sl=await result(run.batchId);expect(Number(sl.basicSalary)).toBe(0);expect(Number(sl.allowance)).toBe(180);expect(Number(sl.overtimePay)).toBe(300);expect(Number(sl.grossPay)).toBe(480);expect(sl.daysWorked).toBe('0');
+  await generatePayslips(ctx,{batchId:run.batchId});const sl=await result(run.batchId);expect(Number(sl.basicSalary)).toBe(0);expect(Number(sl.allowance)).toBe(180);expect(Number(sl.overtimePay)).toBe(300);expect(Number(sl.grossPay)).toBe(480);expect(Number(sl.daysWorked)).toBe(0);
   expect(sl.statutory).toMatchObject({postEmploymentPayment:{endedOn:'2026-10-13',sourceTxnIds:expect.arrayContaining(sources)}});
   const txns=await owner.db.select().from(S.payrollIndividualTxn);expect(txns.every(t=>t.consumedBatchId===run.batchId)).toBe(true);
   const [emp]=await owner.db.select().from(S.employment).where(eq(S.employment.id,employmentId));expect(emp.terminatedOn).toBe('2026-10-13');
@@ -49,6 +49,15 @@ describe('source-owned outstanding payments after resignation',()=>{
   const off=(await listPayrollCycles(ctx,b.companyId)).find(c=>c.runType==='off_cycle')!;await outstanding(off.id);const second=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:'2026-11',runType:'off_cycle',payrollCycleId:off.id});await generatePayslips(ctx,{batchId:second.batchId});const later=await result(second.batchId);
   expect(Number(original.grossPay)+Number(later.grossPay)).toBe(960);expect(Number((original.statutory as {socsoEmployee:number}).socsoEmployee)+Number((later.statutory as {socsoEmployee:number}).socsoEmployee)).toBe(2.75);expect(await result(first.batchId)).toEqual(original);
   const net=later.netPay;await reprocessSelectedEmployees(ctx,{batchId:second.batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()});expect((await result(second.batchId)).netPay).toBe(net);expect((await owner.db.select().from(S.payrollIndividualTxn)).filter(t=>t.consumedBatchId===second.batchId)).toHaveLength(2);
+ });
+ it('marks later charges stale when an earlier owned input changes and protects finalized later results',async()=>{
+  const firstSources=await outstanding();const first=await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-11',payrollCycleId:monthly});await generatePayslips(ctx,{batchId:first.batchId});
+  const off=(await listPayrollCycles(ctx,b.companyId)).find(c=>c.runType==='off_cycle')!;await outstanding(off.id);const second=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:'2026-11',runType:'off_cycle',payrollCycleId:off.id});await generatePayslips(ctx,{batchId:second.batchId});
+  await owner.db.update(S.payrollIndividualTxn).set({amount:'700.00'}).where(eq(S.payrollIndividualTxn.id,firstSources[0]));
+  await reprocessSelectedEmployees(ctx,{batchId:first.batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()});const [stale]=await owner.db.select().from(S.payrollBatch).where(eq(S.payrollBatch.id,second.batchId));expect(stale.recalcEmploymentIds).toContain(employmentId);
+  await reprocessSelectedEmployees(ctx,{batchId:second.batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()});const a=await result(first.batchId),z=await result(second.batchId);expect(Number((a.statutory as {socsoEmployee:number}).socsoEmployee)+Number((z.statutory as {socsoEmployee:number}).socsoEmployee)).toBe(4.75);
+  await closeBatch(ctx,{batchId:second.batchId});await owner.db.update(S.payrollIndividualTxn).set({amount:'900.00'}).where(eq(S.payrollIndividualTxn.id,firstSources[0]));
+  await expect(reprocessSelectedEmployees(ctx,{batchId:first.batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()})).rejects.toMatchObject({code:'LATER_CYCLE_FINALIZED'});expect(await result(first.batchId)).toEqual(a);expect(await result(second.batchId)).toEqual(z);
  });
  it('fails closed on missing historical pay provenance and rolls back attachment and consumption',async()=>{
   const sources=await outstanding();await owner.db.update(S.compensation).set({validFrom:'2026-11-01'}).where(eq(S.compensation.employmentId,employmentId));

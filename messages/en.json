@@ -6131,6 +6131,7 @@
       "closeBlockedReprocessRunning": "This run cannot be closed while a reprocess is still running on it. Wait for the reprocess to finish, then close again.",
       "closeBlockedReprocessFailed": "This run cannot be closed: the latest reprocess failed for {n} employee(s): {names}. Fix the reported problem and reprocess them, then close again.",
       "closeBlockedAndMore": " and {n} more",
+      "reprocessStopped_LATER_CYCLE_FINALIZED": "A later payroll cycle is finalized. Saved outcomes remain valid. Review and reopen that cycle before changing the earlier payment.",
       "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "Payroll source changed after its income-tax correction. Saved outcomes remain valid. Review and recalculate the affected tax history before retrying.",
       "reprocessFailedEmployee": "Failed employee",
       "reprocessPendingEmployees": "{count} selected employee(s) are pending.",

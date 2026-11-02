@@ -408,7 +408,7 @@ export class PayrollReprocessStoppedError extends Error {
  * REPROCESS_STOPPED is kept for what is genuinely unexpected. A per-employee condition never reaches here —
  * those are outcomes (see employeeReprocessValidation).
  */
-export const REPROCESS_RUN_ERROR_CODES = ['BATCH_NOT_PROCESSED','PERIOD_CLOSED','PERMISSION_DENIED','SUPERSEDED','TAX_BASIS_SOURCE_CHANGED','REPROCESS_STOPPED'] as const;
+export const REPROCESS_RUN_ERROR_CODES = ['BATCH_NOT_PROCESSED','PERIOD_CLOSED','PERMISSION_DENIED','SUPERSEDED','LATER_CYCLE_FINALIZED','TAX_BASIS_SOURCE_CHANGED','REPROCESS_STOPPED'] as const;
 export type ReprocessRunErrorCode = (typeof REPROCESS_RUN_ERROR_CODES)[number];
 
 /** 3244584c — a run-level refusal inside the per-employee loop; the message is unchanged from before. */
@@ -8053,6 +8053,22 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         .select()
         .from(payslip)
         .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, emps.map((e) => e.employmentId))));
+      // Outstanding-payment cycles own independent cash, but monthly contributions share a
+      // cumulative basis. A changed earlier owner invalidates later writable charges, never history.
+      for(const sl of newSlips.filter(row=>postEmploymentIds.has(row.employmentId))){
+        const before=beforeByEmp.get(sl.employmentId)?.statutory as Record<string,unknown>|undefined;
+        const after=sl.statutory as Record<string,unknown>;
+        const inputs=(st:Record<string,unknown>|undefined)=>{
+          const saved=(st?.postEmploymentPayment as {statutoryInputs?:PostInputs}|undefined)?.statutoryInputs;
+          return saved?.options?[saved.wages,saved.additional,saved.overtime,saved.lp,saved.zakat,...postNumericOptions.map(key=>saved.options[key]),...DELTA_KEYS.map(key=>Number(st?.[key]??0))]:null;
+        };
+        if(JSON.stringify(inputs(before))===JSON.stringify(inputs(after)))continue;
+        const later=await tx.select({id:payrollBatch.id,status:payrollBatch.status}).from(payrollBatch).innerJoin(payslip,eq(payslip.batchId,payrollBatch.id))
+          .where(and(eq(payrollBatch.companyId,batch.companyId),eq(payrollBatch.payPeriodId,batch.payPeriodId),gt(payrollBatch.runSeq,batch.runSeq),eq(payslip.employmentId,sl.employmentId)));
+        if(later.some(row=>row.status==='closed'))throw new ReprocessRunBlockedError('LATER_CYCLE_FINALIZED','A later outstanding-payment cycle is finalized. Review and reopen that cycle before changing its earlier payroll source.');
+        if(later.length)await refuseIfPeriodFiled(tx,{companyId:batch.companyId,payPeriod:batch.payPeriod,what:'Changing an earlier outstanding-payment cycle'});
+        for(const target of later.filter(row=>row.status==='processed'))await markBatchNeedsRecalc(tx,ctx,{batchId:target.id,employmentIds:[sl.employmentId],category:'statutory'});
+      }
       const snapshotLinks: Record<string, string> = {};
       for (const sl of newSlips) {
         const [history] = await tx.insert(payrollEmployeeResultHistory).values({

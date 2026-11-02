@@ -21,7 +21,7 @@ const TAX_CODES = new Set([
 export function reprocessStoppedMessageKey(code: string | null | undefined) {
   return code && REPROCESS_STOPPED_CODES.has(code) ? `reprocessStopped_${code}` : 'reprocessStoppedPartial';
 }
-const REPROCESS_STOPPED_CODES = new Set(['BATCH_NOT_PROCESSED', 'PERIOD_CLOSED', 'PERMISSION_DENIED', 'SUPERSEDED', 'TAX_BASIS_SOURCE_CHANGED']);
+const REPROCESS_STOPPED_CODES = new Set(['BATCH_NOT_PROCESSED', 'PERIOD_CLOSED', 'PERMISSION_DENIED', 'SUPERSEDED', 'LATER_CYCLE_FINALIZED', 'TAX_BASIS_SOURCE_CHANGED']);
 
 /** Displays a recorded attempt; it never recalculates or substitutes a current employee profile. */
 export async function ReprocessOutcomeStatus({ outcome }: { outcome: ReprocessEmployeeOutcome }) {

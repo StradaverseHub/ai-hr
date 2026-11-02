@@ -6855,6 +6855,7 @@
       "closeBlockedReprocessRunning": "此批次仍有重新处理正在运行，无法关闭。请等待重新处理完成后再关闭。",
       "closeBlockedReprocessFailed": "无法关闭此批次：{n} 名员工最近一次重新处理失败：{names}。请修正所报告的问题并重新处理他们，然后再关闭。",
       "closeBlockedAndMore": " 等另外 {n} 人",
+      "reprocessStopped_LATER_CYCLE_FINALIZED": "后续薪资周期已完成。已保存的结果仍然有效。更改先前付款前，请审核并重新打开该周期。",
       "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "所得税更正后，薪资来源已更改。已保存的结果仍然有效。请检查并重新计算受影响的税务历史后重试。",
       "reprocessFailedEmployee": "处理失败的员工",
       "reprocessPendingEmployees": "{count} 名所选员工仍待处理。",

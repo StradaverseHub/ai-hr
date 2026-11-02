@@ -108,7 +108,7 @@ describe('3244584c exclusion outcomes and run-level stop reasons', () => {
   it.each(LOCALES)('a stopped job names the blocker instead of the generic line in %s', async (locale) => {
     state.locale = locale;
     const m = msgs(locale);
-    for (const code of ['BATCH_NOT_PROCESSED', 'PERIOD_CLOSED', 'PERMISSION_DENIED', 'SUPERSEDED']) {
+    for (const code of ['BATCH_NOT_PROCESSED', 'PERIOD_CLOSED', 'PERMISSION_DENIED', 'SUPERSEDED', 'TAX_BASIS_SOURCE_CHANGED', 'LATER_CYCLE_FINALIZED']) {
       const out = await html([excluded], true, code);
       expect(out).toContain(esc(m[`reprocessStopped_${code}`]));
       expect(out).not.toContain(esc(m.reprocessStoppedPartial));

@@ -6855,6 +6855,7 @@
       "closeBlockedReprocessRunning": "Proses ini tidak boleh ditutup semasa proses semula masih berjalan padanya. Tunggu sehingga proses semula selesai, kemudian tutup semula.",
       "closeBlockedReprocessFailed": "Proses ini tidak boleh ditutup: proses semula terkini gagal bagi {n} pekerja: {names}. Betulkan masalah yang dilaporkan dan proses semula mereka, kemudian tutup semula.",
       "closeBlockedAndMore": " dan {n} lagi",
+      "reprocessStopped_LATER_CYCLE_FINALIZED": "Kitaran gaji yang kemudian telah dimuktamadkan. Keputusan tersimpan kekal sah. Semak dan buka semula kitaran itu sebelum mengubah bayaran terdahulu.",
       "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "Sumber gaji berubah selepas pembetulan cukai pendapatan. Hasil tersimpan kekal sah. Semak dan kira semula sejarah cukai yang terjejas sebelum mencuba lagi.",
       "reprocessFailedEmployee": "Pekerja gagal",
       "reprocessPendingEmployees": "{count} pekerja yang dipilih masih menunggu.",

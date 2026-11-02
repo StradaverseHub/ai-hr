@@ -37,7 +37,7 @@ describe('corrected native payslip replacement custody',()=>{
   await reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employmentId],idempotencyKey:key});expect((await slip()).version).toBe(2);
   await reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()});expect((await slip()).version).toBe(3);
   expect((await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[after.id]))).size).toBe(0);expect(await owner.db.execute(sql`select id from payroll_tax_basis_replacement`)).toHaveLength(2);
-  const [fresh]=await owner.db.select().from(S.payrollBatch).where(eq(S.payrollBatch.id,batchId));expect(fresh.recalcEmploymentIds).toEqual([]);
+  const [fresh]=await owner.db.select().from(S.payrollBatch).where(eq(S.payrollBatch.id,batchId));expect(fresh.recalcEmploymentIds??[]).toEqual([]);
  });
  it('does not replay a completed old job after a distinct fresh tax correction',async()=>{
   await correct();const key=randomUUID();const first=await reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employmentId],idempotencyKey:key});
@@ -56,7 +56,8 @@ describe('corrected native payslip replacement custody',()=>{
  });
  it('makes lineage immutable, tenant-bound and impossible to invent without a real replacement history',async()=>{
   await correct();await reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()});
-  await expect(withTenant(ctx,tx=>tx.execute(sql`delete from payroll_tax_basis_replacement`))).rejects.toThrow();
+  await withTenant(ctx,tx=>tx.execute(sql`delete from payroll_tax_basis_replacement`));expect(await owner.db.execute(sql`select id from payroll_tax_basis_replacement`)).toHaveLength(1);
+  await expect(owner.db.execute(sql`delete from payroll_tax_basis_replacement`)).rejects.toThrow();
   const foreign={...ctx,tenantId:randomUUID()};expect(await withTenant(foreign,tx=>tx.execute(sql`select id from payroll_tax_basis_replacement`))).toHaveLength(0);
  });
 });

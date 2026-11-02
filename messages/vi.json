@@ -6855,6 +6855,7 @@
       "closeBlockedReprocessRunning": "Không thể đóng kỳ lương này khi việc xử lý lại vẫn đang chạy. Hãy chờ xử lý lại hoàn tất, sau đó đóng lại.",
       "closeBlockedReprocessFailed": "Không thể đóng kỳ lương này: lần xử lý lại gần nhất đã thất bại cho {n} nhân viên: {names}. Hãy khắc phục vấn đề được báo cáo và xử lý lại cho họ, sau đó đóng lại.",
       "closeBlockedAndMore": " và {n} người khác",
+      "reprocessStopped_LATER_CYCLE_FINALIZED": "Kỳ lương sau đã được chốt. Kết quả đã lưu vẫn có hiệu lực. Hãy xem xét và mở lại kỳ đó trước khi thay đổi khoản thanh toán trước.",
       "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "Dữ liệu lương đã thay đổi sau điều chỉnh thuế thu nhập. Kết quả đã lưu vẫn hợp lệ. Kiểm tra và tính lại lịch sử thuế bị ảnh hưởng trước khi thử lại.",
       "reprocessFailedEmployee": "Nhân viên xử lý thất bại",
       "reprocessPendingEmployees": "Còn {count} nhân viên đã chọn đang chờ xử lý.",
