@@ -1855,7 +1855,7 @@ CREATE FUNCTION app.reward_calc_recommendation(p jsonb)RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE k text;maximum numeric;result jsonb:=p;value numeric;
 BEGIN
- IF jsonb_typeof(p)IS DISTINCT FROM'object'OR EXISTS(SELECT 1 FROM jsonb_object_keys(p)k WHERE k<>ALL(ARRAY['meritBp','promotionGrade','promotionBp','specialBp','multiplierBp','bonusCents','lumpCents','reason','currentRoleSummary','proposedRoleSummary']))THEN RAISE EXCEPTION 'Invalid reward recommendation' USING ERRCODE='22023';END IF;
+ IF jsonb_typeof(p)IS DISTINCT FROM'object'OR EXISTS(SELECT 1 FROM jsonb_object_keys(p)fields(key_name) WHERE fields.key_name<>ALL(ARRAY['meritBp','promotionGrade','promotionBp','specialBp','multiplierBp','bonusCents','lumpCents','reason','currentRoleSummary','proposedRoleSummary']))THEN RAISE EXCEPTION 'Invalid reward recommendation' USING ERRCODE='22023';END IF;
  FOREACH k IN ARRAY ARRAY['meritBp','promotionBp','specialBp','multiplierBp','bonusCents','lumpCents']LOOP
   IF NOT(p?k)THEN RAISE EXCEPTION 'Invalid reward recommendation' USING ERRCODE='22023';END IF;
   IF p->k<>'null'::jsonb THEN
@@ -1873,7 +1873,7 @@ CREATE FUNCTION app.reward_calc_facts(p jsonb)RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE k text;
 BEGIN
- IF jsonb_typeof(p)IS DISTINCT FROM'object'OR EXISTS(SELECT 1 FROM jsonb_object_keys(p)k WHERE k<>ALL(ARRAY['talent','performance','confidentiality','seniorPlan','erCase','pipCase','erDecision','pipDecision','caseReason','segment','branch','reviewed']))THEN RAISE EXCEPTION 'Invalid reward facts' USING ERRCODE='22023';END IF;
+ IF jsonb_typeof(p)IS DISTINCT FROM'object'OR EXISTS(SELECT 1 FROM jsonb_object_keys(p)fields(key_name) WHERE fields.key_name<>ALL(ARRAY['talent','performance','confidentiality','seniorPlan','erCase','pipCase','erDecision','pipDecision','caseReason','segment','branch','reviewed']))THEN RAISE EXCEPTION 'Invalid reward facts' USING ERRCODE='22023';END IF;
  IF NOT(p?'talent')OR NOT(p?'performance')OR(p->'talent'<>'null'::jsonb AND(p->>'talent')<>ALL(ARRAY['SSTAR','STAR','SCORE','IMPRO','PIP']))OR(p->'performance'<>'null'::jsonb AND(p->>'performance')<>ALL(ARRAY['UA','BE','ME','AE','OU']))
   OR coalesce(p->>'confidentiality','')<>ALL(ARRAY['standard','bg','ec'])OR coalesce(p->>'erDecision','')<>ALL(ARRAY['pending','in','out'])OR coalesce(p->>'pipDecision','')<>ALL(ARRAY['pending','lift','confirm'])THEN RAISE EXCEPTION 'Invalid reward facts' USING ERRCODE='22023';END IF;
  FOREACH k IN ARRAY ARRAY['seniorPlan','erCase','pipCase','reviewed']LOOP
@@ -2063,7 +2063,7 @@ CREATE FUNCTION app.reward_calc_policy(p jsonb)RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE k text;part record;result jsonb:=p;matrix jsonb:='{}';normalized jsonb;text_value text;number_value numeric;
 BEGIN
- IF jsonb_typeof(p)IS DISTINCT FROM'object'OR EXISTS(SELECT 1 FROM jsonb_object_keys(p)k WHERE k<>ALL(ARRAY['year','effectiveFrom','joinedBefore','confirmedBy','blockedFrom','blockedTo','unitGovernanceDigest','activeAsOf','minimumBonusRating','excludeNotice','excludeErCase','standardPools','hPools','meritMatrix','bonusMatrix','ranges','seniorGrades','seniorMembershipMode','patActual','patTarget','targetMonthsBp','multiplierBp','bonusStructure','branchFactors','branchRatings','lumpStepCents','lumpShareBp','lumpCapCents','lumpUnitCents','exemptReason','lumpReason','payWindowKeep']))THEN RAISE EXCEPTION 'Invalid reward policy' USING ERRCODE='22023';END IF;
+ IF jsonb_typeof(p)IS DISTINCT FROM'object'OR EXISTS(SELECT 1 FROM jsonb_object_keys(p)fields(key_name) WHERE fields.key_name<>ALL(ARRAY['year','effectiveFrom','joinedBefore','confirmedBy','blockedFrom','blockedTo','unitGovernanceDigest','activeAsOf','minimumBonusRating','excludeNotice','excludeErCase','standardPools','hPools','meritMatrix','bonusMatrix','ranges','seniorGrades','seniorMembershipMode','patActual','patTarget','targetMonthsBp','multiplierBp','bonusStructure','branchFactors','branchRatings','lumpStepCents','lumpShareBp','lumpCapCents','lumpUnitCents','exemptReason','lumpReason','payWindowKeep']))THEN RAISE EXCEPTION 'Invalid reward policy' USING ERRCODE='22023';END IF;
  PERFORM app.reward_calc_json_integer(p->'year',2200,2000);
  FOREACH k IN ARRAY ARRAY['effectiveFrom','joinedBefore','confirmedBy','blockedFrom','blockedTo']LOOP PERFORM app.reward_calc_date(p->k);END LOOP;
  IF p?'activeAsOf'THEN PERFORM app.reward_calc_date(p->'activeAsOf');END IF;
