@@ -33,6 +33,7 @@ export const REWARDS_FUNCTIONS:readonly FunctionActionDescriptor[]=[
    {owner:'app.reward_decision_admission',operation:`native-${command}-admission`},
    {owner:'app.reward_decision_native',operation:`sealed-${command}-effect`},
    {owner:'app.reward_decision_native_validate',operation:'exact-final-function-denial-and-native-audit'},
+   {owner:'app.reward_unit_native_chain_closed',operation:'same-root-actor-unit-ordered-closed-effects'},
   ]}))})),
  {key:'rewards.posting',scope:'company',moduleKey:'rewards',labelKey:'rewards.post',kind:'native_acl',course:'assigned',screenKey:'rewards',href:'/rewards',employeeBearing:true,
   actions:(['view','execute']as const).map(operation=>({operation,parentCapability:null,delegationFloorFunction:'app.rewards_function_legacy_allowed',bindings:[
@@ -54,6 +55,11 @@ export const REWARDS_FUNCTION_DEFAULTS={
  * No private test execution lease or unsupported catalogue shortcut satisfies this contract. */
 export const REWARDS_FUNCTION_REQUIRED_OWNERS=[
  'app.reward_unit_native_readable(uuid)',
+ 'app.reward_decision_unit_shape(jsonb,jsonb,jsonb)',
+ 'app.reward_decision_native_assert(uuid)',
+ 'app.reward_post_native_assert(uuid)',
+ 'app.reward_cancel_native_assert(uuid)',
+ 'app.reward_unit_native_chain_closed(text,uuid)',
  'app.rewards_member_fingerprint_for_tenant(uuid,uuid,uuid)',
  'app.rewards_member_state_for_tenant(uuid,uuid)',
  'app.rewards_roles_for_tenant(uuid,uuid,uuid)',

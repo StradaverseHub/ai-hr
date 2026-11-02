@@ -2474,7 +2474,7 @@ BEGIN
   IF prior_actor=actor.id AND p_action='approve'THEN RAISE EXCEPTION 'A different reviewer must sign the next approval stage.' USING ERRCODE='42501';END IF;
  END IF;
  authority:=app.access_function_authority_stamp();IF authority IS NULL THEN RAISE EXCEPTION 'Reward authority changed' USING ERRCODE='42501';END IF;
- RETURN jsonb_build_object('tenantId',unit.tenant_id,'actorId',actor.id,'unitId',unit.id,'companyId',unit.company_id,'revision',unit.revision,'kind',unit.kind,'fromStage',unit.status,'toStage',next_stage,'action',p_action,'reason',reason,'decisionDigest',hash,'authorityStamp',authority,'functionKey',function_key,'functionOperation',function_operation,'positiveAdmission',true,'route',route,'unitBeforeHash',app.reward_decision_row_hash(to_jsonb(unit),'reward_unit'),'reservedCents',CASE WHEN unit.kind='annual'THEN unit.reserved_cents ELSE jsonb_build_object('standard',calculation->'budgets'->'standard'->'used'->0,'h',calculation->'budgets'->'h'->'used'->0)END);
+ RETURN jsonb_build_object('tenantId',unit.tenant_id,'actorId',actor.id,'unitId',unit.id,'companyId',unit.company_id,'revision',unit.revision,'kind',unit.kind,'fromStage',unit.status,'toStage',next_stage,'action',p_action,'reason',reason,'decisionDigest',hash,'authorityStamp',authority,'functionKey',function_key,'functionOperation',function_operation,'positiveAdmission',true,'route',route,'unitBefore',to_jsonb(unit),'unitBeforeHash',app.reward_decision_row_hash(to_jsonb(unit),'reward_unit'),'reservedCents',CASE WHEN unit.kind='annual'THEN unit.reserved_cents ELSE jsonb_build_object('standard',calculation->'budgets'->'standard'->'used'->0,'h',calculation->'budgets'->'h'->'used'->0)END);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_calc_senior_grade(text),app.reward_decision_admission(uuid,integer,text,text,boolean)FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -2492,9 +2492,12 @@ BEGIN
  RETURN encode(sha256(convert_to(value::text,'UTF8')),'hex');
 END $$;
 REVOKE ALL ON FUNCTION app.reward_decision_row_hash(jsonb,text)FROM PUBLIC,ai_hr_app;
+CREATE SEQUENCE app.reward_unit_native_effect_order;
+REVOKE ALL ON SEQUENCE app.reward_unit_native_effect_order FROM PUBLIC,ai_hr_app;
 CREATE TABLE app.reward_decision_native_effect(
+ effect_order bigint NOT NULL DEFAULT nextval('app.reward_unit_native_effect_order'),
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,unit_id uuid NOT NULL,
- admission jsonb NOT NULL,decision_id uuid NOT NULL,event_id uuid NOT NULL,unit_after_hash text,event_after_hash text,
+ admission jsonb NOT NULL,decision_id uuid NOT NULL,event_id uuid NOT NULL,unit_after jsonb,unit_after_hash text,event_after_hash text,
  active boolean NOT NULL DEFAULT true,completed boolean NOT NULL DEFAULT false,recheck bigint NOT NULL DEFAULT 0
 );
 CREATE TABLE app.reward_decision_native_receipt(
@@ -2570,7 +2573,7 @@ BEGIN
  GET DIAGNOSTICS affected=ROW_COUNT;IF affected<>1 THEN RAISE EXCEPTION 'Native Rewards decision source changed' USING ERRCODE='40001';END IF;
  INSERT INTO public.domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)VALUES(event,app.current_tenant_id(),'reward-unit',p_unit,CASE WHEN admission->>'toStage'='approved'THEN'reward-unit.approved'ELSE'reward-unit.routed'END,'user',app.current_user_id(),jsonb_build_object('from',admission->'fromStage','to',admission->'toStage','revision',admission->'revision'));
  SELECT to_jsonb(actual)INTO after_event FROM public.domain_event actual WHERE actual.id=event AND actual.tenant_id=app.current_tenant_id();
- UPDATE app.reward_decision_native_effect e SET active=false,completed=true,unit_after_hash=app.reward_decision_row_hash(after_unit,'reward_unit'),event_after_hash=app.reward_decision_row_hash(after_event,'domain_event')WHERE e.id=effect;
+ UPDATE app.reward_decision_native_effect e SET active=false,completed=true,unit_after=after_unit,unit_after_hash=app.reward_decision_row_hash(after_unit,'reward_unit'),event_after_hash=app.reward_decision_row_hash(after_event,'domain_event')WHERE e.id=effect;
  RETURN admission->>'toStage';
 END $$;
 REVOKE ALL ON FUNCTION app.reward_decision_native(uuid,integer,text,text,boolean)FROM PUBLIC,ai_hr_app;
@@ -2727,6 +2730,7 @@ REVOKE ALL ON FUNCTION app.reward_calc_fixed_money(double precision)FROM PUBLIC,
 -- source image. Until the complete posting owner closes this exact context, deferred validation
 -- refuses COMMIT; a salary constructor can never become a standalone partial-post API.
 CREATE TABLE app.reward_post_native_context(
+ effect_order bigint NOT NULL DEFAULT nextval('app.reward_unit_native_effect_order'),
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,
  unit_id uuid NOT NULL,admission jsonb NOT NULL,source_plan jsonb NOT NULL,
  effects jsonb NOT NULL DEFAULT '{}',active boolean NOT NULL DEFAULT true,completed boolean NOT NULL DEFAULT false,
@@ -3304,6 +3308,7 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.reward_cancel_admission(uuid,integer,text)FROM PUBLIC,ai_hr_app;
 CREATE TABLE app.reward_cancel_native_effect(
+ effect_order bigint NOT NULL DEFAULT nextval('app.reward_unit_native_effect_order'),
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,unit_id uuid NOT NULL,
  admission jsonb NOT NULL,unit_after jsonb,decision_id uuid,decision_after jsonb,event_id uuid NOT NULL,event_after jsonb,
  active boolean NOT NULL DEFAULT true,completed boolean NOT NULL DEFAULT false,recheck bigint NOT NULL DEFAULT 0
@@ -3406,3 +3411,105 @@ BEGIN
  RETURN result||jsonb_build_object('postedEventId',event_id);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_post_receipt_command(uuid,integer,uuid)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- One logical decision-row shape, used only with private actual admission and receipts.
+CREATE FUNCTION app.reward_decision_unit_shape(p_admission jsonb,p_before jsonb,p_after jsonb)RETURNS boolean
+LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(jsonb_typeof(p_before)='object'AND jsonb_typeof(p_after)='object'
+ AND p_before->>'status'=p_admission->>'fromStage'AND(p_before->>'revision')::integer=(p_admission->>'revision')::integer
+ AND p_after-ARRAY['status','approved_digest','revision','reserved_cents','updated_at']=p_before-ARRAY['status','approved_digest','revision','reserved_cents','updated_at']
+ AND p_after->>'status'=p_admission->>'toStage'
+ AND p_after->'approved_digest'=CASE WHEN p_admission->>'action'IN('return','reject','withdraw')THEN'null'::jsonb ELSE to_jsonb(p_admission->>'decisionDigest')END
+ AND(p_after->>'revision')::integer=(p_admission->>'revision')::integer+CASE WHEN p_admission->>'action'='return'THEN 1 ELSE 0 END
+ AND p_after->'reserved_cents'=CASE WHEN p_before->>'kind'='annual'THEN p_before->'reserved_cents'ELSE p_admission->'reservedCents'END,false);
+$$;
+REVOKE ALL ON FUNCTION app.reward_decision_unit_shape(jsonb,jsonb,jsonb)FROM PUBLIC,ai_hr_app;
+-- Physical proof inventory only: no task defaults, admission, delegation or raw reads consume it.
+CREATE VIEW app.reward_unit_native_nodes AS
+ SELECT 'decision'::text AS effect_kind,e.id AS effect_id,e.xact_id,e.tenant_id,e.user_id,e.unit_id,e.effect_order,e.admission->>'unitBeforeHash'AS before_hash,e.unit_after_hash AS after_hash FROM app.reward_decision_native_effect e WHERE e.completed AND NOT e.active
+ UNION ALL SELECT 'posting',c.id,c.xact_id,c.tenant_id,c.user_id,c.unit_id,c.effect_order,c.admission->>'unitBeforeHash',app.reward_decision_row_hash(c.effects->'unit'->'after','reward_unit')FROM app.reward_post_native_context c WHERE c.completed AND NOT c.active
+ UNION ALL SELECT 'cancellation',e.id,e.xact_id,e.tenant_id,e.user_id,e.unit_id,e.effect_order,e.admission->>'unitBeforeHash',app.reward_decision_row_hash(e.unit_after,'reward_unit')FROM app.reward_cancel_native_effect e WHERE e.completed AND NOT e.active;
+REVOKE ALL ON app.reward_unit_native_nodes FROM PUBLIC,ai_hr_app;
+-- Derive each fact/audit/authority assertion from its actual existing validator, refusing
+-- structural drift. Only the current-unit after-image comparison moves to the ordered chain.
+-- Thus every node retains its own native sources, denial ceiling, physical receipts and audit.
+DO $native_chain_assertions$
+DECLARE spec record;definition text;anchor text;replacement text;
+BEGIN
+ FOR spec IN SELECT * FROM(VALUES
+  ('reward_decision_native_validate','reward_decision_native_assert'),
+  ('reward_post_native_validate','reward_post_native_assert'),
+  ('reward_cancel_native_validate','reward_cancel_native_assert')
+ )v(source,target)LOOP
+  definition:=pg_get_functiondef(to_regprocedure('app.'||spec.source||'()'));
+  anchor:='FUNCTION app.'||spec.source||'()';
+  IF definition IS NULL OR strpos(definition,anchor)=0 OR strpos(definition,'RETURNS trigger')=0 OR(length(definition)-length(replace(definition,'NEW.id','')))/length('NEW.id')<>1 THEN RAISE EXCEPTION 'Native Reward chain validator source changed: %',spec.source;END IF;
+  definition:=replace(replace(replace(definition,anchor,'FUNCTION app.'||spec.target||'(p_effect uuid)'),'RETURNS trigger','RETURNS void'),'NEW.id','p_effect');
+  IF spec.source='reward_decision_native_validate'THEN
+   anchor:=' next_stage:=app.reward_calc_transition(';IF strpos(definition,anchor)=0 THEN RAISE EXCEPTION 'Native Reward decision validator changed';END IF;
+   replacement:=E' IF app.reward_decision_unit_shape(admission,admission->''unitBefore'',effect.unit_after)IS NOT TRUE OR app.reward_decision_row_hash(admission->''unitBefore'',''reward_unit'')IS DISTINCT FROM admission->>''unitBeforeHash''OR app.reward_decision_row_hash(effect.unit_after,''reward_unit'')IS DISTINCT FROM effect.unit_after_hash THEN RAISE EXCEPTION ''Native Rewards decision effect incomplete'' USING ERRCODE=''42501'';END IF;\n'||anchor;
+   definition:=replace(definition,anchor,replacement);
+  ELSIF spec.source='reward_post_native_validate'THEN
+   anchor:='OR app.reward_decision_row_hash(to_jsonb(unit),''reward_unit'')IS DISTINCT FROM app.reward_decision_row_hash(effect->''after'',''reward_unit'')';
+   IF strpos(definition,anchor)=0 THEN RAISE EXCEPTION 'Native Reward post validator changed';END IF;definition:=replace(definition,anchor,'');
+   -- The real trigger wrapper below owns diagnostics for its INSERT-orphan boundary.
+   definition:=replace(definition,'CONSTRAINT=TG_NAME','CONSTRAINT=''rewards_post_native_effect''');
+  ELSE
+   anchor:='OR app.reward_decision_row_hash(to_jsonb(unit),''reward_unit'')IS DISTINCT FROM app.reward_decision_row_hash(after_image,''reward_unit'')';
+   IF strpos(definition,anchor)=0 THEN RAISE EXCEPTION 'Native Reward cancellation validator changed';END IF;definition:=replace(definition,anchor,'');
+  END IF;
+  IF spec.source='reward_decision_native_validate'THEN
+   anchor:='IF NOT FOUND THEN RETURN NULL;END IF;';replacement:='IF NOT FOUND THEN RAISE EXCEPTION ''Native Rewards decision effect unavailable'' USING ERRCODE=''42501'';END IF;';
+  ELSE
+   anchor:='IF proof.id IS NULL THEN RETURN NULL;END IF;';replacement:='IF proof.id IS NULL THEN RAISE EXCEPTION ''Native Reward effect unavailable'' USING ERRCODE=''42501'';END IF;';
+  END IF;
+  IF strpos(definition,anchor)=0 THEN RAISE EXCEPTION 'Native Reward missing-proof boundary changed';END IF;definition:=replace(definition,anchor,replacement);
+  definition:=replace(definition,'RETURN NULL;','RETURN;');
+  IF strpos(definition,'NEW.')>0 OR strpos(definition,'TG_')>0 THEN RAISE EXCEPTION 'Native Reward chain assertion retains trigger context';END IF;
+  EXECUTE definition;EXECUTE format('REVOKE ALL ON FUNCTION app.%I(uuid)FROM PUBLIC,ai_hr_app',spec.target);
+ END LOOP;
+END $native_chain_assertions$;
+CREATE FUNCTION app.reward_unit_native_chain_closed(p_kind text,p_effect uuid)RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE origin app.reward_unit_native_nodes%ROWTYPE;node record;closed boolean;
+BEGIN
+ SELECT n.* INTO origin FROM app.reward_unit_native_nodes n WHERE n.effect_kind=p_kind AND n.effect_id=p_effect AND n.xact_id=pg_current_xact_id()AND n.tenant_id=app.current_tenant_id()AND n.user_id=app.current_user_id();
+ IF NOT FOUND OR origin.before_hash IS NULL OR origin.after_hash IS NULL THEN RETURN false;END IF;
+ -- Validate the origin first to preserve its own precise refusal. Every other same-unit,
+ -- same-actor/root completed node is independently checked too, even after an early flush.
+ FOR node IN SELECT n.* FROM app.reward_unit_native_nodes n WHERE n.xact_id=origin.xact_id AND n.tenant_id=origin.tenant_id AND n.user_id=origin.user_id AND n.unit_id=origin.unit_id ORDER BY CASE WHEN n.effect_kind=p_kind AND n.effect_id=p_effect THEN 0 ELSE 1 END,n.effect_order LOOP
+  IF node.before_hash IS NULL OR node.after_hash IS NULL THEN RETURN false;END IF;
+  CASE node.effect_kind WHEN'decision'THEN PERFORM app.reward_decision_native_assert(node.effect_id);WHEN'posting'THEN PERFORM app.reward_post_native_assert(node.effect_id);WHEN'cancellation'THEN PERFORM app.reward_cancel_native_assert(node.effect_id);ELSE RETURN false;END CASE;
+ END LOOP;
+ WITH RECURSIVE chain(effect_order,after_hash)AS(
+  SELECT origin.effect_order,origin.after_hash
+  UNION
+  SELECT n.effect_order,n.after_hash FROM chain previous JOIN app.reward_unit_native_nodes n ON n.before_hash=previous.after_hash AND n.effect_order>previous.effect_order
+   AND n.xact_id=origin.xact_id AND n.tenant_id=origin.tenant_id AND n.user_id=origin.user_id AND n.unit_id=origin.unit_id
+ )SELECT EXISTS(SELECT 1 FROM chain c JOIN public.reward_unit actual ON actual.id=origin.unit_id AND actual.tenant_id=origin.tenant_id AND app.reward_decision_row_hash(to_jsonb(actual),'reward_unit')=c.after_hash)INTO closed;
+ RETURN closed IS TRUE;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_unit_native_chain_closed(text,uuid)FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.reward_decision_native_validate()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM app.reward_decision_native_effect e WHERE e.id=NEW.id)THEN RETURN NULL;END IF;
+ IF app.reward_unit_native_chain_closed('decision',NEW.id)IS NOT TRUE THEN RAISE EXCEPTION 'Native Rewards decision effect incomplete' USING ERRCODE='42501';END IF;RETURN NULL;
+END $$;
+CREATE OR REPLACE FUNCTION app.reward_post_native_validate()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.reward_post_native_context;
+BEGIN
+ SELECT c.* INTO proof FROM app.reward_post_native_context c WHERE c.id=NEW.id;IF NOT FOUND THEN RETURN NULL;END IF;
+ -- Preserve the exact actual owned exception used to discover and restore caller mode.
+ IF proof.active OR NOT proof.completed THEN RAISE EXCEPTION 'Reward posting construction is incomplete' USING ERRCODE='42501',SCHEMA='app',TABLE='reward_post_native_context',CONSTRAINT=TG_NAME;END IF;
+ IF app.reward_unit_native_chain_closed('posting',NEW.id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward posting unit effect unavailable' USING ERRCODE='42501';END IF;RETURN NULL;
+END $$;
+CREATE OR REPLACE FUNCTION app.reward_cancel_native_validate()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM app.reward_cancel_native_effect e WHERE e.id=NEW.id)THEN RETURN NULL;END IF;
+ IF app.reward_unit_native_chain_closed('cancellation',NEW.id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward cancellation unit effect unavailable' USING ERRCODE='42501';END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_decision_native_validate(),app.reward_post_native_validate(),app.reward_cancel_native_validate()FROM PUBLIC,ai_hr_app;
