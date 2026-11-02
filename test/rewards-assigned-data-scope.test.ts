@@ -4,10 +4,11 @@ import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {hireEmployee} from '../core/org';
-import {createRewardUnit,getRewardUnit,saveRewardEntry} from '../packs/rewards/service';
+import {hireEmployee,updatePersonProfilePartial} from '../core/org';
+import {createRewardUnit,getRewardUnit,saveRewardEntry,refreshRewardSources} from '../packs/rewards/service';
 import {setRewardMember} from './rewards-access-fixture';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {pgErrorChain} from '../lib/db-error';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,root:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -38,6 +39,23 @@ it('keeps only actual current unit membership, with no raw subject access and im
  expect(raw.people).toEqual([]);expect(raw.employments).toEqual([]);expect(raw.entries.map(row=>row.employmentId)).toContain(subject.employmentId);
  expect((await getRewardUnit(reviewer.ctx,unit)).rows.map(row=>row.source.employmentId)).toContain(subject.employmentId);
  for(const outsider of [other,manager])expect(await withTenant(outsider.ctx,tx=>tx.select().from(s.rewardEntry).where(eq(s.rewardEntry.unitId,unit)))).toEqual([]);
+ // The actual BG seat can update the raw row under native RLS, but cannot reassign its
+ // historical recommendations or audit identity to another same-company employment/person.
+ for(const change of [
+  {employmentId:reviewer.employmentId,source:{...entry.source,employmentId:reviewer.employmentId,personId:reviewer.personId}},
+  {source:{...entry.source,personId:reviewer.personId}},
+  {id:randomUUID()},
+  {createdAt:new Date('2000-01-01T00:00:00Z')},
+ ]){let refusal:unknown;try{await withTenant(reviewer.ctx,tx=>tx.update(s.rewardEntry).set(change).where(eq(s.rewardEntry.id,entry.id)));}catch(error){refusal=error;}expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward recipient identity is immutable'}));}
+ expect(await withTenant(reviewer.ctx,tx=>tx.select({id:s.rewardEntry.id,employmentId:s.rewardEntry.employmentId,source:s.rewardEntry.source}).from(s.rewardEntry).where(eq(s.rewardEntry.id,entry.id)))).toEqual([{id:entry.id,employmentId:subject.employmentId,source:entry.source}]);
+ // Real native recommendation edits and checked source refresh remain available to GR.
+ let native=await getRewardUnit(root,unit),nativeEntry=native.rows.find(row=>row.id===entry.id)!;
+ await saveRewardEntry(root,unit,native.unit.revision,entry.id,{...nativeEntry.recommendation,reason:'Actual recipient recommendation retained'});
+ await updatePersonProfilePartial(root,{personId:subject.personId,fullName:'Fictional refreshed reward subject'});
+ await refreshRewardSources(root,unit,(await getRewardUnit(root,unit)).unit.revision,today);
+ native=await getRewardUnit(root,unit);nativeEntry=native.rows.find(row=>row.id===entry.id)!;
+ expect(nativeEntry.source).toMatchObject({employmentId:subject.employmentId,personId:subject.personId,name:'Fictional refreshed reward subject'});
+ expect(nativeEntry.recommendation.reason).toBe('Actual recipient recommendation retained');
  await owner.db.delete(s.rewardMember).where(eq(s.rewardMember.userId,reviewer.ctx.userId!));
  expect(await withTenant(reviewer.ctx,tx=>tx.select().from(s.rewardEntry).where(eq(s.rewardEntry.unitId,unit)))).toEqual([]);
  await expect(getRewardUnit(reviewer.ctx,unit)).rejects.toThrow();

@@ -1748,3 +1748,23 @@ BEGIN
  replacement:='''facts'',CASE WHEN own OR module<>''off'' THEN(data->''facts'')-ARRAY[''finalConfirmationDate'',''confirmationDate'',''probationEndDate'',''provisionalEndOn''] ELSE jsonb_build_object(''name'',data->''facts''->>''name'',''employeeNo'',data->''facts''->>''employeeNo'',''joinDate'',data->''facts''->>''joinDate'',''lastDay'',data->''facts''->>''lastDay'')END';
  body:=replace(body,anchor,replacement);EXECUTE body;
 END $recovery_owners$;
+--> statement-breakpoint
+-- Assigned Rewards membership owns work on an existing recipient's entry, never permission to
+-- substitute a different employment/person under that entry's history and recommendations.
+-- Source refreshes may change pay/classification snapshots; their recipient identity is stable.
+CREATE FUNCTION app.reward_entry_recipient_guard()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner()THEN RETURN NEW;END IF;
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL
+  OR OLD.tenant_id IS DISTINCT FROM app.current_tenant_id()OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()
+  OR ROW(NEW.id,NEW.tenant_id,NEW.unit_id,NEW.employment_id,NEW.created_at)IS DISTINCT FROM ROW(OLD.id,OLD.tenant_id,OLD.unit_id,OLD.employment_id,OLD.created_at)
+  OR NEW.source->'employmentId'IS DISTINCT FROM OLD.source->'employmentId'
+  OR NEW.source->'personId'IS DISTINCT FROM OLD.source->'personId'
+ THEN RAISE EXCEPTION 'Reward recipient identity is immutable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_entry_recipient_guard()FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER reward_entry_recipient_guard BEFORE UPDATE ON public.reward_entry FOR EACH ROW EXECUTE FUNCTION app.reward_entry_recipient_guard();
+-- Join the same authority lock before a direct participant statement acquires any entry row lock.
+CREATE TRIGGER reward_entry_recipient_lock BEFORE UPDATE ON public.reward_entry FOR EACH STATEMENT EXECUTE FUNCTION app.notice_action_statement_lock();
