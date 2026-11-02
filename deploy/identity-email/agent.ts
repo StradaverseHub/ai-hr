@@ -60,9 +60,13 @@ async function workflowRelay(){
  const state=JSON.parse(await readFile(statePath,'utf8')) as EmailState;
  return activeWorkflowRelay(state,await admin('') as {smtpServer?:Record<string,string>});
 }
+// A dependency-only maintenance artifact must retain the installed Letters hold.
+// Normal feature upgrades retain their existing capability/grant commissioning path.
+declare const IDENTITY_EMAIL_RETAIN_LETTERS_HOLD:boolean|undefined;
+const retainLettersHold=typeof IDENTITY_EMAIL_RETAIN_LETTERS_HOLD!=='undefined'&&IDENTITY_EMAIL_RETAIN_LETTERS_HOLD;
 const notifications=createNotificationEmailService({
  design:async(id,token,kind,locale,cc=false)=>(await database`select identity_email.delivery_design(${id}::uuid,${token}::uuid,${process.env.WORKFLOW_EMAIL_ISSUER||''},${kind},${locale},${cc}) as design`)[0]?.design,
- lettersReady:async()=>{try{const [row]=await database`select to_regprocedure('identity_email.letter_delivery_target(uuid,uuid,text)') is not null and has_function_privilege(current_user,'identity_email.delivery_target(uuid,uuid,text)','EXECUTE') as ready`;return row?.ready===true;}catch{return false;}},
+ lettersReady:retainLettersHold?undefined:async()=>{try{const [row]=await database`select to_regprocedure('identity_email.letter_delivery_target(uuid,uuid,text)') is not null and has_function_privilege(current_user,'identity_email.delivery_target(uuid,uuid,text)','EXECUTE') as ready`;return row?.ready===true;}catch{return false;}},
  origin:process.env.WORKFLOW_EMAIL_ORIGIN||'https://unconfigured.invalid',
  ready:async()=>{
   if(!process.env.WORKFLOW_EMAIL_ISSUER||!process.env.WORKFLOW_EMAIL_LOOKUP_CLIENT_SECRET||!process.env.WORKFLOW_EMAIL_ORIGIN)return false;
