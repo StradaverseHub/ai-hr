@@ -6,6 +6,7 @@ import {realpathSync,readFileSync} from 'node:fs';
 import {isAbsolute,join,resolve} from 'node:path';
 import {platform} from 'node:os';
 import postgres from 'postgres';
+import {inspectOrchestratorBootstrap} from '../../.github/ci/orchestrator-bootstrap.mjs';
 import {hasFullCiRoleIntent,hasFocusedMigrationIntent,inspectFullCiRoleAdmission,sameFullCiRoleBinding,FULL_CI_PLAN_OBSERVER,type FullCiRoleBinding,type FullCiRoleHost,type FullCiRoleAdmission} from '../../scripts/lib/discard-premigration';
 const fullCiRoleHost=():FullCiRoleHost=>({platform:platform(),cwd:process.cwd(),realpath:path=>realpathSync(path),read:path=>readFileSync(path,'utf8'),
  git:(cwd,args)=>execFileSync('git',[...args],{cwd,encoding:'utf8',maxBuffer:16*1024*1024}),
@@ -22,7 +23,7 @@ export const isDraftDiscardFixtureDatabasePath=(path:string)=>/^\/ai_hr_test(?:_
 export type RoleRow={oid:number;name:string;login:boolean;inherit:boolean;super:boolean;createDb:boolean;createRole:boolean;replication:boolean;bypassRls:boolean;connectionLimit:number;validUntil:string|null};
 export type MembershipRow={role:string;member:string;grantor:string;inherit:boolean;set:boolean;admin:boolean};
 export type RoleCatalog={roles:RoleRow[];edges:MembershipRow[]};
-export type DraftDiscardRoleFixture=RoleCatalog&{mode:'focused_disposable'|'full_ci_disposable'|'preprovisioned_read_only';postgres:{versionNumber:number;versionText:string;session:string;current:string}};
+export type DraftDiscardRoleFixture=RoleCatalog&{mode:'focused_disposable'|'full_ci_disposable'|'orchestrator_disposable'|'preprovisioned_read_only';postgres:{versionNumber:number;versionText:string;session:string;current:string}};
 const refuse=():never=>{throw Error('Disposable focused role fixture prerequisites are not satisfied.');};
 const sha=(value:string|undefined)=>/^[0-9a-f]{40}$/.test(value??'');
 const numeric=(value:string|undefined)=>/^[1-9][0-9]*$/.test(value??'');
@@ -95,6 +96,16 @@ export function assertDraftDiscardRoleCatalog(catalog:RoleCatalog,allowMissing=f
 }
 export async function prepareDisposableDraftDiscardRoles(adminUrl:string,full?:FullCiRoleBinding):Promise<DraftDiscardRoleFixture>{
  assertDisposableDraftDiscardFixture(adminUrl,full);
+ return provisionReviewedRoleGraph(adminUrl,full?'full_ci_disposable':'focused_disposable');
+}
+/** Separate fixed hosted-fictional admission; focused/full/ordinary guards are unchanged. */
+export async function prepareOrchestratorDraftDiscardRoles(adminUrl:string,evidenceDirectory:string){
+ const admission=inspectOrchestratorBootstrap({env:process.env,platform:platform(),cwd:process.cwd(),realpath:realpathSync,
+  read:(path:string)=>readFileSync(path,'utf8'),git:(cwd:string,args:string[])=>execFileSync('git',args,{cwd,encoding:'utf8',timeout:10000}),
+  inspect:(container:string)=>JSON.parse(execFileSync('docker',['inspect',container],{encoding:'utf8',timeout:10000}))[0],evidenceDirectory,adminUrl});
+ return {...await provisionReviewedRoleGraph(adminUrl,'orchestrator_disposable'),admission};
+}
+async function provisionReviewedRoleGraph(adminUrl:string,mode:'focused_disposable'|'full_ci_disposable'|'orchestrator_disposable'):Promise<DraftDiscardRoleFixture>{
  const admin=postgres(adminUrl,{max:1,onnotice:()=>{},connect_timeout:5});
  try{return await admin.begin(async tx=>{
   await tx`select pg_advisory_xact_lock(hashtextextended('test:focused:draft-discard-role-fixture',0))`;
@@ -124,7 +135,7 @@ export async function prepareDisposableDraftDiscardRoles(adminUrl:string,full?:F
    pg_has_role('ai_hr_app','ai_hr_draft_discard_port','MEMBER') as "appMemberChild",
    pg_has_role('ai_hr_draft_discard_port','ai_hr_owner','MEMBER') as "childMemberOwner"`;
   if(paths.inheritsChild||!paths.setsChild||paths.appMemberChild||paths.childMemberOwner)refuse();
-  return {...after,mode:full?'full_ci_disposable' as const:'focused_disposable' as const,postgres:{versionNumber:server.version,versionText:server.versionText,session:server.session,current:server.current}};
+  return {...after,mode,postgres:{versionNumber:server.version,versionText:server.versionText,session:server.session,current:server.current}};
  });}finally{await admin.end({timeout:5});}
 }
 

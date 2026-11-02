@@ -37,7 +37,7 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
-      - run: node --test .github/ci/orchestrator-browser.test.mjs
+      - run: node --test .github/ci/orchestrator-browser.test.mjs .github/ci/orchestrator-bootstrap.test.mjs
       - name: Resolve frozen candidate
         id: candidate
         run: node .github/ci/resolve.mjs

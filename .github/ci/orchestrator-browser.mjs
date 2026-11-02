@@ -8,6 +8,7 @@ import {join, relative, resolve, isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {hostHealth} from './host-health.mjs';
+import {expectedMigrationLedger,validateMigrationLedgerRows,LEDGER_QUERY} from './staging-migration-ledger.mjs';
 import {CI_EXECUTION} from './manifest.mjs';
 import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEnv} from './postgres-evidence.mjs';
 
@@ -107,7 +108,7 @@ async function main() {
   const gate = randomBytes(24).toString('hex'), secret = randomBytes(32).toString('hex');
   const scrub = text => String(text).replaceAll(gate, '[ephemeral gate]').replaceAll(secret, '[ephemeral key]');
   const dbEnv = {...process.env, NODE_ENV: 'development', ALLOW_DEMO_SESSION: 'true', SHARE_PASSWORD: gate,
-    AI_CONFIG_SECRET: secret, TEST_DB_NAMESPACE: 'orchbrowser23',
+    AI_CONFIG_SECRET: secret, TEST_DB_NAMESPACE: 'orchbrowser23', AIHR_CI_UNIT:'db-1',
     DATABASE_URL: `postgres://ai_hr_app@127.0.0.1:5433/${target}`,
     MIGRATION_DATABASE_URL: `postgres://postgres@127.0.0.1:5433/${target}`,
     TEST_DATABASE_URL: `postgres://ai_hr_app@127.0.0.1:5433/${target}`,
@@ -139,7 +140,14 @@ async function main() {
     run('postgres-setup', 'bash', [postgres, 'reset'], pgEnv);
     run('create-new-fictional-database', 'docker', ['exec', container, 'psql', '-U', 'postgres', '-p', '5433', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1',
       '-c', `CREATE DATABASE ${target}`, '-c', `GRANT CONNECT ON DATABASE ${target} TO ai_hr_app`], pgEnv);
+    const roles=JSON.parse(run('bootstrap-fictional-role-prerequisites',process.execPath,['--import','tsx','scripts/dev-fixture-orchestrator-roles.ts',out]));
+    assert.equal(roles.mode,'orchestrator_disposable');assert.equal(roles.admission.candidate,sha);assert.equal(roles.admission.controller,controller);
+    const rolesAgain=JSON.parse(run('revalidate-fictional-role-prerequisites',process.execPath,['--import','tsx','scripts/dev-fixture-orchestrator-roles.ts',out]));
+    assert.deepEqual(rolesAgain,roles,'Role bootstrap must be idempotent');
+    report.rolePrerequisites=roles;
     run('migrate-fictional-database', 'pnpm', ['db:migrate'], dbEnv, 300_000);
+    const ledger=JSON.parse(run('full-fictional-migration-ledger','docker',['exec',container,'psql','-U','postgres','-p','5433','-d',target,'-qAt','-v','ON_ERROR_STOP=1','-c',LEDGER_QUERY],pgEnv));
+    report.migrationLedger=validateMigrationLedgerRows(expectedMigrationLedger(process.cwd()),ledger);
     run('seed-fictional-database', process.execPath, ['--import', 'tsx', 'db/seed.ts']);
     const first = validateFixture(fixture('prepare'), false), second = validateFixture(fixture('prepare'), true);
     assert.deepEqual(second.actors, first.actors); assert.deepEqual(second.companies, first.companies); assert.deepEqual(second.views, first.views);
