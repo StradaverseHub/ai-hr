@@ -703,9 +703,10 @@ END $$;
 CREATE FUNCTION app.probation_notification_recipients(p_occurrence uuid,p_event uuid) RETURNS SETOF uuid LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE o probation_occurrence;c probation_case;p probation_part;h jsonb;
 BEGIN
+ IF (app.probation_storage_runner() OR app.probation_active_user() AND app.is_group_admin()) IS NOT TRUE THEN RETURN;END IF;
  SELECT * INTO o FROM probation_occurrence WHERE id=p_occurrence AND tenant_id=app.current_tenant_id() AND source_event_id=p_event AND state='scheduled';IF NOT FOUND THEN RETURN;END IF;
  SELECT * INTO c FROM probation_case WHERE id=o.case_id AND tenant_id=o.tenant_id;
- IF app.probation_case_access(c.id) IS NOT TRUE OR app.probation_case_company_current(c.id) IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM probation_activation WHERE tenant_id=c.tenant_id AND company_id=c.company_id AND enabled AND activation_on<=o.due_on AND o.created_at>=updated_at) OR c.data->>'state' IN('withdrawn','confirmed','not_confirmed') AND o.kind<>'letter_released' THEN RETURN;END IF;
+ IF app.probation_case_company_current(c.id) IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM probation_activation WHERE tenant_id=c.tenant_id AND company_id=c.company_id AND enabled AND activation_on<=o.due_on AND o.created_at>=updated_at) OR c.data->>'state' IN('withdrawn','confirmed','not_confirmed') AND o.kind<>'letter_released' THEN RETURN;END IF;
  SELECT * INTO p FROM probation_part WHERE id=o.part_id AND tenant_id=o.tenant_id;IF o.kind='route_attention' AND coalesce(p.data->>'state','') NOT IN('pending_ack','pending_approval') THEN RETURN;END IF;IF o.kind='letter_returned' AND (p.data->>'state' IS DISTINCT FROM 'returned' OR NOT EXISTS(SELECT 1 FROM probation_outcome x WHERE x.letter_part_id=p.id AND x.tenant_id=p.tenant_id)) OR o.kind='letter_release_pending' AND NOT EXISTS(SELECT 1 FROM probation_outcome x WHERE x.letter_part_id=p.id AND x.tenant_id=p.tenant_id AND x.released_at IS NULL) THEN RETURN;END IF;h:=app.probation_holders(c.employment_id);
  IF o.kind IN('kpi_assigned','kpi_reminder','kpi_overdue','review_issued','review_reminder','review_due','approval_pending') THEN
  IF o.kind IN('review_reminder','review_due') AND (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date>(p.data->>'dueOn')::date THEN RETURN;END IF;
