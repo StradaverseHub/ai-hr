@@ -269,6 +269,18 @@ BEGIN
 END;$$;
 REVOKE ALL ON FUNCTION app.organisation_settings_write_guard() FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- Successful upserts are classified by the row guard after conflict resolution.
+-- Join Access before taking either source row lock, including direct runtime writes.
+CREATE FUNCTION app.organisation_settings_upsert_lock() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN PERFORM app.access_workforce_write_lock();END IF;
+ RETURN NULL;
+END;$$;
+REVOKE ALL ON FUNCTION app.organisation_settings_upsert_lock() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER organisation_settings_upsert_lock BEFORE INSERT OR UPDATE OR DELETE ON public.profile_option FOR EACH STATEMENT EXECUTE FUNCTION app.organisation_settings_upsert_lock();
+CREATE TRIGGER organisation_settings_upsert_lock BEFORE INSERT OR UPDATE OR DELETE ON public.ai_provider_config FOR EACH STATEMENT EXECUTE FUNCTION app.organisation_settings_upsert_lock();
+--> statement-breakpoint
 DO $$DECLARE name text;BEGIN
  FOREACH name IN ARRAY ARRAY['company','department','position','cost_center','business_unit','job_grade','profile_option','employee_id_config','people_general_policy','label_company_assignment','company_logo','dashboard_card_config','login_presentation','tenant_setting','email_design','email_design_version','email_asset','notification_email_policy','ai_provider_config','entra_connector','test_case','test_case_version','test_assignment','test_catalogue_update'] LOOP
  -- Provider configuration is upserted: only the successful row operation determines Add/Edit.
