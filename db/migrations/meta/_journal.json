@@ -4551,6 +4551,13 @@
       "when": 1793330000350,
       "tag": "0950_contract_management",
       "breakpoints": true
+    },
+    {
+      "idx": 765,
+      "version": "7",
+      "when": 1793330000353,
+      "tag": "0953_lifecycle_service_info_intents",
+      "breakpoints": true
     }
   ]
 }
