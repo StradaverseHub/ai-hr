@@ -1581,7 +1581,9 @@ export function cycleDetail(ctx: SessionContext, cycleId: string) {
   return withTenant(ctx, async (tx) => {
     const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, cycleId)).limit(1);
     if (!cycle) return null;
-    await assertCycleFunctionTx(tx,cycle.companyId,'view');
+    const [course]=await tx.execute<{nativeAdmin:boolean}>(sql`select app.performance_cycle_native_admin(${cycle.companyId}::uuid) as "nativeAdmin"`);
+    const nativeAdmin=course?.nativeAdmin===true;
+    if(nativeAdmin)await assertCycleFunctionTx(tx,cycle.companyId,'view');
     const rows = await tx
       .select({
         reviewId: performanceReview.id,
@@ -1608,7 +1610,7 @@ export function cycleDetail(ctx: SessionContext, cycleId: string) {
           isNull(compensation.supersededAt),
         ),
       )
-      .where(eq(performanceReview.cycleId, cycleId))
+      .where(and(eq(performanceReview.cycleId, cycleId),nativeAdmin?undefined:sql`app.is_self_person(${employment.personId})`))
       .orderBy(person.fullName);
 
     const reviewerNames = await namesForEmployments(
