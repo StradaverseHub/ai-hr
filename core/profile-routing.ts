@@ -175,7 +175,7 @@ export function profileRerouteCandidates(ctx:SessionContext,p:{query?:string;aft
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
   const like=`%${query.replace(/[\\%_]/g,'\\$&')}%`,after=p.after?new Date(p.after.createdAt):null;
-  const rows=await tx.select({id:profileChangeRequest.id,employeeCode:employment.employeeCode,name:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest).innerJoin(employment,eq(employment.id,profileChangeRequest.employmentId)).innerJoin(person,eq(person.id,profileChangeRequest.personId)).where(and(sql`app.workforce_profile_maintenance_allowed(${profileChangeRequest.employmentId},'view')`,eq(profileChangeRequest.status,'pending'),query?or(ilike(employment.employeeCode,like),ilike(person.fullName,like)):undefined,p.after&&after?or(gt(profileChangeRequest.createdAt,after),and(eq(profileChangeRequest.createdAt,after),gte(profileChangeRequest.id,p.after.id))):undefined)).orderBy(asc(profileChangeRequest.createdAt),asc(profileChangeRequest.id)).limit(51);
+  const rows=await tx.select({id:profileChangeRequest.id,employeeCode:employment.employeeCode,name:person.fullName,createdAt:profileChangeRequest.createdAt,canEdit:sql<boolean>`app.workforce_profile_maintenance_allowed(${profileChangeRequest.employmentId},'edit')`}).from(profileChangeRequest).innerJoin(employment,eq(employment.id,profileChangeRequest.employmentId)).innerJoin(person,eq(person.id,profileChangeRequest.personId)).where(and(sql`app.workforce_profile_maintenance_allowed(${profileChangeRequest.employmentId},'view')`,eq(profileChangeRequest.status,'pending'),query?or(ilike(employment.employeeCode,like),ilike(person.fullName,like)):undefined,p.after&&after?or(gt(profileChangeRequest.createdAt,after),and(eq(profileChangeRequest.createdAt,after),gte(profileChangeRequest.id,p.after.id))):undefined)).orderBy(asc(profileChangeRequest.createdAt),asc(profileChangeRequest.id)).limit(51);
   // The first omitted row is the inclusive boundary of the next page, never an inferred business identity.
   const next=rows.slice(50,51)[0];
   return {rows:rows.slice(0,50),nextCursor:next?{createdAt:next.createdAt.toISOString(),id:next.id}:null};
@@ -216,4 +216,15 @@ async function previewRoutingTx(tx:Tx,ctx:SessionContext,value:ProfileRoutingPol
  const counts={matched:matches.size,missing:requestTypes.reduce((n,type)=>n+population.filter(id=>!matches.has(type+':'+id)).length,0),overlapping:[...matches.values()].filter(count=>count>1).length,ineligible};
  const fingerprint=createHash('sha256').update(JSON.stringify({actor:ctx.userId,tenant:ctx.tenantId,revision:readProfileRoutingPolicy(ctx).revision,asOf:todayInKualaLumpur(),version:value.version,enabled:value.enabled,rules:value.rules,population:[...population].sort(),snapshot,counts})).digest('hex');
  return {...counts,fingerprint};
+}
+
+/** Configuration-free queue flags. Actual rows and route writes repeat their subject admission. */
+export function profileMaintenanceAccess(ctx:SessionContext){
+ return withTenant(ctx,async tx=>{
+  const [result]=await tx.execute<{view:boolean;edit:boolean}>(sql`select app.principal_snapshot_current() and app.is_group_admin()
+   and exists(select 1 from public.company co where co.tenant_id=app.current_tenant_id() and app.access_workforce_company(co.id,'workforce.view') and app.function_action_allowed('profileChanges.maintenance','view',co.id)) as "view",
+   app.principal_snapshot_current() and app.is_group_admin()
+   and exists(select 1 from public.company co where co.tenant_id=app.current_tenant_id() and app.access_workforce_company(co.id,'workforce.edit') and app.function_action_allowed('profileChanges.maintenance','edit',co.id)) as "edit"`);
+  return {view:result?.view===true,edit:result?.edit===true};
+ });
 }
