@@ -149,6 +149,13 @@ describe('OneHR performance partner (ADR-0142)', () => {
     expect((await perf.getOnehrReviewForPurpose(actor,reviewId,'task'))?.reviewId).toBe(reviewId);
   });
 
+  it('matches the original JS whitespace, UTF-16 and word limits at finite SQL text boundaries',async()=>{
+    const samples=['','  ordinary text  ','\t\n\v\f\r text \u00a0\ufeff','a\u1680b\u2000c\u200ad\u2028e\u2029f\u202fg\u205fh\u3000i','😀','😀'.repeat(2000),'\ufeff\u00a0'+'😀'.repeat(2000)+'\u3000','word '.repeat(220),'word\u00a0'.repeat(221)];
+    const values=await owner.db.execute<{position:number;trimmed:string;units:number;words:number}>(sql`select source.position::integer as position,app.financial_onehr_js_trim(source.value) as trimmed,app.financial_onehr_utf16_length(source.value) as units,app.financial_onehr_js_words(source.value) as words from jsonb_array_elements_text(${JSON.stringify(samples)}::jsonb) with ordinality source(value,position)`);expect(values).toHaveLength(samples.length);
+    for(const value of values){const original=samples[value.position-1];expect(value.trimmed).toBe(original.trim());expect(value.units).toBe(original.length);expect(value.words).toBe(original.trim().split(/\s+/u).filter(Boolean).length);}
+    const [privateOnly]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_utf16_length(text)','EXECUTE') as allowed`);expect(privateOnly.allowed).toBe(false);
+  });
+
   it('profile-fences administrative OneHR masters while preserving exact self and assigned review identity',async()=>{
     const restrict=async(userId:string)=>{
       const id=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'department',values:[b.deptB]}]};
@@ -195,6 +202,13 @@ describe('OneHR performance partner (ADR-0142)', () => {
         const comments=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented')));expect(comments).toHaveLength(1);expect(comments[0]).toMatchObject({actorType:'user',actorId:userId,payload:{}});
         await expect(perf.commentAssessmentCareerProfile(partner,reviewId,commented.revision,'Borrowed administrative comment')).rejects.toThrow();
         expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([commented]);
+        const unicode='\ufeff\u00a0'+'😀'.repeat(2000)+'\u3000';expect(unicode.trim().length).toBe(4000);
+        await perf.commentAssessmentCareerProfile(mixed,reviewId,commented.revision,unicode);const [unicodeStored]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));expect(unicodeStored.managerComment).toBe(unicode);expect(unicodeStored.revision).toBe(commented.revision+1);
+        const unicodeEvents=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented'))).orderBy(schema.domainEvent.id);expect(unicodeEvents).toHaveLength(2);
+        const oversized='😀'.repeat(2001);await expect(perf.commentAssessmentCareerProfile(mixed,reviewId,unicodeStored.revision,oversized)).rejects.toThrow();
+        await expect(withTenant(mixed,tx=>tx.execute(sql`select app.onehr_career_comment(${reviewId}::uuid,${unicodeStored.revision}::integer,${oversized}::text)`))).rejects.toThrow(/Invalid career comment/);
+        expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([unicodeStored]);expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented'))).orderBy(schema.domainEvent.id)).toEqual(unicodeEvents);
+
 
       }
     }
