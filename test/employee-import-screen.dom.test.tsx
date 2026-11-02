@@ -353,6 +353,8 @@ describe('2983802f · the result names what happened to family and to superiors'
 });
 
 it('keeps native template and preview reads available while a refused Add disables the actual commit',async()=>{
+ validateMock.mockClear();
+ commitMock.mockClear();
  const user=await previewWith({...basePreview,fileErrors:[]},false);
  expect(screen.getByRole('button',{name:'Download CSV template'})).toBeEnabled();
  expect(validateMock).toHaveBeenCalledTimes(1);

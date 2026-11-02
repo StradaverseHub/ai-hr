@@ -863,7 +863,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
       expect(await enrollOnehrReviewTaskEmailTx(tx,event.id)).toEqual([manager.employmentId]);
       const [proof]=await tx.execute<{review_company_id:string;recipient_company_id:string;entitlement_snapshot:unknown}>(sql`select review_company_id,recipient_company_id,entitlement_snapshot from app.financial_onehr_task_email_source where transaction_id=pg_current_xact_id() and event_id=${event.id}::uuid`);
       expect(proof).toMatchObject({review_company_id:b.companyId,recipient_company_id:b.companyId});expect(JSON.stringify(proof.entitlement_snapshot)).not.toContain('Private description');
-      await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);expect((await enqueue(tx,BigInt(event.sequence)+1n))[0].created).toBe(0);expect((await enqueue(tx))[0].created).toBe(1);expect((await enqueue(tx))[0].created).toBe(0);
+      await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);expect((await enqueue(tx,event.sequence+1))[0].created).toBe(0);expect((await enqueue(tx))[0].created).toBe(1);expect((await enqueue(tx))[0].created).toBe(0);
     },{downgrade:false});
     const [delivery]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.notificationId,notice.id));expect(delivery).toMatchObject({recipientUserId:mgr.userId,sourceEventId:event.id,kind:'performance.review-task',category:'performance',status:'pending'});
     await perf.approveOnehrScorecard(mgr,reviewId,(await view(mgr)).revision,true,'Actual pending source completed');expect(await prepare()).toEqual([]);

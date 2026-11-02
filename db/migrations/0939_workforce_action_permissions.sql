@@ -2364,7 +2364,9 @@ $$;
 CREATE FUNCTION app.workforce_draft_author_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
- AND app.access_profile_request_own(app.current_person_id()) AND app.workforce_draft_author_legacy_allowed(t,u,cap,co);
+ AND EXISTS(SELECT 1 FROM public.app_user actor WHERE actor.tenant_id=t AND actor.id=u
+  AND app.access_profile_request_own(actor.person_id))
+ AND app.workforce_draft_author_legacy_allowed(t,u,cap,co);
 $$;
 REVOKE ALL ON FUNCTION app.workforce_draft_admin_delegation(uuid,uuid,text,uuid),app.workforce_draft_author_legacy_allowed(uuid,uuid,text,uuid),app.workforce_draft_author_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 DO $$ DECLARE operation text;BEGIN
