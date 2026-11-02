@@ -34,7 +34,7 @@ def simulated_scope(executable):
 app = Path(os.environ['REVIEW_APP_PATH'])
 info = plistlib.loads((app / 'Info.plist').read_bytes())
 assert info['CFBundleIdentifier'] == 'ai.stradaverse.aihr.test'
-assert info['CFBundleVersion'] == '13'
+assert info['CFBundleVersion'] == '14'
 assert info['CFBundleSupportedPlatforms'] == ['iPhoneSimulator']
 assert (app / 'main.jsbundle').is_file()
 extensions = sorted((app / 'PlugIns').glob('*.appex'))
@@ -44,7 +44,7 @@ for target in [app, *extensions]:
     meta = plistlib.loads((target / 'Info.plist').read_bytes())
     identifier = meta['CFBundleIdentifier']
     assert identifier in ['ai.stradaverse.aihr.test', 'ai.stradaverse.aihr.test.ExpoWidgetsTarget']
-    assert meta['CFBundleVersion'] == '13'
+    assert meta['CFBundleVersion'] == '14'
     scope = simulated_scope(target / meta['CFBundleExecutable'])
     # Match the verified existing EAS simulator identity, retaining its protected-store namespace.
     assert scope['application-identifier'] == 'FAKETEAMID.' + identifier
@@ -54,10 +54,10 @@ for target in [app, *extensions]:
     scopes.append(scope)
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
 manifest = {'source': os.environ['EXPECTED_SOURCE'], 'route': 'standard macos-26; normal Xcode simulator signing',
-            'build': '13', 'bundleIdentifier': info['CFBundleIdentifier'], 'executable': info['CFBundleExecutable'],
+            'build': '14', 'bundleIdentifier': info['CFBundleIdentifier'], 'executable': info['CFBundleExecutable'],
             'executableSha256': sha(app / info['CFBundleExecutable']), 'bundleSha256': sha(app / 'main.jsbundle'),
             'simulatedSigningScopes': scopes, 'githubRun': os.environ['GITHUB_RUN_ID'],
             'xcode': subprocess.check_output(['xcodebuild', '-version'], text=True).strip(),
-            'extensions': [{'id': 'ai.stradaverse.aihr.test.ExpoWidgetsTarget', 'build': '13'}]}
+            'extensions': [{'id': 'ai.stradaverse.aihr.test.ExpoWidgetsTarget', 'build': '14'}]}
 Path(os.environ['REVIEW_MANIFEST_PATH']).write_text(json.dumps(manifest, indent=2) + '\n')
 print(json.dumps(manifest))
