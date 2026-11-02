@@ -4,7 +4,7 @@
 set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_OS:-}" == Linux ]]
 [[ "${GITHUB_REPOSITORY:-}" == StradaverseHub/ai-hr ]]
-[[ "${EXPECTED_SOURCE:-}" == b918bac3abff806c157d270f286354b67a4c37bd ]]
+[[ "${EXPECTED_SOURCE:-}" == 9b2957c0da769a9322fd89e1301d944d523453e1 ]]
 [[ "$(git -C source rev-parse HEAD)" == "$EXPECTED_SOURCE" ]]
 [[ -z "$(git -C source status --porcelain)" ]]
 [[ -d "${JAVA_HOME_17_X64:?Standard runner JDK17 required}" ]]
@@ -27,29 +27,16 @@ review_dir="$RUNNER_TEMP/onehr-android-client-probe"
 mkdir -p "$review_dir"
 (
   cd source/mobile/android
-  ./gradlew :app:assembleRelease --no-daemon --max-workers=2 \
+  ./gradlew :app:createBundleReleaseJsAndAssets --no-daemon --max-workers=2 \
     -PreactNativeArchitectures=arm64-v8a \
-    '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m' \
-    -x lint -x test
-) > "$review_dir/gradle-review.log" 2>&1 || {
-  tail -120 "$review_dir/gradle-review.log"
-  exit 1
-}
-apk=source/mobile/android/app/build/outputs/apk/release/app-release.apk
-[[ -f "$apk" ]]
-cp "$apk" "$review_dir/OneHR-client-probe.apk"
+    '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m'
+) > "$review_dir/gradle-review.log" 2>&1 || { tail -100 "$review_dir/gradle-review.log"; exit 1; }
 export REVIEW_DIR="$review_dir"
-python3 - <<'PY'
-import hashlib,json,os,pathlib,subprocess
-root=pathlib.Path(os.environ['REVIEW_DIR']);apk=root/'OneHR-client-probe.apk'
-digest=lambda p:hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
-v={'source':os.environ['EXPECTED_SOURCE'],'controller':os.environ['GITHUB_SHA'],
-   'githubRun':os.environ['GITHUB_RUN_ID'],'runAttempt':os.environ['GITHUB_RUN_ATTEMPT'],
-   'platform':'android','abi':'arm64-v8a','configuration':'release',
-   'apk':'OneHR-client-probe.apk','apkSha256':digest(apk),
-   'mobileLockSha256':digest('source/mobile/package-lock.json'),
-   'signing':'Generated Expo Android template public debug review signing; no production key',
-   'productionOrStoreReady':False,'finalBinaryBackupRulesVerified':False,
-   'note':'Compile/provenance only; inspect actual APK XML/permissions/signature independently before accepting hardening'}
-(root/'manifest.json').write_text(json.dumps(v,indent=2)+'\n')
-PY
+python3 controller/.github/ci/repackage-client-probe.py
+build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+"$build_tools/zipalign" -P 16 -f 4 "$review_dir/unaligned.apk" "$review_dir/aligned.apk"
+"$build_tools/apksigner" sign --ks source/mobile/android/app/debug.keystore --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android --out "$review_dir/OneHR-client-probe.apk" "$review_dir/aligned.apk"
+"$build_tools/apksigner" verify --verbose --print-certs "$review_dir/OneHR-client-probe.apk" > "$review_dir/signature.txt"
+grep -F 'fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c' "$review_dir/signature.txt"
+python3 controller/.github/ci/repackage-client-probe.py --verify
+rm "$review_dir/unaligned.apk" "$review_dir/aligned.apk"
