@@ -1251,3 +1251,14 @@ Approval screen projects Template View before rendering that maintenance section
 escalation section by exact company View; its editor receives exact Edit and defaults missing flags
 to disabled. The company escalation DOM controls and shared-reference facade checks are authored,
 not executed. Assignment picker/course preview and the remaining native command chapters are open.
+
+Assignment controls now project the actual selected logical slots. The native constructor and read-only
+projection share one private SQL bucket lookup (including archived-row reactivation, null-safe grade
+population/duration and exclusion of legacy org/grade scopes) and one native eligibility preparation
+owner. The authenticated read-only action mints no intent/reservation and does not take write admission;
+the constructor recomputes under existing Access/Leave locks and raw guards repeat actual controls.
+The picker opens only for companies with a native Add or Edit course, unassign uses exact company
+Delete, and submission stays disabled until a current positive projection covers all selected slots.
+Selection changes clear it; stale responses cannot enable another selection. Native read-only/actual
+Add→archive→Edit and rendered pending/stale response cases are authored, unrun. Full supported default,
+recipient and control-denial qualification still awaits genuine component closure/publication.

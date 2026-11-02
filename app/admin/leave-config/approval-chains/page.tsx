@@ -24,6 +24,7 @@ import {
 } from '../../leave-approval/template-manager';
 import {
   assignApprovalTemplateAction,
+  previewApprovalTemplateAssignmentAction,
   deleteApprovalTemplateAction,
   duplicateApprovalTemplateAction,
   saveApprovalTemplateAction,
@@ -115,6 +116,9 @@ export default async function LeaveConfigApprovalChainsPage({
   const all = await listCompanies(s);
   const companies = all.filter((c) => scopeIds.includes(c.id));
   const companyIds = companies.map((c) => c.id);
+  const assignmentAccess=await Promise.all(companies.map(async company=>({id:company.id,flags:await leaveApprovalCompanyAccess(s,'leaveApproval.assignments',company.id,['add','edit','delete'])})));
+  const assignableCompanies=assignmentAccess.filter(row=>row.flags[0]||row.flags[1]).map(row=>row.id);
+  const deletableCompanies=assignmentAccess.filter(row=>row.flags[2]).map(row=>row.id);
 
   const [leaveTypesAll, gradesAll, eligibilityRulesAll] = await Promise.all([
     listLeaveTypes(s),
@@ -430,6 +434,8 @@ export default async function LeaveConfigApprovalChainsPage({
             </div>
 
             <ApprovalAssignmentManager
+              assignableCompanies={assignableCompanies}
+              deletableCompanies={deletableCompanies}
               templates={templates}
               assignments={assignments.map((a) => ({
                 ruleId: a.ruleId,
@@ -459,6 +465,7 @@ export default async function LeaveConfigApprovalChainsPage({
                 }))}
               actions={{
                 assign: assignApprovalTemplateAction,
+                preview: previewApprovalTemplateAssignmentAction,
                 unassign: unassignApprovalTemplateAction,
               }}
               labels={templateLabels}

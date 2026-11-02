@@ -1476,3 +1476,30 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND app.leave_approval_company_allowed('leaveApproval.escalation','edit',(p_before->>'id')::uuid);
 $$;
 REVOKE ALL ON FUNCTION app.leave_approval_escalation_source_allowed(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- The native assignment bucket is shared by the actual constructor and its read-only projection.
+-- This is a source lookup, never a reservation, write intent or retained positive grant.
+CREATE FUNCTION app.leave_approval_assignment_bucket(p_tenant uuid,p_company uuid,p_type uuid,p_grade_group uuid,p_employment_type text,p_min_days integer,p_max_days integer) RETURNS TABLE(id uuid,template_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p.id,p.template_id FROM public.leave_approval_policy p WHERE p.tenant_id=p_tenant AND p.company_id=p_company AND p.leave_type_id=p_type
+ AND p.business_unit_id IS NULL AND p.department_id IS NULL AND p.position_id IS NULL AND p.grade_id IS NULL
+ AND p.grade_group_id IS NOT DISTINCT FROM p_grade_group AND p.employment_type::text IS NOT DISTINCT FROM p_employment_type
+ AND p.min_days IS NOT DISTINCT FROM p_min_days AND p.max_days IS NOT DISTINCT FROM p_max_days LIMIT 1;
+$$;
+REVOKE ALL ON FUNCTION app.leave_approval_assignment_bucket(uuid,uuid,uuid,uuid,text,integer,integer) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.leave_approval_assignment_slot(p_company uuid,p_type uuid,p_grade_group uuid,p_employment_type text,p_min_days integer,p_max_days integer) RETURNS TABLE(id uuid,template_id uuid,operation text,allowed boolean)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source record;course text;
+BEGIN
+ IF NOT app.leave_approval_company_allowed('leaveApproval.assignments','view',p_company)
+ OR NOT EXISTS(SELECT 1 FROM public.leave_type t WHERE t.id=p_type AND t.tenant_id=app.current_tenant_id())
+ OR p_grade_group IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.grade_group g WHERE g.id=p_grade_group AND g.tenant_id=app.current_tenant_id())
+ OR p_employment_type IS NOT NULL AND NOT(p_employment_type=ANY(enum_range(NULL::public.employment_type)::text[]))
+ OR p_min_days<0 OR p_max_days<0 OR p_min_days>p_max_days THEN RETURN;END IF;
+ SELECT * INTO source FROM app.leave_approval_assignment_bucket(app.current_tenant_id(),p_company,p_type,p_grade_group,p_employment_type,p_min_days,p_max_days);
+ course:=CASE WHEN FOUND THEN 'edit' ELSE 'add' END;
+ RETURN QUERY SELECT source.id,source.template_id,course,app.leave_approval_company_allowed('leaveApproval.assignments',course,p_company);
+END $$;
+REVOKE ALL ON FUNCTION app.leave_approval_assignment_slot(uuid,uuid,uuid,text,integer,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_approval_assignment_slot(uuid,uuid,uuid,text,integer,integer) TO ai_hr_app;

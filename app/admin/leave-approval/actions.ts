@@ -14,6 +14,8 @@ import { setLeaveEscalationPolicy } from '@/core/leave-approval-policy';
 import {
   ApprovalTemplateRefusedError,
   assignApprovalTemplate,
+  previewApprovalTemplateAssignment,
+  type ApprovalTemplateAssignmentInput,
   createApprovalTemplate,
   deleteApprovalTemplate,
   duplicateApprovalTemplate,
@@ -252,3 +254,10 @@ function numOrNull(v: FormDataEntryValue | null): number | null {
 // 706d34e8 — employmentTypeOrNull() and its EmploymentType alias went with the per-rule save that was
 // their only caller. The Assign Template path never parsed an employment type from the form: it derives
 // one from the chosen population inside core/leave-approval-template.ts (22de47c4).
+
+
+/** Read-only current selection projection. Actual assign still recomputes under native locks. */
+export async function previewApprovalTemplateAssignmentAction(input:ApprovalTemplateAssignmentInput){
+ const session=await getSession();
+ try{return await previewApprovalTemplateAssignment(session,input);}catch{return {allowed:false,count:0};}
+}
