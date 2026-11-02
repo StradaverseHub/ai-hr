@@ -14,9 +14,9 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(648); // Accepted prefix plus the explicit idle/Entra source reservations and the Teras source claims below.
+ expect(journal.entries).toHaveLength(650); // Accepted 648-entry Noveri prefix, then the two explicit nine-item successors below.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(77);
+ expect(journal.entries.slice(boundary)).toHaveLength(79);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
@@ -41,6 +41,9 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:760,version:'7',when:1793330000327,tag:'0927_teras_conversation_switch',breakpoints:true,hash:'ac5475982a99c2b387bc5f34e9af6f69cb5bbe3aac156bdd8aa906e17579c968'},
   {idx:761,version:'7',when:1793330000328,tag:'0928_teras_outcome_private_turns',breakpoints:true,hash:'17a50608b153559bfa06cf49f2b2efb526c85f2cbf0ce1de16a78fa4a0df8fa9'},
   {idx:762,version:'7',when:1793330000329,tag:'0929_teras_review_services',breakpoints:true,hash:'765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0'},
+  // Nine-item BOARD successors; the accepted Noveri SQL and prior journal identities above stay unchanged.
+  {idx:763,version:'7',when:1793330000335,tag:'0935_password_account_unlock',breakpoints:true,hash:'3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa'},
+  {idx:793,version:'7',when:1793330000346,tag:'0946_draft_creation_cohort_custody',breakpoints:true,hash:'cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

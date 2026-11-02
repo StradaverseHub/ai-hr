@@ -191,26 +191,29 @@ describe('Profile — the names, the demographics, the contact pair and the pass
     expect(savedData().profile?.fullName).toBe('Nadia Yusof');
   });
 
-  it('a HALF-TYPED passport is named as outstanding — and a complete one is not', async () => {
-    // The all-or-nothing rule, on the tab that owns it. It has to be judged here: `setPassportProfileMY`
-    // refuses a partial block, and it only runs AFTER `hireEmployee` has committed, so a refusal there
-    // would fail an activation that had already created an employee.
-    wrap();
+  it('accepts a foreign passport number alone but refuses invalid supplied dates', async () => {
+    const data=freshDraft();data.profile={...data.profile,nationality:'Singaporean'};wrap(data);
     await userEvent.type(field(detail.passportNumber), 'A1234567');
-    expect(
-      screen.getByText(messages.people.wizard.activateNeeds).parentElement!.textContent,
-      'a passport number with no dates is named',
-    ).toContain(messages.people.wizard.fields.passport);
-
-    // Completing the trio clears it. (The expiry/issue boxes are `type="date"`, so they are set
-    // directly rather than typed character by character.)
+    const gaps=()=>screen.getByText(messages.people.wizard.activateNeeds).parentElement!.textContent!;
+    expect(gaps(), 'dates are optional for a foreign passport number').not.toContain(messages.people.wizard.fields.passport);
+    await userEvent.type(field(detail.passportIssueDate), '2031-04-05');
+    await userEvent.type(field(detail.passportExpiryDate), '2021-04-04');
+    expect(gaps(), 'supplied expiry before issue is still invalid').toContain(messages.people.wizard.fields.passport);
     await userEvent.clear(field(detail.passportIssueDate));
     await userEvent.type(field(detail.passportIssueDate), '2021-04-05');
+    await userEvent.clear(field(detail.passportExpiryDate));
     await userEvent.type(field(detail.passportExpiryDate), '2031-04-04');
-    expect(
-      screen.getByText(messages.people.wizard.activateNeeds).parentElement!.textContent,
-      'a complete passport is not outstanding',
-    ).not.toContain(messages.people.wizard.fields.passport);
+    expect(gaps(), 'valid optional dates clear the passport gap').not.toContain(messages.people.wizard.fields.passport);
+  });
+
+  it('retains the Malaysian optional passport trio rule when a passport is entered', async () => {
+    const data=freshDraft();data.profile={...data.profile,nationality:'Malaysian'};wrap(data);
+    await userEvent.type(field(detail.passportNumber), 'A1234567');
+    const gaps=()=>screen.getByText(messages.people.wizard.activateNeeds).parentElement!.textContent!;
+    expect(gaps(), 'an entered Malaysian passport still needs its dates').toContain(messages.people.wizard.fields.passport);
+    await userEvent.type(field(detail.passportIssueDate), '2021-04-05');
+    await userEvent.type(field(detail.passportExpiryDate), '2031-04-04');
+    expect(gaps(), 'the complete Malaysian passport is valid').not.toContain(messages.people.wizard.fields.passport);
   });
 
   it('NOTHING on this tab is required — an untouched draft is outstanding on none of it', () => {

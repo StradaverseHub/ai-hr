@@ -4,7 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import {Children,isValidElement,type ReactNode} from 'react';
 import {UsersDirectory} from '../app/admin/users/users-directory';
-const m = vi.hoisted(() => ({ users: vi.fn(), candidates: vi.fn(), invitations: vi.fn(), enrollments: vi.fn(), group: vi.fn(), enabled: vi.fn(), manual: vi.fn(), locale: vi.fn(async()=> 'en') }));
+const m = vi.hoisted(() => ({ users: vi.fn(), candidates: vi.fn(), invitations: vi.fn(), enrollments: vi.fn(), group: vi.fn(), enabled: vi.fn(), internal: vi.fn(), manual: vi.fn(), locale: vi.fn(async()=> 'en') }));
 vi.mock('next-intl/server', () => ({ getLocale:m.locale, getTranslations: async (namespace?: string) => {
   const t = (key: string) => `${namespace ? namespace + '.' : ''}${key}`.split('.').reduce((v: any, k) => v?.[k], en) ?? key;
   return Object.assign(t, { rich: t });
@@ -13,7 +13,8 @@ vi.mock('../app/admin/users/security-page',()=>({SecurityPageHeader:()=>null}));
 vi.mock('../app/admin/users/legacy-navigation',()=>({LegacySecurityNavigation:()=>null}));
 vi.mock('../lib/security-center-authz',()=>({requireGroupAdministration:async()=>({tenantId:'tenant'})}));
 vi.mock('../lib/authz', () => ({ requireAdmin: async () => ({ tenantId: 'tenant' }), isGroupAdmin: m.group }));
-vi.mock('../lib/identity/config', () => ({ keycloakSelected: m.enabled }));
+vi.mock('../lib/identity/config', async importOriginal => ({...await importOriginal<typeof import('../lib/identity/config')>(), keycloakSelected: m.enabled}));
+vi.mock('../lib/internal-auth/config', async importOriginal => ({...await importOriginal<typeof import('../lib/internal-auth/config')>(), internalSelected: m.internal}));
 vi.mock('../core/admin', () => ({ listUsers: m.users }));
 vi.mock('../core/employee-user-activation', () => ({ listEmployeeActivationCandidates: m.candidates }));
 vi.mock('../core/auth', () => ({ listPendingInvitations: m.invitations }));
@@ -31,7 +32,7 @@ const person = { id: 'person-a', name: 'Employee A', email: 'same@example.test',
 const show = async (params = {}) => render(<NextIntlClientProvider locale="en" messages={en}>{await UsersPage({ searchParams: Promise.resolve(params) })}</NextIntlClientProvider>);
 const directory = () => (document.querySelector('[data-tour="admin-users"] table') ?? document.querySelector('[data-tour="admin-users"]')) as HTMLElement;
 beforeEach(() => {
-  vi.clearAllMocks();m.locale.mockResolvedValue('en'); m.group.mockReturnValue(true); m.enabled.mockReturnValue(true);
+  vi.clearAllMocks();m.locale.mockResolvedValue('en'); m.group.mockReturnValue(true); m.enabled.mockReturnValue(true); m.internal.mockReturnValue(false);
   m.users.mockResolvedValue({ users: [], hiddenCount: 0 }); m.candidates.mockResolvedValue([person]);
   m.invitations.mockResolvedValue([]); m.enrollments.mockResolvedValue([]);
 });
@@ -45,6 +46,15 @@ describe('employee activation actions and lifecycle display', () => {
     expect(d.getByRole('link', { name: 'Send invitation' }).getAttribute('href')).toBe('/admin/users/invite?activate=person-a');
     expect(d.queryByRole('button',{name:'Add role'})).toBeNull();
     expect(d.queryByRole('button',{name:'Archive'})).toBeNull();
+  });
+  it('offers the same person-bound activation course under embedded internal authentication', async () => {
+    m.enabled.mockReturnValue(false);m.internal.mockReturnValue(true);
+    await show();const d=within(directory());
+    fireEvent.click(d.getByRole('button',{name:'Activate'}));
+    expect(d.getByRole('link',{name:'Set username and password'})).toHaveAttribute('href','/admin/users/create?activate=person-a');
+    expect(d.getByRole('link',{name:'Send invitation'})).toHaveAttribute('href','/admin/users/invite?activate=person-a');
+    expect(d.queryByRole('button',{name:'Archive'})).toBeNull();expect(d.queryByRole('button',{name:'Add role'})).toBeNull();
+    expect(m.enrollments).toHaveBeenCalled();
   });
   it('preselects the exact pending person, prefills email, and keeps employee access as default', async () => {
     render(<NextIntlClientProvider locale="en" messages={en}>{await CreatePage({searchParams:Promise.resolve({activate:person.id})})}{await InvitePage({searchParams:Promise.resolve({activate:person.id})})}</NextIntlClientProvider>);
