@@ -62,7 +62,7 @@ import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/s
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
-import { dispatchNotifications, listNotifications, unreadNotificationCount } from '@/core/notifications';
+import { dispatchNotifications, notificationBellState } from '@/core/notifications';
 import { listApprovalHistory } from '@/core/read';
 import { shapeApprovalHistoryItems } from '@/lib/approval-history';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
@@ -239,15 +239,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const legacyApprovalCount = approvalSummary.approvalCount;
   const hasAssignedApproval = !canApprove && legacyApprovalCount>0;
   const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask)];
-  // These five recipient reads are independent. Keep this batch after dispatch and separate
-  // from the approval fan-out above so a shell render does not launch every query at once.
-  const [notifUnread, taskNotifCount, notifItems, taskNotifs, readNotifs] = await Promise.all([
-    bellNotificationsEnabled ? unreadNotificationCount(session, undefined, {...notificationScope, action: false }) : Promise.resolve(0),
-    bellNotificationsEnabled ? unreadNotificationCount(session, undefined, {...notificationScope, action: true }) : Promise.resolve(0),
-    bellNotificationsEnabled ? listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: false }) : Promise.resolve([]),
-    bellNotificationsEnabled ? listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: true }) : Promise.resolve([]),
-    bellNotificationsEnabled ? listNotifications(session, undefined, {...notificationScope, limit: 12, read: true }) : Promise.resolve([]),
-  ]);
+  // Keep the same bounded recipient views after dispatch, with one explicit transaction admission.
+  const { unread: notifUnread, taskUnread: taskNotifCount, items: notifItems, taskItems: taskNotifs, history: readNotifs } =
+    bellNotificationsEnabled ? await notificationBellState(session, notificationScope)
+      : { unread: 0, taskUnread: 0, items: [], taskItems: [], history: [] };
   // Approval history (44a89810): recent team decisions for the bell's History tab — canApprove only,
   // no dead query for regular employees.
   const approvalHistory = canApprove

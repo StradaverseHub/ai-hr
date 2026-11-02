@@ -27,7 +27,12 @@ vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSumm
  const items=await m.tasks(...args);
  return {items,total:items.length,approvalCount:items.filter((row:{linkPath:string})=>row.linkPath.split(/[?#]/,1)[0]==='/approvals').length};
 }}));
-vi.mock('../core/notifications',()=>({dispatchNotifications:async()=>{},listNotifications:m.notifications,unreadNotificationCount:m.unread}));
+vi.mock('../core/notifications',()=>({dispatchNotifications:async()=>{},notificationBellState:async(ctx:unknown,opts:Record<string,unknown>={})=>{
+ const [unread,taskUnread,items,taskItems,history]=await Promise.all([
+  m.unread(ctx,undefined,{...opts,action:false}),m.unread(ctx,undefined,{...opts,action:true}),
+  m.notifications(ctx,undefined,{...opts,limit:12,read:false,action:false}),m.notifications(ctx,undefined,{...opts,limit:12,read:false,action:true}),m.notifications(ctx,undefined,{...opts,limit:12,read:true}),
+ ]);return {unread,taskUnread,items,taskItems,history};
+}}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:m.module,isModuleEnabledOrFalse:m.module,settingEnabledOrDefault:m.feedback}));
 vi.mock('../components/command-bar',()=>({CommandBar:()=>null}));
 vi.mock('../components/notice/notice-surfaces',()=>({NoticePopupSlot:()=>null}));

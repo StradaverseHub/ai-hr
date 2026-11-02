@@ -1206,15 +1206,7 @@ export function unreadNotificationCount(
     const [r] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(notification)
-      .where(
-        and(
-          isNull(notification.readAt),
-          employmentId ? or(eq(notification.recipientEmploymentId, employmentId),eq(notification.recipientUserId,ctx.userId??'00000000-0000-0000-0000-000000000000')) : undefined,
-          opts.letterCompanyIds!==undefined?and(isNotNull(notification.recipientUserId),inArray(notification.companyId,opts.letterCompanyIds)):undefined,
-          opts.action === true ? eq(notification.severity, 'action') : undefined,
-          opts.action === false ? ne(notification.severity, 'action') : undefined,
-        ),
-      );
+      .where(notificationWhere(ctx, employmentId, { ...opts, read: false }));
     return r?.n ?? 0;
   });
 }
@@ -1241,16 +1233,25 @@ export type NotificationBellState = {
   history: NotificationRow[];
 };
 
-/** The shell's existing five recipient reads, kept behind one owned composition boundary. */
-export async function notificationBellState(ctx: SessionContext, opts: { letterCompanyIds?: string[] } = {}): Promise<NotificationBellState> {
-  const [unread, taskUnread, items, taskItems, history] = await Promise.all([
-    unreadNotificationCount(ctx, undefined, { ...opts, action: false }),
-    unreadNotificationCount(ctx, undefined, { ...opts, action: true }),
-    listNotifications(ctx, undefined, { ...opts, limit: 12, read: false, action: false }),
-    listNotifications(ctx, undefined, { ...opts, limit: 12, read: false, action: true }),
-    listNotifications(ctx, undefined, { ...opts, limit: 12, read: true }),
-  ]);
-  return { unread, taskUnread, items, taskItems, history };
+/** Ordinary shell composition: one transaction for all five recipient views. AI supplied-Tx
+ * readers retain their separate principal/module contract; this owner never routes through it. */
+export function notificationBellState(ctx: SessionContext, opts: { letterCompanyIds?: string[] } = {}): Promise<NotificationBellState> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  opts = { ...opts, letterCompanyIds: opts.letterCompanyIds?.slice() };
+  return withTenant(ctx, async tx => {
+    const count = async (action: boolean) => {
+      const [row] = await tx.select({ n: sql<number>`count(*)::int` }).from(notification)
+        .where(notificationWhere(ctx, undefined, { ...opts, read: false, action }));
+      return row?.n ?? 0;
+    };
+    const list = (read: boolean, action?: boolean) => tx.select(notificationColumns).from(notification)
+      .where(notificationWhere(ctx, undefined, { ...opts, read, action }))
+      .orderBy(desc(notification.createdAt), desc(notification.id)).limit(12);
+    const [unread, taskUnread, items, taskItems, history] = await Promise.all([
+      count(false), count(true), list(false, false), list(false, true), list(true),
+    ]);
+    return { unread, taskUnread, items, taskItems, history };
+  });
 }
 
 type NotificationFilter = { read?: boolean; action?: boolean; after?: NotificationCursor | null; ids?: readonly string[]; letterCompanyIds?: string[] };

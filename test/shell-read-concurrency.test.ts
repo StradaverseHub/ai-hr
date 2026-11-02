@@ -33,7 +33,12 @@ vi.mock('../core/approvals-inbox', () => ({pendingTaskSummary:async(...args:unkn
 vi.mock('../packs/lifecycle/service', () => ({onboardingNavigation: state.nav, onboardingTasks: state.tasks,
   onboardingNotices: state.notices, onboardingUnreadNoticeCount: state.noticeCount}));
 vi.mock('../packs/performance/service', () => ({latestOnehrAdminCycleId: async () => null, adminSectionHref: () => ''}));
-vi.mock('../core/notifications', () => ({dispatchNotifications: state.dispatch, unreadNotificationCount: state.count, listNotifications: state.list}));
+vi.mock('../core/notifications', () => ({dispatchNotifications: state.dispatch, notificationBellState: async(ctx:unknown,opts:Record<string,unknown>={})=>{
+ const [unread,taskUnread,items,taskItems,history]=await Promise.all([
+  state.count(ctx,undefined,{...opts,action:false}),state.count(ctx,undefined,{...opts,action:true}),
+  state.list(ctx,undefined,{...opts,limit:12,read:false,action:false}),state.list(ctx,undefined,{...opts,limit:12,read:false,action:true}),state.list(ctx,undefined,{...opts,limit:12,read:true}),
+ ]);return {unread,taskUnread,items,taskItems,history};
+}}));
 vi.mock('../core/assistant-launcher', () => ({assistantLauncherFor: async () => null}));
 vi.mock('../core/assistant-grant', () => ({mayUseAssistant: async () => ({allowed: false})}));
 vi.mock('../core/entitlements', () => ({isModuleEnabledOrFalse: (_: unknown, module: string) => state.modules.has(module), settingEnabledOrDefault: () => true}));
@@ -83,7 +88,7 @@ beforeEach(() => {
 });
 
 describe('shared page shell read scheduling', () => {
-  it('starts all five bell reads together and preserves each tab and exact counts', async () => {
+  it('reads one composed bell state and preserves each tab and exact counts', async () => {
     const gate = deferred();
     state.count.mockImplementation(async (_ctx, _employment, opts) => {await gate.promise; return opts.action ? 7 : 3;});
     state.list.mockImplementation(async (_ctx, _employment, opts) => {await gate.promise; return [{id: opts.read ? 'read' : opts.action ? 'action' : 'info'}];});

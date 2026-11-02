@@ -17,7 +17,9 @@ it('returns exactly the five existing recipient views while admitting one applic
  const make=(i:number,severity:'info'|'warning'|'action',read=false)=>({id:randomUUID(),tenantId:b.tenantId,recipientEmploymentId:hired.employmentId,kind:'test.bell',title:'Fictional '+i,body:'Fictional body',severity,linkPath:'/me',createdAt:new Date(Date.UTC(2026,0,1,0,0,i)),readAt:read?new Date(Date.UTC(2026,0,2)):null});
  const infos=Array.from({length:17},(_,i)=>make(i,i%2?'info':'warning')),actions=[make(30,'action'),make(31,'action'),make(32,'action')],history=[make(40,'info',true),make(41,'action',true)];
  const secret={...make(50,'info'),recipientEmploymentId:other.employmentId,title:'Other recipient secret'};
- await owner.db.insert(s.notification).values([...infos,...actions,...history,secret]);
+ const foreignHired=await hireEmployee(adminCtx(foreign),{person:{fullName:'Fictional foreign recipient',primaryEmail:randomUUID()+'@example.invalid'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const foreignSecret={...make(51,'info'),tenantId:foreign.tenantId,recipientEmploymentId:foreignHired.employmentId,title:'Foreign tenant secret'};
+ await owner.db.insert(s.notification).values([...infos,...actions,...history,secret,foreignSecret]);
  const legacy=async(opts:{letterCompanyIds?:string[]}={})=>{
   const [unread,taskUnread,items,taskItems,read]=await Promise.all([
    unreadNotificationCount(ctx,undefined,{...opts,action:false}),unreadNotificationCount(ctx,undefined,{...opts,action:true}),
@@ -35,5 +37,5 @@ it('returns exactly the five existing recipient views while admitting one applic
  await owner.client`select pg_stat_statements_reset()`;expect(await notificationBellState(ctx)).toEqual(expected);evidence.actualSetups=await setups();save();expect(evidence.actualSetups).toBe(1);
  for(const opts of [{letterCompanyIds:[]},{letterCompanyIds:[b.companyId]},{letterCompanyIds:[foreign.companyId]}])expect(await notificationBellState(ctx,opts)).toEqual(await legacy(opts));
  await markNotificationRead(ctx,infos[16].id);const after=await notificationBellState(ctx);expect(after).toEqual(await legacy());expect(after.unread).toBe(16);expect(after.history).toHaveLength(3);
- expect([...after.items,...after.taskItems,...after.history].some(row=>row.id===secret.id)).toBe(false);
+ expect([...after.items,...after.taskItems,...after.history].some(row=>row.id===secret.id||row.id===foreignSecret.id)).toBe(false);
 });
