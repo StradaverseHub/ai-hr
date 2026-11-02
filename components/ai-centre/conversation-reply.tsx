@@ -6,7 +6,7 @@ import { ruleVersionLabel } from '@/lib/ai-centre/rule-version';
 import { ProposalCard, type ProposalCheck } from './proposal-card';
 import { RecommendationPanel } from './leave-recommendation';
 import { ConversationSuggestions } from '@/components/assistant/chat-reply-boundary';
-import { ReplyMarkdown } from './reply-markdown';
+import { ReplyMarkdown, type ReplyLinks } from './reply-markdown';
 
 /** Reads that have a "Why?" explainer the person can ask for next (ADR-0170 step 4). */
 const WHY: Readonly<Record<string, string>> = { my_leave_balances: 'leave', my_payslip_summary: 'payslip' };
@@ -20,7 +20,7 @@ const words = (value: string) => value.replace(/[._]+/g, ' ').trim();
  * and the owning service checks everything again; nothing here completes a change. The approver recommendation
  * shows only "recommend approve" or "needs your review", never a rejection. Awaited by the chat command, like the
  * closed grammar's ExchangeReply. */
-export async function ConversationReply({ turn }: { turn: ConversationTurn }) {
+export async function ConversationReply({ turn, links = new Map() }: { turn: ConversationTurn; links?: ReplyLinks }) {
   const t = await getTranslations('aiCentre.conversation');
   const tr = await getTranslations('aiCentre.recommendation');
   const format = await getFormatter();
@@ -40,7 +40,7 @@ export async function ConversationReply({ turn }: { turn: ConversationTurn }) {
           <span>{t(turn.crisis ? 'routedCrisis' : 'routed')}</span>
         </aside>
       )}
-      {turn.reply && <ReplyMarkdown text={turn.reply} />}
+      {turn.reply && <ReplyMarkdown text={turn.reply} links={links} />}
       {turn.proposals.map(proposal => {
         const body = proposal.body, facts = body.facts ?? {};
         const checks: ProposalCheck[] = body.checks.map(check => ({ label: label('checks', check.check, words(check.check)),

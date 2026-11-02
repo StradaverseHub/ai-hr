@@ -69,7 +69,7 @@ async function askThroughHarness(session:SessionContext,route:Extract<Conversati
   if(input.clarification)throw new ConversationTurnError('continuation_invalid');
   const companyId=(JSON.parse(input.conversationScope) as unknown[]).find((id):id is string=>typeof id==='string')??'';
   const turn=await runConversationTurn(session,route,{question:input.question,companyId,locale:await getLocale(),...(input.continuation===undefined?{}:{continuation:input.continuation})});
-  return {ok:true,exchangeId:'teras-'+turn.turnId,answer:await ConversationReply({turn}),conversationToken:turn.continuation};
+  return {ok:true,exchangeId:'teras-'+turn.turnId,answer:await ConversationReply({turn,links:await replyLinksFor(session,turn.suggestion?.reviewRoute)}),conversationToken:turn.continuation};
  }catch(error){
   const code=error instanceof ConversationTurnError?error.code:'provider_error';
   // A failure the turn did not classify (staging, 2 November 2026: a missing TERAS_PROPOSAL_SECRET made every reply
@@ -103,4 +103,15 @@ export async function loadMoreChatsAction(input:{cursor:unknown}):Promise<{ok:tr
  const t=await getTranslations('assistant');
  try{if(typeof input.cursor!=='string')throw Error();const session=await getBrowserCommandSession(),scope=await assistantBrowserConversationScope(session);const page=await listOwnAssistantChats(session,{cursor:input.cursor},scope);return{ok:true,chats:page.chats.map(({threadId,exchangeId,title})=>({threadId,exchangeId,title})),nextCursor:page.nextCursor,scopeDigest:page.scopeDigest};}
  catch{return{ok:false,message:t('workspace.conversation.unavailable')};}
+}
+
+/** The destinations this caller's reply may link to, the same set the runner's link check allows (linkablePathsFor,
+ * plus this turn's suggestion route), each with the registry's localised title where it has one. */
+async function replyLinksFor(session:SessionContext,suggestionRoute?:string){
+ const [{destinationsFor,linkablePathsFor},{visibleModuleCodes},{linkKey}]=await Promise.all([import('@/lib/product-context/destinations'),import('@/lib/nav-entitlements'),import('@/components/ai-centre/reply-markdown')]);
+ const nav=await getTranslations('nav'),modules=visibleModuleCodes(session)??undefined,links=new Map<string,string|null>();
+ for(const path of linkablePathsFor(session,modules))links.set(linkKey(path),null);
+ for(const row of destinationsFor(session,modules))links.set(linkKey(row.href),nav.has(row.labelKey)?nav(row.labelKey):null);
+ if(suggestionRoute)links.set(linkKey(suggestionRoute),links.get(linkKey(suggestionRoute))??null);
+ return links;
 }
