@@ -10,3 +10,16 @@ export const EMPLOYEE_MASTER_REPORT_FUNCTIONS:readonly FunctionActionDescriptor[
  ]})),
 }];
 export const EMPLOYEE_MASTER_REPORT_DEFAULTS={pure:'app.employee_master_function_legacy_allowed',current:'app.employee_master_function_current_legacy_allowed'}as const;
+
+
+export const REPORT_CATEGORY_FUNCTIONS:readonly FunctionActionDescriptor[]=
+ (['personnel','compensation','identity','bank','statutory','confidential_hr']as const).map(category=>({
+  key:'reportCategories.'+category,scope:'company',moduleKey:'workforce',labelKey:'employeeMasterReports.permissions.'+category,
+  kind:'native_acl',course:'administrative',screenKey:'employeeMasterReports',href:'/reports/employee-master',employeeBearing:true,
+  actions:[{operation:'view',parentCapability:null,delegationFloorFunction:'app.report_category_current',bindings:[
+   {owner:'app.pay_formula_category',operation:'actual-current-company-'+category+'-read'},
+   {owner:'core/payroll.ts',operation:'scope-narrowed-native-category-resolution'},
+   {owner:'core/employee-master-access.ts',operation:'authorized-fields-before-report-output'},
+   {owner:'app.pay_formula_trace_access',operation:'exact-stored-formula-read-categories'},
+  ]}],
+ }));

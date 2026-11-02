@@ -959,3 +959,41 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.employment_void(uuid[],uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.employment_void(uuid[],uuid,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Each existing field category is an independent read purpose. Use the same
+-- native override algebra in report execution, formula evidence and delegation.
+CREATE FUNCTION app.report_category_native(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.app_user actor WHERE actor.id=u AND actor.tenant_id=t
+   AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id))
+ AND EXISTS(SELECT 1 FROM unnest(ARRAY['personnel','compensation','identity','bank','statutory','confidential_hr']) category
+  WHERE cap='function.reportCategories.'||category||'.view'
+   AND app.native_permission_override_fact(t,'report.read.'||category,co,app.employee_master_target_roles(t,u,co),NULL,NULL));
+$$;
+CREATE FUNCTION app.report_category_current(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
+ AND EXISTS(SELECT 1 FROM unnest(ARRAY['personnel','compensation','identity','bank','statutory','confidential_hr']) category
+  WHERE cap='function.reportCategories.'||category||'.view'
+   AND app.native_permission_override_fact(t,'report.read.'||category,co,
+    ARRAY(SELECT role FROM unnest(app.current_roles()) role WHERE app.has_role_for(role,co)),NULL,NULL));
+$$;
+REVOKE ALL ON FUNCTION app.report_category_native(uuid,uuid,text,uuid),app.report_category_current(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE category text;BEGIN
+ FOREACH category IN ARRAY ARRAY['personnel','compensation','identity','bank','statutory','confidential_hr'] LOOP
+  PERFORM app.register_function_action('reportCategories.'||category,'view','company',NULL,'app.report_category_current',
+   jsonb_build_object('moduleKey','workforce','labelKey','employeeMasterReports.permissions.'||category,'kind','native_acl','course','administrative',
+    'screenKey','employeeMasterReports','href','/reports/employee-master','employeeBearing',true));
+ END LOOP;
+END $$;
+CREATE OR REPLACE FUNCTION app.employee_master_personnel_permission(t uuid,co uuid,roles text[]) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.native_permission_override_fact(t,'report.read.personnel',co,roles,NULL,NULL);
+$$;
+CREATE OR REPLACE FUNCTION app.pay_formula_category(p_company uuid,p_category text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_company IS NOT NULL
+ AND app.report_category_current(app.current_tenant_id(),app.current_user_id(),'function.reportCategories.'||p_category||'.view',p_company)
+ AND app.function_action_allowed('reportCategories.'||p_category,'view',p_company);
+$$;

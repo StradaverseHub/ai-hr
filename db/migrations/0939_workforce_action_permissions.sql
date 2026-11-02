@@ -2207,9 +2207,10 @@ $$;
 CREATE FUNCTION app.employee_master_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT cap IN ('function.employeeMasterReports.view','function.employeeMasterReports.add','function.employeeMasterReports.edit','function.employeeMasterReports.delete')AND t=app.current_tenant_id()AND u=app.current_user_id()AND app.principal_snapshot_current()
- AND app.employee_master_personnel_permission(t,co,ARRAY(SELECT role FROM unnest(app.current_roles()) role WHERE app.has_role_for(role,co)))
- AND(co IS NOT NULL OR NOT EXISTS(SELECT 1 FROM public.company company WHERE company.tenant_id=t
-  AND NOT app.employee_master_personnel_permission(t,company.id,ARRAY(SELECT role FROM unnest(app.current_roles()) role WHERE app.has_role_for(role,company.id)))));
+ AND CASE WHEN co IS NOT NULL THEN app.pay_formula_category(co,'personnel')
+ ELSE app.employee_master_personnel_permission(t,NULL,ARRAY(SELECT role FROM unnest(app.current_roles()) role WHERE app.has_role_for(role,NULL)))
+  AND app.function_global_action_allowed('reportCategories.personnel','view')
+  AND NOT EXISTS(SELECT 1 FROM public.company company WHERE company.tenant_id=t AND NOT app.pay_formula_category(company.id,'personnel')) END;
 $$;
 REVOKE ALL ON FUNCTION app.employee_master_function_legacy_allowed(uuid,uuid,text,uuid),app.employee_master_function_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 DO $$ DECLARE operation text;BEGIN
@@ -2233,7 +2234,7 @@ CREATE TRIGGER data_permission_report_read_generation_delete AFTER DELETE ON cus
 -- the entire caller-selected scope through the unchanged field catalogue.
 CREATE FUNCTION app.employee_master_definition_allowed(p_spec jsonb,p_operation text) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE selected jsonb;p_company uuid;roles text[];
+DECLARE selected jsonb;p_company uuid;
 BEGIN
  IF p_operation NOT IN ('view','add','edit','delete') OR NOT app.principal_snapshot_current() OR app.current_user_id() IS NULL THEN RETURN false;END IF;
  IF p_spec ? 'employeeMaster' THEN
@@ -2241,15 +2242,14 @@ BEGIN
   IF jsonb_typeof(selected) IS DISTINCT FROM 'array' OR jsonb_array_length(selected)=0 THEN RETURN false;END IF;
   FOR p_company IN SELECT value::uuid FROM jsonb_array_elements_text(selected) LOOP
    IF p_company IS NULL THEN RETURN false;END IF;
-   SELECT ARRAY(SELECT role FROM unnest(app.current_roles()) role WHERE app.has_role_for(role,p_company)) INTO roles;
-   IF NOT app.employee_master_personnel_permission(app.current_tenant_id(),p_company,roles)
+   IF NOT app.pay_formula_category(p_company,'personnel')
     OR NOT app.function_action_allowed('employeeMasterReports','view',p_company)
     OR NOT app.function_action_allowed('employeeMasterReports',p_operation,p_company) THEN RETURN false;END IF;
   END LOOP;
   RETURN true;
  END IF;
  RETURN EXISTS(SELECT 1 FROM public.company company WHERE company.tenant_id=app.current_tenant_id()
-  AND app.employee_master_personnel_permission(company.tenant_id,company.id,ARRAY(SELECT role FROM unnest(app.current_roles()) role WHERE app.has_role_for(role,company.id)))
+  AND app.pay_formula_category(company.id,'personnel')
   AND app.function_action_allowed('employeeMasterReports','view',company.id)
   AND app.function_action_allowed('employeeMasterReports',p_operation,company.id));
 EXCEPTION WHEN invalid_text_representation THEN RETURN false;

@@ -9225,6 +9225,10 @@ export async function resolvePayrollPermission(
      and u.tenant_id=app.current_tenant_id() and u.archived_at is null and not app.login_blocked(u.id)
      and app.principal_snapshot_current()) as current`);
   if(principal?.current!==true)return false;
+  if(companyId&&key.startsWith('report.read.')){
+    const [purpose]=await tx.execute<{allowed:boolean}>(sql`select app.pay_formula_category(${companyId}::uuid,${key.slice('report.read.'.length)}) as allowed`);
+    if(purpose?.allowed!==true)return false;
+  }
   const effective=await tx.execute<{role:string}>(sql`select distinct candidate.role
     from jsonb_to_recordset(${JSON.stringify(candidates)}::jsonb) as candidate(role text,"companyId" uuid)
     where (candidate."companyId" is null or candidate."companyId"=${companyId??null}::uuid

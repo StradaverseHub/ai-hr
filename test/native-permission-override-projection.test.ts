@@ -44,12 +44,15 @@ it('collects Report roles for the actual company while preserving Leave all-role
  const [other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional scoped HR other company'}).returning({id:s.company.id});
  const userId=await createAppUser(b.tenantId,null,'employee');await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:userId,role:'hr_admin',companyId:other.id});
  const target:SessionContext={...admin,userId,personId:null,roles:['employee','hr_admin'],grants:[{role:'employee',companyId:null},{role:'hr_admin',companyId:other.id}]};
+ const rawCategory=()=>withTenant(target,tx=>tx.execute(sql`select app.pay_formula_category(${b.companyId}::uuid,'personnel') as allowed`));
+ expect(await rawCategory()).toEqual([{allowed:false}]);
  expect(await withTenant(target,tx=>resolvePayrollPermission(tx,target,'report.read.personnel',b.companyId))).toBe(false);
  const candidate={id:randomUUID(),tenant_id:b.tenantId,company_id:b.companyId,permission_key:'report.read.personnel',role:'employee',allowed:true};
  const [report]=await owner.db.execute<{before:boolean;after:boolean}>(sql`select before_allowed as before,after_allowed as after from app.native_permission_override_recipients(${b.tenantId}::uuid,'report.read.personnel',null,${JSON.stringify(candidate)}::jsonb) where user_id=${userId}::uuid and company_id=${b.companyId}::uuid`);expect(report).toEqual({before:false,after:true});
  const [leave]=await owner.db.execute<{before:boolean;after:boolean}>(sql`select before_allowed as before,after_allowed as after from app.native_permission_override_recipients(${b.tenantId}::uuid,'leave.apply_on_behalf',null,${JSON.stringify(candidate)}::jsonb) where user_id=${userId}::uuid and company_id=${b.companyId}::uuid`);expect(leave).toEqual({before:true,after:true});
  await setPayrollPermissionGrant(admin,{companyId:b.companyId,permissionKey:'report.read.personnel',role:'employee',allowed:true});
  expect(await withTenant(target,tx=>resolvePayrollPermission(tx,target,'report.read.personnel',b.companyId))).toBe(true);
+ expect(await rawCategory()).toEqual([{allowed:true}]);
  const globalCandidate={...candidate,company_id:null};
  const [future]=await owner.db.execute<{before:boolean;after:boolean}>(sql`select before_allowed as before,after_allowed as after from app.native_permission_override_recipients(${b.tenantId}::uuid,'report.read.personnel',null,${JSON.stringify(globalCandidate)}::jsonb) where user_id=${userId}::uuid and company_id is null`);expect(future).toEqual({before:false,after:true});
 });
