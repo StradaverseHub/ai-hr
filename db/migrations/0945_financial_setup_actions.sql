@@ -102,6 +102,12 @@ BEGIN
  OR (a IS NOT NULL AND b IS NOT NULL AND (a->>'id' IS DISTINCT FROM b->>'id' OR a->>'tenant_id' IS DISTINCT FROM b->>'tenant_id')) THEN RAISE EXCEPTION 'Financial setup principal unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='UPDATE' AND b->>'archived_at' IS NULL AND a->>'archived_at' IS NOT NULL THEN op:='delete';END IF;
  IF TG_TABLE_NAME='payroll_cycle' AND TG_OP='INSERT' AND app.financial_setup_standard_cycle(a) THEN RETURN NULL;END IF;
+ IF TG_TABLE_NAME='pay_component' THEN
+  IF TG_OP='INSERT' AND (a->>'resolution_order')::integer<>0 THEN RAISE EXCEPTION 'Catalogue rank must be derived' USING ERRCODE='42501';END IF;
+  IF TG_OP='UPDATE' AND b->'resolution_order' IS DISTINCT FROM a->'resolution_order' THEN
+   IF NOT app.financial_catalog_rank_effect_allowed(b,a) THEN RAISE EXCEPTION 'Catalogue rank requires its exact native derivation' USING ERRCODE='42501';END IF;RETURN NULL;
+  END IF;
+ END IF;
  IF TG_TABLE_NAME='pay_component' AND TG_OP='INSERT' AND app.financial_backpay_catalog_approved(b,a) THEN RETURN NULL;END IF;
  IF TG_TABLE_NAME IN ('pay_component','payroll_import_code','pay_formula','pay_formula_revision','pay_formula_event','pay_formula_accumulation') THEN
   catalogue:=true;
@@ -598,3 +604,135 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
       OR app.access_scope_covers(p_company,o.company_id,u.tenant_id)))
  );
 $$;
+
+--> statement-breakpoint
+-- The derived rank owner accepts no proposed rank or graph. It computes only the actual stored
+-- graph under the same Access/catalogue lock as native maintenance. Runtime callers cannot open
+-- a receipt context, write a proof or nominate another tenant. Every physical rank mutation is
+-- witnessed separately, including savepoints and a write followed by restoration.
+CREATE TABLE app.financial_catalog_source(
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,row_id uuid NOT NULL,
+ operation text NOT NULL,code text NOT NULL,before_hash text NOT NULL,after_hash text NOT NULL,
+ PRIMARY KEY(xact_id,tenant_id,user_id,row_id,before_hash,after_hash)
+);
+CREATE TABLE app.financial_catalog_event(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,row_id uuid NOT NULL,event_id uuid NOT NULL,event_type text NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,event_id));
+CREATE TABLE app.financial_catalog_rank_open(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,call_id uuid NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id));
+CREATE TABLE app.financial_catalog_rank_effect(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,call_id uuid NOT NULL,row_id uuid NOT NULL,before_hash text NOT NULL,after_hash text NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,call_id,row_id,before_hash,after_hash));
+ALTER TABLE app.financial_catalog_source ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.financial_catalog_event ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.financial_catalog_rank_open ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.financial_catalog_rank_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_catalog_source,app.financial_catalog_event,app.financial_catalog_rank_open,app.financial_catalog_rank_effect FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_catalog_statement_lock() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN
+  PERFORM app.access_workforce_write_lock();
+  PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':pay-component-catalog',0));
+ END IF;RETURN NULL;
+END;$$;
+CREATE TRIGGER a00_financial_catalog_lock BEFORE INSERT OR UPDATE OR DELETE ON public.pay_component FOR EACH STATEMENT EXECUTE FUNCTION app.financial_catalog_statement_lock();
+CREATE FUNCTION app.financial_catalog_capture() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ selected jsonb:=CASE WHEN TG_OP='DELETE' THEN before_row ELSE after_row END;call uuid;operation text;
+BEGIN
+ IF app.access_workforce_storage_owner() OR app.current_user_id() IS NULL THEN RETURN NULL;END IF;
+ SELECT call_id INTO call FROM app.financial_catalog_rank_open WHERE xact_id=pg_current_xact_id() AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id();
+ IF call IS NOT NULL THEN
+  IF TG_OP<>'UPDATE' OR before_row-'resolution_order' IS DISTINCT FROM after_row-'resolution_order' THEN RAISE EXCEPTION 'Catalogue rank effect changed source facts' USING ERRCODE='42501';END IF;
+  INSERT INTO app.financial_catalog_rank_effect VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),call,(selected->>'id')::uuid,encode(sha256(convert_to(before_row::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex')) ON CONFLICT DO NOTHING;
+ ELSE
+  operation:=CASE WHEN TG_OP='INSERT' THEN 'add' WHEN TG_OP='DELETE' OR TG_OP='UPDATE' AND before_row->>'archived_at' IS NULL AND after_row->>'archived_at' IS NOT NULL THEN 'delete' ELSE 'edit' END;
+  INSERT INTO app.financial_catalog_source VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),(selected->>'id')::uuid,operation,selected->>'code',encode(sha256(convert_to(before_row::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex')) ON CONFLICT DO NOTHING;
+ END IF;RETURN NULL;
+END;$$;
+CREATE TRIGGER financial_catalog_source AFTER INSERT OR UPDATE OR DELETE ON public.pay_component FOR EACH ROW EXECUTE FUNCTION app.financial_catalog_capture();
+CREATE FUNCTION app.financial_catalog_capture_event() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() AND NEW.tenant_id=app.current_tenant_id() AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() AND NEW.aggregate_type='pay-component' AND NEW.event_type IN ('pay-component.created','pay-component.updated','pay-component.archived','pay-component.unarchived','pay-component.deleted') THEN
+  INSERT INTO app.financial_catalog_event VALUES(pg_current_xact_id(),NEW.tenant_id,NEW.actor_id,NEW.aggregate_id,NEW.id,NEW.event_type) ON CONFLICT DO NOTHING;
+ END IF;RETURN NEW;
+END;$$;
+CREATE TRIGGER financial_catalog_event AFTER INSERT ON public.domain_event FOR EACH ROW EXECUTE FUNCTION app.financial_catalog_capture_event();
+--> statement-breakpoint
+-- Storage-order projection of the canonical typed graph: explicit component operands and builder
+-- dependencies, plus fixed_allowances edges to eligible live ORP members. Missing references have
+-- rank zero as in planResolutionOrder; a cycle yields NULL and never writes partial ranks.
+CREATE FUNCTION app.financial_catalog_expected_ranks() RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE nodes jsonb;dependencies jsonb:='{}'::jsonb;ranks jsonb:='{}'::jsonb;node record;dep text;deps text[];operand jsonb;formula jsonb;candidate record;ready boolean;rank integer;progress boolean;round integer;
+BEGIN
+ SELECT coalesce(jsonb_object_agg(upper(btrim(code)),to_jsonb(c)),'{}'::jsonb) INTO nodes FROM public.pay_component c WHERE tenant_id=app.current_tenant_id();
+ IF (SELECT count(*) FROM jsonb_object_keys(nodes))<>(SELECT count(*) FROM public.pay_component WHERE tenant_id=app.current_tenant_id()) THEN RAISE EXCEPTION 'Ambiguous catalogue code' USING ERRCODE='42501';END IF;
+ FOR node IN SELECT key,value FROM jsonb_each(nodes) ORDER BY key LOOP
+  formula:=node.value->'rule';deps:=ARRAY[]::text[];
+  IF formula->>'kind'='percent_of' AND formula->>'base'='component' THEN deps:=array_append(deps,upper(btrim(formula->>'componentCode')));END IF;
+  IF formula->>'kind'='formula_builder' THEN
+   FOR dep IN SELECT jsonb_array_elements_text(coalesce(formula->'dependencies','[]'::jsonb)) LOOP deps:=array_append(deps,upper(btrim(dep)));END LOOP;
+  END IF;
+  IF formula->>'kind'='formula' THEN
+   FOR operand IN SELECT formula->'start' UNION ALL SELECT term->'operand' FROM jsonb_array_elements(coalesce(formula->'terms','[]'::jsonb)) term LOOP
+    IF operand->>'ref'='component' THEN deps:=array_append(deps,upper(btrim(operand->>'code')));END IF;
+    IF operand->>'ref'='fixed_allowances' THEN
+     FOR candidate IN SELECT key,value FROM jsonb_each(nodes) WHERE key<>node.key LOOP
+      IF candidate.value->>'archived_at' IS NULL AND candidate.key<>'BASIC' AND candidate.key<>ALL(ARRAY['EPF','EPF_EMPLOYEE','EPF_EMPLOYER','KWSP','SOCSO','SOCSO_EMPLOYEE','SOCSO_EMPLOYER','PERKESO','EIS','EIS_EMPLOYEE','EIS_EMPLOYER','SIP','PCB','MTD','CP38','HRDF','HRDF_LEVY','HRDC','ZAKAT']) AND candidate.value->>'kind' NOT IN ('contribution','deduction') AND (candidate.value->>'rule' IS NULL OR candidate.value->'rule'->>'kind'='fixed') AND coalesce((candidate.value->>'orp_overtime')::boolean,candidate.value->>'kind'='allowance') THEN deps:=array_append(deps,candidate.key);END IF;
+     END LOOP;
+    END IF;
+   END LOOP;
+  END IF;
+  SELECT coalesce(array_agg(DISTINCT value ORDER BY value),ARRAY[]::text[]) INTO deps FROM unnest(deps) value WHERE value IS NOT NULL AND value<>'';
+  dependencies:=dependencies||jsonb_build_object(node.key,to_jsonb(deps));
+ END LOOP;
+ FOR round IN 1..greatest(1,(SELECT count(*)::integer FROM jsonb_object_keys(nodes))) LOOP
+  progress:=false;
+  FOR node IN SELECT key,value FROM jsonb_each(dependencies) ORDER BY key LOOP
+   IF ranks ? node.key THEN CONTINUE;END IF;ready:=true;rank:=0;
+   FOR dep IN SELECT jsonb_array_elements_text(node.value) LOOP
+    IF nodes ? dep AND NOT ranks ? dep THEN ready:=false;EXIT;END IF;
+    rank:=greatest(rank,coalesce((ranks->>dep)::integer,0)+1);
+   END LOOP;
+   IF ready THEN ranks:=ranks||jsonb_build_object(node.key,rank);progress:=true;END IF;
+  END LOOP;
+  IF (SELECT count(*) FROM jsonb_object_keys(ranks))=(SELECT count(*) FROM jsonb_object_keys(nodes)) THEN RETURN ranks;END IF;
+  IF NOT progress THEN RETURN NULL;END IF;
+ END LOOP;RETURN NULL;
+END;$$;
+CREATE FUNCTION app.financial_catalog_rank_effect_allowed(p_before jsonb,p_after jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_before-'resolution_order'=p_after-'resolution_order' AND EXISTS(SELECT 1 FROM app.financial_catalog_rank_effect effect WHERE effect.xact_id=pg_current_xact_id() AND effect.tenant_id=app.current_tenant_id() AND effect.user_id=app.current_user_id() AND effect.row_id=(p_after->>'id')::uuid AND effect.before_hash=encode(sha256(convert_to(p_before::text,'UTF8')),'hex') AND effect.after_hash=encode(sha256(convert_to(p_after::text,'UTF8')),'hex'));
+$$;
+CREATE FUNCTION app.financial_catalog_rank_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE ranks jsonb;
+BEGIN
+ IF NEW.xact_id<>pg_current_xact_id() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.user_id IS DISTINCT FROM app.current_user_id() OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Catalogue rank source unavailable' USING ERRCODE='42501';END IF;
+ IF NOT EXISTS(SELECT 1 FROM app.financial_catalog_source source JOIN app.financial_catalog_event audit USING(xact_id,tenant_id,user_id,row_id) WHERE source.xact_id=NEW.xact_id AND source.tenant_id=NEW.tenant_id AND source.user_id=NEW.user_id AND app.financial_setup_catalog_function('payComponents.catalogue',source.operation) AND audit.event_type=CASE source.operation WHEN 'add' THEN 'pay-component.created' WHEN 'delete' THEN CASE WHEN source.after_hash=encode(sha256(convert_to('{}','UTF8')),'hex') THEN 'pay-component.deleted' ELSE 'pay-component.archived' END ELSE CASE WHEN audit.event_type='pay-component.unarchived' THEN 'pay-component.unarchived' ELSE 'pay-component.updated' END END) THEN RAISE EXCEPTION 'Catalogue rank requires its actual maintenance source and audit' USING ERRCODE='42501';END IF;
+ ranks:=app.financial_catalog_expected_ranks();
+ IF ranks IS NULL OR EXISTS(SELECT 1 FROM public.pay_component c WHERE c.tenant_id=NEW.tenant_id AND c.resolution_order IS DISTINCT FROM (ranks->>upper(btrim(c.code)))::integer) THEN RAISE EXCEPTION 'Catalogue graph changed after rank derivation' USING ERRCODE='42501';END IF;RETURN NULL;
+END;$$;
+CREATE CONSTRAINT TRIGGER financial_catalog_rank_complete AFTER INSERT ON app.financial_catalog_rank_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_catalog_rank_complete();
+CREATE FUNCTION app.financial_catalog_recompute_order() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE ranks jsonb;node record;call uuid:=gen_random_uuid();storage_owner boolean:=app.access_workforce_storage_owner();
+BEGIN
+ IF NOT storage_owner THEN
+  PERFORM app.access_workforce_write_lock();
+  IF NOT app.financial_setup_catalog_function('payComponents.catalogue','view') OR NOT EXISTS(SELECT 1 FROM app.financial_catalog_source source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=app.current_tenant_id() AND source.user_id=app.current_user_id() AND app.financial_setup_catalog_function('payComponents.catalogue',source.operation)) THEN RAISE EXCEPTION 'Catalogue derivation source unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':pay-component-catalog',0));
+ ranks:=app.financial_catalog_expected_ranks();IF ranks IS NULL THEN RETURN;END IF;
+ DELETE FROM app.financial_catalog_source WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ DELETE FROM app.financial_catalog_event WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ DELETE FROM app.financial_catalog_rank_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ DELETE FROM app.financial_catalog_rank_open WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ IF NOT storage_owner THEN INSERT INTO app.financial_catalog_rank_open VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),call);END IF;
+ FOR node IN SELECT id,code,resolution_order FROM public.pay_component WHERE tenant_id=app.current_tenant_id() ORDER BY id FOR UPDATE LOOP
+  IF node.resolution_order IS DISTINCT FROM (ranks->>upper(btrim(node.code)))::integer THEN UPDATE public.pay_component SET resolution_order=(ranks->>upper(btrim(node.code)))::integer WHERE id=node.id AND tenant_id=app.current_tenant_id();END IF;
+ END LOOP;
+ IF NOT storage_owner THEN DELETE FROM app.financial_catalog_rank_open WHERE xact_id=pg_current_xact_id() AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND call_id=call;END IF;
+END;$$;
+REVOKE ALL ON FUNCTION app.financial_catalog_statement_lock(),app.financial_catalog_capture(),app.financial_catalog_capture_event(),app.financial_catalog_expected_ranks(),app.financial_catalog_rank_effect_allowed(jsonb,jsonb),app.financial_catalog_rank_complete(),app.financial_catalog_recompute_order() FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.financial_catalog_recompute_order() TO ai_hr_app;

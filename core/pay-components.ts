@@ -765,36 +765,10 @@ async function catalogNodesTx(tx: Tx, tenantId: string): Promise<PayRuleCatalogN
  * place is the fail-safe outcome (the run keeps using the last order that was proven acyclic).
  */
 async function recordResolutionOrderTx(tx: Tx, tenantId: string): Promise<void> {
-  const rows = await tx
-    .select({
-      id: payComponent.id,
-      code: payComponent.code,
-      rule: payComponent.rule,
-      resolutionOrder: payComponent.resolutionOrder,
-      // 2da9937a — planResolutionOrder needs the kind to know which rows are fixed allowances, so that an
-      // item reading the `fixed_allowances` aggregate is RECORDED above them. resolvePayComponentSet
-      // re-derives that ordering anyway (a stored rank can be stale, and a one-off batch row has none), so
-      // omitting this would not pay a wrong figure — it would only persist a rank that misdescribes the
-      // graph, which is exactly the kind of quietly-wrong number this column exists to prevent.
-      kind: payComponent.kind,
-      archivedAt: payComponent.archivedAt,
-      // 711adcd2 — and the TICK BOX, for the identical reason `kind` is here: it is now the aggregate's
-      // membership test, so a rank planned without it would describe the pre-0456 graph. Omitting it would
-      // not pay a wrong figure (resolvePayComponentSet re-derives the ordering from the same predicate),
-      // but it would persist a resolution_order that misdescribes the graph the moment an operator
-      // un-ticks an item an overtime formula ranks against.
-      orpOvertime: payComponent.orpOvertime,
-    })
-    .from(payComponent)
-    .where(eq(payComponent.tenantId, tenantId));
-  const plan = planResolutionOrder(rows.map((r) => ({ code: r.code, rule: r.rule, kind: r.kind, archived: r.archivedAt != null, orpOvertime: r.orpOvertime })));
-  if (!plan.ok) return;
-  for (const r of rows) {
-    const next = plan.order.get(r.code.trim().toUpperCase()) ?? 0;
-    if (next !== r.resolutionOrder) {
-      await tx.update(payComponent).set({ resolutionOrder: next }).where(eq(payComponent.id, r.id));
-    }
-  }
+  // The finite storage owner derives the live graph itself; no caller-supplied rank or arbitrary
+  // retained-row Edit is admitted as a consequence of Add. Existing typed validation still owns
+  // input errors before the primary write. SQL repeats the graph/effect/audit admission at storage.
+  await tx.execute(sql`select app.financial_catalog_recompute_order() where app.current_tenant_id()=${tenantId}::uuid`);
 }
 
 /** Admin upsert of a single catalog component (by code). Validates the rule against the component's
