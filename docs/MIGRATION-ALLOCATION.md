@@ -1002,7 +1002,7 @@ ordered applied ledger and competing claims before admission. It grants no insta
 ## Financial setup/native import boundary — 2 November 2026 (provisional)
 
 BOARD parent reserves `0945_financial_setup_actions`, aggregate idx767 /when1793330000345.
-Source SHA256 `0ed5a9dbbb657007791a2cf7e0090a0c8f6330c50de1a89b80cd243767c425ab`. Reserved0943/idx765 and0944/idx766 are integrated in their reserved timestamp order; no existing entry
+Source SHA256 `02219f6fecd6e4bd7eee39b3d0ec169bc37d4dde5891a8c143f661bd909e057d`. Reserved0943/idx765 and0944/idx766 are integrated in their reserved timestamp order; no existing entry
 is renumbered. This is an unapplied development checkpoint, not installed or accepted source.
 Its catalogue, history, tax, formula and loan guards still require hosted qualification,
 precise module/submenu facts, and TP1/CP38/statutory input qualification and binding closure.
