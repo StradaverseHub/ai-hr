@@ -33,7 +33,8 @@ it('preserves populated shell views and fresh recipient state with one APP trans
  await onboardingReadNotice(ctx,notices[54].id);const refreshed=await onboardingShellState(ctx);expect(refreshed).toEqual(await legacy());expect(refreshed.unreadCount).toBe(54);expect(refreshed.history).toHaveLength(2);
  expect([...refreshed.unread,...refreshed.history].some(n=>n.id==='onb:'+foreignNotice.id||n.id==='onb:'+digest.id||n.id==='onb:'+otherNotice.id)).toBe(false);
  const otherState=await onboardingShellState({...ctx,userId:otherUserId,personId:null,roles:['employee'],grants:undefined});
- expect(otherState.unread.map(n=>n.id)).toEqual(['onb:'+otherNotice.id]);expect(otherState.unreadCount).toBe(1);expect(otherState.tasks).toEqual([]);
+ // Recipient identity alone is not case participation: onb_notice_read must still hide this row.
+ expect(otherState.unread).toEqual([]);expect(otherState.unreadCount).toBe(0);expect(otherState.tasks).toEqual([]);
  await setModule(b.tenantId,'lifecycle','disabled');const disabled=await entitledCtx(b);
  await expect(onboardingShellState(disabled)).rejects.toThrow();
  await setModule(b.tenantId,'lifecycle','active');
