@@ -907,6 +907,43 @@ Rewards. Timestamp and SQL bytes are unchanged. The SQL only replaces 0682's CHE
 (0–1 instead of 0.01–1, both rates still NOT NULL), so every existing row satisfies it and no data
 script is needed. No table, grant or RLS change. Grants no installation or acceptance.
 
+## ADR-0170 step 5a (Teras outcome record and work-job mandates) — 1 November 2026 (provisional source claim)
+
+Branch `claude/teras-step5a-outcome-mandates` (cut from `claude/teras-step1-harness` a87dc418, journal ending
+`0874_payroll_tax_basis_corrections` idx752 / when1793330000274). A scan of every local and origin ref plus
+registered worktree journals found the highest claim at `0887_attendance_task_candidate_access`
+(when1793330000287, performance work) and no Teras sibling migration; this claim starts above it with a
+small gap. Development source only: no installation priority, no deployment. The idx values below are this
+branch's own journal positions and must be re-frozen above the then-installed ledger at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|753|1793330000290|0890_teras_outcome_record_mandates|f60531e8dcc633857fc5bb18f7cf886a75b1767374956e30a2b49d6a962627c4|
+|754|1793330000291|0891_teras_rule_version_labels|2d779ba3d268fcc68a1cf2e2d1ffde50e72ade996daa02ff4ec4e345203d531b|
+
+Existing populated-upgrade tests pin their own tails (`test/payroll-tax-basis-upgrade.test.ts` and peers) and
+will need the integrator's usual tail update when these entries land.
+
+## ADR-0170 step 5 (Teras recommendations, digest and agent registry) — 1 November 2026 (provisional source claim)
+
+Branch `claude/teras-step5-recommend-digest-registry` (cut from `claude/teras-integration` a2a39018, journal
+ending `0891_teras_rule_version_labels` idx754 / when1793330000291). A scan of every origin ref found the highest
+claim at `0892_attendance_legacy_candidate_gate` (`codex/performance-attendance-candidate-profile-20261101`);
+0893–0894 are left for the parallel step 5c. Development source only: no installation priority, no deployment.
+The idx is this branch's own journal position and must be re-frozen above the then-installed ledger at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|755|1793330000295|0895_teras_worker_registry|60108e148ce2f7c0c178d4a678217a565c2f2d0f1b6988752ffc61f1f1d3c259|
+
+## AI centre step 5 UI integration — 2 November 2026 (development source only)
+
+Branch `claude/ai-centre-step5-ui-20261102` (cut from `claude/teras-privacy-fixes` da4743404, normal merge of
+`claude/ai-centre-revamp-20261101`, which carries main through `0876_epf_manual_percentage_zero`). The journal
+union orders the Teras claims above main's 0875/0876 by timestamp: 0890 idx755, 0891 idx756, 0895 idx757
+(timestamps …290/…291/…295 and SQL bytes unchanged). No migration is added by the UI work. Re-freeze above
+the then-installed ledger at integration; this grants no installation.
+
 ## Entra workforce connector — 2 November 2026 (provisional)
 
 `codex/entra-integration-design-20261102` appends `0899_entra_workforce` at
@@ -927,3 +964,26 @@ index 756, after `0898` at 755. The complete main/alpha prefix through `0876` / 
 This is an owned aggregate source reservation, not adoption of either member's gate evidence.
 Recheck the then-live watermark and release order before integration or installation; later accepted
 migrations can require reallocation of both uninstalled identities. No lease or staging operation is claimed.
+
+## Teras re-allocation above the Entra watermark — 2 November 2026 (provisional source claim)
+
+Branch `claude/teras-review-fixes`, after the normal merge of released main 50ea2471 (642 journal entries; the live
+ledger reported by the Entra hand-back has 642 applied rows, watermark when1793330000299, with 0898
+`0f7204555b6aad9819a43e9a00b04530593e1d137afa7941603ac02e8ecc8729` and 0899
+`c70afe9dac5c37ebd471230df02f9d824184affc5db50ab7d8c6163c0adf842b` verified byte-identical here). None of the Teras
+migrations is applied anywhere. A scan of every origin ref and open PR found claims through
+`0923_overtime_formula_candidate_plan` (when1793330000323, performance work), so the Teras claims move above it.
+SQL bytes are unchanged; only file names and journal positions move. The earlier entries for 0890/0891/0895 above
+are superseded by this table. Development source only: no installation priority, no deployment; re-freeze above
+the then-installed ledger at integration.
+
+| idx (branch) | when | Tag | Was | SQL SHA256 |
+| ---: | ---: | --- | --- | --- |
+|757|1793330000324|0924_teras_outcome_record_mandates|0890|f60531e8dcc633857fc5bb18f7cf886a75b1767374956e30a2b49d6a962627c4|
+|758|1793330000325|0925_teras_rule_version_labels|0891|2d779ba3d268fcc68a1cf2e2d1ffde50e72ade996daa02ff4ec4e345203d531b|
+|759|1793330000326|0926_teras_worker_registry|0895|60108e148ce2f7c0c178d4a678217a565c2f2d0f1b6988752ffc61f1f1d3c259|
+|760|1793330000327|0927_teras_conversation_switch|0901|ac5475982a99c2b387bc5f34e9af6f69cb5bbe3aac156bdd8aa906e17579c968|
+|761|1793330000328|0928_teras_outcome_private_turns|0905|17a50608b153559bfa06cf49f2b2efb526c85f2cbf0ce1de16a78fa4a0df8fa9|
+|762|1793330000329|0929_teras_review_services|0906|765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0|
+
+The SQL comments inside these files still name their original provisional numbers; the bodies are kept byte for byte.

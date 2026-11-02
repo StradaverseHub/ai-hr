@@ -58,6 +58,7 @@ const Arguments = z.object({
   maxTokens: z.number().int().min(1).max(32_768).optional(),
   timeoutMs: z.number().int().min(1).max(120_000).optional(),
   cacheKey: z.string().max(512).optional(),
+  allowMultipleToolCalls: z.literal(true).optional(),
 }).strict();
 
 /** Constructs only explicitly supported fields. No key, routing override, user identifier, cache
@@ -184,7 +185,8 @@ export function createOpenRouterTransport(fetcher: typeof fetch) {
         const completion = readOpenRouterCompletion(value);
         // Some approved endpoints support tools but not the optional parallel_tool_calls parameter.
         // Preserve sequential tool execution deterministically instead of sending an unsupported flag.
-        if (completion.toolCalls.length > 1) throw unavailable();
+        // A caller that opted in (the Teras harness) executes several calls itself, in order and under caps.
+        if (completion.toolCalls.length > 1 && args.allowMultipleToolCalls !== true) throw unavailable();
         return { completion, accounting, elapsedMs };
       };
       return await Promise.race([run(), cancelled]);

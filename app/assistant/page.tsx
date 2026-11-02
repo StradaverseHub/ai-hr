@@ -36,6 +36,12 @@ import { HomeTasksCard } from '@/components/employee-home/tasks-card';
 import { HomeCalendarCard } from '@/components/employee-home/calendar-card';
 import {eraseGovernedJobFeedbackAction} from './job-feedback-actions';
 import { eraseAgentFeedbackAction } from './feedback-actions';
+import { isCentreView } from '@/lib/ai-centre/centre-nav';
+import { AI_ARCHITECTURE_LABEL, AI_PRODUCT_NAME, aiCentreName } from '@/lib/ai-centre/brand';
+import { AiCentreTabs } from '@/components/ai-centre/centre-tabs';
+import { AiCentreDelegatedJobs } from '@/components/ai-centre/delegated-jobs';
+import { HowItWorks } from '@/components/ai-centre/how-it-works';
+import { AiCentreInbox, aiCentreInboxCount } from './centre/inbox';
 
 /**
  * ADR-0082 slice 4 — THE ASSISTANT'S FIRST SCREEN, and the first time any of it is reachable.
@@ -62,11 +68,27 @@ import { eraseAgentFeedbackAction } from './feedback-actions';
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
+  searchParams: Promise<{ view?: string; recommend?: string; e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
   const sp = await searchParams;
+  // AI centre (docs/design/ai-centre/PLAN.md): Inbox, Delegated jobs and How it works are views of this
+  // route, behind the same layout session check. They read native owners as the caller (Inbox) or nothing
+  // at all, so they do not depend on the Assistant grant; the conversation below keeps its own checks.
+  const admin = isAdmin(s);
+  if (isCentreView(sp.view)) {
+    const tc = await getTranslations('aiCentre.how');
+    return (
+      <div data-ai-centre={sp.view} className="mx-auto max-w-6xl space-y-6">
+        <AiCentreTabs active={sp.view} isAdmin={admin} inboxCount={sp.view === 'inbox' ? undefined : await aiCentreInboxCount(s)} />
+        {sp.view === 'inbox' && <AiCentreInbox session={s} recommend={typeof sp.recommend === 'string' ? sp.recommend : undefined} />}
+        {sp.view === 'jobs' && <AiCentreDelegatedJobs />}
+        {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '/control-tower/how-it-works' : undefined} /></>}
+      </div>
+    );
+  }
+  const centreTabs = <AiCentreTabs active="ask" isAdmin={admin} inboxCount={await aiCentreInboxCount(s)} />;
   const errorMessage=sp.error==='clarification_unavailable'?t('workspace.conversation.unavailable'):
     sp.error&&/^[a-z_]{1,40}$/.test(sp.error)&&t.has(`err_${sp.error}`)?t(`err_${sp.error}`):undefined;
   const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
@@ -92,6 +114,7 @@ export default async function AssistantPage({
     const mayGrant = access.reason === 'no_grant' && isGroupAdmin(s);
     return (
       <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-6">
+        {centreTabs}
         <div className="mx-auto max-w-3xl space-y-4 pt-2">
           <PageHeader title={greeting} description={t('description')} />
           <OwnClearStatus status={sp.ownClear}/>
@@ -138,9 +161,10 @@ export default async function AssistantPage({
 
   return (
     <div data-tour="intelligence-assistant" className="mx-auto max-w-7xl space-y-5">
+      {centreTabs}
       <div className="grid items-start gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <section className="min-w-0 space-y-3 lg:order-2">
-          <PageHeader title={t('title')} />
+          <PageHeader title={aiCentreName(t('title'))} />
           <OwnClearStatus status={sp.ownClear}/>
           <ErrorBanner message={errorMessage??(sp.e&&!selectedChat?t('workspace.conversation.unavailable'):undefined)} />
           <WorkspaceConversation key={scopeReset+':'+(sp.e??'')+':'+(sp.chatReset??'')} fullHeight resetKey={(sp.chatReset??'')+':'+scopeReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}

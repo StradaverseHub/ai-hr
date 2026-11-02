@@ -2,7 +2,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {page} from 'vitest/browser';
 import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
-import en from '../messages/en.json';
+import {enWithAiCentre as en} from './helpers/ai-centre-messages';
 import ta from '../messages/ta.json';
 import '../app/globals.css';
 import '../app/atelier.css';

@@ -4499,26 +4499,68 @@
     {
       "idx": 757,
       "version": "7",
+      "when": 1793330000324,
+      "tag": "0924_teras_outcome_record_mandates",
+      "breakpoints": true
+    },
+    {
+      "idx": 758,
+      "version": "7",
+      "when": 1793330000325,
+      "tag": "0925_teras_rule_version_labels",
+      "breakpoints": true
+    },
+    {
+      "idx": 759,
+      "version": "7",
+      "when": 1793330000326,
+      "tag": "0926_teras_worker_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 760,
+      "version": "7",
+      "when": 1793330000327,
+      "tag": "0927_teras_conversation_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 761,
+      "version": "7",
+      "when": 1793330000328,
+      "tag": "0928_teras_outcome_private_turns",
+      "breakpoints": true
+    },
+    {
+      "idx": 762,
+      "version": "7",
+      "when": 1793330000329,
+      "tag": "0929_teras_review_services",
+      "breakpoints": true
+    },
+    {
+      "idx": 763,
+      "version": "7",
       "when": 1793330000330,
       "tag": "0930_anomaly_event_privacy",
       "breakpoints": true
     },
     {
-      "idx": 758,
+      "idx": 764,
       "version": "7",
       "when": 1793330000331,
       "tag": "0931_ordinary_delete_authority",
       "breakpoints": true
     },
     {
-      "idx": 759,
+      "idx": 765,
       "version": "7",
       "when": 1793330000332,
       "tag": "0932_import_private_custody",
       "breakpoints": true
     },
     {
-      "idx": 760,
+      "idx": 766,
       "version": "7",
       "when": 1793330000333,
       "tag": "0933_back_pay_contributing_sources",

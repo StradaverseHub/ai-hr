@@ -1979,6 +1979,16 @@ export function employeeCancelOffers(
   });
 }
 
+/**
+ * The leave type's give-back rule exactly as the service gates on it (cancelApprovedSettingOf), read inside the caller's
+ * transaction. A type this read cannot see reads as not allowed — fail closed. For the Assistant's approved-leave
+ * cancellation card (core/proposals/leave-cancel.ts), which reads leave rules through this read module.
+ */
+export async function readCancelApprovedSettingTx(tx: Tx, leaveTypeId: string) {
+  const [type] = await tx.select(cancelApprovedTypeColumns).from(leaveType).where(eq(leaveType.id, leaveTypeId)).limit(1);
+  return cancelApprovedSettingOf(type ?? null);
+}
+
 /** r301 — where one pending cancellation stands: when it was asked for, and each copied level's status. */
 export type PendingCancellationProgress = {
   cancellationRequestId: string;

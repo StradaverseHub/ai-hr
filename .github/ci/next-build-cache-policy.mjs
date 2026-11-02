@@ -40,7 +40,8 @@ export function validateNextOrigin(origin,run,jobs,artifact){
 export function validateNextContext(c){
  assert(c&&isDeepStrictEqual(Object.keys(c).sort(),['compiler','generatedTypes','inputs','nodeOptions','runtime','sourcePath']),'Next compiler context differs');
  assert(isDeepStrictEqual(c.runtime,{node:'22.23.3',abi:'127',platform:'linux',arch:'x64',glibc:'2.39',next:'16.4.1',typescript:'5.9.3'}),'Exact application-build runtime required');
- assert(c.nodeOptions==='--max-old-space-size=6144'&&/^\/home\/runner\/work\/ai-hr\/ai-hr\/source$/.test(c.sourcePath),'Actual application build path/heap required');
+ // 8192 only ever comes from build-heap.mjs admission; a graph is reused only under an identical heap (deep-equal context).
+ assert(['--max-old-space-size=6144','--max-old-space-size=8192'].includes(c.nodeOptions)&&/^\/home\/runner\/work\/ai-hr\/ai-hr\/source$/.test(c.sourcePath),'Actual application build path/heap required');
  const inputs=['tsconfig.json','tsconfig.build.json','pnpm-lock.yaml','package.json','pnpm-workspace.yaml','next.config.ts','deploy/css-cache-guard.sh','cssInputs'];
  assert(isDeepStrictEqual(Object.keys(c.inputs).sort(),inputs.sort())&&Object.values(c.inputs).every(v=>/^[a-f0-9]{64}$/.test(v)),'All application compiler/config/CSS inputs required');
  const binaries=['typescript/package.json','typescript/lib/tsc.js','typescript/lib/_tsc.js','typescript/lib/typescript.js','next/dist/lib/typescript/runTypeCheckCli.js','next/dist/lib/typescript/runTypeScriptCli.js','next/dist/lib/typescript/runTypeCheck.js','next/dist/build/type-check.js'];

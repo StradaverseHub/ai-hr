@@ -13,7 +13,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
-import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, decideByRoleForKnownSubject, isApprovalDecisionRefusal, subjectPersonIdsTx } from './approvals';
 import {assertMyTeamSubjectTx} from './my-team-scope';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import { scopeOf } from '../lib/delegation-scope';
@@ -12292,8 +12292,12 @@ export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]
     kind:leaveApprovalStep.approverKind,approverEmploymentId:leaveApprovalStep.approverEmploymentId,alternates:leaveApprovalStep.approverAlternates})
     .from(leaveApprovalStep).where(inArray(leaveApprovalStep.leaveRequestId,batch.map(row=>row.id))).orderBy(asc(leaveApprovalStep.stepIndex),asc(leaveApprovalStep.id));
    const chains=new Map<string,typeof steps>();for(const step of steps){const chain=chains.get(step.requestId)??[];chain.push(step);chains.set(step.requestId,chain);}
+   // Review H4: a request with no step chain is decided by assertCanDecide, whose subject lookup is made here once
+   // for the batch; its role rules then run without a statement per request. Everything else is unchanged.
+   const subjects=await subjectPersonIdsTx(tx,batch.filter(row=>!(chains.get(row.id)??[]).length).map(row=>row.employmentId));
    for(const row of batch){
     const chain=chains.get(row.id)??[],current=chain.find(step=>step.status==='pending');if(chain.length&&!current)continue;
+    if(!current){const byRole=decideByRoleForKnownSubject(ctx,subjects.get(row.employmentId));if(byRole==='refused')continue;if(byRole==='allowed'){result.push(row);continue;}}
     try{
      await assertPendingLeaveMetadataAssignmentTx(tx,ctx,row.employmentId,current);
     }catch(error){if(isLeaveDecisionRefusal(error))continue;throw error;}

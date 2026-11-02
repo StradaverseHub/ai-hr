@@ -1,4 +1,5 @@
 /** Real AI management screen, fictional data owner; six-locale desktop/mobile CI component evidence. */
+import {withAiCentre} from './helpers/ai-centre-messages';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen} from '@testing-library/react';
 import {createFormatter,createTranslator,NextIntlClientProvider} from 'next-intl';
@@ -7,7 +8,7 @@ import en from '../messages/en.json';import ms from '../messages/ms.json';import
 const copies={en,ms,zh,th,ta,vi:viCopy};
 const state=vi.hoisted(()=>({locale:'en' as keyof typeof copies}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
-vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:state.locale,messages:copies[state.locale] as any,namespace}),getFormatter:async()=>createFormatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})}));
+vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:state.locale,messages:withAiCentre(state.locale,copies[state.locale] as any),namespace}),getFormatter:async()=>createFormatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})}));
 vi.mock('next/navigation',()=>({redirect:vi.fn(),usePathname:()=>'/control-tower/agents/features',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../app/delegations/actions',()=>({loadDelegationContextAction:vi.fn()}));

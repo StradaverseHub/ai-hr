@@ -23,6 +23,57 @@ it('preserves populated Native issuance, private data, identity and every applie
  // Independent ratified source50ea247: metadata and every SQL hash, not a live-tail count.
  const ratified=journal.entries.slice(0,642);
  expect(createHash('sha256').update(JSON.stringify(ratified.map(migrationIdentity))).digest('hex')).toBe('8a7ff8a713128919f60b910c8e6558ade5a862a85e4eeb797a65290d2a6e74b7');
+ // Independently frozen upstream dfbcf85: six Teras identities, separate from the immutable642 prefix.
+ expect(journal.entries.slice(642,648).map(migrationIdentity)).toEqual([
+  {
+    "idx": 757,
+    "version": "7",
+    "when": 1793330000324,
+    "tag": "0924_teras_outcome_record_mandates",
+    "breakpoints": true,
+    "hash": "f60531e8dcc633857fc5bb18f7cf886a75b1767374956e30a2b49d6a962627c4"
+  },
+  {
+    "idx": 758,
+    "version": "7",
+    "when": 1793330000325,
+    "tag": "0925_teras_rule_version_labels",
+    "breakpoints": true,
+    "hash": "2d779ba3d268fcc68a1cf2e2d1ffde50e72ade996daa02ff4ec4e345203d531b"
+  },
+  {
+    "idx": 759,
+    "version": "7",
+    "when": 1793330000326,
+    "tag": "0926_teras_worker_registry",
+    "breakpoints": true,
+    "hash": "60108e148ce2f7c0c178d4a678217a565c2f2d0f1b6988752ffc61f1f1d3c259"
+  },
+  {
+    "idx": 760,
+    "version": "7",
+    "when": 1793330000327,
+    "tag": "0927_teras_conversation_switch",
+    "breakpoints": true,
+    "hash": "ac5475982a99c2b387bc5f34e9af6f69cb5bbe3aac156bdd8aa906e17579c968"
+  },
+  {
+    "idx": 761,
+    "version": "7",
+    "when": 1793330000328,
+    "tag": "0928_teras_outcome_private_turns",
+    "breakpoints": true,
+    "hash": "17a50608b153559bfa06cf49f2b2efb526c85f2cbf0ce1de16a78fa4a0df8fa9"
+  },
+  {
+    "idx": 762,
+    "version": "7",
+    "when": 1793330000329,
+    "tag": "0929_teras_review_services",
+    "breakpoints": true,
+    "hash": "765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0"
+  }
+]);
  const sourceSql=(tag:string)=>readFileSync('db/migrations/'+tag+'.sql');
  expect(migrationProblems(ratified,journal.entries,sourceSql,sourceSql)).toEqual([]);
  // Existing identity owner also requires safe unique tags and nonempty regular SQL <=16MiB.
@@ -43,6 +94,13 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:754,version:'7',when:1793330000276,tag:'0876_epf_manual_percentage_zero',breakpoints:true,hash:'e09b59c1b79628d8701bee3864ac2421bdbd1b7e4162a696dbc273e97fdca430'},
   {idx:755,version:'7',when:1793330000298,tag:'0898_session_idle_timeout',breakpoints:true,hash:'0f7204555b6aad9819a43e9a00b04530593e1d137afa7941603ac02e8ecc8729'},
   {idx:756,version:'7',when:1793330000299,tag:'0899_entra_workforce',breakpoints:true,hash:'c70afe9dac5c37ebd471230df02f9d824184affc5db50ab7d8c6163c0adf842b'},
+  // Teras source claims (claude/teras-review-fixes), frozen here.
+  {idx:757,version:'7',when:1793330000324,tag:'0924_teras_outcome_record_mandates',breakpoints:true,hash:'f60531e8dcc633857fc5bb18f7cf886a75b1767374956e30a2b49d6a962627c4'},
+  {idx:758,version:'7',when:1793330000325,tag:'0925_teras_rule_version_labels',breakpoints:true,hash:'2d779ba3d268fcc68a1cf2e2d1ffde50e72ade996daa02ff4ec4e345203d531b'},
+  {idx:759,version:'7',when:1793330000326,tag:'0926_teras_worker_registry',breakpoints:true,hash:'60108e148ce2f7c0c178d4a678217a565c2f2d0f1b6988752ffc61f1f1d3c259'},
+  {idx:760,version:'7',when:1793330000327,tag:'0927_teras_conversation_switch',breakpoints:true,hash:'ac5475982a99c2b387bc5f34e9af6f69cb5bbe3aac156bdd8aa906e17579c968'},
+  {idx:761,version:'7',when:1793330000328,tag:'0928_teras_outcome_private_turns',breakpoints:true,hash:'17a50608b153559bfa06cf49f2b2efb526c85f2cbf0ce1de16a78fa4a0df8fa9'},
+  {idx:762,version:'7',when:1793330000329,tag:'0929_teras_review_services',breakpoints:true,hash:'765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI centre mockup</title>
+<style>
+/* Atelier tokens, copied from app/atelier.css (light + dark). Mockup only: fictional data, no product code. */
+:root{
+  --canvas:#fff;--fg:#1c1c1f;--card:#fff;--sidebar:#f8f8f9;--sidebar-fg:#4b4b52;--primary:#c2410c;--primary-fg:#fff;
+  --muted:#f4f4f5;--muted-fg:#5f5f67;--accent:#efeff1;--border:#e8e8eb;--input:#d4d4d8;--line-strong:#dcdce0;
+  --accent-wash:#fdf1ea;--accent-hover:#a8380a;--tan:#8a5a2e;--tan-wash:#f5ede5;--ok:#17703f;--ok-wash:#e8f5ed;
+  --warn:#8a5300;--warn-wash:#fdf4e1;--info:#2353b8;--info-wash:#ebf1fd;--llm:#6d28d9;--llm-wash:#f3effd;--selected:#e9e9ec;
+  --shadow-pop:0 4px 12px -2px rgb(20 20 30/.08),0 16px 40px -8px rgb(20 20 30/.14);
+  --ease:cubic-bezier(.16,1,.3,1);
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'PingFang SC','Noto Sans SC','Noto Sans Thai','Noto Sans Tamil',sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --canvas:#111113;--fg:#ededef;--card:#18181b;--sidebar:#161618;--sidebar-fg:#b4b4bc;--primary:#fb8a4a;--primary-fg:#1c1c1f;
+  --muted:#222226;--muted-fg:#a8a8b0;--accent:#26262b;--border:#2a2a2f;--input:#3a3a40;--line-strong:#34343a;
+  --accent-wash:#3a2418;--accent-hover:#fca06c;--tan:#e0b48a;--tan-wash:#2e241c;--ok:#7fd3a1;--ok-wash:#16281e;
+  --warn:#f2c26b;--warn-wash:#2c2312;--info:#9cbcff;--info-wash:#18223a;--llm:#c4b5fd;--llm-wash:#241d38;--selected:#2c2c32;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --canvas:#111113;--fg:#ededef;--card:#18181b;--sidebar:#161618;--sidebar-fg:#b4b4bc;--primary:#fb8a4a;--primary-fg:#1c1c1f;
+  --muted:#222226;--muted-fg:#a8a8b0;--accent:#26262b;--border:#2a2a2f;--input:#3a3a40;--line-strong:#34343a;
+  --accent-wash:#3a2418;--accent-hover:#fca06c;--tan:#e0b48a;--tan-wash:#2e241c;--ok:#7fd3a1;--ok-wash:#16281e;
+  --warn:#f2c26b;--warn-wash:#2c2312;--info:#9cbcff;--info-wash:#18223a;--llm:#c4b5fd;--llm-wash:#241d38;--selected:#2c2c32;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--canvas);color:var(--fg);font:14px/1.43 var(--font)}
+::selection{background:var(--accent-wash);color:var(--fg)}
+a{color:var(--primary);text-underline-offset:3px}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:6px}
+svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.num{font-variant-numeric:tabular-nums}
+
+/* Reviewer bar: not part of the product. */
+.rv{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 12px;background:#1c1c1f;color:#ededef;font-size:12px}
+.rv b{font-weight:600;margin-right:6px}
+.rv button,.rv select{background:#2a2a2f;border:1px solid #3a3a40;color:#ededef;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer}
+.rv button[aria-current="true"]{background:#fb8a4a;color:#1c1c1f;border-color:#fb8a4a}
+.rv .sp{flex:1}
+
+/* Shell */
+.shell{display:grid;grid-template-columns:15.5rem 1fr;min-height:calc(100vh - 41px)}
+.shell>div{min-width:0}
+.rail{background:var(--sidebar);border-right:1px solid var(--border);padding:12px 8px;color:var(--sidebar-fg);font-size:13.5px}
+.brand{display:flex;align-items:center;gap:8px;padding:4px 8px 14px;font-weight:600;color:var(--fg)}
+.brand i{width:22px;height:22px;border-radius:6px;background:var(--fg);display:inline-block}
+.row{display:flex;align-items:center;gap:8px;height:32px;padding:0 8px;border-radius:6px;text-decoration:none;color:inherit;cursor:pointer;border:0;background:none;width:100%;text-align:left}
+.row:hover{background:var(--accent)}
+.row[aria-current="page"]{background:var(--selected);color:var(--fg);font-weight:500}
+.row .badge{margin-left:auto}
+.sub{margin:2px 0 6px 15px;padding-left:9px;border-left:1px solid var(--line-strong)}
+.cap{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-fg);padding:14px 8px 4px;font-weight:600}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--primary);color:var(--primary-fg);font-size:11px;font-weight:600}
+.top{height:48px;display:flex;align-items:center;gap:12px;padding:0 32px;border-bottom:1px solid var(--border);font-size:13px;color:var(--muted-fg)}
+.top .scope{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--input);border-radius:8px;padding:4px 10px;color:var(--fg)}
+.top .me{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--fg)}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--accent);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--fg)}
+main{padding:28px 32px 40px;min-width:0}
+.wrap{max-width:72rem}
+h1{font-size:1.375rem;line-height:1.25;letter-spacing:-.015em;font-weight:600;margin:0}
+.lede{color:var(--muted-fg);margin:6px 0 0;max-width:68ch}
+h2{font-size:15px;font-weight:600;margin:0}
+h3{font-size:14px;font-weight:600;margin:0}
+.muted{color:var(--muted-fg)}
+.small{font-size:12.5px}
+
+/* Centre tabs */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin:20px 0 22px;overflow-x:auto}
+.tab{text-decoration:none;display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border:0;background:none;color:var(--muted-fg);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;font-weight:500}
+.tab:hover{color:var(--fg)}
+.tab[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--primary)}
+.tab .badge{height:17px;min-width:17px;font-size:10.5px}
+.tab.admin{margin-left:0}
+.tabsep{width:1px;background:var(--border);margin:8px 6px}
+
+/* Card + buttons */
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:32px;padding:6px 14px;border-radius:8px;border:1px solid transparent;background:var(--primary);color:var(--primary-fg);font-weight:500;cursor:pointer;text-decoration:none;font-size:13.5px}
+.btn:hover{background:var(--accent-hover)}
+.btn.o{background:var(--card);color:var(--fg);border-color:var(--line-strong)}
+.btn.o:hover{background:var(--accent)}
+.btn.g{background:none;color:var(--muted-fg);border-color:transparent}
+.btn.g:hover{background:var(--accent);color:var(--fg)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;background:var(--muted);color:var(--muted-fg);white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{background:var(--ok-wash);color:var(--ok)}.pill.warn{background:var(--warn-wash);color:var(--warn)}
+.pill.info{background:var(--info-wash);color:var(--info)}.pill.llm{background:var(--llm-wash);color:var(--llm)}
+.pill.off{background:var(--muted);color:var(--muted-fg)}.pill.off::before{background:none;border:1px dashed currentColor}
+
+/* Maker's Mark: the existing human-confirmation signature. */
+.mark{width:22px;height:22px;border-radius:50%;flex:none;border:1.5px dashed var(--line-strong);display:inline-block;position:relative}
+.mark.signed{border:0;background:var(--tan-wash);box-shadow:inset 0 0 0 2px var(--tan),inset 0 0 0 5px var(--tan-wash),inset 0 0 0 6px color-mix(in srgb,var(--tan) 55%,transparent)}
+
+/* Inbox */
+.inbox{display:grid;grid-template-columns:minmax(0,1fr) 17rem;gap:24px;align-items:start}
+.group{margin-bottom:22px}
+.group>header{display:flex;align-items:baseline;gap:8px;margin:0 0 10px}
+.group>header .count{color:var(--muted-fg);font-size:12.5px}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.chip{border:1px solid var(--line-strong);background:var(--card);border-radius:999px;padding:4px 12px;font-size:12.5px;cursor:pointer;color:var(--sidebar-fg)}
+.chip[aria-pressed="true"]{background:var(--fg);color:var(--canvas);border-color:var(--fg)}
+
+/* The ONE proposal card. Every surface renders this. */
+.pc{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 14px;padding:14px 16px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.pc+.pc{margin-top:8px}
+.pc .ico{grid-row:span 3;width:32px;height:32px;border-radius:8px;background:var(--muted);display:flex;align-items:center;justify-content:center;color:var(--fg)}
+.pc .ico.dec{background:var(--accent-wash);color:var(--primary)}
+.pc .ico.prep{background:var(--info-wash);color:var(--info)}
+.pc .ico.fyi{background:var(--muted);color:var(--muted-fg)}
+.pc .t{font-weight:600;line-height:1.35}
+.pc .who{color:var(--muted-fg);font-size:12.5px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.pc .checks{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;min-width:0}
+.pc .checks .pill{white-space:normal}
+.pc>*{min-width:0}
+.pc .t,.pc .who,.pc .checks{grid-column:2}
+.pc .ico{grid-column:1;grid-row:1/4}
+.pc .act{grid-column:3;grid-row:1/4}
+.pc.compact .act,.pc.compact details{grid-column:1/3;grid-row:auto}
+.pc .act{grid-row:span 3;display:flex;flex-direction:column;align-items:flex-end;gap:6px;justify-content:center}
+.pc .exp{font-size:12px;color:var(--muted-fg);display:inline-flex;gap:4px;align-items:center}
+.pc details{grid-column:2/4;margin-top:4px;font-size:12.5px}
+.pc summary{cursor:pointer;color:var(--muted-fg);list-style:none;display:inline-flex;gap:4px;align-items:center}
+.pc summary::-webkit-details-marker{display:none}
+.pc summary:hover{color:var(--fg)}
+.or{margin-top:8px;display:grid;grid-template-columns:9rem 1fr;gap:4px 12px;padding:10px 12px;background:var(--muted);border-radius:8px}
+.or dt{color:var(--muted-fg)}.or dd{margin:0}
+.pc.compact{grid-template-columns:auto minmax(0,1fr);padding:12px}
+.pc.compact .act{grid-column:1/3;grid-row:auto;flex-direction:row;justify-content:space-between;align-items:center;margin-top:8px}
+
+.side .card{padding:14px 16px}
+.side .card+.card{margin-top:12px}
+.kv{display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--border);font-size:13px}
+.kv:first-of-type{border-top:0}
+
+/* Review page pattern */
+.crumb{display:inline-flex;align-items:center;gap:4px;color:var(--muted-fg);text-decoration:none;font-size:13px;margin-bottom:10px}
+.crumb:hover{color:var(--fg)}
+.review{display:grid;grid-template-columns:minmax(0,1fr) 20rem;gap:24px;align-items:start;margin-top:20px}
+.sec{padding:16px 18px}
+.sec+.sec{margin-top:12px}
+.sec h2{margin-bottom:10px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font-size:12.5px;font-weight:500;color:var(--muted-fg);text-align:left;padding:0 10px;height:36px;border-bottom:1px solid var(--border)}
+td{padding:0 10px;height:44px;border-bottom:1px solid var(--border)}
+tr:last-child td{border-bottom:0}
+.confirm{position:sticky;top:60px;padding:18px}
+.confirm .who{display:flex;gap:10px;align-items:center;margin:12px 0 14px;padding:10px 12px;border:1px dashed var(--line-strong);border-radius:10px;font-size:13px}
+.confirm .btn{width:100%}
+.confirm .btn+.btn{margin-top:8px}
+
+/* Workers */
+.stop{display:flex;align-items:center;gap:14px;padding:14px 16px;margin-bottom:16px}
+.switch{position:relative;width:34px;height:20px;border-radius:999px;background:var(--input);border:0;cursor:pointer;flex:none;transition:background .15s}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s var(--ease);box-shadow:0 1px 2px rgb(0 0 0/.2)}
+.switch[aria-checked="true"]{background:var(--primary)}
+.switch[aria-checked="true"]::after{transform:translateX(14px)}
+.fam{display:inline-flex;align-items:center;gap:6px;font-size:12.5px}
+.fam i{width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:var(--muted)}
+.fam i svg{width:13px;height:13px}
+.tbl{overflow-x:auto}
+.tbl td:first-child{font-weight:500}
+
+/* Delegations */
+.dg{display:grid;grid-template-columns:repeat(auto-fill,minmax(20rem,1fr));gap:12px}
+.dg .card{padding:16px}
+.facts{display:grid;grid-template-columns:7rem 1fr;gap:4px 10px;font-size:12.5px;margin:12px 0}
+.facts dt{color:var(--muted-fg)}.facts dd{margin:0}
+.never{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+
+/* Ask */
+.ask{display:grid;grid-template-columns:14rem minmax(0,1fr);gap:0;border:1px solid var(--border);border-radius:12px;min-height:34rem;overflow:hidden;background:var(--card)}
+.threads{border-right:1px solid var(--border);padding:10px;background:var(--sidebar)}
+.threads .row{font-size:13px}
+.conv{display:flex;flex-direction:column;min-width:0}
+.log{flex:1;padding:24px 28px;display:flex;flex-direction:column;gap:16px;max-width:46rem;width:100%;margin:0 auto}
+.q{align-self:flex-end;background:var(--muted);padding:8px 12px;border-radius:12px;max-width:80%}
+.a{max-width:100%}
+.composer{margin:0 auto 18px;width:calc(100% - 56px);max-width:44rem;border:1px solid var(--line-strong);border-radius:14px;padding:8px 8px 8px 14px;display:flex;align-items:flex-end;gap:8px;box-shadow:0 1px 2px rgb(20 20 30/.05),0 8px 24px -12px rgb(20 20 30/.18)}
+.composer textarea{flex:1;border:0;resize:none;background:none;font:inherit;color:var(--fg);outline:none;min-height:36px;padding:8px 0}
+.send{width:32px;height:32px;border-radius:8px;border:0;background:var(--primary);color:var(--primary-fg);display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.thinking{color:var(--muted-fg);font-size:12.5px}
+
+/* Floating chat */
+.fab{position:fixed;right:24px;bottom:24px;z-index:40;display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 16px 0 14px;border-radius:999px;border:1px solid var(--line-strong);background:var(--card);color:var(--fg);box-shadow:var(--shadow-pop);cursor:pointer;font-weight:500}
+.fab .badge{margin-left:2px}
+.fw{position:fixed;right:24px;bottom:24px;z-index:41;width:25rem;max-height:min(40rem,calc(100vh - 90px));display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-pop);transform-origin:bottom right;animation:pop .28s var(--ease)}
+.fw.docked{top:41px;bottom:0;right:0;border-radius:0;width:26rem;max-height:none;border-width:0 0 0 1px;animation:slide .3s var(--ease)}
+@keyframes pop{from{opacity:0;transform:scale(.96) translateY(8px)}}
+@keyframes slide{from{transform:translateX(24px);opacity:0}}
+.fw header{display:flex;align-items:flex-start;gap:8px;padding:12px 10px 10px 16px;border-bottom:1px solid var(--border)}
+.fw header .ttl{flex:1;min-width:0}
+.ib{width:36px;height:36px;border-radius:8px;border:0;background:none;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--muted-fg)}
+.ib:hover{background:var(--accent);color:var(--fg)}
+.fw .strip{display:flex;align-items:center;gap:8px;margin:10px 12px 0;padding:8px 10px;border-radius:10px;background:var(--accent-wash);font-size:12.5px;text-decoration:none;color:var(--fg)}
+.fw .strip b{font-weight:600}
+.fw .body{flex:1;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.fw .composer{width:auto;margin:0 12px 10px;box-shadow:none}
+.fw .foot{padding:0 16px 12px;font-size:11.5px;color:var(--muted-fg)}
+.suggest{display:flex;flex-wrap:wrap;gap:6px}
+.suggest button{border:1px solid var(--line-strong);background:var(--card);border-radius:999px;height:30px;padding:0 12px;font-size:12.5px;color:var(--sidebar-fg);cursor:pointer}
+
+/* Leave backdrop page for the floating chat */
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-top:16px}
+.cal div{background:var(--card);min-height:76px;padding:6px 8px;font-size:12px;color:var(--muted-fg)}
+.cal .ev{display:block;margin-top:4px;font-size:11.5px;padding:2px 6px;border-radius:5px;background:var(--info-wash);color:var(--info)}
+.cal .ev.al{background:var(--ok-wash);color:var(--ok)}
+
+/* How it works */
+.chapters{display:inline-flex;gap:2px;padding:3px;background:var(--muted);border-radius:10px;margin:18px 0 18px;flex-wrap:wrap}
+.chapters button{border:0;background:none;padding:6px 12px;border-radius:8px;cursor:pointer;color:var(--muted-fg);font-weight:500;font-size:13px}
+.chapters button[aria-selected="true"]{background:var(--card);color:var(--fg);box-shadow:0 1px 2px rgb(20 20 30/.08)}
+.stage{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:20px;align-items:start}
+.map{position:relative;padding:18px;border:1px solid var(--border);border-radius:14px;background:var(--card)}
+.layer{position:relative;display:grid;grid-template-columns:2rem minmax(0,1fr);gap:2px 12px;padding:12px 36px 12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--card);transition:border-color .25s,background-color .25s,opacity .25s}
+.layer+.layer{margin-top:8px}
+.layer .n{grid-row:span 2;width:2rem;height:2rem;border-radius:8px;background:var(--muted);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12.5px;color:var(--muted-fg);transition:background-color .25s,color .25s}
+.layer .nm{font-weight:600}
+.layer .ds{font-size:12.5px;color:var(--muted-fg)}
+.layer.on{border-color:var(--primary);background:var(--accent-wash)}
+.layer.on .n{background:var(--primary);color:var(--primary-fg)}
+.map.focus .layer:not(.on){opacity:.55}
+.model{grid-column:2;margin-top:8px;display:flex;align-items:center;gap:10px;padding:8px 10px;border:1.5px dashed color-mix(in srgb,var(--llm) 55%,transparent);border-radius:10px;background:var(--llm-wash);color:var(--llm);font-size:12.5px;transition:box-shadow .3s}
+.model b{font-weight:600}
+.layer.on .model{box-shadow:0 0 0 4px color-mix(in srgb,var(--llm) 14%,transparent)}
+.found{margin-top:10px;padding:12px 14px;border-radius:10px;border:1px solid var(--line-strong);background:repeating-linear-gradient(135deg,var(--muted) 0 6px,var(--card) 6px 12px);transition:border-color .25s}
+.found .nm{font-weight:600}
+.found .parts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.found .parts span{background:var(--card);border:1px solid var(--border);border-radius:999px;padding:2px 10px;font-size:12px;transition:border-color .25s,color .25s}
+.found.on{border-color:var(--primary)}
+.found .parts span.on{border-color:var(--primary);color:var(--primary);font-weight:500}
+.token{position:absolute;left:0;top:0;width:14px;height:14px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 4px color-mix(in srgb,var(--primary) 22%,transparent),0 2px 6px rgb(0 0 0/.18);transition:transform .65s var(--ease),opacity .2s;pointer-events:none;z-index:3}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;font-size:12px;color:var(--muted-fg)}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.story{padding:20px;min-height:100%}
+.story .k{font-size:12.5px;color:var(--muted-fg)}
+.story h2{font-size:18px;letter-spacing:-.01em;margin:4px 0 8px;line-height:1.3}
+.story p{margin:0 0 12px;max-width:52ch}
+.story .quote{padding:10px 12px;border-radius:10px;background:var(--muted);margin-bottom:12px}
+.cl{list-style:none;padding:0;margin:0 0 12px}
+.cl li{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--border);font-size:13px;animation:tick .35s var(--ease) both}
+.cl li:first-child{border-top:0}
+.cl li svg{color:var(--ok);margin-top:2px}
+.cl li:has(.muted) svg{color:var(--muted-fg)}
+@keyframes tick{from{opacity:0;transform:translateY(4px)}}
+.ctrls{display:flex;align-items:center;gap:8px;margin-top:16px;flex-wrap:wrap}
+.dots{display:flex;gap:4px;margin-left:auto}
+.dots button{width:26px;height:26px;border-radius:50%;border:0;background:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.dots button::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--line-strong);transition:background .2s,transform .2s}
+.dots button[aria-selected="true"]::after{background:var(--primary);transform:scale(1.25)}
+.fams{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.fams .card{padding:14px}
+.fams .card h3{margin:10px 0 4px}
+.fams .role{margin-top:10px;font-size:12px}
+.nevers{display:grid;grid-template-columns:repeat(auto-fill,minmax(16rem,1fr));gap:10px}
+.nevers .card{padding:14px 16px;display:flex;gap:10px}
+.keys{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:12px;align-items:center}
+.keys .card{padding:16px}
+.keys .arrow{color:var(--muted-fg)}
+.draft{font-size:12px;color:var(--warn);background:var(--warn-wash);border-radius:8px;padding:6px 10px;display:inline-block;margin-top:10px}
+
+
+/* Exploded view (reference: neon diagrams): the AI core as a sealed unit that splits open into its layers.
+   A dark figure plate in both themes, hairline grey line art, one accent for the part being explained. */
+.space{position:relative;height:620px;border-radius:14px;background:#0c0d0f;border:1px solid #1d1f23;overflow:hidden;color:#e8e8ea}
+.space .xt{position:absolute;left:24px;top:20px}
+.space .xt b{display:block;font-size:19px;font-weight:600;letter-spacing:-.01em;color:#f2f2f3}
+.space .xt span,.space .xm{font:500 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:#6f747c}
+.space .xm{position:absolute;right:22px;top:24px}
+.space svg{position:absolute;inset:0;width:100%;height:100%}
+.xv-f{fill:#141518;stroke:#3d4148;stroke-width:1;stroke-linejoin:round}
+.xv-s{fill:#0f1012;stroke:#3d4148;stroke-width:1;stroke-linejoin:round}
+.xv-d{fill:none;stroke:#4a4f57;stroke-width:1;stroke-linecap:round;stroke-linejoin:round}
+.xv-w{fill:none;stroke:#2c2f35;stroke-width:1;stroke-dasharray:3 4}
+.xv-l{fill:none;stroke:#3a3e45;stroke-width:1}
+.on .xv-f{fill:#2a1a10;stroke:#fb8a4a}
+.on .xv-s{fill:#1d130c;stroke:#fb8a4a}
+.on .xv-d{stroke:#fb8a4a}
+.xv-m .xv-f{fill:#221c3f;stroke:#b9a6ff;stroke-dasharray:4 3}
+.xv-m .xv-s{fill:#110f1f;stroke:#a78bfa;stroke-dasharray:4 3}
+.xv-m.on .xv-f,.xv-m.on .xv-s{stroke:#c4b5fd;stroke-dasharray:none}
+.xv-glass .xv-f{fill-opacity:.42}
+.xv-glass .xv-s{fill-opacity:.6}
+.xv-lab{font:600 13px var(--font);fill:#e8e8ea}
+.xv-sub{font:500 10px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#7b8089;letter-spacing:.02em}
+.xv-lab.dim,.xv-sub.dim{opacity:.45}
+.xv-lab.on{fill:#fb8a4a}
+.xv-sub.on{fill:#d9a37f}
+.xv-l.on{stroke:#fb8a4a}
+.stage.spatial{grid-template-columns:minmax(0,1fr)}
+.stage.spatial .story{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:28px;align-items:start}
+.stage.spatial .story>.k,.stage.spatial .story>h2,.stage.spatial .story>p{grid-column:1}
+.stage.spatial .story>:not(.k):not(h2):not(p):not(.ctrls){grid-column:2;grid-row:1/5}
+.stage.spatial .story>.ctrls{grid-column:1}
+#xvtok{transition:transform .6s var(--ease),opacity .25s}
+@media (prefers-reduced-motion:reduce){#xvtok{transition:opacity .2s}}
+
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important}
+  .token{transition:opacity .2s}
+  .layer,.found,.found .parts span{transition:border-color .15s,background-color .15s}
+  .switch::after{transition:none}
+}
+@media (max-width:900px){
+  .pc .act{grid-column:1/3!important;grid-row:auto!important}
+  .pc .t,.pc .who,.pc .checks{grid-column:2}
+  .shell{grid-template-columns:1fr}.rail{display:none}
+  main{padding:20px 16px 96px}.top{padding:0 16px}
+  .inbox,.review,.stage{grid-template-columns:minmax(0,1fr)}
+  .ask{grid-template-columns:minmax(0,1fr)}.threads{display:none}
+  .fams{grid-template-columns:1fr 1fr}
+  .keys{grid-template-columns:1fr}.keys .arrow{transform:rotate(90deg);justify-self:center}
+  .pc{grid-template-columns:auto minmax(0,1fr)}
+  .pc .act{grid-column:1/3;grid-row:auto;flex-direction:row;justify-content:space-between;align-items:center;margin-top:8px}
+  .pc details{grid-column:1/3}
+  .fw{left:8px;right:8px;bottom:8px;width:auto}
+  .fw.docked{left:0;width:auto}
+  .confirm{position:static}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-deleg" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><path d="M8 16h.01"/><path d="M16 16h.01"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></symbol>
+  <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+  <symbol id="i-max" viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></symbol>
+  <symbol id="i-min" viewBox="0 0 24 24"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" x2="21" y1="10" y2="3"/><line x1="3" x2="10" y1="21" y2="14"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-pay" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
+  <symbol id="i-tower" viewBox="0 0 24 24"><path d="M12 2v20"/><path d="m4.93 4.93 2.83 2.83"/><path d="m16.24 7.76 2.83-2.83"/><circle cx="12" cy="12" r="3"/></symbol>
+</svg>
+
+<div class="rv" role="toolbar" aria-label="Mockup views (reviewer bar, not part of the product)">
+  <b>Mockup · fictional data · nothing built</b>
+  <span id="rvViews"></span>
+  <span class="sp"></span>
+  <label>Role <select id="rvRole"><option value="admin">HR administrator</option><option value="employee">Employee</option></select></label>
+  <label>Theme <select id="rvTheme"><option value="">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+  <label>Language <select id="rvLang"><option value="en">English</option><option value="ms">Bahasa Melayu</option><option value="zh">中文</option><option value="vi">Tiếng Việt</option><option value="ta">தமிழ்</option><option value="th">ไทย</option></select></label>
+</div>
+
+<div class="shell">
+  <nav class="rail" aria-label="Main">
+    <div class="brand"><i aria-hidden="true"></i>AIHR</div>
+    <a class="row" href="#leave"><svg class="i"><use href="#i-home"/></svg>Home</a>
+    <a class="row" href="#leave"><svg class="i"><use href="#i-users"/></svg>People</a>
+    <a class="row" href="#leave" data-nav="leave"><svg class="i"><use href="#i-cal"/></svg>Leave</a>
+    <a class="row" href="#leave" data-admin><svg class="i"><use href="#i-pay"/></svg>Payroll</a>
+    <a class="row" href="#leave" data-admin><svg class="i"><use href="#i-chart"/></svg>Analytics</a>
+    <div class="cap">AI</div>
+    <a class="row" href="#inbox" data-nav="centre"><svg class="i"><use href="#i-sparkles"/></svg><span class="pname">AI centre</span><span class="badge" data-count>3</span></a>
+    <div class="sub" id="railSub"></div>
+    <div class="cap" data-admin>Operations</div>
+    <a class="row" href="#leave" data-admin><svg class="i"><use href="#i-tower"/></svg>Control Tower</a>
+  </nav>
+  <div>
+    <div class="top">
+      <span class="scope">Teratai Fictional Sdn Bhd</span>
+      <span class="me"><span class="avatar" id="meAv">SA</span><span id="meName">Siti Aminah · HR administrator</span></span>
+    </div>
+    <main id="main"></main>
+  </div>
+</div>
+
+<button class="fab" id="fab" type="button" aria-haspopup="dialog" hidden><svg class="i"><use href="#i-sparkles"/></svg><span>Ask</span><span class="badge" data-count aria-label="3 waiting for you">3</span></button>
+<section class="fw" id="fw" role="dialog" aria-labelledby="fwTitle" hidden></section>
+
+<script>
+/* ONE constant for the product name: the final name is undecided (ADR-0170 §9). */
+const PRODUCT={centre:'AI centre',assistant:'Assistant'};
+const $=s=>document.querySelector(s);
+const ic=(n,c='i')=>`<svg class="${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+const state={view:'inbox',role:'admin',lang:'en',filter:'all',docked:false,fwOpen:true,step:0,playing:false,chapter:'request',signed:false};
+
+const VIEWS=[
+  ['ask','Ask','msg'],['inbox','Inbox','inbox'],['delegations','Delegated jobs','deleg'],
+  ['workers','Workers','bot',1],['setup','Setup','sliders',1],['spend','Spend and providers','wallet',1],['how','How it works','layers']];
+const EXTRA=[['review','Review page'],['leave','Floating chat (on Leave)']];
+
+/* ---------- Fictional data ---------- */
+const ITEMS=[
+ {g:'decide',kind:'dec',icon:'cal',title:'Annual leave · Tan Wei Jie · Thu 13 – Fri 14 Nov (2 days)',
+  who:['Approval assigned to you','From Approvals'],checks:[['ok','Balance covers it · 9.0 days left','AL-2026.3'],['ok','No overlap','LV-core 4.2'],['warn','Team coverage 4 of 6 · needs review','TEAM-MIN v1']],
+  exp:'Expires in 3 days',cta:'Review',read:'Leave balance, team calendar (as you)',model:'Worded the summary only',authority:'Your approver role in Approvals'},
+ {g:'decide',kind:'dec',icon:'users',title:'Bank account change · Priya Nair',
+  who:['Profile change request','From People'],checks:[['ok','Account holder name matches','PROFILE v3'],['ok','Bank code valid','BANK-MY 2026.1']],
+  exp:'Expires in 6 days',cta:'Review',read:'Profile request (account number masked)',model:'None',authority:'HR administrator for Teratai Fictional'},
+ {g:'prep',kind:'prep',icon:'clip',title:'October payroll inputs prepared · 3 items missing',
+  who:['Prepared under your delegated job','Monthly payroll inputs'],checks:[['ok','41 of 44 employees complete','PAYROLL-INPUT v5'],['warn','3 overtime sheets missing','—']],
+  exp:'Before 25 Nov payroll cut-off',cta:'Review',read:'Attendance, claims, overtime (as you, scope Teratai Fictional)',model:'Worded the summary only',authority:'Delegated job D-0142, granted by you on 3 Oct'},
+ {g:'prep',kind:'prep',icon:'clip',title:'Onboarding task drafts · 2 new hires starting 17 Nov',
+  who:['You asked in chat','Ask, 31 Oct'],checks:[['ok','Templates found for both positions','ONBOARD v2']],
+  exp:'Draft kept 14 days',cta:'Review',read:'Positions, onboarding templates',model:'Drafted task wording',authority:'You, in Ask'},
+ {g:'fyi',kind:'fyi',icon:'eye',title:'Holiday minimum: 10 of 11 required public holidays set for 2027',
+  who:['Watcher · Holiday minimum','Sunday 02:00 run'],checks:[['warn','1 holiday missing','HOLIDAY-MY 2027.0']],
+  exp:'',cta:'Open setup',read:'Holiday calendar',model:'None',authority:'Company switch: on'},
+ {g:'fyi',kind:'fyi',icon:'bell',title:'4 reminders sent for incomplete claims',
+  who:['Chaser · Claims documents','Today 09:00'],checks:[['ok','Only people with incomplete claims','CLAIMS v4']],
+  exp:'',cta:'See who',read:'Claims status',model:'Worded the reminder',authority:'Company switch: on'},
+];
+const GROUPS=[['decide','Needs your decision','Decide on the review page. Nothing completes from this list.'],['prep','Prepared for you','Ready to check. You confirm before anything changes.'],['fyi','For your information','Findings and reminders the workers sent.']];
+
+/* Real inventory from lib/ai/features.ts, core/control-domains.ts agentStatuses and the mandates on PR 182.
+   [name, family, trigger, effect, authority, switch, last run, response, where it exists today, source id] */
+const WORKERS=[
+ ['Payroll anomaly checks','watcher','Each payroll run','Raise findings','Company switch','on','Today 08:12','71% accepted · 0 reversed','Main','detectors'],
+ ['Nightly payroll exception sweep','watcher','Nightly','Raise findings','Agent principal','on','Today 02:10','—','Main','sweep · anomaly-sweep'],
+ ['Record readiness','watcher','On change','Raise findings','Company switch','on','Today 02:00','Not enough cases yet','Main','readiness'],
+ ['Claims input triage','watcher','On claim submit','Flag for review','Company switch','off','Never','—','Main · default off','claims_triage'],
+ ['Approval chaser','chaser','Daily','Remind (template, no model)','Company switch','off','Never','—','Main · default off','approval_chasers'],
+ ['Review chaser','chaser','Daily','Remind (template, no model)','Company switch','on','Today 09:00','6 sent · 4 completed','Main · default off','review_chasers'],
+ ['Missing clock-in reminder','chaser','Daily','Remind (template, no model)','Company switch','off','Never','—','Main · default off','clock_reminders'],
+ ['Document expiry reminder','chaser','Daily','Remind (template, no model)','Company switch','on','Today 09:00','2 sent','Main · default off','document_reminders'],
+ ['Lifecycle step chaser','chaser','Daily','Remind (template, no model)','Company switch','off','Never','—','Main · default off','lifecycle_chasers'],
+ ['Readiness reminders','chaser','Weekly','Remind','Company switch','off','Never','—','Main · default off','readiness_reminders · nudge'],
+ ['Proposed actions','preparer','After each sweep','Prepare (an administrator approves)','Company switch','on','Today 02:15','12 approved · 1 reversed','Main','actions'],
+ ['Pay-rule drafter','preparer','On request','Draft a pay rule','The person asking','on','Yesterday','3 of 4 kept','Main','pay_rule_draft'],
+ ['Personnel import mapping','preparer','On request','Suggest column mapping','The person asking','on','28 Oct','—','Main','personnel_import_mapping'],
+ ['Performance drafting (6 switches)','preparer','On request','Draft review text','The person asking','off','Never','—','Main · default off','performance_*'],
+ ['Monday team absence summary','preparer','Mondays 08:00','Summarise','Delegated job · Lee Mei Ling','on','Mon 27 Oct','—','PR 182 (not on main)','team_absence_weekly_summary'],
+ ['Autonomous decisions','decider','—','Complete on its own','None granted, by design','locked','Never','—','Main · off by design','autonomy'],
+ ['Small leave approvals','decider','On request','Complete under a delegated job','Legal review pending','locked','Never','Needs acceptance evidence','Planned (ADR-0170 5b)','—'],
+ ['Payroll anomaly narrator','explainer','On finding','Explain in plain words','Company switch','on','Today 08:13','—','Main','narrator · payroll_explanation'],
+ ['Payroll hypotheses ("Look again")','explainer','Nightly and on request','Suggest possible causes','Company switch','off','Never','—','Main · default off','payroll_hypotheses'],
+ ['Protected analysis','explainer','On request','Banded patterns','The person asking','on','Today 10:05','—','Main','report_insight'],
+ ['Payslip, entitlement and attendance "Why?"','explainer','On request','Explain from the system’s calculation','The person asking','on','Today 11:40','88% helpful · 25 cases','PR 183 (not on main)','explainers'],
+];
+/* Overnight housekeeping from /admin/scheduled-actions. Business rules, not AI: shown read-only, group administrators only. */
+const SYSTEM_JOBS=[['Earned leave top-up','leave-accrue'],['Probation and contract reviews','review-sweep'],['Brought-forward leave expiry','leave-expire-carry'],['Usage capture','usage-capture'],['Payroll exception check','anomaly-sweep'],['Leave entitlement cover check','entitlement-alarm'],['Replacement public holidays','replacement-holidays-reconcile'],['Employee Master report delivery','reports-employee-master-deliver'],['AI alert check','ai-alerts']];
+const FAM={watcher:['Watchers','eye','Detect and raise findings'],chaser:['Chasers','bell','Send reminders a person could send'],preparer:['Preparers','clip','Prepare and draft, complete nothing'],decider:['Deciders','scale','Complete within conditions, under delegation'],explainer:['Explainers','help','Explain a result from the system’s own calculation']};
+
+/* ---------- How it works: text in six languages (non-English is DRAFT, native review required) ---------- */
+const HW={
+en:{title:'How it works',lede:'How the AI is built, what it may do, and who decides.',ch:['Follow a request','Delegated jobs','Five kinds of worker','What it never does'],
+ prev:'Previous',next:'Next',play:'Play',pause:'Pause',of:'Step {n} of {m}',
+ L:{interfaces:['Interfaces','Chat, floating chat, Inbox cards, review pages, connected AI tools'],harness:['Agentic harness','Runs each turn within limits. The model works inside it.'],model:['Model','suggests only, never decides'],context:['Context and knowledge','Guides, pages, setup readiness, your role'],capabilities:['HR capabilities','Reads, explainers, preparers and the workers'],sor:['HR system of record','Leave, payroll, people, claims. The only place figures and permissions are decided.'],found:['Foundation: trust and governance',['Guard','Delegated jobs','Outcome record','Audit and evaluation']]},
+ legend:['Rules and calculations','AI model','A person decides'],
+ S:[['The whole picture','Five layers sit on one foundation. Every question, card and background job takes the same path, so there is one place to secure and one to audit.'],
+  ['You ask','Aina asks the floating chat a question about her own leave.'],
+  ['The guard checks first','Before any model sees the question, code checks it.'],
+  ['The harness runs the turn','The model receives the question and only the tools Aina may use. Every tool call is checked again as Aina.'],
+  ['Context fills the gaps','It knows the leave guide, the right page and Aina’s role. A role is context, never permission.'],
+  ['A capability prepares','The leave preparer asks the leave service to check the request. Nothing has changed yet.'],
+  ['The system of record decides','The leave service checks the request against the company’s rule version. Only here are days and money calculated.'],
+  ['An outcome record is written','Who asked, what was read, which rules ran and which model worded it are stored with the audit trail. A card appears in Aina’s Inbox.'],
+  ['You confirm','Aina opens the review page and confirms. Her confirmation, not the AI, submits the leave.']],
+ quote:'“Can I take Friday 14 November off?”',
+ g:['AI is on for this company','Within today’s budget','Not a sensitive topic','About Aina’s own records only','No hidden instructions in the text'],
+ r:['Balance covers 1 day · 9 left · rule AL-2026.3','No overlap with other leave','Not a public holiday'],
+ confirmed:'Confirmed by Aina Rahman'},
+ms:{title:'Cara ia berfungsi',lede:'Bagaimana AI dibina, apa yang boleh dilakukannya, dan siapa yang memutuskan.',ch:['Ikuti satu permintaan','Delegasi','Lima jenis pekerja','Perkara yang tidak akan dilakukan'],
+ prev:'Sebelum',next:'Seterusnya',play:'Main',pause:'Jeda',of:'Langkah {n} daripada {m}',
+ L:{interfaces:['Antara muka','Sembang, sembang terapung, kad Peti Masuk, halaman semakan, alat AI bersambung'],harness:['Harnes agentik','Menjalankan setiap giliran dalam had. Model bekerja di dalamnya.'],model:['Model','mencadang sahaja, tidak memutuskan'],context:['Konteks dan pengetahuan','Panduan, halaman, kesediaan persediaan, peranan anda'],capabilities:['Keupayaan HR','Bacaan, penerang, penyedia dan pekerja'],sor:['Sistem rekod HR','Cuti, gaji, pekerja, tuntutan. Satu-satunya tempat angka dan kebenaran diputuskan.'],found:['Asas: kepercayaan dan tadbir urus',['Pengawal','Delegasi','Rekod hasil','Audit dan penilaian']]},
+ legend:['Peraturan dan pengiraan','Model AI','Seseorang memutuskan'],
+ S:[['Gambaran keseluruhan','Lima lapisan di atas satu asas. Setiap soalan, kad dan kerja latar melalui laluan yang sama.'],['Anda bertanya','Aina bertanya kepada sembang terapung tentang cutinya sendiri.'],['Pengawal menyemak dahulu','Sebelum model melihat soalan, kod menyemaknya.'],['Harnes menjalankan giliran','Model menerima soalan dan hanya alat yang boleh digunakan oleh Aina. Setiap panggilan alat disemak semula sebagai Aina.'],['Konteks melengkapkan','Ia tahu panduan cuti, halaman yang betul dan peranan Aina. Peranan ialah konteks, bukan kebenaran.'],['Keupayaan menyediakan','Penyedia cuti meminta perkhidmatan cuti menyemak permintaan. Belum ada yang berubah.'],['Sistem rekod memutuskan','Perkhidmatan cuti menyemak permintaan mengikut versi peraturan syarikat. Hanya di sini hari dan wang dikira.'],['Rekod hasil ditulis','Siapa bertanya, apa yang dibaca, peraturan mana yang dijalankan dan model mana yang mengarang disimpan bersama jejak audit.'],['Anda mengesahkan','Aina membuka halaman semakan dan mengesahkan. Pengesahannya, bukan AI, yang menghantar cuti.']],
+ quote:'“Bolehkah saya bercuti pada Jumaat 14 November?”',
+ g:['AI dihidupkan untuk syarikat ini','Dalam bajet hari ini','Bukan topik sensitif','Hanya rekod Aina sendiri','Tiada arahan tersembunyi'],
+ r:['Baki mencukupi · 9 hari · peraturan AL-2026.3','Tiada pertindihan cuti','Bukan cuti umum'],confirmed:'Disahkan oleh Aina Rahman'},
+zh:{title:'运作方式',lede:'AI 如何构建、可以做什么，以及由谁决定。',ch:['跟随一个请求','委托','五类工作者','绝不会做的事'],
+ prev:'上一步',next:'下一步',play:'播放',pause:'暂停',of:'第 {n} 步，共 {m} 步',
+ L:{interfaces:['界面','对话、浮动对话、收件箱卡片、审核页面、已连接的 AI 工具'],harness:['智能体运行框架','在限制内执行每一轮。模型在其中工作。'],model:['模型','只提出建议，从不做决定'],context:['上下文与知识','指南、页面、设置就绪度、你的角色'],capabilities:['HR 能力','读取、解释、准备与各类工作者'],sor:['HR 记录系统','休假、薪资、人员、报销。唯一决定数字与权限的地方。'],found:['基础：信任与治理',['守卫','委托','结果记录','审计与评估']]},
+ legend:['规则与计算','AI 模型','由人决定'],
+ S:[['全景','五个层级建立在同一个基础上。每个问题、卡片和后台任务都走同一条路径。'],['你提问','Aina 在浮动对话中询问自己的休假。'],['守卫先检查','在任何模型看到问题之前，由代码先检查。'],['运行框架执行本轮','模型只收到问题和 Aina 可用的工具。每次调用工具都会以 Aina 的身份再次检查。'],['上下文补充信息','它了解休假指南、对应页面和 Aina 的角色。角色只是上下文，绝不是权限。'],['能力负责准备','休假准备器请休假服务检查该请求。此时尚未更改任何内容。'],['记录系统做决定','休假服务按公司的规则版本检查请求。只有这里计算天数和金额。'],['写入结果记录','谁提问、读取了什么、运行了哪些规则、哪个模型撰写文字，都随审计记录保存。'],['由你确认','Aina 打开审核页面并确认。提交休假的是她的确认，而不是 AI。']],
+ quote:'“我可以在 11 月 14 日星期五请假吗？”',
+ g:['本公司已开启 AI','在今日预算内','不是敏感话题','仅涉及 Aina 本人的记录','文本中没有隐藏指令'],
+ r:['余额足够 · 剩余 9 天 · 规则 AL-2026.3','与其他休假无重叠','不是公共假期'],confirmed:'由 Aina Rahman 确认'},
+vi:{title:'Cách hoạt động',lede:'AI được xây dựng thế nào, được phép làm gì và ai là người quyết định.',ch:['Theo dõi một yêu cầu','Ủy quyền','Năm loại tác vụ','Những điều không bao giờ làm'],
+ prev:'Trước',next:'Tiếp',play:'Phát',pause:'Tạm dừng',of:'Bước {n} / {m}',
+ L:{interfaces:['Giao diện','Trò chuyện, khung chat nổi, thẻ Hộp thư, trang xem xét, công cụ AI kết nối'],harness:['Khung tác tử','Chạy mỗi lượt trong giới hạn. Mô hình làm việc bên trong.'],model:['Mô hình','chỉ đề xuất, không quyết định'],context:['Ngữ cảnh và tri thức','Hướng dẫn, trang, mức sẵn sàng thiết lập, vai trò của bạn'],capabilities:['Năng lực nhân sự','Đọc, giải thích, chuẩn bị và các tác vụ'],sor:['Hệ thống hồ sơ nhân sự','Nghỉ phép, lương, nhân sự, chi phí. Nơi duy nhất quyết định con số và quyền.'],found:['Nền tảng: tin cậy và quản trị',['Lớp bảo vệ','Ủy quyền','Hồ sơ kết quả','Kiểm toán và đánh giá']]},
+ legend:['Quy tắc và tính toán','Mô hình AI','Con người quyết định'],
+ S:[['Toàn cảnh','Năm lớp trên một nền tảng. Mọi câu hỏi, thẻ và tác vụ nền đều đi cùng một đường.'],['Bạn hỏi','Aina hỏi khung chat nổi về ngày nghỉ của chính mình.'],['Lớp bảo vệ kiểm tra trước','Trước khi mô hình thấy câu hỏi, mã sẽ kiểm tra.'],['Khung tác tử chạy lượt','Mô hình chỉ nhận câu hỏi và những công cụ Aina được dùng. Mỗi lần gọi công cụ đều được kiểm tra lại với quyền của Aina.'],['Ngữ cảnh bổ sung','Nó biết hướng dẫn nghỉ phép, trang phù hợp và vai trò của Aina. Vai trò là ngữ cảnh, không phải quyền.'],['Năng lực chuẩn bị','Bộ chuẩn bị nghỉ phép nhờ dịch vụ nghỉ phép kiểm tra yêu cầu. Chưa có gì thay đổi.'],['Hệ thống hồ sơ quyết định','Dịch vụ nghỉ phép kiểm tra theo phiên bản quy tắc của công ty. Chỉ ở đây ngày và tiền được tính.'],['Ghi hồ sơ kết quả','Ai hỏi, đã đọc gì, quy tắc nào đã chạy và mô hình nào viết câu trả lời được lưu cùng nhật ký kiểm toán.'],['Bạn xác nhận','Aina mở trang xem xét và xác nhận. Chính xác nhận của cô, không phải AI, gửi đơn nghỉ.']],
+ quote:'“Tôi có thể nghỉ thứ Sáu 14/11 không?”',
+ g:['AI đang bật cho công ty này','Trong ngân sách hôm nay','Không phải chủ đề nhạy cảm','Chỉ hồ sơ của chính Aina','Không có chỉ thị ẩn'],
+ r:['Đủ số dư · còn 9 ngày · quy tắc AL-2026.3','Không trùng ngày nghỉ khác','Không phải ngày lễ'],confirmed:'Đã được Aina Rahman xác nhận'},
+ta:{title:'இது எப்படி செயல்படுகிறது',lede:'AI எப்படி கட்டமைக்கப்பட்டுள்ளது, அது என்ன செய்யலாம், யார் முடிவு செய்கிறார்கள்.',ch:['ஒரு கோரிக்கையைப் பின்தொடருங்கள்','ஒப்படைப்புகள்','ஐந்து வகை பணியாளர்கள்','அது ஒருபோதும் செய்யாதவை'],
+ prev:'முந்தையது',next:'அடுத்தது',play:'இயக்கு',pause:'இடைநிறுத்து',of:'படி {n} / {m}',
+ L:{interfaces:['இடைமுகங்கள்','அரட்டை, மிதக்கும் அரட்டை, உள்பெட்டி அட்டைகள், மதிப்பாய்வுப் பக்கங்கள், இணைக்கப்பட்ட AI கருவிகள்'],harness:['முகவர் இயக்கக் கட்டமைப்பு','ஒவ்வொரு சுற்றையும் வரம்புக்குள் இயக்குகிறது. மாதிரி இதற்குள் வேலை செய்கிறது.'],model:['மாதிரி','பரிந்துரை மட்டும், முடிவு செய்யாது'],context:['சூழல் மற்றும் அறிவு','வழிகாட்டிகள், பக்கங்கள், அமைப்புத் தயார்நிலை, உங்கள் பங்கு'],capabilities:['மனிதவளத் திறன்கள்','வாசிப்புகள், விளக்கிகள், தயாரிப்பாளர்கள், பணியாளர்கள்'],sor:['மனிதவளப் பதிவு அமைப்பு','விடுப்பு, ஊதியம், பணியாளர்கள், கோரிக்கைகள். எண்களும் அனுமதிகளும் முடிவு செய்யப்படும் ஒரே இடம்.'],found:['அடித்தளம்: நம்பிக்கை மற்றும் ஆளுகை',['காவல்','ஒப்படைப்புகள்','விளைவுப் பதிவு','தணிக்கை மற்றும் மதிப்பீடு']]},
+ legend:['விதிகள் மற்றும் கணக்கீடுகள்','AI மாதிரி','ஒருவர் முடிவு செய்கிறார்'],
+ S:[['முழுப் படம்','ஐந்து அடுக்குகள் ஒரே அடித்தளத்தில் உள்ளன. ஒவ்வொரு கேள்வியும் அட்டையும் பின்னணி வேலையும் ஒரே பாதையில் செல்கின்றன.'],['நீங்கள் கேட்கிறீர்கள்','அய்னா தனது விடுப்பு பற்றி மிதக்கும் அரட்டையில் கேட்கிறார்.'],['காவல் முதலில் சரிபார்க்கிறது','எந்த மாதிரியும் கேள்வியைப் பார்க்கும் முன், குறியீடு அதைச் சரிபார்க்கிறது.'],['கட்டமைப்பு சுற்றை இயக்குகிறது','மாதிரி கேள்வியையும் அய்னா பயன்படுத்தக்கூடிய கருவிகளை மட்டுமே பெறுகிறது. ஒவ்வொரு கருவி அழைப்பும் அய்னாவாக மீண்டும் சரிபார்க்கப்படுகிறது.'],['சூழல் நிரப்புகிறது','அது விடுப்பு வழிகாட்டி, சரியான பக்கம், அய்னாவின் பங்கை அறிந்துள்ளது. பங்கு சூழல் மட்டுமே, அனுமதி அல்ல.'],['திறன் தயாரிக்கிறது','விடுப்புத் தயாரிப்பாளர் கோரிக்கையைச் சரிபார்க்க விடுப்புச் சேவையைக் கேட்கிறது. இன்னும் எதுவும் மாறவில்லை.'],['பதிவு அமைப்பு முடிவு செய்கிறது','விடுப்புச் சேவை நிறுவனத்தின் விதிப் பதிப்பின்படி சரிபார்க்கிறது. நாட்களும் பணமும் இங்கு மட்டுமே கணக்கிடப்படுகின்றன.'],['விளைவுப் பதிவு எழுதப்படுகிறது','யார் கேட்டார், எது வாசிக்கப்பட்டது, எந்த விதிகள் இயங்கின, எந்த மாதிரி எழுதியது என்பவை தணிக்கைத் தடத்துடன் சேமிக்கப்படுகின்றன.'],['நீங்கள் உறுதிப்படுத்துகிறீர்கள்','அய்னா மதிப்பாய்வுப் பக்கத்தைத் திறந்து உறுதிப்படுத்துகிறார். AI அல்ல, அவரது உறுதிப்படுத்தலே விடுப்பைச் சமர்ப்பிக்கிறது.']],
+ quote:'“நவம்பர் 14 வெள்ளிக்கிழமை நான் விடுப்பு எடுக்கலாமா?”',
+ g:['இந்த நிறுவனத்திற்கு AI இயக்கத்தில் உள்ளது','இன்றைய வரவுசெலவுக்குள்','உணர்திறன் தலைப்பு அல்ல','அய்னாவின் சொந்தப் பதிவுகள் மட்டும்','மறைந்த அறிவுறுத்தல்கள் இல்லை'],
+ r:['இருப்பு போதும் · 9 நாட்கள் · விதி AL-2026.3','பிற விடுப்புடன் மோதல் இல்லை','பொது விடுமுறை அல்ல'],confirmed:'அய்னா ரஹ்மான் உறுதிப்படுத்தினார்'},
+th:{title:'วิธีการทำงาน',lede:'AI ถูกสร้างอย่างไร ทำอะไรได้บ้าง และใครเป็นผู้ตัดสินใจ',ch:['ติดตามหนึ่งคำขอ','การมอบหมาย','ผู้ทำงานห้าประเภท','สิ่งที่จะไม่ทำเด็ดขาด'],
+ prev:'ก่อนหน้า',next:'ถัดไป',play:'เล่น',pause:'หยุดชั่วคราว',of:'ขั้นที่ {n} จาก {m}',
+ L:{interfaces:['ส่วนติดต่อ','แชต แชตลอย การ์ดในกล่องงาน หน้าตรวจทาน เครื่องมือ AI ที่เชื่อมต่อ'],harness:['โครงควบคุมเอเจนต์','ดำเนินแต่ละรอบภายในขีดจำกัด โมเดลทำงานอยู่ภายใน'],model:['โมเดล','เสนอแนะเท่านั้น ไม่ตัดสินใจ'],context:['บริบทและความรู้','คู่มือ หน้า ความพร้อมของการตั้งค่า บทบาทของคุณ'],capabilities:['ความสามารถด้าน HR','การอ่าน ผู้อธิบาย ผู้จัดเตรียม และผู้ทำงาน'],sor:['ระบบบันทึกข้อมูล HR','การลา เงินเดือน บุคลากร การเบิก ที่เดียวที่ตัดสินตัวเลขและสิทธิ์'],found:['ฐานราก: ความน่าเชื่อถือและธรรมาภิบาล',['ด่านตรวจ','การมอบหมาย','บันทึกผลลัพธ์','การตรวจสอบและประเมิน']]},
+ legend:['กฎและการคำนวณ','โมเดล AI','คนเป็นผู้ตัดสิน'],
+ S:[['ภาพรวม','ห้าชั้นตั้งอยู่บนฐานเดียว ทุกคำถาม การ์ด และงานเบื้องหลังผ่านเส้นทางเดียวกัน'],['คุณถาม','ไอน่าถามแชตลอยเรื่องการลาของตนเอง'],['ด่านตรวจตรวจสอบก่อน','ก่อนที่โมเดลจะเห็นคำถาม โค้ดจะตรวจสอบก่อน'],['โครงควบคุมดำเนินรอบ','โมเดลได้รับคำถามและเครื่องมือที่ไอน่าใช้ได้เท่านั้น ทุกการเรียกเครื่องมือถูกตรวจซ้ำในฐานะไอน่า'],['บริบทช่วยเติม','รู้คู่มือการลา หน้าที่ถูกต้อง และบทบาทของไอน่า บทบาทเป็นบริบท ไม่ใช่สิทธิ์'],['ความสามารถเตรียมการ','ผู้จัดเตรียมการลาขอให้บริการการลาตรวจคำขอ ยังไม่มีอะไรเปลี่ยนแปลง'],['ระบบบันทึกตัดสิน','บริการการลาตรวจตามเวอร์ชันกฎของบริษัท วันและเงินคำนวณที่นี่เท่านั้น'],['เขียนบันทึกผลลัพธ์','ใครถาม อ่านอะไร กฎใดทำงาน และโมเดลใดเรียบเรียงข้อความ ถูกเก็บพร้อมบันทึกการตรวจสอบ'],['คุณยืนยัน','ไอน่าเปิดหน้าตรวจทานและยืนยัน การยืนยันของเธอ ไม่ใช่ AI ที่ส่งใบลา']],
+ quote:'“ฉันลาวันศุกร์ที่ 14 พฤศจิกายนได้ไหม”',
+ g:['เปิดใช้ AI สำหรับบริษัทนี้','อยู่ในงบประมาณวันนี้','ไม่ใช่หัวข้ออ่อนไหว','เฉพาะข้อมูลของไอน่าเอง','ไม่มีคำสั่งแฝงในข้อความ'],
+ r:['วันลาคงเหลือพอ · 9 วัน · กฎ AL-2026.3','ไม่ทับซ้อนกับการลาอื่น','ไม่ใช่วันหยุดราชการ'],confirmed:'ยืนยันโดย ไอน่า ราห์มาน'}};
+/* Which layer each step lights, and where the request token sits. */
+const STEP_TARGET=[null,'interfaces','found:0','harness','context','capabilities','sor','found:2','interfaces'];
+
+/* ---------- Rendering ---------- */
+function proposalCard(it,opts={}){
+  const checks=it.checks.map(([k,l,v])=>`<span class="pill ${k}" title="Rule version ${v}">${l}</span>`).join('');
+  const cta=it.g==='fyi'?`<a class="btn o" href="#review">${it.cta}</a>`:`<a class="btn" href="#review">${it.cta}</a>`;
+  return `<article class="pc${opts.compact?' compact':''}" aria-label="${it.title}">
+   <span class="ico ${it.kind}">${ic(it.icon)}</span>
+   <div class="t">${it.title}</div>
+   <div class="who">${it.g!=='fyi'?'<span class="mark" title="Awaiting your confirmation" aria-label="Awaiting your confirmation"></span>':''}${it.who.map(w=>`<span>${w}</span>`).join('<span aria-hidden="true">·</span>')}</div>
+   <div class="checks">${checks}</div>
+   <div class="act">${cta}${it.exp?`<span class="exp">${ic('clock')}${it.exp}</span>`:''}</div>
+   <details><summary>${ic('right')}How this was prepared</summary>
+    <dl class="or"><dt>Authority</dt><dd>${it.authority}</dd><dt>What was read</dt><dd>${it.read}</dd><dt>Rules used</dt><dd>${it.checks.map(c=>c[2]).join(', ')}</dd><dt>AI model's part</dt><dd>${it.model}</dd><dt>Your decision</dt><dd>Not yet</dd></dl></details>
+  </article>`;
+}
+function header(title,lede){return `<h1>${title}</h1><p class="lede">${lede}</p>`}
+function centreTabs(){
+  const admin=state.role==='admin';
+  return `<div class="tabs" role="tablist" aria-label="${PRODUCT.centre}">${VIEWS.filter(v=>admin||!v[3]).map((v,i,a)=>{
+    const sep=admin&&v[0]==='workers'?'<span class="tabsep" aria-hidden="true"></span>':'';
+    const sel=state.view===v[0]||(state.view==='review'&&v[0]==='inbox');
+    return `${sep}<a class="tab" role="tab" aria-selected="${sel}" href="#${v[0]}">${ic(v[2])}${v[1]}${v[0]==='inbox'?`<span class="badge">${admin?3:1}</span>`:''}</a>`}).join('')}</div>`;
+}
+function centreTop(){return `<div class="wrap">${header(PRODUCT.centre,'Ask questions, decide what is waiting for you, and see what the AI does on your behalf. Nothing changes until a person confirms it.')}${centreTabs()}`}
+
+const R={
+inbox(){
+  const items=state.role==='admin'?ITEMS:[{...ITEMS[0],title:'Your annual leave · Fri 14 Nov (1 day)',who:['You asked in chat','Ask, today'],checks:[['ok','Balance covers it · 9.0 days left','AL-2026.3'],['ok','No overlap','LV-core 4.2']],authority:'You, in the floating chat',read:'Your leave balance and calendar',cta:'Review and submit'}];
+  const f=state.filter, chips=[['all','All'],['decide','Needs your decision'],['prep','Prepared for you'],['fyi','For your information']];
+  return `${centreTop()}<div class="inbox"><div>
+   <div class="filters" role="group" aria-label="Filter">${chips.map(([k,l])=>`<button class="chip" aria-pressed="${f===k}" data-filter="${k}">${l}</button>`).join('')}</div>
+   ${GROUPS.filter(([g])=>f==='all'||f===g).map(([g,t,d])=>{const list=items.filter(i=>i.g===g);if(!list.length)return'';return `<section class="group" aria-labelledby="g-${g}"><header><h2 id="g-${g}">${t}</h2><span class="count num">${list.length}</span></header><p class="muted small" style="margin:-4px 0 10px">${d}</p>${list.map(i=>proposalCard(i)).join('')}</section>`}).join('')}
+  </div><aside class="side">
+   <div class="card"><h3>Waiting on you</h3><p class="muted small" style="margin:4px 0 8px">Every item here was checked by the system before it reached you.</p>
+    <div class="kv"><span>Decisions</span><b class="num">${state.role==='admin'?2:1}</b></div><div class="kv"><span>Prepared</span><b class="num">${state.role==='admin'?2:0}</b></div><div class="kv"><span>Oldest</span><b class="num">2 days</b></div></div>
+   <div class="card"><h3>Delegated jobs</h3><p class="muted small" style="margin:4px 0 8px">${state.role==='admin'?'1 job runs for you: Monthly payroll inputs.':'Nothing is delegated. That is the default.'}</p><a href="#delegations" class="small">Manage delegated jobs</a></div>
+  </aside></div></div>`;
+},
+review(){
+  return `<div class="wrap"><a class="crumb" href="#inbox">${ic('left')}Inbox</a>${header('Review annual leave · Tan Wei Jie','Check the details, then decide. The leave service checks everything again when you confirm.')}
+  <div class="review"><div>
+   <section class="card sec"><h2>What will change</h2><table><thead><tr><th>Field</th><th>Now</th><th>After you approve</th></tr></thead><tbody>
+    <tr><td>Status</td><td><span class="pill warn">Pending</span></td><td><span class="pill ok">Approved</span></td></tr>
+    <tr><td>Dates</td><td colspan="2">Thu 13 Nov 2026 – Fri 14 Nov 2026</td></tr>
+    <tr><td>Days</td><td class="num">2.0</td><td class="num">2.0</td></tr>
+    <tr><td>Annual leave balance</td><td class="num">9.0 days</td><td class="muted">Shown by the leave service after approval</td></tr></tbody></table></section>
+   <section class="card sec"><h2>Checks the system ran</h2><table><thead><tr><th>Check</th><th>Result</th><th>Rule version</th></tr></thead><tbody>
+    <tr><td>Balance covers the request</td><td><span class="pill ok">Pass</span></td><td class="num">AL-2026.3</td></tr>
+    <tr><td>No overlap with other leave</td><td><span class="pill ok">Pass</span></td><td class="num">LV-core 4.2</td></tr>
+    <tr><td>Team coverage stays at minimum</td><td><span class="pill warn">Needs review · 4 of 6 in</span></td><td class="num">TEAM-MIN v1</td></tr></tbody></table></section>
+   <section class="card sec"><h2>How this was prepared</h2><dl class="or" style="background:none;padding:0"><dt>Authority</dt><dd>Approval assigned to you as Wei Jie's approver</dd><dt>What was read</dt><dd>Leave balance, team calendar, read as you</dd><dt>AI model's part</dt><dd>Worded the summary only. Checks are not AI.</dd><dt>Outcome record</dt><dd class="num">OR-2026-11-01-0193</dd></dl></section>
+  </div>
+  <aside class="card confirm" aria-label="Your decision"><h2>Your decision</h2>
+   <div class="who"><span class="mark${state.signed?' signed':''}" id="mk"></span><span id="mkTxt">${state.signed?'Approved by Siti Aminah · 1 Nov 2026, 14:02':'Waiting for your confirmation'}</span></div>
+   <button class="btn" id="approve" ${state.signed?'disabled':''}>Approve leave</button>
+   <button class="btn o">Reject with a reason</button>
+   <p class="muted small" style="margin:12px 0 0">${ic('clock')} This review expires in 3 days. One review page pattern serves all 53 current review routes.</p>
+  </aside></div></div>`;
+},
+ask(){
+  return `${centreTop()}<div class="ask"><div class="threads"><button class="btn o" style="width:100%;margin-bottom:8px">New chat</button>
+   <a class="row" aria-current="page">Leave for Wei Jie's team</a><a class="row">October payroll inputs</a><a class="row">EPF rate for new hires</a><p class="muted small" style="padding:8px">Chats are kept for 30 days, then erased.</p></div>
+   <div class="conv"><div class="log" role="log" aria-live="polite">
+    <div class="q">Who on my team is away next week, and is anything waiting for me?</div>
+    <div class="a"><p style="margin:0 0 10px">Two people are away next week: <b>Tan Wei Jie</b> (13–14 Nov, pending your approval) and <b>Lee Mei Ling</b> (12 Nov, approved). One leave request is waiting for your decision:</p>
+     ${proposalCard(ITEMS[0])}
+     <p class="muted small" style="margin:10px 0 0">Read: team calendar and approvals, as you. <a href="#how">How answers are made</a></p></div>
+    <div class="suggest"><button>Why does coverage need review?</button><button>Show my delegated jobs</button></div>
+   </div>
+   <form class="composer" onsubmit="return false"><label for="askq" class="sr" hidden>Your question</label><textarea id="askq" rows="1" placeholder="Ask about your HR records or this system"></textarea><button class="send" aria-label="Send">${ic('up')}</button></form>
+  </div></div></div>`;
+},
+delegations(){
+  const admin=state.role==='admin';
+  return `${centreTop()}<p style="margin:0 0 16px;max-width:70ch"><b>Nothing is delegated unless you choose to.</b> A delegated job lets an AI worker do one named job for you, within your own authority, until the end date. You can stop it at any time.</p>
+  <div class="dg">
+   ${admin?`<article class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:start"><div><h3>Monthly payroll inputs</h3><p class="muted small" style="margin:4px 0 0">Preparer · prepares, never completes · example job type, not built yet</p></div><span class="pill ok">Active</span></div>
+    <dl class="facts"><dt>For whom</dt><dd>Teratai Fictional Sdn Bhd</dd><dt>Limits</dt><dd>Once a month · reads attendance, claims, overtime</dd><dt>Valid until</dt><dd>3 Jan 2027, then renew</dd><dt>Tell me</dt><dd>Each time it runs</dd><dt>Last run</dt><dd>20 Oct · you confirmed it</dd></dl>
+    <div style="display:flex;gap:8px"><button class="btn o">Stop now</button><button class="btn g">See what it did</button></div></article>`:''}
+   <article class="card" style="border-style:dashed"><h3>Delegate a job</h3><p class="muted small" style="margin:4px 0 10px">Only jobs your company has allowed, and only within what you can already do.</p>
+    <div style="display:flex;flex-direction:column;gap:6px"><button class="btn o" style="justify-content:flex-start">${ic('clip')}Monday summary of who is away in my team</button><button class="btn o" style="justify-content:flex-start" ${admin?'':'disabled title="Not allowed by your company"'}>${ic('clip')}Monthly payroll inputs</button><button class="btn o" style="justify-content:flex-start" disabled title="Needs legal review and acceptance evidence">${ic('scale')}Approve small leave requests · not available yet</button></div></article>
+   <article class="card"><h3>Never delegable</h3><p class="muted small" style="margin:4px 0 0">These always need a person, whatever the settings.</p><div class="never">${['Pay amounts','Payroll close or reprocess','Hiring, confirming or ending employment','Access and permissions','Anything that cannot be undone','Deciding your own requests'].map(n=>`<span class="pill off">${n}</span>`).join('')}</div></article>
+  </div>`;
+},
+workers(){
+  const counts={};WORKERS.forEach(w=>counts[w[1]]=(counts[w[1]]||0)+1);
+  const f=state.filter in FAM?state.filter:'all';
+  return `${centreTop()}<div class="card stop"><span style="color:var(--destructive)">${ic('shield')}</span><div style="flex:1"><h3>All AI workers for this company</h3><p class="muted small" style="margin:2px 0 0">Stops every worker and delegation at once. People can still use Ask.</p></div><button class="btn o">Stop all workers</button></div>
+  <div class="filters" role="group" aria-label="Family">${[['all','All',WORKERS.length],...Object.entries(FAM).map(([k,v])=>[k,v[0],counts[k]||0])].map(([k,l,n])=>`<button class="chip" aria-pressed="${f===k}" data-filter="${k}">${l} <span class="num muted">${n}</span></button>`).join('')}</div>
+  <div class="card tbl"><table><thead><tr><th>Worker</th><th>Family</th><th>Runs</th><th>Effect</th><th>Runs under</th><th>Switch</th><th>Last run</th><th>How people respond</th><th>Today</th></tr></thead><tbody>
+  ${WORKERS.filter(w=>f==='all'||w[1]===f).map(w=>`<tr><td title="${w[9]}">${w[0]}</td><td><span class="fam"><i>${ic(FAM[w[1]][1])}</i>${FAM[w[1]][0].replace(/s$/,'')}</span></td><td>${w[2]}</td><td class="small">${w[3]}</td><td class="small">${w[4]}</td><td>${w[5]==='locked'?'<span class="pill off">Locked</span>':`<button class="switch" role="switch" aria-checked="${w[5]==='on'}" aria-label="${w[0]}"></button>`}</td><td class="num">${w[6]}</td><td class="small">${w[7]}</td><td><span class="pill ${w[8].startsWith('Main')?(w[8]==='Main'?'ok':'off'):'info'}">${w[8]}</span></td></tr>`).join('')}
+  </tbody></table></div><p class="muted small">Every worker states its trigger, what it may read, its effect and its authority, or it cannot run. New workers start switched off. The “Today” column is for this review only: it shows where each worker exists in the code now.</p>
+  <section class="card sec" style="margin-top:16px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap"><h2>Scheduled system jobs</h2><a class="small" href="#workers">Open scheduled actions</a></div>
+   <p class="muted small" style="margin:4px 0 10px">Overnight business rules, not AI. They run on the server schedule and cannot be switched here. Group administrators only, read-only, as today.</p>
+   <div class="never">${SYSTEM_JOBS.map(([n,id])=>`<span class="pill off" title="${id}">${n}</span>`).join('')}</div></section></div>`;
+},
+setup(){
+  const rows=[['ok','AI switched on for this company','Group administrator, 12 Oct'],['ok','Model provider connected','Zero retention · Singapore region'],['warn','Sensitive-topic routing','HR contact not set for Teratai Fictional'],['ok','Which pages show the floating chat','All except Payroll'],['off','Delegable jobs','1 of 3 job types allowed'],['warn','Readiness: holiday calendar 2027','1 public holiday missing']];
+  return `${centreTop()}<div class="card tbl"><table><thead><tr><th>Setting</th><th>State</th><th>Detail</th><th></th></tr></thead><tbody>${rows.map(r=>`<tr><td>${r[1]}</td><td><span class="pill ${r[0]}">${r[0]==='ok'?'Ready':r[0]==='warn'?'Needs attention':'Limited'}</span></td><td class="small muted">${r[2]}</td><td style="text-align:right"><a class="small" href="#setup">Change</a></td></tr>`).join('')}</tbody></table></div></div>`;
+},
+spend(){
+  return `${centreTop()}<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(18rem,1fr));gap:12px">
+   <section class="card sec"><h2>This month</h2><p style="font-size:22px;font-weight:600;margin:6px 0 2px" class="num">RM 182.40 <span class="muted small" style="font-weight:400">of RM 400 allowance</span></p>
+    <div style="height:8px;border-radius:999px;background:var(--muted);overflow:hidden;margin:10px 0 12px"><div style="width:46%;height:100%;background:var(--primary)"></div></div>
+    <div class="kv"><span>Ask</span><span class="num">RM 121.10</span></div><div class="kv"><span>Explainers</span><span class="num">RM 38.20</span></div><div class="kv"><span>Workers</span><span class="num">RM 23.10</span></div></section>
+   <section class="card sec"><h2>Allowances</h2><div class="kv"><span>Per person per day</span><span class="num">40 questions</span></div><div class="kv"><span>Company per month</span><span class="num">RM 400</span></div><div class="kv"><span>When reached</span><span>Ask pauses; workers continue</span></div></section>
+   <section class="card sec"><h2>Provider and model</h2><div class="kv"><span>Provider</span><span>Configured · zero retention</span></div><div class="kv"><span>Model version</span><span class="num">pinned 2026-10</span></div><div class="kv"><span>Model changes</span><span>Only after a comparison report</span></div></section>
+  </div>
+  <h2 style="margin:22px 0 10px">Recent runs</h2><div class="card tbl"><table><thead><tr><th>Time</th><th>Surface</th><th>Worker or person</th><th>Outcome record</th><th>Cost</th></tr></thead><tbody>
+   <tr><td class="num">14:02</td><td>Review</td><td>Siti Aminah</td><td class="num">OR-…0193</td><td class="num">RM 0.00</td></tr><tr><td class="num">11:40</td><td>Explainer</td><td>Aina Rahman</td><td class="num">OR-…0188</td><td class="num">RM 0.04</td></tr><tr><td class="num">09:00</td><td>Chaser</td><td>Claims documents</td><td class="num">OR-…0171</td><td class="num">RM 0.01</td></tr></tbody></table></div></div>`;
+},
+how(){
+  const T=HW[state.lang]||HW.en;
+  return `${centreTop().replace(header(PRODUCT.centre,'Ask questions, decide what is waiting for you, and see what the AI does on your behalf. Nothing changes until a person confirms it.'),header(T.title,T.lede))}
+  <div class="chapters" role="tablist" aria-label="${T.title}">${['request','deleg','families','never'].map((c,i)=>`<button role="tab" aria-selected="${state.chapter===c}" data-chapter="${c}">${T.ch[i]}</button>`).join('')}</div>
+  <div id="chapter">${CH[state.chapter](T)}</div>
+  ${state.lang!=='en'?'<p class="draft">Draft translation for layout review. A native speaker must review before release.</p>':''}</div>`;
+},
+leave(){
+  const days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];let cells='';
+  for(let d=10;d<=23;d++){const ev=d===13||d===14?'<span class="ev">Tan Wei Jie · pending</span>':d===12?'<span class="ev al">Lee Mei Ling</span>':'';cells+=`<div><span class="num">${d}</span>${ev}</div>`}
+  return `<div class="wrap">${header('Leave','Team calendar, balances and requests.')}<div class="cal" role="grid" aria-label="November 2026">${days.map(d=>`<div style="min-height:auto;font-weight:500">${d}</div>`).join('')}${cells}</div>
+  <p class="muted small" style="margin-top:14px">The floating chat sits on every page except the ones the administrator hides. It keeps the same conversation when you move between pages and opens it in the ${PRODUCT.centre}.</p></div>`;
+}};
+
+
+
+/* ---- Exploded view of the AI core (SVG line art, isometric). Plane coords: x 0..300, y 0..200; z up. ---- */
+const XV={cx:450,cy:368,s:.72,open:0};
+const XV_Z={closed:{found:0,sor:2,capabilities:4,context:6,harness:8,interfaces:16},open:{found:0,sor:74,capabilities:148,context:222,harness:296,interfaces:378}};
+const XV_SUB={interfaces:'the dial · chat · inbox · review pages',harness:'the escapement · one step at a time',model:'the balance wheel · decides nothing',context:'the calendar ring · guides · pages · your role',capabilities:'the gear train · reads · explainers · preparers',sor:'the mainspring · leave · payroll · people',found:'the case · guard · outcome record · audit',guard:'the crown · checked before anything moves',outcome:'the engraved caseback · who · what · when'};
+const xvP=(x,y,z)=>[XV.cx+(x-y)*0.866*XV.s,XV.cy+((x+y)*0.5-z)*XV.s];
+const xvPts=a=>a.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' ');
+const xvCh=(x0,y0,x1,y1,r)=>[[x0+r,y0],[x1-r,y0],[x1,y0+r],[x1,y1-r],[x1-r,y1],[x0+r,y1],[x0,y1-r],[x0,y0+r]];
+function xvPlate(poly,z,t){
+  let out='';
+  for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length],nx=b[1]-a[1],ny=-(b[0]-a[0]);
+    if(nx+ny>0)out+=`<polygon class="xv-s" points="${xvPts([xvP(a[0],a[1],z),xvP(b[0],b[1],z),xvP(b[0],b[1],z-t),xvP(a[0],a[1],z-t)])}"/>`;}
+  return out+`<polygon class="xv-f" points="${xvPts(poly.map(([x,y])=>xvP(x,y,z)))}"/>`;
+}
+const xvLine=(pts,z,cls='xv-d')=>`<polyline class="${cls}" points="${xvPts(pts.map(([x,y])=>xvP(x,y,z)))}"/>`;
+const xvRect=(x,y,w,h,z,r=6,cls='xv-d')=>`<polygon class="${cls}" points="${xvPts(xvCh(x,y,x+w,y+h,r).map(([a,b])=>xvP(a,b,z)))}"/>`;
+const xvBox=(x,y,w,h,z,t,r=5)=>xvPlate(xvCh(x,y,x+w,y+h,r),z,t);
+const xvRound=(x0,y0,x1,y1,r,n=5)=>{const pts=[],c=[[x1-r,y0+r,-90],[x1-r,y1-r,0],[x0+r,y1-r,90],[x0+r,y0+r,180]];
+  for(const [cx,cy,start] of c)for(let i=0;i<=n;i++){const t=(start+i*90/n)*Math.PI/180;pts.push([cx+r*Math.cos(t),cy+r*Math.sin(t)])}return pts;};
+const xvCircle=(cx,cy,r,z,cls='xv-d')=>`<polygon class="${cls}" points="${xvPts(Array.from({length:24},(_,i)=>{const t=i/24*2*Math.PI;return xvP(cx+r*Math.cos(t),cy+r*Math.sin(t),z)}))}"/>`;
+const xvRoundOutline=(x0,y0,x1,y1,r,z,cls='xv-d')=>`<polygon class="${cls}" points="${xvPts(xvRound(x0,y0,x1,y1,r).map(([x,y])=>xvP(x,y,z)))}"/>`;
+const xvRoundBox=(x0,y0,x1,y1,r,z,t)=>xvPlate(xvRound(x0,y0,x1,y1,r),z,t);
+/* A watch movement, taken apart. Plane coords centred on (150,150). */
+const WC=[150,150];
+const xvDisc=(cx,cy,r,n=56)=>Array.from({length:n},(_,i)=>{const t=i/n*2*Math.PI;return [cx+r*Math.cos(t),cy+r*Math.sin(t)]});
+const xvGear=(cx,cy,r,teeth,depth)=>{const pts=[];for(let i=0;i<teeth;i++){const a=i/teeth*2*Math.PI,w=Math.PI/teeth;
+  for(const [da,rr] of [[-w*.55,r-depth],[-w*.3,r],[w*.3,r],[w*.55,r-depth]])pts.push([cx+rr*Math.cos(a+da),cy+rr*Math.sin(a+da)])}return pts;};
+const xvSpiral=(cx,cy,r0,r1,turns,z)=>xvLine(Array.from({length:Math.round(turns*36)+1},(_,i)=>{const t=i/36*2*Math.PI,r=r0+(r1-r0)*i/(turns*36);return [cx+r*Math.cos(t),cy+r*Math.sin(t)]}),z);
+const xvOutline=(poly,z,cls='xv-d')=>`<polygon class="${cls}" points="${xvPts(poly.map(([x,y])=>xvP(x,y,z)))}"/>`;
+const xvAt=(r,ang)=>[WC[0]+r*Math.cos(ang),WC[1]+r*Math.sin(ang)];
+function xvLayer(k,z){
+  const [cx,cy]=WC;
+  if(k==='found')return xvPlate(xvDisc(cx,cy,158),z,28)+xvOutline(xvDisc(cx,cy,142),z)+                         // the case
+    [[-.62],[.62],[Math.PI-.62],[Math.PI+.62]].map(([a])=>{const [x,y]=xvAt(166,a-Math.PI/4);return xvBox(x-14,y-14,28,28,z-6,10,6)}).join('');
+  if(k==='sor')return xvPlate(xvDisc(cx,cy,124),z,6)+xvPlate(xvDisc(102,190,46),z+16,16)+xvSpiral(102,190,8,40,3.2,z+16)+  // mainspring barrel
+    xvOutline(xvDisc(102,190,10),z+16)+[0,1,2].map(i=>{const [x,y]=xvAt(96,i*2.1+.4);return xvOutline(xvDisc(x,y,5,16),z)}).join('');
+  if(k==='capabilities')return xvPlate(xvDisc(cx,cy,120),z,4)+xvPlate(xvGear(196,118,54,28,6),z+10,8)+xvOutline(xvDisc(196,118,10),z+10)+  // the gear train
+    xvPlate(xvGear(112,196,36,20,5),z+10,8)+xvOutline(xvDisc(112,196,8),z+10)+xvPlate(xvGear(204,206,22,12,4),z+10,8)+xvOutline(xvDisc(204,206,5),z+10)+
+    [0,1,2].map(i=>xvLine([xvAt(10,i*2.1),xvAt(48,i*2.1)],z+10)).join('');
+  if(k==='context'){const outer=xvDisc(cx,cy,130),inner=xvDisc(cx,cy,100);                                       // the calendar ring
+    return xvPlate(outer,z,5)+xvOutline(inner,z)+Array.from({length:31},(_,i)=>{const a=i/31*2*Math.PI;return xvLine([xvAt(106,a),xvAt(i%5===0?122:114,a)],z)}).join('');}
+  if(k==='harness')return xvPlate(xvDisc(cx,cy,118),z,6)+xvOutline(xvDisc(cx,cy,64),z)+                           // the escapement bridge
+    xvPlate(xvGear(232,96,22,15,4),z+8,6)+xvLine([[214,110],[196,132],[176,128]],z+8)+xvLine([[196,132],[206,146]],z+8);
+  if(k==='interfaces')return xvPlate(xvDisc(cx,cy,134),z,5)+xvOutline(xvDisc(cx,cy,124),z)+                       // the dial
+    Array.from({length:12},(_,i)=>{const a=i/12*2*Math.PI;return xvLine([xvAt(i%3===0?96:104,a),xvAt(116,a)],z)}).join('')+
+    xvLine([[cx,cy],xvAt(62,-2.2)],z)+xvLine([[cx,cy],xvAt(96,-.6)],z)+xvOutline(xvDisc(cx,cy,6,16),z)+xvOutline(xvDisc(cx,cy,142),z+10,'xv-w');  // hands, crystal
+  return '';
+}
+function spatial(T){
+  return `<div class="space" id="space"><div class="xt"><b>${T.title}</b><span>Exploded view · like a watch movement</span></div>
+   <svg id="xv" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${T.L.interfaces[0]}, ${T.L.harness[0]}, ${T.L.context[0]}, ${T.L.capabilities[0]}, ${T.L.sor[0]}; ${T.L.found[0]}"><g id="xvg"></g><circle id="xvtok" r="5.5" cx="0" cy="0" fill="#fb8a4a" stroke="#0c0d0f" stroke-width="2.5" opacity="0"/></svg>
+   <span class="xm">${PRODUCT.centre}</span></div>`;
+}
+const xvLerp=(a,b,e)=>a+(b-a)*e;
+function placeSpatial(){
+  const g=document.getElementById('xvg');if(!g)return;
+  const T=HW[state.lang]||HW.en,L=T.L,tgt=STEP_TARGET[state.step],[k,part]=tgt?tgt.split(':'):[null,undefined];
+  const e=XV.open,Z={};XV.cy=368-(1-e)*130;for(const key in XV_Z.open)Z[key]=xvLerp(XV_Z.closed[key],XV_Z.open[key],e);
+  const order=['found','sor','capabilities','context','harness','interfaces'];
+  const on=key=>key===k&&k!=='found';
+  let svg='';
+  // dashed alignment wires at the three outer corners, as in a teardown drawing
+  if(e>.05)for(const [x,y] of [xvAt(158,Math.PI*.75),xvAt(158,Math.PI*.25),xvAt(158,-Math.PI*.25)])svg+=`<line class="xv-w" x1="${xvP(x,y,Z.found)[0]}" y1="${xvP(x,y,Z.found)[1]}" x2="${xvP(x,y,Z.interfaces)[0]}" y2="${xvP(x,y,Z.interfaces)[1]}"/>`;
+  for(const key of order){
+    svg+=`<g class="${on(key)?'on':''} ${key==='interfaces'&&e>.8?'xv-glass':''}">${xvLayer(key,Z[key])}</g>`;
+    if(key==='found'){
+      svg+=`<g class="${k==='found'&&part==='0'?'on':''}">${xvPlate(xvDisc(150,326,16,24),Z.found-6,22)}${xvBox(140,308,20,10,Z.found-10,12,3)}</g>`;   // guard: the crown
+      svg+=`<g class="${k==='found'&&part==='2'?'on':''}">${xvOutline(xvDisc(150,150,40),Z.found)}${[134,146,158,170].map((y,i)=>xvLine([[124+i*2,y],[176-i*2,y]],Z.found)).join('')}</g>`; // outcome record: the caseback engraving
+    }
+    if(key==='harness'){const mz=Z.harness+12+e*16;svg+=`<g class="xv-m ${k==='harness'?'on':''}">${xvPlate(xvDisc(150,150,46),mz,6)}${xvOutline(xvDisc(150,150,34),mz)}${[0,1,2].map(i=>xvLine([xvAt(8,i*2.09),xvAt(34,i*2.09)],mz)).join('')}${xvSpiral(150,150,6,26,2.6,mz+2)}</g>`;}
+  }
+  // labels: layers on the right, model / guard / outcome on the left
+  const LX=700,rows=[];
+  for(const key of [...order].reverse()){const R={found:158,sor:124,capabilities:120,context:130,harness:118,interfaces:134}[key];const anchor=xvP(...xvAt(R,-Math.PI/4),Z[key]);rows.push({key,side:'r',a:anchor,name:key==='found'?L.found[0]:L[key][0],sub:XV_SUB[key],on:on(key)});}
+  rows.push({key:'model',side:'l',a:xvP(...xvAt(46,Math.PI*.75),Z.harness+12+e*16),name:L.model[0],sub:XV_SUB.model,on:k==='harness'});
+  rows.push({key:'guard',side:'l',a:xvP(134,326,Z.found-6),name:L.found[1][0],sub:XV_SUB.guard,on:k==='found'&&part==='0'});
+  rows.push({key:'outcome',side:'r',a:xvP(...xvAt(40,-Math.PI/4),Z.found),name:L.found[1][2],sub:XV_SUB.outcome,on:k==='found'&&part==='2'});
+  const r=rows.filter(x=>x.side==='r').sort((p,q)=>p.a[1]-q.a[1]);let last=-1e9;r.forEach(x=>{x.y=Math.max(x.a[1],last+38);last=x.y});
+  rows.filter(x=>x.side==='l').forEach(x=>x.y=x.a[1]);
+  const sub=state.lang==='en';
+  if(e>.6)for(const x of rows){const dim=tgt&&!x.on?' dim':'',cls=x.on?' on':'';
+    const lx=x.side==='r'?LX:300,tx=x.side==='r'?LX+8:292,anchor=x.side==='r'?'start':'end';
+    svg+=`<polyline class="xv-l${cls}" points="${x.a[0].toFixed(1)},${x.a[1].toFixed(1)} ${(x.side==='r'?lx-24:lx+24)},${x.y.toFixed(1)} ${lx},${x.y.toFixed(1)}"/>`;
+    svg+=`<text class="xv-lab${cls}${dim}" x="${tx}" y="${(x.y-3).toFixed(1)}" text-anchor="${anchor}">${x.name}</text>`;
+    if(sub)svg+=`<text class="xv-sub${cls}${dim}" x="${tx}" y="${(x.y+12).toFixed(1)}" text-anchor="${anchor}">${x.sub}</text>`;}
+  g.innerHTML=svg;
+  // the request rides the left wire to each layer's corner, or sits on the guard / outcome part
+  const tok=document.getElementById('xvtok');
+  if(!tgt||e<.95){tok.setAttribute('opacity',0);return}
+  const pt=k==='found'?(part==='0'?xvP(150,326,Z.found-6):xvP(150,150,Z.found)):xvP(...xvAt(158,Math.PI*.75),Z[k]);
+  tok.setAttribute('opacity',1);tok.style.transform=`translate(${pt[0]}px,${pt[1]}px)`;
+}
+/* The unit opens once, the first time it is shown; reduced motion shows it open. */
+function openXV(){if(XV.open>=1){placeSpatial();return}if(reduce.matches){XV.open=1;placeSpatial();return}
+  const t0=performance.now()+350;const tick=now=>{const p=Math.min(1,Math.max(0,(now-t0)/1500));XV.open=1-Math.pow(1-p,3);placeSpatial();if(p<1)requestAnimationFrame(tick)};requestAnimationFrame(tick)}
+function trackSpatial(){placeSpatial();}
+
+const CH={
+request(T){
+  const m=T.S.length,s=state.step,[st,sb]=T.S[s];
+  let extra='';
+  if(s===1)extra=`<div class="quote">${T.quote}</div>`;
+  if(s===2)extra=`<ul class="cl">${T.g.map((g,i)=>`<li style="animation-delay:${i*90}ms">${ic('check')}${g}</li>`).join('')}</ul>`;
+  const tl=(rows)=>`<ul class="cl">${rows.map(([ok,t],i)=>`<li style="animation-delay:${i*90}ms">${ic(ok?'check':'x')}<span${ok?'':' class="muted"'}>${t}</span></li>`).join('')}</ul>`;
+  const EX=HW.en.EX||{};
+  if(s===3)extra=tl([[1,'Offered: leave balance, read as Aina'],[1,'Offered: leave calendar, read as Aina'],[1,'Offered: prepare a leave request'],[0,'Not offered: other people’s records'],[0,'Not offered: anything that completes a change']]);
+  if(s===4)extra=`<div class="never" style="margin-bottom:12px">${['Leave guide · verified','Page: Leave › Apply','Role: employee','Setup: leave rules ready'].map(x=>`<span class="pill info">${x}</span>`).join('')}</div>`;
+  if(s===5)extra=`<div class="quote small">Prepare leave · Fri 14 Nov, 1 day → leave service check.<br><span class="muted">No figure is computed by the model.</span></div>`;
+  if(s===6)extra=`<ul class="cl">${T.r.map((g,i)=>`<li style="animation-delay:${i*90}ms">${ic('check')}${g}</li>`).join('')}</ul>`;
+  if(s===7)extra=proposalCard({...ITEMS[0],title:'Annual leave · Fri 14 Nov (1 day)',who:['Aina asked in chat'],checks:[['ok','Balance covers it','AL-2026.3'],['ok','No overlap','LV-core 4.2']],cta:'Review',exp:''},{compact:true});
+  if(s===8)extra=`<div class="confirm-mini" style="display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line-strong);border-radius:10px"><span class="mark signed"></span><b style="font-weight:500">${T.confirmed}</b></div>`;
+  const L=T.L, layer=(k,n)=>`<div class="layer" data-layer="${k}"><span class="n">${n}</span><span class="nm">${L[k][0]}</span><span class="ds">${L[k][1]}</span>${k==='harness'?`<div class="model">${ic('sparkles')}<span><b>${L.model[0]}</b> · ${L.model[1]}</span></div>`:''}</div>`;
+  const useSpatial=innerWidth>=1000;
+  return `<div class="stage${useSpatial?' spatial':''}">
+   ${useSpatial?spatial(T):''}<div class="map" id="map" ${useSpatial?'hidden':''} role="img" aria-label="${T.L.interfaces[0]}, ${T.L.harness[0]}, ${T.L.context[0]}, ${T.L.capabilities[0]}, ${T.L.sor[0]}; ${T.L.found[0]}">
+    <span class="token" id="token" aria-hidden="true"></span>
+    ${layer('interfaces',1)}${layer('harness',2)}${layer('context',3)}${layer('capabilities',4)}${layer('sor',5)}
+    <div class="found" data-layer="found"><span class="nm">${L.found[0]}</span><div class="parts">${L.found[1].map((p,i)=>`<span data-part="${i}">${p}</span>`).join('')}</div></div>
+    <div class="legend"><span><i style="background:var(--muted);border:1px solid var(--line-strong)"></i>${T.legend[0]}</span><span><i style="background:var(--llm-wash);border:1px dashed var(--llm)"></i>${T.legend[1]}</span><span><span class="mark signed" style="width:12px;height:12px"></span>${T.legend[2]}</span></div>
+   </div>
+   <section class="card story" id="story" aria-live="polite" aria-atomic="true">
+    <div class="k num">${T.of.replace('{n}',s+1).replace('{m}',m)}</div><h2>${st}</h2><p>${sb}</p>${extra}
+    <div class="ctrls"><button class="btn o" id="prev" ${s===0?'disabled':''}>${ic('left')}${T.prev}</button><button class="btn o" id="play" aria-pressed="${state.playing}">${ic(state.playing?'pause':'play')}${state.playing?T.pause:T.play}</button><button class="btn" id="next" ${s===m-1?'disabled':''}>${T.next}${ic('right')}</button>
+     <div class="dots" role="tablist" aria-label="${T.title}">${T.S.map((x,i)=>`<button role="tab" aria-selected="${i===s}" aria-label="${x[0]}" tabindex="${i===s?0:-1}" data-step="${i}"></button>`).join('')}</div></div>
+   </section></div>`;
+},
+deleg(){
+  return `<div class="keys"><article class="card"><h3>1 · The company allows a job</h3><p class="muted small" style="margin:6px 0 0">An administrator chooses which jobs may be delegated at all, with ceilings. By default none are.</p></article><span class="arrow">${ic('right')}</span>
+  <article class="card"><h3>2 · A person delegates it</h3><p class="muted small" style="margin:6px 0 0">Within their own authority, for a set period, with limits and a choice of notifications.</p></article><span class="arrow">${ic('right')}</span>
+  <article class="card"><h3>3 · A worker acts for them</h3><p class="muted small" style="margin:6px 0 0">For, never as: every record names who delegated and which worker acted. Authority is checked again at every run, so it stops if the person changes role or leaves.</p></article></div>
+  <div class="card" style="padding:16px;margin-top:12px"><h3>Conditions are code, never the model</h3><p class="muted small" style="margin:6px 0 0">Balance, overlap, coverage and amount checks are run by the system of record. Anything unusual falls back to the person as “needs review”.</p></div>`;
+},
+families(){
+  return `<div class="fams">${Object.entries(FAM).map(([k,[n,i,d]])=>`<article class="card"><span class="fam"><i>${ic(i)}</i></span><h3>${n}</h3><p class="muted small" style="margin:0">${d}</p><p class="role"><span class="pill ${k==='decider'?'off':'llm'}">${k==='watcher'||k==='chaser'?'AI: wording only':k==='preparer'?'AI: plans and words':k==='decider'?'AI: no part in the decision':'AI: words native facts'}</span></p></article>`).join('')}</div>
+  <p class="muted small" style="margin-top:12px">All five share one contract: a trigger, a declared read scope, a declared effect, the authority it runs under, an outcome record per run, a switch that starts off, and acceptance figures. Manage them under Workers.</p>`;
+},
+never(){
+  return `<div class="nevers">${[['Guess about people','No judgements about attitude, performance or who might resign.'],['Calculate money or days','Figures come from payroll and leave services, never from the model.'],['Act without a delegation','By default nothing is delegated.'],['Delegate pay, employment or access','These always need a person.'],['Open the database to chat','No free-form queries; only declared, permission-checked tools.'],['Send identifiers to a provider','IC, passport, bank and tax numbers never leave.']].map(([t,d])=>`<article class="card"><span style="color:var(--destructive)">${ic('x')}</span><div><h3>${t}</h3><p class="muted small" style="margin:4px 0 0">${d}</p></div></article>`).join('')}</div>`;
+}};
+
+function floating(){
+  const fw=$('#fw'),fab=$('#fab');
+  const show=state.view==='leave';
+  fab.hidden=!show||state.fwOpen; fw.hidden=!show||!state.fwOpen;
+  if(!show)return;
+  fw.classList.toggle('docked',state.docked);
+  const item={...ITEMS[0],title:'Your annual leave · Fri 14 Nov (1 day)',who:['You asked just now'],checks:[['ok','Balance covers it · 9.0 left','AL-2026.3'],['ok','No overlap','LV-core 4.2']],cta:'Review and submit',exp:'Expires in 7 days'};
+  fw.innerHTML=`<header><div class="ttl"><h2 id="fwTitle">${PRODUCT.assistant}</h2><p class="muted small" style="margin:2px 0 0">On the Leave page · reads only what you can already see</p></div>
+   <button class="ib" id="dock" aria-label="${state.docked?'Back to floating chat':'Open as side panel'}" title="${state.docked?'Back to floating chat':'Open as side panel'}">${ic(state.docked?'min':'max')}</button>
+   <button class="ib" id="close" aria-label="Close">${ic('x')}</button></header>
+   <a class="strip" href="#inbox">${ic('inbox')}<span><b>${state.role==='admin'?3:1} waiting for you</b> in your Inbox</span>${ic('right')}</a>
+   <div class="body" role="log" aria-live="polite">
+    <div class="q">Can I take Friday 14 November off?</div>
+    <div class="a"><p style="margin:0 0 10px">Yes. You have <b class="num">9.0</b> days of annual leave and nothing overlaps on 14 November. I prepared the request for you to check:</p>${proposalCard(item,{compact:true})}</div>
+    <div class="suggest"><button>Why 9 days?</button><button>Who else is away that day?</button></div>
+   </div>
+   <form class="composer" onsubmit="return false"><textarea rows="1" aria-label="Your question" placeholder="Ask about this page or your records"></textarea><button class="send" aria-label="Send">${ic('up')}</button></form>
+   <p class="foot">Nothing is changed for you. <a href="#ask">Continue in the ${PRODUCT.centre}</a></p>`;
+  $('#dock').onclick=()=>{state.docked=!state.docked;floating()};
+  $('#close').onclick=()=>{state.fwOpen=false;floating();$('#fab').focus()};
+}
+
+function placeToken(){
+  const map=$('#map'),tok=$('#token');if(!map||!tok)return;
+  const tgt=STEP_TARGET[state.step];
+  map.classList.toggle('focus',!!tgt);
+  map.querySelectorAll('.layer,.found,.found .parts span').forEach(e=>e.classList.remove('on'));
+  if(!tgt){tok.style.opacity=0;return}
+  const [k,part]=tgt.split(':');const el=map.querySelector(`[data-layer="${k}"]`);el.classList.add('on');
+  let anchor=el;if(part!==undefined){anchor=el.querySelector(`[data-part="${part}"]`);anchor.classList.add('on')}
+  const m=map.getBoundingClientRect(),a=anchor.getBoundingClientRect();
+  const x=(part!==undefined?a.right+6:a.right-22)-m.left-7, y=a.top+a.height/2-m.top-7;
+  tok.style.opacity=1;tok.style.transform=`translate(${x}px,${y}px)`;
+}
+let timer=null;const reduce=matchMedia('(prefers-reduced-motion: reduce)');
+function setStep(n,focus){const m=(HW[state.lang]||HW.en).S.length;state.step=Math.max(0,Math.min(m-1,n));if(state.step===m-1&&state.playing)stopPlay();
+  if($('#space')){const tmp=document.createElement('div');tmp.innerHTML=CH.request(HW[state.lang]||HW.en);$('#story').replaceWith(tmp.querySelector('#story'));wireStory();trackSpatial();}else render(false);if(focus)document.querySelector(`.dots [data-step="${state.step}"]`)?.focus()}
+function stopPlay(){state.playing=false;clearInterval(timer);timer=null}
+function play(){if(state.playing){stopPlay();setStep(state.step);return}
+  /* Reduced motion: no autoplay; the person steps through. Play still advances once per press. */
+  if(reduce.matches){setStep(state.step+1);return}
+  state.playing=true;if(state.step===(HW[state.lang]||HW.en).S.length-1)state.step=0;
+  timer=setInterval(()=>setStep(state.step+1),3200);setStep(state.step)}
+
+function wireStory(){
+  $('#prev').onclick=()=>setStep(state.step-1);$('#next').onclick=()=>setStep(state.step+1);$('#play').onclick=play;
+  document.querySelectorAll('.dots [data-step]').forEach(b=>{b.onclick=()=>setStep(+b.dataset.step);
+    b.onkeydown=e=>{const k=e.key;if(k==='ArrowRight'||k==='ArrowDown'){e.preventDefault();setStep(state.step+1,true)}else if(k==='ArrowLeft'||k==='ArrowUp'){e.preventDefault();setStep(state.step-1,true)}else if(k==='Home'){e.preventDefault();setStep(0,true)}else if(k==='End'){e.preventDefault();setStep(99,true)}}});
+  $('#play').setAttribute('aria-pressed',state.playing);
+}
+function render(scrollTop=true){
+  const admin=state.role==='admin';
+  document.documentElement.lang=state.view==='how'?state.lang:'en';
+  if(!admin&&['workers','setup','spend'].includes(state.view))state.view='inbox';
+  $('#main').innerHTML=(R[state.view]||R.inbox)();
+  $('#rvViews').innerHTML=[...VIEWS.filter(v=>admin||!v[3]).map(v=>[v[0],v[1]]),...EXTRA].map(([k,l])=>`<button aria-current="${state.view===k}" data-go="${k}">${l}</button>`).join(' ');
+  $('#railSub').innerHTML=VIEWS.filter(v=>admin||!v[3]).map(v=>`<a class="row" href="#${v[0]}" ${state.view===v[0]?'aria-current="page"':''}>${v[1]}${v[0]==='inbox'?`<span class="badge">${admin?3:1}</span>`:''}</a>`).join('');
+  document.querySelectorAll('[data-admin]').forEach(e=>e.hidden=!admin);
+  document.querySelectorAll('[data-count]').forEach(e=>e.textContent=admin?3:1);
+  document.querySelectorAll('.rail > .row').forEach(e=>e.removeAttribute('aria-current'));
+  document.querySelector(state.view==='leave'?'[data-nav="leave"]':'[data-nav="centre"]').setAttribute('aria-current','page');
+  $('#meName').textContent=admin?'Siti Aminah · HR administrator':'Aina Rahman · Employee';$('#meAv').textContent=admin?'SA':'AR';
+  floating();
+  /* wiring */
+  document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{state.filter=b.dataset.filter;render(false)});
+  document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+  document.querySelectorAll('[data-chapter]').forEach(b=>b.onclick=()=>{state.chapter=b.dataset.chapter;stopPlay();render(false)});
+  document.querySelectorAll('.switch').forEach(b=>b.onclick=()=>b.setAttribute('aria-checked',b.getAttribute('aria-checked')!=='true'));
+  const ap=$('#approve');if(ap)ap.onclick=()=>{state.signed=true;render(false)};
+  if(state.view==='how'&&state.chapter==='request'){
+    wireStory();
+    requestAnimationFrame(()=>{placeToken();openXV();});
+  }
+  if(scrollTop)window.scrollTo(0,0);
+}
+$('#fab').onclick=()=>{state.fwOpen=true;floating();$('#fw textarea')?.focus()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.fwOpen&&state.view==='leave'&&!state.docked){state.fwOpen=false;floating();$('#fab').focus()}});
+$('#rvRole').onchange=e=>{state.role=e.target.value;state.filter='all';render()};
+$('#rvTheme').onchange=e=>{e.target.value?document.documentElement.dataset.theme=e.target.value:delete document.documentElement.dataset.theme;render(false)};
+$('#rvLang').onchange=e=>{state.lang=e.target.value;if(state.view!=='how')go('how');else render(false)};
+addEventListener('resize',()=>{placeToken();placeSpatial();});
+/* Navigation works from clicks alone, so the mockup also runs as a static snapshot (data: URL) where the hash cannot change. */
+function go(h){route(h);try{history.replaceState(null,'','#'+h)}catch(e){}}
+document.addEventListener('click',e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;e.preventDefault();go(a.getAttribute('href').slice(1))});
+function route(h0){const h=typeof h0==='string'?h0:location.hash.slice(1);const p=new URLSearchParams(h.split('?')[1]||'');state.view=(h.split('?')[0])||'inbox';
+  if(p.get('step'))state.step=+p.get('step');if(p.get('lang'))state.lang=p.get('lang'),$('#rvLang').value=state.lang;if(p.get('role'))state.role=p.get('role'),$('#rvRole').value=state.role;
+  if(p.get('theme'))document.documentElement.dataset.theme=p.get('theme'),$('#rvTheme').value=p.get('theme');if(p.get('chapter'))state.chapter=p.get('chapter');if(p.get('open'))XV.open=+p.get('open');
+  if(p.get('docked'))state.docked=true;state.filter='all';stopPlay();render()}
+addEventListener('hashchange',route);route();
+</script>
+</body>
+</html>

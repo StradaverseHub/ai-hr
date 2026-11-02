@@ -37,7 +37,7 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
-      - run: node --test .github/ci/orchestrator-browser.test.mjs
+      - run: node --test .github/ci/orchestrator-browser.test.mjs .github/ci/build-heap.test.mjs
       - name: Resolve frozen candidate
         id: candidate
         run: node .github/ci/resolve.mjs
@@ -68,8 +68,19 @@ jobs:
         with:
           node: '20'
       - run: pnpm exec playwright install --with-deps chromium
+      # Same bounded next build heap profile as the canonical build: exactly 8192 MB for the orchestrator's
+      # `next build` child only (migrations, server and Chromium keep their normal heap), only on a GitHub-hosted
+      # 16 GB Linux runner; build-heap.mjs refuses anything else and any value above 8192. Raising the ceiling
+      # needs owner review (docs/reviews/build-capacity-8192-proposal.md). Rollback: revert restores 6144.
+      - name: Admit bounded next build heap
+        id: build-heap
+        run: node ../automation/.github/ci/build-heap.mjs admit
+        env: {AIHR_CI_BUILD_HEAP_MB: '8192'}
       - name: Build and walk through the actual production renderer on fresh fictional data
         run: node ../automation/.github/ci/orchestrator-browser.mjs "$RUNNER_TEMP/orchestrator-production-renderer"
+        env:
+          AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.build-heap.outputs.heap_profile }}
+          AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.build-heap.outputs.memtotal_kib }}
       - name: Ensure owned database cleanup after interrupted walkthrough
         if: always()
         run: bash ../automation/.github/ci/postgres.sh stop

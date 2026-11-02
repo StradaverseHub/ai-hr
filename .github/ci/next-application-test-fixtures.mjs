@@ -1,10 +1,13 @@
 /** Synthetic graph/provenance for private protocol probes, never actual compiler/build evidence. */
 import {buildPacketFixture,fixtureHash} from './build-artifact-test-fixture.mjs';
-export function applicationStateFixture(expected={}){
+// The two heaps a canonical application graph may carry: the default, and the build-heap.mjs admitted bounded profile.
+export const FIXTURE_DEFAULT_HEAP='--max-old-space-size=6144';
+export const FIXTURE_BOUNDED_HEAP='--max-old-space-size=8192';
+export function applicationStateFixture(expected={},{nodeOptions=FIXTURE_DEFAULT_HEAP}={}){
  const packet=buildPacketFixture(expected),p=packet.provenance,e=packet.expected,digest='a'.repeat(64);
  const inputs=['tsconfig.json','tsconfig.build.json','pnpm-lock.yaml','package.json','pnpm-workspace.yaml','next.config.ts','deploy/css-cache-guard.sh','cssInputs'];
  const binaries=['typescript/package.json','typescript/lib/tsc.js','typescript/lib/_tsc.js','typescript/lib/typescript.js','next/dist/lib/typescript/runTypeCheckCli.js','next/dist/lib/typescript/runTypeScriptCli.js','next/dist/lib/typescript/runTypeCheck.js','next/dist/build/type-check.js'];
- const context={runtime:{...p.runtime,typescript:'5.9.3'},sourcePath:'/home/runner/work/ai-hr/ai-hr/source',nodeOptions:'--max-old-space-size=6144',
+ const context={runtime:{...p.runtime,typescript:'5.9.3'},sourcePath:'/home/runner/work/ai-hr/ai-hr/source',nodeOptions,
   inputs:Object.fromEntries(inputs.map(k=>[k,digest])),compiler:Object.fromEntries(binaries.map(k=>[k,digest])),generatedTypes:[{path:'validator.ts',bytes:12,sha256:digest}]};
  const state=Buffer.from(JSON.stringify({version:'5.9.3',fileNames:['../../app/page.tsx','../../lib/dependency.ts']}));
  const text='Compiled successfully in fixture\nFinished TypeScript in fixture\n';

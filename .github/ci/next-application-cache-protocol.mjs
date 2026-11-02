@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {assertCiCandidateBuildInvocation} from './build-production.mjs';
 import {BUILD_BUNDLE_HELPER_PATHS} from './build-bundle-protocol.mjs';
+import {assertBuildHeapEnvironment} from './build-heap.mjs';
 import {NEXT_STATE_MEMBERS,validateNextContext,validateNextState,hash} from './next-build-cache-policy.mjs';
 export const NEXT_APPLICATION_STATE='next-application-state-v1';
 export const NEXT_APPLICATION_FAILURE='next-application-build-failure';
@@ -10,13 +11,15 @@ export const NEXT_APPLICATION_SEED=Object.freeze({kind:'seed',runId:40251838329,
 export const NEXT_APPLICATION_CODE=[...new Set(['.github/ci/cache-artifact-discovery.mjs',
  '.github/ci/next-application-cache.mjs','.github/ci/next-application-cache-protocol.mjs','.github/ci/next-build-cache.mjs','.github/ci/next-build-cache-policy.mjs',
  '.github/ci/build-production.mjs','.github/ci/build-bundle.py','.github/ci/runner-capacity.mjs','.github/ci/prepare-runner.sh',
- '.github/ci/extract-artifact.py','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml',
+ '.github/ci/extract-artifact.py','.github/ci/build-heap.mjs','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml',
  ...Object.values(BUILD_BUNDLE_HELPER_PATHS)])];
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const id=v=>Number.isSafeInteger(v)&&v>0;
 export function assertManagedNextInvocation(e,event={}){
  assertCiCandidateBuildInvocation(e);
- assert(e.AIHR_CI_CAPACITY_PROFILE==='bounded-canonical-build'&&e.NODE_OPTIONS==='--max-old-space-size=6144','Exact normal build capacity/heap required');
+ // Exactly the default 6144 heap, or the 8192 heap admitted by build-heap.mjs on a GitHub-hosted 16 GB Linux runner.
+ assert(e.AIHR_CI_CAPACITY_PROFILE==='bounded-canonical-build','Exact normal build capacity required');
+ assertBuildHeapEnvironment(e);
  if(e.GITHUB_EVENT_NAME==='pull_request')assert(event.pull_request&&!event.pull_request.draft&&event.pull_request.base?.ref==='alpha'
   &&event.pull_request.head?.repo?.full_name==='StradaverseHub/ai-hr','Only ready same-repository PR builds');
  return {publish:e.GITHUB_EVENT_NAME!=='pull_request'};
