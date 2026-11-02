@@ -7608,6 +7608,8 @@ export async function adminCancelLeave(
       throw new LeaveCancellationNotAllowedError(`the leave is already ${req.status}`, 'already_final');
     }
     const previousStatus = req.status as 'pending' | 'approved';
+    const [access] = await tx.execute<{ allowed: boolean }>(sql`select app.leave_employee_record_cancel_allowed(${req.id}::uuid) as allowed`);
+    if (access?.allowed !== true) throw new LeaveCancellationNotAllowedError('leave record cancellation unavailable in this scope', 'admin_only');
 
     const [lt] = await tx
       // 3fb1a611: `role` too — leaveTypeIs resolves the role first (production's replacement type is coded `RL`).
@@ -12349,5 +12351,14 @@ export function ownLeaveRequestActionAccess(ctx:SessionContext,requestIds:readon
  return withTenant(ctx,async tx=>{
   const rows=await tx.execute<{id:string;canEdit:boolean;canDelete:boolean}>(sql`select request.id::text as id,app.leave_own_application_allowed(request.employment_id,'edit') as "canEdit",app.leave_own_application_allowed(request.employment_id,'delete') as "canDelete" from public.leave_request request join jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) selected(id) on request.id=selected.id::uuid where request.tenant_id=${ctx.tenantId}::uuid`);
   return Object.fromEntries(rows.map(row=>[row.id,{canEdit:row.canEdit===true,canDelete:row.canDelete===true}]));
+ });
+}
+
+/** Read-only Delete flags for native-visible administrative records; does not confer a write. */
+export function leaveEmployeeRecordCancellationAccess(ctx:SessionContext,requestIds:readonly string[]):Promise<string[]> {
+ const ids=[...new Set(requestIds)];if(!ids.length)return Promise.resolve([]);
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{id:string}>(sql`select selected.id from jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) selected(id) where app.leave_employee_record_cancel_allowed(selected.id::uuid)`);
+  return rows.map(row=>row.id);
  });
 }

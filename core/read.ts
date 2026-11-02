@@ -1648,6 +1648,7 @@ function leaveRequestPageWhere(p: LeaveRequestPageFilter) {
   const isRef = !!refTerm && /^[0-9a-f-]{6,}$/i.test(refTerm);
   const where = and(
     p.purpose === 'ownApplication' ? sql`app.leave_own_application_allowed(${leaveRequest.employmentId}, 'view')` : undefined,
+    p.purpose === 'employeeRecords' ? sql`app.leave_employee_records_subject_allowed(${leaveRequest.employmentId}, 'view')` : undefined,
     p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
     p.companyId ? eq(employment.companyId, p.companyId) : undefined,
     p.businessUnitId ? eq(department.businessUnitId, p.businessUnitId) : undefined,
@@ -1716,7 +1717,7 @@ export function countLeaveRequestsByStatus(ctx: SessionContext, p: Omit<LeaveReq
 
 export type LeaveRequestPageOptions = {
     /** An independent self-service projection; administrative/calendar consumers keep their own purpose. */
-    purpose?: 'ownApplication';
+    purpose?: 'ownApplication' | 'employeeRecords';
     companyIds?: string[]; // scope fence (company switcher) — ALWAYS applied
     q?: string; // name / employeeCode / uuid-prefix reference
     companyId?: string;
@@ -1782,7 +1783,7 @@ export async function listLeaveRequestsPageTx(tx: Tx, ctx: SessionContext, p: Le
     const col = sortCol[p.sort ?? 'applied'] ?? leaveRequest.createdAt;
     const dir = p.dir === 'asc' ? asc : desc;
     if (p.before && (p.sort !== 'start' || p.dir !== 'desc' || p.offset !== 0)) throw new Error('A keyset page needs the start-desc order and offset 0');
-    const cursorWhere = p.before ? sql`r.id = ${p.before.id}::uuid ${p.purpose === 'ownApplication' ? sql`and app.leave_own_application_allowed(r.employment_id, 'view')` : sql``}` : undefined;
+    const cursorWhere = p.before ? sql`r.id = ${p.before.id}::uuid ${p.purpose === 'ownApplication' ? sql`and app.leave_own_application_allowed(r.employment_id, 'view')` : p.purpose === 'employeeRecords' ? sql`and app.leave_employee_records_subject_allowed(r.employment_id, 'view')` : sql``}` : undefined;
     const keyset = p.before
       ? sql`((${leaveRequest.startDate}, ${leaveRequest.createdAt}, ${leaveRequest.id}) < (select r.start_date, r.created_at, r.id from leave_request r where ${cursorWhere})
           or (not exists (select 1 from leave_request r where ${cursorWhere}) and ${leaveRequest.startDate} < ${p.before.startDate}::date))`

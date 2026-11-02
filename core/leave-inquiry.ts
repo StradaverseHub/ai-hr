@@ -1,29 +1,40 @@
 /** Authorized inquiry selection/count/page contract. Leave calculations remain in the Leave owner. */
+import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { isAdmin } from '../lib/authz-model';
 import { InquiryQueryError, type InquiryQuery } from '../lib/leave-inquiry-query';
 import { adminCompanies, listEmployees, adminCompaniesTx, listEmployeesTx, leaveBalanceInquiryMembershipTx, listLeaveRequestsPageTx } from './read';
 
-const authorizedContexts = new WeakMap<object, { actor: SessionContext; snapshot: LeaveInquiryContext }>();
+const authorizedContexts = new WeakMap<object, { actor: SessionContext; kind: InquiryQuery['kind']; snapshot: LeaveInquiryContext }>();
 export type LeaveInquiryContext = { companies: Awaited<ReturnType<typeof adminCompanies>>; companyIds: string[]; employees: Awaited<ReturnType<typeof listEmployees>>; selected: Awaited<ReturnType<typeof listEmployees>>[number] | undefined };
 export function leaveInquiryContext(ctx: SessionContext, selectedCompanyIds: string[], query: InquiryQuery): Promise<LeaveInquiryContext> {
   return withTenant(ctx, tx => leaveInquiryContextTx(tx, ctx, selectedCompanyIds, query));
 }
 async function leaveInquiryContextTx(tx: Tx, ctx: SessionContext, selectedCompanyIds: string[], query: InquiryQuery): Promise<LeaveInquiryContext> {
   if (!isAdmin(ctx)) throw new InquiryQueryError('Forbidden');
-  const companies = (await adminCompaniesTx(tx)).filter(c => selectedCompanyIds.includes(c.id));
+  let companies = (await adminCompaniesTx(tx)).filter(c => selectedCompanyIds.includes(c.id));
+  if (query.kind === 'records' && companies.length) {
+    const allowed = await tx.execute<{ id: string }>(sql`select selected.id from jsonb_array_elements_text(${JSON.stringify(companies.map(c => c.id))}::jsonb) selected(id) where app.leave_employee_records_company_allowed(selected.id::uuid, 'view')`);
+    const ids = new Set(allowed.map(row => row.id));
+    companies = companies.filter(c => ids.has(c.id));
+  }
   const companyIds = companies.map(c => c.id);
   // Empty company fences must never reach legacy optional-scope reads, where [] means no restriction.
-  const employees = companyIds.length ? await listEmployeesTx(tx, companyIds) : [];
+  let employees = companyIds.length ? await listEmployeesTx(tx, companyIds) : [];
+  if (query.kind === 'records' && employees.length) {
+    const allowed = await tx.execute<{ id: string }>(sql`select selected.id from jsonb_array_elements_text(${JSON.stringify(employees.map(e => e.employmentId))}::jsonb) selected(id) where app.leave_employee_records_subject_allowed(selected.id::uuid, 'view')`);
+    const ids = new Set(allowed.map(row => row.id));
+    employees = employees.filter(e => ids.has(e.employmentId));
+  }
   const selected = query.emp ? employees.find(e => e.employmentId === query.emp) : undefined;
   if (query.emp && !selected) throw new InquiryQueryError('Employee is unavailable in the selected companies');
   const result = { companies, companyIds, employees, selected };
-  authorizedContexts.set(result, { actor: ctx, snapshot: structuredClone(result) });
+  authorizedContexts.set(result, { actor: ctx, kind: query.kind, snapshot: structuredClone(result) });
   return result;
 }
 function authorizedScope(ctx: SessionContext, scope: LeaveInquiryContext, query: InquiryQuery): LeaveInquiryContext {
   const verified = authorizedContexts.get(scope);
-  if (!verified || verified.actor !== ctx || !isAdmin(ctx) || verified.snapshot.selected?.employmentId !== query.emp) throw new InquiryQueryError('Forbidden');
+  if (!verified || verified.actor !== ctx || verified.kind !== query.kind || !isAdmin(ctx) || verified.snapshot.selected?.employmentId !== query.emp) throw new InquiryQueryError('Forbidden');
   return verified.snapshot;
 }
 /** One explicit snapshot owns authorization, membership and every canonical hydration read in a file. */
@@ -38,6 +49,7 @@ export async function leaveInquiryRecordsPageTx(tx: Tx, ctx: SessionContext, sco
   checkWindow(window);
   if (!scope.companyIds.length) return { rows: [], total: 0 };
   return listLeaveRequestsPageTx(tx, ctx, {
+    purpose: 'employeeRecords',
     companyIds: scope.companyIds, employmentIds: scope.selected ? [scope.selected.employmentId] : undefined,
     leaveTypeIds: query.typeIds, statuses: query.statuses, q: query.q, departmentIds: query.departmentIds,
     ...(query.dateMode === 'applied' ? { appliedFrom: query.from, appliedTo: query.to, appliedTimezone: 'Asia/Kuala_Lumpur' as const } : { from: query.from, to: query.to }),

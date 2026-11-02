@@ -225,7 +225,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT coalesce((SELECT app.module_action_allowed(split_part(a.parent_capability,'.',1),split_part(a.parent_capability,'.',2),p_company)
   AND app.function_action_allowed(p_key,p_operation,p_company)
   FROM app.access_function_action a WHERE a.function_key=p_key AND a.operation=p_operation
-   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts')),false);
+   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveEmployeeRecords','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts')),false);
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.module_function_allowed(text,text,uuid) FROM PUBLIC;
@@ -1768,12 +1768,12 @@ CREATE TRIGGER aaa_clocking_assignment_access BEFORE INSERT OR UPDATE OR DELETE 
 CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT (cap LIKE 'function.leave.onBehalf.application.%' AND app.leave_on_behalf_application_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.leave.own.application.%' AND app.leave_own_application_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.clockingSites.%' AND app.clocking_site_native_allowed(t,u,cap,co)) OR (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_native_allowed(t,u,cap,co)) OR app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
- OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveEmployeeRecords','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT (cap LIKE 'function.leave.onBehalf.application.%' AND app.leave_on_behalf_application_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.leave.own.application.%' AND app.leave_own_application_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.clockingSites.%' AND app.clocking_site_current_native_allowed(t,u,cap,co)) OR (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_current_native_allowed(t,u,cap,co)) OR app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
- OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveEmployeeRecords','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 
 
@@ -2480,3 +2480,31 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.leave_request_edit_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER aaa_leave_request_edit BEFORE UPDATE ON public.leave_request FOR EACH ROW EXECUTE FUNCTION app.leave_request_edit_guard();
+
+--> statement-breakpoint
+-- Employee Leave Records is administrative; related-manager reads and assigned decisions
+-- do not borrow its Delete. The ordinary HR self-ban retains only the actual super course.
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','delete'] LOOP
+  PERFORM app.register_function_action('leaveEmployeeRecords',operation,'company','leave.'||operation,'app.module_action_delegation_allowed',
+   '{"moduleKey":"leave","labelKey":"admin.users.screen.leaveEmployeeRecords","kind":"screen","course":"administrative","screenKey":"leaveEmployeeRecords","href":"/leave/employee-records","employeeBearing":true}');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.leave_employee_records_company_allowed(p_company uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','delete') AND EXISTS(SELECT 1 FROM public.company actual WHERE actual.id=p_company AND actual.tenant_id=app.current_tenant_id())
+ AND app.module_function_allowed('leaveEmployeeRecords','view',p_company) AND app.module_function_allowed('leaveEmployeeRecords',p_operation,p_company);
+$$;
+CREATE FUNCTION app.leave_employee_records_subject_allowed(p_employment uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employment actual WHERE actual.id=p_employment AND actual.tenant_id=app.current_tenant_id() AND actual.voided_at IS NULL
+ AND app.leave_employee_records_company_allowed(actual.company_id,p_operation) AND app.data_permission_matches(actual.id)
+ AND (p_operation='view' OR NOT app.is_self_person(actual.person_id) OR app.has_role_for('super_admin',actual.company_id) AND EXISTS(SELECT 1 FROM public.role_assignment assignment WHERE assignment.tenant_id=actual.tenant_id AND assignment.app_user_id=app.current_user_id() AND assignment.role='super_admin' AND assignment.company_id IS NULL)));
+$$;
+CREATE FUNCTION app.leave_employee_record_cancel_allowed(p_request uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.leave_request actual WHERE actual.id=p_request AND actual.tenant_id=app.current_tenant_id() AND actual.status::text IN ('pending','approved')
+ AND app.leave_employee_records_subject_allowed(actual.employment_id,'delete'));
+$$;
+REVOKE ALL ON FUNCTION app.leave_employee_records_company_allowed(uuid,text),app.leave_employee_records_subject_allowed(uuid,text),app.leave_employee_record_cancel_allowed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_employee_records_company_allowed(uuid,text),app.leave_employee_records_subject_allowed(uuid,text),app.leave_employee_record_cancel_allowed(uuid) TO ai_hr_app;

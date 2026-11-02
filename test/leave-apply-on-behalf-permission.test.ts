@@ -23,7 +23,7 @@ import { and, eq,sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { canApplyLeaveOnBehalf, decideLeave, editLeaveRequest, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess,ownLeaveRequestActionAccess } from '../core/leave';
+import { adminCancelLeave, canApplyLeaveOnBehalf, decideLeave, editLeaveRequest, leaveEmployeeRecordCancellationAccess, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess,ownLeaveRequestActionAccess } from '../core/leave';
 import { countLeaveRequestsByStatus, listEmployees, listLeaveRequestsPage, reportingLinesFor } from '../core/read';
 import { ownLeaveRejections } from '../core/my-leave';
 import { ownLeaveRequestsPage } from '../core/mobile-leave-history';
@@ -559,4 +559,21 @@ it('preserves native pending edits but rejects raw non-own edits, forged decisio
  const [changed]=await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId));expect(changed).toMatchObject({employmentId:subject.employmentId,reason:'Fictional native edit',status:'pending',decidedAt:null});
  const [audit]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.edited')));
  expect(audit).toMatchObject({actorId:subject.ctx.userId,subjectEmploymentId:subject.employmentId,payload:{after:{reason:'Fictional native edit'}}});
+});
+
+it('keeps administrative Employee Leave Records and Delete separate from a visible report’s manager course',async()=>{
+ const manager=await hire('manager'),subject=await hire('employee');await reportsTo(subject.employmentId,manager.employmentId);const typeId=await leaveType();
+ const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const list=(ctx:SessionContext,purpose?:'employeeRecords')=>listLeaveRequestsPage(ctx,{purpose,ids:[leaveRequestId],limit:10,offset:0});
+ expect((await list(manager.ctx)).rows.map(row=>row.id)).toEqual([leaveRequestId]);
+ expect(await list(manager.ctx,'employeeRecords')).toEqual({rows:[],total:0});
+ expect(await leaveEmployeeRecordCancellationAccess(manager.ctx,[leaveRequestId])).toEqual([]);
+ await expect(adminCancelLeave(manager.ctx,{leaveRequestId})).rejects.toMatchObject({refusal:'admin_only'});
+ const admin=adminCtx(b);
+ expect((await list(admin,'employeeRecords')).rows.map(row=>row.id)).toEqual([leaveRequestId]);
+ expect(await leaveEmployeeRecordCancellationAccess(admin,[leaveRequestId])).toEqual([leaveRequestId]);
+ await expect(adminCancelLeave(admin,{leaveRequestId})).resolves.toEqual({previousStatus:'pending',restoredDays:0});
+ expect(await leaveEmployeeRecordCancellationAccess(admin,[leaveRequestId])).toEqual([]);
+ const [audit]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.admin-cancelled')));
+ expect(audit).toMatchObject({actorId:b.adminUserId,subjectEmploymentId:subject.employmentId,payload:{previousStatus:'pending',newStatus:'cancelled'}});
 });
