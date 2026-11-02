@@ -10,7 +10,7 @@ export const FINANCIAL_LETTER_FUNCTIONS:readonly FunctionActionDescriptor[]=[
  ]})),
  {key:'performance.onehr.panelFeedback',scope:'company',moduleKey:'performance_compensation',labelKey:'onehr.feedbackTitle',kind:'native_acl',course:'assigned',href:'/me/performance',employeeBearing:false,actions:([
   {operation:'view',delegationFloorFunction:'app.financial_delegate_onehr_review',bindings:[{owner:'app.onehr_feedback_card',operation:'actual-current-nominated-panel-card-and-same-purpose-view'}]},
-  {operation:'edit',delegationFloorFunction:'app.financial_delegate_onehr_review',bindings:[{owner:'app.onehr_feedback_apply',operation:'actual-nomination-view-edit-phase-exact-submit-decline-and-canonical-audit'}]}
+  {operation:'edit',delegationFloorFunction:'app.financial_delegate_onehr_review',bindings:[{owner:'app.onehr_feedback_apply',operation:'actual-nomination-view-edit-phase-exact-submit-decline-and-canonical-audit'},{owner:'app.financial_onehr_feedback_delta_guard',operation:'one-shot-complete-before-after-source-receipt-for-private-feedback-and-reset-state'}]}
  ] as const)},
  {key:'performance.onehr.reviewAdministration',scope:'company',moduleKey:'performance_compensation',labelKey:'onehr.reviewAdministration',kind:'native_acl',course:'administrative',href:'/performance',employeeBearing:true,actions:[{operation:'view',delegationFloorFunction:'app.financial_delegate_onehr_review',bindings:[
   {owner:'app.onehr_review_administration',operation:'actual-cycle-company-data-profile-current-human-view-with-native-self-exclusion'},
