@@ -16,3 +16,5 @@
 @media(max-width:640px){.lifecycle-case-task{grid-template-columns:20px minmax(0,1fr);gap:10px}.lifecycle-case-task-status{grid-column:2;grid-row:2;max-width:none}.lifecycle-case-task-body{grid-column:2}.lifecycle-case-task-assignee{max-width:100%;width:100%}.lifecycle-case-header .lifecycle-case-actions{width:100%}.lifecycle-case-items{min-width:700px}}
 
 .v9-workspace.v9-native-documents{padding-left:0;padding-right:0;background:transparent}
+
+.lifecycle-case-section-spaced{gap:0}
