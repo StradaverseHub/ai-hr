@@ -40,7 +40,8 @@ it('applies the pinned payroll and authentication successor tail through the ord
  const boundary=journal.entries.findIndex(entry=>entry.tag===tail[0][0]);expect(boundary).toBe(636);
  expect(journal.entries.slice(boundary,boundary+tail.length).map(entry=>[entry.tag,String(entry.when)])).toEqual(tail);
  const installed=journal.entries.slice(0,boundary);expect(installed).toHaveLength(636);
- const successors=journal.entries.slice(boundary);expect(installed.at(-1).tag).toBe('0865_assistant_company_retention_references');
+ const lastInstalled=installed.at(-1);expect(lastInstalled).toBeDefined();
+ const successors=journal.entries.slice(boundary);expect(lastInstalled!.tag).toBe('0865_assistant_company_retention_references');
  mkdirSync(join(preDirectory,'meta'));writeFileSync(join(preDirectory,'meta','_journal.json'),JSON.stringify({...journal,entries:installed}));
  for(const entry of installed)copyFileSync(join('db/migrations',entry.tag+'.sql'),join(preDirectory,entry.tag+'.sql'));
  let target:ReturnType<typeof createDb>|undefined;

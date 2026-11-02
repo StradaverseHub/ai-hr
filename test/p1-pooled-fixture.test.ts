@@ -18,15 +18,17 @@ async function setup(){
 }
 it('rerun and clear preserve an unowned same-date/type request and restore only the owned route preimage',async()=>{
  const f=await setup(),ledger=await owner.db.select().from(s.leaveLedger).orderBy(s.leaveLedger.id);
+ const groups=await owner.db.select().from(s.leaveSharedGroup).orderBy(s.leaveSharedGroup.id);
+ expect(groups).toContainEqual(f.group);
  const receipt=await owner.db.transaction(tx=>preparePooledFixture(tx,f.base.tenantId,'2026-12-31','source-fixture'));
  expect(receipt.requests).toHaveLength(1);expect(receipt.requests[0].id).not.toBe(f.foreign.id);
  const reused=await owner.db.transaction(tx=>preparePooledFixture(tx,f.base.tenantId,'2027-01-01','source-fixture',JSON.parse(JSON.stringify(receipt))));
  expect(reused.requests.map(r=>r.id)).toEqual(receipt.requests.map(r=>r.id));
  await owner.db.transaction(tx=>clearPooledFixture(tx,f.base.tenantId,JSON.parse(JSON.stringify(receipt))));
  expect(await owner.db.select().from(s.leaveRequest).where(eq(s.leaveRequest.id,f.foreign.id))).toEqual([f.foreign]);
- expect(await owner.db.select().from(s.leaveSharedGroup)).toEqual([f.group]);
+ expect(await owner.db.select().from(s.leaveSharedGroup).orderBy(s.leaveSharedGroup.id)).toEqual(groups);
  expect((await owner.db.select().from(s.leaveType).where(eq(s.leaveType.id,f.borrower.id)))[0].balanceSourceTypeId).toBe(f.base.annualLeaveTypeId);
- expect(await owner.db.select().from(s.leaveLedger)).toEqual(ledger);
+ expect(await owner.db.select().from(s.leaveLedger).orderBy(s.leaveLedger.id)).toEqual(ledger);
 });
 it('changed owned rows refuse cleanup without touching either population',async()=>{
  const f=await setup(),receipt=await owner.db.transaction(tx=>preparePooledFixture(tx,f.base.tenantId,'2026-11-02','source'));
