@@ -921,7 +921,7 @@ with no deployment or installation authorization.
 ## Approved administrative data-profile owner — 2 November 2026 (provisional)
 
 Security worker reserves `0936_data_permission_profiles`, index758 on its own journal,
-when1793330000336, following its0935 allocation. SQL SHA256 `5c5767e125d425fe21ea4af0458a0714b1fe13e4531694c7488ea8561f13316b`.
+when1793330000336, following its0935 allocation. SQL SHA256 `cee095e27cf6b5c600c8fb0f03455bd12b7687f18f59786bc999f106dd20ed47`.
 Parent coordinated0937 / when1793330000337 / aggregate index759 to the independent read-bypass
 worker;0938 / when1793330000338 / aggregate index760 is reserved to Security for central scope.
 These are additive uninstalled source claims. Re-audit all refs/worktree journals and live watermark
@@ -940,7 +940,7 @@ and release evidence, and grants no deployment authority. Existing applied SQL i
 ## Administrative data-profile central enforcement — 2 November 2026 (provisional)
 
 Security worker appends `0938_data_permission_enforcement`, aggregate index760,
-when1793330000338, SQL SHA256 `8b52940adbc5bc7002c1bc1de52e9d7121ca97590c2815f5b9bb31560ac8f6ab`. Its owned source journal leaves
+when1793330000338, SQL SHA256 `49c66d688bcd83ca501a9ed9a81af6caf6f9f4ea12cc74bdf2a3c57342dfe934`. Its owned source journal leaves
 index759 reserved for the independent0937 / when1793330000337 bypass-owner migration.
 The integration owner must merge0937 in chronological order and re-audit competing claims and live
 watermark before installation. This central row-scope prerequisite does not claim that the complete

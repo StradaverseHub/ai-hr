@@ -4,7 +4,7 @@ import {ArrowRight,BookOpen,Mail,ShieldCheck,UserRoundPlus,Users} from 'lucide-r
 import {Card,PageHeader} from '@/components/ui';
 import {requireSecurityCenter} from '@/lib/security-center-authz';
 import {SECURITY_PAGES,securityDestinationAllowed} from '@/lib/security-center-navigation';
-const icons={permissions:ShieldCheck,functions:BookOpen,create:UserRoundPlus,invite:Mail,users:Users,passwordPolicy:ShieldCheck};
+const icons={permissions:ShieldCheck,dataPermissions:ShieldCheck,functions:BookOpen,create:UserRoundPlus,invite:Mail,users:Users,passwordPolicy:ShieldCheck};
 export default async function SecurityCenterPage(){
  const {access}=await requireSecurityCenter(),t=await getTranslations('securityCenter');
  return <div className="mx-auto max-w-5xl space-y-6"><PageHeader title={t('title')}/><p className="text-sm text-muted-foreground">{t('description')}</p>

@@ -505,12 +505,13 @@
     "createLogin": "Tạo tài khoản đăng nhập thủ công",
     "inviteUser": "Mời người dùng",
     "users": "Người dùng",
-    "securityPermissions": "Bảo mật và quyền",
+    "securityPermissions": "Vai trò / Nhóm người dùng",
     "functionAccess": "Truy cập chức năng",
     "securityCenter": "Trung tâm bảo mật",
     "aiManagementInventory": "Danh mục AI",
     "entra": "Microsoft Entra ID",
-    "passwordPolicy": "Chính sách mật khẩu"
+    "passwordPolicy": "Chính sách mật khẩu",
+    "dataPermissionAccess": "Quyền truy cập dữ liệu"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -29660,7 +29661,7 @@
     }
   },
   "accessConfiguration": {
-    "title": "Bảo mật và quyền",
+    "title": "Vai trò / Nhóm người dùng",
     "description": "Quản lý quyền nhóm và cá nhân, xem trước mỗi thay đổi.",
     "groups": "Nhóm người dùng",
     "groupName": "Tên nhóm",
@@ -29733,7 +29734,10 @@
       "configure": "Quản lý bảo mật và quyền",
       "workforceView": "Xem hồ sơ nhân viên",
       "workforceMaintain": "Duy trì hồ sơ nhân viên",
-      "profileReview": "Xét duyệt thay đổi hồ sơ đủ điều kiện"
+      "profileReview": "Xét duyệt thay đổi hồ sơ đủ điều kiện",
+      "workforceAdd": "Thêm hồ sơ nhân sự",
+      "workforceEdit": "Sửa hồ sơ nhân sự",
+      "workforceDelete": "Xóa hồ sơ nhân sự"
     },
     "workforceReadOnly": "Bạn có thể xem hồ sơ nhân viên này. Quyền nhân sự hiện tại của bạn không cho phép thay đổi.",
     "workforceCommandHint": "Bạn có thể đổi mã nhân viên. Các thông tin khác trên trang này chỉ được xem.",
@@ -29762,7 +29766,13 @@
       "changed": "Hồ sơ nhân viên đã thay đổi. Hãy mở lại trước khi lưu.",
       "denied": "Quyền của bạn đã thay đổi. Hãy mở lại hồ sơ để kiểm tra quyền truy cập.",
       "invalid": "Nhập mã nhân viên chưa được sử dụng bằng chữ cái, chữ số hoặc dấu gạch nối, tối đa 30 ký tự."
-    }
+    },
+    "matrixView": "Xem",
+    "matrixAdd": "Thêm",
+    "matrixEdit": "Sửa",
+    "matrixDelete": "Xóa",
+    "matrixWorkforce": "Nhân sự",
+    "matrixOther": "Quyền khác"
   },
   "myPayslip": {
     "title": "Phiếu lương của tôi",
@@ -32829,7 +32839,7 @@
     "invitationSent": "Đã gửi lời mời.",
     "legacyHelp": "Chọn trang để thiết lập tài khoản này.",
     "permissions": {
-      "title": "Bảo mật và quyền",
+      "title": "Vai trò / Nhóm người dùng",
       "description": "Cấu hình quy tắc truy cập, nhóm được bảo vệ và quyền."
     },
     "functions": {
@@ -32851,6 +32861,10 @@
     "passwordPolicy": {
       "title": "Chính sách mật khẩu",
       "description": "Quy tắc mới áp dụng khi tạo, đổi hoặc đặt lại mật khẩu. Đăng nhập qua tổ chức bên ngoài giữ chính sách của nhà cung cấp."
+    },
+    "dataPermissions": {
+      "title": "Quyền truy cập dữ liệu",
+      "description": "Chọn hồ sơ nhân viên mà người dùng quản trị được truy cập. Quyền chức năng và quyền công ty hiện có vẫn áp dụng. Tự phục vụ và trách nhiệm phê duyệt được giao giữ nguyên quy tắc riêng."
     }
   },
   "payFormula": {
@@ -33707,5 +33721,63 @@
       "unlockAction": "Mở khóa tài khoản",
       "unlocked": "Đã mở khóa tài khoản."
     }
+  },
+  "dataPermissions": {
+    "title": "Quyền truy cập dữ liệu",
+    "description": "Chọn hồ sơ nhân viên mà người dùng quản trị được truy cập. Quyền chức năng và quyền công ty hiện có vẫn áp dụng. Tự phục vụ và trách nhiệm phê duyệt được giao giữ nguyên quy tắc riêng.",
+    "search": "Tìm cấu hình",
+    "new": "Cấu hình mới",
+    "name": "Tên cấu hình",
+    "enabled": "Bật cấu hình",
+    "active": "Hoạt động",
+    "inactive": "Không hoạt động",
+    "assigned": "{count} người dùng được gán",
+    "empty": "Chưa có cấu hình. Quyền công ty hiện có được giữ nguyên.",
+    "legacyPreset": "Dùng các công ty đã được cấp quyền",
+    "legacyHelp": "Thiết lập này không thêm điều kiện nhân viên hay quyền công ty và chức năng.",
+    "andOr": "Các trường kết hợp bằng VÀ. Nhiều giá trị trong cùng trường kết hợp bằng HOẶC. Cần ít nhất một điều kiện.",
+    "unavailableValue": "Giá trị đã chọn không còn khả dụng; xóa để thay điều kiện.",
+    "noValues": "Không có giá trị trong phạm vi truy cập hiện tại.",
+    "preview": "Xem trước cấu hình",
+    "retire": "Ngừng cấu hình",
+    "assignedHelp": "Xóa mọi phân công trước khi ngừng cấu hình.",
+    "assignmentTitle": "Phân công dữ liệu người dùng",
+    "assignmentHelp": "Mỗi người dùng có một cấu hình. Không gán cấu hình sẽ giữ quyền công ty hiện có. Cấu hình không hoạt động hoặc không hợp lệ không cấp hồ sơ nhân viên quản trị.",
+    "user": "Người dùng",
+    "profile": "Cấu hình dữ liệu",
+    "legacyCompany": "Quyền công ty hiện có (chưa gán)",
+    "previewAssignment": "Xem trước phân công",
+    "review": "Xem xét thay đổi quyền",
+    "reviewCounts": "{users} người dùng bị ảnh hưởng. {records} hồ sơ phù hợp trong phạm vi truy cập hiện tại.",
+    "reviewHelp": "Xem xét điều kiện và phân công trước khi lưu. Quyền công ty và chức năng vẫn giới hạn mọi kết quả. Thay đổi quyền, dữ liệu hoặc cấu hình làm mất hiệu lực bản xem trước.",
+    "confirm": "Xác nhận và lưu",
+    "cancel": "Hủy",
+    "saved": "Đã lưu. Quyền được kiểm tra lại trong mỗi yêu cầu.",
+    "errors": {
+      "invalid": "Kiểm tra cấu hình. Không thể ngừng cấu hình đang được gán.",
+      "changed": "Quyền hoặc dữ liệu đã thay đổi. Tải lại và xem trước.",
+      "forbidden": "Bạn không thể cấp quyền vượt quá quyền hiện tại.",
+      "unavailable": "Không thể lưu thay đổi. Hãy thử lại."
+    },
+    "fields": {
+      "company": "Công ty",
+      "businessUnit": "Đơn vị kinh doanh",
+      "division": "Khối",
+      "branch": "Chi nhánh",
+      "department": "Phòng ban",
+      "section": "Bộ phận",
+      "team": "Nhóm",
+      "position": "Chức danh",
+      "grade": "Cấp bậc",
+      "employmentType": "Loại việc làm",
+      "employmentStatus": "Trạng thái việc làm",
+      "costCentre": "Trung tâm chi phí",
+      "nationality": "Quốc tịch",
+      "gender": "Giới tính",
+      "maritalStatus": "Tình trạng hôn nhân",
+      "category": "Nhóm nhân viên",
+      "employeeId": "Mã nhân viên"
+    },
+    "reviewDifference": "Trong các hồ sơ bạn được xem: trước {before}, sau {after}; thêm {gained} và mất {lost}."
   }
 }
