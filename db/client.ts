@@ -182,7 +182,7 @@ export function createDb(connectionString: string, options?: { max?: number }) {
    * Explicit readOnlySnapshot starts REPEATABLE READ / READ ONLY at BEGIN, before session GUCs.
    * Owner readers must receive this tx explicitly; nested withTenant calls never auto-join.
    */
-  async function withTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>, options?: { readOnlySnapshot: true }): Promise<T> {
+  async function runTenantTransaction<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>, options?: { readOnlySnapshot: true }): Promise<T> {
     // Fail fast with a clear, diagnosable error rather than a cryptic "reading 'grants'/'tenantId'"
     // TypeError if a caller ever passes an unresolved session (e.g. a swallowed getSession failure).
     if (!ctx || !ctx.tenantId) {
@@ -269,6 +269,20 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       }
       return fn(tx);
     }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
+  }
+
+  async function withTenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>,options?:{readOnlySnapshot:true}):Promise<T>{
+    if(!options?.readOnlySnapshot)return runTenantTransaction(ctx,fn,options);
+    // Source reads keep native RR consistency. Both authority stamps run in fresh committed
+    // transactions; revocation during the snapshot discards the result before publication.
+    const stamp=async()=>runTenantTransaction(ctx,async tx=>{
+      const [row]=await tx.execute(sql`select app.data_permission_read_stamp() as stamp`) as unknown as {stamp:string|null}[];
+      if(!row?.stamp)throw new Error('Data access is no longer available.');return row.stamp;
+    });
+    const before=await stamp();
+    const result=await runTenantTransaction(ctx,fn,options);
+    if(await stamp()!==before)throw new Error('Data access changed. Reload and try again.');
+    return result;
   }
 
   return { db, client, withTenant };
