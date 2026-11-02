@@ -118,9 +118,15 @@ export async function filterDelegationOrgScopeTx<T>(
   ctx: SessionContext,
   rows: T[],
   subjectOf: (row: T) => string,
+  taskOf?: (row:T)=>{kind:string;id:string},
 ): Promise<T[]> {
   const roles = ctx.roles ?? [];
   if (rows.length === 0 || roles.includes('hr_admin') || roles.includes('super_admin')) return rows;
+  if(taskOf){
+   const checks=await tx.execute<{id:string;allowed:boolean}>(sql`SELECT task.id,app.workflow_task_reader(task.kind,task.id) AS allowed FROM (VALUES ${sql.join(rows.map(row=>{const task=taskOf(row);return sql`(${task.id}::uuid,${task.kind}::text)`;}),sql`, `)})AS task(id,kind)`);
+   const allowed=new Set(checks.filter(row=>row.allowed).map(row=>row.id));
+   return rows.filter(row=>allowed.has(taskOf(row).id));
+  }
   const ids = [...new Set(rows.map(subjectOf))];
   // One round trip; each id bound as its own parameter (VALUES list — no array-binding dependency).
   const res = await tx.execute(sql`

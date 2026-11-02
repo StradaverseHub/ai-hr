@@ -1726,6 +1726,8 @@ export function isLeaveEligible(
   return true;
 }
 
+async function leaveTaskBalanceTx(tx:Tx,requestId:string,typeId:string){const [row]=await tx.execute<{balance:string}>(sql`select app.leave_task_balance(${requestId}::uuid,${typeId}::uuid) as balance`);if(row?.balance===undefined||row.balance===null)throw Error('Leave task balance unavailable');return Number(row.balance);}
+
 export async function leaveBalance(tx: Tx, employmentId: string, leaveTypeId: string): Promise<number> {
   const [row] = await tx
     .select({ bal: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
@@ -2423,12 +2425,13 @@ async function enforceLeaveYearApplicationLimit(
   const limit = Number(lt.maxDaysPerLeaveYear);
   if (!Number.isFinite(limit) || limit <= 0) return;
 
-  const [emp] = await tx
+  let [emp] = await tx
     .select({ companyId: employment.companyId, hiredOn: employment.hiredOn })
     .from(employment)
     .where(eq(employment.id, p.employmentId))
     .limit(1);
-  if (!emp) return;
+  if(!emp&&p.excludeRequestId){const [task]=await tx.execute<{employment_id:string;company_id:string;hired_on:string}>(sql`select * from app.leave_task_subject(${p.excludeRequestId}::uuid)`);if(task?.employment_id===p.employmentId)emp={companyId:task.company_id,hiredOn:task.hired_on};}
+  if(!emp)throw new Error('Leave task subject unavailable');
   const [co] = await tx
     .select({ leaveCycle: company.leaveCycle })
     .from(company)
@@ -5668,7 +5671,7 @@ async function finalizeLeaveApproval(
   // COMMIT. Whole-request double-processing is separately prevented by the FOR UPDATE row lock the decide
   // entry points take on the leave_request row.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`leave-balance:${ctx.tenantId}:${req.employmentId}:${balanceTypeId}`}, 0))`);
-  const balance = await leaveBalance(tx, req.employmentId, balanceTypeId);
+  const balance = await leaveTaskBalanceTx(tx,req.id,balanceTypeId);
   // Allow Unpaid Leave (a7fab30b): only the covered part is a balance movement. The unpaid excess was
   // measured against the balance at submission and is settled through payroll, so debiting it here would
   // charge the employee twice — once in days, once in pay. NULL/absent ⇒ the full span, as before.
@@ -6145,7 +6148,7 @@ async function reviewedLeaveDecisionPreflightTx(tx: Tx, supplied: SessionContext
  if (p.decision === 'rejected' && !p.rejectReason?.trim() || p.decision === 'approved' && p.rejectReason !== null) throw new MissingRejectReasonError();
  const [type] = await tx.select({ id: leaveType.id, name: leaveType.name, balanceSourceTypeId: leaveType.balanceSourceTypeId }).from(leaveType).where(eq(leaveType.id, req.leaveTypeId)).limit(1);
  if (!type) throw new Error('Leave decision type unavailable');
- const balance = await leaveBalance(tx, req.employmentId, type.balanceSourceTypeId ?? req.leaveTypeId);
+ const balance = await leaveTaskBalanceTx(tx,req.id,type.balanceSourceTypeId??req.leaveTypeId);
  const versions = await tx.execute(sql`select q.xmin::text as request_version, t.xmin::text as type_version,
   (select jsonb_agg(jsonb_build_array(s.id,s.xmin::text) order by s.step_index,s.id) from public.leave_approval_step s where s.leave_request_id=q.id) as step_versions
   from public.leave_request q join public.leave_type t on t.id=q.leave_type_id where q.id=${req.id}::uuid`);
