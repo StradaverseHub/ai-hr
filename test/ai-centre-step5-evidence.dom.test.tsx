@@ -110,6 +110,8 @@ describe('AI centre step 5, rendered per role', () => {
     // In place: no fragment to scroll to, and the link keeps the page where it is (staging acceptance, 3 November 2026).
     expect(closed.container.querySelector('[data-recommendation-loader]')).toHaveAttribute('href', `/assistant?view=inbox&recommend=${LEAVE_ID}`);
     expect(closed.container.querySelector('[data-recommendation]')).toBeNull();
+    // Owner, 3 November 2026: no empty dashed "awaiting" circle; the section heading already says it needs a decision.
+    expect(closed.container.querySelector('[data-proposal-card] .atelier-unmarked, [data-proposal-card] [role="img"]')).toBeNull();
     // Review opens the native page carrying the allow-listed Inbox origin, so that page offers the way back.
     expect(closed.container.querySelector(`[data-proposal-card] a[href^="/approvals"]`)).toHaveAttribute('href', `/approvals?kind=leave&id=${LEAVE_ID}&from=ai-inbox`);
     closed.unmount();

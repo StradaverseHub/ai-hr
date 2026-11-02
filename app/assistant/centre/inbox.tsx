@@ -148,7 +148,7 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
                 <li key={`${task.kind}:${task.id}`}>
                   <ProposalCard tone="decide" icon={task.kind === 'noticeAcknowledgement' ? <ListChecks /> : <CalendarCheck />} title={taskTitle(task)}
                     meta={[t('inbox.items.fromApprovals'), f.dateTime(new Date(task.createdAt), { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' })]}
-                    href={withInboxOrigin(task.linkPath)} cta={t('inbox.items.review')} awaitingLabel={t('card.awaiting')} prepared={approvalPrepared} />
+                    href={withInboxOrigin(task.linkPath)} cta={t('inbox.items.review')} prepared={approvalPrepared} />
                   {task.kind === 'leave' && (opened?.id === task.id
                     ? <><RecommendationPanel id={`recommendation-${task.id}`} view={opened.view} /><FocusOnMount targetId={`recommendation-${task.id}`} /></>
                     : recommender ? <LeaveRecommendationLink leaveRequestId={task.id} /> : null)}
