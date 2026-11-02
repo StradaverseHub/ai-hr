@@ -2248,7 +2248,7 @@ REVOKE ALL ON FUNCTION app.reward_calc_bonus_base(jsonb,jsonb),app.reward_calc_a
 -- contract rather than invalidating every saved budget or accepting an unverified old digest.
 CREATE FUNCTION app.reward_calc_json_number(p numeric)RETURNS text
 LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp SET extra_float_digits=3 AS $$
-DECLARE value double precision;raw text;negative boolean;mantissa text;exponent integer:=0;decimal_position integer;digits text;leading integer;dot integer;output text;
+DECLARE value double precision;raw text;negative boolean;mantissa text;exponent integer:=0;decimal_position integer;digits text;leading_zero_count integer;dot integer;output text;
 BEGIN
  BEGIN value:=p::double precision;EXCEPTION WHEN numeric_value_out_of_range THEN RETURN'null';END;
  IF value=0 THEN RETURN'0';END IF;
@@ -2256,7 +2256,7 @@ BEGIN
  negative:=left(raw,1)='-';IF negative THEN raw:=substr(raw,2);END IF;
  IF strpos(raw,'e')>0 THEN exponent:=split_part(raw,'e',2)::integer;mantissa:=split_part(raw,'e',1);ELSE mantissa:=raw;END IF;
  dot:=strpos(mantissa,'.');IF dot=0 THEN dot:=length(mantissa)+1;END IF;
- digits:=replace(mantissa,'.','');leading:=length(digits)-length(regexp_replace(digits,'^0+',''));digits:=regexp_replace(digits,'^0+','');decimal_position:=dot-1+exponent-leading;digits:=regexp_replace(digits,'0+$','');
+ digits:=replace(mantissa,'.','');leading_zero_count:=length(digits)-length(regexp_replace(digits,'^0+',''));digits:=regexp_replace(digits,'^0+','');decimal_position:=dot-1+exponent-leading_zero_count;digits:=regexp_replace(digits,'0+$','');
  IF decimal_position-1>=21 OR decimal_position-1<=-7 THEN output:=left(digits,1)||CASE WHEN length(digits)>1 THEN'.'||substr(digits,2)ELSE''END||'e'||CASE WHEN decimal_position-1>=0 THEN'+'ELSE''END||(decimal_position-1)::text;
  ELSIF decimal_position<=0 THEN output:='0.'||repeat('0',-decimal_position)||digits;
  ELSIF decimal_position>=length(digits)THEN output:=digits||repeat('0',decimal_position-length(digits));
