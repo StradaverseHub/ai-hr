@@ -361,6 +361,18 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(constructed).toBe(true);expect(await view()).toEqual(before);expect(await owner.db.select().from(schema.compensation)).toEqual(compensation);expect(await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id)).toEqual(events);
     for(const query of [sql`select app.reward_post_context_begin(${unitId}::uuid,${revision},${batch.batchId}::uuid)`,sql`select app.reward_post_salary(${unitId}::uuid,${before.rows[0].id}::uuid)`])await expect(withTenant(admin,tx=>tx.execute(query))).rejects.toThrow();
   });
+  it('rolls back an orphan private bonus construction while preserving native OT and TP1 metadata in its intermediate row',async()=>{
+    const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)}),before=await view();
+    await setPayrollInput(admin,{batchId:batch.batchId,employmentId,overtimeAmount:123,bonusAmount:55,tp1Deduction:44,zakat:9,otBreakdown:{flat:23,normal:100,rest:0,holiday:0}});
+    const [original]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batch.batchId)),events=await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id);let constructed=false;
+    await expect(owner.withTenant(admin,async tx=>{
+      const [context]=await tx.execute<{id:string}>(sql`select app.reward_post_context_begin(${unitId}::uuid,${revision},${batch.batchId}::uuid)as id`),[changed]=await tx.execute<{id:string}>(sql`select app.reward_post_input(${context.id}::uuid,${before.rows[0].id}::uuid)as id`);
+      expect(changed.id).toBe(original.id);const [input]=await tx.select().from(schema.payrollInput).where(eq(schema.payrollInput.id,changed.id));expect(input).toMatchObject({overtimeAmount:original.overtimeAmount,bonusAmount:(55+(before.rows[0].bonusCents+before.rows[0].lumpCents)/100).toFixed(2),tp1Deduction:original.tp1Deduction,zakat:original.zakat,otBreakdown:original.otBreakdown,otSource:original.otSource,tp1Source:original.tp1Source,otDerivation:original.otDerivation});
+      const audits=await tx.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,batch.batchId),eq(schema.domainEvent.eventType,'payroll-batch.input-set'))).orderBy(schema.domainEvent.sequence);expect(audits.at(-1)).toMatchObject({actorType:'user',actorId:admin.userId,payload:{employmentId,payrollInputId:original.id,fieldsChanged:['overtimeAmount','bonusAmount','tp1Deduction','zakat']}});constructed=true;
+    })).rejects.toThrow('Reward posting construction is incomplete');
+    expect(constructed).toBe(true);expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.id,original.id))).toEqual([original]);expect(await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id)).toEqual(events);expect(await view()).toEqual(before);
+    for(const name of ['reward_post_grade','reward_post_input'])await expect(withTenant(admin,tx=>tx.execute(sql`select ${sql.raw('app.'+name)}(${unitId}::uuid,${before.rows[0].id}::uuid)`))).rejects.toThrow();
+  });
   it('privately prepares exact locked employee salary and existing payroll sources, then refuses a genuinely changed native salary',async()=>{
     const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)});
     await setPayrollInput(admin,{batchId:batch.batchId,employmentId,overtimeAmount:12,bonusAmount:34,tp1Deduction:56,zakat:78});

@@ -2738,7 +2738,7 @@ BEGIN
  IF nullif(current_setting('app.agent_principal_id',true),'')IS NOT NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
  IF app.current_agent_principal()IS NOT NULL OR NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
  SELECT c.* INTO proof FROM app.reward_post_native_context c WHERE c.id=p_context AND c.xact_id=pg_current_xact_id()AND c.tenant_id=app.current_tenant_id()AND c.user_id=app.current_user_id()AND c.active AND NOT c.completed FOR UPDATE;
- IF proof.id IS NULL OR proof.admission->>'authorityStamp'IS DISTINCT FROM app.access_function_authority_stamp()OR NOT EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.id=proof.unit_id AND u.tenant_id=proof.tenant_id AND u.deleted_at IS NULL AND u.status='approved'AND u.revision=(proof.admission->>'revision')::integer AND app.reward_admin(u.company_id)AND'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id))))THEN RAISE EXCEPTION 'Reward posting construction unavailable' USING ERRCODE='42501';END IF;
+ IF proof.id IS NULL OR proof.admission->>'authorityStamp'IS DISTINCT FROM app.access_function_authority_stamp()OR NOT EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.id=proof.unit_id AND u.tenant_id=proof.tenant_id AND u.deleted_at IS NULL AND u.status='approved'AND u.revision=(proof.admission->>'revision')::integer AND app.reward_decision_row_hash(to_jsonb(u),'reward_unit')=proof.admission->>'unitBeforeHash'AND app.reward_calc_decision_digest(u.policy,u.kind,u.parent_unit_id,u.offcycle,(SELECT coalesce(jsonb_agg(jsonb_build_object('id',e.id,'source',e.source,'facts',e.facts,'recommendation',e.recommendation)ORDER BY e.id),'[]'::jsonb)FROM public.reward_entry e WHERE e.unit_id=u.id AND e.tenant_id=u.tenant_id))=proof.admission->>'decisionDigest'AND app.reward_admin(u.company_id)AND'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id))))THEN RAISE EXCEPTION 'Reward posting construction unavailable' USING ERRCODE='42501';END IF;
  RETURN proof;
 END $$;
 CREATE FUNCTION app.reward_post_salary(p_context uuid,p_entry uuid)RETURNS uuid
@@ -2777,3 +2777,55 @@ BEGIN
 END $$;
 CREATE CONSTRAINT TRIGGER rewards_post_native_effect AFTER INSERT OR UPDATE ON app.reward_post_native_context DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.reward_post_native_validate();
 REVOKE ALL ON FUNCTION app.reward_post_context_begin(uuid,integer,uuid),app.reward_post_context_current(uuid),app.reward_post_salary(uuid,uuid),app.reward_post_native_validate()FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.reward_post_grade(p_context uuid,p_entry uuid)RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.reward_post_native_context;plan jsonb;emp public.employment;after_emp public.employment;target public.job_grade;audit_id uuid;
+BEGIN
+ proof:=app.reward_post_context_current(p_context);
+ SELECT value INTO plan FROM jsonb_array_elements(proof.source_plan->'sourcePlan')WHERE value->>'entryId'=p_entry::text;
+ IF plan IS NULL OR proof.effects?('grade:'||p_entry::text)THEN RAISE EXCEPTION 'Reward grade construction unavailable' USING ERRCODE='42501';END IF;
+ IF coalesce(plan->'promotionGrade','null'::jsonb)='null'::jsonb THEN RETURN NULL;END IF;
+ SELECT e.* INTO emp FROM public.employment e WHERE e.id=(plan->'employmentBefore'->>'id')::uuid AND e.tenant_id=proof.tenant_id FOR UPDATE;
+ IF emp.id IS NULL OR to_jsonb(emp)IS DISTINCT FROM plan->'employmentBefore'OR NOT app.access_workforce_action_employment(emp.id,'edit')THEN RAISE EXCEPTION 'Reward promotion source or permission unavailable' USING ERRCODE='42501';END IF;
+ SELECT g.* INTO target FROM public.job_grade g WHERE g.id=(plan->'promotionGrade'->>'id')::uuid AND g.tenant_id=proof.tenant_id FOR SHARE;
+ IF target.id IS NULL OR to_jsonb(target)IS DISTINCT FROM plan->'promotionGrade'OR target.archived_at IS NOT NULL THEN RAISE EXCEPTION 'The approved promotion grade does not exist in Job Grades.' USING ERRCODE='42501';END IF;
+ IF emp.grade_id IS NOT DISTINCT FROM target.id THEN RETURN NULL;END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.id=proof.unit_id AND u.tenant_id=proof.tenant_id AND(u.policy->>'effectiveFrom')::date=(clock_timestamp()AT TIME ZONE'Asia/Kuala_Lumpur')::date)THEN RAISE EXCEPTION 'A promotion must be posted on its effective date because Job Grade is not effective-dated.' USING ERRCODE='42501';END IF;
+ UPDATE public.employment e SET grade_id=target.id WHERE e.id=emp.id AND e.tenant_id=proof.tenant_id RETURNING e.* INTO after_emp;
+ IF NOT app.data_permission_matches(emp.id)THEN RAISE EXCEPTION 'Reward promotion destination unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(proof.tenant_id,'employment',emp.id,'employment.grade.changed','user',proof.user_id,emp.id,jsonb_build_object('before',emp.grade_id,'after',target.id))RETURNING id INTO audit_id;
+ UPDATE app.reward_post_native_context c SET effects=c.effects||jsonb_build_object('grade:'||p_entry::text,jsonb_build_object('employmentId',emp.id,'before',to_jsonb(emp),'after',to_jsonb(after_emp),'auditId',audit_id))WHERE c.id=proof.id;
+ RETURN target.id;
+END $$;
+CREATE FUNCTION app.reward_post_input(p_context uuid,p_entry uuid)RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.reward_post_native_context;plan jsonb;before_input public.payroll_input;after_input public.payroll_input;batch public.payroll_batch;target_employment uuid;audit_id uuid;
+BEGIN
+ proof:=app.reward_post_context_current(p_context);
+ SELECT value INTO plan FROM jsonb_array_elements(proof.source_plan->'sourcePlan')WHERE value->>'entryId'=p_entry::text;
+ IF plan IS NULL OR proof.effects?('input:'||p_entry::text)THEN RAISE EXCEPTION 'Reward payroll construction unavailable' USING ERRCODE='42501';END IF;
+ IF plan->>'newBonusAmount'IS NULL THEN RETURN NULL;END IF;
+ target_employment:=(plan->'employmentBefore'->>'id')::uuid;
+ SELECT b.* INTO batch FROM public.payroll_batch b WHERE b.id=(proof.admission->>'batchId')::uuid AND b.tenant_id=proof.tenant_id FOR UPDATE;
+ IF batch.id IS NULL OR batch.status<>'draft'OR NOT app.function_action_allowed('payroll.process','edit',batch.company_id)OR NOT app.access_financial_action_employment('payroll',target_employment,'edit')THEN RAISE EXCEPTION 'Reward payroll source or permission unavailable' USING ERRCODE='42501';END IF;
+ SELECT i.* INTO before_input FROM public.payroll_input i WHERE i.batch_id=batch.id AND i.employment_id=target_employment AND i.tenant_id=proof.tenant_id FOR UPDATE;
+ IF to_jsonb(before_input)IS DISTINCT FROM nullif(plan->'payrollInputBefore','null'::jsonb)THEN RAISE EXCEPTION 'Payroll input changed after reward preparation' USING ERRCODE='42501';END IF;
+ IF before_input.id IS NULL THEN
+  INSERT INTO public.payroll_input(tenant_id,batch_id,employment_id,overtime_amount,bonus_amount,tp1_deduction,zakat,ot_breakdown,ot_source,tp1_source)
+  VALUES(proof.tenant_id,batch.id,target_employment,0,(plan->>'newBonusAmount')::numeric,0,0,NULL,NULL,NULL)RETURNING * INTO after_input;
+ ELSE
+  -- The canonical bonus-enact call explicitly preserves OT/TP1 provenance and decomposition.
+  -- All unrelated allowance/claim/loan/component fields remain on the same physical row.
+  UPDATE public.payroll_input i SET overtime_amount=greatest(0,before_input.overtime_amount),bonus_amount=(plan->>'newBonusAmount')::numeric,tp1_deduction=greatest(0,before_input.tp1_deduction),zakat=greatest(0,before_input.zakat),updated_at=now()WHERE i.id=before_input.id AND i.tenant_id=proof.tenant_id RETURNING i.* INTO after_input;
+ END IF;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+ VALUES(proof.tenant_id,'payroll-batch',batch.id,'payroll-batch.input-set','user',proof.user_id,jsonb_build_object('employmentId',target_employment,'payrollInputId',after_input.id,'fieldsChanged',jsonb_build_array('overtimeAmount','bonusAmount','tp1Deduction','zakat')))RETURNING id INTO audit_id;
+ -- Same second write as the native Senior history path, after the ordinary input event.
+ IF plan->'rewardProvenance'<>'null'::jsonb THEN UPDATE public.payroll_input i SET reward_provenance=plan->'rewardProvenance'WHERE i.id=after_input.id AND i.tenant_id=proof.tenant_id RETURNING i.* INTO after_input;END IF;
+ UPDATE app.reward_post_native_context c SET effects=c.effects||jsonb_build_object('input:'||p_entry::text,jsonb_build_object('inputId',after_input.id,'before',to_jsonb(before_input),'after',to_jsonb(after_input),'auditId',audit_id,'employmentId',target_employment))WHERE c.id=proof.id;
+ RETURN after_input.id;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_post_grade(uuid,uuid),app.reward_post_input(uuid,uuid)FROM PUBLIC,ai_hr_app;
