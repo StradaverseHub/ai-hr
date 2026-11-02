@@ -102,6 +102,7 @@ BEGIN
  OR (a IS NOT NULL AND b IS NOT NULL AND (a->>'id' IS DISTINCT FROM b->>'id' OR a->>'tenant_id' IS DISTINCT FROM b->>'tenant_id')) THEN RAISE EXCEPTION 'Financial setup principal unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='UPDATE' AND b->>'archived_at' IS NULL AND a->>'archived_at' IS NOT NULL THEN op:='delete';END IF;
  IF TG_TABLE_NAME='payroll_cycle' AND TG_OP='INSERT' AND app.financial_setup_standard_cycle(a) THEN RETURN NULL;END IF;
+ IF TG_TABLE_NAME='pay_component' AND TG_OP='INSERT' AND app.financial_backpay_catalog_approved(b,a) THEN RETURN NULL;END IF;
  IF TG_TABLE_NAME IN ('pay_component','payroll_import_code','pay_formula','pay_formula_revision','pay_formula_event','pay_formula_accumulation') THEN
   catalogue:=true;
   IF TG_TABLE_NAME='pay_formula_revision' THEN op:=CASE WHEN app.financial_setup_born('pay_formula',(r->>'formula_id')::uuid) THEN 'add' ELSE 'edit' END;END IF;
@@ -494,7 +495,7 @@ BEGIN
   IF (r->>'actor_id')::uuid IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'History actor unavailable' USING ERRCODE='42501';END IF;
   IF r->>'kind' IN ('failed','revert_failed') THEN
    IF NOT EXISTS(SELECT 1 FROM public.payroll_history_import_attempt a WHERE a.id=(r->>'attempt_id')::uuid AND a.tenant_id=app.current_tenant_id() AND app.financial_history_plan_visible(a.plan,a.created_by)) THEN RAISE EXCEPTION 'History source unavailable' USING ERRCODE='42501';END IF;RETURN NULL;END IF;
-  IF r->>'kind'='confirmed' AND r->'changes'='[]'::jsonb AND EXISTS(SELECT 1 FROM app.financial_history_noop proof JOIN public.payroll_history_import_attempt a ON a.id=proof.attempt_id AND a.tenant_id=proof.tenant_id WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.attempt_id=(r->>'attempt_id')::uuid AND proof.plan_hash=encode(sha256(convert_to(a.plan::text,'UTF8')),'hex')) THEN RETURN NULL;END IF;
+  IF r->>'kind'='confirmed' AND r->'changes'='[]'::jsonb AND EXISTS(SELECT 1 FROM app.financial_history_noop noop_receipt JOIN public.payroll_history_import_attempt a ON a.id=noop_receipt.attempt_id AND a.tenant_id=noop_receipt.tenant_id WHERE noop_receipt.xact_id=pg_current_xact_id() AND noop_receipt.tenant_id=app.current_tenant_id() AND noop_receipt.user_id=app.current_user_id() AND noop_receipt.attempt_id=(r->>'attempt_id')::uuid AND noop_receipt.plan_hash=encode(sha256(convert_to(a.plan::text,'UTF8')),'hex')) THEN RETURN NULL;END IF;
   IF NOT EXISTS(SELECT 1 FROM app.financial_history_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=NEW.tenant_id AND i.user_id=app.current_user_id() AND i.attempt_id=(r->>'attempt_id')::uuid AND ((r->>'kind'='confirmed' AND i.operation IN ('add','edit')) OR (r->>'kind'='reverted' AND i.operation='delete'))) THEN RAISE EXCEPTION 'History completion owner unavailable' USING ERRCODE='42501';END IF;
   RETURN NULL;
  END IF;
