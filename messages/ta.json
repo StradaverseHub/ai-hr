@@ -1880,7 +1880,9 @@
           "correctedHeading": "திருத்தப்பட்டது",
           "noneValue": "இல்லை"
         },
-        "payrollClosedBadge": "சம்பளம் மூடப்பட்டது: {periods}"
+        "payrollClosedBadge": "சம்பளம் மூடப்பட்டது: {periods}",
+        "informationCorrected": "தகவல் திருத்தப்பட்டது",
+        "informationNeedsReview": "திருத்தத்திற்கு மதிப்பாய்வு தேவை"
       },
       "salaryCurrency": "நாணயம்",
       "emergency": {

@@ -1880,7 +1880,9 @@
           "correctedHeading": "Đã điều chỉnh",
           "noneValue": "Không"
         },
-        "payrollClosedBadge": "Đã khóa lương: {periods}"
+        "payrollClosedBadge": "Đã khóa lương: {periods}",
+        "informationCorrected": "Thông tin đã được sửa",
+        "informationNeedsReview": "Cần xem xét bản sửa đổi"
       },
       "salaryCurrency": "Tiền tệ",
       "emergency": {

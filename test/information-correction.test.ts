@@ -6,7 +6,7 @@ import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,typ
 import {hireEmployee,setEmploymentGrade} from '../core/org';
 import {upsertCompanyStatutoryAuthority} from '../core/statutory-authority';
 import {assignLabelToCompanies} from '../core/system-labels';
-import {createMovementEvent,movementHistory,reverseMovementEvent} from '../core/movement';
+import {createMovementEvent,movementHistory,movementDetail,reverseMovementEvent} from '../core/movement';
 import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
 import {previewInformationCorrection,correctInformation,informationCorrectionHistory,informationCorrectionOptions} from '../core/information-correction';
@@ -58,7 +58,13 @@ describe('8550b282 information-only corrections',()=>{
   }
   const pdfBefore=await document(before!);expect(pdfBefore.length).toBeGreaterThan(1000);
   const ledgersBefore=await owner.db.select().from(schema.leaveLedger);expect(ledgersBefore).toHaveLength(2);
+  const movementBefore=await movementHistory(ctx(),id);expect(movementBefore).toHaveLength(1);
+  const eventsBefore=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.subjectEmploymentId,id));
   await apply(id,{hiredOn:'2025-01-01',joinDate:'2025-01-03',gradeId:grade.id,employmentType:'part_time'});
+  const movementAfter=await movementHistory(ctx(),id);expect(movementAfter.map(r=>r.id)).toEqual(movementBefore.map(r=>r.id));expect(movementAfter[0]).toMatchObject({effectiveDate:'2025-01-01'});
+  const detail=await movementDetail(ctx(),id,movementAfter[0].id);expect(detail?.after).toMatchObject({grade:'Senior',employmentType:'part_time',groupJoinDate:'2025-01-01',joinDate:'2025-01-03'});
+  const eventsAfter=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.subjectEmploymentId,id));expect(eventsAfter.filter(event=>eventsBefore.some(old=>old.id===event.id)).sort((a,b)=>a.id.localeCompare(b.id))).toEqual([...eventsBefore].sort((a,b)=>a.id.localeCompare(b.id)));
+
   expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0]).toMatchObject({hiredOn:'2025-01-01',joinDate:'2025-01-03',gradeId:grade.id});
   expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,slip.id)))[0]).toEqual(slip);
   expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batch.id)))[0]).toEqual(batch);
@@ -106,7 +112,11 @@ describe('8550b282 information-only corrections',()=>{
   const pcbBefore=await pcb2iiStatement(ctx(),{employmentId:id,companyId:b.companyId,year:'2025',selectedDate:'2025-02-01'});expect(pcbBefore).toBeTruthy();
   const reportRequests=['my.cp39','my.borang-a','my.borang-8a','my.socso-eis','my.hrd-levy','my.cp8d'].map(reportId=>({companyId:b.companyId,reportId,periodKey:reportId==='my.cp8d'?'2025':'2025-01'}));
   const reportsBefore=await Promise.all(reportRequests.map(p=>reportPreview(ctx(),p)));for(const report of reportsBefore)expect(report.rows.length).toBeGreaterThan(0);
+  const historyBefore=await movementHistory(ctx(),id);
   await apply(id,{companyId:destination.id});
+  const correctedHistory=await movementHistory(ctx(),id);expect(correctedHistory.map(row=>row.id)).toEqual(historyBefore.map(row=>row.id));
+  expect(correctedHistory.find(row=>row.kind==='hired')?.company).toBe('Destination');
+  expect((await movementDetail(ctx(),id,correctedHistory.find(row=>row.kind==='hired')!.id))?.after.company).toBe('Destination');
   expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0].companyId).toBe(destination.id);
   const versions=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,id));
   expect(versions.find(v=>v.validTo!==null)?.companyId).toBe(b.companyId);expect(versions.find(v=>v.validTo===null)?.companyId).toBe(destination.id);
@@ -155,6 +165,7 @@ describe('8550b282 information-only corrections',()=>{
   const preview=await previewInformationUpload(ctx(),{name:'corrections.xlsx',content:file,operationKey:randomUUID()});expect(preview.plan.counts).toEqual({total:3,valid:1,invalid:2});
   const result=await confirmInformationUpload(ctx(),{attemptId:preview.attemptId,previewHash:preview.plan.previewHash});expect(result).toMatchObject({succeeded:1,failed:2,unchanged:0});
   expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0]).toMatchObject({hiredOn:'2025-01-01',gradeId:null});
+  const importedHistory=await movementHistory(ctx(),id);expect(importedHistory).toHaveLength(1);expect(importedHistory[0].effectiveDate).toBe('2025-01-01');expect(importedHistory[0].informationCorrections?.[0].fields).toEqual(['hiredOn']);
   const again=await confirmInformationUpload(ctx(),{attemptId:preview.attemptId,previewHash:preview.plan.previewHash});expect(again).toEqual(result);expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(1);
   const [history]=await informationCorrectionHistory(ctx(),id);expect(history.payload).toMatchObject({method:'excel',batchId:preview.attemptId,filename:'corrections.xlsx'});
  });

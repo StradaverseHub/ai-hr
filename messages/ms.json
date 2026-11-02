@@ -1880,7 +1880,9 @@
           "correctedHeading": "Dibetulkan",
           "noneValue": "Tiada"
         },
-        "payrollClosedBadge": "Gaji ditutup: {periods}"
+        "payrollClosedBadge": "Gaji ditutup: {periods}",
+        "informationCorrected": "Maklumat dibetulkan",
+        "informationNeedsReview": "Pembetulan perlu disemak"
       },
       "salaryCurrency": "Mata wang",
       "emergency": {
