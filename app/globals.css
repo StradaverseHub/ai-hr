@@ -530,6 +530,9 @@ label[data-edited-field='true'] > span:first-child::after {
   }
 }
 
+/* The Assistant's waiting dots (components/assistant/thinking-indicator.tsx). Applied through motion-safe only. */
+@keyframes thinking-dot { 0%, 80%, 100% { opacity: .3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+
 /* AI centre How it works (components/ai-centre/how-it-works.tsx): a check arriving in the step's list.
    Applied through motion-safe only, so reduced motion shows the list at once. */
 @keyframes ai-centre-tick { from { opacity: 0; transform: translateY(4px); } }

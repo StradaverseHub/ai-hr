@@ -40,13 +40,19 @@ function deferred(){
 }
 beforeEach(()=>{state.workspace.mockReset();state.launcher.mockReset();});afterEach(cleanup);
 describe('honest visible thinking state',()=>{
- it.each(Object.entries({en,ms,zh,ta,th,vi:viMessages}))('%s retains a small accessible plain waiting label without decoration',(_locale,messages)=>{
+ it.each(Object.entries({en,ms,zh,ta,th,vi:viMessages}))('%s retains a small accessible waiting label with moving dots that announce nothing',(_locale,messages)=>{
   const label=messages.assistant.workspace.chat.thinking;
   render(<ThinkingIndicator label={label}/>);
   const status=screen.getByRole('status');expect(status).toHaveTextContent(label);expect(status).not.toHaveClass('sr-only');
   expect(status).toHaveAttribute('aria-live','polite');expect(status).toHaveAttribute('aria-atomic','true');
   expect(messages.assistant.launcher.working).toBe(label);
-  expect(status).toHaveClass('text-xs','font-normal');expect(status.querySelector('[aria-hidden]')).toBeNull();expect(status.className).not.toMatch(/bg-|rounded|border|shadow/);
+  expect(status).toHaveClass('text-xs','font-normal');expect(status.className).not.toMatch(/bg-|rounded|border|shadow/);
+  // Owner, 3 November 2026: the wait visibly moves. The dots are decoration only: hidden, empty, so the status text
+  // (announced once) is exactly the label; they animate only when motion is allowed and otherwise stay still.
+  const dots=status.querySelector('[data-thinking-dots]')!;expect(dots).toHaveAttribute('aria-hidden');expect(dots.textContent).toBe('');
+  expect(status.textContent).toBe(label);
+  const pulses=[...dots.children];expect(pulses).toHaveLength(3);
+  for(const pulse of pulses){expect(pulse.className).toContain('motion-safe:animate-[thinking-dot');expect(pulse.className).not.toMatch(/(^|\s)animate-/);}
 
  });
  for(const surface of surfaces){
