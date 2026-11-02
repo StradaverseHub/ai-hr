@@ -1049,7 +1049,7 @@ export function SystemLabelsGrid({
                         {/* Duplicate INSERTS under this row's own company, so on a read-only row it is
                             withheld rather than offered and refused — see duplicateRow. */}
                         <RowIconButton
-                          title={readOnly ? t('readOnlyRow') : t('duplicateRow')}
+                          title={(!writableIds.has(r.companyId)||companyActionControls?.[r.companyId]?.add===false) ? t('readOnlyRow') : t('duplicateRow')}
                           onClick={() => duplicateRow(r)}
                           disabled={!writableIds.has(r.companyId) || companyActionControls?.[r.companyId]?.add===false}
                         >
@@ -1061,7 +1061,7 @@ export function SystemLabelsGrid({
                           </RowIconButton>
                         ) : (
                           <RowIconButton
-                            title={readOnly ? t('readOnlyRow') : r.archived ? t('unarchive') : t('archive')}
+                            title={r.archived ? t('unarchive') : t('archive')}
                             onClick={() => toggleArchive(r.key)}
                             disabled={!writableIds.has(r.companyId) || companyActionControls?.[r.companyId]?.[r.archived?'edit':'delete']===false || (r.inUse && !r.archived)}
                           >

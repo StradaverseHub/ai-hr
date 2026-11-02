@@ -19,7 +19,7 @@ describe('configuration controls reflect independent action decisions',()=>{
   expect(save).not.toHaveBeenCalled();expect(remove).not.toHaveBeenCalled();
  });
  it('allows a new profile-option draft without enabling edits to retained catalogue rows',()=>{
-  render(wrap(<ProfileOptionsGrid actionControls={{add:true,edit:false,delete:false}} categories={['religion']} data={{religion:[{id:'option-a',value:'retained',label:'Retained value',description:'',sortOrder:0,isActive:true}]}} actions={{save:vi.fn(),remove:vi.fn()}}/>));
+  render(wrap(<ProfileOptionsGrid actionControls={{add:true,edit:false,delete:false}} categories={['religion']} data={{religion:[{id:'option-a',category:'religion',value:'retained',label:'Retained value',description:'',sortOrder:0,isActive:true}]}} actions={{save:vi.fn(),remove:vi.fn()}}/>));
   expect(screen.getByDisplayValue('Retained value')).toHaveProperty('readOnly',true);
   fireEvent.click(screen.getByRole('button',{name:en.admin.profileOptions.addRow}));
   expect(screen.getAllByRole('textbox').some(input=>!(input as HTMLInputElement).readOnly)).toBe(true);
@@ -28,7 +28,7 @@ describe('configuration controls reflect independent action decisions',()=>{
   const row:GridRecord={id:'label-a',companyId:'company-a',code:'A',name:'Department A',title:'',jobFamily:'',label:'',businessUnitId:null,headEmploymentId:null,description:'',isGlobal:false,archived:false,inUse:false,assignedCompanyIds:['company-a'],createdAt:null,lastUpdatedAt:null,lastUpdatedBy:null};
   render(wrap(<SystemLabelsGrid data={{department:[row],position:[],cost_center:[],business_unit:[]}} companies={[{id:'company-a',name:'Company A'}]} writableCompanyIds={['company-a']} companyActionControls={{'company-a':{add:false,edit:false,delete:true}}} isGroupAdmin={false} actions={{save:vi.fn(),assign:vi.fn(),unassign:vi.fn(),setCriteria:vi.fn(),copyToCompanies:vi.fn()}}/>));
   expect(screen.getByDisplayValue('Department A')).toHaveProperty('readOnly',true);
-  const archive=screen.getByRole('button',{name:en.admin.systemLabels.archive});expect(archive).toHaveProperty('disabled',false);
-  fireEvent.click(archive);expect(screen.queryByRole('button',{name:en.admin.systemLabels.archive})).toBeNull();
+  const archive=screen.getByTitle(en.admin.systemLabels.archive);expect(archive).toHaveProperty('disabled',false);
+  fireEvent.click(archive);expect(screen.queryByTitle(en.admin.systemLabels.archive)).toBeNull();
  });
 });

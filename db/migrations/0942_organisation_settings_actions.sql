@@ -68,6 +68,20 @@ BEGIN
 END;$$;
 REVOKE ALL ON FUNCTION app.organisation_remember_birth() FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+CREATE TABLE app.settings_birth(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,kind text NOT NULL,row_id uuid NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,kind,row_id));
+ALTER TABLE app.settings_birth ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.settings_birth FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.settings_born(p_kind text,p_row uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.settings_birth b WHERE b.xact_id=pg_current_xact_id() AND b.tenant_id=app.current_tenant_id() AND b.user_id=app.current_user_id() AND b.kind=p_kind AND b.row_id=p_row);
+$$;
+REVOKE ALL ON FUNCTION app.settings_born(text,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.settings_remember_birth() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN INSERT INTO app.settings_birth VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),TG_TABLE_NAME,NEW.id) ON CONFLICT DO NOTHING;END IF;RETURN NULL;
+END;$$;
+REVOKE ALL ON FUNCTION app.settings_remember_birth() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER settings_successful_birth AFTER INSERT ON public.test_case FOR EACH ROW EXECUTE FUNCTION app.settings_remember_birth();
+--> statement-breakpoint
 CREATE TABLE app.organisation_number_intent(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,config_id uuid NOT NULL,before_number integer NOT NULL,after_number integer NOT NULL,draft_id uuid,PRIMARY KEY(xact_id,tenant_id,user_id,config_id));
 ALTER TABLE app.organisation_number_intent ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.organisation_number_intent FROM PUBLIC,ai_hr_app;
@@ -97,7 +111,11 @@ BEGIN
  PERFORM app.access_workforce_write_lock();
  IF (r->>'tenant_id')::uuid IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current() OR (a IS NOT NULL AND b IS NOT NULL AND (a->>'tenant_id' IS DISTINCT FROM b->>'tenant_id' OR a->>'id' IS DISTINCT FROM b->>'id')) THEN RAISE EXCEPTION 'Configuration principal unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='UPDATE' AND b->>'archived_at' IS NULL AND a->>'archived_at' IS NOT NULL THEN op:='delete';END IF;
- IF TG_TABLE_NAME IN ('job_grade','profile_option','people_general_policy') THEN
+ IF TG_TABLE_NAME IN ('job_grade','profile_option','people_general_policy','dashboard_card_config','login_presentation','tenant_setting','email_design','email_design_version','email_asset','notification_email_policy','ai_provider_config','entra_connector','test_case','test_case_version','test_assignment','test_catalogue_update') THEN
+  IF TG_TABLE_NAME='test_case' AND TG_OP='UPDATE' AND app.settings_born('test_case',(a->>'id')::uuid) THEN op:='add';END IF;
+  IF TG_TABLE_NAME='test_case_version' THEN op:=CASE WHEN app.settings_born('test_case',(r->>'test_case_id')::uuid) THEN 'add' ELSE 'edit' END;END IF;
+  IF TG_TABLE_NAME='test_assignment' AND TG_OP='UPDATE' AND (b->>'active')::boolean AND NOT (a->>'active')::boolean THEN op:='delete';END IF;
+  IF TG_TABLE_NAME IN ('login_presentation','tenant_setting','email_design','email_design_version','email_asset','notification_email_policy','entra_connector') THEN op:=CASE WHEN TG_OP='DELETE' THEN 'delete' ELSE 'edit' END;END IF;
   -- The policy is one revisioned setting: first materialization is Edit, not permission to add policies.
   IF TG_TABLE_NAME='people_general_policy' THEN
    -- Admission counters are private native plumbing. The app has no raw table privilege.
@@ -153,7 +171,7 @@ END;$$;
 REVOKE ALL ON FUNCTION app.organisation_settings_write_guard() FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 DO $$DECLARE name text;BEGIN
- FOREACH name IN ARRAY ARRAY['company','department','position','cost_center','business_unit','job_grade','profile_option','employee_id_config','people_general_policy','label_company_assignment','company_logo'] LOOP
+ FOREACH name IN ARRAY ARRAY['company','department','position','cost_center','business_unit','job_grade','profile_option','employee_id_config','people_general_policy','label_company_assignment','company_logo','dashboard_card_config','login_presentation','tenant_setting','email_design','email_design_version','email_asset','notification_email_policy','ai_provider_config','entra_connector','test_case','test_case_version','test_assignment','test_catalogue_update'] LOOP
  EXECUTE format('CREATE TRIGGER organisation_settings_action BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app.organisation_settings_write_guard()',name);
  END LOOP;
  FOREACH name IN ARRAY ARRAY['company','department','position','cost_center','business_unit'] LOOP
@@ -204,3 +222,84 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
       OR app.access_scope_covers(p_company,o.company_id,u.tenant_id)))
  );
 $$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.email_design_admin() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.app_user u JOIN public.role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
+ WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ AND r.role::text IN ('hr_admin','super_admin') AND r.company_id IS NULL) AND app.settings_action_allowed('view'); $$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.entra_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.settings_action_allowed('view') AND EXISTS(SELECT 1 FROM public.app_user u JOIN public.role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
+ WHERE u.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND NOT app.login_blocked(u.id)
+ AND r.company_id IS NULL AND r.role IN ('super_admin','hr_admin')
+ AND NOT app.access_configuration_denied_for(u.tenant_id,u.id));
+$$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.entra_configure(p_org text,p_directory uuid,p_mode text,p_enabled boolean,p_provision boolean,p_revision uuid,p_expected uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE old public.entra_connector%ROWTYPE; t uuid:=app.current_tenant_id();
+BEGIN
+ IF NOT app.entra_admin() OR NOT app.settings_action_allowed('edit') THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('entra-config:'||t,0));
+ SELECT * INTO old FROM public.entra_connector WHERE tenant_id=t FOR UPDATE;
+ IF old.revision IS DISTINCT FROM p_expected THEN RAISE EXCEPTION 'entra_conflict'; END IF;
+ -- Moving a directory requires a separate reviewed identity migration, never an in-place takeover.
+ IF old.tenant_id IS NOT NULL AND (old.directory_tenant_id<>p_directory OR old.organization<>p_org OR old.mode<>p_mode) THEN RAISE EXCEPTION 'entra_conflict'; END IF;
+ INSERT INTO public.entra_connector VALUES(t,p_org,p_directory,p_mode,p_enabled,p_provision,p_revision)
+ ON CONFLICT(tenant_id) DO UPDATE SET enabled=p_enabled,provisioning_enabled=p_provision,revision=p_revision;
+ INSERT INTO public.entra_workforce(tenant_id,person_id) SELECT t,p.id FROM public.person p WHERE p.tenant_id=t AND EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p.id AND e.tenant_id=t)
+ ON CONFLICT(tenant_id,person_id) DO UPDATE SET revision=entra_workforce.revision+1,next_at=now(),status=CASE WHEN entra_workforce.lease IS NOT NULL THEN 'processing' WHEN entra_workforce.status='uncertain' AND entra_workforce.last_location IS NULL THEN 'uncertain' ELSE 'pending' END;
+ PERFORM app.append_auth_event(t,'entra-connector',t,'entra.configured','user',app.current_user_id(),jsonb_build_object('revision',p_revision,'enabled',p_enabled,'provisioning',p_provision));
+END;
+$$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.entra_bind(p_person uuid,p_user uuid,p_object uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE c public.entra_connector%ROWTYPE; u public.app_user%ROWTYPE; iss text;
+BEGIN
+ IF NOT app.entra_admin() OR NOT app.settings_action_allowed('edit') THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
+ SELECT * INTO c FROM public.entra_connector WHERE tenant_id=app.current_tenant_id() AND enabled FOR SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'entra_forbidden'; END IF;
+ PERFORM 1 FROM public.person p WHERE p.tenant_id=c.tenant_id AND p.id=p_person AND p.voided_at IS NULL FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'entra_forbidden'; END IF;
+ SELECT * INTO u FROM public.app_user WHERE id=p_user AND person_id=p_person AND tenant_id=c.tenant_id FOR UPDATE;
+ IF NOT FOUND OR app.login_blocked(u.id) THEN RAISE EXCEPTION 'entra_forbidden'; END IF;
+ IF EXISTS(SELECT 1 FROM public.deployment_identity_operator o JOIN public.app_external_identity i USING(issuer,subject) WHERE i.app_user_id=u.id AND o.revoked_at IS NULL)
+ OR (u.id<>app.current_user_id() AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.app_user_id=u.id AND r.role<>'employee')) THEN RAISE EXCEPTION 'entra_forbidden'; END IF;
+ iss:='https://login.microsoftonline.com/'||c.directory_tenant_id||'/v2.0';
+ IF EXISTS(SELECT 1 FROM public.app_external_identity i WHERE i.issuer=iss AND i.subject=p_object::text AND (i.app_user_id<>u.id OR i.revoked_at IS NOT NULL))
+ OR EXISTS(SELECT 1 FROM public.app_external_identity i WHERE i.issuer=iss AND i.app_user_id=u.id AND i.subject<>p_object::text) THEN RAISE EXCEPTION 'entra_conflict'; END IF;
+ INSERT INTO public.app_external_identity(issuer,subject,app_user_id) VALUES(iss,p_object::text,u.id) ON CONFLICT DO NOTHING;
+ IF NOT EXISTS(SELECT 1 FROM public.app_external_identity i WHERE i.issuer=iss AND i.subject=p_object::text AND i.app_user_id=u.id AND i.revoked_at IS NULL) THEN RAISE EXCEPTION 'entra_conflict'; END IF;
+ UPDATE public.entra_workforce SET object_id=p_object,status=CASE WHEN status='awaiting-link' THEN 'ready' ELSE status END WHERE tenant_id=c.tenant_id AND person_id=p_person;
+ PERFORM app.append_auth_event(c.tenant_id,'app-user',u.id,'entra.identity-linked','user',app.current_user_id(),jsonb_build_object('objectId',p_object));
+END;
+$$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.entra_retry(p_person uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.entra_admin() OR NOT app.settings_action_allowed('edit') THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
+ -- Uncertain creates have no safe receipt: do not blindly replay them. IT reconciles upstream first.
+ UPDATE public.entra_workforce SET status=CASE WHEN last_status='awaiting-sync' AND submitted_revision=revision THEN 'awaiting-sync' WHEN status='rejected' OR last_location IS NULL THEN 'pending' ELSE 'submitted' END,
+ last_location=CASE WHEN status='rejected' THEN NULL ELSE last_location END,next_at=now(),attempts=0
+ WHERE tenant_id=app.current_tenant_id() AND person_id=p_person AND status IN ('failed','rejected') AND lease_until IS NULL;
+ IF NOT FOUND THEN RAISE EXCEPTION 'entra_conflict'; END IF;
+END;
+$$;
+
+--> statement-breakpoint
+-- Administrative library reads narrow with Settings View; actual assigned tester courses remain independent.
+CREATE POLICY settings_test_case_read ON public.test_case AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(app.settings_action_allowed('view') OR app.testing_assigned(id));
+CREATE POLICY settings_test_version_read ON public.test_case_version AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(app.settings_action_allowed('view') OR app.testing_assigned(test_case_id));
+CREATE POLICY settings_test_assignment_read ON public.test_assignment AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(app.settings_action_allowed('view') OR tester_user_id=app.current_user_id());
+CREATE POLICY settings_test_catalogue_read ON public.test_catalogue_update AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(app.settings_action_allowed('view'));

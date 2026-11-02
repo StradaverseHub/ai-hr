@@ -1,3 +1,4 @@
+import {organisationAccess,organisationViewCompanies} from '@/core/organisation-access';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -57,10 +58,12 @@ export default async function CompanyViewPage({
   const { error, tab: rawTab } = await searchParams;
   const t = await getTranslations('admin.organization');
 
-  const [companies, tree] = await Promise.all([
+  const [sourceCompanies, sourceTree] = await Promise.all([
     listCompanies(s, { includeArchived: true, adminOnly: true }),
     companyTree(s),
   ]);
+  const visible=new Set(await organisationViewCompanies(s));
+  const companies=sourceCompanies.filter(row=>visible.has(row.id)),tree=sourceTree.filter(row=>visible.has(row.id));
   // THE REFUSAL — identical to [companyId]/page.tsx, and before any per-company read.
   const c = companies.find((x) => x.id === companyId);
   if (!c) notFound();
@@ -110,7 +113,7 @@ export default async function CompanyViewPage({
         back={{ href: '/admin/organization', label: t('backToCompanies') }}
         actions={
           // asChild: Button's classes (Classic primary, Monolith ink pill) on a LINK — a navigation, not a submit.
-          <Button asChild>
+          await organisationAccess(s,'edit',c.id) && <Button asChild>
             <Link href={editHref} data-company-edit-link>
               {t('actionEdit')}
             </Link>

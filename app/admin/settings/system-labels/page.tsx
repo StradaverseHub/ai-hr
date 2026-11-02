@@ -80,7 +80,7 @@ export default async function SystemLabelsPage({
       canViewSettings?listJobGrades(s, { includeArchived: true }):[],
       // c9986927 — Division / Branch / Region / Line / Section / Team / Base / Category are maintained
       // here now. Like grades they are TENANT-WIDE, so they must NOT pass through company Criteria.
-      canViewSettings?listAllProfileOptions(s, { activeOnly: false }):{},
+      canViewSettings?listAllProfileOptions(s, { activeOnly: false }):({} as Partial<Awaited<ReturnType<typeof listAllProfileOptions>>>),
       // 9a65f808 — grade groups, maintained here now for the same reason grades are: they are the
       // tenant's grade vocabulary, TENANT-WIDE (a group carries no company), and they must NOT pass
       // through company Criteria. Archived groups arrive too — the editor badges them and the editor is

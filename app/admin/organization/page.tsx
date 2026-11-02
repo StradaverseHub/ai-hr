@@ -147,6 +147,7 @@ export default async function OrganizationPage({
   };
 
   const canAddCompany=await organisationAccess(s,'add',null);
+  const actionControls=Object.fromEntries(await Promise.all(pageRows.map(async row=>[row.id,{edit:await organisationAccess(s,'edit',row.id),delete:await organisationAccess(s,'delete',row.id)}])));
   return (
     <div className={pageWideCls}>
       <PageHeader
@@ -289,6 +290,7 @@ export default async function OrganizationPage({
                   unarchive: t('actionUnarchive'),
                 }}
                 archiveAction={archiveCompanyAction}
+                actionControls={actionControls}
               />
             </tbody>
           </table>
