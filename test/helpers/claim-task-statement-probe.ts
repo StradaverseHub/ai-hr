@@ -1,6 +1,7 @@
 /** Private review proposal only. Not imported by an application/service or installed as a native API. */
 import {sql} from 'drizzle-orm';
 import type {SessionContext} from '../../db/client';
+import {claimRequest} from '../../db/schema';
 import {withClaimsTenant} from '../../core/module-gate';
 import {assertAssignedWorkPrincipalTx} from '../../core/approvals';
 import type {AssignedApprovalMetadata} from '../../lib/assigned-work';
@@ -11,7 +12,7 @@ export async function claimTaskStatementProbe(ctx:SessionContext,companyIds?:str
   await assertAssignedWorkPrincipalTx(tx,ctx);
   if(companyIds?.length===0)return {items:[] as AssignedApprovalMetadata[],total:0};
   const roles=ctx.roles??[],admin=roles.includes('super_admin')||roles.includes('hr_admin');
-  const rows=await tx.execute<AssignedApprovalMetadata&{total:number}>(sql`
+  const rows=await tx.execute<Omit<AssignedApprovalMetadata,'createdAt'>&{createdAt:Date|string;total:number}>(sql`
    WITH caller AS MATERIALIZED (
     SELECT (app.principal_snapshot_current()
      AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok
@@ -50,6 +51,6 @@ export async function claimTaskStatementProbe(ctx:SessionContext,companyIds?:str
     count(*) OVER()::int AS total
    FROM eligible ORDER BY created_at DESC,id ${limit===undefined?sql``:sql`LIMIT ${limit}`}
   `);
-  return {items:rows.map(({total:_,...row})=>row),total:rows[0]?.total??0};
+  return {items:rows.map(({total:_,...row})=>({...row,createdAt:row.createdAt instanceof Date?row.createdAt:claimRequest.createdAt.mapFromDriverValue(row.createdAt)})),total:rows[0]?.total??0};
  });
 }

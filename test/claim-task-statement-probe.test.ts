@@ -87,11 +87,11 @@ it('keeps same-tenant company filters and foreign-tenant rows identical to the p
  const local=await person('company-filter subject');const localRows=await claims(local.employmentId,3);
  const [company]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional second company',country:'MY'}).returning();
  const [department]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:company.id,name:'Fictional second department'}).returning();
- const other=await hireEmployee(ctx,{person:{fullName:'Fictional other-company subject'},companyId:company.id,departmentId:department.id,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+ const other=await hireEmployee(ctx,{person:{fullName:'Fictional other-company subject',primaryEmail:randomUUID()+'@example.invalid'},companyId:company.id,departmentId:department.id,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
  const otherRows=await claims(other.employmentId,2);
  const foreign=await seedBase();await setModule(foreign.tenantId,'claims','active');const foreignCtx=adminCtx(foreign);
  const foreignType=await createClaimType(foreignCtx,{code:'FOREIGN_PROBE',name:'Fictional foreign claims',requiresReceipt:false,defaultTaxable:false});
- const foreignPerson=await hireEmployee(foreignCtx,{person:{fullName:'Fictional foreign-tenant subject'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+ const foreignPerson=await hireEmployee(foreignCtx,{person:{fullName:'Fictional foreign-tenant subject',primaryEmail:randomUUID()+'@example.invalid'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
  await owner.db.insert(s.claimRequest).values({tenantId:foreign.tenantId,employmentId:foreignPerson.employmentId,claimTypeId:foreignType.id,amount:'1.00',incurredOn:todayInKualaLumpur(),status:'pending'});
  expect(new Set((await compare(ctx,undefined)).items.map(row=>row.id))).toEqual(new Set([...localRows,...otherRows].map(row=>row.id)));
  expect(new Set((await compare(ctx,[b.companyId])).items.map(row=>row.id))).toEqual(new Set(localRows.map(row=>row.id)));
