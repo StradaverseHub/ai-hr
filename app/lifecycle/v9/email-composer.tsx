@@ -1,4 +1,5 @@
 'use client';
+import {useOnboardingCopy} from '@/lib/onboarding-copy';
 import {CaseSection} from '@/components/lifecycle-v9/case-layout';
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
@@ -8,8 +9,9 @@ import { CaseFiles } from './case-files';
 import { EmailBodyPreview } from './email-body-preview';
 import { readV9Email } from './actions';
 export function CaseEmails({ c, config, busy, command }: { c: Case; config: Config; busy: boolean; command: (command: Command) => Promise<{ ok: boolean; error?: string }> }) {
+  const copy=useOnboardingCopy();
   const [selected, select] = useState<string | null>(null);
-  return <CaseSection className="v9-stack"><h2>Emails for this person</h2><p className="v9-muted">Preview the current case, edit its email text, or send a test to yourself.</p><ul className="v9-list">{config.emails.filter(email => email.module === c.module).map(email => <li key={email.id}><div className="v9-heading"><div><strong>{email.name}</strong>{c.emailEdits?.[email.id] && <p className="v9-muted">Edited for this person</p>}</div><button type="button" className="v9-button" onClick={() => select(email.id)}>Preview {email.name}</button></div></li>)}</ul>{selected && <EmailDialog key={`${c.id}:${selected}:${c.revision}`} c={c} config={config} emailId={selected} busy={busy} command={command} close={() => select(null)}/>}</CaseSection>;
+  return <CaseSection className="v9-stack"><h2>{copy("Emails for this person")}</h2><p className="v9-muted">{copy("Preview the current case, edit its email text, or send a test to yourself.")}</p><ul className="v9-list">{config.emails.filter(email => email.module === c.module).map(email => <li key={email.id}><div className="v9-heading"><div><strong>{email.name}</strong>{c.emailEdits?.[email.id] && <p className="v9-muted">{copy("Edited for this person")}</p>}</div><button type="button" className="v9-button" onClick={() => select(email.id)}>{copy("Preview")} {email.name}</button></div></li>)}</ul>{selected && <EmailDialog key={`${c.id}:${selected}:${c.revision}`} c={c} config={config} emailId={selected} busy={busy} command={command} close={() => select(null)}/>}</CaseSection>;
 }
 export function EmailDialog({ c, config, emailId, busy, command, close, initialEditing = false }: { c: Case; config: Config; emailId: string; busy: boolean; command: (command: Command) => Promise<{ ok: boolean; error?: string }>; close: () => void; initialEditing?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null), [preview, setPreview] = useState<EmailPreview | null>(null), [error, setError] = useState(''), [editing, setEditing] = useState(initialEditing), [subject, setSubject] = useState(''), [body, setBody] = useState('');

@@ -2,6 +2,8 @@ import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { OnboardingEquipment } from '../components/onboarding-equipment';
 import * as M from '../lib/onboarding-model';
+import {NextIntlClientProvider} from 'next-intl';
+import messages from '../messages/en.json';
 const mocks = vi.hoisted(() => ({ save: vi.fn(), refresh: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
 vi.mock('../app/lifecycle/onboarding/v31-actions', () => ({ changeOnboarding: mocks.save }));
@@ -15,7 +17,7 @@ function fixture() {
 }
 it('keeps pending equipment preferences in the case draft until the existing save action runs', () => {
   const props = fixture(), change = vi.fn();
-  render(<OnboardingEquipment {...props} draft={{ids:['device'],values:{},change}}/>);
+  render(<NextIntlClientProvider locale="en" messages={messages}><OnboardingEquipment {...props} draft={{ids:['device'],values:{},change}}/></NextIntlClientProvider>);
   fireEvent.click(screen.getByRole('button',{name:'Set for all items'}));
   fireEvent.change(screen.getByRole('combobox',{name:'Assignment for all items'}),{target:{value:'manual'}});
   fireEvent.change(screen.getByRole('textbox',{name:'Due by Day for all items'}),{target:{value:'-3'}});
@@ -24,7 +26,7 @@ it('keeps pending equipment preferences in the case draft until the existing sav
 });
 it('uses original requisition item IDs and revision and retains choices after a rejected live bulk save', async () => {
   const props = fixture(); M.submitCase(props.config,props.c,props.actor,props.env); mocks.save.mockResolvedValue({error:'Case changed. Reload before saving.'});
-  render(<OnboardingEquipment {...props}/>);
+  render(<NextIntlClientProvider locale="en" messages={messages}><OnboardingEquipment {...props}/></NextIntlClientProvider>);
   fireEvent.click(screen.getByRole('button',{name:'Set for all items'}));
   fireEvent.change(screen.getByRole('combobox',{name:'Team for all items'}),{target:{value:'team'}});
   fireEvent.click(screen.getByRole('button',{name:'Apply to all items'}));
