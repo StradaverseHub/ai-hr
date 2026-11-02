@@ -75,6 +75,18 @@ export function assertBuildHeapEnvironment(e){
  assertBuildHeapRunner(e,Number(e.AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB));
  return BUILD_HEAP_CEILING_MB;
 }
+/** NODE_OPTIONS for a `next build` child of a step whose own process must keep its normal heap (the browser
+ * orchestrator also runs migrations, a server and Chromium). Without an admission it is exactly the default 6144;
+ * with the admitted profile (and only on the admitted runner class) it is exactly 8192; a partial or mixed admission
+ * fails closed. The same profile, ceiling and runner refusals as every other bounded build step. */
+export function admittedBuildNodeOptions(e){
+ if(e.AIHR_CI_BUILD_HEAP_PROFILE===undefined){
+  assert(e.AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB===undefined,'Partial bounded build heap admission refused');
+  return DEFAULT_BUILD_NODE_OPTIONS;
+ }
+ assertBuildHeapEnvironment({...e,NODE_OPTIONS:BUILD_HEAP_NODE_OPTIONS});
+ return BUILD_HEAP_NODE_OPTIONS;
+}
 export function parseMaxRssKiB(text){
  const m=typeof text==='string'?[...text.matchAll(/^\s*Maximum resident set size \(kbytes\): (\d+)\s*$/gm)]:[];
  assert(m.length>=1,'GNU time maximum resident set size required');
