@@ -323,6 +323,13 @@ const REASON_CODE_LABEL: Record<string, string> = {
   duplicate: 'Duplicate Leave Year Configuration',
 };
 
+/** Walk structured facts before serialization so array/object nesting cannot bypass masking. */
+function maskedStructure(value:unknown):unknown {
+  if(Array.isArray(value))return value.map(maskedStructure);
+  if(value!==null&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,SENSITIVE.has(key)?maskValue(key,item):maskedStructure(item)]));
+  return value;
+}
+
 /** Render a payload value for the audit detail, masking sensitive fields. */
 export function maskValue(key: string, value: unknown): string {
   if (value == null) return '—';
@@ -333,7 +340,7 @@ export function maskValue(key: string, value: unknown): string {
   if (key === 'reasons' && Array.isArray(value)) {
     return truncate(value.map((v) => REASON_CODE_LABEL[String(v)] ?? String(v)).join(', '));
   }
-  if (typeof value === 'object') return truncate(JSON.stringify(value));
+  if (typeof value === 'object') return truncate(JSON.stringify(maskedStructure(value)));
   return truncate(String(value));
 }
 
