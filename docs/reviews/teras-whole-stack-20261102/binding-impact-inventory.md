@@ -120,7 +120,7 @@ Approved baseline (released main 50ea2471): `adbd370dd31e429d8090b935c4dbaa730a8
 
 ## Module-agent scope
 
-Approved baseline (released main 50ea2471): `2e96d752dfe314bf33eb449ab842a2b39577a67a4e07e5cc9645f122b3181274 (recorded on main; main itself computes 5c20fc595467c167a9dbd2dae60cfdf6ee72fc0175680e9aa3261f18ea8d0040)`. Candidate on this head: `6a64fbaa148bcea1b3b2659b155a98381179d096667cf9119fc36ebb978baf59`.
+Approved baseline: **undefined until main's manifest is repaired and approved by its owner** (a main-level issue for Codex, not part of the Teras rebind). On released main 50ea2471 the manifest records `2e96d752dfe314bf33eb449ab842a2b39577a67a4e07e5cc9645f122b3181274`, but its own `--check` computes `5c20fc595467c167a9dbd2dae60cfdf6ee72fc0175680e9aa3261f18ea8d0040` over the same 456 files. The changed files below are listed against main's tree. Candidate on this head: `6a64fbaa148bcea1b3b2659b155a98381179d096667cf9119fc36ebb978baf59`.
 
 456 → 457 files: 2 changed, 1 added, 0 removed.
 
