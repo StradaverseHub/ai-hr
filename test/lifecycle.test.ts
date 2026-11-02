@@ -8,7 +8,7 @@ import {randomUUID} from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import { withLifecycleTenant } from '../core/module-gate';
-import type { SessionContext } from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee,setEmploymentBlacklist } from '../core/org';
 import { ModuleNotEnabledError } from '../core/entitlements';
