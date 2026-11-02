@@ -90,3 +90,12 @@ it('fences an actual pre-pinned repeatable-read maintenance transaction after pu
  const error=await outcome;let code:string|undefined;for(let e=error;e&&typeof e==='object';e=e.cause){if(typeof e.code==='string'){code=e.code;break;}}
  expect(code).toBe('40001');
 });
+
+it('keeps unknown function keys closed and rejects runtime registry mutation',async()=>{
+ const result=await client.begin(async tx=>{
+  const ctx=adminCtx(b);await tx`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId},true)`;
+  return tx`select app.function_action_allowed('unregistered.fixture','add',${b.companyId}::uuid) as bounded,app.function_global_action_allowed('unregistered.fixture','add') as global`;
+ });
+ expect(result[0]).toMatchObject({bounded:false,global:false});
+ await expect(client`select app.register_function_action('unregistered.fixture','view','company',NULL,NULL,'{}'::jsonb)`).rejects.toMatchObject({code:'42501'});
+});

@@ -70,3 +70,21 @@ it('retains a recovery administrator who can actually open and save access confi
  const before=snapshot(),after={...before,overrides:[{userId:'admin',capabilityId:'access.configure',companyId:null,effect:'deny' as const}]};
  expect(()=>assertSystemAdministratorSurvives(before,after,catalog,evidence)).toThrow(/lastAdministrator/);
 });
+
+describe('precise submenu prerequisites',()=>{
+ const ids=['payroll.view','payroll.add','function.payroll.individualTransactions.view','function.payroll.individualTransactions.add','function.payroll.process.view','function.payroll.process.add'];
+ const definitions:AccessCapability[]=ids.map(id=>({id,scope:'company',supported:true,bindings:[{owner:'model-fixture',operation:'test'}],prerequisites:id.startsWith('function.')?[id.endsWith('.view')?'payroll.view':'payroll.add']:[]}));
+ const source=()=>{const value=snapshot();value.groups[1]={...value.groups[1],grants:ids.map(capabilityId=>({capabilityId,companyId:'parent'}))};return value;};
+ it('denies one submenu without revoking another and keeps the exact submenu View floor',()=>{
+  const value=source();value.overrides=[{userId:'worker',capabilityId:'function.payroll.process.add',companyId:'child',effect:'deny'}];
+  expect(resolveAccessCapability(value,definitions,'worker','function.payroll.process.add',target,evidence).allowed).toBe(false);
+  expect(resolveAccessCapability(value,definitions,'worker','function.payroll.individualTransactions.add',target,evidence).allowed).toBe(true);
+  value.overrides.push({userId:'worker',capabilityId:'function.payroll.individualTransactions.view',companyId:'child',effect:'deny'});
+  expect(resolveAccessCapability(value,definitions,'worker','function.payroll.individualTransactions.add',target,evidence)).toMatchObject({allowed:false,reason:'denied'});
+ });
+ it('enforces parent module denial and its delegation ceiling',()=>{
+  const value=source();value.overrides=[{userId:'worker',capabilityId:'payroll.add',companyId:'child',effect:'deny'}];
+  expect(resolveAccessCapability(value,definitions,'worker','function.payroll.individualTransactions.add',target,evidence).allowed).toBe(false);
+  expect(()=>assertAccessGrantCeiling(value,definitions,'worker',[{capabilityId:'function.payroll.individualTransactions.add',companyId:'child'}],evidence)).toThrow('ceiling');
+ });
+});
