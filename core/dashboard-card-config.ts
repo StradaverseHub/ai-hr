@@ -324,7 +324,7 @@ export type DashboardCardRow = {
 /** List every dashboard card in the tenant catalog, ordered by display order then name. */
 export async function listCards(ctx: SessionContext,maintenance=false): Promise<DashboardCardRow[]> {
   return withTenant(ctx, async (tx) => {
-    if(maintenance&&!await settingsAccessTx(tx,'view'))throw new Error('Forbidden');
+    if(maintenance&&!await settingsAccessTx(tx,'view','dashboardCardConfig'))throw new Error('Forbidden');
     const rows = await tx
       .select({
         id: dashboardCardConfig.id,

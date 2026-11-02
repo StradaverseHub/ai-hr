@@ -978,7 +978,7 @@ authorized.
 ## Organisation and shared configuration actions — 2 November 2026 (provisional)
 
 Parent BOARD owner reserves `0942_organisation_settings_actions`, aggregate idx764 /
-when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `6fd3aa99be497c6660792e7f7aa7d02e30b1ac95d1fcdc9a43cb1077ba75a5d1`.
+when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `6402b69e2cef8f0d80d9d9961b1d50f0c7634e84361c876802ef43c338c6cfa8`.
 This is unapplied implementation source. It retains native role/company floors, separates
 reference pickers from maintenance views, guards current/proposed organisation scopes, and
 binds employee-number allocation/release to private native effects. Hosted SQL/behavior and

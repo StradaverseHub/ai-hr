@@ -24,6 +24,12 @@ describe('configuration controls reflect independent action decisions',()=>{
   fireEvent.click(screen.getByRole('button',{name:en.admin.profileOptions.addRow}));
   expect(screen.getAllByRole('textbox').some(input=>!(input as HTMLInputElement).readOnly)).toBe(true);
  });
+ it('switches label submenu controls independently within the same company',()=>{
+  render(wrap(<SystemLabelsGrid data={{department:[],position:[],cost_center:[],business_unit:[]}} companies={[{id:'company-a',name:'Company A'}]} writableCompanyIds={['company-a']} kindActionControls={{department:{'company-a':denied},position:{'company-a':{add:true,edit:false,delete:false}}}} isGroupAdmin={false} actions={{save:vi.fn(),assign:vi.fn(),unassign:vi.fn(),setCriteria:vi.fn(),copyToCompanies:vi.fn()}}/>));
+  expect(screen.getByRole('button',{name:en.admin.systemLabels.addRow})).toHaveProperty('disabled',true);
+  fireEvent.click(screen.getByRole('button',{name:new RegExp(en.admin.systemLabels.category.position)}));
+  expect(screen.getByRole('button',{name:en.admin.systemLabels.addRow})).toHaveProperty('disabled',false);
+ });
  it('permits archiving independently of ordinary Edit on a company label',()=>{
   const row:GridRecord={id:'label-a',companyId:'company-a',code:'A',name:'Department A',title:'',jobFamily:'',label:'',businessUnitId:null,headEmploymentId:null,description:'',isGlobal:false,archived:false,inUse:false,assignedCompanyIds:['company-a'],createdAt:null,lastUpdatedAt:null,lastUpdatedBy:null};
   render(wrap(<SystemLabelsGrid data={{department:[row],position:[],cost_center:[],business_unit:[]}} companies={[{id:'company-a',name:'Company A'}]} writableCompanyIds={['company-a']} companyActionControls={{'company-a':{add:false,edit:false,delete:true}}} isGroupAdmin={false} actions={{save:vi.fn(),assign:vi.fn(),unassign:vi.fn(),setCriteria:vi.fn(),copyToCompanies:vi.fn()}}/>));

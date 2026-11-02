@@ -163,10 +163,10 @@ export function visibleLabelIdsCondition(
 /** Common maintenance is independent of the company switcher. Database administrator scope
  * is applied to rows before any consumer search, count, page limit or export projection. */
 export function labelMaintenanceCondition(table:typeof department|typeof position|typeof costCenter|typeof businessUnit,kind:LabelKind):SQL{
- return sql`app.is_admin() and ((app.is_admin_for(${table.companyId}) and app.organisation_action_allowed('view',${table.companyId})) or
-   (${table.isGlobal}=true and exists(select 1 from company scope_co where scope_co.tenant_id=${table.tenantId} and app.is_admin_for(scope_co.id) and app.organisation_action_allowed('view',scope_co.id))) or
+ return sql`app.is_admin() and ((app.is_admin_for(${table.companyId}) and app.organisation_settings_function_allowed(${'systemLabels.'+kind},'view',${table.companyId})) or
+   (${table.isGlobal}=true and exists(select 1 from company scope_co where scope_co.tenant_id=${table.tenantId} and app.is_admin_for(scope_co.id) and app.organisation_settings_function_allowed(${'systemLabels.'+kind},'view',scope_co.id))) or
    exists(select 1 from label_company_assignment scope_lca join company scope_co on scope_co.id=scope_lca.company_id and scope_co.tenant_id=scope_lca.tenant_id
-     where scope_lca.tenant_id=${table.tenantId} and scope_lca.label_kind=${kind} and scope_lca.label_id=${table.id} and app.is_admin_for(scope_co.id) and app.organisation_action_allowed('view',scope_co.id)))`;
+     where scope_lca.tenant_id=${table.tenantId} and scope_lca.label_kind=${kind} and scope_lca.label_id=${table.id} and app.is_admin_for(scope_co.id) and app.organisation_settings_function_allowed(${'systemLabels.'+kind},'view',scope_co.id)))`;
 }
 export const SYSTEM_LABEL_MAINTENANCE_LIMIT=5000;
 export function boundedLabelMaintenanceRows<T extends readonly unknown[]>(rows:T):T{if(rows.length>SYSTEM_LABEL_MAINTENANCE_LIMIT)throw new Error('This System Labels list exceeds the supported maintenance size. Use a narrower authorized workbook selection.');return rows;}

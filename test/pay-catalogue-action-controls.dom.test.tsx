@@ -17,7 +17,7 @@ import {ComponentForm,type PayComponentRow} from '../app/admin/pay-components/co
 afterEach(()=>{cleanup();state.actions={view:true,add:false,edit:false,delete:false};});
 const component:PayComponentRow={
  id:'fictional-code',tenantId:'fictional-tenant',code:'TEST',name:'Fictional retained item',
- label:null,description:null,pendingInputKind:null,kind:'earning',includedInEpf:false,
+ label:null,description:null,pendingInputKind:null,kind:'allowance',includedInEpf:false,
  includedInSocsoEis:false,includedInPcb:true,includedInHrdfBase:false,isNonPayable:false,
  epfBonus2012:false,pcbRemunerationType:null,pcbExemptionCode:null,displayCategory:null,
  orpOvertime:false,orpUnpaidLeave:false,prorates:true,eaFormLine:null,roundingMethod:'none',

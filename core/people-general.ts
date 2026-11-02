@@ -18,11 +18,11 @@ export async function readPeopleGeneralTx(tx: Tx): Promise<PeopleGeneralPolicy> 
   return { allowDuplicatedNric: row?.allow_duplicated_nric === true, allowDuplicatedEmail: row?.allow_duplicated_email === true, revision: row?.revision ?? null };
 }
 export function getPeopleGeneral(ctx: SessionContext) {
-  return withTenant(ctx,async tx=>{if(!await settingsAccessTx(tx,'view'))throw new PeopleGeneralError('forbidden');return readPeopleGeneralTx(tx);});
+  return withTenant(ctx,async tx=>{if(!await settingsAccessTx(tx,'view','peopleGeneral'))throw new PeopleGeneralError('forbidden');return readPeopleGeneralTx(tx);});
 }
 export function canConfigurePeopleGeneral(ctx: SessionContext) {
   return withTenant(ctx, async tx => {
-    const [row] = await tx.execute<{ allowed: boolean }>(sql`select app.people_general_can_configure() and app.settings_action_allowed('edit') as allowed`);
+    const [row] = await tx.execute<{ allowed: boolean }>(sql`select app.people_general_can_configure() and app.organisation_settings_function_allowed('peopleGeneral','edit',NULL) as allowed`);
     return row?.allowed === true;
   });
 }

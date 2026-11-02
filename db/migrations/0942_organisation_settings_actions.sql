@@ -58,6 +58,64 @@ REVOKE ALL ON FUNCTION app.organisation_global_action(text) FROM PUBLIC,ai_hr_ap
 REVOKE ALL ON FUNCTION app.organisation_action_allowed(text,uuid),app.settings_action_allowed(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.organisation_action_allowed(text,uuid),app.settings_action_allowed(text) TO ai_hr_app;
 --> statement-breakpoint
+--> statement-breakpoint
+-- Exact native maintenance purposes. Dormant until the restricted publisher qualifies the full
+-- component; reference/picker reads keep their own native courses.
+DO $functions$ DECLARE source record;operation text;BEGIN
+ FOR source IN SELECT * FROM (VALUES
+('organization','company','organisation','nav.organization','screen','/admin/organization','organization',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.department','company','organisation','admin.systemLabels.category.department','submenu','/admin/settings/system-labels','systemLabels',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.position','company','organisation','admin.systemLabels.category.position','submenu','/admin/settings/system-labels','systemLabels',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.cost_center','company','organisation','admin.systemLabels.category.cost_center','submenu','/admin/settings/system-labels','systemLabels',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.business_unit','company','organisation','admin.systemLabels.category.business_unit','submenu','/admin/settings/system-labels','systemLabels',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.jobGrade','tenant','settings','admin.systemLabels.category.grade','submenu','/admin/settings/system-labels','systemLabels',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions','tenant','settings','nav.profileOptions','submenu','/admin/settings/system-labels/profile-options','systemLabels',ARRAY['view','add','edit','delete']::text[]),
+('employeeIdConfig.company','company','organisation','nav.employeeIdConfig','submenu','/admin/settings/employee-id','employeeIdConfig',ARRAY['view','add','edit','delete']::text[]),
+('employeeIdConfig.global','tenant','settings','nav.employeeIdConfig','submenu','/admin/settings/employee-id','employeeIdConfig',ARRAY['view','add','edit','delete']::text[]),
+('peopleGeneral','tenant','settings','nav.peopleGeneral','screen','/admin/settings/people-general','peopleGeneral',ARRAY['view','edit']::text[]),
+('dashboardCardConfig','tenant','settings','nav.dashboardCardConfig','screen','/admin/settings/dashboard','dashboardCardConfig',ARRAY['view','add','edit','delete']::text[]),
+('loginPresentation','tenant','settings','nav.loginPresentation','screen','/admin/settings/login','loginPresentation',ARRAY['view','edit']::text[]),
+('workflowEmail','tenant','settings','nav.workflowEmail','screen','/admin/settings/notifications','workflowEmail',ARRAY['view','edit']::text[]),
+('emailTemplates','tenant','settings','nav.emailTemplates','screen','/admin/settings/email-templates','emailTemplates',ARRAY['view','edit']::text[]),
+('entra','tenant','settings','nav.entra','screen','/admin/settings/entra','entra',ARRAY['view','edit']::text[]),
+('aiConfig','tenant','settings','nav.aiConfig','screen','/control-tower/agents/provider','aiConfig',ARRAY['view','add','edit','delete']::text[]),
+('systemTesting','tenant','settings','nav.systemTesting','screen','/admin/system-testing','systemTesting',ARRAY['view','add','edit','delete']::text[]),
+('systemExplorer','tenant','settings','nav.systemExplorer','screen','/admin/system-explorer','systemExplorer',ARRAY['view']::text[])
+ ) definitions(key,scope,parent,label,kind,href,screen,operations) LOOP
+  FOREACH operation IN ARRAY source.operations LOOP
+   PERFORM app.register_function_action(source.key,operation,source.scope,source.parent||'.'||operation,'app.organisation_settings_delegation_allowed',
+    jsonb_build_object('moduleKey',source.parent,'labelKey',source.label,'kind',source.kind,'course','administrative','screenKey',source.screen,'href',source.href,'employeeBearing',false));
+  END LOOP;
+ END LOOP;
+END $functions$;
+CREATE FUNCTION app.organisation_settings_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.access_function_action f JOIN app.access_function_definition d USING(function_key)
+ WHERE f.capability_id=cap AND f.parent_capability ~ '^(organisation|settings)\.'
+ AND app.organisation_settings_legacy_allowed(t,u,f.parent_capability,co)
+ AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','emailTemplates','entra') AND NOT(f.function_key='workflowEmail' AND f.operation<>'view')
+  OR EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN ('hr_admin','super_admin') AND r.company_id IS NULL)));
+$$;
+CREATE FUNCTION app.organisation_settings_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
+ AND app.organisation_settings_function_legacy_allowed(t,u,cap,co)
+ AND EXISTS(SELECT 1 FROM app.access_function_action f WHERE f.capability_id=cap
+ AND app.organisation_settings_current_legacy_allowed(t,u,f.parent_capability,co)
+ AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','emailTemplates','entra') AND NOT(f.function_key='workflowEmail' AND f.operation<>'view') OR app.is_group_admin()));
+$$;
+CREATE FUNCTION app.organisation_settings_function_allowed(p_key text,p_operation text,p_company uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.access_function_action f JOIN app.access_function_definition d USING(function_key)
+ WHERE f.function_key=p_key AND f.operation=p_operation AND f.parent_capability ~ '^(organisation|settings)\.'
+ AND app.organisation_settings_function_current_legacy_allowed(app.current_tenant_id(),app.current_user_id(),f.capability_id,p_company)
+ AND CASE WHEN f.parent_capability LIKE 'settings.%' THEN app.settings_action_allowed(p_operation) ELSE app.organisation_action_allowed(p_operation,p_company) END
+ AND CASE WHEN d.scope='company' AND p_company IS NULL THEN app.function_global_action_allowed(p_key,p_operation) ELSE app.function_action_allowed(p_key,p_operation,p_company) END);
+$$;
+REVOKE ALL ON FUNCTION app.organisation_settings_function_legacy_allowed(uuid,uuid,text,uuid),app.organisation_settings_function_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION app.organisation_settings_function_allowed(text,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.organisation_settings_function_allowed(text,text,uuid) TO ai_hr_app;
+--> statement-breakpoint
 CREATE TABLE app.organisation_birth(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,kind text NOT NULL,row_id uuid NOT NULL,company_id uuid NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,kind,row_id));
 ALTER TABLE app.organisation_birth ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.organisation_birth FROM PUBLIC,ai_hr_app;
@@ -115,7 +173,7 @@ GRANT EXECUTE ON FUNCTION app.organisation_allocate_employee_code(uuid) TO ai_hr
 CREATE FUNCTION app.organisation_settings_write_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE b jsonb:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;a jsonb:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;r jsonb:=coalesce(a,b);
- op text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;co uuid;origin uuid;requested_kind text;label uuid;prior_parent uuid;next_parent uuid;
+ op text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;co uuid;origin uuid;requested_kind text;label uuid;prior_parent uuid;next_parent uuid;function_key text;
 BEGIN
  IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
  PERFORM app.access_workforce_write_lock();
@@ -133,6 +191,8 @@ BEGIN
    IF TG_OP='INSERT' AND NOT (a->>'allow_duplicated_nric')::boolean AND NOT (a->>'allow_duplicated_email')::boolean AND (a->>'admission_version')::bigint=1 THEN RETURN NEW;END IF;
    op:='edit';
   END IF;
+  function_key:=CASE TG_TABLE_NAME WHEN 'job_grade' THEN 'systemLabels.jobGrade' WHEN 'profile_option' THEN 'systemLabels.profileOptions' WHEN 'people_general_policy' THEN 'peopleGeneral' WHEN 'dashboard_card_config' THEN 'dashboardCardConfig' WHEN 'login_presentation' THEN 'loginPresentation' WHEN 'email_design' THEN 'emailTemplates' WHEN 'email_design_version' THEN 'emailTemplates' WHEN 'email_asset' THEN 'emailTemplates' WHEN 'notification_email_policy' THEN 'workflowEmail' WHEN 'ai_provider_config' THEN 'aiConfig' WHEN 'entra_connector' THEN 'entra' WHEN 'test_case' THEN 'systemTesting' WHEN 'test_case_version' THEN 'systemTesting' WHEN 'test_assignment' THEN 'systemTesting' WHEN 'test_catalogue_update' THEN 'systemTesting' ELSE NULL END;
+  IF function_key IS NOT NULL AND NOT app.organisation_settings_function_allowed(function_key,op,NULL) THEN RAISE EXCEPTION 'Settings function unavailable' USING ERRCODE='42501';END IF;
   IF NOT app.settings_action_allowed(op) THEN RAISE EXCEPTION 'Settings action unavailable' USING ERRCODE='42501';END IF;
  ELSIF TG_TABLE_NAME='employee_id_config' THEN
   -- Exact private number allocation is plumbing, never arbitrary Settings Edit.
@@ -141,6 +201,7 @@ BEGIN
    DELETE FROM app.organisation_number_intent WHERE xact_id=pg_current_xact_id() AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND config_id=(a->>'id')::uuid;RETURN NEW;
   END IF;
   co:=(r->>'company_id')::uuid;
+  IF NOT app.organisation_settings_function_allowed(CASE WHEN co IS NULL THEN 'employeeIdConfig.global' ELSE 'employeeIdConfig.company' END,op,co) THEN RAISE EXCEPTION 'Employee ID function unavailable' USING ERRCODE='42501';END IF;
   IF (co IS NULL AND NOT app.settings_action_allowed(op)) OR (co IS NOT NULL AND NOT app.organisation_action_allowed(op,co)) THEN RAISE EXCEPTION 'Employee ID configuration action unavailable' USING ERRCODE='42501';END IF;
   IF TG_OP='UPDATE' AND (a->>'company_id') IS DISTINCT FROM (b->>'company_id') THEN RAISE EXCEPTION 'Configuration scope is immutable' USING ERRCODE='42501';END IF;
  ELSIF TG_TABLE_NAME='label_company_assignment' THEN
@@ -153,23 +214,27 @@ BEGIN
    IF TG_OP<>'DELETE' OR NOT EXISTS(SELECT 1 FROM app.organisation_birth i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=app.current_tenant_id() AND i.user_id=app.current_user_id() AND i.kind='deleted:'||requested_kind AND i.row_id=label) THEN RAISE EXCEPTION 'Label owner unavailable' USING ERRCODE='42501';END IF;
   ELSE
    op:=CASE WHEN EXISTS(SELECT 1 FROM app.organisation_birth i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=app.current_tenant_id() AND i.user_id=app.current_user_id() AND i.kind=requested_kind AND i.row_id=label) THEN 'add' ELSE 'edit' END;
+   IF NOT app.organisation_settings_function_allowed('systemLabels.'||requested_kind,op,origin) OR NOT app.organisation_settings_function_allowed('systemLabels.'||requested_kind,op,co) THEN RAISE EXCEPTION 'Label criteria function unavailable' USING ERRCODE='42501';END IF;
    IF NOT app.organisation_action_allowed(op,origin) OR NOT app.organisation_action_allowed(op,co) THEN RAISE EXCEPTION 'Label criteria action unavailable' USING ERRCODE='42501';END IF;
   END IF;
  ELSE
   co:=CASE WHEN TG_TABLE_NAME='company' THEN (r->>'id')::uuid ELSE (r->>'company_id')::uuid END;
+  function_key:=CASE WHEN TG_TABLE_NAME IN ('company','company_logo') THEN 'organization' ELSE 'systemLabels.'||TG_TABLE_NAME END;
   -- Branding replaces/removes a company attribute; it never creates/deletes the organisation.
   IF TG_TABLE_NAME='company_logo' THEN op:='edit';END IF;
   IF TG_TABLE_NAME='company' AND TG_OP='INSERT' THEN
+   IF NOT app.organisation_settings_function_allowed('organization','add',(a->>'parent_company_id')::uuid) THEN RAISE EXCEPTION 'Organisation function Add unavailable' USING ERRCODE='42501';END IF;
    IF NOT app.organisation_action_allowed('add',(a->>'parent_company_id')::uuid) THEN RAISE EXCEPTION 'Organisation Add unavailable' USING ERRCODE='42501';END IF;
   ELSE
    IF TG_OP='UPDATE' AND TG_TABLE_NAME IN ('department','position','cost_center','business_unit') AND EXISTS(SELECT 1 FROM app.organisation_birth i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=app.current_tenant_id() AND i.user_id=app.current_user_id() AND i.kind=TG_TABLE_NAME AND i.row_id=(r->>'id')::uuid) THEN op:='add';END IF;
+   IF NOT app.organisation_settings_function_allowed(function_key,op,co) THEN RAISE EXCEPTION 'Organisation function unavailable' USING ERRCODE='42501';END IF;
    IF NOT app.organisation_action_allowed(op,co) THEN RAISE EXCEPTION 'Organisation action unavailable' USING ERRCODE='42501';END IF;
    IF TG_OP='UPDATE' AND TG_TABLE_NAME<>'company' AND (a->>'company_id') IS DISTINCT FROM (b->>'company_id') THEN
-    IF NOT app.organisation_action_allowed(op,(b->>'company_id')::uuid) OR NOT app.organisation_action_allowed(op,(a->>'company_id')::uuid) THEN RAISE EXCEPTION 'Organisation destination unavailable' USING ERRCODE='42501';END IF;
+    IF NOT app.organisation_settings_function_allowed(function_key,op,(b->>'company_id')::uuid) OR NOT app.organisation_settings_function_allowed(function_key,op,(a->>'company_id')::uuid) THEN RAISE EXCEPTION 'Organisation destination unavailable' USING ERRCODE='42501';END IF;
    END IF;
    IF TG_TABLE_NAME='company' AND TG_OP='UPDATE' AND (a->>'parent_company_id') IS DISTINCT FROM (b->>'parent_company_id') THEN
     prior_parent:=(b->>'parent_company_id')::uuid;next_parent:=(a->>'parent_company_id')::uuid;
-    IF (prior_parent IS NOT NULL AND NOT app.organisation_action_allowed('edit',prior_parent)) OR NOT app.organisation_action_allowed('edit',next_parent) THEN RAISE EXCEPTION 'Organisation parent destination unavailable' USING ERRCODE='42501';END IF;
+    IF (prior_parent IS NOT NULL AND NOT app.organisation_settings_function_allowed('organization','edit',prior_parent)) OR NOT app.organisation_settings_function_allowed('organization','edit',next_parent) THEN RAISE EXCEPTION 'Organisation parent destination unavailable' USING ERRCODE='42501';END IF;
    END IF;
   END IF;
   IF TG_OP='DELETE' AND TG_TABLE_NAME IN ('department','position','cost_center','business_unit') THEN
@@ -241,11 +306,11 @@ CREATE OR REPLACE FUNCTION app.email_design_admin() RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.app_user u JOIN public.role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
  WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
- AND r.role::text IN ('hr_admin','super_admin') AND r.company_id IS NULL) AND app.settings_action_allowed('view'); $$;
+ AND r.role::text IN ('hr_admin','super_admin') AND r.company_id IS NULL) AND app.organisation_settings_function_allowed('emailTemplates','view',NULL); $$;
 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.entra_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.settings_action_allowed('view') AND EXISTS(SELECT 1 FROM public.app_user u JOIN public.role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
+ SELECT app.organisation_settings_function_allowed('entra','view',NULL) AND EXISTS(SELECT 1 FROM public.app_user u JOIN public.role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
  WHERE u.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND NOT app.login_blocked(u.id)
  AND r.company_id IS NULL AND r.role IN ('super_admin','hr_admin')
  AND NOT app.access_configuration_denied_for(u.tenant_id,u.id));
@@ -256,7 +321,7 @@ CREATE OR REPLACE FUNCTION app.entra_configure(p_org text,p_directory uuid,p_mod
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE old public.entra_connector%ROWTYPE; t uuid:=app.current_tenant_id();
 BEGIN
- IF NOT app.entra_admin() OR NOT app.settings_action_allowed('edit') THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
+ IF NOT app.entra_admin() OR NOT app.organisation_settings_function_allowed('entra','edit',NULL) THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('entra-config:'||t,0));
  SELECT * INTO old FROM public.entra_connector WHERE tenant_id=t FOR UPDATE;
  IF old.revision IS DISTINCT FROM p_expected THEN RAISE EXCEPTION 'entra_conflict'; END IF;
@@ -275,7 +340,7 @@ CREATE OR REPLACE FUNCTION app.entra_bind(p_person uuid,p_user uuid,p_object uui
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE c public.entra_connector%ROWTYPE; u public.app_user%ROWTYPE; iss text;
 BEGIN
- IF NOT app.entra_admin() OR NOT app.settings_action_allowed('edit') THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
+ IF NOT app.entra_admin() OR NOT app.organisation_settings_function_allowed('entra','edit',NULL) THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
  SELECT * INTO c FROM public.entra_connector WHERE tenant_id=app.current_tenant_id() AND enabled FOR SHARE;
  IF NOT FOUND THEN RAISE EXCEPTION 'entra_forbidden'; END IF;
  PERFORM 1 FROM public.person p WHERE p.tenant_id=c.tenant_id AND p.id=p_person AND p.voided_at IS NULL FOR UPDATE;
@@ -297,7 +362,7 @@ $$;
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.entra_retry(p_person uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF NOT app.entra_admin() OR NOT app.settings_action_allowed('edit') THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
+ IF NOT app.entra_admin() OR NOT app.organisation_settings_function_allowed('entra','edit',NULL) THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
  -- Uncertain creates have no safe receipt: do not blindly replay them. IT reconciles upstream first.
  UPDATE public.entra_workforce SET status=CASE WHEN last_status='awaiting-sync' AND submitted_revision=revision THEN 'awaiting-sync' WHEN status='rejected' OR last_location IS NULL THEN 'pending' ELSE 'submitted' END,
  last_location=CASE WHEN status='rejected' THEN NULL ELSE last_location END,next_at=now(),attempts=0
@@ -309,10 +374,10 @@ $$;
 --> statement-breakpoint
 -- Administrative library reads narrow with Settings View; actual assigned tester courses remain independent.
 CREATE POLICY settings_test_case_read ON public.test_case AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING(app.settings_action_allowed('view') OR app.testing_assigned(id));
+ USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR app.testing_assigned(id));
 CREATE POLICY settings_test_version_read ON public.test_case_version AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING(app.settings_action_allowed('view') OR app.testing_assigned(test_case_id));
+ USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR app.testing_assigned(test_case_id));
 CREATE POLICY settings_test_assignment_read ON public.test_assignment AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING(app.settings_action_allowed('view') OR tester_user_id=app.current_user_id());
+ USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR tester_user_id=app.current_user_id());
 CREATE POLICY settings_test_catalogue_read ON public.test_catalogue_update AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING(app.settings_action_allowed('view'));
+ USING(app.organisation_settings_function_allowed('systemTesting','view',NULL));
