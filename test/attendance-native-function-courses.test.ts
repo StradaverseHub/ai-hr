@@ -6,7 +6,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {createAttendanceRule,updateAttendanceRule,copyAttendanceRule,deleteAttendanceRule,setRuleShifts,type AttendanceRuleInput} from '../core/attendance-rule';
 import {createShift,copyShift,updateShift,archiveShift,unarchiveShift,deleteShift,replaceShiftOtWindows,listShiftsForTenant,listShiftsForMaintenance,listShiftOtWindows,shiftActionAccess,type ShiftInput} from '../core/roster';
-import {getScheduleRotation,saveScheduleRotation} from '../core/attendance-rotation';
+import {getScheduleRotation,saveScheduleRotation,rotationActionAccess} from '../core/attendance-rotation';
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand,type DataPermissionState,type DataPermissionPreview} from '../core/data-permissions';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -108,4 +108,19 @@ it('requeues completed Shift initialization after early flush and actual APP can
  let denied=false;for(let cause=failure;cause&&typeof cause==='object';cause=(cause as {cause?:unknown}).cause)if((cause as {code?:string}).code==='42501'&&(cause as {message?:string}).message==='Shift initialization incomplete')denied=true;expect(denied).toBe(true);
  if(!id)throw new Error('The actual Shift source was never constructed');expect(await owner.db.select().from(s.shift).where(eq(s.shift.id,id))).toEqual([]);expect(await owner.db.select().from(s.attendanceRuleShift).where(eq(s.attendanceRuleShift.shiftId,id))).toEqual([]);
  expect((await readDataPermissions(admin)).assignments).toEqual(assignments);
+});
+
+it('matches actual stored/current dated-rotation floors and registry delegation without broadening company-HR',async()=>{
+ const userId=companyHr.userId;if(!userId)throw new Error('The actual company HR actor is missing');
+ expect(await Promise.all((['view','edit'] as const).map(operation=>rotationActionAccess(companyHr,operation)))).toEqual([true,false]);
+ expect(await Promise.all((['view','edit'] as const).map(operation=>rotationActionAccess(admin,operation)))).toEqual([true,true]);
+ for(const actor of [companyHr,admin]){
+  const expected=actor.userId===admin.userId;
+  const [floor]=await owner.withTenant(actor,tx=>tx.execute<{stored:boolean;current:boolean;delegation:boolean}>(sql`select app.module_function_legacy_allowed(${b.tenantId}::uuid,${actor.userId}::uuid,'function.attendancePolicy.rotations.edit',null) as stored,app.module_function_current_legacy_allowed(${b.tenantId}::uuid,${actor.userId}::uuid,'function.attendancePolicy.rotations.edit',null) as "current",app.access_function_delegation_floor('function.attendancePolicy.rotations.edit',null) as delegation`));
+  expect(floor).toEqual({stored:expected,current:expected,delegation:expected});
+ }
+ const [group]=await owner.db.insert(s.attendanceRule).values({tenantId:b.tenantId,name:'Fictional raw rotation owner'}).returning({id:s.attendanceRule.id}),shift=await createShift(admin,shiftInput('Fictional raw rotation shift'));
+ const date=new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+8*86400000).toISOString().slice(0,10);
+ await expect(withTenant(companyHr,tx=>tx.insert(s.attendanceRotation).values({tenantId:b.tenantId,ruleId:group.id,effectiveFrom:date,anchorDate:date,unit:'day',length:1,allowedShiftIds:[shift.id],days:[{kind:'full',shiftId:shift.id}],createdBy:userId}))).rejects.toThrow();
+ expect(await owner.db.select().from(s.attendanceRotation).where(eq(s.attendanceRotation.ruleId,group.id))).toEqual([]);
 });

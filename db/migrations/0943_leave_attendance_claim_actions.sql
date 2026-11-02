@@ -1376,14 +1376,60 @@ CREATE TRIGGER module_leave_approval_assignment_lock BEFORE INSERT OR UPDATE OR 
 CREATE TRIGGER module_leave_approval_assignment_action BEFORE INSERT OR UPDATE OR DELETE ON public.leave_approval_policy FOR EACH ROW EXECUTE FUNCTION app.leave_approval_assignment_guard();
 
 --> statement-breakpoint
+-- Dated rotations retain their original group-only write ceiling, separately from ordinary
+-- ANY-HR Schedule/Shift maintenance. Parent function caps are accepted only for registry floor calls.
+CREATE FUNCTION app.attendance_rotation_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT co IS NULL AND cap IN ('function.attendancePolicy.rotations.view','function.attendancePolicy.rotations.edit','function.attendancePolicy.schedule.view','function.attendancePolicy.schedule.edit')
+ AND app.module_action_legacy_allowed(t,u,'attendance_configuration.view',NULL)
+ AND(split_part(cap,'.',4)='view' OR EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND(r.role::text='super_admin' OR r.role::text='hr_admin' AND r.company_id IS NULL)));
+$$;
+CREATE FUNCTION app.attendance_rotation_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.attendance_rotation_native_allowed(t,u,cap,co)
+ AND(split_part(cap,'.',4)='view' OR app.is_group_admin());
+$$;
+REVOKE ALL ON FUNCTION app.attendance_rotation_native_allowed(uuid,uuid,text,uuid),app.attendance_rotation_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','edit'] LOOP
+  PERFORM app.register_function_action('attendancePolicy.rotations',operation,'tenant','function.attendancePolicy.schedule.'||operation,'app.attendance_rotation_current_native_allowed','{"moduleKey":"attendance","labelKey":"admin.rotation.title","kind":"native_acl","course":"administrative","screenKey":"attendancePolicy","href":"/admin/attendance/schedule","employeeBearing":false}');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.attendance_rotation_allowed(p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.attendance_rotation_current_native_allowed(app.current_tenant_id(),app.current_user_id(),'function.attendancePolicy.rotations.'||p_operation,NULL)
+ AND app.module_function_allowed('attendancePolicy.schedule','view',NULL) AND app.module_function_allowed('attendancePolicy.schedule',p_operation,NULL)
+ AND app.function_action_allowed('attendancePolicy.rotations','view',NULL) AND app.function_action_allowed('attendancePolicy.rotations',p_operation,NULL);
+$$;
+REVOKE ALL ON FUNCTION app.attendance_rotation_allowed(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.attendance_rotation_allowed(text) TO ai_hr_app;
+CREATE FUNCTION app.attendance_rotation_action_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.is_group_admin() OR NOT EXISTS(SELECT 1 FROM public.attendance_rule parent WHERE parent.id=NEW.rule_id AND parent.tenant_id=NEW.tenant_id AND NOT parent.is_default)
+ THEN RAISE EXCEPTION 'Schedule rotation action unavailable' USING ERRCODE='42501';END IF;
+ -- A real new Schedule copy can initialize its dated versions under Group Add, with its original
+ -- stronger rotation-role floor. Existing groups always consume exact Rotation Edit.
+ IF EXISTS(SELECT 1 FROM app.module_attendance_rule_birth born WHERE born.xact_id=pg_current_xact_id() AND born.tenant_id=NEW.tenant_id AND born.user_id=app.current_user_id() AND born.rule_id=NEW.rule_id)
+ AND app.module_function_allowed('attendancePolicy.schedule','add',NULL) THEN RETURN NEW;END IF;
+ IF NOT app.attendance_rotation_allowed('edit') THEN RAISE EXCEPTION 'Schedule rotation action unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.attendance_rotation_action_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_rotation_access BEFORE INSERT ON public.attendance_rotation FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+CREATE TRIGGER aaa_module_rotation_action BEFORE INSERT ON public.attendance_rotation FOR EACH ROW EXECUTE FUNCTION app.attendance_rotation_action_guard();
+
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
+ SELECT (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_native_allowed(t,u,cap,co)) OR app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
+ SELECT (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_current_native_allowed(t,u,cap,co)) OR app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 

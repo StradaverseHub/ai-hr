@@ -10,8 +10,8 @@ vi.mock('next/navigation',()=>({useRouter:()=>router,usePathname:()=>'/admin/att
 vi.mock('../app/admin/attendance/schedule/rotation-actions',()=>({saveRotationAction:vi.fn()}));
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.mocked(saveRotationAction).mockReset();router.push.mockReset();});
 const date=new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`)+86_400_000).toISOString().slice(0,10);
-function mount(other=false){return render(<NextIntlClientProvider locale="en" messages={messages}><a href="/admin/attendance/settings">Back to settings</a><ScheduleRotationEditor
-  ruleId="group" revision="revision" minimumDate={date} editing
+function mount(other=false,editing=true){return render(<NextIntlClientProvider locale="en" messages={messages}><a href="/admin/attendance/settings">Back to settings</a><ScheduleRotationEditor
+  ruleId="group" revision="revision" minimumDate={date} editing={editing}
   initial={{unit:'day',length:2,effectiveFrom:date,anchorDate:date,days:[{kind:'full',shiftId:'a'},{kind:'rest',shiftId:null}]}}
   shifts={['a','b'].map(id=>({id,name:id==='a'?'Morning':'Night',code:id,startTime:'08:00',endTime:'17:00',halfEnd:'12:30',fullMinutes:480,halfMinutes:240,archived:false,available:true,selected:id==='a'}))}/>{other&&<form id="other-form" method="post"><input name="other" aria-label="Other form" defaultValue="Original"/></form>}</NextIntlClientProvider>);}
 describe('integrated allowed-shift and cycle editor',()=>{
@@ -110,4 +110,15 @@ describe('integrated allowed-shift and cycle editor',()=>{
     expect(confirm).toHaveBeenCalled();expect(router.push).not.toHaveBeenCalled();
   });
 
+});
+
+
+it('renders the actual rotation as references without mutation controls when Edit is absent',()=>{
+ mount(false,false);
+ const dates=screen.getAllByDisplayValue(date);expect(dates).toHaveLength(2);for(const input of dates)expect(input.matches(':disabled')).toBe(true);
+ expect(screen.queryByRole('button',{name:messages.admin.rotation.save})).toBeNull();
+ const mutable=Array.from(document.querySelectorAll('input:not([type="hidden"]),select,textarea')).filter(control=>!control.matches(':disabled'));
+ // The read-only picker may retain its search; it cannot change any saved shift/cycle field.
+ expect(mutable.every(control=>control.getAttribute('type')==='search')).toBe(true);
+ expect(vi.mocked(saveRotationAction)).not.toHaveBeenCalled();
 });

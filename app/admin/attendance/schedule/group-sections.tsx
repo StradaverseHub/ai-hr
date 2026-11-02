@@ -36,7 +36,7 @@ import {
 } from './actions';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { ScheduleRotationEditor } from '@/components/schedule-rotation-editor';
-import { getScheduleRotation, workingShiftSchedule } from '@/packs/attendance/service';
+import { getScheduleRotation, workingShiftSchedule,rotationActionAccess } from '@/packs/attendance/service';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import {rotationVersionOn,type RotationCycle} from '@/core/week-pattern';
 
@@ -167,7 +167,9 @@ export async function ScheduleGroupSections({
   const trs = await getTranslations('roster');
 
   const rotationT = await getTranslations('admin.rotation');
+  const [rotationView,rotationEdit]=await Promise.all((['view','edit'] as const).map(operation=>rotationActionAccess(s,operation)));
   const editing = mode === 'edit';
+  const editingRotation=editing&&rotationEdit;
   const tb=await getTranslations('boardSchedule');
   const controls=await scheduleGroupControls(s,rule.id);
   const pendingException=controls.revisions.reduce<typeof controls.revisions[number]|null>((a,b)=>!a||b.effectiveFrom>a.effectiveFrom?b:a,null);
@@ -327,17 +329,17 @@ export async function ScheduleGroupSections({
     ? new Date(Date.parse(`${latest.effectiveFrom}T00:00:00Z`)+86_400_000).toISOString().slice(0,10) : tomorrow;
   const monday = new Date(Date.parse(`${minimumDate}T00:00:00Z`));
   monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
-  const initialRotation: RotationCycle = latest ? { effectiveFrom: editing ? minimumDate : latest.effectiveFrom,
+  const initialRotation: RotationCycle = latest ? { effectiveFrom: editingRotation ? minimumDate : latest.effectiveFrom,
     anchorDate: latest.anchorDate, unit: latest.unit, length: latest.length, days: latest.days }
     : { effectiveFrom: minimumDate, anchorDate: monday.toISOString().slice(0,10), unit:'week',length:1,
       days:ISO_DAYS.map(d=>({kind:kinds[d],shiftId:kinds[d]==='full'||kinds[d]==='half'?groupShifts.find(sh=>!sh.archivedAt)?.id??null:null})) };
   const workingDay = <>
     {controlPanel('duty')}
     <ErrorBanner message={bannerFor('workingDay')} />
-    <Card><SectionHeader title={SECTION_LABEL.workingDay} subtitle={rotationT('title')}/>
+    {rotationView && <Card><SectionHeader title={SECTION_LABEL.workingDay} subtitle={rotationT('title')}/>
       {rule.isDefault ? <>{editing&&<AttendanceSettingsNavigation/>}<p className="p-4 text-sm text-muted-foreground">{rotationT('standard')}</p></>
       : <ScheduleRotationEditor ruleId={rule.id} revision={rotationState.revision}
-          minimumDate={minimumDate} initial={initialRotation} editing={editing}
+          minimumDate={minimumDate} initial={initialRotation} editing={editingRotation}
           shifts={shifts.map(sh=>{const input={type:sh.type,start:sh.startTime,end:sh.endTime,crosses:sh.crossesMidnight,
             breakMinutes:sh.breakMinutes,roundingMinutes:sh.normalHoursRoundingMinutes,normalMinutesOverride:sh.normalMinutesOverride};
             const full=workingShiftSchedule(input,'full'),half=workingShiftSchedule(input,'half');
@@ -349,7 +351,7 @@ export async function ScheduleGroupSections({
       {latest && <details className="border-t border-border px-4 py-3 text-sm"><summary>{rotationT('versions')}</summary>
         <ul className="mt-2 space-y-1">{rotationState.versions.map(v=><li key={v.id}>{v.effectiveFrom} · {v.unit==='week'?rotationT('week'):rotationT('day')} × {v.length} · {rotationT('anchor')}: {v.anchorDate}</li>)}</ul>
       </details>}
-    </Card>
+    </Card>}
   </>;
 
   /**
