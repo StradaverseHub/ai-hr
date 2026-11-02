@@ -138,10 +138,10 @@ const continuations=new Map<string,string>();
 // Wire evidence for a production turn that errors (run 41377392382: 57 provider_error turns, deterministic per turn).
 // The adapter reports every failure as one generic error, so each turn's OpenRouter calls are recorded here: path,
 // status and, for a failed response, the first 300 characters of its error body. Fictional data only; test-only.
-const wire=new AsyncLocalStorage<string[]>();
+const wireLog=new AsyncLocalStorage<string[]>();
 if(KEY&&MODEL){const realFetch=globalThis.fetch;
  globalThis.fetch=(async(input:Parameters<typeof fetch>[0],init?:Parameters<typeof fetch>[1])=>{
-  const events=wire.getStore(),url=typeof input==='string'?input:input instanceof URL?input.href:input.url,ours=events&&url.includes('openrouter.ai');
+  const events=wireLog.getStore(),url=typeof input==='string'?input:input instanceof URL?input.href:input.url,ours=events&&url.includes('openrouter.ai');
   try{const response=await realFetch(input,init);
    if(ours){let note=new URL(url).pathname+' '+response.status;if(!response.ok){try{note+=' '+(await response.clone().text()).slice(0,300);}catch{}}events.push(note);}
    return response;}
@@ -151,8 +151,8 @@ async function produced(ctx:SessionContext,question:string,companyId:string,conv
  if(calls>=MAX_CALLS||spentUsd>=BUDGET)throw Error('evaluation_budget_exhausted');
  const route=await conversationRoute(ctx);if(route.route!=='harness')throw Error('conversation_switch_closed');
  const previous=continuations.get(conversationId),events:string[]=[];
- const result=await wire.run(events,()=>runConversationTurn(ctx,route,{question,companyId,locale:'en',...(previous?{continuation:previous}:{})}))
-  .catch(error=>{throw Object.assign(error as Error,{wire:events.slice(-6)});});
+ const result=await wireLog.run(events,()=>runConversationTurn(ctx,route,{question,companyId,locale:'en',...(previous?{continuation:previous}:{})}))
+  .catch((error:unknown)=>{throw Object.assign(error as Error,{wire:events.slice(-6)});});
  continuations.set(conversationId,result.continuation);calls+=result.trace.budgets.steps;spentUsd+=result.trace.budgets.spendUsd;
  return result;
 }
