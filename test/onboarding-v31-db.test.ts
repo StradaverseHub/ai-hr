@@ -9,7 +9,7 @@ import { v9OwnTask, onboardingSetup, onboardingContext, onboardingList, onboardi
 import { appendEvent, actorOf } from '../db/events';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { dayDate,decide as canonicalDecide,assignApproval as canonicalAssignApproval,cancelCase as canonicalCancelCase } from '../lib/onboarding-model';
+import { dayDate,decide as canonicalDecide,assignApproval as canonicalAssignApproval,cancelCase as canonicalCancelCase,addItem as canonicalAddItem,removeItem as canonicalRemoveItem } from '../lib/onboarding-model';
 import { onboardingConfigSchema } from '../lib/onboarding-validation';
 describe('V3.1 onboarding database and authorization', () => {
     let b: Base, admin: SessionContext, tech: SessionContext, other: SessionContext;
@@ -371,6 +371,96 @@ describe('V3.1 onboarding database and authorization', () => {
         for(const rows of Object.values(await read()))expect(rows.length).toBeGreaterThan(0);
         await owner.client`update data_permission_profile set enabled=false where id=${scopeId}`;
         for(const rows of Object.values(await read()))expect(rows).toEqual([]);
+    });
+    it('adds an actual hidden exception with native routing fallback, shared approvers, requester approval and manual steps',async()=>{
+        const context=await onboardingContext(admin),config=structuredClone(context.config);
+        config.groups.push({id:'empty-routing',name:'Unavailable routing group',members:[],limit:0},{id:'fallback-routing',name:'Available routing group',members:[other.userId!],limit:0});
+        config.routings.push({id:'exception-routing',name:'Exception routing',rows:[{id:'specific',rules:{company:[b.companyId]},group:'empty-routing'},{id:'fallback',rules:{},group:'fallback-routing'}]});
+        config.workflows.push({id:'exception-native',name:'Native exception approval',mode:'par',steps:[{id:'requester',label:'Requester',type:'person',target:tech.userId!,method:'manual'},{id:'route-one',label:'First routed review',type:'routing',target:'exception-routing',method:'rr'},{id:'route-two',label:'Shared routed review',type:'routing',target:'exception-routing',method:'rr'},{id:'manual',label:'Manual facility review',type:'group',target:'facility',method:'manual'},{id:'missing-person',label:'Missing person review',type:'person',target:randomUUID(),method:'manual'}]});
+        config.catalogue.push({id:'exception-native',name:'Fictional exception access',type:'system',active:true,rules:{},workflow:'exception-native',team:'group-tech',card:false});
+        await onboardingSaveConfig(admin,context.revision,config);const row=await prepared();
+        const profile=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${profile},${b.tenantId},${'Exception scope '+profile})`;
+        await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${profile},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
+        await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${profile}`;await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${tech.userId!},${profile},${admin.userId!})`;
+        expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)))).toEqual([]);
+        const task=(await onboardingTasks(tech)).find(task=>task.caseId===row.case.id&&task.kind==='exceptionAdd')!;expect(task).toMatchObject({bounded:true,canExecute:true});
+        const review=await onboardingBoundedTask(tech,task.id);expect(review.catalogue?.map(item=>item.id)).toEqual(['exception-native']);expect(JSON.stringify(review)).not.toContain('PRIVATE-IC');expect(JSON.stringify(review)).not.toContain('Prepare welcome pack');
+        await expect(onboardingBoundedTask(other,task.id)).rejects.toThrow();
+        await expect(onboardingCommand(other,row.case.id,row.revision,{type:'addItem',catalogueId:'exception-native',reason:'Unauthorised',approval:true,confirmedBy:null})).rejects.toThrow();
+        const command={type:'addItem' as const,catalogueId:'exception-native',reason:'Reviewed fictional exception 👩🏽‍💻 தமிழ்',approval:true,confirmedBy:other.userId!};
+        await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_exception_update(${row.case.id}::uuid,${row.revision},'addItem',${JSON.stringify({catalogueId:command.catalogueId,reason:command.reason,approval:true,confirmedBy:other.userId!})}::jsonb)`))).rejects.toThrow();
+        const [before]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)),native=await onboardingContext(tech);
+        const loads=await withTenant(tech,tx=>tx.execute<{user_id:string;pending_approvals:string;lifetime_approvals:string}>(sql`select * from app.onboarding_assignment_loads()`));
+        await onboardingCommand(tech,row.case.id,row.revision,command);
+        const [after]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)),expected=structuredClone(before!.data),added=after!.data.requisitions[0]!.items.at(-1)!,events=after!.data.history.slice(before!.data.history.length),ids=[added.id,...events.map(event=>event.id)];
+        canonicalAddItem(native.config,expected,expected.requisitions[0]!,native.config.catalogue.find(item=>item.id===command.catalogueId)!,'exception',false,command.reason,command.approval,command.confirmedBy,native.actor,{now:events[0]!.at,today:todayInKualaLumpur(),id:()=>ids.shift()!,nextNumber:()=>'',users:native.directory.map(user=>user.id),userNames:Object.fromEntries(native.directory.map(user=>[user.id,user.name])),leave:native.availability,taskLoads:native.loads,lastTaskAssignment:{},pendingApprovals:Object.fromEntries(loads.map(load=>[load.user_id,Number(load.pending_approvals)])),lifetimeApprovals:Object.fromEntries(loads.map(load=>[load.user_id,Number(load.lifetime_approvals)]))});
+        expect((await owner.client`select app.onboarding_native_case_size(${JSON.stringify(after!.data)}::text::jsonb)::int as size`)[0].size).toBe(JSON.stringify(after!.data).length);
+        expect(after!.data).toEqual(expected);expect(ids).toEqual([]);expect(added.steps.map(step=>[step.user,step.status,step.manual,step.viaDefault])).toEqual([[tech.userId,'approved',false,null],[other.userId,'pending',false,'Unavailable routing group'],[other.userId,'pending',false,'Unavailable routing group'],[null,'pending',true,null],[null,'unresolved',false,null]]);
+        expect(added.confirmedByName).toBe('User '+other.userId!.slice(0,8));
+        expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingPrivate).where(eq(schema.lcOnboardingPrivate.caseId,row.case.id)))).toEqual([]);
+        await expect(onboardingCommand(tech,row.case.id,after!.revision,{type:'addItem',catalogueId:command.catalogueId,reason:'Duplicate',approval:false,confirmedBy:null})).rejects.toThrow('already requested');
+        await expect(onboardingCommand(tech,row.case.id,after!.revision,{type:'removeItem',itemId:row.case.requisitions[0]!.items[0]!.id})).rejects.toThrow();
+        const removeReview=(await onboardingTasks(tech)).find(task=>task.kind==='exceptionRemove'&&task.itemIds?.includes(added.id))!;expect((await onboardingBoundedTask(tech,removeReview.id)).items).toEqual([{id:added.id,name:added.name}]);
+        const removedExpected=structuredClone(after!.data);canonicalRemoveItem(native.config,removedExpected,removedExpected.requisitions[0]!.items.at(-1)!,native.actor,{now:'REPLACED',today:todayInKualaLumpur(),id:()=> 'REPLACED',nextNumber:()=>'',users:[],leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{}});
+        await onboardingCommand(tech,row.case.id,after!.revision,{type:'removeItem',itemId:added.id});const [removed]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id));removedExpected.history.at(-1)!.id=removed!.data.history.at(-1)!.id;removedExpected.history.at(-1)!.at=removed!.data.history.at(-1)!.at;
+        expect(removed!.data).toEqual(removedExpected);expect((await onboardingTasks(tech)).some(task=>task.id===removeReview.id)).toBe(false);
+    });
+    it('uses the real V9 projection and actual workload limits for a newly added exception',async()=>{
+        const row=await prepared();await(await import('../packs/lifecycle/service')).v9Setup(admin);
+        const context=await onboardingContext(admin),config=structuredClone(context.config);config.groups.find(group=>group.id==='group-tech')!.members=[tech.userId!,other.userId!];config.groups.find(group=>group.id==='group-tech')!.limit=1;config.catalogue.push({id:'v9-exception',name:'Fictional V9 provision',type:'system',active:true,rules:{},workflow:null,team:'group-tech',card:false});await onboardingSaveConfig(admin,context.revision,config);
+        const [before]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)),native=await onboardingContext(tech);expect(native.config.v9ChecklistRevision).toBeGreaterThan(0);expect(native.loads[tech.userId!]).toBeGreaterThanOrEqual(1);
+        await onboardingCommand(tech,row.case.id,before!.revision,{type:'addItem',catalogueId:'v9-exception',reason:'Actual V9 assignment',approval:false,confirmedBy:null});
+        const [after]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)),target=after!.data.requisitions[0]!.items.at(-1)!,events=after!.data.history.slice(before!.data.history.length),ids=[target.id,...events.map(event=>event.id)],expected=structuredClone(before!.data);
+        canonicalAddItem(native.config,expected,expected.requisitions[0]!,native.config.catalogue.find(item=>item.id==='v9-exception')!,'exception',false,'Actual V9 assignment',false,null,native.actor,{now:events[0]!.at,today:todayInKualaLumpur(),id:()=>ids.shift()!,nextNumber:()=>'',users:native.directory.map(user=>user.id),userNames:Object.fromEntries(native.directory.map(user=>[user.id,user.name])),leave:native.availability,taskLoads:structuredClone(native.loads),lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{}});
+        expect(after!.data).toEqual(expected);expect(ids).toEqual([]);expect(target).toMatchObject({fulfilmentMethod:'rr',dueDay:-1,claim:other.userId,assignmentFailure:null});expect(events.map(event=>event.action)).toEqual(['item.assigned','item.added']);
+    });
+    it('keeps only actual own or current team exception courses after group and profile changes',async()=>{
+        const context=await onboardingContext(admin),config=structuredClone(context.config);config.groups.find(group=>group.id==='group-tech')!.members.push(other.userId!);config.catalogue.push({id:'own-exception',name:'Fictional retained access',type:'system',active:true,rules:{},workflow:null,team:'group-tech',card:false});
+        await onboardingSaveConfig(admin,context.revision,config);const row=await prepared();await onboardingCommand(other,row.case.id,row.revision,{type:'addItem',catalogueId:'own-exception',reason:'Own approved source',approval:false,confirmedBy:null});
+        let stored=(await onboardingList(admin))[0]!,item=stored.case.requisitions[0]!.items.at(-1)!;
+        const current=await onboardingContext(admin),changed=structuredClone(current.config);changed.groups.find(group=>group.id==='group-tech')!.members=[tech.userId!];await onboardingSaveConfig(admin,current.revision,changed);
+        const ownTask=(await onboardingTasks(other)).find(task=>task.kind==='exceptionRemove'&&task.itemIds?.includes(item.id))!;expect(ownTask).toMatchObject({assigned:true,bounded:true});
+        expect(await withTenant(other,tx=>tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)))).toEqual([]);
+        const retired=await onboardingContext(admin),retiredConfig=structuredClone(retired.config);retiredConfig.catalogue.find(catalogue=>catalogue.id==='own-exception')!.active=false;await onboardingSaveConfig(admin,retired.revision,retiredConfig,{},true);
+        stored=(await onboardingList(admin))[0]!;item=stored.case.requisitions[0]!.items.find(candidate=>candidate.id===item.id)!;expect(item.retiredFlag).toBe(true);
+        const keep=(await onboardingTasks(tech)).find(task=>task.kind==='keepProviding'&&task.itemIds?.includes(item.id))!;expect((await onboardingBoundedTask(tech,keep.id)).items).toEqual([{id:item.id,name:item.name}]);
+        await expect(onboardingCommand(other,stored.case.id,stored.revision,{type:'keepProviding',itemId:item.id})).rejects.toThrow();
+        await onboardingCommand(tech,stored.case.id,stored.revision,{type:'keepProviding',itemId:item.id});stored=(await onboardingList(admin))[0]!;
+        expect(stored.case.requisitions[0]!.items.find(candidate=>candidate.id===item.id)?.retiredFlag).toBe(false);expect(stored.case.history.at(-1)).toMatchObject({action:'item.kept',detail:item.name,by:tech.userId});
+        await onboardingCommand(other,stored.case.id,stored.revision,{type:'removeItem',itemId:item.id});expect((await onboardingList(admin))[0]!.case.requisitions[0]!.items.find(candidate=>candidate.id===item.id)?.removed).toBe(true);
+    });
+    it('keeps the HR from-case removal course inside its actual data profile',async()=>{
+        const before=await onboardingContext(admin),config=structuredClone(before.config);config.access.onboarding.push(tech.userId!);config.catalogue.push({id:'from-case-exception',name:'Fictional case extra',type:'system',active:true,rules:{},workflow:null,team:'group-tech',card:false},{id:'hr-positive-extra',name:'Fictional HR case extra',type:'system',active:true,rules:{},workflow:null,team:'group-tech',card:false});await onboardingSaveConfig(admin,before.revision,config);
+        let row=await prepared();await onboardingCommand(tech,row.case.id,row.revision,{type:'save',patch:{extras:[{catalogueId:'from-case-exception',reason:'Actual case source',approval:false},{catalogueId:'hr-positive-extra',reason:'Actual HR source',approval:false}]}});row=(await onboardingList(admin))[0]!;const target=row.case.requisitions[0]!.items.find(item=>item.catalogueId==='from-case-exception')!;expect(target).toMatchObject({fromCase:true,addedBy:tech.userId});
+        const positive=row.case.requisitions[0]!.items.find(item=>item.catalogueId==='hr-positive-extra')!,review=(await onboardingTasks(admin)).find(task=>task.kind==='exceptionRemove'&&task.itemIds?.includes(positive.id))!;expect((await onboardingBoundedTask(admin,review.id)).items).toEqual([{id:positive.id,name:positive.name}]);
+        await expect(withTenant(admin,async tx=>{
+            const [effect]=await tx.execute<{function_key:string;native_branch:string}>(sql`select * from app.onboarding_exception_update(${row.case.id}::uuid,${row.revision},'removeItem',${JSON.stringify({itemId:positive.id})}::jsonb)`);expect(effect).toMatchObject({function_key:'lifecycle.hr.exceptionRemovals',native_branch:'administrative-onboarding-exception-remove'});
+            await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'onboarding-case',aggregateId:row.case.id,eventType:'onboarding.removeItem',actor:actorOf(admin),payload:{caseId:row.case.id,companyId:b.companyId,functionKey:'lifecycle.shared.exceptionRemovals',nativeBranch:'assigned-onboarding-exception-remove'}});
+        })).rejects.toThrow();
+        expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
+        await onboardingCommand(admin,row.case.id,row.revision,{type:'removeItem',itemId:positive.id});row=(await onboardingList(admin))[0]!;expect(row.case.extras.map(item=>item.catalogueId)).toEqual(['from-case-exception']);
+        const audit=await owner.client`select payload from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${row.case.id}::uuid and event_type='onboarding.removeItem'and payload->>'functionKey'='lifecycle.hr.exceptionRemovals'`;expect(audit).toHaveLength(1);expect(audit[0].payload).toMatchObject({functionKey:'lifecycle.hr.exceptionRemovals',nativeBranch:'administrative-onboarding-exception-remove'});
+        const profile=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${profile},${b.tenantId},${'HR exception scope '+profile})`;
+        await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${profile},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
+        await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${profile}`;await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${admin.userId!},${profile},${admin.userId!})`;
+        await expect(onboardingCommand(admin,row.case.id,row.revision,{type:'removeItem',itemId:target.id})).rejects.toThrow();
+        await expect(onboardingCommand(other,row.case.id,row.revision,{type:'removeItem',itemId:target.id})).rejects.toThrow();
+        const [unchanged]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id));expect(unchanged!.revision).toBe(row.revision);
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'removeItem',itemId:target.id});const [removed]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id));expect(removed!.data.extras).toEqual([]);expect(removed!.data.requisitions[0]!.items.find(item=>item.id===target.id)?.removed).toBe(true);
+    });
+    it('invalidates an exception effect after actual native control revoke and restore, then accepts a new command',async()=>{
+        const context=await onboardingContext(admin),config=structuredClone(context.config);config.groups.find(group=>group.id==='group-tech')!.members.push(admin.userId!);config.catalogue.push({id:'epoch-exception',name:'Fictional control-stamp access',type:'system',active:true,rules:{},workflow:null,team:'group-tech',card:false});await onboardingSaveConfig(admin,context.revision,config);const row=await prepared();
+        const [before]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)),[baseline]=await owner.db.select().from(schema.lcOnboardingConfig).where(eq(schema.lcOnboardingConfig.tenantId,b.tenantId));
+        await expect(withTenant(admin,async tx=>{
+            const [effect]=await tx.execute<{function_key:string;native_branch:string}>(sql`select * from app.onboarding_exception_update(${row.case.id}::uuid,${row.revision},'addItem','{"catalogueId":"epoch-exception","reason":"Actual admitted source","approval":false,"confirmedBy":null}'::jsonb)`);
+            await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'onboarding-case',aggregateId:row.case.id,eventType:'onboarding.addItem',actor:actorOf(admin),payload:{caseId:row.case.id,companyId:b.companyId,functionKey:effect!.function_key,nativeBranch:effect!.native_branch}});
+            await tx.execute(sql`update lc_onboarding_config set data=jsonb_set(data,'{groups}','[]'::jsonb)where tenant_id=${b.tenantId}::uuid`);
+            await tx.execute(sql`update lc_onboarding_config set data=${JSON.stringify(baseline!.data)}::jsonb where tenant_id=${b.tenantId}::uuid`);
+        })).rejects.toThrow();
+        expect(await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id))).toEqual([before]);
+        await expect(withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_exception_update(${row.case.id}::uuid,${row.revision},'addItem','{"catalogueId":"epoch-exception","reason":"Invalid source","approval":false,"confirmedBy":null,"owner":"forged"}'::jsonb)`))).rejects.toThrow();
+        await expect(withTenant(admin,tx=>tx.execute(sql`select app.onboarding_exception_routing('{}'::jsonb,'{}'::jsonb,'{}'::jsonb)`))).rejects.toThrow();
+        await onboardingCommand(admin,row.case.id,row.revision,{type:'addItem',catalogueId:'epoch-exception',reason:'Fresh admitted source',approval:false,confirmedBy:null});expect((await onboardingList(admin))[0]!.case.requisitions[0]!.items.at(-1)).toMatchObject({catalogueId:'epoch-exception',addedBy:admin.userId});
     });
     it('retains native completion audit witnesses across a real savepoint',async()=>{
         const row=await prepared();expect(row.case.tasks.find(task=>task.id==='welcome')?.assignee).toBe(tech.userId);

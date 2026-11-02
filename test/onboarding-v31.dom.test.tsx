@@ -68,6 +68,23 @@ describe('V3.1 localized task controls', () => {
         expect(mocks.load).not.toHaveBeenCalled();fireEvent.change(screen.getByRole('combobox',{name:translation('en','Choose an approver')}),{target:{value:'candidate'}});fireEvent.click(screen.getByRole('button',{name:translation('en','Choose an approver')}));
         await waitFor(()=>expect(mocks.change).toHaveBeenCalledWith('case',7,{type:'assignApproval',itemId:'item',stepId:'step',user:'candidate'}));
     });
+    it.each(['en','ms','zh','ta','th','vi'])('adds a bounded native exception with current choices and mandatory approval (%s)',async locale=>{
+        const bounded={...task,id:'case:exceptionAdd:',kind:'exceptionAdd' as const,taskId:undefined,title:'Add item',bounded:true,canExecute:true};
+        mocks.bounded.mockResolvedValue({error:null,detail:{task:bounded,body:'',notes:[],requestNumber:'IT-REQ-1',catalogue:[{id:'catalogue',name:'Fictional eligible access',mandatory:true,workflowName:'Native review'}],candidates:[{id:'confirmer',name:'User 12345678'}]}});
+        render(<NextIntlClientProvider locale={locale}messages={messages(locale)}timeZone="Asia/Kuala_Lumpur"><TasksView items={[bounded]}existing={[]}/></NextIntlClientProvider>);
+        fireEvent.click(screen.getByRole('button',{name:translation(locale,'Review')}));await waitFor(()=>expect(screen.getByRole('option',{name:'Fictional eligible access'})).toBeVisible());
+        expect(mocks.load).not.toHaveBeenCalled();fireEvent.change(screen.getByRole('combobox',{name:translation(locale,'Catalogue item')}),{target:{value:'catalogue'}});
+        expect(screen.getByRole('checkbox')).toBeChecked();expect(screen.getByRole('checkbox')).toBeDisabled();
+        fireEvent.change(screen.getByRole('textbox',{name:translation(locale,'Reason')}),{target:{value:'Reviewed fictional exception'}});fireEvent.change(screen.getByRole('combobox',{name:translation(locale,'Confirmed by')}),{target:{value:'confirmer'}});
+        fireEvent.click(screen.getByRole('button',{name:translation(locale,'Add item')}));await waitFor(()=>expect(mocks.change).toHaveBeenCalledWith('case',7,{type:'addItem',catalogueId:'catalogue',reason:'Reviewed fictional exception',approval:true,confirmedBy:'confirmer'}));expect(mocks.refresh).toHaveBeenCalled();
+    });
+    it.each([['exceptionRemove','Remove item','removeItem'],['keepProviding','Keep providing','keepProviding']]as const)('reviews a bounded %s and honors its View-only execution ceiling',async(kind,label,type)=>{
+        const bounded={...task,id:'case:'+kind+':item',kind,itemIds:['item'],taskId:undefined,title:label,bounded:true,canExecute:false};
+        mocks.bounded.mockResolvedValue({error:null,detail:{task:bounded,body:'Reviewed reason',notes:[],requestNumber:'IT-REQ-1',items:[{id:'item',name:'Fictional selected access'}]}});
+        render(<NextIntlClientProvider locale="en"messages={messages('en')}timeZone="Asia/Kuala_Lumpur"><TasksView items={[bounded]}existing={[]}/></NextIntlClientProvider>);
+        fireEvent.click(screen.getByRole('button',{name:translation('en','Review')}));await waitFor(()=>expect(screen.getByText('Fictional selected access')).toBeVisible());expect(mocks.load).not.toHaveBeenCalled();expect(screen.getByRole('button',{name:translation('en',label)})).toBeDisabled();expect(mocks.change).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button',{name:translation('en','Close task details')}));mocks.bounded.mockResolvedValue({error:null,detail:{task:{...bounded,canExecute:true},body:'Reviewed reason',notes:[],requestNumber:'IT-REQ-1',items:[{id:'item',name:'Fictional selected access'}]}});fireEvent.click(screen.getByRole('button',{name:translation('en','Review')}));await waitFor(()=>expect(screen.getByRole('button',{name:translation('en',label)})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:translation('en',label)}));await waitFor(()=>expect(mocks.change).toHaveBeenCalledWith('case',7,{type,itemId:'item'}));
+    });
     it('autosaves checklist tasks without unrelated configuration writes and sequences revisions', async () => {
         const config = defaultConfig('owner');
         config.checklists[0]!.tasks = [{ id: 'welcome', name: 'Welcome', by: 'group', group: 'people-gbs', method: 'manual', opens: null, due: 1, gate: false }];

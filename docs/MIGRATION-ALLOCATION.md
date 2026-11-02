@@ -1094,3 +1094,18 @@ any tests because a SELECT policy cast the newly introduced `claim_status.draft`
 the migration transaction; the comparison now uses `status::text`, preserving exactly the same rule.
 The independent compiler completed with only the actor-ID fixture error corrected in03d510.
 No DB pass or whole-compiler pass is claimed for b816; failed/affected recovery remains required.
+
+### Finite Lifecycle exception sources (unapplied)
+
+The native exception owner defines four exact View/Execute cells for three commands: additions,
+shared removals, retained provision and administrative HR removals. The last requires Lifecycle View
+and Edit parents plus the actual HR/data course. Native own-author/group eligibility selects shared
+removal before permission resolution; denial of that shared purpose never falls through to HR.
+The native command owner derives routing specificity/fallback, shared approver reuse, requester
+approval and real V9 equipment assignment from current sources under the canonical owner locks.
+The exact chosen function/native branch is recorded in the permanent audit and private admission;
+a shared-branch audit cannot close an HR-branch effect. The native Case JSON size budget is retained.
+Bounded task reviews expose only the selected workflow and its actual eligible choices. No raw case
+or Personnel read is added. These sources require hosted native/DOM/whole-compiler qualification;
+supported-cell denial proofs still require genuine reviewed component publication. Full family
+publication and the remaining raw/native boundaries remain unfinished.
