@@ -49,6 +49,7 @@ jobs:
       - name: Check aligned SDK packages and widget entry
         working-directory: source/mobile
         run: |
+          ./node_modules/.bin/expo install @types/react --dev
           npm exec --offline -- expo install --check
           npm run eas-build-post-install
       - name: Capture audit without hiding its advisory exit code
