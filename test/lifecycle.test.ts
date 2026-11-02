@@ -14,7 +14,7 @@ import { hireEmployee,setEmploymentBlacklist } from '../core/org';
 import { ModuleNotEnabledError } from '../core/entitlements';
 import {
   LifecycleError, addComment, advanceAssetRequest, assetHistory, bulkAssetStatus, cancelAssetRequest, cancelCase, cancelRequisition, createAssetRequest,
-  createOffboardingCase, createOnboardingCase, createStandaloneRequisition, decideAssetRequest, decideRequisition, ensureCatalogue, getAsset,
+  createOffboardingCase, createOnboardingCase, createStandaloneRequisition, decideAssetRequest, decideRequisition, ensureCatalogue, getAssetRequest, getAsset,
   getCase, getRequisition, listAssetRequests, listAssets, listCases, listRequisitions, exportLifecycleCsv, listMyCompanies, listMyEmployerCompanies, listStaff, pendingApprovals, loadHandoverDefaults, registerAsset, getMyOnboarding, submitMyAcknowledgement,
   reopenCase, returnAssets, saveCompanyConfig, saveCustomFields, saveProvisionDefs, saveStepDefs, setAssetRequestHandler, setOutcome, setProvision,
   setStaff, tickStep, tickStepTx, undoStep, updateAsset, updateCase, caseHistory, listComments,
@@ -586,7 +586,7 @@ describe('Lifecycle module', () => {
       expect(candidates.some(row=>row.user_id===elsewhere)).toBe(false);
       expect(await withTenant(requester,tx=>tx.execute(sql`select * from app.lc_staff_directory(${b.companyId}::uuid)`))).toEqual([]);
       expect(await withTenant(manager,tx=>tx.select().from(schema.person).where(eq(schema.person.id,agent.personId!)))).toEqual([]);
-      const item=await catalogue('HIDDEN-HANDLER'),request=await createAssetRequest(requester,{catalogueId:item.id,companyId:b.companyId});
+      const item=await catalogue('HW-003'),request=await createAssetRequest(manager,{catalogueId:item.id,companyId:b.companyId});
       await setAssetRequestHandler(manager,request.number,agent.userId!);
       await rejects(setAssetRequestHandler(manager,request.number,requester.userId!),/module staff/);
       await rejects(setAssetRequestHandler(manager,request.number,elsewhere),/module staff/);
