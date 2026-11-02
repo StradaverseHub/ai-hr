@@ -83,9 +83,9 @@ export default async function NoticeBoardPage({
         title={t('pageTitle')}
         description={t('pageDescription')}
         actions={
-          {(creation.groupAllowed||creation.companies.length>0)&&<Link href="/admin/notice-board/new" className={btnPrimary}>
+          (creation.groupAllowed||creation.companies.length>0)&&<Link href="/admin/notice-board/new" className={btnPrimary}>
             {t('add')}
-          </Link>}
+          </Link>
         }
       />
       <ErrorBanner message={error} />
