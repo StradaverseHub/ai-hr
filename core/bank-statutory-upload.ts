@@ -17,7 +17,7 @@ import {sectionParseColumns,type SectionImportResult} from '../lib/import-sectio
 import type {ImportPlanBase} from '../lib/import-history';
 import {analyzeSectionRows,commitSectionImport} from './import-sections';
 import {BankStatutoryImportError} from './bank-statutory-import';
-import {createImportAttemptTx,recordImportFailure,sealImportPlan,ImportHistoryError,IMPORT_SOURCE_MAX_BYTES} from './import-history';
+import {createImportAttemptTx,importPreviewReadStamp,recordImportFailure,sealImportPlan,ImportHistoryError,IMPORT_SOURCE_MAX_BYTES} from './import-history';
 
 export type BankStatutoryImportPlan=ImportPlanBase&{kind:'bank_statutory';rows:{rowNum:number;employeeCode:string;employeeName:string;verdict:string;errors:string[];changes:string[]}[]};
 export type BankStatutoryUploadResult=SectionImportResult&{attemptId:string};
@@ -34,6 +34,8 @@ export async function readBankStatutorySource(name:string,content:Buffer){
 }
 
 export async function commitBankStatutoryUpload(ctx:SessionContext,input:{name:string;content:Buffer;operationKey?:string}):Promise<BankStatutoryUploadResult>{
+ input={...input,content:Buffer.from(input.content)};
+ const reviewStamp=await importPreviewReadStamp(ctx);
  let records:Record<string,string>[]=[],parseError:string|null=null;
  try{records=(await readBankStatutorySource(input.name,input.content)).records;}
  catch(error){parseError=error instanceof BankStatutoryImportError?error.message:FILE_MESSAGE;}
@@ -51,7 +53,7 @@ export async function commitBankStatutoryUpload(ctx:SessionContext,input:{name:s
   const rows=analysis.rows.map(r=>({rowNum:r.rowNum,employeeCode:r.employeeCode,employeeName:r.employeeName,verdict:r.verdict,errors:r.errors,changes:r.changes}));
   const valid=analysis.rows.filter(r=>r.ok&&r.companyId&&maintainable.has(r.companyId)).length;
   const plan=sealImportPlan<BankStatutoryImportPlan>({version:1,kind:'bank_statutory',rows,counts:{total:rows.length,valid,invalid:analysis.rows.filter(r=>r.errors.length).length},issues,previewHash:''});
-  return createImportAttemptTx(tx,ctx,{kind:'bank_statutory',sourceName:input.name,content:input.content,companyIds:[...maintainable],plan,operationKey:input.operationKey});
+  return createImportAttemptTx(tx,ctx,{kind:'bank_statutory',sourceName:input.name,content:input.content,companyIds:[...maintainable],plan,operationKey:input.operationKey,reviewStamp});
  });
  if(created.existing)throw new ImportHistoryError('This upload was already received. Open Import History to see its outcome.');
  if(analysis.fileErrors.length){

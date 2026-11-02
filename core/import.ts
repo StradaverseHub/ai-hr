@@ -25,7 +25,7 @@ import { isCalendarDate } from '../lib/calendar-date';
 import {buildBankStatutoryPatch,applyBankStatutoryPatchTx,bankStatutoryRefusal} from './bank-statutory-import';
 import {bankStatutoryStateFrom,MERGED_STATUTORY_COLUMNS} from '../lib/bank-statutory-import';
 import {copyPermanentToCorrespondence} from '../lib/address-blocks';
-import {createImportAttemptTx,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError} from './import-history';
+import {createImportAttemptTx,importPreviewReadStamp,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError} from './import-history';
 import type {EmployeeFullImportPlan,EmployeeFullItemState} from './employee-import-history';
 import {assignPolicy} from '../packs/payroll/service';
 import {setEmploymentScheduleGroupTx} from './roster';
@@ -1289,6 +1289,7 @@ export async function commitEmployeeImport(
   p=structuredClone({...p,source:undefined});p.source=source;
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if(p.evaluationBinding){const replay=await withTenant(ctx,tx=>readEmployeeImportEvaluationTx(tx,ctx,p.evaluationBinding!,p));if(replay)return measuredImportReplay(p.companyId,replay);}
+  const reviewStamp=ctx.userId?await importPreviewReadStamp(ctx):undefined;
   let { preview, resolved, dependents,registers } = await analyze(
     ctx,
     p.companyId,
@@ -1316,7 +1317,7 @@ export async function commitEmployeeImport(
   // from a client-supplied preview, so a tampered payload cannot talk the server into a half-import.
   // 524303d9 — Import History (ADR-0155 kind `employee_full`): the uploaded file (or, for a paste, the rows as
   // text), the per-row outcome and the companies, recorded before the write so a refused file is listed too.
-  const attemptId=await recordEmployeeImportAttempt(ctx,p,preview,resolved);
+  const attemptId=await recordEmployeeImportAttempt(ctx,p,preview,resolved,reviewStamp);
   if (preview.fileErrors.length > 0) {
     if(attemptId)await recordImportFailure(ctx,attemptId,'employee_full','failed',new ImportHistoryError(preview.fileErrors.join(' ')));
     return {
@@ -1591,7 +1592,7 @@ function recordsAsCsv(records:ImportRecord[]){
  * Every listed company is one this actor maintains (analyze() already refused any other), so the attempt's
  * insert policy holds. A repeated upload operation is refused, never re-imported.
  */
-async function recordEmployeeImportAttempt(ctx:SessionContext,p:{companyId:string;records:ImportRecord[];fileName?:string;source?:{name:string;content:Buffer;operationKey?:string}},preview:ImportPreview,resolved:ResolvedRow[]):Promise<string|null>{
+async function recordEmployeeImportAttempt(ctx:SessionContext,p:{companyId:string;records:ImportRecord[];fileName?:string;source?:{name:string;content:Buffer;operationKey?:string}},preview:ImportPreview,resolved:ResolvedRow[],reviewStamp?:string):Promise<string|null>{
   if(!ctx.userId)return null;
   const name=p.source?.name||p.fileName||'pasted-employees.csv';
   const content=p.source?.content??Buffer.from(recordsAsCsv(p.records),'utf8');
@@ -1599,7 +1600,7 @@ async function recordEmployeeImportAttempt(ctx:SessionContext,p:{companyId:strin
   const plan=sealImportPlan<EmployeeFullImportPlan>({version:1,kind:'employee_full',companyId:p.companyId,rows,counts:{total:rows.length,valid:preview.validCount,invalid:rows.length-preview.validCount},
     issues:[...preview.fileErrors.map(reason=>({rowNum:0,reason})),...rows.filter(row=>!row.ok).map(row=>({rowNum:row.rowNum,reason:`Row ${row.rowNum} (${row.fullName||row.employeeCode||'no name'}): ${row.errors.join('; ')}`}))],previewHash:''});
   const companyIds=[...new Set(resolved.filter(row=>row.result.ok).map(row=>row.hire.companyId))];
-  const created=await withTenant(ctx,tx=>createImportAttemptTx(tx,ctx,{kind:'employee_full',sourceName:name,content,companyIds,plan,operationKey:p.source?.operationKey}));
+  const created=await withTenant(ctx,tx=>createImportAttemptTx(tx,ctx,{kind:'employee_full',sourceName:name,content,companyIds,plan,operationKey:p.source?.operationKey,reviewStamp}));
   if(created.existing)throw new ImportHistoryError('This upload was already received. Open Import History to see its outcome.');
   return created.attemptId;
 }

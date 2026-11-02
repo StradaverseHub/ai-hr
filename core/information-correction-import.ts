@@ -3,13 +3,15 @@ import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {employment} from '../db/schema';
 import {informationCorrectionOptions,previewInformationCorrection,correctInformationTx,InformationCorrectionError} from './information-correction';
-import {createImportAttemptTx,lockImportAttemptTx,importAttemptEventsTx,importAttemptItemsTx,recordImportItemTx,recordImportEventTx,sealImportPlan,ImportHistoryError} from './import-history';
+import {createImportAttemptTx,importPreviewReadStamp,lockImportAttemptTx,lockImportAttemptHeaderTx,importAttemptEventsTx,importAttemptItemsTx,recordImportItemTx,recordImportEventTx,sealImportPlan,ImportHistoryError} from './import-history';
 import {parseInformationWorkbook} from '../lib/information-correction-workbook';
 import type {InformationChanges,InformationImportPlan,InformationImportResult} from '../lib/information-correction';
 import {publicErrorMessage} from '../lib/public-error';
 import {pgSqlState} from '../lib/db-error';
 export async function previewInformationUpload(ctx:SessionContext,input:{name:string;content:Buffer;operationKey:string}){
  if(!input.name.toLowerCase().endsWith('.xlsx'))throw new InformationCorrectionError('Choose the .xlsx Information-Only Correction template.');
+ input={...input,content:Buffer.from(input.content)};
+ const reviewStamp=await importPreviewReadStamp(ctx);
  const rows=parseInformationWorkbook(input.content),options=await informationCorrectionOptions(ctx);
  const companyIds=new Set<string>(),targets=new Map<string,number[]>();
  for(const row of rows){
@@ -34,7 +36,7 @@ export async function previewInformationUpload(ctx:SessionContext,input:{name:st
  const valid=rows.filter(r=>!r.errors.length&&r.preview?.changed.length).length;
  const plan=sealImportPlan<InformationImportPlan>({version:1,previewHash:'',counts:{total:rows.length,valid,invalid:rows.filter(r=>r.errors.length).length},issues:[],rows});
  let created;
- try{created=await withTenant(ctx,tx=>createImportAttemptTx(tx,ctx,{kind:'information_correction',sourceName:input.name,content:input.content,companyIds:[...companyIds],plan,operationKey:input.operationKey}));}
+ try{created=await withTenant(ctx,tx=>createImportAttemptTx(tx,ctx,{kind:'information_correction',sourceName:input.name,content:input.content,companyIds:[...companyIds],plan,operationKey:input.operationKey,reviewStamp}));}
  catch(error){const safe=publicErrorMessage({name:'PostgresError',code:pgSqlState(error),message:'Information correction upload could not be recorded.'});throw new InformationCorrectionError(safe);}
  // An operation-key retry returns the stored plan, never a fresh preview with the old attempt ID.
  return {attemptId:created.attemptId,plan:created.plan};
@@ -76,6 +78,6 @@ export async function confirmInformationUpload(ctx:SessionContext,input:{attempt
   }
  }
  const result:InformationImportResult={attemptId:attempt.id,succeeded:results.filter(r=>r.status==='applied').length,failed:results.filter(r=>r.status==='failed').length,unchanged:results.filter(r=>r.status==='unchanged').length,rows:results};
- await withTenant(ctx,async tx=>{await lockImportAttemptTx(tx,ctx,attempt.id,'information_correction');const events=await importAttemptEventsTx(tx,attempt.id);if(!events.some(e=>e.kind==='confirmed'))await recordImportEventTx(tx,ctx,{attemptId:attempt.id,kind:'confirmed',importKind:'information_correction',detail:{succeeded:result.succeeded,failed:result.failed,unchanged:result.unchanged,rows:result.rows}});});
+ await withTenant(ctx,async tx=>{await lockImportAttemptHeaderTx(tx,ctx,attempt.id,'information_correction');const events=await importAttemptEventsTx(tx,attempt.id);if(!events.some(e=>e.kind==='confirmed'))await recordImportEventTx(tx,ctx,{attemptId:attempt.id,kind:'confirmed',importKind:'information_correction',detail:{succeeded:result.succeeded,failed:result.failed,unchanged:result.unchanged,rows:result.rows}});});
  return result;
 }

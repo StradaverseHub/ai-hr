@@ -42,17 +42,28 @@ async function coversTx(tx:Tx,attemptId:string,operation:'view'|'maintain'){
  const[row]=await tx.execute<{ok:boolean}>(sql`select app.import_attempt_access(${attemptId}::uuid,${operation},true) as ok`);return row?.ok===true;
 }
 
-export type CreateImportAttemptInput<P extends ImportPlanBase>={kind:ImportKind;sourceName:string;content:Buffer;companyIds:string[];plan:P;operationKey?:string};
+async function importReadStampTx(tx:Tx):Promise<string> {
+ const [row]=await tx.execute<{stamp:string|null}>(sql`select app.data_permission_read_stamp() as stamp`);
+ if(!row?.stamp)fail('Access changed. Sign in again before continuing.');
+ return row.stamp;
+}
+export function importPreviewReadStamp(ctx:SessionContext):Promise<string> {
+ return withTenant(ctx,importReadStampTx);
+}
+
+export type CreateImportAttemptInput<P extends ImportPlanBase>={kind:ImportKind;sourceName:string;content:Buffer;companyIds:string[];plan:P;operationKey?:string;reviewStamp?:string};
 /** Records the validated upload. Every listed company must be maintainable (RLS insert policy). */
 export async function createImportAttemptTx<P extends ImportPlanBase>(tx:Tx,ctx:SessionContext,input:CreateImportAttemptInput<P>):Promise<{attemptId:string;plan:P;existing:boolean}>{
  if(!isImportKind(input.kind))fail('Unknown import kind.');
  if(input.content.length>(input.kind==='bank_statutory'?BANK_IMPORT_MAX_BYTES:IMPORT_SOURCE_MAX_BYTES))fail(input.kind==='bank_statutory'?'Choose a file no larger than 128 MiB.':'Choose a file no larger than 10 MB.');
  await principalTx(tx,ctx);
+ if(input.reviewStamp!==undefined&&await importReadStampTx(tx)!==input.reviewStamp)fail('Data access changed. Review the file again.');
  const sourceHash=importSourceHash(input.content),operationKey=input.operationKey&&uuid.test(input.operationKey)?input.operationKey:randomUUID();
- const[prior]=await tx.select({id:attempt.id,sourceHash:attempt.sourceHash,kind:attempt.kind,plan:attempt.plan}).from(attempt).where(and(eq(attempt.createdBy,ctx.userId!),eq(attempt.operationKey,operationKey)));
- if(prior){if(prior.sourceHash!==sourceHash||prior.kind!==input.kind)fail('This upload operation already identifies a different file.');return{attemptId:prior.id,plan:prior.plan as P,existing:true};}
+ const[prior]=await tx.select({id:attempt.id,sourceHash:attempt.sourceHash,kind:attempt.kind,plan:sql<Record<string,unknown>|null>`app.import_attempt_plan_current(${attempt.id})`}).from(attempt).where(and(eq(attempt.createdBy,ctx.userId!),eq(attempt.operationKey,operationKey)));
+ if(prior){if(prior.sourceHash!==sourceHash||prior.kind!==input.kind)fail('This upload operation already identifies a different file.');if(!prior.plan)fail('Import attempt unavailable.');return{attemptId:prior.id,plan:prior.plan as P,existing:true};}
  const companyIds=[...new Set(input.companyIds)].sort();
  const[created]=await tx.insert(attempt).values({tenantId:ctx.tenantId,kind:input.kind,createdBy:ctx.userId!,operationKey,sourceName:importSourceName(input.sourceName,'import'),mimeType:importMimeType(input.sourceName),sourceHash,sourceContent:input.content,companyIds,plan:input.plan as unknown as Record<string,unknown>}).returning({id:attempt.id});
+ if(input.reviewStamp!==undefined&&await importReadStampTx(tx)!==input.reviewStamp)fail('Data access changed. Review the file again.');
  // An attempt naming no company (an unreadable file) is its creator's own; the event policy admits that.
  await tx.insert(historyEvent).values({tenantId:ctx.tenantId,attemptId:created.id,kind:'previewed',actorId:ctx.userId!,detail:{counts:input.plan.counts}});
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'import-attempt',aggregateId:created.id,eventType:'import-attempt.previewed',actor:actorOf(ctx),payload:{kind:input.kind,sourceHash,counts:input.plan.counts,companyIds}});
@@ -64,8 +75,11 @@ export type ImportAttemptRow=typeof attempt.$inferSelect;
 export async function lockImportAttemptTx(tx:Tx,ctx:SessionContext,attemptId:string,kind:ImportKind):Promise<ImportAttemptRow>{
  if(!uuid.test(attemptId))fail('Import attempt unavailable.');
  await principalTx(tx,ctx);
- const[row]=await tx.select().from(attempt).where(eq(attempt.id,attemptId)).for('update');
- if(!row||row.kind!==kind)fail('Import attempt unavailable.');return row;
+ const {plan:_plan,sourceContent:_sourceContent,...header}=getTableColumns(attempt);
+ const[row]=await tx.select({...header,plan:sql<Record<string,unknown>|null>`app.import_attempt_plan_current(${attempt.id})`,
+  sourceContent:sql<Buffer|null>`app.import_attempt_source_current(${attempt.id})`}).from(attempt).where(eq(attempt.id,attemptId)).for('update');
+ if(!row||row.kind!==kind||!row.plan||row.sourceContent===null)fail('Import attempt unavailable.');
+ return {...row,plan:row.plan,sourceContent:row.sourceContent};
 }
 /** Same principal/RLS checks and writer lock, without reloading the upload for every Bank row. */
 export async function lockImportAttemptHeaderTx(tx:Tx,ctx:SessionContext,attemptId:string,kind:ImportKind):Promise<Pick<ImportAttemptRow,'id'|'kind'>>{
@@ -74,7 +88,11 @@ export async function lockImportAttemptHeaderTx(tx:Tx,ctx:SessionContext,attempt
  const[row]=await tx.select({id:attempt.id,kind:attempt.kind}).from(attempt).where(eq(attempt.id,attemptId)).for('update');
  if(!row||row.kind!==kind)fail('Import attempt unavailable.');return row;
 }
-export function importAttemptEventsTx(tx:Tx,attemptId:string){return tx.select().from(historyEvent).where(eq(historyEvent.attemptId,attemptId)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));}
+const {reason:_eventReason,detail:_eventDetail,...eventHeader}=getTableColumns(historyEvent);
+const eventColumns={...eventHeader,
+ reason:sql<string|null>`app.import_attempt_event_payload_current(${historyEvent.id})->>'reason'`,
+ detail:sql<Record<string,unknown>>`app.import_attempt_event_payload_current(${historyEvent.id})->'detail'`};
+export function importAttemptEventsTx(tx:Tx,attemptId:string){return tx.select(eventColumns).from(historyEvent).where(eq(historyEvent.attemptId,attemptId)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));}
 export function importAttemptItemsTx(tx:Tx,attemptId:string){return tx.select().from(item).where(eq(item.attemptId,attemptId)).orderBy(asc(item.ordinal),asc(item.itemKey));}
 export type ImportAttemptItemRow=typeof item.$inferSelect;
 
@@ -98,7 +116,7 @@ export async function recordImportFailure(ctx:SessionContext,attemptId:string,im
  });}catch(recordError){console.error('[import history failure audit]',recordError);}
 }
 
-const listColumns={id:attempt.id,kind:attempt.kind,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:attempt.plan,createdBy:attempt.createdBy,createdAt:attempt.createdAt,createdByName:sql<string|null>`app.import_attempt_actor_label(${attempt.id},${attempt.createdBy})`};
+const listColumns={id:attempt.id,kind:attempt.kind,sourceName:attempt.sourceName,sourceHash:attempt.sourceHash,companyIds:attempt.companyIds,plan:sql<ImportPlanBase>`app.import_attempt_summary_current(${attempt.id})`,createdBy:attempt.createdBy,createdAt:attempt.createdAt,createdByName:sql<string|null>`app.import_attempt_actor_label(${attempt.id},${attempt.createdBy})`};
 async function companyNamesTx(tx:Tx,ids:string[]){
  if(!ids.length)return new Map<string,string>();
  const rows=await tx.select({id:company.id,name:company.legalName,label:company.companyLabel}).from(company).where(inArray(company.id,ids));
@@ -106,7 +124,7 @@ async function companyNamesTx(tx:Tx,ids:string[]){
 }
 async function eventsWithNamesTx(tx:Tx,ids:string[]){
  if(!ids.length)return[];
- return tx.select({...getTableColumns(historyEvent),actorName:sql<string|null>`app.import_attempt_actor_label(${historyEvent.attemptId},${historyEvent.actorId})`}).from(historyEvent).where(inArray(historyEvent.attemptId,ids)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
+ return tx.select({...eventColumns,actorName:sql<string|null>`app.import_attempt_actor_label(${historyEvent.attemptId},${historyEvent.actorId})`}).from(historyEvent).where(inArray(historyEvent.attemptId,ids)).orderBy(asc(historyEvent.createdAt),asc(historyEvent.id));
 }
 /** Company-scoped by RLS: an attempt is listed when the actor holds view for at least one listed company. */
 export async function listImportAttempts(ctx:SessionContext,options:{kind?:ImportKind;before?:string;limit?:number}={}){
@@ -128,7 +146,8 @@ export async function getImportAttempt(ctx:SessionContext,id:string){
   await principalTx(tx,ctx);
   const[row]=await tx.select(listColumns).from(attempt).where(eq(attempt.id,id));if(!row)return null;
   const items=await importAttemptItemsTx(tx,id),events=await eventsWithNamesTx(tx,[id]),names=await companyNamesTx(tx,row.companyIds);
-  const canDownloadSource=await coversTx(tx,id,'view'),canRevert=await coversTx(tx,id,'maintain');
+  const [packet]=await tx.execute<{allowed:boolean}>(sql`select app.import_attempt_full_packet_current(${id}::uuid) as allowed`);
+  const canDownloadSource=packet?.allowed===true,canRevert=await coversTx(tx,id,'maintain');
   return{...row,plan:row.plan as unknown as ImportPlanBase,companies:row.companyIds.map(c=>names.get(c)).filter((n):n is string=>!!n),items:items.map(i=>({...i,companyName:names.get(i.companyId)??null})),events,canDownloadSource,canRevert};
  });
 }
@@ -142,8 +161,10 @@ export async function importAttemptKind(ctx:SessionContext,id:string):Promise<Im
 export async function importAttemptSource(ctx:SessionContext,id:string){
  if(!uuid.test(id))return null;
  return withTenant(ctx,async tx=>{
-  await principalTx(tx,ctx);if(!await coversTx(tx,id,'view'))return null;
-  const[row]=await tx.select({name:attempt.sourceName,mimeType:attempt.mimeType,content:attempt.sourceContent,sourceHash:attempt.sourceHash}).from(attempt).where(eq(attempt.id,id));return row??null;
+  await principalTx(tx,ctx);
+  const[row]=await tx.select({name:attempt.sourceName,mimeType:attempt.mimeType,content:sql<Buffer|null>`app.import_attempt_source_current(${attempt.id})`,sourceHash:attempt.sourceHash})
+   .from(attempt).where(eq(attempt.id,id));
+  return row&&row.content!==null?{...row,content:row.content}:null;
  });
 }
 
@@ -161,7 +182,7 @@ export interface ImportRevertHandler{
   * revert's validated reason, for owners whose own compensation records one (a movement rollback). */
  apply(tx:Tx,ctx:SessionContext,items:ImportAttemptItemRow[],options:{reason:string}):Promise<Record<string,unknown>>;
 }
-async function revertPlanTx(tx:Tx,ctx:SessionContext,source:ImportAttemptRow,handler:ImportRevertHandler,lock:boolean){
+async function revertPlanTx(tx:Tx,ctx:SessionContext,source:Pick<ImportAttemptRow,'id'|'kind'>,handler:ImportRevertHandler,lock:boolean){
  if(!await coversTx(tx,source.id,'maintain'))fail('Reverting this import needs maintain permission for every company in it.');
  const events=await importAttemptEventsTx(tx,source.id);
  if(events.some(e=>e.kind==='reverted'))fail('This import has already been reverted.');
@@ -180,7 +201,7 @@ export async function previewImportRevert(ctx:SessionContext,attemptId:string,ha
  if(!uuid.test(attemptId))fail('Import attempt unavailable.');
  return withTenant(ctx,async tx=>{
   await handler.lock?.(tx,ctx);await principalTx(tx,ctx);
-  const[source]=await tx.select().from(attempt).where(eq(attempt.id,attemptId));if(!source||source.kind!==handler.kind)fail('Import attempt unavailable.');
+  const[source]=await tx.select({id:attempt.id,kind:attempt.kind}).from(attempt).where(eq(attempt.id,attemptId));if(!source||source.kind!==handler.kind)fail('Import attempt unavailable.');
   const plan=await revertPlanTx(tx,ctx,source,handler,false);
   return{attemptId,kind:source.kind,eligible:plan.blockers.length===0,items:plan.inspection,blockers:plan.blockers,previewHash:plan.previewHash};
  });
@@ -193,7 +214,7 @@ export async function revertImport(ctx:SessionContext,attemptId:string,handler:I
  if(typeof input.previewHash!=='string'||!/^[0-9a-f]{64}$/.test(input.previewHash))fail('Review what will be restored before confirming.');
  try{return await withTenant(ctx,async tx=>{
   await handler.lock?.(tx,ctx);
-  const source=await lockImportAttemptTx(tx,ctx,attemptId,handler.kind);
+  const source=await lockImportAttemptHeaderTx(tx,ctx,attemptId,handler.kind);
   const plan=await revertPlanTx(tx,ctx,source,handler,true);
   if(plan.blockers.length)fail('This import cannot be reverted because some records changed after it.',plan.blockers);
   if(plan.previewHash!==input.previewHash)fail('What this revert would restore has changed. Review it again before confirming.');

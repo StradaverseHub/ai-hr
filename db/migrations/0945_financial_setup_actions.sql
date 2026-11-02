@@ -796,3 +796,104 @@ BEGIN
 END;$$;
 REVOKE ALL ON FUNCTION app.financial_catalog_statement_lock(),app.financial_catalog_capture(),app.financial_catalog_capture_event(),app.financial_catalog_expected_ranks(),app.financial_catalog_rank_effect_allowed(jsonb,jsonb),app.financial_catalog_rank_complete(),app.financial_catalog_recompute_order() FROM PUBLIC,ai_hr_app;
 GRANT EXECUTE ON FUNCTION app.financial_catalog_recompute_order() TO ai_hr_app;
+
+--> statement-breakpoint
+-- A visible history header is not authority to read the entire uploaded file
+-- or the plan derived from it. Those payloads remain behind the actual attempt.
+CREATE OR REPLACE FUNCTION app.import_company_access(p_kind text,p_company uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_company IS NOT NULL AND p_operation IN ('view','maintain')
+ AND p_kind IN ('cost_allocations','bank_statutory','employee_full','movement','information_correction')
+ AND app.access_workforce_company(p_company,'workforce.'||p_operation)
+ AND app.workforce_full_import_allowed(p_company,'view')
+ AND (p_kind<>'information_correction' OR app.is_admin_for(p_company));
+$$;
+REVOKE SELECT ON public.import_attempt FROM ai_hr_app;
+GRANT SELECT (id,tenant_id,kind,created_by,operation_key,source_name,mime_type,source_hash,company_ids,created_at)
+ ON public.import_attempt TO ai_hr_app;
+
+-- Preserve the uploader's reviewed scoped preview only while its actual data
+-- snapshot is still current. The receipt is captured by the stored insert,
+-- never supplied by the caller and never inherited by a different account.
+CREATE TABLE app.import_attempt_preview_scope (
+ attempt_id uuid PRIMARY KEY REFERENCES public.import_attempt(id) ON DELETE CASCADE,
+ tenant_id uuid NOT NULL,user_id uuid NOT NULL,read_stamp text NOT NULL
+);
+ALTER TABLE app.import_attempt_preview_scope ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.import_attempt_preview_scope FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.import_attempt_capture_preview_scope() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE stamp text;
+BEGIN
+ IF NEW.tenant_id=app.current_tenant_id() AND NEW.created_by=app.current_user_id()
+   AND app.principal_snapshot_current() THEN
+  stamp:=app.data_permission_read_stamp();
+  IF stamp IS NOT NULL THEN
+   INSERT INTO app.import_attempt_preview_scope VALUES(NEW.id,NEW.tenant_id,NEW.created_by,stamp);
+  END IF;
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.import_attempt_capture_preview_scope() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER import_attempt_preview_scope AFTER INSERT ON public.import_attempt
+ FOR EACH ROW EXECUTE FUNCTION app.import_attempt_capture_preview_scope();
+
+CREATE FUNCTION app.import_attempt_full_packet_current(p_attempt uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.import_attempt a
+  WHERE a.id=p_attempt AND a.tenant_id=app.current_tenant_id() AND app.import_attempt_access(a.id,'view',true)
+   AND (NOT EXISTS(SELECT 1 FROM unnest(a.company_ids) named(id) WHERE NOT app.native_permission_future_company_ceiling(named.id))
+    AND (a.created_by=app.current_user_id() OR a.plan#>'{counts,invalid}'='0'::jsonb AND a.plan->'issues'='[]'::jsonb)
+    OR a.created_by=app.current_user_id() AND EXISTS(
+     SELECT 1 FROM app.import_attempt_preview_scope proof WHERE proof.attempt_id=a.id AND proof.tenant_id=a.tenant_id
+      AND proof.user_id=a.created_by AND proof.read_stamp=app.data_permission_read_stamp())));
+$$;
+REVOKE ALL ON FUNCTION app.import_attempt_full_packet_current(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.import_attempt_full_packet_current(uuid) TO ai_hr_app;
+
+CREATE FUNCTION app.import_attempt_plan_current(p_attempt uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT a.plan FROM public.import_attempt a
+ WHERE a.id=p_attempt AND a.tenant_id=app.current_tenant_id() AND app.import_attempt_full_packet_current(a.id);
+$$;
+CREATE FUNCTION app.import_attempt_source_current(p_attempt uuid) RETURNS bytea
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT a.source_content FROM public.import_attempt a
+ WHERE a.id=p_attempt AND a.tenant_id=app.current_tenant_id() AND app.import_attempt_full_packet_current(a.id);
+$$;
+-- Only non-sensitive aggregate counts belong to a partially visible header.
+-- A partial viewer never receives issue text, subject data or review hashes.
+CREATE FUNCTION app.import_attempt_summary_current(p_attempt uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('version',1,'previewHash','','counts',jsonb_build_object(
+   'total',CASE WHEN jsonb_typeof(a.plan#>'{counts,total}')='number' THEN a.plan#>'{counts,total}' ELSE '0'::jsonb END,
+   'valid',CASE WHEN jsonb_typeof(a.plan#>'{counts,valid}')='number' THEN a.plan#>'{counts,valid}' ELSE '0'::jsonb END,
+   'invalid',CASE WHEN jsonb_typeof(a.plan#>'{counts,invalid}')='number' THEN a.plan#>'{counts,invalid}' ELSE '0'::jsonb END),
+  'issues',CASE WHEN app.import_attempt_full_packet_current(a.id) AND jsonb_typeof(a.plan->'issues')='array'
+   THEN a.plan->'issues' ELSE '[]'::jsonb END)
+ FROM public.import_attempt a
+ WHERE a.id=p_attempt AND a.tenant_id=app.current_tenant_id() AND app.import_attempt_access(a.id,'view',false);
+$$;
+REVOKE ALL ON FUNCTION app.import_attempt_plan_current(uuid),app.import_attempt_source_current(uuid),app.import_attempt_summary_current(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.import_attempt_plan_current(uuid),app.import_attempt_source_current(uuid),app.import_attempt_summary_current(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Event timing and outcome remain visible with the partial history. Free-text
+-- reasons, blockers, and row results can identify subjects outside that scope.
+REVOKE SELECT ON public.import_attempt_event FROM ai_hr_app;
+GRANT SELECT (id,tenant_id,attempt_id,kind,actor_id,created_at) ON public.import_attempt_event TO ai_hr_app;
+CREATE FUNCTION app.import_attempt_event_payload_current(p_event uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.import_attempt_full_packet_current(e.attempt_id)
+  THEN jsonb_build_object('reason',e.reason,'detail',e.detail)
+  ELSE jsonb_build_object('reason',NULL,'detail',CASE WHEN e.kind='confirmed' THEN jsonb_build_object(
+   'succeeded',CASE WHEN jsonb_typeof(e.detail->'succeeded')='number' THEN e.detail->'succeeded' ELSE '0'::jsonb END,
+   'failed',CASE WHEN jsonb_typeof(e.detail->'failed')='number' THEN e.detail->'failed' ELSE '0'::jsonb END)
+  ELSE '{}'::jsonb END) END
+ FROM public.import_attempt_event e
+ WHERE e.id=p_event AND e.tenant_id=app.current_tenant_id()
+  AND app.import_attempt_access(e.attempt_id,'view',false)
+  AND app.information_import_history_access(e.attempt_id);
+$$;
+REVOKE ALL ON FUNCTION app.import_attempt_event_payload_current(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.import_attempt_event_payload_current(uuid) TO ai_hr_app;

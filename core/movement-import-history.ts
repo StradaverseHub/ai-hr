@@ -5,7 +5,7 @@
  */
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {createImportAttemptTx,importAttemptEventsTx,importAttemptItemsTx,lockImportAttemptTx,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError,type ImportAttemptItemRow,type ImportRevertHandler} from './import-history';
+import {createImportAttemptTx,importPreviewReadStamp,importAttemptEventsTx,importAttemptItemsTx,lockImportAttemptTx,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError,type ImportAttemptItemRow,type ImportRevertHandler} from './import-history';
 import {commitMovementImport,previewMovementImport,movementImportTypes,movementImportStateTx,type MovementImportItemState} from './movement-import';
 import {createMovementEventTx,editMovementEventTx,movementCorrectionBaseTx,movementHistoryTx,movementLedgerMarkerTx,movementReversalBlockerTx,reverseMovementForImportTx,type CreateMovementInput} from './movement';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
@@ -30,6 +30,8 @@ async function sourceRecords(ctx:SessionContext,name:string,content:Buffer,words
 }
 /** Checks an uploaded file and records it as an import attempt with the original bytes. Nothing is saved. */
 export async function previewMovementUpload(ctx:SessionContext,input:{name:string;content:Buffer;operationKey?:string}&Words):Promise<{attemptId:string;previewHash:string;preview:MovementImportPreview}>{
+ input={...input,content:Buffer.from(input.content)};
+ const reviewStamp=await importPreviewReadStamp(ctx);
  const source=await sourceRecords(ctx,input.name,input.content,input);
  let preview:MovementImportPreview={inputHash:'',selection:[],fileErrors:source.fileErrors,employees:[],excluded:0,valid:0};
  if(!source.fileErrors.length)preview=await previewMovementImport(ctx,{csv:'',records:source.records,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash});
@@ -39,7 +41,7 @@ export async function previewMovementUpload(ctx:SessionContext,input:{name:strin
  const plan=sealImportPlan<MovementImportPlan>({version:1,kind:'movement',inputHash:preview.inputHash,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash,fingerprints:Object.fromEntries(preview.employees.filter(e=>e.fingerprint).map(e=>[movementEmployeeKey(e),e.fingerprint!])),employees,
   counts:{total:movements,valid,invalid:movements-valid},issues:source.fileErrors.map(code=>({rowNum:1,reason:describe([code])})),previewHash:''});
  const companyIds=[...new Set(employees.map(e=>e.companyId).filter((id):id is string=>!!id))];
- const created=await withTenant(ctx,tx=>createImportAttemptTx(tx,ctx,{kind:'movement',sourceName:input.name,content:input.content,companyIds,plan,operationKey:input.operationKey}));
+ const created=await withTenant(ctx,tx=>createImportAttemptTx(tx,ctx,{kind:'movement',sourceName:input.name,content:input.content,companyIds,plan,operationKey:input.operationKey,reviewStamp}));
  return{attemptId:created.attemptId,previewHash:created.plan.previewHash,preview};
 }
 export type MovementUploadResult=MovementImportResult&{attemptId:string;alreadyCommitted:boolean};
