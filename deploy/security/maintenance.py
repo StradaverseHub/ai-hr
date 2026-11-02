@@ -4,7 +4,8 @@ Build embeds only the reviewed agent bytes. Private Nginx proposals are separate
 """
 import argparse, base64, contextlib, fcntl, hashlib, hmac, http.client, json, os
 from pathlib import Path
-import re, socket, sqlite3, stat, subprocess, sys, tempfile, time, uuid
+import re, socket, sqlite3, stat, subprocess, sys, tempfile, time, uuid, shutil
+from urllib.parse import urlsplit
 
 SOURCE_SHA = ''
 AGENT_SHA256 = ''
@@ -29,11 +30,12 @@ def regular(path, maximum=33554432, owner=0, private=False):
         s=os.fstat(fd)
         require(stat.S_ISREG(s.st_mode) and s.st_uid==owner and s.st_nlink==1 and 0<s.st_size<=maximum and s.st_mode&0o022==0, 'Trusted bounded file required')
         if private: require(stat.S_IMODE(s.st_mode)==0o600, 'Private file mode required')
-        value=b''
-        while len(value)<s.st_size:
-            chunk=os.read(fd,min(1048576,s.st_size-len(value)))
+        chunks=[];count=0
+        while count<s.st_size:
+            chunk=os.read(fd,min(1048576,s.st_size-count))
             if not chunk: break
-            value+=chunk
+            chunks.append(chunk);count+=len(chunk)
+        value=b''.join(chunks)
         require(len(value)==s.st_size and os.fstat(fd).st_mtime_ns==s.st_mtime_ns, 'Input changed during read')
         return value
     finally: os.close(fd)
@@ -85,7 +87,7 @@ def capabilities_preserved(before,after):
 
 
 def validate_plan(plan, source=SOURCE_SHA, agent_hash=AGENT_SHA256, node_hash=NODE_SHA256):
-    require(type(plan)==dict and set(plan)=={'kind','format','source','buildId','workerBefore','agentSha256','nodeSha256','files'},'Exact maintenance plan fields required')
+    require(type(plan)==dict and set(plan)=={'kind','format','source','buildId','workerBefore','agentSha256','nodeSha256','files','publicOrigin'},'Exact maintenance plan fields required')
     require(plan['kind']=='STAGING_INGRESS_EMAIL_SECURITY' and type(plan['format'])==int and plan['format']==1 and plan['source']==source and re.fullmatch('[a-f0-9]{40}',source or ''),'Exact reviewed source required')
     require(re.fullmatch('[A-Za-z0-9_-]{1,160}',plan['buildId']) and re.fullmatch('[a-f0-9]{64}',plan['workerBefore']),'Exact baseline identities required')
     require(plan['agentSha256']==agent_hash and plan['nodeSha256']==node_hash and re.fullmatch('[a-f0-9]{64}',agent_hash or '') and re.fullmatch('[a-f0-9]{64}',node_hash or ''),'Artifact/runtime digest differs')
@@ -96,19 +98,26 @@ def validate_plan(plan, source=SOURCE_SHA, agent_hash=AGENT_SHA256, node_hash=NO
         require((f['before'] is None)==(f['path']=='/etc/nginx/conf.d/00-aihr-request-protection.conf'),'Only the new managed HTTP policy may be absent')
         value=base64.b64decode(f['base64'],validate=True)
         require(0<len(value)<=1048576 and digest(value)==f['after'] and b'\x00' not in value,'Bounded exact proposal bytes required')
+    origin=urlsplit(plan['publicOrigin']);require(origin.scheme=='https' and origin.hostname and origin.netloc==origin.hostname and origin.path in ('','/') and not origin.query and not origin.fragment, 'Canonical public HTTPS origin required')
+    names=[]
+    for f in plan['files']:
+        names+=re.findall(r'^\s*server_name\s+([^;]+);',base64.b64decode(f['base64']).decode(),re.M)
+    require(any(origin.hostname in n.split() for n in names),'Public origin is not a reviewed proxy host')
     return plan
 
 @contextlib.contextmanager
-def lease_guard(credential,plan):
+def lease_guard(credential,plan,*,queue=None,app_root=None,build_file=None):
     require(type(credential)==dict and credential.get('protocol')=='aihr-staging-queue/v1' and credential.get('releaseAuthorized') is False and type(credential.get('epoch'))==int and re.fullmatch('[a-f0-9]{64}',credential.get('token','')) and re.fullmatch('[a-f0-9-]{36}',credential.get('batch','')), 'Exact private lease credential required')
-    owner=Path('/opt/ai-hr').stat().st_uid
-    q=QUEUE.lstat();require(stat.S_ISDIR(q.st_mode) and q.st_uid==owner and stat.S_IMODE(q.st_mode)==0o700,'Queue custody differs')
-    lock=QUEUE/'operations.lock';fd=os.open(lock,os.O_RDONLY|os.O_NOFOLLOW)
+    # The CLI uses only these fixed defaults; explicit paths exist for isolated real-SQLite fixtures.
+    queue=QUEUE if queue is None else Path(queue);app_root=Path('/opt/ai-hr') if app_root is None else Path(app_root);build_file=Path('/opt/ai-hr/.next/BUILD_ID') if build_file is None else Path(build_file)
+    owner=app_root.stat().st_uid
+    q=queue.lstat();require(stat.S_ISDIR(q.st_mode) and q.st_uid==owner and stat.S_IMODE(q.st_mode)==0o700,'Queue custody differs')
+    lock=queue/'operations.lock';fd=os.open(lock,os.O_RDONLY|os.O_NOFOLLOW)
     try:
         s=os.fstat(fd);require(stat.S_ISREG(s.st_mode) and s.st_uid==owner and stat.S_IMODE(s.st_mode)==0o600 and s.st_nlink==1,'Queue lock differs')
         fcntl.flock(fd,fcntl.LOCK_SH|fcntl.LOCK_NB)
-        regular(QUEUE/'queue.sqlite3',maximum=67108864,owner=owner,private=True)
-        db=sqlite3.connect('file:'+str(QUEUE/'queue.sqlite3')+'?mode=ro',uri=True);db.row_factory=sqlite3.Row
+        regular(queue/'queue.sqlite3',maximum=67108864,owner=owner,private=True)
+        db=sqlite3.connect('file:'+str(queue/'queue.sqlite3')+'?mode=ro',uri=True);db.row_factory=sqlite3.Row
         def fence():
             row=db.execute('select * from lease where singleton=1').fetchone()
             require(row and credential.get('candidate')==plan['source'] and row['batch']==credential.get('batch') and row['epoch']==credential.get('epoch'),'Foreign staging lease')
@@ -116,11 +125,34 @@ def lease_guard(credential,plan):
             require(hmac.compare_digest(row['token_hash'] or '',digest(credential.get('token','').encode())),'Lease credential differs')
             batch=db.execute('select plan,state from batches where id=?',(row['batch'],)).fetchone()
             require(batch and json.loads(batch['plan'])['candidate']==plan['source'] and batch['state']=='leased','Batch source/state differs')
-            require(regular('/opt/ai-hr/.next/BUILD_ID',1024,owner=owner).decode().strip()==plan['buildId'],'Installed build differs')
-        fence()
-        try: yield fence
+            require(regular(build_file,1024,owner=owner).decode().strip()==plan['buildId'],'Installed build differs')
+        try:
+            fence();yield fence
         finally: db.close()
     finally: os.close(fd)
+
+
+def public_health(origin):
+    host=urlsplit(origin).hostname;c=http.client.HTTPSConnection(host,443,timeout=15)
+    try:
+        c.request('GET','/health?aihr_security='+uuid.uuid4().hex,headers={'cache-control':'no-cache','connection':'close'})
+        r=c.getresponse();body=r.read(4097);require(r.status==200 and len(body)<=4096,'Public ingress health failed')
+    finally: c.close()
+
+
+def desired_changes(plan,agent,node):
+    changes=[(Path(f['path']),base64.b64decode(f['base64']),0o644,f['before']) for f in plan['files']]
+    return changes+[(RUNTIME/'agent.cjs',agent,0o644,plan['workerBefore']),(RUNTIME/'node22-security',node,0o755,None),(DROPIN,b'[Service]\nExecStart=\nExecStart=/usr/local/lib/aihr-identity-email/node22-security /usr/local/lib/aihr-identity-email/agent.cjs\n',0o644,None)]
+
+
+def restore_installed(originals,installed,ports):
+    ports['fence']();ports['quiesce']()
+    for path,ours in reversed(installed):
+        current=ports['read'](path);require(current is not None and digest(current[0])==ours,'Rollback refuses foreign file changes')
+        previous=originals[path]
+        if previous: ports['write'](path,*previous)
+        else: ports['remove'](path)
+    ports['restore_services']();ports['record']('rolled-back',None)
 
 
 def apply_changes(changes, ports):
@@ -138,38 +170,51 @@ def apply_changes(changes, ports):
             ports['write'](path,value,mode);installed.append((path,digest(value)));ports['record']('installed',path)
         ports['activate']();ports['verify']()
     except BaseException:
-        ports['fence']();ports['quiesce']()
-        for path,ours in reversed(installed):
-            current=ports['read'](path);require(current is not None and digest(current[0])==ours,'Rollback refuses foreign file changes')
-            previous=originals[path]
-            if previous: ports['write'](path,*previous)
-            else: ports['remove'](path)
-        ports['restore_services']();ports['record']('rolled-back',None)
+        restore_installed(originals,installed,ports)
         raise
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--plan',required=True);parser.add_argument('--expected-plan-sha256',required=True);parser.add_argument('--lease',required=True);parser.add_argument('--apply',action='store_true');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--plan',required=True);parser.add_argument('--expected-plan-sha256',required=True);parser.add_argument('--lease',required=True);parser.add_argument('--apply',action='store_true');parser.add_argument('--rollback-backup');args=parser.parse_args()
     require(os.geteuid()==0,'Administrator required');trusted_directory(Path(__file__).resolve().parent);regular(Path(__file__).resolve())
     trusted_directory(Path(args.plan).parent);trusted_directory(Path(args.lease).parent)
     raw=regular(args.plan,8388608,private=True);require(digest(raw)==args.expected_plan_sha256,'Private reviewed plan hash differs');plan=validate_plan(json.loads(raw));credential=json.loads(regular(args.lease,4096,private=True))
-    agent=base64.b64decode(AGENT_BASE64,validate=True);require(digest(agent)==AGENT_SHA256,'Embedded protected bundle differs')
+    agent=base64.b64decode(AGENT_BASE64,validate=True);require(0<len(agent)<=24000000 and digest(agent)==AGENT_SHA256,'Embedded protected bundle differs')
+    trusted_directory(NODE_SOURCE.parent)
     node=regular(NODE_SOURCE,134217728);require(digest(node)==NODE_SHA256 and command(str(NODE_SOURCE),'--version')=='v22.23.3','Protected runtime source differs')
-    require(digest(regular(RUNTIME/'agent.cjs'))==plan['workerBefore'],'Protected bundle baseline differs');trusted_directory(RUNTIME)
-    require(command('/usr/bin/systemctl','is-active','nginx')=='active','Nginx must already be active');command('/usr/sbin/nginx','-t')
-    require(command('/usr/bin/systemctl','show','aihr-identity-email','--property=DropInPaths','--value')=='','Unknown pre-existing mail service overrides')
-    before_pid=command('/usr/bin/systemctl','show','aihr-identity-email','--property=MainPID','--value');require(re.fullmatch('[1-9][0-9]*',before_pid) and Path('/proc/'+before_pid+'/exe').resolve()==RUNTIME/'node','Unexpected protected runtime before maintenance')
-    before=capabilities();env_hash=digest(regular('/etc/aihr-keycloak/email-agent.env',1048576,private=True))
-    require(not DROPIN.exists() and not (RUNTIME/'node22-security').exists(),'Unknown previous security runtime/drop-in')
     with lease_guard(credential,plan) as fence:
+        if args.rollback_backup:
+            require(not args.apply,'Choose apply or rollback, not both');backup=Path(args.rollback_backup)
+            require(backup.parent==Path('/var/backups/aihr-security-maintenance') and re.fullmatch('[a-f0-9-]{36}',backup.name),'Known private backup location required');trusted_directory(backup)
+            receipt=json.loads(regular(backup/'receipt.json',1048576,private=True))
+            require(receipt.get('source')==SOURCE_SHA and receipt.get('planSha256')==digest(raw) and receipt.get('batch')==credential['batch'] and receipt.get('epoch')==credential['epoch'],'Backup source/plan/lease differs')
+            require(digest(regular('/etc/aihr-keycloak/email-agent.env',1048576,private=True))==receipt.get('mailEnvironmentSha256'),'Private mail configuration changed before rollback')
+            require(stat.S_IMODE(backup.stat().st_mode)==0o700 and receipt.get('kind')=='ROOT_STAGING_SECURITY_MAINTENANCE_NOT_CI_RECEIPT' and receipt.get('buildId')==plan['buildId'],'Unknown private rollback receipt')
+            changes=desired_changes(plan,agent,node);originals={}
+            for i,(path,value,mode,expected) in enumerate(changes):
+                trusted_directory(path.parent)
+                if expected is None: originals[path]=None
+                else:
+                    old=regular(backup/(str(i)+'.before'),33554432,private=True);require(digest(old)==expected,'Original backup bytes differ');originals[path]=(old,mode)
+                require(digest(regular(path,134217728))==digest(value),'Installed bytes changed before rollback')
+            def restart_previous():
+                command('/usr/sbin/nginx','-t');command('/usr/bin/systemctl','reload','nginx');command('/usr/bin/systemctl','daemon-reload');command('/usr/bin/systemctl','start','aihr-identity-email.socket','aihr-identity-email.service')
+            restore_installed(originals,[(p,digest(v)) for p,v,_,_ in changes],{'fence':fence,'quiesce':lambda:command('/usr/bin/systemctl','stop','aihr-identity-email.socket','aihr-identity-email.service'),'read':lambda p:(regular(p,134217728),stat.S_IMODE(p.stat().st_mode)) if p.exists() else None,'write':atomic,'remove':lambda p:p.unlink(),'restore_services':restart_previous,'record':lambda phase,p:atomic(backup/'rollback.json',(json.dumps({'phase':phase,'at':time.time()})+'\n').encode(),0o600)})
+            require(capabilities()==receipt['mailCapabilitiesBefore'],'Original mail capabilities not restored');public_health(plan['publicOrigin'])
+            print(json.dumps({'kind':'OWNED_SECURITY_MAINTENANCE_ROLLED_BACK','source':SOURCE_SHA,'buildId':plan['buildId'],'backup':str(backup),'retainLease':True}));return
+        require(digest(regular(RUNTIME/'agent.cjs'))==plan['workerBefore'],'Protected bundle baseline differs');trusted_directory(RUNTIME)
+        require(command('/usr/bin/systemctl','is-active','nginx')=='active','Nginx must already be active');command('/usr/sbin/nginx','-t')
+        require(command('/usr/bin/systemctl','show','aihr-identity-email','--property=DropInPaths','--value')=='','Unknown pre-existing mail service overrides')
+        before_pid=command('/usr/bin/systemctl','show','aihr-identity-email','--property=MainPID','--value');require(re.fullmatch('[1-9][0-9]*',before_pid) and Path('/proc/'+before_pid+'/exe').resolve()==RUNTIME/'node','Unexpected protected runtime before maintenance')
+        before=capabilities();env_hash=digest(regular('/etc/aihr-keycloak/email-agent.env',1048576,private=True))
+        require(not DROPIN.exists() and not (RUNTIME/'node22-security').exists(),'Unknown previous security runtime/drop-in')
         if not args.apply:
             print(json.dumps({'kind':'ROOT_MAINTENANCE_PREFLIGHT_ONLY','source':SOURCE_SHA,'planSha256':digest(raw),'files':4,'mailCapabilities':before,'writes':False}));return
         backup=Path('/var/backups/aihr-security-maintenance');backup.mkdir(mode=0o700,exist_ok=True);trusted_directory(backup);require(stat.S_IMODE(backup.stat().st_mode)==0o700,'Private backup custody required')
         backup=backup/str(uuid.uuid4());backup.mkdir(mode=0o700);records=[]
         # The drop-in directory is root-owned; its harmless creation grants no service capability.
         DROPIN.parent.mkdir(mode=0o755,exist_ok=True);trusted_directory(DROPIN.parent)
-        changes=[(Path(f['path']),base64.b64decode(f['base64']),0o644,f['before']) for f in plan['files']]
-        changes += [(RUNTIME/'agent.cjs',agent,0o644,plan['workerBefore']),(RUNTIME/'node22-security',node,0o755,None),(DROPIN,b'[Service]\nExecStart=\nExecStart=/usr/local/lib/aihr-identity-email/node22-security /usr/local/lib/aihr-identity-email/agent.cjs\n',0o644,None)]
+        changes=desired_changes(plan,agent,node)
         def read(path):
             trusted_directory(path.parent)
             if not path.exists(): require(not path.is_symlink(),'Dangling target symlink');return None
@@ -177,18 +222,20 @@ def main():
         for i,(path,_,_,_) in enumerate(changes):
             previous=read(path)
             if previous: atomic(backup/(str(i)+'.before'),previous[0],0o600)
+        required_space=sum(len(value) for _,value,_,_ in changes)+67108864
+        require(all(shutil.disk_usage(parent).free>=required_space for parent in {p.parent for p,_,_,_ in changes}|{backup}),'Insufficient maintenance free space')
         def record(phase,path):
             records.append({'phase':phase,'path':str(path) if path else None,'at':time.time()});atomic(backup/'journal.json',(json.dumps(records)+'\n').encode(),0o600)
         def quiesce(): command('/usr/bin/systemctl','stop','aihr-identity-email.socket','aihr-identity-email.service')
         def activate():
             fence();command('/usr/sbin/nginx','-t');command('/usr/bin/systemctl','reload','nginx');command('/usr/bin/systemctl','daemon-reload');command('/usr/bin/systemctl','start','aihr-identity-email.socket','aihr-identity-email.service')
         def verify():
-            fence();after_pid=command('/usr/bin/systemctl','show','aihr-identity-email','--property=MainPID','--value');require(re.fullmatch('[1-9][0-9]*',after_pid) and Path('/proc/'+after_pid+'/exe').resolve()==RUNTIME/'node22-security','New protected runtime not active');capabilities_preserved(before,capabilities());require(digest(regular('/etc/aihr-keycloak/email-agent.env',1048576,private=True))==env_hash,'Private mail environment changed');require(digest(regular(RUNTIME/'agent.cjs'))==AGENT_SHA256,'Installed bundle differs')
+            fence();after_pid=command('/usr/bin/systemctl','show','aihr-identity-email','--property=MainPID','--value');require(re.fullmatch('[1-9][0-9]*',after_pid) and Path('/proc/'+after_pid+'/exe').resolve()==RUNTIME/'node22-security','New protected runtime not active');capabilities_preserved(before,capabilities());require(digest(regular('/etc/aihr-keycloak/email-agent.env',1048576,private=True))==env_hash,'Private mail environment changed');require(digest(regular(RUNTIME/'agent.cjs'))==AGENT_SHA256,'Installed bundle differs');public_health(plan['publicOrigin'])
         def restore_services():
             command('/usr/sbin/nginx','-t');command('/usr/bin/systemctl','reload','nginx');command('/usr/bin/systemctl','daemon-reload');command('/usr/bin/systemctl','start','aihr-identity-email.socket','aihr-identity-email.service')
         fence()
         apply_changes(changes,{'prepare':quiesce,'read':read,'write':atomic,'remove':lambda p:p.unlink(),'fence':fence,'activate':activate,'verify':verify,'quiesce':quiesce,'restore_services':restore_services,'record':record})
-        receipt={'kind':'ROOT_STAGING_SECURITY_MAINTENANCE_NOT_CI_RECEIPT','source':SOURCE_SHA,'buildId':plan['buildId'],'planSha256':digest(raw),'agentSha256':AGENT_SHA256,'nodeSha256':NODE_SHA256,'batch':credential['batch'],'epoch':credential['epoch'],'mailCapabilities':capabilities(),'mailEnvironmentUnchanged':True,'backup':str(backup),'sourceTrustActivated':False,'production':False}
+        receipt={'kind':'ROOT_STAGING_SECURITY_MAINTENANCE_NOT_CI_RECEIPT','source':SOURCE_SHA,'buildId':plan['buildId'],'planSha256':digest(raw),'agentSha256':AGENT_SHA256,'nodeSha256':NODE_SHA256,'batch':credential['batch'],'epoch':credential['epoch'],'mailCapabilities':capabilities(),'mailCapabilitiesBefore':before,'publicHealthVerified':True,'mailEnvironmentUnchanged':True,'mailEnvironmentSha256':env_hash,'backup':str(backup),'sourceTrustActivated':False,'production':False}
         atomic(backup/'receipt.json',(json.dumps(receipt,indent=2)+'\n').encode(),0o600);print(json.dumps(receipt))
 
 if __name__=='__main__':

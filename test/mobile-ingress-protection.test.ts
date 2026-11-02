@@ -8,7 +8,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {CLOUDFLARE_CIDRS,hardenProxyConfig,renderIngressHttp} from '../deploy/security/ingress-policy.mjs';
-const run=promisify(execFile),image='nginx@sha256:3b03dfd827515a07ccf4946000f0bbdd2a4fb6aca7499249fcb6b1f9726823d6';
+const run=promisify(execFile),image='nginx@sha256:2e26275ed7a47e8e93f264d39a09ca4bc3f4058c904c75087e237f4ea883f2a1';
 const container='aihr-ingress-'+process.pid;let directory='',port=0,backendPort=0,started=false;
 let held:Array<()=>void>=[],backendRequests=0;
 const backend=createServer((req,res)=>{backendRequests++;req.resume();const finish=()=>{res.setHeader('content-type','application/json');res.end(JSON.stringify({source:req.headers['x-aihr-request-source'],host:req.headers.host,proto:req.headers['x-forwarded-proto']}));};if(req.url==='/api/mobile/hold')held.push(finish);else finish();});
@@ -30,6 +30,8 @@ afterAll(async()=>{for(const finish of held)finish();held=[];if(started)await ru
 it('restores only the verified edge address and overwrites a forged application source',async()=>{
  const r=await send('/api/mobile/profile','203.0.113.9',{'x-aihr-request-source':'198.51.100.77','x-forwarded-for':'198.51.100.88'});expect(r.status).toBe(200);expect(JSON.parse(r.body)).toEqual({source:'203.0.113.9',host:'staging.example.invalid',proto:'https'});
 });
+it('refuses an existing source-header declaration regardless of HTTP header casing',()=>{expect(()=>hardenProxyConfig('proxy_set_header x-aihr-request-source $http_x_forged;')).toThrow('Unexpected existing source-header policy');});
+it('restores an IPv6 client without confusing its address with the original edge peer',async()=>{const r=await send('/api/mobile/profile','2001:db8::9',{'x-aihr-request-source':'2001:db8::77'});expect(r.status).toBe(200);expect(JSON.parse(r.body).source).toBe('2001:db8::9');});
 it('denies an untrusted socket peer even when it forges all forwarding headers',async()=>{
  const before=backendRequests,r=await send('/api/mobile/profile','203.0.113.9',{'x-aihr-request-source':'203.0.113.10'},'127.0.0.2');expect(r.status).toBe(403);expect(backendRequests).toBe(before);
 });
@@ -46,7 +48,7 @@ it('bounds simultaneous mobile connections without consuming the quiet source ca
  const pending=Array.from({length:22},()=>send('/api/mobile/hold','203.0.113.50'));await new Promise(done=>setTimeout(done,600));expect(held.length).toBeLessThanOrEqual(20);expect(held.length).toBeGreaterThan(0);expect((await send('/api/mobile/profile','203.0.113.51')).status).toBe(200);for(const finish of held)finish();held=[];const results=await Promise.all(pending);expect(results.some(r=>r.status===429)).toBe(true);expect(results.some(r=>r.status===200)).toBe(true);
 });
 it('closes a slow incomplete authentication body under the configured deadline',async()=>{
- // Nginx1.28 terminates timed-out requests without a response body (ngx_http_finalize_request).
+ // Nginx terminates timed-out requests without a response body (ngx_http_finalize_request).
  // Assert real elapsed enforcement and zero upstream work; immediate EOF cannot pass.
  const before=backendRequests,startedAt=performance.now();
  const response=await new Promise<string>((resolve,reject)=>{const socket=createConnection({host:'127.0.0.1',port,localAddress:'127.0.0.1'});let data='';socket.setTimeout(14000,()=>socket.destroy(Error('Body deadline not enforced')));socket.on('connect',()=>socket.write('POST /login/api/password HTTP/1.1\r\nHost: staging.example.invalid\r\nCF-Connecting-IP: 203.0.113.70\r\nContent-Length: 100\r\n\r\nx'));socket.on('data',b=>data+=b);socket.on('end',()=>resolve(data));socket.on('error',reject);});expect(response).toBe('');expect(performance.now()-startedAt).toBeGreaterThanOrEqual(9000);expect(performance.now()-startedAt).toBeLessThan(14000);expect(backendRequests).toBe(before);

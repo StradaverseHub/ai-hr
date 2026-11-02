@@ -15,7 +15,7 @@ export async function buildEmailSecurity(destination:string){
  if(version!=='10.1.4')throw Error('Reviewed Nodemailer10.1.4 required');
  const result=await build({entryPoints:['deploy/identity-email/agent.ts'],bundle:true,platform:'node',target:'node22',format:'cjs',write:false,metafile:true,logLevel:'silent',define:{IDENTITY_EMAIL_RETAIN_LETTERS_HOLD:'true'}});
  if(result.outputFiles.length!==1||!result.metafile)throw Error('Single bundled agent and input inventory required');
- const bytes=result.outputFiles[0].contents,inputs=Object.keys(result.metafile.inputs).sort();
+ const bytes=result.outputFiles[0].contents;if(bytes.length>24000000)throw Error('Protected artifact exceeds reviewed byte bound');const inputs=Object.keys(result.metafile.inputs).sort();
  if(!inputs.some(p=>p.includes('nodemailer'))||inputs.some(p=>/nodemailer@10\.1\.0(?:\/|$)/.test(p)))throw Error('SMTP dependency inventory differs');
  const inputHashes=await Promise.all(inputs.map(async path=>({path,sha256:hash(await readFile(path))})));
  const nodeSha256=hash(await readFile(process.execPath));

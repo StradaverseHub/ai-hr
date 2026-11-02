@@ -23,7 +23,7 @@ export function renderIngressHttp({edgeNetworks=CLOUDFLARE_CIDRS,localPeer='127.
 }
 export function hardenProxyConfig(text,{publicEdge=true}={}){
  assert(typeof text==='string'&&text.length<1048576&&!text.includes('aihr_origin_peer_allowed')&&!/\b(?:set_real_ip_from|real_ip_header|limit_req|limit_conn)\b/.test(text),'Unknown or already modified ingress profile');
- assert(!text.includes('X-Aihr-Request-Source'),'Unexpected existing source-header policy');
+ assert(!/proxy_set_header\s+x-aihr-request-source\b/i.test(text),'Unexpected existing source-header policy');
  if(publicEdge){
   const allows=[...text.matchAll(/^\s*allow ([^;]+);\s*$/gm)].map(m=>m[1]).sort();
   assert.deepEqual(allows,['127.0.0.1',...CLOUDFLARE_CIDRS].sort(),'Origin ACL differs from reviewed edge inventory');

@@ -3,7 +3,7 @@ import {createServer} from 'node:net';
 import {request} from 'node:http';
 import {spawn,execFileSync} from 'node:child_process';
 import {mkdtemp,mkdir,cp,rm,readFile} from 'node:fs/promises';
-import {join} from 'node:path';
+import {join,dirname} from 'node:path';
 import {realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {expect,it} from 'vitest';
@@ -29,7 +29,7 @@ it('builds the real patched bundle and boots it under the supported private runt
   expect(child.exitCode).toBeNull();
   if(process.env.GITHUB_ACTIONS==='true'&&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&process.env.AIHR_CI_HEAD===manifest.source){
    const selected=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]') as string[];
-   if(selected.includes('test/mobile-protected-email-security.test.ts')){const output=join(realpathSync(process.env.RUNNER_TEMP!),'aihr-focused','protected-email-security');await mkdir(output,{recursive:true,mode:0o700});await cp(join(directory,'artifact'),output,{recursive:true,errorOnExist:true,force:false});}
+   if(selected.includes('test/mobile-protected-email-security.test.ts')){const output=join(realpathSync(process.env.RUNNER_TEMP!),'aihr-focused','protected-email-security');await mkdir(dirname(output),{recursive:true,mode:0o700});await cp(join(directory,'artifact'),output,{recursive:true,errorOnExist:true,force:false});}
   }
   expect(JSON.parse(await readFile(join(directory,'artifact','manifest.json'),'utf8')).agent.sha256).toBe(manifest.agent.sha256);
  }finally{
