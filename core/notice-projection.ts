@@ -6,8 +6,9 @@ import {domainEvent,employment,notice,noticeRecipient} from '../db/schema';
 export type NoticeRecipientReader=(noticeId:string)=>Promise<string[]>;
 export type NoticeEvent=Pick<typeof domainEvent.$inferSelect,'id'|'aggregateId'|'eventType'|'subjectEmploymentId'|'payload'>;
 export type NoticeEventReader=(eventId:string)=>Promise<NoticeEvent|undefined>;
+type ProbationRecipientReader=(eventId:string)=>Promise<string[]>;
 const proof=Symbol('notice-sweep-snapshot');
-export type NoticeSweepAccess={readonly [proof]:true;readonly tenantId:string;readonly recipients:NoticeRecipientReader;readonly eventById:NoticeEventReader};
+export type NoticeSweepAccess={readonly [proof]:true;readonly tenantId:string;readonly recipients:NoticeRecipientReader;readonly eventById:NoticeEventReader;readonly probationRecipientsByEvent:ProbationRecipientReader};
 const minted=new WeakSet<NoticeSweepAccess>();
 export type NotificationSweepConnection=Pick<ReturnType<typeof createDb>,'withTenant'>;
 const uuid=(value:string)=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
@@ -63,11 +64,22 @@ export async function createNoticeSweepAccess(ctx:SessionContext,connection:Noti
    const [event]=await tx.select({id:domainEvent.id,aggregateId:domainEvent.aggregateId,eventType:domainEvent.eventType,subjectEmploymentId:domainEvent.subjectEmploymentId,payload:domainEvent.payload})
     .from(domainEvent).where(and(eq(domainEvent.id,eventId),eq(domainEvent.tenantId,bound.tenantId),eq(domainEvent.aggregateType,'notice'),like(domainEvent.eventType,'notice.%'))).limit(1);
    return event;
-  },{readOnlySnapshot:true})});
+  },{readOnlySnapshot:true}),
+  probationRecipientsByEvent:(eventId:string)=>connection.withTenant(bound,async tx=>{
+   await assertNotificationSweepConnection(tx);
+   if(!uuid(eventId))throw Error('Probation notification source is unavailable.');
+   const rows=await tx.execute<{id:string}>(sql`
+    select resolved.id from domain_event source
+    cross join lateral app.probation_notification_recipients(source.aggregate_id,source.id) as resolved(id)
+    where source.id=${eventId}::uuid and source.tenant_id=${bound.tenantId}::uuid
+     and source.aggregate_type='probation-occurrence' and source.event_type='probation.notification-due'`);
+   return rows.map(row=>row.id);
+  },{readOnlySnapshot:true}),
+ });
  minted.add(access);return access;
 }
 
-function assertAccess(ctx:SessionContext,access:NoticeSweepAccess){
+function assertAccess(ctx:Pick<SessionContext,'tenantId'|'userId'>,access:NoticeSweepAccess){
  if(ctx.userId||!minted.has(access)||access[proof]!==true||access.tenantId!==ctx.tenantId)throw Error('Notice sweep access does not match this maintenance context.');
 }
 export function noticeSweepReader(ctx:SessionContext,access?:NoticeSweepAccess):NoticeRecipientReader|undefined{
@@ -75,4 +87,12 @@ export function noticeSweepReader(ctx:SessionContext,access?:NoticeSweepAccess):
 }
 export function noticeSweepEventReader(ctx:SessionContext,access?:NoticeSweepAccess):NoticeEventReader|undefined{
  if(!access)return undefined;assertAccess(ctx,access);return access.eventById;
+}
+
+export async function probationSweepRecipientsForTx(tx:Tx,access:NoticeSweepAccess,eventId:string):Promise<string[]>{
+ const [scope]=await tx.execute<{tenantId:string|null;userId:string|null}>(sql`
+  select app.current_tenant_id()::text as "tenantId",app.current_user_id()::text as "userId"`);
+ if(!scope?.tenantId)throw Error('Probation notification recheck requires a tenant-bound maintenance transaction.');
+ assertAccess({tenantId:scope.tenantId,userId:scope.userId??undefined},access);
+ return access.probationRecipientsByEvent(eventId);
 }

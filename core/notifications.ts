@@ -24,7 +24,7 @@ import { rewardAccessSuspensionEventRecipients,rewardNotificationRecipients,rewa
  */
 import { randomUUID } from 'node:crypto';
 import { notificationEmailCategory, type NotificationEmailCategory } from '../lib/notification-email-model';
-import {assertNotificationSweepConnection,noticeNotificationRecipientsTx,noticeSnapshotIdsTx,type NoticeRecipientReader,type NoticeEventReader,type NotificationSweepConnection} from './notice-projection';
+import {assertNotificationSweepConnection,noticeNotificationRecipientsTx,noticeSnapshotIdsTx,type NoticeRecipientReader,type NoticeEventReader,probationSweepRecipientsForTx,type NoticeSweepAccess,type NotificationSweepConnection} from './notice-projection';
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
@@ -1163,8 +1163,11 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
 /** Reauthorize queued mail with the same live recipient graph that created the in-app projection. */
 async function legacyProbationNotificationIsObsolete(tx:Tx,eventType:string,reviewId:string):Promise<boolean>{if(!eventType.startsWith('employment-review.'))return false;const[row]=await tx.execute<{owned:boolean}>(sql`select app.probation_legacy_review_owned(${reviewId}::uuid) as owned`);return row?.owned===true;}
 
-export async function notificationStillTargets(tx: Tx, eventId: string, kind: string, category: string, recipient: string,noticeReader?:NoticeRecipientReader,noticeEventReader?:NoticeEventReader): Promise<boolean> {
+export async function notificationStillTargets(tx: Tx, eventId: string, kind: string, category: string, recipient: string,noticeReader?:NoticeRecipientReader,noticeEventReader?:NoticeEventReader,probationSweep?:NoticeSweepAccess): Promise<boolean> {
   if (!notificationEmailCategory.safeParse(category).success) return false;
+  if(kind==='probation.notification'&&category==='review'&&probationSweep){
+    return (await probationSweepRecipientsForTx(tx,probationSweep,eventId)).includes(recipient);
+  }
   const [visible] = await tx.select({id:domainEvent.id,aggregateId:domainEvent.aggregateId,eventType:domainEvent.eventType,subjectEmploymentId:domainEvent.subjectEmploymentId,payload:domainEvent.payload})
     .from(domainEvent).where(and(eq(domainEvent.id,eventId),sql`${domainEvent.tenantId}=app.current_tenant_id()`)).limit(1);
   let ev:Awaited<ReturnType<NoticeEventReader>>=visible;
