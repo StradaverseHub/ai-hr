@@ -1706,5 +1706,5 @@ export function listEmployeeImportRuns(
       errors: Array.isArray(r.errors) ? (r.errors as ImportRunError[]) : [],
       createdAt: r.createdAt.toISOString(),
     }));
-  });
+  },{readOnlySnapshot:true});
 }
