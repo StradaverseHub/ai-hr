@@ -1,6 +1,8 @@
 name: Audit reconciliation controls
 run-name: Audit controls only · ${{ inputs.expected_sha }}
 on:
+  push:
+    branches: [codex/audit-upstream-maintainability-20261103]
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -21,6 +23,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {path: source, fetch-depth: 0, persist-credentials: false}
       - name: Refuse a moved candidate
+        if: github.event_name == 'workflow_dispatch'
         env: {EXPECTED: '${{ inputs.expected_sha }}'}
         run: test "$GITHUB_SHA" = "$EXPECTED"
       - uses: ./source/.github/actions/setup-alpha
