@@ -17,11 +17,8 @@
  * Inputs come from the person's own selection (a request, optional dates), never from a model. Nothing here
  * writes leave. Not imported by the production Assistant. */
 import {createHash} from 'node:crypto';
-import {eq} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
-import {employeeCancelOffers,listLeaveRequests} from '../read';
-import {cancelApprovedSettingOf,cancelApprovedTypeColumns} from '../leave';
-import {leaveType as leaveTypeTable} from '../../db/schema';
+import {employeeCancelOffers,listLeaveRequests,readCancelApprovedSettingTx} from '../read';
 import {readOwnLeaveActorTx} from '../assistant-actions/own-leave-actor';
 import {assertAiActionUnpausedTx} from '../ai-governance';
 import {leaveCancellationReviews} from '../assistant-actions/leave-change-review-store';
@@ -76,8 +73,7 @@ export async function prepareLeaveCancelProposal(supplied:SessionContext,input:R
  // The Assistant's own actor and AI-control checks, so a card is never issued where the Assistant is withdrawn;
  // and the leave type's own rule: only a give-back that waits for its normal approval gets a card.
  try{const allowed=await withTenant(ctx,async tx=>{const fresh=await readOwnLeaveActorTx(tx,ctx);if(!fresh)return false;await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');
-   const [type]=await tx.select(cancelApprovedTypeColumns).from(leaveTypeTable).where(eq(leaveTypeTable.id,row!.leaveTypeId)).limit(1);
-   const setting=cancelApprovedSettingOf(type);return setting.allowed&&!setting.autoApprove;});
+   const setting=await readCancelApprovedSettingTx(tx,row!.leaveTypeId);return setting.allowed&&!setting.autoApprove;});
   if(!allowed)return unavailable;}catch{return unavailable;}
  const today=todayInKualaLumpur(now);
  let offered:readonly string[]|null|undefined;
