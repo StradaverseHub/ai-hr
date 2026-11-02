@@ -1492,12 +1492,14 @@ $$;
 REVOKE ALL ON FUNCTION app.financial_backpay_scope_allowed(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.financial_backpay_scope_allowed(uuid) TO ai_hr_app;
 CREATE FUNCTION app.financial_backpay_row_read(p_row jsonb) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND p_row->>'tenant_id'=app.current_tenant_id()::text
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ RETURN app.principal_snapshot_current() AND p_row->>'tenant_id'=app.current_tenant_id()::text
  AND app.access_backpay_action((p_row->>'company_id')::uuid,'view')
  AND (EXISTS(SELECT 1 FROM public.back_pay_run run WHERE run.id=(p_row->>'id')::uuid AND run.tenant_id=app.current_tenant_id() AND run.company_id=(p_row->>'company_id')::uuid)
   OR EXISTS(SELECT 1 FROM app.financial_backpay_birth proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.run_id=(p_row->>'id')::uuid AND proof.company_id=(p_row->>'company_id')::uuid AND proof.row_hash=encode(sha256(convert_to(p_row::text,'UTF8')),'hex')))
  AND app.financial_backpay_subjects_allowed((p_row->>'id')::uuid);
+END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_backpay_row_read(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.financial_backpay_row_read(jsonb) TO ai_hr_app;
