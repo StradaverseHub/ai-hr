@@ -54,8 +54,12 @@ Runs 41457586769 (guard refusal), 41459170159 (cancelled) and 41459296654 stay o
 - **41465522939** on 93268aea6: 19 files; 18 pass. `payroll-pack-drift` still failed on `core/product-context/setup-readiness.ts`,
   a second direct importer the first fix missed. Fixed in f2ccf38ac. The rewards test passed here, but it was still the old
   regex, so this run says nothing about the 26f0e7812 fix.
-- Reruns of both sets on the exact candidate head follow (64 files with typecheck and the 8192 build; then the 19 files, which
-  now include the rewards fix).
+- **41468605659** on b203e9474 (docs-only over code f2ccf38ac): 64 files, typecheck PASS, build PASS at the admitted 8192 heap
+  (`hosted-linux-16g-8192`); 63 of 64 files pass; the one failure is `provider-data-review-gate`, red by design until the binding.
+- **41468651139** on b203e9474: 19 files, SUCCESS 19 of 19, including `payroll-pack-drift`, `leave-pack-drift`,
+  `ai-management-contract`, `company-referrers` and `rewards-cancel-custody` with its value-bounded amount check.
+- After the binding: both `--check` commands, then focused CI including `provider-data-review-gate`, then the release
+  operator's full qualification.
 
 ## Exact binding (proposed; written only after a fresh owner approval)
 In this order, on the candidate head:
