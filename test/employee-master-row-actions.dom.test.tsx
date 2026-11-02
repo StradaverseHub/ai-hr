@@ -15,8 +15,8 @@ vi.mock('next/link', () => ({ default: ({ children, ...props }: React.ComponentP
 vi.mock('../app/reports/employee-master/actions', () => ({ duplicateEmployeeMaster: duplicate, deleteEmployeeMaster: remove }));
 import { MasterReportActions } from '../app/reports/employee-master/MasterReportActions';
 const reportId = '00000000-0000-4000-8000-000000000001', copiedId = '00000000-0000-4000-8000-000000000002';
-function actions(locale: keyof typeof catalogues, canEdit: boolean) {
- return render(<NextIntlClientProvider locale={locale} timeZone="Asia/Kuala_Lumpur" messages={catalogues[locale]} onError={error => { throw error; }}><MasterReportActions id={reportId} canEdit={canEdit}/></NextIntlClientProvider>);
+function actions(locale: keyof typeof catalogues, canEdit: boolean, canDelete=canEdit, canDuplicate=true) {
+ return render(<NextIntlClientProvider locale={locale} timeZone="Asia/Kuala_Lumpur" messages={catalogues[locale]} onError={error => { throw error; }}><MasterReportActions id={reportId} canEdit={canEdit} canDelete={canDelete} canDuplicate={canDuplicate}/></NextIntlClientProvider>);
 }
 beforeEach(() => { vi.clearAllMocks(); duplicate.mockResolvedValue({ ok: true, id: copiedId }); remove.mockResolvedValue({ ok: true }); });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -53,4 +53,13 @@ it('exports the existing saved id through the canonical XLSX endpoint without ch
  await act(async () => { fireEvent.click(screen.getByRole('button', { name: en.employeeMasterReports.export+' Excel' })); });
  expect(fetch).toHaveBeenCalledWith('/reports/employee-master/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: reportId, format: 'xlsx' }) });
  expect(createObjectURL).toHaveBeenCalledTimes(1); expect(click).toHaveBeenCalledTimes(1); expect(revokeObjectURL).toHaveBeenCalledWith('blob:fictional-master'); expect(router.refresh).toHaveBeenCalledTimes(1); expect(duplicate).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
+});
+
+it.each([[false,true,false],[true,false,false],[false,false,true]]as const)('keeps Edit/Delete/Duplicate independent (%s/%s/%s)',(edit,deletion,copy)=>{
+ actions('en',edit,deletion,copy);
+ expect(!!screen.queryByRole('link',{name:en.employeeMasterReports.editSavedReport})).toBe(edit);
+ expect(!!screen.queryByRole('button',{name:en.employeeMasterReports.delete})).toBe(deletion);
+ expect(!!screen.queryByRole('button',{name:en.employeeMasterReports.duplicate})).toBe(copy);
+ expect(screen.getByRole('link',{name:en.employeeMasterReports.runSavedReport})).toBeVisible();
+ expect(screen.getByRole('button',{name:en.employeeMasterReports.export+' Excel'})).toBeEnabled();
 });
