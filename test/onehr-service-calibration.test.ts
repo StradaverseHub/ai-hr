@@ -12,10 +12,12 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
+import {assignRole} from '../core/admin';
 import { setCompensation } from '../core/comp';
 import * as perf from '../packs/performance/service';
-import { defaultPolicy, type KPI } from '../packs/performance/onehr/model';
+import { defaultPolicy, policySchema, type KPI } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
+import {technicalProfilePlan} from '../packs/performance/onehr/career-model';
 import sourceGolden from './fixtures/onehr/source-golden.json';
 import { createRewardUnit, getRewardUnit, importOnehrRewardResults } from '../packs/rewards/service';
 import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -64,6 +66,24 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const [r]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=r.id;
   });
   afterAll(closeAll);
+
+  it('derives only the actual native profile plan and assigns it through exact administrative source custody',async()=>{
+    const [config]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,cycleId));const policy=policySchema.parse(config.policy),profile=policy.profiles[0];expect(profile).toBeDefined();
+    const current={...profile.competencies[0],id:'PLAN-CURRENT',skillTitle:'\ufeffAnalysis\u3000',skillLevel:1,future:false},next={...current,id:'PLAN-NEXT',skillTitle:'Analysis',skillLevel:2,text:'Next actual level',future:false},higher={...next,id:'PLAN-HIGHER',skillLevel:3};
+    for(const shape of [{competencies:[current],skills:[]},{competencies:[current],skills:[next]},{competencies:[current,next],skills:[next,higher]},{competencies:[{...current,future:true}],skills:[next,higher]},{competencies:[current],skills:[{...next,id:'PLAN-FIRST'},next]}]){
+      const canonical=policySchema.parse({...policy,profiles:[{...profile,competencies:shape.competencies}],skills:shape.skills,careerRoutes:[]});const [actual]=await owner.db.execute<{value:unknown}>(sql`select app.financial_onehr_technical_plan(${JSON.stringify({...profile,competencies:shape.competencies})}::jsonb,${JSON.stringify(shape.skills)}::jsonb) as value`);expect(actual.value).toEqual(technicalProfilePlan(canonical.profiles[0],canonical.skills??[]));
+    }
+    const [before]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[0].employmentId)));expect(before).toBeDefined();
+    await perf.assignAssessmentProfile(a,before.reviewId,before.revision,profile.id);
+    const [after]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,before.reviewId));const expected=technicalProfilePlan(profile,policy.skills??[]).map(item=>({...item,self:null,manager:null,selfRemark:'',managerRemark:''}));expect(after).toEqual({...before,competencies:expected,profileId:profile.id,profileMatch:'assigned',revision:before.revision+1});
+    const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,before.reviewId),eq(schema.domainEvent.eventType,'onehr.competency-profile-assigned')));expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorType:'user',actorId:a.userId,payload:{previousProfileId:before.profileId,profileId:profile.id,statements:expected.map(item=>item.id)}});
+    await expect(perf.assignAssessmentProfile(peers[0].ctx,before.reviewId,after.revision,profile.id)).rejects.toThrow();await expect(perf.assignAssessmentProfile(a,before.reviewId,after.revision,randomUUID())).rejects.toThrow(/available profile/);
+    await assignRole(a,{appUserId:peers[0].ctx.userId!,role:'hr_admin'});const mixed={...peers[0].ctx,roles:['employee','hr_admin'],grants:[{role:'employee',companyId:null},{role:'hr_admin',companyId:null}]};
+    const [ownSource]=await withTenant(mixed,tx=>tx.execute<{edit:boolean;read:boolean}>(sql`select app.onehr_review_administration_edit(${before.reviewId}::uuid) as edit,app.onehr_review_administration(${before.reviewId}::uuid) as read`));expect(ownSource).toEqual({edit:true,read:false});await expect(perf.assignAssessmentProfile(mixed,before.reviewId,after.revision,profile.id)).rejects.toThrow(/another administrator/);
+
+    await expect(withTenant(a,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_profile_assign(${before.reviewId}::uuid,${after.revision}::integer,${profile.id}::uuid)`);})).rejects.toThrow(/OneHR administration actor unavailable/);
+    expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,before.reviewId))).toEqual([after]);const [privilege]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_technical_plan(jsonb,jsonb)','EXECUTE') as allowed`);expect(privilege.allowed).toBe(false);
+  });
 
   it('imports a live architecture and generates only unstarted, unpinned competency snapshots',async()=>{
     const sheets={Job_Profile:'',Job_Skills:toCsv([architectureHeaders.Job_Skills,['Technical','Analyst','12','','','','','ANA-3','Analysis','Technical','Analysis','3','Analyse a delivery','Understand context','Prepare analysis']])};

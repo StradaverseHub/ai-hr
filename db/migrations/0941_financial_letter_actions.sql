@@ -3884,3 +3884,78 @@ LANGUAGE sql IMMUTABLE STRICT SECURITY DEFINER SET search_path=pg_catalog,public
  SELECT CASE WHEN app.financial_onehr_js_trim(text_value)='' THEN 0 ELSE cardinality(regexp_split_to_array(app.financial_onehr_js_trim(text_value),'['||app.financial_onehr_js_space()||']+')) END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_js_words(text) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- The current technical profile plan is derived from actual stored catalogue
+-- definitions. No caller-supplied competency, answer, grade or source policy is accepted.
+CREATE FUNCTION app.financial_onehr_statement(p_statement jsonb) RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE normalized jsonb;
+BEGIN
+ IF jsonb_typeof(p_statement) IS DISTINCT FROM 'object' OR NOT (p_statement ?& ARRAY['id','principle','text','future']) OR jsonb_typeof(p_statement->'future') IS DISTINCT FROM 'boolean'
+ OR EXISTS(SELECT 1 FROM jsonb_each(p_statement) field WHERE field.key=ANY(ARRAY['id','principle','principleId','principleDescription','text','skillTitle','skillCode','skillType','knowledge','ability'])
+ AND (jsonb_typeof(field.value) IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(CASE WHEN field.key='skillTitle' THEN app.financial_onehr_js_trim(field.value#>>'{}') ELSE field.value#>>'{}' END)>(CASE WHEN field.key IN ('id','principleId','skillCode') THEN 100 WHEN field.key='principle' THEN 200 WHEN field.key IN ('principleDescription','text') THEN 2000 WHEN field.key IN ('skillTitle','skillType') THEN 300 ELSE 10000 END)
+ OR field.key IN ('id','principle','principleId','text','skillTitle') AND app.financial_onehr_utf16_length(CASE WHEN field.key='skillTitle' THEN app.financial_onehr_js_trim(field.value#>>'{}') ELSE field.value#>>'{}' END)<1))
+ THEN RAISE EXCEPTION 'Invalid native competency definition' USING ERRCODE='22023';END IF;
+ IF p_statement ? 'skillLevel' THEN
+  IF jsonb_typeof(p_statement->'skillLevel') IS DISTINCT FROM 'number' OR (p_statement->>'skillLevel')::numeric NOT BETWEEN 0 AND 100 OR trunc((p_statement->>'skillLevel')::numeric)<>(p_statement->>'skillLevel')::numeric THEN RAISE EXCEPTION 'Invalid native competency level' USING ERRCODE='22023';END IF;
+ END IF;
+ IF p_statement ? 'principleAliases' THEN
+  IF jsonb_typeof(p_statement->'principleAliases') IS DISTINCT FROM 'array' OR jsonb_array_length(p_statement->'principleAliases')>200 OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_statement->'principleAliases') alias WHERE jsonb_typeof(alias) IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(alias#>>'{}') NOT BETWEEN 1 AND 200) THEN RAISE EXCEPTION 'Invalid native competency aliases' USING ERRCODE='22023';END IF;
+ END IF;
+ SELECT jsonb_object_agg(field.key,CASE WHEN field.key='skillTitle' THEN to_jsonb(app.financial_onehr_js_trim(field.value#>>'{}')) ELSE field.value END) INTO normalized FROM jsonb_each(p_statement) field
+ WHERE field.key=ANY(ARRAY['id','principle','principleId','principleDescription','principleAliases','text','future','skillTitle','skillLevel','skillCode','skillType','knowledge','ability']);
+ RETURN normalized;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_statement(jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_technical_plan(profile jsonb,catalogue jsonb) RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE explicit jsonb:='[]';skills jsonb:='[]';result jsonb;skill jsonb;next_skill jsonb;claimed text[];
+BEGIN
+ IF jsonb_typeof(profile->'competencies') IS DISTINCT FROM 'array' OR jsonb_array_length(profile->'competencies')>200 OR jsonb_typeof(catalogue) IS DISTINCT FROM 'array' OR jsonb_array_length(catalogue)>10000 THEN RAISE EXCEPTION 'Invalid native competency catalogue' USING ERRCODE='22023';END IF;
+ FOR skill IN SELECT value FROM jsonb_array_elements(profile->'competencies') LOOP explicit:=explicit||jsonb_build_array(app.financial_onehr_statement(skill));END LOOP;
+ FOR skill IN SELECT value FROM jsonb_array_elements(catalogue) LOOP skills:=skills||jsonb_build_array(app.financial_onehr_statement(skill));END LOOP;
+ SELECT coalesce(array_agg(item->>'id'),'{}'::text[]) INTO claimed FROM jsonb_array_elements(explicit) item;
+ IF cardinality(claimed)<>(SELECT count(DISTINCT id) FROM unnest(claimed) id) THEN RAISE EXCEPTION 'A profile contains duplicate competency IDs.' USING ERRCODE='22023';END IF;
+ IF jsonb_array_length(skills)<>(SELECT count(DISTINCT item->>'id') FROM jsonb_array_elements(skills) item) THEN RAISE EXCEPTION 'Skill IDs must be unique.' USING ERRCODE='22023';END IF;
+ result:=explicit;
+ FOR skill IN SELECT value FROM jsonb_array_elements(explicit) LOOP
+  IF (skill->>'future')::boolean OR skill->>'skillTitle' IS NULL OR skill->>'skillLevel' IS NULL THEN CONTINUE;END IF;
+  SELECT item INTO next_skill FROM jsonb_array_elements(skills) WITH ORDINALITY source(item,position)
+   WHERE app.financial_onehr_js_trim(item->>'skillTitle')=app.financial_onehr_js_trim(skill->>'skillTitle') AND (item->>'skillLevel')::integer=(skill->>'skillLevel')::integer+1 ORDER BY position LIMIT 1;
+  IF next_skill IS NOT NULL AND NOT (next_skill->>'id'=ANY(claimed)) THEN result:=result||jsonb_build_array(next_skill||jsonb_build_object('future',true));claimed:=array_append(claimed,next_skill->>'id');END IF;
+ END LOOP;
+ RETURN result;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_technical_plan(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_profile_assign(wanted_review uuid,expected_revision integer,wanted_profile uuid) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;profile jsonb;plan jsonb;next_competencies jsonb;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR administration actor unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF review.review_id IS NULL OR NOT app.onehr_review_administration_edit(wanted_review) THEN RAISE EXCEPTION 'OneHR administrative data unavailable' USING ERRCODE='42501';END IF;
+ IF app.onehr_self_employment(review.employment_id) THEN RAISE EXCEPTION 'Ask another administrator to assign your competency profile.' USING ERRCODE='42501';END IF;
+ IF review.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ IF policy->'modules'->>'tm' IS DISTINCT FROM 'true' OR cycle.status NOT IN ('open','calibration') THEN RAISE EXCEPTION 'Open a cycle with competency assessment enabled.' USING ERRCODE='42501';END IF;
+ IF app.assessment_competency_started(wanted_review) THEN RAISE EXCEPTION 'This competency assessment has started. Preserve the existing answers and assignments.' USING ERRCODE='42501';END IF;
+ SELECT item INTO profile FROM jsonb_array_elements(policy->'profiles') WITH ORDINALITY source(item,position) WHERE item->>'id'=wanted_profile::text AND item->>'active' IS DISTINCT FROM 'false' AND (item->>'companyId' IS NULL OR item->>'companyId'=review.company_id::text) ORDER BY position LIMIT 1;
+ IF profile IS NULL THEN RAISE EXCEPTION 'Choose an available profile for this company.' USING ERRCODE='42501';END IF;
+ IF NOT (profile ?& ARRAY['id','name','companyId','grade','competencies']) OR jsonb_typeof(profile->'name') IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(profile->>'name') NOT BETWEEN 1 AND 300
+ OR jsonb_typeof(profile->'grade') IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(profile->>'grade')>30 OR jsonb_typeof(profile->'companyId') NOT IN ('string','null') THEN RAISE EXCEPTION 'Invalid native competency profile' USING ERRCODE='22023';END IF;
+ IF profile ? 'active' AND jsonb_typeof(profile->'active') IS DISTINCT FROM 'boolean' THEN RAISE EXCEPTION 'Invalid native competency profile' USING ERRCODE='22023';END IF;
+ plan:=app.financial_onehr_technical_plan(profile,coalesce(policy->'skills','[]'::jsonb));
+ SELECT coalesce(jsonb_agg(item||jsonb_build_object('self',NULL,'manager',NULL,'selfRemark','','managerRemark','') ORDER BY position),'[]'::jsonb) INTO next_competencies FROM jsonb_array_elements(plan) WITH ORDINALITY source(item,position);
+ UPDATE public.performance_onehr_review actual SET competencies=next_competencies,profile_id=wanted_profile,profile_match='assigned',revision=review.revision+1 WHERE actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+ VALUES(review.tenant_id,'onehr',wanted_review,'onehr.competency-profile-assigned','user',app.current_user_id(),jsonb_build_object('previousProfileId',review.profile_id,'profileId',wanted_profile,'statements',(SELECT coalesce(jsonb_agg(item->'id' ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(next_competencies) WITH ORDINALITY source(item,position))));
+ RETURN review.revision+1;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_profile_assign(uuid,integer,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_profile_assign(uuid,integer,uuid) TO ai_hr_app;

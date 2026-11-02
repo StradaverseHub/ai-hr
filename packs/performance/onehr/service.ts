@@ -1992,15 +1992,7 @@ export async function fillAssessmentCompanyKpi(ctx:SessionContext,cycleId:string
 export async function assignAssessmentProfile(ctx:SessionContext,reviewId:string,expected:number,profileId:string) {
  uuid.parse(profileId);
  return withPerformanceTenant(ctx,async tx=>{
-  const r=await loadReview(tx,reviewId,true);await requireAdmin(tx,r.row.cycleId);revision(r.row.revision,expected);
-  if(await isSelf(tx,r.row.employmentId))throw Error('Ask another administrator to assign your competency profile.');
-  if(!r.cycle.policy.modules.tm||!['open','calibration'].includes(r.cycle.native.status))throw Error('Open a cycle with competency assessment enabled.');
-  const [started]=await tx.execute<{yes:boolean}>(sql`select app.assessment_competency_started(${reviewId}::uuid) as yes`);
-  if(started?.yes)throw Error('This competency assessment has started. Preserve the existing answers and assignments.');
-  const profile=r.cycle.policy.profiles.find(p=>p.id===profileId&&p.active!==false&&(p.companyId==null||p.companyId===r.row.companyId));
-  if(!profile)throw Error('Choose an available profile for this company.');
-  const competencies=technicalProfilePlan(profile,r.cycle.policy.skills??[]).map(s=>({...s,self:null,manager:null,selfRemark:'',managerRemark:''}));
-  await touchReview(tx,reviewId,{competencies,profileId,profileMatch:'assigned'});
-  await audit(tx,ctx,reviewId,'competency-profile-assigned',{previousProfileId:r.row.profileId,profileId,statements:competencies.map(s=>s.id)});
+  uuid.parse(reviewId);z.number().int().parse(expected);
+  await tx.execute(sql`select app.onehr_profile_assign(${reviewId}::uuid,${expected}::integer,${profileId}::uuid)`);
  });
 }
