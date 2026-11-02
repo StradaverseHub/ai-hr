@@ -46,9 +46,9 @@ export type ConsumedBackfillReport = {
   candidates: ConsumedBackfillRow[];
   /** Rows written. 0 in report-only mode. */
   marked: number;
-  /** True when there was nothing to do — every eligible row already carries a marker. */
+  /** No currently eligible unmarked candidates; not a certification of all historical payroll. */
   alreadyCorrect: boolean;
-  /** Rows still disagreeing after the write. Non-empty ⇒ read the output before believing the run. */
+  /** Eligible candidates still unmarked after apply, requiring independent review. */
   remainingAfter: number;
   /** Eligible rows without an approved exact witness, or whose witness became stale. */
   unreviewed: number;
@@ -241,7 +241,7 @@ if (process.argv[1]?.endsWith('backfill-consumed-batch-417d4937.ts')) {
         );
       }
       if (r.alreadyCorrect) {
-        console.log('\nNothing to do: every eligible row already carries a consumed marker.');
+        console.log('\nNo currently eligible unmarked candidates. This does not certify all historical payroll.');
         process.exit(0);
       }
       console.log(`\n${r.candidates.length} candidate row(s); ${r.marked} marked with exact reviewed evidence:`);
@@ -254,9 +254,9 @@ if (process.argv[1]?.endsWith('backfill-consumed-batch-417d4937.ts')) {
       }
       if (r.apply) {
         for (const review of r.appliedReviews) console.log(`  REVIEW ${review.id}: ${review.evidenceRef}`);
-        console.log(`\nWrote ${r.marked} row(s). Still disagreeing afterwards: ${r.remainingAfter}.`);
+        console.log(`\nWrote ${r.marked} row(s). Unmarked candidates remaining: ${r.remainingAfter}.`);
         if (r.remainingAfter !== 0) {
-          console.error('✗ Some rows still have no marker after the write — read the list above.');
+          console.error('✗ Some candidates remain unmarked. Review their evidence; do not assume they were paid.');
           process.exit(1);
         }
       } else {
