@@ -1,0 +1,52 @@
+name: Audit reconciliation controls
+run-name: Audit controls only · ${{ inputs.expected_sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact frozen candidate and controller SHA; no deployment
+        required: true
+        type: string
+permissions: {contents: read}
+concurrency:
+  group: audit-reconciliation-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+jobs:
+  controls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {path: source, fetch-depth: 0, persist-credentials: false}
+      - name: Refuse a moved candidate
+        env: {EXPECTED: '${{ inputs.expected_sha }}'}
+        run: test "$GITHUB_SHA" = "$EXPECTED"
+      - uses: ./source/.github/actions/setup-alpha
+        with: {path: source, mobile: 'false', node: '22.23.3'}
+      - name: Merged build, heap, cache and operator controls
+        working-directory: source
+        run: >-
+          pnpm exec tsx --test
+          .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs
+          .github/ci/build-transport.test.mjs .github/ci/build-bundle-protocol.test.mjs
+          .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs
+          .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
+          .github/ci/operator-flow.test.mjs .github/ci/normal-cleanup-operator.test.mjs
+          .github/ci/build-source-binding.test.mjs .github/ci/next-build-launcher.test.mjs
+          .github/ci/staging-source-transfer.test.mjs .github/ci/staging-launcher.test.mjs
+          .github/ci/resume-source.test.mjs
+      - name: Lossless packet, extraction and activation controls
+        if: ${{ !cancelled() }}
+        working-directory: source
+        run: |
+          python3 .github/ci/build-bundle.test.py
+          python3 .github/ci/build-transport-extract.test.py
+          python3 .github/ci/build-activate.test.py
+          python3 .github/ci/build-map-bundle.test.py
+          python3 .github/ci/build-helper-cleanliness.test.py
+      - name: Require clean candidate
+        if: ${{ !cancelled() }}
+        working-directory: source
+        run: test -z "$(git status --porcelain)"
