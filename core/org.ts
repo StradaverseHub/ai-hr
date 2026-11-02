@@ -1,3 +1,4 @@
+import {profileTaskEffectSourceTx,profileTaskStorePersonTx} from './profile-task-source';
 import { hasExitDateAuthorityTx } from './exit-date-authority';
 import { hasClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {assertCostAllocationTransferTx} from './employment-cost-allocations';
@@ -1706,7 +1707,7 @@ async function writePersonProfile(
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockProfileValueWritesTx(tx,ctx.tenantId);
-    const [before] = await tx
+    let [before] = await tx
       .select({
         fullName: person.fullName,
         primaryEmail: person.primaryEmail,
@@ -1728,6 +1729,8 @@ async function writePersonProfile(
       .from(person)
       .where(eq(person.id, p.personId))
       .limit(1).for('update');
+    const task=before?null:await profileTaskEffectSourceTx(tx,p.personId);
+    if(!before&&task)before=Object.fromEntries(Object.entries(task.master).filter(([key])=>key in p&&p[key as keyof typeof p]!==undefined)) as typeof before;
     if (!before) throw new Error('Person not found');
     const after = {
       fullName: p.fullName===undefined?before.fullName:p.fullName.trim(),
@@ -1760,7 +1763,7 @@ async function writePersonProfile(
         }
       }
     }
-    await tx.update(person).set({ ...after, ...profileSet }).where(eq(person.id, p.personId));
+    if(!task||!await profileTaskStorePersonTx(tx,p.personId,{...after,...profileSet}))await tx.update(person).set({ ...after, ...profileSet }).where(eq(person.id, p.personId));
     // 23ad620e — the emergency block routes into the per-person register (highest-priority row), in this
     // same transaction so the profile save and the contact can never half-apply. Presence semantics are
     // unchanged: a form that omits the block passes nothing and the contact is left alone.
@@ -1780,7 +1783,7 @@ async function writePersonProfile(
       aggregateId: p.personId,
       eventType: 'person.updated',
       actor: actorOf(ctx),
-      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+      subjectEmploymentId: task?.subject.id??await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
       // before/after only for the non-PII core trio; profile fields recorded by name (values are PII).
       // 3a25f5ee — `via` is an optional provenance marker (e.g. 'copy-permanent' when HR used the "Same as
       // Permanent Address" convenience). It records HOW the save happened, never any address VALUE (PDPA).
