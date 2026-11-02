@@ -7602,6 +7602,8 @@ export async function adminCancelLeave(
   ctx: SessionContext,
   p: { leaveRequestId: string; reason?: string; cancelledByEmploymentId?: string },
 ): Promise<{ previousStatus: 'pending' | 'approved'; restoredDays: number }> {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     // HR-only. isAdmin() = hr_admin OR super_admin; a manager (or any other role) is refused here.
     if (!isAdmin(ctx)) {
