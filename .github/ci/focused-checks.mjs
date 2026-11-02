@@ -2,11 +2,12 @@
 import {execFileSync, spawnSync} from 'node:child_process';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {appendFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
+import {appendFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync, constants, openSync, closeSync, fstatSync} from 'node:fs';
 import {isAbsolute, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {hostHealth} from './host-health.mjs';
 import {CI_POLICY} from './policy-version.mjs';
+import {captureRequestedEval, loadEvalPlan, assertFocusedEvalContext, EVAL_CARRIERS} from './eval/contract.mjs';
 import {restrictedPortRequest,executeDatabaseSetup,runRestrictedPortQualification,SOURCE_PINS} from './restricted-port-qualification.mjs';
 import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEnv, V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
 
@@ -41,7 +42,7 @@ export function partitionSelection(files, output) {
 }
 
 /** A focused pass still requires every selected file/assertion to execute; skips are not passes. */
-export function verifyFocusedResult(result, files, cwd) {
+export function verifyFocusedResult(result, files, cwd, evalContext) {
   if (!result || result.success !== true || !Array.isArray(result.testResults)
     || result.numFailedTests !== 0 || result.numFailedTestSuites !== 0) throw Error('Focused test failure');
   const seen = new Set(); let assertions = 0;
@@ -57,6 +58,8 @@ export function verifyFocusedResult(result, files, cwd) {
   }
   if (seen.size !== files.length || assertions === 0 || result.numTotalTests !== assertions
     || result.numPassedTests !== assertions) throw Error('Incomplete selected assertion coverage');
+  const evaluation = assertFocusedEvalContext(evalContext, files);
+  if (evaluation && typeof evalContext.onVerified === 'function') evalContext.onVerified(evaluation);
   return assertions;
 }
 
@@ -109,7 +112,7 @@ export function focusedPlanIdentity({sha, controller, files, groups, classifierH
   return {...plan, fingerprint: hash(JSON.stringify(plan))};
 }
 
-export function runFocused(destination) {
+export function runFocused(destination, {evalBudgetAdmission, evalBudgetVerifier} = {}) {
   runnerOnly();
   const cwd = process.cwd(), sha = process.env.AIHR_CI_HEAD, controller = process.env.AIHR_CI_CONTROL_HEAD;
   assertCandidate(cwd, sha);
@@ -135,7 +138,26 @@ export function runFocused(destination) {
     startedAt: new Date().toISOString(), ...identity, manifestHash: hash(JSON.stringify(files)), batches: [], exitCode: 1};
   const pgEnv = {...process.env, AIHR_CI_UNIT: 'db-1'};
   let touchedDatabase = false;
+  let evalRequest = null, evalPlan = null;
+  const evalIdentity = {sourceSha: sha, controllerSha: controller,
+    runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT,
+    runtime: {node: process.versions.node, platform: process.platform, arch: process.arch}};
   try {
+    evalRequest = captureRequestedEval(process.env, files, evalIdentity);
+    if (evalRequest) {
+      report.evaluation = {requested: true, status: 'admission_refused', executionComplete: false,
+        measurementPassed: false, safetyPassed: null, qualityPassed: null, requiresHumanReview: null,
+        budgetVerified: false, releaseEligible: false};
+      evalPlan = loadEvalPlan(evalRequest, cwd);
+      report.evaluation = {...report.evaluation, request: evalRequest, planHash: evalPlan.planHash,
+        corpusReviewDigest: evalPlan.corpusReviewDigest, plannedCaseIds: evalPlan.cases.map(row => row.id)};
+      // An adapter must establish actual reservation authority. Neither an environment scalar,
+      // presence of a key nor a receipt-authored budget claim is admission.
+      if (typeof evalBudgetAdmission !== 'function' || typeof evalBudgetVerifier !== 'function'
+        || evalBudgetAdmission({request: evalRequest, plan: evalPlan, identity: evalIdentity})?.admitted !== true)
+        throw Error('Requested model evaluation: verified budget admission is unavailable');
+      report.evaluation.status = 'admitted_not_measured';
+    }
     report.healthBefore = hostHealth();
     if (!report.healthBefore.ok) throw Error('Runner disk headroom below shared resource guard');
     for (const kind of ['NODB', 'DB']) {
@@ -144,6 +166,8 @@ export function runFocused(destination) {
       const batch = {kind, files: selected, exitCode: 1, startedAt: new Date().toISOString()}; report.batches.push(batch);
       try {
         const env = testEnvironment(kind, join(dir, 'harness-profile'));
+        if (evalRequest) Object.assign(env, {AIHR_EVAL_REQUESTED: 'true', AIHR_EVAL_PATH: 'production',
+          AIHR_EVAL_PLAN_HASH: evalPlan.planHash, AIHR_EVAL_CORPUS_REVIEW_DIGEST: evalPlan.corpusReviewDigest});
         if (kind === 'DB') {
           if (!hostHealth().ok) throw Error('Runner disk headroom below guard before DB batch');
           touchedDatabase = true;
@@ -163,7 +187,26 @@ export function runFocused(destination) {
         const child = spawnSync('pnpm', args, {stdio: 'inherit', env});
         batch.processExitCode = child.status; batch.signal = child.signal;
         if (child.error || child.status !== 0) throw Error('Selected test process failed');
-        batch.assertions = verifyFocusedResult(JSON.parse(readFileSync(resultPath, 'utf8')), selected, cwd);
+        let evalContext;
+        if (evalRequest) {
+          const receiptPath = join(dir, EVAL_CARRIERS[evalRequest.carrier].receiptFile);
+          const fd = openSync(receiptPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+          let receiptBytes;
+          try {
+            const stat = fstatSync(fd);
+            if (!stat.isFile() || stat.nlink !== 1 || stat.size > 16 * 1024 * 1024)
+              throw Error('Requested model evaluation: invalid measurement receipt file');
+            receiptBytes = readFileSync(fd);
+          } finally { closeSync(fd); }
+          const receipt = JSON.parse(receiptBytes);
+          evalContext = {requested: true, request: evalRequest, plan: evalPlan, receipt,
+            identity: evalIdentity, budgetVerifier: evalBudgetVerifier,
+            onAssessment(summary) { report.evaluation = {...report.evaluation, ...summary,
+              status: summary.measurementPassed ? 'measurement_passed' : summary.requiresHumanReview ? 'review_required' : 'measurement_failed'}; }};
+          report.evaluation.receiptHash = hash(receiptBytes);
+        }
+        batch.assertions = verifyFocusedResult(JSON.parse(readFileSync(resultPath, 'utf8')), selected, cwd, evalContext);
+
         batch.exitCode = 0;
       } catch (error) { batch.error = error instanceof Error ? error.message : 'Focused batch failed'; if(batch.prerequisiteQualification?.status==='pending')batch.prerequisiteQualification.status='failed'; }
       finally { batch.endedAt = new Date().toISOString(); }

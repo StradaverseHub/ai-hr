@@ -91,11 +91,23 @@ function disabledEvalResult() {
       title: 'stays disabled and calls no provider without the protected evaluation secret'}]}]};
 }
 function requestedEvalContext() {
-  const request = {provider: 'openrouter', model: 'openai/gpt-6-luna', path: 'production', budgetUsd: 15};
-  const plan = {files: [evalFile], caseIds: ['baseline:leave-annual:0', 'sensitive:crisis-en:0']};
-  return {requested: true, request, plan, receipt: {schemaVersion: 1, request: {...request},
-    files: [...plan.files], plannedCaseIds: [...plan.caseIds], outcomes: plan.caseIds.map(id => ({id, status: 'completed'})),
-    providerCalls: 1, executionComplete: true}};
+  const identity = {sourceSha: 'a'.repeat(40), controllerSha: 'c'.repeat(40), runId: '123', attempt: '1',
+    runtime: {node: '22.23.3', platform: 'linux', arch: 'x64'}};
+  const request = {provider: 'openrouter', model: 'openai/gpt-6-luna', path: 'production', budgetUsd: 15,
+    allowedProviders: ['azure'], carrier: evalFile, profileId: 'fixture', repeats: 1, identity};
+  // This verifier fixture receives an already controller-validated test-owned plan.
+  // Full plan cardinality/source validation has independent contract tests.
+  const cases = ['baseline:leave-annual:0', 'sensitive:crisis-en:0'].map((id, index) => ({id,
+    requiresModel: index === 0, dependsOn: null, quality: {kind: 'deterministic', criteria: ['fixture-outcome']}}));
+  const plan = {files: [evalFile], cases, planHash: 'b'.repeat(64), corpusReviewDigest: 'd'.repeat(64)};
+  const receipt = {schemaVersion: 1, request: structuredClone(request), files: [evalFile],
+    planHash: plan.planHash, corpusReviewDigest: plan.corpusReviewDigest, productionReviewed: true, path: 'production',
+    plannedCaseIds: cases.map(row => row.id), outcomes: cases.map((row, index) => ({id: row.id,
+      status: 'completed', providerCalls: index === 0 ? 1 : 0,
+      security: {passed: true, findings: []}, criteria: [{id: 'fixture-outcome', status: 'met'}]})),
+    budget: {fixtureReservation: 'actual-held-allocation'}};
+  return {requested: true, request, plan, receipt, identity,
+    budgetVerifier: budget => budget?.fixtureReservation === 'actual-held-allocation'};
 }
 test('Ordinary no-model invocation retains the disabled/no-provider proof without claiming evaluation', () => {
   assert.equal(verifyFocusedResult(disabledEvalResult(), [evalFile], '/candidate'), 1);
@@ -106,8 +118,9 @@ test('Requested model evaluation cannot qualify from a passing disabled assertio
 });
 test('Requested model evaluation refuses a measurement receipt for a different selected carrier', () => {
   const context = requestedEvalContext();
-  context.plan.files = ['test/review/teras-review-model.eval.test.ts'];
-  context.receipt.files = [...context.plan.files];
+  context.request.carrier = 'test/review/teras-review-model.eval.test.ts';
+  context.receipt.request.carrier = context.request.carrier;
+  context.receipt.files = [context.request.carrier];
   assert.throws(() => verifyFocusedResult(disabledEvalResult(), [evalFile], '/candidate', context));
 });
 test('Requested model evaluation refuses a declared complete receipt missing a planned case outcome', () => {
@@ -119,4 +132,20 @@ test('Requested model evaluation refuses budget-truncated outcomes even when eve
   context.receipt.outcomes[1].status = 'budget_refused';
   context.receipt.executionComplete = false;
   assert.throws(() => verifyFocusedResult(disabledEvalResult(), [evalFile], '/candidate', context));
+});
+
+test('Requested model evaluation accepts a complete current receipt only with trusted reservation verification', () => {
+  const value = disabledEvalResult(); value.testResults[0].assertionResults[0].title = 'measures its exact planned cases';
+  const context = requestedEvalContext(); let verified;
+  context.onVerified = summary => { verified = summary; };
+  assert.equal(verifyFocusedResult(value, [evalFile], '/candidate', context), 1);
+  assert.equal(verified.measurementPassed, true); assert.equal(verified.releaseEligible, false);
+  delete context.budgetVerifier;
+  assert.throws(() => verifyFocusedResult(value, [evalFile], '/candidate', context));
+});
+test('Requested model evaluation keeps human review and unmet quality separate from execution success', () => {
+  for (const status of ['missed', 'review_required']) {
+    const context = requestedEvalContext(); context.receipt.outcomes[0].criteria[0].status = status;
+    assert.throws(() => verifyFocusedResult(disabledEvalResult(), [evalFile], '/candidate', context));
+  }
 });
