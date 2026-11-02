@@ -311,7 +311,7 @@ describe('Payroll draft-resume — updateBatchScope (DB)', () => {
     const a = adminCtx(base);
     const e = await hire(base, 'Retained subset');
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05', scope: { employmentIds: [e.employmentId] } });
-    await setPayrollInput(a, { batchId, employmentId: e.employmentId, bonusAmount: 321 });
+    await setPayrollInput(a, { batchId, employmentId: e.employmentId, overtimeAmount: 0, bonusAmount: 321 });
     const snapshot = async () => ({
       batch: await batchRow(batchId),
       inputs: await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId, batchId)),
