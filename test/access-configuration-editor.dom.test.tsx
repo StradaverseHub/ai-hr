@@ -69,6 +69,26 @@ describe('access editor decisions and stale preview behavior',()=>{
   await waitFor(()=>expect(f.preview).toHaveBeenCalledOnce());
   expect(f.preview.mock.calls[0][0].command).toMatchObject({kind:'replaceGroupGrants',grants:[{capabilityId:'workforce.view',companyId:companyB}]});
  });
+ it('keeps independent company submenu grants when a global company View is cleared',async()=>{
+  const f=fixture(true),descriptors=FINANCIAL_LETTER_FUNCTIONS.filter(row=>row.key==='payroll.process');
+  const children=functionActionCapabilities(descriptors).map(capability=>({...capability,supported:true,label:'Payroll Process · '+capability.id.slice(capability.id.lastIndexOf('.')+1)}));
+  const family=(['view','add','edit','delete'] as const).map(operation=>({id:'payroll.'+operation,label:operation+' payroll',scope:'company' as const,supported:true}));
+  const extra=[null,companyB].flatMap(companyId=>['payroll.view','payroll.add','function.payroll.process.view','function.payroll.process.add'].map(capabilityId=>({capabilityId,companyId})));
+  const snapshot={...f.props.snapshot,revision:id(10),groups:f.props.snapshot.groups.map(group=>group.id===readers?{...group,grants:[...group.grants,...extra]}:group)};
+  f.view.rerender(f.tree({...f.props,snapshot,capabilities:[...f.props.capabilities,...family,...children]}));
+  fireEvent.click(screen.getByRole('button',{name:'Readers'}));
+  expect(screen.getByRole('checkbox',{name:'Payroll Process · add'})).toBeChecked();
+  fireEvent.click(screen.getByRole('checkbox',{name:'view payroll'}));
+  expect(screen.getByRole('checkbox',{name:'Payroll Process · view'})).not.toBeChecked();
+  expect(screen.getByRole('checkbox',{name:'Payroll Process · add'})).not.toBeChecked();
+  fireEvent.change(screen.getByRole('combobox',{name:'Company scope'}),{target:{value:companyB}});
+  expect(screen.getByRole('checkbox',{name:'Payroll Process · view'})).toBeChecked();
+  expect(screen.getByRole('checkbox',{name:'Payroll Process · add'})).toBeChecked();
+  expect(screen.getByRole('checkbox',{name:'view payroll'})).toBeChecked();
+  fireEvent.click(screen.getByRole('button',{name:'Preview permission changes'}));
+  await waitFor(()=>expect(f.preview).toHaveBeenCalledOnce());
+  expect(f.preview.mock.calls[0][0].command).toMatchObject({kind:'replaceGroupGrants',grants:[...f.props.snapshot.groups.find(group=>group.id===readers)!.grants,...extra.filter(grant=>grant.companyId===companyB)]});
+ });
  it('preserves permissions in another company when changing the selected scope',async()=>{
   const f=fixture();f.chooseReaders();fireEvent.click(screen.getByRole('checkbox',{name:/View workforce records/}));
   fireEvent.click(screen.getByRole('button',{name:'Preview permission changes'}));

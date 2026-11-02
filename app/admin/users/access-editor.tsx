@@ -56,15 +56,22 @@ function AccessConfigurationEditorDraft({snapshot,capabilities,users,companies,p
   invalidate();setGrants(rows=>{
    let next=rows.filter(row=>row.capabilityId!==domain+'.'+action||row.companyId!==targetScope);
    if(!checked){
-    // Remove every dependent cell at this scope, including children of a cleared family View.
-    // A tenant prerequisite also governs company-scoped descendants; unrelated company grants stay.
-    const removed=new Set([domain+'.'+action]);let changed=true;
-    while(changed){changed=false;for(const definition of capabilities){
-     if(removed.has(definition.id))continue;
-     const view=definition.id.replace(/[^.]+$/,'view');
-     if((definition.prerequisites??[]).some(id=>removed.has(id))||definition.id!==view&&removed.has(view)){removed.add(definition.id);changed=true;}
-    }}
-    next=next.filter(row=>!removed.has(row.capabilityId)||(targetScope!==null&&row.companyId!==targetScope));
+    // Track removed grant scopes, not just capability IDs. Clearing a tenant prerequisite may
+    // affect every company; clearing a global company grant must preserve independent scoped rows.
+    const removed:{capabilityId:string;companyId:string|null}[]=[{capabilityId:domain+'.'+action,companyId:targetScope}];
+    for(let index=0;index<removed.length;index++){
+     const lost=removed[index];
+     next=next.filter(row=>{
+      const definition=capabilities.find(capability=>capability.id===row.capabilityId);if(!definition)return true;
+      const view=definition.id.replace(/[^.]+$/,'view'),requirements=[...(definition.prerequisites??[]),...(view!==definition.id?[view]:[])];
+      if(!requirements.includes(lost.capabilityId))return true;
+      const prerequisite=capabilities.find(capability=>capability.id===lost.capabilityId);
+      if(prerequisite?.scope!=='tenant'&&lost.companyId!==null&&lost.companyId!==row.companyId)return true;
+      const requiredScope=prerequisite?.scope==='tenant'?null:row.companyId;
+      if(next.some(grant=>grant.capabilityId===lost.capabilityId&&(grant.companyId===null||grant.companyId===requiredScope)))return true;
+      removed.push({capabilityId:row.capabilityId,companyId:row.companyId});return false;
+     });
+    }
    }
    if(checked){
     const add=(id:string)=>{const definition=capabilities.find(capability=>capability.id===id);if(!definition)return;const companyId=definition.scope==='tenant'?null:targetScope;if(next.some(row=>row.capabilityId===id&&row.companyId===companyId))return;next.push({capabilityId:id,companyId});for(const required of definition.prerequisites??[])add(required);};
