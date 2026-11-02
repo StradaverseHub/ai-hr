@@ -3513,3 +3513,38 @@ BEGIN
  IF app.reward_unit_native_chain_closed('cancellation',NEW.id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward cancellation unit effect unavailable' USING ERRCODE='42501';END IF;RETURN NULL;
 END $$;
 REVOKE ALL ON FUNCTION app.reward_decision_native_validate(),app.reward_post_native_validate(),app.reward_cancel_native_validate()FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Private preparation for the existing saveRewardEntry owner. This returns actual locked
+-- sources only to the fixed native owner; it is neither an application read nor a mutation
+-- capability. Command-specific registration, physical receipts, terminal proof and cutover
+-- remain separate prerequisites before any APP execution or raw-write tightening.
+CREATE FUNCTION app.reward_entry_save_admission(p_unit uuid,p_revision integer,p_entry uuid,p_recommendation jsonb,p_facts jsonb DEFAULT NULL)RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;entry public.reward_entry;actor public.app_user;roles text[];recommendation jsonb;facts jsonb;stamp text;
+BEGIN
+ IF nullif(current_setting('app.agent_principal_id',true),'')IS NOT NULL OR app.current_agent_principal()IS NOT NULL OR NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
+ PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
+ recommendation:=app.reward_calc_recommendation(p_recommendation);
+ IF p_facts IS NOT NULL THEN facts:=app.reward_calc_facts(p_facts);END IF;
+ SELECT actual.* INTO unit FROM public.reward_unit actual WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id()AND actual.deleted_at IS NULL AND app.reward_unit_native_readable(actual.id)FOR UPDATE;
+ SELECT actual.* INTO actor FROM public.app_user actual WHERE actual.id=app.current_user_id()AND actual.tenant_id=app.current_tenant_id()AND actual.archived_at IS NULL AND NOT app.login_blocked(actual.id);
+ roles:=ARRAY(SELECT app.reward_roles(p_unit));
+ IF unit.id IS NULL OR actor.id IS NULL OR cardinality(roles)=0 THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
+ IF app.function_action_allowed('rewards.review','view',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward review function unavailable' USING ERRCODE='42501';END IF;
+ IF p_revision IS NULL OR unit.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'This review changed in another session. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF unit.status<>'draft'THEN RAISE EXCEPTION 'Return the unit to draft before changing its approved inputs.' USING ERRCODE='42501';END IF;
+ SELECT actual.* INTO entry FROM public.reward_entry actual WHERE actual.id=p_entry AND actual.unit_id=unit.id AND actual.tenant_id=unit.tenant_id FOR UPDATE;
+ IF entry.id IS NULL OR NOT app.reward_calc_entry_visible(jsonb_build_object('source',entry.source,'facts',entry.facts),roles,actor.person_id)THEN RAISE EXCEPTION 'This reward record is not available to you.' USING ERRCODE='42501';END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.employment actual WHERE actual.id=entry.employment_id AND actual.tenant_id=entry.tenant_id AND entry.source->>'employmentId'=actual.id::text AND entry.source->>'personId'=actual.person_id::text)THEN RAISE EXCEPTION 'Reward recipient source unavailable' USING ERRCODE='42501';END IF;
+ IF NOT(roles&&ARRAY['bu','gr']OR unit.kind<>'annual'AND'bg'=ANY(roles)OR entry.facts->>'confidentiality'='ec'AND roles&&ARRAY['gr','ctro','ec'])THEN RAISE EXCEPTION 'You cannot edit this reward recommendation.' USING ERRCODE='42501';END IF;
+ IF entry.facts->>'confidentiality'<>'ec'AND recommendation->'bonusCents'<>'null'::jsonb THEN RAISE EXCEPTION 'Use the bonus multiplier for a standard or JG H employee.' USING ERRCODE='42501';END IF;
+ IF p_facts IS NOT NULL AND NOT('gr'=ANY(roles))AND(NOT('bu'=ANY(roles))OR(facts-ARRAY['erDecision','pipDecision','caseReason'])IS DISTINCT FROM(entry.facts-ARRAY['erDecision','pipDecision','caseReason']))THEN RAISE EXCEPTION 'Only Group Rewards may verify employee inputs.' USING ERRCODE='42501';END IF;
+ facts:=coalesce(facts,entry.facts);
+ IF facts->'seniorPlan'IS DISTINCT FROM entry.facts->'seniorPlan'THEN RAISE EXCEPTION 'Use the checked Senior membership workflow to change selection.' USING ERRCODE='42501';END IF;
+ IF CASE facts->>'confidentiality'WHEN'standard'THEN 0 WHEN'bg'THEN 1 WHEN'ec'THEN 2 ELSE -1 END<CASE coalesce(entry.source->>'confidentialityFloor','standard')WHEN'standard'THEN 0 WHEN'bg'THEN 1 WHEN'ec'THEN 2 ELSE 3 END THEN RAISE EXCEPTION 'Reward confidentiality cannot be below its native source floor' USING ERRCODE='42501';END IF;
+ IF app.reward_calc_entry_visible(jsonb_build_object('source',entry.source,'facts',facts),roles,actor.person_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward recommendation unavailable' USING ERRCODE='42501';END IF;
+ stamp:=app.access_function_authority_stamp();IF stamp IS NULL THEN RAISE EXCEPTION 'Reward entry authority unavailable' USING ERRCODE='42501';END IF;
+ RETURN jsonb_build_object('tenantId',unit.tenant_id,'userId',actor.id,'unitId',unit.id,'entryId',entry.id,'unitBefore',to_jsonb(unit),'entryBefore',to_jsonb(entry),'recommendation',recommendation,'facts',facts,'authorityStamp',stamp);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_entry_save_admission(uuid,integer,uuid,jsonb,jsonb)FROM PUBLIC,ai_hr_app;

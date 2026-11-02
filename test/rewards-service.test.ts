@@ -574,6 +574,16 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     }
     expect(await owner.withTenant(outsider,tx=>tx.execute(sql`select app.reward_unit_native_readable(${unitId}::uuid)as readable`))).toEqual([{readable:false}]);
   });
+  it('prepares an exact private entry-save source against the independent actual native writer',async()=>{
+    const before=await view(),entry=before.rows[0],recommendation={...entry.recommendation,reason:'  Actual independently reviewed recommendation  '},facts={...entry.facts,reviewed:true};
+    await saveRewardEntry(admin,unitId,before.unit.revision,entry.id,recommendation,facts);
+    const saved=await view();expect(saved.unit.revision).toBe(before.unit.revision+1);
+    const [after]=await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.id,entry.id));expect(after).toBeDefined();
+    await owner.withTenant(admin,async tx=>{const [prepared]=await tx.execute<{value:{unitBefore:{revision:number};recommendation:unknown;facts:unknown;authorityStamp:string}}>(sql`select app.reward_entry_save_admission(${unitId}::uuid,${saved.unit.revision},${entry.id}::uuid,${JSON.stringify(recommendation)}::jsonb,${JSON.stringify(facts)}::jsonb)as value`);expect(prepared.value.unitBefore.revision).toBe(saved.unit.revision);expect(prepared.value.recommendation).toEqual(after.recommendation);expect(prepared.value.facts).toEqual(after.facts);expect(prepared.value.authorityStamp).toMatch(/^[a-f0-9]{64}$/);});
+    expect((await view()).unit).toEqual(saved.unit);expect((await view()).rows).toEqual(saved.rows);
+    await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_entry_save_admission(${unitId}::uuid,${saved.unit.revision},${entry.id}::uuid,${JSON.stringify(recommendation)}::jsonb,${JSON.stringify(facts)}::jsonb)`))).rejects.toThrow();
+    const changedSelection={...facts,seniorPlan:!facts.seniorPlan};await expect(saveRewardEntry(admin,unitId,saved.unit.revision,entry.id,recommendation,changedSelection)).rejects.toThrow('checked Senior membership workflow');await expect(owner.withTenant(admin,tx=>tx.execute(sql`select app.reward_entry_save_admission(${unitId}::uuid,${saved.unit.revision},${entry.id}::uuid,${JSON.stringify(recommendation)}::jsonb,${JSON.stringify(changedSelection)}::jsonb)`))).rejects.toThrow('checked Senior membership workflow');expect((await view()).unit).toEqual(saved.unit);expect((await view()).rows).toEqual(saved.rows);
+  });
   it('refuses non-GR participants and any raw agent stamp at the private cancellation admission',async()=>{
     const before=await view();
     let participant:unknown;try{await owner.withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_cancel_admission(${unitId}::uuid,${before.unit.revision},'Actual cancelled unit request')`));}catch(error){participant=error;}
