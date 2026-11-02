@@ -1132,10 +1132,10 @@ This source depends on root942 witness89bc7e9da and requires hosted failed/affec
 
 - `0938_data_permission_enforcement.sql`: `d41b686eec213708abc9b174762c3c9f37d7f9aba31e057854108b321b66805a`.
 - `0939_workforce_action_permissions.sql`: `8ffd9067cdf83b06c329b3c601c65ee375f71216ccdcf9c3a9ac154b81f5dd74`.
-- `0941_financial_letter_actions.sql`: `6fff8285b7afd0cf188e1abc386d4616cffea3b756b05e349bb5178c6d755e4c`.
+- `0941_financial_letter_actions.sql`: `5f6b1d6b07de88150936fc3cec23a3faf0b39912fa38c61ec1ced3369cec9cf2`.
 - `0942_organisation_settings_actions.sql`: `19f020fd61ed76c769241d1a659ddc95cd364b94484469e829e3ecd8013b9af6`.
 - `0943_leave_attendance_claim_actions.sql`: `0147800c396f35f9bdd3b6225b0e64d6e7a86df897053d53c6ea6ff476451fc4`.
-- `0944_lifecycle_rewards_notice_actions.sql`: `db746154bbd86cca6d6615fb48e7aa0c7768953cc6ec2d0b5194904f3377d6ac`.
+- `0944_lifecycle_rewards_notice_actions.sql`: `06324a06a2236b058a211afc9be3c4972e011fbe3b73597bd15375db9fbc2463`.
 - `0945_financial_setup_actions.sql`: `77ef0067c30e55a48ab591938b3a5e892ba60161036f4b23c678ed280ea5f340`.
 
 Source identities only; frozen failures remain preserved. Admission requires post-Noveri/nine ledger reconciliation without rewriting applied bytes.

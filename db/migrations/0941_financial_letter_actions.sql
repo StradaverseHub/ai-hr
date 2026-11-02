@@ -725,7 +725,7 @@ REVOKE ALL ON FUNCTION app.access_payroll_kernel_guard() FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 DO $$ DECLARE table_name text;BEGIN
  FOREACH table_name IN ARRAY ARRAY['payroll_batch','pay_period','payslip','payroll_input','payroll_batch_component','payroll_statutory_adjustment','payroll_status_history','payroll_employee_result_history','payroll_reprocess_job','payroll_step_up_challenge'] LOOP
-  EXECUTE format('CREATE TRIGGER financial_kernel_context AFTER INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app.financial_kernel_context_record()',table_name);
+  EXECUTE format('CREATE TRIGGER a_financial_kernel_context AFTER INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app.financial_kernel_context_record()',table_name);
   EXECUTE format('CREATE CONSTRAINT TRIGGER financial_kernel_action AFTER INSERT OR UPDATE OR DELETE ON public.%I DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_payroll_kernel_guard()',table_name);
  END LOOP;
 END $$;
