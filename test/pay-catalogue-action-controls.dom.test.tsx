@@ -15,7 +15,14 @@ vi.mock('../app/admin/pay-components/orp-config',()=>({OrpConfig:()=> <input ari
 vi.mock('../app/admin/pay-components/statutory-config',()=>({StatutoryConfig:()=> <input aria-label="Statutory configuration"/>}));
 import {ComponentForm,type PayComponentRow} from '../app/admin/pay-components/component-form';
 afterEach(()=>{cleanup();state.actions={view:true,add:false,edit:false,delete:false};});
-const component={id:'fictional-code',code:'TEST',name:'Fictional retained item',rule:null,kind:'earning',archivedAt:null} as PayComponentRow;
+const component:PayComponentRow={
+ id:'fictional-code',tenantId:'fictional-tenant',code:'TEST',name:'Fictional retained item',
+ label:null,description:null,pendingInputKind:null,kind:'earning',includedInEpf:false,
+ includedInSocsoEis:false,includedInPcb:true,includedInHrdfBase:false,isNonPayable:false,
+ epfBonus2012:false,pcbRemunerationType:null,pcbExemptionCode:null,displayCategory:null,
+ orpOvertime:false,orpUnpaidLeave:false,prorates:true,eaFormLine:null,roundingMethod:'none',
+ rule:null,formulaContext:null,resolutionOrder:0,archivedAt:null,createdAt:new Date('2026-01-01T00:00:00Z'),
+};
 describe('pay catalogue maintenance controls',()=>{
  it('keeps a retained item readable while disabling its fields and omitting save actions',async()=>{
   render(await ComponentForm({component,aiEnabled:false}));
