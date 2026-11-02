@@ -122,7 +122,7 @@ describe('ADR-0083 §2.5 — the action layer', () => {
     return b!.id;
   }
 
-  it.each(['missing-tax-profile', 'net-swing'])('does not close a mixed verdict with an unresolved %s finding', async detectorId => {
+  it.each(['missing-tax-profile', 'net-swing', 'future-detector', 'toString'])('does not close a mixed verdict with an unresolved %s finding', async detectorId => {
     const f = await flagged({withBank:true});
     if(detectorId==='missing-tax-profile') await owner.db.update(schema.employeeStatutoryMy).set({taxNumber:null}).where(eq(schema.employeeStatutoryMy.personId,f.personId));
     await owner.db.insert(schema.payrollAnomalyFinding).values({tenantId:base.tenantId,verdictId:f.verdictId,detectorId,severity:'block',facts:{},sourceEventIds:[],suggestedAction:'review'} as never);
