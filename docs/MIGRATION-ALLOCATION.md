@@ -986,6 +986,19 @@ populated-upgrade evidence remain pending. Shared settings coverage is still bei
 no completed binding or installation claim follows this checkpoint. Recheck every source
 reservation and the actual post-Noveri installation ledger before release admission.
 
+## Lifecycle, Rewards and Notice action owners — 2 November 2026 (provisional source claim)
+
+The parent reserves `0944_lifecycle_rewards_notice_actions`, aggregate idx766 /
+when1793330000344, after the independently owned0941–0943 action families. Source base is
+`e28dfce56732c3dab31ae413aa9ca7bde9a8dde0`, with qualified0940 and shared0939 prerequisites
+merged normally into `codex/approved-board-lifecycle-actions-20261102`.
+
+The fresh source audit inspected3090 local/origin refs,325 unique committed journals and284
+actual worktree journals, finding no0944 filename/timestamp claim. One unrelated conflicted
+worktree journal was also checked textually for this identity. The live watermark was **not
+verified**: this reservation is unapplied and provisional, and must be refreshed against the
+ordered applied ledger and competing claims before admission. It grants no installation authority.
+
 ## Financial setup/native import boundary — 2 November 2026 (provisional)
 
 BOARD parent reserves `0945_financial_setup_actions`, aggregate idx767 /when1793330000345.
@@ -998,3 +1011,7 @@ precise module/submenu facts, and TP1/CP38/statutory input qualification and bin
 must refuse the incomplete family. Preserve all native self/assigned and financial calculation
 courses; new authority cannot arise from posted roles or a context flag. Re-audit current refs,
 all source claims and the post-Noveri installation ledger before any release admission.
+
+## Leave/Attendance/Claims Action source continuation — 2 November 2026
+
+Reserved `0943_leave_attendance_claim_actions`, aggregate idx765 / when1793330000343, is now journaled in its existing reserved position after0942 and before0945;0944 remains reserved for Personnel. Source SHA256 `7c07ce3f4ffd45f6af593193825bb0a03a52c14e7d0cdb2333eab11e63ccb369`. Current source installs dormant family definitions and native guarded Claim configuration writers only; operational Claim/Leave/Attendance and exact submenu closure remain incomplete. No publication sentinel or installed-history claim exists. This inclusion makes existing native Claim configuration imports executable for hosted development qualification. Re-audit actual ordered installation ledger and all coordinated reservations before admission.

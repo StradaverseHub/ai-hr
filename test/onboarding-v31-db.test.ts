@@ -1,10 +1,11 @@
+import {randomUUID} from 'node:crypto';
 import { afterAll, beforeEach, describe, it, expect } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { hireEmployee } from '../core/org';
-import { onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingAssignedTaskMetadata, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingSyncDraftTx, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
+import { v9OwnTask, onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingAssignedTaskMetadata, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingSyncDraftTx, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
 import { appendEvent, actorOf } from '../db/events';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -153,7 +154,8 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(backfilled.case.history.some(entry => entry.by === 'system')).toBe(true);
         await expect(withTenant({...system,roles:['employee']},tx=>tx.execute(sql`select app.onboarding_next_case_number('2026')`))).rejects.toThrow();
         await expect(withTenant(system,tx=>tx.execute(sql`select app.onboarding_next_case_number('not-a-year')`))).rejects.toThrow();
-        expect((await sweepOnboarding(system)).created).toBeGreaterThan(0);
+        await expect(sweepOnboarding(system)).rejects.toThrow('Scheduled onboarding dispatch requires the storage owner.');
+        expect((await sweepOnboarding(system,owner.withTenant)).created).toBeGreaterThan(0);
         expect((await onboardingNotices(admin)).length).toBeGreaterThan(0);
     });
     it('keeps one case and the latest Personnel source during concurrent save and backfill', async () => {
@@ -211,6 +213,88 @@ describe('V3.1 onboarding database and authorization', () => {
         await saveEmployeeDraft(admin, { id: d.id, data: { profile: { fullName: 'Updated Hire', primaryEmail: 'new@test.invalid' }, employment: { companyId: b.companyId } }, currentStep: 1 });
         expect(await onboardingList(admin)).toHaveLength(1);
         expect((await onboardingList(admin))[0]!.case.source.fullName).toBe('Updated Hire');
+    });
+    it('projects and completes only an actual assigned task outside general data scope, with a required native audit',async()=>{
+        const context=await onboardingContext(admin),config=structuredClone(context.config);
+        config.groups.push({id:'private-sibling-team',name:'Fictional sibling team',limit:8,members:[other.userId!]});
+        config.checklists[0]!.tasks.push({id:'sibling',name:'PRIVATE other assigned checklist',by:'group',group:'private-sibling-team',method:'rr',opens:null,due:1,gate:false});
+        await onboardingSaveConfig(admin,context.revision,config);
+        const saved=await saveEmployeeDraft(admin,{data:{profile:{fullName:'Fictional hidden task subject',employeeCode:'HIDDEN-TASK-SUBJECT',primaryEmail:'hidden-task-subject@fixture.invalid'},employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'5000'}},currentStep:5});
+        const active=await completeEmployeeDraft(admin,saved.id);let row=(await onboardingList(admin))[0]!;
+        await onboardingCommand(admin,row.case.id,row.revision,{type:'saveSubmit',patch:{hiring:'new_hire',local:{supervisor:'Manager'},selected:['m365']}});row=(await onboardingList(admin))[0]!;
+        for(const actor of [tech,other]){
+            const id=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Checklist scope '+id})`;
+            await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'employeeId',values:['ONLY-OWN-SELF-COURSE']}]})}::text::jsonb,${admin.userId!})`;
+            await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
+            await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${actor.userId!},${id},${admin.userId!})`;
+        }
+        expect(await withTenant(tech,tx=>tx.select().from(schema.employment).where(eq(schema.employment.id,active.employmentId)))).toEqual([]);
+        expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)))).toEqual([]);
+        const queue=await onboardingTasks(tech);expect(queue.filter(task=>task.kind==='checklist').map(task=>task.taskId)).toEqual(['welcome']);expect(JSON.stringify(queue)).not.toContain('PRIVATE other assigned checklist');
+        expect((await onboardingAssignedTaskMetadata(tech)).map(task=>task.id)).toContain(row.case.id+':checklist:welcome');
+        await expect(onboardingCommand(other,row.case.id,row.revision,{type:'task',taskId:'welcome',status:'done'})).rejects.toThrow();
+        await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_assigned_task_update(${row.case.id}::uuid,${row.revision},'welcome','done')`))).rejects.toThrow();
+        expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
+        await v9OwnTask(tech,{caseId:row.case.id,revision:row.revision,taskId:'welcome',status:'done',reason:''});
+        const updated=(await onboardingList(admin))[0]!;expect(updated.case.tasks.find(task=>task.id==='welcome')).toMatchObject({status:'done',completedBy:tech.userId});
+        expect(updated.case.tasks.find(task=>task.id==='sibling')?.status).toBe('todo');
+        expect((await onboardingTasks(tech)).some(task=>task.taskId==='welcome')).toBe(false);
+        expect((await owner.client`select count(*)::int as count from app.lifecycle_native_effect_context`)[0].count).toBe(0);
+    });
+    it('retains eligible workflow IDs while masking names excluded by a data profile',async()=>{
+        const id=randomUUID(),revision=randomUUID();
+        await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Directory scope '+id})`;
+        await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'employeeId',values:['ABSENT-DIRECTORY-SUBJECT']}]})}::text::jsonb,${admin.userId!})`;
+        await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
+        await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${tech.userId!},${id},${admin.userId!})`;
+        const directory=await withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_directory()`)) as unknown as {id:string;name:string}[];
+        expect(directory.find(user=>user.id===other.userId)?.name).toBe('User '+other.userId!.slice(0,8));
+        expect(directory.some(user=>user.name==='Other Employee')).toBe(false);
+        expect(directory.find(user=>user.id===tech.userId)?.name).toBe('Kevin Tech');
+        await owner.client`update app_user set archived_at=now() where id=${other.userId!}`;
+        expect((await withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_directory()`)) as unknown as {id:string}[]).some(user=>user.id===other.userId)).toBe(false);
+    });
+    it('fences prospective joiner children using canonical Personnel facts and keeps hidden tasks bounded',async()=>{
+        const row=await prepared(),caseId=row.case.id,scopeId=randomUUID(),scopeRevision=randomUUID(),noteId=randomUUID(),fileId=randomUUID();
+        await owner.client`insert into lc_onboarding_private_revision(case_id,revision,tenant_id,company_id,data)values(${caseId},900,${b.tenantId},${b.companyId},${JSON.stringify({ic:'PRIVATE-HISTORY-IC'})}::text::jsonb)`;
+        await owner.client`insert into lc_onboarding_note(id,tenant_id,case_id,data)values(${noteId},${b.tenantId},${caseId},${JSON.stringify({by:admin.userId,text:'PRIVATE-NOTE',mentions:[]})}::text::jsonb)`;
+        await owner.client`insert into lc_v9_file(id,tenant_id,onboarding_case_id,company_id,slot,filename,mime_type,content,uploaded_by)values(${fileId},${b.tenantId},${caseId},${b.companyId},'private','PRIVATE-FILE.txt','text/plain',decode('50524956415445','hex'),${admin.userId!})`;
+        const read=()=>withTenant(admin,async tx=>({
+            parent:await tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,caseId)),
+            private:await tx.select().from(schema.lcOnboardingPrivate).where(eq(schema.lcOnboardingPrivate.caseId,caseId)),
+            history:await tx.select().from(schema.lcOnboardingCaseRevision).where(eq(schema.lcOnboardingCaseRevision.caseId,caseId)),
+            privateHistory:await tx.select().from(schema.lcOnboardingPrivateRevision).where(eq(schema.lcOnboardingPrivateRevision.caseId,caseId)),
+            notes:await tx.select().from(schema.lcOnboardingNote).where(eq(schema.lcOnboardingNote.caseId,caseId)),
+            files:await tx.execute(sql`select id,filename from lc_v9_file where onboarding_case_id=${caseId}::uuid order by id`),
+        }));
+        const baseline=await read();for(const rows of Object.values(baseline))expect(rows.length).toBeGreaterThan(0);
+        await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${scopeId},${b.tenantId},${'Prospective scope '+scopeId})`;
+        const excluded={legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]};
+        await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${scopeRevision},${b.tenantId},${scopeId},${JSON.stringify(excluded)}::text::jsonb,${admin.userId!})`;
+        await owner.client`update data_permission_profile set enabled=true,active_revision_id=${scopeRevision} where id=${scopeId}`;
+        await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${admin.userId!},${scopeId},${admin.userId!})`;
+        for(const rows of Object.values(await read()))expect(rows).toEqual([]);
+        // Changing editable workflow facts cannot manufacture a matching Personnel source.
+        await owner.client`update lc_onboarding_case set data=jsonb_set(data,'{local,department}',to_jsonb(${excluded.predicates[0]!.values[0]!}::text),true)where id=${caseId}`;
+        for(const rows of Object.values(await read()))expect(rows).toEqual([]);
+        const matching=randomUUID();await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${matching},${b.tenantId},${scopeId},${JSON.stringify({legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptA]}]})}::text::jsonb,${admin.userId!})`;
+        await owner.client`update data_permission_profile set active_revision_id=${matching} where id=${scopeId}`;
+        for(const rows of Object.values(await read()))expect(rows.length).toBeGreaterThan(0);
+        await owner.client`update data_permission_profile set enabled=false where id=${scopeId}`;
+        for(const rows of Object.values(await read()))expect(rows).toEqual([]);
+    });
+    it('retains native completion audit witnesses across a real savepoint',async()=>{
+        const row=await prepared();expect(row.case.tasks.find(task=>task.id==='welcome')?.assignee).toBe(tech.userId);
+        await withTenant(tech,async tx=>{
+            await tx.execute(sql`savepoint assigned_task_effect`);
+            await tx.execute(sql`select * from app.onboarding_assigned_task_update(${row.case.id}::uuid,${row.revision},'welcome','progress')`);
+            await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'onboarding-case',aggregateId:row.case.id,eventType:'onboarding.task',actor:actorOf(tech),subjectEmploymentId:row.case.employmentId,payload:{caseId:row.case.id,companyId:b.companyId}});
+            await tx.execute(sql`release savepoint assigned_task_effect`);
+            await tx.execute(sql`set constraints all immediate`);
+        });
+        const updated=(await onboardingList(admin))[0]!;expect(updated.revision).toBe(row.revision+1);expect(updated.case.tasks.find(task=>task.id==='welcome')?.status).toBe('progress');
+        await v9OwnTask(tech,{caseId:updated.case.id,revision:updated.revision,taskId:'welcome',status:'done',reason:''});
+        expect((await onboardingList(admin))[0]!.case.tasks.find(task=>task.id==='welcome')?.status).toBe('done');
     });
     it('preserves the same case when Personnel activates its draft', async () => {
         const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Activation Hire', employeeCode: 'ONB-ACT-1', primaryEmail: 'activation@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });

@@ -135,16 +135,22 @@ describe('genuine Workforce operations',()=>{
 it('checks newly administrative recipients in previews and direct SQL without persisting a failed proposal',async()=>{
  const root=await ctx();
  const [limited,target]=await owner.db.insert(s.appUser).values([{tenantId:b.tenantId,workosUserId:'limited_config_'+randomUUID()},{tenantId:b.tenantId,workosUserId:'future_admin_'+randomUUID()}]).returning();
- await owner.db.insert(s.roleAssignment).values([{tenantId:b.tenantId,appUserId:limited.id,role:'hr_admin',companyId:null},{tenantId:b.tenantId,appUserId:target.id,role:'employee',companyId:null}]);
+ await owner.db.insert(s.roleAssignment).values([{tenantId:b.tenantId,appUserId:limited.id,role:'hr_admin',companyId:b.companyId},{tenantId:b.tenantId,appUserId:target.id,role:'employee',companyId:null}]);
+ // A globally derived System Administrator is intentionally protected from predicate narrowing.
+ // Use a real company HR configurator and grant only the separate configuration capability.
+ const current=await withTenant(root,tx=>accessConfigurationStore.loadCurrent(tx,root));
+ const configureEdit={expectedRevision:current.snapshot.revision,command:{kind:'setOverride' as const,userId:limited.id,capabilityId:'access.configure',companyId:null,effect:'allow' as const}};
+ const configurePreview=await previewAccessConfiguration(root,configureEdit,accessConfigurationStore);
+ await saveAccessConfiguration(root,{...configureEdit,previewFingerprint:configurePreview.fingerprint},accessConfigurationStore);
  const profileId=randomUUID();
  const dataChange=async(command:DataPermissionCommand)=>{const state=await readDataPermissions(root),preview=await previewDataPermission(root,state.revision,command);await saveDataPermission(root,state.revision,command,preview.fingerprint);};
- await dataChange({kind:'create',profileId,name:'Fictional configurator department',enabled:true,rules:{legacyCompany:false,predicates:[{field:'department',values:[b.deptA]}]}});
+ await dataChange({kind:'create',profileId,name:'Fictional configurator department',enabled:true,rules:{legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptA]}]}});
  await dataChange({kind:'assign',userId:limited.id,profileId});
  const groupId=randomUUID();
  for(const command of [{kind:'createGroup' as const,groupId,name:'Fictional employee function role'},{kind:'replaceGroupGrants' as const,groupId,grants:[{capabilityId:'workforce.view',companyId:b.companyId},{capabilityId:'workforce.add',companyId:b.companyId}]}]){
   const state=await withTenant(root,tx=>accessConfigurationStore.loadCurrent(tx,root)),edit={expectedRevision:state.snapshot.revision,command};const preview=await previewAccessConfiguration(root,edit,accessConfigurationStore);await saveAccessConfiguration(root,{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);
  }
- const actor={...root,userId:limited.id,grants:[{role:'hr_admin',companyId:null}]};
+ const actor={...root,userId:limited.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
  const command={kind:'setMembership' as const,groupId,userId:target.id,companyId:b.companyId,enabled:true};
  const state=await withTenant(actor,tx=>accessConfigurationStore.loadCurrent(tx,actor));
  const before=await owner.client`select * from access_membership where tenant_id=${b.tenantId}::uuid order by id`;

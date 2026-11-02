@@ -4,8 +4,8 @@ import {Button,inputCls} from '@/components/ui';
 import {NOTICE_ATTACHMENT_MAX_BYTES} from '@/lib/notice-upload-policy';
 export type NoticeAttachmentMetadata={id:string;fileName:string;mimeType:string;byteLength:number};
 export type NoticeAttachmentEditorLabels={title:string;help:string;choose:string;add:string;pending:string;remove:string;saveFirst:string;saveHint:string;file:string;tooLarge:string;changed:string;limit:string;unavailable:string;failed:string};
-export function NoticeAttachmentEditor({noticeId,contentVersion,items,onUploaded,onRemove,onBusyChange,labels,locale}:{
- locale:string;noticeId?:string;contentVersion:number;items:NoticeAttachmentMetadata[];onUploaded:(file:NoticeAttachmentMetadata)=>void;onRemove:(id:string)=>void;onBusyChange:(busy:boolean)=>void;labels:NoticeAttachmentEditorLabels;
+export function NoticeAttachmentEditor({noticeId,contentVersion,items,onUploaded,onRemove,onBusyChange,labels,locale,allowRemoval=true,attachImmediately=false}:{
+ allowRemoval?:boolean;attachImmediately?:boolean;locale:string;noticeId?:string;contentVersion:number;items:NoticeAttachmentMetadata[];onUploaded:(file:NoticeAttachmentMetadata)=>void;onRemove:(id:string)=>void;onBusyChange:(busy:boolean)=>void;labels:NoticeAttachmentEditorLabels;
 }){
  const inputId=useId(),input=useRef<HTMLInputElement>(null),inFlight=useRef(false);
  const [file,setFile]=useState<File|null>(null),[intent,setIntent]=useState<string|null>(null),[pending,setPending]=useState(false),[error,setError]=useState<keyof Pick<NoticeAttachmentEditorLabels,'file'|'tooLarge'|'changed'|'limit'|'unavailable'|'failed'>|null>(null),[ready,setReady]=useState(false);
@@ -14,7 +14,7 @@ export function NoticeAttachmentEditor({noticeId,contentVersion,items,onUploaded
   if(!file.size||file.size>NOTICE_ATTACHMENT_MAX_BYTES){setError('tooLarge');return;}
   inFlight.current=true;setPending(true);setError(null);
   try{
-   const body=new FormData();body.set('file',file);body.set('uploadKey',intent);body.set('contentVersion',String(contentVersion));
+   const body=new FormData();body.set('file',file);body.set('uploadKey',intent);body.set('contentVersion',String(contentVersion));if(attachImmediately)body.set('attachNow','true');
    const response=await fetch(`/admin/notice-board/${noticeId}/attachments`,{method:'POST',body,credentials:'same-origin'});
    const result=await response.json();
    if(!response.ok){setError(['file','tooLarge','changed','limit','unavailable'].includes(result?.error)?result.error:'failed');return;}
@@ -29,7 +29,7 @@ export function NoticeAttachmentEditor({noticeId,contentVersion,items,onUploaded
    <p className="max-w-prose text-sm text-muted-foreground">{labels.help}</p>
    {items.length>0&&<ul className="divide-y divide-border">{items.map(item=><li key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
     <span className="min-w-0 flex-1 break-words text-sm">{item.fileName}<span className="ml-2 text-xs text-muted-foreground">{new Intl.NumberFormat(locale,{style:'unit',unit:'kilobyte',unitDisplay:'short',maximumFractionDigits:0}).format(item.byteLength/1024)}</span></span>
-    <Button type="button" variant="ghost" className="min-h-11" disabled={pending} onClick={()=>onRemove(item.id)} aria-label={labels.remove+': '+item.fileName}>{labels.remove}</Button>
+    {allowRemoval&&<Button type="button" variant="ghost" className="min-h-11" disabled={pending} onClick={()=>onRemove(item.id)} aria-label={labels.remove+': '+item.fileName}>{labels.remove}</Button>}
    </li>)}</ul>}
    {items.length<5&&<div className="space-y-2">
     <label htmlFor={inputId} className="block text-sm">{labels.choose}</label>
@@ -40,7 +40,7 @@ export function NoticeAttachmentEditor({noticeId,contentVersion,items,onUploaded
     </div>
    </div>}
    {error&&<p role="alert" className="max-w-prose text-sm text-destructive">{labels[error]}</p>}
-   {(ready||items.length>0)&&<p role="status" className="max-w-prose text-sm text-muted-foreground">{labels.saveHint}</p>}
+   {!attachImmediately&&(ready||items.length>0)&&<p role="status" className="max-w-prose text-sm text-muted-foreground">{labels.saveHint}</p>}
   </>}
  </section>;
 }

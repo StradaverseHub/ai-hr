@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
-import { listNotices, NOTICE_STATUSES, type NoticeStatus } from '@/core/notice';
+import { listNotices, noticeAuthoringScope, NOTICE_STATUSES, type NoticeStatus } from '@/core/notice';
 import {
   Card,
   ErrorBanner,
@@ -43,6 +43,7 @@ export default async function NoticeBoardPage({
   const t = await getTranslations('notices');
   const { error, q, status, sort } = await searchParams;
 
+  const creation=await noticeAuthoringScope(s,'add');
   const all = await listNotices(s, { includeArchived: true });
 
   const needle = (q ?? '').trim().toLowerCase();
@@ -82,7 +83,7 @@ export default async function NoticeBoardPage({
         title={t('pageTitle')}
         description={t('pageDescription')}
         actions={
-          <Link href="/admin/notice-board/new" className={btnPrimary}>
+          (creation.groupAllowed||creation.companies.length>0)&&<Link href="/admin/notice-board/new" className={btnPrimary}>
             {t('add')}
           </Link>
         }
