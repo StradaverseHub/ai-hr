@@ -3394,7 +3394,7 @@ CREATE FUNCTION app.reward_post_receipt_command(p_unit uuid,p_revision integer,p
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE result jsonb;event_id uuid;
 BEGIN
- result:=app.reward_post_native(p_unit,p_revision,p_batch);
+ result:=app.reward_post_command(p_unit,p_revision,p_batch);
  IF result->'alreadyPosted'='true'::jsonb THEN RETURN result;END IF;
  SELECT proof.posted_event_id INTO event_id FROM app.reward_post_native_context proof JOIN public.domain_event audit ON audit.id=proof.posted_event_id AND audit.tenant_id=proof.tenant_id
  WHERE proof.xact_id=pg_current_xact_id()AND proof.tenant_id=app.current_tenant_id()AND proof.user_id=app.current_user_id()AND proof.unit_id=p_unit AND proof.completed AND NOT proof.active
