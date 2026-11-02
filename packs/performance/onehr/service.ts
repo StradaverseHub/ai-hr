@@ -421,15 +421,10 @@ export async function submitOnehrCompetenciesTx(tx:Tx,ctx:SessionContext,reviewI
   note.parse(overallRemark);
   const answers=z.record(z.string(),z.object({answer:z.enum(['yes','no']),remark:note.default('')})).parse(raw);
 
-    const r=await loadReview(tx,reviewId,true);await writable(tx,r,manager?'tc_approve':'tc_self',expected,manager?'reviewer':'self');
-    if(!r.cycle.policy.modules.tm||!r.competencies.length)throw Error('No technical competency profile is assigned.');
-    const sections=competencySectionsFor(rawSections,r.competencies);
-    assertOverallRemark(overallRemark,!manager);
-    if(manager?r.row.competencyStatus!=='submitted':r.row.competencyStatus!=='pending')throw Error('Competencies are not awaiting this step.');
-    if(Object.keys(answers).length!==r.competencies.length||r.competencies.some(c=>!answers[c.id]))throw Error('Answer every competency.');
-    const competencies=r.competencies.map(c=>{const a=answers[c.id];if(manager&&a.answer!==c.self&&!a.remark.trim())throw Error('Explain changed competency answers.');return manager?{...c,manager:a.answer,managerRemark:a.remark}:{...c,self:a.answer,selfRemark:a.remark};});
-    await clearAssessmentDraftTx(tx,ctx,reviewId,manager?'competency_manager':'competency_self');
-    await touchReview(tx,reviewId,{competencies,...(manager?{competencyManagerRemark:overallRemark,competencyManagerSections:sections}:{competencySelfRemark:overallRemark,competencySelfSections:sections}),competencyStatus:manager?'reviewed':'submitted'});await audit(tx,ctx,reviewId,manager?'competencies-reviewed':'competencies-submitted');
+    uuid.parse(reviewId);z.number().int().parse(expected);
+    const r=await loadReviewTaskFields(tx,reviewId);if(!r)throw Error('Assessment not assigned to you.');
+    const sections=competencySectionsFor(rawSections,r.competencies);assertOverallRemark(overallRemark,!manager);
+    await tx.execute(sql`select app.onehr_competencies_submit(${reviewId}::uuid,${expected}::integer,${JSON.stringify(answers)}::jsonb,${manager}::boolean,${overallRemark}::text,${JSON.stringify(sections)}::jsonb)`);
 }
 
 export async function assignOnehrPanel(ctx:SessionContext,reviewId:string,expected:number,raw:unknown) {

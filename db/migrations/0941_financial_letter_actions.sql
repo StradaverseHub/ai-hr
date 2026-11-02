@@ -1230,7 +1230,7 @@ BEGIN
    AND (NOT p_current OR app.performance_current_native_roles(p_company,ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner']));
  END IF;
  IF function_key IN ('performance.onehr.selfReview','performance.onehr.assignedReview') THEN
-  RETURN (operation='view' OR function_key='performance.onehr.assignedReview' AND operation='edit') AND p_company IS NOT NULL AND EXISTS(SELECT 1 FROM public.performance_review review
+  RETURN operation IN ('view','edit') AND p_company IS NOT NULL AND EXISTS(SELECT 1 FROM public.performance_review review
    JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
    JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
    WHERE review.tenant_id=p_tenant AND subject.company_id=p_company
@@ -3414,3 +3414,58 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_plan_review(uuid,integer,text,text,boolean,uuid,date,boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_plan_review(uuid,integer,text,text,boolean,uuid,date,boolean) TO ai_hr_app;
+
+--> statement-breakpoint
+SELECT app.register_function_action('performance.onehr.selfReview','edit','company',NULL,'app.financial_delegate_onehr_review',jsonb_build_object(
+ 'moduleKey','performance_compensation','labelKey','onehr.nativeWorkflow','kind','native_acl','course','own','href','/performance/workspace','employeeBearing',false));
+CREATE FUNCTION app.onehr_competencies_submit(wanted_review uuid,expected_revision integer,answers jsonb,manager_course boolean,overall_remark text,sections jsonb) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;course text;cell text;next_competencies jsonb;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR competency actor unavailable' USING ERRCODE='42501';END IF;
+ IF manager_course IS NULL OR overall_remark IS NULL OR jsonb_typeof(answers) IS DISTINCT FROM 'object' OR jsonb_typeof(sections) IS DISTINCT FROM 'object'
+ OR char_length(btrim(overall_remark))>4000 OR cardinality(regexp_split_to_array(btrim(overall_remark),'[[:space:]]+'))>220 THEN RAISE EXCEPTION 'Invalid competency submission' USING ERRCODE='22023';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ course:=CASE WHEN manager_course THEN 'assigned' ELSE 'self' END;cell:=CASE WHEN manager_course THEN 'tc_approve' ELSE 'tc_self' END;
+ IF review.review_id IS NULL OR NOT app.onehr_review_task_view(wanted_review,course)
+ OR NOT app.function_action_allowed(CASE WHEN manager_course THEN 'performance.onehr.assignedReview' ELSE 'performance.onehr.selfReview' END,'edit',review.company_id)
+ OR manager_course AND (app.onehr_self_employment(review.employment_id) OR NOT app.onehr_effective_reviewer(wanted_review))
+ OR NOT manager_course AND NOT app.onehr_self_employment(review.employment_id) THEN RAISE EXCEPTION 'Competency submission not assigned to you' USING ERRCODE='42501';END IF;
+ IF review.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF policy->'modules'->>'tm' IS DISTINCT FROM 'true' OR jsonb_array_length(review.competencies)=0 OR NOT app.assessment_review_participates(wanted_review)
+ OR cycle.status NOT IN ('open','calibration') OR EXISTS(SELECT 1 FROM public.performance_review header WHERE header.id=wanted_review AND header.tenant_id=review.tenant_id AND header.closed_at IS NOT NULL)
+ OR EXISTS(SELECT 1 FROM public.performance_onehr_result result WHERE result.review_id=wanted_review AND result.tenant_id=review.tenant_id) THEN RAISE EXCEPTION 'Competency submission is closed' USING ERRCODE='42501';END IF;
+ IF policy->'windows'->cell->>'opensAt' IS NOT NULL AND now()<(policy->'windows'->cell->>'opensAt')::timestamptz
+ OR policy->'windows'->cell->>'closesAt' IS NOT NULL AND now()>=(policy->'windows'->cell->>'closesAt')::timestamptz THEN RAISE EXCEPTION 'This step is closed' USING ERRCODE='42501';END IF;
+ IF review.competency_status IS DISTINCT FROM (CASE WHEN manager_course THEN 'submitted' ELSE 'pending' END) THEN RAISE EXCEPTION 'Competencies are not awaiting this step.' USING ERRCODE='42501';END IF;
+ IF NOT manager_course AND btrim(overall_remark)='' THEN RAISE EXCEPTION 'Add your overall remark before submitting.' USING ERRCODE='22023';END IF;
+ IF (SELECT count(*) FROM jsonb_object_keys(answers))<>jsonb_array_length(review.competencies)
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(review.competencies) competency WHERE NOT (answers ? (competency->>'id')))
+ OR EXISTS(SELECT 1 FROM jsonb_each(answers) answer WHERE jsonb_typeof(answer.value) IS DISTINCT FROM 'object' OR answer.value-ARRAY['answer','remark']<>'{}'::jsonb
+  OR answer.value->>'answer' NOT IN ('yes','no') OR answer.value->>'answer' IS NULL OR jsonb_typeof(answer.value->'remark') IS DISTINCT FROM 'string' OR char_length(answer.value->>'remark')>4000)
+ OR EXISTS(SELECT 1 FROM jsonb_each(sections) section WHERE jsonb_typeof(section.value) IS DISTINCT FROM 'string' OR char_length(section.value#>>'{}')>4000
+  OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(review.competencies) competency WHERE competency->>'principle'=section.key))
+ THEN RAISE EXCEPTION 'Use only complete assigned competency answers and sections' USING ERRCODE='22023';END IF;
+ IF manager_course AND EXISTS(SELECT 1 FROM jsonb_array_elements(review.competencies) competency
+ WHERE answers->(competency->>'id')->>'answer' IS DISTINCT FROM competency->>'self' AND btrim(answers->(competency->>'id')->>'remark')='') THEN RAISE EXCEPTION 'Explain changed competency answers.' USING ERRCODE='22023';END IF;
+ SELECT jsonb_agg(competency||CASE WHEN manager_course THEN jsonb_build_object('manager',answers->(competency->>'id')->'answer','managerRemark',answers->(competency->>'id')->'remark')
+ ELSE jsonb_build_object('self',answers->(competency->>'id')->'answer','selfRemark',answers->(competency->>'id')->'remark') END ORDER BY position)
+ INTO next_competencies FROM jsonb_array_elements(review.competencies) WITH ORDINALITY source(competency,position);
+ DELETE FROM public.performance_assessment_draft draft WHERE draft.tenant_id=review.tenant_id AND draft.review_id=wanted_review AND draft.actor_user_id=app.current_user_id()
+ AND draft.context_id=wanted_review AND draft.kind=CASE WHEN manager_course THEN 'competency_manager' ELSE 'competency_self' END;
+ UPDATE public.performance_onehr_review actual SET competencies=next_competencies,competency_status=CASE WHEN manager_course THEN 'reviewed' ELSE 'submitted' END,
+ competency_manager_remark=CASE WHEN manager_course THEN overall_remark ELSE actual.competency_manager_remark END,
+ competency_self_remark=CASE WHEN manager_course THEN actual.competency_self_remark ELSE overall_remark END,
+ competency_manager_sections=CASE WHEN manager_course THEN sections ELSE actual.competency_manager_sections END,
+ competency_self_sections=CASE WHEN manager_course THEN actual.competency_self_sections ELSE sections END,revision=review.revision+1
+ WHERE actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(review.tenant_id,'onehr',wanted_review,CASE WHEN manager_course THEN 'onehr.competencies-reviewed' ELSE 'onehr.competencies-submitted' END,'user',app.current_user_id(),CASE WHEN manager_course THEN NULL ELSE review.employment_id END,'{}'::jsonb);
+ RETURN review.revision+1;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_competencies_submit(uuid,integer,jsonb,boolean,text,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_competencies_submit(uuid,integer,jsonb,boolean,text,jsonb) TO ai_hr_app;
