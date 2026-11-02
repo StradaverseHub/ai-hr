@@ -2079,4 +2079,3 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.profile_changes_maintenance_lock() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER profile_changes_maintenance_lock BEFORE UPDATE ON public.profile_change_request FOR EACH STATEMENT EXECUTE FUNCTION app.profile_changes_maintenance_lock();
-
