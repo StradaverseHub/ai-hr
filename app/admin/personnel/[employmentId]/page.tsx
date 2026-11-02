@@ -4,7 +4,7 @@ import {HireCorrectionModes} from '../information-correction-form';
 import { getEmploymentCostAllocations } from '@/core/employment-cost-allocations';
 import { CostCenterAllocations } from '@/components/personnel/cost-center-allocations';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
-import {workforceEmploymentAccess} from '@/core/workforce-access';
+import {workforceRegisterControls} from '@/core/workforce-access';
 import Link from 'next/link';
 import {HolidayCalendarAssignments} from './holiday-calendar-assignments';
 import {employmentHolidayCalendarHistory,holidayCalendarInclusiveEnd} from '@/core/holiday-calendar-assignment';
@@ -321,7 +321,8 @@ export default async function EmployeePage({
   // fixing here because this item puts a control on the page whose whole job is to hand this route ids.
   const emp = await employeeDetail(s,employmentId,'workforce');
   if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
-  const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');
+  const registerControls=await workforceRegisterControls(s,employmentId);
+  const canMaintainWorkforce=registerControls.employmentEdit;
   const tAccess=await getTranslations('accessConfiguration');
   const today = todayInKualaLumpur();
   // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
@@ -896,7 +897,7 @@ export default async function EmployeePage({
       <SectionHeader title={t('emergencyTitle')} count={emergencyContacts.length} />
       <section className="border-t border-border">
         <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-          {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('emergency.add')} title={t('emergency.addTitle')}>
+          {registerControls.personAdd ? <FamilyFormDialog triggerLabel={t('emergency.add')} title={t('emergency.addTitle')}>
             {emergencyDialogForm(null)}
           </FamilyFormDialog> : null}
         </div>
@@ -938,17 +939,16 @@ export default async function EmployeePage({
                         >
                           {emergencyViewBody(c)}
                         </FamilyFormDialog>
-                        {canMaintainWorkforce ? <>
-<FamilyFormDialog
+                        {registerControls.personEdit ? <FamilyFormDialog
                           triggerLabel={t('emergency.edit')}
                           triggerVariant="outline"
                           title={t('emergency.editTitle')}
                         >
                           {emergencyDialogForm(c)}
-                        </FamilyFormDialog>
+                        </FamilyFormDialog> : null}
                         {/* Delete lives INSIDE the tab shell, so ConfirmSubmit's requestSubmit() fires a
                             bubbling submit the shell's capture listener sees (tab retention for free). */}
-                        <form action={deleteEmergencyContactAction}>
+                        {registerControls.personDelete ? <form action={deleteEmergencyContactAction}>
                           <input type="hidden" name="employmentId" value={emp.employmentId} />
                           <input type="hidden" name="id" value={c.id} />
                           <ConfirmSubmit
@@ -960,8 +960,7 @@ export default async function EmployeePage({
                           >
                             {t('emergency.delete')}
                           </ConfirmSubmit>
-                        </form>
-</> : null}
+                        </form> : null}
                       </div>
                     </td>
                   </tr>
@@ -1993,7 +1992,7 @@ export default async function EmployeePage({
   const familyMembersSection = (
     <section className="border-t border-border">
       <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-        {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('family.add')} title={t('family.addFamilyTitle')}>
+        {registerControls.personAdd ? <FamilyFormDialog triggerLabel={t('family.add')} title={t('family.addFamilyTitle')}>
           {dialogForm(null)}
         </FamilyFormDialog> : null}
       </div>
@@ -2051,18 +2050,17 @@ export default async function EmployeePage({
                       >
                         {viewDialogBody(d)}
                       </FamilyFormDialog>
-                      {canMaintainWorkforce ? <>
-<FamilyFormDialog
+                      {registerControls.personEdit ? <FamilyFormDialog
                         triggerLabel={t('family.edit')}
                         triggerVariant="outline"
                         title={t('family.editFamilyTitle')}
                       >
                         {dialogForm(d)}
-                      </FamilyFormDialog>
+                      </FamilyFormDialog> : null}
                       {/* Delete keeps tab retention with no extra work: this form lives INSIDE the tab
                           shell, and ConfirmSubmit's confirm calls requestSubmit() on it, firing a bubbling
                           submit event the shell's capture listener does see. */}
-                      <form action={archiveDependentAction}>
+                      {registerControls.personDelete ? <form action={archiveDependentAction}>
                         <input type="hidden" name="employmentId" value={emp.employmentId} />
                         <input type="hidden" name="id" value={d.id} />
                         <ConfirmSubmit
@@ -2074,8 +2072,7 @@ export default async function EmployeePage({
                         >
                           {t('family.delete')}
                         </ConfirmSubmit>
-                      </form>
-</> : null}
+                      </form> : null}
                     </div>
                   </td>
                 </tr>
@@ -2195,7 +2192,7 @@ export default async function EmployeePage({
       <SectionHeader title={t('qualification.title')} count={qualifications.length} />
       <section className="border-t border-border">
         <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
-          {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('qualification.add')} title={t('qualification.addTitle')}>
+          {registerControls.employmentAdd ? <FamilyFormDialog triggerLabel={t('qualification.add')} title={t('qualification.addTitle')}>
             {qualificationDialogForm(null)}
           </FamilyFormDialog> : null}
         </div>
@@ -2233,17 +2230,16 @@ export default async function EmployeePage({
                         >
                           {qualificationViewBody(q)}
                         </FamilyFormDialog>
-                        {canMaintainWorkforce ? <>
-<FamilyFormDialog
+                        {registerControls.employmentEdit ? <FamilyFormDialog
                           triggerLabel={t('qualification.edit')}
                           triggerVariant="outline"
                           title={t('qualification.editTitle')}
                         >
                           {qualificationDialogForm(q)}
-                        </FamilyFormDialog>
+                        </FamilyFormDialog> : null}
                         {/* Delete lives INSIDE the tab shell, so ConfirmSubmit's requestSubmit() fires a
                             bubbling submit the shell's capture listener sees (tab retention for free). */}
-                        <form action={archiveQualificationAction}>
+                        {registerControls.employmentDelete ? <form action={archiveQualificationAction}>
                           <input type="hidden" name="employmentId" value={emp.employmentId} />
                           <input type="hidden" name="id" value={q.id} />
                           <ConfirmSubmit
@@ -2255,8 +2251,7 @@ export default async function EmployeePage({
                           >
                             {t('qualification.delete')}
                           </ConfirmSubmit>
-                        </form>
-</> : null}
+                        </form> : null}
                       </div>
                     </td>
                   </tr>

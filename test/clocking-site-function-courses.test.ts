@@ -50,8 +50,10 @@ it('refuses raw company unticking and site removal while actual employee assignm
  const site=await createClockingLocation(admin,input('Fictional assigned gate')),hired=await hireEmployee(admin,{person:{fullName:'Fictional assigned employee',primaryEmail:`${randomUUID()}@test.local`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
  await owner.db.insert(s.employeeClockingLocation).values({tenantId:b.tenantId,employmentId:hired.employmentId,clockingLocationId:site.id});
  const profileId=randomUUID();
- for(const command of [{kind:'create',profileId,name:'Fictional restricted site operator',enabled:true,rules:{legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptB]}]}},{kind:'assign',userId:b.adminUserId,profileId}] satisfies DataPermissionCommand[]){const state=await readDataPermissions(admin),preview=await previewDataPermission(admin,state.revision,command);await saveDataPermission(admin,state.revision,command,preview.fingerprint);}
- const clipped=await listClockingLocationsForMaintenance(admin);expect(clipped.find(row=>row.id===site.id)?.assignedCount).toBe(0);
+ for(const command of [{kind:'create',profileId,name:'Fictional restricted site operator',enabled:true,rules:{legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptB]}]}},{kind:'assign',userId:companyHr.userId!,profileId}] satisfies DataPermissionCommand[]){const state=await readDataPermissions(admin),preview=await previewDataPermission(admin,state.revision,command);await saveDataPermission(admin,state.revision,command,preview.fingerprint);}
+ // Scoped HR may read the site while the assigned employee stays hidden. The protected group
+ // administrator retains the separate native write course; actual assignment blockers still apply.
+ const clipped=await listClockingLocationsForMaintenance(companyHr);expect(clipped.find(row=>row.id===site.id)?.assignedCount).toBe(0);
  await expect(withTenant(admin,tx=>tx.delete(s.clockingLocationCompany).where(and(eq(s.clockingLocationCompany.clockingLocationId,site.id),eq(s.clockingLocationCompany.companyId,b.companyId))))).rejects.toThrow('Clocking site company is in use');
  await expect(withTenant(admin,tx=>tx.delete(s.clockingLocation).where(eq(s.clockingLocation.id,site.id)))).rejects.toThrow('Clocking site is in use');
  expect(await owner.db.select().from(s.clockingLocationCompany).where(eq(s.clockingLocationCompany.clockingLocationId,site.id))).toHaveLength(1);

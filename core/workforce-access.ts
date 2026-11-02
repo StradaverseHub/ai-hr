@@ -49,6 +49,22 @@ export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string
  });
 }
 
+/** Administrative register controls follow the same stored subject checks as their native forms. */
+export function workforceRegisterControls(ctx:SessionContext,employmentId:string){
+ return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const [allowed]=await tx.execute<{employmentAdd:boolean;employmentEdit:boolean;employmentDelete:boolean;personAdd:boolean;personEdit:boolean;personDelete:boolean}>(sql`select
+   app.access_workforce_employment(${employmentId}::uuid,'workforce.add') as "employmentAdd",
+   app.access_workforce_employment(${employmentId}::uuid,'workforce.edit') as "employmentEdit",
+   app.access_workforce_employment(${employmentId}::uuid,'workforce.delete') as "employmentDelete",
+   app.access_workforce_person(subject.person_id,'workforce.add') as "personAdd",
+   app.access_workforce_person(subject.person_id,'workforce.edit') as "personEdit",
+   app.access_workforce_person(subject.person_id,'workforce.delete') as "personDelete"
+   from (select 1) seed left join lateral (select e.person_id from public.employment e where e.id=${employmentId}::uuid and e.tenant_id=app.current_tenant_id() and e.voided_at is null) subject on true`);
+  return allowed??{employmentAdd:false,employmentEdit:false,employmentDelete:false,personAdd:false,personEdit:false,personDelete:false};
+ });
+}
+
 /** Availability of the implemented fixed-command lane; never a raw-row or legacy-role grant. */
 export function workforceCommandAccess(ctx:SessionContext,employmentId:string){
  return withTenant(ctx,async tx=>{
