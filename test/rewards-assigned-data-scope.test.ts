@@ -39,6 +39,15 @@ it('keeps only actual current unit membership, with no raw subject access and im
  expect(raw.people).toEqual([]);expect(raw.employments).toEqual([]);expect(raw.entries.map(row=>row.employmentId)).toContain(subject.employmentId);
  expect((await getRewardUnit(reviewer.ctx,unit)).rows.map(row=>row.source.employmentId)).toContain(subject.employmentId);
  for(const outsider of [other,manager])expect(await withTenant(outsider.ctx,tx=>tx.select().from(s.rewardEntry).where(eq(s.rewardEntry.unitId,unit)))).toEqual([]);
+ // The same saved seat cannot carry this review's history to a different company/BU.
+ const [companyB]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional other reward owner'}).returning();
+ const [globalBu]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'REWARD-GLOBAL',name:'Fictional global unit',isGlobal:true}).returning();
+ for(const change of [
+  {companyId:companyB.id,businessUnitId:globalBu.id},
+  {businessUnitId:globalBu.id},
+  {createdBy:reviewer.ctx.userId!},
+ ]){let refusal:unknown;try{await withTenant(reviewer.ctx,tx=>tx.update(s.rewardUnit).set(change).where(eq(s.rewardUnit.id,unit)));}catch(error){refusal=error;}expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward review ownership is immutable'}));}
+ expect(await withTenant(reviewer.ctx,tx=>tx.select({companyId:s.rewardUnit.companyId,businessUnitId:s.rewardUnit.businessUnitId,createdBy:s.rewardUnit.createdBy}).from(s.rewardUnit).where(eq(s.rewardUnit.id,unit)))).toEqual([{companyId:b.companyId,businessUnitId:bu.id,createdBy:root.userId}]);
  // The actual BG seat can update the raw row under native RLS, but cannot reassign its
  // historical recommendations or audit identity to another same-company employment/person.
  for(const change of [

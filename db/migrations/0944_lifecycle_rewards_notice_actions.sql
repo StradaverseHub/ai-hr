@@ -1768,3 +1768,20 @@ REVOKE ALL ON FUNCTION app.reward_entry_recipient_guard()FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER reward_entry_recipient_guard BEFORE UPDATE ON public.reward_entry FOR EACH ROW EXECUTE FUNCTION app.reward_entry_recipient_guard();
 -- Join the same authority lock before a direct participant statement acquires any entry row lock.
 CREATE TRIGGER reward_entry_recipient_lock BEFORE UPDATE ON public.reward_entry FOR EACH STATEMENT EXECUTE FUNCTION app.notice_action_statement_lock();
+--> statement-breakpoint
+-- A membership is attached to one saved company/business-unit review. It cannot carry the
+-- same historical decisions, funding and recipients into a different owner or annual cycle.
+CREATE FUNCTION app.reward_unit_identity_guard()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner()THEN RETURN NEW;END IF;
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL
+  OR OLD.tenant_id IS DISTINCT FROM app.current_tenant_id()OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()
+  OR ROW(NEW.id,NEW.tenant_id,NEW.company_id,NEW.business_unit_id,NEW.cycle_id,NEW.kind,NEW.parent_unit_id,NEW.created_by,NEW.created_at)
+   IS DISTINCT FROM ROW(OLD.id,OLD.tenant_id,OLD.company_id,OLD.business_unit_id,OLD.cycle_id,OLD.kind,OLD.parent_unit_id,OLD.created_by,OLD.created_at)
+ THEN RAISE EXCEPTION 'Reward review ownership is immutable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_unit_identity_guard()FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER reward_unit_identity_guard BEFORE UPDATE ON public.reward_unit FOR EACH ROW EXECUTE FUNCTION app.reward_unit_identity_guard();
+CREATE TRIGGER reward_unit_identity_lock BEFORE UPDATE ON public.reward_unit FOR EACH STATEMENT EXECUTE FUNCTION app.notice_action_statement_lock();
