@@ -33704,6 +33704,7 @@
     "defaultSubject": "Contract staff task",
     "defaultBody": "Open Contract Management to review your assigned task.",
     "recipient": {
+      "employee": "Employee",
       "manager": "Line manager",
       "pbp": "Assigned PBP",
       "ceo": "BU / BG CEO",

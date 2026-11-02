@@ -33704,6 +33704,7 @@
     "defaultSubject": "Công việc nhân sự hợp đồng",
     "defaultBody": "Mở Quản lý hợp đồng để xem công việc được giao.",
     "recipient": {
+      "employee": "Nhân viên",
       "manager": "Quản lý trực tiếp",
       "pbp": "PBP được phân công",
       "ceo": "CEO đơn vị / nhóm kinh doanh",
