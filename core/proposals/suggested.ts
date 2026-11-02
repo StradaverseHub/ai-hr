@@ -29,6 +29,7 @@ import {isCalendarDate,LEAVE_APPLY_MAX_DAYS,leaveApplyDaySpan,prepareLeaveApplyF
 import {prepareLeaveCancelProposal} from './leave-cancel';
 import {isChatLeaveDuration,readOwnLeaveApplyMenu,type ChatLeaveDuration,type OwnLeaveApplyType} from '../assistant-actions/own-leave-apply-form';
 import {OWN_LEAVE_ACTION,OWN_LEAVE_CONTRACT_VERSION} from '../../lib/assistant-actions/own-leave-contract';
+import {matchLeaveTypeWords} from './leave-type-match';
 import {prepareLeaveDecideProposal} from './leave-decide';
 import type {Proposal} from './proposal';
 import {PENDING_STARTS} from '../semantic-model/entities-recommend';
@@ -116,19 +117,15 @@ export type LeaveApplyOption=Readonly<{option:number;leaveType:string}>;
 export type ChatLeaveApplyOutcome=Readonly<{kind:'proposal';proposal:Proposal}>
  |Readonly<{kind:'ask';missing:readonly LeaveApplyDetail[];options:readonly LeaveApplyOption[]}>;
 
-const normalise=(value:string)=>value.normalize('NFKC').toLowerCase().replace(/\b(?:leave|cuti)\b/g,' ').replace(/[^\p{L}\p{N}]+/gu,'');
 const squash=(value:string)=>value.normalize('NFKC').toLowerCase().replace(/\s+/g,' ').trim();
-/** The leave type the model named, against the caller's own menu: an exact name or code first, then the one name that
- * contains it ("annual" in "Annual Leave"); or the number the person chose from the listed options, when the
- * person's own words this turn say that number. Several or none is unclear. */
+/** The leave type the model named, against the caller's own menu (./leave-type-match.ts: a name in any language or a
+ * code, then the kind of leave in any of the six languages, then the one name that contains it); or the number the
+ * person chose from the listed options, when the person's own words this turn say that number. Unclear is null. */
 function matchLeaveType(types:readonly OwnLeaveApplyType[],given:string,personWords:string|undefined):OwnLeaveApplyType|null{
  const asked=given.trim();
  if(/^\d{1,2}$/.test(asked)){const number=Number(asked);return wordsNameNumber(personWords,number)&&number>=1&&number<=types.length?types[number-1]:null;}
- const key=normalise(asked);if(!key)return null;
- const exact=types.filter(type=>normalise(type.name)===key||normalise(type.code)===key);
- if(exact.length)return exact.length===1?exact[0]:null;
- const partial=types.filter(type=>normalise(type.name).includes(key));
- return partial.length===1?partial[0]:null;
+ const match=matchLeaveTypeWords(types,asked);
+ return match.kind==='one'?match.type:null;
 }
 const optionsFor=(types:readonly OwnLeaveApplyType[]):readonly LeaveApplyOption[]=>Object.freeze(types.map((type,index)=>Object.freeze({option:index+1,leaveType:type.name.slice(0,64)})));
 
