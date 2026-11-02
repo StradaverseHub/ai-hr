@@ -14322,7 +14322,8 @@
       "calibration": "Complete calibration",
       "rewardReview": "Review rewards",
       "probation": "Probation Confirmation",
-      "contract_staff": "Contract Management"
+      "contract_staff": "Contract Management",
+      "contractDateCorrection": "Contract date correction"
     },
     "tasksEmpty": "Nothing needs your action",
     "title": "Notifications",
@@ -34078,7 +34079,47 @@
       "approvalReason": "Reason for approving this rehearsal",
       "approve": "Approve this exact rehearsal",
       "screenBound": "The first 100 messages in each section are shown below. The CSV contains the complete review.",
-      "exportHeld": "This rehearsal is incomplete. Prepare a complete review before downloading or approving it."
+      "exportHeld": "This rehearsal is incomplete. Prepare a complete review before downloading or approving it.",
+      "historyTitle": "Review previous extensions",
+      "historyHelp": "Select the recorded Personnel changes that establish the previous review cycles. The dates are read-only.",
+      "historyValidated": "The current PBP has verified the original and extended periods against these Personnel records.",
+      "paperFinalTitle": "Final decision recorded on paper",
+      "paperFinalHelp": "Use the actual signed review as evidence. Record the proposed outcome for People Ops to verify. This does not create electronic review signatures or release a letter.",
+      "paperFinalPropose": "Record paper decision for review",
+      "paperFinalRecorded": "The paper decision is recorded for scoped People Ops review after activation.",
+      "validateEligibility": "The current PBP verified transfer or rehire eligibility and any missing period details against Personnel records.",
+      "historyNoExtension": "With no extension selected, this review treats the current date change as a date adjustment and keeps the existing cycle count.",
+      "historyKinds": {
+        "probation_extension": "Recorded probation extension",
+        "date_shift": "Long-leave date adjustment",
+        "unclassified": "Personnel change requiring PBP review",
+        "current_source": "Current Personnel date comparison"
+      },
+      "reactivationTitle": "Existing case reactivation",
+      "reactivationStates": {
+        "preserved": "History and pending stages preserved",
+        "held": "Needs review before resuming",
+        "withdrawal": "Close probation for a recorded exit"
+      },
+      "paperFinalAdjudicate": "Review the recorded Other outcome",
+      "paperFinalAdjudicationHelp": "Keep the original signed paper decision in history. Record a specific outcome for People Ops to verify.",
+      "paperFinalResolve": "Record outcome for verification",
+      "paperFinalWaiting": "Awaiting People Ops verification",
+      "paperFinalAccepted": "Recorded by People Ops",
+      "paperFinalAccept": "Record verified paper decision",
+      "pendingWorkTitle": "Preserved pending work",
+      "pendingWorkKinds": {
+        "render": "Prepare document",
+        "filing": "File document",
+        "outcome": "Apply authorised outcome",
+        "date_shift": "Process date adjustment",
+        "schedule_reconciliation": "Review case schedule"
+      },
+      "pendingWorkStates": {
+        "pending": "Pending",
+        "held": "Held for review",
+        "failed": "Needs a retry"
+      }
     },
     "workflows": {
       "title": "Probation workflows",
@@ -34219,9 +34260,14 @@
         "awaiting_gbs": "Awaiting GBS approval",
         "queued": "Approved · awaiting Personnel update",
         "applied": "Applied to Personnel",
-        "failed": "Personnel update needs review"
+        "failed": "Personnel update needs review",
+        "superseded": "Closed as out of date"
       },
-      "failedHelp": "The approved change could not be applied. Review the current Personnel record before retrying."
+      "failedHelp": "The approved change could not be applied. Review the current Personnel record before retrying.",
+      "supersede": "Close outdated request",
+      "reconcilePaused": "Request schedule review while paused",
+      "reconciliationQueued": "Schedule review requested. Processing remains paused.",
+      "reconciliationQueuedActive": "Schedule review requested. Existing Personnel dates are unchanged."
     },
     "signers": {
       "title": "Signing assignments",
@@ -34241,7 +34287,17 @@
       "discard": "Discard unsaved changes"
     },
     "gradeChanged": "The current grade differs from the recorded starting grade. PBP must review the change; this review keeps its original form and starting-grade record.",
-    "runtimePaused": "Processing is paused. Existing records remain available as read-only history."
+    "runtimePaused": "Processing is paused. Existing records remain available as read-only history.",
+    "sourceMoved": "The employment moved to another company. This case shows the original company’s records only.",
+    "retired": "Retired",
+    "retire": {
+      "title": "Retire published version {version}",
+      "help": "New work will no longer use this publication. Existing cases and prepared letters keep their saved versions.",
+      "action": "Record retirement",
+      "success": "Version retired.",
+      "unavailable": "Only the current published version can be retired.",
+      "checking": "Checking the current publication…"
+    }
   },
   "templateEditor": {
     "newField": "New field",

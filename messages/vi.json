@@ -14322,7 +14322,8 @@
       "calibration": "Hoàn tất hiệu chỉnh hiệu suất",
       "rewardReview": "Xem xét đãi ngộ",
       "probation": "Xác nhận thử việc",
-      "contract_staff": "Quản lý hợp đồng"
+      "contract_staff": "Quản lý hợp đồng",
+      "contractDateCorrection": "Điều chỉnh ngày hợp đồng"
     },
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
     "title": "Thông báo",
@@ -34078,7 +34079,47 @@
       "approvalReason": "Lý do phê duyệt bản diễn tập này",
       "approve": "Phê duyệt đúng bản diễn tập này",
       "screenBound": "Bên dưới hiển thị 100 tin nhắn đầu tiên của mỗi phần. CSV chứa toàn bộ nội dung xem xét.",
-      "exportHeld": "Bản diễn tập này chưa đầy đủ. Hãy chuẩn bị bản rà soát đầy đủ trước khi tải xuống hoặc phê duyệt."
+      "exportHeld": "Bản diễn tập này chưa đầy đủ. Hãy chuẩn bị bản rà soát đầy đủ trước khi tải xuống hoặc phê duyệt.",
+      "historyTitle": "Xem xét các lần gia hạn trước",
+      "historyHelp": "Chọn các thay đổi đã ghi trong Hồ sơ nhân sự để xác lập các chu kỳ đánh giá trước. Ngày tháng chỉ cho phép xem.",
+      "historyValidated": "PBP hiện tại đã xác minh thời hạn ban đầu và thời hạn gia hạn theo các Hồ sơ nhân sự này.",
+      "paperFinalTitle": "Quyết định cuối cùng đã ghi trên giấy",
+      "paperFinalHelp": "Dùng bản đánh giá thực tế đã ký làm bằng chứng. Ghi nhận kết quả đề xuất để People Ops xác minh. Thao tác này không tạo chữ ký đánh giá điện tử hoặc phát hành thư.",
+      "paperFinalPropose": "Ghi quyết định trên giấy để xem xét",
+      "paperFinalRecorded": "Quyết định trên giấy đã được ghi nhận để People Ops xem xét trong phạm vi được phép sau khi kích hoạt.",
+      "validateEligibility": "PBP hiện tại đã đối chiếu hồ sơ Nhân sự để xác minh điều kiện điều chuyển hoặc tuyển lại và mọi thông tin còn thiếu về thời hạn.",
+      "historyNoExtension": "Nếu không chọn lần gia hạn nào, lần rà soát này xem thay đổi ngày hiện tại là điều chỉnh ngày và giữ nguyên số chu kỳ.",
+      "historyKinds": {
+        "probation_extension": "Gia hạn thử việc đã ghi nhận",
+        "date_shift": "Điều chỉnh ngày do nghỉ dài hạn",
+        "unclassified": "Thay đổi hồ sơ Nhân sự cần PBP rà soát",
+        "current_source": "Đối chiếu ngày Nhân sự hiện tại"
+      },
+      "reactivationTitle": "Kích hoạt lại hồ sơ hiện có",
+      "reactivationStates": {
+        "preserved": "Giữ nguyên lịch sử và các bước đang chờ",
+        "held": "Cần rà soát trước khi tiếp tục",
+        "withdrawal": "Kết thúc thử việc theo việc chấm dứt đã ghi nhận"
+      },
+      "paperFinalAdjudicate": "Rà soát kết quả Khác đã ghi nhận",
+      "paperFinalAdjudicationHelp": "Giữ quyết định gốc đã ký trên giấy trong lịch sử. Ghi nhận kết quả cụ thể để bộ phận Vận hành Nhân sự xác minh.",
+      "paperFinalResolve": "Ghi nhận kết quả để xác minh",
+      "paperFinalWaiting": "Đang chờ bộ phận Vận hành Nhân sự xác minh",
+      "paperFinalAccepted": "Đã được bộ phận Vận hành Nhân sự ghi nhận",
+      "paperFinalAccept": "Ghi nhận quyết định trên giấy đã được xác minh",
+      "pendingWorkTitle": "Công việc đang chờ được giữ lại",
+      "pendingWorkKinds": {
+        "render": "Chuẩn bị tài liệu",
+        "filing": "Lưu hồ sơ tài liệu",
+        "outcome": "Thực hiện kết quả đã được phê duyệt",
+        "date_shift": "Xử lý điều chỉnh ngày",
+        "schedule_reconciliation": "Rà soát lịch của hồ sơ"
+      },
+      "pendingWorkStates": {
+        "pending": "Đang chờ",
+        "held": "Tạm giữ để rà soát",
+        "failed": "Cần thử lại"
+      }
     },
     "workflows": {
       "title": "Quy trình thử việc",
@@ -34219,9 +34260,14 @@
         "awaiting_gbs": "Đang chờ GBS phê duyệt",
         "queued": "Đã phê duyệt · đang chờ cập nhật Hồ sơ nhân sự",
         "applied": "Đã áp dụng vào Hồ sơ nhân sự",
-        "failed": "Việc cập nhật Hồ sơ nhân sự cần xem xét"
+        "failed": "Việc cập nhật Hồ sơ nhân sự cần xem xét",
+        "superseded": "Đã đóng vì không còn hiệu lực"
       },
-      "failedHelp": "Không thể áp dụng thay đổi đã được phê duyệt. Xem xét Hồ sơ nhân sự hiện tại trước khi thử lại."
+      "failedHelp": "Không thể áp dụng thay đổi đã được phê duyệt. Xem xét Hồ sơ nhân sự hiện tại trước khi thử lại.",
+      "supersede": "Đóng yêu cầu không còn hiệu lực",
+      "reconcilePaused": "Yêu cầu rà soát lịch trong thời gian tạm dừng",
+      "reconciliationQueued": "Đã yêu cầu rà soát lịch. Việc xử lý vẫn đang tạm dừng.",
+      "reconciliationQueuedActive": "Đã yêu cầu rà soát lịch. Các ngày hiện có trong hồ sơ Nhân sự không thay đổi."
     },
     "signers": {
       "title": "Phân công ký",
@@ -34241,7 +34287,17 @@
       "discard": "Bỏ thay đổi chưa lưu"
     },
     "gradeChanged": "Bậc hiện tại khác với bậc ban đầu đã ghi nhận. PBP cần rà soát thay đổi; đánh giá này giữ biểu mẫu gốc và bản ghi bậc ban đầu.",
-    "runtimePaused": "Quy trình xử lý đang tạm dừng. Bạn vẫn có thể xem các hồ sơ hiện có ở chế độ chỉ đọc."
+    "runtimePaused": "Quy trình xử lý đang tạm dừng. Bạn vẫn có thể xem các hồ sơ hiện có ở chế độ chỉ đọc.",
+    "sourceMoved": "Hồ sơ việc làm đã chuyển sang công ty khác. Hồ sơ này chỉ hiển thị dữ liệu của công ty ban đầu.",
+    "retired": "Đã ngừng sử dụng",
+    "retire": {
+      "title": "Ngừng sử dụng phiên bản đã phát hành {version}",
+      "help": "Công việc mới sẽ không còn sử dụng bản phát hành này. Các hồ sơ hiện có và thư đã chuẩn bị vẫn giữ phiên bản đã lưu.",
+      "action": "Ghi nhận việc ngừng sử dụng",
+      "success": "Đã ngừng sử dụng phiên bản.",
+      "unavailable": "Chỉ có thể ngừng sử dụng phiên bản phát hành hiện tại.",
+      "checking": "Đang kiểm tra bản phát hành hiện tại…"
+    }
   },
   "templateEditor": {
     "newField": "Trường mới",

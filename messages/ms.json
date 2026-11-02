@@ -14322,7 +14322,8 @@
       "calibration": "Lengkapkan kalibrasi prestasi",
       "rewardReview": "Semak ganjaran",
       "probation": "Pengesahan Percubaan",
-      "contract_staff": "Pengurusan Kontrak"
+      "contract_staff": "Pengurusan Kontrak",
+      "contractDateCorrection": "Pembetulan tarikh kontrak"
     },
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
     "title": "Pemberitahuan",
@@ -34078,7 +34079,47 @@
       "approvalReason": "Sebab meluluskan simulasi ini",
       "approve": "Luluskan simulasi tepat ini",
       "screenBound": "100 mesej pertama dalam setiap seksyen dipaparkan di bawah. CSV mengandungi semakan lengkap.",
-      "exportHeld": "Raptai ini belum lengkap. Sediakan semakan lengkap sebelum memuat turun atau meluluskannya."
+      "exportHeld": "Raptai ini belum lengkap. Sediakan semakan lengkap sebelum memuat turun atau meluluskannya.",
+      "historyTitle": "Semak pelanjutan terdahulu",
+      "historyHelp": "Pilih perubahan yang direkodkan dalam Rekod Kakitangan untuk menentukan kitaran semakan terdahulu. Tarikh hanya boleh dibaca.",
+      "historyValidated": "PBP semasa telah mengesahkan tempoh asal dan tempoh lanjutan berdasarkan Rekod Kakitangan ini.",
+      "paperFinalTitle": "Keputusan akhir direkodkan pada dokumen kertas",
+      "paperFinalHelp": "Gunakan semakan sebenar yang telah ditandatangani sebagai bukti. Rekodkan hasil yang dicadangkan untuk disahkan oleh People Ops. Tindakan ini tidak mewujudkan tandatangan semakan elektronik atau mengeluarkan surat.",
+      "paperFinalPropose": "Rekodkan keputusan bertulis untuk semakan",
+      "paperFinalRecorded": "Keputusan bertulis telah direkodkan untuk semakan oleh People Ops dalam skop yang dibenarkan selepas pengaktifan.",
+      "validateEligibility": "PBP semasa telah mengesahkan kelayakan pemindahan atau pengambilan semula dan butiran tempoh yang tiada berdasarkan rekod Personel.",
+      "historyNoExtension": "Jika tiada pelanjutan dipilih, semakan ini menganggap perubahan tarikh semasa sebagai pelarasan tarikh dan mengekalkan bilangan kitaran sedia ada.",
+      "historyKinds": {
+        "probation_extension": "Pelanjutan percubaan yang direkodkan",
+        "date_shift": "Pelarasan tarikh cuti panjang",
+        "unclassified": "Perubahan Personel yang memerlukan semakan PBP",
+        "current_source": "Perbandingan tarikh Personel semasa"
+      },
+      "reactivationTitle": "Pengaktifan semula kes sedia ada",
+      "reactivationStates": {
+        "preserved": "Sejarah dan peringkat belum selesai dikekalkan",
+        "held": "Perlu disemak sebelum disambung",
+        "withdrawal": "Tutup percubaan bagi penamatan yang direkodkan"
+      },
+      "paperFinalAdjudicate": "Semak keputusan Lain-lain yang direkodkan",
+      "paperFinalAdjudicationHelp": "Simpan keputusan asal yang ditandatangani di atas kertas dalam sejarah. Rekodkan keputusan khusus untuk disahkan oleh People Ops.",
+      "paperFinalResolve": "Rekodkan keputusan untuk pengesahan",
+      "paperFinalWaiting": "Menunggu pengesahan People Ops",
+      "paperFinalAccepted": "Direkodkan oleh People Ops",
+      "paperFinalAccept": "Rekodkan keputusan kertas yang telah disahkan",
+      "pendingWorkTitle": "Kerja belum selesai yang dikekalkan",
+      "pendingWorkKinds": {
+        "render": "Sediakan dokumen",
+        "filing": "Failkan dokumen",
+        "outcome": "Laksanakan keputusan yang diluluskan",
+        "date_shift": "Proses pelarasan tarikh",
+        "schedule_reconciliation": "Semak jadual kes"
+      },
+      "pendingWorkStates": {
+        "pending": "Belum selesai",
+        "held": "Ditahan untuk semakan",
+        "failed": "Perlu dicuba semula"
+      }
     },
     "workflows": {
       "title": "Aliran kerja percubaan",
@@ -34219,9 +34260,14 @@
         "awaiting_gbs": "Menunggu kelulusan GBS",
         "queued": "Diluluskan · menunggu kemas kini Rekod Kakitangan",
         "applied": "Digunakan pada Rekod Kakitangan",
-        "failed": "Kemas kini Rekod Kakitangan perlu disemak"
+        "failed": "Kemas kini Rekod Kakitangan perlu disemak",
+        "superseded": "Ditutup kerana tidak lagi semasa"
       },
-      "failedHelp": "Perubahan yang diluluskan tidak dapat digunakan. Semak Rekod Kakitangan semasa sebelum mencuba semula."
+      "failedHelp": "Perubahan yang diluluskan tidak dapat digunakan. Semak Rekod Kakitangan semasa sebelum mencuba semula.",
+      "supersede": "Tutup permintaan yang tidak lagi semasa",
+      "reconcilePaused": "Minta semakan jadual semasa pemprosesan dijeda",
+      "reconciliationQueued": "Semakan jadual telah diminta. Pemprosesan masih dijeda.",
+      "reconciliationQueuedActive": "Semakan jadual telah diminta. Tarikh Personel sedia ada tidak berubah."
     },
     "signers": {
       "title": "Penugasan tandatangan",
@@ -34241,7 +34287,17 @@
       "discard": "Buang perubahan belum disimpan"
     },
     "gradeChanged": "Gred semasa berbeza daripada gred permulaan yang direkodkan. PBP mesti menyemak perubahan ini; penilaian ini mengekalkan borang asal dan rekod gred permulaan.",
-    "runtimePaused": "Pemprosesan dijeda. Rekod sedia ada kekal tersedia sebagai sejarah baca sahaja."
+    "runtimePaused": "Pemprosesan dijeda. Rekod sedia ada kekal tersedia sebagai sejarah baca sahaja.",
+    "sourceMoved": "Pekerjaan ini telah berpindah ke syarikat lain. Kes ini hanya memaparkan rekod syarikat asal.",
+    "retired": "Ditamatkan",
+    "retire": {
+      "title": "Tamatkan versi terbitan {version}",
+      "help": "Kerja baharu tidak lagi menggunakan terbitan ini. Kes sedia ada dan surat yang telah disediakan mengekalkan versi yang disimpan.",
+      "action": "Rekodkan penamatan versi",
+      "success": "Versi telah ditamatkan.",
+      "unavailable": "Hanya versi terbitan semasa boleh ditamatkan.",
+      "checking": "Menyemak terbitan semasa…"
+    }
   },
   "templateEditor": {
     "newField": "Medan baharu",

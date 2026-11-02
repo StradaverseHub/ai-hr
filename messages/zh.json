@@ -14322,7 +14322,8 @@
       "calibration": "完成绩效校准",
       "rewardReview": "审阅薪酬奖励",
       "probation": "试用期转正确认",
-      "contract_staff": "合同管理"
+      "contract_staff": "合同管理",
+      "contractDateCorrection": "合同日期更正"
     },
     "tasksEmpty": "没有需要您处理的事项",
     "title": "通知",
@@ -34078,7 +34079,47 @@
       "approvalReason": "批准此次演练的原因",
       "approve": "批准此次确切演练",
       "screenBound": "下方显示每个分区的前 100 条消息。CSV 包含完整审核内容。",
-      "exportHeld": "此次演练不完整。请先准备完整的审查，再下载或批准。"
+      "exportHeld": "此次演练不完整。请先准备完整的审查，再下载或批准。",
+      "historyTitle": "审核以往的延长记录",
+      "historyHelp": "请选择用于确定先前评估周期的已记录人事变更。日期仅供查看。",
+      "historyValidated": "当前 PBP 已依据这些人事记录核实原试用期及延长期。",
+      "paperFinalTitle": "已在纸质文件上记录最终决定",
+      "paperFinalHelp": "请以实际签署的评估文件作为凭证。记录拟定结果，供 People Ops 核实。此操作不会创建电子评估签名，也不会发出信函。",
+      "paperFinalPropose": "记录纸质决定以供审核",
+      "paperFinalRecorded": "纸质决定已记录，启用后将由有相应权限的 People Ops 审核。",
+      "validateEligibility": "当前 PBP 已根据人员记录核实调动或重新聘用的资格以及缺失的期限信息。",
+      "historyNoExtension": "如未选择延期，本次审查将当前日期变更视为日期调整，并保留现有评审周期数。",
+      "historyKinds": {
+        "probation_extension": "已记录的试用期延长",
+        "date_shift": "长期休假日期调整",
+        "unclassified": "需要 PBP 审核的人员记录变更",
+        "current_source": "当前人员日期对照"
+      },
+      "reactivationTitle": "重新启用现有案件",
+      "reactivationStates": {
+        "preserved": "保留历史记录和未完成阶段",
+        "held": "恢复前需要审核",
+        "withdrawal": "对已记录的离职结束试用流程"
+      },
+      "paperFinalAdjudicate": "复核已记录的“其他”结果",
+      "paperFinalAdjudicationHelp": "在历史记录中保留原始签署的纸质决定。记录具体结果，交由人事运营团队核实。",
+      "paperFinalResolve": "记录结果以供核实",
+      "paperFinalWaiting": "等待人事运营团队核实",
+      "paperFinalAccepted": "已由人事运营团队记录",
+      "paperFinalAccept": "记录已核实的纸质决定",
+      "pendingWorkTitle": "保留的待处理事项",
+      "pendingWorkKinds": {
+        "render": "准备文件",
+        "filing": "归档文件",
+        "outcome": "执行获授权的结果",
+        "date_shift": "处理日期调整",
+        "schedule_reconciliation": "审核案件计划"
+      },
+      "pendingWorkStates": {
+        "pending": "待处理",
+        "held": "暂缓，等待复核",
+        "failed": "需要重试"
+      }
     },
     "workflows": {
       "title": "试用期工作流",
@@ -34219,9 +34260,14 @@
         "awaiting_gbs": "等待 GBS 批准",
         "queued": "已批准 · 等待更新人事资料",
         "applied": "已更新至人事资料",
-        "failed": "人事资料更新需要审核"
+        "failed": "人事资料更新需要审核",
+        "superseded": "已因失效关闭"
       },
-      "failedHelp": "已批准的更改未能应用。请先审核当前人事资料，再重试。"
+      "failedHelp": "已批准的更改未能应用。请先审核当前人事资料，再重试。",
+      "supersede": "关闭已失效的请求",
+      "reconcilePaused": "暂停期间请求复核日程",
+      "reconciliationQueued": "已请求复核日程。处理仍处于暂停状态。",
+      "reconciliationQueuedActive": "已请求审核计划。现有人员记录中的日期未更改。"
     },
     "signers": {
       "title": "签署分配",
@@ -34241,7 +34287,17 @@
       "discard": "放弃未保存的更改"
     },
     "gradeChanged": "当前职级与记录的入职职级不同。PBP 必须审核变更；此评估将保留原始表单和入职职级记录。",
-    "runtimePaused": "处理已暂停。现有记录仍可作为只读历史查看。"
+    "runtimePaused": "处理已暂停。现有记录仍可作为只读历史查看。",
+    "sourceMoved": "该雇佣关系已转至另一家公司。此案件仅显示原公司的记录。",
+    "retired": "已停用",
+    "retire": {
+      "title": "停用已发布版本 {version}",
+      "help": "新事项将不再使用此发布版本。现有案件和已准备的信函仍保留各自保存的版本。",
+      "action": "记录停用",
+      "success": "版本已停用。",
+      "unavailable": "只能停用当前已发布的版本。",
+      "checking": "正在检查当前发布版本…"
+    }
   },
   "templateEditor": {
     "newField": "新字段",
