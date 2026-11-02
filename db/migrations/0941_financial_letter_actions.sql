@@ -1179,6 +1179,12 @@ BEGIN
   RETURN p_company IS NULL AND operation IN ('view','execute') AND EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL AND NOT app.login_blocked(u.id));
  END IF;
  IF function_key IN ('payroll.process','payroll.fixedTransactions','payroll.individualTransactions','payroll.statutoryAdjustments','payroll.backPay') THEN family:='payroll';END IF;
+ IF function_key='performance.cycles' THEN
+  IF operation NOT IN ('view','add','edit') THEN RETURN false;END IF;
+  IF p_company IS NULL AND NOT EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=p_tenant AND r.app_user_id=p_user AND r.role::text IN ('hr_admin','super_admin') AND r.company_id IS NULL) THEN RETURN false;END IF;
+  IF p_current AND p_company IS NULL AND NOT app.performance_current_native_roles(NULL,ARRAY['hr_admin','super_admin']) THEN RETURN false;END IF;
+  family:='performance_compensation';
+ END IF;
  IF family IS NOT NULL THEN
   IF function_key='payroll.backPay' AND operation='execute' THEN operation:='edit';END IF;
   IF operation NOT IN ('view','add','edit','delete') THEN RETURN false;END IF;
@@ -1834,3 +1840,55 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND claimed.role IN ('hr_admin','super_admin','performance_comp_partner','performance_partner') AND app.onehr_admin(claimed.company_id));
 $$;
 REVOKE ALL ON FUNCTION app.onehr_admin_nonpartner(uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Generic cycle administration belongs to perf-comp administrators. OneHR Partner's
+-- native no-op row lock remains separate and cannot authorize changing this kernel row.
+CREATE FUNCTION app.financial_delegate_performance_cycles(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_function_native(t,u,'function.performance.cycles.'||substring(cap from '[^.]+$'),co,true);
+$$;
+REVOKE ALL ON FUNCTION app.financial_delegate_performance_cycles(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('performance.cycles',operation,'company','performance_compensation.'||operation,'app.financial_delegate_performance_cycles',
+ '{"moduleKey":"performance_compensation","labelKey":"performance.list.title","kind":"submenu","course":"administrative","screenKey":"performance","href":"/performance","employeeBearing":true}'::jsonb)
+FROM unnest(ARRAY['view','add','edit']) operation;
+CREATE FUNCTION app.performance_cycle_function_action(co uuid,operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT operation IN ('view','add','edit') AND app.financial_function_native(app.current_tenant_id(),app.current_user_id(),'function.performance.cycles.'||operation,co,true)
+ AND app.access_financial_action_company('performance_compensation',co,operation)
+ AND CASE WHEN co IS NOT NULL THEN app.function_action_allowed('performance.cycles','view',co) AND app.function_action_allowed('performance.cycles',operation,co)
+ ELSE app.financial_letter_capability_allowed_current('function.performance.cycles.view',NULL)
+ AND app.financial_letter_capability_allowed_current('function.performance.cycles.'||operation,NULL) END;
+$$;
+REVOKE ALL ON FUNCTION app.performance_cycle_function_action(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.performance_cycle_function_action(uuid,text) TO ai_hr_app;
+CREATE FUNCTION app.financial_performance_cycle_row_allowed(d jsonb,operation text) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE co uuid:=(d->>'company_id')::uuid;selected text;
+BEGIN
+ IF d->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.performance_cycle_function_action(co,operation) THEN RETURN false;END IF;
+ -- The independently supplied eligibility company filter cannot widen either source scope.
+ FOR selected IN SELECT jsonb_array_elements_text(coalesce(d->'eligibility_rules'->'companyIds','[]'::jsonb)) LOOP
+  IF NOT app.performance_cycle_function_action(selected::uuid,operation) THEN RETURN false;END IF;
+ END LOOP;
+ RETURN NOT EXISTS(SELECT 1 FROM public.performance_review r JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+  WHERE r.tenant_id=app.current_tenant_id() AND r.cycle_id=(d->>'id')::uuid
+  AND (NOT app.performance_cycle_function_action(e.company_id,operation) OR NOT app.data_permission_matches(e.id)));
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_performance_cycle_row_allowed(jsonb,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_performance_cycle_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'UPDATE' THEN 'edit' ELSE 'delete' END;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN coalesce(NEW,OLD);END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_OP='UPDATE' AND NEW IS NOT DISTINCT FROM OLD AND app.onehr_cycle_admin(OLD.id) THEN RETURN NEW;END IF;
+ IF TG_OP<>'INSERT' AND NOT app.financial_performance_cycle_row_allowed(to_jsonb(OLD),operation)
+ OR TG_OP<>'DELETE' AND NOT app.financial_performance_cycle_row_allowed(to_jsonb(NEW),operation)
+ THEN RAISE EXCEPTION 'Performance cycle action unavailable' USING ERRCODE='42501';END IF;
+ RETURN coalesce(NEW,OLD);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_performance_cycle_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_performance_cycle_guard BEFORE INSERT OR UPDATE OR DELETE ON review_cycle FOR EACH ROW EXECUTE FUNCTION app.financial_performance_cycle_guard();

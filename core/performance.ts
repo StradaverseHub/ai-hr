@@ -76,6 +76,12 @@ export class PerfError extends Error {
   }
 }
 
+/** Generic cycle administration is independent from assigned OneHR work. */
+async function assertCycleFunctionTx(tx:Tx,companyId:string|null,operation:'view'|'add'|'edit') {
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.performance_cycle_function_action(${companyId}::uuid,${operation}) as allowed`);
+ if(!row?.allowed)throw new PerfError('Performance cycle action unavailable');
+}
+
 /** Seed scale if a cycle is created without one. Tenant-configurable per cycle thereafter. */
 export const DEFAULT_RATING_SCALE: RatingScale = [
   { value: 1, label: 'Below' },
@@ -294,6 +300,7 @@ export async function createCycle(
   // HR elects which lifecycle stages run; default = all three. Normalize + reject empty / unknown.
   const stages = cycleStages(p.stages);
   return withTenant(ctx, async (tx) => {
+    await assertCycleFunctionTx(tx,p.companyId??null,'add');
     const [row] = await tx
       .insert(reviewCycle)
       .values({
@@ -400,6 +407,7 @@ async function eligibilityCandidates(
 export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
   return withTenant(ctx, async (tx) => {
     const cycle = await loadCycle(tx, p.cycleId);
+    await assertCycleFunctionTx(tx,cycle.companyId,'edit');
     if (!canAdminPerfCtx(ctx, cycle.companyId)) {
       throw new PerfError('Only an admin or performance & comp partner can open a review cycle');
     }
@@ -494,6 +502,7 @@ export async function moveCycleToCalibration(ctx: SessionContext, p: { cycleId: 
 export async function releaseCycle(ctx: SessionContext, p: { cycleId: string }) {
   return withTenant(ctx, async (tx) => {
     const cycle = await loadCycle(tx, p.cycleId);
+    await assertCycleFunctionTx(tx,cycle.companyId,'edit');
     if (!canAdminPerfCtx(ctx, cycle.companyId)) {
       throw new PerfError('Only an admin or performance & comp partner can release a cycle');
     }
@@ -527,6 +536,7 @@ async function transitionCycle(
 ) {
   return withTenant(ctx, async (tx) => {
     const cycle = await loadCycle(tx, cycleId);
+    await assertCycleFunctionTx(tx,cycle.companyId,'edit');
     if (!canAdminPerfCtx(ctx, cycle.companyId)) {
       throw new PerfError('Only an admin or performance & comp partner can change a cycle status');
     }
@@ -1408,7 +1418,7 @@ export type CycleSummary = {
 /** Cycles for the management view, each with progress counts. RLS scopes to the tenant. */
 export function listCycles(ctx: SessionContext): Promise<CycleSummary[]> {
   return withTenant(ctx, async (tx) => {
-    const cycles = await tx.select().from(reviewCycle).orderBy(desc(reviewCycle.periodStart));
+    const cycles = await tx.select().from(reviewCycle).where(sql`app.performance_cycle_function_action(${reviewCycle.companyId},'view')`).orderBy(desc(reviewCycle.periodStart));
     if (cycles.length === 0) return [];
     const counts = await tx
       .select({
@@ -1561,6 +1571,7 @@ export function cycleDetail(ctx: SessionContext, cycleId: string) {
   return withTenant(ctx, async (tx) => {
     const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, cycleId)).limit(1);
     if (!cycle) return null;
+    await assertCycleFunctionTx(tx,cycle.companyId,'view');
     const rows = await tx
       .select({
         reviewId: performanceReview.id,
