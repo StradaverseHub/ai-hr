@@ -1036,8 +1036,10 @@ insufficient. The source port returns only whether it handled the save and the e
 The shared private source owner also admits ACTIVE only through the exact canonical hire receipt
 and binds final completion to the same employment/person and consumed source. It calls the existing
 joiner/manager task-actor resolver; group tasks and completed tasks retain their native semantics.
-Refresh/backfill and independent DISCARD cancellation remain their existing native owners; those
-finite ports, raw write closure and family publication remain unfinished. This source and its positive/rollback tests require genuine hosted qualification.
+DISCARD derives only the native case cancellation, current-request withdrawal and history from the
+actual bound source; completion requires the canonical private intent and actual closed Draft DELETE
+plus audit. Stale Draft/case company namespaces still refuse pending reviewed reconciliation.
+Refresh/backfill, raw write closure and family publication remain unfinished. This source and its positive/rollback tests require genuine hosted qualification.
 
 ### Profile-change queue maintenance (unapplied source)
 

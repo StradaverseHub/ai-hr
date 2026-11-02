@@ -592,7 +592,15 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
         });
         return;
     }
-    if (mode === 'discard' && ctx.userId) await tx.execute(sql`select app.onboarding_saved_draft_discard_admit(${draftId}::uuid)`);
+    if (mode === 'discard' && ctx.userId) {
+        const [discarded] = rows<{ handled: boolean; case_id: string | null; company_id: string | null; did_change: boolean }>(await tx.execute(sql`select * from app.onboarding_sync_discarded_draft(${draftId}::uuid)`));
+        if (discarded?.did_change && discarded.case_id) await appendEvent(tx, {
+            tenantId: ctx.tenantId, aggregateType: 'onboarding-case', aggregateId: discarded.case_id,
+            eventType: 'onboarding.source_discarded', actor: actorOf(ctx),
+            payload: { caseId: discarded.case_id, companyId: discarded.company_id },
+        });
+        return;
+    }
     const { config, revision } = await configTx(tx, ctx);
     if (!revision)
         return;

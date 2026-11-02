@@ -180,7 +180,7 @@ REVOKE ALL ON FUNCTION app.lifecycle_reward_notice_legacy_allowed(uuid,uuid,text
 CREATE TABLE app.lifecycle_native_effect_context(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,
  purpose text NOT NULL,case_id uuid NOT NULL,event_type text NOT NULL,
- source_draft_id uuid,source_data jsonb,source_employment_id uuid,source_person_id uuid,
+ source_draft_id uuid,source_data jsonb,source_employment_id uuid,source_person_id uuid,source_intent uuid,
  authority_stamp text NOT NULL CHECK(length(authority_stamp)=64),function_key text,function_operation text,company_id uuid,positive_admission boolean NOT NULL DEFAULT false,active boolean NOT NULL DEFAULT true,completed boolean NOT NULL DEFAULT false
 );
 CREATE TABLE app.lifecycle_native_effect_receipt(
@@ -318,6 +318,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND c.authority_stamp=app.access_function_authority_stamp()
  AND(c.purpose<>'source-draft-save' OR app.lifecycle_saved_source_completion(c.id))
  AND(c.purpose<>'source-draft-active' OR app.workforce_draft_active_completed(c.source_draft_id,c.source_data,c.source_employment_id,c.source_person_id)AND EXISTS(SELECT 1 FROM public.lc_onboarding_case actual WHERE actual.id=c.case_id AND actual.tenant_id=c.tenant_id AND actual.source_draft_id=c.source_draft_id AND actual.company_id=c.company_id AND actual.employment_id=c.source_employment_id AND actual.data->>'employmentId'=c.source_employment_id::text AND actual.data->>'personId'=c.source_person_id::text AND actual.data->>'personnelStatus'='Active'))
+ AND(c.purpose<>'source-draft-discard' OR app.workforce_draft_discard_completed(c.source_intent,c.source_draft_id,c.source_data)AND EXISTS(SELECT 1 FROM public.lc_onboarding_case actual WHERE actual.id=c.case_id AND actual.tenant_id=c.tenant_id AND actual.source_draft_id=c.source_draft_id AND actual.company_id=c.company_id))
  AND(c.function_key IS NULL OR c.positive_admission AND app.function_action_denial_clear(c.function_key,c.function_operation,c.company_id)
  AND EXISTS(SELECT 1 FROM app.lifecycle_effect_function_identity(c.case_id,c.purpose)native WHERE native.function_key=c.function_key AND native.operation=c.function_operation AND native.company_id=c.company_id)));
 $$;
@@ -1309,19 +1310,50 @@ END $$;
 REVOKE ALL ON FUNCTION app.onboarding_sync_saved_draft(uuid),app.onboarding_sync_active_draft(uuid,uuid,uuid)FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_sync_saved_draft(uuid),app.onboarding_sync_active_draft(uuid,uuid,uuid)TO ai_hr_app;
 --> statement-breakpoint
--- A combined SAVE→DISCARD transaction must close the already-sealed SAVE image through the
--- real closed Draft DELETE port. This bridge only creates that private intent; cancellation and
--- deletion remain the existing native owners, and an orphan intent cannot commit.
-CREATE FUNCTION app.onboarding_saved_draft_discard_admit(p_draft uuid)RETURNS void
+-- A DISCARD source course derives the native M.cancelCase effects from the actual current case.
+-- Only canonical native Draft DELETE authority can admit its private intent; the actual closed
+-- DELETE port and matching completed audit must still occur before this transaction can commit.
+CREATE FUNCTION app.onboarding_sync_discarded_draft(p_draft uuid)
+RETURNS TABLE(handled boolean,case_id uuid,company_id uuid,did_change boolean)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE actual public.employee_draft;
+DECLARE draft public.employee_draft;c public.lc_onboarding_case;intent uuid;effect uuid;source_image jsonb;
+ next_data jsonb;requests jsonb;request jsonb;request_index bigint;items jsonb;actor_name text;stamp text;entry jsonb;
 BEGIN
- IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Draft source unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app.audit_access_order_lock();
  PERFORM app.access_workforce_write_lock();
- SELECT draft.* INTO actual FROM public.employee_draft draft WHERE draft.id=p_draft AND draft.tenant_id=app.current_tenant_id()FOR UPDATE;
- IF actual.id IS NOT NULL AND EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context effect WHERE effect.xact_id=pg_current_xact_id()AND effect.tenant_id=actual.tenant_id AND effect.user_id=app.current_user_id()AND effect.purpose='source-draft-save'AND effect.source_draft_id=p_draft AND effect.source_data=to_jsonb(actual)AND effect.completed AND NOT effect.active)THEN
-  PERFORM app.workforce_draft_discard_begin(p_draft,to_jsonb(actual));
+ PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
+ PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Draft discard source unavailable' USING ERRCODE='42501';END IF;
+ SELECT actual.* INTO draft FROM public.employee_draft actual WHERE actual.id=p_draft AND actual.tenant_id=app.current_tenant_id()FOR UPDATE;
+ IF draft.id IS NULL OR app.access_workforce_draft_delete_allowed(p_draft)IS NOT TRUE OR app.data_permission_draft_matches(draft.tenant_id,app.current_user_id(),to_jsonb(draft))IS NOT TRUE THEN RAISE EXCEPTION 'Draft discard source unavailable' USING ERRCODE='42501';END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.lc_onboarding_config cfg WHERE cfg.tenant_id=draft.tenant_id AND cfg.revision>0)THEN RETURN QUERY SELECT true,NULL::uuid,NULL::uuid,false;RETURN;END IF;
+ SELECT actual.* INTO c FROM public.lc_onboarding_case actual WHERE actual.tenant_id=draft.tenant_id AND actual.source_draft_id=p_draft FOR UPDATE;
+ IF c.id IS NULL THEN RETURN QUERY SELECT true,NULL::uuid,NULL::uuid,false;RETURN;END IF;
+ IF c.company_id IS DISTINCT FROM draft.company_id OR c.data->>'id'IS DISTINCT FROM c.id::text OR c.data->>'sourceDraftId'IS DISTINCT FROM p_draft::text OR c.data->>'personnelStatus'IS DISTINCT FROM'Draft'OR c.employment_id IS NOT NULL OR c.data->>'employmentId'IS NOT NULL OR c.data->>'personId'IS NOT NULL THEN RAISE EXCEPTION 'Draft discard source case changed' USING ERRCODE='42501';END IF;
+ SELECT coalesce(person.full_name,'User '||left(actor.id::text,8))INTO actor_name FROM public.app_user actor LEFT JOIN public.person person ON person.id=actor.person_id AND person.tenant_id=actor.tenant_id WHERE actor.id=app.current_user_id()AND actor.tenant_id=draft.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id);
+ IF actor_name IS NULL THEN RAISE EXCEPTION 'Your login is not available' USING ERRCODE='42501';END IF;
+ source_image:=to_jsonb(draft);intent:=app.workforce_draft_discard_begin(p_draft,source_image);
+ stamp:=to_char(clock_timestamp()AT TIME ZONE'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');next_data:=c.data;
+ IF c.data->>'state'IS DISTINCT FROM'cancelled'THEN
+  SELECT r,n INTO request,request_index FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY all_requests(r,n)WHERE r->>'cancelledAt'IS NULL ORDER BY n LIMIT 1;
+  IF request IS NOT NULL THEN
+   SELECT coalesce(jsonb_agg(item||jsonb_build_object('claim',NULL,'steps',(SELECT coalesce(jsonb_agg(CASE WHEN step->>'status'IN('pending','unresolved')THEN step||'{"status":"withdrawn"}'::jsonb ELSE step END ORDER BY sn),'[]')FROM jsonb_array_elements(item->'steps')WITH ORDINALITY all_steps(step,sn)))ORDER BY n),'[]')INTO items FROM jsonb_array_elements(request->'items')WITH ORDINALITY all_items(item,n);
+   request:=request||jsonb_build_object('cancelledAt',stamp,'items',items);
+   SELECT jsonb_agg(CASE WHEN n=request_index THEN request ELSE r END ORDER BY n)INTO requests FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY all_requests(r,n);
+   next_data:=next_data||jsonb_build_object('requisitions',requests);
+  END IF;
+  entry:=jsonb_build_object('id',gen_random_uuid(),'at',stamp,'by',app.current_user_id(),'name',actor_name,'action','case.cancelled','detail','Personnel draft discarded');
+  next_data:=next_data||jsonb_build_object('state','cancelled','cancelReason','Personnel draft discarded','cancelNote','','history',coalesce(next_data->'history','[]')||jsonb_build_array(entry));
  END IF;
+ -- The native discard path writes no private snapshot, and strips private public payload fields.
+ next_data:=(next_data-ARRAY['caseValues','caseContactEmail'])||jsonb_build_object('source',coalesce(next_data->'source','{}')-ARRAY['costCentre','ic','passport'],'local',coalesce(next_data->'local','{}')-ARRAY['costCentre','ic','passport']);
+ IF EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context context WHERE context.xact_id=pg_current_xact_id()AND context.tenant_id=draft.tenant_id AND context.user_id=app.current_user_id()AND context.active)THEN RAISE EXCEPTION 'Native source context already active' USING ERRCODE='42501';END IF;
+ INSERT INTO app.lifecycle_native_effect_context(xact_id,tenant_id,user_id,purpose,case_id,event_type,source_draft_id,source_data,source_intent,authority_stamp,company_id,positive_admission)
+ VALUES(pg_current_xact_id(),draft.tenant_id,app.current_user_id(),'source-draft-discard',c.id,'onboarding.source_discarded',p_draft,source_image,intent,app.access_function_authority_stamp(),c.company_id,true)RETURNING id INTO effect;
+ INSERT INTO public.lc_onboarding_case_revision(tenant_id,case_id,company_id,revision,data)VALUES(c.tenant_id,c.id,c.company_id,c.revision,c.data)ON CONFLICT DO NOTHING;
+ UPDATE public.lc_onboarding_case actual SET data=next_data,revision=c.revision+1,updated_at=clock_timestamp()WHERE actual.id=c.id AND actual.tenant_id=c.tenant_id;
+ PERFORM app.lifecycle_native_effect_complete(effect);
+ RETURN QUERY SELECT true,c.id,c.company_id,true;
 END $$;
-REVOKE ALL ON FUNCTION app.onboarding_saved_draft_discard_admit(uuid)FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.onboarding_saved_draft_discard_admit(uuid)TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.onboarding_sync_discarded_draft(uuid)FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_sync_discarded_draft(uuid)TO ai_hr_app;
