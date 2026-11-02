@@ -365,6 +365,38 @@ def read_manifest(path):
     require(data==canonical(m),'noncanonical/duplicate manifest JSON')
     return validate_manifest(m)
 
+def extract_regular_files(archive, destination, expected, st):
+    """Read only regular TAR members into an already-owned destination and validated inventory."""
+    seen=set()
+    with archive.open('rb') as raw:
+        require(identity(os.fstat(raw.fileno()))==identity(st),'archive changed before extraction')
+        header=raw.read(10);require(len(header)==10 and header[:4]==b'\x1f\x8b\x08\x00' and header[4:8]==b'\0'*4,'unsupported gzip header')
+        raw.seek(0)
+        gz=gzip.GzipFile(fileobj=raw,mode='rb')
+        while True:
+            header=gz.read(512);require(len(header)==512,'truncated archive header')
+            if header==b'\0'*512:
+                require(gz.read(512)==b'\0'*512,'missing archive terminator')
+                padding=gz.read(10241);require(len(padding)<=10240 and not any(padding),'trailing archive data')
+                break
+            require(header[257:263]==b'ustar\0' and header[263:265]==b'00','unsupported tar format')
+            info=tarfile.TarInfo.frombuf(header,'utf-8','strict')
+            # Inspect each raw header before allowing tarfile to parse any PAX/long-name body.
+            require(info.type==tarfile.REGTYPE and not info.linkname and info.uid==info.gid==0 and info.mtime==0 and not info.uname and not info.gname,'nonregular or extended archive member')
+            name=safe_path(info.name);require(name in expected and name not in seen,'unexpected or duplicated archive member')
+            row=expected[name];require(info.size==row['size'] and info.mode==row['mode'],'archive member metadata differs')
+            h=hashlib.sha256();remaining=info.size
+            with (destination/name).open('xb') as out:
+                while remaining:
+                    data=gz.read(min(remaining,1024*1024));require(data,'truncated file body');out.write(data);h.update(data);remaining-=len(data)
+            require(h.hexdigest()==row['sha256'],'archive member digest differs')
+            os.chmod(destination/name,row['mode']);padding=gz.read((-info.size)%512);require(len(padding)==(-info.size)%512 and not any(padding),'invalid file padding')
+            seen.add(name)
+        require(identity(os.fstat(raw.fileno()))==identity(st),'archive changed during extraction')
+        gz.close()
+    require(seen==set(expected),'missing build files')
+
+
 def unpack(archive, manifest_path, destination, runtime_source, producer_source=None):
     archive, manifest_path, destination, runtime_source=map(lambda p:Path(p).absolute(),[archive,manifest_path,destination,runtime_source])
     m=read_manifest(manifest_path);st=regular(archive,MAX_ARCHIVE,context="compressed-build-archive",root=archive.parent)
@@ -379,34 +411,7 @@ def unpack(archive, manifest_path, destination, runtime_source, producer_source=
     owned=OwnedOutput(destination)  # Existing/symlink destinations refuse before any cleanup.
     try:
         for directory in m['directories']:(destination/directory).mkdir(mode=0o755)
-        expected={r['path']:r for r in m['files']};seen=set()
-        with archive.open('rb') as raw:
-            require(identity(os.fstat(raw.fileno()))==identity(st),'archive changed before extraction')
-            header=raw.read(10);require(len(header)==10 and header[:4]==b'\x1f\x8b\x08\x00' and header[4:8]==b'\0'*4,'unsupported gzip header')
-            raw.seek(0)
-            gz=gzip.GzipFile(fileobj=raw,mode='rb')
-            while True:
-                header=gz.read(512);require(len(header)==512,'truncated archive header')
-                if header==b'\0'*512:
-                    require(gz.read(512)==b'\0'*512,'missing archive terminator')
-                    padding=gz.read(10241);require(len(padding)<=10240 and not any(padding),'trailing archive data')
-                    break
-                require(header[257:263]==b'ustar\0' and header[263:265]==b'00','unsupported tar format')
-                info=tarfile.TarInfo.frombuf(header,'utf-8','strict')
-                # Inspect each raw header before allowing tarfile to parse any PAX/long-name body.
-                require(info.type==tarfile.REGTYPE and not info.linkname and info.uid==info.gid==0 and info.mtime==0 and not info.uname and not info.gname,'nonregular or extended archive member')
-                name=safe_path(info.name);require(name in expected and name not in seen,'unexpected or duplicated archive member')
-                row=expected[name];require(info.size==row['size'] and info.mode==row['mode'],'archive member metadata differs')
-                h=hashlib.sha256();remaining=info.size
-                with (destination/name).open('xb') as out:
-                    while remaining:
-                        data=gz.read(min(remaining,1024*1024));require(data,'truncated file body');out.write(data);h.update(data);remaining-=len(data)
-                require(h.hexdigest()==row['sha256'],'archive member digest differs')
-                os.chmod(destination/name,row['mode']);padding=gz.read((-info.size)%512);require(len(padding)==(-info.size)%512 and not any(padding),'invalid file padding')
-                seen.add(name)
-            require(identity(os.fstat(raw.fileno()))==identity(st),'archive changed during extraction')
-            gz.close()
-        require(seen==set(expected),'missing build files')
+        extract_regular_files(archive,destination,{r['path']:r for r in m['files']},st)
         require((destination/'BUILD_ID').read_text().strip()==m['nextBuildId'],'installed build ID differs')
         for alias in m['aliases']:
             actual,target=(package_identity(runtime_source,alias['package']) if producer_source is None else package_identity(runtime_source,alias['package'],producer_source=producer_source))
