@@ -10,7 +10,7 @@ import {approvalLabels} from './labels';
 export const dynamic='force-dynamic';
 export default async function LetterApprovalPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
  await requireModule('employees');const {s,scopeIds}=await scopedSession(),sp=await searchParams,labels=await approvalLabels(),f=await getTranslations('letters.fields'),locale=await getLocale(),value=(key:string)=>typeof sp[key]==='string'?sp[key] as string:undefined;
- const companies=(await letterCompanyAccess(s)).filter(company=>scopeIds.includes(company.id)&&company.read&&company.approve),company=value('companyId')?companies.find(company=>company.id===value('companyId')):companies[0];
+ const companies=(await letterCompanyAccess(s,'letterApproval','view')).filter(company=>scopeIds.includes(company.id)&&company.read&&company.approve),company=value('companyId')?companies.find(company=>company.id===value('companyId')):companies[0];
  if(!company)return <div className={pageWideCls}><PageHeader title={labels.copy.title}/><Card className="p-5 text-sm">{labels.copy.noAccess}</Card></div>;
  let error=Object.values(sp).some(item=>Array.isArray(item))?labels.errors.invalid:null;
  const page=error?null:await listLetterApprovalQueue(s,{companyId:company.id,cursor:value('after'),limit:25}).catch(reason=>{if(reason instanceof LetterWorkflowError){error=labels.errors[reason.code]??labels.errors.unavailable;return null;}throw reason;});

@@ -603,7 +603,11 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(recipient.userId).toBe(eligible[0].ctx.userId);
     const system={...a,userId:undefined,personId:undefined};
     await withTenant(system,async tx=>{
-      expect(await perf.assessmentReminderRecipientsTx(tx,recipient.id)).toEqual([eligible[0].employmentId]);
+      const [source]=await tx.execute<{dispatcher:boolean;run:boolean;recipient:boolean;actor:boolean;route:boolean}>(sql`select app.assessment_dispatcher_scope() as dispatcher,exists(select 1 from performance_assessment_reminder_run where id=${queued.runId!}::uuid) as run,exists(select 1 from performance_assessment_reminder_recipient where id=${recipient.id}::uuid) as recipient,coalesce((app.assessment_pending_work(${cycleId}::uuid)->'actors') @> ${JSON.stringify([{userId:eligible[0].ctx.userId}])}::jsonb,false) as actor,exists(select 1 from app.assessment_reminder_mail_routes(${cycleId}::uuid) where user_id=${eligible[0].ctx.userId!}::uuid and employment_id=${eligible[0].employmentId}::uuid) as route`);
+      expect(source).toEqual({dispatcher:true,run:true,recipient:true,actor:true,route:true});
+      const resolved=await perf.assessmentReminderRecipientsTx(tx,recipient.id);
+      const [delivery]=await tx.select({outcome:schema.assessmentReminderRecipient.outcome}).from(schema.assessmentReminderRecipient).where(eq(schema.assessmentReminderRecipient.id,recipient.id));expect(delivery?.outcome).toBe('queued');
+      expect(resolved).toEqual([eligible[0].employmentId]);
       // A real committed workflow change invalidates the transaction-local projection.
       await owner.db.update(schema.onehrReview).set({competencyStatus:'reviewed'}).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,eligible[0].employmentId)));
       expect(await perf.assessmentReminderRecipientsTx(tx,recipient.id)).toEqual([]);

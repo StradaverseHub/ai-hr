@@ -223,8 +223,9 @@ REVOKE ALL ON FUNCTION app.financial_letter_born(text,uuid) FROM PUBLIC,ai_hr_ap
 --> statement-breakpoint
 CREATE FUNCTION app.access_letter_write_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE row_data jsonb;old_data jsonb;co uuid;native text;operation text;root uuid;parent_operation text;
+DECLARE row_data jsonb;old_data jsonb;co uuid;native text;operation text;root uuid;parent_operation text;function_key text;function_operation text;deactivation_previous jsonb;needs_content_edit boolean:=false;
 BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN coalesce(NEW,OLD);END IF;
  IF TG_OP='DELETE' THEN row_data:=to_jsonb(OLD);ELSE row_data:=to_jsonb(NEW);END IF;
  IF TG_OP='UPDATE' THEN old_data:=to_jsonb(OLD);END IF;
  IF row_data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RAISE EXCEPTION 'Letter action unavailable' USING ERRCODE='42501';END IF;
@@ -289,7 +290,28 @@ BEGIN
   ELSE native:='approve';operation:='approve';END IF;
  ELSE RAISE EXCEPTION 'Unbound letter action owner' USING ERRCODE='42501';
  END CASE;
- IF co IS NULL OR NOT app.access_letter_action(co,native,operation) THEN RAISE EXCEPTION 'Letter action unavailable' USING ERRCODE='42501';END IF;
+ function_operation:=operation;
+ function_key:=CASE WHEN TG_TABLE_NAME='letter_asset' AND row_data->>'kind'='signature' THEN 'letterSettings.signature'
+ WHEN TG_TABLE_NAME='letter_merge_field_version' THEN 'letterFields'
+ WHEN TG_TABLE_NAME IN ('letter_template','letter_template_version','letter_template_field') THEN 'letterTemplates'
+ ELSE app.financial_letter_native_function(native,operation) END;
+ IF function_key='letterSettings.signature' THEN function_operation:='add';END IF;
+ -- Delete authorizes the native toggle, not unrelated edits bundled into its new version.
+ IF operation='delete' AND TG_OP='INSERT' AND TG_TABLE_NAME IN ('letter_policy_version','letter_merge_field_version','letter_automation_rule_version') THEN
+  CASE TG_TABLE_NAME
+  WHEN 'letter_policy_version' THEN SELECT to_jsonb(v) INTO deactivation_previous FROM public.letter_policy_version v WHERE v.tenant_id=app.current_tenant_id() AND v.company_id=co AND v.category=row_data->>'category' AND v.ordinal=(row_data->>'ordinal')::integer-1;
+  WHEN 'letter_merge_field_version' THEN SELECT to_jsonb(v) INTO deactivation_previous FROM public.letter_merge_field_version v WHERE v.tenant_id=app.current_tenant_id() AND v.company_id=co AND v.key=row_data->>'key' AND v.ordinal=(row_data->>'ordinal')::integer-1;
+  WHEN 'letter_automation_rule_version' THEN SELECT to_jsonb(v) INTO deactivation_previous FROM public.letter_automation_rule_version v WHERE v.tenant_id=app.current_tenant_id() AND v.company_id=co AND v.template_id=(row_data->>'template_id')::uuid AND v.trigger=row_data->>'trigger' AND v.ordinal=(row_data->>'ordinal')::integer-1;
+  END CASE;
+  needs_content_edit:=deactivation_previous IS NULL OR row_data-ARRAY['id','ordinal','created_by','created_at','enabled','active'] IS DISTINCT FROM deactivation_previous-ARRAY['id','ordinal','created_by','created_at','enabled','active'];
+ ELSIF operation='delete' AND TG_OP='UPDATE' AND TG_TABLE_NAME='letter_template' THEN
+  needs_content_edit:=row_data-ARRAY['deactivated','revision'] IS DISTINCT FROM old_data-ARRAY['deactivated','revision'];
+ END IF;
+ IF needs_content_edit AND (NOT app.letter_function_action(function_key,'edit',co) OR NOT app.access_letter_action(co,native,'edit')) THEN
+  RAISE EXCEPTION 'Letter content edit unavailable' USING ERRCODE='42501';
+ END IF;
+ IF co IS NULL OR function_key IS NULL OR NOT app.letter_function_action(function_key,function_operation,co)
+ OR NOT app.access_letter_action(co,native,operation) THEN RAISE EXCEPTION 'Letter action unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;
 END;
 $$;
@@ -450,19 +472,18 @@ REVOKE ALL ON FUNCTION app.financial_batch_subjects_allowed(uuid) FROM PUBLIC,ai
 --> statement-breakpoint
 CREATE FUNCTION app.access_payroll_batch_begin(p_batch uuid,p_operation text,p_targets uuid[] DEFAULT NULL) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE batch public.payroll_batch;starts date;ends date;
+DECLARE batch public.payroll_batch;starts date;ends date;scope_ids uuid[];
 BEGIN
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO batch FROM public.payroll_batch b WHERE b.id=p_batch AND b.tenant_id=app.current_tenant_id() FOR UPDATE;
  IF batch.id IS NULL OR p_operation NOT IN ('edit','delete') OR NOT app.access_financial_action_company('payroll',batch.company_id,p_operation) OR NOT app.function_action_allowed('payroll.process',p_operation,batch.company_id) OR NOT app.financial_batch_subjects_allowed(batch.id) THEN RAISE EXCEPTION 'Payroll action unavailable' USING ERRCODE='42501';END IF;
  starts:=(batch.pay_period||'-01')::date;ends:=(starts+interval '1 month'-interval '1 day')::date;
+ scope_ids:=app.financial_payroll_scope_ids(batch.tenant_id,batch.scope);
  -- Actual process membership mirrors employedByCompanyDuring + resolveBatchScopeFilter.
  -- Querying as the private owner prevents RLS from silently shrinking a requested payroll.
  IF EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=batch.tenant_id
   AND (p_targets IS NULL OR e.id=ANY(p_targets))
-  AND (p_targets IS NOT NULL OR (coalesce(jsonb_array_length(batch.scope->'employmentIds'),0)=0 AND coalesce(jsonb_array_length(batch.scope->'departmentIds'),0)=0)
-   OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(batch.scope->'employmentIds','[]'))picked(value) WHERE picked.value=e.id::text)
-   OR EXISTS(SELECT 1 FROM public.assignment a JOIN jsonb_array_elements_text(coalesce(batch.scope->'departmentIds','[]'))picked(value) ON a.department_id::text=picked.value WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL))
+  AND (p_targets IS NOT NULL OR scope_ids IS NULL OR e.id=ANY(scope_ids))
   AND e.hired_on<=ends AND (e.terminated_on IS NULL OR e.terminated_on>=starts)
   AND (e.company_id=batch.company_id OR EXISTS(SELECT 1 FROM public.assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL AND a.company_id=batch.company_id AND a.valid_from<=ends AND (a.valid_to IS NULL OR a.valid_to>starts)))
   AND NOT app.access_financial_action_employment('payroll',e.id,p_operation))
@@ -566,6 +587,7 @@ BEGIN
   OR data-ARRAY['status','lease_token','lease_until','last_error'] IS DISTINCT FROM to_jsonb(OLD)-ARRAY['status','lease_token','lease_until','last_error']) THEN RAISE EXCEPTION 'Letter cancellation consequence unavailable' USING ERRCODE='42501';END IF;
  IF NOT EXISTS(SELECT 1 FROM app.letter_operation_effect proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.letter_id=NEW.letter_id AND proof.company_id=NEW.company_id
   AND app.access_letter_action(proof.company_id,proof.native_capability,proof.operation)
+  AND app.letter_function_action(app.financial_letter_native_function(proof.native_capability,proof.operation),proof.operation,proof.company_id)
   AND (TG_OP<>'UPDATE' OR proof.operation IN ('delete','approve'))
   AND (TG_OP='UPDATE' OR EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.id=NEW.source_event_id AND audit.tenant_id=NEW.tenant_id AND audit.aggregate_id=NEW.letter_id AND audit.aggregate_type='letter' AND audit.actor_id=app.current_user_id() AND app.financial_audit_written(audit.id)
    AND (proof.operation='edit' AND audit.event_type='letter.submitted' OR proof.operation='approve' AND audit.event_type IN ('letter.approval.approve','letter.approval.reject','letter.approval.return','letter.approval.delegated') OR proof.operation='issue' AND audit.event_type='letter.issued'))))
@@ -839,7 +861,7 @@ BEGIN
  IF inserted IS NULL THEN RETURN NULL;END IF;
  -- A transaction below the global snapshot xmin has no live/deferred consumer. Do
  -- this once per transaction, retaining every in-flight actor's exact receipts.
- FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth'] LOOP
+ FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody'] LOOP
   EXECUTE format('DELETE FROM app.%I WHERE transaction_id<$1',table_name) USING oldest;
  END LOOP;
  DELETE FROM app.financial_receipt_epoch WHERE transaction_id<oldest;
@@ -1155,24 +1177,42 @@ CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_fixed_repl
 --> statement-breakpoint
 -- Exact function parity is distinct from the aggregate family: a template operator's
 -- installed native course does not imply Approval or Settings ownership.
+CREATE FUNCTION app.financial_letter_same_purpose_not_denied(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.access_capability c WHERE c.id=cap AND (NOT c.supported OR jsonb_array_length(c.bindings)>0 AND NOT EXISTS(
+  SELECT 1 FROM public.access_user_override deny WHERE deny.tenant_id=t AND deny.user_id=u AND deny.capability_id=cap AND deny.effect='deny' AND deny.retired_at IS NULL
+  AND (co IS NULL OR deny.company_id IS NULL OR app.access_scope_covers(deny.company_id,co,t)))));
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_same_purpose_not_denied(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.financial_function_native(p_tenant uuid,p_user uuid,p_capability text,p_company uuid,p_current boolean) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE function_key text:=regexp_replace(substr(p_capability,10),'\.[^.]+$','');operation text:=substring(p_capability from '[^.]+$');native text;selected uuid;family text;
+DECLARE function_key text:=regexp_replace(substr(p_capability,10),'\.[^.]+$','');operation text:=substring(p_capability from '[^.]+$');native text;selected uuid;family text;required text[]:='{}';alternatives text[]:='{}';passed boolean:=false;
 BEGIN
- IF p_capability NOT LIKE 'function.%' THEN RETURN false;END IF;
- CASE function_key
- WHEN 'payroll.backPay' THEN family:='payroll';
- WHEN 'payroll.process' THEN family:='payroll';
- WHEN 'payroll.fixedTransactions' THEN family:='payroll';
- WHEN 'payroll.individualTransactions' THEN family:='payroll';
- WHEN 'payroll.statutoryAdjustments' THEN family:='payroll';
- WHEN 'letterFields' THEN native:='template';
- WHEN 'letterTemplates' THEN native:='template';
- WHEN 'letterGenerate' THEN native:='generate';
- WHEN 'letterApproval' THEN native:='approve';
- WHEN 'letterRegister' THEN native:=CASE WHEN operation='issue' OR operation='delete' THEN 'issue' ELSE 'read' END;
- WHEN 'letterSettings' THEN native:='settings';
- ELSE RETURN false;END CASE;
+ IF p_capability NOT LIKE 'function.%' OR p_current AND (p_tenant IS DISTINCT FROM app.current_tenant_id() OR p_user IS DISTINCT FROM app.current_user_id() OR NOT app.principal_snapshot_current()) THEN RETURN false;END IF;
+ IF function_key='performance.onehr.setup' THEN
+  IF operation NOT IN ('view','add','edit') OR NOT EXISTS(SELECT 1 FROM public.app_user u JOIN public.role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
+   WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND r.role::text=ANY(CASE WHEN operation='add' THEN ARRAY['hr_admin','super_admin','performance_comp_partner'] ELSE ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner'] END)
+   AND (p_company IS NULL AND r.company_id IS NULL AND (operation<>'add' OR r.role::text IN ('hr_admin','super_admin')) OR p_company IS NOT NULL AND app.access_scope_covers(r.company_id,p_company,p_tenant))) THEN RETURN false;END IF;
+  RETURN NOT p_current OR app.performance_current_native_roles(p_company,CASE WHEN operation='add' AND p_company IS NULL THEN ARRAY['hr_admin','super_admin'] WHEN operation='add' THEN ARRAY['hr_admin','super_admin','performance_comp_partner'] ELSE ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner'] END);
+ END IF;
+ IF function_key IN ('performance.onehr.selfReview','performance.onehr.assignedReview') THEN
+  RETURN operation='view' AND p_company IS NOT NULL AND EXISTS(SELECT 1 FROM public.performance_review review
+   JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
+   JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+   WHERE review.tenant_id=p_tenant AND subject.company_id=p_company
+   AND app.financial_onehr_review_course_for(p_tenant,p_user,review.id)=CASE function_key WHEN 'performance.onehr.selfReview' THEN 'self' ELSE 'assigned' END);
+ END IF;
+ IF function_key='myLetters' THEN
+  RETURN p_company IS NULL AND operation IN ('view','execute') AND EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL AND NOT app.login_blocked(u.id));
+ END IF;
+ IF function_key IN ('payroll.process','payroll.fixedTransactions','payroll.individualTransactions','payroll.statutoryAdjustments','payroll.backPay') THEN family:='payroll';END IF;
+ IF function_key='performance.cycles' THEN
+  IF operation NOT IN ('view','add','edit') THEN RETURN false;END IF;
+  IF p_company IS NULL AND NOT EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=p_tenant AND r.app_user_id=p_user AND r.role::text IN ('hr_admin','super_admin') AND r.company_id IS NULL) THEN RETURN false;END IF;
+  IF p_current AND p_company IS NULL AND NOT app.performance_current_native_roles(NULL,ARRAY['hr_admin','super_admin']) THEN RETURN false;END IF;
+  family:='performance_compensation';
+ END IF;
  IF family IS NOT NULL THEN
   IF function_key='payroll.backPay' AND operation='execute' THEN operation:='edit';END IF;
   IF operation NOT IN ('view','add','edit','delete') THEN RETURN false;END IF;
@@ -1181,6 +1221,26 @@ BEGIN
    AND (function_key NOT IN ('payroll.fixedTransactions','payroll.backPay') OR EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('hr_admin','super_admin') AND (p_company IS NULL AND g.company_id IS NULL OR p_company IS NOT NULL AND app.access_scope_covers(g.company_id,p_company,p_tenant))))
    ELSE app.financial_letter_legacy_allowed(p_tenant,p_user,family||'.'||operation,p_company) END;
  END IF;
+ -- These are the actual independent Letters navigation/service courses. Native read-only
+ -- access to fields/templates is not silently changed into native Template maintenance.
+ CASE function_key
+ WHEN 'letterFields' THEN
+  IF operation='view' THEN alternatives:=ARRAY['read','template'];ELSIF operation IN ('add','edit','delete') THEN required:=ARRAY['template'];ELSE RETURN false;END IF;
+ WHEN 'letterTemplates' THEN
+  IF operation='view' THEN alternatives:=ARRAY['read','template'];ELSIF operation IN ('add','edit','delete','approve') THEN required:=ARRAY['template'];ELSE RETURN false;END IF;
+ WHEN 'letterGenerate' THEN
+  IF operation='view' THEN required:=ARRAY['read','generate'];ELSIF operation IN ('add','edit','delete') THEN required:=ARRAY['generate'];ELSE RETURN false;END IF;
+ WHEN 'letterApproval' THEN
+  IF operation NOT IN ('view','approve') THEN RETURN false;END IF;required:=ARRAY['read','approve'];
+ WHEN 'letterRegister' THEN
+  IF operation='view' THEN required:=ARRAY['read'];ELSIF operation IN ('issue','delete') THEN required:=ARRAY['issue'];ELSE RETURN false;END IF;
+ WHEN 'letterReports' THEN
+  IF operation<>'view' THEN RETURN false;END IF;required:=ARRAY['read','report'];
+ WHEN 'letterSettings' THEN
+  IF operation='view' THEN alternatives:=ARRAY['settings','approve'];ELSIF operation IN ('add','edit','delete') THEN required:=ARRAY['settings'];ELSE RETURN false;END IF;
+ WHEN 'letterSettings.signature' THEN
+  IF operation NOT IN ('view','add') THEN RETURN false;END IF;required:=ARRAY['approve'];
+ ELSE RETURN false;END CASE;
  IF p_company IS NULL THEN
   IF NOT EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=p_tenant AND r.app_user_id=p_user AND r.company_id IS NULL AND r.role::text IN ('super_admin','hr_admin')) THEN RETURN false;END IF;
   IF p_current AND NOT EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('super_admin','hr_admin') AND g.company_id IS NULL) THEN RETURN false;END IF;
@@ -1188,10 +1248,16 @@ BEGIN
    IF NOT app.financial_function_native(p_tenant,p_user,p_capability,selected,p_current) THEN RETURN false;END IF;
   END LOOP;RETURN true;
  END IF;
- RETURN CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native)
- ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END;
+ FOREACH native IN ARRAY required LOOP
+  IF NOT (CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native) ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END) THEN RETURN false;END IF;
+ END LOOP;
+ IF cardinality(alternatives)=0 THEN RETURN true;END IF;
+ FOREACH native IN ARRAY alternatives LOOP
+  IF (CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native) ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END) THEN passed:=true;END IF;
+ END LOOP;RETURN passed;
 END;
 $$;
+
 REVOKE ALL ON FUNCTION app.financial_function_native(uuid,uuid,text,uuid,boolean) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.financial_function_legacy_allowed(p_tenant uuid,p_user uuid,p_capability text,p_company uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(p_tenant,p_user,p_capability,p_company,false); $$;
@@ -1241,10 +1307,10 @@ SELECT app.register_function_action('letterGenerate','view','company','letters.v
 SELECT app.register_function_action('letterGenerate','add','company','letters.add','app.financial_delegate_lettergenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
 SELECT app.register_function_action('letterGenerate','edit','company','letters.edit','app.financial_delegate_lettergenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
 SELECT app.register_function_action('letterGenerate','delete','company','letters.delete','app.financial_delegate_lettergenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
-CREATE FUNCTION app.financial_delegate_letterapproval(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterApproval.'||substring(cap from '[^.]+$'),co,true); $$;
+CREATE FUNCTION app.financial_delegate_letterapproval(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterApproval.'||substring(cap from '[^.]+$'),co,true) AND (substring(cap from '[^.]+$')<>'approve' OR app.financial_letter_same_purpose_not_denied(t,u,'letters.approve',co)); $$;
 REVOKE ALL ON FUNCTION app.financial_delegate_letterapproval(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
-SELECT app.register_function_action('letterApproval','view','company','letters.view','app.financial_delegate_letterapproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"administrative","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('letterApproval','approve','company','letters.approve','app.financial_delegate_letterapproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"administrative","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterApproval','view','company',NULL,'app.financial_delegate_letterapproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"assigned","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterApproval','approve','company',NULL,'app.financial_delegate_letterapproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"assigned","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":false}'::jsonb);
 CREATE FUNCTION app.financial_delegate_letterregister(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterRegister.'||substring(cap from '[^.]+$'),co,true); $$;
 REVOKE ALL ON FUNCTION app.financial_delegate_letterregister(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 SELECT app.register_function_action('letterRegister','view','company','letters.view','app.financial_delegate_letterregister','{"moduleKey":"letters","labelKey":"nav.letterRegister","kind":"submenu","course":"administrative","screenKey":"letterRegister","href":"/letters/register","employeeBearing":true}'::jsonb);
@@ -1492,12 +1558,14 @@ $$;
 REVOKE ALL ON FUNCTION app.financial_backpay_scope_allowed(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.financial_backpay_scope_allowed(uuid) TO ai_hr_app;
 CREATE FUNCTION app.financial_backpay_row_read(p_row jsonb) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND p_row->>'tenant_id'=app.current_tenant_id()::text
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ RETURN app.principal_snapshot_current() AND p_row->>'tenant_id'=app.current_tenant_id()::text
  AND app.access_backpay_action((p_row->>'company_id')::uuid,'view')
  AND (EXISTS(SELECT 1 FROM public.back_pay_run run WHERE run.id=(p_row->>'id')::uuid AND run.tenant_id=app.current_tenant_id() AND run.company_id=(p_row->>'company_id')::uuid)
   OR EXISTS(SELECT 1 FROM app.financial_backpay_birth proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.run_id=(p_row->>'id')::uuid AND proof.company_id=(p_row->>'company_id')::uuid AND proof.row_hash=encode(sha256(convert_to(p_row::text,'UTF8')),'hex')))
  AND app.financial_backpay_subjects_allowed((p_row->>'id')::uuid);
+END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_backpay_row_read(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.financial_backpay_row_read(jsonb) TO ai_hr_app;
@@ -1517,24 +1585,24 @@ ALTER TABLE app.financial_backpay_catalog_effect ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.financial_backpay_catalog_effect FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.backpay_component(p_run uuid,p_kind text) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE run public.back_pay_run;component public.pay_component;code text;
+DECLARE run public.back_pay_run;component public.pay_component;wanted_code text;
 BEGIN
  PERFORM app.access_workforce_write_lock();
  PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':pay-component-catalog',0));
  SELECT * INTO run FROM public.back_pay_run WHERE id=p_run AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF p_kind IS NULL OR p_kind NOT IN ('earning','deduction') OR run.id IS NULL OR run.status NOT IN ('draft','verified')
  OR NOT app.access_backpay_action(run.company_id,'execute') OR NOT app.financial_backpay_scope_allowed(run.id) THEN RAISE EXCEPTION 'Back Pay pay item source unavailable' USING ERRCODE='42501';END IF;
- code:=CASE p_kind WHEN 'earning' THEN 'BACKPAY' ELSE 'BACKPAY_RECOVERY' END;
- SELECT * INTO component FROM public.pay_component c WHERE c.tenant_id=run.tenant_id AND c.code=code;
+ wanted_code:=CASE p_kind WHEN 'earning' THEN 'BACKPAY' ELSE 'BACKPAY_RECOVERY' END;
+ SELECT * INTO component FROM public.pay_component c WHERE c.tenant_id=run.tenant_id AND c.code=wanted_code;
  IF FOUND THEN RETURN component.id;END IF;
  INSERT INTO public.pay_component(tenant_id,code,name,kind,included_in_epf,included_in_socso_eis,included_in_pcb,included_in_hrdf_base,is_non_payable,prorates,pcb_remuneration_type,pcb_exemption_code,display_category)
- VALUES(run.tenant_id,code,CASE p_kind WHEN 'earning' THEN 'Back Pay (Arrears)' ELSE 'Back Pay Recovery' END,
+ VALUES(run.tenant_id,wanted_code,CASE p_kind WHEN 'earning' THEN 'Back Pay (Arrears)' ELSE 'Back Pay Recovery' END,
   CASE p_kind WHEN 'earning' THEN 'allowance'::public.pay_component_kind ELSE 'deduction'::public.pay_component_kind END,
   true,true,true,true,false,false,NULL,NULL,CASE p_kind WHEN 'earning' THEN 'allowance' ELSE 'deduction' END)
  RETURNING * INTO component;
  INSERT INTO app.financial_backpay_catalog_effect VALUES(pg_current_xact_id(),run.tenant_id,app.current_user_id(),run.id,component.id,encode(sha256(convert_to(to_jsonb(component)::text,'UTF8')),'hex'));
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
- VALUES(run.tenant_id,'pay-component',component.id,'pay-component.created','user',app.current_user_id(),jsonb_build_object('code',code,'reason','back-pay-first-use'));
+ VALUES(run.tenant_id,'pay-component',component.id,'pay-component.created','user',app.current_user_id(),jsonb_build_object('code',wanted_code,'reason','back-pay-first-use'));
  RETURN component.id;
 END;
 $$;
@@ -1569,3 +1637,659 @@ $$;
 REVOKE ALL ON FUNCTION app.financial_backpay_catalog_finish() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER financial_backpay_catalog_complete AFTER INSERT ON app.financial_backpay_catalog_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_backpay_catalog_finish();
 CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_backpay_catalog_effect FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+
+--> statement-breakpoint
+CREATE FUNCTION app.financial_delegate_letterreports(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterReports.'||substring(cap from '[^.]+$'),co,true); $$;
+CREATE FUNCTION app.financial_delegate_myletters(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.myLetters.'||substring(cap from '[^.]+$'),co,true); $$;
+CREATE FUNCTION app.financial_delegate_lettersignature(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterSettings.signature.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_letterreports(uuid,uuid,text,uuid),app.financial_delegate_myletters(uuid,uuid,text,uuid),app.financial_delegate_lettersignature(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterReports','view','company','letters.view','app.financial_delegate_letterreports','{"moduleKey":"letters","labelKey":"nav.letterReports","kind":"screen","course":"administrative","screenKey":"letterReports","href":"/letters/reports","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('myLetters','view','tenant',NULL,'app.financial_delegate_myletters','{"moduleKey":"letters","labelKey":"nav.myLetters","kind":"screen","course":"own","screenKey":"myLetters","href":"/me/letters","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('myLetters','execute','tenant',NULL,'app.financial_delegate_myletters','{"moduleKey":"letters","labelKey":"nav.myLetters","kind":"screen","course":"own","screenKey":"myLetters","href":"/me/letters","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterSettings.signature','view','company',NULL,'app.financial_delegate_lettersignature','{"moduleKey":"letters","labelKey":"letters.settings.signature","kind":"native_acl","course":"own","href":"/letters/settings","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterSettings.signature','add','company',NULL,'app.financial_delegate_lettersignature','{"moduleKey":"letters","labelKey":"letters.settings.signature","kind":"native_acl","course":"own","href":"/letters/settings","employeeBearing":false}'::jsonb);
+--> statement-breakpoint
+CREATE FUNCTION app.letter_function_action(p_key text,p_operation text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_key IN ('letterFields','letterTemplates','letterGenerate','letterApproval','letterRegister','letterReports','letterSettings','letterSettings.signature')
+ AND app.financial_function_native(app.current_tenant_id(),app.current_user_id(),'function.'||p_key||'.'||p_operation,p_company,true)
+ AND app.function_action_allowed(p_key,p_operation,p_company)
+ AND (p_key<>'letterApproval' OR p_operation<>'approve' OR app.financial_letter_same_purpose_not_denied(app.current_tenant_id(),app.current_user_id(),'letters.approve',p_company));
+$$;
+REVOKE ALL ON FUNCTION app.letter_function_action(text,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_function_action(text,text,uuid) TO ai_hr_app;
+CREATE FUNCTION app.letter_recipient_function_action(p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','execute')
+ AND app.financial_function_native(app.current_tenant_id(),app.current_user_id(),'function.myLetters.'||p_operation,NULL,true)
+ AND app.function_action_allowed('myLetters',p_operation,NULL);
+$$;
+REVOKE ALL ON FUNCTION app.letter_recipient_function_action(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_recipient_function_action(text) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.financial_letter_function_for_user(p_tenant uuid,p_user uuid,p_key text,p_operation text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.access_function_action action JOIN public.access_capability capability ON capability.id=action.capability_id
+ WHERE action.function_key=p_key AND action.operation=p_operation
+ AND (p_key<>'letterApproval' OR p_operation<>'approve' OR app.financial_letter_same_purpose_not_denied(p_tenant,p_user,'letters.approve',p_company))
+ AND app.financial_function_native(p_tenant,p_user,capability.id,p_company,false)
+ AND (NOT capability.supported OR jsonb_array_length(capability.bindings)>0 AND app.access_allowed_for_tenant(p_tenant,p_user,capability.id,p_company)));
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_function_for_user(uuid,uuid,text,text,uuid) FROM PUBLIC,ai_hr_app;
+-- The native Approve primitive also owns an independent own-signature image course. Each actual
+-- mutation below chooses its exact source, so one does not lend the other's denied action.
+CREATE OR REPLACE FUNCTION app.access_letter_action_for_user(p_tenant uuid,p_user uuid,p_company uuid,p_native text,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','add','edit','delete','approve','issue') AND app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,p_native)
+ AND CASE
+ WHEN p_native='approve' THEN p_operation='approve' AND (app.financial_letter_function_for_user(p_tenant,p_user,'letterApproval','approve',p_company) OR app.financial_letter_function_for_user(p_tenant,p_user,'letterSettings.signature','add',p_company) OR app.financial_letter_function_for_user(p_tenant,p_user,'letterSettings.signature','view',p_company))
+ WHEN p_native='read' THEN p_operation='view' AND (app.financial_letter_capability_allowed_for(p_tenant,p_user,'letters.view',p_company) OR app.financial_letter_function_for_user(p_tenant,p_user,'letterApproval','view',p_company))
+ ELSE app.financial_letter_capability_allowed_for(p_tenant,p_user,'letters.view',p_company)
+ AND app.financial_letter_capability_allowed_for(p_tenant,p_user,'letters.'||p_operation,p_company)
+ AND CASE p_native
+  WHEN 'generate' THEN app.financial_letter_function_for_user(p_tenant,p_user,'letterGenerate',p_operation,p_company)
+  WHEN 'settings' THEN app.financial_letter_function_for_user(p_tenant,p_user,'letterSettings',p_operation,p_company)
+  WHEN 'issue' THEN app.financial_letter_function_for_user(p_tenant,p_user,'letterRegister',p_operation,p_company)
+  WHEN 'report' THEN p_operation='view' AND app.financial_letter_function_for_user(p_tenant,p_user,'letterReports','view',p_company)
+  ELSE p_native='template' END END;
+$$;
+CREATE OR REPLACE FUNCTION app.access_letter_action(p_company uuid,p_native text,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.letter_current_native_permission(app.current_tenant_id(),app.current_user_id(),p_company,p_native)
+ AND app.access_letter_action_for_user(app.current_tenant_id(),app.current_user_id(),p_company,p_native,p_operation)
+ AND CASE
+ WHEN p_native='approve' THEN app.letter_function_action('letterApproval','approve',p_company) OR app.letter_function_action('letterSettings.signature','add',p_company) OR app.letter_function_action('letterSettings.signature','view',p_company)
+ WHEN p_native='read' THEN app.financial_letter_capability_allowed_current('letters.view',p_company) OR app.letter_function_action('letterApproval','view',p_company)
+ ELSE app.financial_letter_capability_allowed_current('letters.view',p_company) AND app.financial_letter_capability_allowed_current('letters.'||p_operation,p_company)
+ AND CASE p_native WHEN 'generate' THEN app.letter_function_action('letterGenerate',p_operation,p_company)
+ WHEN 'settings' THEN app.letter_function_action('letterSettings',p_operation,p_company)
+ WHEN 'issue' THEN app.letter_function_action('letterRegister',p_operation,p_company)
+ WHEN 'report' THEN app.letter_function_action('letterReports','view',p_company) ELSE p_native='template' END END;
+$$;
+CREATE OR REPLACE FUNCTION app.letter_permission(co uuid,cap text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.access_letter_action(co,cap,CASE cap WHEN 'approve' THEN 'approve' WHEN 'issue' THEN 'issue' ELSE 'view' END);
+$$;
+--> statement-breakpoint
+CREATE FUNCTION app.financial_letter_native_function(p_native text,p_operation text) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE p_native WHEN 'generate' THEN 'letterGenerate' WHEN 'approve' THEN 'letterApproval' WHEN 'issue' THEN 'letterRegister' WHEN 'settings' THEN 'letterSettings' END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_native_function(text,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.access_letter_recipient_function_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF TG_TABLE_NAME='letter_access_token' THEN
+  IF NOT app.letter_recipient_function_action('view') THEN RAISE EXCEPTION 'Own letter access unavailable' USING ERRCODE='42501';END IF;
+ ELSE
+  IF NOT app.letter_recipient_function_action(CASE WHEN NEW.kind='viewed' THEN 'view' ELSE 'execute' END) THEN RAISE EXCEPTION 'Own letter action unavailable' USING ERRCODE='42501';END IF;
+ END IF;RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.access_letter_recipient_function_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_letter_recipient_function BEFORE INSERT ON letter_recipient_event FOR EACH ROW EXECUTE FUNCTION app.access_letter_recipient_function_guard();
+CREATE TRIGGER financial_letter_recipient_function BEFORE INSERT ON letter_access_token FOR EACH ROW EXECUTE FUNCTION app.access_letter_recipient_function_guard();
+CREATE POLICY financial_letter_token_read ON letter_access_token AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.letter_recipient_function_action('view'));
+--> statement-breakpoint
+-- These actual recipient readers keep their unchanged tenant/person/current-artifact conditions.
+DO $$DECLARE signature text;body text;needle text:='app.is_self_person(e.person_id)';BEGIN
+ FOREACH signature IN ARRAY ARRAY['app.letter_can_read(uuid)','app.letter_recipient_mode(uuid)','app.letter_recipient_link_minutes(uuid)'] LOOP
+  SELECT pg_get_functiondef(to_regprocedure(signature)) INTO body;
+  IF body IS NULL OR (length(body)-length(replace(body,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'Recipient source binding drift: %',signature;END IF;
+  EXECUTE replace(body,needle,'(app.is_self_person(e.person_id) AND app.letter_recipient_function_action(''view''))');
+ END LOOP;
+END $$;
+
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER financial_letter_recipient_function_final AFTER INSERT ON letter_recipient_event DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_letter_recipient_function_guard();
+CREATE CONSTRAINT TRIGGER financial_letter_recipient_function_final AFTER INSERT ON letter_access_token DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_letter_recipient_function_guard();
+CREATE FUNCTION app.letter_settings_record_read(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.letter_function_action('letterSettings','view',p_company)
+ AND app.letter_current_native_permission(app.current_tenant_id(),app.current_user_id(),p_company,'settings');
+$$;
+REVOKE ALL ON FUNCTION app.letter_settings_record_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_settings_record_read(uuid) TO ai_hr_app;
+CREATE POLICY financial_letter_function_read ON letter_record AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(
+ app.letter_function_action('letterGenerate','view',company_id)
+ OR app.letter_function_action('letterRegister','view',company_id)
+ OR app.letter_function_action('letterReports','view',company_id)
+ OR app.letter_settings_record_read(company_id)
+ OR app.letter_function_action('letterApproval','view',company_id) AND app.letter_staff_scope(company_id,created_by,batch_id,id)
+ OR state IN ('issued','void') AND app.letter_recipient_function_action('view') AND EXISTS(SELECT 1 FROM public.employment self WHERE self.id=employment_id AND self.tenant_id=letter_record.tenant_id AND app.is_self_person(self.person_id))
+);
+--> statement-breakpoint
+-- Reminder eligibility repeats the exact assigned Approval course rather than borrowing the
+-- distinct own-signature primitive which uses the same legacy native Approve ACL.
+DO $$DECLARE body text;needle text:='NOT app.letter_permission_for_user_at(wanted_tenant,j.recipient_user_id,l.company_id,''approve'')';BEGIN
+ SELECT pg_get_functiondef('identity_email.letter_job_current(uuid,uuid)'::regprocedure) INTO body;
+ IF body IS NULL OR (length(body)-length(replace(body,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'Assigned letter reminder binding drift';END IF;
+ EXECUTE replace(body,needle,needle||' OR NOT app.financial_letter_function_for_user(wanted_tenant,j.recipient_user_id,''letterApproval'',''approve'',l.company_id)');
+END $$;
+
+--> statement-breakpoint
+CREATE POLICY financial_letter_signature_read ON letter_asset AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(kind<>'signature' OR owner_user_id=app.current_user_id() AND app.letter_function_action('letterSettings.signature','view',company_id));
+
+--> statement-breakpoint
+-- A native role ACL applies to future accounts too. An actor with Department/Grade/etc predicates
+-- cannot create a role-wide administrative reader for unknown future employees in the company.
+CREATE FUNCTION app.financial_letter_native_acl_company_ceiling(p_company uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE rules jsonb;
+BEGIN
+ IF NOT app.principal_snapshot_current() THEN RETURN false;END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id()) THEN RETURN true;END IF;
+ SELECT revision.rules INTO rules FROM public.user_data_permission_assignment a JOIN public.data_permission_profile profile ON profile.id=a.profile_id AND profile.tenant_id=a.tenant_id AND profile.enabled AND profile.retired_at IS NULL
+ JOIN public.data_permission_revision revision ON revision.id=profile.active_revision_id AND revision.profile_id=profile.id AND revision.tenant_id=profile.tenant_id
+ WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id();
+ IF rules IS NULL OR NOT app.data_permission_rules_valid(rules) THEN RETURN false;END IF;
+ IF (rules->>'legacyCompany')::boolean THEN RETURN true;END IF;
+ RETURN NOT EXISTS(SELECT 1 FROM jsonb_array_elements(rules->'predicates') field WHERE field->>'field'<>'company')
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements(rules->'predicates') field CROSS JOIN LATERAL jsonb_array_elements_text(field->'values') selected(value) WHERE field->>'field'='company' AND app.access_scope_covers(selected.value::uuid,p_company,app.current_tenant_id()));
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_native_acl_company_ceiling(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_letter_delegate_cell(p_key text,p_operation text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.letter_function_action(p_key,p_operation,p_company) AND EXISTS(SELECT 1 FROM app.access_function_action action JOIN public.access_capability capability ON capability.id=action.capability_id
+ WHERE action.function_key=p_key AND action.operation=p_operation AND (NOT capability.supported OR app.access_can_delegate(capability.id,p_company)));
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_delegate_cell(text,text,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_letter_native_grant_ceiling() RETURNS trigger
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE value jsonb:=CASE WHEN TG_OP='DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;co uuid:=(value->>'company_id')::uuid;role_name text:=value->>'role';native text:=value->>'capability';granting boolean;recipient uuid;key text;operation text;keys text[];operations text[];
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF value->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Letter native grant source unavailable' USING ERRCODE='42501';END IF;
+ granting:=CASE WHEN TG_OP='DELETE' THEN role_name IN ('hr_admin','super_admin') ELSE (value->>'allowed')::boolean END;
+ IF TG_WHEN='BEFORE' AND granting THEN
+  IF NOT app.letter_current_native_permission(app.current_tenant_id(),app.current_user_id(),co,native) THEN RAISE EXCEPTION 'Letter native authority ceiling' USING ERRCODE='42501';END IF;
+  CASE native
+  WHEN 'read' THEN keys:=ARRAY['letterFields','letterTemplates','letterGenerate','letterApproval','letterRegister','letterReports'];operations:=ARRAY['view'];
+  WHEN 'template' THEN keys:=ARRAY['letterFields','letterTemplates'];operations:=ARRAY['view','add','edit','delete'];
+  WHEN 'generate' THEN keys:=ARRAY['letterGenerate'];operations:=ARRAY['view','add','edit','delete'];
+  WHEN 'approve' THEN keys:=ARRAY['letterApproval'];operations:=ARRAY['view','approve'];
+  WHEN 'issue' THEN keys:=ARRAY['letterRegister'];operations:=ARRAY['view','issue','delete'];
+  WHEN 'report' THEN keys:=ARRAY['letterReports'];operations:=ARRAY['view'];
+  WHEN 'settings' THEN keys:=ARRAY['letterSettings'];operations:=ARRAY['view','add','edit','delete'];
+  ELSE RAISE EXCEPTION 'Unknown native Letter authority' USING ERRCODE='42501';END CASE;
+  FOREACH key IN ARRAY keys LOOP FOREACH operation IN ARRAY operations LOOP
+   IF NOT app.financial_letter_delegate_cell(key,operation,co) THEN RAISE EXCEPTION 'Letter function delegation ceiling' USING ERRCODE='42501';END IF;
+  END LOOP;END LOOP;
+  IF native='template' AND NOT app.financial_letter_delegate_cell('letterTemplates','approve',co) OR native='approve' AND (NOT app.financial_letter_delegate_cell('letterSettings.signature','view',co) OR NOT app.financial_letter_delegate_cell('letterSettings.signature','add',co)) THEN RAISE EXCEPTION 'Letter function delegation ceiling' USING ERRCODE='42501';END IF;
+  IF native IN ('read','generate','issue','report') AND NOT app.financial_letter_native_acl_company_ceiling(co) THEN RAISE EXCEPTION 'Letter future recipient data ceiling' USING ERRCODE='42501';END IF;
+ END IF;
+ -- The role's actual before and after recipients are checked against their retained administrative
+ -- profile; own/assigned-only recipients keep their independent course. No group or override is minted.
+ FOR recipient IN SELECT DISTINCT assignment.app_user_id FROM public.role_assignment assignment JOIN public.app_user account ON account.id=assignment.app_user_id AND account.tenant_id=assignment.tenant_id AND account.archived_at IS NULL
+ WHERE assignment.tenant_id=app.current_tenant_id() AND assignment.role::text=role_name AND app.access_scope_covers(assignment.company_id,co,assignment.tenant_id) LOOP
+  IF NOT app.data_permission_function_target_ceiling(recipient) THEN RAISE EXCEPTION 'Letter recipient data ceiling' USING ERRCODE='42501';END IF;
+ END LOOP;
+ IF TG_WHEN='AFTER' THEN
+  FOR recipient IN SELECT DISTINCT assignment.app_user_id FROM public.role_assignment assignment JOIN public.app_user account ON account.id=assignment.app_user_id AND account.tenant_id=assignment.tenant_id AND account.archived_at IS NULL
+  WHERE assignment.tenant_id=app.current_tenant_id() AND assignment.role::text=role_name AND app.access_scope_covers(assignment.company_id,co,assignment.tenant_id) LOOP
+   PERFORM app.access_refresh_native_defaults(recipient);
+  END LOOP;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_native_grant_ceiling() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_letter_native_grant_before BEFORE INSERT OR UPDATE OR DELETE ON letter_capability_grant FOR EACH ROW EXECUTE FUNCTION app.financial_letter_native_grant_ceiling();
+CREATE TRIGGER financial_letter_native_grant_after AFTER INSERT OR UPDATE OR DELETE ON letter_capability_grant FOR EACH ROW EXECUTE FUNCTION app.financial_letter_native_grant_ceiling();
+
+--> statement-breakpoint
+-- OneHR's Performance Partner is a distinct native course, not Financial/PerformanceComp authority.
+-- Pure assessment_admin_for remains the arbitrary stored-target owner. CURRENT native callers also
+-- prove the actual claimed role/scope, so retained global Employee cannot lend a narrowed-away HR seat.
+CREATE FUNCTION app.performance_current_native_roles(p_company uuid,p_roles text[]) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.app_user account
+ JOIN public.role_assignment stored ON stored.app_user_id=account.id AND stored.tenant_id=account.tenant_id
+ JOIN app.current_grants() claimed ON claimed.role=stored.role::text
+ WHERE account.id=app.current_user_id() AND account.tenant_id=app.current_tenant_id() AND account.archived_at IS NULL AND NOT app.login_blocked(account.id)
+ AND stored.role::text=ANY(p_roles)
+ AND (p_company IS NULL AND stored.company_id IS NULL AND claimed.company_id IS NULL
+  OR p_company IS NOT NULL AND app.access_scope_covers(stored.company_id,p_company,account.tenant_id) AND app.access_scope_covers(claimed.company_id,p_company,account.tenant_id)));
+$$;
+REVOKE ALL ON FUNCTION app.performance_current_native_roles(uuid,text[]) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_admin(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.assessment_admin_for(app.current_user_id(),wanted_company)
+ AND app.performance_current_native_roles(wanted_company,ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner']);
+$$;
+CREATE OR REPLACE FUNCTION app.onehr_admin_nonpartner(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.performance_current_native_roles(wanted_company,ARRAY['hr_admin','super_admin','performance_comp_partner']);
+$$;
+CREATE OR REPLACE FUNCTION app.onehr_partner_for(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.performance_current_native_roles(wanted_company,ARRAY['performance_partner']);
+$$;
+CREATE OR REPLACE FUNCTION app.onehr_admin_anywhere() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.onehr_admin(NULL) OR EXISTS(SELECT 1 FROM app.current_grants() claimed WHERE claimed.company_id IS NOT NULL
+ AND claimed.role IN ('hr_admin','super_admin','performance_comp_partner','performance_partner') AND app.onehr_admin(claimed.company_id));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_admin_nonpartner(uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Generic cycle administration belongs to perf-comp administrators. OneHR Partner's
+-- native no-op row lock remains separate and cannot authorize changing this kernel row.
+CREATE FUNCTION app.financial_delegate_performance_cycles(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_function_native(t,u,'function.performance.cycles.'||substring(cap from '[^.]+$'),co,true);
+$$;
+REVOKE ALL ON FUNCTION app.financial_delegate_performance_cycles(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('performance.cycles',operation,'company','performance_compensation.'||operation,'app.financial_delegate_performance_cycles',
+ '{"moduleKey":"performance_compensation","labelKey":"performance.list.title","kind":"submenu","course":"administrative","screenKey":"performance","href":"/performance","employeeBearing":true}'::jsonb)
+FROM unnest(ARRAY['view','add','edit']) operation;
+CREATE FUNCTION app.performance_cycle_function_action(co uuid,operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT operation IN ('view','add','edit') AND app.financial_function_native(app.current_tenant_id(),app.current_user_id(),'function.performance.cycles.'||operation,co,true)
+ AND app.access_financial_action_company('performance_compensation',co,operation)
+ AND CASE WHEN co IS NOT NULL THEN app.function_action_allowed('performance.cycles','view',co) AND app.function_action_allowed('performance.cycles',operation,co)
+ ELSE app.financial_letter_capability_allowed_current('function.performance.cycles.view',NULL)
+ AND app.financial_letter_capability_allowed_current('function.performance.cycles.'||operation,NULL) END;
+$$;
+REVOKE ALL ON FUNCTION app.performance_cycle_function_action(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.performance_cycle_function_action(uuid,text) TO ai_hr_app;
+CREATE FUNCTION app.financial_performance_cycle_row_allowed(d jsonb,operation text) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE co uuid:=(d->>'company_id')::uuid;selected text;
+BEGIN
+ IF d->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.performance_cycle_function_action(co,operation) THEN RETURN false;END IF;
+ -- The independently supplied eligibility company filter cannot widen either source scope.
+ FOR selected IN SELECT jsonb_array_elements_text(coalesce(d->'eligibility_rules'->'companyIds','[]'::jsonb)) LOOP
+  IF NOT app.performance_cycle_function_action(selected::uuid,operation) THEN RETURN false;END IF;
+ END LOOP;
+ RETURN NOT EXISTS(SELECT 1 FROM public.performance_review r JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+  WHERE r.tenant_id=app.current_tenant_id() AND r.cycle_id=(d->>'id')::uuid
+  AND (NOT app.performance_cycle_function_action(e.company_id,operation) OR NOT app.data_permission_matches(e.id)));
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_performance_cycle_row_allowed(jsonb,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_performance_cycle_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'UPDATE' THEN 'edit' ELSE 'delete' END;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN coalesce(NEW,OLD);END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_OP='UPDATE' AND NEW IS NOT DISTINCT FROM OLD AND app.onehr_cycle_admin(OLD.id) THEN RETURN NEW;END IF;
+ IF TG_OP<>'INSERT' AND NOT app.financial_performance_cycle_row_allowed(to_jsonb(OLD),operation)
+ OR TG_OP<>'DELETE' AND NOT app.financial_performance_cycle_row_allowed(to_jsonb(NEW),operation)
+ THEN RAISE EXCEPTION 'Performance cycle action unavailable' USING ERRCODE='42501';END IF;
+ RETURN coalesce(NEW,OLD);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_performance_cycle_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER z_financial_performance_cycle_guard BEFORE INSERT OR UPDATE OR DELETE ON review_cycle FOR EACH ROW EXECUTE FUNCTION app.financial_performance_cycle_guard();
+
+--> statement-breakpoint
+-- OneHR setup has its own native course. Performance Partner must not acquire the
+-- unrelated Performance & Compensation family or its generic cycle writers.
+CREATE FUNCTION app.financial_delegate_onehr_setup(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_function_native(t,u,'function.performance.onehr.setup.'||substring(cap from '[^.]+$'),co,true);
+$$;
+REVOKE ALL ON FUNCTION app.financial_delegate_onehr_setup(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('performance.onehr.setup',operation,'company',NULL,'app.financial_delegate_onehr_setup',
+ '{"moduleKey":"performance_compensation","labelKey":"onehr.policy","kind":"native_acl","course":"administrative","screenKey":"performance","href":"/performance","employeeBearing":true}'::jsonb)
+FROM unnest(ARRAY['view','add','edit']) operation;
+CREATE FUNCTION app.onehr_setup_function_action(co uuid,operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_function_native(app.current_tenant_id(),app.current_user_id(),'function.performance.onehr.setup.'||operation,co,true)
+ AND CASE WHEN co IS NOT NULL THEN app.function_action_allowed('performance.onehr.setup','view',co) AND app.function_action_allowed('performance.onehr.setup',operation,co)
+ ELSE app.financial_letter_capability_allowed_current('function.performance.onehr.setup.view',NULL)
+ AND app.financial_letter_capability_allowed_current('function.performance.onehr.setup.'||operation,NULL) END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_setup_function_action(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_setup_function_action(uuid,text) TO ai_hr_app;
+CREATE FUNCTION app.financial_onehr_setup_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE native public.review_cycle%ROWTYPE;operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' ELSE 'edit' END;profile jsonb;selected text;subject public.employment%ROWTYPE;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO native FROM public.review_cycle c WHERE c.id=NEW.cycle_id AND c.tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NEW.tenant_id IS DISTINCT FROM native.tenant_id OR TG_OP='UPDATE' AND (NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.cycle_id IS DISTINCT FROM OLD.cycle_id)
+ OR NOT app.onehr_cycle_admin(native.id) OR NOT app.onehr_setup_function_action(native.company_id,operation) THEN
+  RAISE EXCEPTION 'OneHR setup action unavailable' USING ERRCODE='42501';END IF;
+ IF EXISTS(SELECT 1 FROM public.performance_review r JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ WHERE r.cycle_id=native.id AND r.tenant_id=native.tenant_id AND (NOT app.onehr_setup_function_action(e.company_id,operation) OR NOT app.data_permission_matches(e.id))) THEN
+  RAISE EXCEPTION 'OneHR setup recipient scope unavailable' USING ERRCODE='42501';END IF;
+ FOR profile IN SELECT value FROM jsonb_array_elements(coalesce(NEW.policy->'profiles','[]'::jsonb)||coalesce(CASE WHEN TG_OP='UPDATE' THEN OLD.policy->'profiles' END,'[]'::jsonb)) LOOP
+  IF profile->>'companyId' IS NOT NULL AND NOT app.onehr_setup_function_action((profile->>'companyId')::uuid,operation) THEN RAISE EXCEPTION 'OneHR profile company unavailable' USING ERRCODE='42501';END IF;
+  FOR selected IN SELECT jsonb_array_elements_text(coalesce(profile->'employmentIds','[]'::jsonb)) LOOP
+   SELECT * INTO subject FROM public.employment e WHERE e.id=selected::uuid AND e.tenant_id=native.tenant_id AND e.voided_at IS NULL;
+   IF NOT FOUND OR NOT app.onehr_setup_function_action(subject.company_id,operation) OR NOT app.data_permission_matches(subject.id) THEN RAISE EXCEPTION 'OneHR profile recipient unavailable' USING ERRCODE='42501';END IF;
+  END LOOP;
+ END LOOP;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_setup_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_onehr_setup_guard BEFORE INSERT OR UPDATE ON performance_onehr_cycle FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_setup_guard();
+
+--> statement-breakpoint
+-- Purpose-bound setup projection. A generic cycle/roster reader is not relabelled
+-- as setup View, and participant readers retain their separate native policy use.
+CREATE FUNCTION app.onehr_setup_read(p_cycle uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE native public.review_cycle%ROWTYPE;config public.performance_onehr_cycle%ROWTYPE;profile jsonb;selected text;subject public.employment%ROWTYPE;
+BEGIN
+ SELECT * INTO native FROM public.review_cycle c WHERE c.id=p_cycle AND c.tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NOT app.onehr_cycle_admin(native.id) OR NOT app.onehr_setup_function_action(native.company_id,'view') THEN RETURN NULL;END IF;
+ SELECT * INTO config FROM public.performance_onehr_cycle c WHERE c.cycle_id=native.id AND c.tenant_id=native.tenant_id;
+ IF NOT FOUND OR EXISTS(SELECT 1 FROM public.performance_review r JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ WHERE r.cycle_id=native.id AND r.tenant_id=native.tenant_id AND (NOT app.onehr_setup_function_action(e.company_id,'view') OR NOT app.data_permission_matches(e.id))) THEN RETURN NULL;END IF;
+ FOR profile IN SELECT value FROM jsonb_array_elements(coalesce(config.policy->'profiles','[]'::jsonb)) LOOP
+  IF profile->>'companyId' IS NOT NULL AND NOT app.onehr_setup_function_action((profile->>'companyId')::uuid,'view') THEN RETURN NULL;END IF;
+  FOR selected IN SELECT jsonb_array_elements_text(coalesce(profile->'employmentIds','[]'::jsonb)) LOOP
+   SELECT * INTO subject FROM public.employment e WHERE e.id=selected::uuid AND e.tenant_id=native.tenant_id AND e.voided_at IS NULL;
+   IF NOT FOUND OR NOT app.onehr_setup_function_action(subject.company_id,'view') OR NOT app.data_permission_matches(subject.id) THEN RETURN NULL;END IF;
+  END LOOP;
+ END LOOP;
+ RETURN jsonb_build_object('cycleId',native.id,'companyId',native.company_id,'revision',config.revision,'policy',config.policy);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_setup_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_setup_read(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Task identity is a bounded read owner, never an exception on the raw masters or
+-- administrative projections. Preserve historical self and actual assigned work.
+CREATE FUNCTION app.onehr_self_employment(p_employment uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+ WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_self_employment(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_self_employment(uuid) TO ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_review_header(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('reviewerEmploymentId',r.reviewer_employment_id,'closedAt',r.closed_at,'name',p.full_name,
+ 'ownEmploymentIds',(SELECT coalesce(jsonb_agg(own.id),'[]'::jsonb) FROM public.employment own WHERE own.person_id=u.person_id AND own.tenant_id=u.tenant_id))
+ FROM public.performance_review r JOIN public.performance_onehr_cycle config ON config.cycle_id=r.cycle_id AND config.tenant_id=r.tenant_id
+ JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=r.tenant_id
+ WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ AND (e.person_id=u.person_id OR app.onehr_manager(r.id) OR app.onehr_effective_reviewer(r.id) OR app.onehr_moderator(r.id)
+ OR app.onehr_cycle_admin(r.cycle_id) AND app.onehr_admin(e.company_id) AND app.data_permission_matches(e.id));
+$$;
+--> statement-breakpoint
+-- Administration can no longer recover an excluded master through the old role-only
+-- projection. The exact participant header above remains its separate native source.
+CREATE OR REPLACE FUNCTION app.onehr_employment_facts() RETURNS TABLE(id uuid,tenant_id uuid,person_id uuid,company_id uuid,employee_code text,grade_id uuid,hired_on date,confirmation_date date,terminated_on date)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT e.id,e.tenant_id,e.person_id,e.company_id,e.employee_code,e.grade_id,e.hired_on,e.confirmation_date,e.terminated_on FROM public.employment e
+ WHERE cardinality((SELECT app.onehr_partner_company_ids()))>0 AND e.tenant_id=app.current_tenant_id()
+ AND e.company_id=ANY((SELECT app.onehr_partner_company_ids())::uuid[]) AND app.data_permission_matches(e.id);
+$$;
+CREATE OR REPLACE FUNCTION app.onehr_assignment_facts() RETURNS TABLE(id uuid,tenant_id uuid,employment_id uuid,department_id uuid,position_id uuid,valid_from date,valid_to date,superseded_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT a.id,a.tenant_id,a.employment_id,a.department_id,a.position_id,a.valid_from,a.valid_to,a.superseded_at FROM public.assignment a JOIN public.employment e ON e.id=a.employment_id AND e.tenant_id=a.tenant_id
+ WHERE cardinality((SELECT app.onehr_partner_company_ids()))>0 AND a.tenant_id=app.current_tenant_id()
+ AND e.company_id=ANY((SELECT app.onehr_partner_company_ids())::uuid[]) AND app.data_permission_matches(e.id);
+$$;
+CREATE OR REPLACE FUNCTION app.onehr_person_labels(employment_ids uuid[]) RETURNS TABLE(employment_id uuid,person_id uuid,full_name text,preferred_name text,employee_code text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT e.id,p.id,p.full_name,p.preferred_name,e.employee_code FROM public.employment e JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ WHERE e.id=ANY(employment_ids) AND e.tenant_id=app.current_tenant_id() AND app.onehr_admin(e.company_id) AND app.data_permission_matches(e.id);
+$$;
+
+--> statement-breakpoint
+-- Native unit/assignment facts have one tenant-parameterized owner. Current native
+-- wrappers preserve their exact source; target-user floors never impersonate a caller.
+CREATE FUNCTION app.financial_onehr_unit_placement(target_tenant uuid,wanted_employment uuid) RETURNS TABLE(company_id uuid,department_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(cur.company_id,e.company_id),cur.department_id
+ FROM employment e LEFT JOIN LATERAL (
+  SELECT a.company_id,a.department_id FROM assignment a
+  WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL
+   AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+   AND (a.valid_to IS NULL OR a.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+  ORDER BY a.valid_from DESC,a.id LIMIT 1) cur ON true
+ WHERE e.id=wanted_employment AND e.tenant_id=target_tenant
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_unit_placement(uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.assessment_unit_placement(wanted_employment uuid) RETURNS TABLE(company_id uuid,department_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT * FROM app.financial_onehr_unit_placement(app.current_tenant_id(),wanted_employment); $$;
+CREATE FUNCTION app.financial_onehr_unit_excluded(target_tenant uuid,wanted_cycle uuid, wanted_employment uuid, extra_company uuid, extra_department uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce((
+  SELECT CASE
+   WHEN c.status='closed' THEN EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion_pin p
+    WHERE p.tenant_id=c.tenant_id AND p.cycle_id=c.id AND p.employment_id=wanted_employment)
+   WHEN extra_company IS NULL AND NOT EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion x
+    WHERE x.tenant_id=c.tenant_id AND x.cycle_id=c.id AND x.ended_at IS NULL) THEN false
+   ELSE EXISTS(SELECT 1 FROM app.financial_onehr_unit_placement(target_tenant,wanted_employment) pl
+    WHERE EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion x
+      WHERE x.tenant_id=c.tenant_id AND x.cycle_id=c.id AND x.ended_at IS NULL
+       AND x.company_id=pl.company_id AND (x.department_id IS NULL OR x.department_id=pl.department_id))
+     OR extra_company IS NOT NULL AND extra_company=pl.company_id AND (extra_department IS NULL OR extra_department=pl.department_id))
+  END
+  FROM review_cycle c WHERE c.id=wanted_cycle AND c.tenant_id=target_tenant),false)
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_unit_excluded(uuid,uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.assessment_unit_excluded_as(wanted_cycle uuid, wanted_employment uuid, extra_company uuid, extra_department uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_unit_excluded(app.current_tenant_id(),wanted_cycle,wanted_employment,extra_company,extra_department); $$;
+CREATE FUNCTION app.financial_onehr_unit_step_up(target_tenant uuid,wanted_cycle uuid, wanted_from uuid, stop_person uuid, extra_company uuid, extra_department uuid) RETURNS uuid
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE today date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date; cur uuid:=wanted_from; nxt employment;
+BEGIN
+ FOR depth IN 1..6 LOOP
+  nxt:=NULL;
+  SELECT m.* INTO nxt FROM reporting_line l JOIN employment m ON m.id=l.manager_employment_id AND m.tenant_id=l.tenant_id
+   WHERE l.tenant_id=target_tenant AND l.subordinate_employment_id=cur AND l.line_type='administrative' AND l.superseded_at IS NULL
+    AND l.valid_from<=today AND (l.valid_to IS NULL OR l.valid_to>today)
+   ORDER BY l.valid_from DESC,l.id LIMIT 1;
+  IF nxt.id IS NULL OR nxt.terminated_on IS NOT NULL AND nxt.terminated_on<=today OR nxt.person_id IS NOT DISTINCT FROM stop_person THEN RETURN NULL; END IF;
+  IF NOT app.financial_onehr_unit_excluded(target_tenant,wanted_cycle,nxt.id,extra_company,extra_department) THEN RETURN nxt.id; END IF;
+  cur:=nxt.id;
+ END LOOP;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.financial_onehr_unit_step_up(uuid,uuid,uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_unit_step_up(wanted_cycle uuid, wanted_from uuid, stop_person uuid, extra_company uuid, extra_department uuid) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_unit_step_up(app.current_tenant_id(),wanted_cycle,wanted_from,stop_person,extra_company,extra_department); $$;
+CREATE FUNCTION app.financial_onehr_effective_reviewer_of(target_tenant uuid,wanted_review uuid, extra_company uuid, extra_department uuid) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN m.id IS NULL OR m.terminated_on IS NOT NULL AND m.terminated_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date THEN NULL
+  WHEN NOT app.financial_onehr_unit_excluded(target_tenant,r.cycle_id,m.id,extra_company,extra_department) THEN m.id
+  ELSE app.financial_onehr_unit_step_up(target_tenant,r.cycle_id,m.id,s.person_id,extra_company,extra_department) END
+ FROM performance_review r JOIN employment s ON s.id=r.employment_id AND s.tenant_id=r.tenant_id
+ LEFT JOIN employment m ON m.id=r.reviewer_employment_id AND m.tenant_id=r.tenant_id
+ WHERE r.id=wanted_review AND r.tenant_id=target_tenant
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_effective_reviewer_of(uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_effective_reviewer_of_as(wanted_review uuid, extra_company uuid, extra_department uuid) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_effective_reviewer_of(app.current_tenant_id(),wanted_review,extra_company,extra_department); $$;
+CREATE FUNCTION app.financial_onehr_manager_for(target_tenant uuid,target_user uuid,wanted_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_review r JOIN employment e ON e.id=r.reviewer_employment_id AND e.tenant_id=r.tenant_id JOIN employment s ON s.id=r.employment_id AND s.tenant_id=r.tenant_id JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id WHERE r.id=wanted_review AND r.tenant_id=target_tenant AND u.id=target_user AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND e.person_id<>s.person_id AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND NOT app.financial_onehr_unit_excluded(target_tenant,r.cycle_id,e.id,NULL,NULL))
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_manager_for(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_manager(wanted_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_manager_for(app.current_tenant_id(),app.current_user_id(),wanted_review); $$;
+CREATE FUNCTION app.financial_onehr_effective_reviewer_for(target_tenant uuid,target_user uuid,wanted_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_review r
+  JOIN employment s ON s.id=r.employment_id AND s.tenant_id=r.tenant_id
+  JOIN employment m ON m.id=app.financial_onehr_effective_reviewer_of(target_tenant,r.id,NULL,NULL) AND m.tenant_id=r.tenant_id
+  JOIN app_user u ON u.person_id=m.person_id AND u.tenant_id=m.tenant_id
+  WHERE r.id=wanted_review AND r.tenant_id=target_tenant AND u.id=target_user
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND m.person_id<>s.person_id
+   AND (m.terminated_on IS NULL OR m.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date))
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_effective_reviewer_for(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_effective_reviewer(wanted_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_effective_reviewer_for(app.current_tenant_id(),app.current_user_id(),wanted_review); $$;
+CREATE FUNCTION app.financial_onehr_moderator_for(target_tenant uuid,target_user uuid,wanted_review uuid,wanted_kpi uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_review r JOIN performance_review pr ON pr.id=r.review_id JOIN employment sub ON sub.id=r.employment_id JOIN app_user u ON u.id=target_user AND u.tenant_id=r.tenant_id CROSS JOIN LATERAL jsonb_array_elements(r.kpis) k CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_array_length(coalesce(k->'approvalChain','[]'::jsonb))>0 THEN k->'approvalChain' ELSE jsonb_build_array(jsonb_build_object('employmentId',k->>'moderatorEmploymentId','at',NULL)) END) WITH ORDINALITY step(v,idx) JOIN employment m ON m.id=(step.v->>'employmentId')::uuid AND m.tenant_id=r.tenant_id AND m.person_id=u.person_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=target_tenant AND (wanted_kpi IS NULL OR k->>'id'=wanted_kpi::text AND coalesce((k->>'locked')::boolean,false)=false AND step.v->>'at' IS NULL AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) WITH ORDINALITY earlier(v,idx) WHERE earlier.idx<step.idx AND earlier.v->>'at' IS NULL)) AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND sub.person_id<>m.person_id AND NOT app.financial_onehr_unit_excluded(target_tenant,r.cycle_id,m.id,NULL,NULL) AND (m.terminated_on IS NULL OR m.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND (k->>'moderatorSource'='matrix' OR m.id=pr.reviewer_employment_id OR EXISTS(SELECT 1 FROM reporting_line l WHERE l.subordinate_employment_id=sub.id AND l.manager_employment_id=m.id AND l.line_type IN ('functional','project','dotted') AND l.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (l.valid_to IS NULL OR l.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND l.superseded_at IS NULL)))
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_moderator_for(uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_moderator(wanted_review uuid,wanted_kpi uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_moderator_for(app.current_tenant_id(),app.current_user_id(),wanted_review,wanted_kpi); $$;
+
+--> statement-breakpoint
+CREATE FUNCTION app.financial_onehr_review_course_for(t uuid,u uuid,wanted_review uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN subject.person_id=account.person_id THEN 'self'
+  WHEN app.financial_onehr_manager_for(t,u,review.id) OR app.financial_onehr_effective_reviewer_for(t,u,review.id) OR app.financial_onehr_moderator_for(t,u,review.id,NULL) THEN 'assigned' END
+ FROM public.performance_review review JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
+ JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ JOIN public.app_user account ON account.id=u AND account.tenant_id=review.tenant_id
+ WHERE review.id=wanted_review AND review.tenant_id=t AND account.archived_at IS NULL AND NOT app.login_blocked(account.id);
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_review_course_for(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_delegate_onehr_review(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_function_native(t,u,cap,co,true);
+$$;
+REVOKE ALL ON FUNCTION app.financial_delegate_onehr_review(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action(key,'view','company',NULL,'app.financial_delegate_onehr_review',jsonb_build_object(
+ 'moduleKey','performance_compensation','labelKey',label,'kind','native_acl','course',course,'href','/performance/workspace','employeeBearing',false))
+FROM (VALUES('performance.onehr.selfReview','onehr.nativeWorkflow','own'),('performance.onehr.assignedReview','onehr.assignments','assigned')) definition(key,label,course);
+CREATE FUNCTION app.onehr_review_task_view(wanted_review uuid,wanted_course text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND wanted_course IN ('self','assigned') AND EXISTS(SELECT 1 FROM public.performance_review review JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id()
+ AND app.financial_onehr_review_course_for(review.tenant_id,app.current_user_id(),review.id)=wanted_course
+ AND app.function_action_allowed(CASE wanted_course WHEN 'self' THEN 'performance.onehr.selfReview' ELSE 'performance.onehr.assignedReview' END,'view',subject.company_id));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_task_view(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_task_view(uuid,text) TO ai_hr_app;
+CREATE FUNCTION app.onehr_review_task_header(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('reviewerEmploymentId',review.reviewer_employment_id,'closedAt',review.closed_at,'name',person.full_name,
+ 'ownEmploymentIds',(SELECT coalesce(jsonb_agg(own.id),'[]'::jsonb) FROM public.employment own WHERE own.person_id=account.person_id AND own.tenant_id=account.tenant_id))
+ FROM public.performance_review review JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
+ JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id JOIN public.person person ON person.id=subject.person_id AND person.tenant_id=subject.tenant_id
+ JOIN public.app_user account ON account.id=app.current_user_id() AND account.tenant_id=review.tenant_id
+ WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND account.archived_at IS NULL AND NOT app.login_blocked(account.id)
+ AND CASE WHEN subject.person_id=account.person_id THEN app.onehr_review_task_view(review.id,'self')
+ WHEN app.onehr_manager(review.id) OR app.onehr_effective_reviewer(review.id) OR app.onehr_moderator(review.id) THEN app.onehr_review_task_view(review.id,'assigned')
+ ELSE app.onehr_cycle_admin(review.cycle_id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id) END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_task_header(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_task_header(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Native course classification is independent of canonical permission. A denied
+-- administrator cannot fall back to a participant projection.
+CREATE FUNCTION app.performance_cycle_native_admin(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_function_native(app.current_tenant_id(),app.current_user_id(),'function.performance.cycles.view',p_company,true);
+$$;
+REVOKE ALL ON FUNCTION app.performance_cycle_native_admin(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.performance_cycle_native_admin(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- One native batch subset owner: unsuperseded department assignees UNION explicit
+-- employments. This deliberately preserves the existing absence of an assignment date filter.
+CREATE FUNCTION app.financial_payroll_scope_ids(p_tenant uuid,p_scope jsonb) RETURNS uuid[]
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF coalesce(jsonb_array_length(p_scope->'departmentIds'),0)=0 AND coalesce(jsonb_array_length(p_scope->'employmentIds'),0)=0 THEN RETURN NULL;END IF;
+ RETURN ARRAY(SELECT member.id FROM (
+  SELECT value::uuid AS id FROM jsonb_array_elements_text(coalesce(p_scope->'employmentIds','[]'::jsonb))
+  UNION SELECT assignment.employment_id FROM public.assignment assignment WHERE assignment.tenant_id=p_tenant AND assignment.superseded_at IS NULL
+  AND EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(p_scope->'departmentIds','[]'::jsonb)) department(value) WHERE department.value::uuid=assignment.department_id)
+ ) member ORDER BY member.id);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_payroll_scope_ids(uuid,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.payroll_scope_employment_ids(p_scope jsonb) RETURNS uuid[]
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE members uuid[]:=app.financial_payroll_scope_ids(app.current_tenant_id(),p_scope);
+BEGIN
+ IF members IS NULL THEN RETURN NULL;END IF;
+ IF NOT app.principal_snapshot_current() OR EXISTS(SELECT 1 FROM unnest(members) member(id) WHERE NOT app.access_financial_action_employment('payroll',member.id,'view'))
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(p_scope->'departmentIds','[]'::jsonb)) selected(value)
+ WHERE NOT EXISTS(SELECT 1 FROM public.department department WHERE department.id=selected.value::uuid AND department.tenant_id=app.current_tenant_id() AND app.access_financial_action_company('payroll',department.company_id,'view'))) THEN
+  RAISE EXCEPTION 'Payroll subset source unavailable' USING ERRCODE='42501';END IF;
+ RETURN members;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.payroll_scope_employment_ids(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.payroll_scope_employment_ids(jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+-- The canonical reservation cutoff source. Existing linked claims retain their original
+-- batch/payroll custody and never re-resolve a later company default.
+CREATE FUNCTION app.financial_claim_cutoff_source(t uuid,co uuid,period text) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE config public.company_payroll_config%ROWTYPE;policy public.payroll_policy%ROWTYPE;settings jsonb;frequency text;frequency_block jsonb;anchor numeric;month_start date;window_start date;window_end date;day_number integer;
+BEGIN
+ IF period !~ '^[0-9]{4}-(0[1-9]|1[0-2])$' OR NOT EXISTS(SELECT 1 FROM public.company company WHERE company.id=co AND company.tenant_id=t) THEN RAISE EXCEPTION 'Claim cutoff source unavailable' USING ERRCODE='42501';END IF;
+ month_start:=(period||'-01')::date;
+ SELECT * INTO config FROM public.company_payroll_config actual WHERE actual.company_id=co AND actual.tenant_id=t;
+ IF config.default_payroll_policy_id IS NOT NULL THEN SELECT * INTO policy FROM public.payroll_policy actual WHERE actual.id=config.default_payroll_policy_id AND actual.tenant_id=t;END IF;
+ IF policy.id IS NOT NULL AND policy.status='active' THEN settings:=policy.config;END IF;
+ IF settings->'cutOff'->>'mode'='custom' AND jsonb_typeof(settings->'cutOff'->'anchorDay')='number' THEN
+  frequency:=coalesce(settings->>'frequency','monthly');
+  IF frequency<>'monthly' THEN frequency_block:=settings->'cutOff'->'perFrequency'->frequency;END IF;
+  anchor:=coalesce((frequency_block->'perType'->>'claim')::numeric,(settings->'cutOff'->'perType'->>'claim')::numeric,(frequency_block->>'anchorDay')::numeric,(settings->'cutOff'->>'anchorDay')::numeric);
+ ELSE anchor:=config.claim_cut_off_day;END IF;
+ IF anchor IS NULL THEN window_start:=month_start;window_end:=(month_start+interval '1 month')::date-1;
+ ELSE
+  day_number:=least(28,greatest(1,trunc(anchor)::integer));
+  window_start:=(month_start-interval '1 month')::date+day_number-1;window_end:=month_start+day_number-2;
+ END IF;
+ RETURN jsonb_build_object('tenantId',t,'companyId',co,'period',period,'start',window_start,'end',window_end,
+  'active',window_start<>month_start OR window_end<>(month_start+interval '1 month')::date-1,
+  'companyConfig',CASE WHEN config.company_id IS NULL THEN NULL ELSE to_jsonb(config) END,
+  'policy',CASE WHEN policy.id IS NULL THEN NULL ELSE to_jsonb(policy) END);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_claim_cutoff_source(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+CREATE TABLE app.financial_claim_source_custody(
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,batch_id uuid NOT NULL,claim_id uuid NOT NULL,source_kind text NOT NULL CHECK(source_kind IN ('reserve','linked-approved','linked-paid')),
+ source_row jsonb NOT NULL,source_hash text NOT NULL,batch_row jsonb NOT NULL,batch_hash text NOT NULL,cutoff_source jsonb,
+ PRIMARY KEY(transaction_id,tenant_id,user_id,batch_id,claim_id,source_kind,source_hash,batch_hash)
+);
+ALTER TABLE app.financial_claim_source_custody ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_claim_source_custody FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_claim_sources_capture(p_batch uuid,p_kind text,p_status text) RETURNS TABLE(id uuid,employment_id uuid,amount numeric,decided_at timestamptz)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE batch public.payroll_batch%ROWTYPE;candidate public.claim_request%ROWTYPE;members uuid[];operation text;cutoff jsonb;upper_bound timestamptz;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO batch FROM public.payroll_batch actual WHERE actual.id=p_batch AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ operation:=CASE WHEN app.financial_batch_intent_allowed(p_batch,'edit') THEN 'edit' WHEN app.financial_batch_intent_allowed(p_batch,'delete') THEN 'delete' END;
+ IF batch.id IS NULL OR batch.status NOT IN ('draft','processed') OR p_kind IS NULL OR p_kind NOT IN ('reserve','linked') OR p_status IS NULL OR p_status NOT IN ('approved','paid')
+ OR p_kind='reserve' AND (p_status<>'approved' OR batch.status<>'draft' OR operation IS DISTINCT FROM 'edit')
+ OR operation IS NULL OR NOT app.financial_batch_subjects_allowed(batch.id) OR NOT app.function_action_allowed('payroll.process','view',batch.company_id)
+ THEN RAISE EXCEPTION 'Payroll claim source unavailable' USING ERRCODE='42501';END IF;
+ IF p_kind='reserve' THEN
+  members:=app.financial_payroll_scope_ids(batch.tenant_id,batch.scope);
+  cutoff:=app.financial_claim_cutoff_source(batch.tenant_id,batch.company_id,batch.pay_period);
+  IF (cutoff->>'active')::boolean THEN upper_bound:=((cutoff->>'end')||'T23:59:59.999Z')::timestamptz;END IF;
+ END IF;
+ FOR candidate IN SELECT claim.* FROM public.claim_request claim JOIN public.employment subject ON subject.id=claim.employment_id AND subject.tenant_id=claim.tenant_id
+  WHERE claim.tenant_id=batch.tenant_id AND claim.status::text=p_status
+  AND (p_kind='reserve' AND claim.taxable AND claim.payroll_batch_id IS NULL AND subject.company_id=batch.company_id AND (members IS NULL OR subject.id=ANY(members)) AND (upper_bound IS NULL OR claim.decided_at<=upper_bound)
+   OR p_kind='linked' AND claim.payroll_batch_id=batch.id)
+  ORDER BY claim.id FOR UPDATE OF claim
+ LOOP
+  IF NOT app.access_financial_action_employment('payroll',candidate.employment_id,operation) THEN RAISE EXCEPTION 'Payroll claim subject unavailable' USING ERRCODE='42501';END IF;
+  INSERT INTO app.financial_claim_source_custody VALUES(pg_current_xact_id(),batch.tenant_id,app.current_user_id(),batch.id,candidate.id,
+   CASE WHEN p_kind='reserve' THEN 'reserve' ELSE 'linked-'||p_status END,to_jsonb(candidate),encode(sha256(convert_to(to_jsonb(candidate)::text,'UTF8')),'hex'),to_jsonb(batch),encode(sha256(convert_to(to_jsonb(batch)::text,'UTF8')),'hex'),cutoff) ON CONFLICT DO NOTHING;
+  id:=candidate.id;employment_id:=candidate.employment_id;amount:=candidate.amount;decided_at:=candidate.decided_at;RETURN NEXT;
+ END LOOP;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_claim_sources_capture(uuid,text,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.payroll_claim_prefill_sources(p_batch uuid) RETURNS TABLE(id uuid,employment_id uuid,amount numeric,decided_at timestamptz)
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT * FROM app.financial_claim_sources_capture(p_batch,'reserve','approved'); $$;
+CREATE FUNCTION app.payroll_claim_linked_sources(p_batch uuid,p_status text) RETURNS TABLE(id uuid,employment_id uuid,amount numeric,decided_at timestamptz)
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT * FROM app.financial_claim_sources_capture(p_batch,'linked',p_status); $$;
+REVOKE ALL ON FUNCTION app.payroll_claim_prefill_sources(uuid),app.payroll_claim_linked_sources(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.payroll_claim_prefill_sources(uuid),app.payroll_claim_linked_sources(uuid,text) TO ai_hr_app;
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_claim_source_custody FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();

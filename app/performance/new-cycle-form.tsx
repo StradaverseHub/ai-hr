@@ -27,9 +27,11 @@ const EMP_TYPE_OPTS = ['full_time', 'part_time', 'contract', 'intern'] as const;
 export function NewCycleForm({
   companies,
   today,
+  canAddGroup,
 }: {
   companies: { id: string; name: string }[];
   today: string;
+  canAddGroup: boolean;
 }) {
   const t = useTranslations('performance.list');
   const ta = useTranslations('onehr');
@@ -57,8 +59,8 @@ export function NewCycleForm({
         <input name="name" required className={inputCls} placeholder={t('namePlaceholder')} />
       </Field>
       <Field label={t('fieldScope')}>
-        <select name="companyId" className={inputCls} defaultValue="">
-          <option value="">{t('scopeAllCompanies')}</option>
+        <select name="companyId" className={inputCls} defaultValue={canAddGroup?'':companies[0]?.id}>
+          {canAddGroup&&<option value="">{t('scopeAllCompanies')}</option>}
           {companies.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}

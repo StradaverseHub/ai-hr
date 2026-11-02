@@ -16,14 +16,15 @@ export async function getAssessmentPersonalRecordTx(tx:Tx,ctx:SessionContext,rev
  z.uuid().parse(reviewId);if(recordId&&recordId!=='current')z.uuid().parse(recordId);
  if(planYear!==undefined)z.number().int().min(1900).max(2200).parse(planYear);
  const data=await (async()=>{
-  const [subject]=await tx.select({employmentId:onehrReview.employmentId}).from(onehrReview).where(and(eq(onehrReview.reviewId,reviewId),sql`exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`));
+  const [subject]=await tx.select({employmentId:onehrReview.employmentId}).from(onehrReview).where(and(eq(onehrReview.reviewId,reviewId),sql`app.onehr_self_employment(${onehrReview.employmentId})`));
   if(!subject)throw Error('This personal record is not assigned to you.');
-  const rows=await tx.select({id:onehrReview.reviewId,name:reviewCycle.name,status:reviewCycle.status,periodEnd:reviewCycle.periodEnd,policy:onehrCycle.policy,card:sql<Card|null>`app.onehr_result_card(${onehrReview.reviewId})`})
+  const rows=await tx.select({id:onehrReview.reviewId,name:reviewCycle.name,status:reviewCycle.status,periodEnd:reviewCycle.periodEnd,policy:onehrCycle.policy,taskVisible:sql<boolean>`app.onehr_review_task_view(${onehrReview.reviewId},'self')`,card:sql<Card|null>`app.onehr_result_card(${onehrReview.reviewId})`})
    .from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).innerJoin(onehrCycle,eq(onehrCycle.cycleId,onehrReview.cycleId))
    .where(and(eq(onehrReview.employmentId,subject.employmentId),sql`${reviewCycle.status}<>'draft'`)).orderBy(desc(reviewCycle.periodEnd),asc(onehrReview.reviewId));
-  const current=rows.find(r=>r.status!=='closed')??null;
+  const nativeCurrent=rows.find(r=>r.status!=='closed')??null;
+  const current=rows.find(r=>r.status!=='closed'&&r.taskVisible)??null;
   const yearOf=(r:typeof rows[number])=>Number(r.periodEnd.slice(0,4))+(policySchema.parse(r.policy).kind==='year_end'?1:0);
-  const activeYear=current?yearOf(current):null;
+  const activeYear=nativeCurrent?yearOf(nativeCurrent):null;
   const plans=(await tx.select().from(onehrPlan).where(eq(onehrPlan.employmentId,subject.employmentId)).orderBy(desc(onehrPlan.planYear)))
    .map(p=>personalPlan(p,activeYear));
   const history=rows.filter(r=>r.status==='closed'||r.card?.performanceReleasedAt||r.card?.potentialReleasedAt||r.card?.talentReleasedAt).map(r=>({

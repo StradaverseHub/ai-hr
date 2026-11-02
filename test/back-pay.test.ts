@@ -444,7 +444,7 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
     await expect(withTenant(a,tx=>tx.execute(sql`select app.backpay_component(${runId}::uuid,null)`))).rejects.toThrow();
     await expect(withTenant(a,tx=>tx.execute(sql`select app.financial_backpay_catalog_approved(null,'{}'::jsonb)`))).rejects.toThrow();
     await expect(withTenant(a,tx=>tx.execute(sql`select app.financial_backpay_subjects_allowed(${runId}::uuid)`))).rejects.toThrow();
-    const [unknown]=await withTenant(a,tx=>tx.execute<{allowed:boolean}>(sql`select app.financial_backpay_row_read(jsonb_build_object('id',${randomUUID()},'tenant_id',${base.tenantId},'company_id',${base.companyId})) as allowed`));
+    const [unknown]=await withTenant(a,tx=>tx.execute<{allowed:boolean}>(sql`select app.financial_backpay_row_read(jsonb_build_object('id',${randomUUID()}::uuid,'tenant_id',${base.tenantId}::uuid,'company_id',${base.companyId}::uuid)) as allowed`));
     expect(unknown.allowed).toBe(false);
     expect(await owner.db.select().from(schema.payComponent).where(and(eq(schema.payComponent.tenantId,base.tenantId),eq(schema.payComponent.code,BACK_PAY_EARNING_CODE)))).toEqual([]);
     expect((await approveAndPostBackPay(a,{runId})).postedCount).toBe(1);

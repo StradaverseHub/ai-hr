@@ -7,7 +7,7 @@ import { scopedSession } from '@/lib/scope';
 import { canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin } from '@/lib/authz';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { listCompanies } from '@/core/read';
-import { listCycles, listOnehrAdminCycles, type OnehrAdminCycleSummary } from '@/core/performance';
+import { cycleFunctionAccess, listCycles, listOnehrAdminCycles, type OnehrAdminCycleSummary } from '@/core/performance';
 import { NewCycleForm } from '../new-cycle-form';
 
 export type CycleRow = OnehrAdminCycleSummary & { pendingComp?: number };
@@ -27,6 +27,10 @@ export async function PerformanceCyclesAdmin({ cycles, rows, pgState, basePath, 
   today: string;
 }) {
   const t = await getTranslations('performance.list'), to = await getTranslations('onehr');
+  const {s}=await scopedSession();
+  const access=admin?await cycleFunctionAccess(s,[null,...companies.map(company=>company.id)]):[];
+  const addCompanies=companies.filter(company=>access.some(cell=>cell.companyId===company.id&&cell.canAdd));
+  const canAddGroup=access.some(cell=>cell.companyId===null&&cell.canAdd);
   return (
     <>
     <Card className="overflow-hidden" data-tour="performance-cycles">
@@ -86,11 +90,11 @@ export async function PerformanceCyclesAdmin({ cycles, rows, pgState, basePath, 
       )}
     </Card>
 
-    {admin && (
+    {admin && (canAddGroup||addCompanies.length>0) && (
       <Card data-tour="performance-new-cycle">
         <details>
           <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">{t('newCycle')}</summary>
-          <NewCycleForm companies={companies} today={today} />
+          <NewCycleForm companies={addCompanies} today={today} canAddGroup={canAddGroup} />
         </details>
       </Card>
     )}

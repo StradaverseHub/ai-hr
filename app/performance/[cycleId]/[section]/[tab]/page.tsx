@@ -35,7 +35,8 @@ export default async function PerformanceAdminPage({ params, searchParams }: { p
     adminCardRenderer(v, { progress: { progressGroup: one(q.progressGroup), progressCompany: one(q.progressCompany) }, returnTo: here }),
     getTranslations('performanceAdmin'),
   ]);
-  const shown = at.page.parts.filter((part) => adminPartShown(part, render.state));
+  if(at.page.parts.length>0&&at.page.parts.every(part=>render.setupPart(part))&&!render.canReadSetup)notFound();
+  const shown = at.page.parts.filter((part) => adminPartShown(part, render.state)&&(!render.setupPart(part)||render.canReadSetup));
   const { extra } = at.page;
   return (
     <PerformanceAdminShell cycleId={cycleId} cycleName={v.cycle.name} section={at.section.key} tab={at.tab.key} page={at.page.key} state={moduleKey ? { on: overviewModuleOn(v.policy, moduleKey), cycle: v.cycle.name } : undefined}>

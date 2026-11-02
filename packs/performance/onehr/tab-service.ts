@@ -30,7 +30,7 @@ async function ownFeedbackReportTx(tx: Tx): Promise<OwnFeedbackReport> {
   }).from(onehrReview)
     .innerJoin(reviewCycle, eq(reviewCycle.id, onehrReview.cycleId))
     .innerJoin(onehrCycle, eq(onehrCycle.cycleId, onehrReview.cycleId))
-    .where(sql`${reviewCycle.status}<>'draft' and exists(select 1 from employment e where e.id=${onehrReview.employmentId} and app.is_self_person(e.person_id))`);
+    .where(sql`${reviewCycle.status}<>'draft' and app.onehr_self_employment(${onehrReview.employmentId})`);
   return row?.released ? 'released' : row?.confirmed ? 'confirmed' : 'none';
 }
 

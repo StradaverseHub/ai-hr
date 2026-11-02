@@ -1664,17 +1664,10 @@ export async function resolveBatchScopeFilter(
   const scopeDeptIds = scope?.departmentIds ?? [];
   const scopeExplicitIds = scope?.employmentIds ?? [];
   if (!scopeDeptIds.length && !scopeExplicitIds.length) return { filter: undefined, employmentIds: null };
-  const deptAssignees = scopeDeptIds.length
-    ? await tx
-        .select({ id: assignment.employmentId })
-        .from(assignment)
-        .where(and(inArray(assignment.departmentId, scopeDeptIds), isNull(assignment.supersededAt)))
-    : [];
-  const scopeEmploymentIds = [...new Set([...deptAssignees.map((r) => r.id), ...scopeExplicitIds])];
-  return {
-    filter: inArray(employment.id, scopeEmploymentIds.length ? scopeEmploymentIds : ['00000000-0000-0000-0000-000000000000']),
-    employmentIds: scopeEmploymentIds,
-  };
+  const [source]=await tx.execute<{employmentIds:string[]|null}>(sql`select app.payroll_scope_employment_ids(${JSON.stringify(scope)}::jsonb) as "employmentIds"`);
+  if(!source||!Array.isArray(source.employmentIds))throw new Error('Payroll subset source unavailable');
+  const employmentIds=source.employmentIds;
+  return {filter:inArray(employment.id,employmentIds),employmentIds};
 }
 
 /**

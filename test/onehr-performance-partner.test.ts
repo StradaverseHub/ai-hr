@@ -23,11 +23,11 @@ import { assignRole, createCompany, createDepartment, revokeRole } from '../core
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import * as perf from '../packs/performance/service';
-import { defaultPolicy } from '../packs/performance/onehr/model';
+import { defaultPolicy,policySchema } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import { createRewardUnit } from '../packs/rewards/service';
 import { canAdminOnehr, canManagePayroll, canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin } from '../lib/authz-model';
-import { closeAll, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
+import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 const year = Number(todayInKualaLumpur().slice(0, 4));
@@ -38,16 +38,18 @@ type Hired = { employmentId: string; personId: string };
  * Postgres message on the cause). Asserting on it is what keeps a refusal test from passing on an unrelated
  * error — a NOT NULL violation would satisfy a bare `rejects.toThrow()`.
  */
-async function refusal(p: Promise<unknown>): Promise<string> {
+async function refusal(p: Promise<unknown>,expectedSqlState?:string): Promise<string> {
   try {
     await p;
   } catch (e) {
     const parts: string[] = [];
-    let cur: unknown = e;
+    let cur: unknown = e,sqlState:string|undefined;
     while (cur instanceof Error) {
       parts.push(cur.message);
+      const code=(cur as Error&{code?:unknown}).code;if(typeof code==='string')sqlState=code;
       cur = (cur as { cause?: unknown }).cause;
     }
+    if(expectedSqlState)expect(sqlState).toBe(expectedSqlState);
     return parts.join(' | ');
   }
   throw new Error('expected the operation to be refused, but it succeeded');
@@ -110,7 +112,65 @@ describe('OneHR performance partner (ADR-0142)', () => {
   });
   afterAll(closeAll);
 
+  it('keeps OneHR setup native Edit separate from generic cycle creation and other-company policy recipients',async()=>{
+    const [source]=await withTenant(partner,tx=>tx.execute<{view:boolean;edit:boolean;add:boolean;generic:boolean}>(sql`select app.onehr_setup_function_action(${b.companyId}::uuid,'view') as view,app.onehr_setup_function_action(${b.companyId}::uuid,'edit') as edit,app.onehr_setup_function_action(${b.companyId}::uuid,'add') as add,app.performance_cycle_function_action(${b.companyId}::uuid,'edit') as generic`));
+    expect(source).toEqual({view:true,edit:true,add:false,generic:false});
+    const setup=await perf.getOnehrSetup(partner,onehrCycleId);expect(setup).not.toBeNull();expect(setup!.cycleId).toBe(onehrCycleId);expect(setup!.companyId).toBe(b.companyId);expect(setup!.canEdit).toBe(true);
+    expect(Object.keys(setup!).sort()).toEqual(['cycleId','companyId','revision','policy','canEdit'].sort());expect(await perf.getOnehrSetup(partner,otherCycleId)).toBeNull();
+    const [before]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,onehrCycleId));
+    await perf.updateAssessmentModules(partner,onehrCycleId,before.revision,{...policySchema.parse(before.policy).modules,pm:false});
+    const [changed]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,onehrCycleId));
+    expect(changed.revision).toBe(before.revision+1);expect(policySchema.parse(changed.policy).modules.pm).toBe(false);
+    const foreignPolicy=policySchema.parse({...policySchema.parse(changed.policy),profiles:[{id:randomUUID(),name:'Fictional other-company competency profile',companyId:coB,grade:'12',competencies:[]}]});
+    expect(await refusal(withTenant(partner,tx=>tx.update(schema.onehrCycle).set({policy:foreignPolicy,revision:changed.revision+1}).where(eq(schema.onehrCycle.cycleId,onehrCycleId))))).toMatch(/OneHR profile company unavailable|outside.*scope|profile company/i);
+    const [after]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,onehrCycleId));expect(after).toEqual(changed);
+  });
+
+  it('profile-fences administrative OneHR masters while preserving exact self and assigned review identity',async()=>{
+    const restrict=async(userId:string)=>{
+      const id=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'department',values:[b.deptB]}]};
+      await owner.client`insert into data_permission_profile(id,tenant_id,name) values(${id},${b.tenantId},${'Fictional OneHR department '+id})`;
+      await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by) values(${revision},${b.tenantId},${id},${JSON.stringify(rules)}::text::jsonb,${a.userId!})`;
+      await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
+      await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by) values(${b.tenantId},${userId},${id},${a.userId!})`;
+    };
+    await restrict(partner.userId!);
+    const [proof]=await withTenant(partner,tx=>tx.execute<{shown:boolean;hidden:boolean}>(sql`select app.data_permission_matches(${partnerPerson.employmentId}::uuid) as shown,app.data_permission_matches(${subject.employmentId}::uuid) as hidden`));expect(proof).toEqual({shown:true,hidden:false});
+    const [admin]=await withTenant(partner,tx=>tx.execute<{header:unknown;employmentIds:string[];assignmentIds:string[];labels:number}>(sql`select app.onehr_review_header(${reviewId}::uuid) as header,array(select id from app.onehr_employment_facts()) as "employmentIds",array(select employment_id from app.onehr_assignment_facts()) as "assignmentIds",(select count(*)::int from app.onehr_person_labels(array[${subject.employmentId}::uuid])) as labels`));
+    expect(admin.header).toBeNull();expect(admin.employmentIds).toContain(partnerPerson.employmentId);expect(admin.employmentIds).not.toContain(subject.employmentId);expect(admin.assignmentIds).not.toContain(subject.employmentId);expect(admin.labels).toBe(0);
+    for(const [identity,self] of [[subject,true],[manager,false]] as const){
+      const userId=await createAppUser(b.tenantId,identity.personId,'employee');await restrict(userId);
+      const actor={...a,userId,personId:identity.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+      const [target]=await owner.db.execute<{manager:boolean;effective:boolean;foreign:boolean}>(sql`select app.financial_onehr_manager_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid) as manager,app.financial_onehr_effective_reviewer_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid) as effective,app.financial_onehr_manager_for(${randomUUID()}::uuid,${userId}::uuid,${reviewId}::uuid) as foreign`);expect(target).toEqual({manager:!self,effective:!self,foreign:false});
+      const [floor]=await owner.db.execute<{self:boolean;assigned:boolean}>(sql`select app.financial_function_legacy_allowed(${b.tenantId}::uuid,${userId}::uuid,'function.performance.onehr.selfReview.view',${b.companyId}::uuid) as self,app.financial_function_legacy_allowed(${b.tenantId}::uuid,${userId}::uuid,'function.performance.onehr.assignedReview.view',${b.companyId}::uuid) as assigned`);expect(floor).toEqual({self,assigned:!self});
+      const [actual]=await withTenant(actor,tx=>tx.execute<{self:boolean;assigned:boolean}>(sql`select app.onehr_review_task_view(${reviewId}::uuid,'self') as self,app.onehr_review_task_view(${reviewId}::uuid,'assigned') as assigned`));expect(actual).toEqual(floor);
+      await expect(withTenant(actor,tx=>tx.execute(sql`select app.financial_onehr_manager_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid)`))).rejects.toThrow();
+      const [task]=await withTenant(actor,tx=>tx.execute<{header:{name:string;ownEmploymentIds:string[]}|null;self:boolean;master:boolean}>(sql`select app.onehr_review_header(${reviewId}::uuid) as header,app.onehr_self_employment(${subject.employmentId}::uuid) as self,exists(select 1 from employment where id=${subject.employmentId}::uuid) as master`));
+      expect(task.header).not.toBeNull();expect(task.header!.name).toBe('Partner subject');expect(task.self).toBe(self);expect(task.master).toBe(self);
+      const view=await perf.getOnehrReview(actor,reviewId);expect(view).not.toBeNull();expect(view!.self).toBe(self);
+      if(self){const personal=await perf.getAssessmentPersonalRecord(actor,reviewId);expect(personal.currentId).toBe(reviewId);expect(personal.current).not.toBeNull();}
+    }
+  });
+
   // ───────────────────────────── TS gates (UX mirror) ─────────────────────────────
+  it('narrowed Partner-A claims cannot borrow stored global Partner through retained global Employee',async()=>{
+    const global=await partnerCtx(null,null);
+    await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:global.userId!,role:'employee',companyId:null});
+    const [before]=await withTenant(global,tx=>tx.execute<{allowed:boolean}>(sql`select app.onehr_admin(${coB}::uuid) as allowed`));expect(before.allowed).toBe(true);
+    const narrowed={...global,roles:['performance_partner','employee'],grants:[{role:'performance_partner',companyId:b.companyId},{role:'employee',companyId:null}]};
+    const [scope]=await withTenant(narrowed,tx=>tx.execute<{own:boolean;other:boolean;group:boolean;companies:string[]}>(sql`select app.onehr_admin(${b.companyId}::uuid) as own,app.onehr_admin(${coB}::uuid) as other,app.onehr_admin(null) as "group",app.onehr_partner_company_ids() as companies`));
+    expect(scope.own).toBe(true);expect(scope.other).toBe(false);expect(scope.group).toBe(false);expect(scope.companies).toContain(b.companyId);expect(scope.companies).not.toContain(coB);
+  });
+
+  it('a current Partner course cannot borrow an unclaimed stored HR role to administer a generic compensation cycle',async()=>{
+    await owner.db.insert(schema.roleAssignment).values([{tenantId:b.tenantId,appUserId:a.userId!,role:'performance_partner',companyId:b.companyId},{tenantId:b.tenantId,appUserId:a.userId!,role:'employee',companyId:null}]);
+    const narrowed={...a,roles:['performance_partner','employee'],grants:[{role:'performance_partner',companyId:b.companyId},{role:'employee',companyId:null}]};
+    const [scope]=await withTenant(narrowed,tx=>tx.execute<{onehr:boolean;generic:boolean;perfcomp:boolean}>(sql`select app.onehr_cycle_admin(${onehrCycleId}::uuid) as onehr,app.onehr_cycle_admin(${genericCycleId}::uuid) as generic,app.can_admin_perfcomp_for(${b.companyId}::uuid) as perfcomp`));
+    expect(scope).toEqual({onehr:true,generic:false,perfcomp:false});
+    expect(await withTenant(narrowed,tx=>tx.select().from(schema.compensation).where(eq(schema.compensation.employmentId,subject.employmentId)))).toEqual([]);
+    const [full]=await withTenant(a,tx=>tx.execute<{allowed:boolean}>(sql`select app.onehr_cycle_admin(${genericCycleId}::uuid) as allowed`));expect(full.allowed).toBe(true);
+  });
+
   it('is a OneHR administrator only: never admin, perf-comp, payroll, nor scoped to another company', () => {
     expect(canAdminOnehr(partner, b.companyId)).toBe(true);
     expect(canAdminOnehr(partner, coB)).toBe(false);
@@ -226,8 +286,8 @@ describe('OneHR performance partner (ADR-0142)', () => {
   it('cannot turn a generic draft cycle into a OneHR cycle', async () => {
     expect(await refusal(perf.configureOnehrCycle(partner, genericDraftId, null, defaultPolicy(framework)))).toMatch(/Cycle not found/);
     expect(
-      await refusal(withTenant(partner, (tx) => tx.insert(schema.onehrCycle).values({ cycleId: genericDraftId, tenantId: b.tenantId, policy: defaultPolicy(framework) }))),
-    ).toMatch(/row-level security/);
+      await refusal(withTenant(partner, (tx) => tx.insert(schema.onehrCycle).values({ cycleId: genericDraftId, tenantId: b.tenantId, policy: defaultPolicy(framework) })), '42501'),
+    ).toMatch(/OneHR setup action unavailable/);
     expect(await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId, genericDraftId))).toEqual([]);
   });
 
@@ -237,7 +297,7 @@ describe('OneHR performance partner (ADR-0142)', () => {
     // A generic cycle is not even lockable for this role.
     expect(await withTenant(partner, (tx) => tx.select().from(schema.reviewCycle).where(eq(schema.reviewCycle.id, genericCycleId)).for('update'))).toEqual([]);
     expect(
-      await refusal(withTenant(partner, (tx) => tx.update(schema.reviewCycle).set({ name: 'Renamed by partner' }).where(eq(schema.reviewCycle.id, onehrCycleId)))),
+      await refusal(withTenant(partner, (tx) => tx.update(schema.reviewCycle).set({ name: 'Renamed by partner' }).where(eq(schema.reviewCycle.id, onehrCycleId))), '42501'),
     ).toMatch(/a performance partner administers OneHR assessments but cannot change the review cycle/);
     const [cycle] = await owner.db.select().from(schema.reviewCycle).where(eq(schema.reviewCycle.id, onehrCycleId));
     expect(cycle.name).toBe('Partner OneHR cycle');
@@ -500,8 +560,10 @@ describe('OneHR performance partner (ADR-0142)', () => {
     // An HR administrator who also holds the partner grant: the projection is non-empty, and the readable
     // row still wins once (no duplicate from the projection arm).
     await owner.db.insert(schema.roleAssignment).values({ tenantId: b.tenantId, appUserId: a.userId!, companyId: b.companyId, role: 'performance_partner' });
-    expect((await rowsOf(a, sql`select * from app.onehr_employment_facts()`)).length).toBeGreaterThan(1);
-    await same(a);
+    expect(await rowsOf(a,sql`select * from app.onehr_employment_facts()`)).toEqual([]);
+    const both={...a,roles:['hr_admin','performance_partner'],grants:[{role:'hr_admin',companyId:null},{role:'performance_partner',companyId:b.companyId}]};
+    expect((await rowsOf(both,sql`select * from app.onehr_employment_facts()`)).length).toBeGreaterThan(1);
+    await same(both);
   });
 
   it('overrides participation in its company cycle, never for another company (VF-07, participation policy)', async () => {
