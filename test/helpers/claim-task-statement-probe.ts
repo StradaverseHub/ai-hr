@@ -1,25 +1,25 @@
-/** Private review proposal only. Not imported by an application/service or installed as a native API. */
-import {sql} from 'drizzle-orm';
-import type {SessionContext} from '../../db/client';
+/** Private review proposal only. No application/native API imports this test helper. */
+import {sql,type SQL} from 'drizzle-orm';
+import type {SessionContext,Tx} from '../../db/client';
 import {claimRequest} from '../../db/schema';
 import {withClaimsTenant} from '../../core/module-gate';
 import {assertAssignedWorkPrincipalTx} from '../../core/approvals';
-import type {AssignedApprovalMetadata} from '../../lib/assigned-work';
+import {AssignedWorkPrincipalUnavailableError,type AssignedApprovalMetadata} from '../../lib/assigned-work';
+type RawHeader={id:string|null;employmentId:string|null;personId:string|null;employee:string|null;createdAt:Date|string|null;total:number|null;callerCurrent:boolean|null};
 
-export async function claimTaskStatementProbe(ctx:SessionContext,companyIds?:string[],limit?:number){
- if(limit!==undefined&&(!Number.isSafeInteger(limit)||limit<1||limit>200))throw Error('Invalid private preview limit');
- return withClaimsTenant(ctx,async tx=>{
-  await assertAssignedWorkPrincipalTx(tx,ctx);
-  if(companyIds?.length===0)return {items:[] as AssignedApprovalMetadata[],total:0};
-  const roles=ctx.roles??[],admin=roles.includes('super_admin')||roles.includes('hr_admin');
-  const rows=await tx.execute<Omit<AssignedApprovalMetadata,'createdAt'>&{createdAt:Date|string;total:number}>(sql`
+function statement(ctx:SessionContext,companyIds:string[]|undefined,limit:number|undefined,bounded:boolean):SQL{
+ const roles=ctx.roles??[],admin=roles.includes('super_admin')||roles.includes('hr_admin');
+ // Both forms call the same native owner. The bounded experiment requires the frozen-body/PK proof.
+ const header=bounded?sql`(SELECT * FROM app.delegated_approval_subject(request.employment_id,'claims','claims.claim') LIMIT 1)`
+  :sql`app.delegated_approval_subject(request.employment_id,'claims','claims.claim')`;
+ return sql`
    WITH caller AS MATERIALIZED (
     SELECT (app.principal_snapshot_current()
      AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok
    ), candidates AS MATERIALIZED (
     SELECT request.id,request.employment_id,request.created_at,header.person_id,header.employee
     FROM public.claim_request request CROSS JOIN caller
-    INNER JOIN LATERAL app.delegated_approval_subject(request.employment_id,'claims','claims.claim') header ON true
+    INNER JOIN LATERAL ${header} header ON true
     WHERE caller.ok AND request.tenant_id=${ctx.tenantId}::uuid AND request.status='pending'
      AND NOT app.is_self_person(header.person_id)
      AND ${companyIds===undefined?sql`true`:sql`header.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}
@@ -47,10 +47,40 @@ export async function claimTaskStatementProbe(ctx:SessionContext,companyIds?:str
     SELECT candidate.* FROM candidates candidate INNER JOIN decision
      ON decision.employment_id=candidate.employment_id AND decision.allowed
    )
-   SELECT id,employment_id AS "employmentId",person_id AS "personId",employee,created_at AS "createdAt",
-    count(*) OVER()::int AS total
-   FROM eligible ORDER BY created_at DESC,id ${limit===undefined?sql``:sql`LIMIT ${limit}`}
-  `);
-  return {items:rows.map(({total:_,...row})=>({...row,createdAt:row.createdAt instanceof Date?row.createdAt:claimRequest.createdAt.mapFromDriverValue(row.createdAt)})),total:rows[0]?.total??0};
+   SELECT selected.id,selected.employment_id AS "employmentId",selected.person_id AS "personId",
+    selected.employee,selected.created_at AS "createdAt",selected.total,caller.ok AS "callerCurrent"
+   FROM caller LEFT JOIN LATERAL (
+    SELECT eligible.*,count(*) OVER()::int AS total FROM eligible
+    ORDER BY created_at DESC,id ${limit===undefined?sql``:sql`LIMIT ${limit}`}
+   ) selected ON true ORDER BY selected.created_at DESC NULLS LAST,selected.id
+  `;
+}
+async function withProbe<T>(supplied:SessionContext,companyIds:string[]|undefined,limit:number|undefined,bounded:boolean,read:(tx:Tx,query:SQL)=>Promise<T>){
+ if(limit!==undefined&&(!Number.isSafeInteger(limit)||limit<1||limit>200))throw Error('Invalid private preview limit');
+ const ctx:SessionContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant})),agent:supplied.agent?{...supplied.agent}:undefined};
+ const companies=companyIds?.slice();
+ return withClaimsTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  return read(tx,statement(ctx,companies,limit,bounded));
  });
+}
+async function read(ctx:SessionContext,companyIds:string[]|undefined,limit:number|undefined,bounded:boolean){
+ return withProbe(ctx,companyIds,limit,bounded,async(tx,query)=>{
+  const rows=await tx.execute<RawHeader>(query);
+  if(!rows.length)throw Error('Private caller-proof row is unavailable');
+  if(rows[0].callerCurrent!==true)throw new AssignedWorkPrincipalUnavailableError();
+  const items:AssignedApprovalMetadata[]=[];
+  for(const row of rows){
+   if(row.id===null)continue;
+   if(row.employmentId===null||row.personId===null||row.createdAt===null)throw Error('Private header shape is unavailable');
+   items.push({id:row.id,employmentId:row.employmentId,personId:row.personId,employee:row.employee,
+    createdAt:row.createdAt instanceof Date?row.createdAt:claimRequest.createdAt.mapFromDriverValue(row.createdAt)});
+  }
+  return {items,total:rows[0].total??0};
+ });
+}
+export function claimTaskStatementProbe(ctx:SessionContext,companyIds?:string[],limit?:number){return read(ctx,companyIds,limit,false);}
+export function claimTaskBoundedHeaderProbe(ctx:SessionContext,companyIds?:string[],limit?:number){return read(ctx,companyIds,limit,true);}
+export function explainClaimTaskProbe(ctx:SessionContext,companyIds:string[]|undefined,limit:number,mode:'reference'|'bounded'){
+ return withProbe(ctx,companyIds,limit,mode==='bounded',async(tx,query)=>tx.execute(sql`EXPLAIN (FORMAT JSON,SETTINGS) ${query}`));
 }
