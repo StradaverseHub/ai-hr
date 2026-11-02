@@ -111,6 +111,24 @@ describe('OneHR performance partner (ADR-0142)', () => {
   afterAll(closeAll);
 
   // ───────────────────────────── TS gates (UX mirror) ─────────────────────────────
+  it('narrowed Partner-A claims cannot borrow stored global Partner through retained global Employee',async()=>{
+    const global=await partnerCtx(null,null);
+    await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:global.userId!,role:'employee',companyId:null});
+    const [before]=await withTenant(global,tx=>tx.execute<{allowed:boolean}>(sql`select app.onehr_admin(${coB}::uuid) as allowed`));expect(before.allowed).toBe(true);
+    const narrowed={...global,roles:['performance_partner','employee'],grants:[{role:'performance_partner',companyId:b.companyId},{role:'employee',companyId:null}]};
+    const [scope]=await withTenant(narrowed,tx=>tx.execute<{own:boolean;other:boolean;group:boolean;companies:string[]}>(sql`select app.onehr_admin(${b.companyId}::uuid) as own,app.onehr_admin(${coB}::uuid) as other,app.onehr_admin(null) as "group",app.onehr_partner_company_ids() as companies`));
+    expect(scope.own).toBe(true);expect(scope.other).toBe(false);expect(scope.group).toBe(false);expect(scope.companies).toContain(b.companyId);expect(scope.companies).not.toContain(coB);
+  });
+
+  it('a current Partner course cannot borrow an unclaimed stored HR role to administer a generic compensation cycle',async()=>{
+    await owner.db.insert(schema.roleAssignment).values([{tenantId:b.tenantId,appUserId:a.userId!,role:'performance_partner',companyId:b.companyId},{tenantId:b.tenantId,appUserId:a.userId!,role:'employee',companyId:null}]);
+    const narrowed={...a,roles:['performance_partner','employee'],grants:[{role:'performance_partner',companyId:b.companyId},{role:'employee',companyId:null}]};
+    const [scope]=await withTenant(narrowed,tx=>tx.execute<{onehr:boolean;generic:boolean;perfcomp:boolean}>(sql`select app.onehr_cycle_admin(${onehrCycleId}::uuid) as onehr,app.onehr_cycle_admin(${genericCycleId}::uuid) as generic,app.can_admin_perfcomp_for(${b.companyId}::uuid) as perfcomp`));
+    expect(scope).toEqual({onehr:true,generic:false,perfcomp:false});
+    expect(await withTenant(narrowed,tx=>tx.select().from(schema.compensation).where(eq(schema.compensation.employmentId,subject.employmentId)))).toEqual([]);
+    const [full]=await withTenant(a,tx=>tx.execute<{allowed:boolean}>(sql`select app.onehr_cycle_admin(${genericCycleId}::uuid) as allowed`));expect(full.allowed).toBe(true);
+  });
+
   it('is a OneHR administrator only: never admin, perf-comp, payroll, nor scoped to another company', () => {
     expect(canAdminOnehr(partner, b.companyId)).toBe(true);
     expect(canAdminOnehr(partner, coB)).toBe(false);
