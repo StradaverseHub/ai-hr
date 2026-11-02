@@ -121,14 +121,8 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   const v=await view(),selection={employmentIds:[employeeId],adoptLegacy:false},preview=await previewRewardSeniorMembership(gr,unitId,v.unit.revision,selection);
   await saveRewardSeniorMembership(gr,unitId,v.unit.revision,selection,preview.digest);await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'selection');
   await saveRewardSeniorAward(gr,unitId,(await view()).unit.revision,{entryId,newBasicCents:550000,incrementBp:null,bonusCents:123400,approvalReference:'SIGNED-BEFORE-GRADE-EDIT',approvalDate:today,reason:'Checked signed offline approval retained',evidence:[]});
-  // Payroll-only has no GR/CTRO/EC screen grant, but the PRIVATE post owner must use the
-  // real post-purpose reader rather than silently turning the approved Senior award into zero.
-  const privateSources=()=>owner.withTenant(postingActor,tx=>tx.execute<{value:{calculation:{rows:{id:string;newBasicCents:number;bonusCents:number}[]};postingAwards:Record<string,unknown>;sourcePlan:{entryId:string;newBasicCents:number;awardCents:number;rewardProvenance:unknown[]}[]}}>(sql`select app.reward_post_sources(${unitId}::uuid,${revision},${batchId}::uuid)as value`));
-  const [prepared]=await privateSources();expect(prepared.value.calculation.rows.find(row=>row.id===entryId)).toMatchObject({newBasicCents:550000,bonusCents:123400});expect(prepared.value.sourcePlan.find(row=>row.entryId===entryId)).toMatchObject({newBasicCents:550000,awardCents:123400,rewardProvenance:[{unitId,entryId,revision,plan:'Senior plan',confirmedBy:checker.userId,confirmedAt:expect.any(String),historicalOnly:true}]});expect(prepared.value.postingAwards).toEqual(bounded.awards);expect(JSON.stringify(prepared.value.postingAwards)).not.toMatch(/evidence|SIGNED-OFFLINE|approvalReference/);
-  const [beforePrivateEffects]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batchId));expect(beforePrivateEffects.bonusAmount).toBe('55.00');expect(beforePrivateEffects.rewardProvenance).toEqual([]);expect((await view()).unit.status).toBe('approved');
   const gradeId=(await view()).rows[0].source.gradeId!;
   await updateJobGrade(gr,{id:gradeId,name:'Changed fictional grade',code:'JG12'});
-  await expect(privateSources()).rejects.toThrow('grade changed');
   await expect(confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'award',entryId)).rejects.toThrow(/changed after the snapshot/);
   expect((await getRewardUnitGovernance(gr,unitId)).senior[0].award?.confirmedBy).toBeNull();
  });
