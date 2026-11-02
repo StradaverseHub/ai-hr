@@ -4700,3 +4700,84 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_plan_review_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER z_financial_onehr_plan_review_guard BEFORE INSERT OR UPDATE ON public.performance_onehr_plan FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_plan_review_guard();
+
+--> statement-breakpoint
+-- Staged review-task email constructor. Entitlements stay with the canonical TS
+-- resolver: only the actual maintenance connection may seal its exact candidate
+-- decision before APP downgrade. No APP caller can mint an entitlement receipt.
+CREATE TABLE app.financial_onehr_task_email_source(
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,session_login name NOT NULL,event_id uuid NOT NULL,recipient_id uuid NOT NULL,
+ review_id uuid NOT NULL,review_company_id uuid NOT NULL,recipient_company_id uuid NOT NULL,task text NOT NULL,
+ event_hash text NOT NULL,source_hash text NOT NULL,entitlement_snapshot jsonb NOT NULL,expires_at timestamptz NOT NULL,
+ PRIMARY KEY(transaction_id,tenant_id,session_login,event_id,recipient_id)
+);
+ALTER TABLE app.financial_onehr_task_email_source ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_onehr_task_email_source FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_onehr_task_email_source FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+CREATE FUNCTION app.financial_onehr_task_email_candidates(wanted_event uuid)
+RETURNS TABLE(review_id uuid,review_company_id uuid,recipient_id uuid,recipient_company_id uuid,task text,event_hash text,source_hash text)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE event public.domain_event%ROWTYPE;source jsonb;phase text;company uuid;
+BEGIN
+ IF app.current_user_id() IS NOT NULL OR nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL THEN RETURN;END IF;
+ SELECT * INTO event FROM public.domain_event actual WHERE actual.id=wanted_event AND actual.tenant_id=app.current_tenant_id() AND actual.aggregate_type='onehr';
+ phase:=CASE event.event_type WHEN 'onehr.results-submitted' THEN 'results' WHEN 'onehr.competencies-submitted' THEN 'competencies' WHEN 'onehr.plan-shared' THEN 'plan' WHEN 'onehr.kpi-approval-needed' THEN event.payload->>'phase' END;
+ IF phase IS NULL OR phase NOT IN ('setting','results','competencies','plan') OR NOT EXISTS(
+  SELECT 1 FROM app.financial_onehr_worker_source proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=event.tenant_id AND proof.session_login=session_user
+  AND proof.source_kind='event' AND proof.source_id=event.id AND proof.event_id=event.id AND proof.review_id=event.aggregate_id
+  AND app.financial_onehr_worker_allowed(proof.cycle_id,proof.review_id,NULL)) THEN RETURN;END IF;
+ source:=app.onehr_review_notice_source(event.aggregate_id);
+ SELECT actual.company_id INTO company FROM public.performance_onehr_review actual WHERE actual.review_id=event.aggregate_id AND actual.tenant_id=event.tenant_id;
+ IF source IS NULL OR company IS NULL THEN RETURN;END IF;
+ RETURN QUERY SELECT event.aggregate_id,company,employment.id,employment.company_id,phase,
+ encode(sha256(convert_to(to_jsonb(event)::text,'UTF8')),'hex'),encode(sha256(convert_to(source::text,'UTF8')),'hex')
+ FROM public.employment employment WHERE employment.tenant_id=event.tenant_id
+ AND app.financial_onehr_review_task_pending(source,employment.id,phase,statement_timestamp());
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_task_email_candidates(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_task_email_enroll(wanted_event uuid,wanted_recipient uuid,canonical_snapshot jsonb) RETURNS boolean
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE candidate record;
+BEGIN
+ IF NOT app.access_workforce_storage_owner() OR app.current_user_id() IS NOT NULL OR nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL
+ OR canonical_snapshot->>'tenantId' IS DISTINCT FROM app.current_tenant_id()::text THEN RAISE EXCEPTION 'OneHR worker connection unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO candidate FROM app.financial_onehr_task_email_candidates(wanted_event) actual WHERE actual.recipient_id=wanted_recipient;
+ IF NOT FOUND THEN RETURN false;END IF;
+ INSERT INTO app.financial_onehr_task_email_source VALUES(pg_current_xact_id(),app.current_tenant_id(),session_user,wanted_event,wanted_recipient,
+ candidate.review_id,candidate.review_company_id,candidate.recipient_company_id,candidate.task,candidate.event_hash,candidate.source_hash,canonical_snapshot,clock_timestamp()+interval '60 seconds')
+ ON CONFLICT(transaction_id,tenant_id,session_login,event_id,recipient_id) DO UPDATE SET review_id=EXCLUDED.review_id,review_company_id=EXCLUDED.review_company_id,
+ recipient_company_id=EXCLUDED.recipient_company_id,task=EXCLUDED.task,event_hash=EXCLUDED.event_hash,source_hash=EXCLUDED.source_hash,entitlement_snapshot=EXCLUDED.entitlement_snapshot,expires_at=EXCLUDED.expires_at;
+ RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_task_email_enroll(uuid,uuid,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_review_task_email_enqueue(wanted_notification uuid,wanted_sequence bigint) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE notice public.notification%ROWTYPE;created integer:=0;
+BEGIN
+ IF app.current_user_id() IS NOT NULL OR nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL OR app.current_agent_principal() IS NOT NULL THEN RETURN 0;END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO notice FROM public.notification actual WHERE actual.id=wanted_notification AND actual.tenant_id=app.current_tenant_id() AND actual.kind='performance.review-task' FOR SHARE;
+ IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM app.financial_onehr_task_email_source proof
+ JOIN public.domain_event event ON event.id=proof.event_id AND event.tenant_id=proof.tenant_id AND event.sequence=wanted_sequence
+ JOIN app.financial_onehr_task_email_candidates(proof.event_id) actual ON actual.recipient_id=proof.recipient_id AND actual.review_id=proof.review_id
+ AND actual.review_company_id=proof.review_company_id AND actual.recipient_company_id=proof.recipient_company_id AND actual.task=proof.task AND actual.event_hash=proof.event_hash AND actual.source_hash=proof.source_hash
+ WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=notice.tenant_id AND proof.session_login=session_user AND proof.event_id=notice.source_event_id
+ AND proof.recipient_id=notice.recipient_employment_id AND proof.expires_at>clock_timestamp()) THEN RETURN 0;END IF;
+ INSERT INTO public.notification_delivery(tenant_id,notification_id,channel,recipient_user_id,source_event_id,kind,category)
+ SELECT notice.tenant_id,notice.id,'email',account.id,event.id,notice.kind,'performance'
+ FROM public.employment employment JOIN public.app_user account ON account.person_id=employment.person_id AND account.tenant_id=employment.tenant_id
+ JOIN public.domain_event event ON event.id=notice.source_event_id AND event.tenant_id=employment.tenant_id AND event.sequence=wanted_sequence
+ JOIN public.notification_pref pref ON pref.tenant_id=employment.tenant_id AND pref.recipient_employment_id=employment.id AND pref.category='performance' AND pref.channel='email' AND pref.enabled
+ AND pref.email_consent_user_id=account.id AND pref.email_after_sequence IS NOT NULL AND event.sequence>pref.email_after_sequence
+ JOIN public.notification_email_policy policy ON policy.tenant_id=employment.tenant_id AND policy.category='performance' AND policy.enabled AND event.sequence>policy.after_sequence
+ WHERE employment.id=notice.recipient_employment_id AND employment.tenant_id=notice.tenant_id AND account.archived_at IS NULL AND NOT app.login_blocked(account.id)
+ AND EXISTS(SELECT 1 FROM public.app_external_identity identity WHERE identity.app_user_id=account.id AND identity.revoked_at IS NULL)
+ ON CONFLICT DO NOTHING;
+ GET DIAGNOSTICS created=ROW_COUNT;RETURN created;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_task_email_enqueue(uuid,bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_task_email_enqueue(uuid,bigint) TO ai_hr_app;

@@ -1,3 +1,4 @@
+import {enrollOnehrReviewTaskEmailTx} from '../packs/performance/onehr/review-task-email-source';
 import {withOnehrWorkerSource,createOnehrWorkerAccess} from '../packs/performance/onehr/worker-source';
 import {setRewardMember} from './rewards-access-fixture';
 import type { NotificationEmailRequest } from '../lib/notification-email-model';
@@ -827,6 +828,43 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(withTenant(a,tx=>tx.execute(sql`select app.assessment_admin_for(${self.userId}::uuid,${b.companyId}::uuid)`))).rejects.toThrow();
     let cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.setAssessmentParticipation(a,cycleId,cycle.revision,subject.employmentId,cycle.participants.find(p=>p.employmentId===subject.employmentId)!.revision,'remove');
     const withdrawn=await read({...a,userId:undefined,personId:undefined}) as typeof data;expect(withdrawn.reviews.some(r=>r.id===reviewId)).toBe(false);expect(withdrawn.panels).toEqual([]);
+  });
+
+  it('stages exact review-task email custody from canonical live entitlements and native pending work',async()=>{
+    await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);mgr={...mgr,entitlements:a.entitlements};
+    const issuer='https://hr.test/identity/realms/ai-hr',identitySubject=randomUUID();
+    const [person]=await owner.db.select().from(schema.person).where(eq(schema.person.id,manager.personId));
+    await owner.db.insert(schema.appExternalIdentity).values({issuer,subject:identitySubject,appUserId:mgr.userId!});
+    await saveNotificationEmailPolicy(a,['performance']);await saveNotificationEmailPreferences(mgr,manager.employmentId,['performance'],'en',{issuer,subject:identitySubject,email:person.primaryEmail,emailVerified:true});
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Native worker task source',description:'Private description never appears in custody',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],true);
+    const [event]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.kpi-approval-needed')));expect(event).toBeDefined();
+    const system={...a,userId:undefined,personId:undefined};
+    // The unchanged native TS workspace derivation independently names this pending recipient.
+    expect(await withOnehrWorkerSource(system,owner,{kind:'event',id:event.id},tx=>perf.assessmentReviewTaskRecipientsTx(tx,reviewId,'setting'))).toEqual([manager.employmentId]);
+    await dispatchNotificationsFromSweep(system,owner);
+    const [notice]=await owner.db.select().from(schema.notification).where(and(eq(schema.notification.sourceEventId,event.id),eq(schema.notification.recipientEmploymentId,manager.employmentId),eq(schema.notification.kind,'performance.review-task')));expect(notice).toBeDefined();
+    // Production callers are deliberately not yet adopted. This isolates the staged constructor.
+    expect(await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.notificationId,notice.id))).toEqual([]);
+    const enqueue=(tx:import('../db/client').Tx,sequence=event.sequence)=>tx.execute<{created:number}>(sql`select app.onehr_review_task_email_enqueue(${notice.id}::uuid,${sequence}::bigint) as created`);
+    expect((await withTenant(system,enqueue))[0].created).toBe(0);
+    await expect(withTenant(system,tx=>tx.execute(sql`select app.financial_onehr_task_email_enroll(${event.id}::uuid,${manager.employmentId}::uuid,'{}'::jsonb)`))).rejects.toThrow();
+    const prepare=()=>withOnehrWorkerSource(system,owner,{kind:'event',id:event.id},tx=>enrollOnehrReviewTaskEmailTx(tx,event.id),{downgrade:false});
+    vi.stubEnv('MODULE_KILL','performance');expect(await prepare()).toEqual([]);vi.stubEnv('MODULE_KILL','notifications');expect(await prepare()).toEqual([]);vi.stubEnv('MODULE_KILL','');
+    await setModule(b.tenantId,'performance','disabled');expect(await prepare()).toEqual([]);await setModule(b.tenantId,'performance','active');
+    await setModule(b.tenantId,'notifications','disabled');expect(await prepare()).toEqual([]);await setModule(b.tenantId,'notifications','active');
+    // Company-only grants are decided by the same canonical TS owner, never a SQL mirror.
+    await setModule(b.tenantId,'performance',null);await setModule(b.tenantId,'performance','active',b.companyId);
+    await setModule(b.tenantId,'notifications',null);await setModule(b.tenantId,'notifications','active',b.companyId);
+    expect(await prepare()).toEqual([manager.employmentId]);
+    await withOnehrWorkerSource(system,owner,{kind:'event',id:event.id},async tx=>{
+      expect(await enrollOnehrReviewTaskEmailTx(tx,event.id)).toEqual([manager.employmentId]);
+      const [proof]=await tx.execute<{review_company_id:string;recipient_company_id:string;entitlement_snapshot:unknown}>(sql`select review_company_id,recipient_company_id,entitlement_snapshot from app.financial_onehr_task_email_source where transaction_id=pg_current_xact_id() and event_id=${event.id}::uuid`);
+      expect(proof).toMatchObject({review_company_id:b.companyId,recipient_company_id:b.companyId});expect(JSON.stringify(proof.entitlement_snapshot)).not.toContain('Private description');
+      await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);expect((await enqueue(tx,BigInt(event.sequence)+1n))[0].created).toBe(0);expect((await enqueue(tx))[0].created).toBe(1);expect((await enqueue(tx))[0].created).toBe(0);
+    },{downgrade:false});
+    const [delivery]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.notificationId,notice.id));expect(delivery).toMatchObject({recipientUserId:mgr.userId,sourceEventId:event.id,kind:'performance.review-task',category:'performance',status:'pending'});
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view(mgr)).revision,true,'Actual pending source completed');expect(await prepare()).toEqual([]);
+    const [privateAccess]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_task_email_candidates(uuid)','EXECUTE') or has_table_privilege('ai_hr_app','app.financial_onehr_task_email_source','SELECT') as allowed`);expect(privateAccess.allowed).toBe(false);
   });
 
   it('reauthorizes delayed review notices from current work instead of event recipient lists',async()=>{
