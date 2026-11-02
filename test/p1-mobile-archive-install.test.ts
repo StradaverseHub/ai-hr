@@ -9,8 +9,10 @@ import { createHash } from 'node:crypto';
 it('the real EAS archive implementation produces isolated input that typechecks and bundles both native platforms', () => {
   const source = resolve('.'), work = mkdtempSync(join(tmpdir(), 'aihr-eas-archive-'));
   const tool = join(work, 'oracle'), archive = join(work, 'archive');
+  const evidenceDirectory = process.env.RUNNER_TEMP
+    ? process.env.AIHR_FOCUSED_EVIDENCE_DIR ?? join(process.env.RUNNER_TEMP, 'aihr-ci') : undefined;
   try {
-    if (process.env.RUNNER_TEMP) mkdirSync(join(process.env.RUNNER_TEMP, 'aihr-focused'), { recursive: true });
+    if (evidenceDirectory) mkdirSync(evidenceDirectory, { recursive: true });
     mkdirSync(tool);
     for (const file of ['package.json', 'package-lock.json']) {
       copyFileSync(join(source, 'test/fixtures/eas-archive-tool', file), join(tool, file));
@@ -46,7 +48,7 @@ it('the real EAS archive implementation produces isolated input that typechecks 
       ignoreSha256: createHash('sha256').update(readFileSync(join(source, '.easignore'))).digest('hex'), privateSentinelsRefused: forbidden,
     };
     console.log('EAS archive oracle', witness);
-    if (process.env.RUNNER_TEMP) writeFileSync(join(process.env.RUNNER_TEMP, 'aihr-focused/eas-archive-oracle.json'), JSON.stringify(witness));
+    if (evidenceDirectory) writeFileSync(join(evidenceDirectory, 'eas-archive-oracle.json'), JSON.stringify(witness));
     expect(existsSync(join(archive, 'lib/mobile-api/v2/team.ts'))).toBe(true);
     for (const path of ['package.json', 'node_modules', 'db', 'lib/session.ts', '.env.local', '.git']) {
       expect(existsSync(join(archive, path))).toBe(false);
@@ -84,6 +86,6 @@ it('the real EAS archive implementation produces isolated input that typechecks 
     for (const directory of [join(archive, 'lib')]) visit(directory);
     const results = { ...witness, platforms, sharedSourceInventory: inventory, isolatedCompilePassed: true, nativeBinaryOrDeviceAcceptance: false };
     console.log('Isolated EAS bundle results', results.platforms);
-    if (process.env.RUNNER_TEMP) writeFileSync(join(process.env.RUNNER_TEMP, 'aihr-focused/eas-archive-results.json'), JSON.stringify(results));
+    if (evidenceDirectory) writeFileSync(join(evidenceDirectory, 'eas-archive-results.json'), JSON.stringify(results));
   } finally { rmSync(work, { recursive: true, force: true }); }
 }, 900000);
