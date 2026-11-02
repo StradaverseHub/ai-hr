@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { activationLoginHref } from '@/lib/internal-auth/login-navigation';
 import { Eye, EyeOff } from 'lucide-react';
 import { LoginShell } from './login-shell';
+import { useMicrosoftLogin } from '@/lib/entra/use-microsoft-login';
 import type { LoginPresentation } from '@/lib/login-presentation';
 import { useTranslations,useLocale } from 'next-intl';
 
@@ -20,6 +21,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
   const passwordId = useId();
   const [showPassword, setShowPassword] = useState(false);
   const [state, setState] = useState<Reply>({ step: mode });
+  const microsoftEnabled=useMicrosoftLogin(state.step==='login'?microsoftOrganization:'');
   const [resetToken, setResetToken] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   useEffect(() => {
@@ -113,7 +115,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         {state.step === 'invite' && <a href={`/login?returnTo=${encodeURIComponent(`/invite/${invitation}/activate`)}`} className="block text-center text-sm underline">{t('existingLogin')}</a>}
         {!['login','invite','accept'].includes(state.step) && <a href="/login" className="block text-center text-sm underline">{t('back')}</a>}
       </form>}
-      {state.step==='login'&&<form action="/login/entra/start" method="get" className="space-y-3"><input type="hidden" name="organization" value={microsoftOrganization}/><input type="hidden" name="returnTo" value={returnTo}/><button className={button} disabled={busy||!microsoftOrganization.trim()}>{t('microsoft')}</button></form>}
+      {state.step==='login'&&microsoftEnabled&&<form action="/login/entra/start" method="get" className="space-y-3"><input type="hidden" name="organization" value={microsoftOrganization}/><input type="hidden" name="returnTo" value={returnTo}/><button className={button} disabled={busy||!microsoftOrganization.trim()}>{t('microsoft')}</button></form>}
       {state.step === 'login' && <div className="login-help">
         <details><summary>{copy('firstTime')}</summary><p className="mt-2">{copy('firstTimeHelp')}</p></details>
         <details><summary>{copy('getHelp')}</summary><p className="mt-2">{copy('getHelpBody')}</p></details>

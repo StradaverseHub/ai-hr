@@ -7,8 +7,9 @@ import * as jsx from 'react/jsx-runtime';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {useMicrosoftLogin} from '../lib/entra/use-microsoft-login';
 import copy from '../mobile/lib/internal-auth-copy.json';
-function fixture(organization?: string) {
+function fixture(organization?: string, enabled=false) {
   let generation = 0;
   class Failure extends Error { constructor(public code: string) { super(code); } }
   const auth = { beginSignIn: () => ++generation, assertAuthGeneration: (owner: number) => { if (owner !== generation) throw new Error('Session changed'); }, completeInternalSignIn: vi.fn(async () => {}) };
@@ -18,22 +19,24 @@ function fixture(organization?: string) {
   const Text = ({ children, accessibilityRole }: React.PropsWithChildren<{accessibilityRole?:string}>) => accessibilityRole === 'header' ? <h1>{children}</h1> : <span role={accessibilityRole === 'alert' ? 'alert' : undefined}>{children}</span>;
   const Input = ({ accessibilityLabel, value, onChangeText, secureTextEntry, editable }: any) => <input aria-label={accessibilityLabel} type={secureTextEntry ? 'password' : 'text'} value={value} disabled={editable === false} onChange={e => onChangeText(e.target.value)}/>;
   const output = { exports: {} as {InternalSignIn:React.ComponentType} };
+  const availability=vi.fn().mockImplementation(async()=>Response.json({microsoft:enabled}));
   const ports: Record<string, unknown> = {
-    'expo/fetch':{fetch:vi.fn()},
+    './use-microsoft-login':{useMicrosoftLogin},
+    'expo/fetch':{fetch:availability},
     react: React, 'react/jsx-runtime': jsx,
     '../../lib/authenticator-setup': { authenticatorSetupUri },
-    'react-native': { Linking: { openURL }, Text, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
+    'react-native': { AppState:{addEventListener:()=>({remove:()=>{}})}, Linking: { openURL }, Text, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
     'expo-router':{router,Redirect:()=>null},'expo-web-browser':{openBrowserAsync:vi.fn()},
     './entra-auth':{signInWithMicrosoft:microsoft},
     './auth':auth,'./company-connection':{useCompanyConnection:()=>({name:'Private customer',apiOrigin:'https://hr.test',organization}),companyCopy:()=>({change:'Change company'})},
-    './connection-probe':{verifyCompanyServer:probe},'./config':{config:{apiUrl:'https://hr.test'},runtimeConnections:true},
+    './connection-probe':{verifyCompanyServer:probe},'./config':{config:{apiUrl:'https://hr.test',authProvider:'internal'},configProblem:()=>null,runtimeConnections:true},
     './internal-auth':{internalAuthRequest:request,InternalSignInError:Failure},'./session':{useSession:()=>({status:'signedOut',markSignedIn:mark})},
     './i18n':{appLocale:()=> 'en'},'./internal-auth-copy.json':copy,
     './ui':{colors:{},Button:({title,disabled,onPress}:any)=><button disabled={disabled} onClick={onPress}>{title}</button>},
   };
   runInNewContext(transpileModule(readFileSync('mobile/lib/internal-sign-in.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,
     {exports:output.exports,module:output,URL,require:(name:string)=>{if(!(name in ports))throw new Error(name);return ports[name];}});
-  return { View:output.exports.InternalSignIn,auth,request,probe,router,mark,Failure,microsoft,openURL };
+  return { View:output.exports.InternalSignIn,auth,request,probe,router,mark,Failure,microsoft,openURL,availability };
 }
 afterEach(cleanup);
 async function login(user: ReturnType<typeof userEvent.setup>) {
@@ -41,10 +44,18 @@ async function login(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(copy.en.password),'Temporary fixture password 771!'); await user.click(screen.getByRole('button',{name:copy.en.signIn}));
 }
 describe('native embedded sign-in — rendered shipped screen',()=>{
+  it('hides Microsoft login while loading and when disabled, without hiding local login',async()=>{
+    const f=fixture('cloud-alpha');render(<f.View/>);
+    expect(screen.queryByRole('button',{name:copy.en.microsoft})).not.toBeInTheDocument();
+    await waitFor(()=>expect(f.availability).toHaveBeenCalled());
+    expect(screen.queryByRole('button',{name:copy.en.microsoft})).not.toBeInTheDocument();
+    expect(screen.getByLabelText(copy.en.password)).toBeInTheDocument();expect(f.microsoft).not.toHaveBeenCalled();
+  });
+
   it('uses the signed workplace for Microsoft login and sends no local password request',async()=>{
-    const f=fixture('cloud-alpha'),user=userEvent.setup();f.microsoft.mockResolvedValue(true);
+    const f=fixture('cloud-alpha',true),user=userEvent.setup();f.microsoft.mockResolvedValue(true);
     render(<f.View/>);await user.type(screen.getByLabelText(copy.en.password),'Local password stays private 771!');
-    await user.click(screen.getByRole('button',{name:copy.en.microsoft}));
+    await user.click(await screen.findByRole('button',{name:copy.en.microsoft}));
     await waitFor(()=>expect(f.router.replace).toHaveBeenCalledWith('/'));
     expect(f.mark).toHaveBeenCalledWith(1);expect(f.microsoft).toHaveBeenCalledWith('cloud-alpha',1);expect(f.request).not.toHaveBeenCalled();expect(f.router.replace).toHaveBeenCalledWith('/');
   });

@@ -1,14 +1,15 @@
 import { authenticatorSetupUri } from '../../lib/authenticator-setup';
 import { signInWithMicrosoft } from './entra-auth';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useMicrosoftLogin } from './use-microsoft-login';
 import { fetch as nativeFetch } from 'expo/fetch';
-import { Linking, Image, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AppState, Linking, Image, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { beginSignIn, assertAuthGeneration, completeInternalSignIn } from './auth';
 import { useCompanyConnection, companyCopy } from './company-connection';
 import { verifyCompanyServer } from './connection-probe';
-import { config, runtimeConnections } from './config';
+import { config, configProblem, runtimeConnections } from './config';
 import { internalAuthRequest, InternalSignInError, type InternalReply } from './internal-auth';
 import { useSession } from './session';
 import { Button, colors } from './ui';
@@ -23,6 +24,10 @@ export function InternalSignIn() {
   const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [confirmation, setConfirmation] = useState(''), [code, setCode] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [microsoftFailed,setMicrosoftFailed]=useState(false);
+  const [availabilityRefresh,setAvailabilityRefresh]=useState(0);
+  useEffect(()=>{const subscription=AppState.addEventListener('change',state=>{if(state==='active')setAvailabilityRefresh(value=>value+1);});return ()=>subscription.remove();},[]);
+  const microsoftEnabled=useMicrosoftLogin(!step&&session.status!=='signedIn'?(workplaceOrganization||organization):'',
+    config.authProvider==='internal'&&!configProblem()&&(!runtimeConnections||company)?config.apiUrl:null,nativeFetch,availabilityRefresh);
   const pending = useRef(false), owner = useRef<number | null>(null);
   async function finish(result: InternalReply) {
     if (owner.current === null || !result.access_token || !result.refresh_token) return;
@@ -94,7 +99,7 @@ export function InternalSignIn() {
       </>}
       {(state === 'enroll' || state === 'mfa') && <><Text>{state === 'enroll' ? copy.code : copy.codeOrRecovery}</Text><TextInput accessibilityLabel={state === 'enroll' ? copy.code : copy.codeOrRecovery} autoCapitalize="characters" autoCorrect={false} autoComplete="one-time-code" maxLength={64} value={code} onChangeText={setCode} style={styles.input} editable={!busy}/></>}
       <Button title={busy ? copy.working : state === 'login' ? copy.signIn : copy.continue} onPress={() => void submit()} disabled={busy || (state === 'login' && (!(workplaceOrganization || organization) || !username || !password)) || (state === 'password' && (!password || !confirmation)) || ((state === 'enroll' || state === 'mfa') && !code)}/>
-      {state==='login'&&<Button title={copy.microsoft} disabled={busy||!(workplaceOrganization||organization)} onPress={()=>{
+      {state==='login'&&microsoftEnabled&&<Button title={copy.microsoft} disabled={busy||!(workplaceOrganization||organization)} onPress={()=>{
         if(pending.current)return;pending.current=true;setBusy(true);setMicrosoftFailed(false);setError('');
         const generation=beginSignIn();owner.current=generation;
         void(async()=>{if(runtimeConnections&&!company)throw Error();if(company)await verifyCompanyServer(company,nativeFetch);
