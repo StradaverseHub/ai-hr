@@ -24,6 +24,16 @@ describe('AI centre tab bar current page',()=>{
   for(const link of view.container.querySelectorAll('[data-ai-centre-tabs] a'))
    expect(link.className.includes('border-primary'),link.getAttribute('href')??'').toBe(link===current[0]);
  });
+ it('renders a streamed Inbox badge inside the Inbox tab, and the plain count still works (issue 12)',()=>{
+  const streamed=render(<NextIntlClientProvider locale="en" messages={enWithAiCentre as never}><AiCentreTabs active="ask" isAdmin={false} inboxBadge={<span data-fixture-badge>3</span>}/></NextIntlClientProvider>);
+  expect(streamed.container.querySelector('a[href="/assistant?view=inbox"] [data-fixture-badge]')).not.toBeNull();
+  cleanup();
+  const counted=render(<NextIntlClientProvider locale="en" messages={enWithAiCentre as never}><AiCentreTabs active="ask" isAdmin={false} inboxCount={2}/></NextIntlClientProvider>);
+  expect(counted.container.querySelector('a[href="/assistant?view=inbox"]')?.textContent).toContain('2');
+  cleanup();
+  const none=render(<NextIntlClientProvider locale="en" messages={enWithAiCentre as never}><AiCentreTabs active="ask" isAdmin={false} inboxCount={0}/></NextIntlClientProvider>);
+  expect(none.container.querySelector('a[href="/assistant?view=inbox"] .rounded-full')).toBeNull();
+ });
  it('lists every tab once for an administrator and hides only the administrator tabs from an employee',()=>{
   expect(new Set(CENTRE_TABS.map(tab=>tab.key)).size).toBe(CENTRE_TABS.length);
   expect(centreTabsFor({isAdmin:false}).map(tab=>tab.key)).toEqual(CENTRE_TABS.filter(tab=>!tab.adminOnly).map(tab=>tab.key));

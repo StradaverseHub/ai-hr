@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import {SavedChatList} from '@/components/assistant/saved-chat-list';
 import {assistantConversationScopeDigest} from '@/core/assistant-conversation-context';
 import {randomUUID} from 'node:crypto';
@@ -41,7 +42,7 @@ import { AI_ARCHITECTURE_LABEL, AI_PRODUCT_NAME, aiCentreName } from '@/lib/ai-c
 import { AiCentreTabs } from '@/components/ai-centre/centre-tabs';
 import { AiCentreDelegatedJobs } from '@/components/ai-centre/delegated-jobs';
 import { HowItWorks } from '@/components/ai-centre/how-it-works';
-import { AiCentreInbox, aiCentreInboxCount } from './centre/inbox';
+import { AiCentreInbox, InboxCountBadge } from './centre/inbox';
 
 /**
  * ADR-0082 slice 4 — THE ASSISTANT'S FIRST SCREEN, and the first time any of it is reachable.
@@ -81,14 +82,14 @@ export default async function AssistantPage({
     const tc = await getTranslations('aiCentre.how');
     return (
       <div data-ai-centre={sp.view} className="mx-auto max-w-6xl space-y-6">
-        <AiCentreTabs active={sp.view} isAdmin={admin} inboxCount={sp.view === 'inbox' ? undefined : await aiCentreInboxCount(s)} />
+        <AiCentreTabs active={sp.view} isAdmin={admin} inboxBadge={sp.view === 'inbox' ? null : <Suspense fallback={null}><InboxCountBadge session={s} /></Suspense>} />
         {sp.view === 'inbox' && <AiCentreInbox session={s} recommend={typeof sp.recommend === 'string' ? sp.recommend : undefined} />}
         {sp.view === 'jobs' && <AiCentreDelegatedJobs />}
         {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '/control-tower/how-it-works' : undefined} /></>}
       </div>
     );
   }
-  const centreTabs = <AiCentreTabs active="ask" isAdmin={admin} inboxCount={await aiCentreInboxCount(s)} />;
+  const centreTabs = <AiCentreTabs active="ask" isAdmin={admin} inboxBadge={<Suspense fallback={null}><InboxCountBadge session={s} /></Suspense>} />;
   const errorMessage=sp.error==='clarification_unavailable'?t('workspace.conversation.unavailable'):
     sp.error&&/^[a-z_]{1,40}$/.test(sp.error)&&t.has(`err_${sp.error}`)?t(`err_${sp.error}`):undefined;
   const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});

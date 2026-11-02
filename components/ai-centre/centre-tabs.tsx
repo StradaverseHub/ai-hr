@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { BookOpen, Inbox, MessageSquareText, Settings2, UserCheck, Wallet, Workflow } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { aiCentreName } from '@/lib/ai-centre/brand';
 import { ADMIN_GROUPS, centreTabsFor, type AdminSection, type CentreTabKey } from '@/lib/ai-centre/centre-nav';
 import { cn } from '@/lib/utils';
@@ -14,7 +15,9 @@ const ICONS: Readonly<Record<CentreTabKey, LucideIcon>> = {
 /** Synchronous with useTranslations, so it renders from server pages and from client tests alike.
  * The AI centre's one tab bar, on every centre page. Links only: each target page keeps its own guard, and
  * an administrator tab is hidden from a viewer whose page would refuse it. */
-export function AiCentreTabs({ active, isAdmin, inboxCount }: { active: CentreTabKey; isAdmin: boolean; inboxCount?: number }) {
+/** `inboxBadge` (preferred) is rendered in place of the count, so a page can stream it in a Suspense boundary instead
+ * of waiting for the Inbox's pending-task read before anything renders (issue 12, staging acceptance 3 November 2026). */
+export function AiCentreTabs({ active, isAdmin, inboxCount, inboxBadge }: { active: CentreTabKey; isAdmin: boolean; inboxCount?: number; inboxBadge?: ReactNode }) {
   const t = useTranslations('aiCentre');
   const name = aiCentreName(t('genericName'));
   return (
@@ -34,17 +37,23 @@ export function AiCentreTabs({ active, isAdmin, inboxCount }: { active: CentreTa
                   current ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}>
                 <Icon aria-hidden className="size-4" />
                 {t(`tabs.${tab.key}`)}
-                {tab.key === 'inbox' && inboxCount !== undefined && inboxCount > 0 && (
-                  <span className="rounded-full bg-primary px-1.5 py-0.5 text-[0.6875rem] font-semibold leading-none tabular-nums text-primary-foreground">
-                    <span aria-hidden>{inboxCount}</span><span className="sr-only">{t('inboxCount', { count: inboxCount })}</span>
-                  </span>
-                )}
+                {tab.key === 'inbox' && (inboxBadge ?? (inboxCount !== undefined && <InboxCount count={inboxCount} label={t('inboxCount', { count: inboxCount })} />))}
               </Link>
             </li>
           );
         })}
       </ul>
     </nav>
+  );
+}
+
+/** The Inbox tab's count; nothing for zero. Shared by the streamed badge (app/assistant/centre/inbox.tsx). */
+export function InboxCount({ count, label }: { count: number; label: string }) {
+  if (count <= 0) return null;
+  return (
+    <span className="rounded-full bg-primary px-1.5 py-0.5 text-[0.6875rem] font-semibold leading-none tabular-nums text-primary-foreground">
+      <span aria-hidden>{count}</span><span className="sr-only">{label}</span>
+    </span>
   );
 }
 

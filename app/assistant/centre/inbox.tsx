@@ -11,6 +11,7 @@ import { recordReadiness } from '@/core/record-readiness';
 import { isAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { PageHeader } from '@/components/ui';
+import { InboxCount } from '@/components/ai-centre/centre-tabs';
 import { ProposalCard } from '@/components/ai-centre/proposal-card';
 import { LeaveRecommendationLink, RecommendationPanel } from '@/components/ai-centre/leave-recommendation';
 import { digestPreview, latestDailyDigest } from '@/core/digest/daily-digest';
@@ -204,4 +205,13 @@ export async function aiCentreInboxCount(session: SessionContext): Promise<numbe
     });
   });
   return tasks.ok ? tasks.value.length : undefined;
+}
+
+/** The Inbox tab's count, streamed: the AI centre views render at once and this fills in when the pending-task read
+ * finishes, instead of every view waiting for it (issue 12). The same read, as the caller, as aiCentreInboxCount. */
+export async function InboxCountBadge({ session }: { session: SessionContext }) {
+  const count = await aiCentreInboxCount(session);
+  if (count === undefined) return null;
+  const t = await getTranslations('aiCentre');
+  return <InboxCount count={count} label={t('inboxCount', { count })} />;
 }
