@@ -150,7 +150,7 @@ describe('8550b282 information-only corrections',()=>{
   await assignLabelToCompanies(ctx(),{kind:'department',labelId:b.deptA,companyIds:[b.companyId,destination.id]});
   await assignLabelToCompanies(ctx(),{kind:'position',labelId:b.positionId,companyIds:[b.companyId,destination.id]});
   await apply(id,{companyId:destination.id});
-  const [hr]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Retained financial reader'}).returning();
+  const [hr]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Retained financial reader',primaryEmail:randomUUID()+'@example.test'}).returning();
   const userId=await createAppUser(b.tenantId,hr.id,'hr_admin');
   await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,userId));
   const source={...ctx(),userId,personId:hr.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
