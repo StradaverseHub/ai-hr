@@ -24,7 +24,7 @@ it('real CLI receipt custody preserves unowned rows and refuses changed or publi
     const db = fixture.db;
     await db.insert(s.tenant).values({ id: DEMO_TENANT_ID, workosOrgId: 'org_pooled_cli', name: 'Fictional CLI demo' });
     const [company] = await db.insert(s.company).values({ tenantId: DEMO_TENANT_ID, legalName: 'Fictional fixture company' }).returning();
-    const [person] = await db.insert(s.person).values({ tenantId: DEMO_TENANT_ID, fullName: 'Fictional fixture person' }).returning();
+    const [person] = await db.insert(s.person).values({ tenantId: DEMO_TENANT_ID, fullName: 'Fictional fixture person', primaryEmail: 'pooled-cli@test.invalid' }).returning();
     const [employment] = await db.insert(s.employment).values({ tenantId: DEMO_TENANT_ID, companyId: company.id, personId: person.id, hiredOn: '2020-01-01' }).returning();
     const types = await db.insert(s.leaveType).values(['ANNUAL', 'SICK', 'HOSPITALIZATION', 'MATERNITY'].map(code => ({ tenantId: DEMO_TENANT_ID, code, name: code }))).returning();
     const pool = types.find(t => t.code === 'SICK')!, borrower = types.find(t => t.code === 'HOSPITALIZATION')!, prior = types.find(t => t.code === 'ANNUAL')!;
