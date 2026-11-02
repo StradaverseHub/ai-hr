@@ -82,6 +82,14 @@ async function assertCycleFunctionTx(tx:Tx,companyId:string|null,operation:'view
  if(!row?.allowed)throw new PerfError('Performance cycle action unavailable');
 }
 
+/** Exact current action availability for existing native cycle controls. */
+export async function cycleFunctionAccess(ctx:SessionContext,companyIds:readonly (string|null)[]) {
+ return withTenant(ctx,async tx=>Promise.all([...new Set(companyIds)].map(async companyId=>{
+  const [row]=await tx.execute<{canView:boolean;canAdd:boolean;canEdit:boolean}>(sql`select app.performance_cycle_function_action(${companyId}::uuid,'view') as "canView",app.performance_cycle_function_action(${companyId}::uuid,'add') as "canAdd",app.performance_cycle_function_action(${companyId}::uuid,'edit') as "canEdit"`);
+  return {companyId,canView:row?.canView??false,canAdd:row?.canAdd??false,canEdit:row?.canEdit??false};
+ })));
+}
+
 /** Seed scale if a cycle is created without one. Tenant-configurable per cycle thereafter. */
 export const DEFAULT_RATING_SCALE: RatingScale = [
   { value: 1, label: 'Below' },
@@ -486,6 +494,8 @@ export async function previewEligibleCount(
     }
   }
   return withTenant(ctx, async (tx) => {
+    await assertCycleFunctionTx(tx,p.companyId??null,'view');
+    for(const companyId of rules?.companyIds??[])await assertCycleFunctionTx(tx,companyId,'view');
     const asOf = todayInKualaLumpur();
     const candidates = await eligibilityCandidates(tx, ctx.tenantId, p.companyId ?? null, asOf);
     const nativeEligible = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible).map(c=>c.employmentId);
