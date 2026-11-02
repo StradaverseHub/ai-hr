@@ -143,6 +143,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await setRewardMember(admin, unitId, v.unit.revision, userId, 'gr');
     const own = { ...admin, userId, personId: entry.source.personId, roles: ['employee'] as SessionContext['roles'], grants: undefined };
     const state = await getRewardSeniorMembership(own, unitId);
+    const [bounded]=await owner.withTenant(own,tx=>tx.execute<{value:unknown}>(sql`select app.reward_senior_membership_metadata(${unitId}::uuid)as value`));expect(bounded.value).toEqual(state);await expect(withTenant(own,tx=>tx.execute(sql`select app.reward_senior_membership_metadata(${unitId}::uuid)`))).rejects.toThrow();
     expect(state.rows).toEqual([]);
     await expect(previewRewardSeniorMembership(own, unitId, state.revision, { employmentIds: [employmentId], adoptLegacy: true })).rejects.toThrow(/visible review roster/);
     const selection = { employmentIds: [], adoptLegacy: true };
@@ -158,10 +159,12 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const original=await view();await owner.db.update(schema.rewardEntry).set({source:{...original.rows[0].source,grade:'21'}}).where(eq(schema.rewardEntry.id,original.rows[0].id));
     const v = await view();
     await expect(getRewardSeniorMembership(actors.bu!, unitId)).rejects.toThrow(/Group Rewards/);
+    await expect(owner.withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_senior_membership_metadata(${unitId}::uuid)`))).rejects.toThrow('Group Rewards');
     await expect(previewRewardSeniorMembership(actors.bu!, unitId, v.unit.revision, { employmentIds: [], adoptLegacy: false })).rejects.toThrow(/Group Rewards/);
     const userId = actors.bu!.userId!;
     await setRewardMember(admin, unitId, v.unit.revision, userId, 'gr');
     const state = await getRewardSeniorMembership(actors.bu!, unitId);
+    const [bounded]=await owner.withTenant(actors.bu!,tx=>tx.execute<{value:unknown}>(sql`select app.reward_senior_membership_metadata(${unitId}::uuid)as value`));expect(bounded.value).toEqual(state);
     const selection = { employmentIds: [employmentId], adoptLegacy: false };
     const preview = await previewRewardSeniorMembership(actors.bu!, unitId, state.revision, selection);
     await setRewardMember(admin, unitId, state.revision, userId, 'gr', true);

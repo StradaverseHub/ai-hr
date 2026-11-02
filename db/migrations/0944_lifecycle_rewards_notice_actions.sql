@@ -2991,3 +2991,24 @@ BEGIN
  RETURN jsonb_build_object('people',people,'verified',verified);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_unit_verification_counts(uuid)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- A distinct pay-free GR membership screen. It does not load the private monetary kernel,
+-- governance inputs, recommendations or awards. Own-person exclusion derives actual immutable
+-- employment/person identity, not a posted JSON replacement. No new app ACL until reviewed.
+CREATE FUNCTION app.reward_senior_membership_metadata(p_unit uuid)RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;actor public.app_user;roles text[];rows jsonb;
+BEGIN
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
+ SELECT u.* INTO actor FROM public.app_user u WHERE u.id=app.current_user_id()AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
+ roles:=ARRAY(SELECT app.reward_roles(p_unit));
+ SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL AND(u.created_by=app.current_user_id()OR app.reward_admin(u.company_id)OR cardinality(roles)>0);
+ IF actor.id IS NULL OR unit.id IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
+ IF cardinality(roles)=0 THEN RAISE EXCEPTION 'Ask an administrator to assign your Reward Desk role for this unit.' USING ERRCODE='42501';END IF;
+ IF NOT('gr'=ANY(roles))THEN RAISE EXCEPTION 'Group Rewards membership access is required.' USING ERRCODE='42501';END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('employmentId',e.employment_id,'name',e.source->'name','employeeCode',e.source->'employeeCode','member',app.reward_calc_senior(unit.policy,jsonb_build_object('source',e.source,'facts',e.facts)),'eligible',app.reward_calc_senior_grade(e.source->>'grade'),'grade',e.source->'grade')ORDER BY e.id),'[]'::jsonb)INTO rows
+ FROM public.reward_entry e JOIN public.employment actual ON actual.id=e.employment_id AND actual.tenant_id=e.tenant_id WHERE e.unit_id=unit.id AND e.tenant_id=unit.tenant_id AND actual.person_id IS DISTINCT FROM actor.person_id;
+ RETURN jsonb_build_object('unitId',unit.id,'revision',unit.revision,'canEdit',unit.kind='annual'AND unit.status='draft','mode',coalesce(unit.policy->>'seniorMembershipMode','legacy-grades'),'rows',rows);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_senior_membership_metadata(uuid)FROM PUBLIC,ai_hr_app;
