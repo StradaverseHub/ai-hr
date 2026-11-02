@@ -40,6 +40,11 @@ describe('probation reviewer interactions',()=>{
   show(view,part);expect(screen.queryByRole('radio')).not.toBeInTheDocument();fireEvent.change(screen.getByRole('textbox',{name:'Employee comments'}),{target:{value:'The review was discussed; I have noted the feedback.'}});fireEvent.click(screen.getByRole('button',{name:'Save draft'}));
   await waitFor(()=>expect(mocks.save).toHaveBeenCalled());expect(mocks.save.mock.calls[0][0].patch).toEqual({employeeComments:'The review was discussed; I have noted the feedback.'});
  });
+ it('lets the employee save only Part 1 meeting-acknowledgement comments',async()=>{
+  const{view}=fixture(),part=view.parts.find(p=>p.type===1)!;part.canEditEmployee=true;part.canEditEmployeeComments=true;part.canEditSelfAssessment=false;part.managerSubmittedAt='2026-11-03T01:00:00Z';part.allowedCommands=['acknowledge'];
+  show(view,part);fireEvent.change(screen.getByRole('textbox',{name:'Employee comments'}),{target:{value:'The Week 1 meeting was held and the KPIs discussed.'}});fireEvent.click(screen.getByRole('button',{name:'Save draft'}));
+  await waitFor(()=>expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({rater:'employee',patch:{employeeComments:'The Week 1 meeting was held and the KPIs discussed.'}})));
+ });
  it('shows the submitted Personnel snapshot and period on a previously submitted review',()=>{
   const{view,part}=fixture();part.submittedFacts={...view.record.facts,companyName:'Company at submission'};part.submittedPeriod={startOn:'2026-10-01',endOn:'2027-03-31',gradeAtStart:'14'};
   show(view,part);expect(screen.getByText('Company at submission')).toBeInTheDocument();expect(screen.queryByText('Fictional Company')).not.toBeInTheDocument();expect(screen.getByText('2027-03-31')).toBeInTheDocument();expect(screen.getByText(/Personnel details and review period recorded/)).toBeInTheDocument();

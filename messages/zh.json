@@ -33866,7 +33866,8 @@
       "remove": "移除职责",
       "add": "添加职责",
       "support": "计划支持",
-      "acknowledged": "已确认第1周KPI"
+      "acknowledged": "已确认第1周KPI",
+      "acknowledgement": "C. 会议确认"
     },
     "support": {
       "coaching": "辅导及指导",
@@ -34001,7 +34002,11 @@
       "bands": "分数等级",
       "bandLabel": "等级 {band} 标签",
       "bandMinimum": "最低分",
-      "commentsRequired": "要求员工填写意见"
+      "commentsRequired": "要求员工填写意见",
+      "startFrom": "以已保存的表单版本为起点",
+      "versionSelectionHelp": "加载已保存版本不会更改该版本。保存将创建下一版本，也可据此创建独立的 H 职级表单。",
+      "versionHistoryBound": "显示最近 1,000 个表单版本。",
+      "loadVersion": "载入为下一草稿"
     },
     "routes": {
       "title": "审批路径",
@@ -34176,7 +34181,8 @@
       "override": "调整未提交评估的流程",
       "saveRoute": "保存案例流程",
       "discard": "放弃未保存的更改"
-    }
+    },
+    "gradeChanged": "当前职级与记录的入职职级不同。PBP 必须审核变更；此评估将保留原始表单和入职职级记录。"
   },
   "templateEditor": {
     "newField": "新字段",

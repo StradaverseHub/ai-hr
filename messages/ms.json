@@ -33866,7 +33866,8 @@
       "remove": "Buang tanggungjawab",
       "add": "Tambah tanggungjawab",
       "support": "Sokongan dirancang",
-      "acknowledged": "KPI Minggu 1 diakui"
+      "acknowledged": "KPI Minggu 1 diakui",
+      "acknowledgement": "C. Pengakuan mesyuarat"
     },
     "support": {
       "coaching": "Bimbingan dan panduan",
@@ -34001,7 +34002,11 @@
       "bands": "Jalur skor",
       "bandLabel": "Label jalur {band}",
       "bandMinimum": "Skor minimum",
-      "commentsRequired": "Wajibkan ulasan pekerja"
+      "commentsRequired": "Wajibkan ulasan pekerja",
+      "startFrom": "Mulakan daripada versi borang tersimpan",
+      "versionSelectionHelp": "Memuatkan versi tersimpan tidak mengubahnya. Menyimpan mencipta versi seterusnya, termasuk borang Gred H berasingan apabila dipilih.",
+      "versionHistoryBound": "1,000 versi borang terkini dipaparkan.",
+      "loadVersion": "Muatkan sebagai draf seterusnya"
     },
     "routes": {
       "title": "Laluan kelulusan",
@@ -34176,7 +34181,8 @@
       "override": "Ganti laluan penilaian yang belum dihantar",
       "saveRoute": "Simpan laluan kes",
       "discard": "Buang perubahan belum disimpan"
-    }
+    },
+    "gradeChanged": "Gred semasa berbeza daripada gred permulaan yang direkodkan. PBP mesti menyemak perubahan ini; penilaian ini mengekalkan borang asal dan rekod gred permulaan."
   },
   "templateEditor": {
     "newField": "Medan baharu",

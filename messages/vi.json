@@ -33866,7 +33866,8 @@
       "remove": "Xóa trách nhiệm",
       "add": "Thêm trách nhiệm",
       "support": "Hỗ trợ dự kiến",
-      "acknowledged": "Đã xác nhận KPI tuần 1"
+      "acknowledged": "Đã xác nhận KPI tuần 1",
+      "acknowledgement": "C. Xác nhận cuộc họp"
     },
     "support": {
       "coaching": "Huấn luyện và hướng dẫn",
@@ -34001,7 +34002,11 @@
       "bands": "Các mức điểm",
       "bandLabel": "Nhãn mức {band}",
       "bandMinimum": "Điểm tối thiểu",
-      "commentsRequired": "Yêu cầu ý kiến nhân viên"
+      "commentsRequired": "Yêu cầu ý kiến nhân viên",
+      "startFrom": "Bắt đầu từ phiên bản biểu mẫu đã lưu",
+      "versionSelectionHelp": "Tải phiên bản đã lưu không làm thay đổi phiên bản đó. Khi lưu, hệ thống tạo phiên bản tiếp theo, bao gồm biểu mẫu Bậc H riêng khi được chọn.",
+      "versionHistoryBound": "Hiển thị 1.000 phiên bản biểu mẫu mới nhất.",
+      "loadVersion": "Tải làm bản nháp tiếp theo"
     },
     "routes": {
       "title": "Luồng phê duyệt",
@@ -34176,7 +34181,8 @@
       "override": "Điều chỉnh luồng đánh giá chưa gửi",
       "saveRoute": "Lưu luồng của hồ sơ",
       "discard": "Bỏ thay đổi chưa lưu"
-    }
+    },
+    "gradeChanged": "Bậc hiện tại khác với bậc ban đầu đã ghi nhận. PBP cần rà soát thay đổi; đánh giá này giữ biểu mẫu gốc và bản ghi bậc ban đầu."
   },
   "templateEditor": {
     "newField": "Trường mới",

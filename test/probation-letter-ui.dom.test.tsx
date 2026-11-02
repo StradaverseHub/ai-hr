@@ -31,6 +31,11 @@ describe('source-bound probation letter interactions',()=>{
   fireEvent.change(screen.getByRole('textbox',{name:/Authorized HR note/}),{target:{value:'Retained draft'}});fireEvent.click(screen.getByRole('button',{name:'Preview letter'}));await waitFor(()=>expect(screen.getByRole('button',{name:'Prepare for signatures'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'Prepare for signatures'}));
   await screen.findByRole('alert');expect(screen.getAllByRole('textbox',{name:/Authorized HR note/})[0]).toHaveValue('Retained draft');expect(m.push).not.toHaveBeenCalled();
  });
+ it('requires explicit selection when reviewed template families tie',()=>{
+  const second={...definitions[0],id:'second-version',key:'second-family',data:{...template,id:'second-family',name:'Second reviewed confirmation'}};
+  show(<OutcomeEditor caseId={caseId} outcome={outcome} templates={[...definitions,second]} choices={{templates:[{id:'template-version',familyId:'template',version:2,name:'Reviewed confirmation',score:0},{id:'second-version',familyId:'second-family',version:2,name:'Second reviewed confirmation',score:0}],suggestedTemplateId:null,tie:true}}/>);
+  expect(screen.getByRole('combobox',{name:'Published letter template'})).toHaveValue('');expect(screen.getByText('More than one template matches equally. Choose the reviewed template explicitly.')).toBeInTheDocument();expect(screen.getByRole('button',{name:'Preview letter'})).toBeDisabled();expect(m.prepare).not.toHaveBeenCalled();
+ });
  it('withholds employee signing until prior HR stages finish and offers no release to an employee',()=>{
   const signing={tenantId:'tenant',companyId:'company',subjectId:'letter',subjectType:'probation',contentRevision:1,contentHash:'a'.repeat(64),route:preview.route,actions:[]};
   const letter:ProbationLetterView={id:'letter',caseId,outcomeId:'outcome',outcomeRevision:null,storageRevision:1,state:'issued',createdAt:'',name:'Reviewed confirmation',templateId:'template-version',templateVersion:2,blocks:preview.blocks,fields:preview.fields,merge:preview.merge,signing:{id:'signing',document:signing},canPrepare:false,canRelease:false,document:probationLetterDocument({id:'letter',name:'Reviewed confirmation',...preview,createdAt:'',signing})};

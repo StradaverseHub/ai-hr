@@ -33866,7 +33866,8 @@
       "remove": "Remove accountability",
       "add": "Add accountability",
       "support": "Planned support",
-      "acknowledged": "Acknowledged Week 1 KPIs"
+      "acknowledged": "Acknowledged Week 1 KPIs",
+      "acknowledgement": "C. Meeting acknowledgement"
     },
     "support": {
       "coaching": "Coaching and guidance",
@@ -34001,7 +34002,11 @@
       "bands": "Score bands",
       "bandLabel": "Band {band} label",
       "bandMinimum": "Minimum score",
-      "commentsRequired": "Require employee comments"
+      "commentsRequired": "Require employee comments",
+      "startFrom": "Start from a saved form version",
+      "versionSelectionHelp": "Loading a saved version does not change it. Saving creates the next version, including a separate Grade H form when selected.",
+      "versionHistoryBound": "The latest 1,000 form versions are shown.",
+      "loadVersion": "Load as next draft"
     },
     "routes": {
       "title": "Approval routes",
@@ -34176,7 +34181,8 @@
       "override": "Override the unsubmitted review route",
       "saveRoute": "Save case route",
       "discard": "Discard unsaved changes"
-    }
+    },
+    "gradeChanged": "The current grade differs from the recorded starting grade. PBP must review the change; this review keeps its original form and starting-grade record."
   },
   "templateEditor": {
     "newField": "New field",
