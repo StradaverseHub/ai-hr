@@ -93,6 +93,7 @@ export async function PlannedAbsences({
   // adminCancelAction is the SAME action the Leave page posts. Both optional — absent ⇒ no admin affordance.
   viewerIsAdmin,
   adminCancelAction,
+  adminCancelAllowedRequestIds,
   // Edit/cancel-by-status (item c9a19e34): the SAME cancelOwnLeaveAction the Leave page posts, for the viewer's
   // OWN PENDING leave (an immediate self-withdraw, no dates picker). Optional — absent ⇒ no affordance.
   selfCancelAction,
@@ -115,6 +116,7 @@ export async function PlannedAbsences({
   cancelAction?: (fd: FormData) => void | Promise<void>;
   viewerIsAdmin?: boolean;
   adminCancelAction?: (fd: FormData) => void | Promise<void>;
+  adminCancelAllowedRequestIds:readonly string[];
   selfCancelAction?: (fd: FormData) => void | Promise<void>;
   selfCancelAllowedRequestIds:readonly string[];
   viewerCanApprove?: boolean;
@@ -163,6 +165,7 @@ export async function PlannedAbsences({
   const canOfferAdminCancel = !!adminCancelAction && !!viewerIsAdmin;
   const adminCancelEligible = (personId: string, l: Leave): boolean =>
     canOfferAdminCancel &&
+    adminCancelAllowedRequestIds?.includes(l.id)===true &&
     (viewerPersonId == null || personId !== viewerPersonId) &&
     (l.status === 'pending' || l.status === 'approved') &&
     !(l.status === 'approved' && l.typeCode === 'REPLACEMENT');

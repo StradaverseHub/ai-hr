@@ -225,7 +225,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT coalesce((SELECT app.module_action_allowed(split_part(a.parent_capability,'.',1),split_part(a.parent_capability,'.',2),p_company)
   AND app.function_action_allowed(p_key,p_operation,p_company)
   FROM app.access_function_action a WHERE a.function_key=p_key AND a.operation=p_operation
-   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts')),false);
+   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveEmployeeRecords','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts')),false);
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.module_function_allowed(text,text,uuid) FROM PUBLIC;
@@ -1731,6 +1731,7 @@ BEGIN
  PERFORM app.access_workforce_write_lock();
  IF TG_OP='UPDATE' THEN RAISE EXCEPTION 'Clocking site company links are immutable' USING ERRCODE='42501';END IF;
  IF TG_OP='DELETE' THEN image:=OLD;ELSE image:=NEW;END IF;
+ IF TG_OP='DELETE' AND app.module_company_cleanup_row_allowed('clocking_location_company',to_jsonb(OLD),true) THEN RETURN OLD;END IF;
  IF image.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=image.company_id AND c.tenant_id=image.tenant_id) THEN RAISE EXCEPTION 'Clocking site company unavailable' USING ERRCODE='42501';END IF;
  SELECT * INTO parent FROM public.clocking_location site WHERE site.id=image.clocking_location_id AND site.tenant_id=image.tenant_id;
  IF TG_OP='DELETE' AND parent.id IS NULL AND EXISTS(SELECT 1 FROM app.clocking_site_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=image.tenant_id AND proof.user_id=app.current_user_id() AND proof.site_id=image.clocking_location_id AND proof.kind='removed' AND proof.authority_stamp=app.access_function_authority_stamp()) THEN operation:='delete';
@@ -1767,12 +1768,12 @@ CREATE TRIGGER aaa_clocking_assignment_access BEFORE INSERT OR UPDATE OR DELETE 
 CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT (cap LIKE 'function.leave.onBehalf.application.%' AND app.leave_on_behalf_application_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.leave.own.application.%' AND app.leave_own_application_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.clockingSites.%' AND app.clocking_site_native_allowed(t,u,cap,co)) OR (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_native_allowed(t,u,cap,co)) OR app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
- OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveEmployeeRecords','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT (cap LIKE 'function.leave.onBehalf.application.%' AND app.leave_on_behalf_application_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.leave.own.application.%' AND app.leave_own_application_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.clockingSites.%' AND app.clocking_site_current_native_allowed(t,u,cap,co)) OR (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_current_native_allowed(t,u,cap,co)) OR app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
- OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveEmployeeRecords','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 
 
@@ -2001,3 +2002,748 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.shift_constructor_authority_changed() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER shift_constructor_authority_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.shift_constructor_authority_changed();
+
+--> statement-breakpoint
+-- The native Leave override is a whole-set ACL, not Payroll configuration authority.
+-- A finite owner admits the actual OLD/proposed NEW, writes that row and its native audit
+-- together, then retains an exact completed proof. No runtime caller can mint an intent.
+CREATE TABLE app.leave_permission_mutation(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,
+ grant_id uuid NOT NULL,before_row jsonb,after_row jsonb,authority_stamp text NOT NULL,
+ scopes jsonb NOT NULL,scope_nodes uuid[] NOT NULL,active boolean NOT NULL DEFAULT true,born boolean NOT NULL DEFAULT false,
+ event_id uuid,completed boolean NOT NULL DEFAULT false,scope_changed boolean NOT NULL DEFAULT false,
+ CHECK(before_row IS NOT NULL OR after_row IS NOT NULL));
+CREATE INDEX leave_permission_mutation_transaction ON app.leave_permission_mutation(xact_id,tenant_id,grant_id);
+ALTER TABLE app.leave_permission_mutation ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.leave_permission_mutation FROM PUBLIC,ai_hr_app;
+
+-- A NULL scope means actual future/global delegation. The generic operation proof
+-- deliberately requires an existing company; do not extend it into a business bypass.
+-- These two native ACL definitions have no parent prerequisites. Any explicit covered
+-- company deny also constrains global delegation, exactly as access_can_delegate does.
+CREATE FUNCTION app.leave_permission_controls_clear(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN p_company IS NOT NULL THEN
+  app.function_action_denial_clear('leave.onBehalf.application','view',p_company) AND app.function_action_denial_clear('leave.onBehalf.application','add',p_company)
+ ELSE app.principal_snapshot_current() AND NOT EXISTS(
+  SELECT 1 FROM unnest(ARRAY['view','add']) requested(operation_name)
+  WHERE NOT EXISTS(SELECT 1 FROM app.access_function_action action JOIN app.access_function_definition definition USING(function_key)
+   JOIN public.access_capability capability ON capability.id=action.capability_id
+   WHERE action.function_key='leave.onBehalf.application' AND action.operation=requested.operation_name AND capability.id='function.leave.onBehalf.application.'||requested.operation_name
+   AND definition.scope='company' AND definition.metadata->>'kind'='native_acl' AND definition.metadata->>'course'='administrative' AND capability.scope='company'
+   AND action.parent_capability IS NULL
+   AND capability.prerequisites=CASE requested.operation_name
+     WHEN 'view' THEN '[]'::jsonb
+     WHEN 'add' THEN jsonb_build_array('function.leave.onBehalf.application.view')
+   END
+   AND CASE WHEN capability.supported THEN
+    EXISTS(SELECT 1 FROM public.access_configuration configuration WHERE configuration.tenant_id=app.current_tenant_id() AND configuration.initialized)
+    AND jsonb_array_length(capability.bindings)>0 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(capability.bindings) binding WHERE jsonb_typeof(binding)<>'object' OR coalesce(binding->>'owner','')='' OR coalesce(binding->>'operation','')='')
+    AND NOT EXISTS(SELECT 1 FROM public.access_user_override denial WHERE denial.tenant_id=app.current_tenant_id() AND denial.user_id=app.current_user_id() AND denial.capability_id=capability.id AND denial.effect='deny' AND denial.retired_at IS NULL)
+   ELSE capability.bindings='[]'::jsonb END)) END;
+$$;
+REVOKE ALL ON FUNCTION app.leave_permission_controls_clear(uuid) FROM PUBLIC,ai_hr_app;
+
+CREATE FUNCTION app.leave_permission_admit(p_before jsonb,p_after jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();scope record;recipient record;result jsonb:='[]'::jsonb;
+BEGIN
+ IF NOT app.principal_snapshot_current() OR NOT app.is_admin() OR app.access_function_authority_stamp() IS NULL
+ OR coalesce(p_after,p_before)->>'permission_key' IS DISTINCT FROM 'leave.apply_on_behalf'
+ OR (coalesce(p_after,p_before)->>'tenant_id')::uuid IS DISTINCT FROM t THEN RAISE EXCEPTION 'Leave permission administration unavailable' USING ERRCODE='42501';END IF;
+ FOR scope IN
+  SELECT changed.company_id,bool_or(changed.before_allowed IS DISTINCT FROM changed.after_allowed) AS changes_role,
+   bool_or(changed.after_allowed AND NOT changed.before_allowed) AS widens
+  FROM app.native_permission_override_role_changes(t,'leave.apply_on_behalf',p_before,p_after) changed GROUP BY changed.company_id
+ LOOP
+  IF NOT app.leave_permission_controls_clear(scope.company_id) OR scope.changes_role AND NOT app.native_permission_future_company_ceiling(scope.company_id) THEN RAISE EXCEPTION 'Leave permission scope unavailable' USING ERRCODE='42501';END IF;
+  IF scope.widens
+   AND EXISTS(SELECT 1 FROM public.access_capability capability WHERE capability.id='function.leave.onBehalf.application.add' AND capability.supported)
+   AND (NOT app.access_can_delegate('function.leave.onBehalf.application.view',scope.company_id) OR NOT app.access_can_delegate('function.leave.onBehalf.application.add',scope.company_id)) THEN
+   RAISE EXCEPTION 'Leave permission widening unavailable' USING ERRCODE='42501';END IF;
+  result:=result||jsonb_build_array(scope.company_id);
+ END LOOP;
+ FOR recipient IN SELECT DISTINCT user_id FROM app.native_permission_override_recipients(t,'leave.apply_on_behalf',p_before,p_after) WHERE before_allowed IS DISTINCT FROM after_allowed LOOP
+  IF NOT app.native_permission_recipient_data_ceiling(recipient.user_id) THEN RAISE EXCEPTION 'Leave permission recipient unavailable' USING ERRCODE='42501';END IF;
+ END LOOP;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_permission_admit(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+
+-- Bind hierarchy only for actual affected scopes and the actual actor/changed recipients'
+-- company predicates. This is source freshness, not a second data-ceiling implementation.
+CREATE FUNCTION app.leave_permission_scope_nodes(p_before jsonb,p_after jsonb,p_scopes jsonb) RETURNS uuid[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH RECURSIVE affected_users(user_id) AS(
+  SELECT app.current_user_id() UNION SELECT recipient.user_id FROM app.native_permission_override_recipients(app.current_tenant_id(),'leave.apply_on_behalf',p_before,p_after) recipient
+  WHERE recipient.before_allowed IS DISTINCT FROM recipient.after_allowed
+ ),roots(id) AS(
+  SELECT scope.value::uuid FROM jsonb_array_elements_text(p_scopes) scope WHERE scope.value IS NOT NULL
+  UNION SELECT candidate.value::uuid FROM affected_users actor JOIN public.user_data_permission_assignment assignment ON assignment.tenant_id=app.current_tenant_id() AND assignment.user_id=actor.user_id
+  JOIN public.data_permission_profile profile ON profile.id=assignment.profile_id AND profile.tenant_id=assignment.tenant_id AND profile.enabled AND profile.retired_at IS NULL
+  JOIN public.data_permission_revision revision ON revision.id=profile.active_revision_id AND revision.tenant_id=profile.tenant_id AND revision.profile_id=profile.id
+  CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN app.data_permission_rules_valid(revision.rules) THEN revision.rules->'predicates' ELSE '[]'::jsonb END) predicate
+  CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN predicate->>'field'='company' THEN predicate->'values' ELSE '[]'::jsonb END) candidate
+ ),lineage(id,parent_company_id) AS(
+  SELECT company.id,company.parent_company_id FROM public.company company JOIN roots ON roots.id=company.id WHERE company.tenant_id=app.current_tenant_id()
+  UNION SELECT parent.id,parent.parent_company_id FROM lineage child JOIN public.company parent ON parent.id=child.parent_company_id AND parent.tenant_id=app.current_tenant_id()
+ ) SELECT coalesce(array_agg(lineage.id ORDER BY lineage.id),'{}'::uuid[]) FROM lineage;
+$$;
+REVOKE ALL ON FUNCTION app.leave_permission_scope_nodes(jsonb,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.leave_permission_source_allowed(p_before jsonb,p_after jsonb,p_active boolean DEFAULT false) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.is_admin() AND EXISTS(
+  SELECT 1 FROM app.leave_permission_mutation proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+  AND proof.before_row IS NOT DISTINCT FROM p_before AND proof.after_row IS NOT DISTINCT FROM p_after
+  AND proof.authority_stamp=app.access_function_authority_stamp() AND (CASE WHEN p_active THEN proof.active ELSE proof.active OR proof.completed END));
+$$;
+REVOKE ALL ON FUNCTION app.leave_permission_source_allowed(jsonb,jsonb,boolean) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.leave_permission_row_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE b jsonb:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;a jsonb:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ IF b->>'permission_key'='leave.apply_on_behalf' OR a->>'permission_key'='leave.apply_on_behalf' THEN
+  IF TG_OP='DELETE' AND app.module_company_cleanup_row_allowed('payroll_permission_grant',b,true) THEN RETURN OLD;END IF;
+  IF app.leave_permission_source_allowed(b,a,true) IS NOT TRUE THEN RAISE EXCEPTION 'Leave permission source unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_permission_row_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER leave_permission_source BEFORE INSERT OR UPDATE OR DELETE ON public.payroll_permission_grant FOR EACH ROW EXECUTE FUNCTION app.leave_permission_row_guard();
+CREATE FUNCTION app.leave_permission_row_born() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE b jsonb:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;a jsonb:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN
+  UPDATE app.leave_permission_mutation proof SET born=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+   AND proof.active AND proof.before_row IS NOT DISTINCT FROM b AND proof.after_row IS NOT DISTINCT FROM a AND proof.authority_stamp=app.access_function_authority_stamp();
+ END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_permission_row_born() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER leave_permission_born AFTER INSERT OR UPDATE OR DELETE ON public.payroll_permission_grant FOR EACH ROW EXECUTE FUNCTION app.leave_permission_row_born();
+
+CREATE FUNCTION app.leave_permission_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.leave_permission_mutation%ROWTYPE;scope jsonb;event_name text;expected_payload jsonb;
+BEGIN
+ SELECT * INTO proof FROM app.leave_permission_mutation actual WHERE actual.id=NEW.id;
+ IF NOT FOUND OR NOT proof.completed OR NOT proof.born OR proof.active OR proof.scope_changed OR proof.xact_id<>pg_current_xact_id() OR proof.tenant_id IS DISTINCT FROM app.current_tenant_id() OR proof.user_id IS DISTINCT FROM app.current_user_id()
+ OR proof.authority_stamp IS DISTINCT FROM app.access_function_authority_stamp() OR NOT app.principal_snapshot_current() OR NOT app.is_admin() THEN RAISE EXCEPTION 'Leave permission completion unavailable' USING ERRCODE='42501';END IF;
+ event_name:=CASE WHEN proof.before_row IS NULL THEN 'created' WHEN proof.after_row IS NULL THEN 'deleted' ELSE 'updated' END;
+ expected_payload:=jsonb_build_object('permissionKey','leave.apply_on_behalf','role',coalesce(proof.after_row,proof.before_row)->>'role');
+ IF proof.after_row IS NOT NULL THEN expected_payload:=expected_payload||jsonb_build_object('companyId',proof.after_row->'company_id','allowed',proof.after_row->'allowed');END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.id=proof.event_id AND audit.tenant_id=proof.tenant_id AND audit.aggregate_type='payroll-permission-grant' AND audit.aggregate_id=proof.grant_id
+ AND audit.event_type='payroll-permission-grant.'||event_name AND audit.actor_type='user' AND audit.actor_id=proof.user_id AND audit.subject_employment_id IS NULL AND audit.payload=expected_payload) THEN RAISE EXCEPTION 'Leave permission audit unavailable' USING ERRCODE='42501';END IF;
+ FOR scope IN SELECT value FROM jsonb_array_elements(proof.scopes) LOOP
+  IF NOT app.leave_permission_controls_clear((scope#>>'{}')::uuid) THEN RAISE EXCEPTION 'Leave permission controls changed' USING ERRCODE='42501';END IF;
+ END LOOP;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_permission_complete() FROM PUBLIC,ai_hr_app;
+-- Insert completion evidence only AFTER the finite row and native audit have completed. Thus
+-- caller SET CONSTRAINTS ALL IMMEDIATE is valid without altering any constraint mode.
+CREATE CONSTRAINT TRIGGER leave_permission_complete AFTER UPDATE ON app.leave_permission_mutation DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.completed) EXECUTE FUNCTION app.leave_permission_complete();
+CREATE FUNCTION app.leave_permission_authority_changed() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.epoch IS DISTINCT FROM OLD.epoch THEN UPDATE app.leave_permission_mutation proof SET completed=proof.completed WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.completed;END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_permission_authority_changed() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER leave_permission_authority_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.leave_permission_authority_changed();
+
+CREATE FUNCTION app.leave_permission_write(p_delete uuid,p_company uuid,p_role text,p_allowed boolean) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE prior public.payroll_permission_grant%ROWTYPE;proposed public.payroll_permission_grant%ROWTYPE;
+ b jsonb;a jsonb;proof_id uuid;scopes jsonb;audit_id uuid;event_name text;payload jsonb;
+BEGIN
+ PERFORM app.audit_access_order_lock_for(app.current_tenant_id());PERFORM app.access_workforce_write_lock();
+ IF NOT app.principal_snapshot_current() OR NOT app.is_admin() THEN RAISE EXCEPTION 'Leave permission administration unavailable' USING ERRCODE='42501';END IF;
+ IF p_delete IS NOT NULL THEN
+  SELECT * INTO prior FROM public.payroll_permission_grant actual WHERE actual.id=p_delete AND actual.tenant_id=app.current_tenant_id() AND actual.permission_key='leave.apply_on_behalf' FOR UPDATE;
+  IF NOT FOUND THEN RETURN NULL;END IF;
+  b:=to_jsonb(prior);
+ ELSE
+  IF p_role IS NULL OR p_role NOT IN ('employee','manager','hr_admin','super_admin','payroll_partner','performance_comp_partner') OR p_allowed IS NULL
+  OR p_company IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.company actual WHERE actual.id=p_company AND actual.tenant_id=app.current_tenant_id()) THEN RAISE EXCEPTION 'Leave permission target unavailable' USING ERRCODE='42501';END IF;
+  SELECT * INTO prior FROM public.payroll_permission_grant actual WHERE actual.tenant_id=app.current_tenant_id() AND actual.permission_key='leave.apply_on_behalf' AND actual.company_id IS NOT DISTINCT FROM p_company AND actual.role=p_role FOR UPDATE;
+  IF FOUND THEN b:=to_jsonb(prior);proposed:=prior;ELSE proposed.id:=gen_random_uuid();proposed.tenant_id:=app.current_tenant_id();proposed.company_id:=p_company;proposed.permission_key:='leave.apply_on_behalf';proposed.role:=p_role;proposed.created_at:=now();END IF;
+  proposed.allowed:=p_allowed;proposed.updated_at:=now();a:=to_jsonb(proposed);
+ END IF;
+ scopes:=app.leave_permission_admit(b,a);
+ DELETE FROM app.leave_permission_mutation WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.leave_permission_mutation(xact_id,tenant_id,user_id,grant_id,before_row,after_row,authority_stamp,scopes,scope_nodes)
+ VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),coalesce(proposed.id,prior.id),b,a,app.access_function_authority_stamp(),scopes,app.leave_permission_scope_nodes(b,a,scopes)) RETURNING id INTO proof_id;
+ IF a IS NULL THEN DELETE FROM public.payroll_permission_grant WHERE id=prior.id AND tenant_id=prior.tenant_id;
+ ELSIF b IS NULL THEN INSERT INTO public.payroll_permission_grant(id,tenant_id,company_id,permission_key,role,allowed,created_at,updated_at)
+  VALUES(proposed.id,proposed.tenant_id,proposed.company_id,proposed.permission_key,proposed.role,proposed.allowed,proposed.created_at,proposed.updated_at);
+ ELSE UPDATE public.payroll_permission_grant SET allowed=proposed.allowed,updated_at=proposed.updated_at WHERE id=prior.id AND tenant_id=prior.tenant_id;END IF;
+ IF NOT EXISTS(SELECT 1 FROM app.leave_permission_mutation actual WHERE actual.id=proof_id AND actual.born) THEN RAISE EXCEPTION 'Leave permission effect unavailable' USING ERRCODE='42501';END IF;
+ event_name:=CASE WHEN b IS NULL THEN 'created' WHEN a IS NULL THEN 'deleted' ELSE 'updated' END;
+ payload:=jsonb_build_object('permissionKey','leave.apply_on_behalf','role',coalesce(a,b)->>'role');
+ IF a IS NOT NULL THEN payload:=payload||jsonb_build_object('companyId',a->'company_id','allowed',a->'allowed');END IF;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(app.current_tenant_id(),'payroll-permission-grant',coalesce(proposed.id,prior.id),'payroll-permission-grant.'||event_name,'user',app.current_user_id(),NULL,payload) RETURNING id INTO audit_id;
+ UPDATE app.leave_permission_mutation SET active=false,event_id=audit_id,completed=true WHERE id=proof_id;
+ PERFORM app.access_refresh_native_defaults(app.current_user_id());
+ RETURN coalesce(proposed.id,prior.id);
+END $$;
+REVOKE ALL ON FUNCTION app.leave_permission_write(uuid,uuid,text,boolean) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.leave_on_behalf_grant_set(p_company uuid,p_role text,p_allowed boolean) RETURNS uuid
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.leave_permission_write(NULL,p_company,p_role,p_allowed);$$;
+CREATE FUNCTION app.leave_on_behalf_grant_delete(p_id uuid) RETURNS boolean
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.leave_permission_write(p_id,NULL,NULL,NULL) IS NOT NULL;$$;
+REVOKE ALL ON FUNCTION app.leave_on_behalf_grant_set(uuid,text,boolean),app.leave_on_behalf_grant_delete(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_on_behalf_grant_set(uuid,text,boolean),app.leave_on_behalf_grant_delete(uuid) TO ai_hr_app;
+CREATE TRIGGER leave_permission_access BEFORE INSERT OR UPDATE OR DELETE ON public.payroll_permission_grant FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_statement_lock();
+
+--> statement-breakpoint
+-- Company Delete owns disposal of these exact company-local config relations, not Clocking Edit
+-- or an ACL mutation for a surviving scope. The native service still owns retention checks,
+-- its ordinary cascade order, the Company DELETE, and its existing audit payload.
+CREATE TABLE app.module_company_hierarchy_epoch(
+ tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,company_id uuid NOT NULL,epoch bigint NOT NULL DEFAULT 1,
+ PRIMARY KEY(tenant_id,company_id));
+ALTER TABLE app.module_company_hierarchy_epoch ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.module_company_hierarchy_epoch FROM PUBLIC,ai_hr_app;
+INSERT INTO app.module_company_hierarchy_epoch(tenant_id,company_id) SELECT tenant_id,id FROM public.company;
+CREATE FUNCTION app.leave_permission_hierarchy_recheck() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_OP='INSERT' OR NEW.epoch IS DISTINCT FROM OLD.epoch THEN
+  UPDATE app.leave_permission_mutation proof SET scope_changed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id
+   AND proof.completed AND NOT proof.scope_changed AND (NEW.company_id=ANY(proof.scope_nodes) OR proof.scopes @> '[null]'::jsonb);
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_permission_hierarchy_recheck() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER leave_permission_hierarchy_recheck AFTER INSERT OR UPDATE ON app.module_company_hierarchy_epoch FOR EACH ROW EXECUTE FUNCTION app.leave_permission_hierarchy_recheck();
+CREATE TABLE app.module_company_cleanup(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,company_id uuid NOT NULL,
+ source jsonb NOT NULL,authority_stamp text NOT NULL,hierarchy jsonb NOT NULL,usage_rows bigint NOT NULL,
+ clocking_rows jsonb NOT NULL,payroll_rows jsonb NOT NULL,clocking_removed jsonb NOT NULL DEFAULT '[]',payroll_removed jsonb NOT NULL DEFAULT '[]',
+ financial_rows jsonb NOT NULL,financial_removed jsonb NOT NULL DEFAULT '{}',
+ removing_children boolean NOT NULL DEFAULT false,children_consumed boolean NOT NULL DEFAULT false,company_removed boolean NOT NULL DEFAULT false,event_id uuid,restore_immediate boolean NOT NULL,completed boolean NOT NULL DEFAULT false,
+ UNIQUE(xact_id,tenant_id,company_id));
+ALTER TABLE app.module_company_cleanup ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.module_company_cleanup FROM PUBLIC,ai_hr_app;
+
+CREATE FUNCTION app.module_company_cleanup_native(p_source jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND (p_source->>'tenant_id')::uuid=app.current_tenant_id()
+ AND app.is_admin_for(coalesce((p_source->>'parent_company_id')::uuid,(p_source->>'id')::uuid))
+ AND app.organisation_settings_function_allowed('organization','view',(p_source->>'id')::uuid)
+ AND app.organisation_settings_function_allowed('organization','delete',(p_source->>'id')::uuid);
+$$;
+REVOKE ALL ON FUNCTION app.module_company_cleanup_native(jsonb) FROM PUBLIC,ai_hr_app;
+-- This static list preserves the native dependency order (config before policy).
+CREATE FUNCTION app.module_company_financial_tables() RETURNS text[]
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT ARRAY['company_payroll_config','payroll_policy','payslip_information_setting','payroll_cycle','payroll_anomaly_config','leave_encashment_policy'];
+$$;
+CREATE FUNCTION app.module_company_financial_rows(p_tenant uuid,p_company uuid,p_lock boolean) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE relation text;actual_rows jsonb;result jsonb:='{}';
+BEGIN
+ FOREACH relation IN ARRAY app.module_company_financial_tables() LOOP
+  EXECUTE format('SELECT coalesce(jsonb_agg(to_jsonb(actual)),''[]'') FROM (SELECT * FROM public.%I WHERE company_id=$1%s) actual',
+   relation,CASE WHEN p_lock THEN ' FOR UPDATE' ELSE '' END)
+   INTO actual_rows USING p_company;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(actual_rows) row_image WHERE row_image->>'tenant_id' IS DISTINCT FROM p_tenant::text)
+   THEN RAISE EXCEPTION 'Company financial cleanup scope unavailable' USING ERRCODE='42501';END IF;
+  IF actual_rows<>'[]' THEN result:=result||jsonb_build_object(relation,actual_rows);END IF;
+ END LOOP;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION app.module_company_financial_tables(),app.module_company_financial_rows(uuid,uuid,boolean) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.module_company_cleanup_row_allowed(p_table text,p_old jsonb,p_active boolean DEFAULT false) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(
+  SELECT 1 FROM app.module_company_cleanup proof
+   WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+   AND proof.tenant_id=(p_old->>'tenant_id')::uuid AND proof.company_id=(p_old->>'company_id')::uuid
+   AND proof.authority_stamp=app.access_function_authority_stamp()
+   AND CASE WHEN proof.children_consumed AND NOT p_active THEN CASE p_table
+    WHEN 'clocking_location_company' THEN proof.clocking_removed @> jsonb_build_array(p_old)
+    WHEN 'payroll_permission_grant' THEN proof.payroll_removed @> jsonb_build_array(p_old)
+    ELSE p_table=ANY(app.module_company_financial_tables()) AND coalesce(proof.financial_removed->p_table @> jsonb_build_array(p_old),false) END
+   WHEN proof.removing_children AND NOT proof.completed AND NOT proof.company_removed THEN
+    EXISTS(SELECT 1 FROM public.company actual WHERE actual.id=proof.company_id AND actual.tenant_id=proof.tenant_id AND to_jsonb(actual)=proof.source)
+    AND app.module_company_cleanup_native(proof.source)
+    AND CASE p_table WHEN 'clocking_location_company' THEN proof.clocking_rows @> jsonb_build_array(p_old) AND NOT proof.clocking_removed @> jsonb_build_array(p_old)
+    WHEN 'payroll_permission_grant' THEN proof.payroll_rows @> jsonb_build_array(p_old) AND (NOT p_active OR NOT proof.payroll_removed @> jsonb_build_array(p_old))
+    ELSE p_table=ANY(app.module_company_financial_tables()) AND coalesce(proof.financial_rows->p_table @> jsonb_build_array(p_old),false)
+      AND (NOT p_active OR NOT coalesce(proof.financial_removed->p_table @> jsonb_build_array(p_old),false)) END
+   ELSE false END);
+$$;
+REVOKE ALL ON FUNCTION app.module_company_cleanup_row_allowed(text,jsonb,boolean) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.module_company_cleanup_child_removed() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.module_company_cleanup_row_allowed(TG_TABLE_NAME,to_jsonb(OLD),true) THEN
+  UPDATE app.module_company_cleanup proof SET
+   clocking_removed=proof.clocking_removed||CASE WHEN TG_TABLE_NAME='clocking_location_company' THEN jsonb_build_array(to_jsonb(OLD)) ELSE '[]'::jsonb END,
+   payroll_removed=proof.payroll_removed||CASE WHEN TG_TABLE_NAME='payroll_permission_grant' THEN jsonb_build_array(to_jsonb(OLD)) ELSE '[]'::jsonb END,
+   financial_removed=CASE WHEN TG_TABLE_NAME=ANY(app.module_company_financial_tables()) THEN
+    jsonb_set(proof.financial_removed,ARRAY[TG_TABLE_NAME],coalesce(proof.financial_removed->TG_TABLE_NAME,'[]')||jsonb_build_array(to_jsonb(OLD)),true)
+    ELSE proof.financial_removed END
+  WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=OLD.tenant_id AND proof.user_id=app.current_user_id() AND proof.company_id=OLD.company_id;
+ END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.module_company_cleanup_child_removed() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_company_clocking_removed AFTER DELETE ON public.clocking_location_company FOR EACH ROW EXECUTE FUNCTION app.module_company_cleanup_child_removed();
+CREATE TRIGGER module_company_payroll_removed AFTER DELETE ON public.payroll_permission_grant FOR EACH ROW EXECUTE FUNCTION app.module_company_cleanup_child_removed();
+DO $$ DECLARE relation text;BEGIN
+ FOREACH relation IN ARRAY app.module_company_financial_tables() LOOP
+  EXECUTE format('CREATE TRIGGER module_company_financial_removed AFTER DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app.module_company_cleanup_child_removed()',relation);
+ END LOOP;
+END $$;
+-- The public admission never mutates an ACL while a live company remains. Only this
+-- actual Company DELETE statement can enter the tightly scoped child-removal phase.
+CREATE FUNCTION app.module_company_cleanup_delete_children() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.module_company_cleanup%ROWTYPE;relation text;
+BEGIN
+ SELECT * INTO proof FROM app.module_company_cleanup actual WHERE actual.xact_id=pg_current_xact_id() AND actual.tenant_id=OLD.tenant_id AND actual.company_id=OLD.id FOR UPDATE;
+ IF NOT FOUND THEN RETURN OLD;END IF;
+ IF proof.completed OR proof.company_removed OR proof.removing_children OR proof.children_consumed OR proof.source IS DISTINCT FROM to_jsonb(OLD)
+ OR proof.tenant_id IS DISTINCT FROM app.current_tenant_id() OR proof.user_id IS DISTINCT FROM app.current_user_id() OR proof.authority_stamp IS DISTINCT FROM app.access_function_authority_stamp()
+ OR NOT app.module_company_cleanup_native(to_jsonb(OLD)) OR EXISTS(SELECT 1 FROM public.employment actual WHERE actual.company_id=OLD.id) THEN
+  RAISE EXCEPTION 'Company cleanup source changed' USING ERRCODE='42501';END IF;
+ UPDATE app.module_company_cleanup SET removing_children=true WHERE id=proof.id;
+ DELETE FROM public.payroll_permission_grant actual WHERE actual.tenant_id=proof.tenant_id AND actual.company_id=proof.company_id AND proof.payroll_rows @> jsonb_build_array(to_jsonb(actual));
+ DELETE FROM public.clocking_location_company actual WHERE actual.tenant_id=proof.tenant_id AND actual.company_id=proof.company_id AND proof.clocking_rows @> jsonb_build_array(to_jsonb(actual));
+ FOREACH relation IN ARRAY app.module_company_financial_tables() LOOP
+  IF proof.financial_rows ? relation THEN
+   EXECUTE format('DELETE FROM public.%I actual WHERE actual.tenant_id=$1 AND actual.company_id=$2 AND $3 @> jsonb_build_array(to_jsonb(actual))',relation)
+    USING proof.tenant_id,proof.company_id,proof.financial_rows->relation;
+  END IF;
+ END LOOP;
+ IF EXISTS(SELECT 1 FROM public.payroll_permission_grant actual WHERE actual.company_id=proof.company_id)
+ OR EXISTS(SELECT 1 FROM public.clocking_location_company actual WHERE actual.company_id=proof.company_id)
+ OR app.module_company_financial_rows(proof.tenant_id,proof.company_id,false)<>'{}' THEN RAISE EXCEPTION 'Company cleanup child set changed' USING ERRCODE='42501';END IF;
+ UPDATE app.module_company_cleanup SET removing_children=false,children_consumed=true WHERE id=proof.id;
+ PERFORM app.access_refresh_native_defaults(app.current_user_id());
+ RETURN OLD;
+END $$;
+REVOKE ALL ON FUNCTION app.module_company_cleanup_delete_children() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER zz_module_company_cleanup_delete_children BEFORE DELETE ON public.company FOR EACH ROW EXECUTE FUNCTION app.module_company_cleanup_delete_children();
+CREATE FUNCTION app.module_company_cleanup_parent_removed() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ UPDATE app.module_company_cleanup proof SET company_removed=true
+ WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=OLD.tenant_id AND proof.user_id=app.current_user_id() AND proof.company_id=OLD.id
+ AND NOT proof.removing_children AND proof.children_consumed AND NOT proof.completed AND NOT proof.company_removed AND proof.source=to_jsonb(OLD) AND proof.authority_stamp=app.access_function_authority_stamp()
+ AND proof.clocking_rows @> proof.clocking_removed AND proof.clocking_removed @> proof.clocking_rows
+ AND proof.payroll_rows @> proof.payroll_removed AND proof.payroll_removed @> proof.payroll_rows
+ AND proof.financial_rows @> proof.financial_removed AND proof.financial_removed @> proof.financial_rows;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.module_company_cleanup_parent_removed() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_company_parent_removed AFTER DELETE ON public.company FOR EACH ROW EXECUTE FUNCTION app.module_company_cleanup_parent_removed();
+CREATE FUNCTION app.module_company_cleanup_audit_payload(p_source jsonb,p_usage_rows bigint) RETURNS jsonb
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('legalName',p_source->'legal_name','code',p_source->'company_label','registrationNo',p_source->'registration_no','usageSnapshotRows',p_usage_rows);
+$$;
+REVOKE ALL ON FUNCTION app.module_company_cleanup_audit_payload(jsonb,bigint) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.module_company_cleanup_audit_born() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ UPDATE app.module_company_cleanup proof SET event_id=NEW.id
+ WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.actor_id AND proof.user_id=app.current_user_id() AND proof.company_id=NEW.aggregate_id
+ AND NOT proof.completed AND proof.company_removed AND proof.event_id IS NULL AND NEW.actor_type='user' AND NEW.subject_employment_id IS NULL
+ AND proof.authority_stamp=app.access_function_authority_stamp() AND NEW.payload=app.module_company_cleanup_audit_payload(proof.source,proof.usage_rows);
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.module_company_cleanup_audit_born() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_company_cleanup_audit AFTER INSERT ON public.domain_event FOR EACH ROW WHEN(NEW.aggregate_type='company' AND NEW.event_type='company.deleted') EXECUTE FUNCTION app.module_company_cleanup_audit_born();
+
+CREATE FUNCTION app.module_company_cleanup_validate() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.module_company_cleanup%ROWTYPE;
+BEGIN
+ SELECT * INTO proof FROM app.module_company_cleanup actual WHERE actual.id=NEW.id;
+ IF NOT FOUND OR NOT proof.completed THEN
+  RAISE EXCEPTION 'Company cleanup is incomplete' USING ERRCODE='42501',SCHEMA='app',TABLE='module_company_cleanup',CONSTRAINT=TG_NAME;
+ END IF;
+ IF NOT proof.company_removed OR proof.xact_id<>pg_current_xact_id() OR proof.tenant_id IS DISTINCT FROM app.current_tenant_id() OR proof.user_id IS DISTINCT FROM app.current_user_id()
+ OR proof.authority_stamp IS DISTINCT FROM app.access_function_authority_stamp() OR NOT app.principal_snapshot_current()
+ OR NOT app.is_admin_for(coalesce((proof.source->>'parent_company_id')::uuid,proof.company_id))
+ OR EXISTS(SELECT 1 FROM jsonb_each_text(proof.hierarchy) node LEFT JOIN app.module_company_hierarchy_epoch current_epoch ON current_epoch.tenant_id=proof.tenant_id AND current_epoch.company_id=node.key::uuid
+  WHERE current_epoch.epoch IS DISTINCT FROM node.value::bigint+CASE WHEN node.key::uuid=proof.company_id THEN 1 ELSE 0 END)
+ OR EXISTS(SELECT 1 FROM public.company actual WHERE actual.id=proof.company_id)
+ OR EXISTS(SELECT 1 FROM public.clocking_location_company actual WHERE actual.company_id=proof.company_id)
+ OR EXISTS(SELECT 1 FROM public.payroll_permission_grant actual WHERE actual.company_id=proof.company_id)
+ OR app.module_company_financial_rows(proof.tenant_id,proof.company_id,false)<>'{}'
+ OR NOT EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.id=proof.event_id AND audit.tenant_id=proof.tenant_id AND audit.aggregate_id=proof.company_id
+  AND audit.aggregate_type='company' AND audit.event_type='company.deleted' AND audit.actor_type='user' AND audit.actor_id=proof.user_id AND audit.subject_employment_id IS NULL
+  AND audit.payload=app.module_company_cleanup_audit_payload(proof.source,proof.usage_rows)) THEN
+  RAISE EXCEPTION 'Company cleanup effects or authority changed' USING ERRCODE='42501';
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.module_company_cleanup_validate() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER module_company_cleanup_orphan AFTER INSERT ON app.module_company_cleanup DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.module_company_cleanup_validate();
+CREATE CONSTRAINT TRIGGER module_company_cleanup_final AFTER UPDATE ON app.module_company_cleanup DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.completed) EXECUTE FUNCTION app.module_company_cleanup_validate();
+CREATE FUNCTION app.module_company_cleanup_authority_changed() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.epoch IS DISTINCT FROM OLD.epoch THEN
+  IF TG_TABLE_NAME='access_control_epoch' THEN
+   UPDATE app.module_company_cleanup proof SET completed=proof.completed WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.completed;
+  ELSE
+   UPDATE app.module_company_cleanup proof SET completed=proof.completed WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.completed AND proof.hierarchy ? (NEW.company_id::text);
+  END IF;
+ END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.module_company_cleanup_authority_changed() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_company_cleanup_control_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.module_company_cleanup_authority_changed();
+CREATE TRIGGER module_company_cleanup_hierarchy_recheck AFTER UPDATE ON app.module_company_hierarchy_epoch FOR EACH ROW EXECUTE FUNCTION app.module_company_cleanup_authority_changed();
+CREATE FUNCTION app.module_company_hierarchy_changed() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE old_tenant uuid;old_id uuid;new_tenant uuid;new_id uuid;affected record;
+BEGIN
+ IF TG_OP='UPDATE' AND (OLD.tenant_id,OLD.id,OLD.parent_company_id,OLD.archived_at) IS NOT DISTINCT FROM (NEW.tenant_id,NEW.id,NEW.parent_company_id,NEW.archived_at) THEN RETURN NULL;END IF;
+ IF TG_OP<>'INSERT' THEN old_tenant:=OLD.tenant_id;old_id:=OLD.id;END IF;
+ IF TG_OP<>'DELETE' THEN new_tenant:=NEW.tenant_id;new_id:=NEW.id;END IF;
+ FOR affected IN SELECT DISTINCT t,c FROM (VALUES(old_tenant,old_id),(new_tenant,new_id)) identities(t,c) WHERE c IS NOT NULL ORDER BY t,c LOOP
+  INSERT INTO app.module_company_hierarchy_epoch AS epoch(tenant_id,company_id)
+   SELECT affected.t,affected.c WHERE EXISTS(SELECT 1 FROM public.tenant tenant WHERE tenant.id=affected.t)
+   ON CONFLICT(tenant_id,company_id) DO UPDATE SET epoch=epoch.epoch+1;
+ END LOOP;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.module_company_hierarchy_changed() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_company_hierarchy_epoch AFTER INSERT OR UPDATE OR DELETE ON public.company FOR EACH ROW EXECUTE FUNCTION app.module_company_hierarchy_changed();
+
+CREATE FUNCTION app.module_company_cleanup_admit(p_company uuid,p_restore_immediate boolean) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source public.company%ROWTYPE;clocking_rows jsonb;payroll_rows jsonb;financial_rows jsonb;hierarchy jsonb;result uuid;stamp text;
+BEGIN
+ SELECT * INTO source FROM public.company actual WHERE actual.id=p_company AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND OR NOT app.principal_snapshot_current() OR NOT app.is_admin_for(coalesce(source.parent_company_id,source.id)) THEN RAISE EXCEPTION 'Company cleanup unavailable' USING ERRCODE='42501';END IF;
+ SELECT coalesce(jsonb_agg(to_jsonb(actual) ORDER BY actual.id),'[]') INTO clocking_rows FROM (SELECT * FROM public.clocking_location_company child WHERE child.company_id=source.id AND child.tenant_id=source.tenant_id ORDER BY child.id FOR UPDATE) actual;
+ SELECT coalesce(jsonb_agg(to_jsonb(actual) ORDER BY actual.id),'[]') INTO payroll_rows FROM (SELECT * FROM public.payroll_permission_grant child WHERE child.company_id=source.id AND child.tenant_id=source.tenant_id ORDER BY child.id FOR UPDATE) actual;
+ financial_rows:=app.module_company_financial_rows(source.tenant_id,source.id,true);
+ IF clocking_rows='[]' AND payroll_rows='[]' AND financial_rows='{}' THEN RETURN NULL;END IF;
+ stamp:=app.access_function_authority_stamp();
+ IF stamp IS NULL OR NOT app.module_company_cleanup_native(to_jsonb(source))
+ OR EXISTS(SELECT 1 FROM public.employment actual WHERE actual.company_id=source.id)
+ OR EXISTS(SELECT 1 FROM public.clocking_location_company actual WHERE actual.company_id=source.id AND actual.tenant_id<>source.tenant_id)
+ OR EXISTS(SELECT 1 FROM public.payroll_permission_grant actual WHERE actual.company_id=source.id AND actual.tenant_id<>source.tenant_id) THEN RAISE EXCEPTION 'Company cleanup unavailable' USING ERRCODE='42501';END IF;
+ WITH RECURSIVE ancestry(id,parent_company_id) AS(
+  SELECT source.id,source.parent_company_id UNION
+  SELECT parent.id,parent.parent_company_id FROM ancestry child JOIN public.company parent ON parent.id=child.parent_company_id AND parent.tenant_id=source.tenant_id
+ ),locked AS(
+  SELECT current_epoch.company_id,current_epoch.epoch FROM app.module_company_hierarchy_epoch current_epoch JOIN ancestry node ON node.id=current_epoch.company_id
+  WHERE current_epoch.tenant_id=source.tenant_id ORDER BY current_epoch.company_id FOR SHARE OF current_epoch
+ ) SELECT jsonb_object_agg(locked.company_id::text,locked.epoch) INTO hierarchy FROM locked;
+ IF hierarchy IS NULL OR NOT hierarchy ? (source.id::text) OR source.parent_company_id IS NOT NULL AND NOT hierarchy ? (source.parent_company_id::text) THEN RAISE EXCEPTION 'Company hierarchy unavailable' USING ERRCODE='42501';END IF;
+ DELETE FROM app.module_company_cleanup WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.module_company_cleanup(xact_id,tenant_id,user_id,company_id,source,authority_stamp,hierarchy,usage_rows,clocking_rows,payroll_rows,financial_rows,restore_immediate)
+ VALUES(pg_current_xact_id(),source.tenant_id,app.current_user_id(),source.id,to_jsonb(source),stamp,hierarchy,
+  (SELECT count(*) FROM public.usage_snapshot usage WHERE usage.tenant_id=source.tenant_id AND usage.company_id=source.id),clocking_rows,payroll_rows,financial_rows,p_restore_immediate) RETURNING id INTO result;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION app.module_company_cleanup_admit(uuid,boolean) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.module_company_cleanup_begin(p_company uuid) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof_id uuid;prior_immediate boolean:=false;failure_schema text;failure_table text;failure_constraint text;failure_message text;
+BEGIN
+ PERFORM app.audit_access_order_lock_for(app.current_tenant_id());PERFORM app.access_workforce_write_lock();
+ BEGIN
+  proof_id:=app.module_company_cleanup_admit(p_company,false);
+ EXCEPTION WHEN SQLSTATE '42501' THEN
+  GET STACKED DIAGNOSTICS failure_schema=SCHEMA_NAME,failure_table=TABLE_NAME,failure_constraint=CONSTRAINT_NAME,failure_message=MESSAGE_TEXT;
+  IF failure_schema IS DISTINCT FROM 'app' OR failure_table IS DISTINCT FROM 'module_company_cleanup' OR failure_constraint IS DISTINCT FROM 'module_company_cleanup_orphan' OR failure_message IS DISTINCT FROM 'Company cleanup is incomplete' THEN RAISE;END IF;
+  prior_immediate:=true;
+ END;
+ IF prior_immediate THEN
+  SET CONSTRAINTS app.module_company_cleanup_orphan DEFERRED;
+  proof_id:=app.module_company_cleanup_admit(p_company,true);
+  IF proof_id IS NULL THEN SET CONSTRAINTS app.module_company_cleanup_orphan IMMEDIATE;END IF;
+ END IF;
+ RETURN proof_id;
+END $$;
+CREATE FUNCTION app.module_company_cleanup_finish(p_proof uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE prior_immediate boolean;
+BEGIN
+ UPDATE app.module_company_cleanup proof SET completed=true WHERE proof.id=p_proof AND proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+ AND app.principal_snapshot_current() AND proof.authority_stamp=app.access_function_authority_stamp() AND proof.company_removed AND proof.event_id IS NOT NULL AND NOT proof.completed
+ RETURNING proof.restore_immediate INTO prior_immediate;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Company cleanup completion unavailable' USING ERRCODE='42501';END IF;
+ IF prior_immediate THEN SET CONSTRAINTS app.module_company_cleanup_orphan IMMEDIATE;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.module_company_cleanup_begin(uuid),app.module_company_cleanup_finish(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.module_company_cleanup_begin(uuid),app.module_company_cleanup_finish(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- The own-history surface discloses request details only through the same actual
+-- self/company View. Approval, attendance and payroll references are independent.
+CREATE FUNCTION app.leave_own_request_view_allowed(p_request uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.leave_request request WHERE request.id=p_request AND request.tenant_id=app.current_tenant_id()
+  AND app.leave_own_application_allowed(request.employment_id,'view'));
+$$;
+REVOKE ALL ON FUNCTION app.leave_own_request_view_allowed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_own_request_view_allowed(uuid) TO ai_hr_app;
+DO $own_history$ DECLARE predecessor record;source text;definition text;anchor text:='AND lr.tenant_id = app.current_tenant_id()';BEGIN
+ FOR predecessor IN SELECT * FROM (VALUES
+  ('app.own_leave_request_approvals(uuid[])','9b347d9cc12b9ddf3ef4fa7c99f88ae2'),
+  ('app.own_leave_request_cancellations(uuid[])','cfd5c4cf3ed2b5681330fc8a02d23816')) owners(signature,source_hash)
+ LOOP
+  SELECT prosrc,pg_get_functiondef(oid) INTO source,definition FROM pg_proc WHERE oid=to_regprocedure(predecessor.signature);
+  IF source IS NULL OR md5(source)<>predecessor.source_hash OR (length(source)-length(replace(source,anchor,'')))/length(anchor)<>1 THEN
+   RAISE EXCEPTION 'Own Leave history projection source changed: %',predecessor.signature;
+  END IF;
+  EXECUTE replace(definition,anchor,anchor||E'\n      AND app.leave_own_application_allowed(lr.employment_id,''view'')');
+ END LOOP;
+END $own_history$;
+
+--> statement-breakpoint
+-- Leave source writers join Access before taking any request/date tuple. This also
+-- serializes the existing Personnel availability nominations with actual source changes.
+CREATE TRIGGER aaa_leave_request_access BEFORE INSERT OR UPDATE OR DELETE ON public.leave_request FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_statement_lock();
+CREATE TRIGGER aaa_leave_request_date_access BEFORE INSERT OR UPDATE OR DELETE ON public.leave_request_date FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_statement_lock();
+-- No application command physically deletes a Leave request. Withdrawal and all other
+-- cancellations retain the row and its native audit. The storage owner retains maintenance.
+REVOKE DELETE ON public.leave_request FROM ai_hr_app;
+CREATE FUNCTION app.leave_request_mutation_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE edit_fields text[]:=ARRAY['leave_type_id','start_date','end_date','days','duration_type','hours','from_time','to_time','reason','employee_remark','unpaid_days'];
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF (NEW.id,NEW.tenant_id,NEW.employment_id) IS DISTINCT FROM (OLD.id,OLD.tenant_id,OLD.employment_id)
+ OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN RAISE EXCEPTION 'Leave request identity unavailable' USING ERRCODE='42501';END IF;
+ IF OLD.status::text='pending' AND NEW.status::text='pending' THEN
+  IF app.leave_own_application_allowed(OLD.employment_id,'edit') IS NOT TRUE OR OLD.parent_group_id IS NOT NULL
+   OR (to_jsonb(NEW)-edit_fields) IS DISTINCT FROM (to_jsonb(OLD)-edit_fields)
+   OR EXISTS(SELECT 1 FROM public.leave_request_date day_row WHERE day_row.tenant_id=OLD.tenant_id AND day_row.leave_request_id=OLD.id)
+   OR NOT EXISTS(SELECT 1 FROM public.leave_type actual WHERE actual.tenant_id=NEW.tenant_id AND actual.id=NEW.leave_type_id) THEN
+   RAISE EXCEPTION 'Own Leave request edit unavailable' USING ERRCODE='42501';END IF;
+ ELSIF OLD.status::text='pending' AND NEW.status::text='cancelled' THEN
+  IF (to_jsonb(NEW)-'status') IS DISTINCT FROM (to_jsonb(OLD)-'status')
+  OR NOT (app.leave_own_withdraw_source_allowed(to_jsonb(OLD),to_jsonb(NEW)) OR app.leave_employee_record_cancel_allowed(OLD.id)) THEN
+   RAISE EXCEPTION 'Pending Leave cancellation source unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_request_mutation_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_leave_request_mutation BEFORE UPDATE ON public.leave_request FOR EACH ROW EXECUTE FUNCTION app.leave_request_mutation_guard();
+
+--> statement-breakpoint
+-- Employee Leave Records is administrative; related-manager reads and assigned decisions
+-- do not borrow its Delete. The ordinary HR self-ban retains only the actual super course.
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','delete'] LOOP
+  PERFORM app.register_function_action('leaveEmployeeRecords',operation,'company','leave.'||operation,'app.module_action_delegation_allowed',
+   '{"moduleKey":"leave","labelKey":"admin.users.screen.leaveEmployeeRecords","kind":"screen","course":"administrative","screenKey":"leaveEmployeeRecords","href":"/leave/employee-records","employeeBearing":true}');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.leave_employee_records_company_allowed(p_company uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','delete') AND EXISTS(SELECT 1 FROM public.company actual WHERE actual.id=p_company AND actual.tenant_id=app.current_tenant_id())
+ AND app.module_function_allowed('leaveEmployeeRecords','view',p_company) AND app.module_function_allowed('leaveEmployeeRecords',p_operation,p_company);
+$$;
+CREATE FUNCTION app.leave_employee_records_subject_allowed(p_employment uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employment actual WHERE actual.id=p_employment AND actual.tenant_id=app.current_tenant_id() AND actual.voided_at IS NULL
+ AND app.leave_employee_records_company_allowed(actual.company_id,p_operation) AND app.data_permission_matches(actual.id)
+ AND (p_operation='view' OR NOT app.is_self_person(actual.person_id) OR app.has_role_for('super_admin',actual.company_id) AND EXISTS(SELECT 1 FROM public.role_assignment assignment WHERE assignment.tenant_id=actual.tenant_id AND assignment.app_user_id=app.current_user_id() AND assignment.role='super_admin' AND assignment.company_id IS NULL)));
+$$;
+CREATE FUNCTION app.leave_employee_record_cancel_allowed(p_request uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.leave_request actual WHERE actual.id=p_request AND actual.tenant_id=app.current_tenant_id() AND actual.status::text IN ('pending','approved')
+ AND app.leave_employee_records_subject_allowed(actual.employment_id,'delete'));
+$$;
+REVOKE ALL ON FUNCTION app.leave_employee_records_company_allowed(uuid,text),app.leave_employee_records_subject_allowed(uuid,text),app.leave_employee_record_cancel_allowed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_employee_records_company_allowed(uuid,text),app.leave_employee_records_subject_allowed(uuid,text),app.leave_employee_record_cancel_allowed(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Pending own withdrawal owns one actual request, its native defensive reversal, and
+-- the existing self-cancelled audit in the same statement. No generic ledger port.
+CREATE TABLE app.leave_own_withdraw_effect(
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,request_id uuid NOT NULL,employment_id uuid NOT NULL,
+ company_id uuid NOT NULL,ancestry uuid[] NOT NULL,source_before jsonb NOT NULL,source_after jsonb NOT NULL,
+ authority_stamp text NOT NULL,audit_payload jsonb NOT NULL,event_id uuid,ledger_id uuid,ledger_row jsonb,
+ completed boolean NOT NULL DEFAULT false,source_changed boolean NOT NULL DEFAULT false,
+ PRIMARY KEY(xact_id,tenant_id,request_id));
+ALTER TABLE app.leave_own_withdraw_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.leave_own_withdraw_effect FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.leave_own_withdraw_source_allowed(p_before jsonb,p_after jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT nullif(current_setting('app.agent_principal_id',true),'') IS NULL AND app.principal_snapshot_current()
+ AND EXISTS(SELECT 1 FROM app.leave_own_withdraw_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+  AND proof.request_id=(p_before->>'id')::uuid AND proof.source_before=p_before AND proof.source_after=p_after AND NOT proof.completed AND NOT proof.source_changed
+  AND proof.authority_stamp=app.access_function_authority_stamp() AND app.leave_own_application_allowed(proof.employment_id,'delete'));
+$$;
+REVOKE ALL ON FUNCTION app.leave_own_withdraw_source_allowed(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.leave_own_withdraw_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.leave_own_withdraw_effect%ROWTYPE;
+BEGIN
+ SELECT * INTO proof FROM app.leave_own_withdraw_effect actual WHERE actual.xact_id=NEW.xact_id AND actual.tenant_id=NEW.tenant_id AND actual.request_id=NEW.request_id;
+ IF NOT FOUND OR NOT proof.completed OR proof.source_changed OR proof.xact_id<>pg_current_xact_id() OR proof.tenant_id IS DISTINCT FROM app.current_tenant_id()
+ OR proof.user_id IS DISTINCT FROM app.current_user_id() OR nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL
+ OR proof.authority_stamp IS DISTINCT FROM app.access_function_authority_stamp() OR NOT app.leave_own_application_allowed(proof.employment_id,'delete')
+ OR NOT EXISTS(SELECT 1 FROM public.employment subject WHERE subject.tenant_id=proof.tenant_id AND subject.id=proof.employment_id AND subject.company_id=proof.company_id)
+ OR NOT EXISTS(SELECT 1 FROM public.leave_request actual WHERE actual.tenant_id=proof.tenant_id AND actual.id=proof.request_id AND to_jsonb(actual)=proof.source_after)
+ OR (proof.ledger_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.leave_ledger actual WHERE actual.tenant_id=proof.tenant_id AND actual.id=proof.ledger_id AND to_jsonb(actual)=proof.ledger_row))
+ OR NOT EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.id=proof.event_id AND audit.tenant_id=proof.tenant_id AND audit.actor_type='user' AND audit.actor_id=proof.user_id
+  AND audit.aggregate_type='leave-request' AND audit.aggregate_id=proof.request_id AND audit.event_type='leave-request.self-cancelled' AND audit.subject_employment_id=proof.employment_id AND audit.payload=proof.audit_payload) THEN
+  RAISE EXCEPTION 'Own Leave withdrawal effects or authority changed' USING ERRCODE='42501';
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_own_withdraw_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER leave_own_withdraw_complete AFTER UPDATE ON app.leave_own_withdraw_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.completed) EXECUTE FUNCTION app.leave_own_withdraw_complete();
+CREATE FUNCTION app.leave_own_withdraw_recheck() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE prior_tenant uuid;next_tenant uuid;prior_request uuid;next_request uuid;
+BEGIN
+ IF TG_TABLE_NAME='access_control_epoch' THEN
+  IF NEW.epoch IS DISTINCT FROM OLD.epoch THEN UPDATE app.leave_own_withdraw_effect proof SET source_changed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.completed AND NOT proof.source_changed;END IF;
+ ELSIF TG_TABLE_NAME='module_company_hierarchy_epoch' THEN
+  IF NEW.epoch IS DISTINCT FROM OLD.epoch THEN UPDATE app.leave_own_withdraw_effect proof SET source_changed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND NEW.company_id=ANY(proof.ancestry) AND proof.completed AND NOT proof.source_changed;END IF;
+ ELSIF TG_TABLE_NAME='employment' THEN
+  IF TG_OP='DELETE' OR (OLD.id,OLD.tenant_id,OLD.person_id,OLD.company_id,OLD.voided_at) IS DISTINCT FROM (NEW.id,NEW.tenant_id,NEW.person_id,NEW.company_id,NEW.voided_at) THEN
+   UPDATE app.leave_own_withdraw_effect proof SET source_changed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=OLD.tenant_id AND proof.employment_id=OLD.id AND proof.completed AND NOT proof.source_changed;
+  END IF;
+ ELSE
+  IF TG_OP='UPDATE' AND to_jsonb(OLD)=to_jsonb(NEW) THEN RETURN NULL;END IF;
+  IF TG_OP<>'INSERT' THEN
+   prior_tenant:=OLD.tenant_id;
+   IF TG_TABLE_NAME='leave_request' THEN prior_request:=OLD.id;ELSE prior_request:=OLD.source_request_id;END IF;
+  END IF;
+  IF TG_OP<>'DELETE' THEN
+   next_tenant:=NEW.tenant_id;
+   IF TG_TABLE_NAME='leave_request' THEN next_request:=NEW.id;ELSE next_request:=NEW.source_request_id;END IF;
+  END IF;
+  IF prior_request IS NOT NULL OR next_request IS NOT NULL THEN
+   UPDATE app.leave_own_withdraw_effect proof SET source_changed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.completed AND NOT proof.source_changed
+   AND ((proof.tenant_id,proof.request_id)=(prior_tenant,prior_request) OR (proof.tenant_id,proof.request_id)=(next_tenant,next_request));
+  END IF;
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_own_withdraw_recheck() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER leave_own_withdraw_control_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.leave_own_withdraw_recheck();
+CREATE TRIGGER leave_own_withdraw_company_recheck AFTER UPDATE ON app.module_company_hierarchy_epoch FOR EACH ROW EXECUTE FUNCTION app.leave_own_withdraw_recheck();
+CREATE TRIGGER leave_own_withdraw_subject_recheck AFTER UPDATE OR DELETE ON public.employment FOR EACH ROW EXECUTE FUNCTION app.leave_own_withdraw_recheck();
+CREATE TRIGGER leave_own_withdraw_request_recheck AFTER UPDATE ON public.leave_request FOR EACH ROW EXECUTE FUNCTION app.leave_own_withdraw_recheck();
+CREATE TRIGGER leave_own_withdraw_ledger_recheck AFTER INSERT OR UPDATE OR DELETE ON public.leave_ledger FOR EACH ROW EXECUTE FUNCTION app.leave_own_withdraw_recheck();
+
+CREATE FUNCTION app.leave_own_withdraw(p_request uuid) RETURNS TABLE(restored_days numeric,event_id uuid)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();nominated uuid;co uuid;ancestry uuid[];q public.leave_request%ROWTYPE;changed public.leave_request%ROWTYPE;
+ leave_kind public.leave_type%ROWTYPE;balance_type uuid;net numeric;restore numeric:=0;ledger public.leave_ledger%ROWTYPE;stamp text;after_row jsonb;audit_payload jsonb;audit_id uuid;
+BEGIN
+ PERFORM app.audit_access_order_lock_for(t);PERFORM app.access_workforce_write_lock();
+ IF nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Own Leave withdrawal unavailable' USING ERRCODE='42501';END IF;
+ IF current_setting('transaction_isolation')<>'read committed' OR current_setting('transaction_read_only')<>'off'
+ OR NOT pg_try_advisory_xact_lock_shared(hashtextextended('leave-dependency-configuration:'||t::text,0)) THEN RAISE EXCEPTION 'Leave dependency unavailable' USING ERRCODE='55P03';END IF;
+ SELECT actual.employment_id INTO nominated FROM public.leave_request actual WHERE actual.id=p_request AND actual.tenant_id=t AND app.leave_own_application_allowed(actual.employment_id,'delete');
+ IF NOT FOUND THEN RAISE EXCEPTION 'Own Leave withdrawal unavailable' USING ERRCODE='42501';END IF;
+ IF NOT pg_try_advisory_xact_lock(hashtextextended('leave-dependency-employment:'||t::text||':'||nominated::text,0)) THEN RAISE EXCEPTION 'Leave dependency unavailable' USING ERRCODE='55P03';END IF;
+ SELECT * INTO q FROM public.leave_request actual WHERE actual.id=p_request AND actual.tenant_id=t FOR UPDATE;
+ IF NOT FOUND OR q.employment_id IS DISTINCT FROM nominated OR q.status::text<>'pending' OR q.parent_group_id IS NOT NULL
+ OR app.leave_own_application_allowed(q.employment_id,'delete') IS NOT TRUE THEN RAISE EXCEPTION 'Own Leave withdrawal unavailable' USING ERRCODE='42501';END IF;
+ SELECT subject.company_id INTO co FROM public.employment subject WHERE subject.id=q.employment_id AND subject.tenant_id=t;
+ SELECT * INTO leave_kind FROM public.leave_type actual WHERE actual.id=q.leave_type_id AND actual.tenant_id=t;
+ IF NOT FOUND OR co IS NULL THEN RAISE EXCEPTION 'Own Leave withdrawal source unavailable' USING ERRCODE='42501';END IF;
+ WITH RECURSIVE lineage(id,parent_company_id) AS(
+  SELECT actual.id,actual.parent_company_id FROM public.company actual WHERE actual.id=co AND actual.tenant_id=t
+  UNION SELECT parent.id,parent.parent_company_id FROM lineage child JOIN public.company parent ON parent.id=child.parent_company_id AND parent.tenant_id=t
+ ) SELECT array_agg(lineage.id ORDER BY lineage.id) INTO ancestry FROM lineage;
+ stamp:=app.access_function_authority_stamp();
+ IF stamp IS NULL OR ancestry IS NULL OR EXISTS(SELECT 1 FROM public.leave_ledger actual WHERE actual.source_request_id=q.id AND (actual.tenant_id<>t OR actual.employment_id<>q.employment_id)) THEN RAISE EXCEPTION 'Own Leave withdrawal source unavailable' USING ERRCODE='42501';END IF;
+ SELECT coalesce(sum(actual.days),0) INTO net FROM public.leave_ledger actual WHERE actual.tenant_id=t AND actual.employment_id=q.employment_id AND actual.source_request_id=q.id;
+ IF net<0 THEN restore:=round(-net,2);END IF;
+ after_row:=to_jsonb(q)||'{"status":"cancelled"}'::jsonb;
+ audit_payload:=jsonb_build_object('previousStatus','pending','newStatus','cancelled','restoredDays',restore,'leaveTypeCode',leave_kind.code,'leaveTypeName',leave_kind.name,'startDate',q.start_date,'endDate',q.end_date);
+ DELETE FROM app.leave_own_withdraw_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.leave_own_withdraw_effect(xact_id,tenant_id,user_id,request_id,employment_id,company_id,ancestry,source_before,source_after,authority_stamp,audit_payload)
+ VALUES(pg_current_xact_id(),t,u,q.id,q.employment_id,co,ancestry,to_jsonb(q),after_row,stamp,audit_payload);
+ IF restore>0 THEN
+  balance_type:=coalesce(leave_kind.balance_source_type_id,leave_kind.id);
+  IF NOT EXISTS(SELECT 1 FROM public.leave_type actual WHERE actual.id=balance_type AND actual.tenant_id=t) THEN RAISE EXCEPTION 'Own Leave withdrawal source unavailable' USING ERRCODE='42501';END IF;
+  INSERT INTO public.leave_ledger(tenant_id,employment_id,leave_type_id,entry_type,days,source_request_id,effective_on)
+  VALUES(t,q.employment_id,balance_type,'debit',restore,q.id,q.start_date) RETURNING * INTO ledger;
+ END IF;
+ UPDATE public.leave_request actual SET status='cancelled' WHERE actual.id=q.id AND actual.tenant_id=t AND actual.status::text='pending' RETURNING * INTO changed;
+ IF NOT FOUND OR to_jsonb(changed) IS DISTINCT FROM after_row THEN RAISE EXCEPTION 'Own Leave withdrawal source changed' USING ERRCODE='42501';END IF;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(t,'leave-request',q.id,'leave-request.self-cancelled','user',u,q.employment_id,audit_payload) RETURNING id INTO audit_id;
+ UPDATE app.leave_own_withdraw_effect proof SET completed=true,event_id=audit_id,ledger_id=ledger.id,ledger_row=CASE WHEN ledger.id IS NULL THEN NULL ELSE to_jsonb(ledger) END
+ WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=t AND proof.request_id=q.id;
+ RETURN QUERY SELECT restore,audit_id;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_own_withdraw(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_own_withdraw(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- The application Leave ledger is append-only; native reversals are new entries.
+-- Owner-only reset/maintenance retains its original physical authority.
+REVOKE UPDATE,DELETE ON public.leave_ledger FROM ai_hr_app;
+CREATE TRIGGER aaa_leave_ledger_access BEFORE INSERT OR UPDATE OR DELETE ON public.leave_ledger FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_statement_lock();
+CREATE FUNCTION app.leave_ledger_source_identity() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()
+ OR NOT EXISTS(SELECT 1 FROM public.employment subject WHERE subject.id=NEW.employment_id AND subject.tenant_id=NEW.tenant_id)
+ OR NOT EXISTS(SELECT 1 FROM public.leave_type actual WHERE actual.id=NEW.leave_type_id AND actual.tenant_id=NEW.tenant_id)
+ OR (NEW.source_request_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.leave_request actual WHERE actual.id=NEW.source_request_id AND actual.tenant_id=NEW.tenant_id AND actual.employment_id=NEW.employment_id))
+ OR (NEW.adjustment_batch_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.leave_adjustment_batch actual WHERE actual.id=NEW.adjustment_batch_id AND actual.tenant_id=NEW.tenant_id))
+ OR (NEW.bf_import_run_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.leave_bf_import_run actual WHERE actual.id=NEW.bf_import_run_id AND actual.tenant_id=NEW.tenant_id)) THEN
+  RAISE EXCEPTION 'Leave ledger source unavailable' USING ERRCODE='42501';
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_ledger_source_identity() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_leave_ledger_source_identity BEFORE INSERT ON public.leave_ledger FOR EACH ROW EXECUTE FUNCTION app.leave_ledger_source_identity();
+
+--> statement-breakpoint
+-- A document always follows the actual request's tenant and subject, never a caller
+-- supplied employment alias. Pending uploads use the live human actor; the native
+-- approved split course retains the original uploader on its exact document copies.
+REVOKE UPDATE,DELETE ON public.leave_request_attachment FROM ai_hr_app;
+CREATE TRIGGER aaa_leave_attachment_access BEFORE INSERT OR UPDATE OR DELETE ON public.leave_request_attachment FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_statement_lock();
+CREATE FUNCTION app.leave_attachment_source_identity() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE request public.leave_request%ROWTYPE;rule public.leave_type%ROWTYPE;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ SELECT * INTO request FROM public.leave_request actual WHERE actual.id=NEW.leave_request_id AND actual.tenant_id=NEW.tenant_id AND actual.employment_id=NEW.employment_id;
+ IF NOT FOUND OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current()
+ OR NEW.size_bytes<=0 OR octet_length(NEW.content) IS DISTINCT FROM NEW.size_bytes THEN RAISE EXCEPTION 'Leave attachment source unavailable' USING ERRCODE='42501';END IF;
+ IF request.status::text='pending' THEN
+  SELECT * INTO rule FROM public.leave_type actual WHERE actual.id=request.leave_type_id AND actual.tenant_id=request.tenant_id;
+  IF NOT FOUND OR NEW.uploaded_by_user_id IS DISTINCT FROM app.current_user_id()
+   OR NEW.size_bytes>coalesce(rule.max_doc_bytes,10485760)
+   OR coalesce(cardinality(rule.allowed_mime_types),0)>0 AND NOT coalesce(NEW.mime_type=ANY(rule.allowed_mime_types),false) THEN
+   RAISE EXCEPTION 'Leave attachment upload unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_attachment_source_identity() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_leave_attachment_source_identity BEFORE INSERT ON public.leave_request_attachment FOR EACH ROW EXECUTE FUNCTION app.leave_attachment_source_identity();
+
+-- The native direct manager may read the bounded cancellation source even
+-- when their administrative data profile excludes the subject. A delegated
+-- decision relationship alone does not open the raw request or copied steps.
+CREATE FUNCTION app.leave_cancellation_direct_task_reader(p_request uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(
+  SELECT 1 FROM public.leave_cancellation_request q
+  WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id()
+    AND app.workflow_direct_manager(q.employment_id)
+ );
+$$;
+REVOKE ALL ON FUNCTION app.leave_cancellation_direct_task_reader(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_cancellation_direct_task_reader(uuid) TO ai_hr_app;
+ALTER POLICY bounded_approval_task_read ON public.leave_cancellation_request
+ USING(app.leave_cancellation_direct_task_reader(id));
+ALTER POLICY data_permission_subject_read ON public.leave_cancellation_request
+ USING(app.data_permission_record_read(employment_id) OR app.leave_cancellation_direct_task_reader(id));

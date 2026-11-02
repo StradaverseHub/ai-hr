@@ -9,7 +9,7 @@ import {
   reportingLinesFor,
 } from '@/core/read';
 import { todayInKualaLumpur } from '@/core/leave';
-import {ownLeaveRequestActionAccess} from '@/packs/leave/service';
+import {leaveEmployeeRecordCancellationAccess,ownLeaveRequestActionAccess} from '@/packs/leave/service';
 import { PageHeader } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
 import { requestLeaveCancellationAction, adminCancelLeaveAction, cancelOwnLeaveAction } from '@/app/leave/actions';
@@ -152,7 +152,11 @@ export default async function TeamLeaveTrackerPage({
   const showAbsViewSwitch = hasDirectReports;
   const effectiveAbsView = showAbsViewSwitch ? absView : 'my';
 
-  const ownFunctionActions=await ownLeaveRequestActionAccess(s,absences.flatMap(row=>row.leaves.map(leave=>leave.id)));
+  const requestIds=absences.flatMap(row=>row.leaves.map(leave=>leave.id));
+  const [ownFunctionActions,adminCancelAllowedRequestIds]=await Promise.all([
+    ownLeaveRequestActionAccess(s,requestIds),
+    admin ? leaveEmployeeRecordCancellationAccess(s,requestIds) : Promise.resolve([]),
+  ]);
   const selfCancelAllowedRequestIds=Object.entries(ownFunctionActions).filter(([,flags])=>flags.canDelete).map(([id])=>id);
 
   return (
@@ -175,6 +179,7 @@ export default async function TeamLeaveTrackerPage({
         // surviving homes are Employee Leave Record and this grid for the managers who still see it.
         viewerIsAdmin={admin}
         adminCancelAction={adminCancelLeaveAction}
+        adminCancelAllowedRequestIds={adminCancelAllowedRequestIds}
         // Edit/cancel-by-status (item c9a19e34): the viewer self-withdraws their own PENDING leave directly
         // from the calendar; the SAME action the Leave page posts (re-asserts subject-only + pending).
         selfCancelAction={cancelOwnLeaveAction}

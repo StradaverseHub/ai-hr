@@ -4,8 +4,9 @@ import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {setPayrollPermissionGrant} from '../core/payroll-permissions-admin';
+import {deletePayrollPermissionGrant,setPayrollPermissionGrant} from '../core/payroll-permissions-admin';
 import {resolvePayrollPermission} from '../core/payroll';
+import {createCompany} from '../core/admin';
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand} from '../core/data-permissions';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,admin:SessionContext;
@@ -23,6 +24,9 @@ it('finds recipients who gain when deleting the last company override restores t
  const changes=await owner.db.execute<{role:string;before:boolean;after:boolean}>(sql`select role,before_allowed as before,after_allowed as after from app.native_permission_override_role_changes(${b.tenantId}::uuid,'leave.apply_on_behalf',${JSON.stringify(image.value)}::jsonb,null) where company_id=${b.companyId}::uuid`);
  expect(changes.find(row=>row.role==='manager')).toEqual({role:'manager',before:false,after:true});expect(changes.find(row=>row.role==='employee')).toEqual({role:'employee',before:true,after:false});
  expect(await owner.db.select().from(s.payrollPermissionGrant)).toEqual(before);
+ await expect(deletePayrollPermissionGrant(admin,{id:companyRow.id})).resolves.toEqual({deleted:true});
+ const managerCtx:SessionContext={...admin,userId:manager,personId:null,roles:['manager'],grants:[{role:'manager',companyId:null}]};
+ expect(await withTenant(managerCtx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_native(${b.companyId}::uuid) as allowed`))).toEqual([{allowed:true}]);
  await expect(withTenant(admin,tx=>tx.execute(sql`select * from app.native_permission_override_recipients(${b.tenantId}::uuid,'leave.apply_on_behalf',${JSON.stringify(image.value)}::jsonb,null)`))).rejects.toThrow();
 });
 it('uses canonical profile subset semantics for a potential administrative recipient with no current witness',async()=>{
@@ -55,4 +59,35 @@ it('collects Report roles for the actual company while preserving Leave all-role
  expect(await rawCategory()).toEqual([{allowed:true}]);
  const globalCandidate={...candidate,company_id:null};
  const [future]=await owner.db.execute<{before:boolean;after:boolean}>(sql`select before_allowed as before,after_allowed as after from app.native_permission_override_recipients(${b.tenantId}::uuid,'report.read.personnel',null,${JSON.stringify(globalCandidate)}::jsonb) where user_id=${userId}::uuid and company_id is null`);expect(future).toEqual({before:false,after:true});
+});
+
+it('commits native self-narrowing with the original audit in immediate mode and keeps raw source writes closed',async()=>{
+ const key='leave.apply_on_behalf';
+ const [before]=await withTenant(admin,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_native(${b.companyId}::uuid) as allowed`));expect(before.allowed).toBe(true);
+ const id=await withTenant(admin,async tx=>{
+  await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
+  const [created]=await tx.execute<{id:string}>(sql`select app.leave_on_behalf_grant_set(${b.companyId}::uuid,'hr_admin',false) as id`);
+  const [narrowed]=await tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_native(${b.companyId}::uuid) as allowed`);expect(narrowed.allowed).toBe(false);
+  return created.id;
+ });
+ const [source]=await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id));expect(source).toMatchObject({permissionKey:key,companyId:b.companyId,role:'hr_admin',allowed:false});
+ await expect(withTenant(admin,tx=>tx.update(s.payrollPermissionGrant).set({allowed:true}).where(eq(s.payrollPermissionGrant.id,id)))).rejects.toMatchObject({cause:{code:'42501',message:'Leave permission source unavailable'}});
+ await expect(withTenant(admin,tx=>tx.delete(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id)))).rejects.toMatchObject({cause:{code:'42501',message:'Leave permission source unavailable'}});
+ await expect(withTenant(admin,tx=>tx.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id)))).resolves.toEqual([source]);
+ const events=await owner.db.select({event:s.domainEvent.eventType,actor:s.domainEvent.actorId,payload:s.domainEvent.payload}).from(s.domainEvent).where(eq(s.domainEvent.aggregateId,id));
+ expect(events).toEqual([{event:'payroll-permission-grant.created',actor:b.adminUserId,payload:{companyId:b.companyId,permissionKey:key,role:'hr_admin',allowed:false}}]);
+});
+
+it('rechecks a completed company Leave override after actual hierarchy move and restore',async()=>{
+ const alternate=await createCompany(admin,{legalName:'Fictional alternative Leave ACL parent'});
+ await expect(withTenant(admin,async tx=>{
+  const [written]=await tx.execute<{id:string}>(sql`select app.leave_on_behalf_grant_set(${b.companyId}::uuid,'manager',true) as id`);expect(written.id).toBeTruthy();
+  await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
+  await tx.execute(sql`SET CONSTRAINTS ALL DEFERRED`);
+  for(const parentCompanyId of [alternate.id,null]){
+   expect(await tx.update(s.company).set({parentCompanyId}).where(eq(s.company.id,b.companyId)).returning({id:s.company.id})).toEqual([{id:b.companyId}]);
+  }
+ })).rejects.toThrow('Leave permission completion unavailable');
+ expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.tenantId,b.tenantId))).toEqual([]);
+ expect(await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType,'payroll-permission-grant.created'))).toEqual([]);
 });

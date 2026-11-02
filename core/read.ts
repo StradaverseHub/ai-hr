@@ -1647,6 +1647,8 @@ function leaveRequestPageWhere(p: LeaveRequestPageFilter) {
   const refTerm = q?.replace(/^#/, '');
   const isRef = !!refTerm && /^[0-9a-f-]{6,}$/i.test(refTerm);
   const where = and(
+    p.purpose === 'ownApplication' ? sql`app.leave_own_application_allowed(${leaveRequest.employmentId}, 'view')` : undefined,
+    p.purpose === 'employeeRecords' ? sql`app.leave_employee_records_subject_allowed(${leaveRequest.employmentId}, 'view')` : undefined,
     p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
     p.companyId ? eq(employment.companyId, p.companyId) : undefined,
     p.businessUnitId ? eq(department.businessUnitId, p.businessUnitId) : undefined,
@@ -1714,6 +1716,8 @@ export function countLeaveRequestsByStatus(ctx: SessionContext, p: Omit<LeaveReq
 }
 
 export type LeaveRequestPageOptions = {
+    /** An independent self-service projection; administrative/calendar consumers keep their own purpose. */
+    purpose?: 'ownApplication' | 'employeeRecords';
     companyIds?: string[]; // scope fence (company switcher) — ALWAYS applied
     q?: string; // name / employeeCode / uuid-prefix reference
     companyId?: string;
@@ -1779,9 +1783,10 @@ export async function listLeaveRequestsPageTx(tx: Tx, ctx: SessionContext, p: Le
     const col = sortCol[p.sort ?? 'applied'] ?? leaveRequest.createdAt;
     const dir = p.dir === 'asc' ? asc : desc;
     if (p.before && (p.sort !== 'start' || p.dir !== 'desc' || p.offset !== 0)) throw new Error('A keyset page needs the start-desc order and offset 0');
+    const cursorWhere = p.before ? sql`r.id = ${p.before.id}::uuid ${p.purpose === 'ownApplication' ? sql`and app.leave_own_application_allowed(r.employment_id, 'view')` : p.purpose === 'employeeRecords' ? sql`and app.leave_employee_records_subject_allowed(r.employment_id, 'view')` : sql``}` : undefined;
     const keyset = p.before
-      ? sql`((${leaveRequest.startDate}, ${leaveRequest.createdAt}, ${leaveRequest.id}) < (select r.start_date, r.created_at, r.id from leave_request r where r.id = ${p.before.id}::uuid)
-          or (not exists (select 1 from leave_request r where r.id = ${p.before.id}::uuid) and ${leaveRequest.startDate} < ${p.before.startDate}::date))`
+      ? sql`((${leaveRequest.startDate}, ${leaveRequest.createdAt}, ${leaveRequest.id}) < (select r.start_date, r.created_at, r.id from leave_request r where ${cursorWhere})
+          or (not exists (select 1 from leave_request r where ${cursorWhere}) and ${leaveRequest.startDate} < ${p.before.startDate}::date))`
       : undefined;
     const rows = await tx
       .select({ ...leaveRequestSelection, company: sql<string>`(select c.legal_name from company c where c.id = ${employment.companyId})`, department: department.name })
@@ -1838,7 +1843,7 @@ export function listLeaveApprovers(ctx: SessionContext, companyIds?: string[]) {
  *  via subject_employment_id (the leave_request_date policy), so a manager who can see the parent sees its
  *  dates and a non-manager sees nothing. An empty result means "no per-date breakdown" (the UI then shows the
  *  ordinary whole-request approve/reject) — no separate boolean on the inbox list is needed. */
-export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: string) {
+export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: string, purpose?: 'ownApplication') {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -1853,7 +1858,7 @@ export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: s
       .from(leaveRequestDate)
       .leftJoin(employment, eq(employment.id, leaveRequestDate.decidedByEmploymentId))
       .leftJoin(person, eq(person.id, employment.personId))
-      .where(eq(leaveRequestDate.leaveRequestId, leaveRequestId))
+      .where(and(eq(leaveRequestDate.leaveRequestId, leaveRequestId), purpose === 'ownApplication' ? sql`app.leave_own_request_view_allowed(${leaveRequestDate.leaveRequestId})` : undefined))
       .orderBy(leaveRequestDate.leaveDate),
   );
 }
@@ -1949,20 +1954,22 @@ export function employeeCancelOffers(
 ): Promise<Map<string, string[] | null>> {
   return withTenant(ctx, async (tx) => {
     const out = new Map<string, string[] | null>();
-    const typeIds = [...new Set(rows.map((r) => r.leaveTypeId))];
-    if (typeIds.length === 0) return out;
+    const requestIds = [...new Set(rows.map((r) => r.id))];
+    if (requestIds.length === 0) return out;
     const types = await tx
-      .select({ id: leaveType.id, ...cancelApprovedTypeColumns })
-      .from(leaveType)
-      .where(inArray(leaveType.id, typeIds));
-    const settingByType = new Map(types.map((t) => [t.id, cancelApprovedSettingOf(t)]));
+      .select({ requestId: leaveRequest.id, id: leaveType.id, ...cancelApprovedTypeColumns })
+      .from(leaveRequest)
+      .innerJoin(leaveType, and(eq(leaveType.id, leaveRequest.leaveTypeId), eq(leaveType.tenantId, leaveRequest.tenantId)))
+      .where(and(inArray(leaveRequest.id, requestIds), sql`app.leave_own_application_allowed(${leaveRequest.employmentId}, 'view')`));
+    const settingByRequest = new Map(types.map((t) => [t.requestId, { typeId: t.id, setting: cancelApprovedSettingOf(t) }]));
+    if (settingByRequest.size === 0) return out;
     // A per-date-approval request (ADR-0068) offers only its APPROVED dates — the rule requestLeaveCancellation
     // applies and plannedAbsences already mirrors — so /leave never lists an interior rejected date the
     // service would refuse as invalid.
     const dateRows = await tx
       .select({ leaveRequestId: leaveRequestDate.leaveRequestId, leaveDate: leaveRequestDate.leaveDate, status: leaveRequestDate.status })
       .from(leaveRequestDate)
-      .where(inArray(leaveRequestDate.leaveRequestId, rows.map((r) => r.id)));
+      .where(and(inArray(leaveRequestDate.leaveRequestId, [...settingByRequest.keys()]), sql`app.leave_own_request_view_allowed(${leaveRequestDate.leaveRequestId})`));
     const approvedDatesByReq = new Map<string, Set<string>>();
     for (const d of dateRows) {
       const set = approvedDatesByReq.get(d.leaveRequestId) ?? new Set<string>();
@@ -1970,11 +1977,11 @@ export function employeeCancelOffers(
       approvedDatesByReq.set(d.leaveRequestId, set);
     }
     for (const r of rows) {
-      // A type this read cannot see reads as NOT allowed (cancelApprovedSettingOf(null)) — fail closed.
-      const setting = settingByType.get(r.leaveTypeId) ?? cancelApprovedSettingOf(null);
+      const source = settingByRequest.get(r.id);
+      if (!source || source.typeId !== r.leaveTypeId) continue;
       const approved = approvedDatesByReq.get(r.id);
       const working = (r.workingDates ?? []).filter((d) => !approved || approved.has(d));
-      out.set(r.id, employeeCancellableDates(r, working, setting, today));
+      out.set(r.id, employeeCancellableDates(r, working, source.setting, today));
     }
     return out;
   });
@@ -2010,7 +2017,8 @@ export function pendingCancellationProgress(
         cancelDates: leaveCancellationRequest.cancelDates,
       })
       .from(leaveCancellationRequest)
-      .where(inArray(leaveCancellationRequest.id, ids));
+      .where(and(inArray(leaveCancellationRequest.id, ids), sql`app.leave_own_request_view_allowed(${leaveCancellationRequest.leaveRequestId})`));
+    if (!crs.length) return out;
     const steps = await tx
       .select({
         cancellationRequestId: leaveCancellationStep.cancellationRequestId,
@@ -2018,7 +2026,8 @@ export function pendingCancellationProgress(
         status: leaveCancellationStep.status,
       })
       .from(leaveCancellationStep)
-      .where(inArray(leaveCancellationStep.cancellationRequestId, ids))
+      .innerJoin(leaveCancellationRequest, eq(leaveCancellationRequest.id, leaveCancellationStep.cancellationRequestId))
+      .where(and(inArray(leaveCancellationStep.cancellationRequestId, crs.map(row => row.id)), sql`app.leave_own_request_view_allowed(${leaveCancellationRequest.leaveRequestId})`))
       .orderBy(asc(leaveCancellationStep.cancellationRequestId), asc(leaveCancellationStep.stepIndex));
     for (const cr of crs) {
       out.set(cr.id, {

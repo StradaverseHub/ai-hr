@@ -16,7 +16,7 @@ import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-di
 import { adminCancelLeaveAction } from '@/app/leave/actions';
 import { sortInquiryEmployees } from '@/lib/leave-inquiry';
 import { parseInquiryQuery, InquiryQueryError } from '@/lib/leave-inquiry-query';
-import { leaveInquiryContext, leaveInquiryRecordsPage, type LeaveInquiryContext } from '@/packs/leave/service';
+import { leaveEmployeeRecordCancellationAccess, leaveInquiryContext, leaveInquiryRecordsPage, type LeaveInquiryContext } from '@/packs/leave/service';
 import { durationLabel } from '@/lib/leave-duration';
 // 4a1abc4a: this screen printed the raw day count ("3") beside Employee Balances' "3.00" — the reported
 // drift, between two tabs of the same Leave Inquiry nav. One formatter for both.
@@ -129,6 +129,7 @@ export default async function EmployeeLeaveRecordPage({
     leaveInquiryRecordsPage(session, inquiry, query),
   ]);
   const { rows, total } = result;
+  const adminCancelAllowedIds = new Set(await leaveEmployeeRecordCancellationAccess(session, rows.map(row => row.id)));
 
   const params = () => {
     const p = new URLSearchParams();
@@ -576,7 +577,7 @@ export default async function EmployeeLeaveRecordPage({
                           subject's own leave — an admin on this screen is never the subject, because
                           the service self-bans below super_admin and `canAdminCancelLeave` mirrors it. */}
                       <td className="px-3 py-2">
-                        {canAdminCancelLeave(r, session.personId) ? (
+                        {adminCancelAllowedIds.has(r.id) && canAdminCancelLeave(r, session.personId) ? (
                           <AdminCancelLeaveDialog
                             leaveRequestId={r.id}
                             back="/leave/employee-records"

@@ -1134,9 +1134,9 @@ This source depends on root942 witness89bc7e9da and requires hosted failed/affec
 - `0939_workforce_action_permissions.sql`: `ceb63515f2617332a2e4ba16816f34e225c28d8cc45664f0a496226f47cfc20f`.
 - `0941_financial_letter_actions.sql`: `0f381b3461b17a5de5c052ae7d94d2d6570744bca95070a8b73d253298aa9b1e`.
 - `0942_organisation_settings_actions.sql`: `1160474bb42ffdbeb6e24169940b34fdfbb5c028038172df590f18652bc79a03`.
-- `0943_leave_attendance_claim_actions.sql`: `faac3b990891f862397f06d2bd49928d442de1418052607dcfc4fe418a73c31a`.
+- `0943_leave_attendance_claim_actions.sql`: `c1d45fe8f536c7cf709bbda65ff0c94152df30d2dac37faa5c722c28cf5ede33`.
 - `0944_lifecycle_rewards_notice_actions.sql`: `06324a06a2236b058a211afc9be3c4972e011fbe3b73597bd15375db9fbc2463`.
-- `0945_financial_setup_actions.sql`: `6ba92aabf5ffe3a6a147f5f6287cd96d51721d92657fbeeb70d729c4ad1fd8ba`.
+- `0945_financial_setup_actions.sql`: `dd2b49601d812bd129211f32c04faa63bb58cb9c6a5109dbd7ed1f0ba33213ba`.
 
 Source identities only; frozen failures remain preserved. Admission requires post-Noveri/nine ledger reconciliation without rewriting applied bytes.
 

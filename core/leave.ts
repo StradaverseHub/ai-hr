@@ -3371,7 +3371,7 @@ export async function requestLeave(
 ): Promise<RequestLeaveResult> {
   p = { ...p,
     overrideConsent: Array.isArray(p.overrideConsent) ? p.overrideConsent.slice() : p.overrideConsent,
-    ...(p.document ? { document: { ...p.document } } : {}) };
+    ...(p.document ? { document: { ...p.document, content: Buffer.from(p.document.content) } } : {}) };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   if (reviewedOwnLeave) {
     if (!Array.isArray(reviewedOwnLeave.holidayWarnings)) throw new LeaveReviewedEffectError('unsupported');
@@ -5212,11 +5212,14 @@ export async function addLeaveAttachment(
   ctx: SessionContext,
   p: { leaveRequestId: string; fileName: string; mimeType: string; content: Buffer },
 ): Promise<{ id: string }> {
-  return withTenant(ctx, tx => addLeaveAttachmentTx(tx, ctx, p));
+  const document = { ...p, content: Buffer.from(p.content) };
+  const actor = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  return withTenant(actor, tx => addLeaveAttachmentTx(tx, actor, document));
 }
 
 async function addLeaveAttachmentTx(tx: Tx, ctx: SessionContext, p: { leaveRequestId: string; fileName: string; mimeType: string; content: Buffer }): Promise<{ id: string }> {
     if (p.content.byteLength === 0) throw new Error('Empty file');
+    await lockLeaveRequestDependenciesTx(tx,ctx,p.leaveRequestId);
     // Doc-config: join the type to read its mime/size rule. The /me flow already validated upstream (so
     // a bad file never created an orphan request); this is defence-in-depth for any other caller and
     // replaces the previously hard-coded 10 MB ceiling with the type's configured limit.
@@ -7608,6 +7611,8 @@ export async function adminCancelLeave(
       throw new LeaveCancellationNotAllowedError(`the leave is already ${req.status}`, 'already_final');
     }
     const previousStatus = req.status as 'pending' | 'approved';
+    const [access] = await tx.execute<{ allowed: boolean }>(sql`select app.leave_employee_record_cancel_allowed(${req.id}::uuid) as allowed`);
+    if (access?.allowed !== true) throw new LeaveCancellationNotAllowedError('leave record cancellation unavailable in this scope', 'admin_only');
 
     const [lt] = await tx
       // 3fb1a611: `role` too — leaveTypeIs resolves the role first (production's replacement type is coded `RL`).
@@ -8217,56 +8222,9 @@ export async function cancelOwnLeaveTx(
       throw new LeaveCancellationNotAllowedError('grouped (emergency / split) leave cannot be cancelled here', 'grouped');
     }
 
-    const [lt] = await tx
-      .select({ code: leaveType.code, name: leaveType.name })
-      .from(leaveType)
-      .where(eq(leaveType.id, req.leaveTypeId))
-      .limit(1);
-
-    // Reverse the NET ledger debit (net 0 for pending ⇒ restoredDays 0; kept robust for defense-in-depth).
-    const [netRow] = await tx
-      .select({ net: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
-      .from(leaveLedger)
-      .where(eq(leaveLedger.sourceRequestId, req.id));
-    const net = Number(netRow?.net ?? 0);
-    let restoredDays = 0;
-    if (net < 0) {
-      restoredDays = round2(-net);
-      await tx.insert(leaveLedger).values({
-        tenantId: ctx.tenantId,
-        employmentId: req.employmentId,
-        // Balance Deduction Source (cdf9ca48): same ledger the approval debited (see the give-back path).
-        leaveTypeId: await resolveBalanceSourceTypeId(tx, req.leaveTypeId),
-        entryType: 'debit',
-        days: restoredDays.toFixed(2),
-        sourceRequestId: req.id,
-        effectiveOn: req.startDate,
-      });
-    }
-
-    await tx.update(leaveRequest).set({ status: 'cancelled' }).where(eq(leaveRequest.id, req.id));
-
-    // Substrate: distinct self-cancelled event (audit + notification key). Carries the display fields the
-    // approver/HR notification renderer needs (payload-only renderers).
-    const eventId = await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-request',
-      aggregateId: req.id,
-      eventType: 'leave-request.self-cancelled',
-      actor: actorOf(ctx),
-      subjectEmploymentId: req.employmentId,
-      payload: {
-        previousStatus: 'pending',
-        newStatus: 'cancelled',
-        restoredDays,
-        leaveTypeCode: lt?.code ?? null,
-        leaveTypeName: lt?.name ?? null,
-        startDate: req.startDate,
-        endDate: req.endDate,
-      },
-    }, { returnId: true });
-
-    return { previousStatus: 'pending', restoredDays, eventId };
+    const [effect] = await tx.execute<{ restoredDays: string | number; eventId: string }>(sql`select restored_days as "restoredDays", event_id as "eventId" from app.leave_own_withdraw(${req.id}::uuid)`);
+    if (!effect?.eventId) throw new LeaveCancellationNotAllowedError('own leave withdrawal unavailable', 'already_final');
+    return { previousStatus: 'pending', restoredDays: Number(effect.restoredDays), eventId: effect.eventId };
   }
 }
 
@@ -12349,5 +12307,14 @@ export function ownLeaveRequestActionAccess(ctx:SessionContext,requestIds:readon
  return withTenant(ctx,async tx=>{
   const rows=await tx.execute<{id:string;canEdit:boolean;canDelete:boolean}>(sql`select request.id::text as id,app.leave_own_application_allowed(request.employment_id,'edit') as "canEdit",app.leave_own_application_allowed(request.employment_id,'delete') as "canDelete" from public.leave_request request join jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) selected(id) on request.id=selected.id::uuid where request.tenant_id=${ctx.tenantId}::uuid`);
   return Object.fromEntries(rows.map(row=>[row.id,{canEdit:row.canEdit===true,canDelete:row.canDelete===true}]));
+ });
+}
+
+/** Read-only Delete flags for native-visible administrative records; does not confer a write. */
+export function leaveEmployeeRecordCancellationAccess(ctx:SessionContext,requestIds:readonly string[]):Promise<string[]> {
+ const ids=[...new Set(requestIds)];if(!ids.length)return Promise.resolve([]);
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{id:string}>(sql`select selected.id from jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) selected(id) where app.leave_employee_record_cancel_allowed(selected.id::uuid)`);
+  return rows.map(row=>row.id);
  });
 }

@@ -76,8 +76,9 @@ import {costAllocationMaintenanceReviews} from '../core/assistant-actions/cost-a
 import {grantAssistant} from '../core/assistant-grant';
 import { createMovementEvent } from '../core/movement';
 import {setCompensation} from '../core/comp';
-import {savePayFormula,testPayFormula,setPayFormulaActive,loadActiveFormulaProgramTx,recordFormulaEvaluationTx,getPayFormula,getFormulaEvaluation} from '../core/pay-formula';
-import {seedPayComponentCatalog,createBatch,deleteDraftBatch} from '../packs/payroll/service';
+import {savePayFormula,testPayFormula,setPayFormulaActive,getPayFormula,getFormulaEvaluation} from '../core/pay-formula';
+import {seedPayComponentCatalog,createBatch,deleteDraftBatch,generatePayslips,resetProcessedBatch,upsertPayComponent,setEmploymentPayComponent} from '../packs/payroll/service';
+import {setStatutoryProfileMY} from '../localization/my/statutory';
 import { saveReplacementHolidayPolicy } from '../core/holiday-replacements';
 import { saveOvertimePatternDraft } from '../packs/attendance/service';
 import { adminCtx, entitledCtx, setModule, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -361,8 +362,8 @@ const CASES: Case[] = [
   ...(['rule','shift'] as const).map(source=>({
     name:`retained schedule rotation ${source}`,expected:'other' as const,setup:async(id:string)=>{
       // This is a retained legacy company-owned group; current creation UI creates global groups.
-      // Supply the real admin transaction so its immutable overtime snapshot owner has authority.
-      const [rule]=await withTenant(ADMIN(),tx=>tx.insert(schema.attendanceRule).values({tenantId:b.tenantId,companyId:source==='rule'?id:null,name:`Rotation ${source} ${randomUUID()}`}).returning());
+      // Fixture the preexisting legacy row via the storage owner; the live app creates tenant rules only.
+      const [rule]=await owner.withTenant(ADMIN(),tx=>tx.insert(schema.attendanceRule).values({tenantId:b.tenantId,companyId:source==='rule'?id:null,name:`Rotation ${source} ${randomUUID()}`}).returning());
       const [shift]=await owner.db.insert(schema.shift).values({tenantId:b.tenantId,companyId:source==='shift'?id:null,name:`Rotation source ${randomUUID()}`,startTime:'08:00',endTime:'17:00'}).returning();
       const date=new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`)+86_400_000).toISOString().slice(0,10);
       await owner.db.insert(schema.attendanceRotation).values({tenantId:b.tenantId,ruleId:rule.id,effectiveFrom:date,anchorDate:date,unit:'day',length:1,allowedShiftIds:[shift.id],days:[{kind:'full',shiftId:shift.id}],createdBy:b.adminUserId});
@@ -537,17 +538,22 @@ describe('Formula evidence retains a company independently of its current employ
     expect(tested.readRequirements.categories).toContain('identity');
     let evaluationId:string|undefined;
     if(kind==='evaluation'){
+      await setStatutoryProfileMY(ctx,{personId:employee.personId,icNumber:'900101011234'});
       await setPayFormulaActive(ctx,{...saved,testId:tested.id,active:true});
       await owner.db.update(schema.employment).set({companyId:target}).where(eq(schema.employment.id,employee.employmentId));
       await owner.db.update(schema.assignment).set({companyId:target,departmentId:department.id}).where(eq(schema.assignment.employmentId,employee.employmentId));
+      const component=await upsertPayComponent(ctx,{code:'RETENTION_VALUE',name:'Fictional retained calculation allowance',label:'Fictional retained calculation allowance',
+        kind:'allowance',includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,
+        rule:{kind:'formula_builder',formulaId:'RETAINED_COMPANY',dependencies:[]}});
+      await setEmploymentPayComponent(ctx,{employmentId:employee.employmentId,componentId:component.id,amount:1,effectiveFrom:'2026-05-01'});
       const {batchId}=await createBatch(ctx,{companyId:target,payPeriod:'2026-05'});
-      // Exercise the real protected evaluation writer/identity trigger, not an owner INSERT or
-      // disabled RLS. Its exact constant amount comes from the saved successful native test.
-      await withTenant(ctx,async tx=>{
-        const formula=await loadActiveFormulaProgramTx(tx,ctx,'RETAINED_COMPANY');
-        evaluationId=await recordFormulaEvaluationTx(tx,ctx,{formula,employmentId:employee.employmentId,companyId:target,batchId,componentCode:'OVERTIME',period:'2026-05',amount:tested.amount!,explanations:tested.explanations,reads:[],sources:[],readRequirements:tested.readRequirements});
-      });
-      // Canonical draft deletion deliberately retains immutable evaluation evidence without a batch FK.
+      // Only actual payroll calculation can materialize retained Formula evidence.
+      await generatePayslips(ctx,{batchId});
+      const [evaluation]=await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,batchId));
+      expect(evaluation).toMatchObject({companyId:target,employmentId:employee.employmentId,revisionId:saved.revisionId});
+      evaluationId=evaluation.id;
+      // The native reset and draft delete remove the run; its immutable evidence remains.
+      await resetProcessedBatch(ctx,{batchId,reason:'Fictional retained evidence replay'});
       await deleteDraftBatch(ctx,{batchId});
     }
     // Fixture a later transfer without erasing or editing any retained Formula receipt. This isolates
@@ -597,8 +603,8 @@ describe('Formula evidence retains a company independently of its current employ
       }
       const receipt=await getFormulaEvaluation(ctx,evaluationId!);expect(receipt).not.toBeNull();
       expect(receipt).toMatchObject({id:evaluationId,formulaId:'RETAINED_COMPANY',revisionId:saved.revisionId,
-        companyId:target,employmentId:employee.employmentId,componentCode:'OVERTIME',period:'2026-05',amount:'1',
-        payload:{explanations:tested.explanations,reads:[],sources:[]}});
+        companyId:target,employmentId:employee.employmentId,componentCode:'RETENTION_VALUE',period:'2026-05',amount:'1',
+        payload:{explanations:tested.explanations,reads:expect.any(Array),sources:expect.any(Array)}});
       expect(receipt!.payload.explanations).toContain(privateValue);
       expect(receipt!.contentHash).toMatch(/^[a-f0-9]{64}$/);
       expect(receipt!.payload).toMatchObject({contentHash:receipt!.contentHash});

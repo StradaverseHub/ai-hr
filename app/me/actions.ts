@@ -11,7 +11,6 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { myEmployment, listEligibleLeaveTypesFor, pickName } from '@/core/read';
 import {
-  addLeaveAttachment,
   requestLeave,
   editLeaveRequest,
   cancelOwnLeave,
@@ -170,20 +169,24 @@ export async function myRequestLeave(formData: FormData) {
   const selected = types.find((t) => t.id === leaveTypeId);
 
   try {
-    // Orphan-prevention (the headline fix): validate the file BEFORE requestLeave commits the row + event.
-    // A disallowed/oversized file is rejected here, so no committed pending request is left behind.
+    // Keep the localized preflight; the native command revalidates and stores the file atomically.
     if (hasFile && selected) {
       validateLeaveDocument(
         { allowedMimeTypes: selected.allowedMimeTypes, maxDocBytes: selected.maxDocBytes },
         { mimeType: file.type || 'application/octet-stream', sizeBytes: file.size },
       );
     }
-    const { leaveRequestId } = await requestLeave(s, {
+    const document = hasFile ? {
+      fileName: file.name,
+      mimeType: file.type || 'application/octet-stream',
+      content: Buffer.from(await file.arrayBuffer()),
+    } : undefined;
+    await requestLeave(s, {
       employmentId,
       leaveTypeId,
       startDate,
       endDate,
-      hasDocument: hasFile,
+      document,
       employeeRemark,
       durationType,
       fromTime: durationType === 'hourly' && fromTime !== '' ? fromTime : undefined,
@@ -195,14 +198,6 @@ export async function myRequestLeave(formData: FormData) {
       // is judged in Malaysian time, not server/UTC.
       today: todayInKualaLumpur(),
     });
-    if (hasFile) {
-      await addLeaveAttachment(s, {
-        leaveRequestId,
-        fileName: file.name,
-        mimeType: file.type || 'application/octet-stream',
-        content: Buffer.from(await file.arrayBuffer()),
-      });
-    }
   } catch (e) {
     redirect(
       `/me?error=${encodeURIComponent(

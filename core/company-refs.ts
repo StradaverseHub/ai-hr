@@ -71,6 +71,8 @@ export type CompanyRef = {
    * function (one argument, the company id; returns the row count) instead of a plain DELETE.
    */
   deleteFunction?: string;
+  /** Exact config rows disposed together under the sealed Company Delete source receipt. */
+  sealedModuleCleanup?: true;
   /** Private tables expose only a tenant-scoped boolean through this fixed helper. */
   existsFunction?: string;
   /** Why it carries the disposition it does — read by whoever adds the forty-sixth. */
@@ -207,18 +209,18 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'company_statutory_authority', column: 'company_id', disposition: 'config', note: 'Per-authority payment setup. Before company_bank_profile, which it references.' },
   { table: 'bank_payment_export', column: 'company_id', disposition: 'payroll', note: 'An immutable generated bank-file artifact and its payroll snapshot evidence are retained financial history.' },
   { table: 'company_bank_profile', column: 'company_id', disposition: 'config', note: 'The company\'s disbursement bank accounts.' },
-  { table: 'company_payroll_config', column: 'company_id', disposition: 'config', note: 'Cut-off and pay days. Before payroll_policy, which it references.' },
-  { table: 'payroll_policy', column: 'company_id', disposition: 'config', note: 'The company\'s payroll policies.' },
-  { table: 'payslip_information_setting', column: 'company_id', disposition: 'config', note: 'Payslip display settings. One row on ABC Comapny on production.' },
+  { table: 'company_payroll_config', column: 'company_id', disposition: 'config', sealedModuleCleanup: true, note: 'Cut-off and pay days. Before payroll_policy, which it references.' },
+  { table: 'payroll_policy', column: 'company_id', disposition: 'config', sealedModuleCleanup: true, note: 'The company\'s payroll policies.' },
+  { table: 'payslip_information_setting', column: 'company_id', disposition: 'config', sealedModuleCleanup: true, note: 'Payslip display settings. One row on ABC Comapny on production.' },
   { table: 'lc_company_config', column: 'company_id', disposition: 'config', note: 'The company\'s IT approval levels and access systems (ADR-0095). Setup only.' },
   { table: 'lc_step_def', column: 'company_id', disposition: 'config', note: 'Company-specific onboarding / offboarding step definitions (ADR-0095). Setup only; steps already ticked on cases live on the cases.' },
   { table: 'it_provision_def', column: 'company_id', disposition: 'config', note: 'The company\'s extra IT requisition / return checklist items (ADR-0095). Setup only; the items on a requisition live on the requisition.' },
-  { table: 'payroll_cycle', column: 'company_id', disposition: 'config', note: 'THE AUTOMATIC SETUP: createCompany seeds six. Six rows on ABC Comapny — the rows that made Delete fail.' },
-  { table: 'payroll_anomaly_config', column: 'company_id', disposition: 'config', note: 'Per-company payroll anomaly detector settings.' },
-  { table: 'payroll_permission_grant', column: 'company_id', disposition: 'config', note: 'Per-company payroll permission overrides. ON DELETE CASCADE already; deleted explicitly for one rule.' },
+  { table: 'payroll_cycle', column: 'company_id', disposition: 'config', sealedModuleCleanup: true, note: 'THE AUTOMATIC SETUP: createCompany seeds six. Six rows on ABC Comapny — the rows that made Delete fail.' },
+  { table: 'payroll_anomaly_config', column: 'company_id', disposition: 'config', sealedModuleCleanup: true, note: 'Per-company payroll anomaly detector settings.' },
+  { table: 'payroll_permission_grant', column: 'company_id', disposition: 'config', sealedModuleCleanup: true, note: 'Per-company payroll permission overrides. ON DELETE CASCADE already; deleted explicitly for one rule.' },
   { table: 'employee_id_config', column: 'company_id', disposition: 'config', note: 'The Employee ID running-number setup. A draft holding one of its numbers is an employee record and refuses first.' },
   { table: 'leave_approval_policy', column: 'company_id', disposition: 'config', note: 'Leave approval routing. Before department, position and business_unit, which it may name.' },
-  { table: 'leave_encashment_policy', column: 'company_id', disposition: 'config', note: 'Leave encashment rules for this company. Setup only; encashment paid is payroll.' },
+  { table: 'leave_encashment_policy', column: 'company_id', disposition: 'config', sealedModuleCleanup: true, note: 'Leave encashment rules for this company. Setup only; encashment paid is payroll.' },
   { table: 'attendance_allowance_policy', column: 'company_id', disposition: 'config', note: 'Attendance allowance rules for this company. Setup only; paid allowances live in payroll.' },
   { table: 'attendance_policy', column: 'company_id', disposition: 'config', note: 'The company\'s attendance policy (grace periods, clocking rules). Setup only.' },
   { table: 'shift', column: 'company_id', disposition: 'config', note: 'Shift definitions. Before attendance_rule, which a shift references.' },
@@ -226,7 +228,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'toil_policy', column: 'company_id', disposition: 'config', note: 'THE AUTOMATIC SETUP for the TOIL module (the leave credit policy). One row on ABC Comapny.' },
   { table: 'holiday', column: 'company_id', disposition: 'config', note: 'Company-specific holidays. One in a holiday group refuses (see the dependents).' },
   { table: 'label_company_assignment', column: 'company_id', disposition: 'config', note: 'Which shared system labels this company uses. Removes the link, never the label.' },
-  { table: 'clocking_location_company', column: 'company_id', disposition: 'config', note: 'r423 (0517) — which shared clocking locations this company may use. Removes the link, never the location. A company with employees refuses first, so no assigned employee loses a usable site this way.' },
+  { table: 'clocking_location_company', column: 'company_id', disposition: 'config', sealedModuleCleanup: true, note: 'r423 (0517) — which shared clocking locations this company may use. Removes the link, never the location. A company with employees refuses first, so no assigned employee loses a usable site this way.' },
   {
     table: 'usage_snapshot',
     column: 'company_id',

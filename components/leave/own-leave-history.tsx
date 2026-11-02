@@ -164,6 +164,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   // endDate >= from), which is exactly the reporter's three date cases and also catches leave spanning a
   // month boundary. Skipped entirely when nothing is filtered — then the two lists are the same list.
   const historyAll = await listLeaveRequestsPage(session, {
+    purpose: 'ownApplication',
     employmentIds: historyEmploymentIds,
     sort: 'start',
     dir: 'desc',
@@ -178,6 +179,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   // leaveRequestPageWhere with listLeaveRequestsPage), not one list read per tab — that was four
   // transactions on every visit. A tab with no rows is absent from the result and reads 0.
   const byStatus = await countLeaveRequestsByStatus(session, {
+    purpose: 'ownApplication',
     employmentIds: historyEmploymentIds,
     statuses: [...LEAVE_HISTORY_TABS],
     leaveTypeIds: hTypeIds.length > 0 ? hTypeIds : undefined,
@@ -187,6 +189,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   const tabCounts = Object.fromEntries(LEAVE_HISTORY_TABS.map((tab) => [tab, byStatus[tab] ?? 0])) as Record<LeaveHistoryTab, number>;
   const historyTab = resolveHistoryTab(sp.hTab, tabCounts);
   const historyShown = await listLeaveRequestsPage(session, {
+    purpose: 'ownApplication',
     employmentIds: historyEmploymentIds,
     statuses: [historyTab],
     leaveTypeIds: hTypeIds.length > 0 ? hTypeIds : undefined,
@@ -212,7 +215,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   // RLS self-branch admits the subject to their rows.
   const dateBreakdownEntries: (readonly [string, Awaited<ReturnType<typeof leaveRequestDateBreakdown>>])[] =
     await Promise.all(
-      selfHistory.slice(0, 5).map(async (r) => [r.id, await leaveRequestDateBreakdown(session, r.id)] as const),
+      selfHistory.slice(0, 5).map(async (r) => [r.id, await leaveRequestDateBreakdown(session, r.id, 'ownApplication')] as const),
     );
   const requestDateBreakdowns = new Map(dateBreakdownEntries);
 

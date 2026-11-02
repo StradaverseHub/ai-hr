@@ -4,7 +4,8 @@ import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {createCompany} from '../core/admin';
+import {CompanyDeleteForbiddenError,createCompany,deleteCompany,setCompanyParent} from '../core/admin';
+import {setPayrollPermissionGrant} from '../core/payroll-permissions-admin';
 import {hireEmployee} from '../core/org';
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand} from '../core/data-permissions';
 import {createClockingLocation,updateClockingLocation,archiveClockingLocation,restoreClockingLocation,deleteClockingLocation,listClockingLocations,listClockingLocationsForMaintenance,clockingSiteActionAccess,type CreateClockingLocationInput} from '../packs/attendance/service';
@@ -72,4 +73,79 @@ it('joins the canonical try-only Access fence before a raw assignment statement 
   expect(retryable).toBe(true);
  });
  await withTenant(admin,tx=>tx.delete(s.employeeClockingLocation).where(eq(s.employeeClockingLocation.employmentId,randomUUID())));
+});
+
+async function companyCleanupSources(){
+ const child=await createCompany(admin,{legalName:'Fictional empty child company',companyLabel:'FICT-CHILD',registrationNo:'FICT-REG'});
+ await setCompanyParent(admin,{companyId:child.id,parentCompanyId:b.companyId});
+ const site=await createClockingLocation(admin,input('Fictional shared Company Delete site',[b.companyId,child.id]));
+ const leave=await setPayrollPermissionGrant(admin,{companyId:child.id,permissionKey:'leave.apply_on_behalf',role:'manager',allowed:true});
+ const report=await setPayrollPermissionGrant(admin,{companyId:child.id,permissionKey:'report.read.personnel',role:'hr_admin',allowed:false});
+ return {child,site,leave,report};
+}
+it('preserves native scoped-parent Company Delete in immediate mode without granting Clocking Edit or detaching its neighbor',async()=>{
+ const {child,site,leave,report}=await companyCleanupSources();
+ await owner.db.insert(s.payrollCycle).values({tenantId:b.tenantId,companyId:child.id,name:'Fictional native child cycle',code:'FIX',runType:'regular'});
+ const neighbor=await setPayrollPermissionGrant(admin,{companyId:b.companyId,permissionKey:'leave.apply_on_behalf',role:'manager',allowed:true});
+ expect(await clockingSiteActionAccess(companyHr,'edit')).toBe(false);
+ await withTenant(companyHr,async tx=>{
+  await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
+  await deleteCompany(companyHr,{id:child.id},tx);
+ });
+ expect(await owner.db.select().from(s.company).where(eq(s.company.id,child.id))).toEqual([]);
+ expect(await owner.db.select().from(s.payrollCycle).where(eq(s.payrollCycle.companyId,child.id))).toEqual([]);
+ expect(await owner.db.select({companyId:s.clockingLocationCompany.companyId}).from(s.clockingLocationCompany).where(eq(s.clockingLocationCompany.clockingLocationId,site.id))).toEqual([{companyId:b.companyId}]);
+ expect(await owner.db.select().from(s.clockingLocation).where(eq(s.clockingLocation.id,site.id))).toHaveLength(1);
+ for(const id of [leave.id,report.id])expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id))).toEqual([]);
+ expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,neighbor.id))).toHaveLength(1);
+ const [audit]=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,child.id),eq(s.domainEvent.eventType,'company.deleted')));
+ expect(audit).toMatchObject({actorType:'user',actorId:companyHr.userId,payload:{legalName:'Fictional empty child company',code:'FICT-CHILD',registrationNo:'FICT-REG',usageSnapshotRows:0}});
+});
+it('rolls back unconsumed Company cleanup and refuses a forged completion without the actual Company deletion and audit',async()=>{
+ const {child,site,leave,report}=await companyCleanupSources();
+ await expect(withTenant(companyHr,async tx=>{
+  await tx.execute(sql`select app.module_company_cleanup_begin(${child.id}::uuid)`);
+  // Admission alone cannot open the tenant fallback while this company still exists.
+  expect(await tx.select({id:s.payrollPermissionGrant.id}).from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,leave.id))).toEqual([{id:leave.id}]);
+ })).rejects.toThrow('Company cleanup is incomplete');
+ await expect(withTenant(companyHr,async tx=>{
+  const [proof]=await tx.execute<{id:string}>(sql`select app.module_company_cleanup_begin(${child.id}::uuid) as id`);expect(proof.id).toBeTruthy();
+  await tx.execute(sql`select app.module_company_cleanup_finish(${proof.id}::uuid)`);
+ })).rejects.toMatchObject({cause:{code:'42501',message:'Company cleanup completion unavailable'}});
+ expect(await owner.db.select().from(s.company).where(eq(s.company.id,child.id))).toHaveLength(1);
+ expect(await owner.db.select().from(s.clockingLocationCompany).where(and(eq(s.clockingLocationCompany.clockingLocationId,site.id),eq(s.clockingLocationCompany.companyId,child.id)))).toHaveLength(1);
+ for(const id of [leave.id,report.id])expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id))).toHaveLength(1);
+ expect(await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,child.id),eq(s.domainEvent.eventType,'company.deleted')))).toEqual([]);
+});
+it('revalidates completed Company cleanup after an early flush and actual ancestor move-restore',async()=>{
+ const {child,site}=await companyCleanupSources(),newParent=await createCompany(admin,{legalName:'Fictional alternate ancestor'});
+ await expect(withTenant(admin,async tx=>{
+  await deleteCompany(admin,{id:child.id},tx);
+  await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
+  await tx.execute(sql`SET CONSTRAINTS ALL DEFERRED`);
+  expect(await tx.update(s.company).set({parentCompanyId:newParent.id}).where(eq(s.company.id,b.companyId)).returning({id:s.company.id})).toEqual([{id:b.companyId}]);
+  expect(await tx.update(s.company).set({parentCompanyId:null}).where(eq(s.company.id,b.companyId)).returning({id:s.company.id})).toEqual([{id:b.companyId}]);
+ })).rejects.toThrow('Company cleanup effects or authority changed');
+ expect(await owner.db.select().from(s.company).where(eq(s.company.id,child.id))).toHaveLength(1);
+ expect(await owner.db.select().from(s.clockingLocationCompany).where(and(eq(s.clockingLocationCompany.clockingLocationId,site.id),eq(s.clockingLocationCompany.companyId,child.id)))).toHaveLength(1);
+ expect(await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,child.id),eq(s.domainEvent.eventType,'company.deleted')))).toEqual([]);
+});
+
+it('refuses mismatched Company Delete transaction tenant or actor before any lock or effect',async()=>{
+ const {child,site,leave}=await companyCleanupSources(),foreign=await seedBase();
+ await withTenant(admin,async tx=>{
+  const lockCount=async()=>{
+   const [row]=await tx.execute<{count:number}>(sql`select count(*)::int as count from pg_locks where pid=pg_backend_pid() and locktype='advisory'`);
+   return row.count;
+  };
+  const before=await lockCount();
+  for(const supplied of [companyHr,adminCtx(foreign)]){
+   await expect(deleteCompany(supplied,{id:child.id},tx)).rejects.toBeInstanceOf(CompanyDeleteForbiddenError);
+   expect(await lockCount()).toBe(before);
+  }
+ });
+ expect(await owner.db.select().from(s.company).where(eq(s.company.id,child.id))).toHaveLength(1);
+ expect(await owner.db.select().from(s.clockingLocationCompany).where(and(eq(s.clockingLocationCompany.clockingLocationId,site.id),eq(s.clockingLocationCompany.companyId,child.id)))).toHaveLength(1);
+ expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,leave.id))).toHaveLength(1);
+ expect(await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,child.id),eq(s.domainEvent.eventType,'company.deleted')))).toEqual([]);
 });
