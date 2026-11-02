@@ -33718,7 +33718,8 @@
       "contractType": "Contract type",
       "businessGroup": "Business group ID",
       "payChanges": "Pay changes (true / false)",
-      "termMonths": "Term in months"
+      "termMonths": "Term in months",
+      "daysToEnd": "ஒப்பந்த முடிவுக்கு உள்ள நாட்கள்"
     },
     "operator": {
       "is": "is",
@@ -33750,7 +33751,11 @@
       "end": "End of contract",
       "declined": "Employee declined",
       "retirement": "Retirement"
-    }
+    },
+    "timingSource": "நேர அமைப்பின் மூலம்",
+    "companyTiming": "நிறுவன கையொப்ப அமைப்புகள்",
+    "workflowTiming": "இந்த பணிப்பாய்வு",
+    "signatureEscalationDays": "ஒப்பந்த முடிவுக்கு எத்தனை நாட்கள் முன் மேல்நிலைக்கு அனுப்புவது"
   },
   "contractTemplates": {
     "title": "ஒப்பந்த வார்ப்புருக்கள்",
