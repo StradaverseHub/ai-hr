@@ -196,7 +196,7 @@ describe('6e122302 · notice RLS — who can READ a notice', () => {
       }),
     ).catch((e) => e);
     expect(insertErr).toBeInstanceOf(Error);
-    expect(pgText(insertErr)).toMatch(/row-level security policy/i);
+    expect(pgText(insertErr)).toMatch(/row-level security policy|New notices must start as owned drafts/i);
 
     // An UPDATE is not refused with an error — the recipient policy is SELECT-only, so the row simply is
     // not in the set an UPDATE can reach. Asserting the ROW is unchanged is the honest test: "no error"
