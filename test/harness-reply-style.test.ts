@@ -17,6 +17,10 @@ describe('reply style (spec v9)',()=>{
   expect(instructions).toMatch(/\[Page name\]\(path\), using only paths product_destinations returns/);
   expect(instructions).toMatch(/four to six short bullets of what you can do for this person in their role, then one example question/);
   expect(instructions).not.toMatch(/short plain reply/);
+  // Owner, 3 November 2026: ask rather than guess, and offer to do it rather than point at a page.
+  expect(instructions).toMatch(/could mean more than one action, ask one short question with a numbered list of the matching options available_actions returns/);
+  expect(instructions).toMatch(/start with "Yes, I can …" and offer the choice: you prepare it here with them, or they open the page themselves\. Do not link that page in your text/);
+  expect(instructions).toMatch(/When you cannot do it, say so in one line/);
  });
  it('passes a structured reply that links only to this person\'s destinations',()=>{
   const reply='Payroll for November is **not ready**.\n\n- **Blocking:** 8 records flagged → [Personnel](/admin/personnel)\n- **Warning:** no pay day set → [Payroll settings](/admin/payroll/settings)\n\n1. Fix the records.\n2. Set the pay day.';
