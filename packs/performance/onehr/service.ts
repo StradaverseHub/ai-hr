@@ -27,7 +27,7 @@ import { anonymousFeedbackReport } from './feedback-report';
 import { assertOverallRemark } from './journey-model';
 import { onehrLabel } from './person-labels';
 import { onehrEmployment } from './employment-projection';
-import { frozenVisibilityOneTx,frozenVisibilityTx } from './frozen-visibility';
+import { frozenVisibilityOneTx } from './frozen-visibility';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -112,6 +112,7 @@ async function loadReview(tx: Tx, reviewId: string, lock = false) {
   const cycle=await loadCycle(tx,row.cycleId);
   return {row,native:header.value,cycle,kpis:z.array(kpiSchema).parse(row.kpis),competencies:z.array(competencySchema).parse(row.competencies)};
 }
+async function frozenReviewTx(tx:Tx,reviewId:string){const [row]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${reviewId}::uuid)`);return row;}
 async function moderatorChoices(tx:Tx,id:string){const [r]=await tx.execute<{value:{id:string;name:string;personId:string}[]}>(sql`select app.onehr_moderator_choices(${id}::uuid) as value`);return r?.value??[];}
 async function notifyKpiApprovers(tx:Tx,ctx:SessionContext,id:string,kpis:KPI[],phase:'setting'|'results') {
  const allowed=await moderatorChoices(tx,id);
@@ -127,7 +128,7 @@ async function writable(tx: Tx, r: Awaited<ReturnType<typeof loadReview>>, cell:
   const self=await isSelf(tx,r.row.employmentId), manager=!self&&await isManager(tx,r.row.reviewId);
   if (actor==='self'?!self:actor==='manager'?!manager:actor==='reviewer'?self||!await isEffectiveReviewer(tx,r.row.reviewId):actor==='moderator'?self||!await isModerator(tx,r.row.reviewId):!self&&!manager) throw Error('This action is not assigned to you.');
   if (!['open','calibration'].includes(r.cycle.native.status)) throw Error('The cycle is not open.');
-  const [frozen]=await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,r.row.reviewId));
+  const [frozen]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${r.row.reviewId}::uuid)`);
   if (frozen||r.native.closedAt) throw Error('This assessment has been finalized.');
   assertWindow(r.cycle.policy,cell);
   return {self,manager};
@@ -421,7 +422,7 @@ export async function assignOnehrPanelTx(tx:Tx,ctx:SessionContext,reviewId:strin
     if(admin){
      const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);if(!participant?.ok)throw Error('This employee is not participating in the cycle.');
      revision(r.row.revision,expected);if(await isSelf(tx,r.row.employmentId))throw Error('Ask another administrator to assign your panel.');
-     const [frozen]=await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,reviewId));
+     const [frozen]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${reviewId}::uuid)`);
      if(frozen||r.native.closedAt||!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment is finalized or closed.');
     }else await writable(tx,r,'f360',expected,'manager');
     if(!r.cycle.policy.modules.tm)throw Error('Talent assessment is disabled.');
@@ -464,7 +465,7 @@ export async function changeAssessmentPanelStateTx(tx:Tx,ctx:SessionContext,revi
   if(await isSelf(tx,r.row.employmentId))throw Error('Ask another administrator to manage your panel.');
   if(!r.cycle.policy.modules.tm||!['open','calibration'].includes(r.cycle.native.status)||r.native.closedAt)throw Error('This assessment is finalized or closed.');
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${reviewId},0))`);
-  const [frozen]=await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,reviewId));if(frozen)throw Error('This assessment is finalized.');
+  const [frozen]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${reviewId}::uuid)`);if(frozen)throw Error('This assessment is finalized.');
   const [panel]=await tx.select().from(onehrPanel).where(and(eq(onehrPanel.requestId,requestId),eq(onehrPanel.reviewId,reviewId))).for('update');if(!panel)throw Error('Panel member not found.');
   if(operation==='archive'){
    if(panel.archivedAt)return;
@@ -496,7 +497,7 @@ export async function archiveUnitExclusionPanelRowsTx(tx:Tx,ctx:SessionContext,r
  const r=await loadReview(tx,reviewId,true);await requireAdmin(tx,r.row.cycleId);
  if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This cycle is read-only.');
  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${reviewId},0))`);
- const [frozen]=await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,reviewId));
+ const [frozen]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${reviewId}::uuid)`);
  if(frozen||r.native.closedAt)return {archived:0,skippedFrozen:requestIds.length};
  let archived=0;
  for(const requestId of requestIds){
@@ -919,7 +920,7 @@ export async function getAssessmentTalentRemarkTx(tx:Tx,sessionId:string,reviewI
  if(!allowed?.ok)throw Error('This person is not in your Talent Box.');
  const [entry]=await tx.select().from(onehrCalibrationEntry).where(and(eq(onehrCalibrationEntry.sessionId,sessionId),eq(onehrCalibrationEntry.reviewId,reviewId)));
  const [stored]=await tx.select().from(assessmentTalentRemark).where(and(eq(assessmentTalentRemark.sessionId,sessionId),eq(assessmentTalentRemark.reviewId,reviewId)));
- const [frozen]=await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,reviewId));
+ const [frozen]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${reviewId}::uuid)`);
  const [review]=await tx.select({closedAt:performanceReview.closedAt}).from(performanceReview).where(eq(performanceReview.id,reviewId));
  let locked=!!(!entry||frozen||review?.closedAt||!['open','calibration'].includes(cycle.native.status)||entry.lockedAt||session.lockedAt||entry.performanceLockedAt&&entry.potentialLockedAt||session.performanceLockedAt&&session.potentialLockedAt);
  try{assertWindow(cycle.policy,'tb_bgceo');}catch{locked=true;}
@@ -1063,7 +1064,7 @@ export async function freezeOnehrReview(ctx:SessionContext,reviewId:string,expec
     const r=await loadReview(tx,reviewId,true);await requireAdmin(tx,r.row.cycleId);revision(r.row.revision,expected);
     if(await isSelf(tx,r.row.employmentId))throw Error('Ask another administrator to finalize your assessment.');
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${reviewId},0))`);
-    const [existing]=await tx.select().from(onehrResult).where(eq(onehrResult.reviewId,reviewId));if(existing)return existing.id;
+    const existing=await frozenReviewTx(tx,reviewId);if(existing)return existing.id;
     if(!['open','calibration'].includes(r.cycle.native.status))throw Error('The cycle is closed.');
     const resolvedResult=await resolved(tx,reviewId,r.cycle.policy);
     const activeDecisions=resolvedResult.rows.filter(d=>!(d.tier==='group'&&d.mode==='blend'));
@@ -1377,12 +1378,12 @@ export async function getOnehrReviewTx(tx:Tx,ctx:SessionContext,reviewId:string)
     // D-P1-22: PM stays with the stored reviewer and the approvers; the one-level-up reviewer sees competencies and plans.
     const pmHidden=(moderator||reviewer)&&!admin,tmHidden=moderator&&!reviewer&&!admin;
     const name={name:r.native.name};const moderators=await moderatorChoices(tx,reviewId);
-    const [stored]=await tx.select().from(onehrResult).where(eq(onehrResult.reviewId,reviewId));
-    const [card]=self||admin?await tx.execute<{value:ResultCard|null}>(sql`select app.onehr_result_card(${reviewId}::uuid) as value`):[];
-    const record=self||admin?card?.value:stored?{...stored,frozen:true}:null;
+    const stored=await frozenReviewTx(tx,reviewId);
+    const [card]=await tx.execute<{value:ResultCard|null}>(sql`select app.onehr_task_result_card(${reviewId}::uuid) as value`);
+    const record=card?.value;
     const result=record?.result as ResultCard['result']|undefined;
     // WP-E (E-1): a leader who is not a cycle administrator reads a frozen band only once it is released to
-    // leaders. RLS still admits the row (the frozen-guards need it); the projection masks it.
+    // leaders. The database card already masks bands; this shares its native visibility metadata.
     const leaderSees=!self&&!admin&&stored?await frozenVisibilityOneTx(tx,reviewId):null;
     const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);
     const leadership=(manager||reviewer||admin)&&participant?.ok?await assessment(tx,reviewId,r.cycle.policy):null;
@@ -1520,7 +1521,7 @@ export async function reassignOnehrReviewer(ctx:SessionContext,reviewId:string,e
   const [subject]=await tx.select({personId:onehrEmployment.personId}).from(onehrEmployment).where(eq(onehrEmployment.id,r.row.employmentId));
   const [nativeScope]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_report_of(${r.row.employmentId}::uuid,${reviewerEmploymentId}::uuid) or app.heads_department_of(${r.row.employmentId}::uuid,${reviewerEmploymentId}::uuid) as ok`);
   if(!reviewer||!subject||reviewer.personId===subject.personId||!nativeScope?.ok||reviewer.terminatedOn&&reviewer.terminatedOn<=todayInKualaLumpur())throw Error('Choose an active reviewer other than the subject.');
-  const [frozen]=await tx.select().from(onehrResult).where(eq(onehrResult.reviewId,reviewId));if(frozen||r.native.closedAt||r.cycle.native.status==='closed')throw Error('Assessment is finalized.');
+  const frozen=await frozenReviewTx(tx,reviewId);if(frozen||r.native.closedAt||r.cycle.native.status==='closed')throw Error('Assessment is finalized.');
   // ADR-0142: the reviewer lives on the kernel review, an HR write; refuse instead of a silent zero-row update.
   await requireKernelReviewWriter(tx,r.row.companyId,'Only an HR administrator can reassign the reviewer.');
   const moved=await tx.update(performanceReview).set({reviewerEmploymentId}).where(eq(performanceReview.id,reviewId)).returning({id:performanceReview.id});
@@ -1529,13 +1530,12 @@ export async function reassignOnehrReviewer(ctx:SessionContext,reviewId:string,e
  });
 }
 
-/** Canonical final labels for native report consumers, with result RLS and module policy unchanged. WP-E (E-1):
- * a row the caller reads only as the line manager shows a band once it is released to leaders. */
+/** Canonical final labels for native report consumers. The bounded SQL owner returns no
+ * provenance and admits a manager's band only after its actual release to leaders. */
 export async function onehrReportResultsTx(tx:Tx,reviewIds:string[]) {
  if(!reviewIds.length)return new Map<string,{performance:PMBand|null;potential:PotentialBand|null;talent:FrozenResult['talent'];id:string;digest:string}>();
- const results=await tx.select().from(onehrResult).where(inArray(onehrResult.reviewId,reviewIds));
- const visible=await frozenVisibilityTx(tx,results.map(r=>r.reviewId));
- return new Map(results.map(r=>{const f=r.result as FrozenResult,v=visible.get(r.reviewId);return [r.reviewId,{performance:v?.performance?f.performance:null,potential:v?.potential?f.potential:null,talent:v?.talent?f.talent:null,id:r.id,digest:r.digest}];}));
+ const results=await tx.execute<{reviewId:string;value:{performance:PMBand|null;potential:PotentialBand|null;talent:FrozenResult['talent'];id:string;digest:string}|null}>(sql`select source.id as "reviewId",app.onehr_report_result(source.id) as value from unnest(ARRAY[${sql.join(reviewIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) source(id)`);
+ return new Map(results.flatMap(row=>row.value?[[row.reviewId,row.value] as const]:[]));
 }
 
 async function clearAssessmentDraftTx(tx:Tx,ctx:SessionContext,reviewId:string,kind:DraftKind,contextId=reviewId) {
@@ -1808,7 +1808,7 @@ async function writeKpiApprovalChainTx(tx:Tx,ctx:SessionContext,r:Awaited<Return
 export async function moveUnitExclusionKpiLinesTx(tx:Tx,ctx:SessionContext,reviewId:string,moves:readonly {kpiId:string;to:readonly string[]}[],ruleId:string){
  const r=await loadReview(tx,reviewId,true);await requireAdmin(tx,r.row.cycleId);
  if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This cycle is read-only.');
- const [frozen]=await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,reviewId));
+ const [frozen]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${reviewId}::uuid)`);
  if(frozen||r.native.closedAt)return {moved:0,skipped:moves.length};
  let kpis=r.kpis,moved=0,skipped=0;
  for(const move of moves){

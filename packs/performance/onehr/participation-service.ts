@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../../db/client';
 import { actorOf, appendEvent } from '../../../db/events';
-import { assessmentParticipationSnapshot, onehrCycle, onehrResult, onehrReview, performanceReview, person, reviewCycle } from '../../../db/schema';
+import { assessmentParticipationSnapshot, onehrCycle, onehrReview, performanceReview, person, reviewCycle } from '../../../db/schema';
 import { withPerformanceTenant } from '../../../core/module-gate';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
 import { ensureAssessmentCycleReviewTx, initializeOnehrCycleTx } from '../service';
@@ -70,7 +70,7 @@ export async function setAssessmentParticipation(ctx:SessionContext,cycleId:stri
   const [allowed]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from app.onehr_employment e where e.id=${employmentId}::uuid and e.tenant_id=app.current_tenant_id() and app.onehr_admin(e.company_id) and (${cycle.companyId}::uuid is null or e.company_id=${cycle.companyId}::uuid)) as ok`);
   if(!e||!allowed?.ok||e.terminatedOn&&e.terminatedOn<=todayInKualaLumpur())throw Error('Choose an active employee in this cycle and your authorized company scope.');
   const [existingReview]=await tx.select({id:performanceReview.id}).from(performanceReview).where(and(eq(performanceReview.cycleId,cycleId),eq(performanceReview.employmentId,employmentId)));
-  if(existingReview){await tx.select({id:onehrReview.reviewId}).from(onehrReview).where(eq(onehrReview.reviewId,existingReview.id)).for('update');const [frozen]=await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,existingReview.id));if(frozen)throw Error('A finalized assessment retains its participation and history.');}
+  if(existingReview){await tx.select({id:onehrReview.reviewId}).from(onehrReview).where(eq(onehrReview.reviewId,existingReview.id)).for('update');const [frozen]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${existingReview.id}::uuid)`);if(frozen)throw Error('A finalized assessment retains its participation and history.');}
   if(mode==='add'){const [unit]=await tx.execute<{out:boolean}>(sql`select app.assessment_unit_out(${cycleId}::uuid,${employmentId}::uuid) as out`);if(unit?.out)throw Error('This employee\'s unit is not taking part in the cycle. Bring the unit back before including them.');}
   const [old]=await tx.select().from(assessmentParticipationSnapshot).where(and(eq(assessmentParticipationSnapshot.cycleId,cycleId),eq(assessmentParticipationSnapshot.employmentId,employmentId))).for('update');
   if((old?.revision??null)!==expectedParticipant)throw Error('This participation record changed. Reload before saving.');
