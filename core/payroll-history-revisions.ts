@@ -399,3 +399,16 @@ export async function getPayrollHistoryAttempt(ctx:SessionContext,id:string){
   return {...source,events};
  });
 }
+
+/** Exact maintenance flags; employee/calculation readers do not depend on this projection. */
+export type PayrollHistoryFunctionActions={view:boolean;add:boolean;edit:boolean;delete:boolean};
+export async function payrollHistoryFunctionAccess(ctx:SessionContext):Promise<Record<string,PayrollHistoryFunctionActions>>{
+ assertModuleGate(ctx,'payroll');
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{id:string;view:boolean;add:boolean;edit:boolean;delete:boolean}>(sql`select c.id,
+   app.financial_history_function_action(c.id,'view') "view",app.financial_history_function_action(c.id,'add') "add",
+   app.financial_history_function_action(c.id,'edit') "edit",app.financial_history_function_action(c.id,'delete') "delete"
+   from company c where c.tenant_id=app.current_tenant_id() and app.financial_history_function_action(c.id,'view') order by c.id`);
+  return Object.fromEntries(rows.map(({id,...actions})=>[id,actions]));
+ });
+}
