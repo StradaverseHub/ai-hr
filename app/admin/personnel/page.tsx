@@ -5,11 +5,10 @@ import { getTranslations } from 'next-intl/server';
 import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
 import {requireWorkforceAccess} from '@/lib/workforce-authz';
 import {
-  countEmployeesByStatus,
   listCompanies,
   listDepartments,
   listWorkforcePickOptions,
-  listEmployeesPage,
+  personnelListPage,
 } from '@/core/read';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
@@ -126,8 +125,7 @@ export default async function PeoplePage({
   const { q, company, dept, type, draftOnly, hasFilters } = query;
 
   const [
-    { rows: employeeRows, total: employeeTotal },
-    headcount,
+    { rows: employeeRows, total: employeeTotal, headcount },
     companies,
     departments,
     allDrafts,
@@ -135,17 +133,13 @@ export default async function PeoplePage({
     savedColumns,
     idConfigs,
   ] = await Promise.all([
-    listEmployeesPage(session, {
+    // Rows and un-narrowed status facets retain the same authorized filter owners.
+    personnelListPage(session, {
       companyIds: scopeIds,
       ...query.filters,
       limit: pq.limit,
       offset: pq.offset,
-    },'workforce'),
-    // Point 5 — the five headcount cards. Counted in SQL over the WHOLE filtered set, never over the
-    // page: "40 employees" must keep meaning forty people, not twenty-five rows. The bucket narrowing is
-    // stripped (headcountFilters) so the cards stay a facet of the current view — clicking one cannot
-    // make the other four read zero.
-    countEmployeesByStatus(session,{companyIds:scopeIds,...headcountFilters(query)},'workforce'),
+    }, {companyIds: scopeIds, ...headcountFilters(query)}),
     listCompanies(session).then(rows=>rows.filter(row=>workforceIds.has(row.id))),
     scopeIds.length?listDepartments(session,{companyIds:scopeIds}):Promise.resolve([]),
     // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
