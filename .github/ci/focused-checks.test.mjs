@@ -81,3 +81,42 @@ test('focused plan identity binds cap and peak budget independently of selected 
     assert.deepEqual(altered.files, original.files);
   }
 });
+
+/** A green Vitest assertion is not evidence that a requested model evaluation ran.
+ * These fixtures intentionally exercise the existing verifier, not a missing helper import. */
+const evalFile = 'test/assistant-model-ceiling.eval.test.ts';
+function disabledEvalResult() {
+  return {success: true, numFailedTests: 0, numFailedTestSuites: 0, numTotalTests: 1, numPassedTests: 1,
+    testResults: [{name: '/candidate/' + evalFile, status: 'passed', assertionResults: [{status: 'passed',
+      title: 'stays disabled and calls no provider without the protected evaluation secret'}]}]};
+}
+function requestedEvalContext() {
+  const request = {provider: 'openrouter', model: 'openai/gpt-6-luna', path: 'production', budgetUsd: 15};
+  const plan = {files: [evalFile], caseIds: ['baseline:leave-annual:0', 'sensitive:crisis-en:0']};
+  return {requested: true, request, plan, receipt: {schemaVersion: 1, request: {...request},
+    files: [...plan.files], plannedCaseIds: [...plan.caseIds], outcomes: plan.caseIds.map(id => ({id, status: 'completed'})),
+    providerCalls: 1, executionComplete: true}};
+}
+test('Ordinary no-model invocation retains the disabled/no-provider proof without claiming evaluation', () => {
+  assert.equal(verifyFocusedResult(disabledEvalResult(), [evalFile], '/candidate'), 1);
+});
+test('Requested model evaluation cannot qualify from a passing disabled assertion without its measurement receipt', () => {
+  const context = requestedEvalContext(); delete context.receipt;
+  assert.throws(() => verifyFocusedResult(disabledEvalResult(), [evalFile], '/candidate', context));
+});
+test('Requested model evaluation refuses a measurement receipt for a different selected carrier', () => {
+  const context = requestedEvalContext();
+  context.plan.files = ['test/review/teras-review-model.eval.test.ts'];
+  context.receipt.files = [...context.plan.files];
+  assert.throws(() => verifyFocusedResult(disabledEvalResult(), [evalFile], '/candidate', context));
+});
+test('Requested model evaluation refuses a declared complete receipt missing a planned case outcome', () => {
+  const context = requestedEvalContext(); context.receipt.outcomes.pop();
+  assert.throws(() => verifyFocusedResult(disabledEvalResult(), [evalFile], '/candidate', context));
+});
+test('Requested model evaluation refuses budget-truncated outcomes even when every Vitest assertion passed', () => {
+  const context = requestedEvalContext();
+  context.receipt.outcomes[1].status = 'budget_refused';
+  context.receipt.executionComplete = false;
+  assert.throws(() => verifyFocusedResult(disabledEvalResult(), [evalFile], '/candidate', context));
+});
