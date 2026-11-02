@@ -68,6 +68,25 @@ describe('Payroll Process wizard — claims scope safety', () => {
     expect((await withTenant(a,tx=>resolveBatchScopeFilter(tx,{departmentIds:[base.deptA]}))).employmentIds).toEqual([inside.employmentId]);
   });
 
+  it('refuses a finite reservation without its actual native input and completed audit',async()=>{
+    const a=adminCtx(base),employee=await hire(a,base,'FiniteClaim',base.deptA);
+    const {id:typeId}=await createClaimType(a,{code:'FINITE',name:'Finite source',defaultTaxable:true,requiresReceipt:false});
+    const {id:claimId}=await submitClaim(a,{employmentId:employee.employmentId,claimTypeId:typeId,amount:89,incurredOn:recent()});
+    await decideClaim(a,{claimRequestId:claimId,decision:'approve'});
+    const {batchId}=await createBatch(a,{companyId:base.companyId,payPeriod:'2026-05',scope:{employmentIds:[employee.employmentId]}});
+    const [before]=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claimId));
+    const reserve=()=>withTenant(a,async tx=>{
+      await tx.execute(sql`select app.access_payroll_batch_begin(${batchId}::uuid,'edit')`);
+      const rows=await tx.execute<{id:string;employment_id:string}>(sql`select * from app.payroll_claim_apply(${batchId}::uuid,'reserve',ARRAY[${claimId}::uuid],null::uuid[])`);
+      expect(rows).toHaveLength(1);expect(rows[0]).toEqual({id:claimId,employment_id:employee.employmentId});
+    });
+    let state:string|undefined;try{await reserve();}catch(error){let cause:unknown=error;while(cause&&typeof cause==='object'){const current=cause as {code?:string;cause?:unknown};state=current.code??state;cause=current.cause;}}
+    expect(state).toBe('42501');
+    expect(await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claimId))).toEqual([before]);
+    await expect(withTenant(a,tx=>tx.execute(sql`select * from app.payroll_claim_apply(${batchId}::uuid,'reserve',ARRAY[${claimId}::uuid],null::uuid[])`))).rejects.toMatchObject({cause:expect.objectContaining({code:'42501'})});
+    await expect(withTenant(a,tx=>tx.execute(sql`select * from app.financial_claim_port_effect`))).rejects.toMatchObject({cause:expect.objectContaining({code:'42501'})});
+  });
+
   it('prefill reserves ONLY claims for employees in the batch scope', async () => {
     const a = adminCtx(base);
     const inScope = await hire(a, base, 'InScope', base.deptA);
