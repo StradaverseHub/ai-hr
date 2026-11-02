@@ -199,3 +199,10 @@ it('preserves native independent standard and H unused-pool funding for annual p
  }
  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_post_funding('annual','{}','{}')`))).rejects.toThrow();
 });
+
+it('preserves native input carry normalization for absent, negative and legacy NaN numeric fields',async()=>{
+ for(const value of [null,'NaN','-55.50','0','0.01','55.55','9999999999.99']){
+  const [row]=await owner.db.execute<{value:number}>(sql`select to_jsonb(app.reward_calc_input_carry(${value}::numeric))as value`);expect(row.value).toBe(Math.max(0,Number(value)||0));
+ }
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_calc_input_carry(1)`))).rejects.toThrow();
+});

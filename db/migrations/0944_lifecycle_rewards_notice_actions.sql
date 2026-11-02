@@ -2680,7 +2680,7 @@ BEGIN
     IF jsonb_array_length(provenance)>100 THEN RAISE EXCEPTION 'This payroll input has too many historical reward sources.' USING ERRCODE='42501';END IF;
    END IF;
   END IF;
-  effects:=effects||jsonb_build_array(jsonb_build_object('entryId',item->>'id','employmentBefore',to_jsonb(emp),'compensationBefore',to_jsonb(salary),'seniorGradeBefore',CASE WHEN grade.id IS NULL THEN NULL ELSE to_jsonb(grade)END,'promotionGrade',CASE WHEN target_grade.id IS NULL THEN NULL ELSE to_jsonb(target_grade)END,'payrollInputBefore',CASE WHEN pay_input.id IS NULL THEN NULL ELSE to_jsonb(pay_input)END,'newBasicCents',item->'newBasicCents','newBasicSalary',app.reward_calc_fixed_money((item->>'newBasicCents')::double precision/100::double precision),'awardCents',amount,'newBonusAmount',CASE WHEN(amount<>0 OR is_senior)AND p_batch IS NOT NULL THEN app.reward_calc_fixed_money(greatest(0::double precision,coalesce(pay_input.bonus_amount,0)::double precision+amount::double precision/100::double precision))ELSE NULL END,'rewardProvenance',provenance));
+  effects:=effects||jsonb_build_array(jsonb_build_object('entryId',item->>'id','employmentBefore',to_jsonb(emp),'compensationBefore',to_jsonb(salary),'seniorGradeBefore',CASE WHEN grade.id IS NULL THEN NULL ELSE to_jsonb(grade)END,'promotionGrade',CASE WHEN target_grade.id IS NULL THEN NULL ELSE to_jsonb(target_grade)END,'payrollInputBefore',CASE WHEN pay_input.id IS NULL THEN NULL ELSE to_jsonb(pay_input)END,'newBasicCents',item->'newBasicCents','newBasicSalary',app.reward_calc_fixed_money((item->>'newBasicCents')::double precision/100::double precision),'awardCents',amount,'newBonusAmount',CASE WHEN(amount<>0 OR is_senior)AND p_batch IS NOT NULL THEN app.reward_calc_fixed_money(CASE WHEN pay_input.bonus_amount::text='NaN'THEN 0::double precision ELSE greatest(0::double precision,coalesce(pay_input.bonus_amount,0)::double precision+amount::double precision/100::double precision)END)ELSE NULL END,'rewardProvenance',provenance));
  END LOOP;
  RETURN admission||jsonb_build_object('sourcePlan',effects,'transactionId',pg_current_xact_id()::text);
 END $$;
@@ -2758,6 +2758,8 @@ BEGIN
  IF NOT app.access_compensation_action(target_employment,'add')THEN RAISE EXCEPTION 'Salary record or permission is unavailable' USING ERRCODE='42501';END IF;
  SELECT c.* INTO salary FROM public.compensation c WHERE c.id=(plan->'compensationBefore'->>'id')::uuid AND c.tenant_id=proof.tenant_id AND c.employment_id=target_employment FOR UPDATE;
  IF salary.id IS NULL OR to_jsonb(salary)IS DISTINCT FROM plan->'compensationBefore'OR salary.valid_to IS NOT NULL OR salary.superseded_at IS NOT NULL OR(unit.policy->>'effectiveFrom')::date<=salary.valid_from THEN RAISE EXCEPTION 'Salary data changed after the snapshot. Return and refresh the review.' USING ERRCODE='42501';END IF;
+ IF salary.pay_mode::text IN('daily','hourly')AND(salary.rate_amount IS NULL OR salary.rate_amount::text IN('NaN','Infinity','-Infinity')OR salary.rate_amount<=0)THEN RAISE EXCEPTION 'A daily or hourly pay mode requires a rate greater than zero' USING ERRCODE='22003';END IF;
+ IF salary.monthly_allowance::text IN('NaN','Infinity','-Infinity')THEN RAISE EXCEPTION 'Monthly allowance must be a number — a blank or unparseable amount cannot be stored on a salary record' USING ERRCODE='22003';END IF;
  native_remarks:=CASE WHEN app.reward_calc_senior(unit.policy,jsonb_build_object('source',entry.source,'facts',entry.facts))THEN'Senior plan — 'ELSE''END||'Approved Reward Desk review '||unit.id::text;
  UPDATE public.compensation c SET valid_to=(unit.policy->>'effectiveFrom')::date WHERE c.id=salary.id AND c.tenant_id=proof.tenant_id RETURNING c.* INTO after_salary;
  INSERT INTO public.compensation(tenant_id,employment_id,basic_salary,currency,monthly_allowance,pay_mode,payment_term,rate_amount,remarks,valid_from,valid_to)
@@ -2821,7 +2823,7 @@ BEGIN
  ELSE
   -- The canonical bonus-enact call explicitly preserves OT/TP1 provenance and decomposition.
   -- All unrelated allowance/claim/loan/component fields remain on the same physical row.
-  UPDATE public.payroll_input i SET overtime_amount=greatest(0,before_input.overtime_amount),bonus_amount=(plan->>'newBonusAmount')::numeric,tp1_deduction=greatest(0,before_input.tp1_deduction),zakat=greatest(0,before_input.zakat),updated_at=now()WHERE i.id=before_input.id AND i.tenant_id=proof.tenant_id RETURNING i.* INTO after_input;
+  UPDATE public.payroll_input i SET overtime_amount=app.reward_calc_input_carry(before_input.overtime_amount),bonus_amount=(plan->>'newBonusAmount')::numeric,tp1_deduction=app.reward_calc_input_carry(before_input.tp1_deduction),zakat=app.reward_calc_input_carry(before_input.zakat),updated_at=now()WHERE i.id=before_input.id AND i.tenant_id=proof.tenant_id RETURNING i.* INTO after_input;
  END IF;
  event_after:=to_jsonb(after_input);
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
@@ -2909,7 +2911,7 @@ BEGIN
    effect:=proof.effects->('input:'||entry_id::text);before_image:=nullif(effect->'before','null'::jsonb);after_image:=effect->'eventAfter';input_id:=(effect->>'inputId')::uuid;
    IF effect IS NULL OR before_image IS DISTINCT FROM nullif(plan->'payrollInputBefore','null'::jsonb)OR NOT app.reward_post_receipt(proof.id,'payroll_input',input_id,before_image,after_image)OR after_image->>'batch_id'IS DISTINCT FROM proof.admission->>'batchId'OR after_image->>'employment_id'IS DISTINCT FROM target_employment::text OR(after_image->>'bonus_amount')::numeric IS DISTINCT FROM(plan->>'newBonusAmount')::numeric OR NOT app.function_action_allowed('payroll.process','edit',unit.company_id)OR NOT app.access_financial_action_employment('payroll',target_employment,'edit')THEN RAISE EXCEPTION 'Reward payroll input effect unavailable' USING ERRCODE='42501';END IF;
    IF before_image IS NOT NULL AND after_image-ARRAY['overtime_amount','bonus_amount','tp1_deduction','zakat','updated_at']IS DISTINCT FROM before_image-ARRAY['overtime_amount','bonus_amount','tp1_deduction','zakat','updated_at']THEN RAISE EXCEPTION 'Reward payroll input metadata changed' USING ERRCODE='42501';END IF;
-   IF(after_image->>'overtime_amount')::numeric<>greatest(0,coalesce((before_image->>'overtime_amount')::numeric,0))OR(after_image->>'tp1_deduction')::numeric<>greatest(0,coalesce((before_image->>'tp1_deduction')::numeric,0))OR(after_image->>'zakat')::numeric<>greatest(0,coalesce((before_image->>'zakat')::numeric,0))OR NOT app.reward_post_audit(proof.id,(effect->>'auditId')::uuid,'payroll-batch',(proof.admission->>'batchId')::uuid,'payroll-batch.input-set',NULL,jsonb_build_object('employmentId',target_employment,'payrollInputId',input_id,'fieldsChanged',jsonb_build_array('overtimeAmount','bonusAmount','tp1Deduction','zakat')))THEN RAISE EXCEPTION 'Reward payroll input audit unavailable' USING ERRCODE='42501';END IF;
+   IF(after_image->>'overtime_amount')::numeric<>app.reward_calc_input_carry((before_image->>'overtime_amount')::numeric)OR(after_image->>'tp1_deduction')::numeric<>app.reward_calc_input_carry((before_image->>'tp1_deduction')::numeric)OR(after_image->>'zakat')::numeric<>app.reward_calc_input_carry((before_image->>'zakat')::numeric)OR NOT app.reward_post_audit(proof.id,(effect->>'auditId')::uuid,'payroll-batch',(proof.admission->>'batchId')::uuid,'payroll-batch.input-set',NULL,jsonb_build_object('employmentId',target_employment,'payrollInputId',input_id,'fieldsChanged',jsonb_build_array('overtimeAmount','bonusAmount','tp1Deduction','zakat')))THEN RAISE EXCEPTION 'Reward payroll input audit unavailable' USING ERRCODE='42501';END IF;
    IF plan->'rewardProvenance'<>'null'::jsonb THEN
     IF effect->'after'IS DISTINCT FROM after_image||jsonb_build_object('reward_provenance',plan->'rewardProvenance')OR NOT app.reward_post_receipt(proof.id,'payroll_input',input_id,after_image,effect->'after')THEN RAISE EXCEPTION 'Reward historical provenance effect unavailable' USING ERRCODE='42501';END IF;
    ELSIF effect->'after'IS DISTINCT FROM after_image THEN RAISE EXCEPTION 'Unexpected Reward provenance effect' USING ERRCODE='42501';END IF;
@@ -2963,3 +2965,12 @@ BEGIN
 END $$;
 CREATE TRIGGER rewards_post_authority_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.reward_post_authority_changed();
 REVOKE ALL ON FUNCTION app.reward_post_funding(text,jsonb,jsonb),app.reward_post_native(uuid,integer,uuid),app.reward_post_authority_changed()FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- setPayrollInput carries Number(value)||0 through Math.max(0,...); SQL NaN ordering must
+-- not turn a legacy NaN into a stored NaN or award it a different bonus on the merge path.
+CREATE FUNCTION app.reward_calc_input_carry(p numeric)RETURNS numeric
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN p::text='NaN'THEN 0 ELSE greatest(0,coalesce(p,0))END;
+$$;
+REVOKE ALL ON FUNCTION app.reward_calc_input_carry(numeric)FROM PUBLIC,ai_hr_app;
