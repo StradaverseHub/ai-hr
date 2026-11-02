@@ -52,6 +52,7 @@ export const REWARDS_FUNCTION_DEFAULTS={
 /** These include the real production front doors. Their APP ACL remains held for review.
  * No private test execution lease or unsupported catalogue shortcut satisfies this contract. */
 export const REWARDS_FUNCTION_REQUIRED_OWNERS=[
+ 'app.reward_unit_native_readable(uuid)',
  'app.rewards_member_fingerprint_for_tenant(uuid,uuid,uuid)',
  'app.rewards_member_state_for_tenant(uuid,uuid)',
  'app.rewards_roles_for_tenant(uuid,uuid,uuid)',

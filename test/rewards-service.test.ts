@@ -493,6 +493,16 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.cancelled')));expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorId:actor.userId,actorType:'user',subjectEmploymentId:null,payload:{fromStage:'draft',reason:why,revision:before.unit.revision,before:{status:'draft',revision:before.unit.revision},after:{status:'withdrawn',revision:before.unit.revision+1}}});expect(Object.keys(events[0].payload).sort()).toEqual(['after','before','cancelRowHash','fromStage','reason','revision']);
     await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_cancel_command(${unitId}::uuid,${before.unit.revision},${why})`))).rejects.toThrow();
   });
+  it('preserves original native unit invisibility before definer configuration governance or cancellation errors',async()=>{
+    const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Actual unrelated employee account',primaryEmail:'unrelated-unit@rewards.test'}).returning();
+    const outsider={...admin,userId:await createAppUser(b.tenantId,person.id,'employee'),personId:person.id,roles:['employee']as SessionContext['roles'],grants:undefined};
+    await expect(getRewardConfiguration(outsider,unitId)).rejects.toThrow('Reward unit not found or access has been removed.');
+    for(const source of [sql`select app.reward_configuration_review(${unitId}::uuid)`,sql`select app.reward_governance_review(${unitId}::uuid)`,sql`select app.reward_cancel_admission(${unitId}::uuid,${(await view()).unit.revision},'A real cancellation source must remain private')`]){
+      let refusal:unknown;try{await owner.withTenant(outsider,tx=>tx.execute(source));}catch(error){refusal=error;}
+      expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward unit not found or access has been removed.'}));
+    }
+    expect(await owner.withTenant(outsider,tx=>tx.execute(sql`select app.reward_unit_native_readable(${unitId}::uuid)as readable`))).toEqual([{readable:false}]);
+  });
   it('refuses non-GR participants and any raw agent stamp at the private cancellation admission',async()=>{
     const before=await view();
     let participant:unknown;try{await owner.withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_cancel_admission(${unitId}::uuid,${before.unit.revision},'Actual cancelled unit request')`));}catch(error){participant=error;}

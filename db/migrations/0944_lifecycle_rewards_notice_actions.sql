@@ -2604,6 +2604,13 @@ REVOKE ALL ON FUNCTION app.reward_calc_post_senior(jsonb,jsonb,jsonb)FROM PUBLIC
 -- Ordinary native posting preparation. This private owner does not enact salary, grade,
 -- payroll, funding or audit effects. Reviewed Assistant preparation retains its separate
 -- NOWAIT/full nominated-source contract; no caller flag can weaken that contract here.
+-- Repeat the original unit RLS visibility before a definer distinguishes missing authority
+-- from a missing unit. A native creator/admin/seat is not an employee-row read grant.
+CREATE FUNCTION app.reward_unit_native_readable(p_unit uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current()AND app.current_user_id()IS NOT NULL AND EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND(u.created_by=app.current_user_id()OR app.reward_access(u.id)));
+$$;
+REVOKE ALL ON FUNCTION app.reward_unit_native_readable(uuid)FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.reward_post_admission(p_unit uuid,p_revision integer,p_batch uuid DEFAULT NULL)RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE unit public.reward_unit;actor public.app_user;batch public.payroll_batch;roles text[];entries jsonb;funding jsonb;calculation jsonb;awards jsonb;hash text;has_bonus boolean;authority text;
@@ -2613,7 +2620,7 @@ BEGIN
  PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();
  IF current_setting('transaction_isolation')<>'read committed'OR current_setting('transaction_read_only')<>'off'OR NOT pg_try_advisory_xact_lock(hashtextextended('leave-dependency-configuration:'||app.current_tenant_id()::text,0))THEN RAISE EXCEPTION 'Leave source is unavailable; review it again.' USING ERRCODE='55P03';END IF;
  funding:=app.reward_funding(p_unit,true);
- SELECT actual.* INTO unit FROM public.reward_unit actual WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id()AND actual.deleted_at IS NULL FOR UPDATE;
+ SELECT actual.* INTO unit FROM public.reward_unit actual WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id()AND actual.deleted_at IS NULL AND app.reward_unit_native_readable(actual.id)FOR UPDATE;
  SELECT actual.* INTO actor FROM public.app_user actual WHERE actual.id=app.current_user_id()AND actual.tenant_id=app.current_tenant_id()AND actual.archived_at IS NULL AND NOT app.login_blocked(actual.id);
  roles:=ARRAY(SELECT app.reward_roles(p_unit));
  IF unit.id IS NULL OR actor.id IS NULL THEN RAISE EXCEPTION 'Reward posting unavailable' USING ERRCODE='42501';END IF;
@@ -3173,7 +3180,7 @@ DECLARE unit public.reward_unit;actor public.app_user;roles text[];is_gr boolean
 BEGIN
  IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
  SELECT u.* INTO actor FROM public.app_user u WHERE u.id=app.current_user_id()AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
- SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL;
+ SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL AND app.reward_unit_native_readable(u.id);
  roles:=ARRAY(SELECT app.reward_roles(p_unit));
  IF actor.id IS NULL OR unit.id IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
  IF cardinality(roles)=0 THEN RAISE EXCEPTION 'Ask an administrator to assign your Reward Desk role for this unit.' USING ERRCODE='42501';END IF;
@@ -3220,7 +3227,7 @@ DECLARE unit public.reward_unit;actor public.app_user;roles text[];administrator
 BEGIN
  IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
  SELECT u.* INTO actor FROM public.app_user u WHERE u.id=app.current_user_id()AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
- SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL;
+ SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL AND app.reward_unit_native_readable(u.id);
  IF actor.id IS NULL OR unit.id IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
  roles:=ARRAY(SELECT app.reward_roles(unit.id));administrator:=app.reward_admin(unit.company_id);is_gr:='gr'=ANY(roles);
  IF NOT administrator AND NOT is_gr THEN RAISE EXCEPTION 'Rewards configuration requires company administrator or Group Rewards access.' USING ERRCODE='42501';END IF;
@@ -3259,7 +3266,7 @@ BEGIN
  PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
  reason:=app.reward_calc_text(to_jsonb(p_reason),4000);
  IF app.reward_calc_units(reason)<10 THEN RAISE EXCEPTION 'Explain why the review is being cancelled (at least 10 characters).' USING ERRCODE='42501';END IF;
- SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL FOR UPDATE;
+ SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL AND app.reward_unit_native_readable(u.id) FOR UPDATE;
  SELECT u.* INTO actor FROM public.app_user u WHERE u.id=app.current_user_id()AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
  IF unit.id IS NULL OR actor.id IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
  roles:=ARRAY(SELECT app.reward_roles(unit.id));
