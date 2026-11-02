@@ -409,6 +409,6 @@ export async function payrollHistoryFunctionAccess(ctx:SessionContext):Promise<R
    app.financial_history_function_action(c.id,'view') "view",app.financial_history_function_action(c.id,'add') "add",
    app.financial_history_function_action(c.id,'edit') "edit",app.financial_history_function_action(c.id,'delete') "delete"
    from company c where c.tenant_id=app.current_tenant_id() and app.financial_history_function_action(c.id,'view') order by c.id`);
-  return Object.fromEntries(rows.map(({id,...actions})=>[id,actions]));
+  return Object.fromEntries(rows.map(({id,...actions})=>[id,actions] as const));
  });
 }
