@@ -26834,7 +26834,7 @@
     "passwordHelp": "Use at least 14 characters. Do not include your username or email address.",
     "passwordTitle": "Choose your own password",
     "enrollTitle": "Set up your authenticator",
-    "enrollHelp": "Scan this QR code in your authenticator app, or enter the setup key manually. Then enter its current six-digit code.",
+    "enrollHelp": "Open your authenticator app first, choose Add account, then use its built-in scanner to scan this QR code. You can also enter the manual setup key. Return here and enter the current six-digit code.",
     "qrAlt": "Authenticator setup QR code",
     "manualKey": "Manual setup key",
     "code": "Six-digit authenticator code",
@@ -26871,7 +26871,8 @@
       "rateLimited": "Too many attempts. Please wait before trying again.",
       "unavailable": "Sign-in or recovery is temporarily unavailable. Try again later or contact your administrator.",
       "conflict": "This username cannot be enrolled. Choose another or contact your administrator.",
-      "forbidden": "This request could not be verified. Open the app directly and try again."
+      "forbidden": "This request could not be verified. Open the app directly and try again.",
+      "authenticatorUnavailable": "Could not open an authenticator. Open your authenticator app and enter the manual setup key, then return here with its six-digit code."
     },
     "switchAccountTitle": "Use a different account",
     "switchAccountHelp": "This invitation belongs to a different organization or verified email. Sign out to set up or sign in to the invited account. Your current HR account stays separate.",
@@ -26881,7 +26882,9 @@
     "signingInHelp": "Taking you to AIHR.",
     "idleSignedOut": "You were signed out after a period of inactivity. Sign in again to continue.",
     "microsoft": "Continue with Microsoft",
-    "microsoftError": "Microsoft sign-in could not complete. Check your organization and linked account, then try again."
+    "microsoftError": "Microsoft sign-in could not complete. Check your organization and linked account, then try again.",
+    "openAuthenticator": "Open authenticator",
+    "samePhoneHelp": "Setting up on this phone? Open its default authenticator below. On iPhone, this may open Apple Passwords. If it does not open, enter the manual setup key in your authenticator app."
   },
   "aiManagement": {
     "title": "AI management",

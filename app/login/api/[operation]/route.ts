@@ -1,3 +1,4 @@
+import { authenticatorSetupUri } from '@/lib/authenticator-setup';
 import { rotateEntraRefresh, revokeEntraSession, touchEntraSession } from '@/lib/entra/sessions';
 import { EntraError } from '@/lib/entra/model';
 import {getLocale} from 'next-intl/server';
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
     } else return NextResponse.json({ error: 'unavailable' }, { status: 404, headers: responseHeaders });
     const reply: Record<string, unknown> = { ...result };
     if (result.step === 'enroll' && 'secret' in result && result.secret) {
-      const uri = `otpauth://totp/${encodeURIComponent(`AI HR:${result.account || ''}`)}?${new URLSearchParams({ secret: result.secret, issuer: 'AI HR', algorithm: 'SHA1', digits: '6', period: '30' })}`;
+      const uri = authenticatorSetupUri(result.secret, result.account || '');
       reply.qr = await toDataURL(uri, { width: 224, margin: 2, errorCorrectionLevel: 'M' });
     }
     let browserToken: string | undefined;

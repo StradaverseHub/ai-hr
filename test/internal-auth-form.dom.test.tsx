@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { aiReviewDomHtml, captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -53,6 +55,29 @@ describe('embedded browser forms', () => {
     expect(fetcher.mock.calls[1][0]).toBe('/login/api/mfa');
     expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({ code: '123456', challenge: 'a'.repeat(43), token: 'i'.repeat(43) });
   });
+  it('offers the exact enrollment account to the default authenticator without submitting MFA', async () => {
+    fetcher.mockResolvedValueOnce(Response.json({ step: 'enroll', challenge: 'e'.repeat(43), secret: 'JBSWY3DPEHPK3PXP', account: 'alpha:employee +test@example.invalid', qr: 'data:image/png;base64,fixture' }));
+    const rendered = view(), user = userEvent.setup();
+    expect(screen.queryByRole('link', { name: en.internalAuth.openAuthenticator })).toBeNull();
+    await user.type(screen.getByLabelText(en.internalAuth.username), 'employee');
+    await user.type(screen.getByLabelText(en.internalAuth.password), 'Fictional private phrase');
+    await user.click(screen.getByRole('button', { name: en.internalAuth.signIn }));
+    const link = await screen.findByRole('link', { name: en.internalAuth.openAuthenticator });
+    expect(screen.getByText(en.internalAuth.enrollHelp)).toBeInTheDocument();
+    expect(link).toHaveAccessibleDescription(en.internalAuth.samePhoneHelp);
+    const uri = new URL(link.getAttribute('href')!);
+    expect(uri.protocol).toBe('otpauth:'); expect(uri.hostname).toBe('totp');
+    expect(decodeURIComponent(uri.pathname)).toBe('/AI HR:alpha:employee +test@example.invalid');
+    expect(Object.fromEntries(uri.searchParams)).toEqual({ secret: 'JBSWY3DPEHPK3PXP', issuer: 'AI HR', algorithm: 'SHA1', digits: '6', period: '30' });
+    expect(link).toHaveAttribute('referrerpolicy', 'no-referrer');
+    expect(screen.getByAltText(en.internalAuth.qrAlt)).toBeInTheDocument();
+    expect(screen.getByText('JBSWY3DPEHPK3PXP')).toBeInTheDocument();
+    expect(screen.getByLabelText(en.internalAuth.code)).toBeRequired();
+    // Prevent OS navigation in jsdom; the native suite exercises the actual openURL call.
+    link.addEventListener('click', event => event.preventDefault());
+    await user.click(link); expect(fetcher).toHaveBeenCalledOnce();
+    await captureAiReviewScreenshots('<style>'+readFileSync('app/login/login.css','utf8')+'</style>'+aiReviewDomHtml(rendered.container), 'en', 'chat-card-authenticator-enrollment', 'Actual login component; fictional enrollment; inert OS handoff; no live authentication or physical-device acceptance.');
+  }, 120000);
   it('routes an accepted existing account straight to login without an extra continue screen', async () => {
     fetcher.mockResolvedValueOnce(Response.json({ step: 'activated', organization: 'new-customer' }));
     view({ mode: 'accept', invitation: 'i'.repeat(43), returnTo: '/operator' });
