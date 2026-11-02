@@ -9,6 +9,7 @@ import { and, desc, eq, getTableName, inArray, isNotNull, isNull, or, sql, type 
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
+import { isAiPrincipalCurrentTx } from './ai-principal';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { actorOf, appendEvent } from '../db/events';
 // ADR-0077 slice 5 — the per-company install hook (see createCompany).
@@ -5354,6 +5355,8 @@ export class CompanyNotFoundError extends Error {
 export async function deleteCompany(ctx: SessionContext, p: { id: string }, existingTx?: Tx) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const execute = async (tx: Tx) => {
+    // A caller-owned transaction must not borrow the supplied session's tenant or audit actor.
+    if (existingTx && !await isAiPrincipalCurrentTx(tx, ctx)) throw new CompanyDeleteForbiddenError();
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const rows = (await tx.execute(sql`

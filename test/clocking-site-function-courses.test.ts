@@ -4,7 +4,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {createCompany,deleteCompany,setCompanyParent} from '../core/admin';
+import {CompanyDeleteForbiddenError,createCompany,deleteCompany,setCompanyParent} from '../core/admin';
 import {setPayrollPermissionGrant} from '../core/payroll-permissions-admin';
 import {hireEmployee} from '../core/org';
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand} from '../core/data-permissions';
@@ -126,5 +126,24 @@ it('revalidates completed Company cleanup after an early flush and actual ancest
  })).rejects.toThrow('Company cleanup effects or authority changed');
  expect(await owner.db.select().from(s.company).where(eq(s.company.id,child.id))).toHaveLength(1);
  expect(await owner.db.select().from(s.clockingLocationCompany).where(and(eq(s.clockingLocationCompany.clockingLocationId,site.id),eq(s.clockingLocationCompany.companyId,child.id)))).toHaveLength(1);
+ expect(await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,child.id),eq(s.domainEvent.eventType,'company.deleted')))).toEqual([]);
+});
+
+it('refuses mismatched Company Delete transaction tenant or actor before any lock or effect',async()=>{
+ const {child,site,leave}=await companyCleanupSources(),foreign=await seedBase();
+ await withTenant(admin,async tx=>{
+  const lockCount=async()=>{
+   const [row]=await tx.execute<{count:number}>(sql`select count(*)::int as count from pg_locks where pid=pg_backend_pid() and locktype='advisory'`);
+   return row.count;
+  };
+  const before=await lockCount();
+  for(const supplied of [companyHr,adminCtx(foreign)]){
+   await expect(deleteCompany(supplied,{id:child.id},tx)).rejects.toBeInstanceOf(CompanyDeleteForbiddenError);
+   expect(await lockCount()).toBe(before);
+  }
+ });
+ expect(await owner.db.select().from(s.company).where(eq(s.company.id,child.id))).toHaveLength(1);
+ expect(await owner.db.select().from(s.clockingLocationCompany).where(and(eq(s.clockingLocationCompany.clockingLocationId,site.id),eq(s.clockingLocationCompany.companyId,child.id)))).toHaveLength(1);
+ expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,leave.id))).toHaveLength(1);
  expect(await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,child.id),eq(s.domainEvent.eventType,'company.deleted')))).toEqual([]);
 });
