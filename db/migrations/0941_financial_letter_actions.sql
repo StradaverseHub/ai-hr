@@ -3196,3 +3196,30 @@ $$;
 --> statement-breakpoint
 ALTER POLICY data_permission_subject_read ON public.performance_calibration_group_member
  USING(employment_id IS NULL OR app.data_permission_record_read(employment_id) OR app.onehr_reminder_graph_fact_read(tenant_id,'groupMember',to_jsonb(performance_calibration_group_member.*)));
+
+--> statement-breakpoint
+-- A task reader receives the native fields for its actual course. Raw subject
+-- storage retains the ordinary data-profile policy and cannot be used as a fallback.
+CREATE FUNCTION app.onehr_review_task_fields(wanted_review uuid) RETURNS SETOF public.performance_onehr_review
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source public.performance_onehr_review%ROWTYPE;projected jsonb;own boolean;administrator boolean;manager boolean;moderator boolean;reviewer boolean;own_ids uuid[];
+BEGIN
+ IF app.onehr_review_task_header(wanted_review) IS NULL THEN RETURN;END IF;
+ SELECT * INTO source FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id();IF source.review_id IS NULL THEN RETURN;END IF;
+ own:=app.onehr_self_employment(source.employment_id);administrator:=NOT own AND app.financial_onehr_result_admin(source.review_id);
+ manager:=NOT own AND app.onehr_manager(source.review_id);moderator:=NOT own AND NOT manager AND app.onehr_moderator(source.review_id);reviewer:=NOT own AND NOT manager AND app.onehr_effective_reviewer(source.review_id);
+ SELECT coalesce(array_agg(employment.id),'{}'::uuid[]) INTO own_ids FROM public.employment employment JOIN public.app_user account ON account.person_id=employment.person_id AND account.tenant_id=employment.tenant_id WHERE account.id=app.current_user_id() AND account.tenant_id=source.tenant_id;
+ SELECT jsonb_object_agg(field.key,field.value) INTO projected FROM jsonb_each(to_jsonb(source)) field WHERE field.key=ANY(ARRAY[
+ 'review_id','tenant_id','cycle_id','employment_id','company_id','grade','kpis','competencies','statements','profile_id','profile_match','results_submitted_at','competency_status',
+ 'manager_performance','manager_score','manager_remark','self_remark','manager_remark_by_user_id','competency_self_sections','competency_manager_sections','competency_self_remark','competency_manager_remark','submitted_proof','revision','created_at']);
+ IF (moderator OR reviewer) AND NOT administrator THEN
+  projected:=projected||jsonb_build_object('kpis',(SELECT coalesce(jsonb_agg(kpi ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(source.kpis) WITH ORDINALITY item(kpi,position)
+   WHERE EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_array_length(coalesce(kpi->'approvalChain','[]'::jsonb))>0 THEN kpi->'approvalChain' ELSE jsonb_build_array(jsonb_build_object('employmentId',kpi->>'moderatorEmploymentId')) END) step WHERE (step->>'employmentId')::uuid=ANY(own_ids))),
+   'manager_performance',NULL,'manager_score',NULL,'manager_remark','','manager_remark_by_user_id',NULL,'self_remark','','submitted_proof','[]'::jsonb);
+ END IF;
+ IF moderator AND NOT reviewer AND NOT administrator THEN projected:=projected||jsonb_build_object('competencies','[]'::jsonb,'statements','[]'::jsonb,'competency_self_sections','{}'::jsonb,'competency_manager_sections','{}'::jsonb,'competency_self_remark','','competency_manager_remark','');END IF;
+ RETURN QUERY SELECT (jsonb_populate_record(NULL::public.performance_onehr_review,projected)).*;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_task_fields(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_task_fields(uuid) TO ai_hr_app;
