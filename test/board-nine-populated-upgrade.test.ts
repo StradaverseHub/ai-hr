@@ -8,6 +8,7 @@ import postgres from 'postgres';
 import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {expect,it} from 'vitest';
 import {createDb} from '../db/client';
+import type {EmployeeDraftData} from '../lib/employee-draft-schema';
 
 const hash=(bytes:string|Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const sourceFunction='app._draft_discard_source_snapshot(uuid,uuid)';
@@ -40,8 +41,8 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
  const storage=createDb(ownerUrl.toString(),{max:1}),application=createDb(appUrl.toString(),{max:1});let created=false;
  const tenant=randomUUID(),company=randomUUID(),person=randomUUID(),user=randomUUID(),employment=randomUUID(),draft=randomUUID();
  const issuer='fictional-board-nine-upgrade',subject='fictional-existing-subject';
- const historicalData={personal:{fullName:'Fictional historical draft'},statutory:{socsoSkbbk:false}};
- const cohortData={creationDefaultsVersion:1,personal:{fullName:'Fictional new draft'},statutory:{socsoSkbbk:true}};
+ const historicalData={profile:{fullName:'Fictional historical draft'},statutory:{subjectToSkbbk:'no'}} satisfies EmployeeDraftData;
+ const cohortData={creationDefaultsVersion:1,profile:{fullName:'Fictional new draft'},statutory:{subjectToSkbbk:'yes'}} satisfies EmployeeDraftData & {creationDefaultsVersion:1};
  const ledger=()=>storage.client`select id,hash,created_at::text as created_at from drizzle.__drizzle_migrations order by id`;
  const source=async()=>{
   const [row]=await storage.client<Source[]>`select p.oid::text as oid,pg_get_userbyid(p.proowner)::text as owner,p.proacl::text[] as acl,p.proconfig as config,p.prosecdef as "securityDefiner",p.prosrc as body,has_schema_privilege('ai_hr_draft_discard_port','app','CREATE') as "childCreate" from pg_proc p where p.oid=${sourceFunction}::regprocedure`;
@@ -58,6 +59,7 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
  const capture=()=>storage.client.begin(async tx=>{
   await tx.unsafe('SET LOCAL ROLE ai_hr_draft_discard_port');
   await tx`select set_config('app.tenant_id',${tenant},true),set_config('app.user_id',${user},true),set_config('app.roles','hr_admin',true),set_config('app.grants','[{"role":"hr_admin","companyId":null}]',true)`;
+  expect(await tx`select app.principal_snapshot_current() as principal,app.is_group_admin() as group_admin`).toEqual([{principal:true,group_admin:true}]);
   return tx`select app._draft_discard_source_snapshot(${draft}::uuid,${company}::uuid) as snapshot`;
  });
  try{
@@ -100,13 +102,16 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   await expect(application.client`select app.password_unlock_subject(${user}::uuid,${issuer})`).rejects.toMatchObject({code:'42501'});
   const unlocked=await application.client.begin(async tx=>{
    await tx`select set_config('app.tenant_id',${tenant},true),set_config('app.user_id',${user},true),set_config('app.roles','hr_admin',true),set_config('app.grants','[{"role":"hr_admin","companyId":null}]',true)`;
+   expect(await tx`select app.principal_snapshot_current() as principal,app.is_group_admin() as group_admin`).toEqual([{principal:true,group_admin:true}]);
    return tx`select app.password_unlock_subject(${user}::uuid,${issuer}) as subject`;
   });
   expect(unlocked).toEqual([{subject}]);
   await expect(application.client`select app._draft_discard_source_snapshot(${draft}::uuid,${company}::uuid)`).rejects.toMatchObject({code:'42501'});
   await storage.client`update employee_draft set data=${JSON.stringify(cohortData)}::jsonb where id=${draft}`;
+  expect(await storage.client`select data->'statutory'->>'subjectToSkbbk' as skbbk from employee_draft where id=${draft}`).toEqual([{skbbk:'yes'}]);
   const [captured]=await capture();expect(captured.snapshot).toMatchObject({draftId:draft,companyId:company,companyName:'Fictional retained company',label:'Fictional retained draft'});
   await storage.client`update employee_draft set data=${JSON.stringify(historicalData)}::jsonb where id=${draft}`;
+  expect(await storage.client`select data->'statutory'->>'subjectToSkbbk' as skbbk from employee_draft where id=${draft}`).toEqual([{skbbk:'no'}]);
   const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:'db/migrations'});
   expect(await ledger()).toEqual(afterLedger);expect(await native()).toEqual(beforeRerun);expect(await source()).toEqual(afterSource);
  }finally{
