@@ -46,15 +46,22 @@ it('retains the exact new data-permission filter and proves the old fallback is 
   for(let i=0;i<10;i++)await tx.execute(statement);
   const start=performance.now();for(let i=0;i<100;i++)await tx.execute(statement);return performance.now()-start;
  });
- await owner.client.unsafe(clone);
+ try{
+  await owner.client.unsafe(clone);
  await owner.client.unsafe('CREATE FUNCTION app.perf_legacy_visible() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $legacy$'+legacyBody+'$legacy$');
  await owner.client.unsafe('REVOKE ALL ON FUNCTION app.perf_scoped_visibility(),app.perf_legacy_visible() FROM PUBLIC,ai_hr_app;GRANT EXECUTE ON FUNCTION app.perf_scoped_visibility(),app.perf_legacy_visible() TO ai_hr_app');
- try{
   await Promise.all(users.map(u=>withTenant(ctx(u),tx=>compare(tx,[u.employmentId]))));
   const universe=[...ALL_EMP,...users.map(u=>u.employmentId)];
   for(const who of CONTEXTS)await withTenant(who,async tx=>{
    const ids=await compare(tx);const [row]=await tx.execute(sql`select array(select id from unnest(ARRAY[${sql.join(universe.map(id=>sql`${id}::uuid`),sql`, `)}])id where app.can_see_employment(id)order by id)as ids`);expect(ids).toEqual(row.ids);controls++;
   });
+  for(const grants of ['{broken','{}','null','[]',JSON.stringify([{role:'employee',companyId:'invalid-uuid'}])]){
+   const outcome=async(name:string)=>{
+    try{return {ids:await withTenant(ctx(users[0]),async tx=>{await tx.execute(sql`select set_config('app.grants',${grants},true)`);return(await tx.execute(sql.raw('select '+name+'as ids')))[0].ids;})};}
+    catch(error){let cause=error as {code?:string;cause?:unknown};while(cause?.cause&&!cause.code)cause=cause.cause as typeof cause;return {error:cause.code??String(cause)};}
+   };
+   expect(await outcome('app.perf_scoped_visibility()')).toEqual(await outcome('app.visible_employment_ids()'));controls++;
+  }
   profile.timings100ReadsMs={owner1:await time('actual'),prototype1:await time('prototype'),owner2:await time('actual'),prototype2:await time('prototype')};save();
   const manager=ctxByName('manager top (ceo)'),hod=ctxByName('HOD (hod)');
   await owner.db.update(s.person).set({gender:'female'}).where(eq(s.person.id,P.mid));await owner.db.update(s.person).set({gender:'male'}).where(eq(s.person.id,P.leaf));
@@ -79,7 +86,7 @@ it('retains the exact new data-permission filter and proves the old fallback is 
   await owner.client`delete from user_data_permission_assignment where tenant_id=${b.tenantId} and user_id=${manager.userId}`;
   await withTenant(manager,tx=>compare(tx,before));save();
  }finally{
-  await owner.client.unsafe('DROP FUNCTION app.perf_scoped_visibility();DROP FUNCTION app.perf_legacy_visible()');profile.privateHelpersDropped=true;
+  await owner.client.unsafe('DROP FUNCTION IF EXISTS app.perf_scoped_visibility();DROP FUNCTION IF EXISTS app.perf_legacy_visible()');profile.privateHelpersDropped=true;
   const [after]=await owner.client`select pg_get_functiondef(p.oid)as definition,to_jsonb(p)as attributes from pg_proc p where p.oid=${signature}::regprocedure`;
   profile.publicDefinitionUnchanged=after.definition===original.definition;expect(after.definition).toBe(original.definition);expect(after.attributes).toEqual(original.attributes);save();
  }
