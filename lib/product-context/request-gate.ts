@@ -37,10 +37,10 @@ const OVERRIDE:readonly RegExp[]=[
  /\b(ignore|disregard|forget|override|bypass)\b[^.?!]{0,40}\b(instructions?|rules?|prompts?|guidelines?|restrictions?|polic(y|ies))\b/i,
  /\b(system|developer)\s+(prompt|message|mode)\b/i,/\byou\s+are\s+now\b/i,/\bjailbreak\b/i,/\bpretend\s+(you|to)\b/i,
  /\babaikan\b[^.?!]{0,40}\b(arahan|peraturan)\b/i,
- /(忽略|无视|忘记)[^。？！]{0,20}(指令|指示|规则|提示)/,
+ /(忽略|无视|忘记)[^。?!]{0,20}(指令|指示|规则|提示)/,
  /(bỏ qua|phớt lờ)[^.?!]{0,40}\b(hướng dẫn|chỉ dẫn|quy tắc)\b/i,
- // Gate revision 4: Thai and Tamil (pending native review, as revision 3's). Thai คำสั่งซื้อ is a purchase order, not an instruction.
- /(ไม่ต้องสนใจ|ไม่สนใจ|เพิกเฉย|ลืม)[^.?!]{0,20}(คำสั่ง(?!ซื้อ)|กฎ|ข้อกำหนด)/,
+ // Gate revision 4: Thai and Tamil (pending native review, as revision 3's). Thai คําสั่งซื้อ is a purchase order, not an instruction.
+ /(ไม่ต้องสนใจ|ไม่สนใจ|เพิกเฉย|ลืม)[^.?!]{0,20}(คําสั่ง(?!ซื้อ)|กฎ|ข้อกําหนด)/,
  // Only "ignore" and "forget it" forms: மறு- ("was refused") also starts with மற.
  /(அறிவுறுத்தல்|வழிமுறை|விதி)[^.?!]{0,30}(புறக்கணி|மறந்து\s*விடு|மறந்துவிட்டு)/,
 ];
@@ -77,7 +77,7 @@ const SENSITIVE:Readonly<Record<SensitiveTopic,readonly RegExp[]>>={
   /\bbetter\s+off\s+(dead|without\s+me)\b/i,/\b(life|living)\s+(is\s+not|isn'?t|is\s+no\s+longer)\s+worth\b/i,/\bwish\s+i\s+(was|were)\s+(dead|never\s+born)\b/i,
   /\b(suiside|sucide|suicde|sucidal|suicidel)\b/i,
   // Thai and Tamil: pending native-speaker review.
-  /(ฆ่าตัวตาย|อยากตาย|ไม่อยากมีชีวิตอยู่|ไม่อยากอยู่แล้ว|ทำร้ายตัวเอง|จบชีวิต(ตัวเอง)?|ปลิดชีวิต)/,
+  /(ฆ่าตัวตาย|อยากตาย|ไม่อยากมีชีวิตอยู่|ไม่อยากอยู่แล้ว|ทําร้ายตัวเอง|จบชีวิต(ตัวเอง)?|ปลิดชีวิต)/,
   /(தற்கொலை|சாக\s*வேண்டும்|சாகணும்|சாகப்\s*போகிறேன்|உயிரை\s*மாய்த்து|வாழ\s*விருப்பமில்லை|வாழ\s*பிடிக்கவில்லை|என்னை\s*நானே\s*காயப்படுத்த)/,
  ],
  harassment:[
@@ -96,7 +96,7 @@ const SENSITIVE:Readonly<Record<SensitiveTopic,readonly RegExp[]>>={
   /(骚扰|騷擾|霸凌|欺凌|被欺负|被欺負|歧视|歧視|威胁我|威脅我)/,
   /(quấy rối|bắt nạt|phân biệt đối xử|đe dọa tôi|bị đe dọa)/i,
   // Thai and Tamil: pending native-speaker review.
-  /(ล่วงละเมิด|คุกคามทางเพศ|ถูกคุกคาม|โดนคุกคาม|กลั่นแกล้ง|รังแก|เลือกปฏิบัติ|ข่มขืน|ลวนลาม|ทำร้ายร่างกาย|ขู่ฉัน|ขู่ผม|จับตัวฉัน|จับตัวผม)/,
+  /(ล่วงละเมิด|คุกคามทางเพศ|ถูกคุกคาม|โดนคุกคาม|กลั่นแกล้ง|รังแก|เลือกปฏิบัติ|ข่มขืน|ลวนลาม|ทําร้ายร่างกาย|ขู่ฉัน|ขู่ผม|จับตัวฉัน|จับตัวผม)/,
   /(பாலியல்\s*(துன்புறுத்தல்|தொல்லை|வன்கொடுமை)|துன்புறுத்த|தொல்லை\s*கொடு|கொடுமைப்படுத்த|பாகுபாடு|கற்பழி|மிரட்டு|என்னைத்\s*தொட்ட|என்னை\s*அடித்த)/,
  ],
  termination_threat:[
@@ -135,7 +135,7 @@ const SENSITIVE:Readonly<Record<SensitiveTopic,readonly RegExp[]>>={
   // pregnancy with fear of telling, hiding or losing the job is a disclosure that gets the contact route.
   /\bpregnan(t|cy)\b[^.?!]{0,80}\b(worr\w*|scared|afraid|anxious|nervous|fear\w*|hide|hiding|keep\s+it\s+(a\s+)?secret|tell(ing)?\s+(my\s+)?(manager|boss|supervisor|employer|hr|team)|fire[ds]?|sack\w*|lose\s+my\s+job|discriminat\w*)/i,
   /\b(worr\w*|scared|afraid|anxious|nervous)\b[^.?!]{0,60}\bpregnan(t|cy)\b/i,
-  /\b(mengandung|hamil)\b[^.?!]{0,60}\b(risau|takut|bimbang|dipecat|beritahu)\b/i,/(怀孕|懷孕)[^。？！]{0,20}(担心|擔心|害怕|不敢|怕被)/,/(mang thai|có thai)[^.?!]{0,40}(lo lắng|sợ|ngại)/i,
+  /\b(mengandung|hamil)\b[^.?!]{0,60}\b(risau|takut|bimbang|dipecat|beritahu)\b/i,/(怀孕|懷孕)[^。?!]{0,20}(担心|擔心|害怕|不敢|怕被)/,/(mang thai|có thai)[^.?!]{0,40}(lo lắng|sợ|ngại)/i,
   // Thai and Tamil: pending native-speaker review.
   /(ได้รับการวินิจฉัย|ซึมเศร้า|มะเร็ง|สุขภาพจิต|โรคเรื้อรัง|แท้งลูก|(ตั้งครรภ์|ท้อง)[^.?!]{0,20}(กังวล|กลัว))/,
   /(கண்டறியப்பட்ட|மனச்சோர்வு|புற்றுநோய்|மனநல|நாள்பட்ட\s*நோய்|கருச்சிதைவு|கர்ப்பமாக[^.?!]{0,30}(பயம்|கவலை|பயமாக))/,
@@ -156,13 +156,13 @@ const HARMS:readonly RegExp[]=[
  new RegExp('\\b(?:performance|productivity|attitude|loyalty|commitment|engagement)\\b[^.?!]{0,60}\\b(?:from|based\\s+on|using|by\\s+reading)\\s+(?:their|his|her|'+SUBJECT+"(?:'s)?)\\s+"+SOURCE+'\\b','u'),
  /\b(who|which\s+(employees?|staff|people|team\s+members?))\s+(is|are)\s+(the\s+)?(most\s+|least\s+)?(disloyal|unhappy|disengaged|lazy|laziest|unmotivated|negative|toxic|likely\s+to\s+(quit|resign|leave))\b/i,
  /\b(risiko\s+berhenti|kesetiaan|sentimen)\b/i,/\b(dia|pekerja|staf|pasukan\s+saya)\s+((itu|ini)\s+)?(akan|nak|mahu|bercadang)\s+(berhenti|letak\s+jawatan)\b/i,
- /(离职风险|離職風險|忠诚度|忠誠度|情绪分析|情緒分析|情感分析)/,/(他|她|员工|員工|同事|下属|下屬)[^。？！]{0,10}(会不会|會不會|是否|打算)[^。？！]{0,6}(离职|離職|辞职|辭職)/,
- /(分析|查看|监控|監控)[^。？！]{0,10}(他|她|员工|員工|同事|下属|下屬)[^。？！]{0,6}(的)?(消息|聊天|邮件|郵件|态度|態度)/,
+ /(离职风险|離職風險|忠诚度|忠誠度|情绪分析|情緒分析|情感分析)/,/(他|她|员工|員工|同事|下属|下屬)[^。?!]{0,10}(会不会|會不會|是否|打算)[^。?!]{0,6}(离职|離職|辞职|辭職)/,
+ /(分析|查看|监控|監控)[^。?!]{0,10}(他|她|员工|員工|同事|下属|下屬)[^。?!]{0,6}(的)?(消息|聊天|邮件|郵件|态度|態度)/,
  /(nguy cơ nghỉ việc|lòng trung thành|phân tích cảm xúc|phân tích thái độ)/i,
- // "… and tell me if he is unhappy" (review M14).
+ // "... and tell me if he is unhappy" (review M14).
  new RegExp('\\b(?:if|whether)\\s+'+SUBJECT+'\\s+(?:is|are|was|were|seems?|feels?)\\s+(?:loyal|disloyal|unhappy|happy|disengaged|motivated|unmotivated|frustrated|bitter|angry|(?:likely|planning|going|about|thinking|looking)\\s+(?:to|of|about)\\s+'+QUIT+')','u'),
  // Thai and Tamil: pending native-speaker review.
- /(ความเสี่ยงที่จะลาออก|(เขา|เธอ|พนักงาน)[^.?!]{0,15}(จะ|กำลังจะ|คิดจะ)ลาออก|วิเคราะห์[^.?!]{0,15}(ข้อความ|แชท|อีเมล)ของ(เขา|เธอ|พนักงาน)|ความภักดี)/,
+ /(ความเสี่ยงที่จะลาออก|(เขา|เธอ|พนักงาน)[^.?!]{0,15}(จะ|กําลังจะ|คิดจะ)ลาออก|วิเคราะห์[^.?!]{0,15}(ข้อความ|แชท|อีเมล)ของ(เขา|เธอ|พนักงาน)|ความภักดี)/,
  /((அவர்|அவள்|ஊழியர்)[^.?!]{0,20}ராஜினாமா\s*செய்வார|(அவர்|அவள்|ஊழியர்)[^.?!]{0,10}(செய்திகளை|அரட்டைகளை|மின்னஞ்சல்களை)[^.?!]{0,20}(படித்து|பகுப்பாய்வு)|விசுவாசம்)/,/(anh ấy|chị ấy|nhân viên|đồng nghiệp)[^.?!]{0,12}?(định|sắp|muốn)\s+nghỉ việc/i,
 ];
 // A judgement the person asks about themself ("Am I likely to be promoted?") is not inference about someone else.

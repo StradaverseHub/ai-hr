@@ -35,7 +35,8 @@ export const HARNESS_SPEC=freeze({
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
   * M14 (Thai and Tamil pending native review, assault and abuse, crisis paraphrases, pregnancy worry, body comments
   * and touching, misspellings, possessive subjects, single and lower-case names). 4: rule overrides in Thai and Tamil
-  * (pending native review). */
+  * (pending native review), and the gate source kept in NFKC form, the form the person's words are matched in, so
+  * Thai patterns written with ำ (ทำร้ายตัวเอง, ทำร้ายร่างกาย) match at last. */
  gateRevision:4,
  budgets:{
   /** Model calls per turn, retries included. The last permitted call offers only final_answer. */
