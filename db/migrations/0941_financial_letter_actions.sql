@@ -1959,3 +1959,28 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_setup_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER financial_onehr_setup_guard BEFORE INSERT OR UPDATE ON performance_onehr_cycle FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_setup_guard();
+
+--> statement-breakpoint
+-- Purpose-bound setup projection. A generic cycle/roster reader is not relabelled
+-- as setup View, and participant readers retain their separate native policy use.
+CREATE FUNCTION app.onehr_setup_read(p_cycle uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE native public.review_cycle%ROWTYPE;config public.performance_onehr_cycle%ROWTYPE;profile jsonb;selected text;subject public.employment%ROWTYPE;
+BEGIN
+ SELECT * INTO native FROM public.review_cycle c WHERE c.id=p_cycle AND c.tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NOT app.onehr_cycle_admin(native.id) OR NOT app.onehr_setup_function_action(native.company_id,'view') THEN RETURN NULL;END IF;
+ SELECT * INTO config FROM public.performance_onehr_cycle c WHERE c.cycle_id=native.id AND c.tenant_id=native.tenant_id;
+ IF NOT FOUND OR EXISTS(SELECT 1 FROM public.performance_review r JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ WHERE r.cycle_id=native.id AND r.tenant_id=native.tenant_id AND (NOT app.onehr_setup_function_action(e.company_id,'view') OR NOT app.data_permission_matches(e.id))) THEN RETURN NULL;END IF;
+ FOR profile IN SELECT value FROM jsonb_array_elements(coalesce(config.policy->'profiles','[]'::jsonb)) LOOP
+  IF profile->>'companyId' IS NOT NULL AND NOT app.onehr_setup_function_action((profile->>'companyId')::uuid,'view') THEN RETURN NULL;END IF;
+  FOR selected IN SELECT jsonb_array_elements_text(coalesce(profile->'employmentIds','[]'::jsonb)) LOOP
+   SELECT * INTO subject FROM public.employment e WHERE e.id=selected::uuid AND e.tenant_id=native.tenant_id AND e.voided_at IS NULL;
+   IF NOT FOUND OR NOT app.onehr_setup_function_action(subject.company_id,'view') OR NOT app.data_permission_matches(subject.id) THEN RETURN NULL;END IF;
+  END LOOP;
+ END LOOP;
+ RETURN jsonb_build_object('cycleId',native.id,'companyId',native.company_id,'revision',config.revision,'policy',config.policy);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_setup_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_setup_read(uuid) TO ai_hr_app;

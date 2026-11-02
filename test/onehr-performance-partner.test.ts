@@ -113,6 +113,8 @@ describe('OneHR performance partner (ADR-0142)', () => {
   it('keeps OneHR setup native Edit separate from generic cycle creation and other-company policy recipients',async()=>{
     const [source]=await withTenant(partner,tx=>tx.execute<{view:boolean;edit:boolean;add:boolean;generic:boolean}>(sql`select app.onehr_setup_function_action(${b.companyId}::uuid,'view') as view,app.onehr_setup_function_action(${b.companyId}::uuid,'edit') as edit,app.onehr_setup_function_action(${b.companyId}::uuid,'add') as add,app.performance_cycle_function_action(${b.companyId}::uuid,'edit') as generic`));
     expect(source).toEqual({view:true,edit:true,add:false,generic:false});
+    const setup=await perf.getOnehrSetup(partner,onehrCycleId);expect(setup).not.toBeNull();expect(setup!.cycleId).toBe(onehrCycleId);expect(setup!.companyId).toBe(b.companyId);expect(setup!.canEdit).toBe(true);
+    expect(Object.keys(setup!).sort()).toEqual(['cycleId','companyId','revision','policy','canEdit'].sort());expect(await perf.getOnehrSetup(partner,otherCycleId)).toBeNull();
     const [before]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,onehrCycleId));
     await perf.updateAssessmentModules(partner,onehrCycleId,before.revision,{...policySchema.parse(before.policy).modules,pm:false});
     const [changed]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,onehrCycleId));

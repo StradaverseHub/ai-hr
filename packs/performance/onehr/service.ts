@@ -201,6 +201,18 @@ export async function prepareAssessmentClosureTx(tx:Tx,cycleId:string) {
   // D-P1-22 D8: a closed cycle keeps the unit exclusion that applied on its close day.
   if(configured){await requireAdmin(tx,cycleId);await tx.execute(sql`select app.assessment_unit_exclusion_pin(${cycleId}::uuid)`);}
 }
+/** Setup-only source; excludes the composite administrator roster, money and results. */
+export async function getOnehrSetup(ctx:SessionContext,cycleId:string) {
+ return withPerformanceTenant(ctx,async tx=>{
+  uuid.parse(cycleId);
+  const [row]=await tx.execute<{source:unknown}>(sql`select app.onehr_setup_read(${cycleId}::uuid) as source`);
+  if(row?.source==null)return null;
+  const source=z.object({cycleId:uuid,companyId:uuid.nullable(),revision:z.number().int().positive(),policy:policySchema}).parse(row.source);
+  const [action]=await tx.execute<{canEdit:boolean}>(sql`select app.onehr_setup_function_action(${source.companyId}::uuid,'edit') as "canEdit"`);
+  return {...source,canEdit:action?.canEdit??false};
+ });
+}
+
 export async function configureOnehrCycle(ctx:SessionContext,cycleId:string,expected:number|null,raw?:unknown) {
   return withPerformanceTenant(ctx,async tx=>{
     uuid.parse(cycleId);
