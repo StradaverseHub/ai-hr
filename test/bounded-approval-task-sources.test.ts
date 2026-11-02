@@ -9,6 +9,7 @@ import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit
 import {saveProfileVisibilityPolicy} from '../core/profile-edit-policy';
 import {decideProfileChange,listProfileChangeRequests,pendingProfileTaskMetadata} from '../core/profile';
 import {previewProfileRoutingPolicy,saveProfileRoutingPolicy,profileRouteCounts} from '../core/profile-routing';
+import {addQualification} from '../core/qualifications';
 import {addDependent} from '../core/dependents';
 import {setTenantSetting} from '../core/tenant-settings';
 import {setOwnPersonPhoto,getPersonPhoto} from '../core/person-photo';
@@ -41,13 +42,13 @@ it('lists and applies an exact named phone approval while unrelated raw facts re
  const queue=await listProfileChangeRequests(approver.ctx,{requestId:id});expect(queue).toHaveLength(1);expect(queue[0].employee).toBe('Fictional TASK-SUBJECT');expect(queue[0].review[phone].value).toBeNull();expect((await pendingProfileTaskMetadata(approver.ctx)).map(row=>row.id)).toContain(id);expect((await profileRouteCounts(approver.ctx)).pending).toBe(1);
  const [source]=await withTenant(approver.ctx,tx=>tx.execute<{value:{master:Record<string,unknown>}}>(sql`select app.profile_task_projection(${id}::uuid,false) as value`));expect(Object.keys(source.value.master).sort()).toEqual(['id','phone','tenantId']);
  expect(await listProfileChangeRequests(outsider.ctx,{requestId:id})).toEqual([]);await expect(withTenant(outsider.ctx,tx=>tx.execute(sql`select app.profile_task_projection(${id}::uuid,false)`))).rejects.toThrow();
- await decideProfileChange(approver.ctx,{requestId:id,decision:'approved'});expect((await owner.db.select({phone:s.person.phone}).from(s.person).where(eq(s.person.id,subject.personId)))[0].phone).toBe('0123456789');await noRaw(approver.ctx,subject);
+ await decideProfileChange(approver.ctx,{requestId:id,decision:'approved'});expect((await owner.db.select({phone:s.person.phone}).from(s.person).where(eq(s.person.id,subject.personId)))[0].phone).toBe('0123456789');await noRaw(approver.ctx,subject);expect((await owner.client`select count(*)::int as n from app.profile_task_before where tenant_id=${b.tenantId}`)[0].n).toBe(0);
 });
 it('rejects stale approved source values and allows a scoped assignee to record an explicit rejection',async()=>{
  const {subject,approver,id}=await phoneRequest();await owner.db.update(s.person).set({phone:'PRIVATE newer value'}).where(eq(s.person.id,subject.personId));await expect(decideProfileChange(approver.ctx,{requestId:id,decision:'approved'})).rejects.toThrow();expect((await owner.db.select().from(s.profileChangeRequest).where(eq(s.profileChangeRequest.id,id)))[0].status).toBe('pending');await decideProfileChange(approver.ctx,{requestId:id,decision:'rejected',reason:'Please submit current details'});expect((await owner.db.select().from(s.person).where(eq(s.person.id,subject.personId)))[0].phone).toBe('PRIVATE newer value');
 });
 it('never turns task preparation into arbitrary fields, a different person, or an unaudited persistent write',async()=>{
- const {subject,approver,id}=await phoneRequest();const [before]=await owner.db.select().from(s.person).where(eq(s.person.id,subject.personId));
+ const {subject,approver,id}=await phoneRequest();await expect(withTenant(approver.ctx,tx=>tx.execute(sql`select app.profile_task_projection(${id}::uuid,true)`))).rejects.toThrow();const [before]=await owner.db.select().from(s.person).where(eq(s.person.id,subject.personId));
  await expect(withTenant(approver.ctx,async tx=>{await tx.execute(sql`select app.profile_task_projection(${id}::uuid,true)`);await tx.execute(sql`select app.profile_task_store_person(${subject.personId}::uuid,'{"nationality":"Singaporean"}'::jsonb)`);})).rejects.toThrow();
  await expect(withTenant(approver.ctx,async tx=>{await tx.execute(sql`select app.profile_task_projection(${id}::uuid,true)`);await tx.execute(sql`select app.profile_task_store_person(${subject.personId}::uuid,'{"phone":"0123456789"}'::jsonb)`);})).rejects.toThrow();expect((await owner.db.select().from(s.person).where(eq(s.person.id,subject.personId)))[0]).toEqual(before);
 });
@@ -63,7 +64,7 @@ it('uses the actual request balance for a manager decision while keeping the raw
 it('applies an exact assigned bank correction without exposing identity or sibling statutory fields',async()=>{
  const bank='bank_statutory.bank_information.bankname';const {subject,approver,id}=await phoneRequest(bank,'Maybank');
  await decideProfileChange(approver.ctx,{requestId:id,decision:'approved'});
- const [row]=await owner.db.select().from(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,subject.personId));expect(row.bankName).toBe('Maybank');expect(row.bankAccountNo).toBe('123456789');await noRaw(approver.ctx,subject);
+ const [row]=await owner.db.select().from(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,subject.personId));expect(row.bankName).toBe('Maybank');expect(row.bankAccountNo).toBe('123456789');await noRaw(approver.ctx,subject);expect((await owner.client`select count(*)::int as n from app.profile_task_before where tenant_id=${b.tenantId}`)[0].n).toBe(0);
 });
 
 it('applies only the selected dependent correction through the native register validator',async()=>{
@@ -74,7 +75,7 @@ it('applies only the selected dependent correction through the native register v
  await expect(withTenant(approver.ctx,async tx=>{await tx.execute(sql`select app.profile_task_projection(${submitted.requestId}::uuid,true)`);await tx.execute(sql`select app.profile_task_store_register(${subject.personId}::uuid,'dependent',${sibling.id}::uuid,${sibling.id},'{"fullName":"Forged sibling"}'::jsonb)`);})).rejects.toThrow();
  await expect(withTenant(approver.ctx,async tx=>{await tx.execute(sql`select app.profile_task_projection(${submitted.requestId}::uuid,true)`);await tx.execute(sql`select app.profile_task_store_register(${subject.personId}::uuid,'dependent',${child.id}::uuid,${child.id},'{"fullName":"Different unauthorized name"}'::jsonb)`);await decideProfileChange(approver.ctx,{requestId:submitted.requestId!,decision:'approved'},tx);})).rejects.toThrow();
  await decideProfileChange(approver.ctx,{requestId:submitted.requestId!,decision:'approved'});
- const rows=await owner.db.select().from(s.employeeDependent);expect(rows.find(row=>row.id===child.id)?.fullName).toBe('Fictional corrected child');expect(rows.find(row=>row.id===sibling.id)?.fullName).toBe('Unrelated family');await noRaw(approver.ctx,subject);
+ const rows=await owner.db.select().from(s.employeeDependent);expect(rows.find(row=>row.id===child.id)?.fullName).toBe('Fictional corrected child');expect(rows.find(row=>row.id===sibling.id)?.fullName).toBe('Unrelated family');await noRaw(approver.ctx,subject);expect((await owner.client`select count(*)::int as n from app.profile_task_before where tenant_id=${b.tenantId}`)[0].n).toBe(0);
 });
 it('applies exact stored photo bytes for its named task while keeping the master photo hidden',async()=>{
  const {subject,approver,id}=await phoneRequest();await decideProfileChange(approver.ctx,{requestId:id,decision:'rejected',reason:'Photo fixture'});await setTenantSetting(root,{key:'ess.profile_photo_edit',value:true});
@@ -83,5 +84,14 @@ it('applies exact stored photo bytes for its named task while keeping the master
  await expect(withTenant(approver.ctx,tx=>tx.execute(sql`select app.profile_task_store_photo(${submitted.requestId}::uuid)`))).rejects.toThrow();
  await expect(withTenant(approver.ctx,async tx=>{await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`select app.profile_task_store_photo(${submitted.requestId}::uuid)`);})).rejects.toThrow();
  await decideProfileChange(approver.ctx,{requestId:submitted.requestId,decision:'approved'});
- expect((await owner.db.select().from(s.personPhoto).where(eq(s.personPhoto.personId,subject.personId)))[0].content).toEqual(png);expect(await getPersonPhoto(approver.ctx,subject.personId)).toBeNull();await noRaw(approver.ctx,subject);
+ expect((await owner.db.select().from(s.personPhoto).where(eq(s.personPhoto.personId,subject.personId)))[0].content).toEqual(png);expect(await getPersonPhoto(approver.ctx,subject.personId)).toBeNull();await noRaw(approver.ctx,subject);expect((await owner.client`select count(*)::int as n from app.profile_task_before where tenant_id=${b.tenantId}`)[0].n).toBe(0);
+});
+
+it('creates one requested register row and transfers Highest without exposing the former holder',async()=>{
+ const {subject,approver,id}=await phoneRequest();await decideProfileChange(approver.ctx,{requestId:id,decision:'rejected',reason:'New register fixture'});
+ const first=await addQualification(root,{employmentId:subject.employmentId,qualification:'Bachelor',isHighest:true}),second=await addQualification(root,{employmentId:subject.employmentId,qualification:'Master'}),highest='qualification.academic_and_professional_qualifications.highest';
+ const view=await readOwnProfileWorkspace(subject.ctx,{employmentId:subject.employmentId}),selected=view.registers.find(row=>row.id===second.id)!;
+ const submitted=await submitOwnProfileEdit(subject.ctx,{employmentId:subject.employmentId,proposal:{v:2,fields:[],registers:[{kind:'qualification',id:second.id,clientId:second.id,fields:[{fieldId:highest,before:selected.baselines[highest],value:true}]},{kind:'dependent',id:null,clientId:randomUUID(),fields:[{fieldId:'family.family_and_dependents.fullname',before:null,value:'Fictional new child'},{fieldId:'family.family_and_dependents.relationship',before:null,value:'child'}]}]}});
+ await decideProfileChange(approver.ctx,{requestId:submitted.requestId!,decision:'approved'});
+ const rows=await owner.db.select().from(s.employeeQualification).where(eq(s.employeeQualification.employmentId,subject.employmentId));expect(rows.find(row=>row.id===first.id)?.isHighest).toBe(false);expect(rows.find(row=>row.id===second.id)?.isHighest).toBe(true);expect((await owner.db.select().from(s.employeeDependent).where(eq(s.employeeDependent.personId,subject.personId))).map(row=>row.fullName)).toEqual(['Fictional new child']);await noRaw(approver.ctx,subject);expect((await owner.client`select count(*)::int as n from app.profile_task_before where tenant_id=${b.tenantId}`)[0].n).toBe(0);
 });

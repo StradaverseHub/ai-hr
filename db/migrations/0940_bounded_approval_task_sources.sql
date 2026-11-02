@@ -158,7 +158,7 @@ BEGIN
  SELECT coalesce(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(patch)d WHERE d.value IS DISTINCT FROM before_row->d.key;
  IF q.proposed->'v'='2'::jsonb THEN fields:=q.proposed->'fields';ELSE SELECT coalesce(jsonb_agg(jsonb_build_object('fieldId',b.field_id,'value',v.value)),'[]'::jsonb) INTO fields FROM jsonb_each(q.proposed)v JOIN app.access_profile_value_bindings()b ON b.legacy_key=v.key AND b.owner IN ('person','compliance');END IF;
  FOR grouped IN SELECT binding.owner,jsonb_object_agg(d.key,d.value) AS values FROM jsonb_each(delta-'marital_status_source_request_id')d LEFT JOIN app.access_profile_value_bindings()binding ON binding.column_name=d.key AND binding.owner IN ('person','compliance') GROUP BY binding.owner LOOP
-  IF grouped.owner IS NULL OR NOT app.access_profile_value_delta_matches(grouped.owner,grouped.values,fields,inserted,false) THEN RAISE EXCEPTION 'Profile effect differs from approved values' USING ERRCODE='42501';END IF;
+  IF grouped.owner IS NULL OR NOT app.access_profile_value_delta_matches(grouped.owner,grouped.values,fields,false,false) THEN RAISE EXCEPTION 'Profile effect differs from approved values' USING ERRCODE='42501';END IF;
  END LOOP;
  IF delta ? 'marital_status_source_request_id' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(fields)f WHERE f->>'fieldId'='profile.personal_details.maritalstatus' AND app.access_profile_value_normalized(f->'value')=app.access_profile_value_normalized(coalesce(patch->'marital_status',before_row->'marital_status'))) THEN RAISE EXCEPTION 'Profile effect field unavailable' USING ERRCODE='42501';END IF;
  SELECT string_agg(format('%I=(jsonb_populate_record(NULL::public.person,$1)).%I',key,key),',') INTO sets FROM jsonb_object_keys(patch)key;
@@ -168,6 +168,14 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.profile_task_store_person(uuid,jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.profile_task_store_person(uuid,jsonb) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workflow_direct_manager(p_employment uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.reporting_line line JOIN public.employment manager ON manager.id=line.manager_employment_id AND manager.tenant_id=line.tenant_id JOIN public.app_user actor ON actor.person_id=manager.person_id AND actor.tenant_id=manager.tenant_id
+ WHERE line.subordinate_employment_id=p_employment AND line.tenant_id=app.current_tenant_id() AND line.line_type='administrative' AND line.superseded_at IS NULL AND line.valid_from<=current_date AND(line.valid_to IS NULL OR line.valid_to>current_date)
+ AND actor.id=app.current_user_id() AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id) AND manager.blacklisted_at IS NULL AND manager.hired_on<=current_date AND manager.terminated_on IS NULL);
+$$;
+REVOKE ALL ON FUNCTION app.workflow_direct_manager(uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.workflow_task_reader(p_kind text,p_request uuid) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -188,7 +196,7 @@ BEGIN
  ELSIF p_kind='attendance.correction' THEN
   SELECT q.employment_id INTO target FROM public.attendance_correction q WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id();
   IF target IS NULL THEN RETURN false;END IF;
-  IF app.can_see_employment(target) OR app.attendance_workflow_delegate_request(p_request) OR app.unrouted_attendance_delegate(p_request) OR app.attendance_workflow_v3_read(p_request) THEN RETURN true;END IF;
+  IF app.can_see_employment(target) OR app.workflow_direct_manager(target) OR app.attendance_workflow_delegate_request(p_request) OR app.unrouted_attendance_delegate(p_request) OR app.attendance_workflow_v3_read(p_request) THEN RETURN true;END IF;
   -- v2 administrative override is DATA-scoped; true stored assigned/delegated seats retain their task.
   SELECT * INTO w FROM public.attendance_workflow_request q WHERE q.correction_id=p_request AND q.tenant_id=app.current_tenant_id() AND q.routing_version=2;
   IF NOT FOUND THEN RETURN false;END IF;
@@ -199,7 +207,7 @@ BEGIN
   END LOOP;RETURN false;
  ELSE RETURN false;END IF;
  IF target IS NULL THEN RETURN false;END IF;
- RETURN app.can_see_employment(target) OR app.can_decide_via_delegation(target,CASE WHEN p_kind='claims.claim' THEN 'claims' ELSE 'leave' END,p_kind);
+ RETURN app.can_see_employment(target) OR app.workflow_direct_manager(target) OR app.can_decide_via_delegation(target,CASE WHEN p_kind='claims.claim' THEN 'claims' ELSE 'leave' END,p_kind);
 END;
 $$;
 REVOKE ALL ON FUNCTION app.workflow_task_reader(text,uuid) FROM PUBLIC;
@@ -479,7 +487,8 @@ BEGIN
  SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF q.id IS NULL OR q.status<>'pending' OR q.proposed->'v' IS DISTINCT FROM '3'::jsonb OR q.proposed->>'kind' IS DISTINCT FROM 'photo' OR q.proposed->>'fieldId' IS DISTINCT FROM 'profile.personal_details.photo'
  OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id) OR NOT app.profile_request_assignee(q.id) OR NOT app.profile_photo_proposal_allowed()
- OR q.route_context->>'fingerprint' IS DISTINCT FROM app.access_profile_route_fingerprint(q.employment_id)
+ OR (q.route_id IS NOT NULL AND q.route_context->>'fingerprint' IS DISTINCT FROM app.access_profile_route_fingerprint(q.employment_id))
+ OR (EXISTS(SELECT 1 FROM public.tenant_setting setting WHERE setting.tenant_id=q.tenant_id AND setting.key='ess.profile_change_approver' AND setting.value='"group_admin"'::jsonb) AND NOT app.is_group_admin())
  OR NOT EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id WHERE e.id=q.employment_id AND e.person_id=q.person_id AND e.tenant_id=q.tenant_id AND e.blacklisted_at IS NULL AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (least(e.resignation_date,e.last_working_date,e.terminated_on)IS NULL OR least(e.resignation_date,e.last_working_date,e.terminated_on)>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RAISE EXCEPTION 'Profile photo task unavailable' USING ERRCODE='42501';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('person-photo:'||q.tenant_id::text||':'||q.person_id::text,0));
  SELECT * INTO oldphoto FROM public.person_photo WHERE person_id=q.person_id AND tenant_id=q.tenant_id FOR UPDATE;
@@ -550,3 +559,44 @@ GRANT EXECUTE ON FUNCTION app.profile_task_relationship_tolerated(uuid,text) TO 
 --> statement-breakpoint
 ALTER POLICY data_permission_subject_read ON attendance_workflow_decision USING(app.data_permission_record_read(employment_id) OR app.workflow_task_reader('attendance.workflow',request_id));
 ALTER POLICY data_permission_subject_read ON attendance_workflow_participant_decision USING(app.data_permission_record_read(employment_id) OR app.workflow_task_reader('attendance.workflow',request_id));
+--> statement-breakpoint
+-- Full before-images and effect values are transaction scaffolding, not an additional personnel
+-- history store. Preparation must finish its actual decision/audit; the last queued audit cleanup
+-- runs after the value/effect constraint checks and removes all private copies from that decision.
+CREATE FUNCTION app.profile_task_before_complete()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM public.profile_change_request q JOIN app.access_profile_value_approval proof ON proof.request_id=q.id AND proof.tenant_id=q.tenant_id
+ WHERE q.id=NEW.request_id AND q.tenant_id=NEW.tenant_id AND q.status='approved' AND proof.xact_id=NEW.xact_id AND proof.user_id=NEW.user_id AND proof.approved AND proof.audited
+ AND proof.proposal_hash=NEW.proposal_hash AND proof.route_hash=NEW.route_hash
+ AND NEW.proposal_hash=encode(sha256(convert_to(q.proposed::text,'UTF8')),'hex') AND NEW.route_hash=encode(sha256(convert_to(jsonb_build_array(q.route_id,q.route_revision,q.route_approver_user_id,q.route_approver_employment_id,q.route_context)::text,'UTF8')),'hex')) THEN RAISE EXCEPTION 'Profile task completion unavailable' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.profile_task_before_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER profile_task_before_complete AFTER INSERT ON app.profile_task_before DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.profile_task_before_complete();
+--> statement-breakpoint
+CREATE FUNCTION app.profile_task_cleanup()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.aggregate_type='profile-change' AND NEW.event_type='profile-change.approved' AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() AND NEW.tenant_id=app.current_tenant_id() THEN
+  DELETE FROM app.profile_task_statutory_effect WHERE xact_id=pg_current_xact_id() AND tenant_id=NEW.tenant_id AND user_id=NEW.actor_id AND request_id=NEW.aggregate_id;
+  DELETE FROM app.profile_task_photo_effect WHERE xact_id=pg_current_xact_id() AND tenant_id=NEW.tenant_id AND user_id=NEW.actor_id AND request_id=NEW.aggregate_id;
+  DELETE FROM app.profile_task_before WHERE xact_id=pg_current_xact_id() AND tenant_id=NEW.tenant_id AND user_id=NEW.actor_id AND request_id=NEW.aggregate_id;
+ END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.profile_task_cleanup() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER profile_task_cleanup AFTER INSERT ON domain_event DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.aggregate_type='profile-change' AND NEW.event_type='profile-change.approved') EXECUTE FUNCTION app.profile_task_cleanup();
+
+--> statement-breakpoint
+CREATE POLICY bounded_approval_task_read ON leave_request FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('leave.application',id));
+CREATE POLICY bounded_approval_task_read ON leave_request_attachment FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('leave.application',leave_request_id));
+CREATE POLICY bounded_approval_task_read ON leave_cancellation_request FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('leave.cancellation',id));
+CREATE POLICY bounded_approval_task_read ON replacement_leave_request FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('leave.replacement',id));
+CREATE POLICY bounded_approval_task_read ON claim_request FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('claims.claim',id));
+CREATE POLICY bounded_approval_task_read ON claim_attachment FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('claims.claim',claim_request_id));
+CREATE POLICY bounded_approval_task_read ON attendance_correction FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('attendance.correction',id));
+CREATE POLICY bounded_approval_task_read ON attendance_correction_attachment FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('attendance.correction',attendance_correction_id));
+CREATE POLICY bounded_approval_task_read ON attendance_workflow_request FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('attendance.correction',correction_id));
+CREATE POLICY bounded_approval_task_read ON attendance_policy_request_contract FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('attendance.correction',correction_id));
+CREATE POLICY bounded_approval_task_read ON attendance_workflow_decision FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('attendance.workflow',request_id));
+CREATE POLICY bounded_approval_task_read ON attendance_workflow_participant_decision FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('attendance.workflow',request_id));
