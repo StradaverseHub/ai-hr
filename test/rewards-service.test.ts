@@ -16,6 +16,8 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
 import {createHash} from 'node:crypto';
 import {pgErrorChain} from '../lib/db-error';
+import {agentContext,ensureAgentPrincipal} from '../core/agent-principal';
+import {resolveEntitlementsTx} from '../core/entitlements';
 import {calculateRewards} from '../packs/rewards/engine';
 import {calculateOffcycle,offcycleRoute} from '../packs/rewards/offcycle';
 import {emptyGovernance,effectiveRewardPolicy,confirmedSeniorAwards,governanceBasis,maySeeSeniorAmounts} from '../packs/rewards/governance-model';
@@ -356,6 +358,48 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(Number(unchanged.basicSalary)).toBe(5000);
     expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId, batch.batchId))).toEqual([]);
     expect((await view()).unit.status).toBe('approved');
+  });
+  it('privately performs one actual native decision with its exact actor, physical effects and audit under a savepoint',async()=>{
+    const before=await view(),why='Actual private native decision reviewed';
+    await expect(withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_decision_native(${unitId}::uuid,${before.unit.revision},'submit',${why},false)`))).rejects.toThrow();
+    await owner.withTenant(actors.bu!,async tx=>{
+      await tx.execute(sql`savepoint actual_reward_decision`);
+      const [result]=await tx.execute<{next:string}>(sql`select app.reward_decision_native(${unitId}::uuid,${before.unit.revision},'submit',${why},false)as next`);expect(result.next).toBe('bg');
+      await tx.execute(sql`release savepoint actual_reward_decision`);await tx.execute(sql`set constraints all immediate`);
+      const [proof]=await tx.execute<{retained:number;receipts:number}>(sql`select count(*)::integer as retained,(select count(*)::integer from app.reward_decision_native_receipt r join app.reward_decision_native_effect e on e.id=r.effect_id where e.xact_id=pg_current_xact_id()and e.unit_id=${unitId}::uuid)as receipts from app.reward_decision_native_effect where xact_id=pg_current_xact_id()and unit_id=${unitId}::uuid and completed and not active`);expect(proof).toEqual({retained:1,receipts:2});
+    });
+    const [decision]=await owner.db.select().from(schema.rewardDecision).where(eq(schema.rewardDecision.unitId,unitId)),events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.routed')));
+    expect(decision).toMatchObject({actorId:actors.bu!.userId,revision:before.unit.revision,action:'submit',fromStage:'draft',toStage:'bg',reason:why});expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorType:'user',actorId:actors.bu!.userId,subjectEmploymentId:null,payload:{from:'draft',to:'bg',revision:before.unit.revision}});
+    expect(await decideRewardUnit(actors.bg!,unitId,before.unit.revision,'approve','Actual separate native reviewer')).toBe('gr');
+  });
+  it('closes the actual final EC approval without requiring its now-completed stage to remain pending',async()=>{
+    const revision=(await view()).unit.revision,why='Actual final native approval reviewed';
+    await decideRewardUnit(actors.bu!,unitId,revision,'submit',why);
+    for(const seat of ['bg','gr','ctro']as const)await decideRewardUnit(actors[seat]!,unitId,revision,'approve',why);
+    await owner.withTenant(actors.ec!,async tx=>{const [result]=await tx.execute<{next:string}>(sql`select app.reward_decision_native(${unitId}::uuid,${revision},'approve',${why},false)as next`);expect(result.next).toBe('approved');await tx.execute(sql`set constraints all immediate`);});
+    expect((await view()).unit.status).toBe('approved');
+    const [event]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.approved')));expect(event).toMatchObject({actorType:'user',actorId:actors.ec!.userId,payload:{from:'ec',to:'approved',revision}});
+  });
+  it.each([false,true])('revalidates an early-flushed private decision after later authority revoke (restored: %s)',async restore=>{
+    const before=await view(),why='Actual private revocation rollback',beforeDecisions=await owner.db.select().from(schema.rewardDecision).where(eq(schema.rewardDecision.unitId,unitId)),beforeEvents=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,unitId));let didRestore=false;
+    let refusal:unknown;try{await owner.withTenant(actors.bu!,async tx=>{
+      await tx.execute(sql`select app.reward_decision_native(${unitId}::uuid,${before.unit.revision},'submit',${why},false)`);await tx.execute(sql`set constraints all immediate`);
+      if(restore)await tx.execute(sql`set constraints app.rewards_decision_native_effect deferred`);
+      await tx.execute(sql`update role_assignment set role='manager'where app_user_id=${actors.bu!.userId!}::uuid and tenant_id=${b.tenantId}::uuid and role='employee'`);
+      if(restore){await tx.execute(sql`update role_assignment set role='employee'where app_user_id=${actors.bu!.userId!}::uuid and tenant_id=${b.tenantId}::uuid and role='manager'`);didRestore=true;}
+    });}catch(error){refusal=error;}
+    expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Native Rewards decision authority changed'}));expect(didRestore).toBe(restore);
+    expect((await view()).unit).toEqual(before.unit);expect(await owner.db.select().from(schema.rewardDecision).where(eq(schema.rewardDecision.unitId,unitId))).toEqual(beforeDecisions);expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,unitId))).toEqual(beforeEvents);
+    await owner.withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_decision_native(${unitId}::uuid,${before.unit.revision},'submit',${why},false)`));expect((await view()).unit.status).toBe('bg');
+  });
+  it('refuses actual agent and any supplied agent stamp before private native mutation',async()=>{
+    const principalId=await ensureAgentPrincipal(owner.db,b.tenantId),entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,b.tenantId)),agent=agentContext(b.tenantId,principalId,entitlements),before=await view();
+    expect(await owner.withTenant(agent,tx=>tx.execute(sql`select app.current_agent_principal()as principal`))).toEqual([{principal:principalId}]);
+    for(const supplied of [null,principalId,'not-a-uuid']){
+      let refusal:unknown;try{await owner.withTenant(supplied===null?agent:actors.bu!,async tx=>{if(supplied!==null)await tx.execute(sql`select set_config('app.agent_principal_id',${supplied},true)`);return tx.execute(sql`select app.reward_decision_native(${unitId}::uuid,${before.unit.revision},'submit','Agent must not decide native Rewards',false)`);});}catch(error){refusal=error;}
+      expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'A current human Rewards principal is required'}));
+    }
+    expect((await view()).unit).toEqual(before.unit);expect(await owner.db.select().from(schema.rewardDecision).where(eq(schema.rewardDecision.unitId,unitId))).toEqual([]);
   });
   it('privately admits the exact native decision source and preserves different-reviewer stage separation',async()=>{
     await setRewardMember(admin,unitId,(await view()).unit.revision,actors.bu!.userId!,'bg');

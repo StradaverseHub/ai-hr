@@ -2425,6 +2425,8 @@ CREATE FUNCTION app.reward_decision_admission(p_unit uuid,p_revision integer,p_a
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE unit public.reward_unit;actor public.app_user;roles text[];entries jsonb;route jsonb;route_roles text[];governance jsonb;next_stage text;reason text;hash text;calculation jsonb;funding jsonb;missing text[];missing_labels text;prior_actor uuid;authority text;
 BEGIN
+ IF nullif(current_setting('app.agent_principal_id',true),'')IS NOT NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
+ IF app.current_agent_principal()IS NOT NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
  PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();
  PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
  IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL OR p_action IS NULL OR p_action NOT IN('submit','approve','return','reject','withdraw')OR p_acknowledged IS NULL THEN RAISE EXCEPTION 'Reward decision unavailable' USING ERRCODE='42501';END IF;
@@ -2467,6 +2469,102 @@ BEGIN
   IF prior_actor=actor.id AND p_action='approve'THEN RAISE EXCEPTION 'A different reviewer must sign the next approval stage.' USING ERRCODE='42501';END IF;
  END IF;
  authority:=app.access_function_authority_stamp();IF authority IS NULL THEN RAISE EXCEPTION 'Reward authority changed' USING ERRCODE='42501';END IF;
- RETURN jsonb_build_object('tenantId',unit.tenant_id,'actorId',actor.id,'unitId',unit.id,'companyId',unit.company_id,'revision',unit.revision,'kind',unit.kind,'fromStage',unit.status,'toStage',next_stage,'action',p_action,'reason',reason,'decisionDigest',hash,'authorityStamp',authority,'reservedCents',CASE WHEN unit.kind='annual'THEN unit.reserved_cents ELSE jsonb_build_object('standard',calculation->'budgets'->'standard'->'used'->0,'h',calculation->'budgets'->'h'->'used'->0)END);
+ RETURN jsonb_build_object('tenantId',unit.tenant_id,'actorId',actor.id,'unitId',unit.id,'companyId',unit.company_id,'revision',unit.revision,'kind',unit.kind,'fromStage',unit.status,'toStage',next_stage,'action',p_action,'reason',reason,'decisionDigest',hash,'authorityStamp',authority,'route',route,'unitBeforeHash',app.reward_decision_row_hash(to_jsonb(unit),'reward_unit'),'reservedCents',CASE WHEN unit.kind='annual'THEN unit.reserved_cents ELSE jsonb_build_object('standard',calculation->'budgets'->'standard'->'used'->0,'h',calculation->'budgets'->'h'->'used'->0)END);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_calc_senior_grade(text),app.reward_decision_admission(uuid,integer,text,text,boolean)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Private, exact physical effects of one hardcoded native decision. Completed records remain
+-- through the root transaction: SET CONSTRAINTS cannot retire later authority revalidation.
+-- Normalize only timestamp representation, preserving every value and exact instant. This
+-- avoids changing current_date/login eligibility merely to hash timestamptz in a fixed timezone.
+CREATE FUNCTION app.reward_decision_row_hash(p_row jsonb,p_table text)RETURNS text
+LANGUAGE plpgsql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE value jsonb:=p_row;fields text[];field text;
+BEGIN
+ fields:=CASE p_table WHEN'reward_unit'THEN ARRAY['created_at','updated_at','posted_at','deleted_at']WHEN'reward_decision'THEN ARRAY['created_at']WHEN'domain_event'THEN ARRAY['occurred_at']ELSE NULL END;
+ IF fields IS NULL THEN RAISE EXCEPTION 'Unknown native Rewards receipt relation' USING ERRCODE='42501';END IF;
+ FOREACH field IN ARRAY fields LOOP IF value?field AND value->field<>'null'::jsonb THEN value:=jsonb_set(value,ARRAY[field],to_jsonb(extract(epoch FROM(value->>field)::timestamptz)));END IF;END LOOP;
+ RETURN encode(sha256(convert_to(value::text,'UTF8')),'hex');
+END $$;
+REVOKE ALL ON FUNCTION app.reward_decision_row_hash(jsonb,text)FROM PUBLIC,ai_hr_app;
+CREATE TABLE app.reward_decision_native_effect(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,unit_id uuid NOT NULL,
+ admission jsonb NOT NULL,decision_id uuid NOT NULL,event_id uuid NOT NULL,unit_after_hash text,event_after_hash text,
+ active boolean NOT NULL DEFAULT true,completed boolean NOT NULL DEFAULT false,recheck bigint NOT NULL DEFAULT 0
+);
+CREATE TABLE app.reward_decision_native_receipt(
+ effect_id uuid NOT NULL REFERENCES app.reward_decision_native_effect(id)ON DELETE CASCADE,
+ table_name text NOT NULL,row_id uuid NOT NULL,before_hash text NOT NULL,after_hash text NOT NULL,
+ PRIMARY KEY(effect_id,table_name,row_id,before_hash,after_hash)
+);
+CREATE INDEX reward_decision_native_effect_transaction ON app.reward_decision_native_effect(xact_id,tenant_id,user_id,unit_id);
+ALTER TABLE app.reward_decision_native_effect ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.reward_decision_native_receipt ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.reward_decision_native_effect,app.reward_decision_native_receipt FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.reward_decision_native_capture()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE previous jsonb:=CASE WHEN TG_OP='INSERT'THEN'{}'::jsonb ELSE to_jsonb(OLD)END;following jsonb:=to_jsonb(NEW);effect uuid;target uuid;
+BEGIN
+ target:=CASE WHEN TG_TABLE_NAME='reward_unit'THEN NEW.id ELSE(following->>'unit_id')::uuid END;
+ SELECT e.id INTO effect FROM app.reward_decision_native_effect e WHERE e.xact_id=pg_current_xact_id()AND e.tenant_id=NEW.tenant_id AND e.tenant_id=app.current_tenant_id()AND e.user_id=app.current_user_id()AND e.unit_id=target AND e.active;
+ IF effect IS NOT NULL THEN INSERT INTO app.reward_decision_native_receipt VALUES(effect,TG_TABLE_NAME,NEW.id,app.reward_decision_row_hash(previous,TG_TABLE_NAME),app.reward_decision_row_hash(following,TG_TABLE_NAME))ON CONFLICT DO NOTHING;END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_decision_native_capture()FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER rewards_decision_native_capture AFTER UPDATE ON public.reward_unit FOR EACH ROW EXECUTE FUNCTION app.reward_decision_native_capture();
+CREATE TRIGGER rewards_decision_native_capture AFTER INSERT ON public.reward_decision FOR EACH ROW EXECUTE FUNCTION app.reward_decision_native_capture();
+CREATE FUNCTION app.reward_decision_native_validate()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE effect app.reward_decision_native_effect;admission jsonb;unit public.reward_unit;next_stage text;
+BEGIN
+ SELECT actual.* INTO effect FROM app.reward_decision_native_effect actual WHERE actual.id=NEW.id;
+ IF NOT FOUND THEN RETURN NULL;END IF;admission:=effect.admission;
+ IF nullif(current_setting('app.agent_principal_id',true),'')IS NOT NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
+ IF app.current_agent_principal()IS NOT NULL OR NOT app.principal_snapshot_current()OR effect.xact_id<>pg_current_xact_id()OR effect.tenant_id IS DISTINCT FROM app.current_tenant_id()OR effect.user_id IS DISTINCT FROM app.current_user_id()OR effect.active OR NOT effect.completed
+  OR admission->>'tenantId'IS DISTINCT FROM effect.tenant_id::text OR admission->>'actorId'IS DISTINCT FROM effect.user_id::text OR admission->>'unitId'IS DISTINCT FROM effect.unit_id::text OR coalesce(admission->>'authorityStamp','')!~'^[a-f0-9]{64}$'
+  OR admission->>'authorityStamp'IS DISTINCT FROM app.access_function_authority_stamp()OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=effect.user_id AND u.tenant_id=effect.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))THEN RAISE EXCEPTION 'Native Rewards decision authority changed' USING ERRCODE='42501';END IF;
+ SELECT actual.* INTO unit FROM public.reward_unit actual WHERE actual.id=effect.unit_id AND actual.tenant_id=effect.tenant_id AND actual.company_id::text=admission->>'companyId'AND actual.kind=admission->>'kind'AND actual.deleted_at IS NULL;
+ IF unit.id IS NULL THEN RAISE EXCEPTION 'Native Rewards decision source changed' USING ERRCODE='42501';END IF;
+ -- Repeat current native role/availability against the actually admitted course, never the
+ -- post-command pending state. A later legitimate business outcome does not revoke that course.
+ next_stage:=app.reward_calc_transition(unit.kind,admission->>'fromStage',ARRAY(SELECT app.reward_roles(unit.id)),admission->>'action',admission->'route');
+ IF next_stage IS DISTINCT FROM admission->>'toStage'OR NOT EXISTS(SELECT 1 FROM app.reward_decision_native_receipt r WHERE r.effect_id=effect.id AND r.table_name='reward_unit'AND r.row_id=unit.id AND r.before_hash=admission->>'unitBeforeHash'AND r.after_hash=effect.unit_after_hash)
+  OR NOT EXISTS(SELECT 1 FROM public.reward_decision d JOIN app.reward_decision_native_receipt r ON r.effect_id=effect.id AND r.table_name='reward_decision'AND r.row_id=d.id AND r.before_hash=encode(sha256(convert_to('{}','UTF8')),'hex')AND r.after_hash=app.reward_decision_row_hash(to_jsonb(d),'reward_decision')WHERE d.id=effect.decision_id AND d.tenant_id=effect.tenant_id AND d.unit_id=unit.id AND d.actor_id=effect.user_id AND d.revision=(admission->>'revision')::integer AND d.action=admission->>'action'AND d.from_stage=admission->>'fromStage'AND d.to_stage=admission->>'toStage'AND encode(sha256(convert_to(d.reason,'UTF8')),'hex')=admission->>'reasonHash'AND d.digest=admission->>'decisionDigest')
+  OR NOT EXISTS(SELECT 1 FROM public.domain_event event WHERE event.id=effect.event_id AND event.tenant_id=effect.tenant_id AND event.aggregate_type='reward-unit'AND event.aggregate_id=unit.id AND event.event_type=CASE WHEN admission->>'toStage'='approved'THEN'reward-unit.approved'ELSE'reward-unit.routed'END AND event.actor_type='user'AND event.actor_id=effect.user_id AND event.subject_employment_id IS NULL AND event.payload=jsonb_build_object('from',admission->'fromStage','to',admission->'toStage','revision',admission->'revision')AND effect.event_after_hash=app.reward_decision_row_hash(to_jsonb(event),'domain_event')AND EXISTS(SELECT 1 FROM app.lifecycle_row_transaction_receipt birth WHERE birth.xact_id=effect.xact_id AND birth.tenant_id=effect.tenant_id AND birth.user_id=effect.user_id AND birth.table_name='domain_event'AND birth.row_id=event.id))
+ THEN RAISE EXCEPTION 'Native Rewards decision effect incomplete' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_decision_native_validate()FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER rewards_decision_native_effect AFTER UPDATE ON app.reward_decision_native_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.completed AND NOT NEW.active)EXECUTE FUNCTION app.reward_decision_native_validate();
+CREATE FUNCTION app.reward_decision_authority_changed()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ -- Rows owned by another transaction are never touched. This only requeues the same root
+ -- transaction's completed exact decisions after a real authority epoch mutation.
+ UPDATE app.reward_decision_native_effect e SET recheck=e.recheck+1 WHERE e.xact_id=pg_current_xact_id()AND e.tenant_id=NEW.tenant_id AND e.completed AND NOT e.active;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_decision_authority_changed()FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER rewards_decision_authority_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.reward_decision_authority_changed();
+--> statement-breakpoint
+-- Kept PRIVATE pending hosted qualification and exact function publication review. No caller
+-- actor/event/namespace/row delta is accepted. Existing Assistant sealed-write guards remain live.
+CREATE FUNCTION app.reward_decision_native(p_unit uuid,p_revision integer,p_command text,p_reason text,p_acknowledged boolean DEFAULT false)RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE admission jsonb;effect uuid;decision uuid:=gen_random_uuid();event uuid:=gen_random_uuid();after_unit jsonb;after_event jsonb;affected integer;
+BEGIN
+ IF nullif(current_setting('app.agent_principal_id',true),'')IS NOT NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
+ IF app.current_agent_principal()IS NOT NULL OR app.current_user_id()IS NULL OR NOT app.principal_snapshot_current()THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
+ admission:=app.reward_decision_admission(p_unit,p_revision,p_command,p_reason,p_acknowledged);
+ DELETE FROM app.reward_decision_native_effect WHERE tenant_id=app.current_tenant_id()AND xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ IF EXISTS(SELECT 1 FROM app.reward_decision_native_effect e WHERE e.xact_id=pg_current_xact_id()AND e.tenant_id=app.current_tenant_id()AND e.active)THEN RAISE EXCEPTION 'A native Rewards decision is already active' USING ERRCODE='42501';END IF;
+ INSERT INTO app.reward_decision_native_effect(xact_id,tenant_id,user_id,unit_id,admission,decision_id,event_id)VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),p_unit,(admission-'reason')||jsonb_build_object('reasonHash',encode(sha256(convert_to(admission->>'reason','UTF8')),'hex')),decision,event)RETURNING id INTO effect;
+ INSERT INTO public.reward_decision(id,tenant_id,unit_id,actor_id,revision,action,from_stage,to_stage,reason,digest)VALUES(decision,app.current_tenant_id(),p_unit,app.current_user_id(),p_revision,p_command,admission->>'fromStage',admission->>'toStage',admission->>'reason',admission->>'decisionDigest');
+ UPDATE public.reward_unit actual SET status=admission->>'toStage',approved_digest=CASE WHEN p_command IN('return','reject','withdraw')THEN NULL ELSE admission->>'decisionDigest'END,revision=CASE WHEN p_command='return'THEN p_revision+1 ELSE p_revision END,reserved_cents=CASE WHEN actual.kind='annual'THEN actual.reserved_cents ELSE admission->'reservedCents'END,updated_at=clock_timestamp()WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id()AND actual.revision=p_revision AND actual.status=admission->>'fromStage'RETURNING to_jsonb(actual)INTO after_unit;
+ GET DIAGNOSTICS affected=ROW_COUNT;IF affected<>1 THEN RAISE EXCEPTION 'Native Rewards decision source changed' USING ERRCODE='40001';END IF;
+ INSERT INTO public.domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)VALUES(event,app.current_tenant_id(),'reward-unit',p_unit,CASE WHEN admission->>'toStage'='approved'THEN'reward-unit.approved'ELSE'reward-unit.routed'END,'user',app.current_user_id(),jsonb_build_object('from',admission->'fromStage','to',admission->'toStage','revision',admission->'revision'));
+ SELECT to_jsonb(actual)INTO after_event FROM public.domain_event actual WHERE actual.id=event AND actual.tenant_id=app.current_tenant_id();
+ UPDATE app.reward_decision_native_effect e SET active=false,completed=true,unit_after_hash=app.reward_decision_row_hash(after_unit,'reward_unit'),event_after_hash=app.reward_decision_row_hash(after_event,'domain_event')WHERE e.id=effect;
+ RETURN admission->>'toStage';
+END $$;
+REVOKE ALL ON FUNCTION app.reward_decision_native(uuid,integer,text,text,boolean)FROM PUBLIC,ai_hr_app;
