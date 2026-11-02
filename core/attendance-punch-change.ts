@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { attendancePunch } from '../db/schema';
-import { actorOf, appendEvent } from '../db/events';
+import { actorOf, appendEvents, type AppendEventArgs } from '../db/events';
 import { lockPayrollForAttendanceChange, markPayrollForAttendanceChange } from '../packs/payroll/service';
 export type ClockEntry = {
   id?: string;
@@ -71,24 +71,33 @@ export async function applyClockChangesTx(tx: Tx, ctx: SessionContext, p: {
       throw new Error('Clocking does not belong to this attendance day.');
   const unchanged = new Set(entries.filter(e => e.id && rows.some(r => r.id === e.id && r.punchAt === e.punchAt && r.direction === e.direction)).map(e => e.id!));
   const now = new Date();
-  const event = (eventType: string, id: string, before: unknown, after: unknown) => appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-punch', aggregateId: id, eventType, actor: actorOf(ctx), subjectEmploymentId: p.employmentId, payload: { correctionId: p.correctionId, reason: p.reason, before, after } });
+  const auditEvents: AppendEventArgs[] = [];
+  const event = (eventType: string, id: string, before: unknown, after: unknown): void => {
+    auditEvents.push({ tenantId: ctx.tenantId, aggregateType: 'attendance-punch', aggregateId: id, eventType, actor: actorOf(ctx), subjectEmploymentId: p.employmentId, payload: { correctionId: p.correctionId, reason: p.reason, before, after } });
+  };
   // Void superseded entries before restoring/inserting, so the live unique index sees the final set.
   for (const row of rows.filter(r => !r.voidedAt && !unchanged.has(r.id))) {
     const metadata = { voidedAt: now, voidedBy: ctx.userId ?? 'system', voidReason: p.reason };
     await tx.update(attendancePunch).set(metadata).where(eq(attendancePunch.id, row.id));
-    await event('attendance.punch.voided', row.id, { punchAt: row.punchAt, direction: row.direction }, metadata);
+    event('attendance.punch.voided', row.id, { punchAt: row.punchAt, direction: row.direction }, metadata);
   }
   for (const e of entries) {
     const original = e.id ? rows.find(r => r.id === e.id)! : null;
     if (original && unchanged.has(original.id)) {
       if (original.voidedAt) {
         await tx.update(attendancePunch).set({ voidedAt: null, voidedBy: null, voidReason: null }).where(eq(attendancePunch.id, original.id));
-        await event('attendance.punch.restored', original.id, { voidedAt: original.voidedAt, voidedBy: original.voidedBy, voidReason: original.voidReason }, { punchAt: e.punchAt, direction: e.direction });
+        event('attendance.punch.restored', original.id, { voidedAt: original.voidedAt, voidedBy: original.voidedBy, voidReason: original.voidReason }, { punchAt: e.punchAt, direction: e.direction });
       }
     }
     else {
       const [added] = await tx.insert(attendancePunch).values({ tenantId: ctx.tenantId, attendanceId: p.attendanceId, employmentId: p.employmentId, attendanceDate: p.date, punchAt: e.punchAt, direction: e.direction, method: 'admin' }).returning({ id: attendancePunch.id });
-      await event('attendance.punch.added', added.id, original ? { supersedes: original.id } : null, { punchAt: e.punchAt, direction: e.direction, method: 'admin' });
+      event('attendance.punch.added', added.id, original ? { supersedes: original.id } : null, { punchAt: e.punchAt, direction: e.direction, method: 'admin' });
     }
+  }
+  // This owner always emits its unchanged ordered audit before returning. Mutating all
+  // punches first avoids holding the tenant chain across the remaining punch writes.
+  // Bound each statement using the existing batch owner; no audit can escape the Tx.
+  for (let offset = 0; offset < auditEvents.length; offset += 500) {
+    await appendEvents(tx, auditEvents.slice(offset, offset + 500));
   }
 }
