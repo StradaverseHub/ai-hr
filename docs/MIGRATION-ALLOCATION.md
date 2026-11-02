@@ -978,7 +978,7 @@ authorized.
 ## Organisation and shared configuration actions — 2 November 2026 (provisional)
 
 Parent BOARD owner reserves `0942_organisation_settings_actions`, aggregate idx764 /
-when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `6402b69e2cef8f0d80d9d9961b1d50f0c7634e84361c876802ef43c338c6cfa8`.
+when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `b0e4e25208c5f216177bb6a7667f1fbb9d95b389cd6de6cf38deab68ba25bce9`.
 This is unapplied implementation source. It retains native role/company floors, separates
 reference pickers from maintenance views, guards current/proposed organisation scopes, and
 binds employee-number allocation/release to private native effects. Hosted SQL/behavior and
@@ -1002,7 +1002,7 @@ ordered applied ledger and competing claims before admission. It grants no insta
 ## Financial setup/native import boundary — 2 November 2026 (provisional)
 
 BOARD parent reserves `0945_financial_setup_actions`, aggregate idx767 /when1793330000345.
-Source SHA256 `0bd90bc035fa6c4ffcf1b5d9b0b55e4db86ab16161450d2c735ff1d171594db9`. Reserved0943/idx765 and0944/idx766 are integrated in their reserved timestamp order; no existing entry
+Source SHA256 `0ed5a9dbbb657007791a2cf7e0090a0c8f6330c50de1a89b80cd243767c425ab`. Reserved0943/idx765 and0944/idx766 are integrated in their reserved timestamp order; no existing entry
 is renumbered. This is an unapplied development checkpoint, not installed or accepted source.
 Its catalogue, history, tax, formula and loan guards still require hosted qualification,
 precise module/submenu facts, and TP1/CP38/statutory input qualification and binding closure.
