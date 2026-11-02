@@ -1,9 +1,10 @@
 /** Private SQL calculator vs the independent native TypeScript oracle; no fabricated receipts. */
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
+import {createHash} from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
-import {defaultPolicy,emptyFacts,emptyRecommendation,policySchema,type RewardEntry} from '../packs/rewards/model';
-import {calculateOffcycle} from '../packs/rewards/offcycle';
+import {defaultPolicy,emptyFacts,emptyRecommendation,policySchema,transition,type RewardRole,type RewardStage,type RewardEntry} from '../packs/rewards/model';
+import {calculateOffcycle,offcycleRoute,offcycleTransition} from '../packs/rewards/offcycle';
 import {emptyGovernance,effectiveRewardPolicy,governanceBasis,seniorSourceFingerprint} from '../packs/rewards/governance-model';
 import {calculateRewards,increase,ratio} from '../packs/rewards/engine';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
@@ -139,4 +140,25 @@ it('uses proleptic Gregorian day differences and an input-independent numeric se
   const [row]=await owner.db.execute<{days:number}>(sql`select app.reward_calc_day(${b})-app.reward_calc_day(${a})as days`);expect(row.days).toBe((Date.parse(b+'T00:00:00Z')-Date.parse(a+'T00:00:00Z'))/86400000);
  }
  await owner.db.transaction(async tx=>{await tx.execute(sql`set local extra_float_digits=0`);const [row]=await tx.execute<{value:string}>(sql`select app.reward_calc_json_number(9007199254740991)as value`);expect(row.value).toBe('9007199254740991');});
+});
+
+it('preserves existing native decision digests across storage ordering without exposing source rows',async()=>{
+ const policy=defaultPolicy(2026),entries=[entry('00000000-0000-4000-8000-000000000002'),entry('00000000-0000-4000-8000-000000000001')];
+ const [stored]=await owner.db.execute<{policy:typeof policy;entries:RewardEntry[];details:{exceptionReason:string;bgOrigin:boolean}}>(sql`select ${JSON.stringify(policy)}::jsonb as policy,${JSON.stringify(entries)}::jsonb as entries,'{"exceptionReason":"Actual approved native exception","bgOrigin":false}'::jsonb as details`);
+ for(const kind of ['annual','adhoc','midyear']as const){const parentUnitId=kind==='annual'?null:'00000000-0000-4000-8000-000000000003',offcycle=kind==='annual'?null:stored.details;
+  const expected=createHash('sha256').update(JSON.stringify({policy:stored.policy,kind,parentUnitId,offcycle,entries:[...stored.entries].sort((a,b)=>a.id.localeCompare(b.id)).map(e=>({id:e.id,source:e.source,facts:e.facts,recommendation:e.recommendation}))})).digest('hex');
+  for(const order of [stored.entries,[...stored.entries].reverse()]){const [row]=await owner.db.execute<{digest:string}>(sql`select app.reward_calc_decision_digest(${JSON.stringify(stored.policy)}::jsonb,${kind},${parentUnitId}::uuid,${JSON.stringify(offcycle)}::jsonb,${JSON.stringify(order)}::jsonb)as digest`);expect(row.digest).toBe(expected);}
+ }
+});
+it('matches every selected native decision stage and seat, including consecutive route boundaries',async()=>{
+ const entryValue=entry('route'),roles:RewardRole[][]=[[],['bu'],['bg'],['gr'],['ctro'],['ec'],['bu','gr']];
+ for(const kind of ['annual','adhoc','midyear']as const)for(const details of [{exceptionReason:'',bgOrigin:false},{exceptionReason:'Actual separate budget exception',bgOrigin:true}]){
+  if(kind!=='adhoc'&&details.bgOrigin)continue;
+  const route=kind==='annual'?['bu','bg','gr','ctro','ec']as RewardRole[]:offcycleRoute(kind,details,[entryValue]);
+  for(const stage of ['draft','bg','gr','ctro','ec','approved','posted']as RewardStage[])for(const seat of roles)for(const action of ['submit','approve','return','reject','withdraw']as const){
+   let expected:string|undefined;try{if(kind==='annual'&&(action==='reject'||action==='withdraw'))throw new Error('Return an annual review to draft instead.');expected=kind==='annual'?transition(stage,seat,action as 'submit'|'approve'|'return'):offcycleTransition(stage,seat,action,route);}catch{}
+   const query=sql`select app.reward_calc_transition(${kind},${stage},array(select jsonb_array_elements_text(${JSON.stringify(seat)}::jsonb)),${action},${JSON.stringify(route)}::jsonb)as next`;
+   if(expected===undefined)await expect(owner.db.execute(query)).rejects.toThrow();else{const [row]=await owner.db.execute<{next:string}>(query);expect({kind,stage,seat,action,next:row.next}).toEqual({kind,stage,seat,action,next:expected});}
+  }
+ }
 });

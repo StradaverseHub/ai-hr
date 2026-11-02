@@ -2349,7 +2349,7 @@ BEGIN
  SELECT coalesce(jsonb_agg(jsonb_build_object('id',e.id,'source',e.source,'facts',e.facts,'recommendation',e.recommendation)ORDER BY e.id),'[]'::jsonb)INTO entries FROM public.reward_entry e WHERE e.tenant_id=unit.tenant_id AND e.unit_id=unit.id;
  IF'gr'=ANY(roles)THEN SELECT g.state INTO state FROM public.reward_governance g WHERE g.tenant_id=unit.tenant_id AND g.unit_id=unit.id;END IF;
  SELECT g.snapshot INTO public_state FROM public.reward_governance_public g WHERE g.tenant_id=unit.tenant_id AND g.unit_id=unit.id;
- IF public_state IS NOT NULL AND public_state->'selectionConfirmed'='false'::jsonb AND'bu'=ANY(roles)AND NOT('gr'=ANY(roles))THEN RAISE EXCEPTION 'Senior plan membership awaits independent Group Rewards confirmation before the BU review can open.' USING ERRCODE='42501';END IF;
+
  effective:=CASE WHEN state IS NOT NULL THEN app.reward_calc_effective_policy(unit.policy,state)WHEN public_state IS NOT NULL THEN unit.policy||jsonb_build_object('patActual',0,'patTarget',100,'targetMonthsBp',public_state->'targetMonthsBp','multiplierBp',public_state->'multiplierBp','branchRatings',public_state->'branchRatings','exemptReason','')ELSE unit.policy END;
  IF roles&&ARRAY['gr','ctro','ec']THEN
   FOR item IN SELECT a.award,e.id,e.source FROM public.reward_senior_award a JOIN public.reward_entry e ON e.id=a.entry_id AND e.unit_id=a.unit_id AND e.tenant_id=a.tenant_id WHERE a.tenant_id=unit.tenant_id AND a.unit_id=unit.id LOOP
@@ -2367,11 +2367,47 @@ CREATE FUNCTION app.reward_annual_calculation(p_unit uuid,p_revision integer)RET
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE unit public.reward_unit;actor public.app_user;roles text[];calculation jsonb;
 BEGIN
- calculation:=app.reward_calc_annual_unit(p_unit,p_revision);
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Reward calculation unavailable' USING ERRCODE='42501';END IF;
  SELECT actual.* INTO actor FROM public.app_user actual WHERE actual.id=app.current_user_id()AND actual.tenant_id=app.current_tenant_id()AND actual.archived_at IS NULL AND NOT app.login_blocked(actual.id);
  SELECT actual.* INTO unit FROM public.reward_unit actual WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id();roles:=ARRAY(SELECT app.reward_roles(p_unit));
  IF actor.id IS NULL OR unit.id IS NULL OR cardinality(roles)=0 THEN RAISE EXCEPTION 'Reward calculation unavailable' USING ERRCODE='42501';END IF;
+ IF'bu'=ANY(roles)AND NOT('gr'=ANY(roles))AND EXISTS(SELECT 1 FROM public.reward_governance_public g WHERE g.unit_id=unit.id AND g.tenant_id=unit.tenant_id AND g.snapshot->'selectionConfirmed'='false'::jsonb)THEN RAISE EXCEPTION 'Senior plan membership awaits independent Group Rewards confirmation before the BU review can open.' USING ERRCODE='42501';END IF;
+ calculation:=app.reward_calc_annual_unit(p_unit,p_revision);
  RETURN app.reward_calc_projection(calculation,unit.policy,roles,actor.person_id,'["bu","bg","gr","ctro","ec"]'::jsonb);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_annual_calculation(uuid,integer)FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_annual_calculation(uuid,integer)TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.reward_calc_decision_digest(p_policy jsonb,p_kind text,p_parent uuid,p_offcycle jsonb,p_entries jsonb)RETURNS text
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE body text;entry jsonb;separator text:='';
+BEGIN
+ body:='{"policy":'||app.reward_calc_json_stringify(p_policy)||',"kind":'||to_jsonb(p_kind)::text||',"parentUnitId":'||coalesce(to_jsonb(p_parent)::text,'null')||',"offcycle":'||app.reward_calc_json_stringify(p_offcycle)||',"entries":[';
+ FOR entry IN SELECT value FROM jsonb_array_elements(p_entries)ORDER BY value->>'id'COLLATE "C" LOOP
+  body:=body||separator||'{"id":'||app.reward_calc_json_stringify(entry->'id')||',"source":'||app.reward_calc_json_stringify(entry->'source')||',"facts":'||app.reward_calc_json_stringify(entry->'facts')||',"recommendation":'||app.reward_calc_json_stringify(entry->'recommendation')||'}';separator:=',';
+ END LOOP;RETURN encode(sha256(convert_to(body||']}','UTF8')),'hex');
+END $$;
+CREATE FUNCTION app.reward_calc_transition(p_kind text,p_stage text,p_roles text[],p_action text,p_route jsonb DEFAULT NULL)RETURNS text
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE route text[];position_in_route integer;stages text[]:=ARRAY['draft','bg','gr','ctro','ec','approved','posted','rejected','withdrawn'];
+BEGIN
+ IF p_kind='annual'THEN
+  IF p_action IN('reject','withdraw')THEN RAISE EXCEPTION 'Return an annual review to draft instead.' USING ERRCODE='42501';END IF;
+  IF p_stage='draft'AND p_action='submit'AND'bu'=ANY(p_roles)THEN RETURN'bg';END IF;
+  IF p_stage='approved'AND p_action='return'AND p_roles&&ARRAY['gr','ctro','ec']THEN RETURN'draft';END IF;
+  IF p_stage IN('bg','gr','ctro','ec')AND p_stage=ANY(p_roles)THEN
+   IF p_action='return'THEN RETURN'draft';ELSIF p_action='approve'THEN RETURN stages[array_position(stages,p_stage)+1];END IF;
+  END IF;
+ ELSIF p_kind IN('adhoc','midyear')THEN
+  SELECT array_agg(value ORDER BY n)INTO route FROM jsonb_array_elements_text(p_route)WITH ORDINALITY items(value,n);
+  IF p_stage='draft'AND p_action='withdraw'AND(route[1]=ANY(p_roles)OR'gr'=ANY(p_roles))THEN RETURN'withdrawn';END IF;
+  IF p_stage='approved'AND p_action='return'AND p_roles&&ARRAY['gr','ctro','ec']THEN RETURN'draft';END IF;
+  IF p_stage='draft'AND p_action='submit'AND route[1]=ANY(p_roles)THEN RETURN route[2];END IF;
+  position_in_route:=array_position(route,p_stage);
+  IF position_in_route>=2 AND p_stage=ANY(p_roles)THEN
+   IF p_action='return'THEN RETURN'draft';ELSIF p_action='reject'THEN RETURN'rejected';ELSIF p_action='approve'THEN RETURN coalesce(route[position_in_route+1],'approved');END IF;
+  END IF;
+ END IF;
+ RAISE EXCEPTION 'You cannot perform this action at the current approval stage.' USING ERRCODE='42501';
+END $$;
+REVOKE ALL ON FUNCTION app.reward_calc_decision_digest(jsonb,text,uuid,jsonb,jsonb),app.reward_calc_transition(text,text,text[],text,jsonb)FROM PUBLIC,ai_hr_app;
