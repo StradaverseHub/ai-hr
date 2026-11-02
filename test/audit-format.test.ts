@@ -58,6 +58,13 @@ describe('4ec5a940 — audit-format before/after diff renderer', () => {
     expect(lines[0].value).toContain('••••');
   });
 
+  it('masks financial keys recursively in arrays before formatting or truncation', () => {
+    const rendered=JSON.stringify(describePayload({findings:[{facts:{netPay:71329,grossPay:81329,bankAccountNo:'PRIVATE_ACCOUNT'}}]}));
+    expect(rendered).not.toContain('71329');expect(rendered).not.toContain('81329');expect(rendered).not.toContain('PRIVATE_ACCOUNT');
+    expect(rendered).toContain('••••');
+    expect(JSON.stringify(describePayload({findings:[{facts:{count:17}}]}))).toContain('17');
+  });
+
   it('truncates a very long nested value', () => {
     const big = { note: 'x'.repeat(300) };
     const lines = describePayload({ before: {}, after: big });

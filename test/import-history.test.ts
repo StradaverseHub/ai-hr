@@ -151,6 +151,20 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
   const detail=await getImportAttempt(a,attemptId);expect(detail!.events.map(e=>e.kind)).toEqual(['previewed','confirmed','revert_failed']);expect(importAttemptStatus(detail!.plan,detail!.events)).toBe('succeeded');
  });
 
+ it('keeps whole-file columns private while a scoped administrator retains history and their items',async()=>{
+  const records=[row('ACME','AC002','ACME-OPS','100'),row('BETA','BE001','BETA-OPS','100')];
+  const {attemptId}=await importFile(a,records);
+  const scoped=await getImportAttempt(betaOnly,attemptId);
+  expect(scoped?.items.map(i=>i.employmentId)).toEqual([betaEmp]);
+  expect(JSON.stringify(scoped?.plan)).not.toContain('AC002');
+  for(const column of ['source_content','plan']) {
+   const denied=await withTenant(betaOnly,tx=>tx.execute(sql.raw(`select ${column} from import_attempt where id='${attemptId}'`))).then(()=>null,error=>error);
+   expect(denied).toBeTruthy();expect(String(denied.cause?.message??denied.message)).toMatch(/permission denied/);
+  }
+  const original=await importAttemptSource(a,attemptId);
+  expect(original?.content.equals(csv(records))).toBe(true);
+ });
+
  it('scopes history by company: another company\'s admin cannot see, download or revert it',async()=>{
   const acmeOnlyFile=await importFile(a,[row('ACME','AC001','ACME-OPS','100')]);
   const mixed=await importFile(a,[row('ACME','AC002','ACME-OPS','100'),row('BETA','BE001','BETA-OPS','100')]);
