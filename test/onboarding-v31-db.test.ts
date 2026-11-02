@@ -878,6 +878,13 @@ describe('V3.1 onboarding database and authorization', () => {
         const row = await prepared();
         await onboardingNote(admin, row.case.id, { context: 'requisition', body: 'Original', mentions: [tech.userId!] });
         const [n] = await owner.db.select().from(schema.lcOnboardingNote);
-        await expect(withTenant(tech, tx => tx.execute(sql `update lc_onboarding_note set data=jsonb_set(data,'{body}','"Changed"') where id=${n!.id}::uuid`))).rejects.toThrow();
+        const change=sql `update lc_onboarding_note set data=jsonb_set(data,'{body}','"Changed"') where id=${n!.id}::uuid returning id`;
+        // An assigned nonauthor only has the finite current-note course, so the raw UPDATE finds no row.
+        expect(await withTenant(tech, tx => tx.execute(change))).toEqual([]);
+        const secondAdmin:SessionContext={...admin,userId:await createAppUser(b.tenantId,null,'hr_admin'),personId:null};
+        const raw=await withTenant(secondAdmin,tx=>tx.execute(sql `select id from lc_onboarding_note where id=${n!.id}::uuid`));
+        expect(raw).toEqual([{id:n!.id}]);
+        await expect(withTenant(secondAdmin,tx=>tx.execute(change))).rejects.toThrow();
+        expect(await owner.db.select().from(schema.lcOnboardingNote)).toEqual([n]);
     });
 });

@@ -21,12 +21,15 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:Entry[]};
  const boundary=journal.entries.findIndex(row=>row.tag==='0935_password_account_unlock');
  expect(boundary).toBe(648);
+ const acceptedEnd=journal.entries.findIndex(row=>row.tag==='0946_draft_creation_cohort_custody')+1;
+ expect(acceptedEnd).toBe(650);
+ const accepted=journal.entries.slice(0,acceptedEnd);
  const prefix=journal.entries.slice(0,boundary);
  expect(prefix.at(-1)).toEqual({idx:762,version:'7',when:1793330000329,tag:'0929_teras_review_services',breakpoints:true});
  expect(hash(JSON.stringify(prefix))).toBe('e4150da4b1cc41ab75886d96720d5b45382d27f4c197ea6957da159ac306c031');
  const identities=prefix.map(row=>[row.tag,String(row.when),hash(readFileSync('db/migrations/'+row.tag+'.sql'))]);
  expect(hash(JSON.stringify(identities))).toBe('65172aab213aac9a64e2c0149e847d106d2c89fbe2dbd3783562221b1e5a450b');
- expect(journal.entries.slice(boundary).map(({tag,when})=>({tag,when}))).toEqual([
+ expect(accepted.slice(boundary).map(({tag,when})=>({tag,when}))).toEqual([
   {tag:'0935_password_account_unlock',when:1793330000335},
   {tag:'0946_draft_creation_cohort_custody',when:1793330000346},
  ]);
@@ -89,7 +92,10 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   await storage.client`update employee_draft set data=${JSON.stringify(historicalData)}::jsonb where id=${draft}`;
   // The original historical row is present at the upgrade boundary; the mutation above is preflight only.
   const upgradeNative=await native();
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  // Rehearse the accepted BOARD upgrade independently of subsequent permissions migrations.
+  for(const row of accepted.slice(boundary))copyFileSync('db/migrations/'+row.tag+'.sql',join(folder,row.tag+'.sql'));
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:accepted}));
+  await migrate(storage.db,{migrationsFolder:folder});
   const afterLedger=await ledger();expect(afterLedger).toHaveLength(650);expect(afterLedger.slice(0,648)).toEqual(beforeLedger);
   expect(afterLedger.slice(648).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa',created_at:'1793330000335'},
@@ -112,7 +118,7 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   const [captured]=await capture();expect(captured.snapshot).toMatchObject({draftId:draft,companyId:company,companyName:'Fictional retained company',label:'Fictional retained draft'});
   await storage.client`update employee_draft set data=${JSON.stringify(historicalData)}::jsonb where id=${draft}`;
   expect(await storage.client`select data->'statutory'->>'subjectToSkbbk' as skbbk from employee_draft where id=${draft}`).toEqual([{skbbk:'no'}]);
-  const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const beforeRerun=await native();await migrate(storage.db,{migrationsFolder:folder});
   expect(await ledger()).toEqual(afterLedger);expect(await native()).toEqual(beforeRerun);expect(await source()).toEqual(afterSource);
  }finally{
   await application.client.end();await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${database}" WITH (FORCE)`);await admin.end();rmSync(folder,{recursive:true,force:true});
