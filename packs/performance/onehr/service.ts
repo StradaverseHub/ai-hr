@@ -196,8 +196,10 @@ async function pruneModerationDraftTx(tx:Tx,ctx:SessionContext,reviewId:string,k
 
 /** Called by the existing cycle opener inside its transaction. No second roster or identity master. */
 export async function initializeOnehrCycleTx(tx: Tx, ctx: SessionContext, cycleId: string, reviewIds?:string[]) {
+  const [framework]=await tx.execute<{value:'standard'|'onehr'|null}>(sql`select app.performance_cycle_framework(${cycleId}::uuid) as value`);
+  if(framework?.value==='standard')return;if(framework?.value!=='onehr')throw Error('Assessment framework unavailable.');
   const [configured]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));
-  if (!configured) return;
+  if(!configured)throw Error('OneHR initialization source unavailable.');
   await requireAdmin(tx,cycleId);
   const policy=policySchema.parse(configured.policy);
   const reviews=await tx.select({id:performanceReview.id,employmentId:employment.id,companyId:employment.companyId,grade:jobGrade.code}).from(performanceReview).innerJoin(employment,eq(employment.id,performanceReview.employmentId)).leftJoin(jobGrade,eq(jobGrade.id,employment.gradeId)).where(and(eq(performanceReview.cycleId,cycleId),reviewIds?inArray(performanceReview.id,reviewIds):undefined,sql`not exists(select 1 from performance_onehr_review ar where ar.review_id=${performanceReview.id})`));
@@ -213,14 +215,23 @@ export async function initializeOnehrCycleTx(tx: Tx, ctx: SessionContext, cycleI
   }
 }
 export async function assertStandardCycleTx(tx:Tx,cycleId:string) {
-  const [r]=await tx.select({id:onehrCycle.cycleId}).from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));
-  if(r)throw Error('Use the performance and talent review for this cycle.');
+  const [r]=await tx.execute<{framework:'standard'|'onehr'|null}>(sql`select app.performance_cycle_framework(${cycleId}::uuid) as framework`);
+  if(r?.framework!=='standard')throw Error(r?.framework==='onehr'?'Use the performance and talent review for this cycle.':'Assessment framework unavailable.');
+}
+export async function assertStandardReviewTx(tx:Tx,reviewId:string){
+ const [r]=await tx.execute<{framework:'standard'|'onehr'|null}>(sql`select app.performance_review_framework(${reviewId}::uuid) as framework`);
+ if(r?.framework!=='standard')throw Error(r?.framework==='onehr'?'Use the performance and talent review for this cycle.':'Assessment framework unavailable.');
+}
+export async function assertStandardFeedbackTx(tx:Tx,requestId:string){
+ const [r]=await tx.execute<{framework:'standard'|'onehr'|null}>(sql`select app.performance_feedback_framework(${requestId}::uuid) as framework`);
+ if(r?.framework!=='standard')throw Error(r?.framework==='onehr'?'Use the assigned 360 feedback form for this request.':'Assessment framework unavailable.');
 }
 /** Archiving preserves incomplete work and the last signed rating ledger; it never finalizes results for Rewards. */
 export async function prepareAssessmentClosureTx(tx:Tx,cycleId:string) {
-  const [configured]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));
+  const [framework]=await tx.execute<{value:'standard'|'onehr'|null}>(sql`select app.performance_cycle_framework(${cycleId}::uuid) as value`);
+  if(framework?.value===null||!framework)throw Error('Assessment framework unavailable.');
   // D-P1-22 D8: a closed cycle keeps the unit exclusion that applied on its close day.
-  if(configured){await requireAdmin(tx,cycleId);await tx.execute(sql`select app.assessment_unit_exclusion_pin(${cycleId}::uuid)`);}
+  if(framework.value==='onehr'){await requireAdmin(tx,cycleId);await tx.execute(sql`select app.assessment_unit_exclusion_pin(${cycleId}::uuid)`);}
 }
 /** Setup-only source; excludes the composite administrator roster, money and results. */
 export async function getOnehrSetup(ctx:SessionContext,cycleId:string) {
@@ -246,6 +257,8 @@ export async function configureOnehrCycle(ctx:SessionContext,cycleId:string,expe
       if(profile.employmentIds?.length){const selected=await tx.select({id:onehrEmployment.id,companyId:onehrEmployment.companyId}).from(onehrEmployment).where(inArray(onehrEmployment.id,profile.employmentIds));if(selected.length!==new Set(profile.employmentIds).size||profile.companyId&&selected.some(e=>e.companyId!==profile.companyId))throw Error('Profile assignments must use visible native employments in the configured company.');}
     }
     const [existing]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));
+    const [framework]=await tx.execute<{value:'standard'|'onehr'|null}>(sql`select app.performance_cycle_framework(${cycleId}::uuid) as value`);
+    if(!existing&&framework?.value!=='standard')throw Error('OneHR configuration source unavailable.');
     await requireSetupAction(tx,cycleId,existing?'edit':'add');
     if(raw!=null)await publishAssessmentCatalogueTx(tx,ctx,cycleId,existing?policySchema.parse(existing.policy):defaultPolicy(framework),policy);
     if(existing){revision(existing.revision,expected!);await tx.update(onehrCycle).set({policy,revision:existing.revision+1}).where(eq(onehrCycle.cycleId,cycleId));}
@@ -1444,7 +1457,7 @@ export async function ownPerformanceAcknowledgementChoicesTx(tx:Tx,supplied:Sess
  const own=and(eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.is_self_person(${employment.personId})`);
  const reviews=await tx.select({sourceId:performanceReview.id,employmentId:performanceReview.employmentId,cycleName:reviewCycle.name,periodStart:reviewCycle.periodStart,periodEnd:reviewCycle.periodEnd})
   .from(performanceReview).innerJoin(reviewCycle,and(eq(reviewCycle.id,performanceReview.cycleId),eq(reviewCycle.tenantId,performanceReview.tenantId))).innerJoin(employment,and(eq(employment.id,performanceReview.employmentId),eq(employment.tenantId,performanceReview.tenantId)))
-  .where(and(own,eq(performanceReview.tenantId,ctx.tenantId),eq(performanceReview.status,'submitted'),sql`${reviewCycle.releasedAt} is not null`,sql`not exists(select 1 from performance_onehr_cycle configured where configured.cycle_id=${performanceReview.cycleId} and configured.tenant_id=${performanceReview.tenantId})`))
+  .where(and(own,eq(performanceReview.tenantId,ctx.tenantId),eq(performanceReview.status,'submitted'),sql`${reviewCycle.releasedAt} is not null`,sql`app.performance_review_framework(${performanceReview.id})='standard'`))
   .orderBy(desc(reviewCycle.periodEnd),asc(performanceReview.id)).limit(limit+1);
  const plans=await tx.select({sourceId:onehrPlan.id,employmentId:onehrPlan.employmentId,reviewId:onehrPlan.reviewId,planYear:onehrPlan.planYear,conversationHeldOn:onehrPlan.conversationHeldOn})
   .from(onehrPlan).innerJoin(employment,and(eq(employment.id,onehrPlan.employmentId),eq(employment.tenantId,onehrPlan.tenantId)))
@@ -1465,7 +1478,7 @@ export async function ownPerformanceWorkStatusesTx(tx:Tx,supplied:SessionContext
  const standard=await tx.select({reviewId:performanceReview.id,cycleName:reviewCycle.name,periodEnd:reviewCycle.periodEnd,status:performanceReview.status,released:sql<boolean>`${reviewCycle.releasedAt} is not null`})
   .from(performanceReview).innerJoin(reviewCycle,and(eq(reviewCycle.id,performanceReview.cycleId),eq(reviewCycle.tenantId,performanceReview.tenantId)))
   .innerJoin(employment,and(eq(employment.id,performanceReview.employmentId),eq(employment.tenantId,performanceReview.tenantId)))
-  .where(and(own,eq(performanceReview.tenantId,ctx.tenantId),sql`not exists(select 1 from performance_onehr_cycle configured where configured.cycle_id=${performanceReview.cycleId} and configured.tenant_id=${performanceReview.tenantId})`))
+  .where(and(own,eq(performanceReview.tenantId,ctx.tenantId),sql`app.performance_review_framework(${performanceReview.id})='standard'`))
   .orderBy(desc(reviewCycle.periodEnd),asc(performanceReview.id)).limit(limit+1);
  const visibleModern=and(own,eq(onehrReview.tenantId,ctx.tenantId),sql`app.onehr_review_header(${onehrReview.reviewId}) is not null`,sql`(app.assessment_review_participates(${onehrReview.reviewId}) or ${reviewCycle.status}='closed')`);
  const modern=await tx.select({reviewId:onehrReview.reviewId,cycleName:reviewCycle.name,periodEnd:reviewCycle.periodEnd,status:reviewCycle.status})

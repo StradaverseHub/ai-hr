@@ -3761,3 +3761,55 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_career_comment(uuid,integer,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_career_comment(uuid,integer,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Framework identity is a native header fact, never the absence of a caller-visible
+-- Setup row. A missing/foreign/unrelated header is unavailable, not Standard.
+CREATE FUNCTION app.financial_performance_cycle_kind(t uuid,wanted_cycle uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN EXISTS(SELECT 1 FROM public.performance_onehr_cycle config WHERE config.cycle_id=cycle.id AND config.tenant_id=cycle.tenant_id) THEN 'onehr'
+ WHEN EXISTS(SELECT 1 FROM public.performance_onehr_review specialized WHERE specialized.cycle_id=cycle.id AND specialized.tenant_id=cycle.tenant_id) THEN NULL ELSE 'standard' END
+ FROM public.review_cycle cycle WHERE cycle.id=wanted_cycle AND cycle.tenant_id=t;
+$$;
+REVOKE ALL ON FUNCTION app.financial_performance_cycle_kind(uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_performance_review_identity(wanted_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_human_principal_current() AND EXISTS(SELECT 1 FROM public.performance_review review
+ JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ JOIN public.app_user account ON account.id=app.current_user_id() AND account.tenant_id=review.tenant_id
+ WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id() AND account.archived_at IS NULL AND NOT app.login_blocked(account.id)
+ AND (subject.person_id=account.person_id OR EXISTS(SELECT 1 FROM public.employment reviewer WHERE reviewer.id=review.reviewer_employment_id AND reviewer.tenant_id=review.tenant_id AND reviewer.person_id=account.person_id)
+ OR app.onehr_review_header(review.id) IS NOT NULL
+ OR app.performance_current_native_roles(subject.company_id,ARRAY['employee','manager','hr_admin','super_admin','performance_comp_partner','performance_partner']) AND app.can_see_employment(subject.id) AND app.data_permission_record_read(subject.id)
+ OR EXISTS(SELECT 1 FROM public.peer_feedback_request request JOIN public.employment peer ON peer.id=request.peer_employment_id AND peer.tenant_id=request.tenant_id WHERE request.review_id=review.id AND request.tenant_id=review.tenant_id AND peer.person_id=account.person_id)));
+$$;
+REVOKE ALL ON FUNCTION app.financial_performance_review_identity(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.performance_cycle_framework(wanted_cycle uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_performance_cycle_kind(cycle.tenant_id,cycle.id) FROM public.review_cycle cycle
+ WHERE cycle.id=wanted_cycle AND cycle.tenant_id=app.current_tenant_id() AND app.financial_human_principal_current()
+ AND (app.performance_current_native_roles(cycle.company_id,ARRAY['hr_admin','super_admin','performance_comp_partner']) OR app.onehr_cycle_admin(cycle.id)
+ OR EXISTS(SELECT 1 FROM public.performance_review review WHERE review.cycle_id=cycle.id AND review.tenant_id=cycle.tenant_id AND app.financial_performance_review_identity(review.id)));
+$$;
+REVOKE ALL ON FUNCTION app.performance_cycle_framework(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.performance_cycle_framework(uuid) TO ai_hr_app;
+CREATE FUNCTION app.performance_review_framework(wanted_review uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_performance_cycle_kind(review.tenant_id,review.cycle_id) FROM public.performance_review review
+ WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id() AND app.financial_performance_review_identity(review.id);
+$$;
+REVOKE ALL ON FUNCTION app.performance_review_framework(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.performance_review_framework(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Feedback also has an actual native OneHR-panel owner. Preserve that original
+-- extra guard without trusting whether the caller can SELECT the panel table.
+CREATE FUNCTION app.performance_feedback_framework(wanted_request uuid) RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN EXISTS(SELECT 1 FROM public.performance_onehr_panel panel WHERE panel.request_id=request.id AND panel.tenant_id=request.tenant_id) THEN 'onehr'
+ ELSE app.financial_performance_cycle_kind(review.tenant_id,review.cycle_id) END
+ FROM public.peer_feedback_request request JOIN public.performance_review review ON review.id=request.review_id AND review.tenant_id=request.tenant_id
+ WHERE request.id=wanted_request AND request.tenant_id=app.current_tenant_id() AND app.financial_performance_review_identity(review.id);
+$$;
+REVOKE ALL ON FUNCTION app.performance_feedback_framework(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.performance_feedback_framework(uuid) TO ai_hr_app;
