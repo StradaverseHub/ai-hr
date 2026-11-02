@@ -1686,7 +1686,7 @@ wizard action projections and full publication remain separate work.
 
 ## Permissions integration above accepted 0946 — 3 November 2026 (unapplied candidate)
 
-Accepted main a02845ba retains its complete journal and applied migration bodies. The ten permissions migrations are relocated. Nine retain exact source bytes; 0950 verifies the equivalent, already accepted 0946 draft owner body without replacing it. This is local integration, without installation.
+Accepted main a02845ba retains its complete journal and applied migration bodies. The ten permissions migrations are relocated. 0950 verifies the equivalent, already accepted 0946 draft owner body without replacing it. 0956 carries the independently verified import void receipt fix. This is local integration, without installation.
 
 | Source tag | Integration tag | idx | when | SQL SHA256 |
 | --- | --- | ---: | ---: | --- |
@@ -1699,4 +1699,4 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | 0942_organisation_settings_actions | 0953_organisation_settings_actions | 800 | 1793330000353 | 1160474bb42ffdbeb6e24169940b34fdfbb5c028038172df590f18652bc79a03 |
 | 0943_leave_attendance_claim_actions | 0954_leave_attendance_claim_actions | 801 | 1793330000354 | 40034752a2e0eaeaa0cbb2f9be9bb4394db823baf93112ebbcd52536a1a1a914 |
 | 0944_lifecycle_rewards_notice_actions | 0955_lifecycle_rewards_notice_actions | 802 | 1793330000355 | 83e63b174397aee1d87a7ca728f0da2a187b3b45dd01312c28b7e97dc61d4c38 |
-| 0945_financial_setup_actions | 0956_financial_setup_actions | 803 | 1793330000356 | fecc6a07a3d9798f76b9c6c2226c6387fdfac6cb561da944c2e2314ee9b4d67f |
+| 0945_financial_setup_actions | 0956_financial_setup_actions | 803 | 1793330000356 | c0ee123dded074d5074990affefd8d3b55ec474577fc43d4febd9455eff25436 |

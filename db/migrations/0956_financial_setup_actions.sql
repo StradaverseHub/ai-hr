@@ -1013,7 +1013,7 @@ DO $$ DECLARE definition text;needle text;replacement text;signature text;BEGIN
   EXECUTE replace(definition,needle,replacement);
  END LOOP;
 END $$;
-CREATE TRIGGER import_employment_void_receipt_epoch BEFORE INSERT ON app.import_employment_void_effect
+CREATE TRIGGER import_employment_void_receipt_epoch AFTER INSERT ON app.import_employment_void_effect
 FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
 
 DO $$ DECLARE definition text;needle text:=$needle$app.access_workforce_employment(x,'workforce.maintain')$needle$;BEGIN
