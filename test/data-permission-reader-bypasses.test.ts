@@ -1,3 +1,4 @@
+import {publishWorkforceForDataFixture} from './helpers/workforce-publication-fixture';
 /** Real DEFINER/worker boundaries, evaluated after coordinated0936+0937+0938 integration. */
 import {randomUUID} from 'node:crypto';
 import {afterAll,afterEach,beforeAll,beforeEach,expect,it,vi} from 'vitest';
@@ -5,16 +6,14 @@ import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS} from '../deploy/access/publish-workforce-capabilities';
-import {accessConfigurationStore} from '../core/access-configuration-store';
 import {saveLetterField,saveLetterTemplate,decideLetterTemplate,saveLetterPolicy,createLetterDraftBatch} from '../core/letters';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {LetterPolicy} from '../lib/letter-workflow';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,shown:{employmentId:string;personId:string},hidden:typeof shown;
-let publication:{id:string;supported:boolean;bindings:unknown}[]=[];
-beforeAll(migrateTestDb);afterAll(closeAll);afterEach(async()=>{vi.unstubAllEnvs();for(const row of publication)await owner.client`update access_capability set supported=${row.supported},bindings=${JSON.stringify(row.bindings)}::text::jsonb where id=${row.id}`;publication=[];});
-beforeEach(async()=>{vi.stubEnv('AUTH_PROVIDER','workos');vi.stubEnv('NEXT_PUBLIC_WORKOS_REDIRECT_URI','https://scope.fixture.test/callback');await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');ctx=await entitledCtx(b);publication=Array.from(await owner.client<{id:string;supported:boolean;bindings:unknown}[]>`select id,supported,bindings from access_capability where id=any(${WORKFORCE_CAPABILITY_BINDINGS.map(row=>row.id)}::text[])`);await withTenant(ctx,tx=>accessConfigurationStore.loadCurrent(tx,ctx));await publishWorkforceCapabilities(owner.client);const hire=(code:string)=>hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01',employeeCode:code,person:{fullName:'Fictional '+code,primaryEmail:randomUUID()+'@fixture.test'}});shown=await hire('SCOPE-SHOWN');hidden=await hire('SCOPE-HIDDEN');});
+const publicationCleanups:(()=>Promise<void>)[]=[];
+beforeAll(migrateTestDb);afterAll(closeAll);afterEach(async()=>{vi.unstubAllEnvs();for(const clean of publicationCleanups.splice(0).reverse())await clean();});
+beforeEach(async()=>{vi.stubEnv('AUTH_PROVIDER','workos');vi.stubEnv('NEXT_PUBLIC_WORKOS_REDIRECT_URI','https://scope.fixture.test/callback');await resetDb();b=await seedBase();await setModule(b.tenantId,'notifications','active');ctx=await entitledCtx(b);await publishWorkforceForDataFixture(ctx,publicationCleanups);const hire=(code:string)=>hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01',employeeCode:code,person:{fullName:'Fictional '+code,primaryEmail:randomUUID()+'@fixture.test'}});shown=await hire('SCOPE-SHOWN');hidden=await hire('SCOPE-HIDDEN');});
 async function restrict(userId=ctx.userId!){
  const id=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'employeeId',values:['SCOPE-SHOWN']}]};
  await owner.client`insert into data_permission_profile(id,tenant_id,name) values(${id},${b.tenantId},${'Scope '+id})`;

@@ -1,8 +1,9 @@
+import {publishWorkforceForDataFixture} from './helpers/workforce-publication-fixture';
 /** PRIVATE actual/proposed native key facts; these helpers do not authorize a write. */
 import {pgErrorChain} from '../lib/db-error';
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {deletePayrollPermissionGrant,setPayrollPermissionGrant} from '../core/payroll-permissions-admin';
@@ -30,7 +31,10 @@ it('finds recipients who gain when deleting the last company override restores t
  expect(await withTenant(managerCtx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_native(${b.companyId}::uuid) as allowed`))).toEqual([{allowed:true}]);
  await expect(withTenant(admin,tx=>tx.execute(sql`select * from app.native_permission_override_recipients(${b.tenantId}::uuid,'leave.apply_on_behalf',${JSON.stringify(image.value)}::jsonb,null)`))).rejects.toThrow();
 });
+const publicationCleanups:(()=>Promise<void>)[]=[];
+afterEach(async()=>{for(const clean of publicationCleanups.splice(0).reverse())await clean();});
 it('uses canonical profile subset semantics for a potential administrative recipient with no current witness',async()=>{
+ await publishWorkforceForDataFixture(admin,publicationCleanups);
  const recipient=await createAppUser(b.tenantId,null,'manager'),profileId=randomUUID();
  const [legacy]=await owner.withTenant(admin,tx=>tx.execute<{named:boolean;future:boolean}>(sql`select app.native_permission_future_company_ceiling(${b.companyId}::uuid) as named,app.native_permission_future_company_ceiling(null) as future`));expect(legacy).toEqual({named:true,future:true});
  await data({kind:'create',profileId,name:'Fictional potential administrative ceiling',enabled:true,rules:{legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptA]}]}});
