@@ -15,3 +15,9 @@ No AI serializer, model destination, transport, protected input contract, raw-da
 At the reviewed merge checkpoint the literal registry is retained byte-for-byte from accepted password source. It is stale against the combined transform and therefore fails closed. The new exact binding requires its own explicit disposition before final qualification. No AI promotion, activation, new data permission or new human privacy review is claimed.
 
 The accepted lifecycle fixture and password-policy mobile copy remain intact. There are no migrations. Final aggregate CI, authenticated verification, queue admission, exact source/build arrival and installed synthetic native-form acceptance remain required; production, package publication, Firebase setup and stores remain excluded.
+
+## Exact owner disposition — 2 November 2026
+
+The owner directly answered **“Approve exact revised binding refresh”** for reviewed merge `24b67a1420d83e322f1ab3e42016b56edf5d12b0` and exact digest `24e08ce9b912e4c1b51683884ff7f35c84064e1de535d64704ec689f2e853bbf`. This supersedes the prior rejected attempt only for this exact binding. The rejection remains retained as historical evidence; no routine automation or parent approval is substituted for this answer.
+
+Only the 24 existing approved sourceDigest values are refreshed. Original contract IDs, statuses, reviewers, evidence anchors and review timestamps remain unchanged; both pending contracts remain byte-identical and blocked. There are no new AI inputs, destinations, permissions or autonomous decisions. The owner explicitly excludes production. This disposition does not authorize a different digest produced by later integration or replace CI, queue and installed acceptance requirements.
