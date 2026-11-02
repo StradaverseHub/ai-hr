@@ -3,6 +3,7 @@ run-name: Audit controls only · ${{ inputs.expected_sha }}
 on:
   push:
     branches: [codex/audit-upstream-maintainability-20261103]
+    paths: ['.github/**']
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -53,3 +54,20 @@ jobs:
         if: ${{ !cancelled() }}
         working-directory: source
         run: test -z "$(git status --porcelain)"
+  migration-order:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {fetch-depth: 0, persist-credentials: false}
+      - name: Refuse a moved candidate
+        if: github.event_name == 'workflow_dispatch'
+        env: {EXPECTED: '${{ inputs.expected_sha }}'}
+        run: test "$GITHUB_SHA" = "$EXPECTED"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      # Exact fetched integration parents, not an assertion about either installed ledger.
+      - name: Preserve both integration baselines and applied SQL
+        run: |
+          node .github/ci/check-migration-order.mjs dfbcf85b1f03e6e3266df6244694079a98e17dc9
+          node .github/ci/check-migration-order.mjs 6ea88936539c361a17a6f802c5b1e7bcc4ce1e39
