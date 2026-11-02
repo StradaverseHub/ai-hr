@@ -11216,7 +11216,8 @@
         "securityCenter": "Tersedia kepada pentadbir atau individu dengan kebenaran mengkonfigurasi akses.",
         "createLogin": "Pentadbir seluruh kumpulan sahaja. Persediaan manual juga memerlukan penyedia log masuk yang disokong dan sesi pentadbir yang disahkan.",
         "inviteUser": "Pentadbir seluruh kumpulan sahaja.",
-        "entra": "Pentadbir kumpulan sahaja. Konfigurasikan log masuk Microsoft dan penyediaan akaun pekerja untuk organisasi sendiri. Pautan identiti sedia ada memerlukan pengesahan jelas."
+        "entra": "Pentadbir kumpulan sahaja. Konfigurasikan log masuk Microsoft dan penyediaan akaun pekerja untuk organisasi sendiri. Pautan identiti sedia ada memerlukan pengesahan jelas.",
+        "rewardsAccess": "Penugasan Rewards berkuat kuasa dan kuasa pentadbir HR mengikut skop menentukan akses; peranan sistem sahaja tidak memberikan semua tindakan."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -30367,7 +30368,7 @@
       "missing": "Semakan tidak tersedia atau akses dibuang.",
       "system": "Perubahan tidak dapat disimpan. Muat semula dan cuba lagi.",
       "lastRequired": "Kekalkan sekurang-kurangnya seorang yang aktif bagi setiap peranan kelulusan wajib; gantikan mereka dalam satu suntingan.",
-      "checker": "Memerlukan pentadbir bebas yang lain",
+      "checker": "Hanya pengguna Group Rewards yang layak untuk semua semakan boleh membuat keputusan. Pemohon dan individu terlibat tidak boleh membuat keputusan.",
       "reason": "Sebab penolakan (sekurang-kurangnya 10 aksara)",
       "proxy": "Orang yang diwakili",
       "dates": "Hingga (pilihan)"
@@ -32527,7 +32528,7 @@
   },
   "rewardsAccessControl": {
     "waiting": "Menunggu kelulusan ({count})",
-    "independent": "Perubahan hanya berkuat kuasa selepas diluluskan pentadbir lain. Anda tidak boleh meluluskan permintaan sendiri atau perubahan akses sendiri.",
+    "independent": "Hanya pengguna Group Rewards yang layak untuk semua semakan boleh membuat keputusan. Pemohon dan individu terlibat tidak boleh membuat keputusan.",
     "noPending": "Tiada permintaan akses menunggu kelulusan.",
     "history": "Permintaan terdahulu",
     "administrator": "Pentadbir",
@@ -32542,7 +32543,7 @@
     "rejectionReason": "Sebab penolakan (sekurang-kurangnya 10 aksara)",
     "approve": "Luluskan perubahan ini",
     "reject": "Tolak permintaan",
-    "needsChecker": "Memerlukan pentadbir bebas yang lain",
+    "needsChecker": "Hanya pengguna Group Rewards yang layak untuk semua semakan boleh membuat keputusan. Pemohon dan individu terlibat tidak boleh membuat keputusan.",
     "decisionFailed": "Permintaan tidak dapat diputuskan. Muat semula dan semak status terkini.",
     "singleAdmin": "Syarikat ini mempunyai kurang daripada dua pentadbir Ganjaran aktif: {companies}. Pentadbir kedua diperlukan untuk meluluskan permintaan akses.",
     "export": "Eksport senarai akses (CSV)",
@@ -32554,7 +32555,8 @@
     "statuses": {
       "approved": "Diluluskan",
       "rejected": "Ditolak",
-      "lapsed": "Luput — semakan atau akses berubah"
+      "lapsed": "Luput — semakan atau akses berubah",
+      "applied_no_second_approval": "Digunakan – tiada kelulusan kedua diperlukan"
     },
     "suspensions": {
       "login": "Digantung: log masuk tidak tersedia sejak {on}",
@@ -32563,7 +32565,16 @@
       "notice": "Digantung: peletakan jawatan dikemukakan {on}",
       "assignment": "Digantung: penugasan People berubah {on}",
       "unavailable": "Akses tidak tersedia sejak {on}"
-    }
+    },
+    "exportAudit": "Eksport audit akses",
+    "requestReason": "Sebab perubahan akses (sekurang-kurangnya 10 aksara)",
+    "decisionReason": "Sebab keputusan (wajib untuk menolak)",
+    "immediatePreview": "Perubahan ini akan digunakan serta-merta tanpa kelulusan kedua.",
+    "pendingPreview": "Seluruh permintaan ini kekal Menunggu sehingga pengguna Group Rewards yang bebas meluluskannya.",
+    "immediateSaved": "Digunakan – tiada kelulusan kedua diperlukan",
+    "pendingSaved": "Menunggu – akses sedia ada tidak berubah.",
+    "proposalScope": "GR dan CTRO mengurus semakan yang ditugaskan. CEO boleh meminta proksi bertarikh bagi peranan sendiri; PBP boleh meminta akses paparan sendiri.",
+    "scopeExplanation": "Penugasan Rewards berkuat kuasa dan kuasa pentadbir HR mengikut skop menentukan akses; peranan sistem sahaja tidak memberikan semua tindakan."
   },
   "emailDesign": {
     "title": "Templat e-mel",

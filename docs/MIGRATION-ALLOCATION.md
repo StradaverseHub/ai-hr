@@ -966,3 +966,7 @@ the then-installed ledger at integration.
 |762|1793330000329|0929_teras_review_services|0906|765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0|
 
 The SQL comments inside these files still name their original provisional numbers; the bodies are kept byte for byte.
+
+## Rewards access approval exemptions — 3 November 2026 (provisional)
+
+codex/approved-rewards-20261103 reserves 0947_rewards_access_approval_exemptions at idx763 / when1793330000347, after the parent scan found all local/origin and registered-worktree claims through0946 / when346. Parent coordinates0948 signing,0949 probation and0950 contracts. Source reservation only; no installation priority or permission. Re-freeze the canonical journal and live applied ledger before integration/application; preserve applied bytes, reindex only this unapplied successor in the aggregate.

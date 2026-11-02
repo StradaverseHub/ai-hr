@@ -13,10 +13,10 @@ import {hireEmployee} from '../core/org';
 import {createRewardUnit,getRewardConfiguration,getRewardUnit,previewRewardAccessChange,saveRewardAccessChange,decideRewardAccessRequest,rewardAccessRequests,rewardAccessAdministration,rewardAccessSuspensionRecipients,setRewardMember,confirmRewardGovernance} from '../packs/rewards/service';
 import {migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,closeAll,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
-let b:Base,admin:SessionContext,checker:SessionContext,target:SessionContext,unitId:string,bu:string,employmentId:string;
+let b:Base,admin:SessionContext,requester:SessionContext,checker:SessionContext,target:SessionContext,unitId:string,bu:string,employmentId:string;
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
 beforeAll(migrateRewardMembershipFixture);afterAll(closeAll);
-async function account(name:string,role:'hr_admin'|'employee'='employee'){
+async function account(name:string,role:'hr_admin'|'employee'|'super_admin'='employee'){
  const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:name,primaryEmail:randomUUID()+'@access.test'}).returning();
  const userId=await createAppUser(b.tenantId,person.id,role);
  return {...admin,userId,personId:person.id,roles:[role],grants:[{role,companyId:null}]} satisfies SessionContext;
@@ -27,16 +27,17 @@ async function confirmBuOpening(){
  await grantCheckedFixtureSeat(admin,unitId,await revision(),checker.userId!,'gr');
  await confirmRewardGovernance(checker,unitId,await revision(),'selection');
 }
-async function request(after:Record<string,unknown>|null,before:Record<string,unknown>|null=null,actor=admin){
- const p=await previewRewardAccessChange(actor,{unitId,revision:await revision(),before,after}),{digest,...input}=p;
+async function request(after:Record<string,unknown>|null,before:Record<string,unknown>|null=null,actor=requester){
+ const p=await previewRewardAccessChange(actor,{unitId,revision:await revision(),before,after,reason:'Fictional requested access change'}),{digest,pending:_,...input}=p;
  return saveRewardAccessChange(actor,input,digest);
 }
 beforeEach(async()=>{
  await resetDb();b=await seedBase();await setModule(b.tenantId,'rewards','active');admin=await entitledCtx(b);
  const [unit]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'ACCESS',name:'Fictional access unit'}).returning();bu=unit.id;
- checker=await account('Independent checker','hr_admin');
+ checker=await account('Independent checker','hr_admin');requester=await account('Non-exempt access requester','super_admin');
  const hire=await hireEmployee(admin,{person:{fullName:'Fictional BU reviewer',primaryEmail:randomUUID()+'@access.test'},companyId:b.companyId,departmentId:b.deptA,businessUnitId:bu,employmentType:'full_time',hiredOn:`${year-1}-01-01`});employmentId=hire.employmentId;
  unitId=await createRewardUnit(admin,{name:'Fictional access controls',year,companyId:b.companyId,businessUnitId:bu,snapshotDate:today});
+ await owner.db.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:checker.userId!,role:'gr'});
 
  const [employee]=await owner.db.select().from(s.employment).where(eq(s.employment.id,employmentId));
  const userId=await createAppUser(b.tenantId,employee.personId,'employee');target={...admin,userId,personId:employee.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
@@ -81,14 +82,14 @@ describe('Rewards two-person access and live People eligibility',()=>{
  });
  it('refuses a real named agent as access requester, independent checker or Group Rewards holder without effects',async()=>{
   const pending=await request({userId:target.userId!,role:'bu'}),agent=await namedAgent();
-  const before=await securityState();expect(before.requests).toHaveLength(1);expect(before.requests[0]).toMatchObject({id:pending.requestId,status:'pending'});expect(before.members).toHaveLength(1);expect(before.events.length).toBeGreaterThan(0);
+  const before=await securityState();expect(before.requests).toHaveLength(1);expect(before.requests[0]).toMatchObject({id:pending.requestId,status:'pending'});expect(before.members).toHaveLength(2);expect(before.events.length).toBeGreaterThan(0);
   // Reuse the canonical human-created request's exact valid changes: failure must be actor authority.
-  await nativeRefused(withTenant(agent,tx=>tx.execute(sql`select app.reward_access_request_create(${JSON.stringify(before.requests[0].changes)}::jsonb)`)),'23514');
+  await nativeRefused(withTenant(agent,tx=>tx.execute(sql`select app.reward_access_request_create(${JSON.stringify(before.requests[0].changes)}::jsonb,'Fictional direct access request')`)),'23514');
   await nativeRefused(withTenant(agent,tx=>tx.execute(sql`select app.reward_access_request_decide(${pending.requestId}::uuid,true,'')`)),'42501');
   await expect(decideRewardAccessRequest(agent,pending.requestId,true)).rejects.toMatchObject({code:'scope'});
   // A real same-tenant login passes the link guard; this insert must fail at write authority.
-  expect(before.members.some(member=>member.userId===checker.userId&&member.role==='gr')).toBe(false);
-  await nativeRefused(withTenant(agent,tx=>tx.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:checker.userId!,role:'gr'})),'42501');
+  expect(before.members.some(member=>member.userId===requester.userId&&member.role==='gr')).toBe(false);
+  await nativeRefused(withTenant(agent,tx=>tx.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:requester.userId!,role:'gr'})),'42501');
   expect(await securityState()).toEqual(before);
   // The unchanged pending request remains executable by its real independent human checker.
   expect(await decideRewardAccessRequest(checker,pending.requestId,true)).toEqual({status:'approved'});
@@ -98,7 +99,7 @@ describe('Rewards two-person access and live People eligibility',()=>{
   expect(before.requests).toHaveLength(1);expect(before.requests[0]).toMatchObject({id:pending.requestId,status:'pending'});
   const hybrids:SessionContext[]=[{...agent,userId:checker.userId},{...agent,personId:checker.personId},{...agent,roles:['hr_admin'],grants:undefined},{...agent,grants:[{role:'hr_admin',companyId:null}]},{...checker,agent:agent.agent}];
   for(const hybrid of hybrids){
-   await expect(withTenant(hybrid,tx=>tx.execute(sql`select app.reward_access_request_create(${JSON.stringify(before.requests[0].changes)}::jsonb)`))).rejects.toThrow('An agent context cannot also carry a login or a grant.');
+   await expect(withTenant(hybrid,tx=>tx.execute(sql`select app.reward_access_request_create(${JSON.stringify(before.requests[0].changes)}::jsonb,'Fictional direct access request')`))).rejects.toThrow('An agent context cannot also carry a login or a grant.');
    await expect(decideRewardAccessRequest(hybrid,pending.requestId,true)).rejects.toThrow('An agent context cannot also carry a login or a grant.');
    await expect(withTenant(hybrid,tx=>tx.execute(sql`select app.reward_roles(${unitId}::uuid)`))).rejects.toThrow('An agent context cannot also carry a login or a grant.');
   }
@@ -108,10 +109,10 @@ describe('Rewards two-person access and live People eligibility',()=>{
   const pending=await request({userId:target.userId!,role:'bu'});await decideRewardAccessRequest(checker,pending.requestId,true);
   await owner.db.update(s.employment).set({tenderResignationDate:today}).where(eq(s.employment.id,employmentId));await expect(getRewardUnit(target,unitId)).rejects.toThrow();
   const [event]=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,unitId),eq(s.domainEvent.eventType,'reward-access.suspended')));expect(event).toBeTruthy();
-  const agent=await namedAgent(),before=await securityState();expect(before.members).toHaveLength(2);expect(before.observations).toHaveLength(1);
+  const agent=await namedAgent(),before=await securityState();expect(before.members).toHaveLength(3);expect(before.observations).toHaveLength(1);
   const changes=[{unitId,revision:(await revision()),before:null,after:{userId:agent.agent!.principalId,role:'gr'}}];
   // Even a human administrator cannot turn the non-login principal into a role-bearing app_user.
-  await nativeRefused(withTenant(admin,tx=>tx.execute(sql`select app.reward_access_request_create(${JSON.stringify(changes)}::jsonb)`)),'42501');
+  await nativeRefused(withTenant(admin,tx=>tx.execute(sql`select app.reward_access_request_create(${JSON.stringify(changes)}::jsonb,'Fictional direct access request')`)),'42501');
   await nativeRefused(withTenant(agent,tx=>tx.execute(sql`select app.reward_access_project_account_suspension(${event.id}::uuid)`)),'42501');
   expect(await securityState()).toEqual(before);
  });
@@ -120,17 +121,18 @@ describe('Rewards two-person access and live People eligibility',()=>{
   const initial=await revision(),pending=await request({userId:target.userId!,role:'bu'});
   expect(await revision()).toBe(initial);
   expect((await rewardAccessAdministration(admin,[b.companyId])).members.some(m=>m.userId===target.userId)).toBe(false);
-  await expect(decideRewardAccessRequest(admin,pending.requestId,true)).rejects.toMatchObject({code:'checker'});
+  await expect(decideRewardAccessRequest(requester,pending.requestId,true)).rejects.toMatchObject({code:'checker'});
   await expect(decideRewardAccessRequest(target,pending.requestId,true)).rejects.toMatchObject({code:'scope'});
   expect(await decideRewardAccessRequest(checker,pending.requestId,true)).toEqual({status:'approved'});
   expect(await revision()).toBe(initial+1);expect((await getRewardUnit(target,unitId)).roles).toContain('bu');
   const events=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,pending.requestId),eq(s.domainEvent.eventType,'reward-access.approved')));
-  expect(events).toHaveLength(1);expect(events[0].actorId).toBe(checker.userId);expect(events[0].payload).toMatchObject({requestedBy:admin.userId});
+  expect(events).toHaveLength(1);expect(events[0].actorId).toBe(checker.userId);expect(events[0].payload).toMatchObject({requestedBy:requester.userId});
  });
  it('prevents an administrator from approving a request that changes their own access',async()=>{
-  const pending=await request({userId:checker.userId!,role:'gr'});
+  const third=await account('Third independent checker','hr_admin');await owner.db.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:third.userId!,role:'gr'});
+  const pending=await request({userId:checker.userId!,role:'gr'},{userId:checker.userId!,role:'gr'});
   await expect(decideRewardAccessRequest(checker,pending.requestId,true)).rejects.toMatchObject({code:'checker'});
-  const third=await account('Third independent checker','hr_admin');expect(await decideRewardAccessRequest(third,pending.requestId,true)).toEqual({status:'approved'});
+  expect(await decideRewardAccessRequest(third,pending.requestId,true)).toEqual({status:'approved'});
  });
  it('records rejection with a reason and lapses requests after a real review revision change',async()=>{
   const one=await request({userId:target.userId!,role:'bu'});
@@ -145,7 +147,7 @@ describe('Rewards two-person access and live People eligibility',()=>{
   await expect(decideRewardAccessRequest(checker,two.requestId,true)).rejects.toMatchObject({code:'changed'});
  });
  it('keeps legacy setters pending and denies direct application-role membership writes',async()=>{
-  const pending=await setRewardMember(admin,unitId,await revision(),target.userId!,'bu');expect(pending.pending).toBe(true);
+  const pending=await setRewardMember(requester,unitId,await revision(),target.userId!,'bu');expect(pending.pending).toBe(true);
   await expect(withTenant(admin,tx=>tx.insert(s.rewardMember).values({tenantId:b.tenantId,unitId,userId:target.userId!,role:'bu'}))).rejects.toThrow();
   expect((await rewardAccessAdministration(admin,[b.companyId])).members.some(m=>m.userId===target.userId)).toBe(false);
  });
@@ -186,9 +188,9 @@ describe('Rewards two-person access and live People eligibility',()=>{
   const [other]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'OTHER',name:'Fictional other unit'}).returning();
   await owner.db.update(s.assignment).set({businessUnitId:other.id}).where(eq(s.assignment.employmentId,employmentId));
   expect((await getRewardUnit(target,unitId)).roles).toEqual(['bg']);
-  pending=await request({userId:target.userId!,role:'bu',restoreReason:'Approved temporary continuity exception'},{userId:target.userId!,role:'bu'});
-  expect((await getRewardUnit(target,unitId)).roles).toEqual(['bg']);
-  await decideRewardAccessRequest(checker,pending.requestId,true);expect((await getRewardUnit(target,unitId)).roles.sort()).toEqual(['bg','bu']);
+  pending=await request({userId:target.userId!,role:'bu',restoreReason:'Approved temporary continuity exception'},{userId:target.userId!,role:'bu'},admin);
+  expect(pending.pending).toBe(false);
+  expect((await getRewardUnit(target,unitId)).roles.sort()).toEqual(['bg','bu']);
   const tomorrow=new Date(Date.parse(today+'T00:00:00Z')+86400000).toISOString().slice(0,10);
   await owner.db.update(s.employment).set({hiredOn:tomorrow}).where(eq(s.employment.id,employmentId));expect((await getRewardUnit(target,unitId)).roles).toEqual(['bg']);
   await owner.db.update(s.employment).set({hiredOn:`${year-1}-01-01`}).where(eq(s.employment.id,employmentId));

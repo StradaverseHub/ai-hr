@@ -11216,7 +11216,8 @@
         "securityCenter": "Available to administrators or people with permission to configure access.",
         "createLogin": "Group-wide administrators only. Manual setup also requires a supported login provider and a verified administrator session.",
         "inviteUser": "Group-wide administrators only.",
-        "entra": "Group administrators only. Configure Microsoft sign-in and employee provisioning for their own organization. Linking existing identities requires explicit confirmation."
+        "entra": "Group administrators only. Configure Microsoft sign-in and employee provisioning for their own organization. Linking existing identities requires explicit confirmation.",
+        "rewardsAccess": "Effective Rewards assignments and scoped HR administrator authority determine access; a platform role alone does not grant every action."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -30367,7 +30368,7 @@
       "missing": "This review is unavailable or access was removed.",
       "system": "The change could not be saved. Reload and try again.",
       "lastRequired": "Keep at least one active person in every required approval role; replace them in one edit.",
-      "checker": "Needs another independent administrator",
+      "checker": "Only an eligible Group Rewards user covering every review may decide. The requester and affected people cannot decide.",
       "reason": "Reason for rejection (at least 10 characters)",
       "proxy": "Person being covered",
       "dates": "Until (optional)"
@@ -32527,7 +32528,7 @@
   },
   "rewardsAccessControl": {
     "waiting": "Waiting for approval ({count})",
-    "independent": "Changes take effect only after another administrator approves. You cannot approve your own request or a change to your own access.",
+    "independent": "Only an eligible Group Rewards user covering every review may decide. The requester and affected people cannot decide.",
     "noPending": "No access requests are waiting for approval.",
     "history": "Earlier requests",
     "administrator": "Administrator",
@@ -32542,7 +32543,7 @@
     "rejectionReason": "Reason for rejection (at least 10 characters)",
     "approve": "Approve these changes",
     "reject": "Reject request",
-    "needsChecker": "Needs another independent administrator",
+    "needsChecker": "Only an eligible Group Rewards user covering every review may decide. The requester and affected people cannot decide.",
     "decisionFailed": "The request could not be decided. Reload and review its current status.",
     "singleAdmin": "These companies have fewer than two active Rewards administrators: {companies}. A second administrator is needed to approve access requests.",
     "export": "Export access list (CSV)",
@@ -32554,7 +32555,8 @@
     "statuses": {
       "approved": "Approved",
       "rejected": "Rejected",
-      "lapsed": "Lapsed — review or access changed"
+      "lapsed": "Lapsed — review or access changed",
+      "applied_no_second_approval": "Applied – no second approval required"
     },
     "suspensions": {
       "login": "Suspended: login unavailable since {on}",
@@ -32563,7 +32565,16 @@
       "notice": "Suspended: resignation tendered {on}",
       "assignment": "Suspended: People assignment changed {on}",
       "unavailable": "Access unavailable since {on}"
-    }
+    },
+    "exportAudit": "Export access audit",
+    "requestReason": "Reason for access change (at least 10 characters)",
+    "decisionReason": "Decision reason (required to reject)",
+    "immediatePreview": "This change will apply immediately without a second approval.",
+    "pendingPreview": "This whole request will stay Pending until an independent Group Rewards user approves it.",
+    "immediateSaved": "Applied – no second approval required",
+    "pendingSaved": "Pending – existing access remains unchanged.",
+    "proposalScope": "GR and CTRO manage their assigned reviews. CEOs may request dated proxies covering their own seat; PBPs may request their own view access.",
+    "scopeExplanation": "Effective Rewards assignments and scoped HR administrator authority determine access; a platform role alone does not grant every action."
   },
   "emailDesign": {
     "title": "Email templates",
