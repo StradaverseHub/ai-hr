@@ -73,9 +73,9 @@ it('captures only actual SQL-owned source/version metadata and refuses caller-su
  const id=await prepare(d.id),r=await status(id);expect(JSON.stringify(r.source)).not.toContain('PRIVATE source input');expect(r.stamp).toBeNull();expect(r.bodies).toBe(1);
 });
 it('accepts only the exact server-owned numeric cohort while retaining nested numeric refusal',async()=>{
- const d=await plain();const [row]=await owner.db.select().from(s.employeeDraft).where(eq(s.employeeDraft.id,d.id));expect(row.data.creationDefaultsVersion).toBe(1);
+ const d=await plain();const [row]=await owner.db.select().from(s.employeeDraft).where(eq(s.employeeDraft.id,d.id));const stored=row.data as {creationDefaultsVersion?:number;profile?:Record<string,unknown>};expect(stored.creationDefaultsVersion).toBe(1);
  await withTenant(ctx,tx=>source(tx,d.id));
- for(const data of [{...row.data,creationDefaultsVersion:2},{...row.data,profile:{...row.data.profile,value:1}}]){
+ for(const data of [{...stored,creationDefaultsVersion:2},{...stored,profile:{...stored.profile,value:1}}]){
   await owner.db.update(s.employeeDraft).set({data:data as never}).where(eq(s.employeeDraft.id,d.id));await assertRefusal(withTenant(ctx,tx=>source(tx,d.id)),'54000');
  }
 });
