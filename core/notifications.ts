@@ -1,3 +1,4 @@
+import {enrollOnehrWorkerSourceTx,isOnehrWorkerEvent} from '../packs/performance/onehr/worker-source';
 import {currentFollowupTargetsTx} from './automatic-followups';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
@@ -1091,6 +1092,7 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
         }
       }
       noticeReader=async id=>{const ids=audiences.get(id);if(!ids)throw Error('Complete Notice projection snapshot is unavailable.');return ids;};
+      for(const ev of rows)if(isOnehrWorkerEvent(ev.eventType)&&(ev.eventType!=='onehr.kpi-approval-needed'||['setting','results'].includes(String((ev.payload as Record<string,unknown>|null)?.phase))))await enrollOnehrWorkerSourceTx(tx,{kind:'event',id:ev.id});
       // Every canonical resolver and notification/outbox write retains APP RLS. Only the bounded event
       // batch, immutable Notice snapshots and final cursor use this explicit maintenance connection.
       await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);

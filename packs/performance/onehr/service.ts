@@ -29,7 +29,7 @@ import { onehrLabel } from './person-labels';
 import { onehrEmployment } from './employment-projection';
 import { frozenVisibilityOneTx } from './frozen-visibility';
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, getTableColumns, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../../db/client';
 import { actorOf, appendEvent } from '../../../db/events';
@@ -111,6 +111,14 @@ async function loadReview(tx: Tx, reviewId: string, lock = false) {
   if(!header?.value)throw Error('Assessment not assigned to you.');
   const cycle=await loadCycle(tx,row.cycleId);
   return {row,native:header.value,cycle,kpis:z.array(kpiSchema).parse(row.kpis),competencies:z.array(competencySchema).parse(row.competencies)};
+}
+async function loadReviewTaskFields(tx:Tx,reviewId:string){
+ uuid.parse(reviewId);
+ const fields=Object.entries(getTableColumns(onehrReview)).map(([key,column])=>sql`${sql.identifier(column.name)} as ${sql.identifier(key)}`);
+ const [row]=await tx.execute<typeof onehrReview.$inferSelect>(sql`select ${sql.join(fields,sql`, `)} from app.onehr_review_task_fields(${reviewId}::uuid)`);if(!row)return null;
+ const [header]=await tx.execute<{value:{reviewerEmploymentId:string|null;closedAt:string|null;name:string;ownEmploymentIds:string[]}|null}>(sql`select app.onehr_review_task_header(${reviewId}::uuid) as value`);if(!header?.value)return null;
+ const cycle=await loadCycle(tx,row.cycleId);
+ return {row,native:header.value,cycle,kpis:z.array(kpiSchema).parse(row.kpis),competencies:z.array(competencySchema).parse(row.competencies)};
 }
 async function frozenReviewTx(tx:Tx,reviewId:string){const [row]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${reviewId}::uuid)`);return row;}
 async function moderatorChoices(tx:Tx,id:string){const [r]=await tx.execute<{value:{id:string;name:string;personId:string}[]}>(sql`select app.onehr_moderator_choices(${id}::uuid) as value`);return r?.value??[];}
@@ -1373,8 +1381,9 @@ type ResultCard={id:string;digest:string|null;frozen:boolean;performanceReleased
 /** Own-person projection returns only expressly released ratings and anonymous feedback. */
 export async function getOnehrReview(ctx:SessionContext,reviewId:string) {return withPerformanceTenant(ctx,tx=>getOnehrReviewTx(tx,ctx,reviewId));}
 export async function getOnehrReviewTx(tx:Tx,ctx:SessionContext,reviewId:string) {
-    uuid.parse(reviewId);const [exists]=await tx.select().from(onehrReview).where(eq(onehrReview.reviewId,reviewId));if(!exists)return null;
-    const r=await loadReview(tx,reviewId);const self=await isSelf(tx,r.row.employmentId),manager=!self&&await isManager(tx,reviewId),admin=!self&&await isAdmin(tx,r.row.cycleId),moderator=!self&&!manager&&await isModerator(tx,reviewId),reviewer=!self&&!manager&&await isEffectiveReviewer(tx,reviewId);if(!self&&!manager&&!admin&&!moderator&&!reviewer)throw Error('Assessment is not assigned to you.');
+    const r=await loadReviewTaskFields(tx,reviewId);if(!r)return null;
+    const [scope]=await tx.execute<{admin:boolean}>(sql`select app.onehr_result_administration(${reviewId}::uuid) as admin`);
+    const self=await isSelf(tx,r.row.employmentId),manager=!self&&await isManager(tx,reviewId),admin=!self&&!!scope?.admin,moderator=!self&&!manager&&await isModerator(tx,reviewId),reviewer=!self&&!manager&&await isEffectiveReviewer(tx,reviewId);if(!self&&!manager&&!admin&&!moderator&&!reviewer)throw Error('Assessment is not assigned to you.');
     // D-P1-22: PM stays with the stored reviewer and the approvers; the one-level-up reviewer sees competencies and plans.
     const pmHidden=(moderator||reviewer)&&!admin,tmHidden=moderator&&!reviewer&&!admin;
     const name={name:r.native.name};const moderators=await moderatorChoices(tx,reviewId);

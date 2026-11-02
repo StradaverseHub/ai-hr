@@ -1,3 +1,4 @@
+import {withOnehrWorkerSource} from '../packs/performance/onehr/worker-source';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,inArray,sql} from 'drizzle-orm';
@@ -69,7 +70,7 @@ describe('read-only assessment email preview authority',()=>{
   const base=defaultEmailDocument('assessment_reminder');await saveEmailDesign(admin,'assessment_reminder',locale,{...base,subject:`${locale} {first_name}: {cycle}`,background:'#123456',blocks:[base.blocks[0],{id:'00000000-0000-4000-8000-000000000003',type:'text',heading:`${locale} custom`,runs:[{text:'{first_name} · {company_name} · {count} · {things}'}],style:{}},base.blocks[1]]},0);
   const before=await readWitness(),preview=await perf.previewAssessmentReminder(admin,cycleId,employeeCode);expect(preview.mode).toBe('full');expect(preview.locale).toBe(locale);expect(preview.eligible).toBe(true);expect(await readWitness()).toEqual(before);
   const queued=await perf.queueAssessmentReminders(admin,cycleId,'manual');expect(queued.queued).toBeGreaterThan(0);const system={...admin,userId:undefined,personId:undefined};await dispatchNotificationsFromSweep(system,owner);
-  const [pending]=await owner.db.select().from(schema.assessmentReminderRecipient).where(and(eq(schema.assessmentReminderRecipient.runId,queued.runId!),eq(schema.assessmentReminderRecipient.userId,recipient.userId!)));await withTenant(system,tx=>perf.assessmentReminderRecipientsTx(tx,pending.id));
+  const [pending]=await owner.db.select().from(schema.assessmentReminderRecipient).where(and(eq(schema.assessmentReminderRecipient.runId,queued.runId!),eq(schema.assessmentReminderRecipient.userId,recipient.userId!)));await withOnehrWorkerSource(system,owner,{kind:'recipient',id:pending.id},tx=>perf.assessmentReminderRecipientsTx(tx,pending.id));
   const [delivery]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.sourceEventId,pending.sourceEventId!)),token=randomUUID();expect(delivery).toBeTruthy();await owner.db.update(schema.notificationDelivery).set({leaseToken:token,leaseUntil:new Date(Date.now()+60000)}).where(eq(schema.notificationDelivery.id,delivery.id));
   const [actual]=await owner.client`select identity_email.delivery_design(${delivery.id}::uuid,${token}::uuid,${issuer},'assessment_reminder',${locale}) as design,identity_email.assessment_tasks(${delivery.id}::uuid,${token}::uuid,${issuer}) as summary`;
   const [notice]=await owner.db.select().from(schema.notification).where(eq(schema.notification.id,delivery.notificationId!));const link=new URL(notice.linkPath!,'https://hr.example.test').href;

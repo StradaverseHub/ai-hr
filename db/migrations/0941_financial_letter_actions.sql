@@ -874,7 +874,7 @@ BEGIN
  IF inserted IS NULL THEN RETURN NULL;END IF;
  -- A transaction below the global snapshot xmin has no live/deferred consumer. Do
  -- this once per transaction, retaining every in-flight actor's exact receipts.
- FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody','financial_letter_proposed_birth','financial_claim_port_effect'] LOOP
+ FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody','financial_letter_proposed_birth','financial_claim_port_effect','financial_onehr_worker_source','financial_onehr_source_context'] LOOP
   EXECUTE format('DELETE FROM app.%I WHERE transaction_id<$1',table_name) USING oldest;
  END LOOP;
  DELETE FROM app.financial_receipt_epoch WHERE transaction_id<oldest;
@@ -2466,6 +2466,150 @@ CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_letter_pro
 --> statement-breakpoint
 -- Queued reminder metadata has a separate native dispatcher course. No raw
 -- recipient or assessment-row exception is added to the generic data policies.
+-- Actual maintenance credentials enroll one cycle or actual queued source before
+-- APP downgrade. A role/tenant GUC cannot create or widen this private custody.
+CREATE TABLE app.financial_onehr_worker_source(
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,session_login name NOT NULL,source_kind text NOT NULL,source_id uuid NOT NULL,
+ cycle_id uuid NOT NULL,review_id uuid,recipient_id uuid,event_id uuid,
+ PRIMARY KEY(transaction_id,tenant_id,session_login,source_kind,source_id)
+);
+ALTER TABLE app.financial_onehr_worker_source ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_onehr_worker_source FROM PUBLIC,ai_hr_app;
+CREATE TABLE app.financial_onehr_source_context(
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,session_login name NOT NULL,scope_key text NOT NULL,mode text NOT NULL,
+ recipient_id uuid,run_id uuid,cycle_id uuid,user_ids uuid[],event_id uuid,allow_write boolean NOT NULL DEFAULT false,depth integer NOT NULL DEFAULT 1,
+ PRIMARY KEY(transaction_id,tenant_id,session_login,scope_key)
+);
+ALTER TABLE app.financial_onehr_source_context ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_onehr_source_context FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_worker_queue_cycle(t uuid,c uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.access_workforce_storage_owner() AND app.current_user_id() IS NULL AND nullif(current_setting('app.agent_principal_id',true),'') IS NULL
+ AND t=app.current_tenant_id() AND EXISTS(SELECT 1 FROM app.financial_onehr_worker_source proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=t AND proof.session_login=session_user AND proof.source_kind='cycle' AND proof.cycle_id=c);
+$$;
+REVOKE ALL ON FUNCTION app.onehr_worker_queue_cycle(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_worker_queue_cycle(uuid,uuid) TO ai_hr_app;
+CREATE FUNCTION app.onehr_reminder_source_run_read(t uuid,r uuid,c uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.onehr_worker_queue_cycle(t,c) OR EXISTS(SELECT 1 FROM app.financial_onehr_source_context scope WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=t AND scope.session_login=session_user
+ AND (scope.run_id=r OR scope.mode='cooldown' AND scope.cycle_id=c));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_source_run_read(uuid,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_source_run_read(uuid,uuid,uuid) TO ai_hr_app;
+CREATE FUNCTION app.onehr_reminder_source_recipient_read(t uuid,r uuid,parent uuid,u uuid,event uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.financial_onehr_source_context scope WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=t AND scope.session_login=session_user
+ AND (scope.recipient_id=r AND (scope.run_id IS NULL OR scope.run_id=parent) AND (scope.event_id IS NULL OR scope.event_id=event) AND (scope.user_ids IS NULL OR u=ANY(scope.user_ids))
+ OR scope.mode='cooldown' AND u=ANY(scope.user_ids) AND EXISTS(SELECT 1 FROM public.performance_assessment_reminder_run run WHERE run.id=parent AND run.tenant_id=t AND run.cycle_id=scope.cycle_id)))
+ OR EXISTS(SELECT 1 FROM public.performance_assessment_reminder_run run WHERE run.id=parent AND run.tenant_id=t AND app.onehr_worker_queue_cycle(t,run.cycle_id));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_source_recipient_read(uuid,uuid,uuid,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_source_recipient_read(uuid,uuid,uuid,uuid,uuid) TO ai_hr_app;
+CREATE FUNCTION app.onehr_reminder_source_recipient_write(t uuid,r uuid,parent uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.financial_onehr_source_context scope WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=t AND scope.session_login=session_user AND scope.mode='recipient' AND scope.recipient_id=r AND scope.run_id=parent AND scope.allow_write);
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_source_recipient_write(uuid,uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_source_recipient_write(uuid,uuid,uuid) TO ai_hr_app;
+CREATE POLICY financial_onehr_run_read ON public.performance_assessment_reminder_run FOR SELECT USING(app.onehr_reminder_source_run_read(tenant_id,id,cycle_id));
+CREATE POLICY financial_onehr_recipient_read ON public.performance_assessment_reminder_recipient FOR SELECT USING(app.onehr_reminder_source_recipient_read(tenant_id,id,run_id,user_id,source_event_id));
+CREATE POLICY financial_onehr_recipient_update ON public.performance_assessment_reminder_recipient FOR UPDATE
+ USING(app.onehr_reminder_source_recipient_write(tenant_id,id,run_id)) WITH CHECK(app.onehr_reminder_source_recipient_write(tenant_id,id,run_id));
+CREATE POLICY financial_onehr_run_queue ON public.performance_assessment_reminder_run FOR INSERT
+ WITH CHECK(app.onehr_worker_queue_cycle(tenant_id,cycle_id) AND actor_user_id IS NULL AND mode='automatic' AND send_day IS NOT NULL);
+CREATE FUNCTION app.onehr_worker_queue_recipient(row_data jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT row_data->'tasks'='[]'::jsonb AND row_data->>'mail_words' IS NULL AND row_data->>'prepared_at' IS NULL AND row_data->>'prepared_until' IS NULL
+ AND row_data->>'outcome' IN ('queued','noConsent','cooldown') AND EXISTS(
+ SELECT 1 FROM public.performance_assessment_reminder_run run JOIN public.app_user account ON account.id=(row_data->>'user_id')::uuid AND account.tenant_id=run.tenant_id
+ WHERE run.id=(row_data->>'run_id')::uuid AND run.tenant_id=(row_data->>'tenant_id')::uuid AND run.actor_user_id IS NULL AND run.mode='automatic'
+ AND app.onehr_worker_queue_cycle(run.tenant_id,run.cycle_id) AND account.archived_at IS NULL AND NOT app.login_blocked(account.id)
+ AND (row_data->>'employment_id' IS NULL OR EXISTS(SELECT 1 FROM public.employment employment WHERE employment.id=(row_data->>'employment_id')::uuid AND employment.tenant_id=run.tenant_id AND employment.person_id=account.person_id))
+ AND (row_data->>'outcome'<>'queued' AND row_data->>'source_event_id' IS NULL OR EXISTS(SELECT 1 FROM public.domain_event event WHERE event.id=(row_data->>'source_event_id')::uuid AND event.tenant_id=run.tenant_id AND event.aggregate_id=(row_data->>'id')::uuid AND event.aggregate_type='assessment-reminder' AND event.event_type='assessment.reminder-queued' AND event.actor_type='system' AND event.actor_id IS NULL)));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_worker_queue_recipient(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_worker_queue_recipient(jsonb) TO ai_hr_app;
+CREATE POLICY financial_onehr_recipient_queue ON public.performance_assessment_reminder_recipient FOR INSERT WITH CHECK(app.onehr_worker_queue_recipient(to_jsonb(performance_assessment_reminder_recipient.*)));
+CREATE FUNCTION app.financial_onehr_recipient_context_begin(p_recipient uuid,p_write boolean DEFAULT false,p_owner boolean DEFAULT false) RETURNS boolean
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE parent uuid;cycle uuid;
+BEGIN
+ IF app.current_user_id() IS NOT NULL THEN RETURN false;END IF;
+ IF nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL THEN RAISE EXCEPTION 'OneHR worker principal unavailable' USING ERRCODE='42501';END IF;
+ IF NOT(p_owner AND app.access_workforce_storage_owner()) AND NOT EXISTS(SELECT 1 FROM app.financial_onehr_worker_source proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.session_login=session_user AND proof.recipient_id=p_recipient AND app.financial_onehr_worker_allowed(proof.cycle_id,NULL,p_recipient)) THEN RETURN false;END IF;
+ INSERT INTO app.financial_onehr_source_context(transaction_id,tenant_id,session_login,scope_key,mode,recipient_id,allow_write) VALUES(pg_current_xact_id(),app.current_tenant_id(),session_user,'recipient:'||p_recipient,'recipient',p_recipient,p_write)
+ ON CONFLICT(transaction_id,tenant_id,session_login,scope_key) DO UPDATE SET depth=financial_onehr_source_context.depth+1,allow_write=financial_onehr_source_context.allow_write OR excluded.allow_write;
+ SELECT recipient.run_id INTO parent FROM public.performance_assessment_reminder_recipient recipient WHERE recipient.id=p_recipient AND recipient.tenant_id=app.current_tenant_id();
+ UPDATE app.financial_onehr_source_context scope SET run_id=parent WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=app.current_tenant_id() AND scope.session_login=session_user AND scope.scope_key='recipient:'||p_recipient;
+ RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_recipient_context_begin(uuid,boolean,boolean) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_recipient_context_end(p_recipient uuid) RETURNS void
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ UPDATE app.financial_onehr_source_context scope SET depth=depth-1 WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=app.current_tenant_id() AND scope.session_login=session_user AND scope.scope_key='recipient:'||p_recipient;
+ DELETE FROM app.financial_onehr_source_context scope WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=app.current_tenant_id() AND scope.session_login=session_user AND scope.scope_key='recipient:'||p_recipient AND scope.depth=0;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_recipient_context_end(uuid) FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_onehr_source_context FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+
+CREATE FUNCTION app.financial_onehr_worker_enroll(p_kind text,p_source uuid) RETURNS void
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE cycle_id uuid;review_id uuid;recipient_id uuid;event_id uuid;opened uuid;
+BEGIN
+ IF NOT app.access_workforce_storage_owner() OR app.current_user_id() IS NOT NULL OR nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL
+ OR app.current_tenant_id() IS NULL OR p_kind IS NULL OR p_kind NOT IN ('cycle','event','recipient') THEN RAISE EXCEPTION 'OneHR worker connection unavailable' USING ERRCODE='42501';END IF;
+ IF p_kind='cycle' THEN
+  SELECT cycle.id INTO cycle_id FROM public.review_cycle cycle JOIN public.performance_onehr_cycle config ON config.cycle_id=cycle.id AND config.tenant_id=cycle.tenant_id
+  WHERE cycle.id=p_source AND cycle.tenant_id=app.current_tenant_id() AND cycle.status IN ('open','calibration');
+ ELSE
+  IF p_kind='recipient' THEN
+   PERFORM app.financial_onehr_recipient_context_begin(p_source,false,true);opened:=p_source;
+   SELECT recipient.source_event_id INTO event_id FROM public.performance_assessment_reminder_recipient recipient WHERE recipient.id=p_source AND recipient.tenant_id=app.current_tenant_id();
+  ELSE event_id:=p_source;SELECT event.aggregate_id INTO opened FROM public.domain_event event WHERE event.id=event_id AND event.tenant_id=app.current_tenant_id() AND event.event_type='assessment.reminder-queued' AND event.aggregate_type='assessment-reminder';
+   IF opened IS NOT NULL THEN PERFORM app.financial_onehr_recipient_context_begin(opened,false,true);END IF;END IF;
+  SELECT run.cycle_id,recipient.id INTO cycle_id,recipient_id FROM public.domain_event event
+  JOIN public.performance_assessment_reminder_recipient recipient ON recipient.id=event.aggregate_id AND recipient.source_event_id=event.id AND recipient.tenant_id=event.tenant_id
+  JOIN public.performance_assessment_reminder_run run ON run.id=recipient.run_id AND run.tenant_id=recipient.tenant_id
+  WHERE event.id=event_id AND event.tenant_id=app.current_tenant_id() AND event.event_type='assessment.reminder-queued' AND event.aggregate_type='assessment-reminder'
+  AND event.actor_id IS NOT DISTINCT FROM run.actor_user_id;
+  IF cycle_id IS NULL AND p_kind='event' THEN
+   SELECT review.cycle_id,review.review_id INTO cycle_id,review_id FROM public.domain_event event
+   JOIN public.performance_onehr_review review ON review.review_id=event.aggregate_id AND review.tenant_id=event.tenant_id
+   WHERE event.id=event_id AND event.tenant_id=app.current_tenant_id() AND event.aggregate_type='onehr'
+   AND (event.event_type IN ('onehr.results-submitted','onehr.competencies-submitted','onehr.plan-shared') OR event.event_type='onehr.kpi-approval-needed' AND event.payload->>'phase' IN ('setting','results'));
+  END IF;
+ END IF;
+ IF cycle_id IS NULL THEN IF opened IS NOT NULL THEN PERFORM app.financial_onehr_recipient_context_end(opened);END IF;RETURN;END IF;
+ INSERT INTO app.financial_onehr_worker_source VALUES(pg_current_xact_id(),app.current_tenant_id(),session_user,p_kind,p_source,cycle_id,review_id,recipient_id,event_id) ON CONFLICT DO NOTHING;
+ IF opened IS NOT NULL THEN PERFORM app.financial_onehr_recipient_context_end(opened);END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_worker_enroll(text,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_worker_allowed(p_cycle uuid,p_review uuid DEFAULT NULL,p_recipient uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.current_user_id() IS NULL AND nullif(current_setting('app.agent_principal_id',true),'') IS NULL AND EXISTS(
+ SELECT 1 FROM app.financial_onehr_worker_source proof JOIN public.review_cycle cycle ON cycle.id=proof.cycle_id AND cycle.tenant_id=proof.tenant_id
+ JOIN public.performance_onehr_cycle config ON config.cycle_id=cycle.id AND config.tenant_id=cycle.tenant_id
+ WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.session_login=session_user
+ AND proof.cycle_id=p_cycle AND cycle.status IN ('open','calibration')
+ AND (p_recipient IS NOT NULL AND proof.recipient_id=p_recipient
+ OR p_recipient IS NULL AND p_review IS NOT NULL AND (proof.review_id=p_review OR (proof.source_kind='cycle' OR proof.recipient_id IS NOT NULL) AND EXISTS(SELECT 1 FROM public.performance_review review WHERE review.id=p_review AND review.cycle_id=proof.cycle_id AND review.tenant_id=proof.tenant_id))
+ OR p_recipient IS NULL AND p_review IS NULL AND (proof.source_kind='cycle' OR proof.recipient_id IS NOT NULL)));
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_worker_allowed(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_worker_access(p_cycle uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_worker_allowed(p_cycle,NULL,NULL); $$;
+REVOKE ALL ON FUNCTION app.onehr_worker_access(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_worker_access(uuid) TO ai_hr_app;
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_onehr_worker_source FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+-- No parameterless tenant worker authority remains. Existing raw dispatcher RLS
+-- branches cannot be revived by an issued finite source proof.
+CREATE OR REPLACE FUNCTION app.assessment_dispatcher_scope() RETURNS boolean
+LANGUAGE sql STABLE AS $$ SELECT false; $$;
+
 CREATE FUNCTION app.onehr_reminder_dispatch_source(p_recipient uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT jsonb_build_object('recipient',jsonb_build_object('id',recipient.id,'userId',recipient.user_id,'employmentId',recipient.employment_id,'outcome',recipient.outcome),
@@ -2477,11 +2621,17 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  JOIN public.employment subject ON subject.id=recipient.employment_id AND subject.tenant_id=recipient.tenant_id
  JOIN public.domain_event event ON event.id=recipient.source_event_id AND event.tenant_id=recipient.tenant_id AND event.aggregate_id=recipient.id AND event.aggregate_type='assessment-reminder' AND event.event_type='assessment.reminder-queued' AND event.actor_id IS NOT DISTINCT FROM run.actor_user_id
  WHERE recipient.id=p_recipient AND recipient.tenant_id=app.current_tenant_id()
- AND (app.assessment_dispatcher_scope() OR app.onehr_cycle_admin(run.cycle_id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id));
+ AND (app.financial_onehr_worker_allowed(run.cycle_id,NULL,recipient.id) OR app.principal_snapshot_current() AND app.onehr_cycle_admin(run.cycle_id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id));
 $$;
 REVOKE ALL ON FUNCTION app.onehr_reminder_dispatch_source(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_reminder_dispatch_source(uuid) TO ai_hr_app;
-CREATE FUNCTION app.onehr_reminder_dispatch_update(p_recipient uuid,p_expected jsonb,p_outcome text,p_tasks jsonb,p_words jsonb,p_until timestamptz,p_tenant_epoch bigint,p_cycle_epoch bigint) RETURNS boolean
+CREATE TABLE app.financial_onehr_prepared_source(
+ tenant_id uuid NOT NULL,recipient_id uuid PRIMARY KEY REFERENCES public.performance_assessment_reminder_recipient(id) ON DELETE CASCADE,user_id uuid NOT NULL,cycle_id uuid NOT NULL,review_ids uuid[] NOT NULL,
+ tasks_hash text NOT NULL,prepared_at timestamptz NOT NULL,prepared_until timestamptz NOT NULL
+);
+ALTER TABLE app.financial_onehr_prepared_source ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_onehr_prepared_source FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_reminder_dispatch_update(p_recipient uuid,p_expected jsonb,p_outcome text,p_tasks jsonb,p_words jsonb,p_until timestamptz,p_tenant_epoch bigint,p_cycle_epoch bigint,p_review_ids uuid[] DEFAULT NULL) RETURNS boolean
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE source jsonb;recipient public.performance_assessment_reminder_recipient%ROWTYPE;now_at timestamptz;deadline timestamptz;boundary timestamptz;words jsonb:=nullif(p_words,'null'::jsonb);
 BEGIN
@@ -2492,6 +2642,7 @@ BEGIN
  IF source IS NULL OR source IS DISTINCT FROM p_expected OR recipient.outcome<>'queued' THEN RETURN false;END IF;
  IF p_outcome IS NULL OR p_outcome NOT IN ('queued','changed','noPendingWork','noConsent','cooldown') THEN RAISE EXCEPTION 'Reminder projection outcome unavailable' USING ERRCODE='42501';END IF;
  IF p_outcome<>'queued' THEN
+  DELETE FROM app.financial_onehr_prepared_source sealed WHERE sealed.recipient_id=recipient.id AND sealed.tenant_id=recipient.tenant_id;
   UPDATE public.performance_assessment_reminder_recipient actual SET outcome=p_outcome,tasks='[]',mail_words=NULL,prepared_at=NULL,prepared_until=NULL WHERE actual.id=recipient.id;
   RETURN true;
  END IF;
@@ -2508,12 +2659,20 @@ BEGIN
  OR task ? 'people' AND (jsonb_typeof(task->'people') IS DISTINCT FROM 'array' OR jsonb_array_length(task->'people')>3 OR EXISTS(SELECT 1 FROM jsonb_array_elements(task->'people') name WHERE jsonb_typeof(name)<>'string' OR length(name#>>'{}') NOT BETWEEN 1 AND 200)))
  OR words IS NOT NULL AND (jsonb_typeof(words)<>'object' OR NOT app.access_command_keys(words,ARRAY['subject','opening']) OR NOT words ?& ARRAY['subject','opening'] OR jsonb_typeof(words->'subject')<>'string' OR jsonb_typeof(words->'opening')<>'string' OR length(words->>'subject') NOT BETWEEN 1 AND 20000 OR length(words->>'opening') NOT BETWEEN 1 AND 30000 OR words->>'subject' ~ E'[\r\n]')
  THEN RAISE EXCEPTION 'Reminder bounded projection unavailable' USING ERRCODE='42501';END IF;
+ IF p_review_ids IS NULL OR cardinality(p_review_ids)>100000 OR array_position(p_review_ids,NULL) IS NOT NULL OR cardinality(p_review_ids)<>(SELECT count(DISTINCT id) FROM unnest(p_review_ids) id)
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_tasks) task WHERE task->>'key' IN ('own_results','own_checkin','own_competency','own_plan','team_setting','team_results','team_competency','team_plan','team_career')) AND cardinality(p_review_ids)=0
+ OR EXISTS(SELECT 1 FROM unnest(p_review_ids) wanted(id) WHERE NOT EXISTS(SELECT 1 FROM public.performance_onehr_review review WHERE review.review_id=wanted.id AND review.cycle_id=(source->'run'->>'cycleId')::uuid AND review.tenant_id=recipient.tenant_id AND app.financial_onehr_target_task_view(review.tenant_id,recipient.user_id,review.review_id)))
+ THEN RAISE EXCEPTION 'Reminder task source unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO app.financial_onehr_prepared_source VALUES(recipient.tenant_id,recipient.id,recipient.user_id,(source->'run'->>'cycleId')::uuid,p_review_ids,
+ encode(sha256(convert_to(jsonb_build_object('tasks',p_tasks,'words',words)::text,'UTF8')),'hex'),now_at,p_until)
+ ON CONFLICT(recipient_id) DO UPDATE SET user_id=excluded.user_id,cycle_id=excluded.cycle_id,review_ids=excluded.review_ids,tasks_hash=excluded.tasks_hash,prepared_at=excluded.prepared_at,prepared_until=excluded.prepared_until WHERE financial_onehr_prepared_source.tenant_id=excluded.tenant_id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Reminder task source changed' USING ERRCODE='42501';END IF;
  UPDATE public.performance_assessment_reminder_recipient actual SET tasks=p_tasks,mail_words=words,prepared_at=now_at,prepared_until=p_until,tenant_epoch=p_tenant_epoch,cycle_epoch=p_cycle_epoch WHERE actual.id=recipient.id;
  RETURN true;
 END;
 $$;
-REVOKE ALL ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint,uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint,uuid[]) TO ai_hr_app;
 -- The delayed-notice reader needs workflow flags and actual assigned IDs, never
 -- raw self/manager answers, KPI amounts, review text or a stored performance band.
 -- Notification eligibility belongs to each actual recipient, never to the dispatcher.
@@ -2536,7 +2695,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
  JOIN public.review_cycle cycle ON cycle.id=review.cycle_id AND cycle.tenant_id=review.tenant_id
  WHERE review.cycle_id=p_cycle AND review.tenant_id=app.current_tenant_id() AND cycle.status IN ('open','calibration')
- AND (app.assessment_dispatcher_scope() OR app.onehr_cycle_admin(cycle.id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id)) AND app.assessment_review_participates(review.id);
+ AND (app.financial_onehr_worker_allowed(cycle.id,NULL,NULL) OR app.principal_snapshot_current() AND app.onehr_cycle_admin(cycle.id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id)) AND app.assessment_review_participates(review.id);
 $$;
 REVOKE ALL ON FUNCTION app.onehr_review_task_recipient_access(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_review_task_recipient_access(uuid,uuid) TO ai_hr_app;
@@ -2550,7 +2709,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   FROM public.performance_onehr_review assessment JOIN public.performance_review review ON review.id=assessment.review_id AND review.tenant_id=assessment.tenant_id
   JOIN public.review_cycle cycle ON cycle.id=review.cycle_id AND cycle.tenant_id=review.tenant_id JOIN public.performance_onehr_cycle config ON config.cycle_id=cycle.id AND config.tenant_id=cycle.tenant_id
   WHERE review.id=p_review AND review.tenant_id=app.current_tenant_id() AND cycle.status IN ('open','calibration') AND app.assessment_review_participates(review.id)
-  AND (app.assessment_dispatcher_scope() OR app.onehr_review_header(review.id) IS NOT NULL)
+  AND (app.financial_onehr_worker_allowed(cycle.id,review.id,NULL) OR app.onehr_review_header(review.id) IS NOT NULL)
  ), candidates AS (
   SELECT (moderator->>'id')::uuid AS id FROM source CROSS JOIN LATERAL jsonb_array_elements(source.moderators) moderator
   UNION SELECT effective_reviewer FROM source WHERE effective_reviewer IS NOT NULL
@@ -2701,7 +2860,7 @@ ALTER FUNCTION app.onehr_moderator_choices(uuid) RENAME TO financial_onehr_nativ
 REVOKE ALL ON FUNCTION app.financial_onehr_native_moderator_choices(uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.onehr_moderator_choices(wanted_review uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT CASE WHEN app.assessment_dispatcher_scope() OR app.onehr_review_header(wanted_review) IS NOT NULL THEN app.financial_onehr_native_moderator_choices(wanted_review) ELSE '[]'::jsonb END;
+ SELECT CASE WHEN app.financial_onehr_worker_allowed((SELECT review.cycle_id FROM public.performance_review review WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id()),wanted_review,NULL) OR app.onehr_review_header(wanted_review) IS NOT NULL THEN app.financial_onehr_native_moderator_choices(wanted_review) ELSE '[]'::jsonb END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_moderator_choices(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_moderator_choices(uuid) TO ai_hr_app;
@@ -2760,3 +2919,307 @@ $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_administrative_delta_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER z_financial_onehr_administrative_delta_guard BEFORE INSERT OR UPDATE ON public.performance_onehr_review FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_administrative_delta_guard();
 CREATE TRIGGER z_financial_onehr_administrative_delta_guard BEFORE UPDATE ON public.performance_onehr_plan FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_administrative_delta_guard();
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assessment_pending_work(wanted_cycle uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH cycle AS MATERIALIZED (
+  SELECT c.*,cfg.policy FROM review_cycle c JOIN performance_onehr_cycle cfg ON cfg.cycle_id=c.id AND cfg.tenant_id=c.tenant_id
+  WHERE c.id=wanted_cycle AND c.tenant_id=app.current_tenant_id() AND c.status IN ('open','calibration')
+   AND (app.financial_onehr_worker_allowed(wanted_cycle,NULL,NULL) OR app.principal_snapshot_current() AND app.onehr_cycle_admin(c.id))
+ ), reviews AS MATERIALIZED (
+  SELECT r.*,p.reviewer_employment_id,p.closed_at,e.person_id,person.full_name,
+   (SELECT coalesce(jsonb_agg(mc ORDER BY mc->>'id'),'[]'::jsonb) FROM jsonb_array_elements(app.onehr_moderator_choices(r.review_id)) mc WHERE NOT app.assessment_unit_excluded(r.cycle_id,(mc->>'id')::uuid)) AS moderators,
+   CASE WHEN app.assessment_unit_excluded(r.cycle_id,p.reviewer_employment_id) THEN app.onehr_effective_reviewer_of(r.review_id) ELSE p.reviewer_employment_id END AS effective_reviewer_employment_id,
+   EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.review_id AND f.tenant_id=r.tenant_id) AS frozen
+  FROM cycle c JOIN performance_onehr_review r ON r.cycle_id=c.id AND r.tenant_id=c.tenant_id
+  JOIN performance_review p ON p.id=r.review_id AND p.tenant_id=r.tenant_id
+  JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN person ON person.id=e.person_id AND person.tenant_id=e.tenant_id
+  WHERE app.assessment_review_participates(r.review_id) AND (app.financial_onehr_worker_allowed(wanted_cycle,NULL,NULL) OR app.onehr_admin(r.company_id) AND app.data_permission_matches(r.employment_id))
+ ), panels AS MATERIALIZED (
+  SELECT p.request_id,p.peer_employment_id,p.review_id FROM performance_onehr_panel p JOIN reviews r ON r.review_id=p.review_id AND r.tenant_id=p.tenant_id
+  WHERE p.archived_at IS NULL AND p.submitted_at IS NULL AND NOT r.frozen AND r.closed_at IS NULL
+ ), sessions AS MATERIALIZED (
+  SELECT s.* FROM cycle c JOIN performance_onehr_calibration s ON s.cycle_id=c.id AND s.tenant_id=c.tenant_id
+  WHERE app.financial_onehr_worker_allowed(wanted_cycle,NULL,NULL) OR app.onehr_admin(s.company_id) AND NOT EXISTS(SELECT 1 FROM public.performance_onehr_calibration_entry protected WHERE protected.session_id=s.id AND protected.tenant_id=s.tenant_id AND NOT app.data_permission_matches(protected.employment_id))
+ ), candidates AS (
+  SELECT employment_id AS id FROM reviews UNION SELECT effective_reviewer_employment_id FROM reviews
+  UNION SELECT (m->>'id')::uuid FROM reviews r CROSS JOIN LATERAL jsonb_array_elements(r.moderators) m
+  UNION SELECT peer_employment_id FROM panels
+  UNION SELECT e.id FROM sessions s CROSS JOIN LATERAL unnest(s.reviewer_user_ids||app.onehr_calibration_seat_users(s.id)) uid
+   JOIN app_user u ON u.id=uid AND u.tenant_id=s.tenant_id JOIN employment e ON e.person_id=u.person_id AND e.tenant_id=u.tenant_id
+ ), actors AS MATERIALIZED (
+  SELECT u.id,u.person_id,p.full_name,array_agg(e.id ORDER BY e.id) AS employment_ids,
+   app.assessment_admin_for(u.id,(SELECT company_id FROM cycle)) AS cycle_admin
+  FROM app_user u JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id JOIN employment e ON e.person_id=p.id AND e.tenant_id=p.tenant_id
+  WHERE u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND e.blacklisted_at IS NULL AND (LEAST(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date<=LEAST(e.resignation_date,e.last_working_date,e.terminated_on))
+   AND EXISTS(SELECT 1 FROM candidates candidate WHERE candidate.id=e.id)
+  GROUP BY u.id,u.person_id,p.full_name
+ )
+ SELECT jsonb_build_object(
+  'cycle',jsonb_build_object('id',c.id,'companyId',c.company_id,'name',c.name,'periodEnd',c.period_end,'policy',jsonb_build_object('kind',c.policy->'kind','modules',c.policy->'modules','windows',c.policy->'windows')),
+  'actors',coalesce((SELECT jsonb_agg(jsonb_build_object('userId',a.id,'personId',a.person_id,'name',a.full_name,'employmentIds',a.employment_ids,'cycleAdmin',a.cycle_admin) ORDER BY a.id) FROM actors a),'[]'::jsonb),
+  'reviews',coalesce((SELECT jsonb_agg(jsonb_build_object('id',r.review_id,'companyId',r.company_id,'employmentId',r.employment_id,'personId',r.person_id,'name',r.full_name,'reviewerEmploymentId',r.effective_reviewer_employment_id,'moderatorIds',(SELECT coalesce(jsonb_agg(m->'id' ORDER BY m->>'id'),'[]'::jsonb) FROM jsonb_array_elements(r.moderators) m),'frozen',r.frozen OR r.closed_at IS NOT NULL,
+   'facts',jsonb_build_object('competenciesAssigned',jsonb_array_length(r.competencies)>0,'competencyStatus',r.competency_status,'resultsSubmitted',r.results_submitted_at IS NOT NULL,'managerPerformance',r.manager_performance,
+    'planStatus',(SELECT p.status FROM performance_onehr_plan p WHERE p.tenant_id=r.tenant_id AND p.employment_id=r.employment_id AND p.plan_year=extract(year from c.period_end)::integer+CASE WHEN c.policy->>'kind'='year_end' THEN 1 ELSE 0 END),
+    'kpis',(SELECT coalesce(jsonb_agg(jsonb_build_object('hrOwned',coalesce((k->>'hrOwned')::boolean,false),'setting',k->'setting','locked',k->'locked','moderatorEmploymentId',k->'moderatorEmploymentId','checkIn',k->'checkIn' IS NOT NULL AND k->'checkIn'<>'null'::jsonb,
+     'approvalChain',(SELECT coalesce(jsonb_agg(jsonb_build_object('employmentId',step->'employmentId','at',step->'at') ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) WITH ORDINALITY q(step,i)),
+     'settingApprovals',(SELECT coalesce(jsonb_agg(jsonb_build_object('action',step->'action') ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(coalesce(k->'settingApprovals','[]'::jsonb)) WITH ORDINALITY q(step,i))) ORDER BY i),'[]'::jsonb) FROM jsonb_array_elements(r.kpis) WITH ORDINALITY q(k,i)))) ORDER BY r.review_id) FROM reviews r),'[]'::jsonb),
+  'panels',coalesce((SELECT jsonb_agg(jsonb_build_object('id',p.request_id,'employmentId',p.peer_employment_id,'reviewId',p.review_id) ORDER BY p.request_id) FROM panels p),'[]'::jsonb),
+  'sessions',coalesce((SELECT jsonb_agg(jsonb_build_object('id',s.id,'companyId',s.company_id,'tier',s.tier,'reviewerUserIds',(SELECT coalesce(jsonb_agg(ru.uid ORDER BY ru.uid),'[]'::jsonb) FROM (SELECT DISTINCT uid FROM unnest(s.reviewer_user_ids||app.onehr_calibration_seat_users(s.id)) uid) ru WHERE app.onehr_calibration_reviewer(s.id,ru.uid)),'adminUserIds',(SELECT coalesce(jsonb_agg(a.id ORDER BY a.id),'[]'::jsonb) FROM actors a WHERE app.assessment_admin_for(a.id,s.company_id)),
+   'lockedAt',s.locked_at,'performanceLockedAt',s.performance_locked_at,'potentialLockedAt',s.potential_locked_at,
+   'entries',app.assessment_calibration_work(s.id)) ORDER BY s.id) FROM sessions s),'[]'::jsonb)) FROM cycle c
+$$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.financial_onehr_native_moderator_choices(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',m.id,'name',p.full_name,'personId',m.person_id)),'[]'::jsonb) FROM performance_review r JOIN employment sub ON sub.id=r.employment_id AND sub.tenant_id=r.tenant_id JOIN employment m ON m.tenant_id=r.tenant_id JOIN person p ON p.id=m.person_id WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id() AND (app.onehr_review_header(r.id) IS NOT NULL OR app.financial_onehr_result_admin(r.id) OR app.financial_onehr_worker_allowed(r.cycle_id,r.id,NULL)) AND sub.person_id<>m.person_id AND (m.terminated_on IS NULL OR m.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND (EXISTS(SELECT 1 FROM performance_onehr_review rr, jsonb_array_elements(rr.kpis) k WHERE rr.review_id=r.id AND k->>'moderatorSource'='matrix' AND k->>'moderatorEmploymentId'=m.id::text) OR m.id=r.reviewer_employment_id OR EXISTS(SELECT 1 FROM reporting_line l WHERE l.subordinate_employment_id=sub.id AND l.manager_employment_id=m.id AND l.line_type IN ('functional','project','dotted') AND l.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (l.valid_to IS NULL OR l.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND l.superseded_at IS NULL))
+$$;
+
+CREATE FUNCTION app.onehr_reminder_cooldowns(p_cycle uuid,p_users uuid[],p_except uuid DEFAULT NULL) RETURNS uuid[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH graph AS MATERIALIZED (SELECT app.assessment_pending_work(p_cycle) AS value),actors AS (
+ SELECT (actor->>'userId')::uuid AS id FROM graph CROSS JOIN LATERAL jsonb_array_elements(coalesce(graph.value->'actors','[]'::jsonb)) actor)
+ SELECT coalesce(array_agg(DISTINCT recipient.user_id),'{}'::uuid[]) FROM public.performance_assessment_reminder_recipient recipient
+ JOIN actors ON actors.id=recipient.user_id JOIN public.performance_assessment_reminder_run run ON run.id=recipient.run_id AND run.tenant_id=recipient.tenant_id
+ LEFT JOIN public.notification_delivery delivery ON delivery.source_event_id=recipient.source_event_id AND delivery.recipient_user_id=recipient.user_id AND delivery.channel='email'
+ WHERE recipient.tenant_id=app.current_tenant_id() AND run.cycle_id=p_cycle AND recipient.user_id=ANY(p_users) AND (p_except IS NULL OR recipient.id<>p_except)
+ AND (delivery.status='sent' AND delivery.sent_at>now()-interval '20 hours' OR delivery.status='pending' OR delivery.last_error='uncertain' OR recipient.outcome='queued' AND delivery.id IS NULL AND recipient.created_at>now()-interval '20 hours');
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_cooldowns(uuid,uuid[],uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_cooldowns(uuid,uuid[],uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+ALTER FUNCTION app.onehr_reminder_dispatch_source(uuid) RENAME TO financial_onehr_dispatch_source_native;
+REVOKE ALL ON FUNCTION app.financial_onehr_dispatch_source_native(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_reminder_dispatch_source(p_recipient uuid) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE opened boolean;source jsonb;
+BEGIN
+ opened:=app.financial_onehr_recipient_context_begin(p_recipient,false,false);
+ source:=app.financial_onehr_dispatch_source_native(p_recipient);
+ IF opened THEN PERFORM app.financial_onehr_recipient_context_end(p_recipient);END IF;
+ RETURN source;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_dispatch_source(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_dispatch_source(uuid) TO ai_hr_app;
+ALTER FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint,uuid[]) RENAME TO financial_onehr_dispatch_update_native;
+REVOKE ALL ON FUNCTION app.financial_onehr_dispatch_update_native(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint,uuid[]) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_reminder_dispatch_update(p_recipient uuid,p_expected jsonb,p_outcome text,p_tasks jsonb,p_words jsonb,p_until timestamptz,p_tenant_epoch bigint,p_cycle_epoch bigint,p_review_ids uuid[] DEFAULT NULL) RETURNS boolean
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE opened boolean;changed boolean;
+BEGIN
+ opened:=app.financial_onehr_recipient_context_begin(p_recipient,true,false);
+ changed:=app.financial_onehr_dispatch_update_native(p_recipient,p_expected,p_outcome,p_tasks,p_words,p_until,p_tenant_epoch,p_cycle_epoch,p_review_ids);
+ IF opened THEN PERFORM app.financial_onehr_recipient_context_end(p_recipient);END IF;
+ RETURN changed;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint,uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint,uuid[]) TO ai_hr_app;
+ALTER FUNCTION app.onehr_reminder_cooldowns(uuid,uuid[],uuid) RENAME TO financial_onehr_cooldowns_native;
+REVOKE ALL ON FUNCTION app.financial_onehr_cooldowns_native(uuid,uuid[],uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_reminder_cooldowns(p_cycle uuid,p_users uuid[],p_except uuid DEFAULT NULL) RETURNS uuid[]
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE users uuid[];result uuid[];
+BEGIN
+ SELECT coalesce(array_agg((actor->>'userId')::uuid),'{}'::uuid[]) INTO users FROM jsonb_array_elements(coalesce(app.assessment_pending_work(p_cycle)->'actors','[]'::jsonb)) actor WHERE (actor->>'userId')::uuid=ANY(p_users);
+ IF cardinality(users)=0 THEN RETURN '{}'::uuid[];END IF;
+ INSERT INTO app.financial_onehr_source_context(transaction_id,tenant_id,session_login,scope_key,mode,cycle_id,user_ids)
+ VALUES(pg_current_xact_id(),app.current_tenant_id(),session_user,'cooldown:'||p_cycle,'cooldown',p_cycle,users);
+ result:=app.financial_onehr_cooldowns_native(p_cycle,users,p_except);
+ DELETE FROM app.financial_onehr_source_context scope WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=app.current_tenant_id() AND scope.session_login=session_user AND scope.scope_key='cooldown:'||p_cycle;
+ RETURN result;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_cooldowns(uuid,uuid[],uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_cooldowns(uuid,uuid[],uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.financial_onehr_prepared_current(t uuid,r uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.financial_onehr_prepared_source sealed JOIN public.performance_assessment_reminder_recipient recipient ON recipient.id=sealed.recipient_id AND recipient.tenant_id=sealed.tenant_id AND recipient.user_id=sealed.user_id
+ JOIN public.performance_assessment_reminder_run run ON run.id=recipient.run_id AND run.tenant_id=recipient.tenant_id AND run.cycle_id=sealed.cycle_id
+ WHERE sealed.tenant_id=t AND sealed.recipient_id=r AND sealed.prepared_at=recipient.prepared_at AND sealed.prepared_until=recipient.prepared_until AND sealed.prepared_until>now()
+ AND sealed.tasks_hash=encode(sha256(convert_to(jsonb_build_object('tasks',recipient.tasks,'words',recipient.mail_words)::text,'UTF8')),'hex')
+ AND NOT EXISTS(SELECT 1 FROM unnest(sealed.review_ids) source(id) WHERE NOT app.financial_onehr_target_task_view(sealed.tenant_id,sealed.user_id,source.id)));
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_prepared_current(uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_relay_begin(p_delivery uuid,p_token uuid,p_issuer text) RETURNS uuid
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid;r uuid;u uuid;e uuid;parent uuid;cycle uuid;
+BEGIN
+ SELECT delivery.tenant_id,event.aggregate_id,target.user_id,event.id INTO t,r,u,e FROM public.notification_delivery delivery
+ JOIN identity_email.delivery_target(p_delivery,p_token,p_issuer) target ON target.user_id=delivery.recipient_user_id
+ JOIN public.domain_event event ON event.id=delivery.source_event_id AND event.tenant_id=delivery.tenant_id AND event.event_type='assessment.reminder-queued' AND event.aggregate_type='assessment-reminder'
+ WHERE delivery.id=p_delivery;
+ IF t IS NULL THEN RETURN NULL;END IF;
+ INSERT INTO app.financial_onehr_source_context(transaction_id,tenant_id,session_login,scope_key,mode,recipient_id,user_ids,event_id)
+ VALUES(pg_current_xact_id(),t,session_user,'relay:'||p_delivery,'relay',r,ARRAY[u],e);
+ SELECT recipient.run_id INTO parent FROM public.performance_assessment_reminder_recipient recipient WHERE recipient.id=r AND recipient.tenant_id=t AND recipient.user_id=u AND recipient.source_event_id=e;
+ UPDATE app.financial_onehr_source_context scope SET run_id=parent WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=t AND scope.session_login=session_user AND scope.scope_key='relay:'||p_delivery;
+ SELECT run.cycle_id INTO cycle FROM public.performance_assessment_reminder_run run WHERE run.id=parent AND run.tenant_id=t;
+ UPDATE app.financial_onehr_source_context scope SET cycle_id=cycle WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=t AND scope.session_login=session_user AND scope.scope_key='relay:'||p_delivery;
+ IF parent IS NULL OR cycle IS NULL THEN
+  DELETE FROM app.financial_onehr_source_context scope WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=t AND scope.session_login=session_user AND scope.scope_key='relay:'||p_delivery;RETURN NULL;
+ END IF;
+ RETURN t;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_relay_begin(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_relay_end(t uuid,p_delivery uuid) RETURNS void
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ DELETE FROM app.financial_onehr_source_context scope WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=t AND scope.session_login=session_user AND scope.scope_key='relay:'||p_delivery;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_relay_end(uuid,uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION identity_email.assessment_tasks(p_id uuid,p_token uuid,p_issuer text)
+RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER
+SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE bound_tenant uuid;payload jsonb;
+ prior_tenant text:=coalesce(current_setting('app.tenant_id',true),'');
+ prior_user text:=coalesce(current_setting('app.user_id',true),'');
+ prior_roles text:=coalesce(current_setting('app.roles',true),'');
+ prior_grants text:=coalesce(current_setting('app.grants',true),'');
+BEGIN
+ bound_tenant:=app.financial_onehr_relay_begin(p_id,p_token,p_issuer);
+ IF bound_tenant IS NULL THEN RETURN NULL;END IF;
+ PERFORM set_config('app.tenant_id',bound_tenant::text,true),set_config('app.user_id','',true),
+  set_config('app.roles','',true),set_config('app.grants','[]',true);
+
+ SELECT jsonb_build_object('tasks',r.tasks,'words',r.mail_words) INTO payload FROM notification_delivery d
+ JOIN identity_email.delivery_target(p_id,p_token,p_issuer) target ON target.user_id=d.recipient_user_id
+ JOIN domain_event ev ON ev.id=d.source_event_id AND ev.tenant_id=d.tenant_id AND ev.event_type='assessment.reminder-queued'
+ JOIN performance_assessment_reminder_recipient r ON r.source_event_id=ev.id AND r.id=ev.aggregate_id AND r.tenant_id=d.tenant_id AND r.user_id=target.user_id
+ JOIN performance_assessment_reminder_run run ON run.id=r.run_id AND run.tenant_id=r.tenant_id
+ JOIN review_cycle c ON c.id=run.cycle_id AND c.tenant_id=run.tenant_id AND c.status IN ('open','calibration')
+ WHERE d.id=p_id AND r.outcome='queued' AND r.prepared_until>now() AND r.prepared_at>now()-interval '60 seconds'
+ AND r.tenant_epoch=coalesce((SELECT revision FROM performance_assessment_reminder_epoch WHERE tenant_id=r.tenant_id AND scope_id='00000000-0000-0000-0000-000000000000'),0)
+ AND r.cycle_epoch=coalesce((SELECT revision FROM performance_assessment_reminder_epoch WHERE tenant_id=r.tenant_id AND scope_id=c.id),0)
+ AND app.financial_onehr_prepared_current(r.tenant_id,r.id) AND jsonb_array_length(r.tasks)>0 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(r.tasks) task WHERE task->>'closesAt' IS NOT NULL AND (task->>'closesAt')::timestamptz<=now())
+;
+ PERFORM app.financial_onehr_relay_end(bound_tenant,p_id);
+ PERFORM set_config('app.tenant_id',prior_tenant,true),set_config('app.user_id',prior_user,true),
+  set_config('app.roles',prior_roles,true),set_config('app.grants',prior_grants,true);
+ RETURN payload;
+EXCEPTION WHEN OTHERS THEN
+ RAISE;
+END $$;
+REVOKE ALL ON FUNCTION identity_email.assessment_tasks(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- This narrow context exists only inside the finite native port, and is erased
+-- before it returns. It never makes a NULL-role caller a data-profile principal.
+ALTER POLICY data_permission_subject_read ON public.performance_assessment_reminder_recipient
+ USING(employment_id IS NULL OR app.data_permission_record_read(employment_id) OR app.onehr_reminder_source_recipient_read(tenant_id,id,run_id,user_id,source_event_id));
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.assessment_review_participates(wanted_review uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_review r JOIN review_cycle c ON c.id=r.cycle_id AND c.tenant_id=r.tenant_id
+  JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+  JOIN performance_assessment_participation p ON p.cycle_id=r.cycle_id AND p.employment_id=r.employment_id AND p.tenant_id=r.tenant_id
+  WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id()
+   AND (c.status='closed' OR e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+   AND (NOT (EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion x WHERE x.tenant_id=r.tenant_id AND x.cycle_id=r.cycle_id AND x.ended_at IS NULL) OR EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion_pin xp WHERE xp.tenant_id=r.tenant_id AND xp.cycle_id=r.cycle_id))
+    OR NOT app.assessment_unit_excluded(r.cycle_id,r.employment_id) OR EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.id AND f.tenant_id=r.tenant_id))
+   AND CASE WHEN p.override='add' THEN true WHEN p.override='remove' THEN false ELSE p.eligible_at_open END
+   AND (app.financial_onehr_worker_allowed(r.cycle_id,r.id,NULL) OR app.can_see_employment(e.id) OR app.onehr_cycle_admin(r.cycle_id) OR app.onehr_manager(r.id)
+    OR (EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion x WHERE x.tenant_id=r.tenant_id AND x.cycle_id=r.cycle_id AND x.ended_at IS NULL) OR EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion_pin xp WHERE xp.tenant_id=r.tenant_id AND xp.cycle_id=r.cycle_id)) AND app.onehr_effective_reviewer(r.id)
+    OR app.onehr_moderator(r.id)
+    OR EXISTS(SELECT 1 FROM performance_onehr_panel panel JOIN employment peer ON peer.id=panel.peer_employment_id AND peer.tenant_id=panel.tenant_id JOIN app_user actor ON actor.person_id=peer.person_id AND actor.tenant_id=peer.tenant_id WHERE panel.review_id=r.id AND panel.tenant_id=r.tenant_id AND panel.archived_at IS NULL AND actor.id=app.current_user_id() AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id) AND (peer.terminated_on IS NULL OR peer.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date))
+    OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND ce.tenant_id=r.tenant_id AND app.onehr_calibration_access(ce.session_id))))
+$$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.onehr_calibration_reviewer(wanted_session uuid, wanted_user uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_calibration s JOIN app_user u ON u.id=wanted_user AND u.tenant_id=s.tenant_id
+  WHERE s.id=wanted_session AND s.tenant_id=app.current_tenant_id() AND s.tier<>'final'
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND (u.id=app.current_user_id() OR app.financial_onehr_worker_allowed(s.cycle_id,NULL,NULL) OR app.onehr_admin(s.company_id))
+   AND (u.id=ANY(s.reviewer_user_ids) AND (NOT (EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion x WHERE x.tenant_id=s.tenant_id AND x.cycle_id=s.cycle_id AND x.ended_at IS NULL) OR EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion_pin xp WHERE xp.tenant_id=s.tenant_id AND xp.cycle_id=s.cycle_id))
+     OR NOT app.onehr_user_unit_excluded(s.cycle_id,u.id)) OR u.id=ANY(app.onehr_calibration_seat_users(s.id))))
+$$;
+
+--> statement-breakpoint
+-- Routing facts under FORCE RLS are visible only during the bounded graph owner.
+ALTER TABLE app.financial_onehr_source_context ADD COLUMN session_ids uuid[];
+CREATE FUNCTION app.onehr_reminder_graph_fact_read(t uuid,kind text,row_data jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.financial_onehr_source_context scope JOIN public.performance_onehr_calibration session ON session.id=ANY(scope.session_ids) AND session.tenant_id=scope.tenant_id
+ WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=t AND scope.session_login=session_user AND scope.mode='graph'
+ AND CASE kind
+ WHEN 'group' THEN session.calibration_group_id=(row_data->>'id')::uuid
+ WHEN 'groupMember' THEN session.calibration_group_id=(row_data->>'group_id')::uuid
+ WHEN 'seat' THEN session.anchor_kind=row_data->>'seat_type' AND (session.anchor_kind='group_chief' AND session.calibration_group_id=(row_data->>'calibration_group_id')::uuid OR session.anchor_kind IN ('bu_ceo','bg_ceo') AND session.company_id=(row_data->>'company_id')::uuid)
+ WHEN 'hod' THEN EXISTS(SELECT 1 FROM public.performance_onehr_calibration_entry entry WHERE entry.session_id=session.id AND entry.tenant_id=t AND entry.employment_id=(row_data->>'subject_employment_id')::uuid)
+ ELSE false END);
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_graph_fact_read(uuid,text,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_graph_fact_read(uuid,text,jsonb) TO ai_hr_app;
+CREATE POLICY financial_onehr_group_source ON public.performance_calibration_group FOR SELECT USING(app.onehr_reminder_graph_fact_read(tenant_id,'group',to_jsonb(performance_calibration_group.*)));
+CREATE POLICY financial_onehr_group_member_source ON public.performance_calibration_group_member FOR SELECT USING(app.onehr_reminder_graph_fact_read(tenant_id,'groupMember',to_jsonb(performance_calibration_group_member.*)));
+CREATE POLICY financial_onehr_seat_source ON public.performance_leader_seat FOR SELECT USING(app.onehr_reminder_graph_fact_read(tenant_id,'seat',to_jsonb(performance_leader_seat.*)));
+CREATE POLICY financial_onehr_hod_source ON public.performance_hod_assignment FOR SELECT USING(app.onehr_reminder_graph_fact_read(tenant_id,'hod',to_jsonb(performance_hod_assignment.*)));
+ALTER FUNCTION app.assessment_pending_work(uuid) RENAME TO financial_onehr_pending_work_native;
+REVOKE ALL ON FUNCTION app.financial_onehr_pending_work_native(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.assessment_pending_work(wanted_cycle uuid) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE sessions uuid[];value jsonb;worker boolean;
+BEGIN
+ worker:=app.financial_onehr_worker_allowed(wanted_cycle,NULL,NULL);
+ IF NOT worker AND NOT(app.principal_snapshot_current() AND app.onehr_cycle_admin(wanted_cycle)) THEN RETURN NULL;END IF;
+ SELECT coalesce(array_agg(session.id),'{}'::uuid[]) INTO sessions FROM public.performance_onehr_calibration session
+ WHERE session.cycle_id=wanted_cycle AND session.tenant_id=app.current_tenant_id()
+ AND CASE WHEN worker THEN true ELSE app.onehr_admin(session.company_id) AND NOT EXISTS(SELECT 1 FROM public.performance_onehr_calibration_entry protected WHERE protected.session_id=session.id AND protected.tenant_id=session.tenant_id AND NOT app.data_permission_matches(protected.employment_id)) END;
+ INSERT INTO app.financial_onehr_source_context(transaction_id,tenant_id,session_login,scope_key,mode,cycle_id,session_ids)
+ VALUES(pg_current_xact_id(),app.current_tenant_id(),session_user,'graph:'||wanted_cycle,'graph',wanted_cycle,sessions);
+ value:=app.financial_onehr_pending_work_native(wanted_cycle);
+ DELETE FROM app.financial_onehr_source_context scope WHERE scope.transaction_id=pg_current_xact_id() AND scope.tenant_id=app.current_tenant_id() AND scope.session_login=session_user AND scope.scope_key='graph:'||wanted_cycle;
+ RETURN value;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.assessment_pending_work(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assessment_pending_work(uuid) TO ai_hr_app;
+
+CREATE OR REPLACE FUNCTION app.assessment_unit_out(wanted_cycle uuid,wanted_employment uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT (app.financial_onehr_worker_allowed(wanted_cycle,NULL,NULL) OR app.onehr_cycle_admin(wanted_cycle)
+ OR EXISTS(SELECT 1 FROM app.financial_onehr_worker_source proof JOIN public.performance_review review ON review.id=proof.review_id AND review.tenant_id=proof.tenant_id AND review.cycle_id=proof.cycle_id
+ WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.session_login=session_user AND proof.cycle_id=wanted_cycle
+ AND app.financial_onehr_worker_allowed(wanted_cycle,review.id,NULL)
+ AND (review.employment_id=wanted_employment OR app.financial_onehr_effective_reviewer_of(review.tenant_id,review.id,NULL,NULL)=wanted_employment OR EXISTS(SELECT 1 FROM jsonb_array_elements(app.onehr_moderator_choices(review.id)) choice WHERE choice->>'id'=wanted_employment::text))))
+ AND app.assessment_unit_excluded(wanted_cycle,wanted_employment);
+$$;
+
+--> statement-breakpoint
+ALTER POLICY data_permission_subject_read ON public.performance_calibration_group_member
+ USING(employment_id IS NULL OR app.data_permission_record_read(employment_id) OR app.onehr_reminder_graph_fact_read(tenant_id,'groupMember',to_jsonb(performance_calibration_group_member.*)));
+
+--> statement-breakpoint
+-- A task reader receives the native fields for its actual course. Raw subject
+-- storage retains the ordinary data-profile policy and cannot be used as a fallback.
+CREATE FUNCTION app.onehr_review_task_fields(wanted_review uuid) RETURNS SETOF public.performance_onehr_review
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source public.performance_onehr_review%ROWTYPE;projected jsonb;own boolean;administrator boolean;manager boolean;moderator boolean;reviewer boolean;own_ids uuid[];
+BEGIN
+ IF app.onehr_review_task_header(wanted_review) IS NULL THEN RETURN;END IF;
+ SELECT * INTO source FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id();IF source.review_id IS NULL THEN RETURN;END IF;
+ own:=app.onehr_self_employment(source.employment_id);administrator:=NOT own AND app.financial_onehr_result_admin(source.review_id);
+ manager:=NOT own AND app.onehr_manager(source.review_id);moderator:=NOT own AND NOT manager AND app.onehr_moderator(source.review_id);reviewer:=NOT own AND NOT manager AND app.onehr_effective_reviewer(source.review_id);
+ SELECT coalesce(array_agg(employment.id),'{}'::uuid[]) INTO own_ids FROM public.employment employment JOIN public.app_user account ON account.person_id=employment.person_id AND account.tenant_id=employment.tenant_id WHERE account.id=app.current_user_id() AND account.tenant_id=source.tenant_id;
+ SELECT jsonb_object_agg(field.key,field.value) INTO projected FROM jsonb_each(to_jsonb(source)) field WHERE field.key=ANY(ARRAY[
+ 'review_id','tenant_id','cycle_id','employment_id','company_id','grade','kpis','competencies','statements','profile_id','profile_match','results_submitted_at','competency_status',
+ 'manager_performance','manager_score','manager_remark','self_remark','manager_remark_by_user_id','competency_self_sections','competency_manager_sections','competency_self_remark','competency_manager_remark','submitted_proof','revision','created_at']);
+ IF (moderator OR reviewer) AND NOT administrator THEN
+  projected:=projected||jsonb_build_object('kpis',(SELECT coalesce(jsonb_agg(kpi ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(source.kpis) WITH ORDINALITY item(kpi,position)
+   WHERE EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_array_length(coalesce(kpi->'approvalChain','[]'::jsonb))>0 THEN kpi->'approvalChain' ELSE jsonb_build_array(jsonb_build_object('employmentId',kpi->>'moderatorEmploymentId')) END) step WHERE (step->>'employmentId')::uuid=ANY(own_ids))),
+   'manager_performance',NULL,'manager_score',NULL,'manager_remark','','manager_remark_by_user_id',NULL,'self_remark','','submitted_proof','[]'::jsonb);
+ END IF;
+ IF moderator AND NOT reviewer AND NOT administrator THEN projected:=projected||jsonb_build_object('competencies','[]'::jsonb,'statements','[]'::jsonb,'competency_self_sections','{}'::jsonb,'competency_manager_sections','{}'::jsonb,'competency_self_remark','','competency_manager_remark','');END IF;
+ RETURN QUERY SELECT (jsonb_populate_record(NULL::public.performance_onehr_review,projected)).*;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_task_fields(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_task_fields(uuid) TO ai_hr_app;

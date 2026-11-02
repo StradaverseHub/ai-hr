@@ -1,3 +1,5 @@
+import {withOnehrWorkerSource,type OnehrWorkerConnection} from './worker-source';
+import {assertNotificationSweepConnection} from '../../../core/notice-projection';
 import {listEmailDesigns,saveEmailDesign} from '../../../core/email-design/service';
 import {defaultEmailDocument,emailDesignEnvelope,emailLocale} from '../../../lib/email-design/model';
 import {assessmentReminderWordsSchema,fillAssessmentReminderWords} from '../../../lib/assessment-reminder-mail';
@@ -18,7 +20,7 @@ import { assessmentReminderWork,type ReminderWorkGraph,type ReminderWorkRecipien
 
 const tenantScope='00000000-0000-0000-0000-000000000000';
 async function access(tx:Tx,cycleId:string){
- z.uuid().parse(cycleId);const [scope]=await tx.execute<{ok:boolean}>(sql`select app.assessment_dispatcher_scope() or app.onehr_cycle_admin(${cycleId}::uuid) as ok`);
+ z.uuid().parse(cycleId);const [scope]=await tx.execute<{ok:boolean}>(sql`select app.onehr_worker_access(${cycleId}::uuid) or app.principal_snapshot_current() and app.onehr_cycle_admin(${cycleId}::uuid) as ok`);
  if(!scope?.ok)throw Error('Performance administrator access is required.');
 }
 async function fresh(tx:Tx,tenantId:string){return {tenantId,roles:['hr_admin'],entitlements:await resolveEntitlementsTx(tx,tenantId)} satisfies SessionContext;}
@@ -44,13 +46,8 @@ async function routes(tx:Tx,cycleId:string,ctx:SessionContext){
 }
 async function cooldowns(tx:Tx,cycleId:string,userIds:string[],except?:string){
  if(!userIds.length)return new Set<string>();
- const rows=await tx.execute<{userId:string}>(sql`select distinct r.user_id as "userId"
-  from performance_assessment_reminder_recipient r join performance_assessment_reminder_run run on run.id=r.run_id and run.tenant_id=r.tenant_id
-  left join notification_delivery d on d.source_event_id=r.source_event_id and d.recipient_user_id=r.user_id and d.channel='email'
-  where r.tenant_id=app.current_tenant_id() and run.cycle_id=${cycleId}::uuid and r.user_id in (select value::uuid from jsonb_array_elements_text(${JSON.stringify(userIds)}::jsonb)) and (${except??null}::uuid is null or r.id<>${except??null}::uuid)
-   and ((d.status='sent' and d.sent_at>now()-interval '20 hours') or d.status='pending' or d.last_error='uncertain'
-    or r.outcome='queued' and d.id is null and r.created_at>now()-interval '20 hours')`);
- return new Set(rows.map(row=>row.userId));
+ const [row]=await tx.execute<{ids:string[]}>(sql`select app.onehr_reminder_cooldowns(${cycleId}::uuid,ARRAY(select value::uuid from jsonb_array_elements_text(${JSON.stringify(userIds)}::jsonb)),${except??null}::uuid) as ids`);
+ return new Set(row?.ids??[]);
 }
 async function cooling(tx:Tx,cycleId:string,userId:string,except?:string){return (await cooldowns(tx,cycleId,[userId],except)).has(userId);}
 
@@ -149,10 +146,14 @@ export async function getAssessmentReminders(ctx:SessionContext,cycleId:string){
 }
 
 /** Automatic runs claim a Malaysia calendar day once, even when nothing is pending. Manual sends obey cooldown. */
-export async function queueAssessmentReminders(ctx:SessionContext,cycleId:string,mode:'automatic'|'manual'|'dry',limit=0){
+export async function queueAssessmentReminders(ctx:SessionContext,cycleId:string,mode:'automatic'|'manual'|'dry',limit=0,connection?:OnehrWorkerConnection){
  z.enum(['automatic','manual','dry']).parse(mode);z.number().int().min(0).max(100000).parse(limit);
  if(mode!=='automatic'&&!ctx.userId)throw Error('A signed-in administrator is required.');
- return withTenant(ctx,async tx=>{
+ if(!ctx.userId){if(!connection)throw Error('An authenticated OneHR worker connection is required.');return withOnehrWorkerSource(ctx,connection,{kind:'cycle',id:cycleId},tx=>queueAssessmentRemindersTx(tx,ctx,cycleId,mode,limit),{downgrade:false});}
+ return withTenant(ctx,tx=>queueAssessmentRemindersTx(tx,ctx,cycleId,mode,limit));
+}
+async function queueAssessmentRemindersTx(tx:Tx,ctx:SessionContext,cycleId:string,mode:'automatic'|'manual'|'dry',limit:number){
+
   await access(tx,cycleId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`assessment-reminders:${ctx.tenantId}:${cycleId}`},0))`);
   const state=await fresh(tx,ctx.tenantId),current=await work(tx,cycleId,state),now=new Date();
   if(!current)return {queued:0,skipped:0,dry:0,nothing:0,duplicate:false};
@@ -180,7 +181,6 @@ export async function queueAssessmentReminders(ctx:SessionContext,cycleId:string
   }
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'assessment-reminder-run',aggregateId:run.id,eventType:'assessment.reminder-run',actor:actorOf(ctx),payload:{cycleId,mode,queued,skipped,dry,limit}});
   return {runId:run.id,queued,skipped,dry,nothing:current.graph.actors.length-current.recipients.length,duplicate:false};
- });
 }
 
 type ReminderDispatchSource={
@@ -205,8 +205,9 @@ export async function assessmentReminderRecipientsTx(tx:Tx,recipientId:string){
  const [rights]=await tx.execute<{access:Record<string,string[]>}>(sql`select app.onehr_review_task_recipient_access(${recipient.run.cycleId}::uuid,${recipient.recipient.userId}::uuid) as access`);
  const graph=prepared.current?.graph;
  const companies=new Set(graph?.reviews.map(review=>review.companyId)??[]);if(graph?.cycle.companyId)companies.add(graph.cycle.companyId);for(const session of graph?.sessions??[]){if(session.companyId)companies.add(session.companyId);for(const entry of session.entries)companies.add(entry.companyId);}
+ const reviewSources=new Set<string>();
  const actor=graph?assessmentReminderWork({...graph,reviews:graph.reviews.map(review=>({...review,taskUserIds:rights?.access[review.id]??[]}))},
- new Set([...companies].filter(companyId=>isModuleEnabled(state,'performance',companyId))))
+ new Set([...companies].filter(companyId=>isModuleEnabled(state,'performance',companyId))),new Date(),(userId,reviewId)=>{if(userId===recipient.recipient.userId)reviewSources.add(reviewId);})
  .find(actor=>actor.userId===recipient.recipient.userId):undefined;
  if(!actor||!actor.employmentIds.includes(recipient.recipient.employmentId))return skip('noPendingWork');
  if(await cooling(tx,recipient.run.cycleId,actor.userId,recipientId))return skip('cooldown');
@@ -216,12 +217,13 @@ export async function assessmentReminderRecipientsTx(tx:Tx,recipientId:string){
  if(checked.length!==epochs.length||checked.some(row=>epochs.find(e=>e.scopeId===row.scopeId)?.revision!==row.revision)||prepared.expiresAt<=Date.now())return skip('changed');
  const now=new Date(),until=new Date(Math.min(now.getTime()+60_000,prepared.expiresAt));
  const mailWords=fillAssessmentReminderWords(await words(tx),prepared.current!.graph.actors.find(person=>person.userId===actor.userId)!.name,prepared.current!.graph.cycle.name,actor.tasks.length);
- const [applied]=await tx.execute<{changed:boolean}>(sql`select app.onehr_reminder_dispatch_update(${recipientId}::uuid,${JSON.stringify(currentSource)}::jsonb,'queued',${JSON.stringify(actor.tasks)}::jsonb,${JSON.stringify(mailWords)}::jsonb,${until.toISOString()}::timestamptz,${currentSource.tenantEpoch}::bigint,${currentSource.cycleEpoch}::bigint) as changed`);
+ const [applied]=await tx.execute<{changed:boolean}>(sql`select app.onehr_reminder_dispatch_update(${recipientId}::uuid,${JSON.stringify(currentSource)}::jsonb,'queued',${JSON.stringify(actor.tasks)}::jsonb,${JSON.stringify(mailWords)}::jsonb,${until.toISOString()}::timestamptz,${currentSource.tenantEpoch}::bigint,${currentSource.cycleEpoch}::bigint,ARRAY(select value::uuid from jsonb_array_elements_text(${JSON.stringify([...reviewSources].sort())}::jsonb))) as changed`);
  return applied?.changed?[recipient.recipient.employmentId]:[];
 }
 
-export async function sweepAssessmentReminders(ctx:SessionContext){
+export async function sweepAssessmentReminders(ctx:SessionContext,connection?:OnehrWorkerConnection){
  if(ctx.userId)throw Error('The scheduled Performance dispatcher has no human user ID.');
- const cycles=await withTenant(ctx,tx=>tx.select({id:reviewCycle.id}).from(reviewCycle).innerJoin(onehrCycle,eq(onehrCycle.cycleId,reviewCycle.id)).where(sql`${reviewCycle.status} in ('open','calibration')`).orderBy(asc(reviewCycle.id)));
- const results=[];for(const cycle of cycles)results.push(await queueAssessmentReminders(ctx,cycle.id,'automatic'));return results;
+ if(!connection)throw Error('An authenticated OneHR worker connection is required.');
+ const cycles=await connection.withTenant(ctx,async tx=>{await assertNotificationSweepConnection(tx);return tx.select({id:reviewCycle.id}).from(reviewCycle).innerJoin(onehrCycle,eq(onehrCycle.cycleId,reviewCycle.id)).where(sql`${reviewCycle.status} in ('open','calibration')`).orderBy(asc(reviewCycle.id));},{readOnlySnapshot:true});
+ const results=[];for(const cycle of cycles)results.push(await queueAssessmentReminders(ctx,cycle.id,'automatic',0,connection));return results;
 }

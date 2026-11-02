@@ -148,6 +148,8 @@ describe('OneHR performance partner (ADR-0142)', () => {
       await expect(withTenant(actor,tx=>tx.execute(sql`select app.financial_onehr_manager_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid)`))).rejects.toThrow();
       const [task]=await withTenant(actor,tx=>tx.execute<{header:{name:string;ownEmploymentIds:string[]}|null;self:boolean;master:boolean}>(sql`select app.onehr_review_header(${reviewId}::uuid) as header,app.onehr_self_employment(${subject.employmentId}::uuid) as self,exists(select 1 from employment where id=${subject.employmentId}::uuid) as master`));
       expect(task.header).not.toBeNull();expect(task.header!.name).toBe('Partner subject');expect(task.self).toBe(self);expect(task.master).toBe(self);
+      const nativeTask=await withTenant(actor,tx=>tx.execute<{id:string}>(sql`select review_id as id from app.onehr_review_task_fields(${reviewId}::uuid)`));expect(nativeTask).toEqual([{id:reviewId}]);
+      const rawTask=await withTenant(actor,tx=>tx.select({id:schema.onehrReview.reviewId}).from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)));expect(rawTask).toEqual(self?[{id:reviewId}]:[]);
       const view=await perf.getOnehrReview(actor,reviewId);expect(view).not.toBeNull();expect(view!.self).toBe(self);
       if(self){
         await perf.saveAssessmentCareerProfile(actor,reviewId,null,{aspiration:'Own career remains native',mobility:null,mobilityNote:'',targetProfileId:null});
