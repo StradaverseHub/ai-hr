@@ -37,6 +37,7 @@ export const REWARDS_FUNCTIONS:readonly FunctionActionDescriptor[]=[
  {key:'rewards.posting',scope:'company',moduleKey:'rewards',labelKey:'rewards.post',kind:'native_acl',course:'assigned',screenKey:'rewards',href:'/rewards',employeeBearing:true,
   actions:(['view','execute']as const).map(operation=>({operation,parentCapability:null,delegationFloorFunction:'app.rewards_function_legacy_allowed',bindings:[
    {owner:'app.reward_post_command',operation:'fixed-human-post-frontdoor'},
+   {owner:'app.reward_post_receipt_command',operation:'fixed-human-post-own-event-receipt'},
    {owner:'app.reward_post_admission',operation:'native-payroll-seat-and-company-admin'},
    {owner:'app.reward_post_sources',operation:'exact-locked-native-financial-sources'},
    {owner:'app.reward_post_native',operation:'fixed-salary-grade-input-funding-post'},
@@ -61,6 +62,7 @@ export const REWARDS_FUNCTION_REQUIRED_OWNERS=[
  'app.reward_configuration_review(uuid)',
  'app.reward_decision_command(uuid,integer,text,text,boolean)',
  'app.reward_post_command(uuid,integer,uuid)',
+ 'app.reward_post_receipt_command(uuid,integer,uuid)',
  'app.reward_cancel_command(uuid,integer,text)',
  'app.reward_cancel_admission(uuid,integer,text)',
  'app.reward_cancel_native(uuid,integer,text)',

@@ -3385,3 +3385,23 @@ DO $$ DECLARE course text;operation text;BEGIN
   END LOOP;
  END LOOP;
 END $$;
+
+--> statement-breakpoint
+-- Same ordinary financial authority, with the just-written actor-owned native event ID.
+-- The reviewed TS owner separately retains its full nomination/NOWAIT/xmin/double-read
+-- interval; this owner accepts no caller event, source capsule or reviewed-authority flag.
+CREATE FUNCTION app.reward_post_receipt_command(p_unit uuid,p_revision integer,p_batch uuid DEFAULT NULL)RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result jsonb;event_id uuid;
+BEGIN
+ result:=app.reward_post_native(p_unit,p_revision,p_batch);
+ IF result->'alreadyPosted'='true'::jsonb THEN RETURN result;END IF;
+ SELECT proof.posted_event_id INTO event_id FROM app.reward_post_native_context proof JOIN public.domain_event audit ON audit.id=proof.posted_event_id AND audit.tenant_id=proof.tenant_id
+ WHERE proof.xact_id=pg_current_xact_id()AND proof.tenant_id=app.current_tenant_id()AND proof.user_id=app.current_user_id()AND proof.unit_id=p_unit AND proof.completed AND NOT proof.active
+ AND(proof.admission->>'revision')::integer=p_revision AND(proof.admission->>'batchId')::uuid IS NOT DISTINCT FROM p_batch AND proof.admission->>'authorityStamp'=app.access_function_authority_stamp()
+ AND audit.aggregate_type='reward-unit'AND audit.aggregate_id=p_unit AND audit.event_type='reward-unit.posted'AND audit.actor_type='user'AND audit.actor_id=proof.user_id
+ AND EXISTS(SELECT 1 FROM app.lifecycle_row_transaction_receipt birth WHERE birth.xact_id=proof.xact_id AND birth.tenant_id=proof.tenant_id AND birth.user_id=proof.user_id AND birth.table_name='domain_event'AND birth.row_id=audit.id);
+ IF event_id IS NULL THEN RAISE EXCEPTION 'The native posting event is unavailable.' USING ERRCODE='42501';END IF;
+ RETURN result||jsonb_build_object('postedEventId',event_id);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_post_receipt_command(uuid,integer,uuid)FROM PUBLIC,ai_hr_app;
