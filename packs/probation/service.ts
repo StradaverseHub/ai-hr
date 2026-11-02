@@ -2,3 +2,5 @@
 export * from '../../core/probation';
 export * from '../../core/probation-workflow';
 export * from '../../core/probation-letter';
+export * from '../../core/probation-intake';
+export * from '../../core/probation-cutover';
