@@ -20,7 +20,7 @@ const generated = vi.mocked(generateDraft);
 const candidate = { kind: 'read_plan_prompt_v1', variant: 'explicit_scope_v1' };
 const config: ResolvedAiConfig = { provider: 'openai', model: 'fictional-evaluation', apiKey: 'fictional-not-a-secret' };
 const correct = (question: string) => { const expected = PROMPT_HOLDOUTS.find(row => row.question === question)!; return JSON.stringify({ decision: expected.decision, modules: expected.modules }); };
-beforeEach(() => generated.mockReset());
+beforeEach(() => { generated.mockReset(); });
 it('cannot turn a valid wrong answer into perfect reliability by resuming with a now-correct provider', async () => {
  const fixture = PROMPT_HOLDOUTS.find(row => row.id === 'reject-peer')!;
  generated.mockImplementation(async (_configuration, args) => args.prompt === fixture.question && args.system !== promptCandidateSystem(PROMPT_BASELINE) ? JSON.stringify({ decision: 'read', modules: ['payroll'] }) : correct(args.prompt));
