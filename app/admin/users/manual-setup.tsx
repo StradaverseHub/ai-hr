@@ -1,3 +1,4 @@
+import {internalSelected} from '@/lib/internal-auth/config';
 import { randomUUID } from 'node:crypto';
 import { getTranslations } from 'next-intl/server';
 import { Card,SectionHeader,Field,inputCls } from '@/components/ui';
@@ -19,7 +20,7 @@ export async function ManualAccountSetup({available,people,companies,roles,pendi
     <AccountTargetFields idPrefix="manual" people={people} companies={companies} roles={roles} selectedPerson={selectedPerson}>
     <Field label={t('email')}><input type="email" name="email" defaultValue={selectedPerson?.email??''} required maxLength={255} autoComplete="off" className={inputCls}/></Field>
     <Field label={t('username')}><input name="username" required minLength={3} maxLength={64} pattern="[A-Za-z0-9][A-Za-z0-9._@+\-]{2,63}" autoComplete="off" autoCapitalize="none" spellCheck={false} aria-describedby="manual-username-help" className={inputCls}/></Field>
-    <Field label={t('password')}><input type="password" name="password" required minLength={14} maxLength={128} autoComplete="new-password" aria-describedby="manual-password-help" className={inputCls}/></Field>
+    <Field label={t('password')}><input type="password" name="password" required minLength={internalSelected()?1:14} maxLength={128} autoComplete="new-password" aria-describedby="manual-password-help" className={inputCls}/></Field>
     <p id="manual-username-help" className="text-xs text-muted-foreground">{t('usernameHelp')}</p>
     <p id="manual-password-help" className="text-xs text-muted-foreground">{t('passwordHelp')}</p>
     </AccountTargetFields>
@@ -31,7 +32,7 @@ export async function ManualAccountSetup({available,people,companies,roles,pendi
      <p className="break-all text-sm font-medium">{e.username} · {e.email}</p>
      <p className="text-sm text-muted-foreground">{t(`state.${e.status as 'reserved'|'prepared'|'linked'}`)}</p>
      <form action={resumeManualAccountAction} className="flex flex-wrap items-end gap-3"><input type="hidden" name="id" value={e.id}/>
-      {e.status!=='linked'&&<Field label={t('password')}><input type="password" name="password" required minLength={14} maxLength={128} autoComplete="new-password" className={inputCls}/></Field>}
+      {e.status!=='linked'&&<Field label={t('password')}><input type="password" name="password" required minLength={internalSelected()?1:14} maxLength={128} autoComplete="new-password" className={inputCls}/></Field>}
       <ManualSubmit>{e.status==='linked'?t('finish'):t('retry')}</ManualSubmit>
      </form>
      {e.status!=='linked'&&<form action={cancelManualAccountAction}><input type="hidden" name="id" value={e.id}/><ManualSubmit variant="outline">{t('cancel')}</ManualSubmit></form>}

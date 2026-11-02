@@ -50,7 +50,7 @@ describe('independent Security Center pages',()=>{
  });
  it('keeps manual selected-person controls, password requirements, provider unavailable and success/error states',async()=>{
   await show(await Create({searchParams:Promise.resolve({activate:person.id,manualSuccess:'created'})}));
-  expect(document.querySelector<HTMLInputElement>('input[name="personId"]')?.value).toBe(person.id);expect(document.querySelector<HTMLInputElement>('input[name="email"]')?.value).toBe(person.email);expect(document.querySelector<HTMLInputElement>('input[name="password"]')?.minLength).toBe(14);expect(document.querySelector<HTMLInputElement>('input[name="ownershipAttested"]')?.required).toBe(true);
+  expect(document.querySelector<HTMLInputElement>('input[name="personId"]')?.value).toBe(person.id);expect(document.querySelector<HTMLInputElement>('input[name="email"]')?.value).toBe(person.email);expect(document.querySelector<HTMLInputElement>('input[name="password"]')?.minLength).toBe(1);expect(document.querySelector<HTMLInputElement>('input[name="ownershipAttested"]')?.required).toBe(true);
   expect(screen.getByRole('status')).toHaveTextContent(en.admin.users.manual.success.created);expect(screen.queryByText(en.admin.users.inviteTitle)).toBeNull();
   await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en','security-create');
   cleanup();m.enabled=false;await show(await Create({searchParams:Promise.resolve({manualError:'unavailable'})}));expect(screen.getByText(en.admin.users.manual.notEnabled)).toBeTruthy();expect(document.querySelector('form')).toBeNull();expect(screen.getByRole('alert')).toBeTruthy();

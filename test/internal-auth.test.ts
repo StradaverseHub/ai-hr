@@ -252,6 +252,15 @@ describe('first-party authentication with real private storage and existing HR b
     const signedIn = completed(await verifyMfa(challenge(setup),await generate({secret:setup.secret}),true));
     expect(await getMobileSession({authorization:`Bearer ${signedIn.access_token}`})).toMatchObject({userId:id,tenantId:base.tenantId,personId:employee.personId,roles:['employee']});
   });
+  it('applies configured eight-character manual credentials and prospective force-change off',async()=>{
+    const ctx=adminCtx(base);
+    await savePasswordPolicy(ctx,{enabled:false,interval:90,unit:'days',requirements:{...NEW_PASSWORD_REQUIREMENTS,forceFirstChange:false}},0);
+    const id=await createManualAccount(ctx,{id:randomUUID(),personId:null,fullName:'Configured credential',username:'short.user',email:'short@example.test',role:'employee',companyId:null,password:'Short!42',ownershipAttested:true});
+    expect(id).toBeTruthy();const credential=(await credentialByLogin('alpha','short.user'))!;
+    expect(credential.enabled).toBe(true);expect(credential.mustChange).toBe(false);
+    const login=await startLogin({organization:'alpha',username:'short.user',password:'Short!42',native:false});expect(login.step).toBe('enroll');
+    expect((await credentialByLogin('alpha','owner'))!.mustChange).toBe(true);
+  });
   it('a user without employment signs in through the real internal password-change and MFA flow', async () => {
     const ctx=adminCtx(base);
     const input={id:randomUUID(),personId:null,fullName:'External administrator',username:'external.admin',email:'external.admin@example.test',role:'hr_admin',companyId:base.companyId,password:temp,ownershipAttested:true};
