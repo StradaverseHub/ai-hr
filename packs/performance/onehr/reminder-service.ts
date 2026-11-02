@@ -181,24 +181,34 @@ export async function queueAssessmentReminders(ctx:SessionContext,cycleId:string
  });
 }
 
+type ReminderDispatchSource={
+ recipient:Pick<typeof assessmentReminderRecipient.$inferSelect,'id'|'userId'|'employmentId'|'outcome'>;
+ run:Pick<typeof assessmentReminderRun.$inferSelect,'id'|'tenantId'|'cycleId'|'mode'>;
+ tenantEpoch:number;cycleEpoch:number;
+};
+async function reminderDispatchSource(tx:Tx,recipientId:string){const [row]=await tx.execute<{value:ReminderDispatchSource|null}>(sql`select app.onehr_reminder_dispatch_source(${recipientId}::uuid) as value`);return row?.value??null;}
+function reminderDispatchEpochs(source:ReminderDispatchSource){return [{tenantId:source.run.tenantId,scopeId:tenantScope,revision:source.tenantEpoch},{tenantId:source.run.tenantId,scopeId:source.run.cycleId,revision:source.cycleEpoch}];}
+
 /** Registry and pre-lease checks share this live resolver. Old event payloads cannot choose recipients or text. */
 export async function assessmentReminderRecipientsTx(tx:Tx,recipientId:string){
  z.uuid().parse(recipientId);
- const [recipient]=await tx.select({recipient:assessmentReminderRecipient,run:assessmentReminderRun}).from(assessmentReminderRecipient).innerJoin(assessmentReminderRun,eq(assessmentReminderRun.id,assessmentReminderRecipient.runId)).where(eq(assessmentReminderRecipient.id,recipientId));
+ const recipient=await reminderDispatchSource(tx,recipientId);
  if(!recipient||recipient.recipient.outcome!=='queued'||!recipient.recipient.employmentId)return [];
- const skip=async(outcome:'changed'|'noPendingWork'|'noConsent'|'cooldown')=>{await tx.update(assessmentReminderRecipient).set({outcome,tasks:[],mailWords:null,preparedAt:null,preparedUntil:null}).where(eq(assessmentReminderRecipient.id,recipientId));return [];};
- const epochs=await tx.select().from(assessmentReminderEpoch).where(and(eq(assessmentReminderEpoch.tenantId,recipient.run.tenantId),sql`${assessmentReminderEpoch.scopeId} in (${tenantScope}::uuid,${recipient.run.cycleId}::uuid)`));
+ const skip=async(outcome:'changed'|'noPendingWork'|'noConsent'|'cooldown')=>{const actual=await reminderDispatchSource(tx,recipientId);if(actual)await tx.execute(sql`select app.onehr_reminder_dispatch_update(${recipientId}::uuid,${JSON.stringify(actual)}::jsonb,${outcome},'[]'::jsonb,null::jsonb,null::timestamptz,null::bigint,null::bigint)`);return [];};
+ const epochs=reminderDispatchEpochs(recipient);
  const prepared=await projection(tx,recipient.run.tenantId,recipient.run.cycleId,epochs),{state,mailRoutes}=prepared;
  if(recipient.run.mode==='automatic'&&!rules(state).enabled)return skip('changed');
  const actor=prepared.actors.get(recipient.recipient.userId);
  if(!actor||!actor.employmentIds.includes(recipient.recipient.employmentId))return skip('noPendingWork');
  if(await cooling(tx,recipient.run.cycleId,actor.userId,recipientId))return skip('cooldown');
  if(mailRoutes.get(actor.userId)!==recipient.recipient.employmentId)return skip('noConsent');
- const checked=await tx.select().from(assessmentReminderEpoch).where(and(eq(assessmentReminderEpoch.tenantId,recipient.run.tenantId),sql`${assessmentReminderEpoch.scopeId} in (${tenantScope}::uuid,${recipient.run.cycleId}::uuid)`));
+ const currentSource=await reminderDispatchSource(tx,recipientId);if(!currentSource||currentSource.run.id!==recipient.run.id||currentSource.run.cycleId!==recipient.run.cycleId||currentSource.recipient.userId!==recipient.recipient.userId||currentSource.recipient.employmentId!==recipient.recipient.employmentId)return skip('changed');
+ const checked=reminderDispatchEpochs(currentSource);
  if(checked.length!==epochs.length||checked.some(row=>epochs.find(e=>e.scopeId===row.scopeId)?.revision!==row.revision)||prepared.expiresAt<=Date.now())return skip('changed');
  const now=new Date(),until=new Date(Math.min(now.getTime()+60_000,prepared.expiresAt));
- await tx.update(assessmentReminderRecipient).set({tasks:actor.tasks,mailWords:fillAssessmentReminderWords(await words(tx),prepared.current!.graph.actors.find(person=>person.userId===actor.userId)!.name,prepared.current!.graph.cycle.name,actor.tasks.length),preparedAt:now,preparedUntil:until,tenantEpoch:epochs.find(e=>e.scopeId===tenantScope)?.revision??0,cycleEpoch:epochs.find(e=>e.scopeId===recipient.run.cycleId)?.revision??0}).where(eq(assessmentReminderRecipient.id,recipientId));
- return [recipient.recipient.employmentId];
+ const mailWords=fillAssessmentReminderWords(await words(tx),prepared.current!.graph.actors.find(person=>person.userId===actor.userId)!.name,prepared.current!.graph.cycle.name,actor.tasks.length);
+ const [applied]=await tx.execute<{changed:boolean}>(sql`select app.onehr_reminder_dispatch_update(${recipientId}::uuid,${JSON.stringify(currentSource)}::jsonb,'queued',${JSON.stringify(actor.tasks)}::jsonb,${JSON.stringify(mailWords)}::jsonb,${until.toISOString()}::timestamptz,${currentSource.tenantEpoch}::bigint,${currentSource.cycleEpoch}::bigint) as changed`);
+ return applied?.changed?[recipient.recipient.employmentId]:[];
 }
 
 export async function sweepAssessmentReminders(ctx:SessionContext){

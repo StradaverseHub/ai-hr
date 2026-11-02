@@ -2369,3 +2369,85 @@ $$;
 REVOKE ALL ON FUNCTION app.financial_letter_proposed_birth_validate() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER financial_letter_proposed_birth_complete AFTER INSERT ON app.financial_letter_proposed_birth DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_letter_proposed_birth_validate();
 CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_letter_proposed_birth FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+
+--> statement-breakpoint
+-- Queued reminder metadata has a separate native dispatcher course. No raw
+-- recipient or assessment-row exception is added to the generic data policies.
+CREATE FUNCTION app.onehr_reminder_dispatch_source(p_recipient uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('recipient',jsonb_build_object('id',recipient.id,'userId',recipient.user_id,'employmentId',recipient.employment_id,'outcome',recipient.outcome),
+ 'run',jsonb_build_object('id',run.id,'tenantId',run.tenant_id,'cycleId',run.cycle_id,'mode',run.mode),
+ 'tenantEpoch',coalesce((SELECT epoch.revision FROM public.performance_assessment_reminder_epoch epoch WHERE epoch.tenant_id=run.tenant_id AND epoch.scope_id='00000000-0000-0000-0000-000000000000'),0),
+ 'cycleEpoch',coalesce((SELECT epoch.revision FROM public.performance_assessment_reminder_epoch epoch WHERE epoch.tenant_id=run.tenant_id AND epoch.scope_id=run.cycle_id),0))
+ FROM public.performance_assessment_reminder_recipient recipient JOIN public.performance_assessment_reminder_run run ON run.id=recipient.run_id AND run.tenant_id=recipient.tenant_id
+ JOIN public.performance_onehr_cycle config ON config.cycle_id=run.cycle_id AND config.tenant_id=run.tenant_id
+ JOIN public.employment subject ON subject.id=recipient.employment_id AND subject.tenant_id=recipient.tenant_id
+ JOIN public.domain_event event ON event.id=recipient.source_event_id AND event.tenant_id=recipient.tenant_id AND event.aggregate_id=recipient.id AND event.aggregate_type='assessment-reminder' AND event.event_type='assessment.reminder-queued' AND event.actor_id IS NOT DISTINCT FROM run.actor_user_id
+ WHERE recipient.id=p_recipient AND recipient.tenant_id=app.current_tenant_id()
+ AND (app.assessment_dispatcher_scope() OR app.onehr_cycle_admin(run.cycle_id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_dispatch_source(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_dispatch_source(uuid) TO ai_hr_app;
+CREATE FUNCTION app.onehr_reminder_dispatch_update(p_recipient uuid,p_expected jsonb,p_outcome text,p_tasks jsonb,p_words jsonb,p_until timestamptz,p_tenant_epoch bigint,p_cycle_epoch bigint) RETURNS boolean
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source jsonb;recipient public.performance_assessment_reminder_recipient%ROWTYPE;now_at timestamptz;deadline timestamptz;boundary timestamptz;words jsonb:=nullif(p_words,'null'::jsonb);
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ source:=app.onehr_reminder_dispatch_source(p_recipient);IF source IS NULL OR source IS DISTINCT FROM p_expected THEN RETURN false;END IF;
+ SELECT * INTO recipient FROM public.performance_assessment_reminder_recipient actual WHERE actual.id=p_recipient AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ source:=app.onehr_reminder_dispatch_source(p_recipient);
+ IF source IS NULL OR source IS DISTINCT FROM p_expected OR recipient.outcome<>'queued' THEN RETURN false;END IF;
+ IF p_outcome IS NULL OR p_outcome NOT IN ('queued','changed','noPendingWork','noConsent','cooldown') THEN RAISE EXCEPTION 'Reminder projection outcome unavailable' USING ERRCODE='42501';END IF;
+ IF p_outcome<>'queued' THEN
+  UPDATE public.performance_assessment_reminder_recipient actual SET outcome=p_outcome,tasks='[]',mail_words=NULL,prepared_at=NULL,prepared_until=NULL WHERE actual.id=recipient.id;
+  RETURN true;
+ END IF;
+ now_at:=clock_timestamp();deadline:=now_at+interval '60 seconds';
+ SELECT min(module.expires_at) INTO boundary FROM public.tenant_module module WHERE module.tenant_id=recipient.tenant_id AND module.expires_at>now_at;IF boundary IS NOT NULL THEN deadline:=least(deadline,boundary);END IF;
+ SELECT min(cell.value::timestamptz) INTO boundary FROM public.performance_onehr_cycle config CROSS JOIN LATERAL jsonb_each(coalesce(config.policy->'windows','{}'::jsonb)) window_entry CROSS JOIN LATERAL jsonb_each_text(window_entry.value) cell
+ WHERE config.cycle_id=(source->'run'->>'cycleId')::uuid AND config.tenant_id=recipient.tenant_id AND cell.key IN ('opensAt','closesAt') AND cell.value::timestamptz>now_at;IF boundary IS NOT NULL THEN deadline:=least(deadline,boundary);END IF;
+ IF p_until IS NULL OR p_until<=now_at OR p_until>deadline OR p_tenant_epoch IS DISTINCT FROM (source->>'tenantEpoch')::bigint OR p_cycle_epoch IS DISTINCT FROM (source->>'cycleEpoch')::bigint
+ OR jsonb_typeof(p_tasks) IS DISTINCT FROM 'array' OR jsonb_array_length(p_tasks) NOT BETWEEN 1 AND 16 OR octet_length(p_tasks::text)>20000
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_tasks) task WHERE jsonb_typeof(task)<>'object' OR NOT app.access_command_keys(task,ARRAY['key','count','closesAt','people']) OR NOT task ?& ARRAY['key','count','closesAt']
+ OR task->>'key' NOT IN ('own_results','own_checkin','own_competency','own_plan','feedback','team_setting','team_results','team_competency','team_plan','team_career','hod_performance','hod_potential','bu_performance','bu_potential','bg_talent','group_performance')
+ OR jsonb_typeof(task->'count') IS DISTINCT FROM 'number' OR (task->>'count')::numeric NOT BETWEEN 1 AND 1000000 OR (task->>'count')::numeric<>trunc((task->>'count')::numeric)
+ OR task->'closesAt'<>'null'::jsonb AND jsonb_typeof(task->'closesAt') IS DISTINCT FROM 'string'
+ OR task ? 'people' AND (jsonb_typeof(task->'people') IS DISTINCT FROM 'array' OR jsonb_array_length(task->'people')>3 OR EXISTS(SELECT 1 FROM jsonb_array_elements(task->'people') name WHERE jsonb_typeof(name)<>'string' OR length(name#>>'{}') NOT BETWEEN 1 AND 200)))
+ OR words IS NOT NULL AND (jsonb_typeof(words)<>'object' OR NOT app.access_command_keys(words,ARRAY['subject','opening']) OR NOT words ?& ARRAY['subject','opening'] OR jsonb_typeof(words->'subject')<>'string' OR jsonb_typeof(words->'opening')<>'string' OR length(words->>'subject') NOT BETWEEN 1 AND 20000 OR length(words->>'opening') NOT BETWEEN 1 AND 30000 OR words->>'subject' ~ E'[\r\n]')
+ THEN RAISE EXCEPTION 'Reminder bounded projection unavailable' USING ERRCODE='42501';END IF;
+ UPDATE public.performance_assessment_reminder_recipient actual SET tasks=p_tasks,mail_words=words,prepared_at=now_at,prepared_until=p_until,tenant_epoch=p_tenant_epoch,cycle_epoch=p_cycle_epoch WHERE actual.id=recipient.id;
+ RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint) TO ai_hr_app;
+-- The delayed-notice reader needs workflow flags and actual assigned IDs, never
+-- raw self/manager answers, KPI amounts, review text or a stored performance band.
+CREATE FUNCTION app.onehr_review_notice_source(p_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH source AS MATERIALIZED (
+  SELECT assessment.*,review.reviewer_employment_id,review.closed_at,cycle.period_end,config.policy,
+   app.financial_onehr_effective_reviewer_of(review.tenant_id,review.id,NULL,NULL) AS effective_reviewer,
+   app.onehr_moderator_choices(review.id) AS moderators
+  FROM public.performance_onehr_review assessment JOIN public.performance_review review ON review.id=assessment.review_id AND review.tenant_id=assessment.tenant_id
+  JOIN public.review_cycle cycle ON cycle.id=review.cycle_id AND cycle.tenant_id=review.tenant_id JOIN public.performance_onehr_cycle config ON config.cycle_id=cycle.id AND config.tenant_id=cycle.tenant_id
+  WHERE review.id=p_review AND review.tenant_id=app.current_tenant_id() AND cycle.status IN ('open','calibration') AND app.assessment_review_participates(review.id)
+  AND (app.assessment_dispatcher_scope() OR app.onehr_review_header(review.id) IS NOT NULL)
+ ), candidates AS (
+  SELECT (moderator->>'id')::uuid AS id FROM source CROSS JOIN LATERAL jsonb_array_elements(source.moderators) moderator
+  UNION SELECT effective_reviewer FROM source WHERE effective_reviewer IS NOT NULL
+ )
+ SELECT jsonb_build_object('reviewId',source.review_id,'employmentId',source.employment_id,'reviewerEmploymentId',source.effective_reviewer,
+ 'policy',jsonb_build_object('kind',source.policy->'kind','modules',source.policy->'modules','windows',source.policy->'windows'),
+ 'frozen',source.closed_at IS NOT NULL OR EXISTS(SELECT 1 FROM public.performance_onehr_result result WHERE result.review_id=source.review_id AND result.tenant_id=source.tenant_id),
+ 'moderatorIds',(SELECT coalesce(jsonb_agg(moderator->'id'),'[]'::jsonb) FROM jsonb_array_elements(source.moderators) moderator),
+ 'liveIds',(SELECT coalesce(jsonb_agg(DISTINCT employment.id ORDER BY employment.id),'[]'::jsonb) FROM candidates JOIN public.employment employment ON employment.id=candidates.id AND employment.tenant_id=source.tenant_id
+ JOIN public.app_user account ON account.person_id=employment.person_id AND account.tenant_id=employment.tenant_id WHERE account.archived_at IS NULL AND NOT app.login_blocked(account.id) AND (employment.terminated_on IS NULL OR employment.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND NOT app.assessment_unit_out(source.cycle_id,employment.id)),
+ 'facts',jsonb_build_object('competenciesAssigned',jsonb_array_length(source.competencies)>0,'competencyStatus',source.competency_status,'resultsSubmitted',source.results_submitted_at IS NOT NULL,'managerPerformance',NULL,'managerComplete',source.manager_performance IS NOT NULL,
+ 'planStatus',(SELECT plan.status FROM public.performance_onehr_plan plan WHERE plan.tenant_id=source.tenant_id AND plan.employment_id=source.employment_id AND plan.plan_year=extract(year from source.period_end)::integer+CASE WHEN source.policy->>'kind'='year_end' THEN 1 ELSE 0 END),
+ 'kpis',(SELECT coalesce(jsonb_agg(jsonb_build_object('hrOwned',coalesce((kpi->>'hrOwned')::boolean,false),'setting',kpi->'setting','locked',kpi->'locked','moderatorEmploymentId',kpi->'moderatorEmploymentId','checkIn',kpi->'checkIn' IS NOT NULL AND kpi->'checkIn'<>'null'::jsonb,
+ 'approvalChain',(SELECT coalesce(jsonb_agg(jsonb_build_object('employmentId',step->'employmentId','at',step->'at') ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(coalesce(kpi->'approvalChain','[]'::jsonb)) WITH ORDINALITY item(step,position)),
+ 'settingApprovals',(SELECT coalesce(jsonb_agg(jsonb_build_object('action',step->'action') ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(coalesce(kpi->'settingApprovals','[]'::jsonb)) WITH ORDINALITY item(step,position))) ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(source.kpis) WITH ORDINALITY item(kpi,position)))) FROM source;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_notice_source(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_notice_source(uuid) TO ai_hr_app;

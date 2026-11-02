@@ -16,7 +16,7 @@ import { assessmentAiQuotaTx } from './ai-usage';
 import { emptyHeldCalibration,heldCalibrationSchema } from './calibration-command-model';
 import { defaultLibraryScoring,settingNumberSource,spreadScoring } from './setting-default-model';
 import { hasLibrarySpread } from './setting-suggestion-model';
-import { assessmentWorkWindowOpen,calibrationPredecessorOpen,leaderPendingEntries,leaderWorkspaceParts,ownPlanLocked,reviewWorkspaceParts,workspaceNavigationOffer,type CalibrationWorkEntry, type WorkspaceAxis, type WorkspaceNavigationOffer } from './workspace-model';
+import { assessmentWorkWindowOpen,calibrationPredecessorOpen,leaderPendingEntries,leaderWorkspaceParts,ownPlanLocked,reviewWorkspaceParts,workspaceNavigationOffer,type CalibrationWorkEntry, type ReviewWorkFacts, type WorkspaceAxis, type WorkspaceNavigationOffer } from './workspace-model';
 import { evidenceFileLimit, validateEvidenceFile } from './evidence-file-model';
 import { personalPlan } from './personal-record-model';
 import { evidenceCitationSchema, evidenceDetailsSchema, evidenceFieldsSchema, evidenceLinkSchema, patchEvidenceFields, standingResponses, upsertEvidenceResponse } from './evidence-model';
@@ -1610,29 +1610,11 @@ export async function assessmentReviewTaskRecipientsTx(tx:Tx,reviewId:string,tas
  if(!scope?.tenantId)return [];
  const entitlements=await resolveEntitlementsTx(tx,scope.tenantId);
  if(!isModuleEnabled({tenantId:scope.tenantId,entitlements},'performance'))return [];
- const [row]=await tx.select().from(onehrReview).where(eq(onehrReview.reviewId,reviewId));
- const [native]=await tx.select().from(performanceReview).where(eq(performanceReview.id,reviewId));
- if(!row||!native)return [];
- const r={row,native:{reviewerEmploymentId:native.reviewerEmploymentId,closedAt:native.closedAt},cycle:await loadCycle(tx,row.cycleId),kpis:kpiSchema.array().parse(row.kpis),competencies:competencySchema.array().parse(row.competencies)};
- if(!['open','calibration'].includes(r.cycle.native.status))return [];
- const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);
- if(!participant?.ok)return [];
- const [frozen]=task==='plan'?[]:await tx.select({id:onehrResult.id}).from(onehrResult).where(eq(onehrResult.reviewId,reviewId));
- if(frozen||task!=='plan'&&r.native.closedAt)return [];
- const allowed=await moderatorChoices(tx,reviewId),assigned=new Set(r.kpis.filter(k=>!k.hrOwned).flatMap(kpiApprovers));
- // D-P1-22: competencies and the plan go to the effective reviewer; an approver whose unit is out cannot act.
- const [effective]=await tx.execute<{id:string|null}>(sql`select app.onehr_effective_reviewer_employment(${reviewId}::uuid) as id`);
- const reviewerId=effective?.id??null;
- const pool=[...new Set([...allowed.filter(m=>assigned.has(m.id)).map(m=>m.id),...(reviewerId?[reviewerId]:[])])].sort();
- const out=pool.length?new Set((await tx.execute<{id:string}>(sql`select x.id::text as id from unnest(array[${sql.join(pool.map(id=>sql`${id}::uuid`),sql`,`)}]::uuid[]) x(id) where app.assessment_unit_out(${r.row.cycleId}::uuid,x.id)`)).map(x=>x.id)):new Set<string>();
- const candidates=pool.filter(id=>!out.has(id));
- const year=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
- const [plan]=task==='plan'?await tx.select({status:onehrPlan.status}).from(onehrPlan).where(and(eq(onehrPlan.employmentId,r.row.employmentId),eq(onehrPlan.planYear,year))):[];
- const facts={kpis:r.kpis,competenciesAssigned:r.competencies.length>0,competencyStatus:r.row.competencyStatus,resultsSubmitted:!!r.row.resultsSubmittedAt,managerPerformance:r.row.managerPerformance,planStatus:plan?.status??null};
- const matches=candidates.filter(id=>reviewWorkspaceParts(r.cycle.policy,facts,{self:false,manager:id===reviewerId,employmentIds:[id]}).some(part=>part.state==='open'&&assessmentWorkWindowOpen(r.cycle.policy,part.cell)&&(task==='setting'?part.module==='pm'&&part.stage==='setting':task==='results'?part.module==='pm'&&part.stage==='moderation':task==='competencies'?part.module==='tm':part.module==='idp')));
- if(!matches.length)return [];
- const live=await tx.select({id:employment.id}).from(employment).innerJoin(appUser,and(eq(appUser.personId,employment.personId),eq(appUser.tenantId,employment.tenantId))).where(and(inArray(employment.id,matches),isNull(appUser.archivedAt),sql`not app.login_blocked(${appUser.id})`,sql`(${employment.terminatedOn} is null or ${employment.terminatedOn}>${todayInKualaLumpur()}::date)`));
- return [...new Set(live.map(e=>e.id))].sort();
+ const [row]=await tx.execute<{source:{reviewId:string;employmentId:string;reviewerEmploymentId:string|null;policy:Pick<Policy,'kind'|'modules'|'windows'>;frozen:boolean;moderatorIds:string[];liveIds:string[];facts:ReviewWorkFacts}|null}>(sql`select app.onehr_review_notice_source(${reviewId}::uuid) as source`);
+ const source=row?.source;if(!source||source.frozen&&task!=='plan')return [];
+ const assigned=new Set(source.facts.kpis.filter(k=>!k.hrOwned).flatMap(kpiApprovers)),reviewerId=source.reviewerEmploymentId;
+ const candidates=[...new Set([...source.moderatorIds.filter(id=>assigned.has(id)),...(reviewerId?[reviewerId]:[])])].filter(id=>source.liveIds.includes(id)).sort();
+ return candidates.filter(id=>reviewWorkspaceParts(source.policy,source.facts,{self:false,manager:id===reviewerId,employmentIds:[id]}).some(part=>part.state==='open'&&assessmentWorkWindowOpen(source.policy,part.cell)&&(task==='setting'?part.module==='pm'&&part.stage==='setting':task==='results'?part.module==='pm'&&part.stage==='moderation':task==='competencies'?part.module==='tm':part.module==='idp')));
 }
 /** A worklist projection, not a second workflow state store. Every card derives from current assignments. */
 export async function performanceWorkspace(ctx:SessionContext) {return withPerformanceTenant(ctx,tx=>performanceWorkspaceTx(tx,ctx));}
