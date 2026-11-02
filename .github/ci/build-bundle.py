@@ -270,6 +270,24 @@ def emit_pack_inventory_diagnostic(rows, directories, aliases, archive_bytes):
     # One ASCII JSON line; only validated relative paths/counts/digests, no code, absolute paths or environment.
     sys.stderr.write(encoded.decode("ascii"))
 
+def compression_order(files):
+    """Cluster small equal-size members using scan metadata, without reading payloads.
+
+    Repeated bodies can then fit in DEFLATE's 32 KiB history, including their TAR
+    header and padding. Every entry remains an independent, verified regular file.
+    This changes wire order only; the manifest and inventory keep canonical order.
+    """
+    groups = {}
+    for entry in files:
+        size = entry[1][2]
+        if 0 < size <= 31 * 1024:
+            groups.setdefault(size, []).append(entry)
+    ordered = []
+    for entry in files:
+        size = entry[1][2]
+        ordered.extend(groups.pop(size, []) if 0 < size <= 31 * 1024 else [entry])
+    return ordered
+
 def pack(source, output):
     source, output = Path(source).absolute(), Path(output).absolute()
     require(output.parent.resolve() == output.parent and not output.is_relative_to(source / ".next"), "unsafe bundle output directory")
@@ -278,7 +296,7 @@ def pack(source, output):
     archive = output / "build-bundle.tar.gz"; rows = []
     try:
         with archive.open("xb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, compresslevel=COMPRESSION_LEVEL, mtime=0) as gz, tarfile.open(fileobj=gz, mode="w", format=tarfile.USTAR_FORMAT, encoding="utf-8") as tar:
-            for path, expected, mode in files:
+            for path, expected, mode in compression_order(files):
                 file = source / ".next" / path
                 fd = os.open(file, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
                 with os.fdopen(fd, "rb") as stream:
@@ -288,6 +306,7 @@ def pack(source, output):
                     require(reader.count == info.size and identity(os.fstat(stream.fileno())) == expected, "build changed during packaging")
                     rows.append({"path": path, "size": info.size, "sha256": reader.hash.hexdigest(), "mode": info.mode})
         require(scan(source) == (files, dirs, aliases), "build inventory changed during packaging")
+        rows.sort(key=lambda row: row["path"])
         emit_pack_inventory_diagnostic(rows, dirs, aliases, archive.lstat().st_size)
         regular(archive, MAX_ARCHIVE, context="compressed-build-archive", root=output)
         build_id = (source / ".next/BUILD_ID").read_text().strip()

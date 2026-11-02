@@ -39,7 +39,7 @@ def compare(runtime, candidate, packet, output):
         manifest_path = output/name/'build-bundle-files.json'
         restored = output/(name+'-restored')
         baseline.unpack(output/name/'build-bundle.tar.gz',manifest_path,restored,runtime)
-        baseline.verify_directory(restored,manifest_path,runtime)
+        baseline.verify_directory(restored,packet/'bytes/build-bundle-files.json',runtime)
         manifests.append(manifest)
         records.append({'producer':name,'archiveBytes':manifest['archiveBytes'],
                         'archiveSha256':manifest['archiveSha256'],'packSeconds':elapsed,
