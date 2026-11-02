@@ -3,6 +3,7 @@
  * import built on it (board item c4055300). Real database, real RLS, fictional fixtures.
  */
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {randomUUID} from 'node:crypto';
 import {asc,eq,sql,and} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
@@ -11,7 +12,7 @@ import {auditEvents} from '../core/read';
 import {createCostCenter} from '../core/admin';
 import {getEmploymentCostAllocations,previewEmploymentCostAllocations,saveEmploymentCostAllocations} from '../core/employment-cost-allocations';
 import {previewCostAllocationUpload,confirmCostAllocationUpload,costAllocationRevertHandler} from '../core/cost-allocation-import';
-import {listImportAttempts,getImportAttempt,importAttemptSource,previewImportRevert,revertImport,importSourceHash,ImportHistoryError} from '../core/import-history';
+import {listImportAttempts,getImportAttempt,importAttemptSource,importAttemptKind,createImportAttemptTx,sealImportPlan,previewImportRevert,revertImport,importSourceHash,ImportHistoryError} from '../core/import-history';
 import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
 import {importAttemptStatus,importAttemptCounts} from '../lib/import-history';
 import {toCsv} from '../lib/csv';
@@ -50,9 +51,9 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
  it('gives the application role append-only privileges with RLS enabled on all three tables',async()=>{
   for(const table of ['import_attempt','import_attempt_item','import_attempt_event']){
    const[p]=await withTenant(a,tx=>tx.execute<Record<string,unknown>>(sql`select has_table_privilege(current_user,${'public.'+table},'SELECT') as read,has_table_privilege(current_user,${'public.'+table},'INSERT') as insert,has_table_privilege(current_user,${'public.'+table},'UPDATE') as update,has_table_privilege(current_user,${'public.'+table},'DELETE') as delete,(select relrowsecurity from pg_class where oid=${'public.'+table}::regclass) as rls`));
-   expect(p).toEqual({read:table==='import_attempt_item',insert:true,update:false,delete:false,rls:true});
-   if(table==='import_attempt'){const [columns]=await withTenant(a,tx=>tx.execute(sql`select has_column_privilege(current_user,'public.import_attempt','id','SELECT') as metadata,has_column_privilege(current_user,'public.import_attempt','source_content','SELECT') as source,has_column_privilege(current_user,'public.import_attempt','plan','SELECT') as plan`));expect(columns).toEqual({metadata:true,source:false,plan:false});}
-   if(table==='import_attempt_event'){const [columns]=await withTenant(a,tx=>tx.execute(sql`select has_column_privilege(current_user,'public.import_attempt_event','id','SELECT') as metadata,has_column_privilege(current_user,'public.import_attempt_event','reason','SELECT') as reason,has_column_privilege(current_user,'public.import_attempt_event','detail','SELECT') as detail`));expect(columns).toEqual({metadata:true,reason:false,detail:false});}
+   expect(p).toEqual({read:true,insert:true,update:false,delete:false,rls:true});
+   if(table==='import_attempt'){const [columns]=await withTenant(a,tx=>tx.execute(sql`select has_column_privilege(current_user,'public.import_attempt','id','SELECT') as metadata,has_column_privilege(current_user,'public.import_attempt','source_content','SELECT') as source,has_column_privilege(current_user,'public.import_attempt','plan','SELECT') as plan`));expect(columns).toEqual({metadata:true,source:true,plan:true});}
+   if(table==='import_attempt_event'){const [columns]=await withTenant(a,tx=>tx.execute(sql`select has_column_privilege(current_user,'public.import_attempt_event','id','SELECT') as metadata,has_column_privilege(current_user,'public.import_attempt_event','reason','SELECT') as reason,has_column_privilege(current_user,'public.import_attempt_event','detail','SELECT') as detail`));expect(columns).toEqual({metadata:true,reason:true,detail:true});}
   }
   const{attemptId}=await upload(a,[row('ACME','AC001','ACME-OPS','100')]);
   await expect(withTenant(a,tx=>tx.execute(sql`update import_attempt set source_name='changed' where id=${attemptId}::uuid`))).rejects.toThrow();
@@ -191,9 +192,8 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
    expect.soft(JSON.stringify(value)).not.toContain('BE001');expect.soft(JSON.stringify(value)).not.toContain(reason);
   }
   for(const column of ['reason','detail']){
-   const failure=await withTenant(narrowed,tx=>tx.execute(sql`select ${sql.identifier(column)} from import_attempt_event where attempt_id=${blocked.attemptId}::uuid or attempt_id=${successful.attemptId}::uuid`)).then(()=>null,error=>error);
-   expect.soft(failure,'raw private event columns must not bypass the history projection').toBeTruthy();
-   if(failure)expect.soft(String(failure.cause?.message??failure.message)).toMatch(/permission denied/);
+   const raw=await withTenant(narrowed,tx=>tx.execute(sql`select ${sql.identifier(column)} from import_attempt_event where attempt_id=${blocked.attemptId}::uuid or attempt_id=${successful.attemptId}::uuid`));
+   expect.soft(raw,'physical event rows require whole-file custody').toEqual([]);
   }
   for(const id of [blocked.attemptId,successful.attemptId]){
    expect.soft(await auditEvents(narrowed,{aggregateType:'import-attempt',aggregateId:id})).toEqual([]);
@@ -211,8 +211,8 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
   expect(scoped?.items.map(i=>i.employmentId)).toEqual([betaEmp]);
   expect(JSON.stringify(scoped?.plan)).not.toContain('AC002');
   for(const column of ['source_content','plan']) {
-   const denied=await withTenant(betaOnly,tx=>tx.execute(sql.raw(`select ${column} from import_attempt where id='${attemptId}'`))).then(()=>null,error=>error);
-   expect(denied).toBeTruthy();expect(String(denied.cause?.message??denied.message)).toMatch(/permission denied/);
+   const denied=await withTenant(betaOnly,tx=>tx.execute(sql`select ${sql.identifier(column)} from import_attempt where id=${attemptId}::uuid`));
+   expect(denied).toEqual([]);
   }
   const original=await importAttemptSource(a,attemptId);
   expect(original?.content.equals(csv(records))).toBe(true);
@@ -238,4 +238,39 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
   const foreign=await upload(acmeOnly,[row('BETA','BE001','BETA-OPS','100')]);expect(foreign.plan.groups[0].errors.join(' ')).toMatch(/does not match a company you can import for/);
   const rows=await owner.db.select().from(s.importAttempt).orderBy(asc(s.importAttempt.createdAt));expect(rows.every(r=>r.sourceHash===importSourceHash(r.sourceContent))).toBe(true);
  });
+ it('preserves partial history pagination and kind while physical rows require every company',async()=>{
+  const expected=[];
+  for(let i=0;i<3;i++)expected.push((await upload(a,[row('ACME','AC001','ACME-OPS','100'),row('BETA','BE001','BETA-OPS','100')])).attemptId);
+  const seen:string[]=[];let before:string|undefined;
+  for(let i=0;i<3;i++){
+   const page=await listImportAttempts(betaOnly,{kind:'cost_allocations',limit:1,before});
+   expect(page.items).toHaveLength(1);const entry=page.items[0];seen.push(entry.id);
+   expect(entry.createdAt).toBeInstanceOf(Date);expect(entry.events[0].createdAt).toBeInstanceOf(Date);
+   expect(entry.events[0]).toMatchObject({kind:'previewed',detail:{counts:{total:2,valid:2,invalid:0}}});
+   expect(await importAttemptKind(betaOnly,entry.id)).toBe('cost_allocations');
+   expect(await withTenant(betaOnly,tx=>tx.select().from(s.importAttempt).where(eq(s.importAttempt.id,entry.id)))).toEqual([]);
+   expect(await withTenant(betaOnly,tx=>tx.select().from(s.importAttemptEvent).where(eq(s.importAttemptEvent.attemptId,entry.id)))).toEqual([]);
+   const physical=await withTenant(a,tx=>tx.select().from(s.importAttempt).where(eq(s.importAttempt.id,entry.id)));
+   expect(physical).toHaveLength(1);expect(physical[0].sourceContent.equals(csv([row('ACME','AC001','ACME-OPS','100'),row('BETA','BE001','BETA-OPS','100')]))).toBe(true);
+   before=page.nextCursor??undefined;if(i<2)expect(before).toBe(entry.id);else expect(before).toBeUndefined();
+  }
+  expect(new Set(seen)).toEqual(new Set(expected));
+ });
+
+ it('admits INSERT RETURNING and dedup for creator-empty attempts but refuses other and stale principals',async()=>{
+  const operationKey=randomUUID(),content=Buffer.from('unreadable fictional upload'),plan=sealImportPlan({version:1,previewHash:'',counts:{total:0,valid:0,invalid:0},issues:[]});
+  const input={kind:'cost_allocations' as const,sourceName:'empty.csv',content,companyIds:[],plan,operationKey};
+  const first=await withTenant(acmeOnly,tx=>createImportAttemptTx(tx,acmeOnly,input));
+  expect(first.existing).toBe(false);expect(first.plan).toEqual(plan);
+  expect(await withTenant(acmeOnly,tx=>createImportAttemptTx(tx,acmeOnly,input))).toEqual({...first,existing:true});
+  expect((await getImportAttempt(acmeOnly,first.attemptId))?.createdAt).toBeInstanceOf(Date);
+  expect((await importAttemptSource(acmeOnly,first.attemptId))?.content.equals(content)).toBe(true);
+  expect(await getImportAttempt(a,first.attemptId)).toBeNull();expect(await importAttemptSource(a,first.attemptId)).toBeNull();
+  expect(await withTenant(a,tx=>tx.select().from(s.importAttempt).where(eq(s.importAttempt.id,first.attemptId)))).toEqual([]);
+  await owner.db.update(s.roleAssignment).set({companyId:betaId}).where(eq(s.roleAssignment.appUserId,acmeOnly.userId!));
+  const [proof]=await withTenant(acmeOnly,tx=>tx.execute(sql`select app.principal_snapshot_current() as current`));expect(proof.current).toBe(false);
+  expect(await withTenant(acmeOnly,tx=>tx.select().from(s.importAttempt).where(eq(s.importAttempt.id,first.attemptId)))).toEqual([]);
+  await expect(getImportAttempt(acmeOnly,first.attemptId)).rejects.toThrow('Access changed');
+ });
+
 });
