@@ -1024,3 +1024,13 @@ native discard audit; preparing alone cannot commit. The INVOKER trigger observe
 port role and only materializes OLD source data when the private native-sync intent exists. Metadata,
 regular Personnel writes and runtime proof minting gain no authority. This source requires hosted
 native activation/discard plus 0944 exact derived-case qualification before any completion claim.
+
+0944's SAVE consumer derives only the native source/sync metadata/history and private-field split
+from an actual same-TX canonical Draft save. Its private physical effect context repeats actor,
+authority stamp, current/proposed Draft data scope and the actual Onboarding audit. Repeated saves
+may reach the final actual image only through that Draft's recorded OLD→NEW chain. Combined
+activation/discard closes through the canonical completed source APIs; a discard intent alone is
+insufficient. The source port returns only whether it handled the save and the effect's identifiers.
+Refresh/backfill, ACTIVE assignment materialization and independent DISCARD cancellation remain their
+existing native owners; their full finite ports, raw write closure and family publication remain
+unfinished. This source and its positive/rollback tests require genuine hosted qualification.

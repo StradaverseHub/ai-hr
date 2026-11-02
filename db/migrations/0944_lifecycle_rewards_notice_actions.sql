@@ -180,6 +180,7 @@ REVOKE ALL ON FUNCTION app.lifecycle_reward_notice_legacy_allowed(uuid,uuid,text
 CREATE TABLE app.lifecycle_native_effect_context(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,
  purpose text NOT NULL,case_id uuid NOT NULL,event_type text NOT NULL,
+ source_draft_id uuid,source_data jsonb,
  authority_stamp text NOT NULL CHECK(length(authority_stamp)=64),function_key text,function_operation text,company_id uuid,positive_admission boolean NOT NULL DEFAULT false,active boolean NOT NULL DEFAULT true,completed boolean NOT NULL DEFAULT false
 );
 CREATE TABLE app.lifecycle_native_effect_receipt(
@@ -276,12 +277,46 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.lifecycle_row_in_transaction(text,uuid,jsonb) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+CREATE FUNCTION app.onboarding_saved_source_facts(p_source jsonb)RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH input AS(SELECT p_source->'data'->'profile' profile,p_source->'data'->'employment' employment),
+ raw AS(SELECT jsonb_build_object('fullName',profile->'fullName','employeeId',coalesce(nullif(p_source->'reserved_employee_code','null'::jsonb),profile->'employeeCode'),
+ 'joinDate',employment->'hiredOn','title',employment->'positionId','department',employment->'departmentId','company',p_source->'company_id',
+ 'businessGroup',(SELECT to_jsonb(d.business_unit_id)FROM public.department d WHERE d.tenant_id=(p_source->>'tenant_id')::uuid AND d.id::text=employment->>'departmentId'),
+ 'grade',employment->'gradeId','employmentType',employment->'employmentType','confirmationDate',employment->'confirmationDate','provisionalEndOn',employment->'provisionalEndOn',
+ 'supervisor',employment->'reportingManagerEmploymentId','email',profile->'primaryEmail','costCentre',employment->'costCenterId','ic',profile->'icNumber','passport',profile->'passportNumber')facts FROM input)
+ SELECT coalesce(jsonb_object_agg(field.key,field.value),'{}'::jsonb)FROM raw,jsonb_each(raw.facts)field WHERE jsonb_typeof(field.value)='string'AND length(btrim(field.value#>>'{}'))>0;
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_saved_source_facts(jsonb)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- A SAVE receipt remains bound to its exact Draft image, including when that same image is
+-- subsequently saved again or consumed by the native activation/discard course in this
+-- transaction. Only physical OLD→NEW receipts of this same Draft/actor/stamp form the chain.
+CREATE FUNCTION app.lifecycle_saved_source_completion(p_context uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH RECURSIVE effect AS(SELECT * FROM app.lifecycle_native_effect_context context WHERE context.id=p_context AND context.purpose='source-draft-save'),
+ images(source)AS(
+  SELECT effect.source_data FROM effect
+  UNION
+  SELECT mutation.after_source FROM images JOIN app.workforce_draft_mutation mutation ON mutation.before_source=images.source CROSS JOIN effect
+  WHERE mutation.xact_id=effect.xact_id AND mutation.tenant_id=effect.tenant_id AND mutation.user_id=effect.user_id AND mutation.draft_id=effect.source_draft_id AND mutation.operation='edit'AND mutation.authority_stamp=effect.authority_stamp
+   AND app.data_permission_draft_matches(effect.tenant_id,effect.user_id,mutation.before_source)AND app.data_permission_draft_matches(effect.tenant_id,effect.user_id,mutation.after_source)
+ )
+ SELECT EXISTS(SELECT 1 FROM effect JOIN public.lc_onboarding_case actual ON actual.id=effect.case_id AND actual.tenant_id=effect.tenant_id AND actual.source_draft_id=effect.source_draft_id CROSS JOIN images
+ WHERE actual.company_id::text=images.source->>'company_id'AND actual.data->>'sourceDraftId'=effect.source_draft_id::text
+ AND(app.workforce_draft_saved_source_allowed(effect.source_draft_id,images.source)
+  OR app.workforce_draft_active_completed(effect.source_draft_id,images.source,actual.employment_id,(actual.data->>'personId')::uuid)
+  OR EXISTS(SELECT 1 FROM app.workforce_draft_discard_source intent WHERE intent.xact_id=effect.xact_id AND intent.tenant_id=effect.tenant_id AND intent.user_id=effect.user_id AND intent.draft_id=effect.source_draft_id AND intent.source=images.source AND app.workforce_draft_discard_completed(intent.id,effect.source_draft_id,images.source))));
+$$;
+REVOKE ALL ON FUNCTION app.lifecycle_saved_source_completion(uuid)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.lifecycle_native_effect_admission_valid(p_context uuid)RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.principal_snapshot_current()AND EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c
  JOIN public.app_user actor ON actor.id=c.user_id AND actor.tenant_id=c.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
  WHERE c.id=p_context AND c.xact_id=pg_current_xact_id()AND c.tenant_id=app.current_tenant_id()AND c.user_id=app.current_user_id()AND c.completed AND NOT c.active
  AND c.authority_stamp=app.access_function_authority_stamp()
+ AND(c.purpose<>'source-draft-save' OR app.lifecycle_saved_source_completion(c.id))
  AND(c.function_key IS NULL OR c.positive_admission AND app.function_action_denial_clear(c.function_key,c.function_operation,c.company_id)
  AND EXISTS(SELECT 1 FROM app.lifecycle_effect_function_identity(c.case_id,c.purpose)native WHERE native.function_key=c.function_key AND native.operation=c.function_operation AND native.company_id=c.company_id)));
 $$;
@@ -1180,3 +1215,90 @@ DO $$DECLARE relation_name text;BEGIN
   EXECUTE format('CREATE TRIGGER native_source_access_lock BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION app.notice_action_statement_lock()',relation_name);
  END LOOP;
 END $$;
+
+--> statement-breakpoint
+-- The native SAVE source course accepts only an actual same-TX Workforce save receipt. It derives
+-- facts itself; no caller supplies a case delta, private snapshot, role or administrative capability.
+--> statement-breakpoint
+CREATE FUNCTION app.onboarding_sync_saved_draft(p_draft uuid)
+RETURNS TABLE(handled boolean,case_id uuid,company_id uuid,did_change boolean)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE draft public.employee_draft;source_image jsonb;c public.lc_onboarding_case;cfg jsonb;
+ facts jsonb;public_facts jsonb;private_facts jsonb;prior_private public.lc_onboarding_private;
+ next_data jsonb;next_private jsonb;private_local jsonb;entry jsonb;stamp text;source_version text;actor_name text;hr boolean;effect uuid;case_number text;subject uuid;year text;sequence_number text;
+BEGIN
+ PERFORM app.audit_access_order_lock();
+ PERFORM app.access_workforce_write_lock();
+ PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
+ PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Draft source unavailable' USING ERRCODE='42501';END IF;
+ SELECT d.* INTO draft FROM public.employee_draft d WHERE d.id=p_draft AND d.tenant_id=app.current_tenant_id()FOR UPDATE;
+ IF draft.id IS NULL OR app.workforce_draft_saved_source_allowed(p_draft,to_jsonb(draft))IS NOT TRUE THEN RETURN QUERY SELECT false,NULL::uuid,NULL::uuid,false;RETURN;END IF;
+ source_image:=to_jsonb(draft);
+ SELECT config.data INTO cfg FROM public.lc_onboarding_config config WHERE config.tenant_id=draft.tenant_id AND config.revision>0;
+ IF cfg IS NULL OR draft.company_id IS NULL THEN RETURN QUERY SELECT true,NULL::uuid,NULL::uuid,false;RETURN;END IF;
+ SELECT u_case.* INTO c FROM public.lc_onboarding_case u_case WHERE u_case.tenant_id=draft.tenant_id AND u_case.source_draft_id=p_draft FOR UPDATE;
+ IF c.id IS NOT NULL AND(c.data->>'id'IS DISTINCT FROM c.id::text OR c.data->>'sourceDraftId'IS DISTINCT FROM p_draft::text OR c.data->>'personnelStatus'IS DISTINCT FROM'Draft'OR c.employment_id IS NOT NULL OR c.data->>'employmentId'IS NOT NULL OR c.data->>'personId'IS NOT NULL
+  OR c.company_id<>draft.company_id AND NOT EXISTS(SELECT 1 FROM app.workforce_draft_mutation proof WHERE proof.xact_id=pg_current_xact_id()AND proof.tenant_id=draft.tenant_id AND proof.user_id=app.current_user_id()AND proof.draft_id=p_draft AND proof.after_source=source_image AND proof.before_source->>'company_id'=c.company_id::text))
+ THEN RAISE EXCEPTION 'Draft source case changed' USING ERRCODE='42501';END IF;
+ SELECT coalesce(person.full_name,'User '||left(actor.id::text,8))INTO actor_name FROM public.app_user actor LEFT JOIN public.person person ON person.id=actor.person_id AND person.tenant_id=actor.tenant_id WHERE actor.id=app.current_user_id()AND actor.tenant_id=draft.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id);
+ IF actor_name IS NULL THEN RAISE EXCEPTION 'Your login is not available' USING ERRCODE='42501';END IF;
+ -- Match native module membership directly; it is independent of a page-section grant.
+ hr:=app.is_admin_for(draft.company_id)AND(coalesce((cfg->'access'->'onboarding')?app.current_user_id()::text,false)OR app.onboarding_v9_sections()IS NULL OR app.onboarding_v9_sections()->>'hr'='view');
+ facts:=app.onboarding_saved_source_facts(source_image);public_facts:=facts-ARRAY['costCentre','ic','passport'];
+ -- The native private snapshot contains only these three source facts.
+ SELECT coalesce(jsonb_object_agg(f.key,f.value),'{}'::jsonb)INTO private_facts FROM jsonb_each(facts)f WHERE f.key IN('costCentre','ic','passport');
+ source_version:=to_char(draft.updated_at AT TIME ZONE'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+ IF c.id IS NOT NULL THEN SELECT p.* INTO prior_private FROM public.lc_onboarding_private p WHERE p.case_id=c.id AND p.tenant_id=c.tenant_id FOR UPDATE;END IF;
+ IF c.id IS NOT NULL AND c.data->>'sourceVersion'=source_version AND c.data->'source'=public_facts AND(NOT hr OR coalesce(prior_private.data->'source','{}')=private_facts)THEN RETURN QUERY SELECT true,c.id,draft.company_id,false;RETURN;END IF;
+ stamp:=to_char(clock_timestamp()AT TIME ZONE'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+ subject:=coalesce(c.id,gen_random_uuid());case_number:=c.data->>'number';
+ IF nullif(case_number,'')IS NULL THEN year:=to_char(now()AT TIME ZONE'Asia/Kuala_Lumpur','YYYY');sequence_number:=app.onboarding_next_case_number(year)::text;case_number:='OB-'||year||'-'||repeat('0',greatest(4-length(sequence_number),0))||sequence_number;END IF;
+ IF c.id IS NULL THEN
+  next_data:=jsonb_build_object('version',1,'id',subject,'number',case_number,'sourceDraftId',p_draft,'employmentId',NULL,'personId',NULL,'personnelStatus','Draft','syncedAt',stamp,'source',public_facts,'sourceVersion',source_version,'local','{}'::jsonb,'state','pending','submittedAt',NULL,'submittedBy',NULL,'cancelReason',NULL,'hiring','','replacedEmployee','','deviceType','','floor','','notes','','selected','[]'::jsonb,'extras','[]'::jsonb,'checklistOverride',NULL,'confirmedChecklist',NULL,'reconcileNeeded',false,'tasks','[]'::jsonb,'taskHistory','[]'::jsonb,'requisitions','[]'::jsonb,'history','[]'::jsonb,'acknowledgementHistory','[]'::jsonb,'acknowledgement',NULL);
+ ELSE
+  next_data:=c.data||jsonb_build_object('source',public_facts,'sourceVersion',source_version,'syncedAt',stamp);
+  IF c.data->>'state'='submitted'AND c.data->'source'IS DISTINCT FROM public_facts THEN next_data:=next_data||'{"reconcileNeeded":true}'::jsonb;END IF;
+ END IF;
+ SELECT coalesce(jsonb_object_agg(f.key,f.value),'{}'::jsonb)INTO private_local FROM jsonb_each(coalesce(next_data->'local','{}')||coalesce(prior_private.data->'local','{}'))f WHERE f.key IN('costCentre','ic','passport');
+ next_private:=coalesce(prior_private.data,'{}')||jsonb_build_object('source',private_facts,'local',private_local);
+ IF next_data?'caseValues' THEN next_private:=next_private||jsonb_build_object('caseValues',next_data->'caseValues');END IF;
+ IF next_data?'caseContactEmail' THEN next_private:=next_private||jsonb_build_object('caseContactEmail',next_data->'caseContactEmail');END IF;
+ next_data:=(next_data-ARRAY['caseValues','caseContactEmail'])||jsonb_build_object('local',coalesce(next_data->'local','{}')-ARRAY['costCentre','ic','passport']);
+ entry:=jsonb_build_object('id',gen_random_uuid(),'at',stamp,'by',app.current_user_id(),'name',actor_name,'action',CASE WHEN c.id IS NULL THEN'personnel.synced'ELSE'personnel.updated'END,'detail','');
+ next_data:=next_data||jsonb_build_object('history',coalesce(next_data->'history','[]')||jsonb_build_array(entry));
+ IF EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context context WHERE context.xact_id=pg_current_xact_id()AND context.tenant_id=draft.tenant_id AND context.user_id=app.current_user_id()AND context.active)THEN RAISE EXCEPTION 'Native source context already active' USING ERRCODE='42501';END IF;
+ INSERT INTO app.lifecycle_native_effect_context(xact_id,tenant_id,user_id,purpose,case_id,event_type,source_draft_id,source_data,authority_stamp,company_id,positive_admission)
+ VALUES(pg_current_xact_id(),draft.tenant_id,app.current_user_id(),'source-draft-save',subject,'onboarding.personnel_synced',p_draft,source_image,app.access_function_authority_stamp(),draft.company_id,true)RETURNING id INTO effect;
+ IF c.id IS NULL THEN
+  INSERT INTO public.lc_onboarding_case(id,tenant_id,company_id,source_draft_id,data)VALUES(subject,draft.tenant_id,draft.company_id,p_draft,next_data);
+ ELSE
+  INSERT INTO public.lc_onboarding_case_revision(tenant_id,case_id,company_id,revision,data)VALUES(c.tenant_id,c.id,c.company_id,c.revision,c.data)ON CONFLICT DO NOTHING;
+  IF hr AND prior_private.case_id IS NOT NULL THEN INSERT INTO public.lc_onboarding_private_revision(tenant_id,case_id,company_id,revision,data)VALUES(c.tenant_id,c.id,prior_private.company_id,c.revision,prior_private.data)ON CONFLICT DO NOTHING;END IF;
+  UPDATE public.lc_onboarding_case actual SET company_id=draft.company_id,data=next_data,revision=c.revision+1,updated_at=clock_timestamp()WHERE actual.id=c.id AND actual.tenant_id=c.tenant_id;
+ END IF;
+ IF hr THEN
+  INSERT INTO public.lc_onboarding_private(case_id,tenant_id,company_id,data)VALUES(subject,draft.tenant_id,draft.company_id,next_private)ON CONFLICT(case_id)DO UPDATE SET company_id=excluded.company_id,data=excluded.data;
+ END IF;
+ PERFORM app.lifecycle_native_effect_complete(effect);
+ RETURN QUERY SELECT true,subject,draft.company_id,true;
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_sync_saved_draft(uuid)FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_sync_saved_draft(uuid)TO ai_hr_app;
+--> statement-breakpoint
+-- A combined SAVE→DISCARD transaction must close the already-sealed SAVE image through the
+-- real closed Draft DELETE port. This bridge only creates that private intent; cancellation and
+-- deletion remain the existing native owners, and an orphan intent cannot commit.
+CREATE FUNCTION app.onboarding_saved_draft_discard_admit(p_draft uuid)RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE actual public.employee_draft;
+BEGIN
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Draft source unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT draft.* INTO actual FROM public.employee_draft draft WHERE draft.id=p_draft AND draft.tenant_id=app.current_tenant_id()FOR UPDATE;
+ IF actual.id IS NOT NULL AND EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context effect WHERE effect.xact_id=pg_current_xact_id()AND effect.tenant_id=actual.tenant_id AND effect.user_id=app.current_user_id()AND effect.purpose='source-draft-save'AND effect.source_draft_id=p_draft AND effect.source_data=to_jsonb(actual)AND effect.completed AND NOT effect.active)THEN
+  PERFORM app.workforce_draft_discard_begin(p_draft,to_jsonb(actual));
+ END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_saved_draft_discard_admit(uuid)FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_saved_draft_discard_admit(uuid)TO ai_hr_app;

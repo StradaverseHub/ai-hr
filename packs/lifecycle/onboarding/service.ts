@@ -569,6 +569,20 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
         return;
     // Personnel saves and the scheduled backfill must not both create the first case for one draft.
     await lockOnboardingTx(tx, ctx.tenantId);
+    // The native SAVE port consumes an exact same-transaction Workforce save receipt. It does
+    // not return the source or full case, and cannot turn an ordinary refresh into a source grant.
+    if (mode === 'save' && ctx.userId) {
+        const [saved] = rows<{ handled: boolean; case_id: string | null; company_id: string | null; did_change: boolean }>(await tx.execute(sql`select * from app.onboarding_sync_saved_draft(${draftId}::uuid)`));
+        if (saved?.handled) {
+            if (saved.did_change && saved.case_id) await appendEvent(tx, {
+                tenantId: ctx.tenantId, aggregateType: 'onboarding-case', aggregateId: saved.case_id,
+                eventType: 'onboarding.personnel_synced', actor: actorOf(ctx),
+                payload: { caseId: saved.case_id, companyId: saved.company_id },
+            });
+            return;
+        }
+    }
+    if (mode === 'discard' && ctx.userId) await tx.execute(sql`select app.onboarding_saved_draft_discard_admit(${draftId}::uuid)`);
     const { config, revision } = await configTx(tx, ctx);
     if (!revision)
         return;

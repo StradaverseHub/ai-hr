@@ -3,7 +3,7 @@ import { afterAll, beforeEach, describe, it, expect } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
-import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
+import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft, saveAndCompleteEmployeeDraft } from '../core/employee-draft';
 import { hireEmployee } from '../core/org';
 import { v9OwnTask, onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingBoundedTask, onboardingAssignedTaskMetadata, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingSyncDraftTx, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
 import { appendEvent, actorOf } from '../db/events';
@@ -213,6 +213,66 @@ describe('V3.1 onboarding database and authorization', () => {
         await saveEmployeeDraft(admin, { id: d.id, data: { profile: { fullName: 'Updated Hire', primaryEmail: 'new@test.invalid' }, employment: { companyId: b.companyId } }, currentStep: 1 });
         expect(await onboardingList(admin)).toHaveLength(1);
         expect((await onboardingList(admin))[0]!.case.source.fullName).toBe('Updated Hire');
+    });
+    it('derives a saved Draft source without page authority, preserves private handling, and exposes no refresh receipt',async()=>{
+        const before=await onboardingContext(admin),config=structuredClone(before.config);
+        config.access.onboarding=[tech.userId!];
+        config.access.joinerViewGroups=['group-tech'];
+        config.access.joinerSections={'group-tech':{preset:'approver'}};
+        config.groups.find(g=>g.id==='group-tech')!.members.push(admin.userId!);
+        await onboardingSaveConfig(admin,before.revision,config);
+        const saved=await saveEmployeeDraft(admin,{data:{profile:{fullName:'Source-only fictional hire',primaryEmail:'source-only@fixture.invalid',icNumber:'SOURCE-PRIVATE-IC'},employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,hiredOn:todayInKualaLumpur()}},currentStep:1});
+        const [first]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.sourceDraftId,saved.id));
+        expect(first).toBeDefined();
+        expect(first!.data).toMatchObject({sourceDraftId:saved.id,personnelStatus:'Draft',state:'pending',source:{fullName:'Source-only fictional hire',company:b.companyId,department:b.deptA,title:b.positionId},history:[{action:'personnel.synced',by:admin.userId}]});
+        expect(first!.data.source).not.toHaveProperty('ic');
+        expect(await owner.db.select().from(schema.lcOnboardingPrivate).where(eq(schema.lcOnboardingPrivate.caseId,first!.id))).toEqual([]);
+        expect(await withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_sync_saved_draft(${saved.id}::uuid)`))).toEqual([{handled:false,case_id:null,company_id:null,did_change:false}]);
+        expect(await withTenant(other,tx=>tx.execute(sql`select * from app.onboarding_sync_saved_draft(${saved.id}::uuid)`))).toEqual([{handled:false,case_id:null,company_id:null,did_change:false}]);
+        await saveEmployeeDraft(admin,{id:saved.id,data:{profile:{fullName:'Updated source-only hire',primaryEmail:'updated-source@fixture.invalid',icNumber:'UPDATED-PRIVATE-IC'},employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId}},currentStep:2});
+        const [updated]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,first!.id));
+        expect(updated!.data).toMatchObject({id:first!.id,number:first!.data.number,sourceDraftId:saved.id,source:{fullName:'Updated source-only hire',email:'updated-source@fixture.invalid'},tasks:[],requisitions:[]});
+        expect(updated!.revision).toBe(first!.revision+1);
+        const revisions=await owner.db.select().from(schema.lcOnboardingCaseRevision).where(eq(schema.lcOnboardingCaseRevision.caseId,first!.id));
+        expect(revisions).toHaveLength(1);expect(revisions[0]!.data).toEqual(first!.data);
+        expect(await owner.db.execute(sql`select id from app.lifecycle_native_effect_context where tenant_id=${b.tenantId}::uuid`)).toEqual([]);
+    });
+    it('closes a same-transaction SAVE image through actual activation and actual closed-port discard',async()=>{
+        const active=await saveAndCompleteEmployeeDraft(admin,{data:{profile:{fullName:'Combined source activation',employeeCode:'SAVE-ACTIVE-NATIVE',primaryEmail:'save-active@fixture.invalid'},employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'5000'}},currentStep:5});
+        const [activeCase]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.employmentId,active.employmentId));
+        expect(activeCase!.data).toMatchObject({personnelStatus:'Active',employmentId:active.employmentId,source:{employeeId:'SAVE-ACTIVE-NATIVE'}});
+        const discarded=await withTenant(admin,async tx=>{
+            const saved=await saveEmployeeDraft(admin,{data:{profile:{fullName:'Combined source discard'},employment:{companyId:b.companyId}},currentStep:1},tx);
+            await saveEmployeeDraft(admin,{id:saved.id,data:{profile:{fullName:'Second combined source discard'},employment:{companyId:b.companyId}},currentStep:2},tx);
+            await discardEmployeeDraft(admin,saved.id,tx);return saved.id;
+        });
+        expect(await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.id,discarded))).toEqual([]);
+        const [cancelled]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.sourceDraftId,discarded));
+        expect(cancelled!.data).toMatchObject({state:'cancelled',cancelReason:'Personnel draft discarded',sourceDraftId:discarded});
+        expect(await owner.db.execute(sql`select id from app.lifecycle_native_effect_context where tenant_id=${b.tenantId}::uuid`)).toEqual([]);
+    });
+    it('invalidates a saved-source effect after same-transaction native authority revoke and restore',async()=>{
+        const before=await onboardingContext(admin),input={profile:{fullName:'Revoked source fixture'},employment:{companyId:b.companyId}};
+        await expect(withTenant(admin,async tx=>{
+            await saveEmployeeDraft(admin,{data:input,currentStep:1},tx);
+            const changed=structuredClone(before.config);changed.access.onboarding=[];
+            await tx.update(schema.lcOnboardingConfig).set({data:changed}).where(eq(schema.lcOnboardingConfig.tenantId,b.tenantId));
+            await tx.update(schema.lcOnboardingConfig).set({data:before.config}).where(eq(schema.lcOnboardingConfig.tenantId,b.tenantId));
+        })).rejects.toThrow();
+        expect((await owner.db.select().from(schema.employeeDraft)).filter(row=>row.label==='Revoked source fixture')).toEqual([]);
+        const retried=await saveEmployeeDraft(admin,{data:input,currentStep:1});
+        expect((await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.sourceDraftId,retried.id)))).toHaveLength(1);
+    });
+    it('rolls a real saved-source effect back without its matching onboarding audit',async()=>{
+        const id=randomUUID();
+        await expect(withTenant(admin,async tx=>{
+            await tx.insert(schema.employeeDraft).values({id,tenantId:b.tenantId,companyId:b.companyId,createdByPersonId:admin.personId,label:'Uncommitted source fixture',data:{profile:{fullName:'Uncommitted source fixture'},employment:{companyId:b.companyId}},currentStep:1});
+            await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'employee-draft',aggregateId:id,eventType:'employee-draft.created',actor:actorOf(admin),payload:{companyId:b.companyId}});
+            const [effect]=await tx.execute<{handled:boolean;did_change:boolean}>(sql`select * from app.onboarding_sync_saved_draft(${id}::uuid)`);
+            expect(effect).toMatchObject({handled:true,did_change:true});
+        })).rejects.toThrow();
+        expect(await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.id,id))).toEqual([]);
+        expect(await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.sourceDraftId,id))).toEqual([]);
     });
     it('projects and completes only an actual assigned task outside general data scope, with a required native audit',async()=>{
         const context=await onboardingContext(admin),config=structuredClone(context.config);
