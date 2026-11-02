@@ -1,3 +1,5 @@
+import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {isCarrierPrincipalCurrentTx} from './carrier-principal';
 import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
 /**
  * Configurable Payroll Cycle master (ADR-0069). A COMPANY-scoped, admin-maintained catalog of the
@@ -399,9 +401,14 @@ export async function setPayrollCycleActive(ctx: SessionContext, p: { id: string
  * (Advance Salary / Mid-Month) so deleting one off_cycle preset does not falsely count another's runs.
  */
 export async function deletePayrollCycle(ctx: SessionContext, id: string) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    if(!(await isCarrierPrincipalCurrentTx(tx,ctx)))throw new Error('Payroll cycle unavailable');
     const [row] = await tx.select().from(payrollCycle).where(eq(payrollCycle.id, id));
     if (!row) throw new Error('Payroll cycle not found');
+    const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_payroll_for(${row.companyId}::uuid) as allowed`);
+    if(scope?.allowed!==true)throw new Error('Payroll cycle unavailable');
     const conds = [eq(payrollBatch.companyId, row.companyId), eq(payrollBatch.runType, row.runType)];
     // A preset off_cycle cycle only "owns" the batches carrying its exact remarks label — so two distinct
     // off_cycle presets don't block each other, and a plain off_cycle cycle (null remarks) is blocked by
@@ -423,7 +430,8 @@ export async function deletePayrollCycle(ctx: SessionContext, id: string) {
       .where(eq(payrollIndividualTxn.intendedCycleId, id));
     const txnRefs = (fixedRefs?.n ?? 0) + (individualRefs?.n ?? 0);
     if (txnRefs > 0) throw new PayrollCycleInUseError(txnRefs, 'transactions');
-    await tx.delete(payrollCycle).where(eq(payrollCycle.id, id));
+    const deleted=await tx.delete(payrollCycle).where(eq(payrollCycle.id, id)).returning({id:payrollCycle.id});
+    if(deleted.length!==1)throw new Error('Payroll cycle unavailable');
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-cycle',

@@ -4502,6 +4502,13 @@
       "when": 1793330000330,
       "tag": "0930_anomaly_event_privacy",
       "breakpoints": true
+    },
+    {
+      "idx": 758,
+      "version": "7",
+      "when": 1793330000331,
+      "tag": "0931_ordinary_delete_authority",
+      "breakpoints": true
     }
   ]
 }
