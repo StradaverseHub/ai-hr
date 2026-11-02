@@ -94,7 +94,7 @@ CREATE FUNCTION app.data_permission_matches_for(p_user uuid,p_tenant uuid,p_empl
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE p public.data_permission_profile; rules jsonb; subject jsonb;
 BEGIN
- IF NOT EXISTS(SELECT 1 FROM public.app_user u
+ IF current_setting('transaction_isolation')<>'read committed' OR NOT EXISTS(SELECT 1 FROM public.app_user u
   WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RETURN false;END IF;
  subject:=app.data_permission_subject_for(p_tenant,p_employment,p_date);
  IF subject IS NULL THEN RETURN false;END IF;
@@ -163,6 +163,7 @@ REVOKE ALL ON FUNCTION app.data_permission_delegate(jsonb) FROM PUBLIC,ai_hr_app
 CREATE FUNCTION app.data_permission_fingerprint() RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT encode(sha256(convert_to(jsonb_build_object('access',app.access_scope_fingerprint(),
+ 'catalog',(SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.id),'[]'::jsonb) FROM public.access_capability c),
  'configuration',(SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.tenant_id),'[]'::jsonb) FROM public.access_configuration c WHERE c.tenant_id=app.current_tenant_id()),
  'groups',(SELECT coalesce(jsonb_agg(to_jsonb(g) ORDER BY g.id),'[]'::jsonb) FROM public.access_group g WHERE g.tenant_id=app.current_tenant_id()),
  'grants',(SELECT coalesce(jsonb_agg(to_jsonb(g) ORDER BY g.id),'[]'::jsonb) FROM public.access_group_grant g WHERE g.tenant_id=app.current_tenant_id()),

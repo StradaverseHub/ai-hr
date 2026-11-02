@@ -280,7 +280,7 @@ $$;
 --> statement-breakpoint
 CREATE FUNCTION app.data_permission_record_read(p_employment uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND (NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id())
+ SELECT app.principal_snapshot_current() AND current_setting('transaction_isolation')='read committed' AND (NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id())
  OR app.data_permission_row_born('employment',p_employment,true)
  OR EXISTS(SELECT 1 FROM public.employment e
  WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
@@ -291,7 +291,7 @@ GRANT EXECUTE ON FUNCTION app.data_permission_record_read(uuid) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.data_permission_person_read(p_person uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND (app.is_self_person(p_person) OR app.data_permission_row_born('person',p_person,true)
+ SELECT app.principal_snapshot_current() AND current_setting('transaction_isolation')='read committed' AND (app.is_self_person(p_person) OR app.data_permission_row_born('person',p_person,true)
  OR EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=app.current_tenant_id() AND app.data_permission_record_read(e.id))
  OR NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.user_id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()));
 $$;
@@ -810,7 +810,7 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_te
 DECLARE q public.profile_change_request;candidate jsonb;approver uuid;
 BEGIN
  SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id();
- IF NOT FOUND OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id)
+ IF NOT FOUND OR current_setting('transaction_isolation')<>'read committed' OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id)
   OR NOT app.access_profile_review_permitted(q.employment_id) THEN RETURN false;END IF;
  IF q.route_context->'version'='3'::jsonb THEN
   IF q.route_context->>'decisionMode' IS DISTINCT FROM 'any' OR jsonb_typeof(q.route_context->'approvers') IS DISTINCT FROM 'array'
@@ -843,7 +843,7 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_te
 DECLARE q public.profile_change_request;principal jsonb;
 BEGIN
  SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id();
- IF NOT FOUND OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id) OR (NOT app.can_admin_employment(q.employment_id) AND NOT app.data_permission_profile_responsibility(q.id))
+ IF NOT FOUND OR current_setting('transaction_isolation')<>'read committed' OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id) OR (NOT app.can_admin_employment(q.employment_id) AND NOT app.data_permission_profile_responsibility(q.id))
   OR NOT app.access_profile_review_permitted(q.employment_id) THEN RETURN false;END IF;
  IF q.route_context->'version'='3'::jsonb THEN
   IF q.route_context->>'decisionMode' IS DISTINCT FROM 'any' OR jsonb_typeof(q.route_context->'approvers') IS DISTINCT FROM 'array'
@@ -938,3 +938,27 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  )) OR (p_assigned_user=app.current_user_id() AND EXISTS(SELECT 1 FROM public.profile_change_request q
  WHERE q.employment_id=p_subject AND q.tenant_id=app.current_tenant_id() AND q.route_approver_user_id=p_assigned_user
  AND q.route_approver_employment_id=p_assigned_employment AND q.status::text=p_status AND app.data_permission_profile_responsibility(q.id))); $$;
+--> statement-breakpoint
+-- Promoting a scoped account into the protected recovery role must not strand that role behind an
+-- older restrictive profile. Clear/review its data assignment explicitly before granting recovery.
+CREATE FUNCTION app.data_permission_protected_assignment_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE row_value jsonb;target_user uuid;t uuid;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ row_value:=CASE WHEN TG_OP='DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;t:=(row_value->>'tenant_id')::uuid;
+ target_user:=CASE TG_TABLE_NAME WHEN 'app_user' THEN (row_value->>'id')::uuid WHEN 'role_assignment' THEN (row_value->>'app_user_id')::uuid ELSE (row_value->>'user_id')::uuid END;
+ IF t IS DISTINCT FROM app.current_tenant_id() THEN RAISE EXCEPTION 'Data recovery principal unavailable' USING ERRCODE='42501';END IF;
+ IF app.data_permission_protected(target_user) AND EXISTS(SELECT 1 FROM public.user_data_permission_assignment a
+  LEFT JOIN public.data_permission_profile p ON p.id=a.profile_id AND p.tenant_id=a.tenant_id
+  LEFT JOIN public.data_permission_revision r ON r.id=p.active_revision_id AND r.profile_id=p.id AND r.tenant_id=p.tenant_id
+  WHERE a.user_id=target_user AND a.tenant_id=t AND (p.id IS NULL OR NOT p.enabled OR p.retired_at IS NOT NULL
+   OR r.id IS NULL OR NOT app.data_permission_rules_valid(r.rules) OR r.rules->>'legacyCompany' IS DISTINCT FROM 'true')) THEN
+  RAISE EXCEPTION 'Data recovery assignment unavailable' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_protected_assignment_guard() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER data_permission_recovery_assignment AFTER INSERT OR UPDATE ON role_assignment DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.data_permission_protected_assignment_guard();
+CREATE CONSTRAINT TRIGGER data_permission_recovery_assignment AFTER INSERT OR UPDATE ON access_membership DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.data_permission_protected_assignment_guard();
+CREATE CONSTRAINT TRIGGER data_permission_recovery_assignment AFTER UPDATE ON app_user DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.data_permission_protected_assignment_guard();
