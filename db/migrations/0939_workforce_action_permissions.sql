@@ -79,6 +79,16 @@ $$;
 REVOKE ALL ON FUNCTION app.access_current_capability_source(text,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 -- Code-owned function definitions. These are installation facts, never customer configuration.
+-- Keep the legacy capability grammar unchanged. Function IDs additionally retain the exact
+-- case-sensitive SCREENS/native submenu key accepted by the restricted registry; operation names
+-- remain the finite lower-case set. This is an unapplied source migration, not a historical rewrite.
+ALTER TABLE public.access_capability DROP CONSTRAINT access_capability_id_check;
+ALTER TABLE public.access_capability ADD CONSTRAINT access_capability_id_check CHECK(
+ id ~ '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,5}$'
+ OR (id ~ '^function\.[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*\.(view|add|edit|delete|approve|issue|execute)$'
+  AND length(regexp_replace(substring(id FROM 10),'\.[^.]+$',''))<=160)
+);
+--> statement-breakpoint
 ALTER TABLE public.access_capability ADD COLUMN prerequisites jsonb NOT NULL DEFAULT '[]'::jsonb CHECK(jsonb_typeof(prerequisites)='array');
 --> statement-breakpoint
 CREATE TABLE app.access_function_definition(

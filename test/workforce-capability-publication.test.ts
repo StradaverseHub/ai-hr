@@ -99,3 +99,24 @@ it('keeps unknown function keys closed and rejects runtime registry mutation',as
  expect(result[0]).toMatchObject({bounded:false,global:false});
  await expect(client`select app.register_function_action('unregistered.fixture','view','company',NULL,NULL,'{}'::jsonb)`).rejects.toMatchObject({code:'42501'});
 });
+
+
+it('registers exact mixed-case native submenu IDs while preserving closed grammar and operations',async()=>{
+ const metadata={moduleKey:'financial',labelKey:'nav.payComponents',kind:'submenu',course:'administrative'};
+ // Preserve the production key's exact mixed-case grammar without colliding with its migration.
+ await owner.client.begin(async tx=>{
+  await tx`select app.register_function_action('payComponents.catalogueRegistrationRegression','view','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`;
+  await tx`select app.register_function_action('payComponents.catalogueRegistrationRegression','add','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`;
+  const rows=await tx`select id,prerequisites,supported from access_capability where id like 'function.payComponents.catalogueRegistrationRegression.%' order by id`;
+  expect(rows).toEqual([
+   {id:'function.payComponents.catalogueRegistrationRegression.add',prerequisites:['function.payComponents.catalogueRegistrationRegression.view'],supported:false},
+   {id:'function.payComponents.catalogueRegistrationRegression.view',prerequisites:[],supported:false},
+  ]);
+ });
+ for(const key of ['payComponents..catalogue','payComponents.catalogueRegistrationRegression.','payComponents/catalogue']){
+  await expect(owner.client`select app.register_function_action(${key},'view','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`).rejects.toMatchObject({code:'42501'});
+ }
+ await expect(owner.client`select app.register_function_action('payComponents.invalidOperation','VIEW','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`).rejects.toMatchObject({code:'42501'});
+ await expect(owner.client`insert into access_capability(id,scope) values('Legacy.MixedCase','tenant')`).rejects.toMatchObject({code:'23514'});
+ await expect(owner.client`insert into access_capability(id,scope) values('function.payComponents.catalogueRegistrationRegression.destroy','tenant')`).rejects.toMatchObject({code:'23514'});
+});
