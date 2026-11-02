@@ -1,3 +1,4 @@
+// Language-only derivative of frozen29f8 fixture; canonical disposable development DB, same fixture shape.
 /** Only an owned GitHub fixture database. Session records use canonical encrypted storage. */
 import assert from 'node:assert/strict';
 import {randomUUID,randomBytes} from 'node:crypto';
@@ -7,7 +8,7 @@ import {fixtureAuditCounts,assertFixtureAudit} from './fixture-audit.ts';
 import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.AUTH_PROVIDER,'internal');
 for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
- const url=new URL(process.env[key]);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');assert.equal(url.pathname,'/ai_hr_system_perf');
+ const url=new URL(process.env[key]);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');assert.equal(url.pathname,'/ai_hr_dev');
 }
 const auditRequested=process.env.AUDIT_HASH_CHAIN_ENABLED==='true';
 assert(auditRequested,'the production workload requires audit chaining');
@@ -16,7 +17,7 @@ const {seedBase,entitledCtx,owner,closeAll}=await import('../../test/harness.ts'
 // explicit opt-in before seeding any domain events; production app/driver already retain it.
 process.env.AUDIT_HASH_CHAIN_ENABLED='true';
 for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
- const url=new URL(process.env[key]);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');assert.equal(url.pathname,'/ai_hr_system_perf');
+ const url=new URL(process.env[key]);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');assert.equal(url.pathname,'/ai_hr_dev');
 }
 const s=await import('../../db/schema.ts');
 const {hireEmployee}=await import('../../core/org.ts');
