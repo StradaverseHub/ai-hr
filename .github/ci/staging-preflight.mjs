@@ -17,12 +17,13 @@ export function resolveBaselineNext(candidatePath,baseline){
  assert(typeof baseline==='string'&&/^[a-f0-9]{40}$/.test(baseline),'Explicit full staging baseline SHA required');
  try{execFileSync('git',['merge-base','--is-ancestor',baseline,candidate],{cwd:candidatePath,stdio:'ignore'});}
  catch{throw Error('Staging baseline must be an available ancestor of the frozen candidate');}
- const candidatePackage=JSON.parse(readFileSync(join(candidatePath,'package.json'),'utf8'));
+ const candidateBytes=readFileSync(join(candidatePath,'package.json'));
+ const candidatePackage=JSON.parse(candidateBytes.toString('utf8'));
  assert(candidatePackage.dependencies?.next===STAGING_BUILD_RUNTIME.next,'Candidate Next differs from the pinned incoming build runtime');
  const bytes=execFileSync('git',['show',baseline+':package.json'],{cwd:candidatePath,maxBuffer:128*1024});
  const version=JSON.parse(bytes.toString('utf8')).dependencies?.next;
  assert(pinnedNext(version),'Staging baseline Next must be an exact pinned release version');
- return {baseline,baselinePackageSha256:hash(bytes),baselineNext:version};
+ return {baseline,baselinePackageSha256:hash(bytes),baselineNext:version,candidatePackageSha256:hash(candidateBytes)};
 }
 export const DEPLOY_RUNTIME_SELECTION='  [ -x /opt/node22/bin/node ] || { echo "CI build installation requires its pinned Node22 runtime" >&2; exit 1; }\n  export PATH="/opt/node22/bin:$PATH"';
 export function validateCandidateRuntimeSelection(source){
@@ -34,18 +35,19 @@ export function validateCandidateRuntimeSelection(source){
 export function stagingProfileProbeCommand(checker){
  assert(typeof checker==='function','Actual candidate customer checker required');
  const source=checker.toString();assert(source.length>1000&&source.length<32000&&!source.includes('AIHR_PROFILE_PREFLIGHT_NODE')&&!source.includes('AIHR_PROFILE_PREFLIGHT_SHELL'),'Bounded complete customer checker required');
- const script="import {accessSync,constants,realpathSync,readFileSync} from 'node:fs';import path from 'node:path';\n"+
+ const script="import {accessSync,constants,realpathSync,readFileSync} from 'node:fs';import path from 'node:path';import {createHash} from 'node:crypto';\n"+
   'const customerEnvironmentErrors='+source+';\n'+
   "const profile=process.env.ALLOW_DEMO_SESSION==='true'?'demo':'customer';\n"+
   "const errors=profile==='customer'?customerEnvironmentErrors():[];\n"+
   "const runtime={node:process.versions.node,abi:process.versions.modules,platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime,next:JSON.parse(readFileSync('node_modules/next/package.json','utf8')).version};\n"+
-  'console.log(JSON.stringify({kind:"STAGING_PROFILE_PREFLIGHT_ONLY",checkerSha256:'+JSON.stringify(hash(source))+',profile,runtime,errors,ok:errors.length===0,releaseAuthorized:false}));\n';
+  "const observedPackageSha256=createHash('sha256').update(readFileSync('package.json')).digest('hex');\n"+
+  'console.log(JSON.stringify({kind:"STAGING_PROFILE_PREFLIGHT_ONLY",checkerSha256:'+JSON.stringify(hash(source))+',profile,runtime,errors,observedPackageSha256,ok:errors.length===0,releaseAuthorized:false}));\n';
  // Match deploy.sh's CI-specific runtime branch, default profile predicate and shell-sourced environment. Do not substitute a
  // developer env, Node --env-file precedence, or merely the current service's login result.
  return "bash -s <<'AIHR_PROFILE_PREFLIGHT_SHELL'\nset -eu\ncd /opt/ai-hr\ntest -f .env.production\n"+DEPLOY_RUNTIME_SELECTION+"\nset -a\n. ./.env.production\nset +a\nnode --input-type=module <<'AIHR_PROFILE_PREFLIGHT_NODE'\n"+script+'AIHR_PROFILE_PREFLIGHT_NODE\nAIHR_PROFILE_PREFLIGHT_SHELL';
 }
-export function validateStagingProfile(report,checker,expectedBaselineNext){
- assert(report&&Object.keys(report).sort().join(',')==='checkerSha256,errors,kind,ok,profile,releaseAuthorized,runtime','Unexpected profile report');
+export function validateStagingProfile(report,checker,expectedBaselineNext,expectedPackageSha256){
+ assert(report&&Object.keys(report).sort().join(',')==='checkerSha256,errors,kind,observedPackageSha256,ok,profile,releaseAuthorized,runtime','Unexpected profile report');
  assert(report.kind==='STAGING_PROFILE_PREFLIGHT_ONLY'&&report.releaseAuthorized===false&&report.checkerSha256===hash(checker.toString()),'Customer checker binding differs');
  assert(['demo','customer'].includes(report.profile)&&Array.isArray(report.errors)&&report.errors.length<=64&&report.errors.every(e=>typeof e==='string'&&e.length>0&&e.length<=1000),'Invalid profile result');
  assert(typeof report.ok==='boolean'&&report.ok===(report.errors.length===0),'Inconsistent customer preflight result');
@@ -54,18 +56,24 @@ export function validateStagingProfile(report,checker,expectedBaselineNext){
  // Before transfer, node_modules still belongs to the accepted baseline. The incoming Next
  // version is independently pinned by resolveBaselineNext and the source-bound CI build packet.
  assert(isDeepStrictEqual(report.runtime,{...STAGING_BUILD_RUNTIME,next:expectedBaselineNext}),'Actual deploy toolchain or installed baseline Next differs from the reviewed identities');
+ assert(typeof expectedPackageSha256==='string'&&/^[a-f0-9]{64}$/.test(expectedPackageSha256),'Explicit expected source package hash required');
+ assert(report.observedPackageSha256===expectedPackageSha256,'Observed staging package bytes differ from the exact source phase');
  return report;
 }
-export async function probeStagingProfile({candidatePath,baseline,ssh}){
+export async function probeStagingProfile({candidatePath,baseline,announced=false,ssh}){
+ assert(typeof announced==='boolean','Explicit boolean source phase required');
  candidatePath=resolve(candidatePath);const candidate=cleanHead(candidatePath),baselineNext=resolveBaselineNext(candidatePath,baseline),file=join(candidatePath,'deploy/check-customer-env.mjs'),sourceSha256=hash(readFileSync(file));
  const deploySource=readFileSync(join(candidatePath,'deploy/deploy.sh'),'utf8');validateCandidateRuntimeSelection(deploySource);
  const checkerUrl=pathToFileURL(file);checkerUrl.searchParams.set('source',sourceSha256);
  const {customerEnvironmentErrors}=await import(checkerUrl.href);
  const output=ssh(stagingProfileProbeCommand(customerEnvironmentErrors),{timeout:30000,maxBuffer:64*1024});
  assert(typeof output==='string'&&Buffer.byteLength(output)<=64*1024,'Bounded profile response required');
- const result=validateStagingProfile(JSON.parse(output),customerEnvironmentErrors,baselineNext.baselineNext);
+ // The guarded operator rechecks source-pending state for announced=true before launch.
+ // Source rsync has replaced package.json then; the installed node_modules is still baseline.
+ const expectedPackageSha256=announced?baselineNext.candidatePackageSha256:baselineNext.baselinePackageSha256;
+ const result=validateStagingProfile(JSON.parse(output),customerEnvironmentErrors,baselineNext.baselineNext,expectedPackageSha256);
  assert(cleanHead(candidatePath)===candidate&&hash(readFileSync(file))===sourceSha256,'Candidate checker changed during preflight');
- return {...result,candidate,checkerFileSha256:sourceSha256,...baselineNext};
+ return {...result,candidate,checkerFileSha256:sourceSha256,...baselineNext,sourcePhase:announced?'candidate':'baseline',expectedPackageSha256};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const [candidatePath,baseline]=process.argv.slice(2);assert(candidatePath&&baseline&&process.argv.length===4,'Usage: node staging-preflight.mjs <clean-candidate> <full-accepted-staging-baseline-sha>');
