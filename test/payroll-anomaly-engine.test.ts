@@ -178,6 +178,18 @@ describe('ADR-0076 — the evaluator writes verdicts and never touches the money
     expect(after).toEqual(before);
   });
 
+  it('preserves deterministic SYSTEM sweep evaluation and its insert-only anomaly audit event',async()=>{
+    const {employmentId,personId}=await makeEmp('Scheduled negative');await giveProfile(personId);
+    const batchId=await makeBatch();await addPayslip(batchId,employmentId,{netPay:'-120.00',totalDeductions:'5120.00'});
+    const before=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+    const system:SessionContext={tenantId:b.tenantId,roles:['hr_admin'],entitlements:a.entitlements};
+    const result=await evaluateBatchAnomalies(system,{batchId});expect(result.block).toBe(1);
+    const [verdict]=await liveVerdicts(batchId);
+    const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,verdict.id),eq(schema.domainEvent.eventType,'payroll.anomaly.flagged')));
+    expect(events).toHaveLength(1);expect(events[0].actorType).toBe('system');
+    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual(before);
+  });
+
   it('a negative net BLOCKS, records the finding with its facts, and emits payroll.anomaly.flagged', async () => {
     const { employmentId, personId } = await makeEmp('Negative');
     await giveProfile(personId);
