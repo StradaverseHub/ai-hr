@@ -1,3 +1,4 @@
+import {enrollOnehrReviewTaskEmailTx} from '../packs/performance/onehr/review-task-email-source';
 import {enrollOnehrWorkerSourceTx,isOnehrWorkerEvent} from '../packs/performance/onehr/worker-source';
 import {currentFollowupTargetsTx} from './automatic-followups';
 import type { Tx as AiReadTx } from '../db/client';
@@ -1092,7 +1093,13 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
         }
       }
       noticeReader=async id=>{const ids=audiences.get(id);if(!ids)throw Error('Complete Notice projection snapshot is unavailable.');return ids;};
-      for(const ev of rows)if(isOnehrWorkerEvent(ev.eventType)&&(ev.eventType!=='onehr.kpi-approval-needed'||['setting','results'].includes(String((ev.payload as Record<string,unknown>|null)?.phase))))await enrollOnehrWorkerSourceTx(tx,{kind:'event',id:ev.id});
+      for (const ev of rows) {
+        if (!isOnehrWorkerEvent(ev.eventType)) continue;
+        const phase = (ev.payload as Record<string,unknown>|null)?.phase;
+        if (ev.eventType === 'onehr.kpi-approval-needed' && phase !== 'setting' && phase !== 'results') continue;
+        await enrollOnehrWorkerSourceTx(tx,{kind:'event',id:ev.id});
+        if (ev.eventType !== 'assessment.reminder-queued') await enrollOnehrReviewTaskEmailTx(tx,ev.id);
+      }
       // Every canonical resolver and notification/outbox write retains APP RLS. Only the bounded event
       // batch, immutable Notice snapshots and final cursor use this explicit maintenance connection.
       await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);
@@ -1133,6 +1140,7 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
             sourceEventId: ev.id,
           });
           if(spec.kind==='performance.reminder')await tx.execute(sql`select app.onehr_reminder_email_enqueue(${notificationId}::uuid,${ev.sequence}::bigint)`);
+          else if(priorRole!==undefined&&spec.kind==='performance.review-task')await tx.execute(sql`select app.onehr_review_task_email_enqueue(${notificationId}::uuid,${ev.sequence}::bigint)`);
           else if(spec.category!==null)await tx.execute(sql`select app.notification_email_enqueue(${notificationId}::uuid,${spec.category},${ev.sequence}::bigint)`);
           created += 1;
         }

@@ -833,7 +833,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const withdrawn=await read({...a,userId:undefined,personId:undefined}) as typeof data;expect(withdrawn.reviews.some(r=>r.id===reviewId)).toBe(false);expect(withdrawn.panels).toEqual([]);
   });
 
-  it('stages exact review-task email custody from canonical live entitlements and native pending work',async()=>{
+  it('queues review-task email through the actual sweep from canonical live entitlements and native pending work',async()=>{
     await setModule(b.tenantId,'notifications','active');a=await entitledCtx(b);mgr={...mgr,entitlements:a.entitlements};
     const issuer='https://hr.test/identity/realms/ai-hr',identitySubject=randomUUID();
     const [person]=await owner.db.select().from(schema.person).where(eq(schema.person.id,manager.personId));
@@ -846,8 +846,10 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(await withOnehrWorkerSource(system,owner,{kind:'event',id:event.id},tx=>perf.assessmentReviewTaskRecipientsTx(tx,reviewId,'setting'))).toEqual([manager.employmentId]);
     await dispatchNotificationsFromSweep(system,owner);
     const [notice]=await owner.db.select().from(schema.notification).where(and(eq(schema.notification.sourceEventId,event.id),eq(schema.notification.recipientEmploymentId,manager.employmentId),eq(schema.notification.kind,'performance.review-task')));expect(notice).toBeDefined();
-    // Production callers are deliberately not yet adopted. This isolates the staged constructor.
-    expect(await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.notificationId,notice.id))).toEqual([]);
+    const [delivery]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.notificationId,notice.id));
+    expect(delivery).toMatchObject({recipientUserId:mgr.userId,sourceEventId:event.id,kind:'performance.review-task',category:'performance',status:'pending'});
+    await dispatchNotificationsFromSweep(system,owner);
+    expect(await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.sourceEventId,event.id))).toEqual([delivery]);
     const enqueue=(tx:import('../db/client').Tx,sequence=event.sequence)=>tx.execute<{created:number}>(sql`select app.onehr_review_task_email_enqueue(${notice.id}::uuid,${sequence}::bigint) as created`);
     expect((await withTenant(system,enqueue))[0].created).toBe(0);
     await expect(withTenant(system,tx=>tx.execute(sql`select app.financial_onehr_task_email_enroll(${event.id}::uuid,${manager.employmentId}::uuid,'{}'::jsonb)`))).rejects.toThrow();
@@ -863,10 +865,21 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
       expect(await enrollOnehrReviewTaskEmailTx(tx,event.id)).toEqual([manager.employmentId]);
       const [proof]=await tx.execute<{review_company_id:string;recipient_company_id:string;entitlement_snapshot:unknown}>(sql`select review_company_id,recipient_company_id,entitlement_snapshot from app.financial_onehr_task_email_source where transaction_id=pg_current_xact_id() and event_id=${event.id}::uuid`);
       expect(proof).toMatchObject({review_company_id:b.companyId,recipient_company_id:b.companyId});expect(JSON.stringify(proof.entitlement_snapshot)).not.toContain('Private description');
-      await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);expect((await enqueue(tx,event.sequence+1))[0].created).toBe(0);expect((await enqueue(tx))[0].created).toBe(1);expect((await enqueue(tx))[0].created).toBe(0);
+      await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);expect((await enqueue(tx,event.sequence+1))[0].created).toBe(0);expect((await enqueue(tx))[0].created).toBe(0);
     },{downgrade:false});
-    const [delivery]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.notificationId,notice.id));expect(delivery).toMatchObject({recipientUserId:mgr.userId,sourceEventId:event.id,kind:'performance.review-task',category:'performance',status:'pending'});
     await perf.approveOnehrScorecard(mgr,reviewId,(await view(mgr)).revision,true,'Actual pending source completed');expect(await prepare()).toEqual([]);
+
+    // A sweep started with the earlier enabled session must use the current license for email.
+    await setModule(b.tenantId,'performance','active');
+    await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:2,note:'Delivered'}],'Completed delivery.');
+    const [resultsEvent]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.results-submitted')));
+    expect(resultsEvent).toBeDefined();
+    await setModule(b.tenantId,'notifications','disabled');
+    await setModule(b.tenantId,'notifications',null,b.companyId);
+    await dispatchNotificationsFromSweep(system,owner);
+    const [resultsNotice]=await owner.db.select().from(schema.notification).where(and(eq(schema.notification.sourceEventId,resultsEvent.id),eq(schema.notification.kind,'performance.review-task')));
+    expect(resultsNotice).toMatchObject({recipientEmploymentId:manager.employmentId});
+    expect(await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.sourceEventId,resultsEvent.id))).toEqual([]);
     const [privateAccess]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_task_email_candidates(uuid)','EXECUTE') or has_table_privilege('ai_hr_app','app.financial_onehr_task_email_source','SELECT') as allowed`);expect(privateAccess.allowed).toBe(false);
   });
 

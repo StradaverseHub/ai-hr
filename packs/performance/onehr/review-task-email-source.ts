@@ -1,5 +1,4 @@
-/** Staged finite review-task email custody; production callers remain on their native path
- * until the canonical entitlement and stored-source journeys qualify this constructor. */
+/** Review-task email custody from current entitlements on the maintenance connection. */
 import {sql} from 'drizzle-orm';
 import type {Tx} from '../../../db/client';
 import {isModuleEnabled,resolveEntitlementsTx} from '../../../core/entitlements';
