@@ -9,7 +9,9 @@
  * allowed upstreams only (data collection denied, zero retention, no fallbacks), and records every finish reason:
  * the whole request; the question alone; without tools; without the system text; tool_choice auto and the production
  * request shape (strict tool schemas); the live staging spec (v8, main dfbcf85b1) read from git; each instruction left
- * out in turn, and each alone; each tool left out in turn; and rewordings of the question. Fictional data only.
+ * out in turn, and each alone; each tool left out in turn; rewordings of the question; and candidate fixes that frame
+ * the question (a neutral label, a quotation, a domain label) or add a system note. Another model than the current one
+ * runs only the whole request, the question alone and the candidate fixes, to keep the spend small. Fictional data only.
  * Skipped exactly like the other probes without the protected evaluation secret; one hard budget for the file.
  * Output: assistant-content-filter.json in the evidence folder and one CONTENT_FILTER_PROBE line per request. */
 import {execFileSync} from 'node:child_process';
@@ -37,6 +39,14 @@ const ALLOWED=(process.env.AIHR_EVAL_ALLOWED_PROVIDERS??'').split(',').map(value
 const LIVE_STAGING='dfbcf85b1';
 const BLOCKED=['how much leave do i have left','apply leave for me'] as const;
 const CONTROL='how many MC days do I have?';
+const CURRENT_MODEL='openai/gpt-6-luna';
+/** Candidate fixes in our own request structure: the person's words are unchanged, only labelled or quoted. */
+const FRAMES:Readonly<Record<string,(question:string)=>string>>={
+ 'frame: neutral label':question=>'Message from the signed-in person to the HR assistant:\n'+question,
+ 'frame: quoted':question=>'The signed-in person wrote: "'+question+'"',
+ 'frame: domain label':question=>'HR question about the person\'s own work records (leave means time off work):\n'+question,
+};
+const SYSTEM_NOTE=' In this application "leave" always means time off work.';
 const REWORDINGS:Readonly<Record<string,readonly string[]>>={
  'how much leave do i have left':['How much leave do I have left?','how much leave do i have','how much annual leave do i have left','what is my leave balance'],
  'apply leave for me':['Apply for leave for me.','please apply leave for me','apply for leave','i want to apply leave'],
@@ -79,7 +89,10 @@ type Wire={role:string;content:string|null;tool_calls?:unknown[];tool_call_id?:s
 const wire=(message:HarnessMessage):Wire=>message.role==='tool'?{role:'tool',tool_call_id:message.toolCallId,content:message.content}:{role:message.role,content:message.content};
 type Tool=Readonly<{name:string;description:string;parameters:Record<string,unknown>}>;
 type Variant=Readonly<{question:string;label:string;system:string|null;user:string;tools:readonly Tool[];toolChoice:'required'|'auto'|null;strict?:boolean}>;
-type Outcome=Readonly<{question:string;label:string;status:number;finish:string|null;native:string|null;filtered:boolean;tools:readonly string[];content:string;usd:number;error?:string}>;
+type Outcome=Readonly<{question:string;label:string;status:number;finish:string|null;native:string|null;filtered:boolean;tools:readonly string[];content:string;usd:number;error?:string;
+ /** The response body without the content, for any filter category the upstream passes through (first filtered request only). */
+ raw?:string}>;
+let rawKept=false;
 async function send(variant:Variant):Promise<Outcome>{
  if(spentUsd>=BUDGET||calls>=400)return{question:variant.question,label:variant.label,status:0,finish:null,native:null,filtered:false,tools:[],content:'',usd:0,error:'probe_budget_exhausted'};
  calls++;
@@ -93,7 +106,8 @@ async function send(variant:Variant):Promise<Outcome>{
  const usd=typeof body.usage?.cost==='number'?body.usage.cost:0;spentUsd+=usd;
  const choice=body.choices?.[0],finish=choice?.finish_reason??null,native=choice?.native_finish_reason??null;
  return{question:variant.question,label:variant.label,status:response.status,finish,native,filtered:finish==='content_filter'||native==='content_filter'||/content.?filter/i.test(response.ok?'':text),
-  tools:(choice?.message?.tool_calls??[]).map(call=>call.function.name),content:(choice?.message?.content??'').slice(0,120),usd,...(response.ok?{}:{error:text.slice(0,300)})};
+  tools:(choice?.message?.tool_calls??[]).map(call=>call.function.name),content:(choice?.message?.content??'').slice(0,120),usd,...(response.ok?{}:{error:text.slice(0,300)}),
+  ...(finish==='content_filter'&&!rawKept&&(rawKept=true)?{raw:JSON.stringify({...body,choices:body.choices?.map(row=>({...row,message:{...row.message,content:'[omitted]'}}))}).slice(0,1500)}:{})};
 }
 async function pool<T,R>(items:readonly T[],size:number,work:(item:T)=>Promise<R>):Promise<R[]>{
  const out:R[]=new Array(items.length);let next=0;
@@ -129,10 +143,13 @@ describe('content-filter probe on fictional data',()=>{
    expect(system.startsWith(instructions.join(' ')+' '+roleNote),'rebuilt system text').toBe(true);
    const tail=system.slice(instructions.join(' ').length);
    const v=(label:string,change:Partial<Variant>={}):Variant=>({question,label,system,user,tools,toolChoice:request.toolChoice as 'required'|'auto',...change});
-   variants.push(v('full'),v('question only',{system:null,tools:[],toolChoice:null}),v('no tools',{tools:[],toolChoice:null}),v('no system',{system:null}),
-    v('tool_choice auto',{toolChoice:'auto'}),v('production shape',{toolChoice:'auto',strict:true}));
+   const frames=Object.entries(FRAMES).flatMap(([label,frame])=>[v(label,{user:user.replace(question,frame(question))}),v(label+', production shape',{user:user.replace(question,frame(question)),toolChoice:'auto',strict:true})]);
+   variants.push(v('full'),v('question only',{system:null,tools:[],toolChoice:null}),...frames,v('system note',{system:system+SYSTEM_NOTE}));
+   if(MODEL!==CURRENT_MODEL)continue;
+   variants.push(v('no tools',{tools:[],toolChoice:null}),v('no system',{system:null}),v('tool_choice auto',{toolChoice:'auto'}),v('production shape',{toolChoice:'auto',strict:true}));
    if(question===CONTROL)continue;
-   variants.push(v('full again'),v('full third'));
+   // Repeats of the whole request and of each frame show whether an outcome is stable.
+   variants.push(v('full again'),v('full third'),...frames.map(row=>({...row,label:row.label+' again'})));
    const live=liveStagingInstructions().map(line=>line.replace('{today}',today)),liveSuggest=liveStagingSuggestDescription();
    const liveTools=tools.map(tool=>tool.name===HARNESS_SPEC.offer.suggestTool?{...tool,description:liveSuggest}:tool);
    variants.push(v('live staging spec v8',{system:live.join(' ')+tail,tools:liveTools}),v('live staging spec v8, production shape',{system:live.join(' ')+tail,tools:liveTools,toolChoice:'auto',strict:true}));
