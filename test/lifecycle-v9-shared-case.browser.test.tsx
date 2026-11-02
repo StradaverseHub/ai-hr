@@ -9,12 +9,13 @@ import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 import {blankCase,defaultConfig} from '../lib/onboarding-model';
 import {OnboardingCaseView} from '../app/lifecycle/onboarding/case-view';
+import {NativeCaseDocuments} from '../app/lifecycle/v9/native-case-documents';
 import {fictionalV9Case,fictionalV9Task} from './fixtures/lifecycle-v9/case';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {OffboardingCaseView,caseTasksByDue} from '../app/lifecycle/v9/offboarding-case-view';
 vi.mock('../app/lifecycle/onboarding/v31-actions',()=>({changeOnboarding:vi.fn(),writeOnboardingNote:vi.fn(),markOnboardingSeen:vi.fn().mockResolvedValue(undefined)}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
-vi.mock('../app/lifecycle/v9/actions',()=>({readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Salary source unavailable'}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn()}));
+vi.mock('../app/lifecycle/v9/actions',()=>({commandV9:vi.fn(),readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Salary source unavailable'}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn()}));
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};});
 function fixture(state:'submitted'|'cleared'|'cancelled'|'pending'='submitted'){
  const c=fictionalV9Case({state,tasks:[{...fictionalV9Task('Later task'),dueOn:'2026-12-02'},{...fictionalV9Task('Document task'),documentTemplate:'document',dueOn:'2026-11-28'},fictionalV9Task('Earlier task')],items:[{id:'item',name:'Fictional laptop',kind:'device',sourceId:null,group:null,assignee:null,dueOn:'2026-11-30',status:'todo',reason:'',returnReported:{at:'2026-11-01T00:00:00Z',by:'employee',note:'Reception receipt'},nativeSource:{caseId:'native-case',requestId:'request',itemId:'native-item',requestNumber:'IT-FICTIONAL'}}]});
@@ -43,7 +44,7 @@ it.each([1440,390])('renders the approved shared case structure at %i pixels wit
  const c=blankCase('native-case','OB-FICTIONAL','draft',{fullName:'Fictional Joiner',joinDate:'2026-11-30'},env);
  const config=defaultConfig('owner');config.v9ChecklistRevision=1;
  const detail={case:c,config,revision:1,actor:{id:'owner',name:'Fictional HR',module:true,hr:true,master:false},directory:[],labels:{},notes:[],availability:{},today,canOpenRequisition:false};
- const onboard=render(<NextIntlClientProvider locale="en" messages={messages}><div className="v9-workspace v9-workspace-global"><OnboardingCaseView detail={detail} registerHref="/lifecycle/v9"/></div></NextIntlClientProvider>);
+ const onboard=render(<NextIntlClientProvider locale="en" messages={messages}><div className="v9-workspace v9-workspace-global"><OnboardingCaseView detail={detail} registerHref="/lifecycle/v9"/><NativeCaseDocuments initial={fictionalV9Case({id:c.id,module:'onb',facts:{...fictionalV9Case().facts,name:'Fictional Joiner',joinDate:'2026-11-30',company:'company',title:'position',department:'department',supervisorUserId:'owner'}})} config={v9Defaults()} actor={{id:'owner',name:'Fictional HR'}} writableKeys={[]}/></div></NextIntlClientProvider>);
  expect(getComputedStyle(onboard.container.querySelector('.lifecycle-case-header h1')!).fontSize).toBe(offHeader);
  expect(Math.abs(onboard.container.querySelector('.onb-main')!.getBoundingClientRect().width-offColumnWidth)).toBeLessThan(2);
  expect(onboard.container.querySelector('.onb-aside>.lifecycle-case-section')).not.toBeNull();

@@ -6,12 +6,13 @@ import {readFileSync} from 'node:fs';
 import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
 import {blankCase,defaultConfig,submitCase} from '../lib/onboarding-model';
 import {OnboardingCaseView} from '../app/lifecycle/onboarding/case-view';
+import {NativeCaseDocuments} from '../app/lifecycle/v9/native-case-documents';
 import {fictionalV9Case,fictionalV9Task} from './fixtures/lifecycle-v9/case';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {OffboardingCaseView,caseTasksByDue} from '../app/lifecycle/v9/offboarding-case-view';
 vi.mock('../app/lifecycle/onboarding/v31-actions',()=>({changeOnboarding:vi.fn(),writeOnboardingNote:vi.fn(),markOnboardingSeen:vi.fn().mockResolvedValue(undefined)}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
-vi.mock('../app/lifecycle/v9/actions',()=>({readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Salary source unavailable'}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn()}));
+vi.mock('../app/lifecycle/v9/actions',()=>({commandV9:vi.fn(),readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Salary source unavailable'}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn()}));
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};});
 function fixture(state:'submitted'|'cleared'|'cancelled'|'pending'='submitted',locale='en'){
  const c=fictionalV9Case({state,tasks:[{...fictionalV9Task('Later task'),assignee:'recorded-owner',dueOn:'2026-12-02'},{...fictionalV9Task('Document task'),documentTemplate:'document',dueOn:'2026-11-28'},fictionalV9Task('Earlier task')],items:[{id:'item',name:'Fictional laptop',kind:'device',sourceId:null,group:null,assignee:null,dueOn:'2026-11-30',status:'todo',reason:'',returnReported:{at:'2026-11-01T00:00:00Z',by:'employee',note:'Reception receipt'},nativeSource:{caseId:'native-case',requestId:'request',itemId:'native-item',requestNumber:'IT-FICTIONAL'}}]});
@@ -57,7 +58,7 @@ it.each(['en','ms','zh','ta','th','vi'])('captures paired real case adapters in 
  config.checklists[0].tasks=[{id:'welcome',name:'Fictional welcome task',by:'group',group:'people-gbs',method:'manual',opens:null,due:1,gate:false}];
  const c=blankCase('native-case','OB-FICTIONAL','draft',{fullName:'Fictional Joiner',joinDate:'2026-11-30',title:'position',company:'company',department:'department',supervisor:'owner'},env);c.hiring='new_hire';submitCase(config,c,actor,env);config.v9ChecklistRevision=1;
  const detail={case:c,config,revision:1,actor,directory:[{id:'owner',name:'Fictional HR'}],labels:{title:'Fictional Analyst',company:'Fictional Company',department:'Fictional Department'},notes:[],availability:{},today,canOpenRequisition:true};
- const onboard=render(<NextIntlClientProvider locale={locale} messages={locale==='en'?messages:JSON.parse(readFileSync(`messages/${locale}.json`,'utf8'))}><div className="v9-workspace v9-workspace-global"><OnboardingCaseView detail={detail} registerHref="/lifecycle/v9"/></div></NextIntlClientProvider>);
+ const onboard=render(<NextIntlClientProvider locale={locale} messages={locale==='en'?messages:JSON.parse(readFileSync(`messages/${locale}.json`,'utf8'))}><div className="v9-workspace v9-workspace-global"><OnboardingCaseView detail={detail} registerHref="/lifecycle/v9"/><NativeCaseDocuments initial={fictionalV9Case({id:c.id,module:'onb',facts:{...fictionalV9Case().facts,name:'Fictional Joiner',joinDate:'2026-11-30',company:'company',title:'position',department:'department',supervisorUserId:'owner'}})} config={v9Defaults()} actor={{id:'owner',name:'Fictional HR'}} writableKeys={[]}/></div></NextIntlClientProvider>);
  expect(onboard.container.querySelectorAll('.lifecycle-case-header')).toHaveLength(1);
  expect(onboard.container.querySelectorAll('.lifecycle-case-task')).toHaveLength(1);
  await captureAiReviewScreenshots(aiReviewDomHtml(onboard.container),locale,'lifecycle-case-onboarding');

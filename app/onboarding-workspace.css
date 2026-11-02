@@ -18,3 +18,7 @@
 .v9-workspace.v9-native-documents{padding-left:0;padding-right:0;background:transparent}
 
 .lifecycle-case-section-spaced{gap:0}
+/* Dynamic workflow names must wrap within the shared case cards on phones. */
+.lifecycle-case-section .v9-button{max-width:100%;white-space:normal;overflow-wrap:anywhere;height:auto;min-height:36px}
+.onb-stat progress{display:block;width:100%;margin:4px 0}
+.onb-workspace,.v9-workspace.v9-native-documents{font-family:var(--font-sans)}
