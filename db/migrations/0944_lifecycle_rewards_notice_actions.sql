@@ -902,9 +902,16 @@ DO $$DECLARE operation text;BEGIN
  END LOOP;
 END $$;
 --> statement-breakpoint
+CREATE FUNCTION app.onboarding_note_current_json(p_note jsonb) RETURNS jsonb
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$
+ SELECT coalesce(jsonb_object_agg(field.key,field.value),'{}'::jsonb)
+ FROM jsonb_each(p_note) field
+ WHERE field.key IN ('id','context','body','by','name','at','edited','mentions','resolved','deleted');
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_note_current_json(jsonb) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.onboarding_conversation_rows(p_case uuid,p_context text)RETURNS SETOF jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT CASE WHEN n.data->>'by'=app.current_user_id()::text THEN n.data ELSE n.data-'revisions' END
+ SELECT CASE WHEN n.data->>'by'=app.current_user_id()::text THEN n.data ELSE app.onboarding_note_current_json(n.data) END
  FROM public.lc_onboarding_note n JOIN public.lc_onboarding_case c ON c.id=n.case_id AND c.tenant_id=n.tenant_id
  WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND n.data->>'context'=p_context
  AND app.onboarding_conversation_assigned(c.id,p_context)AND app.function_action_allowed('lifecycle.shared.conversations','view',c.company_id)
@@ -913,6 +920,96 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.onboarding_conversation_rows(uuid,text)FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_conversation_rows(uuid,text)TO ai_hr_app;
+
+-- Raw note history is available only through an independent notes-page entitlement or
+-- to the author. Existing tenant, participant and employee-data policies still apply.
+CREATE POLICY onb_note_history_scope ON public.lc_onboarding_note AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING (
+  app.onboarding_page_access()
+  OR app.onboarding_v9_sections()->>'notes'='view'
+  OR data->>'by'=app.current_user_id()::text
+ );
+-- A mention recipient resolves through onboarding_conversation_update. Raw UPDATE
+-- still serves the original author's administrative/legacy editor.
+CREATE POLICY onb_note_author_write_scope ON public.lc_onboarding_note AS RESTRICTIVE FOR UPDATE TO ai_hr_app
+ USING (data->>'by'=app.current_user_id()::text)
+ WITH CHECK (data->>'by'=app.current_user_id()::text);
+
+-- The classic detail surfaces also support current requisition readers who have no
+-- notes-page entitlement. Give those readers and assigned participants only live DTOs.
+CREATE FUNCTION app.onboarding_detail_note_rows(p_case uuid)
+RETURNS TABLE(note jsonb,created_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH scope AS (
+  SELECT c.*,a.id AS actor,app.onboarding_v9_sections() AS sections
+  FROM public.lc_onboarding_case c
+  JOIN public.app_user a ON a.tenant_id=c.tenant_id AND a.id=app.current_user_id()
+  WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id()
+    AND a.archived_at IS NULL AND NOT app.login_blocked(a.id)
+    AND app.onboarding_data_subject_read(c.id)
+    AND app.onboarding_participant(c.id)
+ ), visible AS (
+  SELECT c.*,r.request
+  FROM scope c
+  LEFT JOIN LATERAL (
+   SELECT entry AS request
+   FROM jsonb_array_elements(c.data->'requisitions') WITH ORDINALITY AS req(entry,ordinal)
+   WHERE coalesce(entry->>'cancelledAt','')=''
+   ORDER BY ordinal LIMIT 1
+  ) r ON true
+  WHERE NOT app.onboarding_page_access()
+    AND coalesce(c.sections->>'notes','') NOT IN('view','hidden')
+ )
+ SELECT app.onboarding_note_current_json(n.data),n.created_at
+ FROM visible c JOIN public.lc_onboarding_note n ON n.case_id=c.id AND n.tenant_id=c.tenant_id
+ WHERE n.data->>'by' IS DISTINCT FROM c.actor::text
+   AND NOT coalesce((n.data->>'deleted')::boolean,false)
+   AND (
+    app.function_action_allowed('lifecycle.shared.conversations','view',c.company_id)
+    AND (
+     app.onboarding_live_conversation_mention(n.data,c.data->>'submittedAt',c.actor)
+     OR EXISTS(SELECT 1 FROM jsonb_array_elements(c.data->'tasks') task
+               WHERE task->>'id'=n.data->>'context' AND task->>'assignee'=c.actor::text)
+    )
+    OR n.data->>'context'='requisition' AND c.request IS NOT NULL AND (
+     app.onboarding_v9_record_reader()
+     OR app.is_admin_for(c.company_id) AND (c.sections IS NULL OR c.sections->>'hr'='view')
+     OR app.onboarding_requisition_group_access()
+     OR EXISTS (
+      SELECT 1 FROM jsonb_array_elements(c.request->'items') item
+      WHERE app.onboarding_group_member(item->>'team')
+        OR EXISTS(SELECT 1 FROM jsonb_array_elements(item->'steps') step
+                  WHERE step->>'user'=c.actor::text OR app.onboarding_group_member(step->>'group'))
+     )
+    )
+   )
+ ORDER BY n.created_at,n.id;
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_detail_note_rows(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_detail_note_rows(uuid) TO ai_hr_app;
+
+-- The dispatch loop needs recipient IDs and an occurrence key. It never needs note text.
+CREATE FUNCTION app.onboarding_due_mention_rows()
+RETURNS TABLE(case_id uuid,note_id uuid,user_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT c.id,n.id,recipient.id
+ FROM public.lc_onboarding_case c
+ JOIN public.lc_onboarding_note n ON n.case_id=c.id AND n.tenant_id=c.tenant_id
+ JOIN LATERAL jsonb_array_elements_text(n.data->'mentions') AS tagged(value) ON true
+ JOIN public.app_user recipient ON recipient.tenant_id=c.tenant_id AND recipient.id::text=tagged.value
+ WHERE c.tenant_id=app.current_tenant_id() AND c.data->>'state'<>'cancelled'
+   AND app.onboarding_live_conversation_mention(n.data,c.data->>'submittedAt',recipient.id)
+   AND NOT coalesce((n.data->'resolved')?recipient.id::text,false)
+   AND (
+    app.current_user_id() IS NULL AND app.access_workforce_storage_owner()
+    OR app.current_user_id() IS NOT NULL AND app.is_group_admin()
+       AND app.onboarding_data_subject_read(c.id)
+       AND (app.onboarding_participant(c.id) OR app.onboarding_v9_sections()->>'notes'='view')
+   )
+ ORDER BY c.id,n.id,recipient.id;
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_due_mention_rows() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_due_mention_rows() TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.onboarding_fulfil_item(p_case uuid,p_revision integer,p_item text,p_status text)
 RETURNS TABLE(revision integer,employment_id uuid,company_id uuid,did_change boolean)

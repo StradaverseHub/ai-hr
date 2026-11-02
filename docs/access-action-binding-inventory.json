@@ -10107,6 +10107,7 @@
             "app.login_blocked",
             "app.onboarding_assignment_loads",
             "app.onboarding_case_labels",
+            "app.onboarding_detail_note_rows",
             "app.onboarding_directory",
             "app.onboarding_participant",
             "app.onboarding_unavailable",
@@ -10119,7 +10120,6 @@
             "configs",
             "costCenter",
             "dep",
-            "notes",
             "secrets"
           ],
           "boundaries": [
@@ -10162,6 +10162,7 @@
         "app.login_blocked",
         "app.onboarding_assignment_loads",
         "app.onboarding_case_labels",
+        "app.onboarding_detail_note_rows",
         "app.onboarding_directory",
         "app.onboarding_participant",
         "app.onboarding_unavailable",
@@ -10175,7 +10176,6 @@
         "configs",
         "costCenter",
         "dep",
-        "notes",
         "secrets"
       ],
       "status": "owner-traced-not-runtime-attested"
@@ -10271,6 +10271,7 @@
             "app.login_blocked",
             "app.onboarding_assignment_loads",
             "app.onboarding_case_labels",
+            "app.onboarding_detail_note_rows",
             "app.onboarding_directory",
             "app.onboarding_participant",
             "app.onboarding_supervisors",
@@ -10288,7 +10289,6 @@
             "dep",
             "department",
             "jobGrade",
-            "notes",
             "position",
             "secrets"
           ],
@@ -10347,6 +10347,7 @@
             "app.login_blocked",
             "app.onboarding_assignment_loads",
             "app.onboarding_case_labels",
+            "app.onboarding_detail_note_rows",
             "app.onboarding_directory",
             "app.onboarding_participant",
             "app.onboarding_supervisors",
@@ -10367,7 +10368,6 @@
             "employment",
             "jobGrade",
             "new Set(grants.map(g=>g.role))",
-            "notes",
             "person",
             "position",
             "secrets",
@@ -10431,6 +10431,7 @@
         "app.login_blocked",
         "app.onboarding_assignment_loads",
         "app.onboarding_case_labels",
+        "app.onboarding_detail_note_rows",
         "app.onboarding_directory",
         "app.onboarding_participant",
         "app.onboarding_supervisors",
@@ -10454,7 +10455,6 @@
         "employment",
         "jobGrade",
         "new Set(grants.map(g=>g.role))",
-        "notes",
         "person",
         "position",
         "secrets",
@@ -48007,6 +48007,7 @@
         "app.login_blocked",
         "app.onboarding_assignment_loads",
         "app.onboarding_case_labels",
+        "app.onboarding_detail_note_rows",
         "app.onboarding_directory",
         "app.onboarding_participant",
         "app.onboarding_supervisors",
@@ -48024,7 +48025,6 @@
         "dep",
         "department",
         "jobGrade",
-        "notes",
         "position",
         "secrets"
       ],
@@ -48363,6 +48363,7 @@
         "app.login_blocked",
         "app.onboarding_assignment_loads",
         "app.onboarding_case_labels",
+        "app.onboarding_detail_note_rows",
         "app.onboarding_directory",
         "app.onboarding_participant",
         "app.onboarding_unavailable",
@@ -48373,7 +48374,6 @@
         "cases",
         "configs",
         "costCenter",
-        "notes",
         "secrets"
       ],
       "boundaries": [
@@ -48511,6 +48511,7 @@
         "app.login_blocked",
         "app.onboarding_assignment_loads",
         "app.onboarding_case_labels",
+        "app.onboarding_detail_note_rows",
         "app.onboarding_directory",
         "app.onboarding_participant",
         "app.onboarding_unavailable",
@@ -48523,7 +48524,6 @@
         "configs",
         "costCenter",
         "dep",
-        "notes",
         "secrets"
       ],
       "boundaries": [
@@ -48814,6 +48814,7 @@
         "app.login_blocked",
         "app.onboarding_assignment_loads",
         "app.onboarding_case_labels",
+        "app.onboarding_detail_note_rows",
         "app.onboarding_directory",
         "app.onboarding_participant",
         "app.onboarding_supervisors",
@@ -48834,7 +48835,6 @@
         "employment",
         "jobGrade",
         "new Set(grants.map(g=>g.role))",
-        "notes",
         "person",
         "position",
         "secrets",
@@ -78858,6 +78858,24 @@
       "source": "db/migrations/0944_lifecycle_rewards_notice_actions.sql",
       "owners": [
         "app.onboarding_data_subject_read"
+      ]
+    },
+    {
+      "table": "lc_onboarding_note",
+      "policy": "onb_note_author_write_scope",
+      "source": "db/migrations/0944_lifecycle_rewards_notice_actions.sql",
+      "owners": [
+        "app.current_user_id"
+      ]
+    },
+    {
+      "table": "lc_onboarding_note",
+      "policy": "onb_note_history_scope",
+      "source": "db/migrations/0944_lifecycle_rewards_notice_actions.sql",
+      "owners": [
+        "app.onboarding_page_access",
+        "app.onboarding_v9_sections",
+        "app.current_user_id"
       ]
     },
     {

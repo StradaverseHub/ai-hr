@@ -849,15 +849,29 @@ describe('V3.1 onboarding database and authorization', () => {
     });
     it('a mention grants the scoped conversation without granting full requisition access', async () => {
         const row = await prepared();
-        await onboardingNote(admin, row.case.id, { context: 'requisition', body: 'Please reply', mentions: [other.userId!] });
+        await onboardingNote(admin, row.case.id, { context: 'requisition', body: 'Earlier administrative text', mentions: [] });
+        const [edited] = await owner.db.select().from(schema.lcOnboardingNote).where(eq(schema.lcOnboardingNote.caseId,row.case.id));
+        await onboardingNote(admin, row.case.id, { id: edited.id, context: 'requisition', body: 'Please reply', mentions: [other.userId!] });
+        await onboardingNote(admin, row.case.id, { context: 'requisition', body: 'Unrelated administrative note', mentions: [] });
+        const raw = (actor:SessionContext) => withTenant(actor, tx => tx.select().from(schema.lcOnboardingNote).where(eq(schema.lcOnboardingNote.caseId,row.case.id)));
+        expect(await raw(other)).toEqual([]);
+        expect((await raw(admin)).find(note=>note.id===edited.id)?.data.revisions?.[0]?.body).toBe('Earlier administrative text');
         const detail = await onboardingDetail(other, row.case.id, 'task');
         expect(detail.canOpenRequisition).toBe(false);
         expect(detail.case.source.email).toBeUndefined();
         expect(detail.case.requisitions[0]!.items).toHaveLength(0);
-        expect(detail.notes.some(n => n.body === 'Please reply')).toBe(true);
+        expect(detail.notes.map(n=>n.body)).toEqual(['Please reply']);
+        expect(detail.notes[0]).not.toHaveProperty('revisions');
+        const equipmentReader = await onboardingDetail(tech, row.case.id, 'requisition');
+        expect(equipmentReader.notes.find(n=>n.id===edited.id)?.body).toBe('Please reply');
+        expect(equipmentReader.notes.find(n=>n.id===edited.id)).not.toHaveProperty('revisions');
         await expect(onboardingDetail(other, row.case.id, 'requisition')).rejects.toThrow('Requisition access');
         expect(await onboardingRequisitions(other)).toHaveLength(0);
         await onboardingNote(other, row.case.id, { context: 'requisition', body: 'Replied without page access', mentions: [] });
+        const [ownReply] = await raw(other);
+        expect((await raw(other)).map(n=>n.data.body)).toEqual(['Replied without page access']);
+        await onboardingNote(other, row.case.id, { id: ownReply.id, context: 'requisition', body: 'Edited own reply', mentions: [] });
+        expect((await raw(other))[0]?.data.revisions?.[0]?.body).toBe('Replied without page access');
         expect((await onboardingTasks(other)).some(t => t.kind === 'mention')).toBe(false);
     });
     it('prevents a nonauthor from editing note content even through direct SQL', async () => {

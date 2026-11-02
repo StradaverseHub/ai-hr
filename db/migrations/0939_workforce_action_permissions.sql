@@ -2340,8 +2340,14 @@ CREATE FUNCTION app.bank_import_subjects(p_codes jsonb)
 RETURNS TABLE(employment_id uuid,person_id uuid,company_id uuid,employee_code text,hired_on date,
  card_id text,attendance_photo_setting text,payment_method text,full_name text,primary_email text,phone text,country text,statutory jsonb)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT native.* FROM app.workforce_bank_import_subjects_native(p_codes) native
- WHERE app.workforce_section_import_allowed(native.company_id,'view');
+ WITH native AS MATERIALIZED (
+   SELECT * FROM app.workforce_bank_import_subjects_native(p_codes)
+ ), permitted AS MATERIALIZED (
+   SELECT companies.company_id
+   FROM (SELECT DISTINCT native.company_id FROM native) companies
+   WHERE app.workforce_section_import_allowed(companies.company_id,'view')
+ )
+ SELECT native.* FROM native JOIN permitted USING (company_id);
 $$;
 REVOKE ALL ON FUNCTION app.bank_import_subjects(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.bank_import_subjects(jsonb) TO ai_hr_app;

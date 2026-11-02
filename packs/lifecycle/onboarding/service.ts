@@ -243,7 +243,15 @@ export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'c
         const selectedReq = generation ? c.requisitions.find(r => r.id === generation) ?? null : M.currentReq(c);
         if (mode === 'requisition' && !canReadRequisition(config, selectedReq, actor))
             M.fail('Requisition access is required.', 'forbidden');
-        const thread = await tx.select().from(notes).where(eq(notes.caseId, id)).orderBy(asc(notes.createdAt), asc(notes.id));
+        const noteRows = await tx.execute<{note:M.Note}>(sql`
+            select visible.note from (
+                select data as note, created_at from public.lc_onboarding_note where case_id=${id}::uuid
+                union all
+                select note, created_at from app.onboarding_detail_note_rows(${id}::uuid)
+            ) visible
+            order by visible.created_at, visible.note->>'id'
+        `);
+        const thread = noteRows.map(row => row.note);
         let visible = c;
         if (!actor.module && mode === 'task') {
             visible = structuredClone(c);
@@ -258,7 +266,7 @@ export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'c
             visible.selected = [];
             const f = M.effectiveFacts(c);
             visible.source = { fullName: f.fullName, joinDate: f.joinDate, businessGroup: f.businessGroup, company: f.company, title: f.title };
-            visible.tasks = visible.tasks.filter(t => t.assignee === actor.id || thread.some(n => n.data.context === t.id && liveConversationMention(n.data, c.submittedAt, actor.id)));
+            visible.tasks = visible.tasks.filter(t => t.assignee === actor.id || thread.some(n => n.context === t.id && liveConversationMention(n, c.submittedAt, actor.id)));
         }
         if (mode !== 'case') { delete visible.caseValues; delete visible.caseContactEmail; }
         if (mode === 'requisition' && !actor.module && selectedReq) {
@@ -283,7 +291,7 @@ export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'c
         if(mode==='case')visible=projectJoinerPage(visible,config,actor);
         if(!actor.hr){const privateLabels:Record<string,keyof M.Facts>={supervisor:'supervisor',company:'company',group:'businessGroup',dept:'department',position:'title'};for(const field of config.v9CaseFields??[])if(field.hrOnly&&privateLabels[field.key])delete labels[privateLabels[field.key]];}
         if(!actor.module&&(mode==='requisition'||actor.sections?.case==='hidden'))for(const key of Object.keys(labels))if(!['company','businessGroup','title'].includes(key))delete labels[key as keyof M.Facts];
-        return { canOpenRequisition: canReadRequisition(config, M.currentReq(c), actor), labels, case: visible, revision: row.revision, config, actor, directory: await directoryTx(tx), notes: thread.map(n => n.data).filter(n => actor.sections?.notes!=='hidden'&&(mode!=='case'||actor.module||actor.sections?.checklist==='all'||n.context==='case'||n.context==='requisition'&&actor.sections?.equip!=='hidden'||visible.tasks.some(task=>task.id===n.context))).filter(n => actor.module || actor.page&&actor.sections?.notes==='view' || n.by === actor.id || liveConversationMention(n, c.submittedAt, actor.id) || c.tasks.some(t => t.id === n.context && t.assignee === actor.id) || n.context === 'requisition' && canReadRequisition(config, M.currentReq(c), actor))
+        return { canOpenRequisition: canReadRequisition(config, M.currentReq(c), actor), labels, case: visible, revision: row.revision, config, actor, directory: await directoryTx(tx), notes: thread.filter(n => actor.sections?.notes!=='hidden'&&(mode!=='case'||actor.module||actor.sections?.checklist==='all'||n.context==='case'||n.context==='requisition'&&actor.sections?.equip!=='hidden'||visible.tasks.some(task=>task.id===n.context))).filter(n => actor.module || actor.page&&actor.sections?.notes==='view' || n.by === actor.id || liveConversationMention(n, c.submittedAt, actor.id) || c.tasks.some(t => t.id === n.context && t.assignee === actor.id) || n.context === 'requisition' && canReadRequisition(config, M.currentReq(c), actor))
             .filter(n => actor.module || actor.page && actor.sections?.notes === 'view' || !n.deleted)
             .map(n => {
                 if (actor.module || actor.page && actor.sections?.notes === 'view' || n.by === actor.id) return n;
@@ -850,6 +858,7 @@ export async function onboardingNote(ctx: SessionContext, caseId: string, input:
     if (input.body.length > 10000 || input.mentions.length > 50)
         M.fail('This note is too long.');
     return withTenant(ctx, async (tx) => {
+        await lockOnboardingTx(tx, ctx.tenantId);
         const [assigned]=await tx.execute<{allowed:boolean}>(sql`select app.onboarding_conversation_assigned(${caseId}::uuid,${input.context}) as allowed`);
         if(assigned?.allowed){
             let result:{revision:number;employment_id:string|null;company_id:string};
@@ -862,12 +871,11 @@ export async function onboardingNote(ctx: SessionContext, caseId: string, input:
         const { row, config, actor, c } = await loadTx(tx, ctx, caseId, true);
         if (!(actor.caseActions&&actor.sections?.notes==='view')&&!await participantTx(tx, caseId))
             M.fail('This conversation is not available.', 'forbidden');
-        const thread = (await tx.select().from(notes).where(eq(notes.caseId, caseId)).orderBy(asc(notes.createdAt), asc(notes.id))).map(n => n.data);
         if (input.context !== 'case' && input.context !== 'requisition' && !c.tasks.some(t => t.id === input.context) && !input.id)
             M.fail('Choose an existing task conversation.');
         const task = c.tasks.find(t => t.id === input.context), r = M.currentReq(c);
         const pageNote=actor.caseActions&&actor.sections?.notes==='view'&&(input.context==='case'||input.context==='requisition'&&actor.sections.equip!=='hidden'||!!task&&(actor.sections.checklist==='all'||actor.sections.checklist==='team'&&(task.assignee===actor.id||M.inGroup(config,task.group,actor.id))));
-        const allowed = actor.module || pageNote || task?.assignee === actor.id || input.context === 'requisition' && !!r && (requisitionGroupAccess(config,actor.id)||r.items.some(item=>M.inGroup(config,item.team,actor.id))) || thread.some(n => n.context === input.context && liveConversationMention(n, c.submittedAt, actor.id));
+        const allowed = actor.module || pageNote || task?.assignee === actor.id || input.context === 'requisition' && !!r && (requisitionGroupAccess(config,actor.id)||r.items.some(item=>M.inGroup(config,item.team,actor.id)));
         if (!allowed)
             M.fail('This conversation is not available.', 'forbidden');
         if (c.state === 'cancelled')
@@ -876,11 +884,15 @@ export async function onboardingNote(ctx: SessionContext, caseId: string, input:
         if (input.mentions.some(id => !directory.some(u => u.id === id)))
             M.fail('Choose active people from the directory.');
         if (input.id) {
-            const existing = thread.find(n => n.id === input.id);
+            const [target] = await tx.select({ data: notes.data }).from(notes)
+                .where(and(eq(notes.caseId, caseId), eq(notes.id, input.id)));
+            const existing = target?.data;
             if (!existing)
                 M.fail('Note not found.');
+            if (existing.context !== input.context)
+                M.fail('This conversation is not available.', 'forbidden');
             if (input.resolve) {
-                if (existing.context !== input.context || !liveConversationMention(existing, c.submittedAt, actor.id))
+                if (!liveConversationMention(existing, c.submittedAt, actor.id))
                     M.fail('This mention is not assigned to you.', 'forbidden');
                 existing.resolved = [...new Set([...existing.resolved, actor.id])];
             }
@@ -905,11 +917,7 @@ export async function onboardingNote(ctx: SessionContext, caseId: string, input:
                 M.fail('Write a note before sending.');
             const note: M.Note = { id: randomUUID(), context: input.context, body: input.body.trim(), by: actor.id, name: actor.name, at: new Date().toISOString(), edited: false, mentions: input.mentions, resolved: [], deleted: false };
             await tx.insert(notes).values({ id: note.id, tenantId: ctx.tenantId, caseId, data: note });
-            // A reply resolves only mentions of its author in this conversation.
-            for (const old of thread.filter(n => n.context === input.context && liveConversationMention(n, c.submittedAt, actor.id) && !n.resolved.includes(actor.id))) {
-                old.resolved.push(actor.id);
-                await tx.update(notes).set({ data: old }).where(eq(notes.id, old.id));
-            }
+            // Live mentions are resolved by the assigned command above under the same write lock.
         }
         await auditTx(tx, ctx, c, 'note_changed');
         // Bump case version so clients know to refresh note/read-state projections.
@@ -1051,7 +1059,13 @@ export async function sweepOnboarding(ctx: SessionContext,runTenant:typeof withT
         if (!revision)
             return { created: 0 };
         await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':onboarding-notices'},0))`);
-        const list = await tx.select().from(cases).orderBy(asc(cases.id)), thread = await tx.select().from(notes).orderBy(asc(notes.id)), today = todayInKualaLumpur(), hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kuala_Lumpur', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
+        const list = await tx.select().from(cases).orderBy(asc(cases.id)), mentionRows = await tx.execute<{case_id:string;note_id:string;user_id:string}>(sql`select * from app.onboarding_due_mention_rows()`), today = todayInKualaLumpur(), hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kuala_Lumpur', hour: '2-digit', hourCycle: 'h23' }).format(new Date()));
+        const mentionsByCase = new Map<string, (typeof mentionRows)[number][]>();
+        for (const mention of mentionRows) {
+            const targets = mentionsByCase.get(mention.case_id);
+            if (targets) targets.push(mention);
+            else mentionsByCase.set(mention.case_id, [mention]);
+        }
         let created = 0;
         const notify = async (user: string, caseId: string, kind: string, occurrence: string): Promise<boolean> => {
             const result = await tx.execute(sql `insert into lc_onboarding_notice(tenant_id,user_id,case_id,kind,occurrence) select app.current_tenant_id(),u.id,${caseId}::uuid,${kind},${occurrence} from app_user u where u.id=${user}::uuid and u.tenant_id=app.current_tenant_id() and not app.login_blocked(u.id) on conflict do nothing`);
@@ -1099,11 +1113,10 @@ export async function sweepOnboarding(ctx: SessionContext,runTenant:typeof withT
                     for (const step of i.steps.filter(s => M.stepOpen(i, s)))
                         for (const user of step.user ? [step.user] : config.groups.find(g => g.id === step.group)?.members ?? [])
                             digestUsers.add(user);
-            for (const n of thread.filter(n => n.caseId === c.id && !n.data.deleted && (!c.submittedAt || n.data.at >= c.submittedAt)).map(n => n.data))
-                for (const user of n.mentions.filter(u => !n.resolved.includes(u))) {
-                    digestUsers.add(user);
-                    await notify(user, c.id, 'mention', n.id);
-                }
+            for (const mention of mentionsByCase.get(c.id) ?? []) {
+                digestUsers.add(mention.user_id);
+                await notify(mention.user_id, c.id, 'mention', mention.note_id);
+            }
             if (hour >= 8)
                 for (const user of digestUsers) {
                     // Exactly one digest per user/day; keep its reference generic and reauthorize the queue on open.
