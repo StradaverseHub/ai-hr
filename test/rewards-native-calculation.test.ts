@@ -51,7 +51,17 @@ it('matches locale-independent native Unicode casing, context and UTF16 lengths 
  for(const text of contexts){const [row]=await owner.db.execute<{value:string;units:number}>(sql`select app.reward_calc_lower(${text})as value,to_jsonb(app.reward_calc_units(${text}))as units`);expect({text,value:row.value,units:row.units}).toEqual({text,value:text.toLowerCase(),units:text.length});}
  // Valid PostgreSQL text excludes NUL and isolated UTF16 surrogates. Every other Unicode
  // scalar is compared in bounded blocks, independent of the database default LC_CTYPE.
- for(let start=1;start<=0x10ffff;start+=0x10000){let text='';for(let cp=start;cp<Math.min(start+0x10000,0x110000);cp++)if(cp<0xd800||cp>0xdfff)text+=String.fromCodePoint(cp);const [row]=await owner.db.execute<{value:string}>(sql`select app.reward_calc_lower(${text})as value`);const expected=text.toLowerCase(),expectedPoints=[...expected];const mismatch=[...row.value].findIndex((ch,i)=>ch!==expectedPoints[i]);expect({block:start,mismatch,units:row.value.length}).toEqual({block:start,mismatch:-1,units:expected.length});}
+ for(let start=1;start<=0x10ffff;start+=0x10000){let text='';for(let cp=start;cp<Math.min(start+0x10000,0x110000);cp++)if(cp<0xd800||cp>0xdfff)text+=String.fromCodePoint(cp);const [row]=await owner.db.execute<{value:string}>(sql`select app.reward_calc_lower(${text})as value`);const expected=text.toLowerCase(),expectedPoints=[...expected];const actualPoints=[...row.value],mismatch=actualPoints.findIndex((ch,i)=>ch!==expectedPoints[i]);
+  if(mismatch!==-1){
+   const code=(value:string|undefined)=>value===undefined?null:'U+'+value.codePointAt(0)!.toString(16).toUpperCase().padStart(4,'0');let inputPoint:string|undefined,outputOffset=0;
+   // Full lowercase's contextual Sigma rule changes the scalar, never its length. Per-scalar
+   // output lengths therefore locate the original input despite dotted-I's expansion.
+   for(const scalar of text){const width=[...scalar.toLowerCase()].length;if(outputOffset+width>mismatch){inputPoint=scalar;break;}outputOffset+=width;}
+   const samples=[inputPoint,'\uA7CB','\uA7CE','\uA7CF','\uA7D2','\uA7D4','A\uA7CEΣ','AΣ\uA7CE'].filter((value):value is string=>value!==undefined),[database]=await owner.db.execute(sql`select version()as postgres_version,current_setting('lc_ctype')as lc_ctype,c.collprovider,c.collversion,pg_collation_actual_version(c.oid)as actual_icu_collation_version from pg_collation c where c.oid='app.reward_calc_unicode'::regcollation`),probes=[];
+   for(const value of samples){const [observed]=await owner.db.execute<{value:string}>(sql`select app.reward_calc_lower(${value})as value`);probes.push({input:[...value].map(code),expected:[...value.toLowerCase()].map(code),actual:[...observed.value].map(code)});}
+   console.info('Rewards Unicode parity first mismatch',JSON.stringify({node:process.versions.node,unicode:process.versions.unicode,icu:process.versions.icu,database,block:start,outputIndex:mismatch,input:code(inputPoint),expected:code(expectedPoints[mismatch]),actual:code(actualPoints[mismatch]),window:{expected:expectedPoints.slice(Math.max(0,mismatch-3),mismatch+4).map(code),actual:actualPoints.slice(Math.max(0,mismatch-3),mismatch+4).map(code)},probes}));
+  }
+  expect({block:start,mismatch,units:row.value.length}).toEqual({block:start,mismatch:-1,units:expected.length});}
 });
 
 it('normalizes the annual native policy exactly and refuses malformed stored policies',async()=>{
