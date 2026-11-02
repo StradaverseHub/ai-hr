@@ -138,6 +138,8 @@ describe('OneHR performance partner (ADR-0142)', () => {
     const [proof]=await withTenant(partner,tx=>tx.execute<{shown:boolean;hidden:boolean}>(sql`select app.data_permission_matches(${partnerPerson.employmentId}::uuid) as shown,app.data_permission_matches(${subject.employmentId}::uuid) as hidden`));expect(proof).toEqual({shown:true,hidden:false});
     const [admin]=await withTenant(partner,tx=>tx.execute<{header:unknown;employmentIds:string[];assignmentIds:string[];labels:number}>(sql`select app.onehr_review_header(${reviewId}::uuid) as header,array(select id from app.onehr_employment_facts()) as "employmentIds",array(select employment_id from app.onehr_assignment_facts()) as "assignmentIds",(select count(*)::int from app.onehr_person_labels(array[${subject.employmentId}::uuid])) as labels`));
     expect(admin.header).toBeNull();expect(admin.employmentIds).toContain(partnerPerson.employmentId);expect(admin.employmentIds).not.toContain(subject.employmentId);expect(admin.assignmentIds).not.toContain(subject.employmentId);expect(admin.labels).toBe(0);
+    await restrict(partner.userId!);
+    const [adminCard]=await withTenant(partner,tx=>tx.execute<{card:unknown}>(sql`select app.onehr_result_card(${reviewId}::uuid) as card`));expect(adminCard.card).toBeNull();
     for(const [identity,self] of [[subject,true],[manager,false]] as const){
       const userId=await createAppUser(b.tenantId,identity.personId,'employee');await restrict(userId);
       const actor={...a,userId,personId:identity.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};

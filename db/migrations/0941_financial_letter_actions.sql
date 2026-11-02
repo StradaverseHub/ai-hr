@@ -2573,3 +2573,86 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.onehr_review_notice_source(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_review_notice_source(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Frozen provenance is not a participant field API. Existence guards and released
+-- bands have distinct bounded readers, so a manager needs no raw result row grant.
+CREATE FUNCTION app.financial_onehr_result_admin(p_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.performance_review review
+ JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
+ WHERE review.id=p_review AND review.tenant_id=app.current_tenant_id() AND app.onehr_cycle_admin(review.cycle_id)
+ AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id));
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_result_admin(uuid) FROM PUBLIC,ai_hr_app;
+ALTER FUNCTION app.onehr_result_card(uuid) RENAME TO financial_onehr_native_result_card;
+REVOKE ALL ON FUNCTION app.financial_onehr_native_result_card(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_result_card(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_onehr_native_result_card(wanted_review) WHERE app.principal_snapshot_current() AND EXISTS(
+ SELECT 1 FROM public.performance_review review WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id()
+ AND (app.onehr_self_employment(review.employment_id) OR app.financial_onehr_result_admin(review.id)));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_result_card(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_result_card(uuid) TO ai_hr_app;
+CREATE FUNCTION app.onehr_review_frozen(wanted_review uuid) RETURNS TABLE(id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT result.id FROM public.performance_onehr_result result WHERE result.review_id=wanted_review AND result.tenant_id=app.current_tenant_id()
+ AND app.onehr_review_header(result.review_id) IS NOT NULL;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_frozen(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_frozen(uuid) TO ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_frozen_visible(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH r AS (SELECT review.review_id,review.tenant_id,app.onehr_self_employment(review.employment_id) AS own
+ FROM public.performance_onehr_review review WHERE review.review_id=wanted_review AND review.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()),
+ v AS (SELECT r.review_id,r.tenant_id,NOT r.own AND app.financial_onehr_result_admin(r.review_id) AS admin,
+ CASE WHEN r.own THEN NULL ELSE app.onehr_leader_role(r.review_id) END AS leader FROM r)
+ SELECT jsonb_build_object(
+ 'performance',coalesce(v.admin OR v.leader IN ('bg','group') OR v.leader IS NOT NULL AND rel.performance_leader_released_at IS NOT NULL,false),
+ 'potential',coalesce(v.admin OR v.leader IN ('bg','group') OR v.leader IS NOT NULL AND rel.potential_leader_released_at IS NOT NULL,false),
+ 'talent',coalesce(v.admin OR v.leader IN ('bg','group') OR v.leader IS NOT NULL AND rel.talent_leader_released_at IS NOT NULL,false))
+ FROM v LEFT JOIN public.performance_assessment_release rel ON rel.review_id=v.review_id AND rel.tenant_id=v.tenant_id;
+$$;
+CREATE FUNCTION app.onehr_task_result_card(wanted_review uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result public.performance_onehr_result%ROWTYPE;visible jsonb;card jsonb;
+BEGIN
+ IF app.onehr_review_task_header(wanted_review) IS NULL THEN RETURN NULL;END IF;
+ card:=app.onehr_result_card(wanted_review);IF card IS NOT NULL THEN RETURN card;END IF;
+ -- The former raw result policy admitted the actual line manager only. A KPI
+ -- approver or administrative role outside its data profile gains no new course.
+ IF NOT app.onehr_manager(wanted_review) THEN RETURN NULL;END IF;
+ SELECT * INTO result FROM public.performance_onehr_result actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id();
+ IF result.id IS NULL THEN RETURN NULL;END IF;
+ visible:=app.onehr_frozen_visible(wanted_review);
+ RETURN jsonb_build_object('id',result.id,'digest',result.digest,'frozen',true,
+ 'performanceReleasedAt',result.performance_released_at,'potentialReleasedAt',result.potential_released_at,'talentReleasedAt',result.talent_released_at,'feedbackReleasedAt',result.feedback_released_at,
+ 'result',jsonb_build_object('performance',CASE WHEN (visible->>'performance')::boolean THEN result.result->'performance' END,
+ 'potential',CASE WHEN (visible->>'potential')::boolean THEN result.result->'potential' END,'talent',CASE WHEN (visible->>'talent')::boolean THEN result.result->'talent' END,
+ 'performanceSource',CASE WHEN (visible->>'performance')::boolean THEN result.result->'performanceSource' END,'potentialSource',CASE WHEN (visible->>'potential')::boolean THEN result.result->'potentialSource' END,
+ 'feedback',CASE WHEN result.feedback_released_at IS NOT NULL THEN result.result->'feedback' ELSE '[]'::jsonb END,
+ 'anonymousFeedback',CASE WHEN result.feedback_released_at IS NOT NULL THEN result.result->'anonymousFeedback' END));
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_task_result_card(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_task_result_card(uuid) TO ai_hr_app;
+CREATE FUNCTION app.onehr_report_result(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('id',result.id,'digest',result.digest,
+ 'performance',CASE WHEN (visible.value->>'performance')::boolean THEN result.result->'performance' END,
+ 'potential',CASE WHEN (visible.value->>'potential')::boolean THEN result.result->'potential' END,
+ 'talent',CASE WHEN (visible.value->>'talent')::boolean THEN result.result->'talent' END)
+ FROM public.performance_onehr_result result CROSS JOIN LATERAL (SELECT app.onehr_frozen_visible(wanted_review) AS value) visible
+ WHERE result.review_id=wanted_review AND result.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+ AND NOT app.onehr_self_employment(result.employment_id) AND (app.financial_onehr_result_admin(wanted_review) OR app.onehr_manager(wanted_review));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_report_result(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_report_result(uuid) TO ai_hr_app;
+CREATE FUNCTION app.onehr_result_administration(wanted_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_result_admin(wanted_review); $$;
+REVOKE ALL ON FUNCTION app.onehr_result_administration(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_result_administration(uuid) TO ai_hr_app;
+CREATE POLICY financial_onehr_result_read ON public.performance_onehr_result AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(tenant_id=app.current_tenant_id() AND app.onehr_result_administration(review_id));

@@ -189,6 +189,19 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(own.some(f=>f.id.startsWith('record:'))).toBe(true);
     await expect(perf.getPerformanceGuideReport(self)).rejects.toThrow();
   });
+  it('keeps raw frozen provenance closed while native guards and released manager bands remain available',async()=>{
+    await complete(true,'PRIVATE_FROZEN_PROVENANCE');const resultId=await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    const [stored]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.id,resultId));expect(JSON.stringify(stored.result)).toContain('PRIVATE_FROZEN_PROVENANCE');
+    expect(await withTenant(mgr,tx=>tx.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId)))).toEqual([]);
+    const [before]=await withTenant(mgr,tx=>tx.execute<{id:string;card:{result:Record<string,unknown>}|null}>(sql`select (select id from app.onehr_review_frozen(${reviewId}::uuid)) as id,app.onehr_task_result_card(${reviewId}::uuid) as card`));
+    expect(before.id).toBe(resultId);expect(before.card?.result.performance).toBeNull();expect(before.card?.result.potential).toBeNull();expect(JSON.stringify(before.card)).not.toContain('PRIVATE_FROZEN_PROVENANCE');expect(before.card?.result).not.toHaveProperty('provenance');
+    await perf.releaseOnehrResult(a,reviewId,'performance',true);
+    const [after]=await withTenant(mgr,tx=>tx.execute<{card:{result:{performance:string|null;potential:string|null}}}>(sql`select app.onehr_task_result_card(${reviewId}::uuid) as card`));
+    expect(after.card.result.performance).toBe((stored.result as {performance:string}).performance);expect(after.card.result.potential).toBeNull();
+    expect(await withTenant(mgr,tx=>tx.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId)))).toEqual([]);
+    await perf.releaseOnehrResult(a,reviewId,'performance',false);
+    const [revoked]=await withTenant(mgr,tx=>tx.execute<{card:{result:{performance:string|null}}}>(sql`select app.onehr_task_result_card(${reviewId}::uuid) as card`));expect(revoked.card.result.performance).toBeNull();
+  });
   it('Performance guide separates a released current result from closed-cycle history',async()=>{
     await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);await perf.releaseOnehrResult(a,reviewId,'performance',true);
     const current=await perf.getPerformanceGuideFacts(self,'last cycle result');
