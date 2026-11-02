@@ -707,7 +707,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.claim_own_read_allowed(uuid,boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.claim_own_read_allowed(uuid,boolean) TO ai_hr_app;
-CREATE POLICY claim_own_action_read ON public.claim_request AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.claim_own_read_allowed(employment_id,status='draft'));
+CREATE POLICY claim_own_action_read ON public.claim_request AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.claim_own_read_allowed(employment_id,status::text='draft'));
 
 --> statement-breakpoint
 CREATE FUNCTION app.claim_draft_delete_complete() RETURNS trigger
