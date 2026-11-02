@@ -584,3 +584,30 @@ human:zenlam repository-owner provisional, and takes evidence #noveri-rule-overr
 rerun.
 
 This record is not a runtime PASS, staging acceptance or deployment authorisation.
+
+## Noveri release repair binding
+
+The full release qualification on main 41ec7fd8 (alpha-staging run 41459296654) failed five test chunks. The release
+operator directed repairs on claude/noveri-release-repair (code f2ccf38ac278fbb3cc542f716c9942eefbd63f06), each in its own
+commit, with no allowlist growth and no weakened assertion. Five provider-data closure sources change: the setup co-pilot
+and the Assistant's setup readiness read payroll readiness through packs/payroll/service (core/setup-copilot/copilot.ts,
+core/product-context/setup-readiness.ts); the approved-leave cancellation card reads the leave type's give-back rule
+through a new read-only readCancelApprovedSettingTx in core/read.ts (core/proposals/leave-cancel.ts, core/read.ts); and
+teras_outcome_record.company_id is declared as an 'other' company referrer (core/company-refs.ts). No read, permission,
+provider transport, payload, contract, migration or allowlist changes. The closure moves from 1255 files /
+`ac138e6c84a4f7b5929959e95ae3592fbe25c90e95c2291c4125804aa27fd330` (the d19d897c binding on main 41ec7fd8) to 1255 files /
+`e8692840739a125c8f5f04c4be9a43cc6022bd2f81533a747a76f414d5716913`; the packet is
+docs/reviews/teras-whole-stack-20261102/binding-packet-release-repair.md.
+
+The repository owner approved that exact packet at 448edcb840c8d2226dc54287c98004397f37fddc directly in the Noveri wiring
+session ("Approve the packet", answering the session's question to approve the release-repair packet and write the
+binding). The session recorded the message on receipt at 2026-11-02T15:30:00Z. The approval covers this closure only and
+does not transfer to a changed one.
+
+The 24 historical approved records receive only the new sourceDigest (status, reviewer, evidence and reviewedAt preserved
+byte-for-byte; both pending records byte-identical). `teras_harness_turn_v1` receives the new sourceDigest, keeps reviewer
+human:zenlam repository-owner provisional, and takes evidence #noveri-release-repair-binding and reviewedAt
+2026-11-02T15:30:00Z from this approval. The module-agent manifest is regenerated last; both `--check` commands are then
+rerun.
+
+This record is not a runtime PASS, staging acceptance or deployment authorisation.
