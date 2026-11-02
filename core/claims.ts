@@ -38,6 +38,7 @@ import {
 
 export type { ClaimMileageStamp, ClaimRateConfig };
 import { toCsv } from '../lib/csv';
+import { isDatabaseError } from '../lib/db-error';
 import { assertCanDecide, filterDelegationOrgScopeTx,isApprovalDecisionRefusal,assertAssignedWorkPrincipalTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
@@ -3130,6 +3131,9 @@ export async function submitDraftClaims(
           excludeId: d.id,
         });
       } catch (e) {
+        // Preserve the driver/cause chain for the public error boundary. Contextualizing its raw
+        // message would hide its database identity and expose SQL/parameters to the employee.
+        if (isDatabaseError(e)) throw e;
         // Name the claim. In a batch of five, "Amount must be greater than zero" with no subject is a
         // message the employee cannot act on.
         throw new ClaimError(`"${d.typeName}" (${d.incurredOn}) cannot be submitted: ${(e as Error).message}`);
