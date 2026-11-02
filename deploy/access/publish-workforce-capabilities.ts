@@ -114,8 +114,9 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
   requireInstallation(rows.every((row,index)=>row.id===expected[index].id&&row.scope===expected[index].scope&&JSON.stringify(row.prerequisites)===JSON.stringify(expected[index].prerequisites??[])));
   for(const domain of ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[]){
    for(const descriptor of domain.functions??[]){
-    for(const action of descriptor.actions){
-     const [registered]=await tx<{correct:boolean}[]>`select d.scope=${descriptor.scope} and d.metadata->>'moduleKey'=${descriptor.moduleKey} and d.metadata->>'labelKey'=${descriptor.labelKey} and d.metadata->>'kind'=${descriptor.kind} and d.metadata->>'course'=${descriptor.course} and a.parent_capability is not distinct from ${action.parentCapability??null} and a.delegation_floor_function is not distinct from ${action.delegationFloorFunction??null} as correct from app.access_function_definition d join app.access_function_action a using(function_key) where d.function_key=${descriptor.key} and a.operation=${action.operation}`;
+    const {key:definitionKey,scope:definitionScope,actions,...metadata}=descriptor;
+    for(const action of actions){
+     const [registered]=await tx<{correct:boolean}[]>`select d.scope=${definitionScope} and d.metadata=${JSON.stringify(metadata)}::text::jsonb and a.parent_capability is not distinct from ${action.parentCapability??null} and a.delegation_floor_function is not distinct from ${action.delegationFloorFunction??null} as correct from app.access_function_definition d join app.access_function_action a using(function_key) where d.function_key=${definitionKey} and a.operation=${action.operation}`;
      requireInstallation(registered?.correct);
     }
    }
@@ -124,7 +125,9 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
   const uninstalled=rows.every(row=>!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0);
   const knownV1=rows.every(row=>{const old=WORKFORCE_CAPABILITY_BINDINGS_V1.find(item=>item.id===row.id);return old?row.supported&&exactBindings(row.bindings,old.bindings):!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0;});
   const knownV2=rows.every(row=>{const old=WORKFORCE_CAPABILITY_BINDINGS_V2.find(item=>item.id===row.id);return old?row.supported&&exactBindings(row.bindings,old.bindings):!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0;});
-  const knownComponents=rows.every((row,index)=>row.supported?exactBindings(row.bindings,expected[index].bindings):Array.isArray(row.bindings)&&row.bindings.length===0)&&[...(includeWorkforce?[WORKFORCE_CAPABILITY_BINDINGS_V2.map(capability=>capability.id)]:[]),...(ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[]).map(domain=>[...domain.capabilities.map(capability=>capability.id),...functionActionCapabilities(domain.functions??[]).map(capability=>capability.id)])].every(ids=>{const group=rows.filter(row=>ids.includes(row.id));return group.every(row=>row.supported)||group.every(row=>!row.supported);});
+  const knownComponents=rows.every((row,index)=>row.supported?exactBindings(row.bindings,expected[index].bindings):Array.isArray(row.bindings)&&row.bindings.length===0)
+   &&(!includeWorkforce||rows.filter(row=>WORKFORCE_CAPABILITY_BINDINGS_V2.some(capability=>capability.id===row.id)).every(row=>row.supported)||rows.filter(row=>WORKFORCE_CAPABILITY_BINDINGS_V2.some(capability=>capability.id===row.id)).every(row=>!row.supported))
+   &&domains.every(domain=>{const family=rows.filter(row=>domain.capabilities.some(capability=>capability.id===row.id));const children=rows.filter(row=>functionActionCapabilities(domain.functions??[]).some(capability=>capability.id===row.id));return family.every(row=>row.supported)&&children.every(row=>row.supported)||family.every(row=>!row.supported)&&children.every(row=>!row.supported)||family.every(row=>row.supported)&&children.every(row=>!row.supported);});
   requireInstallation(already||uninstalled||knownV1||knownV2||knownComponents); // Refuse partial/unknown versions without overwriting them.
   const functions=await tx<{count:number;owners:boolean}[]>`select count(*)::integer as count,
    coalesce(bool_and(p.proowner=c.relowner),false) as owners
@@ -138,7 +141,10 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    const [trusted]=await tx<{ok:boolean}[]>`select p.prosecdef and p.proowner=c.relowner and not has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as ok from pg_proc p cross join pg_class c where p.oid=to_regprocedure(${hook+'(uuid,uuid,text,uuid)'}) and c.oid='public.access_capability'::regclass`;
    requireInstallation(trusted?.ok);
   }
-  if(already)return {version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,changed:false,capabilities:WORKFORCE_CAPABILITY_BINDINGS.length,tenantsFenced:0};
+  const defaultDefinitions=domains.flatMap(domain=>[...(domain.legacyParityFunction?domain.capabilities.map(capability=>({id:capability.id,hook:domain.legacyParityFunction!,currentHook:domain.currentLegacyParityFunction!})):[]),...(domain.functionLegacyParityFunction?functionActionCapabilities(domain.functions??[]).map(capability=>({id:capability.id,hook:domain.functionLegacyParityFunction!,currentHook:domain.functionCurrentLegacyParityFunction!})):[])]);
+  let defaultsReady=true;
+  for(const definition of defaultDefinitions){const [row]=await tx<{parity_function:string;current_parity_function:string}[]>`select parity_function,current_parity_function from app.access_native_capability_default where capability_id=${definition.id}`;requireInstallation(!row||row.parity_function===definition.hook&&row.current_parity_function===definition.currentHook);if(!row)defaultsReady=false;}
+  if(already&&defaultsReady)return {version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,changed:false,capabilities:WORKFORCE_CAPABILITY_BINDINGS.length,tenantsFenced:0};
   const tenants=await tx<{id:string}[]>`select id from public.tenant order by id`;
   for(const tenant of tenants){
    await tx`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + tenant.id},0))`;
