@@ -179,7 +179,8 @@ REVOKE ALL ON FUNCTION app.lifecycle_reward_notice_legacy_allowed(uuid,uuid,text
 -- Runtime callers can neither enter a context nor insert/rewrite its receipts.
 CREATE TABLE app.lifecycle_native_effect_context(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,
- purpose text NOT NULL,case_id uuid NOT NULL,event_type text NOT NULL,active boolean NOT NULL DEFAULT true,completed boolean NOT NULL DEFAULT false
+ purpose text NOT NULL,case_id uuid NOT NULL,event_type text NOT NULL,
+ authority_stamp text NOT NULL CHECK(length(authority_stamp)=64),function_key text,function_operation text,company_id uuid,positive_admission boolean NOT NULL DEFAULT false,active boolean NOT NULL DEFAULT true,completed boolean NOT NULL DEFAULT false
 );
 CREATE TABLE app.lifecycle_native_effect_receipt(
  context_id uuid NOT NULL REFERENCES app.lifecycle_native_effect_context(id) ON DELETE CASCADE,
@@ -190,25 +191,30 @@ ALTER TABLE app.lifecycle_native_effect_context ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app.lifecycle_native_effect_receipt ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.lifecycle_native_effect_context,app.lifecycle_native_effect_receipt FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
-CREATE FUNCTION app.lifecycle_assigned_task_function(p_case uuid,p_purpose text,p_operation text)RETURNS boolean
+CREATE FUNCTION app.lifecycle_effect_function_identity(p_case uuid,p_purpose text)
+RETURNS TABLE(function_key text,operation text,company_id uuid)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT CASE WHEN p_purpose='assigned-task' THEN EXISTS(SELECT 1 FROM public.lc_v9_case c WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND app.function_action_allowed('lifecycle.shared.tasks',p_operation,c.company_id))
- WHEN p_purpose IN('assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment') THEN EXISTS(SELECT 1 FROM public.lc_onboarding_case c WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND app.function_action_allowed(CASE p_purpose WHEN 'assigned-onboarding-task' THEN 'lifecycle.shared.tasks' WHEN 'assigned-onboarding-handover' THEN 'lifecycle.shared.handover' WHEN 'assigned-onboarding-note' THEN 'lifecycle.shared.requisitionNotes' WHEN 'assigned-onboarding-conversation' THEN 'lifecycle.shared.conversations' WHEN 'assigned-onboarding-fulfil' THEN 'lifecycle.shared.fulfilment' WHEN 'assigned-onboarding-approval' THEN 'lifecycle.shared.approvals' WHEN 'assigned-onboarding-approval-assignment' THEN 'lifecycle.shared.approvalAssignments' ELSE 'lifecycle.self.acknowledgement' END,CASE WHEN p_purpose='assigned-onboarding-approval'AND p_operation='execute'THEN'approve'ELSE p_operation END,c.company_id))ELSE false END;
+ SELECT CASE p_purpose WHEN 'assigned-task'THEN'lifecycle.shared.tasks'WHEN'assigned-onboarding-task'THEN'lifecycle.shared.tasks'WHEN'assigned-onboarding-handover'THEN'lifecycle.shared.handover'WHEN'assigned-onboarding-note'THEN'lifecycle.shared.requisitionNotes'WHEN'own-onboarding-ack'THEN'lifecycle.self.acknowledgement'WHEN'assigned-onboarding-conversation'THEN'lifecycle.shared.conversations'WHEN'assigned-onboarding-fulfil'THEN'lifecycle.shared.fulfilment'WHEN'assigned-onboarding-approval'THEN'lifecycle.shared.approvals'WHEN'assigned-onboarding-approval-assignment'THEN'lifecycle.shared.approvalAssignments'END,
+ CASE WHEN p_purpose='assigned-onboarding-approval'THEN'approve'ELSE'execute'END,source.company_id FROM(
+ SELECT c.company_id FROM public.lc_v9_case c WHERE p_purpose='assigned-task'AND c.id=p_case AND c.tenant_id=app.current_tenant_id()
+ UNION ALL SELECT c.company_id FROM public.lc_onboarding_case c WHERE p_purpose IN('assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment')AND c.id=p_case AND c.tenant_id=app.current_tenant_id())source;
 $$;
-REVOKE ALL ON FUNCTION app.lifecycle_assigned_task_function(uuid,text,text) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION app.lifecycle_effect_function_identity(uuid,text)FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.lifecycle_native_effect_begin(p_purpose text,p_case uuid,p_event text)RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE result uuid;
+DECLARE result uuid;identity record;stamp text;
 BEGIN
  IF NOT app.principal_snapshot_current() OR app.current_user_id() IS NULL OR p_case IS NULL
   OR p_purpose NOT IN('own-daa','own-document','assigned-task','own-return-report','assigned-item','own-equipment-receipt','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment')
   OR p_event NOT IN('lifecycle-case.daa-submitted','lifecycle-v9.employeeDocumentSigned','lifecycle-v9.employeeDocumentSaved','lifecycle-v9.assignedTaskUpdated','lifecycle-v9.returnReported','lifecycle-v9.providingTeamItemUpdated','lifecycle-v9.equipmentReceipt','onboarding.task','onboarding.handover','onboarding.readNote','onboarding.acknowledge','onboarding.note_changed','onboarding.fulfil','onboarding.approve','onboarding.assignApproval')
   OR EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND c.active)
  THEN RAISE EXCEPTION 'Invalid native Lifecycle effect context' USING ERRCODE='42501';END IF;
- IF p_purpose IN('assigned-task','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment') AND NOT app.lifecycle_assigned_task_function(p_case,p_purpose,'execute')THEN RAISE EXCEPTION 'Assigned task function unavailable' USING ERRCODE='42501';END IF;
- INSERT INTO app.lifecycle_native_effect_context(xact_id,tenant_id,user_id,purpose,case_id,event_type)
- VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),p_purpose,p_case,p_event)RETURNING id INTO result;
+ SELECT * INTO identity FROM app.lifecycle_effect_function_identity(p_case,p_purpose);
+ IF identity.function_key IS NOT NULL AND NOT app.function_action_allowed(identity.function_key,identity.operation,identity.company_id)THEN RAISE EXCEPTION 'Assigned function unavailable' USING ERRCODE='42501';END IF;
+ stamp:=app.access_function_authority_stamp();IF stamp IS NULL THEN RAISE EXCEPTION 'Native authority changed' USING ERRCODE='42501';END IF;
+ INSERT INTO app.lifecycle_native_effect_context(xact_id,tenant_id,user_id,purpose,case_id,event_type,authority_stamp,function_key,function_operation,company_id,positive_admission)
+ VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),p_purpose,p_case,p_event,stamp,identity.function_key,identity.operation,identity.company_id,identity.function_key IS NOT NULL)RETURNING id INTO result;
  RETURN result;
 END $$;
 CREATE FUNCTION app.lifecycle_native_effect_complete(p_context uuid)RETURNS void
@@ -270,11 +276,22 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.lifecycle_row_in_transaction(text,uuid,jsonb) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+CREATE FUNCTION app.lifecycle_native_effect_admission_valid(p_context uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current()AND EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c
+ JOIN public.app_user actor ON actor.id=c.user_id AND actor.tenant_id=c.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
+ WHERE c.id=p_context AND c.xact_id=pg_current_xact_id()AND c.tenant_id=app.current_tenant_id()AND c.user_id=app.current_user_id()AND c.completed AND NOT c.active
+ AND c.authority_stamp=app.access_function_authority_stamp()
+ AND(c.function_key IS NULL OR c.positive_admission AND app.function_action_denial_clear(c.function_key,c.function_operation,c.company_id)
+ AND EXISTS(SELECT 1 FROM app.lifecycle_effect_function_identity(c.case_id,c.purpose)native WHERE native.function_key=c.function_key AND native.operation=c.function_operation AND native.company_id=c.company_id)));
+$$;
+REVOKE ALL ON FUNCTION app.lifecycle_native_effect_admission_valid(uuid)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.lifecycle_native_effect_approved(p_table text,p_before jsonb,p_after jsonb)RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c JOIN app.lifecycle_native_effect_receipt r ON r.context_id=c.id
  WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND c.completed AND NOT c.active
- AND (c.purpose NOT IN('assigned-task','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment') OR app.lifecycle_assigned_task_function(c.case_id,c.purpose,'execute'))
+ AND app.lifecycle_native_effect_admission_valid(c.id)
  AND r.table_name=p_table AND r.before_hash=encode(sha256(convert_to(coalesce(p_before,'{}'::jsonb)::text,'UTF8')),'hex') AND r.after_hash=encode(sha256(convert_to(coalesce(p_after,'{}'::jsonb)::text,'UTF8')),'hex')
  AND EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=c.tenant_id AND e.aggregate_id=c.case_id AND e.event_type=c.event_type AND e.actor_type='user' AND e.actor_id=c.user_id AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e))));
 $$;
@@ -284,7 +301,7 @@ CREATE FUNCTION app.lifecycle_native_effect_cleanup()RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c WHERE c.id=NEW.id)THEN RETURN NULL;END IF;
- IF NOT NEW.completed OR NEW.active OR (NEW.purpose IN('assigned-task','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment') AND NOT app.lifecycle_assigned_task_function(NEW.case_id,NEW.purpose,'execute')) OR NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=NEW.tenant_id AND e.aggregate_id=NEW.case_id AND e.event_type=NEW.event_type AND e.actor_type='user' AND e.actor_id=NEW.user_id AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e)))
+ IF NOT app.lifecycle_native_effect_admission_valid(NEW.id) OR NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=NEW.tenant_id AND e.aggregate_id=NEW.case_id AND e.event_type=NEW.event_type AND e.actor_type='user' AND e.actor_id=NEW.user_id AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e)))
  THEN RAISE EXCEPTION 'Native Lifecycle completion requires its actual audit event' USING ERRCODE='42501';END IF;
  DELETE FROM app.lifecycle_native_effect_context WHERE id=NEW.id;
  RETURN NULL;
@@ -1154,5 +1171,24 @@ REVOKE ALL ON FUNCTION app.lifecycle_approval_assignment_legacy_allowed(uuid,uui
 DO $$DECLARE operation text;BEGIN
  FOREACH operation IN ARRAY ARRAY['view','execute']LOOP
   PERFORM app.register_function_action('lifecycle.shared.approvalAssignments',operation,'company',NULL,'app.lifecycle_approval_assignment_legacy_allowed','{"moduleKey":"lifecycle","labelKey":"nav.myTasks","kind":"native_acl","course":"assigned","href":"/tasks","employeeBearing":false}'::jsonb);
+ END LOOP;
+END $$;
+
+--> statement-breakpoint
+-- Native authority changes are control facts, not case outcomes. A same-TX revoke→restore still
+-- invalidates admitted effects; ordinary task status/case updates do not invalidate themselves.
+DO $$DECLARE relation_name text;BEGIN
+ FOREACH relation_name IN ARRAY ARRAY['lc_staff','lc_onboarding_config','lc_v9_config','reward_member']LOOP
+  EXECUTE format('CREATE TRIGGER native_access_control_epoch_insert AFTER INSERT ON public.%I REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.access_control_epoch_bump(''tenant'')',relation_name);
+  EXECUTE format('CREATE TRIGGER native_access_control_epoch_update AFTER UPDATE ON public.%I REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.access_control_epoch_bump(''tenant'')',relation_name);
+  EXECUTE format('CREATE TRIGGER native_access_control_epoch_delete AFTER DELETE ON public.%I REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.access_control_epoch_bump(''tenant'')',relation_name);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+-- Canonical services already join Access before audit/onboarding/row locks. The same order holds
+-- for direct application-role statements against these owned native sources; this grants no rights.
+DO $$DECLARE relation_name text;BEGIN
+ FOREACH relation_name IN ARRAY ARRAY['lc_onboarding_case','lc_onboarding_private','lc_onboarding_case_revision','lc_onboarding_private_revision','lc_onboarding_note','lc_v9_case','lc_v9_case_revision','lc_v9_file','lc_onboarding_config','lc_v9_config','reward_member']LOOP
+  EXECUTE format('CREATE TRIGGER native_source_access_lock BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION app.notice_action_statement_lock()',relation_name);
  END LOOP;
 END $$;

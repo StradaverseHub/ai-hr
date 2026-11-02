@@ -401,6 +401,30 @@ describe('V3.1 onboarding database and authorization', () => {
         const selections=(c:typeof actual)=>c.requisitions[0]!.items.map(item=>item.steps.map(({when,assignments,...step})=>({...step,assignments:assignments.map(({at,...assignment})=>assignment)})));expect(selections(actual)).toEqual(selections(expected));expect(actual.tasks).toEqual(expected.tasks);
         expect((await onboardingTasks(tech)).some(task=>task.id===review.task.id)).toBe(false);
     });
+    it('finishes only its admitted terminal card effect after the actual source team changes',async()=>{
+        const context=await onboardingContext(admin),config=structuredClone(context.config);config.groups.find(group=>group.id==='facility')!.members=[other.userId!];config.catalogue.push({id:'terminal-card',name:'Fictional terminal card',type:'device',active:true,rules:{},workflow:null,team:'facility',card:true});
+        await onboardingSaveConfig(admin,context.revision,config);await draft();let row=(await onboardingList(admin))[0]!;await onboardingCommand(admin,row.case.id,row.revision,{type:'saveSubmit',patch:{hiring:'new_hire',local:{supervisor:'Manager'},selected:['terminal-card']}});row=(await onboardingList(admin))[0]!;const item=row.case.requisitions[0]!.items[0]!;
+        const native=()=>owner.client`select app.lifecycle_delivery_function_legacy_allowed(${b.tenantId}::uuid,${other.userId!}::uuid,'function.lifecycle.shared.fulfilment.execute',${b.companyId}::uuid)as allowed`;
+        expect((await native())[0].allowed).toBe(true);
+        await onboardingCommand(other,row.case.id,row.revision,{type:'fulfil',itemId:item.id,status:'done'});row=(await onboardingList(admin))[0]!;
+        expect(row.case.requisitions[0]!.items[0]).toMatchObject({id:item.id,stage:'tech',team:'group-tech',state:'printed'});expect((await native())[0].allowed).toBe(false);
+        await expect(onboardingCommand(other,row.case.id,row.revision,{type:'fulfil',itemId:item.id,status:'done'})).rejects.toThrow('fulfilling team');
+        expect((await owner.client`select count(*)::int as n from app.lifecycle_native_effect_context`)[0].n).toBe(0);
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'fulfil',itemId:item.id,status:'done'});expect((await onboardingList(admin))[0]!.case.requisitions[0]!.items[0]!.state).toBe('ready');
+    });
+    it('refuses a same-transaction native authority revoke and restore after admission, then permits a fresh retry',async()=>{
+        const before=await onboardingContext(admin),config=structuredClone(before.config);config.groups.find(group=>group.id==='people-gbs')!.members=[admin.userId!];await onboardingSaveConfig(admin,before.revision,config);const row=await prepared();expect(row.case.tasks.find(task=>task.id==='welcome')?.assignee).toBe(admin.userId);
+        const [baseline]=await owner.db.select().from(schema.lcOnboardingConfig).where(eq(schema.lcOnboardingConfig.tenantId,b.tenantId));
+        await expect(withTenant(admin,async tx=>{
+            await tx.execute(sql`select * from app.onboarding_assigned_task_update(${row.case.id}::uuid,${row.revision},'welcome','progress')`);
+            await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'onboarding-case',aggregateId:row.case.id,eventType:'onboarding.task',actor:actorOf(admin),subjectEmploymentId:row.case.employmentId,payload:{caseId:row.case.id,companyId:b.companyId}});
+            await tx.execute(sql`update lc_onboarding_config set data=jsonb_set(data,'{groups}','[]'::jsonb)where tenant_id=${b.tenantId}::uuid`);
+            await tx.execute(sql`update lc_onboarding_config set data=${JSON.stringify(baseline!.data)}::jsonb where tenant_id=${b.tenantId}::uuid`);
+        })).rejects.toThrow();
+        const retained=(await onboardingList(admin))[0]!;expect(retained.revision).toBe(row.revision);expect(retained.case.tasks.find(task=>task.id==='welcome')?.status).toBe('todo');
+        expect((await owner.db.select().from(schema.lcOnboardingConfig).where(eq(schema.lcOnboardingConfig.tenantId,b.tenantId)))[0]!.data).toEqual(baseline!.data);
+        await v9OwnTask(admin,{caseId:row.case.id,revision:row.revision,taskId:'welcome',status:'done',reason:''});expect((await onboardingList(admin))[0]!.case.tasks.find(task=>task.id==='welcome')?.status).toBe('done');
+    });
     it('preserves the same case when Personnel activates its draft', async () => {
         const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Activation Hire', employeeCode: 'ONB-ACT-1', primaryEmail: 'activation@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });
         const before = (await onboardingList(admin))[0]!;
