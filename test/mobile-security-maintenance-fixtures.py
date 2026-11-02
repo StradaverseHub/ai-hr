@@ -5,6 +5,36 @@ import subprocess, sys, tempfile, unittest
 spec=importlib.util.spec_from_file_location('maintenance',Path(__file__).parents[1]/'deploy/security/maintenance.py')
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 
+def recovery_changes(root):
+    return [(root/('target'+str(i)),('new'+str(i)).encode(),0o644,m.digest(('old'+str(i)).encode()) if i<5 else None) for i in range(7)]
+
+def recovery_ports(root):
+    def read(p): return (m.regular(p,owner=os.getuid()),p.stat().st_mode&0o777) if p.exists() else None
+    def write(p,value,mode):
+        fd,name=tempfile.mkstemp(dir=p.parent)
+        with os.fdopen(fd,'wb') as f: os.fchmod(f.fileno(),mode);f.write(value);f.flush();os.fsync(f.fileno())
+        os.replace(name,p)
+        fd=os.open(p.parent,os.O_RDONLY|os.O_DIRECTORY)
+        try: os.fsync(fd)
+        finally: os.close(fd)
+    return {'read':read,'write':write,'remove':lambda p:p.unlink(),'fence':lambda:None,'prepare':lambda:None,'activate':lambda:None,'verify':lambda:None,'quiesce':lambda:None,'restore_services':lambda:None,'record':lambda phase,p:None,'backup':lambda i,b:write(root/(str(i)+'.before'),b,0o600),'backup_read':lambda i:m.regular(root/(str(i)+'.before'),owner=os.getuid()),'seal':lambda record:write(root/'recovery.json',(json.dumps(record)+'\n').encode(),0o600)}
+
+def interrupt_fixture(root,cut):
+    changes=recovery_changes(root);ports=recovery_ports(root)
+    with m.operation_guard(root/'operation.lock',owner=os.getuid()):
+        m.prepare_recovery(changes,ports,{'kind':'isolated-fixture-not-installation'})
+        def prepare():
+            m.require((root/'recovery.json').exists(),'Recovery must precede service stop')
+            if cut==0: os._exit(73)
+        write=ports['write'];count=0
+        def interrupted_write(p,value,mode):
+            nonlocal count
+            write(p,value,mode);count+=1
+            if count==cut: os._exit(73)  # SIGKILL-equivalent: no finally/rollback or post-write journal.
+        ports.update(prepare=prepare,write=interrupted_write)
+        m.apply_changes(changes,ports)
+    raise AssertionError('Interruption point was not reached')
+
 class MaintenanceTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='aihr-maintenance-fixture-');self.root=Path(self.temp.name);self.a=self.root/'existing';self.b=self.root/'new';self.a.write_bytes(b'original');self.a.chmod(0o600);self.events=[]
@@ -76,5 +106,52 @@ class MaintenanceTests(unittest.TestCase):
         self.assertNotEqual(os.geteuid(),0,'Fixture runner must be unprivileged')
         p=subprocess.run([sys.executable,'-I',str(Path(m.__file__)),'--plan','/not-a-plan','--expected-plan-sha256','f'*64,'--lease','/not-a-lease','--apply'],capture_output=True,text=True)
         self.assertEqual(p.returncode,1);self.assertEqual(p.stdout,'');self.assertIn('Security maintenance refused',p.stderr);self.assertNotIn('Traceback',p.stderr);self.assertEqual(self.a.read_bytes(),b'original')
+    def test_exclusive_lock_refuses_concurrent_apply_and_rollback_processes(self):
+        lock=self.root/'operation.lock'
+        script="import importlib.util,sys,os;from pathlib import Path;s=importlib.util.spec_from_file_location('m',sys.argv[1]);m=importlib.util.module_from_spec(s);s.loader.exec_module(m)\nwith m.operation_guard(Path(sys.argv[2]),owner=os.getuid()): print('UNEXPECTED_WRITER')"
+        with m.operation_guard(lock,owner=os.getuid()):
+            for intent in ['apply','rollback']:
+                p=subprocess.run([sys.executable,'-I','-B','-c',script,str(Path(m.__file__)),str(lock),intent],capture_output=True,text=True)
+                self.assertNotEqual(p.returncode,0);self.assertIn('BlockingIOError',p.stderr);self.assertEqual(p.stdout,'')
+        with m.operation_guard(lock,owner=os.getuid()): pass
+    def test_exclusive_lock_refuses_symlink_hardlink_or_writable_custody(self):
+        lock=self.root/'operation.lock';lock.symlink_to(self.a)
+        with self.assertRaises(OSError):
+            with m.operation_guard(lock,owner=os.getuid()): self.fail('Symlink admitted')
+        lock.unlink();os.link(self.a,lock)
+        with self.assertRaises(ValueError):
+            with m.operation_guard(lock,owner=os.getuid()): self.fail('Hardlink admitted')
+        lock.unlink();lock.write_bytes(b'');lock.chmod(0o660)
+        with self.assertRaises(ValueError):
+            with m.operation_guard(lock,owner=os.getuid()): self.fail('Group write admitted')
+    def test_recovery_seal_failure_precedes_all_target_writes_and_quiescence(self):
+        ports={**self.ports,'backup':lambda i,b:None,'seal':lambda record:self.controlled_failure()}
+        self.assertRaises(ValueError,m.prepare_recovery,self.changes,ports,{'kind':'fixture'})
+        self.assertEqual(self.events,[]);self.assertEqual(self.a.read_bytes(),b'original');self.assertFalse(self.b.exists())
+    def test_real_process_interruption_after_every_write_recovers_without_success_receipt(self):
+        for cut in range(8):
+            with self.subTest(interruption=cut):
+                root=self.root/str(cut);root.mkdir()
+                for i in range(5): p=root/('target'+str(i));p.write_bytes(('old'+str(i)).encode());p.chmod(0o640)
+                process=subprocess.run([sys.executable,'-I','-B',str(Path(__file__).resolve()),'--interrupt',str(root),str(cut)],capture_output=True,text=True)
+                self.assertEqual(process.returncode,73,process.stderr);self.assertEqual(process.stdout,'');self.assertFalse((root/'receipt.json').exists())
+                recovery=json.loads((root/'recovery.json').read_text());self.assertEqual(len(recovery['files']),7)
+                changes=recovery_changes(root);ports=recovery_ports(root)
+                for i in range(cut): self.assertEqual((root/('target'+str(i))).read_bytes(),('new'+str(i)).encode())
+                with m.operation_guard(root/'operation.lock',owner=os.getuid()): m.recover_changes(changes,recovery,ports)
+                for i in range(5): self.assertEqual((root/('target'+str(i))).read_bytes(),('old'+str(i)).encode());self.assertEqual((root/('target'+str(i))).stat().st_mode&0o777,0o640)
+                for i in range(5,7): self.assertFalse((root/('target'+str(i))).exists())
+    def test_partial_recovery_refuses_foreign_files_before_any_restore(self):
+        ports={**self.ports,'backup':lambda i,b:None,'seal':lambda record:None,'backup_read':lambda i:b'original'}
+        recovery=m.prepare_recovery(self.changes,ports,{});self.a.write_bytes(b'replacement');self.b.write_bytes(b'foreign')
+        self.assertRaisesRegex(ValueError,'foreign file changes',m.recover_changes,self.changes,recovery,ports)
+        self.assertEqual(self.a.read_bytes(),b'replacement');self.assertEqual(self.b.read_bytes(),b'foreign');self.assertEqual(self.events,[])
+    def test_partial_recovery_refuses_corrupt_preimage_and_incomplete_inventory(self):
+        ports={**self.ports,'backup':lambda i,b:None,'seal':lambda record:None,'backup_read':lambda i:b'corrupt'}
+        recovery=m.prepare_recovery(self.changes,ports,{})
+        self.assertRaisesRegex(ValueError,'backup bytes differ',m.recover_changes,self.changes,recovery,ports)
+        recovery['files'].pop();self.assertRaisesRegex(ValueError,'Complete recovery',m.recover_changes,self.changes,recovery,ports);self.assertEqual(self.events,[])
 
-if __name__=='__main__': unittest.main()
+if __name__=='__main__':
+    if len(sys.argv)>1 and sys.argv[1]=='--interrupt': interrupt_fixture(Path(sys.argv[2]),int(sys.argv[3]))
+    else: unittest.main()

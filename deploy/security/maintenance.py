@@ -47,6 +47,19 @@ def trusted_directory(path):
         if p==p.parent: break
         p=p.parent
 
+@contextlib.contextmanager
+def operation_guard(path=RUNTIME/'.security-maintenance.lock', *, owner=0):
+    # Independent exclusive custody: the queue's shared lock only fences handback.
+    path=Path(path)
+    if owner==0: trusted_directory(path.parent)
+    fd=os.open(path,os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW|os.O_NONBLOCK,0o600)
+    try:
+        s=os.fstat(fd)
+        require(stat.S_ISREG(s.st_mode) and s.st_uid==owner and s.st_nlink==1 and stat.S_IMODE(s.st_mode)==0o600,'Maintenance lock custody differs')
+        fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        yield
+    finally: os.close(fd)
+
 
 def atomic(path, value, mode):
     path=Path(path);trusted_directory(path.parent)
@@ -154,6 +167,36 @@ def restore_installed(originals,installed,ports):
         else: ports['remove'](path)
     ports['restore_services']();ports['record']('rolled-back',None)
 
+def prepare_recovery(changes,ports,metadata):
+    """Durably seal every preimage before quiescence or the first target write."""
+    files=[]
+    for i,(path,value,mode,expected) in enumerate(changes):
+        previous=ports['read'](path)
+        require((digest(previous[0]) if previous else None)==expected,'Recovery baseline drift')
+        if previous: ports['backup'](i,previous[0])
+        files.append({'path':str(path),'before':expected,'mode':previous[1] if previous else None,'after':digest(value)})
+    recovery={**metadata,'files':files}
+    ports['seal'](recovery)
+    return recovery
+
+def recover_changes(changes,recovery,ports):
+    """Accept any interrupted prefix, including a write before its journal update."""
+    require(type(recovery.get('files'))==list and len(recovery['files'])==len(changes),'Complete recovery inventory required')
+    originals={};installed=[]
+    # Validate the entire baseline/installed set before stopping or changing anything.
+    for i,(path,value,mode,expected) in enumerate(changes):
+        row=recovery['files'][i]
+        require(type(row)==dict and set(row)=={'path','before','mode','after'} and row['path']==str(path) and row['before']==expected and row['after']==digest(value),'Recovery inventory differs')
+        if expected is None:
+            require(row['mode'] is None,'Unexpected absent baseline mode');originals[path]=None
+        else:
+            require(type(row['mode'])==int and 0<=row['mode']<=0o777 and row['mode']&0o022==0,'Original file mode differs')
+            old=ports['backup_read'](i);require(digest(old)==expected,'Original backup bytes differ');originals[path]=(old,row['mode'])
+        current=ports['read'](path);current_hash=digest(current[0]) if current else None
+        require(current_hash in (expected,digest(value)),'Recovery refuses foreign file changes')
+        if current_hash==digest(value): installed.append((path,digest(value)))
+    restore_installed(originals,installed,ports)
+
 
 def apply_changes(changes, ports):
     """Filesystem transaction used by root adapter and real temporary-file refusal fixtures."""
@@ -182,24 +225,22 @@ def main():
     agent=base64.b64decode(AGENT_BASE64,validate=True);require(0<len(agent)<=24000000 and digest(agent)==AGENT_SHA256,'Embedded protected bundle differs')
     trusted_directory(NODE_SOURCE.parent)
     node=regular(NODE_SOURCE,134217728);require(digest(node)==NODE_SHA256 and command(str(NODE_SOURCE),'--version')=='v22.23.3','Protected runtime source differs')
-    with lease_guard(credential,plan) as fence:
+    with operation_guard(), lease_guard(credential,plan) as fence:
         if args.rollback_backup:
             require(not args.apply,'Choose apply or rollback, not both');backup=Path(args.rollback_backup)
             require(backup.parent==Path('/var/backups/aihr-security-maintenance') and re.fullmatch('[a-f0-9-]{36}',backup.name),'Known private backup location required');trusted_directory(backup)
-            receipt=json.loads(regular(backup/'receipt.json',1048576,private=True))
+            receipt=json.loads(regular(backup/'recovery.json',1048576,private=True))
             require(receipt.get('source')==SOURCE_SHA and receipt.get('planSha256')==digest(raw) and receipt.get('batch')==credential['batch'] and receipt.get('epoch')==credential['epoch'],'Backup source/plan/lease differs')
             require(digest(regular('/etc/aihr-keycloak/email-agent.env',1048576,private=True))==receipt.get('mailEnvironmentSha256'),'Private mail configuration changed before rollback')
             require(stat.S_IMODE(backup.stat().st_mode)==0o700 and receipt.get('kind')=='ROOT_STAGING_SECURITY_MAINTENANCE_NOT_CI_RECEIPT' and receipt.get('buildId')==plan['buildId'],'Unknown private rollback receipt')
-            changes=desired_changes(plan,agent,node);originals={}
-            for i,(path,value,mode,expected) in enumerate(changes):
+            changes=desired_changes(plan,agent,node)
+            def read_recovery_target(path):
                 trusted_directory(path.parent)
-                if expected is None: originals[path]=None
-                else:
-                    old=regular(backup/(str(i)+'.before'),33554432,private=True);require(digest(old)==expected,'Original backup bytes differ');originals[path]=(old,mode)
-                require(digest(regular(path,134217728))==digest(value),'Installed bytes changed before rollback')
+                if not path.exists(): require(not path.is_symlink(),'Dangling recovery target');return None
+                return regular(path,134217728),stat.S_IMODE(path.stat().st_mode)
             def restart_previous():
                 command('/usr/sbin/nginx','-t');command('/usr/bin/systemctl','reload','nginx');command('/usr/bin/systemctl','daemon-reload');command('/usr/bin/systemctl','start','aihr-identity-email.socket','aihr-identity-email.service')
-            restore_installed(originals,[(p,digest(v)) for p,v,_,_ in changes],{'fence':fence,'quiesce':lambda:command('/usr/bin/systemctl','stop','aihr-identity-email.socket','aihr-identity-email.service'),'read':lambda p:(regular(p,134217728),stat.S_IMODE(p.stat().st_mode)) if p.exists() else None,'write':atomic,'remove':lambda p:p.unlink(),'restore_services':restart_previous,'record':lambda phase,p:atomic(backup/'rollback.json',(json.dumps({'phase':phase,'at':time.time()})+'\n').encode(),0o600)})
+            recover_changes(changes,receipt,{'backup_read':lambda i:regular(backup/(str(i)+'.before'),134217728,private=True),'fence':fence,'quiesce':lambda:command('/usr/bin/systemctl','stop','aihr-identity-email.socket','aihr-identity-email.service'),'read':read_recovery_target,'write':atomic,'remove':lambda p:p.unlink(),'restore_services':restart_previous,'record':lambda phase,p:atomic(backup/'rollback.json',(json.dumps({'phase':phase,'at':time.time()})+'\n').encode(),0o600)})
             require(capabilities()==receipt['mailCapabilitiesBefore'],'Original mail capabilities not restored');public_health(plan['publicOrigin'])
             print(json.dumps({'kind':'OWNED_SECURITY_MAINTENANCE_ROLLED_BACK','source':SOURCE_SHA,'buildId':plan['buildId'],'backup':str(backup),'retainLease':True}));return
         require(digest(regular(RUNTIME/'agent.cjs'))==plan['workerBefore'],'Protected bundle baseline differs');trusted_directory(RUNTIME)
@@ -212,6 +253,9 @@ def main():
             print(json.dumps({'kind':'ROOT_MAINTENANCE_PREFLIGHT_ONLY','source':SOURCE_SHA,'planSha256':digest(raw),'files':4,'mailCapabilities':before,'writes':False}));return
         backup=Path('/var/backups/aihr-security-maintenance');backup.mkdir(mode=0o700,exist_ok=True);trusted_directory(backup);require(stat.S_IMODE(backup.stat().st_mode)==0o700,'Private backup custody required')
         backup=backup/str(uuid.uuid4());backup.mkdir(mode=0o700);records=[]
+        parent_fd=os.open(backup.parent,os.O_RDONLY|os.O_DIRECTORY)
+        try: os.fsync(parent_fd)
+        finally: os.close(parent_fd)
         # The drop-in directory is root-owned; its harmless creation grants no service capability.
         DROPIN.parent.mkdir(mode=0o755,exist_ok=True);trusted_directory(DROPIN.parent)
         changes=desired_changes(plan,agent,node)
@@ -219,11 +263,12 @@ def main():
             trusted_directory(path.parent)
             if not path.exists(): require(not path.is_symlink(),'Dangling target symlink');return None
             b=regular(path,134217728);return b,stat.S_IMODE(path.stat().st_mode)
-        for i,(path,_,_,_) in enumerate(changes):
-            previous=read(path)
-            if previous: atomic(backup/(str(i)+'.before'),previous[0],0o600)
         required_space=sum(len(value) for _,value,_,_ in changes)+67108864
         require(all(shutil.disk_usage(parent).free>=required_space for parent in {p.parent for p,_,_,_ in changes}|{backup}),'Insufficient maintenance free space')
+        recovery_metadata={'kind':'ROOT_STAGING_SECURITY_MAINTENANCE_NOT_CI_RECEIPT','source':SOURCE_SHA,'buildId':plan['buildId'],'planSha256':digest(raw),'batch':credential['batch'],'epoch':credential['epoch'],'mailEnvironmentSha256':env_hash,'mailCapabilitiesBefore':before}
+        fence()
+        prepare_recovery(changes,{'read':read,'backup':lambda i,b:atomic(backup/(str(i)+'.before'),b,0o600),'seal':lambda record:atomic(backup/'recovery.json',(json.dumps(record,indent=2)+'\n').encode(),0o600)},recovery_metadata)
+        print(json.dumps({'kind':'ROOT_SECURITY_RECOVERY_PREPARED_NOT_ACCEPTED','source':SOURCE_SHA,'backup':str(backup),'retainLease':True}),flush=True)
         def record(phase,path):
             records.append({'phase':phase,'path':str(path) if path else None,'at':time.time()});atomic(backup/'journal.json',(json.dumps(records)+'\n').encode(),0o600)
         def quiesce(): command('/usr/bin/systemctl','stop','aihr-identity-email.socket','aihr-identity-email.service')
