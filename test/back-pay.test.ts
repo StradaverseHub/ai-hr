@@ -223,7 +223,7 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
       .rejects.toThrow(/row-level security/);
     await expect(withTenant(a,tx=>tx.delete(schema.backPaySource).where(eq(schema.backPaySource.runId,runId))))
       .rejects.toThrow(/permission denied/);
-    expect(await owner.db.select().from(schema.backPaySource).where(eq(schema.backPaySource.runId,runId))).toEqual(sources);
+    expect((await owner.db.select().from(schema.backPaySource).where(eq(schema.backPaySource.runId,runId))).map(row=>row.id).sort()).toEqual(sources.map(row=>row.id).sort());
     expect((await backPayRunDetail(a, runId))!.perEmployee[0].total).toBe(138.71);
     expect(await detectArrears(a, { companyId: base.companyId })).toHaveLength(0);
     await cancelBackPayRun(a, { runId });

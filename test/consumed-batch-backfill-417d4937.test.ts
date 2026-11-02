@@ -1,20 +1,8 @@
-/**
- * 417d4937 — THE CONSUMED-MARKER BACKFILL, REHEARSED AGAINST A REAL DATABASE.
- *
- * WHY THIS FILE EXISTS AT ALL. `deploy.sh` runs migrations, not scripts (AGENTS rule 13), so this
- * repair is a thing a human types on the box AFTER the release — and a repair script that has never
- * been run against real rows before it is run against PRODUCTION rows is the shape of failure rule 13
- * was written about. Every case below is a way this script could strand or double-pay money.
- *
- * WHAT IT REPAIRS. `payroll_individual_txn.consumed_batch_id` (migration 0437) is the marker that stops
- * a LATER run paying the same one-off twice. It is stamped at CALCULATION time only, so every row that
- * reached a payslip before 0437 shipped reads NULL — db/schema.ts records that as at 2026-08-13 EVERY
- * production row was in that state, and the SpaceX 2026-08 Director Fee row was re-measured in it on
- * 2026-08-18 while its payslip prints the line.
- *
- * THE HISTORICAL STATE IS RECONSTRUCTED, NOT MOCKED: each case runs the real kernel, then clears the
- * marker the kernel wrote. That is exactly the row shape production is in, and it means the fixture
- * cannot drift from what `generatePayslips` actually produces.
+/** Consumed-marker repair rehearsal against native calculated payroll.
+ * Clearing a marker reconstructs a historical missing-marker candidate; it does not prove that every
+ * historical attached row was paid. Positive apply cases provide an independently asserted native
+ * fold-on witness. Fold-off -> later enable and stale-witness controls must remain unmarked.
+ * The operator repair stays report-only without reviewed exact row evidence.
  */
 import { randomUUID } from 'node:crypto';
 import { eq, isNull, sql } from 'drizzle-orm';
@@ -77,7 +65,7 @@ const txnRow = async (id: string) => {
   return r;
 };
 
-/** Put a row back into the pre-0437 state the whole of production is in. */
+/** Put a row back into a pre-marker historical candidate state. */
 const clearMarker = (id: string) =>
   owner.db
     .update(schema.payrollIndividualTxn)
@@ -105,7 +93,7 @@ describe('417d4937 — the consumed-marker backfill', () => {
       batchId, employmentId, kind: 'overtime', txnDate: '2026-05-10', amount: 250,
     });
     await generatePayslips(a, { batchId });
-    await clearMarker(id); // ← the state every production row written before 0437 is in
+    await clearMarker(id); // Reconstruct the historical missing marker, retaining independently verified source evidence.
     expect((await txnRow(id)).consumedBatchId).toBeNull();
 
     const r = await reviewedApply(id);
