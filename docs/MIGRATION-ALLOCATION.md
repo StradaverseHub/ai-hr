@@ -1,3 +1,26 @@
+## Standard feedback caller-plan reservation — 2 November2026 (UNAPPLIED)
+
+Owned source reserves0934_standard_feedback_task_plan atidx792/when1793330000334,
+SQL SHA256ebd03d4204bbb7f3ad0896a2ff56e9e77f8c2d17467cffc36c02352f4636e4a8.
+Fresh07:43:08UTC all-ref/registered-worktree scan covers1813 heads,319 journals,
+398 migration trees,260 worktrees,580 WIP variants and zero parse errors. Foreign
+claims0930–0933 extend throughwhen333; no foreign SQL or journal row is adopted.
+Final07:51:11UTC scan confirms this is the only0934/idx792/when334 claim (1813 heads,319 journals,398 trees,262 worktrees,582 WIP variants,zero parse errors). The original17 performance appends and642 canonical entries retain their bytes.
+Read-only live verification still finds642 applied identities atwatermark299,
+including the two existing historical versions verified by the strict migration-history
+owner and pinned archived SQL. No new exception or applied SQL rewrite.
+
+The new STABLE SECURITY INVOKER function retains the original tenant/status/self
+and OneHR exclusion query under the actual caller's RLS, with explicit ordered output.
+Application guards and canonical Date decoding remain. No permission result cache,
+new owner privilege,source write or broader read scope. Reversible13-control profiling
+on460083f73/run41403606963 records100-reader component medians243.19ms original,
+91.64ms invoker and196.78ms restored; both disposable helpers were dropped.
+This is not whole-system acceptance. Migrated native/service/root/upgrade/compiler
+qualification is pending. Existing500-user workloads remain frozen on auth-onlybee63.
+Refresh canonical/live watermarks and all reservations again before later admission.
+No staging ticket,lease,deployment,provider approval-binding refresh or provider call.
+
 ## Performance reconciliation after Entra — 2 November 2026 (UNAPPLIED)
 
 Canonical main/alpha are50ea247177a9fe1373d3e79d9c742f0fc399ebb7. Independent read-only
