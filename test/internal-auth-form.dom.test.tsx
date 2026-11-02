@@ -1,3 +1,5 @@
+import { toDataURL } from 'qrcode';
+import { authenticatorSetupUri } from '../lib/authenticator-setup';
 import { readFileSync } from 'node:fs';
 import { aiReviewDomHtml, captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -56,7 +58,8 @@ describe('embedded browser forms', () => {
     expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({ code: '123456', challenge: 'a'.repeat(43), token: 'i'.repeat(43) });
   });
   it('offers the exact enrollment account to the default authenticator without submitting MFA', async () => {
-    fetcher.mockResolvedValueOnce(Response.json({ step: 'enroll', challenge: 'e'.repeat(43), secret: 'JBSWY3DPEHPK3PXP', account: 'alpha:employee +test@example.invalid', qr: 'data:image/png;base64,fixture' }));
+    const qr = await toDataURL(authenticatorSetupUri('JBSWY3DPEHPK3PXP', 'alpha:employee +test@example.invalid'), { width: 224, margin: 2, errorCorrectionLevel: 'M' });
+    fetcher.mockResolvedValueOnce(Response.json({ step: 'enroll', challenge: 'e'.repeat(43), secret: 'JBSWY3DPEHPK3PXP', account: 'alpha:employee +test@example.invalid', qr }));
     const rendered = view(), user = userEvent.setup();
     expect(screen.queryByRole('link', { name: en.internalAuth.openAuthenticator })).toBeNull();
     await user.type(screen.getByLabelText(en.internalAuth.username), 'employee');
