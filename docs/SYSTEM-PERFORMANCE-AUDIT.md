@@ -1,8 +1,8 @@
-## Current result: security-compatible proposal measured; punch-audit repair in affected recovery
+## Current result: security-compatible proposal measured; punch-audit repair qualified; original500 pair active
 
 **Not staging-ready;0/2 original500-user activity targets accepted.** The latest
 whole-system1s41416183769 and5s41416186817 remain FAIL under unchanged workloads,
-resources,SLOs and timeouts. No new broad load pair has been dispatched.
+resources,SLOs and timeouts. One justified exact-source500-user pair is now active,as described below.
 
 Read-only review of the security owner's published300fc52f1556361de8b976092a9088f6b90b3c15
 preserves the complete new data-permission scope predicate. Test-only935b58547feb2c2fb5a7c6fe4250c19a3e397c2e /
@@ -28,9 +28,16 @@ two audit chains,and complete rollback including participant evidence when the f
 punch audit fails. The run remains FAIL: one old self-approval fixture uses mismatched
 user/person identity before reaching the changed owner. Test-only29f806a36 repairs
 the real fixture identity while retaining explicit mismatch and self-decision refusal.
-Affected recovery41436873302 passes all20 file checks; its compiler is still running.
-Isolated timing41436877396 is queued.
-The broader suite's timing is mixed; no whole-system speed claim follows. See the
+Affected recovery41436873302 passes all20 file checks and the fresh whole compiler.
+Isolated timing41436877396 passes the same native controls:mean callback874.045→704.370ms,
+post-first-append134.341→76.179ms,and within-owner tail38.175→0.017ms.
+These are separate matched component observations,not system percentiles or proof of
+an overall speed percentage. They justify one original unchanged500-user pair:
+[1s41438476472](https://github.com/StradaverseHub/ai-hr/actions/runs/41438476472) and
+[5s41438488700](https://github.com/StradaverseHub/ai-hr/actions/runs/41438488700),both active
+at frozen29f806a36. Benchmark/fixture/workflow bytes equal the earlier f2b workload;
+application base is retained07f plus only this punch repair,not the unaccepted f2b
+feedback variant or a combined release candidate. No final500-user result exists yet. See the
 [independent contention review](reviews/system-performance-independent-contention-20261102.md).
 
 Prior Home and old-model visibility component experiments remain separate. Both

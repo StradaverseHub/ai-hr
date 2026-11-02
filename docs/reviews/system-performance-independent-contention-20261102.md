@@ -118,8 +118,30 @@ Counters and local tail removal alone do not authorize a full load retry.
 Test-only repair29f806a36a957fe808cdaf90d14e4ede853357cb uses a genuine HR login
 bound to the worker,keeps explicit mismatched-principal refusal,and asserts pending
 status after self-approval refusal. Only the failed file plus compiler is rerun in
-41436873302: all20 file checks pass; its compiler is still running. Separate41436877396 repeats the same isolated12-case timing fixture to
-match the prior isolated2170 diagnostic. Neither is a500-user test or release witness.
+41436873302: all20 file checks and fresh whole compiler PASS. Separate41436877396
+also PASS repeats the same isolated12-case timing fixture as2170. All12 real decisions,
+ordered payloads,12batchSQL/48rows,two108-event chains,final-audit SQL rollback,
+participant rollback and120-event recovery chain pass again.
+
+|Matched isolated envelope|2170 mean|29f8 mean|
+|---|---|---|
+|Native callback|874.045ms|704.370ms|
+|After first observed append|134.341ms|76.179ms|
+|Within punch owner after first append|38.175ms|0.017ms|
+|After punch owner|96.166ms|76.162ms|
+
+These are separate small-sample runner observations,not request-matched production
+percentiles or an overall system percentage. Local tail removal and lower isolated
+callback support one unchanged whole-system pair after correctness qualifies.
+Exact frozen29f806a36 aliases run1s41438476472 and5s41438488700; both are active.
+500principals,two million retained Claims/Attendance rows,30route/six mixed workflow
+coverage,six hydrated browser contexts,1worker,pool10,heap4096MiB,standard4CPU,
+durable~2GiB PostgreSQL,5mhold,90srequests and600sparent remain unchanged. Benchmark,
+fixture and workflow bytes equal f2b; the candidate uses retained07f application plus
+only this punch repair,excluding the unaccepted f2b feedback change. No direct causal
+percentage versus f2b is claimed. No rerun or target relaxation is authorized by a
+failure; both original outcomes must be retained. Neither native probe is itself a
+500-user test or release witness.
 
 Generated provider/module manifests are97e6f041205951d088e09992934638be026387b83b36f568e117746565ff3f54
 and28c25a7b234de8075e62b6e3daaaadf036cddc04c23aa091b4f540b0f27b0ae8.
