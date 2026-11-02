@@ -122,10 +122,11 @@ describe('ADR-0083 §2.5 — the action layer', () => {
     return b!.id;
   }
 
-  it.each(['missing-tax-profile', 'net-swing', 'future-detector', 'toString'])('does not close a mixed verdict with an unresolved %s finding', async detectorId => {
+  it.each(['missing-tax-profile', 'net-swing', 'future-detector', 'toString'])('requires an admitted fixed-upstream proof for every finding (%s)', async detectorId => {
     const f = await flagged({withBank:true});
     if(detectorId==='missing-tax-profile') await owner.db.update(schema.employeeStatutoryMy).set({taxNumber:null}).where(eq(schema.employeeStatutoryMy.personId,f.personId));
-    await owner.db.insert(schema.payrollAnomalyFinding).values({tenantId:base.tenantId,verdictId:f.verdictId,detectorId,severity:'block',facts:{},sourceEventIds:[],suggestedAction:'review'} as never);
+    // The historical action requires a tax number; the detector itself checks profile existence and emits REVIEW.
+    await owner.db.insert(schema.payrollAnomalyFinding).values({tenantId:base.tenantId,verdictId:f.verdictId,detectorId,severity:detectorId==='missing-tax-profile'?'review':'block',facts:{},sourceEventIds:[],suggestedAction:'review'} as never);
     expect((await proposeActions(adminCtx(base))).flatMap(p=>p.subjects).map(s=>s.verdictId)).not.toContain(f.verdictId);
     expect(await executeAction(adminCtx(base),{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]})).toEqual({closed:0,stale:1});
     const [stored]=await owner.db.select().from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.id,f.verdictId));
