@@ -832,7 +832,7 @@ async function resolveAnomalyVerdictOwned(
       if(!subject)throw new Error('Payroll anomaly unavailable.');
       const [profile]=await tx.select({taxNumber:schema.employeeStatutoryMy.taxNumber,bankAccountNo:schema.employeeStatutoryMy.bankAccountNo}).from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,subject.personId)).for('share',{noWait:true});
       const findings=await tx.select({detectorId:schema.payrollAnomalyFinding.detectorId}).from(schema.payrollAnomalyFinding).where(eq(schema.payrollAnomalyFinding.verdictId,row.id)).for('share');
-      const gaps=gapsForRecord({ic:null,passport:null,taxNumber:null,epfNumber:null,socsoNumber:null,bankAccountNo:null,...profile,paymentMethod:subject.paymentMethod,hasComp:true});
+      const gaps=gapsForRecord({ic:null,passport:null,epfNumber:null,socsoNumber:null,taxNumber:profile?.taxNumber??null,bankAccountNo:profile?.bankAccountNo??null,paymentMethod:subject.paymentMethod,hasComp:true});
       if(!allFixedUpstreamFindingsClear(findings.map(f=>f.detectorId),gaps))throw new Error('Anomaly causes are not all fixed.');
     }
 

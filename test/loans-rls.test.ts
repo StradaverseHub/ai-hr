@@ -103,7 +103,7 @@ describe('ADR-0060 — loan RLS + service authority', () => {
   it('RLS itself blocks a loan SUBJECT (non-admin) from writing their own loan/repayment rows, but allows SELECT', async () => {
     // The subject employee is non-admin. Under RLS, can_see_employment is TRUE for self, so the OLD policy
     // (WITH CHECK = can_see_employment) would let the subject INSERT/UPDATE/DELETE their own rows directly
-    // — bypassing the service layer. The fix makes WITH CHECK = can_admin_employment (admin-only writes),
+    // — bypassing the service layer. INSERT/UPDATE use WITH CHECK = can_admin_employment; DELETE uses its restrictive authority policy,
     // while USING stays can_see_employment so the subject can still READ their loan. This test exercises RLS
     // directly (not the service guard) to prove the DB backstop.
     const a = adminCtx(base);
@@ -148,12 +148,10 @@ describe('ADR-0060 — loan RLS + service authority', () => {
       ),
     ).rejects.toThrow();
 
-    // DELETE — the subject CANNOT delete their own loan row under RLS.
-    await expect(
-      withTenant(subjectCtx, (tx) =>
-        tx.delete(schema.employeeLoan).where(eq(schema.employeeLoan.id, loanId)),
-      ),
-    ).rejects.toThrow();
+    // DELETE has a restrictive USING predicate, so denial filters the target instead of throwing.
+    // Assert the actual permission result and retained row, not an unrelated child foreign-key error.
+    expect(await withTenant(subjectCtx,tx=>tx.delete(schema.employeeLoan).where(eq(schema.employeeLoan.id,loanId)).returning({id:schema.employeeLoan.id}))).toEqual([]);
+    expect(await withTenant(subjectCtx,tx=>tx.select({id:schema.employeeLoan.id}).from(schema.employeeLoan).where(eq(schema.employeeLoan.id,loanId)))).toEqual([{id:loanId}]);
 
     // UPDATE on a repayment row is likewise blocked.
     await expect(

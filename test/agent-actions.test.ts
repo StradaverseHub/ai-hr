@@ -126,7 +126,7 @@ describe('ADR-0083 §2.5 — the action layer', () => {
     const f = await flagged({withBank:true});
     if(detectorId==='missing-tax-profile') await owner.db.update(schema.employeeStatutoryMy).set({taxNumber:null}).where(eq(schema.employeeStatutoryMy.personId,f.personId));
     // The historical action requires a tax number; the detector itself checks profile existence and emits REVIEW.
-    await owner.db.insert(schema.payrollAnomalyFinding).values({tenantId:base.tenantId,verdictId:f.verdictId,detectorId,severity:detectorId==='missing-tax-profile'?'review':'block',facts:{},sourceEventIds:[],suggestedAction:'review'} as never);
+    await owner.db.insert(schema.payrollAnomalyFinding).values({tenantId:base.tenantId,verdictId:f.verdictId,detectorId,severity:['missing-tax-profile','net-swing'].includes(detectorId)?'review':'block',facts:{},sourceEventIds:[],suggestedAction:'review'} as never);
     expect((await proposeActions(adminCtx(base))).flatMap(p=>p.subjects).map(s=>s.verdictId)).not.toContain(f.verdictId);
     expect(await executeAction(adminCtx(base),{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]})).toEqual({closed:0,stale:1});
     const [stored]=await owner.db.select().from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.id,f.verdictId));
@@ -136,7 +136,7 @@ describe('ADR-0083 §2.5 — the action layer', () => {
 
   it('closes a whole verdict only when both supported causes are fixed and removes its actual block',async()=>{
     const f=await flagged({withBank:true});
-    await owner.db.insert(schema.payrollAnomalyFinding).values({tenantId:base.tenantId,verdictId:f.verdictId,detectorId:'missing-tax-profile',severity:'block',facts:{},sourceEventIds:[],suggestedAction:'review'} as never);
+    await owner.db.insert(schema.payrollAnomalyFinding).values({tenantId:base.tenantId,verdictId:f.verdictId,detectorId:'missing-tax-profile',severity:'review',facts:{},sourceEventIds:[],suggestedAction:'review'} as never);
     expect(await withTenant(adminCtx(base),tx=>openBlockingVerdicts(tx,f.batchId))).toHaveLength(1);
     expect(await executeAction(adminCtx(base),{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]})).toEqual({closed:1,stale:0});
     expect(await withTenant(adminCtx(base),tx=>openBlockingVerdicts(tx,f.batchId))).toEqual([]);

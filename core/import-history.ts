@@ -61,9 +61,15 @@ export async function createImportAttemptTx<P extends ImportPlanBase>(tx:Tx,ctx:
 
 export type ImportAttemptRow=typeof attempt.$inferSelect;
 /** Fixed all-company accessor; ordinary column SELECT never exposes source bytes or full plans. */
-async function privateImportAttemptTx(tx:Tx,attemptId:string){
- const [row]=await tx.select(getTableColumns(attempt)).from(sql`app.import_attempt_private(${attemptId}::uuid) as import_attempt`);
- return row;
+async function privateImportAttemptTx(tx:Tx,attemptId:string):Promise<ImportAttemptRow|undefined>{
+ // Fixed projection: SQL function rows are not physical Drizzle table sources. Preserve native
+ // bytea decoding and camel-case fields without casting a query builder's invalid table binding.
+ const [row]=await tx.execute<Omit<ImportAttemptRow,'createdAt'>&{createdAt:Date|string}>(sql`
+  select id,tenant_id as "tenantId",kind,created_by as "createdBy",operation_key as "operationKey",
+   source_name as "sourceName",mime_type as "mimeType",source_hash as "sourceHash",
+   source_content as "sourceContent",company_ids as "companyIds",plan,created_at as "createdAt"
+  from app.import_attempt_private(${attemptId}::uuid)`);
+ return row?{...row,createdAt:new Date(row.createdAt)}:undefined;
 }
 
 /** Locks the attempt for confirm/revert. The row is immutable; FOR UPDATE only serializes writers. */
@@ -150,7 +156,9 @@ export async function importAttemptSource(ctx:SessionContext,id:string){
  if(!uuid.test(id))return null;
  return withTenant(ctx,async tx=>{
   await principalTx(tx,ctx);if(!await coversTx(tx,id,'view'))return null;
-  const[row]=await tx.select({name:attempt.sourceName,mimeType:attempt.mimeType,content:attempt.sourceContent,sourceHash:attempt.sourceHash}).from(sql`app.import_attempt_private(${id}::uuid) as import_attempt`);return row??null;
+  const[row]=await tx.execute<{name:string;mimeType:string;content:Buffer;sourceHash:string}>(sql`
+   select source_name as name,mime_type as "mimeType",source_content as content,source_hash as "sourceHash"
+   from app.import_attempt_private(${id}::uuid)`);return row??null;
  });
 }
 
