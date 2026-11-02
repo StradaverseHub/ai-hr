@@ -42,7 +42,7 @@ it('keeps only actual current unit membership, with no raw subject access and im
  for(const outsider of [other,manager])expect(await withTenant(outsider.ctx,tx=>tx.select().from(s.rewardEntry).where(eq(s.rewardEntry.unitId,unit)))).toEqual([]);
  // The same saved seat cannot carry this review's history to a different company/BU.
  const [companyB]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional other reward owner'}).returning();
- const [globalBu]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'REWARD-GLOBAL',name:'Fictional global unit',isGlobal:true}).returning();
+ const [globalBu]=await owner.withTenant(root,tx=>tx.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'REWARD-GLOBAL',name:'Fictional global unit',isGlobal:true}).returning());
  for(const change of [
   {companyId:companyB.id,businessUnitId:globalBu.id},
   {businessUnitId:globalBu.id},
