@@ -257,8 +257,8 @@ export async function configureOnehrCycle(ctx:SessionContext,cycleId:string,expe
       if(profile.employmentIds?.length){const selected=await tx.select({id:onehrEmployment.id,companyId:onehrEmployment.companyId}).from(onehrEmployment).where(inArray(onehrEmployment.id,profile.employmentIds));if(selected.length!==new Set(profile.employmentIds).size||profile.companyId&&selected.some(e=>e.companyId!==profile.companyId))throw Error('Profile assignments must use visible native employments in the configured company.');}
     }
     const [existing]=await tx.select().from(onehrCycle).where(eq(onehrCycle.cycleId,cycleId));
-    const [framework]=await tx.execute<{value:'standard'|'onehr'|null}>(sql`select app.performance_cycle_framework(${cycleId}::uuid) as value`);
-    if(!existing&&framework?.value!=='standard')throw Error('OneHR configuration source unavailable.');
+    const [frameworkIdentity]=await tx.execute<{value:'standard'|'onehr'|null}>(sql`select app.performance_cycle_framework(${cycleId}::uuid) as value`);
+    if(!existing&&frameworkIdentity?.value!=='standard')throw Error('OneHR configuration source unavailable.');
     await requireSetupAction(tx,cycleId,existing?'edit':'add');
     if(raw!=null)await publishAssessmentCatalogueTx(tx,ctx,cycleId,existing?policySchema.parse(existing.policy):defaultPolicy(framework),policy);
     if(existing){revision(existing.revision,expected!);await tx.update(onehrCycle).set({policy,revision:existing.revision+1}).where(eq(onehrCycle.cycleId,cycleId));}

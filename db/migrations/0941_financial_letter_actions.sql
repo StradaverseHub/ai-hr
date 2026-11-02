@@ -3379,8 +3379,8 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_
 DECLARE plan public.performance_onehr_plan%ROWTYPE;review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;wanted_review uuid;next_status text;next_held_on date;next_ack timestamptz;
 BEGIN
  IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR plan actor unavailable' USING ERRCODE='42501';END IF;
- IF comment IS NULL OR conversation IS NULL OR close_plan IS NULL OR held_supplied IS NULL OR char_length(btrim(comment))>4000 OR char_length(btrim(conversation))>4000
- OR cardinality(regexp_split_to_array(btrim(comment),'[[:space:]]+'))>220 THEN RAISE EXCEPTION 'Invalid plan review text' USING ERRCODE='22023';END IF;
+ IF comment IS NULL OR conversation IS NULL OR close_plan IS NULL OR held_supplied IS NULL OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(comment))>4000 OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(conversation))>4000
+ OR app.financial_onehr_js_words(comment)>220 THEN RAISE EXCEPTION 'Invalid plan review text' USING ERRCODE='22023';END IF;
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO plan FROM public.performance_onehr_plan actual WHERE actual.id=wanted_plan AND actual.tenant_id=app.current_tenant_id();
  IF plan.id IS NULL THEN RAISE EXCEPTION 'Plan not found' USING ERRCODE='42501';END IF;
@@ -3390,7 +3390,7 @@ BEGIN
  SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
  SELECT * INTO plan FROM public.performance_onehr_plan actual WHERE actual.id=wanted_plan AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
  IF review.review_id IS NULL OR plan.id IS NULL OR review.employment_id IS DISTINCT FROM plan.employment_id
- OR plan.plan_year IS DISTINCT FROM extract(year from cycle.period_end)::integer+CASE WHEN policy->>'kind'='year_end' THEN 1 ELSE 0 END
+ OR plan.plan_year IS DISTINCT FROM (extract(year from cycle.period_end)::integer+CASE WHEN policy->>'kind'='year_end' THEN 1 ELSE 0 END)
  OR app.onehr_self_employment(plan.employment_id) OR NOT (app.onehr_effective_reviewer(review.review_id) OR app.onehr_moderator(review.review_id))
  OR NOT app.onehr_review_task_view(review.review_id,'assigned') OR NOT app.function_action_allowed('performance.onehr.assignedReview','edit',review.company_id)
  THEN RAISE EXCEPTION 'Plan review not assigned to you' USING ERRCODE='42501';END IF;
@@ -3424,7 +3424,7 @@ DECLARE review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle
 BEGIN
  IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR competency actor unavailable' USING ERRCODE='42501';END IF;
  IF manager_course IS NULL OR overall_remark IS NULL OR jsonb_typeof(answers) IS DISTINCT FROM 'object' OR jsonb_typeof(sections) IS DISTINCT FROM 'object'
- OR char_length(btrim(overall_remark))>4000 OR cardinality(regexp_split_to_array(btrim(overall_remark),'[[:space:]]+'))>220 THEN RAISE EXCEPTION 'Invalid competency submission' USING ERRCODE='22023';END IF;
+ OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(overall_remark))>4000 OR app.financial_onehr_js_words(overall_remark)>220 THEN RAISE EXCEPTION 'Invalid competency submission' USING ERRCODE='22023';END IF;
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
  SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
@@ -3441,18 +3441,19 @@ BEGIN
  IF policy->'windows'->cell->>'opensAt' IS NOT NULL AND now()<(policy->'windows'->cell->>'opensAt')::timestamptz
  OR policy->'windows'->cell->>'closesAt' IS NOT NULL AND now()>=(policy->'windows'->cell->>'closesAt')::timestamptz THEN RAISE EXCEPTION 'This step is closed' USING ERRCODE='42501';END IF;
  IF review.competency_status IS DISTINCT FROM (CASE WHEN manager_course THEN 'submitted' ELSE 'pending' END) THEN RAISE EXCEPTION 'Competencies are not awaiting this step.' USING ERRCODE='42501';END IF;
- IF NOT manager_course AND btrim(overall_remark)='' THEN RAISE EXCEPTION 'Add your overall remark before submitting.' USING ERRCODE='22023';END IF;
+ IF NOT manager_course AND app.financial_onehr_js_trim(overall_remark)='' THEN RAISE EXCEPTION 'Add your overall remark before submitting.' USING ERRCODE='22023';END IF;
  IF (SELECT count(*) FROM jsonb_object_keys(answers))<>jsonb_array_length(review.competencies)
  OR EXISTS(SELECT 1 FROM jsonb_array_elements(review.competencies) competency WHERE NOT (answers ? (competency->>'id')))
  OR EXISTS(SELECT 1 FROM jsonb_each(answers) answer WHERE jsonb_typeof(answer.value) IS DISTINCT FROM 'object' OR answer.value-ARRAY['answer','remark']<>'{}'::jsonb
-  OR answer.value->>'answer' NOT IN ('yes','no') OR answer.value->>'answer' IS NULL OR jsonb_typeof(answer.value->'remark') IS DISTINCT FROM 'string' OR char_length(answer.value->>'remark')>4000)
- OR EXISTS(SELECT 1 FROM jsonb_each(sections) section WHERE jsonb_typeof(section.value) IS DISTINCT FROM 'string' OR char_length(section.value#>>'{}')>4000
+  OR answer.value->>'answer' NOT IN ('yes','no') OR answer.value->>'answer' IS NULL OR jsonb_typeof(answer.value->'remark') IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(answer.value->>'remark'))>4000)
+ OR EXISTS(SELECT 1 FROM jsonb_each(sections) section WHERE jsonb_typeof(section.value) IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(section.value#>>'{}'))>4000 OR app.financial_onehr_utf16_length(section.key) NOT BETWEEN 1 AND 200 OR section.key IS DISTINCT FROM app.financial_onehr_js_trim(section.key)
   OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(review.competencies) competency WHERE competency->>'principle'=section.key))
  THEN RAISE EXCEPTION 'Use only complete assigned competency answers and sections' USING ERRCODE='22023';END IF;
  IF manager_course AND EXISTS(SELECT 1 FROM jsonb_array_elements(review.competencies) competency
- WHERE answers->(competency->>'id')->>'answer' IS DISTINCT FROM competency->>'self' AND btrim(answers->(competency->>'id')->>'remark')='') THEN RAISE EXCEPTION 'Explain changed competency answers.' USING ERRCODE='22023';END IF;
- SELECT jsonb_agg(competency||CASE WHEN manager_course THEN jsonb_build_object('manager',answers->(competency->>'id')->'answer','managerRemark',answers->(competency->>'id')->'remark')
- ELSE jsonb_build_object('self',answers->(competency->>'id')->'answer','selfRemark',answers->(competency->>'id')->'remark') END ORDER BY position)
+ WHERE answers->(competency->>'id')->>'answer' IS DISTINCT FROM competency->>'self' AND app.financial_onehr_js_trim(answers->(competency->>'id')->>'remark')='') THEN RAISE EXCEPTION 'Explain changed competency answers.' USING ERRCODE='22023';END IF;
+ SELECT coalesce(jsonb_object_agg(section.key,to_jsonb(app.financial_onehr_js_trim(section.value#>>'{}'))),'{}'::jsonb) INTO sections FROM jsonb_each(sections) section;
+ SELECT jsonb_agg(competency||CASE WHEN manager_course THEN jsonb_build_object('manager',answers->(competency->>'id')->'answer','managerRemark',app.financial_onehr_js_trim(answers->(competency->>'id')->>'remark'))
+ ELSE jsonb_build_object('self',answers->(competency->>'id')->'answer','selfRemark',app.financial_onehr_js_trim(answers->(competency->>'id')->>'remark')) END ORDER BY position)
  INTO next_competencies FROM jsonb_array_elements(review.competencies) WITH ORDINALITY source(competency,position);
  DELETE FROM public.performance_assessment_draft draft WHERE draft.tenant_id=review.tenant_id AND draft.review_id=wanted_review AND draft.actor_user_id=app.current_user_id()
  AND draft.context_id=wanted_review AND draft.kind=CASE WHEN manager_course THEN 'competency_manager' ELSE 'competency_self' END;
@@ -3512,7 +3513,7 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_
 DECLARE review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;choices jsonb;own_ids uuid[];actionable uuid[]:='{}';next_kpis jsonb:='[]';kpi jsonb;chain jsonb;approvals jsonb;next_employment uuid;pending integer;acts boolean;live uuid[];stamp text:=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
 BEGIN
  IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR scorecard actor unavailable' USING ERRCODE='42501';END IF;
- IF approve IS NULL OR remark IS NULL OR char_length(btrim(remark))>4000 OR NOT approve AND btrim(remark)='' THEN RAISE EXCEPTION 'Explain what needs changing.' USING ERRCODE='22023';END IF;
+ IF approve IS NULL OR remark IS NULL OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(remark))>4000 OR NOT approve AND app.financial_onehr_js_trim(remark)='' THEN RAISE EXCEPTION 'Explain what needs changing.' USING ERRCODE='22023';END IF;
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
  SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
@@ -3617,8 +3618,8 @@ BEGIN
  IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR plan actor unavailable' USING ERRCODE='42501';END IF;
  IF jsonb_typeof(patch) IS DISTINCT FROM 'object' OR patch-ARRAY['area','dueOn','onJob','fromOthers','formalLearning','managerComment']<>'{}'::jsonb
  OR NOT (patch ?& ARRAY['area','dueOn','onJob','fromOthers','formalLearning','managerComment'])
- OR EXISTS(SELECT 1 FROM jsonb_each(patch) field WHERE jsonb_typeof(field.value) IS DISTINCT FROM 'string' OR char_length(field.value#>>'{}')>(CASE WHEN field.key='area' THEN 300 WHEN field.key='dueOn' THEN 10 ELSE 4000 END))
- OR btrim(patch->>'area')='' OR (patch->>'dueOn'<>'' AND patch->>'dueOn' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') THEN RAISE EXCEPTION 'Invalid development goal fields' USING ERRCODE='22023';END IF;
+ OR EXISTS(SELECT 1 FROM jsonb_each(patch) field WHERE jsonb_typeof(field.value) IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(CASE WHEN field.key='dueOn' THEN field.value#>>'{}' ELSE app.financial_onehr_js_trim(field.value#>>'{}') END)>(CASE WHEN field.key='area' THEN 300 WHEN field.key='dueOn' THEN 10 ELSE 4000 END))
+ OR app.financial_onehr_js_trim(patch->>'area')='' OR (patch->>'dueOn'<>'' AND patch->>'dueOn' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') THEN RAISE EXCEPTION 'Invalid development goal fields' USING ERRCODE='22023';END IF;
  IF patch->>'dueOn'<>'' THEN PERFORM (patch->>'dueOn')::date;END IF;
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
@@ -3626,7 +3627,7 @@ BEGIN
  SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
  SELECT * INTO plan FROM public.performance_onehr_plan actual WHERE actual.id=wanted_plan AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
  IF review.review_id IS NULL OR plan.id IS NULL OR review.employment_id IS DISTINCT FROM plan.employment_id
- OR plan.plan_year IS DISTINCT FROM extract(year from cycle.period_end)::integer+CASE WHEN policy->>'kind'='year_end' THEN 1 ELSE 0 END
+ OR plan.plan_year IS DISTINCT FROM (extract(year from cycle.period_end)::integer+CASE WHEN policy->>'kind'='year_end' THEN 1 ELSE 0 END)
  OR app.onehr_self_employment(review.employment_id) OR NOT (app.onehr_effective_reviewer(wanted_review) OR app.onehr_moderator(wanted_review))
  OR NOT app.onehr_review_task_view(wanted_review,'assigned') OR NOT app.function_action_allowed('performance.onehr.assignedReview','edit',review.company_id)
  THEN RAISE EXCEPTION 'Only the assigned KPI reviewer may edit a shared development goal.' USING ERRCODE='42501';END IF;
@@ -3638,6 +3639,7 @@ BEGIN
  SELECT goal INTO previous FROM jsonb_array_elements(plan.goals) WITH ORDINALITY source(goal,position) WHERE goal->>'id'=wanted_goal::text ORDER BY position LIMIT 1;
  IF previous IS NULL THEN RAISE EXCEPTION 'Goal not found.' USING ERRCODE='42501';END IF;
  SELECT person.full_name INTO editor_name FROM public.app_user account JOIN public.person person ON person.id=account.person_id AND person.tenant_id=account.tenant_id WHERE account.id=app.current_user_id() AND account.tenant_id=review.tenant_id;
+ SELECT jsonb_object_agg(field.key,CASE WHEN field.key='dueOn' THEN field.value ELSE to_jsonb(app.financial_onehr_js_trim(field.value#>>'{}')) END) INTO patch FROM jsonb_each(patch) field;
  next_goal:=previous||patch||jsonb_build_object('editedByName',coalesce(editor_name,''),'editedAt',stamp);
  SELECT jsonb_agg(CASE WHEN goal->>'id'=wanted_goal::text THEN next_goal ELSE goal END ORDER BY position) INTO next_goals FROM jsonb_array_elements(plan.goals) WITH ORDINALITY source(goal,position);
  UPDATE public.performance_onehr_plan actual SET goals=next_goals,revision=plan.revision+1 WHERE actual.id=wanted_plan AND actual.tenant_id=review.tenant_id;
@@ -3732,7 +3734,7 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_
 DECLARE review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;profile public.performance_assessment_career_profile%ROWTYPE;next_revision integer;
 BEGIN
  IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR career actor unavailable' USING ERRCODE='42501';END IF;
- IF comment IS NULL OR char_length(btrim(comment))>4000 THEN RAISE EXCEPTION 'Invalid career comment' USING ERRCODE='22023';END IF;
+ IF comment IS NULL OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(comment))>4000 THEN RAISE EXCEPTION 'Invalid career comment' USING ERRCODE='22023';END IF;
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
  SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
@@ -3858,3 +3860,27 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_reminder_email_enqueue(uuid,bigint) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_reminder_email_enqueue(uuid,bigint) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Match the existing JS/Zod text contract at the finite SQL boundary: UTF-16
+-- units and ECMAScript whitespace, rather than database codepoints/locale classes.
+CREATE FUNCTION app.financial_onehr_js_space() RETURNS text
+LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT U&'\0009\000A\000B\000C\000D\0020\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF';
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_js_space() FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_js_trim(text_value text) RETURNS text
+LANGUAGE sql IMMUTABLE STRICT SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT btrim(text_value,app.financial_onehr_js_space());
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_js_trim(text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_utf16_length(text_value text) RETURNS integer
+LANGUAGE sql IMMUTABLE STRICT SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT char_length(text_value)+coalesce((SELECT sum(CASE WHEN char_length(point)=0 THEN 0 WHEN ascii(point)>65535 THEN 1 ELSE 0 END)::integer FROM regexp_split_to_table(text_value,'') point),0);
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_utf16_length(text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_js_words(text_value text) RETURNS integer
+LANGUAGE sql IMMUTABLE STRICT SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.financial_onehr_js_trim(text_value)='' THEN 0 ELSE cardinality(regexp_split_to_array(app.financial_onehr_js_trim(text_value),'['||app.financial_onehr_js_space()||']+')) END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_js_words(text) FROM PUBLIC,ai_hr_app;
