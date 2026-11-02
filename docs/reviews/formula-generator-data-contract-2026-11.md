@@ -10,6 +10,9 @@ and [exact review packet](board-nine-source-binding-2026-11.md). The source-owne
 that decision; a generated digest or automated test alone grants no approval. Deployment, authenticated
 acceptance and agent promotion remain separate. Changed covered source invalidates this binding.
 
+Current same-purpose technical source renewal after the causal repairs is recorded in
+[the repair binding](board-nine-repair-source-binding-2026-11.md); it adds no outgoing fields or purpose.
+
 ## Exact outgoing content
 
 The new contract serves the existing `pay_rule_draft` AI feature, through the current tenant configuration, gateway, budgets and provider authorization. Its only native input is a trimmed user-authored requirement of 1–4,000 characters and an explicit disclosure acceptance. Extra input keys are refused.

@@ -1,5 +1,8 @@
 # Nine-item BOARD source-binding review packet
 
+Current causal-repair technical binding: [exact repair packet](board-nine-repair-source-binding-2026-11.md).
+The cf1ee/8a2 values below retain the original human-reviewed checkpoint and are not the latest repair identity.
+
 Status: both provider decisions below were explicitly approved by the human owner on3NovemberMYT;
 [the actual decision record](ai-provider-owner-approval-2026-10.md#board-nine-source-binding) binds
 reviewed code `90d737e288e5b59848c645a92e81ddba65a86514` and the exact provider digest. The proposal
