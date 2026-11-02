@@ -1027,6 +1027,18 @@ regular Personnel writes and runtime proof minting gain no authority. This sourc
 native activation/discard plus 0944 exact derived-case qualification before any completion claim.
 
 
+0944's SAVE consumer derives only the native source/sync metadata/history and private-field split
+from an actual same-TX canonical Draft save. Its private physical effect context repeats actor,
+authority stamp, current/proposed Draft data scope and the actual Onboarding audit. Repeated saves
+may reach the final actual image only through that Draft's recorded OLD→NEW chain. Combined
+activation/discard closes through the canonical completed source APIs; a discard intent alone is
+insufficient. The source port returns only whether it handled the save and the effect's identifiers.
+The shared private source owner also admits ACTIVE only through the exact canonical hire receipt
+and binds final completion to the same employment/person and consumed source. It calls the existing
+joiner/manager task-actor resolver; group tasks and completed tasks retain their native semantics.
+Refresh/backfill and independent DISCARD cancellation remain their existing native owners; those
+finite ports, raw write closure and family publication remain unfinished. This source and its positive/rollback tests require genuine hosted qualification.
+
 ### Profile-change queue maintenance (unapplied source)
 
 0939 registers the company-scoped `profileChanges.maintenance` View/Edit purpose separately from
