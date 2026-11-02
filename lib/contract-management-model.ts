@@ -37,7 +37,7 @@ export function contractCents(value:string):bigint{
 }
 export function parseContractAmount(value:string):string{
   if(!/^(0|[1-9]\d{0,10})(\.\d{1,2})?$/.test(value))refuse('Enter a valid RM amount with no more than two decimal places.');
-  const [whole,fraction='']=value.split('.');return (BigInt(whole)*100n+BigInt(fraction.padEnd(2,'0'))).toString();
+  const [whole,fraction='']=value.split('.');return (BigInt(whole)*BigInt(100)+BigInt(fraction.padEnd(2,'0'))).toString();
 }
 export function contractPayChanged(term:ContractTerm,decision:ContractDecision):boolean{return contractCents(term.salaryCents)!==contractCents(decision.salaryCents)||contractCents(term.allowanceCents)!==contractCents(decision.allowanceCents);}
 export function contractRenewalDates(endOn:string,months:number,minimum=3):{startOn:string;endOn:string}{
