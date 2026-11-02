@@ -2472,6 +2472,9 @@ export async function previewMileageClaim(
  *  write (see submitClaimWithAttachment). The date-format guard runs before the tx opens in the public
  *  wrappers; everything that touches the DB lives here so a downstream failure rolls the claim back too. */
 async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): Promise<{ id: string }> {
+  await tx.execute(sql`select app.claim_command_lock()`);
+  const [source]=await tx.execute<{own:boolean;allowed:boolean}>(sql`select app.claim_subject_is_own(${p.employmentId}::uuid) as own,app.claim_nonself_submit_allowed(${p.employmentId}::uuid) as allowed`);
+  if(source?.own!==true&&source?.allowed!==true)throw new ClaimError('Nonself claim submission unavailable');
   const { amount, quantityKm, claimItemId, taxable, mileageStamp, fieldValues } = await priceAndCheckClaimTx(tx, ctx, p);
 
   // Insert with the dependent item, mileage km, and computed amount — still inside the limit lock taken by
@@ -2598,6 +2601,7 @@ export async function decideClaimTx(
   ctx: SessionContext,
   p: { claimRequestId: string; decision: 'approve' | 'reject'; taxable?: boolean; deciderEmploymentId?: string | null; rejectReason?: string | null },
 ): Promise<{ eventId: string; employmentId: string; status: 'approved' | 'rejected' }> {
+  await tx.execute(sql`select app.claim_command_lock()`);
   const rejectReason = p.rejectReason?.trim() || null;
   {
     // Unlocked peek, ONLY to learn which (employee × type) lock this claim belongs to. Nothing is decided
@@ -2614,6 +2618,8 @@ export async function decideClaimTx(
     if (!claim) throw new ClaimError('Claim not found');
     if (claim.status !== 'pending') throw new ClaimError('Only a pending claim can be decided');
     await assertCanDecide(tx, ctx, claim.employmentId, 'claim', scopeOf('claims.claim'));
+    const [admission]=await tx.execute<{allowed:boolean}>(sql`select app.claim_decision_allowed(${claim.employmentId}::uuid) as allowed`);
+    if(admission?.allowed!==true)throw new ClaimError('Claim decision unavailable');
 
     if (p.decision === 'approve') {
       const taxable = p.taxable ?? claim.taxable;
@@ -3305,6 +3311,8 @@ export type ClaimRow = {
   employeeCode: string | null;
   personId: string | null;
   attachments: { id: string; fileName: string; sizeBytes: number }[];
+  /** Actual purpose-bound native decision projection for pending approval rows. */
+  canDecide?:boolean;
 };
 
 function rowSelect(delegated=false) {
@@ -3450,7 +3458,7 @@ export async function ownClaimStatuses(ctx: SessionContext, limit: number, exist
 export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:string}={}): Promise<ClaimRow[]> {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
-      .select(rowSelect(true))
+      .select({...rowSelect(true),canDecide:sql<boolean>`app.claim_decision_allowed(${claimRequest.employmentId})`})
       .from(claimRequest)
       .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
       // LEFT join: zero-item / legacy claims must still appear in the approvals inbox.
@@ -3461,7 +3469,7 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
     // R51 (baf56348): trim delegation-routed rows whose subject is outside the delegation's org coverage.
     const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId,r=>({kind:'claims.claim',id:r.id}));
     const atts = await attachmentsByClaim(tx, scoped.map((r) => r.id));
-    return scoped.map((r) => toRow(r, atts));
+    return scoped.map((r) => ({...toRow(r, atts),canDecide:r.canDecide}));
   });
 }
 
@@ -3788,7 +3796,7 @@ export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly
    const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId}).from(claimRequest)
     .where(and(inArray(claimRequest.id,ids.slice(offset,offset+1000)),eq(claimRequest.status,'pending'))).orderBy(claimRequest.id);
    for(const row of rows){
-    try{await assertCanDecide(tx,ctx,row.employmentId,'claim',scopeOf('claims.claim'));result.push(row.id);}
+    try{await assertCanDecide(tx,ctx,row.employmentId,'claim',scopeOf('claims.claim'));const [source]=await tx.execute<{allowed:boolean}>(sql`select app.claim_decision_allowed(${row.employmentId}::uuid) as allowed`);if(source?.allowed===true)result.push(row.id);}
     catch(error){if(!isApprovalDecisionRefusal(error,'claim'))throw error;}
    }
   }

@@ -851,3 +851,289 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.claim_own_receipt_present(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.claim_own_receipt_present(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Nonself native visibility is wider than HR. Reuse the canonical recursive/HOD graph owners;
+-- administrative data profiles still narrow this course. Assigned decisions are a separate source.
+CREATE FUNCTION app.claim_related_subject_for(t uuid,u uuid,subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user actor ON actor.tenant_id=e.tenant_id
+ WHERE e.id=subject AND e.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(u)
+ AND actor.person_id IS DISTINCT FROM e.person_id AND app.data_permission_matches_for(u,t,e.id)
+ AND EXISTS(SELECT 1 FROM public.employment manager WHERE manager.tenant_id=t AND manager.person_id=actor.person_id AND manager.terminated_on IS NULL
+  AND (app.is_admin_report_of(e.id,manager.id) OR app.heads_department_of(e.id,manager.id))));
+$$;
+CREATE FUNCTION app.claim_related_decision_for(t uuid,u uuid,subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.claim_related_subject_for(t,u,subject) AND EXISTS(SELECT 1 FROM public.role_assignment assignment WHERE assignment.tenant_id=t AND assignment.app_user_id=u AND assignment.role::text IN ('hr_admin','super_admin'));
+$$;
+REVOKE ALL ON FUNCTION app.claim_related_decision_for(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.claim_admin_subject_for(t uuid,u uuid,subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=subject AND e.tenant_id=t AND app.module_action_legacy_allowed(t,u,'claims.view',e.company_id) AND app.data_permission_matches_for(u,t,e.id));
+$$;
+CREATE FUNCTION app.claim_assigned_subject_for(t uuid,u uuid,subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user actor ON actor.tenant_id=e.tenant_id
+ WHERE e.id=subject AND e.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(u) AND actor.person_id IS NOT NULL AND actor.person_id<>e.person_id
+ AND (EXISTS(SELECT 1 FROM public.reporting_line line JOIN public.employment manager ON manager.id=line.manager_employment_id AND manager.tenant_id=line.tenant_id
+  WHERE line.tenant_id=t AND line.subordinate_employment_id=e.id AND line.line_type='administrative' AND line.superseded_at IS NULL AND line.valid_from<=current_date AND (line.valid_to IS NULL OR line.valid_to>current_date) AND manager.person_id=actor.person_id)
+ OR EXISTS(SELECT 1 FROM public.reporting_line adm JOIN public.reporting_line delegation ON delegation.subordinate_employment_id=adm.manager_employment_id AND delegation.tenant_id=adm.tenant_id
+  JOIN public.employment delegate ON delegate.id=delegation.manager_employment_id AND delegate.tenant_id=delegation.tenant_id
+  WHERE adm.tenant_id=t AND adm.subordinate_employment_id=e.id AND adm.line_type='administrative' AND adm.superseded_at IS NULL AND adm.valid_from<=current_date AND (adm.valid_to IS NULL OR adm.valid_to>current_date)
+  AND delegate.person_id=actor.person_id AND app.delegation_line_covers(delegation.id,e.id,'claims','claims.claim'))));
+$$;
+REVOKE ALL ON FUNCTION app.claim_related_subject_for(uuid,uuid,uuid),app.claim_admin_subject_for(uuid,uuid,uuid),app.claim_assigned_subject_for(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- The existing self-super exception is a privileged own course, not ordinary self-approval.
+CREATE FUNCTION app.claim_self_decision_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap IN ('function.claims.selfDecision.view','function.claims.selfDecision.approve') AND co IS NOT NULL
+ AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user actor ON actor.tenant_id=e.tenant_id AND actor.person_id=e.person_id
+ JOIN public.role_assignment assignment ON assignment.tenant_id=actor.tenant_id AND assignment.app_user_id=actor.id
+ WHERE e.tenant_id=t AND e.company_id=co AND e.voided_at IS NULL AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(u) AND assignment.role::text='super_admin' AND app.data_permission_matches_for(u,t,e.id));
+$$;
+CREATE FUNCTION app.claim_self_decision_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
+ AND coalesce(current_setting('app.roles',true),'')~'(^|,)super_admin(,|$)' AND app.claim_self_decision_native_allowed(t,u,cap,co);
+$$;
+REVOKE ALL ON FUNCTION app.claim_self_decision_native_allowed(uuid,uuid,text,uuid),app.claim_self_decision_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','approve'] LOOP
+  PERFORM app.register_function_action('claims.selfDecision',operation,'company',NULL,'app.claim_self_decision_current_native_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"own","employeeBearing":true}');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.claim_self_decision_allowed(subject uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','approve') AND app.claim_subject_is_own(subject) AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=subject AND e.tenant_id=app.current_tenant_id()
+ AND app.claim_self_decision_current_native_allowed(e.tenant_id,app.current_user_id(),'function.claims.selfDecision.'||p_operation,e.company_id) AND app.function_action_allowed('claims.selfDecision','view',e.company_id) AND app.function_action_allowed('claims.selfDecision',p_operation,e.company_id));
+$$;
+REVOKE ALL ON FUNCTION app.claim_self_decision_allowed(uuid,text) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_nonself_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT co IS NOT NULL AND EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=t AND e.company_id=co AND CASE
+ WHEN cap IN ('function.claims.related.view','function.claims.related.execute') THEN app.claim_related_subject_for(t,u,e.id)
+ WHEN cap='function.claims.related.approve' THEN app.claim_related_decision_for(t,u,e.id)
+ WHEN cap IN ('function.claims.assigned.view','function.claims.assigned.approve') THEN app.claim_assigned_subject_for(t,u,e.id) AND EXISTS(SELECT 1 FROM public.claim_request request WHERE request.employment_id=e.id AND request.tenant_id=t AND request.status::text<>'draft')
+ ELSE false END);
+$$;
+CREATE FUNCTION app.claim_nonself_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.claim_nonself_native_allowed(t,u,cap,co)
+ AND EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=t AND e.company_id=co AND CASE
+ WHEN cap IN ('function.claims.related.view','function.claims.related.execute') THEN app.claim_related_subject_for(t,u,e.id) AND app.can_see_employment(e.id)
+ WHEN cap='function.claims.related.approve' THEN app.claim_related_decision_for(t,u,e.id) AND app.can_see_employment(e.id) AND coalesce(current_setting('app.roles',true),'')~'(^|,)(hr_admin|super_admin)(,|$)'
+ WHEN cap IN ('function.claims.assigned.view','function.claims.assigned.approve') THEN app.claim_assigned_subject_for(t,u,e.id) AND EXISTS(SELECT 1 FROM public.claim_request request WHERE request.employment_id=e.id AND request.tenant_id=t AND request.status::text<>'draft')
+ ELSE false END);
+$$;
+REVOKE ALL ON FUNCTION app.claim_nonself_native_allowed(uuid,uuid,text,uuid),app.claim_nonself_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+DO $$ DECLARE key text;operation text;BEGIN
+ FOREACH key IN ARRAY ARRAY['related','assigned'] LOOP
+  FOREACH operation IN ARRAY (CASE key WHEN 'related' THEN ARRAY['view','execute','approve'] ELSE ARRAY['view','approve'] END) LOOP
+   PERFORM app.register_function_action('claims.'||key,operation,'company',NULL,'app.claim_nonself_current_native_allowed',jsonb_build_object('moduleKey','claims','labelKey','claims.title','kind','native_acl','course',CASE key WHEN 'assigned' THEN 'assigned' ELSE 'administrative' END,'employeeBearing',key<>'assigned'));
+  END LOOP;
+ END LOOP;
+ PERFORM app.register_function_action('claims.administration','execute','company','claims.add','app.module_action_delegation_allowed','{}');
+ PERFORM app.register_function_action('claims.administration','approve','company','claims.edit','app.module_action_delegation_allowed','{}');
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_nonself_submit_allowed(subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND NOT app.claim_subject_is_own(subject) AND app.can_see_employment(subject)
+ AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=subject AND e.tenant_id=app.current_tenant_id()
+ AND (app.claim_admin_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.is_admin_for(e.company_id) AND app.module_action_allowed('claims','add',e.company_id) AND app.function_action_allowed('claims.administration','view',e.company_id) AND app.function_action_allowed('claims.administration','execute',e.company_id)
+ OR app.claim_related_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.function_action_allowed('claims.related','view',e.company_id) AND app.function_action_allowed('claims.related','execute',e.company_id)));
+$$;
+CREATE FUNCTION app.claim_decision_allowed(subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=subject AND e.tenant_id=app.current_tenant_id()
+ AND (app.claim_admin_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.is_admin_for(e.company_id) AND NOT app.claim_subject_is_own(e.id) AND app.module_action_allowed('claims','edit',e.company_id) AND app.function_action_allowed('claims.administration','view',e.company_id) AND app.function_action_allowed('claims.administration','approve',e.company_id)
+ OR app.claim_related_decision_for(e.tenant_id,app.current_user_id(),e.id) AND app.can_see_employment(e.id) AND coalesce(current_setting('app.roles',true),'')~'(^|,)(hr_admin|super_admin)(,|$)' AND app.function_action_allowed('claims.related','view',e.company_id) AND app.function_action_allowed('claims.related','approve',e.company_id)
+ OR app.claim_assigned_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.function_action_allowed('claims.assigned','view',e.company_id) AND app.function_action_allowed('claims.assigned','approve',e.company_id) OR app.claim_self_decision_allowed(e.id,'approve')));
+$$;
+REVOKE ALL ON FUNCTION app.claim_nonself_submit_allowed(uuid),app.claim_decision_allowed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_nonself_submit_allowed(uuid),app.claim_decision_allowed(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_source_read_allowed(p_subject uuid,p_status text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ -- RLS supplies the actual row's subject/status. This is a permission predicate, not an ID lookup
+ -- or a new-row existence waiver; no fresh-born source lookup is required by INSERT RETURNING.
+ SELECT p_status IN ('draft','pending','approved','rejected','cancelled','paid') AND app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment e
+ WHERE e.id=p_subject AND e.tenant_id=app.current_tenant_id()
+ AND (app.claim_subject_is_own(e.id) AND app.claim_own_read_allowed(e.id,p_status='draft') OR app.claim_self_decision_allowed(e.id,'view')
+ OR app.claim_admin_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.is_admin_for(e.company_id) AND app.module_action_allowed('claims','view',e.company_id) AND app.function_action_allowed('claims.administration','view',e.company_id)
+ OR app.claim_related_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.can_see_employment(e.id) AND app.function_action_allowed('claims.related','view',e.company_id)
+ OR p_status<>'draft' AND app.claim_assigned_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.function_action_allowed('claims.assigned','view',e.company_id)));
+$$;
+REVOKE ALL ON FUNCTION app.claim_source_read_allowed(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_source_read_allowed(uuid,text) TO ai_hr_app;
+ALTER POLICY claim_own_action_read ON public.claim_request USING(app.claim_source_read_allowed(employment_id,status::text));
+--> statement-breakpoint
+-- Genuine current/pure function defaults retain own, recursive/HOD and assigned courses.
+CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
+$$;
+CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
+$$;
+
+--> statement-breakpoint
+-- Claims commands do not mutate native graph/scope/catalogue inputs. Keep their monotone
+-- source continuity separate from generic control defaults and from ordinary Claim outcomes.
+CREATE TABLE app.claim_native_source_epoch(tenant_id uuid PRIMARY KEY REFERENCES public.tenant(id) ON DELETE CASCADE,epoch bigint NOT NULL DEFAULT 1);
+ALTER TABLE app.claim_native_source_epoch ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.claim_native_source_epoch FROM PUBLIC,ai_hr_app;
+INSERT INTO app.claim_native_source_epoch(tenant_id) SELECT id FROM public.tenant;
+CREATE FUNCTION app.claim_native_source_epoch_bump() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE affected uuid;query text;columns text[]:=string_to_array(coalesce(TG_ARGV[0],''),',');
+BEGIN
+ IF TG_TABLE_NAME='tenant' THEN INSERT INTO app.claim_native_source_epoch(tenant_id) SELECT id FROM new_rows ON CONFLICT DO NOTHING;RETURN NULL;END IF;
+ IF TG_OP='UPDATE' THEN
+  query:='WITH changed AS(SELECT n.tenant_id AS next_tenant,o.tenant_id AS prior_tenant FROM new_rows n FULL JOIN old_rows o USING(id) WHERE '
+   ||CASE WHEN cardinality(columns)>0 THEN 'EXISTS(SELECT 1 FROM unnest($1::text[]) field WHERE to_jsonb(n)->field IS DISTINCT FROM to_jsonb(o)->field)' ELSE '(to_jsonb(n)-''updated_at'') IS DISTINCT FROM (to_jsonb(o)-''updated_at'')' END
+   ||') SELECT next_tenant FROM changed WHERE next_tenant IS NOT NULL UNION SELECT prior_tenant FROM changed WHERE prior_tenant IS NOT NULL';
+ ELSE query:='SELECT DISTINCT tenant_id FROM '||CASE TG_OP WHEN 'INSERT' THEN 'new_rows' ELSE 'old_rows' END;END IF;
+ FOR affected IN EXECUTE query USING columns LOOP
+  INSERT INTO app.claim_native_source_epoch AS current_epoch(tenant_id,epoch) SELECT affected,1 WHERE EXISTS(SELECT 1 FROM public.tenant tenant WHERE tenant.id=affected) ON CONFLICT(tenant_id) DO UPDATE SET epoch=current_epoch.epoch+1;
+ END LOOP;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_native_source_epoch_bump() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER claim_native_epoch_seed AFTER INSERT ON public.tenant REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_epoch_bump();
+CREATE FUNCTION app.claim_native_source_statement_lock() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_tenant_id() IS NOT NULL THEN PERFORM app.access_workforce_write_lock();END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_native_source_statement_lock() FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE relation_name text;columns text;BEGIN
+ FOREACH relation_name IN ARRAY ARRAY['employment','person','assignment','reporting_line','company','department','claim_type','claim_item','claim_policy','claim_form_field','claim_mileage_rate'] LOOP
+  columns:=CASE relation_name WHEN 'person' THEN 'id,tenant_id,nationality,gender,marital_status,voided_at' WHEN 'company' THEN 'id,tenant_id,parent_company_id,archived_at' WHEN 'department' THEN 'id,tenant_id,parent_department_id,company_id,business_unit_id,archived_at' ELSE '' END;
+  EXECUTE format('CREATE TRIGGER claim_native_source_access BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_statement_lock()',relation_name);
+  EXECUTE format('CREATE TRIGGER claim_native_epoch_insert AFTER INSERT ON public.%I REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_epoch_bump(%L)',relation_name,columns);
+  EXECUTE format('CREATE TRIGGER claim_native_epoch_update AFTER UPDATE ON public.%I REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_epoch_bump(%L)',relation_name,columns);
+  EXECUTE format('CREATE TRIGGER claim_native_epoch_delete AFTER DELETE ON public.%I REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_epoch_bump(%L)',relation_name,columns);
+ END LOOP;
+END $$;
+CREATE FUNCTION app.claim_command_authority_stamp() RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.access_function_authority_stamp() IS NOT NULL THEN encode(sha256(convert_to(jsonb_build_array(app.access_function_authority_stamp(),source.epoch)::text,'UTF8')),'hex') END FROM app.claim_native_source_epoch source WHERE source.tenant_id=app.current_tenant_id();
+$$;
+REVOKE ALL ON FUNCTION app.claim_command_authority_stamp() FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.claim_command_lock() RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Claim command principal unavailable' USING ERRCODE='42501';END IF;
+ -- Physical native-source tuple fence refuses an old REPEATABLE READ view after revocation.
+ PERFORM 1 FROM app.claim_native_source_epoch source WHERE source.tenant_id=app.current_tenant_id() FOR SHARE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Claim native source unavailable' USING ERRCODE='42501';END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_command_lock() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_command_lock() TO ai_hr_app;
+CREATE FUNCTION app.claim_command_statement_lock() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_tenant_id() IS NOT NULL AND NOT app.access_workforce_storage_owner() THEN PERFORM app.claim_command_lock();END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_command_statement_lock() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER claim_command_source_lock BEFORE INSERT OR UPDATE ON public.claim_request FOR EACH STATEMENT EXECUTE FUNCTION app.claim_command_statement_lock();
+--> statement-breakpoint
+-- Native command receipts prove the actual admitted queued OLD→NEW, never a posted purpose flag.
+CREATE TABLE app.claim_command_effect(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,claim_id uuid NOT NULL,course text NOT NULL CHECK(course IN ('submit','approve','reject')),before_source jsonb NOT NULL,after_source jsonb NOT NULL,authority_stamp text NOT NULL,born boolean NOT NULL DEFAULT false);
+REVOKE ALL ON app.claim_command_effect FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.claim_own_source_audit_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.aggregate_type='claim-request' AND NEW.event_type IN ('claim-request.draft-saved','claim-request.submitted','claim-request.approved','claim-request.rejected') AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() AND NEW.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() THEN
+  DELETE FROM app.claim_own_source_audit WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+  INSERT INTO app.claim_own_source_audit VALUES(pg_current_xact_id(),NEW.tenant_id,NEW.actor_id,NEW.aggregate_id,NEW.id,NEW.event_type,NEW.payload);
+ END IF;RETURN NULL;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_command_effect_allowed(p_before jsonb,p_after jsonb,p_course text,p_receipt uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.claim_command_effect proof JOIN app.claim_own_source_audit audit ON audit.xact_id=proof.xact_id AND audit.tenant_id=proof.tenant_id AND audit.user_id=proof.user_id AND audit.claim_id=proof.claim_id
+   JOIN public.domain_event event ON event.id=audit.event_id AND event.tenant_id=audit.tenant_id AND event.aggregate_id=proof.claim_id AND event.subject_employment_id=(p_after->>'employment_id')::uuid AND event.actor_type='user' AND event.actor_id=proof.user_id AND event.aggregate_type='claim-request'
+   WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.claim_id=(p_after->>'id')::uuid AND proof.course=p_course AND (p_receipt IS NULL OR proof.id=p_receipt) AND proof.before_source=p_before AND proof.after_source=p_after AND proof.born AND proof.authority_stamp=app.claim_command_authority_stamp()
+   AND event.event_type=CASE p_course WHEN 'submit' THEN 'claim-request.submitted' WHEN 'approve' THEN 'claim-request.approved' ELSE 'claim-request.rejected' END
+   AND CASE p_course WHEN 'submit' THEN event.payload->>'claimTypeId'=p_after->>'claim_type_id' AND event.payload->>'claimItemId' IS NOT DISTINCT FROM p_after->>'claim_item_id' AND event.payload->>'incurredOn'=p_after->>'incurred_on' AND event.payload->>'taxable'=p_after->>'taxable'
+    WHEN 'approve' THEN event.payload->>'taxable'=p_after->>'taxable' AND event.payload->>'payoutMethod'=CASE WHEN p_after->>'taxable'='true' THEN 'payroll' ELSE 'reimbursement' END ELSE true END) AND CASE p_course WHEN 'submit' THEN app.claim_nonself_submit_allowed((p_after->>'employment_id')::uuid) WHEN 'approve' THEN app.claim_decision_allowed((p_after->>'employment_id')::uuid) WHEN 'reject' THEN app.claim_decision_allowed((p_after->>'employment_id')::uuid) ELSE false END;
+$$;
+REVOKE ALL ON FUNCTION app.claim_command_effect_allowed(jsonb,jsonb,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_command_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE wanted_course text;prior jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;proposed jsonb:=to_jsonb(NEW);subject uuid:=NEW.employment_id;admitted boolean;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF TG_OP='INSERT' AND NOT app.claim_subject_is_own(subject) THEN
+  IF NEW.status::text<>'pending' OR NEW.decided_at IS NOT NULL OR NEW.decided_by_employment_id IS NOT NULL OR NEW.payroll_batch_id IS NOT NULL OR NEW.paid_at IS NOT NULL OR NEW.payout_ref IS NOT NULL THEN RAISE EXCEPTION 'Nonself claim creation source unavailable' USING ERRCODE='42501';END IF;
+  wanted_course:='submit';admitted:=app.claim_nonself_submit_allowed(subject);
+ ELSIF TG_OP='UPDATE' AND OLD.status::text='pending' AND NEW.status::text IN ('approved','rejected') THEN
+  IF prior-ARRAY['status','taxable','decided_by_employment_id','decided_at'] IS DISTINCT FROM proposed-ARRAY['status','taxable','decided_by_employment_id','decided_at'] OR NEW.decided_at IS NULL OR NEW.status::text='rejected' AND OLD.taxable IS DISTINCT FROM NEW.taxable OR NEW.decided_by_employment_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.employment decider WHERE decider.id=NEW.decided_by_employment_id AND decider.tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Claim decision fields unavailable' USING ERRCODE='42501';END IF;
+  wanted_course:=CASE NEW.status::text WHEN 'approved' THEN 'approve' ELSE 'reject' END;admitted:=app.claim_decision_allowed(subject);
+ ELSIF TG_OP='UPDATE' AND NOT app.claim_subject_is_own(subject) AND OLD.status::text<>'draft' AND NEW.status=OLD.status
+  AND prior-ARRAY['payroll_batch_id','paid_at','payout_ref'] IS DISTINCT FROM proposed-ARRAY['payroll_batch_id','paid_at','payout_ref'] THEN RAISE EXCEPTION 'Filed claim is immutable' USING ERRCODE='42501';
+ ELSE RETURN NEW;END IF;
+ IF admitted IS NOT TRUE THEN RAISE EXCEPTION 'Claim command unavailable' USING ERRCODE='42501';END IF;
+ IF TG_WHEN='BEFORE' THEN
+  DELETE FROM app.claim_command_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+  INSERT INTO app.claim_command_effect(xact_id,tenant_id,user_id,claim_id,course,before_source,after_source,authority_stamp) VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id,wanted_course,prior,proposed,app.claim_command_authority_stamp());
+ ELSE
+  IF NOT app.claim_command_effect_allowed(prior,proposed,wanted_course)  THEN RAISE EXCEPTION 'Claim command effects incomplete' USING ERRCODE='42501';END IF;
+ END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_command_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER claim_command BEFORE INSERT OR UPDATE ON public.claim_request FOR EACH ROW EXECUTE FUNCTION app.claim_command_guard();
+CREATE CONSTRAINT TRIGGER claim_command_final AFTER INSERT OR UPDATE ON public.claim_request DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_command_guard();
+--> statement-breakpoint
+CREATE FUNCTION app.claim_command_born() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN UPDATE app.claim_command_effect proof SET born=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.claim_id=NEW.id AND proof.before_source=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END AND proof.after_source=to_jsonb(NEW);END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_command_born() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER claim_command_born AFTER INSERT OR UPDATE ON public.claim_request FOR EACH ROW EXECUTE FUNCTION app.claim_command_born();
+--> statement-breakpoint
+-- Only the exact whole-Claim decision gets an assigned write course; no arbitrary field editor.
+CREATE POLICY claim_assigned_command ON public.claim_request FOR UPDATE TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND status::text='pending' AND app.claim_assigned_subject_for(tenant_id,app.current_user_id(),employment_id) AND app.claim_decision_allowed(employment_id))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND status::text IN ('approved','rejected') AND app.claim_assigned_subject_for(tenant_id,app.current_user_id(),employment_id) AND app.claim_decision_allowed(employment_id));
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.claim_own_receipt_read_allowed(p_claim uuid,p_subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.claim_request actual WHERE actual.id=p_claim AND actual.tenant_id=app.current_tenant_id() AND actual.employment_id=p_subject AND app.claim_source_read_allowed(p_subject,actual.status::text)
+ AND (NOT app.claim_subject_is_own(p_subject) OR app.claim_own_source_allowed(p_subject,'claims.own.receipts','view') OR app.claim_self_decision_allowed(p_subject,'view') OR EXISTS(SELECT 1 FROM public.employment e WHERE e.id=p_subject AND e.tenant_id=actual.tenant_id AND app.claim_admin_subject_for(e.tenant_id,app.current_user_id(),e.id) AND app.is_admin_for(e.company_id) AND app.module_action_allowed('claims','view',e.company_id) AND app.function_action_allowed('claims.administration','view',e.company_id))));
+$$;
+
+--> statement-breakpoint
+-- Exact pending-decision facts, including the genuine assigned direct-manager course outside an
+-- administrative data profile. This is not an employment directory or a role-only grade lookup.
+CREATE OR REPLACE FUNCTION app.claim_decision_subject_facts(claim_id uuid) RETURNS TABLE(grade_id uuid,company_id uuid,country text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT e.grade_id,e.company_id,company.country::text FROM public.claim_request request JOIN public.employment e ON e.id=request.employment_id AND e.tenant_id=request.tenant_id
+ JOIN public.company company ON company.id=e.company_id AND company.tenant_id=e.tenant_id
+ WHERE request.id=claim_id AND request.tenant_id=app.current_tenant_id() AND request.status::text='pending' AND app.claim_decision_allowed(e.id);
+$$;
+
+
+--> statement-breakpoint
+-- A skipped/conflicting physical INSERT cannot leave an admitted but unborn command receipt.
+CREATE FUNCTION app.claim_command_effect_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.claim_command_effect%ROWTYPE;
+BEGIN
+ SELECT * INTO proof FROM app.claim_command_effect actual WHERE actual.id=NEW.id;
+ IF NOT FOUND OR app.claim_command_effect_allowed(proof.before_source,proof.after_source,proof.course,proof.id) IS NOT TRUE THEN RAISE EXCEPTION 'Claim command effects incomplete' USING ERRCODE='42501';END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_command_effect_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER claim_command_effect_complete AFTER INSERT ON app.claim_command_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_command_effect_complete();

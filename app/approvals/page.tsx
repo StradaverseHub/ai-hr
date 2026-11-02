@@ -420,7 +420,7 @@ export default async function ApprovalsPage({
       ? sortedCancellations.map((c) => ({ id: c.id, type: 'leaveCancellation' as const, category: 'leaveCancellation' as const }))
       : []),
     ...(visible('claims')
-      ? sortedClaims.filter((c) => !mine(c.personId)).map((c) => ({ id: c.id, type: 'claim' as const, category: 'claim' as const }))
+      ? sortedClaims.filter((c) => c.canDecide ?? !mine(c.personId)).map((c) => ({ id: c.id, type: 'claim' as const, category: 'claim' as const }))
       : []),
     ...(visible('corrections')
       ? visibleCorrections
@@ -967,7 +967,7 @@ export default async function ApprovalsPage({
             <tbody className="divide-y divide-border">
               {sortedClaims.map((c) => (
                 <tr key={c.id} id={approvalRowDomId(c.id)} tabIndex={-1} className="scroll-mt-24">
-                  <td className="px-4 py-2.5">{!mine(c.personId) && <BulkRowCheckbox id={c.id} type="claim" />}</td>
+                  <td className="px-4 py-2.5">{(c.canDecide ?? !mine(c.personId)) && <BulkRowCheckbox id={c.id} type="claim" />}</td>
                   <td className="px-4 py-2.5">
                     <EmployeeCode code={c.employeeCode} />
                   </td>
@@ -983,7 +983,7 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5 text-right tabular-nums">{rm(c.amount)}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.incurredOn}</td>
                   <td className="px-4 py-2.5">
-                    <DecideButtons action={approveClaimAction} id={c.id} disabled={mine(c.personId)} labels={decideLabels} rejectReasonLabel={t('rejectReasonPlaceholder')} nav={nav} />
+                    <DecideButtons action={approveClaimAction} id={c.id} disabled={!(c.canDecide ?? !mine(c.personId))} labels={decideLabels} rejectReasonLabel={t('rejectReasonPlaceholder')} nav={nav} />
                   </td>
                 </tr>
               ))}

@@ -1145,3 +1145,35 @@ selected Item's tenant/parent at creation and reference changes, including raw a
 historical archived references for unchanged decision/financial effects. Authored negative cases use
 actual foreign-tenant catalogue and wrong-parent Item rows and assert source/audit rollback; hosted
 qualification remains required. This adds no native actor course or publication completion marker.
+
+
+### Actual wider Claim read/submit and assigned decision sources (unapplied chapter)
+
+0943 now separates `claims.related` View/Execute plus HR-only native Approve (canonical recursive manager/HOD plus administrative
+profile), administrative View/Execute/Approve (actual scoped HR plus profile), and `claims.assigned`
+View/Approve (real current direct manager or exact scoped delegation, no administrative parent).
+Source reads repeat actual subject/status and the native course; full newborn Claim lookup is not
+substituted for the actual row's RLS fields. Actual nonself submission and pending decision mutations
+seal complete queued images, actor/transaction and authority stamp; actual physical effects plus the
+native submitted/decision audit must complete before commit. Skipped/conflicting INSERT receipts fail.
+The assigned write policy permits only the decision state change, with immutable-content and final
+source guards, and its finite decision facts preserve a genuine task outside administrative scope.
+Approval rows/bulk controls and inbox actionability consume the same actual decision predicate.
+
+The native self-super exception has its own exact selfDecision View/Approve floor: actual self,
+live stored super_admin, current principal/claimed super role and data profile. Stored super grants
+remain global as required by schema; a narrowed current carrier does not become a fabricated scoped
+stored super grant. Ordinary employee self-approval remains refused. Native hierarchy, HOD, direct
+manager, scoped delegate, current/pure recipient, profile narrowing, self-super and raw mutation/audit
+negative fixtures are authored in `test/claim-native-nonself-actions.test.ts`; hosted qualification is
+required. No completion sentinel or fake binding is added, and nonself receipt constructors, remaining
+Leave/Attendance source courses and full module publication remain unfinished.
+
+
+The new Claim command receipt also captures a private monotone native-source epoch, separate from
+control defaults: actual graph, scope and Claim catalogue/policy mutations invalidate it, including
+same-transaction revoke/restore. Claim outcomes, receipts and audits never advance this epoch.
+Relevant native writers take Access before source tuples; command admission locks the real epoch
+row to refuse an already-pinned stale repeatable-read writer. Authored native fixtures contrast a
+restored manager relationship (refused, full rollback) with actual approval→reimbursement in one
+transaction (retained). No receipt is used as ongoing actor/default/delegation authority.
