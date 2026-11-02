@@ -51,21 +51,17 @@ it('matches the independent original query and actual stage reader across identi
  }
  const ctx=(u:typeof people[number]):SessionContext=>({...adminCtx(tenants[u.tenant]),userId:u.id,personId:u.personId,roles:['employee'],grants:[{role:'employee',companyId:tenants[u.tenant].companyId}]});
  for(const u of people)expect(await withTenant(ctx(u),tx=>hasOvertimePatternForDayTx(tx,ctx(u),{employmentId:u.employmentId,date:day}))).toBe(false);
- const malformed=async()=>withTenant(ctx(people[1]),async tx=>{
+ const malformed=async()=>{
   const b=tenants[0];
-  for(const value of ['', '{not-json']){
-   await tx.execute(sql`select set_config('app.grants',${value},true)`);
-   const outcome=async(proposed:boolean)=>{
-    await tx.execute(sql`savepoint formula_guard_case`);
-    try{
-     const [row]=await tx.execute(proposed?sql`select app.perf_formula_empty_candidate(${b.tenantId}::uuid,${people[1].employmentId}::text,${day}::date,${b.companyId}::uuid) as id`:sql`select app.overtime_formula_candidate_for_day(${b.tenantId}::uuid,${people[1].employmentId}::text,${day}::date,${b.companyId}::uuid) as id`);
-     return {kind:'value',value:row.id};
-    }catch(error){let e=error as {code?:string;message?:string;cause?:unknown};while(e.cause&&!e.code)e=e.cause as typeof e;return {kind:'error',code:e.code,message:e.message};}
-    finally{await tx.execute(sql`rollback to savepoint formula_guard_case`);await tx.execute(sql`release savepoint formula_guard_case`);}
-   };
-   expect(await outcome(true)).toEqual(await outcome(false));
-  }
- });
+  const outcome=async(proposed:boolean,value:string)=>{
+   try{return await withTenant(ctx(people[1]),async tx=>{
+    await tx.execute(sql`select set_config('app.grants',${value},true)`);
+    const [row]=await tx.execute(proposed?sql`select app.perf_formula_empty_candidate(${b.tenantId}::uuid,${people[1].employmentId}::text,${day}::date,${b.companyId}::uuid) as id`:sql`select app.overtime_formula_candidate_for_day(${b.tenantId}::uuid,${people[1].employmentId}::text,${day}::date,${b.companyId}::uuid) as id`);
+    return {kind:'value',value:row.id};
+   });}catch(error){let e=error as {code?:string;message?:string;cause?:unknown};while(e.cause&&!e.code)e=e.cause as typeof e;return {kind:'error',code:e.code,message:e.message};}
+  };
+  for(const value of ['', '{not-json'])expect(await outcome(true,value)).toEqual(await outcome(false,value));
+ };
  await malformed();
  const readers=[...people.map(u=>({ctx:ctx(u),tenantId:tenants[u.tenant].tenantId,companyId:tenants[u.tenant].companyId,employmentId:u.employmentId})),...tenants.map((b,t)=>({ctx:adminCtx(b),tenantId:b.tenantId,companyId:b.companyId,employmentId:people[t*2].employmentId}))];
  const measure=async(proposed:boolean,expected?:unknown[])=>{
