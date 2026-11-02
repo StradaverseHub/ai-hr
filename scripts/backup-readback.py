@@ -35,9 +35,17 @@ def main(args):
                     raise ValueError('readback exceeds expected bytes')
                 digest.update(block)
                 target.write(block)
-            remaining = deadline - time.monotonic()
-            if remaining <= 0 or child.wait(timeout=remaining) != 0:
-                raise ValueError('reader failed')
+            # Observe completion without reaping: the reserved leader PID prevents PGID reuse
+            # until the owned group has been signalled in finally.
+            while True:
+                status = os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                if status is not None:
+                    if status.si_code != os.CLD_EXITED or status.si_status != 0:
+                        raise ValueError('reader failed')
+                    break
+                if time.monotonic() >= deadline:
+                    raise ValueError('reader deadline after stdout closed')
+                time.sleep(0.01)
         if count != expected_size or digest.hexdigest() != expected_hash:
             raise ValueError('readback bytes differ')
     finally:

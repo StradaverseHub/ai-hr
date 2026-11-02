@@ -18,3 +18,16 @@ it('independent bounded readback rejects lying, same-size corrupt, missing and s
   expect(existsSync(join(dir,'valid'))).toBe(true);
  } finally {rmSync(dir,{recursive:true,force:true});}
 });
+
+it('keeps failed reader status and terminates its owned pipe descendants without touching a foreign process',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'backup-readback-groups-')),bytes=Buffer.from('owned bytes');
+ const foreign=spawnSync(process.execPath,['-e',`const {spawn}=require('node:child_process');const p=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});require('node:fs').writeFileSync(${JSON.stringify(join(dir,'foreign.pid'))},String(p.pid));p.unref();`],{encoding:'utf8',timeout:5000});
+ expect(foreign.status).toBe(0);const foreignPid=Number(readFileSync(join(dir,'foreign.pid'),'utf8'));
+ const hash=createHash('sha256').update(bytes).digest('hex');
+ const run=(name:string,code:string)=>spawnSync('python3',[resolve('scripts/backup-readback.py'),String(bytes.length),hash,join(dir,name),'1','--',process.execPath,'-e',code],{encoding:'utf8',timeout:5000});
+ try {
+  const failed=run('failed',`process.stdout.write(${JSON.stringify(bytes.toString())});process.exitCode=7;`);expect(failed.status).toBe(1);
+  const descendant=run('descendant',`require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:['ignore',1,2]});process.stdout.write(${JSON.stringify(bytes.toString())});process.exit(0);`);
+  expect(descendant.error).toBeUndefined();expect(descendant.status).toBe(1);expect(()=>process.kill(foreignPid,0)).not.toThrow();
+ } finally {process.kill(foreignPid,'SIGKILL');rmSync(dir,{recursive:true,force:true});}
+});
