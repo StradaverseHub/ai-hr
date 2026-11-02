@@ -35,7 +35,7 @@ export async function runContractCommand(command:ContractCommand,input:unknown){
    default:return{ok:false as const,error:'invalid'};
   }
   if(!['previewIntake','previewDecision'].includes(command))revalidatePath('/lifecycle/contracts','layout');
-  return{ok:true as const,result};
+  return{ok:true as const,result:['previewIntake','previewDecision','intake'].includes(command)?result:undefined};
  }catch(error){return{ok:false as const,error:error instanceof Error&&error.name==='ContractManagementError'?error.message:error instanceof z.ZodError?'invalid':'failed'};}
 }
 export async function readContractRetirementContext(employmentId:string){

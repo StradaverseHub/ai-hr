@@ -33796,6 +33796,8 @@
     }
   },
   "contractManagement": {
+    "pfilePending": "正在等待经过核验的个人档案归档。记录真实文件回执后方可移交离职流程。",
+    "declinedStatus": "已拒绝",
     "assignmentRevoked": "已撤销",
     "assignmentExpired": "已到期",
     "assignmentActive": "有效",

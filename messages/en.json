@@ -33796,6 +33796,8 @@
     }
   },
   "contractManagement": {
+    "pfilePending": "Awaiting verified p-file filing. Offboarding is available after the actual document receipt is recorded.",
+    "declinedStatus": "Declined",
     "assignmentRevoked": "Revoked",
     "assignmentExpired": "Expired",
     "assignmentActive": "Active",

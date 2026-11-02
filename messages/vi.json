@@ -33796,6 +33796,8 @@
     }
   },
   "contractManagement": {
+    "pfilePending": "Đang chờ lưu hồ sơ nhân viên được xác minh. Chỉ bàn giao nghỉ việc sau khi ghi nhận chứng từ tài liệu thực tế.",
+    "declinedStatus": "Đã từ chối",
     "assignmentRevoked": "Đã thu hồi",
     "assignmentExpired": "Đã hết hạn",
     "assignmentActive": "Đang hiệu lực",

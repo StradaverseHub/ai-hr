@@ -21,3 +21,8 @@ export function useContractCommand(){
 }
 
 export function contractCaseStatus(record:ContractCase,today:string){return record.state==='handed_off'&&record.effects.manualHandoff?'manual_handoff':contractDisplayState(record,today);}
+
+export function contractTimestamp(value:string){
+ const normalized=value.replace(' ','T').replace(/(\.\d{3})\d+/,'$1').replace(/([+-]\d{2})$/,'$1:00');
+ const date=new Date(normalized);return Number.isFinite(date.getTime())?new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Kuala_Lumpur'}).format(date):'—';
+}

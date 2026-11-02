@@ -33796,6 +33796,8 @@
     }
   },
   "contractManagement": {
+    "pfilePending": "รอการจัดเก็บแฟ้มพนักงานที่ตรวจยืนยัน ส่งต่อออกจากงานได้หลังบันทึกหลักฐานเอกสารจริง",
+    "declinedStatus": "ปฏิเสธแล้ว",
     "assignmentRevoked": "เพิกถอนแล้ว",
     "assignmentExpired": "หมดอายุ",
     "assignmentActive": "ใช้งานอยู่",

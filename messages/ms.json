@@ -33796,6 +33796,8 @@
     }
   },
   "contractManagement": {
+    "pfilePending": "Menunggu pemfailan p-file yang disahkan. Offboarding tersedia selepas penerimaan dokumen sebenar direkodkan.",
+    "declinedStatus": "Ditolak",
     "assignmentRevoked": "Dibatalkan",
     "assignmentExpired": "Tamat tempoh",
     "assignmentActive": "Aktif",
