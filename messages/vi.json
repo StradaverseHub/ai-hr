@@ -33796,6 +33796,11 @@
     }
   },
   "contractManagement": {
+    "assignmentRevoked": "Đã thu hồi",
+    "assignmentExpired": "Đã hết hạn",
+    "assignmentActive": "Đang hiệu lực",
+    "revokeRole": "Thu hồi phân công",
+    "roleReasonHelp": "Nhập lý do bên dưới trước khi phân công hoặc thu hồi vai trò.",
     "saveDraft": "Lưu bản nháp quyết định",
     "retry": "Thử lại",
     "title": "Quản lý hợp đồng",
@@ -33968,6 +33973,7 @@
       "post_retirement": "Sau nghỉ hưu"
     },
     "state": {
+      "manual_handoff": "Bàn giao thủ công hoàn tất",
       "upcoming": "Sắp đến hạn",
       "decision_pending": "Chờ quyết định",
       "in_approval": "Đang phê duyệt",

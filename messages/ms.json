@@ -33796,6 +33796,11 @@
     }
   },
   "contractManagement": {
+    "assignmentRevoked": "Dibatalkan",
+    "assignmentExpired": "Tamat tempoh",
+    "assignmentActive": "Aktif",
+    "revokeRole": "Batalkan penugasan",
+    "roleReasonHelp": "Masukkan sebab di bawah sebelum menugaskan atau membatalkan peranan.",
     "saveDraft": "Simpan draf keputusan",
     "retry": "Cuba lagi",
     "title": "Pengurusan Kontrak",
@@ -33968,6 +33973,7 @@
       "post_retirement": "Selepas persaraan"
     },
     "state": {
+      "manual_handoff": "Serahan manual selesai",
       "upcoming": "Akan datang",
       "decision_pending": "Keputusan belum dibuat",
       "in_approval": "Dalam kelulusan",

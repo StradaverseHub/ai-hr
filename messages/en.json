@@ -33796,6 +33796,11 @@
     }
   },
   "contractManagement": {
+    "assignmentRevoked": "Revoked",
+    "assignmentExpired": "Expired",
+    "assignmentActive": "Active",
+    "revokeRole": "Revoke assignment",
+    "roleReasonHelp": "Enter a reason below before assigning or revoking a role.",
     "saveDraft": "Save decision draft",
     "retry": "Try again",
     "title": "Contract Management",
@@ -33968,6 +33973,7 @@
       "post_retirement": "Post-retirement"
     },
     "state": {
+      "manual_handoff": "Manual hand-off completed",
       "upcoming": "Upcoming",
       "decision_pending": "Decision pending",
       "in_approval": "In approval",

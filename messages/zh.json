@@ -33796,6 +33796,11 @@
     }
   },
   "contractManagement": {
+    "assignmentRevoked": "已撤销",
+    "assignmentExpired": "已到期",
+    "assignmentActive": "有效",
+    "revokeRole": "撤销分配",
+    "roleReasonHelp": "分配或撤销角色前，请在下方输入原因。",
     "saveDraft": "保存决定草稿",
     "retry": "重试",
     "title": "合同管理",
@@ -33968,6 +33973,7 @@
       "post_retirement": "退休后"
     },
     "state": {
+      "manual_handoff": "人工移交已完成",
       "upcoming": "即将到期",
       "decision_pending": "决定待定",
       "in_approval": "审批中",

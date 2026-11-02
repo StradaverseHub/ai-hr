@@ -33796,6 +33796,11 @@
     }
   },
   "contractManagement": {
+    "assignmentRevoked": "เพิกถอนแล้ว",
+    "assignmentExpired": "หมดอายุ",
+    "assignmentActive": "ใช้งานอยู่",
+    "revokeRole": "เพิกถอนการมอบหมาย",
+    "roleReasonHelp": "กรอกเหตุผลด้านล่างก่อนมอบหมายหรือเพิกถอนบทบาท",
     "saveDraft": "บันทึกร่างการตัดสินใจ",
     "retry": "ลองอีกครั้ง",
     "title": "การจัดการสัญญา",
@@ -33968,6 +33973,7 @@
       "post_retirement": "หลังเกษียณ"
     },
     "state": {
+      "manual_handoff": "ส่งต่อด้วยตนเองเสร็จสิ้น",
       "upcoming": "ใกล้ถึงกำหนด",
       "decision_pending": "รอการตัดสินใจ",
       "in_approval": "กำลังอนุมัติ",

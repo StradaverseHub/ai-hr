@@ -43,6 +43,9 @@ describe('Contract Management scoped interactions',()=>{
   mocks.command.mockResolvedValue({ok:false,error:'The contract changed. Review it again.'});const v=view();v.record.state='e_acceptance';v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'c'.repeat(64),issuedAt:'2026-11-03T06:00:00Z',releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);
   await userEvent.click(screen.getByRole('checkbox',{name:/I have reviewed/}));const reason=screen.getByLabelText('Reason for declining the renewal');await userEvent.type(reason,'I need to discuss the proposed terms.');await userEvent.click(screen.getByRole('button',{name:'Decline renewal'}));await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('The contract changed'));expect(reason).toHaveValue('I need to discuss the proposed terms.');expect(mocks.refresh).not.toHaveBeenCalled();
  });
+ it('labels a Grade H manual receipt without claiming an Offboarding case exists',()=>{
+  const r=record();r.state='handed_off';r.effects.manualHandoff='actual-manual-receipt';r.effects.offboarding=null;wrap(<ContractCases today="2026-11-03" companies={companies} rows={[{record:r,source:{...source,grade:'H'},sourceConflict:null,lastSyncedAt:'2026-11-03T06:00:00+08:00'}]}/>);expect(screen.getByRole('cell',{name:'Manual hand-off completed'})).toBeInTheDocument();expect(screen.queryByRole('cell',{name:'Handed to Offboarding'})).not.toBeInTheDocument();
+ });
  it('keeps template review discoverable without granting case setup to a template-only reviewer',()=>{
   wrap(<ContractCases today="2026-11-03" companies={[]} rows={[]} templatesAvailable/>);expect(screen.getByRole('link',{name:'Templates'})).toHaveAttribute('href','/lifecycle/contracts/templates');expect(screen.queryByRole('link',{name:'Settings'})).not.toBeInTheDocument();
  });

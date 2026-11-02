@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import {contractDisplayState,type ContractCase} from '@/lib/contract-management-model';
 import {usePathname} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {useState,useTransition} from 'react';
@@ -18,3 +19,5 @@ export function useContractCommand(){
  function run(command:ContractCommand,input:unknown,onDone?:(result:unknown)=>void){start(async()=>{setError('');setStatus('');try{const response=await runContractCommand(command,input);if(!response.ok){setError(['failed','session','invalid'].includes(response.error)?t(response.error):response.error);return;}onDone?.(response.result);if(!command.startsWith('preview')){setStatus(t('saved'));router.refresh();}}catch{setError(t('failed'));}});}
  return{pending,run,error,status,clear:()=>{setError('');setStatus('');},feedback:<>{error&&<p className="v9-error" role="alert">{error}</p>}{status&&<p role="status">{status}</p>}</>};
 }
+
+export function contractCaseStatus(record:ContractCase,today:string){return record.state==='handed_off'&&record.effects.manualHandoff?'manual_handoff':contractDisplayState(record,today);}
