@@ -11,7 +11,8 @@
 - The owner's "I approve", given in the coordinating session, is intent only. It approves no packet.
 
 ## Candidate
-- **Merged head:** `2689b2f867112891e7710f8ac4e647a5e5addbbf` (parents b2840b91d, 6ea889365).
+- **Candidate head (code):** `689cb17eec35e9465ab780c3ffbc3624fcf8186f`: the merge of accepted main (2689b2f86, parents b2840b91d and 6ea889365) plus one test-only commit (`test/i18n-coverage.test.ts`). Packet commits on top are docs only.
+- **Digests unchanged by the test commit:** recomputed on 689cb17ee in an isolated copy, provider `a70f0770…` over 1255 files and module-agent `e9eefa4c…` over 457, identical to 2689b2f86. `test/` is outside both scopes.
 - **Baseline approvals (main's bytes):** 26 records; 24 approved, all bound to `2ee27ebb…`; the 2 pending records have an empty sourceDigest. No `teras_harness_turn_v1` record.
 - **Between 8b676f25c and 6ea889365 main itself moved the provider baseline** (PR 209's `package.json` and `pnpm-lock.yaml`; PR 210's `messages/{en,ms,ta,th,vi,zh}.json`) under its own rebinds. None of those files is in the Teras delta below, which is file-for-file identical to the 8b draft.
 
@@ -26,7 +27,7 @@
 - **Ordering risk (unchanged):** if any of 0930–0935 is applied to an installation before Teras, the watermark passes …329 and Teras would be skipped; Teras must then be renumbered above the highest applied timestamp, in a separate commit. Equally, Teras applied before 0907–0923 puts those below the watermark.
 
 ## Digests
-| Scope | Accepted baseline (accepted main 6ea889365, `--check` passes) | Candidate before binding (merged head 2689b2f86) |
+| Scope | Accepted baseline (accepted main 6ea889365, `--check` passes) | Candidate before binding (689cb17ee; same on 2689b2f86) |
 |---|---|---|
 | Provider-data closure | `2ee27ebb5026e363ca31a2c7523cf42b15a57b13c2c6e55e1ca0720bb7f50da2`, 1158 files | `a70f0770b74b797ca6f8a70adb9f7e302215ef77a0d85f234330848646803644`, 1255 files |
 | Module-agent scope | `ad8874a425084aac18256dfad336bd30d54739346397c6258cbb2417ff4abf12`, 456 files | `e9eefa4c1b15e57da840bd94c0d3b403020c064a5802fe9f57e28ca7455a56c0`, 457 files (after the provider manifest is regenerated, with main's approval literals) |
@@ -41,9 +42,13 @@
   - typecheck: PASS.
   - selected tests: 61 of 62 files pass (18 of 19 plus 43 of 43). The one failure is `test/provider-data-review-gate.test.ts` > "binds the exact reviewed transform dependency sources through the generated manifest": the expected pre-binding stale-manifest refusal. It stays red until the binding.
   - linux-build at 6144 MB: `FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory`. Recorded; no retry and no heap change. 8192 (PR 201) is not adopted.
-- **41422370107** on 2689b2f86 (PR 210 login/MFA files and main's other changed tests, 13 files): FAILURE in `resolve` ("Branch moved or invalid candidate"); no tests ran. Cause: this session pushed the docs-only packet commit 54ee4bb38 at 09:41 UTC while the run was queued, so the branch tip no longer matched its expected SHA when it resolved at 09:51 UTC. A process error, not a source result. The same 13 files are re-dispatched at the packet commit (code identical to 2689b2f86) without moving the branch until it resolves; that run id is reported separately.
+- **41422370107** on 2689b2f86 (PR 210 login/MFA files and main's other changed tests, 13 files): FAILURE in `resolve` ("Branch moved or invalid candidate"); no tests ran. Cause: this session pushed the docs-only packet commit 54ee4bb38 at 09:41 UTC while the run was queued, so the branch tip no longer matched its expected SHA when it resolved at 09:51 UTC. A process error, not a source result.
+- **41424169233** on 9655a83ab (docs-only over 2689b2f86; the same 13 files): FAILURE. 12 of 13 files pass (10 of 11, plus 2 of 2), including every PR 210 login, MFA, Entra and mail-parser file. `test/i18n-coverage.test.ts` failed checks B ("every translation namespace referenced in code exists in en.json", 19 namespace references) and C ("every static t() key in a single-namespace file resolves in en.json", 17 keys), all under `aiCentre.*`.
+  - Cause: the guard read only `messages/<locale>.json`; the app serves that catalogue merged with `messages/ai-centre/<locale>.json` (i18n/request.ts), where every reported key exists. Present on the Teras branch since 2edadb21f, not introduced by the 6ea merge; no earlier focused set selected this file.
+  - Fix (coordinator decision, option a): 689cb17ee, test only. The guard takes its catalogue list from i18n/request.ts's own imports and checks A, B and C against that merge, with no English fallback, so a locale's own missing or blank `aiCentre.*` key still fails A. B and C are unchanged in strength and have no allowlist. A new check asserts the list is exactly `messages/{locale}.json` then `messages/ai-centre/{locale}.json` and that `aiCentre` resolves only through the merge; a negative check proves B and C still report a namespace and a key that are in neither catalogue.
+- **Rerun of the 13-file set** at the packet commit that records this (code 689cb17ee), with no push while it runs: run id and result reported with it.
 
-## Per-file delta, by commit (6ea889365..2689b2f86, merges excluded)
+## Per-file delta, by commit (6ea889365..2689b2f86, merges excluded; the later test commit is outside both scopes)
 
 ### Provider-data closure (against 6ea889365): 8 changed, 97 added, 0 removed
 
@@ -198,7 +203,7 @@ Files listed without a commit are unchanged main files that the new Teras roots 
 
 ## Exact binding (proposed; written only after the owner's approval)
 
-Written on the candidate head `2689b2f867112891e7710f8ac4e647a5e5addbbf` (code; the packet commits on top are docs only, outside both scopes), in this order:
+Written on the candidate head `689cb17eec35e9465ab780c3ffbc3624fcf8186f` (code; the packet commits on top are docs only, outside both scopes), in this order:
 
 1. **`lib/ai/provider-data-source-manifest.ts`** (generated by `node scripts/ai-provider-data-source-manifest.mjs`): the one digest line changes from `2ee27ebb5026e363ca31a2c7523cf42b15a57b13c2c6e55e1ca0720bb7f50da2` to `a70f0770b74b797ca6f8a70adb9f7e302215ef77a0d85f234330848646803644`. Result: 228 bytes, sha256 `5b3821d72693a2ce2864940b74a952a33c04b6a363a64b08ac4146adf472f821` (generator output in an isolated copy matches these bytes).
 2. **`lib/ai/provider-data-approvals.ts`** (literal edit):
@@ -230,7 +235,7 @@ the provider-data closure, together with the whole-stack review fixes (PR 202). 
 model responses; the turn runner executes those calls sequentially, in order, under the M7 caps, and nothing new is
 sent to the provider. The closure moves from 1158 files /
 `2ee27ebb5026e363ca31a2c7523cf42b15a57b13c2c6e55e1ca0720bb7f50da2` (accepted main 6ea889365) to 1255 files /
-`a70f0770b74b797ca6f8a70adb9f7e302215ef77a0d85f234330848646803644` (candidate 2689b2f86); the per-file delta is in
+`a70f0770b74b797ca6f8a70adb9f7e302215ef77a0d85f234330848646803644` (candidate 689cb17ee); the per-file delta is in
 docs/reviews/teras-whole-stack-20261102/binding-packet-6ea.md.
 
 Historical basis (earlier decisions, not the time of this binding): the owner's sign-off of the ADR-0169 privacy
