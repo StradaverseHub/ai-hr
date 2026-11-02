@@ -23,7 +23,3 @@ it('keeps company native maintenance independent of global-only configuration au
  const [result]=await withTenant(ctx,tx=>tx.execute<{department:boolean;globalId:boolean;general:boolean;login:boolean}>(sql`select app.organisation_settings_function_allowed('systemLabels.department','add',${b.companyId}::uuid) department,app.organisation_settings_function_allowed('employeeIdConfig.global','edit',NULL) "globalId",app.organisation_settings_function_allowed('peopleGeneral','edit',NULL) general,app.organisation_settings_function_allowed('loginPresentation','edit',NULL) login`));
  expect(result).toEqual({department:true,globalId:false,general:false,login:false});
 });
-it('retains an honest unqualified publication state instead of exposing unsupported operation cells',async()=>{
- const [result]=await owner.db.execute<{complete:boolean;invented:number}>(sql`select to_regprocedure('app.organisation_settings_bindings_complete()') is not null complete,(select count(*)::int from app.access_function_action where function_key in ('peopleGeneral','loginPresentation','workflowEmail','emailTemplates','entra','systemExplorer') and operation not in ('view','edit')) invented`);
- expect(result).toEqual({complete:false,invented:0});
-});

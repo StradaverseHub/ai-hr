@@ -1002,8 +1002,7 @@ ordered applied ledger and competing claims before admission. It grants no insta
 ## Financial setup/native import boundary — 2 November 2026 (provisional)
 
 BOARD parent reserves `0945_financial_setup_actions`, aggregate idx767 /when1793330000345.
-Source SHA256 `11f14fccf4292453dbbcd779578e3ee6bfab244d7ea640b117c069d166f9814f`. Reserved0943/idx765 and0944/idx766 remain with
-parallel owners and must be inserted in timestamp order during integration; no existing entry
+Source SHA256 `52294ef70514fe276284d854d0bddfdb950967d0c5615385bd9adf6a45211e73`. Reserved0943/idx765 and0944/idx766 are integrated in their reserved timestamp order; no existing entry
 is renumbered. This is an unapplied development checkpoint, not installed or accepted source.
 Its catalogue, history, tax, formula and loan guards still require hosted qualification,
 precise module/submenu facts, and TP1/CP38/statutory input qualification and binding closure.
@@ -1014,4 +1013,4 @@ all source claims and the post-Noveri installation ledger before any release adm
 
 ## Leave/Attendance/Claims Action source continuation — 2 November 2026
 
-Reserved `0943_leave_attendance_claim_actions`, aggregate idx765 / when1793330000343, is now journaled in its existing reserved position after0942 and before0945;0944 remains reserved for Personnel. Source SHA256 `7c07ce3f4ffd45f6af593193825bb0a03a52c14e7d0cdb2333eab11e63ccb369`. Current source installs dormant family definitions and native guarded Claim configuration writers only; operational Claim/Leave/Attendance and exact submenu closure remain incomplete. No publication sentinel or installed-history claim exists. This inclusion makes existing native Claim configuration imports executable for hosted development qualification. Re-audit actual ordered installation ledger and all coordinated reservations before admission.
+Reserved `0943_leave_attendance_claim_actions`, aggregate idx765 / when1793330000343, is now journaled in its existing reserved position after0942 and before the integrated0944 Personnel source. Source SHA256 `7c07ce3f4ffd45f6af593193825bb0a03a52c14e7d0cdb2333eab11e63ccb369`. Current source installs dormant family definitions and native guarded Claim configuration writers only; operational Claim/Leave/Attendance and exact submenu closure remain incomplete. No publication sentinel or installed-history claim exists. This inclusion makes existing native Claim configuration imports executable for hosted development qualification. Re-audit actual ordered installation ledger and all coordinated reservations before admission.
