@@ -2763,7 +2763,7 @@ GRANT EXECUTE ON FUNCTION app.onehr_review_notice_source(uuid) TO ai_hr_app;
 -- Administrative review is an independently selected native course, including
 -- when the same actor is also self/assigned. It grants no task or writer authority.
 SELECT app.register_function_action('performance.onehr.reviewAdministration','view','company',NULL,'app.financial_delegate_onehr_review',jsonb_build_object(
- 'moduleKey','performance_compensation','labelKey','onehr.nativeWorkflow','kind','native_acl','course','administrative','href','/performance','employeeBearing',true));
+ 'moduleKey','performance_compensation','labelKey','onehr.reviewAdministration','kind','native_acl','course','administrative','href','/performance','employeeBearing',true));
 CREATE FUNCTION app.onehr_review_administration(wanted_review uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.financial_human_principal_current() AND EXISTS(SELECT 1 FROM public.performance_review review
