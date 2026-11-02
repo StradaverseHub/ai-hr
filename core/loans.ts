@@ -101,6 +101,7 @@ export async function createLoan(ctx: SessionContext, p: CreateLoanInput): Promi
         notes: p.notes ?? null,
       })
       .returning({ id: employeeLoan.id });
+    await tx.execute(sql`select app.financial_loan_begin(${loan.id}::uuid,'add')`);
     await tx.insert(loanRepayment).values(
       comp.schedule.map((dueCents, i) => ({
         tenantId: ctx.tenantId,
@@ -143,6 +144,7 @@ export async function amendLoan(
   await withTenant(ctx, async (tx) => {
     const loan = await loadLoan(tx, p.loanId);
     if (!loan) throw new LoanError('Loan not found');
+    await tx.execute(sql`select app.financial_loan_begin(${loan.id}::uuid,'edit')`);
     if (loan.status !== 'active' && loan.status !== 'suspended') {
       throw new LoanError('Only an active or suspended loan can be amended');
     }
@@ -204,6 +206,7 @@ export async function suspendLoan(ctx: SessionContext, loanId: string): Promise<
   await withTenant(ctx, async (tx) => {
     const loan = await loadLoan(tx, loanId);
     if (!loan) throw new LoanError('Loan not found');
+    await tx.execute(sql`select app.financial_loan_begin(${loan.id}::uuid,'edit')`);
     if (loan.status !== 'active') throw new LoanError('Only an active loan can be suspended');
     await tx.update(employeeLoan).set({ status: 'suspended', updatedAt: sql`now()` }).where(eq(employeeLoan.id, loanId));
     await appendEvent(tx, {
@@ -223,6 +226,7 @@ export async function resumeLoan(ctx: SessionContext, loanId: string): Promise<v
   await withTenant(ctx, async (tx) => {
     const loan = await loadLoan(tx, loanId);
     if (!loan) throw new LoanError('Loan not found');
+    await tx.execute(sql`select app.financial_loan_begin(${loan.id}::uuid,'edit')`);
     if (loan.status !== 'suspended') throw new LoanError('Only a suspended loan can be resumed');
     await tx.update(employeeLoan).set({ status: 'active', updatedAt: sql`now()` }).where(eq(employeeLoan.id, loanId));
     await appendEvent(tx, {
@@ -242,6 +246,7 @@ export async function settleLoan(ctx: SessionContext, loanId: string): Promise<v
   await withTenant(ctx, async (tx) => {
     const loan = await loadLoan(tx, loanId);
     if (!loan) throw new LoanError('Loan not found');
+    await tx.execute(sql`select app.financial_loan_begin(${loan.id}::uuid,'edit')`);
     if (loan.status === 'settled' || loan.status === 'cancelled') throw new LoanError('Loan is already closed');
     await tx
       .update(loanRepayment)
@@ -268,6 +273,7 @@ export async function cancelLoan(ctx: SessionContext, loanId: string): Promise<v
   await withTenant(ctx, async (tx) => {
     const loan = await loadLoan(tx, loanId);
     if (!loan) throw new LoanError('Loan not found');
+    await tx.execute(sql`select app.financial_loan_begin(${loan.id}::uuid,'delete')`);
     if (loan.status === 'settled' || loan.status === 'cancelled') throw new LoanError('Loan is already closed');
     if (loan.instalmentsPaid > 0) throw new LoanError('A loan with applied instalments cannot be cancelled — settle it instead');
     const [appliedRow] = await tx
@@ -320,6 +326,7 @@ export async function prefillLoansForBatch(
     if (!batch) throw new LoanError('Payroll batch not found');
     if (batch.runType !== 'regular') throw new LoanError('Loan deductions can only be prefilled onto a regular run');
     if (batch.status !== 'draft') throw new LoanError('Loan deductions can only be prefilled onto a draft batch');
+    await tx.execute(sql`select app.access_payroll_batch_begin(${batch.id}::uuid,'edit')`);
 
     const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
     const periodStart = `${batch.payPeriod}-01`;

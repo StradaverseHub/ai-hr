@@ -985,3 +985,16 @@ binds employee-number allocation/release to private native effects. Hosted SQL/b
 populated-upgrade evidence remain pending. Shared settings coverage is still being extended;
 no completed binding or installation claim follows this checkpoint. Recheck every source
 reservation and the actual post-Noveri installation ledger before release admission.
+
+## Financial setup/native import boundary — 2 November 2026 (provisional)
+
+BOARD parent reserves `0945_financial_setup_actions`, aggregate idx767 /when1793330000345.
+Source SHA256 `9618af8be3292a9426e66e2b5cc855712b1ce1d41871f15d4a02f5f13e9068eb`. Reserved0943/idx765 and0944/idx766 remain with
+parallel owners and must be inserted in timestamp order during integration; no existing entry
+is renumbered. This is an unapplied development checkpoint, not installed or accepted source.
+Its catalogue, history, tax, formula and loan guards still require hosted qualification,
+precise module/submenu facts, and the remaining TP1/CP38/statutory input closure.
+`financial_setup_bindings_complete()` deliberately remains absent. The genuine owner publisher
+must refuse the incomplete family. Preserve all native self/assigned and financial calculation
+courses; new authority cannot arise from posted roles or a context flag. Re-audit current refs,
+all source claims and the post-Noveri installation ledger before any release admission.

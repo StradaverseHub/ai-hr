@@ -289,6 +289,8 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
    const groupKey=[row.companyId,row.period,row.cycleId].join(':');
    const group=groups.get(groupKey)??[];group.push(row);groups.set(groupKey,group);
   }
+  const selectedHistoryKeys=[...groups.values()].flat().map(row=>({companyId:row.companyId,employmentId:row.employmentId,period:row.period,cycleId:row.cycleId}));
+  if(selectedHistoryKeys.length)await tx.execute(sql`select app.financial_history_begin(${source.id}::uuid,${JSON.stringify(selectedHistoryKeys)}::text::jsonb)`);
   for(const rows of groups.values()){
    const first=rows[0];
    const [parent]=await tx.select().from(payPeriod).where(and(eq(payPeriod.companyId,first.companyId),eq(payPeriod.period,first.period)));
@@ -363,6 +365,7 @@ export async function revertPayrollHistoryUpload(ctx:SessionContext,id:string,ex
  try{return await withTenant(ctx,async tx=>{
   await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await principal(tx,ctx);
   const [source]=await tx.select({id:attempt.id,companyIds:attempt.companyIds}).from(attempt).where(eq(attempt.id,id)).for('update');if(!source)fail('Import attempt unavailable.');const plan=await revertTargetsTx(tx,ctx,source,true);if(plan.previewHash!==expectedPreviewHash)fail('The revert preview changed. Review eligibility again before confirming.');
+  await tx.execute(sql`select app.financial_history_revert_begin(${source.id}::uuid)`);
   const changes:HistoryRevisionChange[]=[];for(const {identity,current,previous}of plan.targets){
    const [compensation]=await tx.insert(revision).values({tenantId:ctx.tenantId,recordId:identity.id,ordinal:current.ordinal+1,attemptId:id,snapshotId:previous?.snapshotId??null,previousRevisionId:current.id,kind:'revert',cycleName:previous?.cycleName??current.cycleName}).returning({id:revision.id});changes.push({recordId:identity.id,revisionId:compensation.id,previousRevisionId:current.id,snapshotId:previous?.snapshotId??null});
   }

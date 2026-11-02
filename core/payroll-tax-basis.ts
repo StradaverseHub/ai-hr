@@ -25,7 +25,7 @@ async function permission(tx:Tx,ctx:SessionContext,companyId:string,write=false)
  assertModuleGate(ctx,'payroll');
  if(write&&!await resolvePayrollPermission(tx,ctx,'payroll.tax-basis.view',companyId))fail('Income-tax recalculation access is unavailable for this company.');
  if(!ctx.userId||!await resolvePayrollPermission(tx,ctx,write?'payroll.tax-basis.recalculate':'payroll.tax-basis.view',companyId))fail('Income-tax recalculation access is unavailable for this company.');
- const [authority]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.can_admin_payroll_for(${companyId}::uuid) as ok`);
+ const [authority]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.can_admin_payroll_for(${companyId}::uuid) and (${write}::boolean=false or app.access_financial_action_company('payroll',${companyId}::uuid,'edit')) as ok`);
  if(!authority?.ok)fail('Your payroll authority changed. Sign in again.');
 }
 type Settings={id:string;code:string;name:string;kind:string;includedInPcb:boolean;pcbRemunerationType:'normal'|'additional'|'optional_deduction'|null;pcbExemptionCode:string|null;isNonPayable:boolean;epfBonus2012:boolean;archivedAt:unknown};
@@ -148,8 +148,8 @@ async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):P
 }
 export async function taxBasisOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
  await lockPayrollHistoryReadTx(tx,ctx.tenantId);
- const rows=await tx.execute<{id:string;name:string}>(sql`select id,legal_name as name from company where archived_at is null and app.can_admin_payroll_for(id) order by legal_name`);
- const companies:(typeof rows[number]&{canRecalculate:boolean})[]=[];let canRecalculate=false;for(const c of rows){if(await resolvePayrollPermission(tx,ctx,'payroll.tax-basis.view',c.id)){const allowed=await resolvePayrollPermission(tx,ctx,'payroll.tax-basis.recalculate',c.id);companies.push({...c,canRecalculate:allowed});if(allowed)canRecalculate=true;}}
+ const rows=await tx.execute<{id:string;name:string;functionEdit:boolean}>(sql`select id,legal_name as name,app.access_financial_action_company('payroll',id,'edit') as "functionEdit" from company where archived_at is null and app.can_admin_payroll_for(id) order by legal_name`);
+ const companies:{id:string;name:string;canRecalculate:boolean}[]=[];let canRecalculate=false;for(const c of rows){if(await resolvePayrollPermission(tx,ctx,'payroll.tax-basis.view',c.id)){const allowed=c.functionEdit&&await resolvePayrollPermission(tx,ctx,'payroll.tax-basis.recalculate',c.id);companies.push({id:c.id,name:c.name,canRecalculate:allowed});if(allowed)canRecalculate=true;}}
  const ids=companies.map(c=>c.id);if(!ids.length)fail('Income-tax recalculation access is unavailable.');assertModuleGate(ctx,'payroll');
  const employees: {id:string;companyId:string;employeeNo:string;name:string}[]=[];
  for(const id of ids){const subjects=await tx.execute<{id:string;employeeNo:string;name:string}>(sql`select * from app.payroll_tax_basis_subjects(${id}::uuid,null,null)`);employees.push(...subjects.map(s=>({...s,companyId:id})));}
