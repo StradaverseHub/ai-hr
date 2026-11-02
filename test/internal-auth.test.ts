@@ -1,3 +1,5 @@
+import { readRememberedMfaPolicyEditor, saveRememberedMfaPolicy } from '../core/remembered-mfa-policy';
+import { rememberedFactorValid } from '../lib/internal-auth/remembered-mfa';
 import { readPasswordPolicy, savePasswordPolicy } from '../core/password-policy';
 import {saveEmailDesign} from '../core/email-design/service';
 import {defaultEmailDocument} from '../lib/email-design/model';
@@ -38,12 +40,12 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); }); afterAll(closeAll);
 function challenge(value: AuthReply) { if (!('challenge' in value)) throw new Error('Expected challenge'); return value.challenge; }
 function completed(value: AuthReply) { if (value.step !== 'complete') throw new Error('Expected full session'); return value; }
-async function enroll(native = false) {
+async function enroll(native = false, rememberDevice = false) {
   const login = await startLogin({ organization: 'ALPHA', username: 'OWNER', password: temp, native });
   expect(login.step).toBe('password');
   const setup = await changeInitialPassword(challenge(login), final, native);
   if (setup.step !== 'enroll' || !setup.secret) throw new Error('Expected MFA setup');
-  const signedIn = completed(await verifyMfa(challenge(setup), await generate({ secret: setup.secret }), native));
+  const signedIn = completed(await verifyMfa(challenge(setup), await generate({ secret: setup.secret }), native, rememberDevice));
   return { signedIn, setup };
 }
 async function nextCode(c: Credential) { return generate({ secret: c.totpSecret!, epoch: (c.lastStep + 1) * 30 }); }
@@ -291,7 +293,9 @@ describe('first-party authentication with real private storage and existing HR b
     expect(text).toContain('Fictional Bahasa recovery');expect(text).not.toContain('Fictional English recovery');expect(text).toMatch(/#token=[A-Za-z0-9_-]{43}/);
   });
   it('recovery keeps MFA, consumes its link once and invalidates every prior session', async () => {
-    const { signedIn } = await enroll(); const c = (await credentialByLogin('alpha', 'owner'))!;
+    const { signedIn } = await enroll(false, true);
+    expect(signedIn.remembered_device_token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const c = (await credentialByLogin('alpha', 'owner'))!;
     await writeRecord(client, 'email-state', { active: { config: { host: 'smtp.invalid' } }, revision: 'test', drafts: {} }, null);
     const design=defaultEmailDocument('recovery');design.blocks[0]={...design.blocks[0],type:'header',label:'Fictional account-tenant design',style:{}};
     await saveEmailDesign(adminCtx(base),'recovery','en',design,0);
@@ -311,7 +315,7 @@ describe('first-party authentication with real private storage and existing HR b
     await completeRecovery(token, 'A replacement secure phrase 556!', signedIn.recoveryCodes![0]);
     expect(await readSession(signedIn.access_token)).toBeNull(); expect((await credentialByLogin('alpha', 'owner'))?.totpSecret).toBe(c.totpSecret);
     await expect(completeRecovery(token, 'Yet another secure phrase 337!', signedIn.recoveryCodes![1])).rejects.toMatchObject({ code: 'invalidChallenge' });
-    const login = await startLogin({ organization: 'alpha', username: 'owner', password: 'A replacement secure phrase 556!', native: false }); expect(login.step).toBe('mfa');
+    const login = await startLogin({ organization: 'alpha', username: 'owner', password: 'A replacement secure phrase 556!', native: false, rememberedDevice: signedIn.remembered_device_token }); expect(login.step).toBe('mfa');
     expect(await readRecord(client, `recovery:${digest(token)}`)).toBeNull();
   });
   it('shares the recovery limit between explicit and default organization codes', async () => {
@@ -421,4 +425,83 @@ describe('first-party authentication with real private storage and existing HR b
     await expect(verifyMfa(challenge(setup), '123456', native)).rejects.toMatchObject({ code: 'invalidChallenge' });
     await expect(startInvitation(invite.token, 'another', final)).rejects.toMatchObject({ code: 'invalidChallenge' });
   });
+});
+
+
+describe('remembered authenticator verification — server-owned device proofs', () => {
+  const ctx = () => ({ ...adminCtx(base), grants: [{ role: 'hr_admin' as const, companyId: null }] });
+  it.each([false, true])('remembers only an opted-in verified device and keeps the normal session lifetime (native=%s)', async native => {
+    const { signedIn } = await enroll(native, true);
+    expect(signedIn.remembered_device_token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(signedIn.remembered_device_expires_in).toBe(30 * 86400);
+    await revokeSession(signedIn.access_token, native, signedIn.refresh_token);
+    const input = { organization: 'alpha', username: 'owner', password: final, native, rememberedDevice: signedIn.remembered_device_token };
+    const again = completed(await startLogin(input));
+    expect(again.expires_in).toBe(native ? 900 : 28800);
+    expect(again.remembered_device_token).toBeUndefined(); // Signing in cannot slide the factor window.
+    await expect(startLogin({ ...input, password: 'Wrong password with a real remembered proof' })).rejects.toMatchObject({ code: 'invalidLogin' });
+    expect((await startLogin({ ...input, native: !native })).step).toBe('mfa');
+    const credential = (await credentialByLogin('alpha', 'owner'))!;
+    expect(await rememberedFactorValid(client, { ...credential, subject: randomUUID() }, native, signedIn.remembered_device_token)).toBe(false);
+    expect(await rememberedFactorValid(client, { ...credential, tenantId: randomUUID() }, native, signedIn.remembered_device_token)).toBe(false);
+    const raw = JSON.stringify(await owner.client`select * from app_internal_auth_record`);
+    expect(raw).not.toContain(signedIn.remembered_device_token);
+  });
+  it('asks for MFA without opt-in, after fixed expiry, and after credential-version revocation', async () => {
+    const first = await enroll(); expect(first.signedIn.remembered_device_token).toBeUndefined();
+    const input = { organization: 'alpha', username: 'owner', password: final, native: false };
+    const ch = await startLogin(input), c = (await credentialByLogin('alpha', 'owner'))!;
+    const remembered = completed(await verifyMfa(challenge(ch), await nextCode(c), false, true));
+    const now = Date.now(); const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 31 * 86400_000);
+    expect((await startLogin({ ...input, rememberedDevice: remembered.remembered_device_token })).step).toBe('mfa');
+    clock.mockRestore();
+    const current = (await credentialByLogin('alpha', 'owner'))!; current.version = randomUUID();
+    await writeRecord(client, `credential:${current.subject}`, current, current.subject);
+    expect((await startLogin({ ...input, rememberedDevice: remembered.remembered_device_token })).step).toBe('mfa');
+  });
+  it('invalidates all older device proofs on any administrator policy change, including disable and re-enable', async () => {
+    const { signedIn } = await enroll(false, true);
+    const input = { organization: 'alpha', username: 'owner', password: final, native: false, rememberedDevice: signedIn.remembered_device_token };
+    expect(await readRememberedMfaPolicyEditor(ctx())).toEqual({ policy: { rememberDays: 30 }, revision: 0 });
+    await saveRememberedMfaPolicy(ctx(), { rememberDays: 7 }, 0);
+    expect((await startLogin(input)).step).toBe('mfa');
+    await expect(saveRememberedMfaPolicy(ctx(), { rememberDays: 30 }, 0)).rejects.toThrow('conflict');
+    await saveRememberedMfaPolicy(ctx(), { rememberDays: 0 }, 1);
+    const next = await startLogin(input), c = (await credentialByLogin('alpha', 'owner'))!;
+    const result = completed(await verifyMfa(challenge(next), await nextCode(c), false, true));
+    expect(result.remembered_device_token).toBeUndefined();
+    await saveRememberedMfaPolicy(ctx(), { rememberDays: 30 }, 2);
+    expect((await startLogin(input)).step).toBe('mfa');
+    await expect(saveRememberedMfaPolicy({ ...ctx(), grants: [] }, { rememberDays: 30 }, 3)).rejects.toThrow('forbidden');
+  });
+  it('never remembers a recovery code and cannot use remembered trust to avoid expired-password MFA', async () => {
+    const { signedIn } = await enroll(false, true);
+    const input = { organization: 'alpha', username: 'owner', password: final, native: false };
+    const recovered = completed(await verifyMfa(challenge(await startLogin(input)), signedIn.recoveryCodes![0], false, true));
+    expect(recovered.remembered_device_token).toBeUndefined();
+    await savePasswordPolicy(ctx(), { enabled: true, interval: 1, unit: 'days' }, 0);
+    const c = (await credentialByLogin('alpha', 'owner'))!; c.passwordChangedAt = Date.now() - 2 * 86400_000;
+    await writeRecord(client, `credential:${c.subject}`, c, c.subject);
+    expect((await startLogin({ ...input, rememberedDevice: signedIn.remembered_device_token })).step).toBe('mfa');
+  });
+});
+
+it('refuses remembered-MFA policy edits from forged tenant context and revoked administrator authority', async () => {
+  const ctx = { ...adminCtx(base), grants: [{ role: 'hr_admin' as const, companyId: null }] };
+  await expect(saveRememberedMfaPolicy({ ...ctx, tenantId: randomUUID() }, { rememberDays: 7 }, 0)).rejects.toThrow();
+  await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId, base.adminUserId));
+  await expect(saveRememberedMfaPolicy(ctx, { rememberDays: 7 }, 0)).rejects.toThrow();
+  await expect(readRememberedMfaPolicyEditor(ctx)).rejects.toThrow();
+  expect(await readRecord(client, `remembered-mfa-policy:${base.tenantId}`)).toBeNull();
+});
+
+
+it.each([7, 90])('never remembers longer than the challenge offered when policy changes to %s days', async rememberDays => {
+  await enroll();
+  const login = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
+  expect(login).toMatchObject({ step: 'mfa', rememberDays: 30 });
+  await saveRememberedMfaPolicy({ ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] }, { rememberDays }, 0);
+  const c = (await credentialByLogin('alpha', 'owner'))!;
+  const signedIn = completed(await verifyMfa(challenge(login), await nextCode(c), false, true));
+  expect(signedIn.remembered_device_expires_in).toBe(Math.min(30, rememberDays) * 86400);
 });

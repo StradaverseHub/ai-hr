@@ -1,3 +1,4 @@
+import { rememberedMfaCopy } from '../lib/remembered-mfa-copy';
 import { authenticatorSetupUri } from '../lib/authenticator-setup';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -12,6 +13,7 @@ function fixture(organization?: string) {
   let generation = 0;
   class Failure extends Error { constructor(public code: string) { super(code); } }
   const auth = { beginSignIn: () => ++generation, assertAuthGeneration: (owner: number) => { if (owner !== generation) throw new Error('Session changed'); }, completeInternalSignIn: vi.fn(async () => {}) };
+  const rememberedRead = vi.fn(async () => null as string | null), rememberedSave = vi.fn(async () => {});
   const microsoft = vi.fn(), openURL = vi.fn(async (_url: string) => {});
   const request = vi.fn(), probe = vi.fn(async () => {}), router = { replace: vi.fn(), push: vi.fn() }, mark = vi.fn(async () => {});
   const Container = ({ children }: React.PropsWithChildren) => <div>{children}</div>;
@@ -21,8 +23,10 @@ function fixture(organization?: string) {
   const ports: Record<string, unknown> = {
     'expo/fetch':{fetch:vi.fn()},
     react: React, 'react/jsx-runtime': jsx,
+    '../../lib/remembered-mfa-copy': { rememberedMfaCopy },
+    './remembered-mfa': { readRememberedMfa: rememberedRead, saveRememberedMfa: rememberedSave },
     '../../lib/authenticator-setup': { authenticatorSetupUri },
-    'react-native': { Linking: { openURL }, Text, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
+    'react-native': { Pressable: ({children,onPress,disabled,accessibilityRole,accessibilityLabel,accessibilityState}:any)=><button role={accessibilityRole} aria-label={accessibilityLabel} aria-checked={accessibilityState?.checked} disabled={disabled} onClick={onPress}>{children}</button>, Linking: { openURL }, Text, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
     'expo-router':{router,Redirect:()=>null},'expo-web-browser':{openBrowserAsync:vi.fn()},
     './entra-auth':{signInWithMicrosoft:microsoft},
     './auth':auth,'./company-connection':{useCompanyConnection:()=>({name:'Private customer',apiOrigin:'https://hr.test',organization}),companyCopy:()=>({change:'Change company'})},
@@ -33,7 +37,7 @@ function fixture(organization?: string) {
   };
   runInNewContext(transpileModule(readFileSync('mobile/lib/internal-sign-in.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,
     {exports:output.exports,module:output,URL,require:(name:string)=>{if(!(name in ports))throw new Error(name);return ports[name];}});
-  return { View:output.exports.InternalSignIn,auth,request,probe,router,mark,Failure,microsoft,openURL };
+  return { View:output.exports.InternalSignIn,auth,request,probe,router,mark,Failure,microsoft,openURL,rememberedRead,rememberedSave };
 }
 afterEach(cleanup);
 async function login(user: ReturnType<typeof userEvent.setup>) {
@@ -115,4 +119,19 @@ describe('native embedded sign-in — rendered shipped screen',()=>{
     await user.click(screen.getByRole('button',{name:copy.en.signIn}));
     await waitFor(()=>expect(f.mark).toHaveBeenCalledOnce());expect(f.auth.completeInternalSignIn).toHaveBeenCalledTimes(2);expect(f.request).toHaveBeenCalledTimes(2);expect(f.router.replace).toHaveBeenCalledWith('/');
   });
+});
+
+
+it('sends only the matching remembered-device proof and stores a new opted-in proof after real MFA', async () => {
+  const f=fixture(),user=userEvent.setup(); f.rememberedRead.mockResolvedValue('r'.repeat(43));
+  f.request.mockResolvedValueOnce({step:'mfa',challenge:'c'.repeat(43),rememberDays:7})
+    .mockResolvedValueOnce({step:'complete',access_token:'aihr_'+'a'.repeat(43),refresh_token:'aihr_refresh_'+'b'.repeat(43),expires_in:900,remembered_device_token:'n'.repeat(43),remembered_device_expires_in:604800});
+  render(<f.View/>); await login(user);
+  expect(f.rememberedRead).toHaveBeenCalledWith('alpha','employee',expect.any(Function));
+  expect(f.request.mock.calls[0][1]).toMatchObject({remembered_device:'r'.repeat(43)});
+  await user.click(screen.getByRole('checkbox',{name:rememberedMfaCopy('en').rememberNative.replace('{days}','7')}));
+  await user.type(screen.getByLabelText(copy.en.codeOrRecovery),'123456');
+  await user.click(screen.getByRole('button',{name:copy.en.continue}));
+  await waitFor(()=>expect(f.rememberedSave).toHaveBeenCalledWith('alpha','employee','n'.repeat(43),604800,expect.any(Function)));
+  expect(f.request.mock.calls[1][1]).toMatchObject({rememberDevice:'true'});
 });
