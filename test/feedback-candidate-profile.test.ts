@@ -29,9 +29,7 @@ it('measures the real standard-feedback reader against bounded native candidates
    WHERE e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
     AND e.person_id=(SELECT p.person_id FROM app.principal(app.current_user_id()) p WHERE p.tenant_id=app.current_tenant_id())
   ) SELECT coalesce(array_agg(r.id),'{}'::uuid[]) FROM own_points e JOIN public.peer_feedback_request r ON r.peer_employment_id=e.id
-  WHERE r.tenant_id=app.current_tenant_id() AND r.status='pending' AND app.is_self_person(e.person_id)
-   AND NOT EXISTS(SELECT 1 FROM public.performance_onehr_panel panel WHERE panel.request_id=r.id)
-   AND NOT EXISTS(SELECT 1 FROM public.performance_review review JOIN public.performance_onehr_cycle cycle ON cycle.cycle_id=review.cycle_id WHERE review.id=r.review_id));
+  WHERE r.tenant_id=app.current_tenant_id() AND r.status='pending' AND app.is_self_person(e.person_id));
  END;$candidate$; REVOKE ALL ON FUNCTION app.perf_feedback_candidates() FROM PUBLIC; GRANT EXECUTE ON FUNCTION app.perf_feedback_candidates() TO ai_hr_app`);
  const candidate=(context:SessionContext)=>withTenant(context,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,context);
@@ -65,6 +63,17 @@ it('measures the real standard-feedback reader against bounded native candidates
   const withHiddenPanel=await perf.pendingStandardFeedbackTaskMetadata(ctx(users[0]));expect(withHiddenPanel).toMatchObject([{id:request.id,kind:'feedback'}]);
   expect(await candidate(ctx(users[0]))).toEqual(withHiddenPanel);profile.controls++;
   await owner.db.delete(s.onehrPanel).where(eq(s.onehrPanel.requestId,request.id));
+  // Converting the cycle uses the existing owner. Every OneHR exclusion still executes as APP,
+  // so a hidden review or non-live panel can never be pruned with stronger definer visibility.
+  await perf.configureOnehrCycle(admin,cycleId,null);
+  for(const context of [ctx(users[0]),{...ctx(users[0]),personId:null},ctx(users[1]),adminCtx(foreign)]){
+   expect(await candidate(context)).toEqual(await perf.pendingStandardFeedbackTaskMetadata(context));profile.controls++;
+  }
+  const roles=await owner.db.select().from(s.roleAssignment).where(eq(s.roleAssignment.appUserId,users[0].userId));
+  try{
+   await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,users[0].userId));
+   await expect(candidate(ctx(users[0]))).rejects.toThrow();await expect(perf.pendingStandardFeedbackTaskMetadata(ctx(users[0]))).rejects.toThrow();profile.controls++;
+  }finally{await owner.db.insert(s.roleAssignment).values(roles);}
   const bad={...ctx(users[0]),personId:users[1].personId};await expect(candidate(bad)).rejects.toThrow();await expect(perf.pendingStandardFeedbackTaskMetadata(bad)).rejects.toThrow();profile.controls++;
   await owner.client`update app_user set archived_at=now()where id=${users[0].userId}::uuid`;
   await expect(candidate(ctx(users[0]))).rejects.toThrow();await expect(perf.pendingStandardFeedbackTaskMetadata(ctx(users[0]))).rejects.toThrow();profile.controls++;
