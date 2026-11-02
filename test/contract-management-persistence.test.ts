@@ -20,7 +20,7 @@ describe('isolated Contract Staff native custody',()=>{
  });
  it('refuses direct app writes and forged retirement proof events',async()=>{
   await expect(withTenant(admin,tx=>tx.execute(sql`insert into contract_configuration(tenant_id,company_id,data,updated_by) values(${b.tenantId}::uuid,${b.companyId}::uuid,'{}',${admin.userId}::uuid)`))).rejects.toThrow();
-  await expect(withTenant(admin,tx=>tx.execute(sql`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) values(${b.tenantId}::uuid,'retirement',${randomUUID()}::uuid,'retirement.contract-approved','user',${admin.userId}::uuid,'{}')`))).rejects.toThrow(/native purpose-bound owner/);
+  await expect(withTenant(admin,tx=>tx.execute(sql`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) values(${b.tenantId}::uuid,'retirement',${randomUUID()}::uuid,'retirement.contract-approved','user',${admin.userId}::uuid,'{}')`))).rejects.toMatchObject({cause:{code:'42501'}});
  });
  it('requires scoped PBP custody with real retirement and separate employee-file references',async()=>{
   await expect(captureContractRetirementEvidence(admin,{employmentId:randomUUID(),retirementCaseId:randomUUID(),approvalDocumentId:randomUUID(),healthDocumentId:randomUUID(),sourceRevision:'a'.repeat(64),reason:'Actual records are required, no client boolean bypass.'})).rejects.toThrow();
