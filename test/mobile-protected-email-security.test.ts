@@ -1,6 +1,7 @@
 /** Build and boot the actual protected bundle with an inherited test listener; no live DB/SMTP/installation. */
 import {createServer} from 'node:net';
 import {request} from 'node:http';
+import {createHash} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
 import {mkdtemp,mkdir,cp,rm,readFile} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
@@ -11,7 +12,8 @@ import {buildEmailSecurity} from '../deploy/security/build-email-security';
 it('builds the real patched bundle and boots it under the supported private runtime without delivery authority',async()=>{
  const directory=await mkdtemp(join(tmpdir(),'aihr-private-mail-'));let child:ReturnType<typeof spawn>|undefined;
  try{
-  const manifest=await buildEmailSecurity(join(directory,'artifact'));expect(manifest.agent.nodemailer).toBe('10.1.4');expect(manifest.runtime.node).toBe('22.23.3');expect(manifest.privateConfigurationRead).toBe(false);expect(manifest.inputHashes.length).toBeGreaterThan(10);
+  const manifest=await buildEmailSecurity(join(directory,'artifact'));expect(manifest.agent.nodemailer).toBe('10.1.4');expect(manifest.runtime.node).toBe('22.23.3');expect(manifest.privateConfigurationRead).toBe(false);expect(manifest.inputHashes.length).toBeGreaterThan(10);expect(manifest.mailCatalogues.locales).toHaveLength(6);
+  for(const record of manifest.mailCatalogues.locales){const original=JSON.parse(await readFile(record.path,'utf8'));expect(record.selectedSha256).toBe(createHash('sha256').update(JSON.stringify({workflowEmail:original.workflowEmail})).digest('hex'));expect(record.namespace).toBe('workflowEmail');}
   execFileSync('python3',['-I','-c','import ast,sys; ast.parse(open(sys.argv[1]).read())',join(directory,'artifact','maintenance.py')],{stdio:'pipe',timeout:15000});
   execFileSync(process.execPath,['--check',join(directory,'artifact','agent.cjs')],{stdio:'pipe',timeout:15000});
   const listener=createServer();await new Promise<void>(done=>listener.listen(0,'127.0.0.1',done));const port=(listener.address() as import('node:net').AddressInfo).port;
