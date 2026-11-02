@@ -33,6 +33,10 @@ test('successful actual first-attempt job and bounded exact artifact namespace a
 });
 test('state bytes/version/configuration/runtime/age and full graph count stay bound, never PASS',()=>{
  assert.equal(validateNextContext(context),context);assert.equal(validateNextState(bytes,envelope,sha,context,{now}).fileNames.length,2);
+ // The admitted bounded heap is a valid context of its own; nothing above 8192 is.
+ const bounded={...context,nodeOptions:'--max-old-space-size=8192'};assert.equal(validateNextContext(bounded),bounded);
+ assert.equal(validateNextState(bytes,{...envelope,context:bounded},sha,bounded,{now}).fileNames.length,2);
+ for(const nodeOptions of ['--max-old-space-size=12288','--max-old-space-size=8193','--max-old-space-size=4096','',undefined])assert.throws(()=>validateNextContext({...context,nodeOptions}));
  for(const c of [{releaseAuthorized:true},{source:other},{controller:'bad'},{completedCommandExit:1},{sha256:'d'.repeat(64)},{bytes:bytes.length+1},{files:1},{completedAt:'invalid'},{completedAt:'2026-10-24T00:00:00Z'}])assert.throws(()=>validateNextState(bytes,{...envelope,...c},sha,context,{now}));
  for(const c of [{...context,nodeOptions:'--max-old-space-size=8192'},{...context,runtime:{...context.runtime,node:'20.20.2'}},{...context,inputs:{...context.inputs,'tsconfig.build.json':'d'.repeat(64)}},{...context,compiler:{...context.compiler,'typescript/lib/tsc.js':'d'.repeat(64)}},{...context,generatedTypes:[]}])assert.throws(()=>validateNextState(bytes,envelope,sha,c,{now}));
  assert.throws(()=>validateNextState(Buffer.concat([bytes,Buffer.from(' ')]),envelope,sha,context,{now}));

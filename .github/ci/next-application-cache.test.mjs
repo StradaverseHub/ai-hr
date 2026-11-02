@@ -18,6 +18,12 @@ test('normal managed build keeps closed URLs and first-attempt identity; ready s
  for(const patch of [{GITHUB_RUN_ATTEMPT:'2'},{GITHUB_JOB:'test'},{RUNNER_ENVIRONMENT:'self-hosted'},{AIHR_CI_CAPACITY_PROFILE:'legacy'},{NODE_OPTIONS:'--max-old-space-size=8192'},{DATABASE_URL:'postgres://live'},{GITHUB_REPOSITORY_ID:'1'}])
   assert.throws(()=>assertManagedNextInvocation({...e,...patch}));
  assert.throws(()=>assertManagedNextInvocation({...e,GITHUB_EVENT_NAME:'pull_request'},{}));
+ // Bounded heap: 8192 only with build-heap.mjs admission on a GitHub-hosted 16 GB Linux runner; never above 8192.
+ const bounded={...e,RUNNER_OS:'Linux',NODE_OPTIONS:'--max-old-space-size=8192',AIHR_CI_BUILD_HEAP_PROFILE:'hosted-linux-16g-8192',AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB:'16374980'};
+ assert.deepEqual(assertManagedNextInvocation(bounded),{publish:true});
+ for(const patch of [{NODE_OPTIONS:'--max-old-space-size=12288'},{NODE_OPTIONS:'--max-old-space-size=8193'},{AIHR_CI_BUILD_HEAP_PROFILE:undefined},{AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB:String(64*1024**2)},
+  {RUNNER_OS:'macOS'},{RUNNER_ENVIRONMENT:'self-hosted'},{AIHR_CI_CAPACITY_PROFILE:'legacy'}])assert.throws(()=>assertManagedNextInvocation({...bounded,...patch}));
+ assert.throws(()=>assertManagedNextInvocation({...e,AIHR_CI_BUILD_HEAP_PROFILE:'hosted-linux-16g-8192'}));
  assert.throws(()=>assertManagedNextInvocation({...e,GITHUB_EVENT_NAME:'pull_request'},{pull_request:{...pr.pull_request,draft:true}}));
 });
 function metadata(){
@@ -61,6 +67,12 @@ test('state packet binds actual canonical compiler log/exit/source/context/age/c
  }
  const files=new Map(f.files);files.set('state.json',Buffer.concat([files.get('state.json'),Buffer.from(' ')]));assert.throws(()=>check(files));
  assert.throws(()=>inspectNextStatePacket({...f,currentContext:{...f.context,nodeOptions:'--max-old-space-size=8192'}}));
+ // A 6144 graph is never reused under 8192 (and vice versa); only an identical admitted heap matches.
+ const b=applicationStateFixture(),ctx={...b.context,nodeOptions:'--max-old-space-size=8192'},env8={...JSON.parse(b.files.get('envelope.json')),context:ctx},files8=new Map(b.files);
+ files8.set('envelope.json',Buffer.from(JSON.stringify(env8)));
+ assert.equal(inspectNextStatePacket({...b,files:files8,currentContext:ctx}).envelope.context.nodeOptions,'--max-old-space-size=8192');
+ assert.throws(()=>inspectNextStatePacket({...b,files:files8,currentContext:b.context}));
+ for(const nodeOptions of ['--max-old-space-size=12288','--max-old-space-size=8193']){const c={...b.context,nodeOptions},f9=new Map(b.files);f9.set('envelope.json',Buffer.from(JSON.stringify({...env8,context:c})));assert.throws(()=>inspectNextStatePacket({...b,files:f9,currentContext:c}));}
  assert.throws(()=>inspectNextStatePacket({...f,now:f.now+86400000}));
 });
 test('normal build capacity uses measured12GiB setup headroom; it cannot lower compiler swap or admit tests',()=>{
