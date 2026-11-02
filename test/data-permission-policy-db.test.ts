@@ -51,8 +51,9 @@ describe('assigned data rules intersect actual native company scope',()=>{
   await owner.db.update(s.appUser).set({personId:people[0].personId}).where(eq(s.appUser.id,limited.userId!));
   await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:limited.userId!,role:'manager',companyId:b.companyId});
   limited={...limited,personId:people[0].personId,roles:['hr_admin','manager'],grants:[{role:'hr_admin',companyId:b.companyId},{role:'manager',companyId:b.companyId}]};
-  await owner.db.insert(s.reportingLine).values({tenantId:b.tenantId,managerEmploymentId:people[0].id,subordinateEmploymentId:people[1].id,lineType:'administrative',validFrom:'2026-01-01'});
-  await assign(await profile(rule([{field:'grade',values:[grades[0]]}])));await expectVisible(limited,[0]);
+  await assign(await profile(rule([{field:'grade',values:[grades[0]]}])));
+  await expect(withTenant(limited,tx=>tx.insert(s.reportingLine).values({tenantId:b.tenantId,managerEmploymentId:people[0].id,subordinateEmploymentId:people[1].id,lineType:'administrative',validFrom:'2026-01-01'}))).rejects.toThrow();
+  await owner.db.insert(s.reportingLine).values({tenantId:b.tenantId,managerEmploymentId:people[0].id,subordinateEmploymentId:people[1].id,lineType:'administrative',validFrom:'2026-01-01'});await expectVisible(limited,[0]);
   expect((await listEmployees(limited,undefined,'workforce')).map(row=>row.employmentId)).toEqual([people[0].id]);
   const [proof]=await withTenant(limited,tx=>tx.execute<{allowed:boolean}>(sql`select app.can_see_employment(${people[1].id}::uuid) as allowed`));expect(proof.allowed).toBe(false);
  });

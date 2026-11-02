@@ -6,10 +6,14 @@ import {cleanup,render} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import {IdentityFields,IdentityProvider} from '../components/personnel-identity';
 import en from '../messages/en.json';
-vi.mock('next-intl',()=>({useTranslations:(namespace?:string)=>Object.assign((key:string)=>namespace?namespace+'.'+key:key,{has:()=>false})}));
+import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import vietnamese from '../messages/vi.json';
+import {NextIntlClientProvider} from 'next-intl';
+import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
+const catalogues={en,ms,zh,ta,th,vi:vietnamese};
+
 afterEach(cleanup);
 const props={employmentId:'86000000-0000-4000-8000-000000000001',personId:'86000000-0000-4000-8000-000000000002',icDefault:'900101123456',oldIcNumber:'OLD-IC',passportNumber:'Fictional Passport',passportIssueDate:'2020-01-01',passportExpiryDate:'2030-01-01',passportIssuingCountry:'Malaysia',passportIssuingCountryCode:'MY',passportRemark:'Fictional note',countryOptions:[{value:'Malaysia',label:'Malaysia'}],setIcAction:vi.fn(),setPassportAction:vi.fn()};
-function show(extra:Partial<React.ComponentProps<typeof IdentityFields>>={}){return render(<IdentityProvider initialNationality="Malaysian"><IdentityFields {...props} {...extra}/></IdentityProvider>);}
+function show(extra:Partial<React.ComponentProps<typeof IdentityFields>>={}){return render(<NextIntlClientProvider locale="en" messages={en}><IdentityProvider initialNationality="Malaysian"><IdentityFields {...props} {...extra}/></IdentityProvider></NextIntlClientProvider>);}
 it('disables only passport controls and omits that section from form serialization while leaving IC enabled',()=>{
  const text=en.accessConfiguration.workforceReadOnly,view=show({passportDisabled:true,passportReadOnlyMessage:text}),passport=view.container.querySelector('form[data-save-section="passport"]') as HTMLFormElement,ic=view.container.querySelector('form[data-save-section="ic"]') as HTMLFormElement;
  expect(passport).not.toBeNull();expect(ic).not.toBeNull();expect(passport.querySelector('fieldset')?.disabled).toBe(true);expect(passport.textContent).toContain(text);expect(new FormData(passport).has('passportNumber')).toBe(false);expect(new FormData(passport).has('personId')).toBe(false);expect(new FormData(ic).get('personId')).toBe(props.personId);expect((ic.querySelector('input[name="icNumber"]') as HTMLInputElement).matches(':disabled')).toBe(false);
@@ -22,9 +26,10 @@ it('binds the real Personnel page and both real action paths to the same native 
  expect(page).toContain('countryPack?.statutory.passportEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId})');expect(page).toContain('passportDisabled={!canEditPassport}');expect(page).toContain("passportReadOnlyMessage={tAccess('workforceReadOnly')}");const start=actions.indexOf('async function applyPassportSection('),end=actions.indexOf('export async function setPassportAction',start),apply=actions.slice(start,end);expect(apply).toMatch(/employmentId:\s*String\(formData.get\('employmentId'\)\)/);expect(actions).toContain('passport: applyPassportSection');expect(country).toContain('passportEditAccess?');expect(identity).toContain('passportDisabled=false');expect(shared).not.toContain('passportDisabled');
 });
 
-it('requires only the passport number for a non-Malaysian employee',()=>{
- const view=render(<IdentityProvider initialNationality="Singaporean"><IdentityFields {...props} passportNumber="" passportIssueDate="" passportExpiryDate=""/></IdentityProvider>);
+it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s requires only the passport number for a non-Malaysian employee',async locale=>{
+ const view=render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]}><IdentityProvider initialNationality="Singaporean"><IdentityFields {...props} passportNumber="" passportIssueDate="" passportExpiryDate=""/></IdentityProvider></NextIntlClientProvider>);
  const form=view.container.querySelector('form[data-save-section="passport"]') as HTMLFormElement;
  expect((form.querySelector('input[name="passportNumber"]') as HTMLInputElement).required).toBe(true);
  for(const name of ['passportIssueDate','passportExpiryDate'])expect((form.querySelector(`input[name="${name}"]`) as HTMLInputElement).required).toBe(false);
-});
+ await captureAiReviewScreenshots(aiReviewDomHtml(view.container),locale,'passport-fields','Actual native identity/passport controls with fictional sample and scoped metadata; no installed journey','atelier');
+},120000);

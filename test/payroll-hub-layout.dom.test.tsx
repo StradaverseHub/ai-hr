@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import messages from '../messages/en.json';
+import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
+vi.mock('../app/payroll/setup/corrections-actions',()=>({savePayrollCorrections:async()=>({})}));
 
 const state = vi.hoisted(() => ({ group: true, enabled: true, denied: false, typed: true }));
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => {
@@ -23,8 +25,10 @@ vi.mock('../core/entitlements', () => ({
 vi.mock('../core/read', () => ({ listCompanies: async () => [] }));
 vi.mock('../core/payroll-readiness', () => ({ payrollCycleReadiness: async () => [], payrollReadiness: vi.fn() }));
 vi.mock('../lib/statutory-readiness', () => ({ statutoryPackStale: vi.fn() }));
-vi.mock('../app/payroll/setup/corrections-form', () => ({ PayrollCorrectionsForm: (props: { enabled: boolean; canEdit: boolean }) =>
-  <div data-testid="correction-form" data-enabled={String(props.enabled)} data-can-edit={String(props.canEdit)}/> }));
+vi.mock('../app/payroll/setup/corrections-form',async original=>{
+ const actual=await original<typeof import('../app/payroll/setup/corrections-form')>();
+ return {PayrollCorrectionsForm:(props:Parameters<typeof actual.PayrollCorrectionsForm>[0])=><div data-testid="correction-form" data-enabled={String(props.enabled)} data-can-edit={String(props.canEdit)}><actual.PayrollCorrectionsForm {...props}/></div>};
+});
 
 import Setup from '../app/payroll/setup/page';
 import Corrections from '../app/payroll/setup/correction-controls/page';
@@ -38,7 +42,8 @@ describe('approved payroll navigation changes', () => {
     expect(screen.getByRole('link', { name: messages.payroll.setup.corrections.cta })).toHaveAttribute('href', '/payroll/setup/correction-controls');
     expect(screen.queryByTestId('correction-form')).toBeNull();
     expect(screen.getByRole('link', { name: messages.payroll.setup.cycles.cta })).toHaveAttribute('href', '/admin/payroll-cycle');
-  });
+    await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en','payroll-hub-settings','Actual settings hub with mocked authorized setting reads; no installed journey','atelier');
+  },120000);
 
   it.each([[true, true], [false, false]])('passes stored value %s and edit authority %s to the same form', async (enabled, group) => {
     Object.assign(state, { enabled, group });
@@ -46,12 +51,13 @@ describe('approved payroll navigation changes', () => {
     expect(screen.getByTestId('correction-form')).toHaveAttribute('data-enabled', String(enabled));
     expect(screen.getByTestId('correction-form')).toHaveAttribute('data-can-edit', String(group));
     expect(screen.getByRole('link', { name: new RegExp(messages.payroll.setup.title) })).toHaveAttribute('href', '/payroll/setup');
-  });
+    if(enabled&&group)await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en','payroll-correction-controls','Actual dedicated page and existing form; mocked authorization/data reads, no installed journey','atelier');
+  },120000);
 
   it('refuses the dedicated route when the existing administrator guard refuses', async () => {
     state.denied = true;
     await expect(Corrections()).rejects.toThrow('forbidden');
-  });
+  },120000);
 
   it.each([true, false])('retains seven transaction links and removes both duplicated tiles with typed-components=%s', async typed => {
     state.typed = typed;
@@ -64,5 +70,6 @@ describe('approved payroll navigation changes', () => {
     expect(screen.queryByRole('heading', { name: messages.payroll.transactions.hub.adjustmentsTitle })).toBeNull();
     expect(screen.queryByRole('heading', { name: messages.payroll.transactions.hub.componentImportTitle })).toBeNull();
     if (!typed) expect(screen.getByText(messages.payroll.transactions.gatedTitle)).toBeVisible();
-  });
+    if(typed)await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en','payroll-transactions','Actual transactions hub; mocked authorized module read, no installed journey','atelier');
+  },120000);
 });
