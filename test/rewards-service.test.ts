@@ -124,7 +124,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await saveRewardSeniorMembership(admin, unitId, after.unit.revision, deselect, next.digest);
     expect((await getRewardSeniorMembership(admin, unitId)).rows[0].member).toBe(false);
   });
-  it('differentially prepares bounded configuration metadata without an employee/pay roster or PAT disclosure to HR-only',async()=>{
+  it('reads bounded configuration metadata without an employee/pay roster or PAT disclosure to HR-only',async()=>{
     const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Actual configuration administrator',primaryEmail:'configuration@rewards.test'}).returning();
     const userId=await createAppUser(b.tenantId,person.id,'hr_admin'),hr={...admin,userId,personId:person.id,roles:['hr_admin']as SessionContext['roles'],grants:undefined};
     for(const actor of [admin,hr]){
@@ -133,11 +133,30 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
       expect(normalize(result.value)).toEqual(normalize(expected));expect(result.value).not.toHaveProperty('rows');expect(result.value.members.length).toBeGreaterThan(0);
       if(actor===hr)expect(result.value).toMatchObject({canReadPat:false,canConfigure:false,canManageMembers:true,unit:{policy:{patActual:0,patTarget:100}}});
       const [floor]=await owner.db.execute<{assigned:boolean;administration:boolean}>(sql`select app.rewards_function_legacy_allowed(${b.tenantId}::uuid,${actor.userId!}::uuid,'function.rewards.configuration.assigned.view',${b.companyId}::uuid)as assigned,app.rewards_function_legacy_allowed(${b.tenantId}::uuid,${actor.userId!}::uuid,'function.rewards.configuration.administration.view',${b.companyId}::uuid)as administration`);expect(floor).toEqual({assigned:actor===admin,administration:true});
-      await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_configuration_review(${unitId}::uuid)`))).rejects.toThrow();
+      expect(await withTenant(actor,tx=>tx.execute(sql`select app.reward_configuration_review(${unitId}::uuid)as value`))).toEqual([{value:result.value}]);
     }
+    const expected = await Promise.all([admin,hr].map(actor => getRewardConfiguration(actor,unitId)));
+    await owner.db.execute(sql`create policy test_rewards_configuration_unit_fence on reward_unit as restrictive for select to ai_hr_app using(false)`);
+    await owner.db.execute(sql`create policy test_rewards_configuration_state_fence on reward_governance as restrictive for select to ai_hr_app using(false)`);
+    try {
+      expect(await Promise.all([admin,hr].map(actor => getRewardConfiguration(actor,unitId)))).toEqual(expected);
+    } finally {
+      await owner.db.execute(sql`drop policy test_rewards_configuration_state_fence on reward_governance`);
+      await owner.db.execute(sql`drop policy test_rewards_configuration_unit_fence on reward_unit`);
+    }
+    await expect(getRewardConfiguration(actors.bu!,unitId)).rejects.toThrow('Rewards configuration requires company administrator or Group Rewards access.');
     const claimed={...hr,roles:['employee']as SessionContext['roles'],grants:undefined};
     const [current]=await owner.withTenant(claimed,tx=>tx.execute<{pure:boolean;current:boolean}>(sql`select app.rewards_function_legacy_allowed(${b.tenantId}::uuid,${hr.userId!}::uuid,'function.rewards.configuration.administration.view',${b.companyId}::uuid)as pure,app.rewards_function_current_legacy_allowed(${b.tenantId}::uuid,${hr.userId!}::uuid,'function.rewards.configuration.administration.view',${b.companyId}::uuid)as current`));expect(current).toEqual({pure:true,current:false});
     await expect(owner.withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_configuration_review(${unitId}::uuid)`))).rejects.toThrow();
+  });
+  it('reads pay-free Senior membership and seated counts through their real bounded owners after raw entry reads are fenced',async()=>{
+    const expected=await getRewardSeniorMembership(admin,unitId),listed=await listRewardUnits(admin,[b.companyId]);expect(listed).toHaveLength(1);
+    await owner.db.execute(sql`create policy test_rewards_metadata_read_fence on reward_entry as restrictive for select to ai_hr_app using(false)`);
+    try {
+      expect(await getRewardSeniorMembership(admin,unitId)).toEqual(expected);
+      const bounded=await listRewardUnits(admin,[b.companyId]);expect(bounded).toHaveLength(1);expect({people:bounded[0].people,verified:bounded[0].verified}).toEqual({people:listed[0].people,verified:listed[0].verified});expect(bounded[0].people).toBe(1);
+      expect(JSON.stringify(expected)).not.toMatch(/basicCents|compensationId|bonusCents|recommendation/);
+    } finally { await owner.db.execute(sql`drop policy test_rewards_metadata_read_fence on reward_entry`); }
   });
   it('refuses duplicate, unavailable, stale and altered-preview selections with no writes', async () => {
     const original=await view();await owner.db.update(schema.rewardEntry).set({source:{...original.rows[0].source,grade:'21'}}).where(eq(schema.rewardEntry.id,original.rows[0].id));
@@ -162,7 +181,7 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await setRewardMember(admin, unitId, v.unit.revision, userId, 'gr');
     const own = { ...admin, userId, personId: entry.source.personId, roles: ['employee'] as SessionContext['roles'], grants: undefined };
     const state = await getRewardSeniorMembership(own, unitId);
-    const [bounded]=await owner.withTenant(own,tx=>tx.execute<{value:unknown}>(sql`select app.reward_senior_membership_metadata(${unitId}::uuid)as value`));expect(bounded.value).toEqual(state);await expect(withTenant(own,tx=>tx.execute(sql`select app.reward_senior_membership_metadata(${unitId}::uuid)`))).rejects.toThrow();
+    const [bounded]=await owner.withTenant(own,tx=>tx.execute<{value:unknown}>(sql`select app.reward_senior_membership_metadata(${unitId}::uuid)as value`));expect(bounded.value).toEqual(state);expect(await withTenant(own,tx=>tx.execute(sql`select app.reward_senior_membership_metadata(${unitId}::uuid)as value`))).toEqual([{value:state}]);
     expect(state.rows).toEqual([]);
     await expect(previewRewardSeniorMembership(own, unitId, state.revision, { employmentIds: [employmentId], adoptLegacy: true })).rejects.toThrow(/visible review roster/);
     const selection = { employmentIds: [], adoptLegacy: true };
@@ -572,6 +591,9 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     for(const source of [sql`select app.reward_configuration_review(${unitId}::uuid)`,sql`select app.reward_governance_review(${unitId}::uuid)`,sql`select app.reward_cancel_admission(${unitId}::uuid,${(await view()).unit.revision},'A real cancellation source must remain private')`]){
       let refusal:unknown;try{await owner.withTenant(outsider,tx=>tx.execute(source));}catch(error){refusal=error;}
       expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward unit not found or access has been removed.'}));
+    }
+    for(const query of [sql`select app.reward_configuration_review(${unitId}::uuid)`,sql`select app.reward_governance_review(${unitId}::uuid)`]) {
+      await expectPgRefusal(withTenant(outsider,tx=>tx.execute(query)), '42501', 'Reward unit not found or access has been removed.');
     }
     expect(await owner.withTenant(outsider,tx=>tx.execute(sql`select app.reward_unit_native_readable(${unitId}::uuid)as readable`))).toEqual([{readable:false}]);
   });

@@ -3133,7 +3133,7 @@ DECLARE unit public.reward_unit;people integer;verified integer;
 BEGIN
  IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id()AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))THEN RETURN NULL;END IF;
  SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL;
- IF unit.id IS NULL OR NOT EXISTS(SELECT 1 FROM app.reward_roles(unit.id))THEN RETURN NULL;END IF;
+ IF unit.id IS NULL OR NOT EXISTS(SELECT 1 FROM app.reward_roles(unit.id))OR app.function_action_allowed('rewards.review','view',unit.company_id)IS NOT TRUE THEN RETURN NULL;END IF;
  SELECT count(*)::integer,count(*)FILTER(WHERE e.facts->>'reviewed'='true')::integer INTO people,verified FROM public.reward_entry e WHERE e.unit_id=unit.id AND e.tenant_id=unit.tenant_id;
  RETURN jsonb_build_object('people',people,'verified',verified);
 END $$;
@@ -3154,6 +3154,7 @@ BEGIN
  IF actor.id IS NULL OR unit.id IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
  IF cardinality(roles)=0 THEN RAISE EXCEPTION 'Ask an administrator to assign your Reward Desk role for this unit.' USING ERRCODE='42501';END IF;
  IF NOT('gr'=ANY(roles))THEN RAISE EXCEPTION 'Group Rewards membership access is required.' USING ERRCODE='42501';END IF;
+ IF app.function_action_allowed('rewards.review','view',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward review function unavailable' USING ERRCODE='42501';END IF;
  SELECT coalesce(jsonb_agg(jsonb_build_object('employmentId',e.employment_id,'name',e.source->'name','employeeCode',e.source->'employeeCode','member',app.reward_calc_senior(unit.policy,jsonb_build_object('source',e.source,'facts',e.facts)),'eligible',app.reward_calc_senior_grade(e.source->>'grade'),'grade',e.source->'grade')ORDER BY e.id),'[]'::jsonb)INTO rows
  FROM public.reward_entry e JOIN public.employment actual ON actual.id=e.employment_id AND actual.tenant_id=e.tenant_id WHERE e.unit_id=unit.id AND e.tenant_id=unit.tenant_id AND actual.person_id IS DISTINCT FROM actor.person_id;
  RETURN jsonb_build_object('unitId',unit.id,'revision',unit.revision,'canEdit',unit.kind='annual'AND unit.status='draft','mode',coalesce(unit.policy->>'seniorMembershipMode','legacy-grades'),'rows',rows);
@@ -3174,6 +3175,7 @@ BEGIN
  IF actor.id IS NULL OR unit.id IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
  IF cardinality(roles)=0 THEN RAISE EXCEPTION 'Ask an administrator to assign your Reward Desk role for this unit.' USING ERRCODE='42501';END IF;
  IF NOT(roles&&ARRAY['gr','ctro','ec'])THEN RAISE EXCEPTION 'Senior plan evidence is restricted.' USING ERRCODE='42501';END IF;
+ IF app.function_action_allowed('rewards.review','view',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward review function unavailable' USING ERRCODE='42501';END IF;
  SELECT jsonb_build_object('name',f.name,'mime',f.mime,'content',f.content)INTO result FROM public.reward_senior_evidence f
  JOIN public.reward_entry e ON e.id=f.entry_id AND e.unit_id=f.unit_id AND e.tenant_id=f.tenant_id
  JOIN public.employment actual ON actual.id=e.employment_id AND actual.tenant_id=e.tenant_id
@@ -3880,3 +3882,10 @@ END $$;
 REVOKE ALL ON FUNCTION app.reward_entry_source_changed()FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER rewards_entry_source_recheck AFTER UPDATE OR DELETE ON public.reward_unit FOR EACH ROW EXECUTE FUNCTION app.reward_entry_source_changed();
 CREATE TRIGGER rewards_entry_source_recheck AFTER UPDATE OR DELETE ON public.reward_entry FOR EACH ROW EXECUTE FUNCTION app.reward_entry_source_changed();
+
+
+--> statement-breakpoint
+-- Only bounded read projections are callable. Native source, calculation and effect owners remain private.
+GRANT EXECUTE ON FUNCTION app.reward_unit_verification_counts(uuid),
+ app.reward_senior_membership_metadata(uuid),app.reward_senior_evidence_read(uuid,uuid),
+ app.reward_governance_review(uuid),app.reward_configuration_review(uuid) TO ai_hr_app;

@@ -69,7 +69,7 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
    expect(projected.budgets.standard).toEqual((await view()).budgets.standard);
   }
  });
- it('differentially projects native governance without disclosing the private roster or borrowing audit actor-name access',async()=>{
+ it('projects native governance without disclosing the private roster or borrowing audit actor-name access',async()=>{
   await saveInputs();
   await proposeRewardExemption(gr,unitId,(await view()).unit.revision,'Actual projection independent exemption');
   await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'exemption');
@@ -78,7 +78,20 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
    const normalize=(value:typeof expected|typeof result.value)=>({...value,branches:[...value.branches].sort(),history:value.history.map(row=>{const {actorName:_name,...rest}=row;return {...rest,createdAt:row.createdAt instanceof Date?row.createdAt.toISOString():new Date(String(row.createdAt)).toISOString()};})});
    expect(normalize(result.value)).toEqual(normalize(expected));
    if(actor===gr)expect(result.value.history.length).toBeGreaterThan(0);else if(actor!==checker){expect(result.value.history).toEqual([]);expect(result.value).toMatchObject({inputs:null,selection:null,exemption:null,legacyInputs:null});}
-   await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_governance_review(${unitId}::uuid)`))).rejects.toThrow();
+   expect(await withTenant(actor,tx=>tx.execute(sql`select app.reward_governance_review(${unitId}::uuid)as value`))).toEqual([{value:result.value}]);
+  }
+ });
+ it('retains the governance view when raw roster and governance reads are fenced',async()=>{
+  await saveInputs();
+  const viewers=[gr,checker,bu,ctro,payroll];
+  const expected=await Promise.all(viewers.map(actor=>getRewardUnitGovernance(actor,unitId)));
+  const tables=['reward_entry','reward_governance','reward_governance_history','reward_senior_award']as const;
+  for(const table of tables)await owner.db.execute(sql`create policy test_reward_governance_read_fence on ${sql.identifier(table)} as restrictive for select to ai_hr_app using(false)`);
+  try {
+   expect(await Promise.all(viewers.map(actor=>getRewardUnitGovernance(actor,unitId)))).toEqual(expected);
+   expect(await withTenant(gr,tx=>tx.select().from(schema.rewardGovernance).where(eq(schema.rewardGovernance.unitId,unitId)))).toEqual([]);
+  } finally {
+   for(const table of tables)await owner.db.execute(sql`drop policy test_reward_governance_read_fence on ${sql.identifier(table)}`);
   }
  });
  it('refuses same-user confirmation and serializes competing stale saves with one winner',async()=>{
@@ -113,7 +126,12 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   await saveRewardSeniorAward(gr,unitId,(await view()).unit.revision,{entryId,newBasicCents:550000,incrementBp:null,bonusCents:123400,approvalReference:'FICTIONAL-EVIDENCE',approvalDate:today,reason:'Fictional independently retained approval evidence',evidence:[{name:'fictional-decision.png',mime:'image/png',content}]});
   const [file]=await owner.db.select({id:schema.rewardSeniorEvidence.id}).from(schema.rewardSeniorEvidence).where(eq(schema.rewardSeniorEvidence.unitId,unitId));
   const expected=await readRewardSeniorEvidence(ctro,unitId,file.id),[bounded]=await owner.withTenant(ctro,tx=>tx.execute<{value:unknown}>(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)as value`));expect(bounded.value).toEqual(expected);expect(expected).toEqual({name:'fictional-decision.png',mime:'image/png',content});
-  await expect(withTenant(ctro,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow();await expect(owner.withTenant(bu,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`)).then(() => [], pgErrorChain)).resolves.toContainEqual(expect.objectContaining({code:'42501',message:'Senior plan evidence is restricted.'}));
+  expect(await withTenant(ctro,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)as value`))).toEqual([{value:expected}]);await expect(owner.withTenant(bu,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`)).then(() => [], pgErrorChain)).resolves.toContainEqual(expect.objectContaining({code:'42501',message:'Senior plan evidence is restricted.'}));
+  await owner.db.execute(sql`create policy test_reward_evidence_read_fence on reward_senior_evidence as restrictive for select to ai_hr_app using(false)`);
+  try {
+   expect(await withTenant(ctro,tx=>tx.select().from(schema.rewardSeniorEvidence).where(eq(schema.rewardSeniorEvidence.id,file.id)))).toEqual([]);
+   expect(await readRewardSeniorEvidence(ctro,unitId,file.id)).toEqual(expected);
+  } finally { await owner.db.execute(sql`drop policy test_reward_evidence_read_fence on reward_senior_evidence`); }
   const [employee]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employeeId)),ownUser=await createAppUser(b.tenantId,employee.personId,'employee'),own={...gr,userId:ownUser,personId:employee.personId,roles:['employee'],grants:undefined};
   await setRewardMember(gr,unitId,(await view()).unit.revision,ownUser,'ctro');await expect(readRewardSeniorEvidence(own,unitId,file.id)).rejects.toThrow('Evidence is not available');await expect(owner.withTenant(own,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`)).then(() => [], pgErrorChain)).resolves.toContainEqual(expect.objectContaining({code:'42501',message:'Evidence is not available.'}));
   await setRewardMember(gr,unitId,(await view()).unit.revision,ctro.userId!,'ctro',true);await expect(owner.withTenant(ctro,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow();
