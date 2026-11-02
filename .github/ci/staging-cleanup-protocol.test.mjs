@@ -5,6 +5,7 @@ import {installationFixture} from './staging-install-test-fixture.mjs';
 import {createCleanupRequest,validateCleanupRequest} from './staging-cleanup-protocol.mjs';
 import {installHash,installJson} from './ci-install-grant.mjs';
 import {validateFinalCleanup} from './staging-ci-promotion.mjs';
+import {BUILD_BUNDLE_FORMAT,BUILD_BUNDLE_KIND} from './build-bundle-protocol.mjs';
 function fixture(){
  const {grant}=installationFixture(),authorizationSha256=installHash(Buffer.from(installJson(grant)+'\n'));
  const arrival={source:grant.source,installId:grant.installId,buildRecordId:grant.build.buildRecordId,nextBuildId:grant.build.nextBuildId,healthStatus:200};
@@ -22,13 +23,15 @@ test('cleanup result cannot replace fresh actual byte/health/ledger proof or cla
  const f=fixture(),g=f.grant,expected=[{tag:'001_fixture',hash:'f'.repeat(64),created_at:'1'}];
  const base={...f.arrival,authorizationSha256:f.authorizationSha256};
  const installed={authorizationSha256:f.authorizationSha256,releaseAuthorized:false,verified:{...base},activated:{...base,afterActivationMonotonicUs:100,activation:{activeDirectory:{device:1,inode:2}}},
-  runtime:{...base,pid:'123',startedMonotonicUs:101,verifiedAt:new Date().toISOString(),compiledByteInventory:{format:2,capacityProfile:{...g.build.capacityProfile},kind:'next-build-byte-bundle',releaseAuthorized:false,runtimeCacheExcluded:true,files:4},
+  runtime:{...base,pid:'123',startedMonotonicUs:101,verifiedAt:new Date().toISOString(),compiledByteInventory:{format:BUILD_BUNDLE_FORMAT,capacityProfile:{...g.build.capacityProfile},kind:BUILD_BUNDLE_KIND,releaseAuthorized:false,runtimeCacheExcluded:true,files:4,mapCopies:1,unpackedBytes:100,archiveBytes:g.build.archiveBytes},
    migrationLedger:{kind:'READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE',releaseAuthorized:false,rows:1,expectedSha256:installHash(installJson(expected)),actualSha256:'a'.repeat(64)}}};
  const result={...base,kind:'CI_INSTALL_OWNED_CLEANUP_AND_FINAL_RUNTIME_VERIFIED',ownedResourceCleanupVerified:true,releaseHandbackVerified:false,runtime:installed.runtime,
   cleanup:{kind:'OWNED_INSTALL_BYTES_ABSENT_AUDIT_RETAINED',source:g.source,installId:g.installId,nextBuildId:g.build.nextBuildId,authorizationSha256:f.authorizationSha256,verifiedAbsent:['next','packet'],auditEvidenceRetained:true,activeDirectory:{device:1,inode:2}}};
  assert.equal(validateFinalCleanup(result,{grant:g,installed,expectedLedger:expected}).nextBuildId,g.build.nextBuildId);
  for(const mutate of [r=>r.ownedResourceCleanupVerified=false,r=>r.cleanup.verifiedAbsent=['next'],r=>r.cleanup.auditEvidenceRetained=false,r=>r.cleanup.activeDirectory.inode=3,
-  r=>r.runtime.healthStatus=500,r=>r.runtime.compiledByteInventory.files=0,r=>r.runtime.migrationLedger.rows=0,r=>r.runtime.verifiedAt=new Date(Date.now()-61000).toISOString()]){
+  r=>r.runtime.healthStatus=500,r=>r.runtime.compiledByteInventory.files=0,r=>r.runtime.compiledByteInventory.format=2,
+  r=>delete r.runtime.compiledByteInventory.mapCopies,r=>r.runtime.compiledByteInventory.archiveBytes++,
+  r=>r.runtime.migrationLedger.rows=0,r=>r.runtime.verifiedAt=new Date(Date.now()-61000).toISOString()]){
   const r=structuredClone(result);mutate(r);assert.throws(()=>validateFinalCleanup(r,{grant:g,installed,expectedLedger:expected}));
  }
 });

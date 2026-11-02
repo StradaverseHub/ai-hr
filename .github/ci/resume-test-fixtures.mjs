@@ -15,8 +15,8 @@ function zip(entries) {
   archiveCache.set(input, bytes);
   return bytes;
 }
-export function fixture() {
-  const expected = {candidate: 'a'.repeat(40), controller: 'c'.repeat(40), baseline: 'b'.repeat(40), runId: 100};
+export function fixture({controller='c'.repeat(40)}={}) {
+  const expected = {candidate: 'a'.repeat(40), controller, baseline: 'b'.repeat(40), runId: 100};
   const suite = ['test/db.test.ts', 'test/plain.test.ts'];
   const units = buildUnits(suite, {db: [suite[0]], nodb: [suite[1]]}, ['test/ui.browser.test.tsx']);
   const body = {schemaVersion: 2, policyVersion: CI_POLICY, sha: expected.candidate, controller: expected.controller,

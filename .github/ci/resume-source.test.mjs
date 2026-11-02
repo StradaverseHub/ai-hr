@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {assessResumeSource} from './resume-source.mjs';
 import {fixture, put, remove, time} from './resume-test-fixtures.mjs';
+import {buildPacketFixture} from './build-artifact-test-fixture.mjs';
 
 test('Verified raw archives produce a non-authoritative assessment, preserving a failed whole run', () => {
   const f = fixture(), before = structuredClone(f.run), r = assessResumeSource(f);
@@ -75,8 +76,7 @@ test('supplemental compiler graph is authenticated but never supplies test-unit 
 });
 
 test('binary build packet integrity is checked without creating reusable build or test coverage',async()=>{
- const {buildPacketFixture}=await import('./build-artifact-test-fixture.mjs');
- const f=fixture(),job=f.jobs.find(j=>j.name==='build');
+ const f=fixture({controller:buildPacketFixture().expected.controller}),job=f.jobs.find(j=>j.name==='build');
  const packet=buildPacketFixture({...f.expected,controllerBranch:'main',producerStartedAt:job.started_at,producerCompletedAt:job.completed_at});
  const entries=Object.fromEntries(Object.entries(packet.entries).map(([name,bytes])=>[name,bytes.toString()]));
  put(f,'production-build-v1','build-provenance.json',JSON.parse(entries['build-provenance.json']),Object.fromEntries(Object.entries(entries).filter(([name])=>name!=='build-provenance.json')));
@@ -89,7 +89,7 @@ test('binary build packet integrity is checked without creating reusable build o
 
 test('optional normal application graph is authenticated but never waives a fresh build/compiler or supplies test units',async()=>{
  const {applicationStateFixture}=await import('./next-application-test-fixtures.mjs');
- const f=fixture(),job=f.jobs.find(j=>j.name==='build');
+ const f=fixture({controller:buildPacketFixture().expected.controller}),job=f.jobs.find(j=>j.name==='build');
  const state=applicationStateFixture({...f.expected,controllerBranch:'main',producerStartedAt:job.started_at,producerCompletedAt:job.completed_at});
  const entries=Object.fromEntries([...state.files].map(([name,bytes])=>[name,bytes.toString()]));
  const extra=Object.fromEntries(Object.entries(entries).filter(([name])=>name!=='producer.json'));
