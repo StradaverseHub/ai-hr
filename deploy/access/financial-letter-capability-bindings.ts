@@ -1,3 +1,4 @@
+import {FINANCIAL_LETTER_FUNCTIONS} from './financial-letter-function-bindings';
 /** Code-owned action bindings; only the restricted publisher may activate these after complete checks. */
 const finance=[
  ...['view','add','edit','delete'].map(operation=>({id:`payroll.${operation}`,scope:'company' as const,bindings:[
@@ -16,10 +17,17 @@ const letters=['view','add','edit','delete','approve','issue'].map(operation=>({
 const letterLegacy=['system_administrator','hr_admin'];
 export const FINANCIAL_LETTER_CAPABILITY_PUBLICATION={
  capabilities:[...finance,...letters],
+ functions:FINANCIAL_LETTER_FUNCTIONS,
+ functionLegacyParityFunction:'app.financial_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.financial_function_current_legacy_allowed',
  legacyParityFunction:'app.financial_letter_legacy_allowed',
+ currentLegacyParityFunction:'app.financial_letter_current_legacy_allowed',
  delegationFloorFunction:'app.financial_letter_delegation_allowed',
  requiredFunctions:[
+  // Defined only after the complete installed action binding inventory passes review.
+  'app.financial_letter_bindings_complete()',
   'app.financial_letter_legacy_allowed(uuid,uuid,text,uuid)',
+  'app.financial_letter_current_legacy_allowed(uuid,uuid,text,uuid)',
   'app.financial_letter_delegation_allowed(uuid,uuid,text,uuid)',
   'app.access_financial_action_company(text,uuid,text)',
   'app.access_financial_action_employment(text,uuid,text)',

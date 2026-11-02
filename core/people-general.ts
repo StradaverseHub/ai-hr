@@ -1,6 +1,7 @@
 /** One tenant-wide policy; SQL owns admission, authorization, serialization and audit. */
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {settingsAccessTx} from './organisation-access';
 import { pgSqlState } from '../lib/db-error';
 
 /** 5e0b2154 — allowDuplicatedEmail relaxes the employee-import duplicate work/personal email checks only;
@@ -17,11 +18,11 @@ export async function readPeopleGeneralTx(tx: Tx): Promise<PeopleGeneralPolicy> 
   return { allowDuplicatedNric: row?.allow_duplicated_nric === true, allowDuplicatedEmail: row?.allow_duplicated_email === true, revision: row?.revision ?? null };
 }
 export function getPeopleGeneral(ctx: SessionContext) {
-  return withTenant(ctx, readPeopleGeneralTx);
+  return withTenant(ctx,async tx=>{if(!await settingsAccessTx(tx,'view'))throw new PeopleGeneralError('forbidden');return readPeopleGeneralTx(tx);});
 }
 export function canConfigurePeopleGeneral(ctx: SessionContext) {
   return withTenant(ctx, async tx => {
-    const [row] = await tx.execute<{ allowed: boolean }>(sql`select app.people_general_can_configure() as allowed`);
+    const [row] = await tx.execute<{ allowed: boolean }>(sql`select app.people_general_can_configure() and app.settings_action_allowed('edit') as allowed`);
     return row?.allowed === true;
   });
 }

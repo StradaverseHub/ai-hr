@@ -163,23 +163,23 @@ export function visibleLabelIdsCondition(
 /** Common maintenance is independent of the company switcher. Database administrator scope
  * is applied to rows before any consumer search, count, page limit or export projection. */
 export function labelMaintenanceCondition(table:typeof department|typeof position|typeof costCenter|typeof businessUnit,kind:LabelKind):SQL{
- return sql`app.is_admin() and (app.is_admin_for(${table.companyId}) or
-   (${table.isGlobal}=true and exists(select 1 from company scope_co where scope_co.tenant_id=${table.tenantId} and app.is_admin_for(scope_co.id))) or
+ return sql`app.is_admin() and ((app.is_admin_for(${table.companyId}) and app.organisation_action_allowed('view',${table.companyId})) or
+   (${table.isGlobal}=true and exists(select 1 from company scope_co where scope_co.tenant_id=${table.tenantId} and app.is_admin_for(scope_co.id) and app.organisation_action_allowed('view',scope_co.id))) or
    exists(select 1 from label_company_assignment scope_lca join company scope_co on scope_co.id=scope_lca.company_id and scope_co.tenant_id=scope_lca.tenant_id
-     where scope_lca.tenant_id=${table.tenantId} and scope_lca.label_kind=${kind} and scope_lca.label_id=${table.id} and app.is_admin_for(scope_co.id)))`;
+     where scope_lca.tenant_id=${table.tenantId} and scope_lca.label_kind=${kind} and scope_lca.label_id=${table.id} and app.is_admin_for(scope_co.id) and app.organisation_action_allowed('view',scope_co.id)))`;
 }
 export const SYSTEM_LABEL_MAINTENANCE_LIMIT=5000;
 export function boundedLabelMaintenanceRows<T extends readonly unknown[]>(rows:T):T{if(rows.length>SYSTEM_LABEL_MAINTENANCE_LIMIT)throw new Error('This System Labels list exceeds the supported maintenance size. Use a narrower authorized workbook selection.');return rows;}
 export function labelMaintenanceCompanies(ctx:SessionContext){return withTenant(ctx,async tx=>{
  const rows=await tx.select({id:company.id,name:company.legalName,archivedAt:company.archivedAt}).from(company)
-  .where(and(eq(company.tenantId,ctx.tenantId),sql`app.is_admin() and app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName),asc(company.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1);
+  .where(and(eq(company.tenantId,ctx.tenantId),sql`app.is_admin() and app.is_admin_for(${company.id}) and app.organisation_action_allowed('view',${company.id})`)).orderBy(asc(company.legalName),asc(company.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1);
  return boundedLabelMaintenanceRows(rows);
 });}
 /** Retain stored heads, including ended employments; writes independently validate current eligibility. */
 export function labelMaintenanceHeadOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
  const rows=await tx.select({employmentId:employment.id,companyId:employment.companyId,employeeCode:employment.employeeCode,name:person.fullName}).from(employment)
   .innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId)))
-  .where(and(eq(employment.tenantId,ctx.tenantId),sql`app.is_admin() and app.is_admin_for(${employment.companyId})`)).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1);
+  .where(and(eq(employment.tenantId,ctx.tenantId),sql`app.is_admin() and app.is_admin_for(${employment.companyId}) and app.organisation_action_allowed('view',${employment.companyId})`)).orderBy(asc(employment.employeeCode),asc(employment.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1);
  return boundedLabelMaintenanceRows(rows);
 });}
 

@@ -18,7 +18,7 @@ import { and, desc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizz
 import { type SessionContext, type Tx } from '../db/client';
 import { withPayrollHistoryTenant as withTenant } from './payroll-history-lock';
 import { actorOf, appendEvent } from '../db/events';
-import { employeeCp38, payrollBatch, payslip } from '../db/schema';
+import { employeeCp38, payrollDocumentBatch, payrollBatch, payslip } from '../db/schema';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -160,6 +160,7 @@ async function assertNoProcessedPeriod(
   validFrom: string,
   validTo: string | null,
 ): Promise<void> {
+  const payrollBatch=payrollDocumentBatch;
   const fromMonth = validFrom.slice(0, 7);
   const toMonth = validTo ? validTo.slice(0, 7) : null;
   const [hit] = await tx

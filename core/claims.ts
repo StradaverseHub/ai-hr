@@ -3472,7 +3472,7 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
       .where(and(eq(claimRequest.status, 'pending'),opts.requestId?eq(claimRequest.id,opts.requestId):undefined))
       .orderBy(desc(claimRequest.createdAt));
     // R51 (baf56348): trim delegation-routed rows whose subject is outside the delegation's org coverage.
-    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId,r=>({kind:'claims.claim',id:r.id}));
     const atts = await attachmentsByClaim(tx, scoped.map((r) => r.id));
     return scoped.map((r) => toRow(r, atts));
   });
@@ -3832,7 +3832,7 @@ export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:st
    .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
     companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
    .orderBy(desc(claimRequest.createdAt),claimRequest.id);
-  return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
+  return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId,row=>({kind:'claims.claim',id:row.id}));
  });
  const allowed=new Set(await actionablePendingClaimIds(ctx,candidates.map(row=>row.id)));
  return candidates.filter(row=>allowed.has(row.id));

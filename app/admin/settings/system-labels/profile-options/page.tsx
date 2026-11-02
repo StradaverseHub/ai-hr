@@ -1,3 +1,5 @@
+import {notFound} from 'next/navigation';
+import {settingsAccess} from '@/core/organisation-access';
 import { SystemLabelImportTools } from '@/components/system-label-import-tools';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -20,6 +22,8 @@ import { saveProfileOptionsAction, seedProfileOptionsAction, removeProfileOption
 // unchanged (same table, same core mutations) — only the maintenance surface moved.
 export default async function ProfileOptionsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const s = await requireAdmin();
+  if(!await settingsAccess(s,'view'))notFound();
+  const actionControls={add:await settingsAccess(s,'add'),edit:await settingsAccess(s,'edit'),delete:await settingsAccess(s,'delete')};
   const t = await getTranslations('admin.profileOptions');
   const { error } = await searchParams;
   const all = await listAllProfileOptions(s, { activeOnly: false });
@@ -38,11 +42,12 @@ export default async function ProfileOptionsPage({ searchParams }: { searchParam
         <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
           <p className="text-sm text-muted-foreground">{t('emptyAll')}</p>
           <form action={seedProfileOptionsAction}>
-            <Button type="submit">{t('seedDefaults')}</Button>
+            <Button type="submit" disabled={!actionControls.add}>{t('seedDefaults')}</Button>
           </form>
         </Card>
       ) : (
         <ProfileOptionsGrid
+          actionControls={actionControls}
           categories={[...PERSON_PROFILE_CATEGORIES]}
           data={all}
           actions={{ save: saveProfileOptionsAction, remove: removeProfileOptionAction }}

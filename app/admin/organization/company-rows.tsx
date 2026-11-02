@@ -147,6 +147,7 @@ export function CompanyRows({
   rows,
   labels,
   archiveAction,
+  actionControls,
   basePath = '/admin/organization',
 }: {
   rows: readonly CompanyRow[];
@@ -161,6 +162,7 @@ export function CompanyRows({
   };
   /** The server action behind the Archive / Unarchive button. Bound by the page that owns the route. */
   archiveAction: (fd: FormData) => void | Promise<void>;
+  actionControls?:Record<string,{edit:boolean;delete:boolean}>;
   basePath?: string;
 }) {
   if (rows.length === 0) {
@@ -206,16 +208,16 @@ export function CompanyRows({
               <span aria-hidden className="text-border">
                 |
               </span>
-              <Link href={`${basePath}/${r.id}`} className="text-primary underline underline-offset-2">
+              {actionControls?.[r.id]?.edit!==false && <Link href={`${basePath}/${r.id}`} className="text-primary underline underline-offset-2">
                 {labels.edit}
-              </Link>
+              </Link>}
               <span aria-hidden className="text-border">
                 |
               </span>
               <form action={archiveAction} className="inline">
                 <input type="hidden" name="id" value={r.id} />
                 <input type="hidden" name="archived" value={r.archived ? 'false' : 'true'} />
-                <button type="submit" className="text-primary underline underline-offset-2">
+                <button type="submit" disabled={actionControls?.[r.id]?.[r.archived?'edit':'delete']===false} className="text-primary underline underline-offset-2 disabled:cursor-not-allowed disabled:text-muted-foreground disabled:no-underline">
                   {r.archived ? labels.unarchive : labels.archive}
                 </button>
               </form>

@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
+import {settingsAccessTx} from './organisation-access';
 import { withTenant, type SessionContext } from '../db/client';
 import { loginPresentation } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
@@ -11,7 +12,7 @@ export function assertLoginPresentationAdmin(ctx: SessionContext) {
 export async function readLoginPresentationEditor(ctx: SessionContext) {
   assertLoginPresentationAdmin(ctx);
   return withTenant(ctx, async tx => {
-    const [proof] = await tx.execute(sql`select app.principal_snapshot_current() as allowed`) as unknown as { allowed: boolean }[];
+    const [proof] = await tx.execute(sql`select app.principal_snapshot_current() and app.settings_action_allowed('view') as allowed`) as unknown as { allowed: boolean }[];
     if (!proof?.allowed) throw new Error('forbidden');
     const [row] = await tx.select().from(loginPresentation).where(eq(loginPresentation.tenantId, ctx.tenantId));
     return { revision: row?.revision ?? 0, presentation: row ? validateLoginPresentation(row.presentation) : DEFAULT_LOGIN_PRESENTATION };
@@ -25,6 +26,7 @@ export async function saveLoginPresentation(ctx: SessionContext, value: unknown,
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`login-presentation:${ctx.tenantId}`},0))`);
     const [proof] = await tx.execute(sql`select app.principal_snapshot_current() as allowed`) as unknown as { allowed: boolean }[];
     if (!proof?.allowed) throw new Error('forbidden');
+    if(!await settingsAccessTx(tx,'edit'))throw new Error('forbidden');
     const [previous] = await tx.select().from(loginPresentation).where(eq(loginPresentation.tenantId, ctx.tenantId));
     if ((previous?.revision ?? 0) !== expectedRevision) throw new Error('conflict');
     const revision = expectedRevision + 1;

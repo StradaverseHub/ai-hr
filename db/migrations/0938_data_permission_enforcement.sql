@@ -451,7 +451,7 @@ BEGIN
  t:=coalesce((after_row->>'tenant_id')::uuid,(before_row->>'tenant_id')::uuid);
  IF t IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Data scope principal unavailable' USING ERRCODE='42501';END IF;
  IF TG_TABLE_NAME IN ('person','employment') THEN
-  DELETE FROM app.data_permission_birth WHERE tenant_id=t AND xact_id<>pg_current_xact_id();
+  DELETE FROM app.data_permission_birth WHERE tenant_id=t AND xact_id<pg_snapshot_xmin(pg_current_snapshot());
   IF TG_OP='INSERT' THEN
    subject_id:=(after_row->>'id')::uuid;
    IF TG_TABLE_NAME='person' THEN
@@ -477,7 +477,7 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=t AND a.user_id=u) THEN
   IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
  END IF;
- DELETE FROM app.data_permission_write_subject WHERE tenant_id=t AND xact_id<>pg_current_xact_id();
+ DELETE FROM app.data_permission_write_subject WHERE tenant_id=t AND xact_id<pg_snapshot_xmin(pg_current_snapshot());
  IF TG_TABLE_NAME='person' THEN
   person:=coalesce((after_row->>'id')::uuid,(before_row->>'id')::uuid);
   FOR subject_id IN SELECT e.id FROM public.employment e WHERE e.person_id=person AND e.tenant_id=t AND e.voided_at IS NULL LOOP
@@ -982,7 +982,13 @@ BEGIN
   ELSIF TG_OP='UPDATE' THEN UPDATE app.data_permission_read_generation g SET generation=g.generation+1 WHERE g.tenant_id IN(SELECT id FROM new_rows);END IF;
   RETURN NULL;
  END IF;
- IF TG_OP='UPDATE' AND cardinality(columns)>0 THEN
+ -- Agent execution switches change work, not who may see employee records. ESS policy
+ -- settings do change record/field/approval authority and remain part of this fence.
+ IF TG_TABLE_NAME='tenant_setting' THEN
+  IF TG_OP='UPDATE' THEN
+   query:='SELECT DISTINCT tenant_id FROM (SELECT tenant_id,key FROM new_rows UNION ALL SELECT tenant_id,key FROM old_rows) changed WHERE key LIKE ''ess.%''';
+  ELSE query:='SELECT DISTINCT tenant_id FROM '||CASE WHEN TG_OP='DELETE' THEN 'old_rows' ELSE 'new_rows' END||' WHERE key LIKE ''ess.%''';END IF;
+ ELSIF TG_OP='UPDATE' AND cardinality(columns)>0 THEN
   query:='SELECT DISTINCT n.tenant_id FROM new_rows n JOIN old_rows o USING(id) WHERE EXISTS(SELECT 1 FROM unnest($1::text[]) column_name WHERE to_jsonb(n)->column_name IS DISTINCT FROM to_jsonb(o)->column_name)';
  ELSE query:='SELECT DISTINCT tenant_id FROM '||CASE WHEN TG_OP='DELETE' THEN 'old_rows' ELSE 'new_rows' END;END IF;
  FOR t IN EXECUTE query USING columns LOOP

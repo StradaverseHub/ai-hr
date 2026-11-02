@@ -12,6 +12,8 @@ import {
 } from '@/core/pay-components';
 import { isStatutoryComponent } from '@/core/pay-rule';
 import { requireAdmin } from '@/lib/authz';
+import {notFound} from 'next/navigation';
+import {payrollCatalogueActions} from '@/core/financial-setup-access';
 import type { PayRule } from '@/core/pay-rule';
 import { Card, ErrorBanner, Field, PageHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { OrpConfig } from './orp-config';
@@ -65,6 +67,9 @@ export async function ComponentForm({
   // rejects it with SELF_REFERENCE, and the picker should not offer the mistake in the first place) and
   // every statutory line (legislated, out of bounds for a tenant rule).
   const s = await requireAdmin();
+  const capabilities=await payrollCatalogueActions(s);
+  if(!capabilities.view || !editing&&!capabilities.add)notFound();
+  const canSave=editing?capabilities.edit:capabilities.add;
   const builderEnabled=isModuleEnabled(s,'payroll')&&isModuleEnabled(s,'typed_pay_components');
   const [allItems, previewEmployees, formulaOptions] = await Promise.all([loadPayComponents(s), listPayRulePreviewCandidates(s),builderEnabled?payFormulaOptions(s):Promise.resolve({activeFormulas:[]})]);
   const payItems = allItems
@@ -93,6 +98,7 @@ export async function ComponentForm({
       {component?.pendingInputKind && <p role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm">{t(payCalculationStatus(component.pendingInputKind))} — {t('calculationPendingHint')}</p>}
 
       <form action={editing ? updateComponentAction : createComponentAction} className="space-y-6">
+        <fieldset disabled={!canSave} className="space-y-6">
         {/* ea54fe6e — the EA-form-line CONTROL IS BACK. It was replaced by a hidden passthrough in the
             4994a48f redesign, pending "a dedicated statutory module later" that never came: the column
             kept saving, validating and auditing, the list kept a column for it, and nobody could set it.
@@ -261,6 +267,7 @@ export async function ComponentForm({
           </div>
         </Card>
 
+        </fieldset>
         {/* Bottom toolbar — 711adcd2 puts Cancel and Save at the bottom RIGHT, as drawn, with Back already
             top-left in the PageHeader. Save & New keeps its place between them: it is a save, not a third
             destructive choice, and removing it would take away a shortcut this screen has always had. */}
@@ -268,10 +275,10 @@ export async function ComponentForm({
           <Link href={LIST} className="text-sm font-medium text-muted-foreground hover:text-foreground">
             {t('cancelEdit')}
           </Link>
-          <button name="intent" value="saveAndNew" className={btnGhost}>
+          {canSave && <button name="intent" value="saveAndNew" className={btnGhost}>
             {t('saveAndNew')}
-          </button>
-          <button className={btnPrimary}>{editing ? t('saveChanges') : t('saveComponent')}</button>
+          </button>}
+          {canSave && <button className={btnPrimary}>{editing ? t('saveChanges') : t('saveComponent')}</button>}
         </div>
       </form>
     </div>

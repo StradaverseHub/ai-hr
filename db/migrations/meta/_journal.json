@@ -4530,6 +4530,34 @@
       "when": 1793330000339,
       "tag": "0939_workforce_action_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 762,
+      "version": "7",
+      "when": 1793330000340,
+      "tag": "0940_bounded_approval_task_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 763,
+      "version": "7",
+      "when": 1793330000341,
+      "tag": "0941_financial_letter_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 764,
+      "version": "7",
+      "when": 1793330000342,
+      "tag": "0942_organisation_settings_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 767,
+      "version": "7",
+      "when": 1793330000345,
+      "tag": "0945_financial_setup_actions",
+      "breakpoints": true
     }
   ]
 }
