@@ -546,7 +546,35 @@ const sourceFunctions=[
   ],
   "screenKey": "systemLabels",
   "floor": "app.organisation_profile_option_delegation_allowed"
- }
+ },
+{
+ "key": "profileRequestSettings",
+ "scope": "tenant",
+ "parent": "settings",
+ "labelKey": "nav.profileRequestSettings",
+ "kind": "screen",
+ "href": "/admin/settings/profile-requests",
+ "operations": [
+  "view",
+  "edit"
+ ],
+ "screenKey": "profileRequestSettings",
+ "floor": "app.organisation_settings_delegation_allowed"
+},
+{
+ "key": "profileApprovalRules",
+ "scope": "tenant",
+ "parent": "settings",
+ "labelKey": "essProfile.approvalRules",
+ "kind": "screen",
+ "href": "/admin/settings/profile-requests/rules",
+ "operations": [
+  "view",
+  "edit"
+ ],
+ "screenKey": "profileApprovalRules",
+ "floor": "app.organisation_settings_delegation_allowed"
+}
 ] as const;
 export const ORGANISATION_SETTINGS_FUNCTIONS:readonly FunctionActionDescriptor[]=sourceFunctions.map(row=>({
  key:row.key,scope:row.scope,moduleKey:row.parent.startsWith('function.')?'settings':row.parent,labelKey:row.labelKey,kind:row.kind,course:'administrative',screenKey:row.screenKey,href:row.href,employeeBearing:false,

@@ -20,10 +20,10 @@ export async function freshProfileEditPolicyTx(tx:Tx,ctx:SessionContext){
 
 /** Only administrative policy mutation roots call this. Ordinary ESS readers/reviewers retain their
  * existing source-specific authority; joining Access alone does not grant a group role. */
-export async function assertProfilePolicyWriteAuthorityTx(tx:Tx,ctx:SessionContext):Promise<void>{
+export async function assertProfilePolicyWriteAuthorityTx(tx:Tx,ctx:SessionContext,functionKey:'profileRequestSettings'|'profileApprovalRules'='profileRequestSettings'):Promise<void>{
  try{
   await assertAiPrincipalTx(tx,ctx);
-  const [current]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() and app.settings_action_allowed('edit') as allowed`);
+  const [current]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() and app.organisation_settings_function_allowed(${functionKey},'edit',NULL) as allowed`);
   if(current?.allowed!==true)throw new TenantSettingError('not_group_admin');
  }catch{throw new TenantSettingError('not_group_admin');}
 }

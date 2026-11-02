@@ -122,7 +122,7 @@ export async function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRev
  try{p=structuredClone(p);}catch{throw new ProfileRoutingError('invalid');}
  return withTenant(ctx,async tx=>{
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
-  try{await assertProfilePolicyWriteAuthorityTx(tx,ctx);}catch{throw new ProfileRoutingError('unauthorized');}
+  try{await assertProfilePolicyWriteAuthorityTx(tx,ctx,'profileApprovalRules');}catch{throw new ProfileRoutingError('unauthorized');}
   const fresh=await freshProfileEditPolicyTx(tx,ctx),before=readProfileRoutingPolicy(fresh.ctx);
   if(before.revision!==p.expectedRevision||before.enabled&&!p.enabled)throw new ProfileRoutingError('changed');
   const value={version:p.version??1,enabled:p.enabled,revision:randomUUID(),rules:p.rules};
@@ -190,6 +190,8 @@ export function profileApproverCandidates(ctx:SessionContext){
 export function previewProfileRoutingPolicy(ctx:SessionContext,input:{enabled:boolean;rules:ProfileRouteRule[];version?:1|2|3}){
  return withTenant(ctx,async tx=>{
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
+  const [permission]=await tx.execute<{allowed:boolean}>(sql`select app.organisation_settings_function_allowed('profileApprovalRules','view',NULL) as allowed`);
+  if(!permission?.allowed)throw new ProfileRoutingError('unauthorized');
   const fresh=await freshProfileEditPolicyTx(tx,ctx);
   return previewRoutingTx(tx,fresh.ctx,{version:input.version??1,revision:readProfileRoutingPolicy(fresh.ctx).revision,enabled:input.enabled,rules:input.rules});
  });

@@ -33,3 +33,14 @@ it('maintains native typed profile categories without turning an edit into anoth
  let error:unknown;try{await withTenant(ctx,tx=>tx.execute(sql`update profile_option set category='race' where id=${made.id}::uuid`));}catch(cause){error=cause;}expect(pgSqlState(error)).toBe('42501');
  const [retained]=await owner.db.select({category:s.profileOption.category}).from(s.profileOption).where(eq(s.profileOption.id,made.id));expect(retained.category).toBe('religion');
 });
+
+it('keeps profile configuration readable by scoped HR while writes retain actual group authority and typed keys',async()=>{
+ const userId=await createAppUser(b.tenantId,null,'hr_admin');
+ await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,userId));
+ const scoped={...adminCtx(b),userId,personId:null,grants:[{role:'hr_admin',companyId:b.companyId}]};
+ const query=()=>sql`select app.organisation_settings_function_allowed('profileRequestSettings','view',NULL) "fieldsView",app.organisation_settings_function_allowed('profileRequestSettings','edit',NULL) "fieldsEdit",app.organisation_settings_function_allowed('profileApprovalRules','view',NULL) "rulesView",app.organisation_settings_function_allowed('profileApprovalRules','edit',NULL) "rulesEdit",app.organisation_settings_function_allowed('profileApprovalRules','add',NULL) "inventedAdd"`;
+ expect((await withTenant(scoped,tx=>tx.execute(query())))[0]).toEqual({fieldsView:true,fieldsEdit:false,rulesView:true,rulesEdit:false,inventedAdd:false});
+ expect((await withTenant(adminCtx(b),tx=>tx.execute(query())))[0]).toEqual({fieldsView:true,fieldsEdit:true,rulesView:true,rulesEdit:true,inventedAdd:false});
+ await withTenant(adminCtx(b),tx=>tx.execute(sql`insert into tenant_setting(tenant_id,key,value,source,updated_by) values(${b.tenantId}::uuid,'ess.profile_photo_edit','true'::jsonb,'customer',${adminCtx(b).userId}::uuid) on conflict(tenant_id,key) do update set value=excluded.value`));
+ let error:unknown;try{await withTenant(adminCtx(b),tx=>tx.execute(sql`update tenant_setting set key='ess.profile_change_approver' where key='ess.profile_photo_edit'`));}catch(cause){error=cause;}expect(pgSqlState(error)).toBe('42501');
+});

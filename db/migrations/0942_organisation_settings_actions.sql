@@ -69,6 +69,8 @@ $$;
 REVOKE ALL ON FUNCTION app.organisation_profile_option_delegation_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 DO $functions$ DECLARE source record;operation text;BEGIN
  FOR source IN SELECT * FROM (VALUES
+('profileRequestSettings','tenant','settings','nav.profileRequestSettings','screen','/admin/settings/profile-requests','profileRequestSettings','app.organisation_settings_delegation_allowed',ARRAY['view','edit']::text[]),
+('profileApprovalRules','tenant','settings','essProfile.approvalRules','screen','/admin/settings/profile-requests/rules','profileApprovalRules','app.organisation_settings_delegation_allowed',ARRAY['view','edit']::text[]),
 ('organization','company','organisation','nav.organization','screen','/admin/organization','organization','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
 ('systemLabels.department','company','organisation','admin.systemLabels.category.department','submenu','/admin/settings/system-labels','systemLabels','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
 ('systemLabels.position','company','organisation','admin.systemLabels.category.position','submenu','/admin/settings/system-labels','systemLabels','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
@@ -116,7 +118,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT EXISTS(SELECT 1 FROM app.access_function_action f JOIN app.access_function_definition d USING(function_key)
  WHERE f.capability_id=cap AND (f.parent_capability ~ '^(organisation|settings)\.' OR f.function_key LIKE 'systemLabels.profileOptions.%' AND f.parent_capability='function.systemLabels.profileOptions.'||f.operation)
  AND app.organisation_settings_legacy_allowed(t,u,CASE WHEN f.function_key LIKE 'systemLabels.profileOptions.%' THEN 'settings.'||f.operation ELSE f.parent_capability END,co)
- AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','emailTemplates','entra') AND NOT(f.function_key='workflowEmail' AND f.operation<>'view')
+ AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','emailTemplates','entra') AND NOT(f.function_key IN ('workflowEmail','profileRequestSettings','profileApprovalRules') AND f.operation<>'view')
   OR EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN ('hr_admin','super_admin') AND r.company_id IS NULL)));
 $$;
 CREATE FUNCTION app.organisation_settings_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
@@ -125,7 +127,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND app.organisation_settings_function_legacy_allowed(t,u,cap,co)
  AND EXISTS(SELECT 1 FROM app.access_function_action f WHERE f.capability_id=cap
  AND app.organisation_settings_current_legacy_allowed(t,u,CASE WHEN f.function_key LIKE 'systemLabels.profileOptions.%' THEN 'settings.'||f.operation ELSE f.parent_capability END,co)
- AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','emailTemplates','entra') AND NOT(f.function_key='workflowEmail' AND f.operation<>'view') OR app.is_group_admin()));
+ AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','emailTemplates','entra') AND NOT(f.function_key IN ('workflowEmail','profileRequestSettings','profileApprovalRules') AND f.operation<>'view') OR app.is_group_admin()));
 $$;
 CREATE FUNCTION app.organisation_settings_function_allowed(p_key text,p_operation text,p_company uuid DEFAULT NULL) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -193,6 +195,21 @@ END;$$;
 REVOKE ALL ON FUNCTION app.organisation_allocate_employee_code(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.organisation_allocate_employee_code(uuid) TO ai_hr_app;
 --> statement-breakpoint
+-- Only configuration readers/writers use this dispatch. Runtime ESS settings keep their own course.
+CREATE FUNCTION app.organisation_setting_function_key(p_key text) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog AS $$
+ SELECT CASE WHEN p_key IN ('ess.profile_change_fields','ess.profile_change_approver','ess.profile_photo_edit') THEN 'profileRequestSettings'
+ WHEN p_key='ess.profile_change_routing' THEN 'profileApprovalRules' END;
+$$;
+REVOKE ALL ON FUNCTION app.organisation_setting_function_key(text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.tenant_setting_action_allowed(p_key text,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.organisation_setting_function_key(p_key) IS NULL THEN app.settings_action_allowed(p_operation)
+ ELSE app.organisation_settings_function_allowed(app.organisation_setting_function_key(p_key),p_operation,NULL) END;
+$$;
+REVOKE ALL ON FUNCTION app.tenant_setting_action_allowed(text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.tenant_setting_action_allowed(text,text) TO ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.organisation_settings_write_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE b jsonb:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;a jsonb:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;r jsonb:=coalesce(a,b);
@@ -215,7 +232,8 @@ BEGIN
    op:='edit';
   END IF;
   IF TG_TABLE_NAME='profile_option' AND TG_OP='UPDATE' AND b->>'category' IS DISTINCT FROM a->>'category' THEN RAISE EXCEPTION 'Profile option category is immutable' USING ERRCODE='42501';END IF;
-  function_key:=CASE TG_TABLE_NAME WHEN 'job_grade' THEN 'systemLabels.jobGrade' WHEN 'profile_option' THEN 'systemLabels.profileOptions.'||(r->>'category') WHEN 'people_general_policy' THEN 'peopleGeneral' WHEN 'dashboard_card_config' THEN 'dashboardCardConfig' WHEN 'login_presentation' THEN 'loginPresentation' WHEN 'email_design' THEN 'emailTemplates' WHEN 'email_design_version' THEN 'emailTemplates' WHEN 'email_asset' THEN 'emailTemplates' WHEN 'notification_email_policy' THEN 'workflowEmail' WHEN 'ai_provider_config' THEN 'aiConfig' WHEN 'entra_connector' THEN 'entra' WHEN 'test_case' THEN 'systemTesting' WHEN 'test_case_version' THEN 'systemTesting' WHEN 'test_assignment' THEN 'systemTesting' WHEN 'test_catalogue_update' THEN 'systemTesting' ELSE NULL END;
+  IF TG_TABLE_NAME='tenant_setting' AND TG_OP='UPDATE' AND a->>'key' IS DISTINCT FROM b->>'key' THEN RAISE EXCEPTION 'Setting key is immutable' USING ERRCODE='42501';END IF;
+  function_key:=CASE TG_TABLE_NAME WHEN 'tenant_setting' THEN app.organisation_setting_function_key(r->>'key') WHEN 'job_grade' THEN 'systemLabels.jobGrade' WHEN 'profile_option' THEN 'systemLabels.profileOptions.'||(r->>'category') WHEN 'people_general_policy' THEN 'peopleGeneral' WHEN 'dashboard_card_config' THEN 'dashboardCardConfig' WHEN 'login_presentation' THEN 'loginPresentation' WHEN 'email_design' THEN 'emailTemplates' WHEN 'email_design_version' THEN 'emailTemplates' WHEN 'email_asset' THEN 'emailTemplates' WHEN 'notification_email_policy' THEN 'workflowEmail' WHEN 'ai_provider_config' THEN 'aiConfig' WHEN 'entra_connector' THEN 'entra' WHEN 'test_case' THEN 'systemTesting' WHEN 'test_case_version' THEN 'systemTesting' WHEN 'test_assignment' THEN 'systemTesting' WHEN 'test_catalogue_update' THEN 'systemTesting' ELSE NULL END;
   IF function_key IS NOT NULL AND NOT app.organisation_settings_function_allowed(function_key,op,NULL) THEN RAISE EXCEPTION 'Settings function unavailable' USING ERRCODE='42501';END IF;
   IF NOT app.settings_action_allowed(op) THEN RAISE EXCEPTION 'Settings action unavailable' USING ERRCODE='42501';END IF;
  ELSIF TG_TABLE_NAME='employee_id_config' THEN
