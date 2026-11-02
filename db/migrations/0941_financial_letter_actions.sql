@@ -885,7 +885,7 @@ BEGIN
  IF inserted IS NULL THEN RETURN NULL;END IF;
  -- A transaction below the global snapshot xmin has no live/deferred consumer. Do
  -- this once per transaction, retaining every in-flight actor's exact receipts.
- FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody','financial_letter_proposed_birth','financial_claim_port_effect','financial_onehr_worker_source','financial_onehr_source_context','financial_onehr_feedback_effect'] LOOP
+ FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody','financial_letter_proposed_birth','financial_claim_port_effect','financial_onehr_worker_source','financial_onehr_source_context','financial_onehr_feedback_effect','financial_onehr_plan_effect'] LOOP
   EXECUTE format('DELETE FROM app.%I WHERE transaction_id<$1',table_name) USING oldest;
  END LOOP;
  DELETE FROM app.financial_receipt_epoch WHERE transaction_id<oldest;
@@ -4409,3 +4409,52 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_kpi_checkin(uuid,integer,uuid,text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_kpi_checkin(uuid,integer,uuid,text,text) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE TABLE app.financial_onehr_plan_effect(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,plan_id uuid NOT NULL,
+ operation text NOT NULL CHECK(operation='reopen'),before_row jsonb NOT NULL,after_row jsonb NOT NULL,consumed boolean NOT NULL DEFAULT false,event_id uuid REFERENCES public.domain_event(id)
+);
+ALTER TABLE app.financial_onehr_plan_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_onehr_plan_effect FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_onehr_plan_effect FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+CREATE FUNCTION app.onehr_plan_reopen(wanted_plan uuid,expected_revision integer) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE plan public.performance_onehr_plan%ROWTYPE;review public.performance_onehr_review%ROWTYPE;effect_id uuid;completed_event_id uuid;next_plan jsonb;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR administration actor unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO plan FROM public.performance_onehr_plan actual WHERE actual.id=wanted_plan AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=plan.review_id AND actual.tenant_id=plan.tenant_id AND actual.employment_id=plan.employment_id;
+ IF plan.id IS NULL OR review.review_id IS NULL OR NOT app.onehr_review_administration_edit(plan.review_id) THEN RAISE EXCEPTION 'Performance administrator access is required.' USING ERRCODE='42501';END IF;
+ IF app.onehr_self_employment(plan.employment_id) THEN RAISE EXCEPTION 'Ask another administrator to reopen your plan.' USING ERRCODE='42501';END IF;
+ IF plan.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF plan.status='draft' THEN RETURN plan.revision;END IF;
+ next_plan:=to_jsonb(plan)||jsonb_build_object('status','draft','acknowledged_at',NULL,'revision',plan.revision+1);
+ INSERT INTO app.financial_onehr_plan_effect(transaction_id,tenant_id,user_id,plan_id,operation,before_row,after_row) VALUES(pg_current_xact_id(),plan.tenant_id,app.current_user_id(),plan.id,'reopen',to_jsonb(plan),next_plan) RETURNING id INTO effect_id;
+ UPDATE public.performance_onehr_plan actual SET status='draft',acknowledged_at=NULL,revision=plan.revision+1 WHERE actual.id=plan.id AND actual.tenant_id=plan.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(plan.tenant_id,'onehr',plan.id,'onehr.plan-reopened','user',app.current_user_id(),plan.employment_id,jsonb_build_object('previousStatus',plan.status,'planYear',plan.plan_year)) RETURNING id INTO completed_event_id;
+ UPDATE app.financial_onehr_plan_effect effect SET event_id=completed_event_id WHERE effect.id=effect_id AND effect.transaction_id=pg_current_xact_id() AND effect.consumed;
+ IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM public.performance_onehr_plan actual WHERE actual.id=plan.id AND actual.tenant_id=plan.tenant_id AND to_jsonb(actual)=next_plan) THEN RAISE EXCEPTION 'Plan reopening did not complete' USING ERRCODE='42501';END IF;
+ RETURN plan.revision+1;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_plan_reopen(uuid,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_plan_reopen(uuid,integer) TO ai_hr_app;
+CREATE FUNCTION app.financial_onehr_plan_reopen_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE receipt uuid;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF OLD.status='draft' OR NEW.status<>'draft' THEN RETURN NEW;END IF;
+ IF NOT app.financial_human_principal_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN RAISE EXCEPTION 'Plan reopening principal unavailable' USING ERRCODE='42501';END IF;
+ UPDATE app.financial_onehr_plan_effect effect SET consumed=true WHERE effect.id=(SELECT candidate.id FROM app.financial_onehr_plan_effect candidate
+ WHERE candidate.transaction_id=pg_current_xact_id() AND candidate.tenant_id=NEW.tenant_id AND candidate.user_id=app.current_user_id() AND candidate.plan_id=NEW.id AND candidate.operation='reopen' AND NOT candidate.consumed
+ AND candidate.before_row=to_jsonb(OLD) AND candidate.after_row=to_jsonb(NEW) LIMIT 1) RETURNING id INTO receipt;
+ IF receipt IS NULL THEN RAISE EXCEPTION 'Plan reopening source unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_plan_reopen_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER z_financial_onehr_plan_reopen_guard BEFORE UPDATE ON public.performance_onehr_plan FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_plan_reopen_guard();

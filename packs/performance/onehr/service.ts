@@ -1171,16 +1171,8 @@ export async function acknowledgeOnehrPlan(ctx:SessionContext,planId:string,expe
  await withPerformanceTenant(current,tx=>acknowledgeOnehrPlanTx(tx,current,id,expectedRevision));
 }
 export async function reopenAssessmentPlan(ctx:SessionContext,planId:string,expected:number){
- uuid.parse(planId);
- return withPerformanceTenant(ctx,async tx=>{
-  const [plan]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');
-  if(!plan)throw Error('Plan not found in your scope.');
-  const r=await loadReview(tx,plan.reviewId);await requireAdmin(tx,r.row.cycleId);
-  if(await isSelf(tx,plan.employmentId))throw Error('Ask another administrator to reopen your plan.');revision(plan.revision,expected);
-  if(plan.status==='draft')return;
-  await tx.update(onehrPlan).set({status:'draft',acknowledgedAt:null,revision:plan.revision+1}).where(eq(onehrPlan.id,planId));
-  await audit(tx,ctx,planId,'plan-reopened',{previousStatus:plan.status,planYear:plan.planYear});
- });
+ uuid.parse(planId);z.number().int().parse(expected);
+ return withPerformanceTenant(ctx,async tx=>{await tx.execute(sql`select app.onehr_plan_reopen(${planId}::uuid,${expected}::integer)`);});
 }
 async function validateEvidenceLinks(r:Awaited<ReturnType<typeof loadReview>>,links:z.infer<typeof evidenceLinkSchema>[]){
  for(const link of links)if(link.kind==='kpi'?!r.kpis.some(k=>k.id===link.id&&!k.hrOwned):link.kind==='skill'?!r.competencies.some(c=>c.id===link.id):!(r.row.statements as Statement[]).some(s=>s.principle===link.id))throw Error('Choose an employee-owned KPI, assigned competency or leadership principle.');

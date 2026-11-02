@@ -538,7 +538,14 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     plan=(await view(self)).plans[0];expect(plan.status).toBe('closed');
     await expect(perf.reopenAssessmentPlan(mgr,plan.id,plan.revision)).rejects.toThrow(/administrator/);
     await expect(perf.reopenAssessmentPlan(a,plan.id,plan.revision-1)).rejects.toThrow(/changed/);
+    const [beforeReopen]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));expect(await withTenant(a,tx=>tx.select({id:schema.onehrPlan.id}).from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id)))).toEqual([{id:plan.id}]);
+    await expect(withTenant(a,tx=>tx.update(schema.onehrPlan).set({status:'draft',revision:beforeReopen.revision+1}).where(eq(schema.onehrPlan.id,plan.id)))).rejects.toThrow(/Plan reopening source unavailable/);
+    await expect(withTenant(a,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_plan_reopen(${plan.id}::uuid,${plan.revision}::integer)`);})).rejects.toThrow(/actor unavailable/);
+    expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id))).toEqual([beforeReopen]);
     await perf.reopenAssessmentPlan(a,plan.id,plan.revision);
+    const [afterReopen]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));expect(afterReopen).toEqual({...beforeReopen,status:'draft',acknowledgedAt:null,revision:beforeReopen.revision+1});const reopenedEvents=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,plan.id),eq(schema.domainEvent.eventType,'onehr.plan-reopened')));expect(reopenedEvents).toHaveLength(1);expect(reopenedEvents[0]).toMatchObject({actorType:'user',actorId:a.userId,subjectEmploymentId:subject.employmentId,payload:{previousStatus:beforeReopen.status,planYear:beforeReopen.planYear}});
+    const [firstReopenEffect]=await owner.db.execute<{consumed:boolean;eventId:string}>(sql`select consumed,event_id as "eventId" from app.financial_onehr_plan_effect where plan_id=${plan.id}::uuid`);expect(firstReopenEffect).toEqual({consumed:true,eventId:reopenedEvents[0].id});
+    await perf.reopenAssessmentPlan(a,plan.id,afterReopen.revision);expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id))).toEqual([afterReopen]);
     const reopened=(await view(self)).plans[0];expect(reopened).toMatchObject({status:'draft',conversation:'Recorded career discussion',acknowledgedAt:null});
     expect((await view(mgr)).plans).toEqual([]);expect((await view(a)).plans.some(p=>p.id===plan.id)).toBe(true);
     await perf.saveOnehrPlan(self,reviewId,reopened.revision,{career:{...career,aspiration:'Revised after HR reopened'},careerRevision:(await view(self)).careerProfile!.revision,goals:[{id:randomUUID(),area:'Teaching',dueOn:'',onJob:'Coach a colleague',fromOthers:'',formalLearning:'',status:'not_started'}]},true);
@@ -547,6 +554,8 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     profile=(await view(self)).careerProfile!;
     await perf.saveAssessmentCareerProfile(a,reviewId,profile.revision,{...career,aspiration:'Current profile correction after archive'});
     expect((await view(self)).careerProfile?.career.aspiration).toBe('Current profile correction after archive');
+    const [archivedPlan]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));await withTenant(a,async tx=>{await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`select app.onehr_plan_reopen(${plan.id}::uuid,${archivedPlan.revision}::integer)`);});expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id))).toEqual([{...archivedPlan,status:'draft',acknowledgedAt:null,revision:archivedPlan.revision+1}]);
+    const effects=await owner.db.execute<{consumed:boolean;eventType:string}>(sql`select effect.consumed,event.event_type as "eventType" from app.financial_onehr_plan_effect effect join public.domain_event event on event.id=effect.event_id and event.tenant_id=effect.tenant_id where effect.plan_id=${plan.id}::uuid`);expect(effects).toHaveLength(1);expect(effects.every(item=>item.consumed&&item.eventType==='onehr.plan-reopened')).toBe(true);
     expect((await view(self)).plans[0].career).toMatchObject({aspiration:'Revised after HR reopened'});
   });
   it('carries the career profile across periods and separates career comments from yearly goals',async()=>{
