@@ -1,6 +1,8 @@
 /** Authored UNRUN. Actual app-role source projections, issued config and gateway admission;
  * provider transport and its explicitly fictional monetary certificate are mocked.
- * No live provider/key, forged governance, source permissions or receipts. */
+ * No live provider/key, forged governance, source permissions or receipts.
+ * Review state below is explicitly synthetic for these transport/admission tests;
+ * it does not approve a production disclosure or refresh its source digest. */
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {and,eq,sql} from 'drizzle-orm';
@@ -14,6 +16,7 @@ import {createArticle} from '../core/knowledge-base';
 import {resolveActiveAiConfig} from '../core/ai-config';
 import {bindPerformanceMessageSpend} from '../core/ai-spend-task';
 import {AiSpendControlError} from '../core/ai-spend-capability';
+import {AiPrivacyGateError} from '../lib/ai/provider-privacy-error';
 import {AiAllowanceError} from '../lib/ai/types';
 import {performanceAiErrorMessage} from '../packs/performance/onehr/ai-refusal';
 import {installSyntheticSpendCapability} from './ai-spend-fixture';
@@ -27,13 +30,28 @@ import framework from '../packs/performance/onehr/framework.json';
 import {createOnehrServiceFixtures,year} from './onehr-service-fixture';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import { switchOnPerformanceAi } from './performance-ai-switches-fixture';
+// Keep the real source digest, request custody and admission checks. Only these test
+// contracts' review state is controlled, like pay-formula-provider-admission.test.ts.
+const privacyFixture=vi.hoisted(()=>({reviewed:true}));
+vi.mock('../lib/ai/provider-data-reviews',async original=>{
+ const actual=await original<typeof import('../lib/ai/provider-data-reviews')>();
+ const {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST}=await import('../lib/ai/provider-data-source-manifest');
+ const contracts=new Set(['performance_narrative_selection_v1','performance_fact_selection_v1','performance_native_outline_v1','performance_explicit_commands_v1','performance_starter_selection_v1']);
+ return {...actual,
+  providerDataReviewStatus:(contract:string)=>contracts.has(contract)?privacyFixture.reviewed?'approved':'pending':actual.providerDataReviewStatus(contract),
+  assertProviderDataContractReviewed:(contract:string,digest:string)=>{
+   if(contracts.has(contract)&&privacyFixture.reviewed&&digest===PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)return;
+   if(contracts.has(contract))throw new AiPrivacyGateError('unreviewed');
+   return actual.assertProviderDataContractReviewed(contract,digest);
+  }};
+});
 let b:Base,a:SessionContext,self:SessionContext,mgr:SessionContext,subject:{employmentId:string;personId:string},manager:{employmentId:string;personId:string},peers:{employmentId:string;ctx:SessionContext}[],cycleId:string,reviewId:string;
 let spendPrice:Awaited<ReturnType<typeof installSyntheticSpendCapability>>;
 let beforeAdmission:(()=>Promise<void>)|undefined,sourceChange:Promise<void>|undefined,afterSourceReplay:(()=>Promise<void>)|undefined,alterInput=false;
 const f=createOnehrServiceFixtures({get b(){return b;},get a(){return a;},get subject(){return subject;},get manager(){return manager;},get self(){return self;},get mgr(){return mgr;},get cycleId(){return cycleId;},get reviewId(){return reviewId;},get peers(){return peers;}});
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{spendPrice?.restore();vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{
- await resetDb();b=await seedBase();for(const code of ['performance','rewards'])await setModule(b.tenantId,code,'active');await switchOnPerformanceAi(b.tenantId);a=await entitledCtx(b);
+ privacyFixture.reviewed=true;await resetDb();b=await seedBase();for(const code of ['performance','rewards'])await setModule(b.tenantId,code,'active');await switchOnPerformanceAi(b.tenantId);a=await entitledCtx(b);
  subject=await f.hire('Assessment subject');manager=await f.hire('Assessment manager');
  const actor=async(personId:string,role:'employee'|'manager'):Promise<SessionContext>=>({...a,userId:await createAppUser(b.tenantId,personId,role),personId,roles:[role],grants:undefined});
  self=await actor(subject.personId,'employee');mgr=await actor(manager.personId,'manager');peers=[];
@@ -68,6 +86,7 @@ async function prepare(kind:Source){if(kind==='development'||kind==='career'){aw
 const call=(kind:Source)=>kind==='narrative'?perf.draftOnehrNarrative(self,reviewId,'Completed the agreed delivery.'):kind==='guide'?askPerformanceGuide(self,'What are my current tasks?'):kind==='development'?perf.suggestAssessmentDevelopmentGoals(self,reviewId,randomUUID()):perf.suggestAssessmentCareerPlan(self,reviewId,randomUUID());
 describe('OneHR legacy drafting replays actual native source before provider admission',()=>{
  beforeEach(withoutUsdCap);
+ it.each(sources)('%s pending synthetic disclosure review remains closed before real admission and transport',async kind=>{await prepare(kind);privacyFixture.reviewed=false;await Promise.allSettled([call(kind)]);expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);expect((await f.view(self)).plans).toEqual([]);});
  it.each(sources)('%s stable source reaches actual issued gateway and transport without saving a plan',async kind=>{await prepare(kind);await call(kind);expect(openaiAdapter.generate).toHaveBeenCalled();const observed=await runs();expect(observed.length).toBeGreaterThan(0);expect(observed.every(row=>row.state==='completed')).toBe(true);expect((await f.view(self)).plans).toEqual([]);});
  it.each(sources)('%s module revocation after gathering refuses before network or admission',async kind=>{await prepare(kind);beforeAdmission=()=>setModule(b.tenantId,'performance','disabled');await expect(call(kind)).rejects.toThrow();expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);});
  it.each(sources)('%s changed native source after gathering is never sent or charged',async kind=>{await prepare(kind);beforeAdmission=async()=>{if(kind==='narrative')await perf.addOnehrEvidence(self,reviewId,{kind:'delivery',body:'Newly shared native source evidence.',occurredOn:todayInKualaLumpur(),state:'shared',supersedesId:null,links:[]});else if(kind==='guide')await owner.db.update(schema.reviewCycle).set({name:'Changed native calendar name'}).where(eq(schema.reviewCycle.id,cycleId));else await owner.db.update(schema.onehrReview).set({selfRemark:'Changed native own assessment words'}).where(eq(schema.onehrReview.reviewId,reviewId));};const result=await Promise.allSettled([call(kind)]);if(kind==='guide')expect(result[0]).toMatchObject({status:'fulfilled',value:{mode:'search'}});else expect(result[0].status).toBe('rejected');expect(openaiAdapter.generate).not.toHaveBeenCalled();expect(await runs()).toEqual([]);});
