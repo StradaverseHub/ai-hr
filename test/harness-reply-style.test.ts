@@ -30,6 +30,9 @@ describe('reply style (spec v9)',()=>{
   // Issue 18: "Medical Leave: 0 (withheld)" misread the ESS flag; a hidden part is never shown as 0.
   expect(instructions).toMatch(/withheld:true means the company hides some parts of that row; every figure that is present is real/);
   expect(instructions).toMatch(/never show a hidden part as 0/);
+  // Spec v10, issue 10: a leave application with a missing or unclear detail is one numbered question, never a guess.
+  expect(instructions).toMatch(/If it reports missing details, ask for them in one short question, numbering any options it lists as given; never guess them\./);
+  expect(HARNESS_SPEC.version).toBeGreaterThanOrEqual(10);
  });
  it('passes a structured reply that links only to this person\'s destinations',()=>{
   const reply='Payroll for November is **not ready**.\n\n- **Blocking:** 8 records flagged → [Personnel](/admin/personnel)\n- **Warning:** no pay day set → [Payroll settings](/admin/payroll/settings)\n\n1. Fix the records.\n2. Set the pay day.';
