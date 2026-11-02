@@ -1,9 +1,9 @@
-# Binding packet against prospective main 6ea889365
+# Binding packet against accepted main 6ea889365
 
-> **PROSPECTIVE: final after the PR 210 accepted aligned hand-back.**
-> - Not yet for approval. Nothing approval-bearing has been written on this branch.
-> - Baseline: `origin/main` 6ea88936539c361a17a6f802c5b1e7bcc4ce1e39 ("Record approved PR210 authenticator source binding refresh"). `origin/alpha` is still cf6949d92; PR 210's lease 28 is ACCEPTING and its alignment and queue finish are pending.
-> - If the accepted aligned baseline is exactly 6ea889365, the coordinator verifies this packet and the owner approves it directly in this session. If the baseline moves, this branch merges again and the packet is regenerated.
+> **Final packet for the owner's approval, after the coordinator verifies it.**
+> - Baseline: accepted main `6ea88936539c361a17a6f802c5b1e7bcc4ce1e39`. PR 210's hand-back is complete; `origin/main` and `origin/alpha` are both 6ea889365 (fetched 2 November 2026).
+> - Nothing approval-bearing has been written on this branch. The binding below is written only after the owner approves this exact packet directly in this session.
+> - If the candidate head changes before the binding, every candidate value below is recomputed and this packet is reissued.
 
 ## History
 - **No earlier approval transfers.** That includes the 72ead258 rebind (owner-approved in this session on 2 November 2026; provider 9912948c, module-agent 836c64f3) and the drafts against 50ea2471 (`final-binding-packet.md`) and 8b676f25c (`binding-packet-draft-8b.md`), which stay as history.
@@ -15,18 +15,18 @@
 - **Baseline approvals (main's bytes):** 26 records; 24 approved, all bound to `2ee27ebb…`; the 2 pending records have an empty sourceDigest. No `teras_harness_turn_v1` record.
 - **Between 8b676f25c and 6ea889365 main itself moved the provider baseline** (PR 209's `package.json` and `pnpm-lock.yaml`; PR 210's `messages/{en,ms,ta,th,vi,zh}.json`) under its own rebinds. None of those files is in the Teras delta below, which is file-for-file identical to the 8b draft.
 
-## Migrations
-- **Applied:** live ledger watermark 1793330000299 (0899_entra_workforce), as reported by the coordinator after PR 210's install; main adds no migrations since 8b.
-- **Teras (this branch):** 0924–0929, journal idx 757–762, when 1793330000324–…329. Kept: no number or timestamp collision.
-- **Pending elsewhere (remote branches, 2 November 2026):**
-  - `codex/performance-feedback-only-20261102`: 0900–0923 up to when …323, and 0934 (…334);
-  - `codex/audit-bundle-reduction-20261102` (and `codex/audit-p1-ai-recovery-20261102`): 0930–0933 (…330–…333);
-  - `codex/approved-board-security-20261102`: 0935 (…335);
-  - `claude/build-capacity-proof-teras` (PR 201, review-only): a copy of Teras 0924–0929.
-- **Ordering risk:** if any of 0930–0935 is applied to an installation before Teras, its watermark passes …329 and Teras would be skipped; Teras must then be renumbered above the highest applied timestamp, in a separate commit. Equally, Teras applied before 0900–0923 would put those below the watermark.
+## Migrations: allocation audit (2 November 2026)
+- **Applied:** live ledger 642 rows, watermark 1793330000299 (0899_entra_workforce), as reported after PR 210's install; accepted main adds no migrations since 8b.
+- **Teras (this branch):** 0924–0929, journal idx 757–762, when 1793330000324–1793330000329, strictly increasing, each strictly above the watermark, immediately after main's last entry (idx 756, …299).
+- **Scope of the audit:** the journal of every `origin/*` branch, and all 105 open PRs (all same-repository, every head ref scanned).
+  - No migration number above the watermark is held by two different tags, and no `when` above the watermark is held by two different tags.
+  - Open PRs with entries above the watermark: PR 202 (this branch, 0924–0929); PR 197 `claude/teras-wiring` (0901 at …301, the superseded Teras allocation that PR 202 renumbers to 0927, so PR 197 must not land without PR 202); `codex/system-performance-audit-20261030` (0907–0923, …307–…323).
+  - Remote branches without an open PR: 0930–0933 (…330–…333, `codex/audit-*`), 0934_standard_feedback_task_plan (…334, the SYSOPT reservation, outside release admission), 0935_password_account_unlock (…335). Older 0900–0906 entries on stale `codex/performance-*` and `claude/teras-*` branches are superseded allocations below Teras.
+- **Result: no renumbering.** Teras numbers and timestamps collide with nothing.
+- **Ordering risk (unchanged):** if any of 0930–0935 is applied to an installation before Teras, the watermark passes …329 and Teras would be skipped; Teras must then be renumbered above the highest applied timestamp, in a separate commit. Equally, Teras applied before 0907–0923 puts those below the watermark.
 
 ## Digests
-| Scope | Accepted baseline (clean 6ea889365, `--check` passes) | Candidate before binding (merged head 2689b2f86) |
+| Scope | Accepted baseline (accepted main 6ea889365, `--check` passes) | Candidate before binding (merged head 2689b2f86) |
 |---|---|---|
 | Provider-data closure | `2ee27ebb5026e363ca31a2c7523cf42b15a57b13c2c6e55e1ca0720bb7f50da2`, 1158 files | `a70f0770b74b797ca6f8a70adb9f7e302215ef77a0d85f234330848646803644`, 1255 files |
 | Module-agent scope | `ad8874a425084aac18256dfad336bd30d54739346397c6258cbb2417ff4abf12`, 456 files | `e9eefa4c1b15e57da840bd94c0d3b403020c064a5802fe9f57e28ca7455a56c0`, 457 files (after the provider manifest is regenerated, with main's approval literals) |
@@ -35,6 +35,13 @@
 - **Gate status:** `provider-data-review-gate` is red on this head, honestly, until the binding. Both canonical `--check` commands fail on the candidate for the same reason.
 - **Runtime finding (run 41383107327):** the runtime gate compares the approval records with the committed manifest literal; it does not recompute the source. The CI `--check` is the control for staleness, and the release gate must require it green.
 - **Method:** each tree was extracted with `git archive` into an isolated scratch copy (git-initialised so `ls-files` works); generation never ran in the checkout. Control: clean 6ea passes both checks with the values in the baseline column.
+
+## Focused CI on the candidate (recorded as run; no retry-until-green)
+- **41422353407** on 2689b2f86 (Teras, review, transport and upgrade set, 62 files; typecheck; 6144 build): FAILURE overall.
+  - typecheck: PASS.
+  - selected tests: 61 of 62 files pass (18 of 19 plus 43 of 43). The one failure is `test/provider-data-review-gate.test.ts` > "binds the exact reviewed transform dependency sources through the generated manifest": the expected pre-binding stale-manifest refusal. It stays red until the binding.
+  - linux-build at 6144 MB: `FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory`. Recorded; no retry and no heap change. 8192 (PR 201) is not adopted.
+- **41422370107** on 2689b2f86 (PR 210 login/MFA files and main's other changed tests, 13 files): FAILURE in `resolve` ("Branch moved or invalid candidate"); no tests ran. Cause: this session pushed the docs-only packet commit 54ee4bb38 at 09:41 UTC while the run was queued, so the branch tip no longer matched its expected SHA when it resolved at 09:51 UTC. A process error, not a source result. The same 13 files are re-dispatched at the packet commit (code identical to 2689b2f86) without moving the branch until it resolves; that run id is reported separately.
 
 ## Per-file delta, by commit (6ea889365..2689b2f86, merges excluded)
 
@@ -189,20 +196,69 @@ Files listed without a commit are unchanged main files that the new Teras roots 
   - **Capacity:** "The 6144 cap stays required, and its failures are not relabelled." The review-only packet, draft PR 201, "authorises preparation only: no adoption, no deployment, no AI binding."
     - It stays unadopted. There is no retry-until-green. If the final canonical build on the frozen candidate fails, it is classified and reported, and a bounded capacity action is put forward separately.
 
-## Addendum to write (for `docs/reviews/ai-provider-owner-approval-2026-10.md`)
+## Exact binding (proposed; written only after the owner's approval)
 
-Appended as a new `## Noveri conversation wiring` section at the end of main's file, with the final values:
-- **Provider-data closure:** from the accepted baseline (`2ee27ebb…`, 1158 files) to the final candidate (`a70f0770…`, 1255 files, if the head is unchanged).
-- **New contract:** `teras_harness_turn_v1` (lib/ai/teras-harness-policy.ts), registered for `hr_assistant` conversations only. It opts in to multi-call responses; the turn runner executes the calls sequentially, in order, under the M7 caps, and nothing new is sent to the provider.
-- **Governance:** the verbatim basis above, with its conditions (counsel before real data; no tenant switch on; the staging exception covers fictional data only), and a production-path ceiling rerun with 0 errors before the gate.
-- **Approval records:** the 24 approved records receive only the new sourceDigest (status, reviewer, evidence and timestamps preserved; both pending records byte-identical). One `teras_harness_turn_v1` record is added (approved; human:zenlam repository-owner provisional; evidence anchor of the new section; reviewedAt 2026-11-01T18:24:01Z).
-- **Module-agent manifest:** regenerated last.
+Written on the candidate head `2689b2f867112891e7710f8ac4e647a5e5addbbf` (code; the packet commits on top are docs only, outside both scopes), in this order:
 
-## Order of the final binding
-1. Confirm the accepted aligned baseline is 6ea889365 (otherwise merge again and regenerate this packet).
-2. The owner approves this exact packet directly in this session.
-3. Write the provider manifest.
-4. Write the approval literals and the new record.
-5. Add the addendum.
-6. Generate the module-agent manifest last.
-7. Run both `--check` commands, then focused CI, the production-path ceiling (0 errors), and the full exact-aggregate qualification.
+1. **`lib/ai/provider-data-source-manifest.ts`** (generated by `node scripts/ai-provider-data-source-manifest.mjs`): the one digest line changes from `2ee27ebb5026e363ca31a2c7523cf42b15a57b13c2c6e55e1ca0720bb7f50da2` to `a70f0770b74b797ca6f8a70adb9f7e302215ef77a0d85f234330848646803644`. Result: 228 bytes, sha256 `5b3821d72693a2ce2864940b74a952a33c04b6a363a64b08ac4146adf472f821` (generator output in an isolated copy matches these bytes).
+2. **`lib/ai/provider-data-approvals.ts`** (literal edit):
+   - every one of the 24 occurrences of `"sourceDigest": "2ee27ebb5026e363ca31a2c7523cf42b15a57b13c2c6e55e1ca0720bb7f50da2"` becomes `"sourceDigest": "a70f0770b74b797ca6f8a70adb9f7e302215ef77a0d85f234330848646803644"`; no other field of those records changes; the two pending records (`structured_canonical_records_v1`, `attendance_trend_analysis_v1`, empty sourceDigest) stay byte-identical;
+   - the final `}` before `].map(...)` becomes this, adding one record in main's column-0 style:
+```
+},
+{
+  "contractId": "teras_harness_turn_v1",
+  "status": "approved",
+  "sourceDigest": "a70f0770b74b797ca6f8a70adb9f7e302215ef77a0d85f234330848646803644",
+  "reviewer": "<REVIEWER: the owner, as identified when approving in this session>",
+  "evidence": "<EVIDENCE: docs/reviews/ai-provider-owner-approval-2026-10.md anchor of the binding-approval paragraph in step 3>",
+  "reviewedAt": "<REVIEWED_AT: actual UTC time of the owner's approval, YYYY-MM-DDTHH:MM:SSZ>"
+}
+].map(row=>Object.freeze(row as ProviderDataReviewRecord)));
+```
+   - The three `<…>` fields are left blank on purpose. They are filled only at write time with actual facts: the owner as reviewer, the real UTC time of the approval, and the anchor of the addendum paragraph recording it. The historical privacy sign-off export time (2026-11-01T18:24:01Z) is **not** used: that would date this binding retrospectively.
+   - The 24 existing approved records keep status, reviewer, evidence and reviewedAt byte-for-byte; only their `sourceDigest` literal changes.
+   - Before-bytes: sha256 `48c5c028b58c4d18893df7b22b1dccf4da0afd580d559f4aa5a2b5390991387d`. The after-bytes depend on the three filled fields, so their sha256 is computed and reported with the binding commit.
+3. **`docs/reviews/ai-provider-owner-approval-2026-10.md`**: after main's final line (which ends with a newline), append one empty line and then exactly the following, with the `<…>` fields filled at write time from the same facts as step 2. Before-bytes sha256 `76214a2a9e56281782d2c7f386fd680a4262cad02978ce2343eaad5302b85adf`; after-bytes are reported with the binding commit.
+````markdown
+## Noveri conversation wiring
+
+Wiring the live chat through the Teras turn harness (ADR-0169 §5.1, ADR-0170 §11.3 change 4) adds one provider-data
+contract, `teras_harness_turn_v1` (lib/ai/teras-harness-policy.ts), registered for `hr_assistant` conversations only
+(lib/ai/provider-task-registry.ts), and makes `core/teras-wiring/switch.ts` and `core/teras-wiring/turn.ts` roots of
+the provider-data closure, together with the whole-stack review fixes (PR 202). The contract opts in to multi-call
+model responses; the turn runner executes those calls sequentially, in order, under the M7 caps, and nothing new is
+sent to the provider. The closure moves from 1158 files /
+`2ee27ebb5026e363ca31a2c7523cf42b15a57b13c2c6e55e1ca0720bb7f50da2` (accepted main 6ea889365) to 1255 files /
+`a70f0770b74b797ca6f8a70adb9f7e302215ef77a0d85f234330848646803644` (candidate 2689b2f86); the per-file delta is in
+docs/reviews/teras-whole-stack-20261102/binding-packet-6ea.md.
+
+Historical basis (earlier decisions, not the time of this binding): the owner's sign-off of the ADR-0169 privacy
+review, 2 November 2026, "Go ahead, signed off" (exported answers, 2026-11-01T18:24:01Z). Processor route is the tenant's choice among existing adapters; a direct route must be
+attested for zero retention and no training, and OpenRouter requests carry data_collection=deny and zdr=true; UnifyAPI
+needs its own approval. Pay reads only as the caller ("Proceed but only based on the user's access").
+
+Remaining conditions: counsel's advice on PDPA cross-border transfer and the data processing agreement before any real
+tenant data reaches a provider; no tenant switch is on; the staging exception covers fictional data only; a
+production-path ceiling rerun must show this gate passing for the approved contract with 0 errors.
+
+Historical basis, continued: the owner's module-agent digest decision of 2 November 2026, "Yes, let it move".
+
+### Binding approval
+
+<REVIEWER> approved this exact binding packet (docs/reviews/teras-whole-stack-20261102/binding-packet-6ea.md at
+<PACKET_COMMIT>) directly in the Teras review-fixes session at <REVIEWED_AT>, in these words: "<OWNER_WORDS>".
+
+The 24 approved records receive only the new sourceDigest (status, reviewer, evidence and reviewedAt preserved
+byte-for-byte; both pending records byte-identical), and one record is added: `teras_harness_turn_v1`, approved,
+reviewer <REVIEWER>, evidence <EVIDENCE>, reviewedAt <REVIEWED_AT>.
+
+The module-agent manifest is regenerated last, after these literals, from the accepted baseline
+`ad8874a425084aac18256dfad336bd30d54739346397c6258cbb2417ff4abf12` (456 files); both `--check` commands are then rerun.
+
+This record is not a runtime PASS, staging acceptance or deployment authorisation.
+````
+4. **`lib/ai/module-agent-source-manifest.ts`**: generated LAST by `node scripts/ai-agent-source-manifest.mjs`, after steps 1–3, because the approval literals and the provider manifest are inside its scope. Its value is not known before then and is reported with the binding commit.
+5. Run `node scripts/ai-provider-data-source-manifest.mjs --check` and `node scripts/ai-agent-source-manifest.mjs --check` (both must pass), then focused CI (including `provider-data-review-gate`, which must turn green), the real production-provider ceiling (0 errors), and the full canonical qualification (6144 build, exact source).
+
+One commit holds steps 1–4. Every `<…>` placeholder is filled from the actual approval, never from an earlier record; `<EVIDENCE>` is the anchor of the "Binding approval" heading as rendered in that file. No earlier approval (including 72ead258) is reused. The 72ead258 section is not restored from history; the new section above is written fresh with these values.
