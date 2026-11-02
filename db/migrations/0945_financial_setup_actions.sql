@@ -82,6 +82,14 @@ BEGIN
   IF TG_TABLE_NAME='payroll_permission_grant' AND NOT app.is_admin() THEN RAISE EXCEPTION 'Native payroll permission administration unavailable' USING ERRCODE='42501';END IF;
  ELSIF TG_TABLE_NAME IN ('company_payroll_config','payslip_information_setting','leave_encashment_policy') THEN co:=(r->>'company_id')::uuid;op:='edit';
   IF TG_TABLE_NAME IN ('company_payroll_config','leave_encashment_policy') AND NOT app.is_admin_for(co) THEN RAISE EXCEPTION 'Native company configuration unavailable' USING ERRCODE='42501';END IF;
+ ELSIF TG_TABLE_NAME='employee_cp38' THEN
+  subject:=(r->>'employment_id')::uuid;
+  IF NOT app.is_admin() THEN RAISE EXCEPTION 'Native CP38 administration unavailable' USING ERRCODE='42501';END IF;
+  IF TG_OP='UPDATE' AND b->>'superseded_at' IS NULL AND a->>'superseded_at' IS NOT NULL THEN op:='delete';END IF;
+ ELSIF TG_TABLE_NAME IN ('pcb_payment','statutory_report') THEN
+  co:=(r->>'company_id')::uuid;
+  -- A payment reference records/corrects one fixed month/stream cell, including first materialization.
+  IF TG_TABLE_NAME='pcb_payment' AND TG_OP<>'DELETE' THEN op:='edit';END IF;
  ELSIF TG_TABLE_NAME='employee_loan' THEN
   IF TG_OP='UPDATE' AND to_regprocedure('app.financial_payroll_loan_counter_approved(jsonb,jsonb)') IS NOT NULL THEN
    EXECUTE 'SELECT app.financial_payroll_loan_counter_approved($1,$2)' INTO independent USING b,a;
@@ -116,10 +124,46 @@ END;$$;
 REVOKE ALL ON FUNCTION app.financial_setup_write_guard() FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 DO $$DECLARE name text;BEGIN
- FOREACH name IN ARRAY ARRAY['pay_component','payroll_import_code','payroll_cycle','payroll_policy','company_payroll_config','payslip_information_setting','payroll_anomaly_config','payroll_permission_grant','leave_encashment_policy','pay_formula','pay_formula_revision','pay_formula_event','pay_formula_accumulation','pay_formula_test','employee_loan','payroll_tax_basis_preview','payroll_tax_basis_batch','payroll_tax_basis_event','payroll_tax_basis_revision'] LOOP
+ FOREACH name IN ARRAY ARRAY['pay_component','payroll_import_code','payroll_cycle','payroll_policy','company_payroll_config','payslip_information_setting','payroll_anomaly_config','payroll_permission_grant','leave_encashment_policy','pay_formula','pay_formula_revision','pay_formula_event','pay_formula_accumulation','pay_formula_test','employee_loan','employee_cp38','pcb_payment','statutory_report','payroll_tax_basis_preview','payroll_tax_basis_batch','payroll_tax_basis_event','payroll_tax_basis_revision'] LOOP
  EXECUTE format('CREATE CONSTRAINT TRIGGER financial_setup_action AFTER INSERT OR UPDATE OR DELETE ON public.%I DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_setup_write_guard()',name);
  END LOOP;
 END;$$;
+--> statement-breakpoint
+-- TP1 is person-owned: its independent declaration course must not borrow administrative authority.
+CREATE FUNCTION app.financial_tp1_admin_action(p_person uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.is_admin() AND EXISTS(
+  SELECT 1 FROM public.employment e WHERE e.tenant_id=app.current_tenant_id() AND e.person_id=p_person AND e.voided_at IS NULL
+   AND app.data_permission_matches(e.id) AND app.access_financial_action_company('payroll',e.company_id,p_operation));
+$$;
+REVOKE ALL ON FUNCTION app.financial_tp1_admin_action(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.financial_tp1_admin_action(uuid,text) TO ai_hr_app;
+CREATE FUNCTION app.financial_tp1_write_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE b jsonb:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;
+ a jsonb:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;r jsonb:=coalesce(a,b);
+ op text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+ own_declaration boolean:=false;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF (r->>'tenant_id')::uuid IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current()
+ OR (a IS NOT NULL AND b IS NOT NULL AND (a->>'id' IS DISTINCT FROM b->>'id' OR a->>'tenant_id' IS DISTINCT FROM b->>'tenant_id' OR a->>'person_id' IS DISTINCT FROM b->>'person_id')) THEN
+  RAISE EXCEPTION 'TP1 principal unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='UPDATE' AND b->>'status' IS DISTINCT FROM 'cancelled' AND a->>'status'='cancelled' THEN op:='delete';END IF;
+ IF TG_OP<>'DELETE' AND app.is_self_person((a->>'person_id')::uuid) THEN
+  -- Own submission appends a declaration; own draft save changes only editable declaration fields.
+  own_declaration:=a->>'status' IN ('draft','submitted') AND a->>'approved_by' IS NULL AND a->>'approved_at' IS NULL
+   AND a->>'approved_month' IS NULL AND a->>'approved_year' IS NULL AND a->>'approver_position' IS NULL
+   AND (TG_OP='INSERT' OR b->>'status'='draft' AND a->>'status'='draft'
+    AND (a-ARRAY['tp1_amount','categories','deduction_month'])=(b-ARRAY['tp1_amount','categories','deduction_month']));
+ END IF;
+ IF own_declaration THEN RETURN NULL;END IF;
+ IF NOT app.financial_tp1_admin_action((r->>'person_id')::uuid,op) THEN RAISE EXCEPTION 'TP1 administrative action unavailable' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END;$$;
+REVOKE ALL ON FUNCTION app.financial_tp1_write_guard() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER financial_tp1_action AFTER INSERT OR UPDATE OR DELETE ON public.tp1_relief DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_tp1_write_guard();
 --> statement-breakpoint
 -- Definition reads used by the calculation owner retain their distinct read predicate. The builder
 -- itself, including validation/generation, consumes this explicit catalogue purpose.
