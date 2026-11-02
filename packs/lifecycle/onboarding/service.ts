@@ -370,18 +370,20 @@ export type OnboardingCommand = ({ type: 'equipmentBulk' } & M.EquipmentBulk) | 
 export async function onboardingCommand(ctx: SessionContext, id: string, revision: number, command: OnboardingCommand) {
     command = onboardingCommandSchema.parse(command);
     jsonSize(command);
-    if(command.type==='task'){
+    if(command.type==='task'||command.type==='handover'||command.type==='readNote'||command.type==='acknowledge'){
         const taskCommand=command;
         return withTenant(ctx,async tx=>{
-            let result:{revision:number;employment_id:string|null;company_id:string};
+            let result:{revision:number;employment_id:string|null;company_id:string;did_change?:boolean};
             try{
-                [result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_assigned_task_update(${id}::uuid,${revision},${taskCommand.taskId},${taskCommand.status})`);
+                if(taskCommand.type==='task')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_assigned_task_update(${id}::uuid,${revision},${taskCommand.taskId},${taskCommand.status})`);
+                else [result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_delivery_update(${id}::uuid,${revision},${taskCommand.type},${JSON.stringify(taskCommand.type==='acknowledge'?taskCommand.data:{})}::jsonb)`);
             }catch(error){
                 const pg=(error as {cause?:{message?:string;code?:string};message?:string;code?:string}).cause??error as {message?:string;code?:string};
                 M.fail(pg.message??'This task is unavailable.',pg.code==='40001'?'conflict':pg.code==='42501'?'forbidden':'invalid');
             }
             if(!result)M.fail('This task is unavailable.','forbidden');
-            await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onboarding-case',aggregateId:id,eventType:'onboarding.task',actor:actorOf(ctx),subjectEmploymentId:result.employment_id,payload:{caseId:id,companyId:result.company_id}});
+            if(result.did_change===false)return{revision:result.revision};
+            await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onboarding-case',aggregateId:id,eventType:'onboarding.'+taskCommand.type,actor:actorOf(ctx),subjectEmploymentId:result.employment_id,payload:{caseId:id,companyId:result.company_id}});
             // A real assigned task needs no general case/Personnel read. Preserve the ordinary visible
             // HR follow-up only where its independent administrative row/action course still applies.
             const [followup]=await tx.execute<{allowed:boolean}>(sql`select ${result.employment_id}::uuid is not null and app.can_admin_employment(${result.employment_id}::uuid) and app.lifecycle_reward_notice_action('lifecycle','edit',${result.company_id}::uuid) as allowed`);
@@ -398,8 +400,6 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
         const { row, config, actor, c } = await loadTx(tx, ctx, id, true);
         if (row.revision !== revision) {
             if (actor.module && command.type === 'submit' && c.state === 'submitted' && !c.reconcileNeeded)
-                return { revision: row.revision };
-            if (M.inGroup(config, config.techGroup, actor.id) && command.type === 'handover' && M.currentReq(c)?.handedAt)
                 return { revision: row.revision };
             M.fail('This case changed. Reload it before trying again.', 'conflict');
         }
@@ -508,17 +508,6 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
                 M.addItem(config, c, r, cat, 'exception', false, command.reason, command.approval, command.confirmedBy, actor, env);
                 break;
             }
-            case 'handover':
-                M.handover(config, c, actor, env);
-                break;
-            case 'readNote':
-                if (!r || !(r.items.some(i => M.inGroup(config, i.team, actor.id)) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id))))
-                    M.fail('Only the fulfilling teams or groups who can add systems acknowledge this note.', 'forbidden');
-                else {
-                    r.noteAcks[actor.id] = r.noteVersion;
-                    M.log(c, actor, env, 'note.read');
-                }
-                break;
             case 'keepProviding': {
                 const i = r?.items.find(i => i.id === command.itemId);
                 if (!i || !M.inGroup(config, i.team, actor.id))
@@ -527,19 +516,6 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
                 M.log(c, actor, env, 'item.kept', i.name);
                 break;
             }
-            case 'acknowledge':
-                if (!c.personId || c.personId !== ctx.personId || !r?.handedAt || c.state !== 'submitted' || c.acknowledgement)
-                    M.fail('Acknowledgement is not available.', 'forbidden');
-                if (command.data.acknowledged !== 'true' || !command.data.contactNumber?.trim() || !command.data.serialNumber?.trim())
-                    M.fail('Confirm that you received the equipment.');
-                c.acknowledgement = { at: env.now, by: actor.id, data: command.data };
-                for (const t of c.tasks.filter(t => t.by === 'joiner' && t.gate)) {
-                    t.status = 'done';
-                    t.completedAt = env.now;
-                    t.completedBy = actor.id;
-                }
-                M.log(c, actor, env, 'acknowledgement.submitted');
-                break;
         }
         if (command.type === 'submit' || command.type === 'saveSubmit')
             await assignRoleTasksTx(tx, c);
