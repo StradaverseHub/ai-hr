@@ -22,6 +22,11 @@ describe('remembered MFA controls', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(copy.saved));
     const form = (saved.mock.calls[0] as unknown as [unknown, FormData])[1];
     expect(form.get('rememberDays')).toBe('7'); expect(form.get('revision')).toBe('0');
+    expect(days).toHaveValue(7);
+    await user.click(screen.getByRole('button', { name: copy.save }));
+    await waitFor(() => expect(saved).toHaveBeenCalledTimes(2));
+    const again = (saved.mock.calls[1] as unknown as [unknown, FormData])[1];
+    expect(again.get('rememberDays')).toBe('7'); expect(again.get('revision')).toBe('1');
   });
   it('offers remembering only after a server MFA challenge and sends opt-in with the code', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ step: 'mfa', challenge: 'c'.repeat(43), rememberDays: 7 }))
