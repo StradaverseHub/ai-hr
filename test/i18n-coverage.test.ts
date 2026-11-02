@@ -19,7 +19,12 @@ const MESSAGES = path.resolve(__dirname, '../messages');
 const LOCALES = ['ms', 'ta', 'th', 'vi', 'zh'] as const;
 
 type Dict = Record<string, unknown>;
-const load = (loc: string): Dict => JSON.parse(fs.readFileSync(path.join(MESSAGES, `${loc}.json`), 'utf8'));
+// The login's scoped provider owns a separate complete UI catalog. Check it with the same
+// completeness, namespace and static-key rules as the shared catalog; do not skip its keys.
+const load = (loc: string): Dict => ({
+  ...JSON.parse(fs.readFileSync(path.join(MESSAGES, `${loc}.json`), 'utf8')),
+  loginEditorial: JSON.parse(fs.readFileSync(path.join(MESSAGES, 'login-editorial', `${loc}.json`), 'utf8')),
+});
 
 function flatten(obj: Dict, prefix = '', out: Record<string, unknown> = {}): Record<string, unknown> {
   for (const [k, v] of Object.entries(obj)) {
@@ -72,6 +77,7 @@ describe('i18n coverage', () => {
       const src = fs.readFileSync(f, 'utf8');
       for (const m of src.matchAll(/use(?:Translations)\(\s*['"]([^'"]+)['"]\s*\)|getTranslations\(\s*['"]([^'"]+)['"]\s*\)/g)) {
         const ns = m[1] ?? m[2];
+        if (ns === 'loginEditorial') expect(path.relative(path.resolve(__dirname, '../app/login'), f).startsWith('..')).toBe(false);
         const node = getPath(en, ns);
         if (node == null || typeof node !== 'object') orphans.push(`${ns}  (${path.relative(path.resolve(__dirname, '..'), f)})`);
       }
