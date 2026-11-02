@@ -172,6 +172,11 @@ BEGIN
  ELSIF TG_TABLE_NAME='payroll_cycle' THEN
   co:=(r->>'company_id')::uuid;
  ELSIF TG_TABLE_NAME IN ('payroll_policy','payroll_anomaly_config','payroll_permission_grant') THEN
+  IF TG_TABLE_NAME='payroll_permission_grant' AND TG_OP='DELETE' AND app.module_company_cleanup_row_allowed('payroll_permission_grant',b) THEN RETURN NULL;END IF;
+  IF TG_TABLE_NAME='payroll_permission_grant' AND (b->>'permission_key'='leave.apply_on_behalf' OR a->>'permission_key'='leave.apply_on_behalf') THEN
+   IF app.leave_permission_source_allowed(b,a) IS NOT TRUE THEN RAISE EXCEPTION 'Leave permission effect unavailable' USING ERRCODE='42501';END IF;
+   RETURN NULL;
+  END IF;
   co:=(r->>'company_id')::uuid;catalogue:=co IS NULL OR TG_TABLE_NAME='payroll_permission_grant';
   IF TG_TABLE_NAME='payroll_policy' AND NOT app.is_admin_for(co) THEN RAISE EXCEPTION 'Native payroll policy administration unavailable' USING ERRCODE='42501';END IF;
   IF TG_TABLE_NAME='payroll_permission_grant' AND NOT app.is_admin() THEN RAISE EXCEPTION 'Native payroll permission administration unavailable' USING ERRCODE='42501';END IF;

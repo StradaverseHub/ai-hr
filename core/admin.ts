@@ -5351,9 +5351,9 @@ export class CompanyNotFoundError extends Error {
  * (the check in step 3 runs as the caller). That is the `other` refusal, said in words; the original error is
  * logged on the server, never shown.
  */
-export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
+export async function deleteCompany(ctx: SessionContext, p: { id: string }, existingTx?: Tx) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async (tx) => {
+  const execute = async (tx: Tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const rows = (await tx.execute(sql`
@@ -5379,8 +5379,15 @@ export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
     if (isCompanyDeleteBlock(reason)) throw new CompanyInUseError(reason);
 
     let usageSnapshotRows = 0;
+    let moduleCleanup: string | null = null;
     try {
-      for (const ref of cascadedReferrers()) {
+      const refs = cascadedReferrers();
+      if (refs.some((ref) => ref.sealedModuleCleanup)) {
+        const [cleanup] = await tx.execute<{ id: string | null }>(sql`select app.module_company_cleanup_begin(${p.id}::uuid) as id`);
+        moduleCleanup = cleanup?.id ?? null;
+      }
+      for (const ref of refs) {
+        if (ref.sealedModuleCleanup) continue;
         if (ref.deleteFunction) {
           // A table the app role may not DELETE from (the usage metering record): migration 0511's function
           // removes the all-zero rows, re-checking the caller's authority, and says how many.
@@ -5418,5 +5425,7 @@ export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
         usageSnapshotRows,
       },
     });
-  });
+    if (moduleCleanup) await tx.execute(sql`select app.module_company_cleanup_finish(${moduleCleanup}::uuid)`);
+  };
+  return existingTx ? execute(existingTx) : withTenant(ctx, execute);
 }

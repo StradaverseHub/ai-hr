@@ -43,6 +43,11 @@ export async function setPayrollPermissionGrant(
     await assertAiPrincipalTx(tx,ctx);
     const [admin]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
     if(admin?.allowed!==true)throw new Error('Payroll permission administration required.');
+    if (p.permissionKey === 'leave.apply_on_behalf') {
+      const [written] = await tx.execute<{ id: string }>(sql`select app.leave_on_behalf_grant_set(${companyId}::uuid, ${p.role}, ${p.allowed}) as id`);
+      if (!written?.id) throw new Error('Leave permission write unavailable.');
+      return { id: written.id };
+    }
     const [existing] = await tx
       .select({ id: payrollPermissionGrant.id })
       .from(payrollPermissionGrant)
@@ -87,6 +92,12 @@ export async function deletePayrollPermissionGrant(ctx: SessionContext, p: { id:
     await assertAiPrincipalTx(tx,ctx);
     const [admin]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
     if(admin?.allowed!==true)throw new Error('Payroll permission administration required.');
+    const [existing] = await tx.select({ permissionKey: payrollPermissionGrant.permissionKey })
+      .from(payrollPermissionGrant).where(eq(payrollPermissionGrant.id, p.id)).for('update');
+    if (existing?.permissionKey === 'leave.apply_on_behalf') {
+      const [written] = await tx.execute<{ deleted: boolean }>(sql`select app.leave_on_behalf_grant_delete(${p.id}::uuid) as deleted`);
+      return { deleted: written?.deleted === true };
+    }
     const [row] = await tx
       .delete(payrollPermissionGrant)
       .where(eq(payrollPermissionGrant.id, p.id))
