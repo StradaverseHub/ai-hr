@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/mobile-android-signin-probe.yml
       - .github/diagnostics/android/OneHrSignInProbe.java
+      - .github/diagnostics/android/NativeHttpsProbe.java
   workflow_dispatch:
 permissions:
   contents: read
@@ -30,13 +31,14 @@ jobs:
           build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
           out="$RUNNER_TEMP/onehr-signin-probe"
           mkdir -p "$out/classes" "$out/dex" "$out/artifact"
-          javac -source 8 -target 8 -classpath "$platform/android.jar:$platform/uiautomator.jar:$platform/optional/android.test.base.jar" -d "$out/classes" .github/diagnostics/android/OneHrSignInProbe.java
-          "$build_tools/d8" --min-api 24 --lib "$platform/android.jar" --classpath "$platform/uiautomator.jar" --classpath "$platform/optional/android.test.base.jar" --output "$out/dex" "$out/classes/onehr/diagnostics/OneHrSignInProbe.class"
+          javac -source 8 -target 8 -classpath "$platform/android.jar:$platform/uiautomator.jar:$platform/optional/android.test.base.jar" -d "$out/classes" .github/diagnostics/android/OneHrSignInProbe.java .github/diagnostics/android/NativeHttpsProbe.java
+          "$build_tools/d8" --min-api 24 --lib "$platform/android.jar" --classpath "$platform/uiautomator.jar" --classpath "$platform/optional/android.test.base.jar" --output "$out/dex" "$out/classes/onehr/diagnostics/"*.class
           jar cf "$out/artifact/onehr-signin-probe.jar" -C "$out/dex" classes.dex
           SOURCE_SHA="$GITHUB_SHA" PROBE_OUT="$out/artifact" python3 - <<'PY'
           import os,pathlib,hashlib,json
           p=pathlib.Path(os.environ['PROBE_OUT']);source=pathlib.Path('.github/diagnostics/android/OneHrSignInProbe.java')
           v={'source':os.environ['SOURCE_SHA'],'run':os.environ['GITHUB_RUN_ID'],'toolSha256':hashlib.sha256((p/'onehr-signin-probe.jar').read_bytes()).hexdigest(),'javaSourceSha256':hashlib.sha256(source.read_bytes()).hexdigest(),'appCompiledOrModified':False,'credentialsIncluded':False,'deviceActionsPerformedByBuild':False}
+          v['nativeHttpsSourceSha256']=hashlib.sha256(pathlib.Path('.github/diagnostics/android/NativeHttpsProbe.java').read_bytes()).hexdigest()
           (p/'manifest.json').write_text(json.dumps(v,indent=2)+'\n')
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
