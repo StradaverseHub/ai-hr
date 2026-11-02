@@ -11,7 +11,7 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from '
 beforeAll(migrateTestDb);
 afterAll(closeAll);
 
-it('measures matched Personnel reads at 512, 4096 and 16384 permitted records with exact independent controls',async()=>{
+it('measures matched Personnel reads at 65536 permitted records with exact independent controls',async()=>{
  await resetDb();const b=await seedBase(),foreign=await seedBase(),ctx=adminCtx(b);
  const settings=await owner.client`select current_setting('shared_buffers') as shared_buffers,current_setting('work_mem') as work_mem,current_setting('jit') as jit,current_setting('max_connections') as max_connections`;
  expect((await withTenant(ctx,tx=>tx.execute(sql`select current_user as role`)))[0].role).toBe('ai_hr_app');
@@ -34,7 +34,7 @@ it('measures matched Personnel reads at 512, 4096 and 16384 permitted records wi
  const page={companyIds:[b.companyId],limit:25,offset:0},facets={companyIds:[b.companyId]};
  const legacy=async(p:Parameters<typeof personnelListPage>[1]=page,f:Parameters<typeof personnelListPage>[2]=facets)=>{const [rows,headcount]=await Promise.all([listEmployeesPage(ctx,p,'workforce'),countEmployeesByStatus(ctx,f,'workforce')]);return {...rows,headcount};};
  try{
-  for(const size of [512,4096,16384]){
+  for(const size of [65536]){
    const seedStart=performance.now();employees.push(...await append(b,employees.length,size,'MAIN'));const seedMs=performance.now()-seedStart;
    // Update planner statistics for this volume in the disposable runner database only.
    await owner.client.unsafe('ANALYZE person, employment, assignment');
