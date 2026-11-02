@@ -42,7 +42,7 @@ describe('current independently authenticated evaluation progress',()=>{
   await owner.db.execute(sql`update public.ai_agent_evaluation set receipt='POSTED_MODEL_SELF_RATING_PASS' where candidate_id=${candidate.candidateId}::uuid and evaluator_user_id=${a.reviewer.userId}::uuid`);
   expect(await progress(a.reviewer,candidate.candidateId)).toBeNull();expect(sent).toHaveBeenCalledTimes(PROMPT_HOLDOUT_REQUEST_LIMIT);
  });
- it('still displays known failures when an attempted retry is unavailable after all cases produced outputs',async()=>{
+ it('retains completed wrong outputs without dispatching another attempt, even when the provider is unavailable',async()=>{
   const a=await actors(),candidate=await createPromptAgentCandidate(a.author,{version:1,configuration:{kind:'read_plan_prompt_v1',variant:'explicit_scope_v1'}}),sent=await transport(a.author,true);
   let completed=false;
   for(let batch=0;batch<=Math.ceil(2*PROMPT_HOLDOUTS.length/PROMPT_HOLDOUT_REQUEST_LIMIT);batch++){
@@ -52,8 +52,21 @@ describe('current independently authenticated evaluation progress',()=>{
   expect(completed).toBe(true);
   sent.mockClear();sent.mockRejectedValueOnce(Error('fictional unavailable retry'));
   const retried=await evaluatePromptAgentCandidate(a.reviewer,{candidateId:candidate.candidateId,consent:consent()});
-  expect(retried).toMatchObject({state:'incomplete',attemptedRequests:1,completedRequests:0,retainedFailures:1,completedCases:PROMPT_HOLDOUTS.length});
-  expect(await progress(a.reviewer,candidate.candidateId)).toMatchObject({completedCases:PROMPT_HOLDOUTS.length,totalCases:PROMPT_HOLDOUTS.length,state:'incomplete',knownFailures:1,retainedFailures:1});
+  expect(retried).toMatchObject({state:'complete',attemptedRequests:0,completedRequests:0,qualityFailures:1,retainedFailures:1,completedCases:PROMPT_HOLDOUTS.length});
+  expect(await progress(a.reviewer,candidate.candidateId)).toMatchObject({completedCases:PROMPT_HOLDOUTS.length,totalCases:PROMPT_HOLDOUTS.length,state:'complete',knownFailures:1,retainedFailures:1});
+  expect(sent).not.toHaveBeenCalled();
+ });
+ it('reports an unavailable genuinely unrun arm without retrying an already measured wrong output',async()=>{
+  const a=await actors(),candidate=await createPromptAgentCandidate(a.author,{version:1,configuration:{kind:'read_plan_prompt_v1',variant:'explicit_scope_v1'}}),sent=await transport(a.author,true);
+  const initial=await evaluatePromptAgentCandidate(a.reviewer,{candidateId:candidate.candidateId,consent:consent()});
+  expect(initial.state).toBe('incomplete');expect(initial.completedCases).toBeLessThan(PROMPT_HOLDOUTS.length);
+  expect(await progress(a.reviewer,candidate.candidateId)).toMatchObject({knownFailures:1});
+  sent.mockClear();sent.mockRejectedValueOnce(Error('fictional unavailable unrun arm'));
+  const resumed=await evaluatePromptAgentCandidate(a.reviewer,{candidateId:candidate.candidateId,consent:consent()});
+  expect(resumed).toMatchObject({state:'incomplete',attemptedRequests:1,completedRequests:0,retainedFailures:1,completedCases:initial.completedCases});
+  expect(await progress(a.reviewer,candidate.candidateId)).toMatchObject({state:'incomplete',knownFailures:1,retainedFailures:1,completedCases:initial.completedCases});
   expect(sent).toHaveBeenCalledTimes(1);
+  const firstCall=sent.mock.calls[0];expect(firstCall).toBeDefined();
+  expect(firstCall![1].prompt).not.toBe(PROMPT_HOLDOUTS[0].question);
  });
 });
