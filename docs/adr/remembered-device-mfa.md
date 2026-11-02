@@ -5,7 +5,7 @@ Owner direction: LOGIN chat, 2 November 2026. Reduce repeated authenticator prom
 
 ## Decision
 
-Use explicit per-device remembering after successful TOTP verification. A correct password alone cannot register trust. The working tenant default is30days, administrator-configurable from0to90days;0requires MFA at every fresh login. This is a fixed duration from the actual factor verification, not a sliding expiry. The period is expressed in days (30days approximates a month), not calendar months. Optional owner preferences remain to be reconciled before release.
+Use explicit per-device remembering after successful TOTP verification. A correct password alone cannot register trust. The owner-confirmed tenant default is30days, administrator-configurable from0to90days;0requires MFA at every fresh login. This is a fixed duration from the actual factor verification, not a sliding expiry. The period is expressed in days (30days approximates a month), not calendar months. The owner confirmed30days and both web/mobile in the LOGIN question replies.
 
 New/unremembered browsers, private browsing, app reinstalls and expired or invalid proofs require the normal enrolled factor. TOTP enrollment and password recovery retain their existing requirements. Recovery codes can still complete the existing supported flow, but never issue a remembered-device proof. Forced password changes also do not mint a proof; the next normal MFA can remember the device. Existing web8hour sessions, native15minute access/8hour refresh families and tenant idle sign-out limits are unchanged. Remembering a factor never keeps a user signed in.
 

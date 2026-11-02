@@ -403,7 +403,7 @@ describe('first-party authentication with real private storage and existing HR b
     const setup = await startInvitation(invite.token, 'invited', final, native);
     if (setup.step !== 'enroll' || !setup.secret) throw new Error('Expected setup');
     expect(await credentialByLogin('alpha', 'invited')).toBeNull(); expect(await readSession(challenge(setup))).toBeNull();
-    const result = await verifyMfa(challenge(setup), await generate({ secret: setup.secret }), native, rememberDevice);
+    const result = await verifyMfa(challenge(setup), await generate({ secret: setup.secret }), native);
     if (native) {
       const session = completed(result);
       expect((await readSession(session.access_token, true))?.credential.email).toBe('invited@example.test');
