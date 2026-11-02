@@ -4379,3 +4379,33 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_draft_write_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER z_financial_onehr_draft_write_guard BEFORE INSERT OR UPDATE OR DELETE ON public.performance_assessment_draft FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_draft_write_guard();
+
+--> statement-breakpoint
+CREATE FUNCTION app.onehr_kpi_checkin(wanted_review uuid,expected_revision integer,wanted_kpi uuid,answer text,note text) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;previous jsonb;checkin jsonb;next_kpis jsonb;stamp text;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR check-in actor unavailable' USING ERRCODE='42501';END IF;
+ IF answer IS NULL OR answer NOT IN ('on_track','at_risk','off_track','nothing_yet') OR note IS NULL OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(note))>4000 THEN RAISE EXCEPTION 'Invalid quarterly check-in' USING ERRCODE='22023';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF review.review_id IS NULL OR NOT app.onehr_self_employment(review.employment_id) OR NOT app.onehr_review_task_view(wanted_review,'self') OR NOT app.function_action_allowed('performance.onehr.selfReview','edit',review.company_id) THEN RAISE EXCEPTION 'This action is not assigned to you.' USING ERRCODE='42501';END IF;
+ IF review.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ IF NOT app.assessment_review_participates(wanted_review) OR cycle.status NOT IN ('open','calibration') OR EXISTS(SELECT 1 FROM public.performance_review header WHERE header.id=wanted_review AND header.tenant_id=review.tenant_id AND header.closed_at IS NOT NULL) OR EXISTS(SELECT 1 FROM app.onehr_review_frozen(wanted_review)) THEN RAISE EXCEPTION 'This assessment has been finalized.' USING ERRCODE='42501';END IF;
+ IF policy->'windows'->'pm_results'->>'opensAt' IS NOT NULL AND now()<(policy->'windows'->'pm_results'->>'opensAt')::timestamptz OR policy->'windows'->'pm_results'->>'closesAt' IS NOT NULL AND now()>=(policy->'windows'->'pm_results'->>'closesAt')::timestamptz THEN RAISE EXCEPTION 'This step is closed.' USING ERRCODE='42501';END IF;
+ IF policy->'modules'->>'pm' IS DISTINCT FROM 'true' OR policy->>'kind' IS DISTINCT FROM 'quarterly' THEN RAISE EXCEPTION 'KPI status check-ins belong to quarterly cycles.' USING ERRCODE='42501';END IF;
+ SELECT item INTO previous FROM jsonb_array_elements(review.kpis) WITH ORDINALITY source(item,position) WHERE item->>'id'=wanted_kpi::text ORDER BY position LIMIT 1;
+ IF previous IS NULL OR previous->>'setting' IS DISTINCT FROM 'approved' THEN RAISE EXCEPTION 'Agree the KPI before checking in.' USING ERRCODE='42501';END IF;
+ stamp:=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+ checkin:=jsonb_build_object('answer',answer,'note',note,'at',stamp,'userId',app.current_user_id());
+ SELECT jsonb_agg(CASE WHEN item->>'id'=wanted_kpi::text THEN item||jsonb_build_object('checkIn',checkin) ELSE item END ORDER BY position) INTO next_kpis FROM jsonb_array_elements(review.kpis) WITH ORDINALITY source(item,position);
+ UPDATE public.performance_onehr_review actual SET kpis=next_kpis,revision=review.revision+1 WHERE actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(review.tenant_id,'onehr',wanted_review,'onehr.kpi-checkin-saved','user',app.current_user_id(),review.employment_id,jsonb_build_object('kpiId',wanted_kpi,'previous',previous->'checkIn','next',checkin));
+ RETURN review.revision+1;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_kpi_checkin(uuid,integer,uuid,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_kpi_checkin(uuid,integer,uuid,text,text) TO ai_hr_app;

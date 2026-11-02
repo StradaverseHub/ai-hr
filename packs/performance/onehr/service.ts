@@ -369,13 +369,8 @@ export async function saveOnehrKpiCheckIn(ctx:SessionContext,reviewId:string,exp
  return withPerformanceTenant(ctx,tx=>saveOnehrKpiCheckInTx(tx,ctx,reviewId,expected,kpiId,answer,text));
 }
 export async function saveOnehrKpiCheckInTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,kpiId:string,answer:typeof checkInAnswers[number],text:string) {
- uuid.parse(kpiId);z.enum(checkInAnswers).parse(answer);note.parse(text);
-  const r=await loadReview(tx,reviewId,true);await writable(tx,r,'pm_results',expected,'self');
-  if(!r.cycle.policy.modules.pm||r.cycle.policy.kind!=='quarterly')throw Error('KPI status check-ins belong to quarterly cycles.');
-  const k=r.kpis.find(k=>k.id===kpiId);if(!k||k.setting!=='approved')throw Error('Agree the KPI before checking in.');
-  const checkIn={answer,note:text,at:new Date().toISOString(),userId:ctx.userId!};
-  await touchReview(tx,reviewId,{kpis:r.kpis.map(k=>k.id===kpiId?{...k,checkIn}:k)});
-  await audit(tx,ctx,reviewId,'kpi-checkin-saved',{kpiId,previous:k.checkIn??null,next:checkIn});
+ uuid.parse(reviewId);uuid.parse(kpiId);z.number().int().parse(expected);z.enum(checkInAnswers).parse(answer);note.parse(text);
+ await tx.execute(sql`select app.onehr_kpi_checkin(${reviewId}::uuid,${expected}::integer,${kpiId}::uuid,${answer}::text,${text}::text)`);
 }
 export async function moderateOnehrKpi(ctx:SessionContext,reviewId:string,expected:number,kpiId:string,actual:number,remark:string) {
  return withPerformanceTenant(ctx,tx=>moderateOnehrKpiTx(tx,ctx,reviewId,expected,kpiId,actual,remark));

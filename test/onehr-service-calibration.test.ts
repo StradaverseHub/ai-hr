@@ -596,7 +596,13 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.confirmOnehrPerformance(mgr,reviewId,(await view()).revision,'ME','')).rejects.toThrow(/does not produce/);
     await expect(perf.saveOnehrKpiCheckIn(mgr,reviewId,(await view()).revision,id,'on_track','')).rejects.toThrow(/not assigned/);
     await expect(perf.freezeOnehrReview(a,reviewId,(await view(a)).revision)).rejects.toThrow(/every quarterly/);
+    const [beforeCheckin]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
+    await expect(perf.saveOnehrKpiCheckIn(a,reviewId,beforeCheckin.revision,id,'on_track','Administrative borrowing')).rejects.toThrow(/not assigned/);
+    await expect(withTenant(self,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_kpi_checkin(${reviewId}::uuid,${beforeCheckin.revision}::integer,${id}::uuid,'on_track','Forged actor')`);})).rejects.toThrow(/actor unavailable/);
+    expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([beforeCheckin]);
     await perf.saveOnehrKpiCheckIn(self,reviewId,(await view(self)).revision,id,'at_risk','Dependency needs support');
+    const [afterCheckin]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));const checkIn=afterCheckin.kpis.find(item=>item.id===id)!.checkIn!;expect(checkIn).toMatchObject({answer:'at_risk',note:'Dependency needs support',userId:self.userId});expect(checkIn.at).toMatch(/Z$/);
+    expect(afterCheckin).toEqual({...beforeCheckin,kpis:beforeCheckin.kpis.map(item=>item.id===id?{...item,checkIn}:item),revision:beforeCheckin.revision+1});const firstEvents=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.kpi-checkin-saved')));expect(firstEvents).toHaveLength(1);expect(firstEvents[0]).toMatchObject({actorType:'user',actorId:self.userId,subjectEmploymentId:subject.employmentId,payload:{kpiId:id,previous:null,next:checkIn}});
     await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     const label=(await view(self)).kpis[0].title,message=`Set ${label} to off track`;
     vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');
