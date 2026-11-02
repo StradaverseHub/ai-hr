@@ -232,7 +232,8 @@ mkdir -p "$STAGING" || die 2 lock "cannot create the staging directory $STAGING"
 if ! LOCK_TOKEN="$(python3 "$ROOT/scripts/backup-lock.py" acquire "$LOCK_DIR" "$$")"; then
   HOLDER="$(cat "$LOCK_DIR/pid" 2>/dev/null || echo unknown)"
   die 4 lock "another backup is running (lock $LOCK_DIR, pid $HOLDER). Refusing to run two dumps at once.
-  If that process is gone, remove the lock directory and re-run."
+  Do not remove it based on a PID alone. Verify owned descendants, transport outcome and retained
+  recovery files before deliberate cleanup; uncertain reader work may outlive the original process."
 fi
 LOCK_HELD=1
 
