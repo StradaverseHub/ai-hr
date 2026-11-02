@@ -75,7 +75,7 @@ describe('physical per-rater confidentiality',()=>{
 describe('purpose-bound canonical date adjustments',()=>{
  it('allows mapped Lifecycle GBS to apply the approved canonical date only, with an audited movement and idempotent source receipt',async()=>{
   const{ids,staff}=await privateCase();
-  await owner.db.execute(sql`update employment set normal_confirmation_date='2026-12-31' where id=${staff.employmentId}::uuid`);
+  await owner.db.execute(sql`update employment set probation_end_date='2026-12-31' where id=${staff.employmentId}::uuid`);
   await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'pbp','2026-01-01','Named PBP fixture'),(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'gbs','2026-01-01','Named GBS fixture')`);
   await owner.db.execute(sql`insert into access_configuration(tenant_id,initialized) values(${b.tenantId}::uuid,true) on conflict(tenant_id) do update set initialized=true`);
   await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"probation-purpose-fixture","operation":"maintain"}]'::jsonb where id='workforce.maintain'`);
@@ -98,6 +98,27 @@ describe('actual scoped workflow rehearsal',()=>{
   const workflow={id:'due',name:'Due review',module:'probation' as const,status:'draft' as const,description:'Pending owner only',trigger:{event:'review_due' as const},conditions:{departmentId:b.deptA,grade:'12',part:3 as const},steps:[{id:'notify',type:'notify' as const,subject:'Review for {{ employeeName }}',body:'Part {{part}} is due {{dueOn}}.',to:['employee' as const]}]};
   const preview=await previewProbationWorkflow(admin,{companyId:b.companyId,workflow});expect(preview.sends).toBe(false);expect(preview.examples).toHaveLength(1);expect(preview.examples[0].parts[0]).toMatchObject({ready:true,messages:[{subject:'Review for Fictional Staff',recipients:[{role:'employee',name:'Fictional Staff'}]}]});expect(JSON.stringify(preview)).not.toContain('Private manager draft');expect(JSON.stringify(preview)).not.toContain('Private staff comment');
   expect((await previewProbationWorkflow(admin,{companyId:b.companyId,workflow:{...workflow,conditions:{...workflow.conditions,departmentId:b.deptB}}})).examples).toEqual([]);
+ });
+});
+
+describe('pending-party rehearsal and waived self-assessment custody',()=>{
+ it('waits for staff before notifying LM, allows configured parallel work, and excludes finished staff without exposing a waived draft',async()=>{
+  const{ids,staff,manager}=await privateCase();await setReportingLine(admin,{subordinateEmploymentId:staff.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2026-01-01'});
+  await owner.db.execute(sql`update probation_part set data=jsonb_set(data,'{dueOn}',to_jsonb((now() at time zone 'Asia/Kuala_Lumpur')::date::text)) where id=${ids.part}::uuid`);
+  const workflow={id:'parties',name:'Pending review owners',module:'probation' as const,status:'draft' as const,description:'Only unfinished work',trigger:{event:'review_due' as const},conditions:{part:3 as const},steps:[{id:'notify',type:'notify' as const,subject:'Review {{employeeName}}',body:'Pending review',to:['employee' as const,'lm' as const,'hod' as const,'pbp' as const]}]};
+  const parties=async()=>(await previewProbationWorkflow(admin,{companyId:b.companyId,workflow})).examples[0].parts[0].messages[0].recipients;
+  expect((await parties()).map(p=>p.role)).toEqual(['employee']);
+  await owner.db.execute(sql`update probation_case set data=jsonb_set(data,'{config,lmWaitsForEmployee}','false') where id=${ids.caseId}::uuid`);
+  expect((await parties()).map(p=>p.role).sort()).toEqual(['employee','lm']);expect((await probationCase(manager.ctx,ids.caseId)).parts[0].canEditManager).toBe(true);
+  await owner.db.execute(sql`update probation_part set data=jsonb_set(data,'{staffSubmittedAt}',to_jsonb(now()::text)) where id=${ids.part}::uuid`);
+  expect((await parties()).map(p=>p.role)).toEqual(['lm']);
+  await owner.db.execute(sql`update probation_part set data=data||jsonb_build_object('staffSubmittedAt',null,'managerSubmittedAt',now(),'state','manager_submitted') where id=${ids.part}::uuid`);
+  const view=await probationCase(staff.ctx,ids.caseId);expect(view.parts[0].canEditSelfAssessment).toBe(false);expect(view.parts[0].canEditEmployeeComments).toBe(false); // no source-bound signing envelope was manufactured by this fixture
+  await expect(withTenant(staff.ctx,tx=>tx.execute(sql`select app.probation_save_draft(${ids.part}::uuid,'employee','{"employee":{}}'::jsonb,1)`))).rejects.toThrow();
+  const[content]=await owner.withTenant({...admin,userId:undefined},tx=>tx.execute<{data:{employeeAssessment:unknown}}>(sql`select app.probation_content(${ids.part}::uuid) as data`));expect(content.data.employeeAssessment).toBeNull();
+ });
+ it('keeps signed review bytes and render custody inaccessible to an ordinary app principal',async()=>{
+  await privateCase();for(const query of[sql`select app.probation_owner_render_context(${randomUUID()}::uuid)`,sql`select app.probation_owner_seal_render(${randomUUID()}::uuid,${'a'.repeat(64)},${Buffer.from('%PDF-forged')})`,sql`select app.probation_hold_render(${randomUUID()}::uuid,'forged')`])await expect(withTenant(admin,tx=>tx.execute(query))).rejects.toThrow();
  });
 });
 

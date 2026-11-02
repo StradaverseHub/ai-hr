@@ -136,7 +136,7 @@ export function editProbationPart(record:ProbationCase,partId:string,role:Probat
   if(['recorded','locked','completed_offline','cancelled'].includes(part.state)||record.state==='withdrawn')throw new ProbationError('conflict','This review is locked. Request a reasoned unlock.');
   const allowed=role==='employee'?EMPLOYEE_FIELDS:role==='lm'?MANAGER_FIELDS:new Set<string>();
   if(Object.keys(patch).some(k=>!allowed.has(k)))throw new ProbationError('forbidden','Only the field owner may edit these fields.');
-  if(role==='employee'&&part.staffSubmittedAt&&Object.hasOwn(patch,'employee')||role==='employee'&&part.acknowledgedAt||role==='lm'&&part.managerSubmittedAt)throw new ProbationError('conflict','Your submitted step cannot be edited.');
+  if(role==='employee'&&(part.staffSubmittedAt||part.managerSubmittedAt)&&Object.hasOwn(patch,'employee')||role==='employee'&&part.acknowledgedAt||role==='lm'&&part.managerSubmittedAt)throw new ProbationError('conflict','Your submitted step cannot be edited.');
   if(role==='lm'&&part.type===1&&record.kpiAcknowledged)throw new ProbationError('conflict','Acknowledged KPIs are locked.');
   return{...record,revision:record.revision+1,parts:record.parts.map(p=>p.id===partId?{...p,...structuredClone(patch),revision:p.revision+1}:p)};
 }
