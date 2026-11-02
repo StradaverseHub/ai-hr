@@ -1262,3 +1262,11 @@ Delete, and submission stays disabled until a current positive projection covers
 Selection changes clear it; stale responses cannot enable another selection. Native read-only/actual
 Add→archive→Edit and rendered pending/stale response cases are authored, unrun. Full supported default,
 recipient and control-denial qualification still awaits genuine component closure/publication.
+
+Static native-source correction: 0319 makes ordinary Schedule Group and OT-row writes ANY-HR;
+0545 membership is ANY-HR too. The original ff17 core constructor/edit/copy adds a group-admin floor
+only for dated rotations (and copy carrying dated rotations). Remove the invented blanket group-only
+Attendance configuration/Schedule delegation floor; actual stored/current ordinary Schedule floors
+remain ANY-HR. Dated rotation's genuine group-only service/RLS floor is retained. Company-HR ordinary
+constructor/edit/copy and stored/current parity versus actual dated-rotation refusal/copy rollback
+cases are authored, not executed or relabeled as installed default/recipient evidence.

@@ -43,7 +43,7 @@ REVOKE ALL ON FUNCTION app.module_action_current_native_default(uuid,uuid,text,u
 CREATE FUNCTION app.module_action_delegation_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.module_action_current_native_default(t,u,cap,co)
- AND (cap !~ '^(leave_configuration|attendance_configuration)\.(add|edit|delete)$' OR app.is_group_admin())
+ AND (cap !~ '^leave_configuration\.(add|edit|delete)$' OR app.is_group_admin())
  AND (cap !~ '^attendance\.(add|edit|delete)$' OR CASE WHEN co IS NULL THEN app.is_group_admin() ELSE app.is_admin_for(co) END);
 $$;
 REVOKE ALL ON FUNCTION app.module_action_delegation_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
@@ -490,7 +490,8 @@ CREATE TRIGGER module_configuration_write_lock BEFORE INSERT OR UPDATE OR DELETE
 --> statement-breakpoint
 CREATE FUNCTION app.module_schedule_delegation_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.module_action_current_legacy_allowed(t,u,cap,co) AND (cap NOT IN ('attendance_configuration.add','attendance_configuration.edit') OR app.is_group_admin());
+ -- 0319/0545 ordinary Schedule Group is ANY-HR. Dated rotations have their own group-only owner.
+ SELECT app.module_action_current_legacy_allowed(t,u,cap,co);
 $$;
 REVOKE ALL ON FUNCTION app.module_schedule_delegation_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
