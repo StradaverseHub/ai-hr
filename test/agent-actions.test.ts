@@ -22,9 +22,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import * as schema from '../db/schema';
+import {withTenant} from '../db/client';
+import {lockStatutorySourceTx} from '../core/statutory-source-lock';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { setStatutoryProfileMY } from '../localization/my/statutory';
+import { setStatutoryProfileMY, setBankProfileMY } from '../localization/my/statutory';
 import { resolveAnomalyVerdict } from '../core/payroll-anomaly';
 import { proposalRates } from '../core/agent-proposal';
 import {
@@ -294,6 +296,32 @@ describe('ADR-0083 §2.5 — the action layer', () => {
     // And agreement is structurally 1.0 for this type — an operator who simply does not press the button
     // leaves no trace — which is exactly why the REVERSAL rate is the metric that means anything here.
     expect(r!.agreementRate).toBe(1);
+  });
+
+  it('rechecks a reverted bank fix after joining the actual native source writer interval', async () => {
+    const f=await flagged({withBank:true}),a=adminCtx(base);
+    let signalHeld!:()=>void,release!:()=>void;
+    const held=new Promise<void>(resolve=>{signalHeld=resolve;}),gate=new Promise<void>(resolve=>{release=resolve;});
+    let holderPid=0;
+    const holder=withTenant(a,async tx=>{
+      await lockStatutorySourceTx(tx,a);
+      const [pid]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);holderPid=pid.pid;
+      signalHeld();await gate;
+      await setBankProfileMY(a,{personId:f.personId,bankName:null,bankAccountNo:null},tx);
+    });
+    await held;
+    const execution=executeAction(a,{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]});
+    try {
+      let blocked=false;
+      for(let n=0;n<200&&!blocked;n++){
+        const [state]=await owner.db.execute<{blocked:boolean}>(sql`select exists(select 1 from pg_stat_activity where ${holderPid}=any(pg_blocking_pids(pid))) as blocked`);
+        blocked=state.blocked;if(!blocked)await new Promise(resolve=>setTimeout(resolve,20));
+      }
+      expect(blocked,'actual command must join the held native source interval').toBe(true);
+    } finally {release();await holder;}
+    expect(await execution).toEqual({closed:0,stale:1});
+    const [stored]=await owner.db.select().from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.id,f.verdictId));
+    expect(stored.resolvedAt).toBeNull();
   });
 
   it('does not overwrite a disposition committed while resolution waits for the verdict row', async () => {
