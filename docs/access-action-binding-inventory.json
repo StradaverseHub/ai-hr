@@ -15230,14 +15230,18 @@
         {
           "path": "app/admin/payroll-permissions/page.tsx",
           "entry": "PayrollPermissionsPage",
-          "line": 27,
+          "line": 28,
           "surface": "route",
           "owners": [
+            "app.financial_setup_catalog_function",
             "app.is_admin_for",
+            "app.payroll_permission_grant_can_remove_current",
             "app/admin/payroll-permissions/page.tsx:listPayrollPermissionGrants",
+            "app/admin/payroll-permissions/page.tsx:payrollPermissionManagementAccess",
             "app/admin/payroll-permissions/page.tsx:requireAdmin",
-            "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n      })\n      .from",
-            "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n      })\n      .from(payrollPermissionGrant)\n      .orderBy"
+            "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n        canRemove: sql<boolean>`app.payroll_permission_grant_can_remove_current(${payrollPermissionGrant.id})`,\n      })\n      .from",
+            "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n        canRemove: sql<boolean>`app.payroll_permission_grant_can_remove_current(${payrollPermissionGrant.id})`,\n      })\n      .from(payrollPermissionGrant)\n      .where",
+            "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n        canRemove: sql<boolean>`app.payroll_permission_grant_can_remove_current(${payrollPermissionGrant.id})`,\n      })\n      .from(payrollPermissionGrant)\n      .where(sql`app.financial_setup_catalog_function('payComponents.catalogue','view')`)\n      .orderBy"
           ],
           "tables": [
             "company",
@@ -15250,11 +15254,15 @@
         }
       ],
       "nativeOwners": [
+        "app.financial_setup_catalog_function",
         "app.is_admin_for",
+        "app.payroll_permission_grant_can_remove_current",
         "app/admin/payroll-permissions/page.tsx:listPayrollPermissionGrants",
+        "app/admin/payroll-permissions/page.tsx:payrollPermissionManagementAccess",
         "app/admin/payroll-permissions/page.tsx:requireAdmin",
-        "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n      })\n      .from",
-        "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n      })\n      .from(payrollPermissionGrant)\n      .orderBy"
+        "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n        canRemove: sql<boolean>`app.payroll_permission_grant_can_remove_current(${payrollPermissionGrant.id})`,\n      })\n      .from",
+        "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n        canRemove: sql<boolean>`app.payroll_permission_grant_can_remove_current(${payrollPermissionGrant.id})`,\n      })\n      .from(payrollPermissionGrant)\n      .where",
+        "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n        canRemove: sql<boolean>`app.payroll_permission_grant_can_remove_current(${payrollPermissionGrant.id})`,\n      })\n      .from(payrollPermissionGrant)\n      .where(sql`app.financial_setup_catalog_function('payComponents.catalogue','view')`)\n      .orderBy"
       ],
       "tables": [
         "company",
@@ -27036,14 +27044,18 @@
     {
       "path": "app/admin/payroll-permissions/page.tsx",
       "entry": "PayrollPermissionsPage",
-      "line": 27,
+      "line": 28,
       "surface": "route",
       "owners": [
+        "app.financial_setup_catalog_function",
         "app.is_admin_for",
+        "app.payroll_permission_grant_can_remove_current",
         "app/admin/payroll-permissions/page.tsx:listPayrollPermissionGrants",
+        "app/admin/payroll-permissions/page.tsx:payrollPermissionManagementAccess",
         "app/admin/payroll-permissions/page.tsx:requireAdmin",
-        "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n      })\n      .from",
-        "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n      })\n      .from(payrollPermissionGrant)\n      .orderBy"
+        "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n        canRemove: sql<boolean>`app.payroll_permission_grant_can_remove_current(${payrollPermissionGrant.id})`,\n      })\n      .from",
+        "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n        canRemove: sql<boolean>`app.payroll_permission_grant_can_remove_current(${payrollPermissionGrant.id})`,\n      })\n      .from(payrollPermissionGrant)\n      .where",
+        "core/payroll-permissions-admin.ts:tx\n      .select({\n        id: payrollPermissionGrant.id,\n        companyId: payrollPermissionGrant.companyId,\n        permissionKey: payrollPermissionGrant.permissionKey,\n        role: payrollPermissionGrant.role,\n        allowed: payrollPermissionGrant.allowed,\n        canRemove: sql<boolean>`app.payroll_permission_grant_can_remove_current(${payrollPermissionGrant.id})`,\n      })\n      .from(payrollPermissionGrant)\n      .where(sql`app.financial_setup_catalog_function('payComponents.catalogue','view')`)\n      .orderBy"
       ],
       "tables": [
         "company",

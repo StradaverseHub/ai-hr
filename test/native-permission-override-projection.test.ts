@@ -106,7 +106,8 @@ it('seals the real report category change and canonical audit under immediate co
  const [audit]=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,id!));
  expect(audit).toMatchObject({aggregateType:'payroll-permission-grant',eventType:'payroll-permission-grant.created',actorId:admin.userId,
   payload:{companyId:b.companyId,permissionKey:'report.read.bank',role:'hr_admin',allowed:false}});
- const raw=await withTenant(admin,tx=>tx.execute(sql`update public.payroll_permission_grant set allowed=true where id=${id!}::uuid`)).then(()=>null,error=>error);
+ expect(await withTenant(admin,tx=>tx.execute(sql`select app.payroll_permission_grant_can_remove_current(${id!}::uuid) as allowed`))).toEqual([{allowed:true}]);
+const raw=await withTenant(admin,tx=>tx.execute(sql`update public.payroll_permission_grant set allowed=true where id=${id!}::uuid`)).then(()=>null,error=>error);
  expect(pgErrorChain(raw)).toContainEqual(expect.objectContaining({code:'42501',message:'Report permission source unavailable'}));
  expect(await deletePayrollPermissionGrant(admin,{id:id!})).toEqual({deleted:true});
  expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id!))).toEqual([]);

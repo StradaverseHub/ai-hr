@@ -1220,3 +1220,25 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.report_permission_hierarchy_recheck() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER report_permission_hierarchy_recheck AFTER INSERT OR UPDATE ON app.module_company_hierarchy_epoch FOR EACH ROW EXECUTE FUNCTION app.report_permission_hierarchy_recheck();
+
+--> statement-breakpoint
+-- Management metadata repeats the real exact remove admission without writing.
+-- The native runtime's access to role-override facts is independent of this UI.
+CREATE FUNCTION app.payroll_permission_grant_can_remove_current(p_grant uuid) RETURNS boolean
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected public.payroll_permission_grant;
+BEGIN
+ IF NOT app.financial_setup_catalog_function('payComponents.catalogue','view') THEN RETURN false;END IF;
+ SELECT * INTO selected FROM public.payroll_permission_grant g WHERE g.id=p_grant AND g.tenant_id=app.current_tenant_id();
+ IF NOT FOUND THEN RETURN false;END IF;
+ IF app.report_permission_key(selected.permission_key) THEN
+  PERFORM app.report_permission_admit(to_jsonb(selected),NULL);
+ ELSIF selected.permission_key='leave.apply_on_behalf' THEN
+  PERFORM app.leave_permission_admit(to_jsonb(selected),NULL);
+ ELSIF NOT app.financial_setup_catalog_function('payComponents.catalogue','delete') THEN RETURN false;
+ END IF;
+ RETURN true;
+EXCEPTION WHEN insufficient_privilege THEN RETURN false;
+END $$;
+REVOKE ALL ON FUNCTION app.payroll_permission_grant_can_remove_current(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.payroll_permission_grant_can_remove_current(uuid) TO ai_hr_app;

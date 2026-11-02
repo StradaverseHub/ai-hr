@@ -12,6 +12,16 @@ import { actorOf, appendEvent } from '../db/events';
 import { payrollPermissionGrant } from '../db/schema';
 import { PAYROLL_PERMISSION_KEYS, isPayrollPermissionKey } from '../lib/payroll-permissions';
 
+export function payrollPermissionManagementAccess(ctx:SessionContext) {
+  return withTenant(ctx,async tx=>{
+    const [row]=await tx.execute<{view:boolean;add:boolean;edit:boolean}>(sql`select
+      app.financial_setup_catalog_function('payComponents.catalogue','view') as view,
+      app.financial_setup_catalog_function('payComponents.catalogue','add') as add,
+      app.financial_setup_catalog_function('payComponents.catalogue','edit') as edit`);
+    return {canView:row?.view===true,canSave:row?.add===true||row?.edit===true};
+  });
+}
+
 export function listPayrollPermissionGrants(ctx: SessionContext) {
   return withTenant(ctx, (tx) =>
     tx
@@ -21,8 +31,10 @@ export function listPayrollPermissionGrants(ctx: SessionContext) {
         permissionKey: payrollPermissionGrant.permissionKey,
         role: payrollPermissionGrant.role,
         allowed: payrollPermissionGrant.allowed,
+        canRemove: sql<boolean>`app.payroll_permission_grant_can_remove_current(${payrollPermissionGrant.id})`,
       })
       .from(payrollPermissionGrant)
+      .where(sql`app.financial_setup_catalog_function('payComponents.catalogue','view')`)
       .orderBy(desc(payrollPermissionGrant.createdAt)),
   );
 }
