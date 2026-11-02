@@ -148,7 +148,7 @@ it('qualifies a narrow-count/bounded-wide prototype against the current exact pr
    expect(await readTx(tx,true,page,facets)).toEqual(empty);expect(await readTx(tx,false,page,facets,true)).toEqual(empty);expect(await readTx(tx,false,page,facets)).toEqual(empty);
    await tx.execute(sql`select set_config('app.user_id',${ctx.userId!},true)`);expect((await readTx(tx,true,page,facets)).total).toBe(512);
   });report.liveActorRebindSameTransaction=true;
-  await measure(4096);report.complete=true;
+  await measure(8192);report.complete=true;
  }finally{
   await owner.client.unsafe('DROP FUNCTION IF EXISTS app.perf_personnel_minimal(date);DROP FUNCTION IF EXISTS app.perf_personnel_wide(uuid[]);DROP FUNCTION IF EXISTS app.perf_personnel_factored()');report.privateHelpersDropped=true;
   const [after]=await owner.client`select pg_get_functiondef(p.oid)as definition,to_jsonb(p)as attributes from pg_proc p where p.oid=${signature}::regprocedure`;expect(after.definition).toBe(original.definition);expect(after.attributes).toEqual(original.attributes);report.publicUnchanged=true;save();
