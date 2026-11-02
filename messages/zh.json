@@ -29364,7 +29364,22 @@
       "caseNoWorkflows": "没有匹配此个案的有效工作流。",
       "caseSubmitDocuments": "提交入职个案以开始生成文档。",
       "casePreviewMessage": "预览消息",
-      "casePreviewDocument": "预览文档"
+      "casePreviewDocument": "预览文档",
+      "caseCancelOffboarding": "取消离职个案",
+      "caseExitClearance": "离职结清",
+      "caseLastWorkingDay": "最后工作日",
+      "caseLeavers": "离职员工",
+      "caseNeedsHrReview": "需要人事审核",
+      "caseNoPersonnelChanges": "没有待人员管理审核的更改。",
+      "caseNoChecklistTasks": "没有清单任务。",
+      "caseNoReturnItems": "未记录需归还或撤销的项目。",
+      "caseOffboardingChecklist": "离职清单",
+      "caseOpenDocument": "打开文档",
+      "caseReturnRevoke": "归还与撤销",
+      "caseItem": "物品",
+      "caseType": "类型",
+      "caseProvidedBy": "提供方",
+      "caseReturnDue": "归还或撤销日期"
     }
   },
   "processAssessment": {

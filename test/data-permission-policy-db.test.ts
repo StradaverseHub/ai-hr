@@ -1,10 +1,11 @@
 /** Independent behavioral checks of the restricted SQL data-scope owner and real employment RLS. */
 import {randomUUID} from 'node:crypto';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,db as runtimeDb,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
+import {publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS} from '../deploy/access/publish-workforce-capabilities';
 import {listEmployees} from '../core/read';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
@@ -13,9 +14,13 @@ import {canonicalDataPermissionRules,type DataPermissionRules} from '../lib/data
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,admin:SessionContext,limited:SessionContext,otherCompany:string;
 let grades:string[],people:{id:string;personId:string;companyId:string;grade:string|null;nationality:string}[];
+let publication:{id:string;supported:boolean;bindings:unknown}[]=[];
 beforeAll(migrateTestDb);afterAll(closeAll);
+afterEach(async()=>{for(const row of publication)await owner.client`update access_capability set supported=${row.supported},bindings=${JSON.stringify(row.bindings)}::text::jsonb where id=${row.id}`;publication=[];});
 beforeEach(async()=>{
  await resetDb();b=await seedBase();admin={...await entitledCtx(b),grants:[{role:'hr_admin',companyId:null}]};
+ publication=Array.from(await owner.client<{id:string;supported:boolean;bindings:unknown}[]>`select id,supported,bindings from access_capability where id=any(${WORKFORCE_CAPABILITY_BINDINGS.map(row=>row.id)}::text[])`);
+ await withTenant(admin,tx=>accessConfigurationStore.loadCurrent(tx,admin));await publishWorkforceCapabilities(owner.client);
  const [company]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Independent Company B'}).returning();otherCompany=company.id;
  const [department]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:otherCompany,name:'Independent Department B'}).returning();
  grades=[];for(const code of ['INDEP_A','INDEP_B','INDEP_C','INDEP_D']){const [grade]=await owner.db.insert(s.jobGrade).values({tenantId:b.tenantId,code,name:code}).returning();grades.push(grade.id);}

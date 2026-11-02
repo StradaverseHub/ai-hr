@@ -518,7 +518,22 @@ const keys: Record<string, string> = {
     "No live workflows match this case.": "caseNoWorkflows",
     "Submit the onboarding case to start its documents.": "caseSubmitDocuments",
     "Preview message": "casePreviewMessage",
-    "Preview document": "casePreviewDocument"
+    "Preview document": "casePreviewDocument",
+    "Cancel offboarding case": "caseCancelOffboarding",
+    "Exit clearance": "caseExitClearance",
+    "Last working day": "caseLastWorkingDay",
+    "Leavers": "caseLeavers",
+    "Needs HR review": "caseNeedsHrReview",
+    "No changes awaiting Personnel Management review.": "caseNoPersonnelChanges",
+    "No checklist tasks.": "caseNoChecklistTasks",
+    "No return or revoke items recorded.": "caseNoReturnItems",
+    "Offboarding checklist": "caseOffboardingChecklist",
+    "Open document": "caseOpenDocument",
+    "Return and revoke": "caseReturnRevoke",
+    "Item": "caseItem",
+    "Type": "caseType",
+    "Provided by": "caseProvidedBy",
+    "Return or revoke by": "caseReturnDue"
 };
 const states: Record<string, string> = { todo: 'To do', progress: 'In progress', done: 'Done', pending: 'Pending', submitted: 'Submitted', cancelled: 'Cancelled', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn', unresolved: 'Unresolved', awaiting_approval: 'Awaiting approval', in_progress: 'In progress', ready: 'Ready', completed: 'Completed', handed: 'Handed over', printed: 'Printed, sent to Group Tech', none: 'None' };
 export function useOnboardingCopy() {

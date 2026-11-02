@@ -29364,7 +29364,22 @@
       "caseNoWorkflows": "இந்த வழக்குக்குப் பொருந்தும் செயலில் உள்ள பணிப்பாய்வுகள் இல்லை.",
       "caseSubmitDocuments": "ஆவணங்களைத் தொடங்கப் பணிச்சேர்க்கை வழக்கைச் சமர்ப்பிக்கவும்.",
       "casePreviewMessage": "செய்தி முன்னோட்டம்",
-      "casePreviewDocument": "ஆவண முன்னோட்டம்"
+      "casePreviewDocument": "ஆவண முன்னோட்டம்",
+      "caseCancelOffboarding": "வெளியேறும் வழக்கை ரத்துசெய்",
+      "caseExitClearance": "வெளியேற்ற அனுமதி",
+      "caseLastWorkingDay": "இறுதி வேலைநாள்",
+      "caseLeavers": "வெளியேறும் பணியாளர்கள்",
+      "caseNeedsHrReview": "மனிதவள மதிப்பாய்வு தேவை",
+      "caseNoPersonnelChanges": "பணியாளர் நிர்வாக மதிப்பாய்வுக்குக் காத்திருக்கும் மாற்றங்கள் இல்லை.",
+      "caseNoChecklistTasks": "சரிபார்ப்புப் பட்டியல் பணிகள் இல்லை.",
+      "caseNoReturnItems": "திருப்பியளிக்க அல்லது ரத்து செய்யும் உருப்படிகள் பதிவாகவில்லை.",
+      "caseOffboardingChecklist": "வெளியேறும் சரிபார்ப்புப் பட்டியல்",
+      "caseOpenDocument": "ஆவணத்தைத் திற",
+      "caseReturnRevoke": "திருப்பியளித்தல் மற்றும் ரத்து செய்தல்",
+      "caseItem": "உருப்படி",
+      "caseType": "வகை",
+      "caseProvidedBy": "வழங்கியவர்",
+      "caseReturnDue": "திருப்பியளிக்க அல்லது ரத்து செய்யும் நாள்"
     }
   },
   "processAssessment": {
