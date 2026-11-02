@@ -23,3 +23,4 @@ export async function createProbationOffboardingTx(tx:import('../../db/client').
  if(row.intent.offboardingCaseId)return row.intent.offboardingCaseId;
  const{v9CreateOffboardingTx}=await import('./v9/service');return v9CreateOffboardingTx(tx,ctx,{employmentId:row.intent.employmentId,type:row.intent.type,noticeDate:row.intent.noticeDate,lastDay:row.intent.lastDay},{kind:'probation',caseId});
 }
+export {v9WorkflowNavigationAllowed} from './v9/navigation';

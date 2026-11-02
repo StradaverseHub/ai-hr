@@ -509,7 +509,19 @@
     "functionAccess": "Function Access",
     "securityCenter": "Security Center",
     "aiManagementInventory": "AI inventory",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "probationConfirmation": "Probation Confirmation",
+    "contractManagement": "Contract Management",
+    "probationSettings": "Probation settings",
+    "probationForms": "Form editor",
+    "probationRoutes": "Approval routes",
+    "probationWorkflows": "Probation workflows",
+    "probationTemplates": "Outcome letter templates",
+    "probationIntake": "Intake and activation",
+    "contractSettings": "Contract Management settings",
+    "contractWorkflows": "Contract workflows",
+    "contractTemplates": "Contract templates",
+    "contractIntake": "Contract intake and retirement evidence"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -14308,10 +14320,14 @@
       "assessmentWork": "Act on performance assessment",
       "careerPlan": "Review career plan",
       "calibration": "Complete calibration",
-      "rewardReview": "Review rewards"
+      "rewardReview": "Review rewards",
+      "probation": "Probation Confirmation",
+      "contract_staff": "Contract Management"
     },
     "tasksEmpty": "Nothing needs your action",
-    "title": "Notifications"
+    "title": "Notifications",
+    "lifecycleOpen": "Open task",
+    "lifecycleMore": "There are {count} more current tasks. Open a module to review them."
   },
   "approvalHistory": {
     "title": "Approval History",
@@ -34042,6 +34058,22 @@
         "letter_release_pending": "Signed letter release pending",
         "letter_returned": "Outcome letter returned",
         "overdue_summary": "Overdue summary"
+      },
+      "holds": {
+        "inactive": "This is no longer an active probation case.",
+        "dates": "Reconcile the current Personnel dates first.",
+        "notActivated": "This company is still in preparation mode.",
+        "batch": "This event needs an explicitly reviewed batch.",
+        "notDue": "The date or pending step does not currently match this trigger.",
+        "generic": "This event is held until its readiness requirements are met."
+      },
+      "issues": {
+        "name": "Enter a workflow name.",
+        "event": "Choose a probation event.",
+        "steps": "Add one to ten notification steps.",
+        "message": "Complete each message and choose recipients.",
+        "merge": "Use the supported probation merge fields.",
+        "generic": "Review the workflow fields before publishing."
       }
     },
     "templates": {

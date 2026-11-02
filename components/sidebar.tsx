@@ -606,6 +606,8 @@ export function Sidebar({
   performanceAdminHref,
   approvalCount = 0,
   taskCount = 0,
+  probationAccess = {page:false,configure:false},
+  contractStaffAccess = {page:false,configure:false},
   onboardingAccess = false,
   onboardingV9Access = false,
   onboardingV9Navigation,
@@ -673,6 +675,8 @@ export function Sidebar({
    *  never queries. 0 (or a viewer without the row) renders no badge. */
   approvalCount?: number;
   taskCount?: number;
+  probationAccess?:{page:boolean;configure:boolean};
+  contractStaffAccess?:{page:boolean;configure:boolean};
   onboardingAccess?: boolean;
   onboardingV9Access?: boolean;
   onboardingV9Navigation?: V9NavigationPermissions;
@@ -816,10 +820,18 @@ export function Sidebar({
     } satisfies ChildItem)).filter(canSeeChild);
   const lifecycleShared: ChildItem[] = V9_SHARED_NAVIGATION.filter(item => onboardingV9Access &&
     (item.view === 'tasks' || !!onboardingV9Navigation?.records)).map(item => ({href:item.href,labelKey:item.labelKey,icon:ONBOARDING_NODE.icon,exactHref:true})).filter(canSeeChild);
+  // New module owners resolve both the actual purchased company and business-role visibility.
+  // These additive People destinations do not inherit the legacy global-only Lifecycle nav gate.
+  const scopedLifecycleRows:ChildItem[]=[
+    ...(probationAccess.page?[{href:'/lifecycle/probation',labelKey:'probationConfirmation',icon:ONBOARDING_NODE.icon,exactHref:true,ownedSubpaths:['/lifecycle/probation'] }]:[]),
+    ...(contractStaffAccess.page?[{href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ONBOARDING_NODE.icon,exactHref:true,ownedSubpaths:['/lifecycle/contracts'] }]:[]),
+    ...(probationAccess.configure?[['settings','probationSettings'],['forms','probationForms'],['routes','probationRoutes'],['workflows','probationWorkflows'],['templates','probationTemplates'],['intake','probationIntake']].map(([path,labelKey])=>({href:'/lifecycle/probation/'+path,labelKey,icon:ONBOARDING_NODE.icon,submenuKey:'probationConfirmation'})):[]),
+    ...(contractStaffAccess.configure?[['settings','contractSettings'],['workflows','contractWorkflows'],['templates','contractTemplates'],['intake','contractIntake']].map(([path,labelKey])=>({href:'/lifecycle/contracts/'+path,labelKey,icon:ONBOARDING_NODE.icon,submenuKey:'contractManagement'})):[]),
+  ];
   const destinations: ChildItem[] = [...authorizedRows.filter(row => {
     const placement = navigationPlacement(row.href);
     return !placement || !('module' in placement) || placement.module !== 'onboarding';
-  }), ...additionalRows.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared];
+  }), ...additionalRows.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared, ...scopedLifecycleRows];
   const navigation = placeNavigation(destinations);
   const availableWorkspaces = (['ops','strata'] as const).filter(workspace =>
     navigation.placed.some(row => row.placement.area === workspace),

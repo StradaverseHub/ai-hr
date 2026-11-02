@@ -509,7 +509,19 @@
     "functionAccess": "Truy cập chức năng",
     "securityCenter": "Trung tâm bảo mật",
     "aiManagementInventory": "Danh mục AI",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "probationConfirmation": "Xác nhận thử việc",
+    "contractManagement": "Quản lý hợp đồng",
+    "probationSettings": "Cài đặt thử việc",
+    "probationForms": "Trình sửa biểu mẫu",
+    "probationRoutes": "Luồng phê duyệt",
+    "probationWorkflows": "Quy trình thử việc",
+    "probationTemplates": "Mẫu thư kết quả",
+    "probationIntake": "Tiếp nhận và kích hoạt",
+    "contractSettings": "Cài đặt Quản lý hợp đồng",
+    "contractWorkflows": "Quy trình hợp đồng",
+    "contractTemplates": "Mẫu hợp đồng",
+    "contractIntake": "Tiếp nhận hợp đồng và bằng chứng nghỉ hưu"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -14308,10 +14320,14 @@
       "assessmentWork": "Xử lý đánh giá hiệu suất",
       "careerPlan": "Xem xét kế hoạch nghề nghiệp",
       "calibration": "Hoàn tất hiệu chỉnh hiệu suất",
-      "rewardReview": "Xem xét đãi ngộ"
+      "rewardReview": "Xem xét đãi ngộ",
+      "probation": "Xác nhận thử việc",
+      "contract_staff": "Quản lý hợp đồng"
     },
     "tasksEmpty": "Không có mục nào cần bạn xử lý",
-    "title": "Thông báo"
+    "title": "Thông báo",
+    "lifecycleOpen": "Mở công việc",
+    "lifecycleMore": "Còn {count} công việc hiện tại. Mở mô-đun để xem."
   },
   "approvalHistory": {
     "title": "Lịch sử phê duyệt",
@@ -34042,6 +34058,22 @@
         "letter_release_pending": "Thư đã ký đang chờ phát hành",
         "letter_returned": "Thư kết quả đã được trả lại",
         "overdue_summary": "Tổng hợp quá hạn"
+      },
+      "holds": {
+        "inactive": "Đây không còn là hồ sơ thử việc đang hoạt động.",
+        "dates": "Hãy đối chiếu ngày Nhân sự hiện tại trước.",
+        "notActivated": "Công ty này vẫn ở chế độ chuẩn bị.",
+        "batch": "Sự kiện này cần một lô đã được rà soát rõ ràng.",
+        "notDue": "Ngày hoặc bước đang chờ hiện không phù hợp với điều kiện kích hoạt này.",
+        "generic": "Sự kiện được giữ lại cho đến khi đáp ứng điều kiện sẵn sàng."
+      },
+      "issues": {
+        "name": "Nhập tên quy trình.",
+        "event": "Chọn sự kiện thử việc.",
+        "steps": "Thêm từ một đến mười bước thông báo.",
+        "message": "Hoàn thành từng thông báo và chọn người nhận.",
+        "merge": "Dùng các trường trộn thử việc được hỗ trợ.",
+        "generic": "Rà soát các trường quy trình trước khi công bố."
       }
     },
     "templates": {

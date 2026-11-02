@@ -509,7 +509,19 @@
     "functionAccess": "Akses Fungsi",
     "securityCenter": "Pusat Keselamatan",
     "aiManagementInventory": "Inventori AI",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "probationConfirmation": "Pengesahan Percubaan",
+    "contractManagement": "Pengurusan Kontrak",
+    "probationSettings": "Tetapan percubaan",
+    "probationForms": "Penyunting borang",
+    "probationRoutes": "Laluan kelulusan",
+    "probationWorkflows": "Aliran kerja percubaan",
+    "probationTemplates": "Templat surat hasil",
+    "probationIntake": "Pendaftaran dan pengaktifan",
+    "contractSettings": "Tetapan Pengurusan Kontrak",
+    "contractWorkflows": "Aliran kerja kontrak",
+    "contractTemplates": "Templat kontrak",
+    "contractIntake": "Pendaftaran kontrak dan bukti persaraan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -14308,10 +14320,14 @@
       "assessmentWork": "Ambil tindakan pada penilaian prestasi",
       "careerPlan": "Semak pelan kerjaya",
       "calibration": "Lengkapkan kalibrasi prestasi",
-      "rewardReview": "Semak ganjaran"
+      "rewardReview": "Semak ganjaran",
+      "probation": "Pengesahan Percubaan",
+      "contract_staff": "Pengurusan Kontrak"
     },
     "tasksEmpty": "Tiada apa-apa memerlukan tindakan anda",
-    "title": "Pemberitahuan"
+    "title": "Pemberitahuan",
+    "lifecycleOpen": "Buka tugasan",
+    "lifecycleMore": "Terdapat {count} lagi tugasan semasa. Buka modul untuk menyemaknya."
   },
   "approvalHistory": {
     "title": "Sejarah Kelulusan",
@@ -34042,6 +34058,22 @@
         "letter_release_pending": "Pengeluaran surat ditandatangani belum selesai",
         "letter_returned": "Surat keputusan dikembalikan",
         "overdue_summary": "Ringkasan tunggakan"
+      },
+      "holds": {
+        "inactive": "Ini bukan lagi kes percubaan aktif.",
+        "dates": "Selaraskan tarikh Personel semasa dahulu.",
+        "notActivated": "Syarikat ini masih dalam mod penyediaan.",
+        "batch": "Peristiwa ini memerlukan kelompok yang disemak secara nyata.",
+        "notDue": "Tarikh atau langkah tertunda belum sepadan dengan pencetus ini.",
+        "generic": "Peristiwa ini ditangguhkan sehingga syarat kesediaan dipenuhi."
+      },
+      "issues": {
+        "name": "Masukkan nama aliran kerja.",
+        "event": "Pilih peristiwa percubaan.",
+        "steps": "Tambah satu hingga sepuluh langkah pemberitahuan.",
+        "message": "Lengkapkan setiap mesej dan pilih penerima.",
+        "merge": "Gunakan medan cantuman percubaan yang disokong.",
+        "generic": "Semak medan aliran kerja sebelum menerbitkan."
       }
     },
     "templates": {

@@ -509,7 +509,19 @@
     "functionAccess": "功能访问",
     "securityCenter": "安全中心",
     "aiManagementInventory": "AI 清单",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "probationConfirmation": "试用期转正确认",
+    "contractManagement": "合同管理",
+    "probationSettings": "试用期设置",
+    "probationForms": "表单编辑器",
+    "probationRoutes": "审批路径",
+    "probationWorkflows": "试用期工作流",
+    "probationTemplates": "结果信函模板",
+    "probationIntake": "登记及启用",
+    "contractSettings": "合同管理设置",
+    "contractWorkflows": "合同工作流",
+    "contractTemplates": "合同模板",
+    "contractIntake": "合同登记及退休证据"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -14308,10 +14320,14 @@
       "assessmentWork": "处理绩效考核",
       "careerPlan": "审阅职业发展计划",
       "calibration": "完成绩效校准",
-      "rewardReview": "审阅薪酬奖励"
+      "rewardReview": "审阅薪酬奖励",
+      "probation": "试用期转正确认",
+      "contract_staff": "合同管理"
     },
     "tasksEmpty": "没有需要您处理的事项",
-    "title": "通知"
+    "title": "通知",
+    "lifecycleOpen": "打开任务",
+    "lifecycleMore": "还有 {count} 项当前任务。请打开相应模块查看。"
   },
   "approvalHistory": {
     "title": "审批历史",
@@ -34042,6 +34058,22 @@
         "letter_release_pending": "已签署函件待发出",
         "letter_returned": "结果函已退回",
         "overdue_summary": "逾期汇总"
+      },
+      "holds": {
+        "inactive": "此案例已不处于有效试用期。",
+        "dates": "请先协调当前人事日期。",
+        "notActivated": "此公司仍处于准备模式。",
+        "batch": "此事件需要经过明确审核的批次。",
+        "notDue": "当前日期或待处理步骤与此触发条件不匹配。",
+        "generic": "此事件暂缓，直至满足就绪条件。"
+      },
+      "issues": {
+        "name": "请输入工作流名称。",
+        "event": "请选择试用期事件。",
+        "steps": "请添加一至十个通知步骤。",
+        "message": "请填写每条消息并选择收件人。",
+        "merge": "请使用支持的试用期合并字段。",
+        "generic": "发布前请检查工作流字段。"
       }
     },
     "templates": {
