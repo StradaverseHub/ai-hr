@@ -1013,7 +1013,7 @@ all source claims and the post-Noveri installation ledger before any release adm
 
 ## Leave/Attendance/Claims Action source continuation — 2 November 2026
 
-Reserved `0943_leave_attendance_claim_actions`, aggregate idx765 / when1793330000343, is journaled in its existing reserved position after0942 and before0944/0945; no existing entry was renumbered. Current source SHA256 `ca54e0b767d15e6f622c228971c6cdafb512bdcf682fef6f848b5d15c9323fdd`. Source installs dormant family definitions, exact maintained Claim configuration submenu and native Leave Type, Grade Groups and Schedule library guards, finite canonical Standard initialization, actual-root-removal Delete effect witnesses, finite actual-self/admin cancellation and confirmed reimbursement ports, private exact OLD/NEW/audit effects, and a deferred Claim payment guard consuming only genuine941 Payroll receipts. Operational Claim submission/decision, remaining Leave/Attendance, all related UI and whole module source closure remain incomplete. No publication sentinel or installed-history claim exists. Hosted exact-source qualification is required; re-audit actual ordered installation ledger and all coordinated reservations before admission. The separately reserved nine-item0946 and refreshed post-Noveri/nine watermark must be reconciled before eventual integration without rewriting applied history.
+Reserved `0943_leave_attendance_claim_actions`, aggregate idx765 / when1793330000343, is journaled in its existing reserved position after0942 and before0944/0945; no existing entry was renumbered. Current source SHA256 `c84dbd74bac403a93268ca844bde772a71f316cc1ecff8acd83451d2f2be2ddc`. Source installs dormant family definitions, exact maintained Claim configuration submenu and native Leave Type, Grade Groups and Schedule library guards, finite canonical Standard initialization, actual-root-removal Delete effect witnesses, finite actual-self/admin cancellation and confirmed reimbursement ports, private exact OLD/NEW/audit effects, and a deferred Claim payment guard consuming only genuine941 Payroll receipts. Operational Claim submission/decision, remaining Leave/Attendance, all related UI and whole module source closure remain incomplete. No publication sentinel or installed-history claim exists. Hosted exact-source qualification is required; re-audit actual ordered installation ledger and all coordinated reservations before admission. The separately reserved nine-item0946 and refreshed post-Noveri/nine watermark must be reconciled before eventual integration without rewriting applied history.
 
 
 ### Private canonical Draft → Onboarding source contract (unapplied)
@@ -1048,3 +1048,15 @@ successful actual birth and a deferred orphan check close that candidate. Unknow
 preexisting IDs are refused. Current/proposed assigned data predicates and native read admission
 still apply. Grade Groups only renames the ambiguous local; no assertion or native check is removed.
 Hosted failed/affected recovery is required; the original successful evidence remains distinct.
+
+
+### Own Claim drafts and submission source (unapplied chapter)
+
+0943 registers independent own Draft View/Add/Edit/Delete and Submit View/Execute purposes below
+own Claim View. Actual current/prior draft images repeat exact own identity and same-purpose controls;
+ordinary own work does not inherit an administrative Department AND restriction. Native Draft Delete
+now uses a finite SQL port for the exact source, all its receipts and one native audit, with private
+completion checks; raw source deletion and filed-claim content mutation are refused. Source statement
+locks precede tuple ownership. Own web form and draft/history controls now consume the real purpose flags, with six-locale rendered
+Save/Submit checks authored. Nonself submission/decisions, independent receipt management and full
+native-default/package closure remain explicitly unfinished; no module completion sentinel exists.

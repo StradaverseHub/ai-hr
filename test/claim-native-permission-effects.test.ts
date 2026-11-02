@@ -6,8 +6,9 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {appendEvent} from '../db/events';
 import {hireEmployee} from '../core/org';
-import {cancelClaim,createClaimType,markReimbursementsPaid,listReimbursementsDue} from '../core/claims';
+import {cancelClaim,createClaimType,markReimbursementsPaid,listReimbursementsDue,saveClaimDraft,deleteClaimDraft,submitDraftClaims} from '../core/claims';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand} from '../core/data-permissions';
 import {todayInKualaLumpur} from '../lib/hr-date';
 let b:Base,admin:SessionContext,subject:{personId:string;employmentId:string},own:SessionContext,typeId:string;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -63,4 +64,30 @@ it('rejects wrong selected employment and another actual employee without mutati
  const strangerId=await createAppUser(b.tenantId,null,'employee'),stranger={...own,userId:strangerId,personId:null};
  await expect(cancelClaim(stranger,row.id)).rejects.toThrow('Only the claimant or an admin can cancel this claim');
  expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,row.id)))[0].status).toBe('pending');
+});
+
+it('deletes an actual own draft and its receipt only through the finite native delete source',async()=>{
+ const draft=await saveClaimDraft(own,{employmentId:subject.employmentId,claimTypeId:typeId,amount:25,incurredOn:todayInKualaLumpur()},{fileName:'Fictional draft receipt.pdf',mimeType:'application/pdf',content:Buffer.from('Fictional receipt bytes')});
+ const before=await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,draft.id)),receipts=await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.claimRequestId,draft.id));
+ const audits=await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`;
+ await refusal(withTenant(own,async tx=>{await tx.execute(sql`select set_config('app.owner','true',true)`);await tx.delete(s.claimRequest).where(eq(s.claimRequest.id,draft.id));}),'Claim draft deletion source unavailable');
+ expect(await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,draft.id))).toEqual(before);
+ expect(await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.claimRequestId,draft.id))).toEqual(receipts);
+ expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audits);
+ await deleteClaimDraft(own,draft.id,subject.employmentId);
+ expect(await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,draft.id))).toEqual([]);
+ expect(await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.claimRequestId,draft.id))).toEqual([]);
+ expect(await owner.client`select actor_id,subject_employment_id from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${draft.id}::uuid and event_type='claim-request.draft-deleted'`).toEqual([{actor_id:own.userId,subject_employment_id:subject.employmentId}]);
+ await expect(withTenant(own,tx=>tx.execute(sql`insert into app.claim_draft_delete_effect select * from app.claim_draft_delete_effect`))).rejects.toThrow();
+});
+it('keeps ordinary own draft submission independent of an administrative Department AND profile',async()=>{
+ const root={...admin,grants:[{role:'hr_admin' as const,companyId:null}]},profileId=randomUUID();
+ const change=async(command:DataPermissionCommand)=>{const state=await readDataPermissions(root),preview=await previewDataPermission(root,state.revision,command);await saveDataPermission(root,state.revision,command,preview.fingerprint);};
+ await change({kind:'create',profileId,name:'Fictional other administrative department',enabled:true,rules:{legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptB]}]}});
+ await change({kind:'assign',userId:own.userId!,profileId});
+ const draft=await saveClaimDraft(own,{employmentId:subject.employmentId,claimTypeId:typeId,amount:25,incurredOn:todayInKualaLumpur()});
+ expect(await submitDraftClaims(own,{ids:[draft.id],employmentId:subject.employmentId})).toEqual({submitted:1});
+ expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,draft.id)))[0].status).toBe('pending');
+ await refusal(withTenant(own,async tx=>{await tx.transaction(async nested=>{await nested.update(s.claimRequest).set({amount:'99.00'}).where(eq(s.claimRequest.id,draft.id));await nested.update(s.claimRequest).set({amount:'25.00'}).where(eq(s.claimRequest.id,draft.id));});}),'Filed claim is immutable');
+ expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,draft.id)))[0].amount).toBe('25.00');
 });

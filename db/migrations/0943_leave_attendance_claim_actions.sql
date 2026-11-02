@@ -237,7 +237,7 @@ REVOKE ALL ON app.module_claim_effect FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.claim_own_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT cap IN ('function.claims.own.view','function.claims.own.delete') AND co IS NOT NULL
+ SELECT (cap IN ('function.claims.own.view','function.claims.own.delete') OR cap ~ '^function\.claims\.own\.(drafts\.(view|add|edit|delete)|submit\.(view|execute))$') AND co IS NOT NULL
  AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.employment e ON e.tenant_id=actor.tenant_id AND e.person_id=actor.person_id
   WHERE actor.id=u AND actor.tenant_id=t AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
    AND e.company_id=co AND e.voided_at IS NULL);
@@ -614,3 +614,108 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.module_grade_group_delete_floor() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER module_grade_group_delete_floor BEFORE DELETE ON public.grade_group FOR EACH ROW EXECUTE FUNCTION app.module_grade_group_delete_floor();
+
+--> statement-breakpoint
+-- Ordinary own Claim courses are independent of administrative employee data selection.
+DO $$ DECLARE selected_key text;operation text;BEGIN
+ FOREACH selected_key IN ARRAY ARRAY['drafts','submit'] LOOP
+  FOREACH operation IN ARRAY (CASE selected_key WHEN 'drafts' THEN ARRAY['view','add','edit','delete'] ELSE ARRAY['view','execute'] END) LOOP
+   PERFORM app.register_function_action('claims.own.'||selected_key,operation,'company','function.claims.own.view','app.claim_own_current_native_allowed',
+    jsonb_build_object('moduleKey','claims','labelKey','claims.title','kind','native_acl','course','own','employeeBearing',false));
+  END LOOP;
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_subject_is_own(p_subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment employment JOIN public.app_user actor ON actor.person_id=employment.person_id AND actor.tenant_id=employment.tenant_id WHERE employment.id=p_subject AND employment.tenant_id=app.current_tenant_id() AND actor.id=app.current_user_id() AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id));
+$$;
+REVOKE ALL ON FUNCTION app.claim_subject_is_own(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_subject_is_own(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_source_allowed(p_subject uuid,p_key text,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.claim_subject_is_own(p_subject) AND p_key IN ('claims.own','claims.own.drafts','claims.own.submit')
+ AND EXISTS(SELECT 1 FROM public.employment employment WHERE employment.id=p_subject AND employment.tenant_id=app.current_tenant_id() AND employment.voided_at IS NULL AND app.function_action_allowed('claims.own','view',employment.company_id) AND app.function_action_allowed(p_key,p_operation,employment.company_id));
+$$;
+REVOKE ALL ON FUNCTION app.claim_own_source_allowed(uuid,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_own_source_allowed(uuid,text,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE TABLE app.claim_draft_delete_effect(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,claim_id uuid NOT NULL,before_source jsonb NOT NULL,event_id uuid,completed boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,claim_id));
+REVOKE ALL ON app.claim_draft_delete_effect FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_draft_delete_native(p_claim uuid,p_expected_employment uuid DEFAULT NULL) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source public.claim_request%ROWTYPE;event uuid;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO source FROM public.claim_request WHERE id=p_claim AND tenant_id=app.current_tenant_id() AND app.claim_own_source_allowed(employment_id,'claims.own.drafts','view') FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Claim not found';END IF;
+ IF p_expected_employment IS NOT NULL AND source.employment_id<>p_expected_employment THEN RAISE EXCEPTION 'Draft does not belong to the selected employment';END IF;
+ IF source.status<>'draft' THEN RAISE EXCEPTION 'Only a draft claim can be deleted';END IF;
+ IF NOT app.claim_own_source_allowed(source.employment_id,'claims.own.drafts','delete') THEN RAISE EXCEPTION 'Claim draft delete unavailable' USING ERRCODE='42501';END IF;
+ DELETE FROM app.claim_draft_delete_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.claim_draft_delete_effect(xact_id,tenant_id,user_id,claim_id,before_source) VALUES(pg_current_xact_id(),source.tenant_id,app.current_user_id(),source.id,to_jsonb(source));
+ DELETE FROM public.claim_attachment WHERE tenant_id=source.tenant_id AND claim_request_id=source.id;
+ DELETE FROM public.claim_request WHERE tenant_id=source.tenant_id AND id=source.id;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Claim draft delete changed' USING ERRCODE='40001';END IF;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(source.tenant_id,'claim-request',source.id,'claim-request.draft-deleted','user',app.current_user_id(),source.employment_id,'{}') RETURNING id INTO event;
+ UPDATE app.claim_draft_delete_effect SET completed=true,event_id=event WHERE xact_id=pg_current_xact_id() AND tenant_id=source.tenant_id AND user_id=app.current_user_id() AND claim_id=source.id;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_draft_delete_native(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_draft_delete_native(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_draft_delete_approved(p_claim uuid,p_source jsonb,p_final boolean) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.claim_own_source_allowed((p_source->>'employment_id')::uuid,'claims.own.drafts','delete') AND EXISTS(SELECT 1 FROM app.claim_draft_delete_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.claim_id=p_claim AND proof.before_source=p_source AND (NOT p_final OR proof.completed AND NOT EXISTS(SELECT 1 FROM public.claim_request actual WHERE actual.id=proof.claim_id) AND NOT EXISTS(SELECT 1 FROM public.claim_attachment attachment WHERE attachment.claim_request_id=proof.claim_id) AND EXISTS(SELECT 1 FROM public.domain_event event WHERE event.id=proof.event_id AND event.tenant_id=proof.tenant_id AND event.actor_type='user' AND event.actor_id=proof.user_id AND event.aggregate_type='claim-request' AND event.aggregate_id=proof.claim_id AND event.event_type='claim-request.draft-deleted' AND event.subject_employment_id=(p_source->>'employment_id')::uuid)));
+$$;
+REVOKE ALL ON FUNCTION app.claim_draft_delete_approved(uuid,jsonb,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_request_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE prior jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;proposed jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;subject uuid:=coalesce(NEW.employment_id,OLD.employment_id);key text;operation text;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF coalesce(NEW.tenant_id,OLD.tenant_id) IS DISTINCT FROM app.current_tenant_id() OR TG_OP='UPDATE' AND ROW(OLD.id,OLD.tenant_id,OLD.employment_id) IS DISTINCT FROM ROW(NEW.id,NEW.tenant_id,NEW.employment_id) THEN RAISE EXCEPTION 'Claim source identity unavailable' USING ERRCODE='42501';END IF;
+ -- Native nonself submission/decision courses retain their current owner until their exact chapter.
+ IF NOT app.claim_subject_is_own(subject) AND (TG_OP='INSERT' AND NEW.status='draft' OR TG_OP<>'INSERT' AND OLD.status='draft') THEN RAISE EXCEPTION 'Only the claimant can edit or submit their own draft claim' USING ERRCODE='42501';END IF;
+ IF NOT app.claim_subject_is_own(subject) THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ IF TG_OP='DELETE' AND OLD.status='draft' THEN
+  IF NOT app.claim_draft_delete_approved(OLD.id,prior,TG_WHEN='AFTER') THEN RAISE EXCEPTION 'Claim draft deletion source unavailable' USING ERRCODE='42501';END IF;RETURN OLD;
+ ELSIF TG_OP='INSERT' AND NEW.status IN ('draft','pending') THEN
+  IF NEW.decided_at IS NOT NULL OR NEW.decided_by_employment_id IS NOT NULL OR NEW.payroll_batch_id IS NOT NULL OR NEW.paid_at IS NOT NULL OR NEW.payout_ref IS NOT NULL THEN RAISE EXCEPTION 'Claim creation stamps unavailable' USING ERRCODE='42501';END IF;
+  key:=CASE WHEN NEW.status='draft' THEN 'claims.own.drafts' ELSE 'claims.own.submit' END;operation:=CASE WHEN NEW.status='draft' THEN 'add' ELSE 'execute' END;
+ ELSIF TG_OP='UPDATE' AND OLD.status='draft' AND NEW.status IN ('draft','pending') THEN
+  IF (prior-ARRAY['claim_type_id','claim_item_id','amount','quantity_km','incurred_on','description','taxable','field_values','mileage_rate_applied','status']) IS DISTINCT FROM (proposed-ARRAY['claim_type_id','claim_item_id','amount','quantity_km','incurred_on','description','taxable','field_values','mileage_rate_applied','status']) THEN RAISE EXCEPTION 'Claim draft fields unavailable' USING ERRCODE='42501';END IF;
+  key:=CASE WHEN NEW.status='draft' THEN 'claims.own.drafts' ELSE 'claims.own.submit' END;operation:=CASE WHEN NEW.status='draft' THEN 'edit' ELSE 'execute' END;
+ ELSIF TG_OP='UPDATE' AND OLD.status<>'draft' AND NEW.status=OLD.status AND prior IS DISTINCT FROM proposed THEN
+  -- A filed own claim has no native content editor. Actual Payroll effect columns keep their941 owner.
+  IF prior-ARRAY['payroll_batch_id','paid_at','payout_ref'] IS DISTINCT FROM proposed-ARRAY['payroll_batch_id','paid_at','payout_ref'] THEN RAISE EXCEPTION 'Filed claim is immutable' USING ERRCODE='42501';END IF;
+ ELSIF TG_OP='INSERT' OR TG_OP='UPDATE' AND NEW.status='draft' OR TG_OP='DELETE' THEN RAISE EXCEPTION 'Claim lifecycle source unavailable' USING ERRCODE='42501';
+ END IF;
+ IF key IS NOT NULL AND NOT app.claim_own_source_allowed(subject,key,operation) THEN RAISE EXCEPTION 'Own claim action unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_own_request_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER claim_own_request BEFORE INSERT OR UPDATE OR DELETE ON public.claim_request FOR EACH ROW EXECUTE FUNCTION app.claim_own_request_guard();
+CREATE CONSTRAINT TRIGGER claim_own_request_final AFTER INSERT OR UPDATE OR DELETE ON public.claim_request DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_own_request_guard();
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_read_allowed(p_subject uuid,p_draft boolean) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT NOT app.claim_subject_is_own(p_subject) OR app.claim_own_source_allowed(p_subject,'claims.own','view') AND (NOT p_draft OR app.claim_own_source_allowed(p_subject,'claims.own.drafts','view'));
+$$;
+REVOKE ALL ON FUNCTION app.claim_own_read_allowed(uuid,boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_own_read_allowed(uuid,boolean) TO ai_hr_app;
+CREATE POLICY claim_own_action_read ON public.claim_request AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.claim_own_read_allowed(employment_id,status='draft'));
+
+--> statement-breakpoint
+CREATE FUNCTION app.claim_draft_delete_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.claim_draft_delete_approved(NEW.claim_id,NEW.before_source,true) THEN RAISE EXCEPTION 'Claim draft delete effects incomplete' USING ERRCODE='42501';END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_draft_delete_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER claim_draft_delete_complete AFTER INSERT ON app.claim_draft_delete_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_draft_delete_complete();
+--> statement-breakpoint
+CREATE TRIGGER module_claim_write_lock BEFORE INSERT OR UPDATE OR DELETE ON public.claim_request FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
