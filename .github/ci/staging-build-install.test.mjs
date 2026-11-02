@@ -1,15 +1,17 @@
 /** Private fixtures only: no GitHub/SSH/service/app/database or real installation. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync,readFileSync,writeFileSync,mkdirSync,chmodSync,symlinkSync,renameSync,readdirSync,statSync,copyFileSync} from 'node:fs';
+import {mkdtempSync,rmSync,readFileSync,writeFileSync,mkdirSync,chmodSync,symlinkSync,renameSync,readdirSync,statSync,copyFileSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {spawnSync} from 'node:child_process';
+import {spawnSync,execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+import {BUILD_BUNDLE_HELPER_PATHS,trustedBundleHelpers} from './build-bundle-protocol.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
 import {STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE,assertBuildDotenvCompileKeys} from './build-production.mjs';
 import {validateInstallGrant,createInstallGrant,installJson,installHash} from './ci-install-grant.mjs';
-import {initializePrivateInstall,readPrivateInstall,assertServiceDescriptor,retainNormalCleanupAudit} from './staging-build-install.mjs';
+import {initializePrivateInstall,readPrivateInstall,assertServiceDescriptor,retainNormalCleanupAudit,assertInstallBundleHelpers} from './staging-build-install.mjs';
 import {installationFixture as fixture} from './staging-install-test-fixture.mjs';
 const uuid=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 const sha=c=>c.repeat(40),digest=c=>c.repeat(64);
@@ -38,7 +40,8 @@ test('grant scope, exact shapes, hashes, runtime and immutable source/build iden
   g=>g.environmentSha256='bad',g=>g.witnessFingerprint='bad',g=>g.runAttempt=2,g=>g.extra='unrecognized',
   g=>g.artifact.extra=true,g=>g.artifact.digest=digest('a'),g=>g.build.extra=true,
   g=>g.build.runtime.node='22.0.0',g=>g.build.archiveBytes=272*1024**2+1,
-  g=>g.format=1,g=>g.build.format=1,g=>delete g.build.capacityProfile,g=>g.policyVersion='aihr-staging-ci/v15',g=>g.policyVersion='aihr-staging-ci/v16',
+  g=>g.format=1,g=>g.format=2,g=>g.build.format=1,g=>g.build.format=2,
+  g=>delete g.build.bundleHelpers,g=>delete g.build.bundleHelpers.maps,g=>g.build.bundleHelpers.maps='invalid',g=>g.build.bundleHelpers.extra='a'.repeat(64),g=>delete g.build.capacityProfile,g=>g.policyVersion='aihr-staging-ci/v15',g=>g.policyVersion='aihr-staging-ci/v16',
   g=>g.build.capacityProfile={profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280},g=>g.build.capacityProfile.profileVersion=2,g=>g.build.capacityProfile.archiveMaxBytes=276824064,g=>g.build.capacityProfile.profileVersion=true,g=>g.build.capacityProfile.archiveMaxBytes=285212673,g=>g.build.capacityProfile.profileVersion=1,g=>g.build.capacityProfile.archiveMaxBytes=268435456,g=>g.build.capacityProfile.zipMaxBytes++,
   g=>g.build.capacityProfile.extra=true,g=>g.build.buildSourcePath='/source/../other',g=>g.build.preparedSha256='bad',g=>g.installId='../escape'
  ]){const {grant}=fixture();mutate(grant);assert.throws(()=>validateInstallGrant(grant));}
@@ -136,7 +139,7 @@ test('bundle hashing and unpacking get ten minutes, inside the detached deploy d
 
 test('only the closed current grant admits the newly bounded archive range',()=>{
  const {grant}=fixture();
- assert.equal(grant.format,2);assert.equal(grant.build.format,2);assert.deepEqual(grant.build.capacityProfile,BUILD_CAPACITY_PROFILE);
+ assert.equal(grant.format,3);assert.equal(grant.build.format,3);assert.deepEqual(grant.build.capacityProfile,BUILD_CAPACITY_PROFILE);
  for(const archiveBytes of [256*1024**2+1,264*1024**2+1,272*1024**2])assert.doesNotThrow(()=>validateInstallGrant({...grant,build:{...grant.build,archiveBytes}}));
  assert.throws(()=>validateInstallGrant({...grant,build:{...grant.build,archiveBytes:272*1024**2+1}}));
 });
@@ -164,4 +167,30 @@ test('retained baseline identity fences preserve opaque old records without a le
  assert.deepEqual(readFileSync(join(next,'original-format1-manifest.json')),opaque);
  assert.deepEqual(readFileSync(join(next,'original-profile2-manifest.json')),opaqueProfile2);
  assert.equal(readFileSync(join(next,'BUILD_ID'),'utf8'),'old-baseline');
+});
+
+test('raw helper admission verifies all seven trusted files without requiring recipient Git metadata',t=>{
+ const source=privateFixture(t),root=fileURLToPath(new URL('../../',import.meta.url)),{grant}=fixture();
+ const helpers=trustedBundleHelpers(root,'HEAD');
+ assert.deepEqual(grant.build.bundleHelpers,helpers);
+ for(const path of Object.values(BUILD_BUNDLE_HELPER_PATHS)){
+  mkdirSync(join(source,path,'..'),{recursive:true});
+  writeFileSync(join(source,path),execFileSync('git',['show','HEAD:'+path],{cwd:root}));
+ }
+ assert.equal(existsSync(join(source,'.git')),false);
+ assert.equal(assertInstallBundleHelpers(source,grant),true);
+ const mapPath=join(source,BUILD_BUNDLE_HELPER_PATHS.maps),original=readFileSync(mapPath);
+ writeFileSync(mapPath,Buffer.concat([original,Buffer.from('\n# tampered companion\n')]));
+ assert.throws(()=>assertInstallBundleHelpers(source,grant),/helper differs/);
+ writeFileSync(mapPath,original);
+ for(const key of ['regular','maps','installer','grant','artifact','policy','protocol']){
+  const path=join(source,BUILD_BUNDLE_HELPER_PATHS[key]),bytes=readFileSync(path);
+  rmSync(path);
+  assert.throws(()=>assertInstallBundleHelpers(source,grant));
+  writeFileSync(path,bytes);
+ }
+ const wrong=structuredClone(grant);wrong.build.bundleHelpers.maps='0'.repeat(64);
+ assert.throws(()=>assertInstallBundleHelpers(source,wrong),/helper differs/);
+ rmSync(mapPath);symlinkSync(join(source,BUILD_BUNDLE_HELPER_PATHS.regular),mapPath);
+ assert.throws(()=>assertInstallBundleHelpers(source,grant));
 });

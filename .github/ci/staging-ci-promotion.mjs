@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {join} from 'node:path';
 import {createInstallGrant,validateInstallGrant,installJson,installHash} from './ci-install-grant.mjs';
+import {BUILD_BUNDLE_FORMAT,BUILD_BUNDLE_KIND} from './build-bundle-protocol.mjs';
 import {assertBuildCapacityProfile} from './build-production.mjs';
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value);
 export function stagingInstallerCommand(mode,sourceRef,installId,buildRecordId){
@@ -52,7 +53,12 @@ export function validateInstalledArrival(status,grant,expectedLedger){
   &&Number.isFinite(observed)&&observed<=Date.now()+60000&&Date.now()-observed<=60000,'Fresh post-activation runtime/health proof required');
  const inventory=runtime.compiledByteInventory;
  assertBuildCapacityProfile(inventory?.capacityProfile);
- assert(inventory?.format===2&&installJson(inventory.capacityProfile)===installJson(grant.build.capacityProfile)&&inventory.kind==='next-build-byte-bundle'&&inventory.releaseAuthorized===false&&inventory.runtimeCacheExcluded===true&&Number.isSafeInteger(inventory.files)&&inventory.files>0,'Actual complete immutable compiled-byte inventory required');
+ assert(inventory&&Object.keys(inventory).sort().join(',')===['format','capacityProfile','kind','files','mapCopies','archiveBytes','unpackedBytes','releaseAuthorized','runtimeCacheExcluded'].sort().join(',')
+  &&inventory.format===BUILD_BUNDLE_FORMAT&&installJson(inventory.capacityProfile)===installJson(grant.build.capacityProfile)&&inventory.kind===BUILD_BUNDLE_KIND
+  &&inventory.releaseAuthorized===false&&inventory.runtimeCacheExcluded===true&&Number.isSafeInteger(inventory.files)&&inventory.files>0&&inventory.files<=40000
+  &&Number.isSafeInteger(inventory.mapCopies)&&inventory.mapCopies>=0&&inventory.mapCopies<inventory.files
+  &&Number.isSafeInteger(inventory.unpackedBytes)&&inventory.unpackedBytes>0&&inventory.unpackedBytes<=2*1024**3
+  &&inventory.archiveBytes===grant.build.archiveBytes,'Actual complete immutable compiled-byte inventory required');
  const ledger=runtime.migrationLedger;
  assert(ledger?.kind==='READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE'&&ledger.releaseAuthorized===false&&ledger.rows===expectedLedger.length
   &&ledger.expectedSha256===installHash(installJson(expectedLedger))&&/^[a-f0-9]{64}$/.test(ledger.actualSha256),'Exact actual candidate migration ledger proof required');

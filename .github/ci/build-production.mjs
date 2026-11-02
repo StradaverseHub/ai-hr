@@ -5,12 +5,13 @@ import {lstatSync,readFileSync,mkdirSync,writeFileSync,realpathSync} from 'node:
 import {join,resolve,dirname} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
+import {BUILD_BUNDLE_FORMAT,BUILD_BUNDLE_KIND,trustedBundleHelpers,assertSourceBundleCapability} from './build-bundle-protocol.mjs';
 
 const controllerRoot=fileURLToPath(new URL('../../',import.meta.url));
 const SHA=/^[a-f0-9]{40}$/;
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=message=>{throw Error('Production build producer refused: '+message);};
-// Closed format2 byte-capacity identity; never use manifest values as allowance.
+// Closed protocol-independent byte-capacity identity; never use manifest values as allowance.
 export const BUILD_CAPACITY_PROFILE=Object.freeze({profileVersion:3,archiveMaxBytes:285212672,zipMaxBytes:293601280});
 export function assertBuildCapacityProfile(profile){
  if(!isDeepStrictEqual(profile,BUILD_CAPACITY_PROFILE))fail('unknown or mixed build capacity profile');
@@ -20,6 +21,12 @@ export function assertBuildPacketAggregate(sizes){
  if(!Array.isArray(sizes)||sizes.length!==5||sizes.some(size=>!Number.isSafeInteger(size)||size<1)
   ||sizes.reduce((total,size)=>total+size,0)>BUILD_CAPACITY_PROFILE.zipMaxBytes)fail('five-member build packet aggregate exceeds bound');
  return true;
+}
+/** Selection is fixed by the authenticated invocation purpose, never by packet/manifest input. */
+export function buildBundleProtocol(purpose){
+ if(purpose==='diagnostic')return {format:2,kind:'next-build-byte-bundle',helper:'.github/ci/build-bundle.py',requiresCapability:false};
+ if(purpose==='ci'||purpose==='release')return {format:BUILD_BUNDLE_FORMAT,kind:BUILD_BUNDLE_KIND,helper:'.github/ci/build-map-bundle.py',requiresCapability:true};
+ fail('unknown build purpose');
 }
 export const STAGING_BUILD_RUNTIME=Object.freeze({node:'22.23.3',abi:'127',platform:'linux',arch:'x64',glibc:'2.39',next:'16.4.1'});
 
@@ -107,7 +114,7 @@ export {assertDotenvCompileKeys as assertBuildDotenvCompileKeys};
 export async function produceBuild({source=process.cwd(),output,purpose='release'}){
  const environment=process.env;
  source=resolve(source);output=resolve(output);
- if(!['release','ci','diagnostic'].includes(purpose))fail('unknown build purpose');
+ const protocol=buildBundleProtocol(purpose);
  if(purpose==='release')assertBuildInvocation(environment);else if(purpose==='ci')assertCiCandidateBuildInvocation(environment);else assertDiagnosticBuildInvocation(environment);
  if(purpose!=='diagnostic')assertBuildProducerRunner(environment.RUNNER_NAME);
  if(realpathSync(source)!==source)fail('source must be a real checkout');
@@ -116,6 +123,11 @@ export async function produceBuild({source=process.cwd(),output,purpose='release
  const runtime={node:process.versions.node,abi:process.versions.modules,platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime,next};
  assertBuildRuntime(runtime,environment);assertDotenvCompileKeys(source);
  if(cleanHead(source)!==environment.AIHR_CI_HEAD||cleanHead(controllerRoot)!==environment.AIHR_CI_CONTROL_HEAD)fail('source or controller changed');
+ const bundleHelpers=protocol.requiresCapability?trustedBundleHelpers(controllerRoot,environment.AIHR_CI_CONTROL_HEAD):null;
+ if(protocol.requiresCapability){
+  assertSourceBundleCapability(controllerRoot,bundleHelpers,environment.AIHR_CI_CONTROL_HEAD);
+  assertSourceBundleCapability(source,bundleHelpers,environment.AIHR_CI_HEAD);
+ }
  if(output===source||output.startsWith(source+'/')||realpathSync(dirname(output))!==dirname(output)||lstatSync(dirname(output)).isSymbolicLink())fail('output must be outside source under a real parent');
  // An existing output refuses and is never overwritten, merged or removed.
  mkdirSync(output,{mode:0o700});
@@ -139,16 +151,20 @@ export async function produceBuild({source=process.cwd(),output,purpose='release
  testing.verifyInstalledTestingBuild(prepared,source);
  if(cleanHead(source)!==environment.AIHR_CI_HEAD||cleanHead(controllerRoot)!==environment.AIHR_CI_CONTROL_HEAD)fail('source changed during build');
  const packStartedAt=Date.now();
- execFileSync('python3',[join(controllerRoot,'.github/ci/build-bundle.py'),'pack',source,join(output,'bytes')],{stdio:'inherit'});
+ execFileSync('python3',[join(controllerRoot,protocol.helper),'pack',source,join(output,'bytes')],{stdio:'inherit'});
  const packEndedAt=Date.now();
  const manifestBytes=bytes(join(output,'bytes/build-bundle-files.json'),16*1024*1024),manifest=JSON.parse(manifestBytes);
  assertBuildCapacityProfile(manifest.capacityProfile);
- if(manifest.format!==2||manifest.platform!=='linux'||manifest.nextBuildId!==buildId)fail('bundle/build identity mismatch');
+ if(manifest.format!==protocol.format||manifest.kind!==protocol.kind||manifest.platform!=='linux'||manifest.nextBuildId!==buildId)fail('bundle/build identity mismatch');
  testing.verifyInstalledTestingBuild(prepared,source);
  if(cleanHead(source)!==environment.AIHR_CI_HEAD||cleanHead(controllerRoot)!==environment.AIHR_CI_CONTROL_HEAD
   ||!testing.readPublishedTestingBuild(directory,{sourceRef:environment.AIHR_CI_HEAD,buildRecordId}).bytes.equals(preparedBytes)
   ||!bytes(observationPath,1024*1024).equals(observationBytes))fail('source or build evidence changed during packaging');
- const provenance={format:2,capacityProfile:BUILD_CAPACITY_PROFILE,kind:purpose==='diagnostic'?'diagnostic-system-testing-build-not-release':'ci-system-testing-build-candidate',source:environment.AIHR_CI_HEAD,controller:environment.AIHR_CI_CONTROL_HEAD,
+ if(protocol.requiresCapability){
+  assertSourceBundleCapability(controllerRoot,bundleHelpers,environment.AIHR_CI_CONTROL_HEAD);
+  assertSourceBundleCapability(source,bundleHelpers,environment.AIHR_CI_HEAD);
+ }
+ const provenance={format:protocol.format,...(protocol.requiresCapability?{bundleHelpers}:{}),capacityProfile:BUILD_CAPACITY_PROFILE,kind:purpose==='diagnostic'?'diagnostic-system-testing-build-not-release':'ci-system-testing-build-candidate',source:environment.AIHR_CI_HEAD,controller:environment.AIHR_CI_CONTROL_HEAD,
   repository:'StradaverseHub/ai-hr',repositoryId:1333414856,runId:Number(environment.GITHUB_RUN_ID),runAttempt:1,
   workflowRef:environment.GITHUB_WORKFLOW_REF,runtime,buildRecordId,nextBuildId:buildId,
   lockSha256:hash(readFileSync(join(source,'pnpm-lock.yaml'))),packageSha256:hash(readFileSync(join(source,'package.json'))),

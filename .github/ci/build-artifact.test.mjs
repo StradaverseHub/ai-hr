@@ -18,7 +18,7 @@ test('matching packet binds authentic identity/digests; canonical source is sepa
  const f=fixture();
  try{
   const packet=inspectCiBuildPacket(f.directory,f.expected);
-  assert.equal(packet.format,2);assert.deepEqual(packet.capacityProfile,BUILD_CAPACITY_PROFILE);
+  assert.equal(packet.format,3);assert.deepEqual(packet.capacityProfile,BUILD_CAPACITY_PROFILE);
   assert.equal(packet.releaseAuthorized,false);assert.equal(packet.activeServiceVerified,false);assert.equal(packet.archiveMembersVerified,false);
   assert.equal(packet.canonicalCandidateInputsVerified,undefined);
   assert.equal(bindCiBuildSource(packet,f.source).canonicalCandidateInputsVerified,true);
@@ -67,7 +67,7 @@ test('v4 requires the build artifact; only that namespace has the binary bound a
 
 
 test('only current manifest and provenance format/profile admit even when record hashes are freshly bound',()=>{
- const changes=[v=>v.format=1,v=>v.format=3,v=>delete v.capacityProfile,v=>v.capacityProfile={profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280},v=>v.capacityProfile.profileVersion=2,v=>v.capacityProfile.archiveMaxBytes=276824064,v=>v.capacityProfile.profileVersion=1,
+ const changes=[v=>v.format=1,v=>v.format=2,v=>delete v.capacityProfile,v=>v.capacityProfile={profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280},v=>v.capacityProfile.profileVersion=2,v=>v.capacityProfile.archiveMaxBytes=276824064,v=>v.capacityProfile.profileVersion=1,
   v=>v.capacityProfile.archiveMaxBytes=268435456,v=>v.capacityProfile.zipMaxBytes++,v=>v.capacityProfile.extra=true];
  for(const owner of ['manifest','provenance'])for(const mutate of changes){
   const f=fixture();try{
@@ -85,5 +85,65 @@ test('archive capacity is272MiB while outer ZIP remains280MiB; oversized actual 
  const f=fixture();try{
   truncateSync(join(f.directory,'bytes/build-bundle.tar.gz'),BUILD_ARCHIVE_MAX+1);
   assert.throws(()=>inspectCiBuildPacket(f.directory,f.expected),/oversized packet member/);
+ }finally{f.close();}
+});
+
+test('each bundle helper is independently bound to controller Git bytes, not freshly supplied metadata',()=>{
+ for(const key of ['regular','maps','installer','grant','artifact','policy','protocol']){
+  const f=fixture();try{
+   const provenance=structuredClone(f.provenance);
+   provenance.bundleHelpers[key]=provenance.bundleHelpers[key]==='0'.repeat(64)?'1'.repeat(64):'0'.repeat(64);
+   // All packet, manifest and observation hashes remain genuine: helper metadata
+   // alone cannot nominate new execution code under the old trusted controller.
+   writeFileSync(join(f.directory,'build-provenance.json'),JSON.stringify(provenance)+'\n');
+   assert.throws(()=>inspectCiBuildPacket(f.directory,f.expected),/trusted controller bundle helpers differ/,key);
+  }finally{f.close();}
+ }
+});
+test('closed helper metadata rejects missing companion, extra key and legacy digest shapes',()=>{
+ const mutations=[p=>delete p.bundleHelpers,p=>delete p.bundleHelpers.maps,
+  p=>p.bundleHelpers.extra='a'.repeat(64),p=>p.bundleHelpers.regular='a'.repeat(40),p=>p.bundleHelpers=[]];
+ for(const mutate of mutations){
+  const f=fixture();try{
+   const provenance=structuredClone(f.provenance);mutate(provenance);
+   writeFileSync(join(f.directory,'build-provenance.json'),JSON.stringify(provenance)+'\n');
+   assert.throws(()=>inspectCiBuildPacket(f.directory,f.expected),/closed bundle helper hashes/);
+  }finally{f.close();}
+ }
+});
+test('mixed format3 provenance with rebound format2 manifest and old bundle kind cannot become current',()=>{
+ for(const mutate of [m=>m.format=2,m=>m.kind='next-build-byte-bundle',m=>m.format=4]){
+  const f=fixture();try{
+   const path=join(f.directory,'bytes/build-bundle-files.json'),manifest=JSON.parse(readFileSync(path));mutate(manifest);
+   const bytes=Buffer.from(JSON.stringify(manifest)+'\n'),provenance={...f.provenance,manifestSha256:fixtureHash(bytes)};
+   writeFileSync(path,bytes);writeFileSync(join(f.directory,'build-provenance.json'),JSON.stringify(provenance)+'\n');
+   assert.throws(()=>inspectCiBuildPacket(f.directory,f.expected),/bundle identity/);
+  }finally{f.close();}
+ }
+});
+
+test('granted remote packet readback needs no Git command and refuses wrong raw helper custody',async()=>{
+ const {inspectGrantedBuildPacket}=await import('./build-artifact.mjs');
+ const {CI_POLICY}=await import('./policy-version.mjs');
+ const f=fixture();try{
+  // This is only the explicitly marked readback API. Production caller validates
+  // the complete grant and its immutable private storage before invoking it.
+  const grant={format:3,kind:'OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL',policyVersion:CI_POLICY,target:'alpha-staging',
+   source:f.expected.candidate,controller:f.expected.controller,runId:f.expected.runId,controllerBranch:f.expected.controllerBranch,
+   producerStartedAt:f.expected.producerStartedAt,producerCompletedAt:f.expected.producerCompletedAt,
+   build:{format:3,bundleHelpers:f.provenance.bundleHelpers}};
+  const previous=process.env.PATH;process.env.PATH=f.directory; // No Git executable in private fixture.
+  try{
+   const packet=inspectGrantedBuildPacket(f.directory,grant);
+   assert.equal(packet.kind,'GRANTED_CI_BUILD_PACKET_NOT_NEW_EVIDENCE');
+   assert.equal(packet.releaseAuthorized,false);assert.equal(packet.activeServiceVerified,false);
+   assert.deepEqual(packet.bundleHelpers,grant.build.bundleHelpers);
+   const wrong=structuredClone(grant);wrong.build.bundleHelpers.maps='0'.repeat(64);
+   assert.throws(()=>inspectGrantedBuildPacket(f.directory,wrong),/Current source helper differs/);
+   assert.throws(()=>inspectCiBuildPacket(f.directory,f.expected)); // No fallback to raw-only local admission.
+   for(const mutate of [g=>g.format=2,g=>g.build.format=2,g=>g.policyVersion='aihr-staging-ci/v17',g=>g.kind='other']){
+    const stale=structuredClone(grant);mutate(stale);assert.throws(()=>inspectGrantedBuildPacket(f.directory,stale),/canonical installation grant/);
+   }
+  }finally{if(previous===undefined)delete process.env.PATH;else process.env.PATH=previous;}
  }finally{f.close();}
 });

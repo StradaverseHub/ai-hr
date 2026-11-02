@@ -2,11 +2,15 @@
 import {createHash} from 'node:crypto';
 import {openSync,closeSync,fstatSync,readSync,lstatSync,readFileSync,readdirSync,realpathSync,constants} from 'node:fs';
 import {join,resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {BUILD_BUNDLE_FORMAT,BUILD_BUNDLE_KIND,trustedBundleHelpers,validateBundleHelpers,verifyBundleHelperFiles} from './build-bundle-protocol.mjs';
 import {isDeepStrictEqual} from 'node:util';
+import {CI_POLICY} from './policy-version.mjs';
 import {assertSuccessfulObservation,STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE,assertBuildCapacityProfile,assertBuildPacketAggregate} from './build-production.mjs';
 export const BUILD_ARTIFACT='production-build-v1';
 export const BUILD_ARCHIVE_MAX=BUILD_CAPACITY_PROFILE.archiveMaxBytes;
 export const BUILD_ZIP_MAX=BUILD_CAPACITY_PROFILE.zipMaxBytes;
+const controllerRoot=fileURLToPath(new URL('../../',import.meta.url));
 const fail=message=>{throw Error('CI build packet refused: '+message);};
 const requireValue=(value,message)=>{if(!value)fail(message);};
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
@@ -32,7 +36,7 @@ function file(path,bound,content=true){
 /** Expected identity comes from independently authenticated run/job metadata.
  * Full archive member/package/compiled-value checks remain mandatory at installation.
  */
-export function inspectCiBuildPacket(directory,expected){
+function inspectPacket(directory,expected,bundleHelpers){
  directory=resolve(directory);
  requireValue(realpathSync(directory)===directory&&!lstatSync(directory).isSymbolicLink(),'packet path differs');
  requireValue(isDeepStrictEqual(readdirSync(directory).sort(),['build-provenance.json','bytes','successful-build.json','system-testing.json']),'packet inventory differs');
@@ -47,7 +51,7 @@ export function inspectCiBuildPacket(directory,expected){
  requireValue(/^[a-f0-9]{40}$/.test(expected.candidate??'')&&/^[a-f0-9]{40}$/.test(expected.controller??'')
   &&Number.isSafeInteger(expected.runId)&&expected.runId>0&&['main','alpha'].includes(expected.controllerBranch),'independent expected identity');
  assertBuildCapacityProfile(p?.capacityProfile);assertBuildCapacityProfile(manifest?.capacityProfile);
- requireValue(p?.format===2&&p.kind==='ci-system-testing-build-candidate'&&p.releaseAuthorized===false
+ requireValue(p?.format===BUILD_BUNDLE_FORMAT&&p.kind==='ci-system-testing-build-candidate'&&p.releaseAuthorized===false
   &&p.source===expected.candidate&&p.controller===expected.controller&&p.runId===expected.runId&&p.runAttempt===1
   &&p.repository==='StradaverseHub/ai-hr'&&p.repositoryId===1333414856
   &&p.workflowRef==='StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/'+expected.controllerBranch
@@ -55,6 +59,8 @@ export function inspectCiBuildPacket(directory,expected){
   &&typeof p.nextBuildId==='string'&&/^[A-Za-z0-9_-]{1,512}$/.test(p.nextBuildId)
   &&typeof p.buildSourcePath==='string'&&p.buildSourcePath.startsWith('/')&&p.buildSourcePath.length<=4096
   &&!p.buildSourcePath.split('/').some(part=>part==='.'||part==='..')&&!/[\x00-\x1f\x7f]/.test(p.buildSourcePath),'canonical build provenance');
+ validateBundleHelpers(p.bundleHelpers);
+ requireValue(isDeepStrictEqual(p.bundleHelpers,bundleHelpers),'trusted controller bundle helpers differ');
  for(const key of ['lockSha256','packageSha256','preparedSha256','successfulObservationSha256','manifestSha256','archiveSha256'])requireValue(SHA.test(p[key]??''),'provenance digest');
  for(const [name,key]of [['system-testing.json','preparedSha256'],['successful-build.json','successfulObservationSha256'],['bytes/build-bundle-files.json','manifestSha256']])
   requireValue(evidence[name].sha256===p[key],'bound record bytes differ');
@@ -63,17 +69,36 @@ export function inspectCiBuildPacket(directory,expected){
  const started=Date.parse(expected.producerStartedAt),completed=Date.parse(expected.producerCompletedAt);
  requireValue(Number.isFinite(started)&&Number.isFinite(completed)&&completed>=started,'producing job times');
  assertSuccessfulObservation(observation,prepared,preparedBytes,p.nextBuildId,started,completed);
- requireValue(manifest?.format===2&&manifest.kind==='next-build-byte-bundle'&&manifest.platform==='linux'&&manifest.nextBuildId===p.nextBuildId
+ requireValue(manifest?.format===BUILD_BUNDLE_FORMAT&&manifest.kind===BUILD_BUNDLE_KIND&&manifest.platform==='linux'&&manifest.nextBuildId===p.nextBuildId
   &&manifest.archiveBytes===p.archiveBytes&&manifest.archiveSha256===p.archiveSha256,'bundle identity');
  const archive=file(join(directory,'bytes/build-bundle.tar.gz'),BUILD_ARCHIVE_MAX,false);
  assertBuildPacketAggregate([...Object.values(evidence).map(member=>member.bytes),archive.bytes]);
  requireValue(archive.bytes===p.archiveBytes&&archive.sha256===p.archiveSha256,'bundle archive bytes differ');
- return {format:2,capacityProfile:BUILD_CAPACITY_PROFILE,kind:'AUTHENTICATED_CI_BUILD_PACKET_NOT_DEPLOYMENT',source:p.source,controller:p.controller,runId:p.runId,
+ return {format:BUILD_BUNDLE_FORMAT,bundleHelpers:p.bundleHelpers,capacityProfile:BUILD_CAPACITY_PROFILE,kind:'AUTHENTICATED_CI_BUILD_PACKET_NOT_DEPLOYMENT',source:p.source,controller:p.controller,runId:p.runId,
   nextBuildId:p.nextBuildId,buildRecordId:p.buildRecordId,buildSourcePath:p.buildSourcePath,runtime:p.runtime,
   provenanceSha256:evidence['build-provenance.json'].sha256,archiveSha256:p.archiveSha256,archiveBytes:p.archiveBytes,
   manifestSha256:p.manifestSha256,preparedSha256:p.preparedSha256,successfulObservationSha256:p.successfulObservationSha256,
   lockSha256:p.lockSha256,packageSha256:p.packageSha256,packetDirectory:directory,
   releaseAuthorized:false,archiveMembersVerified:false,activeServiceVerified:false};
+}
+/** Local admission always derives helpers from the independently authenticated controller Git ref. */
+export function inspectCiBuildPacket(directory,expected){
+ requireValue(/^[a-f0-9]{40}$/.test(expected?.controller??''),'independent expected controller identity');
+ return inspectPacket(directory,expected,trustedBundleHelpers(controllerRoot,expected.controller));
+}
+/** Remote readback of an already validated immutable grant; never creates new CI/grant authority.
+ * Installer must first validate the complete canonical grant/expiry/owned private custody.
+ * This distinct path intentionally needs no Git on the installation target.
+ */
+export function inspectGrantedBuildPacket(directory,grant){
+ requireValue(grant?.format===BUILD_BUNDLE_FORMAT&&grant.kind==='OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL'
+  &&grant.policyVersion===CI_POLICY&&grant.target==='alpha-staging'&&grant.build?.format===BUILD_BUNDLE_FORMAT,
+  'current canonical installation grant required');
+ validateBundleHelpers(grant.build.bundleHelpers);
+ verifyBundleHelperFiles(controllerRoot,grant.build.bundleHelpers);
+ const expected={candidate:grant.source,controller:grant.controller,runId:grant.runId,controllerBranch:grant.controllerBranch,
+  producerStartedAt:grant.producerStartedAt,producerCompletedAt:grant.producerCompletedAt};
+ return {...inspectPacket(directory,expected,grant.build.bundleHelpers),kind:'GRANTED_CI_BUILD_PACKET_NOT_NEW_EVIDENCE'};
 }
 /** The release caller must independently regenerate the canonical source preparation. */
 export function bindCiBuildSource(packet,{lockBytes,packageBytes,preparedBytes}){

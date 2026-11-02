@@ -1,4 +1,4 @@
-"""Explicit lossless map transport. Not admitted by the canonical format2 release path."""
+"""Strict format3 lossless map transport; deployment authority remains external."""
 import gzip
 import hashlib
 import importlib.util
@@ -188,14 +188,14 @@ def unpack(archive, manifest_path, destination, runtime_source, producer_source=
         owned.close()
 
 
-def verify_directory(destination, manifest_path, runtime_source, producer_source=None):
+def verify_directory(destination, manifest_path, runtime_source, producer_source=None, allow_runtime_cache=False):
     manifest = read_manifest(manifest_path)
     # A temporary private view reuses the existing full installed-file verifier;
     # it is not a format2 transport packet or a release-admission adapter.
     with tempfile.TemporaryDirectory(prefix='aihr-map-inventory-') as temporary:
         path = Path(temporary)/'logical-files.json'
         path.write_bytes(base.canonical(logical_manifest(manifest)))
-        base.verify_directory(destination,path,runtime_source,producer_source)
+        base.verify_directory(destination,path,runtime_source,producer_source,allow_runtime_cache=allow_runtime_cache)
     return manifest
 
 
@@ -204,14 +204,15 @@ if __name__=='__main__':
         mode,*args = sys.argv[1:]
         base.require((mode=='pack' and len(args)==2) or (mode=='unpack' and len(args)==4)
                      or (mode=='unpack-with-origin' and len(args)==5)
-                     or (mode=='verify-directory' and len(args) in {3,4}),
+                     or (mode in {'verify-directory','verify-active-directory'} and len(args) in {3,4}),
                      'usage: build-map-bundle.py pack SOURCE OUTPUT | unpack ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE | '
                      'unpack-with-origin ARCHIVE MANIFEST DESTINATION RUNTIME_SOURCE PRODUCER_SOURCE | '
-                     'verify-directory NEXT_DIRECTORY MANIFEST RUNTIME_SOURCE [PRODUCER_SOURCE]')
-        result = pack(*args) if mode=='pack' else verify_directory(*args) if mode=='verify-directory' else unpack(*args)
-        print(json.dumps({'format':result['format'],'kind':result['kind'],'files':len(result['files']),
+                     'verify-directory|verify-active-directory NEXT_DIRECTORY MANIFEST RUNTIME_SOURCE [PRODUCER_SOURCE]')
+        result = pack(*args) if mode=='pack' else verify_directory(*args,allow_runtime_cache=mode=='verify-active-directory') if mode in {'verify-directory','verify-active-directory'} else unpack(*args)
+        print(json.dumps({'format':result['format'],'capacityProfile':result['capacityProfile'],'kind':result['kind'],'files':len(result['files']),
                           'mapCopies':len(result['mapCopies']),'archiveBytes':result['archiveBytes'],
-                          'unpackedBytes':result['unpackedBytes'],'releaseAuthorized':False}))
+                          'unpackedBytes':result['unpackedBytes'],'releaseAuthorized':False,
+                          **({'runtimeCacheExcluded':True} if mode=='verify-active-directory' else {})}))
     except (ValueError,OSError,KeyError,TypeError,json.JSONDecodeError,tarfile.TarError,EOFError) as error:
         print(str(error),file=sys.stderr)
         sys.exit(1)

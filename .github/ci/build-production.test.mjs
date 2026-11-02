@@ -63,7 +63,7 @@ test('normal build-only context accepts review/PR production compilation but can
 test('legacy Node20 packet runtime cannot be relabelled as the future Node22 target',()=>{assert.throws(()=>assertBuildRuntime({...STAGING_BUILD_RUNTIME,node:'20.20.2',abi:'115'},{}),/runtime mismatch/);});
 
 
-test('current byte capacity is one closed format2 profile; missing, legacy and mixed bounds refuse',()=>{
+test('current byte capacity is one closed capacity profile independent of format3; missing, legacy and mixed bounds refuse',()=>{
  assert.deepEqual(BUILD_CAPACITY_PROFILE,{profileVersion:3,archiveMaxBytes:285212672,zipMaxBytes:293601280});
  assert.doesNotThrow(()=>assertBuildCapacityProfile({...BUILD_CAPACITY_PROFILE}));
  for(const value of [undefined,null,{}, {profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280}, {...BUILD_CAPACITY_PROFILE,profileVersion:2}, {...BUILD_CAPACITY_PROFILE,archiveMaxBytes:276824064}, {...BUILD_CAPACITY_PROFILE,profileVersion:1},{...BUILD_CAPACITY_PROFILE,profileVersion:true},
@@ -83,4 +83,22 @@ test('actual five-member aggregate has its own hard ZIP bound independent of leg
 test('CI producer requires the actual bounded runner name before constructing new byte provenance',()=>{
  assert.equal(assertBuildProducerRunner('GitHub Actions fixture producer'),true);
  for(const name of [undefined,null,'','x'.repeat(201),'line\nbreak','nul\0byte'])assert.throws(()=>assertBuildProducerRunner(name));
+});
+
+// The compile-input capability uses the same independently tested Git+raw owner.
+test('canonical producer protocol is format3 while byte-capacity profile and observation remain separate identities',async()=>{
+ const {BUILD_BUNDLE_FORMAT,BUILD_BUNDLE_KIND}=await import('./build-bundle-protocol.mjs');
+ assert.equal(BUILD_BUNDLE_FORMAT,3);assert.equal(BUILD_BUNDLE_KIND,'next-map-byte-bundle');
+ assert.equal(BUILD_CAPACITY_PROFILE.profileVersion,3);assert.equal(BUILD_CAPACITY_PROFILE.archiveMaxBytes,285212672);
+ assert.equal(successful.format,1);assert.equal(check(successful),true);
+});
+
+test('only authenticated ci/release purposes select mandatory map capability; legacy diagnostic stays regular format2',async()=>{
+ const {buildBundleProtocol}=await import('./build-production.mjs');
+ for(const purpose of ['ci','release'])assert.deepEqual(buildBundleProtocol(purpose),{format:3,kind:'next-map-byte-bundle',helper:'.github/ci/build-map-bundle.py',requiresCapability:true});
+ assert.deepEqual(buildBundleProtocol('diagnostic'),{format:2,kind:'next-build-byte-bundle',helper:'.github/ci/build-bundle.py',requiresCapability:false});
+ for(const purpose of [undefined,null,'format2','legacy','next-map-byte-bundle',{},3])assert.throws(()=>buildBundleProtocol(purpose),/unknown build purpose/);
+ // Diagnostic invocation still has to satisfy its original manual-workflow guard.
+ assert.throws(()=>assertDiagnosticBuildInvocation(environment));
+ assert.throws(()=>assertBuildInvocation({...environment,GITHUB_WORKFLOW_REF:environment.GITHUB_WORKFLOW_REF.replace('alpha-staging.yml','alpha-staging-diagnostics.yml')}));
 });

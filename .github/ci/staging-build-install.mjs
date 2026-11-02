@@ -15,8 +15,9 @@ import {durableCleanupRecord,acquireNormalCleanupLock,readSingleCleanupCommit} f
 import {captureNormalCleanupFences,canonicalSourceExclusions} from './normal-cleanup-fences.mjs';
 import {validateCleanupRequest} from './staging-cleanup-protocol.mjs';
 import {validateInstallGrant,installJson,installHash} from './ci-install-grant.mjs';
-import {inspectCiBuildPacket} from './build-artifact.mjs';
+import {inspectGrantedBuildPacket} from './build-artifact.mjs';
 import {assertBuildRuntime,assertBuildDotenvCompileKeys,assertBuildCapacityProfile} from './build-production.mjs';
+import {BUILD_BUNDLE_FORMAT,BUILD_BUNDLE_KIND,verifyBundleHelperFiles} from './build-bundle-protocol.mjs';
 import {guardServerCli,COORDINATOR} from '../../scripts/staging/lease.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 // Hashing or unpacking the ~850 MB build bundle on the 4 GB staging host exceeded 120 s under host load (wave 1b,
@@ -69,9 +70,15 @@ function targetRoot(source=ROOT){
  source=resolve(source);assert(source==='/opt/ai-hr'&&realpathSync(source)===source&&process.platform==='linux','Installer is restricted to the existing Linux alpha/staging source');
  return source;
 }
+/** Raw receipt-bound helper checks work on the remote source without a Git directory. */
+export function assertInstallBundleHelpers(source,grant){
+ validateInstallGrant(grant);
+ return verifyBundleHelperFiles(source,grant.build.bundleHelpers);
+}
 function selected(installId,sourceRef,buildRecordId,{allowCleanup=false}={}){
  const p=readPrivateInstall(installId,{allowCleanup});
  assert(p.grant.source===sourceRef&&p.grant.build.buildRecordId===buildRecordId,'Selected source/record differs from installation grant');
+ assertInstallBundleHelpers(ROOT,p.grant);
  return p;
 }
 export function assertServiceDescriptor(text,source){
@@ -95,6 +102,7 @@ function buildId(path){
  const value=regular(join(path,'BUILD_ID'),513).toString('utf8').trim();assert(/^[A-Za-z0-9_-]{1,512}$/.test(value),'Bounded Next build identity required');return value;
 }
 async function sourceContract(source,p){
+ assertInstallBundleHelpers(source,p.grant);
  const g=p.grant,audit=p.allowCleanup&&existsSync(join(p.directory,'cleanup-authorized.json'));
  const records=audit?join(p.directory,'audit'):p.packet;
  let packet;
@@ -107,7 +115,7 @@ async function sourceContract(source,p){
    assert(installHash(regular(join(records,name),bound))===g.build[key],'Retained original audit record differs: '+name);
   packet={...g.build,archiveRetained:false};
  }else{
-  packet=inspectCiBuildPacket(records,{candidate:g.source,controller:g.controller,runId:g.runId,controllerBranch:g.controllerBranch,producerStartedAt:g.producerStartedAt,producerCompletedAt:g.producerCompletedAt});
+  packet=inspectGrantedBuildPacket(records,g);
   for(const key of Object.keys(g.build))assert(isDeepStrictEqual(packet[key],g.build[key]),'Authorized packet binding differs: '+key);
  }
  assert(installHash(readFileSync(join(source,'package.json')))===g.build.packageSha256&&installHash(readFileSync(join(source,'pnpm-lock.yaml')))===g.build.lockSha256,'Installed dependency inputs differ from CI');
@@ -122,13 +130,14 @@ function compiledContract(next,testing,prepared){
  assert(config.config.typescript.ignoreBuildErrors!==true&&config.config.experimental.useTypeScriptCli===true&&config.config.typescript.tsconfigPath==='tsconfig.build.json','CI application compiler contract differs');
 }
 function verifyDirectory(source,p,{active=false,records=p.packet}={}){
- const output=execFileSync('python3',[join(ROOT,'.github/ci/build-bundle.py'),active?'verify-active-directory':'verify-directory',active?join(source,'.next'):p.next,join(records,'bytes/build-bundle-files.json'),source,p.grant.build.buildSourcePath],{stdio:active?'pipe':'inherit',encoding:active?'utf8':undefined,timeout:BUNDLE_PYTHON_TIMEOUT_MS,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
+ assertInstallBundleHelpers(source,p.grant);
+ const output=execFileSync('python3',[join(ROOT,'.github/ci/build-map-bundle.py'),active?'verify-active-directory':'verify-directory',active?join(source,'.next'):p.next,join(records,'bytes/build-bundle-files.json'),source,p.grant.build.buildSourcePath],{stdio:active?'pipe':'inherit',encoding:active?'utf8':undefined,timeout:BUNDLE_PYTHON_TIMEOUT_MS,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
  if(!active)return undefined;
- const inventory=JSON.parse(output);assert(inventory.format===2,'Current compiled inventory format required');assertBuildCapacityProfile(inventory.capacityProfile);return inventory;
+ const inventory=JSON.parse(output);assert(inventory.format===BUILD_BUNDLE_FORMAT&&inventory.kind===BUILD_BUNDLE_KIND&&inventory.runtimeCacheExcluded===true&&inventory.releaseAuthorized===false,'Current compiled inventory format required');assertBuildCapacityProfile(inventory.capacityProfile);return inventory;
 }
 async function nativeContract(source,p){
  const require=createRequire(join(source,'package.json')),manifest=JSON.parse(regular(join(p.packet,'bytes/build-bundle-files.json'),16*1024**2));
- assert(manifest.format===2,'Current native manifest format required');assertBuildCapacityProfile(manifest.capacityProfile);
+ assert(manifest.format===BUILD_BUNDLE_FORMAT&&manifest.kind===BUILD_BUNDLE_KIND,'Current native manifest format required');assertBuildCapacityProfile(manifest.capacityProfile);
  const alias=name=>join(p.next,manifest.aliases.find(a=>a.package===name).path);
  const sharp=require(alias('sharp')),fontkit=require(alias('fontkit'));
  const pixels=Buffer.from([255,0,0,255,0,255,0,255,0,0,255,255,255,255,255,255]);
@@ -137,7 +146,7 @@ async function nativeContract(source,p){
  assert(decoded.equals(pixels),'Recipient native Sharp codec roundtrip differs');
  const face=fontkit.create(brotliDecompressSync(readFileSync(join(source,'assets/fonts/NotoSansSC-Regular.otf.br'))));
  for(const ch of '实发工资 Aisyah Rahman 實發工資')if(ch!==' ')assert(face.glyphForCodePoint(ch.codePointAt(0)).id!==0,'Recipient CJK glyph missing');
- return {format:2,capacityProfile:p.grant.build.capacityProfile,sharp:sharp.versions.sharp,vips:sharp.versions.vips,pngSha256:installHash(png),webpSha256:installHash(webp),losslessPixels:true,cjkGlyphsPresent:true};
+ return {format:BUILD_BUNDLE_FORMAT,capacityProfile:p.grant.build.capacityProfile,sharp:sharp.versions.sharp,vips:sharp.versions.vips,pngSha256:installHash(png),webpSha256:installHash(webp),losslessPixels:true,cjkGlyphsPresent:true};
 }
 async function preserveOriginalRecord(p,{testing,prepared,preparedBytes}){
  const directory=testing.systemTestingBuildDirectory('remote');testing.ensurePrivateReleaseDirectory(directory);
@@ -162,7 +171,8 @@ export async function stageCiBuild(sourceRef,installId,buildRecordId){
  const bound=await sourceContract(source,p);
  const manifest=JSON.parse(regular(join(p.packet,'bytes/build-bundle-files.json'),16*1024**2)),space=statfsSync(p.directory);
  assert(Number.isSafeInteger(manifest.unpackedBytes)&&manifest.unpackedBytes>0&&manifest.unpackedBytes<=2*1024**3&&space.bavail*space.bsize>=manifest.unpackedBytes+2*1024**3,'Insufficient actual same-filesystem staging headroom');
- execFileSync('python3',[join(ROOT,'.github/ci/build-bundle.py'),'unpack-with-origin',join(p.packet,'bytes/build-bundle.tar.gz'),join(p.packet,'bytes/build-bundle-files.json'),p.next,source,g.build.buildSourcePath],{stdio:'inherit',timeout:BUNDLE_PYTHON_TIMEOUT_MS,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
+ assertInstallBundleHelpers(source,g);
+ execFileSync('python3',[join(ROOT,'.github/ci/build-map-bundle.py'),'unpack-with-origin',join(p.packet,'bytes/build-bundle.tar.gz'),join(p.packet,'bytes/build-bundle-files.json'),p.next,source,g.build.buildSourcePath],{stdio:'inherit',timeout:BUNDLE_PYTHON_TIMEOUT_MS,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
  assert(buildId(p.next)===g.build.nextBuildId,'Unpacked Next build identity differs');
  compiledContract(p.next,bound.testing,bound.prepared);
  const native=await nativeContract(source,p);
@@ -182,6 +192,7 @@ export async function activateCiBuild(sourceRef,installId,buildRecordId){
  verifyDirectory(source,p);compiledContract(p.next,bound.testing,bound.prepared);
  const migrationLedger=collectMigrationLedger(source);
  const before=Number(readFileSync('/proc/uptime','utf8').split(' ')[0])*1000000;
+ assertInstallBundleHelpers(source,g);
  const text=execFileSync('python3',[join(ROOT,'.github/ci/build-activate.py'),'activate',p.next,source,g.build.nextBuildId,g.baselineBuildId],{encoding:'utf8',timeout:15000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
  const activation=JSON.parse(text);
  assert(activation.activeBuildId===g.build.nextBuildId&&activation.retainedBuildId===g.baselineBuildId,'Atomic exchange result differs');
@@ -239,6 +250,7 @@ async function cleanupCiBuildLocked(sourceRef,installId,buildRecordId,request){
  if(!existsSync(authorityPath))durableCleanupRecord(authorityPath,normalCleanupAuthority(source,p,activated,request));
  // Reopen every retained digest before deletion (also covers an interrupted audit copy or retry).
  await sourceContract(source,p);validateCleanupRequest(request,g);
+ assertInstallBundleHelpers(source,g);
  const cleanup=JSON.parse(execFileSync('python3',[join(ROOT,'.github/ci/cleanup-install.py'),p.directory],{encoding:'utf8',timeout:120000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}}));
  assert(cleanup.kind==='OWNED_INSTALL_BYTES_ABSENT_AUDIT_RETAINED'&&cleanup.authorizationSha256===p.authorizationSha256
   &&cleanup.installId===installId&&cleanup.source===sourceRef&&cleanup.nextBuildId===g.build.nextBuildId&&isDeepStrictEqual(cleanup.verifiedAbsent,['next','packet']),'Owned cleanup result differs');
@@ -299,7 +311,7 @@ export async function cleanupCiBuildSession(sourceRef,installId,buildRecordId){
  const authority=normalCleanupAuthority(source,p,activated,request);
  durableCleanupRecord(join(p.directory,'cleanup-authorized.json'),authority);expectedAuthority=authority;
    },
-   removeOwned:async()=>JSON.parse(execFileSync('python3',[join(ROOT,'.github/ci/cleanup-install.py'),p.directory],{encoding:'utf8',timeout:120000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}})),
+   removeOwned:async()=>{assertInstallBundleHelpers(source,g);return JSON.parse(execFileSync('python3',[join(ROOT,'.github/ci/cleanup-install.py'),p.directory],{encoding:'utf8',timeout:120000,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}}));},
    io:{ready:async ready=>{process.stdout.write(installJson(ready)+'\n');},commit:()=>readSingleCleanupCommit(process.stdin)}});
   assert(cleanup.kind==='OWNED_INSTALL_BYTES_ABSENT_AUDIT_RETAINED'&&cleanup.authorizationSha256===p.authorizationSha256&&cleanup.source===sourceRef&&cleanup.installId===installId&&cleanup.nextBuildId===g.build.nextBuildId&&cleanup.auditEvidenceRetained===true&&isDeepStrictEqual(cleanup.verifiedAbsent,['next','packet']),'Owned cleanup result differs');
   return {format:1,kind:RESULT_KIND,result:{format:1,kind:'CI_INSTALL_OWNED_CLEANUP_AND_FINAL_RUNTIME_VERIFIED',source:sourceRef,installId,buildRecordId,nextBuildId:g.build.nextBuildId,authorizationSha256:p.authorizationSha256,cleanup,runtime,ownedResourceCleanupVerified:true,releaseHandbackVerified:false}};
@@ -316,6 +328,7 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
    const chunks=[];let total=0;for await(const chunk of process.stdin){total+=chunk.length;assert(total<=32*1024,'Installation grant exceeds bound');chunks.push(chunk);}
    const grant=JSON.parse(Buffer.concat(chunks));
    if(existsSync(COORDINATOR))assert(grant.source===process.env.AIHR_STAGING_CANDIDATE,'Installation source differs from lease');
+   assertInstallBundleHelpers(ROOT,grant);
    return initializePrivateInstall(grant);
   }
   assert(process.argv.length===6&&['stage','activate','confirm-runtime','status','cleanup','cleanup-session'].includes(mode),'Exact installer mode/source/install/build record required');

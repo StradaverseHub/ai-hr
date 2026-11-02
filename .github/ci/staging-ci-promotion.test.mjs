@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {BUILD_CAPACITY_PROFILE} from './build-production.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 import {installHash,installJson} from './ci-install-grant.mjs';
-import {stagingInstallerCommand,validateInstallAcknowledgement,transferAndLaunchCiBuild,validateInstalledArrival,validatePrelaunchState} from './staging-ci-promotion.mjs';
+import {stagingInstallerCommand,validateInstallAcknowledgement,transferAndLaunchCiBuild,validateInstalledArrival,validatePrelaunchState,validateFinalCleanup} from './staging-ci-promotion.mjs';
 const ack=g=>({installId:g.installId,packetDirectory:'/home/fixture/.aihr-ci-builds/'+g.installId+'/packet',authorizationSha256:installHash(Buffer.from(installJson(g)+'\n')),releaseAuthorized:false});
 function seams(){
  const f=installationFixture(),grant=f.grant,evidence={...f.evidence,evidenceDirectory:'/private/original-ci-evidence'},events=[],saved={};
@@ -54,12 +54,16 @@ test('ready and pending deployment facts remain distinct without relaxing baseli
 test('fresh actual build/service/source/ledger tuple is mandatory; a health200 alone is insufficient',()=>{
  const {grant}=seams(),expected=[{tag:'001_fixture',hash:'f'.repeat(64),created_at:'1'}],base={source:grant.source,installId:grant.installId,buildRecordId:grant.build.buildRecordId,nextBuildId:grant.build.nextBuildId,authorizationSha256:ack(grant).authorizationSha256};
  const value={releaseAuthorized:false,authorizationSha256:base.authorizationSha256,verified:{...base},activated:{...base,afterActivationMonotonicUs:100},
-  runtime:{...base,healthStatus:200,compiledByteInventory:{format:2,capacityProfile:{...BUILD_CAPACITY_PROFILE},kind:'next-build-byte-bundle',files:4,releaseAuthorized:false,runtimeCacheExcluded:true},pid:'123',startedMonotonicUs:101,verifiedAt:new Date().toISOString(),migrationLedger:{kind:'READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE',releaseAuthorized:false,rows:1,expectedSha256:installHash(installJson(expected)),actualSha256:'a'.repeat(64)}}};
+  runtime:{...base,healthStatus:200,compiledByteInventory:{format:3,capacityProfile:{...BUILD_CAPACITY_PROFILE},kind:'next-map-byte-bundle',files:4,mapCopies:1,archiveBytes:grant.build.archiveBytes,unpackedBytes:500,releaseAuthorized:false,runtimeCacheExcluded:true},pid:'123',startedMonotonicUs:101,verifiedAt:new Date().toISOString(),migrationLedger:{kind:'READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE',releaseAuthorized:false,rows:1,expectedSha256:installHash(installJson(expected)),actualSha256:'a'.repeat(64)}}};
  assert.equal(validateInstalledArrival(value,grant,expected).nextBuildId,grant.build.nextBuildId);
  for(const mutate of [v=>v.runtime.nextBuildId='other',v=>v.runtime.healthStatus=401,v=>v.runtime.pid='0',v=>v.runtime.startedMonotonicUs=99,
   v=>v.runtime.verifiedAt=new Date(Date.now()-61000).toISOString(),v=>v.runtime.migrationLedger.rows=0,v=>v.runtime.migrationLedger.expectedSha256='b'.repeat(64),
   v=>v.authorizationSha256='b'.repeat(64),v=>v.activated.buildRecordId=grant.installId,
-  v=>v.runtime.compiledByteInventory.format=1,v=>delete v.runtime.compiledByteInventory.capacityProfile,
+  v=>v.runtime.compiledByteInventory.format=1,v=>v.runtime.compiledByteInventory.format=2,v=>v.runtime.compiledByteInventory.kind='next-build-byte-bundle',
+  v=>v.runtime.compiledByteInventory.releaseAuthorized=true,v=>v.runtime.compiledByteInventory.runtimeCacheExcluded=false,
+  v=>v.runtime.compiledByteInventory.mapCopies=v.runtime.compiledByteInventory.files,v=>delete v.runtime.compiledByteInventory.mapCopies,
+  v=>v.runtime.compiledByteInventory.archiveBytes++,v=>v.runtime.compiledByteInventory.unpackedBytes=2*1024**3+1,v=>v.runtime.compiledByteInventory.extra=true,
+  v=>delete v.runtime.compiledByteInventory.capacityProfile,
   v=>v.runtime.compiledByteInventory.capacityProfile.archiveMaxBytes=268435456,v=>v.runtime.compiledByteInventory.capacityProfile.zipMaxBytes++]){
   const copy=structuredClone(value);mutate(copy);assert.throws(()=>validateInstalledArrival(copy,grant,expected));
  }
@@ -70,4 +74,24 @@ test('operator commands cannot request stage/activate or interpolate unknown ide
  assert.match(stagingInstallerCommand('cleanup',grant.source,grant.installId,grant.build.buildRecordId),/staging-build-install.mjs cleanup /);
  for(const mode of ['stage','activate','other'])assert.throws(()=>stagingInstallerCommand(mode,grant.source,grant.installId,grant.build.buildRecordId));
  assert.throws(()=>stagingInstallerCommand('status',';exit',grant.installId,grant.build.buildRecordId));
+});
+
+test('post-cleanup arrival rechecks the full format3 inventory and retains exact cleanup authority',()=>{
+ const {grant}=seams(),expected=[{tag:'001_fixture',hash:'f'.repeat(64),created_at:'1'}];
+ const authorizationSha256=ack(grant).authorizationSha256;
+ const tuple={source:grant.source,installId:grant.installId,buildRecordId:grant.build.buildRecordId,nextBuildId:grant.build.nextBuildId,authorizationSha256};
+ const installed={releaseAuthorized:false,authorizationSha256,verified:{...tuple},activated:{...tuple,afterActivationMonotonicUs:100,activation:{activeDirectory:{device:1,inode:2}}}};
+ const inventory={format:3,capacityProfile:{...BUILD_CAPACITY_PROFILE},kind:'next-map-byte-bundle',files:4,mapCopies:1,archiveBytes:grant.build.archiveBytes,unpackedBytes:500,releaseAuthorized:false,runtimeCacheExcluded:true};
+ const runtime={...tuple,healthStatus:200,pid:'123',startedMonotonicUs:101,verifiedAt:new Date().toISOString(),compiledByteInventory:inventory,
+  migrationLedger:{kind:'READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE',releaseAuthorized:false,rows:1,expectedSha256:installHash(installJson(expected)),actualSha256:'a'.repeat(64)}};
+ const reply={...tuple,kind:'CI_INSTALL_OWNED_CLEANUP_AND_FINAL_RUNTIME_VERIFIED',ownedResourceCleanupVerified:true,releaseHandbackVerified:false,runtime,
+  cleanup:{...tuple,kind:'OWNED_INSTALL_BYTES_ABSENT_AUDIT_RETAINED',verifiedAbsent:['next','packet'],auditEvidenceRetained:true,activeDirectory:{device:1,inode:2}}};
+ assert.deepEqual(validateFinalCleanup(reply,{grant,installed,expectedLedger:expected}).compiledByteInventory,inventory);
+ for(const mutate of [r=>r.cleanup.auditEvidenceRetained=false,r=>r.cleanup.activeDirectory.inode++,r=>r.cleanup.authorizationSha256='0'.repeat(64),
+  r=>r.runtime.compiledByteInventory.format=2,r=>delete r.runtime.compiledByteInventory.runtimeCacheExcluded,
+  r=>r.runtime.compiledByteInventory.releaseAuthorized=true,r=>r.runtime.compiledByteInventory.archiveBytes++,
+  r=>r.runtime.healthStatus=503,r=>r.releaseHandbackVerified=true]){
+  const changed=structuredClone(reply);mutate(changed);
+  assert.throws(()=>validateFinalCleanup(changed,{grant,installed,expectedLedger:expected}));
+ }
 });

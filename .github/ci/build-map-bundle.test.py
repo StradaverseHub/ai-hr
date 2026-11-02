@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -350,6 +351,50 @@ class MapBundleTests(unittest.TestCase):
         self.assertEqual((self.build/self.map_paths[0]).read_bytes(), self.payload)
         self.assertEqual((self.active/'BUILD_ID').read_bytes(), b'old-build\n')
         self.assertEqual((self.active/'keep').read_bytes(), b'old serving bytes')
+
+    def test_active_verifier_exempts_only_safe_literal_cache_and_reports_format3(self):
+        manifest, archive, path = self.packed()
+        maps.unpack(archive, path, self.destination, self.runtime)
+        cache = self.destination/'cache'
+        cache.mkdir(mode=0o700)
+        (cache/'runtime-state').write_bytes(b'not immutable build output')
+        with self.assertRaises(ValueError):
+            maps.verify_directory(self.destination, path, self.runtime)
+        self.assertEqual(maps.verify_directory(self.destination, path, self.runtime, allow_runtime_cache=True), manifest)
+        result = subprocess.run([sys.executable, str(Path(maps.__file__)), 'verify-active-directory',
+                                 str(self.destination), str(path), str(self.runtime)],
+                                capture_output=True, text=True, check=True)
+        summary = json.loads(result.stdout)
+        self.assertEqual(set(summary), {'format', 'capacityProfile', 'kind', 'files', 'mapCopies',
+                                       'archiveBytes', 'unpackedBytes', 'releaseAuthorized', 'runtimeCacheExcluded'})
+        self.assertEqual(summary['format'], 3)
+        self.assertEqual(summary['kind'], 'next-map-byte-bundle')
+        self.assertEqual(summary['capacityProfile'], manifest['capacityProfile'])
+        self.assertEqual(summary['files'], len(manifest['files']))
+        self.assertEqual(summary['mapCopies'], len(manifest['mapCopies']))
+        self.assertEqual(summary['archiveBytes'], archive.stat().st_size)
+        self.assertEqual(summary['unpackedBytes'], sum(row['size'] for row in manifest['files']))
+        self.assertTrue(summary['runtimeCacheExcluded'])
+        self.assertFalse(summary['releaseAuthorized'])
+        extra = self.destination/'unexpected-live-file'
+        extra.write_bytes(b'not cache')
+        with self.assertRaises(ValueError):
+            maps.verify_directory(self.destination, path, self.runtime, allow_runtime_cache=True)
+        extra.unlink()
+        cache.chmod(0o777)
+        with self.assertRaises(ValueError):
+            maps.verify_directory(self.destination, path, self.runtime, allow_runtime_cache=True)
+        cache.chmod(0o700)
+        (cache/'runtime-state').unlink()
+        cache.rmdir()
+        foreign = self.root/'foreign-cache'
+        foreign.mkdir()
+        (foreign/'keep').write_bytes(b'private bytes')
+        cache.symlink_to(foreign, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            maps.verify_directory(self.destination, path, self.runtime, allow_runtime_cache=True)
+        self.assertEqual((foreign/'keep').read_bytes(), b'private bytes')
+        self.assertTrue(self.destination.exists())
 
     @unittest.skipUnless(sys.platform == 'linux', 'actual atomic activation fixture requires Linux')
     def test_extracted_maps_survive_actual_atomic_activate_and_rollback(self):
