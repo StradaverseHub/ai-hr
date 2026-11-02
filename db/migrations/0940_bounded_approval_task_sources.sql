@@ -60,7 +60,7 @@ BEGIN
  IF st.id IS NOT NULL AND owners&&ARRAY['bank','identity','passport','registration','taxLegacy'] THEN
   SELECT coalesce(jsonb_object_agg(binding.field_name,to_jsonb(st)->binding.column_name),'{}'::jsonb) INTO stat FROM app.access_profile_value_bindings()binding WHERE binding.owner=ANY(owners) AND binding.owner IN ('bank','identity','passport','registration','taxLegacy');
   stat:=stat||jsonb_build_object('id',st.id,'tenantId',st.tenant_id,'personId',st.person_id,'updatedAt',st.updated_at);
-  IF 'taxLegacy'=ANY(owners) THEN stat:=stat||jsonb_build_object('taxResidency',st.tax_residency,'taxCircumstance',st.tax_circumstance,'childReliefMode',st.child_relief_mode,'childReliefTable',st.child_relief_table,'employerBearsTax',st.employer_bears_tax,'disabledIndividual',st.disabled_individual,'disabledSpouse',st.disabled_spouse);END IF;
+  IF 'taxLegacy'=ANY(owners) THEN stat:=stat||jsonb_build_object('taxResidency',st.tax_residency,'isResident',st.is_resident,'taxApplicabilityEpoch',st.tax_applicability_epoch,'taxCircumstance',st.tax_circumstance,'childReliefMode',st.child_relief_mode,'childReliefTable',st.child_relief_table,'employerBearsTax',st.employer_bears_tax,'disabledIndividual',st.disabled_individual,'disabledSpouse',st.disabled_spouse);END IF;
  END IF;
  -- Only explicitly selected register records are task facts. Other family/qualification rows remain hidden.
  IF q.proposed->'v'='2'::jsonb THEN
@@ -76,7 +76,7 @@ BEGIN
   END LOOP;
  END IF;
  projected:=jsonb_build_object('subject',jsonb_build_object('id',subject.employment_id,'personId',subject.person_id,'companyId',subject.company_id,'country',subject.country),
-  'master',master,'stat',stat,'snapshot',CASE WHEN st.id IS NULL THEN NULL ELSE jsonb_build_object('rowId',st.id,'revision',stat_revision,'profile',stat) END,
+  'owners',to_jsonb(coalesce(owners,'{}'::text[])),'master',master,'stat',stat,'snapshot',CASE WHEN st.id IS NULL THEN NULL ELSE jsonb_build_object('rowId',st.id,'revision',stat_revision,'profile',stat) END,
   'dependents',dependents,'qualifications',qualifications,'emergency',emergency);
  IF p_prepare THEN
   -- Repeat public CAS checks at the storage boundary. A direct SQL call cannot bypass stale evidence.
@@ -229,3 +229,95 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.profile_task_route_fingerprint(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.profile_task_route_fingerprint(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE TABLE app.profile_task_statutory_effect(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,request_id uuid NOT NULL,row_id uuid NOT NULL,
+ inserted boolean NOT NULL,delta jsonb NOT NULL
+);
+ALTER TABLE app.profile_task_statutory_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.profile_task_statutory_effect FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.profile_task_store_statutory(p_person uuid,p_values jsonb) RETURNS uuid
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE context jsonb;q public.profile_change_request;before_row jsonb;after_row jsonb;patch jsonb:='{}'::jsonb;delta jsonb;fields jsonb;entry record;grouped record;column_name text;sets text;columns text;values_sql text;inserted boolean;row_id uuid;expected_key jsonb;
+BEGIN
+ context:=app.profile_task_effect_source(p_person);IF context IS NULL THEN RETURN NULL;END IF;
+ SELECT request.* INTO q FROM app.profile_task_before c JOIN public.profile_change_request request ON request.id=c.request_id AND request.tenant_id=c.tenant_id WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND request.person_id=p_person;
+ IF EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=q.tenant_id AND e.voided_at IS NULL
+  AND (NOT app.access_workforce_company(e.company_id,'workforce.maintain') OR NOT app.access_workforce_not_denied(e.company_id,'workforce.maintain'))) THEN RAISE EXCEPTION 'Shared profile company scope unavailable' USING ERRCODE='42501';END IF;
+ IF jsonb_typeof(p_values) IS DISTINCT FROM 'object' OR octet_length(p_values::text)>65536 THEN RAISE EXCEPTION 'Profile effect unavailable' USING ERRCODE='42501';END IF;
+ SELECT to_jsonb(s),s.id INTO before_row,row_id FROM public.employee_statutory_my s WHERE s.person_id=p_person AND s.tenant_id=q.tenant_id FOR UPDATE;inserted:=row_id IS NULL;
+ FOR entry IN SELECT key,value FROM jsonb_each(p_values) LOOP
+  SELECT binding.column_name INTO column_name FROM app.access_profile_value_bindings() binding WHERE binding.field_name=entry.key AND binding.owner IN ('bank','identity','passport','registration','taxLegacy') LIMIT 1;
+  IF column_name IS NULL THEN
+   column_name:=CASE entry.key WHEN 'taxCircumstance' THEN 'tax_circumstance' WHEN 'taxApplicabilityEpoch' THEN 'tax_applicability_epoch' WHEN 'taxResidency' THEN 'tax_residency' WHEN 'isResident' THEN 'is_resident' WHEN 'childReliefMode' THEN 'child_relief_mode' WHEN 'childReliefTable' THEN 'child_relief_table' WHEN 'employerBearsTax' THEN 'employer_bears_tax' WHEN 'disabledIndividual' THEN 'disabled_individual' WHEN 'disabledSpouse' THEN 'disabled_spouse' END;
+   IF column_name IS NULL THEN RAISE EXCEPTION 'Profile effect field unavailable' USING ERRCODE='42501';END IF;
+  END IF;
+  patch:=patch||jsonb_build_object(column_name,entry.value);
+ END LOOP;
+ SELECT coalesce(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(patch)d WHERE d.value IS DISTINCT FROM before_row->d.key;
+ IF q.proposed->'v'='2'::jsonb THEN fields:=q.proposed->'fields';ELSE SELECT coalesce(jsonb_agg(jsonb_build_object('fieldId',b.field_id,'value',v.value)),'[]'::jsonb) INTO fields FROM jsonb_each(q.proposed)v JOIN app.access_profile_value_bindings()b ON b.legacy_key=v.key AND b.owner IN ('bank','identity','passport','registration','taxLegacy');END IF;
+ -- Numeric legacy category changes retain their canonical circumstance mapping; no other tax setting
+ -- becomes writable through a narrow number request.
+ expected_key:=before_row->'tax_circumstance';
+ IF patch ? 'tax_category' AND expected_key<>'"none"'::jsonb AND (
+  expected_key='"single"'::jsonb AND patch->'tax_category'<>'1'::jsonb OR expected_key='"spouse_not_working"'::jsonb AND patch->'tax_category'<>'2'::jsonb
+  OR expected_key IN ('"spouse_working"'::jsonb,'"widow_divorced"'::jsonb) AND patch->'tax_category'<>'3'::jsonb) THEN expected_key:='null'::jsonb;END IF;
+ IF delta ? 'tax_circumstance' AND delta->'tax_circumstance' IS DISTINCT FROM expected_key OR delta ? 'tax_applicability_epoch' AND delta->'tax_applicability_epoch' IS DISTINCT FROM before_row->'tax_applicability_epoch' THEN RAISE EXCEPTION 'Profile tax effect unavailable' USING ERRCODE='42501';END IF;
+ FOR grouped IN SELECT binding.owner,jsonb_object_agg(d.key,d.value) AS values FROM jsonb_each(delta-ARRAY['tax_circumstance','tax_applicability_epoch'])d LEFT JOIN app.access_profile_value_bindings()binding ON binding.column_name=d.key AND binding.owner IN ('bank','identity','passport','registration','taxLegacy') GROUP BY binding.owner LOOP
+  IF grouped.owner IS NULL OR NOT app.access_profile_value_delta_matches(grouped.owner,grouped.values,fields,false,false) THEN RAISE EXCEPTION 'Profile effect differs from approved values' USING ERRCODE='42501';END IF;
+ END LOOP;
+ IF inserted THEN
+  SELECT string_agg(format('%I',key),','),string_agg(format('(jsonb_populate_record(NULL::public.employee_statutory_my,$1)).%I',key),',') INTO columns,values_sql FROM jsonb_object_keys(patch)key;
+  EXECUTE 'INSERT INTO public.employee_statutory_my(tenant_id,person_id,'||columns||') SELECT $2,$3,'||values_sql||' RETURNING to_jsonb(employee_statutory_my)' INTO after_row USING patch,q.tenant_id,p_person;row_id:=(after_row->>'id')::uuid;
+ ELSE
+  SELECT string_agg(format('%I=(jsonb_populate_record(NULL::public.employee_statutory_my,$1)).%I',key,key),',') INTO sets FROM jsonb_object_keys(patch)key;
+  EXECUTE 'UPDATE public.employee_statutory_my SET '||sets||',updated_at=now() WHERE id=$2 AND tenant_id=$3 RETURNING to_jsonb(employee_statutory_my)' INTO after_row USING patch,row_id,q.tenant_id;
+ END IF;
+ SELECT coalesce(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(after_row)d WHERE d.key<>ALL(ARRAY['id','tenant_id','person_id','created_at','updated_at']) AND d.value IS DISTINCT FROM before_row->d.key;
+ DELETE FROM app.profile_task_statutory_effect WHERE tenant_id=q.tenant_id AND xact_id<>pg_current_xact_id();
+ INSERT INTO app.profile_task_statutory_effect(xact_id,tenant_id,user_id,request_id,row_id,inserted,delta)VALUES(pg_current_xact_id(),q.tenant_id,app.current_user_id(),q.id,row_id,inserted,delta);
+ RETURN row_id;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.profile_task_store_statutory(uuid,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.profile_task_store_statutory(uuid,jsonb) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.profile_task_statutory_delta_approved(p_person uuid,p_row uuid,p_delta jsonb,p_insert boolean DEFAULT false) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM app.profile_task_statutory_effect effect
+ JOIN app.profile_task_before c ON c.xact_id=effect.xact_id AND c.tenant_id=effect.tenant_id AND c.user_id=effect.user_id AND c.request_id=effect.request_id
+ JOIN public.profile_change_request q ON q.id=c.request_id AND q.tenant_id=c.tenant_id AND q.person_id=p_person
+ JOIN app.access_profile_value_approval proof ON proof.xact_id=c.xact_id AND proof.tenant_id=c.tenant_id AND proof.user_id=c.user_id AND proof.request_id=c.request_id
+ WHERE effect.xact_id=pg_current_xact_id() AND effect.tenant_id=app.current_tenant_id() AND effect.user_id=app.current_user_id()
+ AND effect.row_id=p_row AND effect.inserted=p_insert AND effect.delta=p_delta AND q.status='approved' AND proof.approved AND proof.audited
+ AND c.proposal_hash=proof.proposal_hash AND c.route_hash=proof.route_hash
+ AND c.proposal_hash=encode(sha256(convert_to(q.proposed::text,'UTF8')),'hex')
+ AND c.route_hash=encode(sha256(convert_to(jsonb_build_array(q.route_id,q.route_revision,q.route_approver_user_id,q.route_approver_employment_id,q.route_context)::text,'UTF8')),'hex'));
+$$;
+REVOKE ALL ON FUNCTION app.profile_task_statutory_delta_approved(uuid,uuid,jsonb,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.profile_task_statutory_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE delta jsonb;
+BEGIN
+ IF app.access_workforce_storage_owner() OR NOT EXISTS(SELECT 1 FROM app.profile_task_statutory_effect e WHERE e.xact_id=pg_current_xact_id() AND e.tenant_id=NEW.tenant_id AND e.user_id=app.current_user_id() AND e.row_id=NEW.id)THEN RETURN NULL;END IF;
+ SELECT coalesce(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(to_jsonb(NEW))d WHERE d.key<>ALL(ARRAY['id','tenant_id','person_id','created_at','updated_at']) AND d.value IS DISTINCT FROM CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD)->d.key END;
+ IF NOT app.profile_task_statutory_delta_approved(NEW.person_id,NEW.id,delta,TG_OP='INSERT') THEN RAISE EXCEPTION 'Profile statutory completion unavailable' USING ERRCODE='42501';END IF;RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.profile_task_statutory_guard() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER profile_task_statutory_guard AFTER INSERT OR UPDATE ON employee_statutory_my DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.profile_task_statutory_guard();
+--> statement-breakpoint
+-- The effect ledger itself owns completion too. SET CONSTRAINTS IMMEDIATE cannot skip a proof
+-- merely because the native row trigger ran before its post-write effect receipt existed.
+CREATE FUNCTION app.profile_task_statutory_effect_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE person uuid;
+BEGIN
+ SELECT q.person_id INTO person FROM public.profile_change_request q WHERE q.id=NEW.request_id AND q.tenant_id=NEW.tenant_id;
+ IF person IS NULL OR NOT app.profile_task_statutory_delta_approved(person,NEW.row_id,NEW.delta,NEW.inserted) THEN RAISE EXCEPTION 'Profile statutory completion unavailable' USING ERRCODE='42501';END IF;RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.profile_task_statutory_effect_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER profile_task_statutory_effect_complete AFTER INSERT ON app.profile_task_statutory_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.profile_task_statutory_effect_complete();
