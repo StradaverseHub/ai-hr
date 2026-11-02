@@ -24,6 +24,7 @@ import {explainOwnPayslipStatutory} from '../core/explainers/statutory';
 import {explainOwnLeaveEntitlement} from '../core/explainers/entitlement';
 import {explainOwnAttendanceDay} from '../core/explainers/attendance';
 import {TERAS_CAPABILITIES} from '../core/explainers/capabilities';
+import {nativeToolProvider} from '../core/harness/tools';
 import {setWorkerSwitch} from '../core/agent-registry/controls';
 import {setupCopilot,SetupCopilotRefused} from '../core/setup-copilot/copilot';
 import {coverageReadiness} from '../core/product-context/coverage-readiness';
@@ -166,5 +167,45 @@ describe('setup co-pilot',()=>{
   expect(result.trace.calls[0].status).toBe('ok');expect(result.trace.disclosure[0].undeclared).toEqual([]);
   const {model}=await turn(employee,'What should I set up next?',[{final:{reply:'That is for your HR administrator.'}}]);
   expect(model.requests[0].tools.map(tool=>tool.name)).not.toContain('setup_copilot');
+ });
+});
+
+
+describe('public administrative page guidance',()=>{
+ it('uses literal native owners, refuses direct employee calls and repeats the Payroll gate',async()=>{
+  const {hr,employee}=await people(),scope={companyId:base.companyId};
+  const password=TERAS_CAPABILITIES.find(row=>row.name==='password_policy_guidance')!,corrections=TERAS_CAPABILITIES.find(row=>row.name==='correction_controls_guidance')!;
+  for(const capability of [password,corrections]){
+   expect(await capability.run(employee,{},scope)).toMatchObject({ok:false,refusal:'not_permitted'});
+   const value=await capability.run(hr,{password:'FICTIONAL_PRIVATE_PASSWORD',setting:'FICTIONAL_TENANT_SETTING',payrollAmount:987654321},scope);
+   expect(value.ok).toBe(true);expect(Object.keys(value).sort()).toEqual(['humanBoundary','navigation','ok','page','provenance','purpose']);
+   expect(JSON.stringify(value)).not.toMatch(/FICTIONAL_PRIVATE_PASSWORD|FICTIONAL_TENANT_SETTING|987654321|Fictional Explainer|[0-9a-f]{8}-[0-9a-f]{4}-/);
+  }
+  expect(await password.run(hr,{},scope)).toMatchObject({page:'/admin/security-center/password-policy',humanBoundary:expect.stringContaining('group administrator'),provenance:{owner:'core/explainers/capabilities.ts#passwordPolicyGuidance'}});
+  expect((await password.run(hr,{},scope)).humanBoundary).toContain('internal embedded HR login');
+  expect(await corrections.run(hr,{},scope)).toMatchObject({page:'/payroll/setup/correction-controls',humanBoundary:expect.stringContaining('only a group administrator'),provenance:{owner:'core/explainers/capabilities.ts#correctionControlsGuidance'}});
+  expect((await corrections.run(hr,{},scope)).humanBoundary).toContain('separately chooses');
+  await setModule(base.tenantId,'payroll','disabled');
+  const disabled={...hr,entitlements:(await entitledCtx(base,['hr_admin'])).entitlements};
+  expect(await corrections.run(disabled,{},scope)).toMatchObject({ok:false,refusal:'not_permitted'});
+  expect((await nativeToolProvider(disabled,scope,false)).bindings.map(binding=>binding.name)).not.toContain('correction_controls_guidance');
+  expect(await password.run(disabled,{},scope)).toMatchObject({ok:true,page:'/admin/security-center/password-policy'});
+ });
+ it('offers and discloses the reviewed public text within the existing provider tool ceiling',async()=>{
+  const {hr,employee}=await people(),scope={companyId:base.companyId};
+  const admin=await nativeToolProvider(hr,scope,true),names=admin.bindings.map(binding=>binding.name);
+  expect(names).toContain('password_policy_guidance');expect(names).toContain('correction_controls_guidance');
+  // The provider accepts at most 31 native tools and reserves the 32nd for inert history. Do not raise it.
+  expect(admin.bindings.length).toBeLessThanOrEqual(31);expect(new Set(names).size).toBe(names.length);
+  for(const name of ['password_policy_guidance','correction_controls_guidance'])expect(admin.bindings.find(binding=>binding.name===name)!.spec.inputSchema).toMatchObject({type:'object',properties:{},required:[],additionalProperties:false});
+  const ordinary=await nativeToolProvider(employee,scope,true);
+  expect(ordinary.bindings.map(binding=>binding.name)).not.toContain('password_policy_guidance');expect(ordinary.bindings.map(binding=>binding.name)).not.toContain('correction_controls_guidance');
+  const {result,model}=await turn(hr,'Where are Password Policy and Correction Controls, and who confirms changes?',[
+   {calls:[{name:'password_policy_guidance'}]},{calls:[{name:'correction_controls_guidance'}]},{final:{reply:'An authorized human confirms each change on its native page.'}},
+  ]);
+  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['password_policy_guidance','ok'],['correction_controls_guidance','ok']]);
+  for(const applied of result.trace.disclosure){expect(applied.undeclared).toEqual([]);expect(applied.removed).toEqual([]);expect(applied.banded).toEqual([]);}
+  expect(lastToolResult(model.requests[1])).toMatchObject({page:'/admin/security-center/password-policy',humanBoundary:expect.stringContaining('group administrator')});
+  expect(lastToolResult(model.requests[2])).toMatchObject({page:'/payroll/setup/correction-controls',humanBoundary:expect.stringContaining('separately chooses')});
  });
 });

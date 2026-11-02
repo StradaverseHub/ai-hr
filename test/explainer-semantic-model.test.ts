@@ -12,6 +12,7 @@ import {SETUP_ENTITIES,SETUP_READS} from '../core/semantic-model/entities-setup'
 import {capabilityRegistry,contextToolSpecs,disclosureOf,TERAS_READS,terasCapabilityRegistry,terasEntities,terasEntity,terasToolSpecs} from '../core/semantic-model/generate';
 import type {OwnerAnchor,SemanticField} from '../core/semantic-model/types';
 import {TERAS_CAPABILITIES} from '../core/explainers/capabilities';
+import * as capabilities from '../core/explainers/capabilities';
 import * as read from '../core/read';
 import * as statutoryExplain from '../core/statutory-explain';
 import * as payslipRecompute from '../core/payslip-recompute';
@@ -25,7 +26,7 @@ import * as copilot from '../core/setup-copilot/copilot';
 
 const OWNER_MODULES:Readonly<Record<string,Record<string,unknown>>>={'core/read.ts':read,'core/statutory-explain.ts':statutoryExplain,'core/payslip-recompute.ts':payslipRecompute,
  'core/assistant-leave-projection.ts':leaveProjection,'core/attendance.ts':attendance,'core/attendance-explain.ts':attendanceExplain,'core/attendance-derive.ts':attendanceDerive,
- 'core/product-context/setup-readiness.ts':setupReadiness,'core/product-context/coverage-readiness.ts':coverageReadiness,'core/setup-copilot/copilot.ts':copilot};
+ 'core/product-context/setup-readiness.ts':setupReadiness,'core/product-context/coverage-readiness.ts':coverageReadiness,'core/setup-copilot/copilot.ts':copilot,'core/explainers/capabilities.ts':capabilities};
 const root=fileURLToPath(new URL('..',import.meta.url));
 const resolve=(anchor:OwnerAnchor)=>{const [file,name]=anchor.split('#');expect(existsSync(root+file),anchor).toBe(true);const owned=OWNER_MODULES[file];expect(owned,anchor+' not imported here').toBeDefined();return owned![name];};
 const walk=(fields:readonly SemanticField[]):SemanticField[]=>fields.flatMap(field=>[field,...(field.of?walk(field.of):[])]);
@@ -33,7 +34,7 @@ const STEP4=[...EXPLAIN_ENTITIES,...SETUP_ENTITIES];
 
 describe('step 4 capabilities in the semantic model',()=>{
  it('declares one read per capability, each over a step 4 entity, and binds each to a runner',()=>{
-  expect(TERAS_READS.map(row=>row.name)).toEqual(['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','setup_copilot']);
+  expect(TERAS_READS.map(row=>row.name)).toEqual(['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','setup_copilot','password_policy_guidance','correction_controls_guidance']);
   expect(TERAS_CAPABILITIES.map(row=>row.name)).toEqual(TERAS_READS.map(row=>row.name));
   expect([...EXPLAIN_READS,...SETUP_READS].map(row=>row.entity)).toEqual(STEP4.map(entity=>entity.id));
   expect(TERAS_READS.some(row=>row.input.some(input=>input.identifier)),'no step 4 capability takes a record handle').toBe(false);
@@ -79,13 +80,14 @@ describe('step 4 capabilities in the semantic model',()=>{
  it('generates specs whose required inputs exclude the optional ones and whose descriptions name no never field',()=>{
   const specs=terasToolSpecs();expect(specs.map(spec=>spec.name)).toEqual(TERAS_READS.map(row=>row.name));
   const required=Object.fromEntries(specs.map(spec=>[spec.name,(spec.inputSchema as {required:string[]}).required]));
-  expect(required).toEqual({explain_payslip_statutory:[],explain_leave_entitlement:['leave_type'],explain_attendance_day:['date'],setup_copilot:[]});
+  expect(required).toEqual({explain_payslip_statutory:[],explain_leave_entitlement:['leave_type'],explain_attendance_day:['date'],setup_copilot:[],password_policy_guidance:[],correction_controls_guidance:[]});
   const never=[...new Set(STEP4.flatMap(entity=>walk(entity.fields)).filter(field=>field.disclosure==='never').map(field=>field.name))];
   for(const spec of specs)for(const name of never)expect(spec.description).not.toMatch(new RegExp(`(^|[^A-Za-z0-9_])${name}([^A-Za-z0-9_]|$)`));
  });
  it('summarises every capability row from the extended model, the step 4 rows included',()=>{
   const rows=terasCapabilityRegistry();expect(rows.map(row=>row.name)).toEqual([...capabilityRegistry().map(row=>row.name),...TERAS_READS.map(row=>row.name)]);
   for(const row of rows)expect(row.disclosure).toEqual(disclosureOf(terasEntity(row.entity).fields));
-  expect(rows.find(row=>row.name==='setup_copilot')!.audience).toBe('admin');
+  for(const name of ['setup_copilot','password_policy_guidance','correction_controls_guidance'])expect(rows.find(row=>row.name===name)!.audience).toBe('admin');
+  expect(rows.find(row=>row.name==='password_policy_guidance')!.module).toBeNull();expect(rows.find(row=>row.name==='correction_controls_guidance')!.module).toBe('payroll');
  });
 });
