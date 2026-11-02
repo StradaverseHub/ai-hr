@@ -33,9 +33,17 @@ async function review(tx:Tx,ctx:SessionContext,human:Human){
  const item=C.Item.parse({employmentId:s.employmentId,subjectId:s.subjectId,employeeName:s.employeeName,employeeCode:s.employeeCode,companyName:s.companyName,operation:human.operation,qualificationId:human.qualificationId,before:existing?.fields??null,after,clearsHighestId,clearsHighest:clearsHighestId?{id:clearsHighestId,fields:rows.find(r=>r.id===clearsHighestId)!.fields}:null});
  return{review:item,reviewedDigest:hash([1,C.action,s,rows,item])};
 }
+export function qualificationReviewCommandDigest(input:unknown):string {
+ const item=C.Item.parse(input);
+ return hash([1,C.action,item.employmentId,item.operation,item.qualificationId,item.before,item.after,item.clearsHighestId,item.clearsHighest]);
+}
 export async function prepareQualificationMaintenanceSourceTx(tx:Tx,ctx:SessionContext,human:Human){return review(tx,ctx,human);}
-export async function confirmQualificationMaintenanceSourceTx(tx:Tx,ctx:SessionContext,human:Human,expected:string){
+export async function confirmQualificationMaintenanceSourceTx(tx:Tx,ctx:SessionContext,human:Human,expected:string,reviewIdentity?:Readonly<{actionId:string}>){
+ if(!reviewIdentity)return fail();
  const current=await review(tx,ctx,human);if(current.reviewedDigest!==expected)return fail();
+ await tx.execute(sql`select app.assistant_qualification_arm(
+  ${reviewIdentity.actionId}::uuid,${human.employmentId}::uuid,${qualificationReviewCommandDigest(current.review)}
+ )`);
  const row=human.operation==='add'?await addQualification(ctx,{employmentId:human.employmentId,...current.review.after!},tx):human.operation==='update'?await updateQualification(ctx,{id:human.qualificationId!,...current.review.after!},tx):await archiveQualification(ctx,{id:human.qualificationId!},tx);
  const type=human.operation==='add'?'qualification.added':human.operation==='update'?'qualification.updated':'qualification.archived';
  const events=await tx.execute<{eventId:string}>(sql`select d.id as "eventId" from domain_event d where d.tenant_id=${ctx.tenantId}::uuid and d.aggregate_type='employee-qualification' and d.aggregate_id=${row.id}::uuid and d.subject_employment_id=${human.employmentId}::uuid and d.event_type=${type} and d.actor_type='user' and d.actor_id=${ctx.userId}::uuid and d.xmin=pg_current_xact_id()::xid`);
