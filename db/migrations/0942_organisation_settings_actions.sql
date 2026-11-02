@@ -175,7 +175,8 @@ REVOKE ALL ON FUNCTION app.organisation_settings_write_guard() FROM PUBLIC,ai_hr
 --> statement-breakpoint
 DO $$DECLARE name text;BEGIN
  FOREACH name IN ARRAY ARRAY['company','department','position','cost_center','business_unit','job_grade','profile_option','employee_id_config','people_general_policy','label_company_assignment','company_logo','dashboard_card_config','login_presentation','tenant_setting','email_design','email_design_version','email_asset','notification_email_policy','ai_provider_config','entra_connector','test_case','test_case_version','test_assignment','test_catalogue_update'] LOOP
- EXECUTE format('CREATE TRIGGER organisation_settings_action BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app.organisation_settings_write_guard()',name);
+ -- Provider configuration is upserted: only the successful row operation determines Add/Edit.
+ EXECUTE format('CREATE TRIGGER organisation_settings_action %s INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app.organisation_settings_write_guard()',CASE WHEN name='ai_provider_config' THEN 'AFTER' ELSE 'BEFORE' END,name);
  END LOOP;
  FOREACH name IN ARRAY ARRAY['company','department','position','cost_center','business_unit'] LOOP
  EXECUTE format('CREATE TRIGGER a00_organisation_successful_birth AFTER INSERT ON public.%I FOR EACH ROW EXECUTE FUNCTION app.organisation_remember_birth()',name);
@@ -208,7 +209,9 @@ CREATE OR REPLACE FUNCTION app.access_can_delegate(p_capability text,p_company u
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.access_capability c
   JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id()
-  WHERE c.id=p_capability AND (p_capability !~ '^(organisation|settings)\.' OR app.organisation_settings_delegation_allowed(u.tenant_id,u.id,p_capability,p_company) AND CASE WHEN p_capability LIKE 'settings.%' THEN app.settings_action_allowed(split_part(p_capability,'.',2)) ELSE app.organisation_action_allowed(split_part(p_capability,'.',2),p_company) END) AND (p_capability !~ '^(payroll|performance_compensation|letters)\.' OR app.financial_letter_delegation_allowed(u.tenant_id,u.id,p_capability,p_company)) AND (p_capability !~ '^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$' OR app.access_can_delegate(split_part(p_capability,'.',1)||'.view',p_company)) AND c.supported AND jsonb_array_length(c.bindings)>0
+  WHERE c.id=p_capability AND app.access_current_capability_source(p_capability,p_company)
+   AND (p_capability NOT IN ('workforce.add','workforce.edit','workforce.delete','workforce.maintain') OR CASE WHEN p_company IS NULL THEN app.is_group_admin() ELSE app.is_admin_for(p_company) END)
+   AND (p_capability !~ '^(organisation|settings)\.' OR app.organisation_settings_delegation_allowed(u.tenant_id,u.id,p_capability,p_company) AND CASE WHEN p_capability LIKE 'settings.%' THEN app.settings_action_allowed(split_part(p_capability,'.',2)) ELSE app.organisation_action_allowed(split_part(p_capability,'.',2),p_company) END) AND (p_capability !~ '^(payroll|performance_compensation|letters)\.' OR app.financial_letter_delegation_allowed(u.tenant_id,u.id,p_capability,p_company)) AND (p_capability !~ '^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$' OR app.access_can_delegate(split_part(p_capability,'.',1)||'.view',p_company)) AND c.supported AND jsonb_array_length(c.bindings)>0
    AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
    AND CASE WHEN c.scope='tenant' THEN p_company IS NULL AND app.access_allowed_for(u.id,c.id,NULL)
     WHEN p_company IS NOT NULL THEN app.access_allowed_for(u.id,c.id,p_company)
