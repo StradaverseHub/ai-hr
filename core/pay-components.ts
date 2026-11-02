@@ -2321,8 +2321,9 @@ export function updateEmploymentPayComponent(
 export function endEmploymentPayComponent(
   ctx: SessionContext,
   p: { id: string; employmentId: string; effectiveTo: string },
+  outerTx?:Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     const [row] = await tx
       .select({ validFrom: employmentPayComponent.validFrom })
       .from(employmentPayComponent)
@@ -2352,7 +2353,7 @@ export function endEmploymentPayComponent(
       payload: { employmentId: p.employmentId, effectiveTo: p.effectiveTo },
     });
     return { id: p.id };
-  });
+  };return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**
