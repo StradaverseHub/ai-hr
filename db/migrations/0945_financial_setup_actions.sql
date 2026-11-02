@@ -436,7 +436,7 @@ DECLARE item jsonb;subject text;company text;
 BEGIN
  IF NOT app.principal_snapshot_current() OR NOT EXISTS(SELECT 1 FROM public.company co WHERE co.tenant_id=app.current_tenant_id() AND app.financial_history_function_action(co.id,'view')) OR jsonb_typeof(p_plan->'rows') IS DISTINCT FROM 'array' OR jsonb_array_length(p_plan->'rows')>10000 THEN RETURN false;END IF;
  FOR item IN SELECT value FROM jsonb_array_elements(p_plan->'rows') LOOP
-  subject:=item->>'employmentId';company:=item->>'companyId';
+  subject:=item->>'employmentId';company:=nullif(item->>'companyId','');
   IF company IS NOT NULL AND (company !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' OR NOT app.financial_history_function_action(company::uuid,'view')) THEN RETURN false;END IF;
   IF subject IS NULL OR subject='' THEN IF p_creator IS DISTINCT FROM app.current_user_id() THEN RETURN false;END IF;
   ELSIF subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' OR NOT app.data_permission_matches(subject::uuid) THEN RETURN false;END IF;
