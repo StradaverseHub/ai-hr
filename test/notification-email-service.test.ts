@@ -8,6 +8,16 @@ beforeEach(()=>{
  d={origin:'https://hr.test',ready:vi.fn().mockResolvedValue(true),target:vi.fn().mockResolvedValue(target),verifyRecipient:vi.fn().mockResolvedValue('verified'),start:vi.fn().mockResolvedValue(true),finish:vi.fn().mockResolvedValue(true),send:vi.fn().mockResolvedValue(undefined)};
 });
 describe('isolated workflow email orchestration',()=>{
+ it('sends pinned private workflow wording only after source authorization and rejects stale or header-injected content',async()=>{
+  d.privateMessage=vi.fn().mockResolvedValue({required:true,message:{subject:'Probation review due',body:'Please complete your published review.'}});
+  expect(await createNotificationEmailService(d)(job)).toEqual({outcome:'sent'});
+  expect(d.send).toHaveBeenCalledWith(target,expect.objectContaining({privateMessage:{subject:'Probation review due',body:'Please complete your published review.'}}));
+  for(const message of [null,{subject:'Bad\r\nBcc: outsider@example.test',body:'Review'},{subject:'Review',body:'',to:'outsider@example.test'}]){
+   vi.mocked(d.send).mockClear();vi.mocked(d.start).mockClear();vi.mocked(d.privateMessage).mockResolvedValue({required:true,message});
+   expect(await createNotificationEmailService(d)(job)).toEqual({outcome:'skipped'});expect(d.start).not.toHaveBeenCalled();expect(d.send).not.toHaveBeenCalled();
+  }
+ });
+
  it('does not send or mark started until relay, target, verified account and durable lease all permit it',async()=>{
   expect(await createNotificationEmailService(d)(job)).toEqual({outcome:'sent'});
   expect(d.start).toHaveBeenCalledWith(job.deliveryId,job.leaseToken,target);

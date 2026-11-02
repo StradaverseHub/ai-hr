@@ -8,8 +8,10 @@ import { notificationEmailRequest, notificationEmailCategory, notificationEmailL
 import { emailConfigSchema, type EmailConfig } from '../../lib/identity/email-model';
 import type { EmailState } from './service';
 import { assessmentReminderMailSchema,type AssessmentReminderTask,type AssessmentReminderWords } from '../../lib/assessment-reminder-mail';
+export const privateWorkflowMessageSchema=z.object({subject:z.string().trim().min(1).max(200).regex(/^[^\r\n]+$/),body:z.string().trim().min(1).max(20000)}).strict();
+export type PrivateWorkflowMessage=z.infer<typeof privateWorkflowMessageSchema>;
 export type WorkflowMailTarget={user_id:string;subject:string;email:string;category:string;link_path:string|null;severity:string;locale:string};
-export type WorkflowMail={category:NotificationEmailCategory;locale:NotificationEmailLocale;link:string;action:boolean;messageId:string;assessmentTasks?:AssessmentReminderTask[];assessmentWords?:AssessmentReminderWords|null;attendanceCc?:AttendanceCcMessage;design?:EmailDesignEnvelope};
+export type WorkflowMail={category:NotificationEmailCategory;locale:NotificationEmailLocale;link:string;action:boolean;messageId:string;assessmentTasks?:AssessmentReminderTask[];assessmentWords?:AssessmentReminderWords|null;attendanceCc?:AttendanceCcMessage;design?:EmailDesignEnvelope;privateMessage?:PrivateWorkflowMessage};
 export interface WorkflowEmailDependencies {
   ready():Promise<boolean>;
   design?(id:string,token:string,kind:EmailKind,locale:EmailLocale,cc?:boolean):Promise<unknown>;
@@ -17,6 +19,7 @@ export interface WorkflowEmailDependencies {
   target(id:string,token:string):Promise<WorkflowMailTarget|null>;
   verifyRecipient(target:WorkflowMailTarget):Promise<'verified'|'changed'|'unavailable'>;
   assessmentTasks?(id:string,token:string):Promise<unknown>;
+  privateMessage?(id:string,token:string):Promise<{required:boolean;message:unknown}>;
   start(id:string,token:string,target:WorkflowMailTarget):Promise<boolean>;
   finish(id:string,token:string,outcome:NotificationEmailOutcome,error:NotificationEmailError|null):Promise<boolean>;
   send(target:WorkflowMailTarget,mail:WorkflowMail):Promise<void>;
@@ -63,12 +66,14 @@ export function createNotificationEmailService(d:WorkflowEmailDependencies) {
         assessmentTasks=parsed.data.tasks;assessmentWords=parsed.data.words;
       }
     }
+    let privateMessage:PrivateWorkflowMessage|undefined;
+    if(d.privateMessage){const prepared=await d.privateMessage(id,token);if(prepared.required){const parsed=privateWorkflowMessageSchema.safeParse(prepared.message);if(!parsed.success){await d.finish(id,token,'skipped','notEligible');return {outcome:'skipped'};}privateMessage=parsed.data;}}
     const locale=(['en','ms','zh','vi','ta','th'] as const).find(l=>l===target.locale)??'en';
     const design=d.design?emailDesignEnvelope.parse(await d.design(id,token,assessmentTasks?'assessment_reminder':`workflow.${category.data}`,locale)):undefined;
     if(!await d.start(id,token,target))return {outcome:'busy'};
     let outcome:NotificationEmailOutcome='sent',error:NotificationEmailError|null=null;
     try {
-      await d.send(target,{category:category.data,locale,link,...(design?{design}:{}),action:target.severity==='action',messageId:`<notification-${id}@${new URL(d.origin).hostname}>`,...(assessmentTasks?{assessmentTasks,assessmentWords}:{})});
+      await d.send(target,{...(privateMessage?{privateMessage}:{}),category:category.data,locale,link,...(design?{design}:{}),action:target.severity==='action',messageId:`<notification-${id}@${new URL(d.origin).hostname}>`,...(assessmentTasks?{assessmentTasks,assessmentWords}:{})});
     }catch(e){({outcome,error}=notificationSmtpFailure(e));}
     // A DB failure after SMTP is never rewritten as rejection. The durable started lease holds it
     // uncertain on expiry, so no caller retries an already accepted message blindly.
