@@ -63,10 +63,16 @@ CREATE OR REPLACE FUNCTION app.reward_access_request_authorised(wanted_request u
  SELECT EXISTS(SELECT 1 FROM public.reward_access_request q WHERE q.id=wanted_request AND q.tenant_id=app.current_tenant_id()
  AND (q.requested_by=app.current_user_id() OR NOT EXISTS(SELECT 1 FROM jsonb_each(q.unit_revisions) k WHERE NOT app.reward_access_manage(k.key::uuid))));
 $$;
+-- Independence follows canonical Person identity across every existing login, never email.
+CREATE FUNCTION app.reward_access_request_independent(wanted_request uuid,wanted_user uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.reward_access_request q JOIN public.app_user actor ON actor.id=wanted_user AND actor.tenant_id=q.tenant_id WHERE q.id=wanted_request AND q.tenant_id=app.current_tenant_id() AND actor.id<>q.requested_by
+ AND NOT EXISTS(SELECT 1 FROM public.app_user requester WHERE requester.id=q.requested_by AND requester.tenant_id=q.tenant_id AND actor.person_id IS NOT NULL AND requester.person_id=actor.person_id)
+ AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(q.changes) c JOIN public.app_user affected ON affected.tenant_id=q.tenant_id AND affected.id::text IN(c->'before'->>'userId',c->'after'->>'userId') WHERE affected.id=actor.id OR actor.person_id IS NOT NULL AND affected.person_id=actor.person_id));
+$$;
+REVOKE ALL ON FUNCTION app.reward_access_request_independent(uuid,uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.reward_access_request_can_decide(wanted_request uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.reward_access_request q WHERE q.id=wanted_request AND q.tenant_id=app.current_tenant_id() AND q.status='pending'
- AND app.current_user_id() IS NOT NULL AND q.requested_by<>app.current_user_id()
- AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(q.changes) c WHERE app.current_user_id()::text IN(c->'before'->>'userId',c->'after'->>'userId'))
+ AND app.reward_access_request_independent(q.id,app.current_user_id())
  AND NOT EXISTS(SELECT 1 FROM jsonb_each(q.unit_revisions) k WHERE NOT EXISTS(SELECT 1 FROM app.reward_roles(k.key::uuid) role WHERE role='gr')));
 $$;
 REVOKE ALL ON FUNCTION app.reward_access_request_can_decide(uuid) FROM PUBLIC;
@@ -141,7 +147,8 @@ BEGIN
  SELECT * INTO q FROM public.reward_access_request WHERE id=wanted_request AND tenant_id=t;
  IF q.id IS NULL OR NOT app.reward_access_request_authorised(q.id) THEN RAISE EXCEPTION 'access request scope' USING ERRCODE='42501'; END IF;
  IF q.status<>'pending' THEN RAISE EXCEPTION 'access request already decided' USING ERRCODE='40001'; END IF;
- IF NOT p_immediate AND (actor IS NULL OR actor=q.requested_by OR EXISTS(SELECT 1 FROM jsonb_array_elements(q.changes) assignments(change) WHERE actor::text IN(assignments.change->'before'->>'userId',assignments.change->'after'->>'userId'))) THEN RAISE EXCEPTION 'second independent administrator required' USING ERRCODE='42501'; END IF;
+ PERFORM 1 FROM public.app_user account WHERE account.tenant_id=t AND (account.id=actor OR account.id=q.requested_by OR account.id::text IN(SELECT value FROM jsonb_array_elements(q.changes) c CROSS JOIN LATERAL (VALUES(c->'before'->>'userId'),(c->'after'->>'userId')) identities(value))) ORDER BY account.id FOR SHARE;
+ IF NOT p_immediate AND NOT app.reward_access_request_independent(q.id,actor) THEN RAISE EXCEPTION 'independent Group Rewards checker required' USING ERRCODE='42501'; END IF;
  IF p_immediate THEN
  SELECT jsonb_object_agg(k.key,app.reward_access_exemption(k.key::uuid)) INTO exemptions FROM jsonb_each(q.unit_revisions) k;
  IF actor IS DISTINCT FROM q.requested_by OR EXISTS(SELECT 1 FROM jsonb_each(q.unit_revisions) k WHERE app.reward_access_exemption(k.key::uuid) IS NULL) THEN RAISE EXCEPTION 'immediate access authority changed' USING ERRCODE='42501'; END IF;

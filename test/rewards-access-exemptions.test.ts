@@ -51,6 +51,21 @@ describe('Rewards authoritative immediate application and GR decisions',()=>{
   expect(attempts.filter(a=>a.status==='fulfilled')).toHaveLength(1);
   const [q]=await owner.db.select().from(s.rewardAccessRequest).where(eq(s.rewardAccessRequest.id,result.requestId));expect(q).toMatchObject({status:'approved',decidedBy:gr.userId});
  });
+ it('keeps person-level independence across alternate requester and affected-person logins',async()=>{
+  const requester=await user('Requester with another login','super_admin'),target=await user('Affected person with another login'),independent=await user('Actually independent GR');
+  const requesterAlternate={...requester,userId:await createAppUser(b.tenantId,requester.personId!,'employee'),roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
+  const affectedAlternate={...target,userId:await createAppUser(b.tenantId,target.personId!,'employee')} satisfies SessionContext;
+  for(const actor of [requesterAlternate,affectedAlternate,independent])await seat(actor,'gr');
+  const pending=await (await change(requester,target)).save();expect(pending.pending).toBe(true);
+  for(const actor of [requesterAlternate,affectedAlternate]){
+   expect((await rewardAccessRequests(actor)).find(q=>q.id===pending.requestId)?.canDecide).toBe(false);
+   await expect(decideRewardAccessRequest(actor,pending.requestId,true,'Alternate account must not approve')).rejects.toMatchObject({code:'checker'});
+   await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_access_request_decide(${pending.requestId}::uuid,true,'Alternate account direct native refusal')`))).rejects.toThrow();
+  }
+  expect((await owner.db.select().from(s.rewardAccessRequest).where(eq(s.rewardAccessRequest.id,pending.requestId)))[0].status).toBe('pending');
+  await decideRewardAccessRequest(independent,pending.requestId,true,'Different person independently reviewed');
+  expect((await owner.db.select().from(s.rewardAccessRequest).where(eq(s.rewardAccessRequest.id,pending.requestId)))[0]).toMatchObject({status:'approved',decidedBy:independent.userId});
+ });
  it('cannot acquire its own exemption through a pending grant and preserves existing pending rows after the role changes',async()=>{
   const requester=await user('Non-exempt administrator','super_admin'),gr=await user('Independent Group Rewards');await seat(gr,'gr');
   const self=await change(requester,requester,'gr'),pending=await self.save();expect(pending.pending).toBe(true);
