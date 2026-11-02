@@ -2123,10 +2123,10 @@ async function rosterRowBefore(
 }
 
 /** Assign (or re-assign) a shift to an employee on a date. Upsert: one assignment per (employee, date). */
-export async function assignShift(ctx: SessionContext, p: { employmentId: string; shiftDate: string; shiftId: string }) {
+export async function assignShift(ctx: SessionContext, p: { employmentId: string; shiftDate: string; shiftId: string }, existingTx?: Tx) {
   p={...p};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async (tx) => {
+  const perform = async (tx: Tx) => {
     await assertDutyRosterWriteTx(tx,ctx,[{...p,isRestDay:false}]);
     // 870b79e2 — the Schedule Group's allowed-shift list, enforced before the upsert. assignRosterRow
     // loops this primitive per date, so the per-date roster brush is covered by this one call.
@@ -2150,7 +2150,8 @@ export async function assignShift(ctx: SessionContext, p: { employmentId: string
       payload: { employmentId: p.employmentId, shiftDate: p.shiftDate, shiftId: p.shiftId, ...before },
     });
     return { id: row.id };
-  });
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
 }
 
 /** Mark a date as an explicit rest day for an employee (vs no row = company-policy fallback). */
@@ -3024,21 +3025,42 @@ export function assertRosterDatesWritable(ctx: SessionContext, dates: string[], 
  * bounded, so the row panel can afford a reversible event per date and the Audit Trail gets the
  * before/after it was promised.
  */
-export async function assignRosterRow(
+/** Atomic brush across an explicitly selected population. Per-date before/after audit is retained.
+ * Acquire the complete ordered dependency set before any row mutation, not one employee at a time. */
+export async function assignRosterRows(
   ctx: SessionContext,
-  p: { employmentId: string; shiftDates: string[]; brush: string },
+  p: { employmentIds: string[]; shiftDates: string[]; brush: string },
 ): Promise<{ applied: number }> {
-  p={...p,shiftDates:p.shiftDates.slice()};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  const employees = [...new Set(p.employmentIds)].sort();
   const dates = [...new Set(p.shiftDates)].filter(isIsoDate).sort();
-  // Both rights, in order: may this session write the roster at all, then may it write these dates.
+  const brush = p.brush;
+  ctx = {...ctx, roles:ctx.roles?.slice(), grants:ctx.grants?.map(grant=>({...grant}))};
   assertRosterAdmin(ctx);
   assertRosterDatesWritable(ctx, dates);
-  for (const shiftDate of dates) {
-    if (p.brush === 'rest') await setRestDay(ctx, { employmentId: p.employmentId, shiftDate });
-    else if (p.brush === 'clear') await clearRoster(ctx, { employmentId: p.employmentId, shiftDate });
-    else await assignShift(ctx, { employmentId: p.employmentId, shiftDate, shiftId: p.brush });
-  }
-  return { applied: dates.length };
+  if (!employees.length || !dates.length) return {applied:0};
+  return withTenant(ctx, async tx => {
+    const writes = employees.flatMap(employmentId => dates.map(shiftDate =>
+      brush === 'clear' ? {employmentId,shiftDate,clear:true as const} :
+        {employmentId,shiftDate,shiftId:brush === 'rest' ? null : brush,isRestDay:brush === 'rest'}));
+    await assertDutyRosterWriteTx(tx,ctx,writes);
+    if (brush !== 'rest' && brush !== 'clear') {
+      await assertShiftsAllowedForEmploymentsTx(tx, employees.flatMap(employmentId =>
+        dates.map(shiftDate => ({employmentId,shiftDate,shiftId:brush}))));
+    }
+    for (const employmentId of employees) for (const shiftDate of dates) {
+      if (brush === 'rest') await setRestDay(ctx, {employmentId,shiftDate},tx);
+      else if (brush === 'clear') await clearRoster(ctx, {employmentId,shiftDate},tx);
+      else await assignShift(ctx, {employmentId,shiftDate,shiftId:brush},tx);
+    }
+    return {applied:employees.length * dates.length};
+  });
+}
+
+export function assignRosterRow(
+  ctx: SessionContext,
+  p: {employmentId:string;shiftDates:string[];brush:string},
+): Promise<{applied:number}> {
+  return assignRosterRows(ctx,{employmentIds:[p.employmentId],shiftDates:p.shiftDates.slice(),brush:p.brush});
 }
 
 /** The upload's single audit entry (requirement 10: "each upload is ONE entry with the file name,
