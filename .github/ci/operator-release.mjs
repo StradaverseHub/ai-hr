@@ -44,7 +44,7 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  const current=()=>official.parseDeployStatus(ssh('cd /opt/ai-hr && deploy/deploy-state.sh status'));
  const initial=current(),baseline=baselineRules.readyProductionBaseline(initial);
  cleanHead(candidatePath);cleanHead(controllerRoot);
- const profilePreflight=await probeStagingProfile({candidatePath,ssh});
+ const profilePreflight=await probeStagingProfile({candidatePath,baseline,ssh});
  const expectedBaseline=expectedBaselineMigrationLedger(candidatePath,baseline);
  const baselineLedger=verifyBaselineMigrationPreflight({candidatePath,baseline,ssh});
  const recovering=recoveryRunIds.length>0;
@@ -54,7 +54,7 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  save('operator-preflight.json',{...evidence,target:STAGING,baselineLedger,profilePreflight,execute,packetTransport});
  if(!execute)return evidence;
  const frozen=()=>{if(cleanHead(candidatePath)!==evidence.sha||cleanHead(controllerRoot)!==(evidence.verificationController??evidence.controller))throw Error('Verified source changed');};
- const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,ssh});await (browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence));validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
+ const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,baseline,ssh});await (browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence));validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
   if(!announced){const actual=JSON.parse(ssh(stagingLedgerProbeCommand(),{input:LEDGER_QUERY,timeout:20000,maxBuffer:4*1024**2}));const fresh=validateMigrationLedgerRows(expectedBaseline,actual);if(fresh.actualSha256!==baselineLedger.actualSha256)throw Error('Applied migration history changed before source transfer');}
  };
  frozen();await revalidate();
