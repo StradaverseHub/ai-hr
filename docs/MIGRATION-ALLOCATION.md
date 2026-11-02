@@ -1311,3 +1311,15 @@ screen uses separate View/Edit projections and retains the real current value wi
 form when only View is present. Native company-HR positives, actual immutable-version refusal,
 raw/stale non-admin negatives and rendered sibling/View separation are authored, unrun. Future
 supported-denial/default/recipient proof still needs genuine component completion/publication.
+
+Shared Clocking Sites now have exact View/Add/Edit/Delete under Attendance Configuration, with the
+original 0459/0517 stored/current group-admin write floor and scoped-HR maintenance View. The existing
+open-company reader owns row/name visibility; employee clock/history/reference readers remain separate.
+Native writers and parent/company-link row guards repeat the exact purpose. Actual AFTER INSERT full
+parent birth binds company initialization to Add; later link changes use Edit, while actual consumed
+parent removal uses Delete. No posted birth flag or broad employee read is granted. Private source
+refusals retain assigned-company/site in-use protection even when an administrative data profile hides
+employees from the UI count. The maintenance list/detail and direct form routes consume independent
+operation projections. Native source/floor and rendered projection cases are authored, unrun.
+Genuine supported-denial/default/recipient qualification, all native constructor business rules and
+cross-source assignment/config serialization remain qualification work; this is not module completion.

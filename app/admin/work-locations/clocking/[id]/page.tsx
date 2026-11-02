@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
-import { listClockingLocations } from '@/packs/attendance/service';
+import { listClockingLocationsForMaintenance as listClockingLocations, clockingSiteActionAccess } from '@/packs/attendance/service';
 import { Card, PageHeader, SectionHeader, btnGhost, pageWideCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { deleteClockingLocationAction } from '../../../actions';
@@ -43,6 +43,7 @@ export default async function ViewClockingLocationPage({
   const site = (await listClockingLocations(s, { status: 'all' })).find((cl) => cl.id === rawId);
   if (!site) notFound();
   const groupAdmin = isGroupAdmin(s);
+  const [canEdit, canDelete] = await Promise.all((['edit', 'delete'] as const).map(op => clockingSiteActionAccess(s, op)));
   const rawCompany = typeof sp.company === 'string' ? sp.company : '';
   const returnCompany = UUID_RE.test(rawCompany) && site.companies.some((c) => c.id === rawCompany) ? rawCompany : undefined;
   const listHref = clockingFocusHref(site.id, returnCompany);
@@ -74,7 +75,7 @@ export default async function ViewClockingLocationPage({
         description={site.name}
         back={{ href: listHref, label: t('backToLocations') }}
         actions={
-          groupAdmin ? (
+          groupAdmin && canEdit ? (
             <Link href={editHref} className={btnGhost}>
               {t('edit')}
             </Link>
@@ -110,7 +111,7 @@ export default async function ViewClockingLocationPage({
         </div>
       </Card>
 
-      {groupAdmin && (
+      {groupAdmin && canDelete && (
         <Card>
           <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
             <span className="text-xs text-muted-foreground">{t('clockingNote')}</span>

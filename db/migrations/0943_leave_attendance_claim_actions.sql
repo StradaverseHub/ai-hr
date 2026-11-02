@@ -1472,14 +1472,101 @@ CREATE TRIGGER aaa_schedule_exception_action BEFORE INSERT ON public.attendance_
 CREATE TRIGGER module_schedule_exception_access BEFORE INSERT ON public.attendance_exception_revision FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
 
 --> statement-breakpoint
+-- Shared Clocking Sites retain the original group-admin write ceiling and ANY-HR maintenance
+-- View; scoped maintenance rows remain bounded by the native open-company reader.
+CREATE FUNCTION app.clocking_site_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT co IS NULL AND cap IN ('function.attendancePolicy.clockingSites.view','function.attendancePolicy.clockingSites.add','function.attendancePolicy.clockingSites.edit','function.attendancePolicy.clockingSites.delete','attendance_configuration.view','attendance_configuration.add','attendance_configuration.edit','attendance_configuration.delete')
+ AND app.module_action_legacy_allowed(t,u,'attendance_configuration.'||regexp_replace(cap,'^.*[.]',''),NULL)
+ AND(regexp_replace(cap,'^.*[.]','')='view' OR EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND(r.role::text='super_admin' OR r.role::text='hr_admin' AND r.company_id IS NULL)));
+$$;
+CREATE FUNCTION app.clocking_site_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.clocking_site_native_allowed(t,u,cap,co)
+ AND app.module_action_current_legacy_allowed(t,u,'attendance_configuration.'||regexp_replace(cap,'^.*[.]',''),NULL)
+ AND(regexp_replace(cap,'^.*[.]','')='view' OR app.is_group_admin());
+$$;
+REVOKE ALL ON FUNCTION app.clocking_site_native_allowed(uuid,uuid,text,uuid),app.clocking_site_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+  PERFORM app.register_function_action('attendancePolicy.clockingSites',operation,'tenant','attendance_configuration.'||operation,'app.clocking_site_current_native_allowed','{"moduleKey":"attendance","labelKey":"nav.locations","kind":"submenu","course":"administrative","screenKey":"locations","href":"/admin/work-locations/clocking","employeeBearing":false}');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.clocking_site_allowed(p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.clocking_site_current_native_allowed(app.current_tenant_id(),app.current_user_id(),'function.attendancePolicy.clockingSites.'||p_operation,NULL)
+ AND app.module_action_allowed('attendance_configuration','view',NULL) AND app.module_action_allowed('attendance_configuration',p_operation,NULL)
+ AND app.function_action_allowed('attendancePolicy.clockingSites','view',NULL) AND app.function_action_allowed('attendancePolicy.clockingSites',p_operation,NULL);
+$$;
+REVOKE ALL ON FUNCTION app.clocking_site_allowed(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.clocking_site_allowed(text) TO ai_hr_app;
+CREATE TABLE app.clocking_site_source(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,site_id uuid NOT NULL,kind text NOT NULL CHECK(kind IN('birth','removed')),source jsonb NOT NULL,authority_stamp text NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,site_id,kind));
+REVOKE ALL ON app.clocking_site_source FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.clocking_site_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;image public.clocking_location%ROWTYPE;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_OP='DELETE' THEN image:=OLD;ELSE image:=NEW;END IF;
+ IF TG_OP='UPDATE' AND OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL THEN
+  operation:='delete';
+  IF to_jsonb(OLD)-ARRAY['archived_at','updated_at'] IS DISTINCT FROM to_jsonb(NEW)-ARRAY['archived_at','updated_at'] AND NOT app.clocking_site_allowed('edit') THEN RAISE EXCEPTION 'Clocking site Edit unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ IF image.tenant_id IS DISTINCT FROM app.current_tenant_id() OR TG_OP='UPDATE' AND ROW(OLD.id,OLD.tenant_id) IS DISTINCT FROM ROW(NEW.id,NEW.tenant_id) OR NOT app.clocking_site_allowed(operation)
+ OR image.location_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.location linked WHERE linked.id=image.location_id AND linked.tenant_id=image.tenant_id)
+ THEN RAISE EXCEPTION 'Clocking site action unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN
+  IF EXISTS(SELECT 1 FROM public.employee_clocking_location assignment WHERE assignment.tenant_id=OLD.tenant_id AND assignment.clocking_location_id=OLD.id) OR EXISTS(SELECT 1 FROM public.attendance punch WHERE punch.tenant_id=OLD.tenant_id AND (punch.check_in_clocking_location_id=OLD.id OR punch.check_out_clocking_location_id=OLD.id)) THEN RAISE EXCEPTION 'Clocking site is in use' USING ERRCODE='42501';END IF;
+  DELETE FROM app.clocking_site_source WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+  INSERT INTO app.clocking_site_source VALUES(pg_current_xact_id(),OLD.tenant_id,app.current_user_id(),OLD.id,'removed',to_jsonb(OLD),app.access_function_authority_stamp());RETURN OLD;
+ END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.clocking_site_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_clocking_site_access BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+CREATE TRIGGER module_clocking_site_action BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location FOR EACH ROW EXECUTE FUNCTION app.clocking_site_guard();
+CREATE FUNCTION app.clocking_site_born() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN
+  DELETE FROM app.clocking_site_source WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+  INSERT INTO app.clocking_site_source VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id,'birth',to_jsonb(NEW),app.access_function_authority_stamp());
+ END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.clocking_site_born() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_clocking_site_born AFTER INSERT ON public.clocking_location FOR EACH ROW EXECUTE FUNCTION app.clocking_site_born();
+CREATE FUNCTION app.clocking_site_company_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE image public.clocking_location_company%ROWTYPE;parent public.clocking_location%ROWTYPE;operation text:='edit';
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_OP='UPDATE' THEN RAISE EXCEPTION 'Clocking site company links are immutable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN image:=OLD;ELSE image:=NEW;END IF;
+ IF image.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=image.company_id AND c.tenant_id=image.tenant_id) THEN RAISE EXCEPTION 'Clocking site company unavailable' USING ERRCODE='42501';END IF;
+ SELECT * INTO parent FROM public.clocking_location site WHERE site.id=image.clocking_location_id AND site.tenant_id=image.tenant_id;
+ IF TG_OP='DELETE' AND parent.id IS NULL AND EXISTS(SELECT 1 FROM app.clocking_site_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=image.tenant_id AND proof.user_id=app.current_user_id() AND proof.site_id=image.clocking_location_id AND proof.kind='removed' AND proof.authority_stamp=app.access_function_authority_stamp()) THEN operation:='delete';
+ ELSIF parent.id IS NULL THEN RAISE EXCEPTION 'Clocking site parent unavailable' USING ERRCODE='42501';
+ ELSIF TG_OP='INSERT' AND EXISTS(SELECT 1 FROM app.clocking_site_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=image.tenant_id AND proof.user_id=app.current_user_id() AND proof.site_id=parent.id AND proof.kind='birth' AND proof.source=to_jsonb(parent) AND proof.authority_stamp=app.access_function_authority_stamp()) THEN operation:='add';END IF;
+ IF NOT app.clocking_site_allowed(operation) THEN RAISE EXCEPTION 'Clocking site company action unavailable' USING ERRCODE='42501';END IF;
+ -- The administrative data profile may hide employees from the caller's native UI count.
+ -- This source-only refusal never returns a hidden row/count and cannot authorize any employee write.
+ IF TG_OP='DELETE' AND parent.id IS NOT NULL AND EXISTS(SELECT 1 FROM public.employee_clocking_location assignment JOIN public.employment employment ON employment.id=assignment.employment_id AND employment.tenant_id=assignment.tenant_id WHERE assignment.tenant_id=image.tenant_id AND assignment.clocking_location_id=image.clocking_location_id AND employment.company_id=image.company_id) THEN RAISE EXCEPTION 'Clocking site company is in use' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.clocking_site_company_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_clocking_site_company_access BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location_company FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+CREATE TRIGGER module_clocking_site_company_action BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location_company FOR EACH ROW EXECUTE FUNCTION app.clocking_site_company_guard();
+
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_native_allowed(t,u,cap,co)) OR app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
+ SELECT (cap LIKE 'function.attendancePolicy.clockingSites.%' AND app.clocking_site_native_allowed(t,u,cap,co)) OR (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_native_allowed(t,u,cap,co)) OR app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_current_native_allowed(t,u,cap,co)) OR app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
+ SELECT (cap LIKE 'function.attendancePolicy.clockingSites.%' AND app.clocking_site_current_native_allowed(t,u,cap,co)) OR (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_current_native_allowed(t,u,cap,co)) OR app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 

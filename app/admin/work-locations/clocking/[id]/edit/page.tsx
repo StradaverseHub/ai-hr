@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listLocations } from '@/core/location';
-import { listClockingLocations } from '@/packs/attendance/service';
+import { listClockingLocationsForMaintenance as listClockingLocations, clockingSiteActionAccess } from '@/packs/attendance/service';
 import { PageHeader, pageWideCls } from '@/components/ui';
 import { ClockingLocationForm } from '../../clocking-form';
 import { clockingFormOptions } from '../../form-data';
@@ -52,7 +52,7 @@ export default async function EditClockingLocationPage({
 
   const site = (await listClockingLocations(s, { status: 'all' })).find((cl) => cl.id === rawId);
   if (!site) notFound();
-  if (!isGroupAdmin(s)) redirect(clockingViewPage(site.id));
+  if (!isGroupAdmin(s) || !(await clockingSiteActionAccess(s, 'edit'))) redirect(clockingViewPage(site.id));
 
   // r428 — re-validated against THIS location's own companies, never trusted from the url alone.
   const rawCompany = typeof sp.company === 'string' ? sp.company : '';

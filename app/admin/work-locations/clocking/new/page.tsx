@@ -1,5 +1,7 @@
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { getTranslations } from 'next-intl/server';
+import { redirect } from 'next/navigation';
+import { clockingSiteActionAccess } from '@/packs/attendance/service';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listLocations } from '@/core/location';
 import { Card, PageHeader, pageWideCls } from '@/components/ui';
@@ -37,6 +39,8 @@ export default async function NewClockingLocationPage({
   const t = await getTranslations('admin.locations');
   const sp = await searchParams;
   const groupAdmin = isGroupAdmin(s);
+  if (!(await clockingSiteActionAccess(s, 'view'))) redirect(CLOCKING_LIST);
+  if (groupAdmin && !(await clockingSiteActionAccess(s, 'add'))) redirect(CLOCKING_LIST);
   const error = typeof sp.error === 'string' ? sp.error : undefined;
 
   if (!groupAdmin) {
