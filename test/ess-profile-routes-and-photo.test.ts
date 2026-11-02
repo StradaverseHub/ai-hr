@@ -21,7 +21,8 @@ const group=():SessionContext=>({...adminCtx(b),grants:[{role:'hr_admin',company
 async function worker(name:string,role:'employee'|'hr_admin'='employee'){
  const hired=await hireEmployee(group(),{person:{fullName:name,primaryEmail:`${randomUUID()}@example.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
  const userId=await createAppUser(b.tenantId,hired.personId,role);
- return {...hired,ctx:{...adminCtx(b),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:null}]} satisfies SessionContext};
+ const context:SessionContext & {userId:string;personId:string}={...adminCtx(b),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:null}]};
+ return {...hired,ctx:context};
 }
 function rule(subject:string,approver:string):ProfileRouteRule{return {id:randomUUID(),name:'Named HR fixture',approverEmploymentId:approver,employmentIds:[subject],criteria:{}};}
 async function proposed(ctx:SessionContext,employmentId:string,includePhone=false){

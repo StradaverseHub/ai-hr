@@ -759,6 +759,16 @@ $$;
 REVOKE ALL ON FUNCTION app.access_workforce_prepare_hire_source(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.access_workforce_prepare_hire_source(uuid,uuid) TO ai_hr_app;
 --> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_auto_code_issued(p_source jsonb,p_company uuid,p_code text) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ RETURN app.principal_snapshot_current() AND p_source->>'tenant_id'=app.current_tenant_id()::text AND p_source->>'company_id'=p_company::text
+  AND nullif(p_source->>'reserved_employee_code','') IS NULL AND p_source#>>'{data,profile,employeeIdMode}'='auto'
+  AND EXISTS(SELECT 1 FROM app.workforce_hire_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.company_id=p_company AND proof.source=p_source AND proof.source_hash=encode(sha256(convert_to(p_source::text,'UTF8')),'hex'))
+  AND app.organisation_employee_code_issued(p_company,p_code);
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_auto_code_issued(jsonb,uuid,text) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.access_workforce_bind_hire_source() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE p public.person;source record;expected_code text;
@@ -770,8 +780,7 @@ BEGIN
   -- Auto may ignore an old manual textbox only when the real native allocator actually issued
   -- this exact new code in the same actor/tenant/company transaction. Held/manual codes stay exact.
   IF expected_code IS NOT NULL AND upper(expected_code) IS DISTINCT FROM NEW.employee_code
-   AND nullif(source.source->>'reserved_employee_code','') IS NULL AND source.source#>>'{data,profile,employeeIdMode}'='auto'
-   AND app.organisation_employee_code_issued(NEW.company_id,NEW.employee_code) THEN expected_code:=NEW.employee_code;END IF;
+   AND app.workforce_draft_auto_code_issued(source.source,NEW.company_id,NEW.employee_code) THEN expected_code:=NEW.employee_code;END IF;
   IF btrim(source.source#>>'{data,profile,fullName}') IS DISTINCT FROM btrim(p.full_name)
    OR lower(btrim(source.source#>>'{data,profile,primaryEmail}')) IS DISTINCT FROM lower(btrim(p.primary_email))
    OR source.source#>>'{data,employment,hiredOn}' IS DISTINCT FROM NEW.hired_on::text
@@ -822,7 +831,7 @@ REVOKE ALL ON FUNCTION app.access_workforce_hire_source_supported(jsonb) FROM PU
 CREATE FUNCTION app.access_workforce_hire_effects_match(data jsonb,p_employment uuid) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE e public.employment%ROWTYPE;master jsonb;placement jsonb;stat jsonb;pay jsonb;section record;entry record;
- target jsonb;column_name text;expected text;actual text;mode text;family_row jsonb;stored_family jsonb;family_expected jsonb;expected_members jsonb:='[]';actual_members jsonb;key text;profile jsonb;
+ target jsonb;column_name text;expected text;actual text;mode text;family_row jsonb;stored_family jsonb;family_expected jsonb;expected_members jsonb:='[]';actual_members jsonb;key text;profile jsonb;original_source_data jsonb:=data;
 BEGIN
  SELECT * INTO e FROM public.employment WHERE id=p_employment AND tenant_id=app.current_tenant_id();
  IF NOT FOUND OR NOT app.data_permission_employment_born(e.id) OR NOT app.access_workforce_hire_source_supported(data) THEN RETURN false;END IF;
@@ -846,7 +855,11 @@ BEGIN
    target:=CASE section.key WHEN 'profile' THEN master WHEN 'employment' THEN to_jsonb(e) WHEN 'statutory' THEN stat WHEN 'payroll' THEN pay END;
    IF section.key='profile' THEN
     IF entry.key IN ('employeeIdMode','sameAsPermanent') THEN CONTINUE;END IF;
-    IF entry.key='employeeCode' THEN target:=to_jsonb(e);END IF;
+    IF entry.key='employeeCode' THEN
+     target:=to_jsonb(e);
+     -- Repeat the same bound full-source issuance fact at actual consumption; no posted-mode waiver.
+     IF EXISTS(SELECT 1 FROM app.workforce_hire_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=e.tenant_id AND proof.user_id=app.current_user_id() AND proof.employment_id=e.id AND proof.source->'data'=original_source_data AND app.workforce_draft_auto_code_issued(proof.source,e.company_id,e.employee_code)) THEN expected:=e.employee_code;END IF;
+    END IF;
     IF entry.key='icNumber' OR entry.key LIKE 'passport%' THEN target:=stat;END IF;
     IF entry.key='icNumber' THEN expected:=regexp_replace(expected,'[^0-9]','','g');END IF;
     IF entry.key='passportIssuingCountryCode' THEN expected:=upper(expected);END IF;

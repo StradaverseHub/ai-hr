@@ -1158,3 +1158,14 @@ serialization precedes its custom revision lock and upsert. Login presentation a
 are read only for their own View purpose and receive separate Edit controls, defaulting closed.
 The existing native bounds, optimistic revision and audit remain unchanged. Native and locale DOM
 qualification is required; no broader Settings source-completion claim follows.
+
+### Repeat generated-code custody at source completion
+
+The remaining original2185 wizard failure came from the complete effect matcher independently
+comparing the ignored Auto textbox again at Draft deletion. Binding and consumption now share one
+private helper that requires exact full private hire source/current actor/transaction and the actual
+successful942 issued code. The matcher additionally requires that source's actual bound employment
+and unchanged original data. Manual/reserved values and every other materialized field still match;
+the three native negative custody cases and existing wizard positive assertion remain unchanged.
+The maintenance fixture's actual native context now has its declared SessionContext grant type,
+retaining concrete native user/person IDs without a cast or authority assertion suppression.
