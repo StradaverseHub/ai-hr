@@ -132,7 +132,7 @@ const EMPLOYEE_FIELDS=new Set(['employee','employeeComments']);
 const MANAGER_FIELDS=new Set(['kpis','support','manager','reviewOn','conductedBy','strengths','development','managerComments','outcome','midpointStatus','justification','extensionMonths']);
 /** An unlock changes revision/state; it does not grant PBP/GBS edit authority over another actor. */
 export function editProbationPart(record:ProbationCase,partId:string,role:ProbationRole,patch:Partial<ProbationPart>):ProbationCase{
-  const part=record.parts.find(p=>p.id===partId);if(!part)reject('Review not found.');
+  const part=record.parts.find(p=>p.id===partId);if(!part)throw new ProbationError('invalid','Review not found.');
   if(['recorded','locked','completed_offline','cancelled'].includes(part.state)||record.state==='withdrawn')throw new ProbationError('conflict','This review is locked. Request a reasoned unlock.');
   const allowed=role==='employee'?EMPLOYEE_FIELDS:role==='lm'?MANAGER_FIELDS:new Set<string>();
   if(Object.keys(patch).some(k=>!allowed.has(k)))throw new ProbationError('forbidden','Only the field owner may edit these fields.');
