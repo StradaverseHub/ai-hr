@@ -30,11 +30,13 @@ afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 // ── Session: foreground protection and the automatic biometric prompt ─────────────────────────────────────
 
-function sessionFixture(opts: { authenticate?: () => Promise<{ success: boolean }>; preventFails?: boolean } = {}) {
+function sessionFixture(opts: { authenticate?: () => Promise<{ success: boolean }>; preventFails?: boolean; ownEmployments?: string[] } = {}) {
   const local = { getEnrolledLevelAsync: vi.fn(async () => 3), SecurityLevel: { SECRET: 1 },
     authenticateAsync: vi.fn(opts.authenticate ?? (async () => ({ success: true }))) };
   const capture = { preventScreenCaptureAsync: vi.fn(async (_tag?: string) => { if (opts.preventFails) throw new Error('no window'); }), enableAppSwitcherProtectionAsync: vi.fn(async () => undefined) };
   let appState: ((v: string) => void) | null = null;
+  let currentSession: ReturnType<ReturnType<typeof createSessionState>['getSnapshot']> & { setEmploymentId: (id: string | null) => void };
+  const me = { data: { employments: (opts.ownEmployments ?? []).map(employmentId => ({ employmentId })) }, loading: false, error: null };
   const output = { exports: {} as any };
   const code = transpileModule(readFileSync('mobile/lib/session.tsx', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText;
   runInNewContext(code, { exports: output.exports, module: output, require: (id: string) => {
@@ -45,18 +47,34 @@ function sessionFixture(opts: { authenticate?: () => Promise<{ success: boolean 
     if (id === 'expo-web-browser') return { openAuthSessionAsync: vi.fn() };
     if (id === 'react-native') return { Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: (ev: string, fn: (v: string) => void) => { if (ev === 'change') appState = fn; return { remove() {} }; } } };
     if (id === './session-state') return { createSessionState };
+    if (id === './api') return { useApi: () => me };
     if (id === './protected-document') return { sweepProtectedDocuments: () => {} };
     if (id === './push-core') return { releasePushOnExit: async () => undefined };
     if (id === './i18n') return { t: (key: string) => key };
     if (id === './auth') return { hasStoredSession: async () => true, signOut: async () => undefined, assertAuthGeneration() {}, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback' };
     throw new Error(`Unexpected dependency: ${id}`);
   } });
-  function Probe() { const s = output.exports.useSession(); return <div>{s.status === 'signedIn' && s.visible ? 'Private screen' : s.status}</div>; }
+  function Probe() { const s = output.exports.useSession(); currentSession = s; return <div>{s.status === 'signedIn' && s.visible ? 'Private screen' : s.status}</div>; }
   const go = async (v: string) => { await act(async () => { appState!(v); await new Promise((r) => setTimeout(r, 0)); }); };
-  return { local, capture, go, View: () => <output.exports.SessionProvider><Probe /></output.exports.SessionProvider> };
+  return { local, capture, go, session: () => currentSession, me, View: () => <output.exports.SessionProvider><Probe /></output.exports.SessionProvider> };
 }
 
 describe('app lock on return to the foreground', () => {
+  it('resolves the first server-owned employment after normal login without requiring a manual picker visit', async () => {
+    const f = sessionFixture({ ownEmployments: ['own-first', 'own-second'] });
+    render(<f.View />);
+    await screen.findByText('Private screen');
+    await waitFor(() => expect(f.session().employmentId).toBe('own-first'));
+    await act(async () => f.session().setEmploymentId('own-second'));
+    expect(f.session().employmentId).toBe('own-second');
+  });
+  it('keeps a login with no own employment unselected', async () => {
+    const f = sessionFixture({ ownEmployments: [] });
+    render(<f.View />);
+    await screen.findByText('Private screen');
+    expect(f.session().employmentId).toBeNull();
+  });
+
   it('re-attaches screenshot protection with a fresh tag, then prompts biometrics once per lock', async () => {
     const f = sessionFixture(); render(<f.View />);
     await screen.findByText('Private screen');
