@@ -1131,10 +1131,10 @@ This source depends on root942 witness89bc7e9da and requires hosted failed/affec
 ### Current permissions repair source identities (unapplied)
 
 - `0938_data_permission_enforcement.sql`: `cef45c7d9ee037e3b7ff1e5b2d3578eb35c3a96083ffd29e830119421cf52c73`.
-- `0939_workforce_action_permissions.sql`: `ca8f52a313807c7312658b64639d96852175b7fc033daf0f91aec40e4a7b6fa3`.
-- `0941_financial_letter_actions.sql`: `1a822214235ac2785ed5924828084d745cf2050a6eba4de1432f7b16191ef7f5`.
+- `0939_workforce_action_permissions.sql`: `4f8a588cadbb76850f202b916a93ef685300d8ef266d0192942da52f97c03278`.
+- `0941_financial_letter_actions.sql`: `0f381b3461b17a5de5c052ae7d94d2d6570744bca95070a8b73d253298aa9b1e`.
 - `0942_organisation_settings_actions.sql`: `1160474bb42ffdbeb6e24169940b34fdfbb5c028038172df590f18652bc79a03`.
-- `0943_leave_attendance_claim_actions.sql`: `71ff28ba819d85766c7cfc5a1567647e9436515d87e37ea0ccf1d4500bd6b239`.
+- `0943_leave_attendance_claim_actions.sql`: `faac3b990891f862397f06d2bd49928d442de1418052607dcfc4fe418a73c31a`.
 - `0944_lifecycle_rewards_notice_actions.sql`: `06324a06a2236b058a211afc9be3c4972e011fbe3b73597bd15375db9fbc2463`.
 - `0945_financial_setup_actions.sql`: `77ef0067c30e55a48ab591938b3a5e892ba60161036f4b23c678ed280ea5f340`.
 
