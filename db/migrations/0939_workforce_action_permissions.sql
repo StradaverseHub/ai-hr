@@ -735,7 +735,7 @@ CREATE TRIGGER workforce_action_write BEFORE UPDATE OR DELETE ON employment FOR 
 -- Native draft activation consumes a source. It is not the distinct discard/Delete operation.
 CREATE TABLE app.workforce_hire_source (
  xact_id xid8 NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,user_id uuid NOT NULL,
- draft_id uuid NOT NULL,company_id uuid NOT NULL,source_hash text NOT NULL,source jsonb NOT NULL,
+ draft_id uuid NOT NULL,company_id uuid NOT NULL,source_hash text NOT NULL,source jsonb NOT NULL,authority_stamp text NOT NULL,
  employment_id uuid,consumed boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,draft_id),UNIQUE(xact_id,tenant_id,user_id,employment_id)
 );
 ALTER TABLE app.workforce_hire_source ENABLE ROW LEVEL SECURITY;
@@ -752,7 +752,7 @@ BEGIN
  hash:=encode(sha256(convert_to(to_jsonb(d)::text,'UTF8')),'hex');
  IF EXISTS(SELECT 1 FROM app.workforce_hire_source s WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=d.tenant_id AND s.user_id=app.current_user_id() AND (s.draft_id<>d.id OR s.source_hash<>hash OR s.employment_id IS NOT NULL)) THEN RAISE EXCEPTION 'Hire source changed' USING ERRCODE='40001';END IF;
  DELETE FROM app.workforce_hire_source WHERE tenant_id=d.tenant_id AND xact_id<pg_snapshot_xmin(pg_current_snapshot());
- INSERT INTO app.workforce_hire_source(xact_id,tenant_id,user_id,draft_id,company_id,source_hash,source,employment_id) VALUES(pg_current_xact_id(),d.tenant_id,app.current_user_id(),d.id,p_company,hash,to_jsonb(d),NULL) ON CONFLICT DO NOTHING;
+ INSERT INTO app.workforce_hire_source(xact_id,tenant_id,user_id,draft_id,company_id,source_hash,source,authority_stamp,employment_id) VALUES(pg_current_xact_id(),d.tenant_id,app.current_user_id(),d.id,p_company,hash,to_jsonb(d),app.access_function_authority_stamp(),NULL) ON CONFLICT DO NOTHING;
 END;
 $$;
 REVOKE ALL ON FUNCTION app.access_workforce_prepare_hire_source(uuid,uuid) FROM PUBLIC;
@@ -1592,12 +1592,20 @@ GRANT EXECUTE ON FUNCTION app.access_configuration_transition_preview(uuid,text,
 --> statement-breakpoint
 -- Exact native Workforce screen. Dormant registrations do not activate incomplete submenu coverage.
 -- Independent employee/assigned services retain their own final effect owners.
+CREATE FUNCTION app.profile_changes_maintenance_native(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap IN ('function.profileChanges.maintenance.view','function.profileChanges.maintenance.edit')
+ AND (co IS NULL OR EXISTS(SELECT 1 FROM public.company company WHERE company.tenant_id=t AND company.id=co))
+ AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.role_assignment role ON role.tenant_id=actor.tenant_id AND role.app_user_id=actor.id WHERE actor.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(u) AND (role.role::text='super_admin' OR role.role::text='hr_admin' AND role.company_id IS NULL));
+$$;
+REVOKE ALL ON FUNCTION app.profile_changes_maintenance_native(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.workforce_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$'
+ SELECT (cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$'
  AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.role_assignment r ON r.tenant_id=actor.tenant_id AND r.app_user_id=actor.id
   WHERE actor.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
-   AND r.role::text IN ('hr_admin','super_admin') AND CASE WHEN co IS NULL THEN r.company_id IS NULL ELSE app.access_scope_covers(r.company_id,co,t) END);
+   AND r.role::text IN ('hr_admin','super_admin') AND CASE WHEN co IS NULL THEN r.company_id IS NULL ELSE app.access_scope_covers(r.company_id,co,t) END)) OR app.profile_changes_maintenance_native(t,u,cap,co);
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.workforce_function_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
@@ -1606,7 +1614,7 @@ CREATE FUNCTION app.workforce_function_current_legacy_allowed(t uuid,u uuid,cap 
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
  AND app.workforce_function_legacy_allowed(t,u,cap,co)
- AND CASE WHEN co IS NULL THEN EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('hr_admin','super_admin') AND g.company_id IS NULL)
+ AND CASE WHEN cap LIKE 'function.profileChanges.maintenance.%' THEN app.is_group_admin() WHEN co IS NULL THEN EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('hr_admin','super_admin') AND g.company_id IS NULL)
   ELSE app.is_admin_for(co) END;
 $$;
 --> statement-breakpoint
@@ -1796,11 +1804,65 @@ BEGIN
 END; $$;
 REVOKE ALL ON FUNCTION app.data_permission_draft_matches(uuid,uuid,jsonb) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- INSERT RETURNING checks SELECT policies before the new heap tuple is visible. A finite
+-- final BEFORE image bridges only that real native Add; it never replaces stored-source scope.
+CREATE TABLE app.workforce_draft_read_birth(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,draft_id uuid NOT NULL,source jsonb NOT NULL,source_hash text NOT NULL,born boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,draft_id));
+REVOKE ALL ON app.workforce_draft_read_birth FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_read_birth_prepare() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE own boolean;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()
+  OR NEW.created_by_person_id IS DISTINCT FROM (SELECT actor.person_id FROM public.app_user actor WHERE actor.id=app.current_user_id() AND actor.tenant_id=NEW.tenant_id)
+  OR NOT app.data_permission_draft_matches(NEW.tenant_id,app.current_user_id(),to_jsonb(NEW))
+  OR (NEW.company_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.company company WHERE company.id=NEW.company_id AND company.tenant_id=NEW.tenant_id))
+  OR EXISTS(SELECT 1 FROM public.employee_draft existing WHERE existing.id=NEW.id) THEN RAISE EXCEPTION 'Draft birth source unavailable' USING ERRCODE='42501';END IF;
+ own:=app.access_profile_request_own(NEW.created_by_person_id) AND NOT EXISTS(SELECT 1 FROM public.access_user_override denial WHERE denial.user_id=app.current_user_id() AND denial.tenant_id=NEW.tenant_id AND denial.retired_at IS NULL AND denial.effect='deny' AND denial.capability_id IN ('workforce.add','workforce.view','workforce.maintain') AND app.access_scope_covers(denial.company_id,NEW.company_id,NEW.tenant_id));
+ IF NOT(own OR app.access_workforce_draft_action(NEW.company_id,'add')) THEN RAISE EXCEPTION 'Draft birth Add unavailable' USING ERRCODE='42501';END IF;
+ DELETE FROM app.workforce_draft_read_birth WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.workforce_draft_read_birth(xact_id,tenant_id,user_id,draft_id,source,source_hash) VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id,to_jsonb(NEW),encode(sha256(convert_to(to_jsonb(NEW)::text,'UTF8')),'hex'));
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_read_birth_prepare() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER zzz_workforce_draft_read_birth BEFORE INSERT ON public.employee_draft FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_read_birth_prepare();
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_read_birth_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ UPDATE app.workforce_draft_read_birth proof SET born=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.draft_id=NEW.id AND proof.source=to_jsonb(NEW) AND proof.source_hash=encode(sha256(convert_to(to_jsonb(NEW)::text,'UTF8')),'hex');
+ IF NOT FOUND THEN RAISE EXCEPTION 'Draft successful birth source unavailable' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_read_birth_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER workforce_draft_read_birth AFTER INSERT ON public.employee_draft FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_read_birth_record();
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_read_birth_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM app.workforce_draft_read_birth proof WHERE proof.xact_id=NEW.xact_id AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.user_id AND proof.draft_id=NEW.draft_id AND proof.source=NEW.source AND proof.source_hash=NEW.source_hash AND proof.born) THEN RAISE EXCEPTION 'Draft birth effects incomplete' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_read_birth_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER workforce_draft_read_birth_complete AFTER INSERT ON app.workforce_draft_read_birth DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_read_birth_complete();
+--> statement-breakpoint
 CREATE FUNCTION app.data_permission_draft_read(p_draft uuid) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employee_draft source WHERE source.id=p_draft AND source.tenant_id=app.current_tenant_id()
-  AND app.access_workforce_draft(source.company_id,source.created_by_person_id,'read') AND app.data_permission_draft_matches(source.tenant_id,app.current_user_id(),to_jsonb(source)));
-$$;
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE source jsonb;
+BEGIN
+ IF NOT app.principal_snapshot_current() THEN RETURN false;END IF;
+ -- A fresh SPI snapshot selects the actual stored image first, including this command's changes.
+ SELECT to_jsonb(actual) INTO source FROM public.employee_draft actual WHERE actual.id=p_draft AND actual.tenant_id=app.current_tenant_id();
+ IF NOT FOUND THEN
+  SELECT proof.source INTO source FROM app.workforce_draft_read_birth proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft AND proof.source->>'id'=p_draft::text AND proof.source->>'tenant_id'=proof.tenant_id::text AND proof.source_hash=encode(sha256(convert_to(proof.source::text,'UTF8')),'hex') AND NOT proof.born;
+  IF NOT FOUND THEN RETURN false;END IF;
+ END IF;
+ IF source->>'company_id' IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.company company WHERE company.id=(source->>'company_id')::uuid AND company.tenant_id=app.current_tenant_id()) THEN RETURN false;END IF;
+ RETURN app.access_workforce_draft((source->>'company_id')::uuid,(source->>'created_by_person_id')::uuid,'read') AND app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),source);
+END $$;
 REVOKE ALL ON FUNCTION app.data_permission_draft_read(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.data_permission_draft_read(uuid) TO ai_hr_app;
 CREATE POLICY data_permission_draft_read ON public.employee_draft AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.data_permission_draft_read(id));
@@ -1850,3 +1912,170 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   AND EXISTS(SELECT 1 FROM app.workforce_draft_audit audit WHERE audit.xact_id=proof.xact_id AND audit.tenant_id=proof.tenant_id AND audit.user_id=proof.user_id AND audit.draft_id=proof.draft_id AND audit.event_type IN ('employee-draft.created','employee-draft.updated')));
 $$;
 REVOKE ALL ON FUNCTION app.workforce_draft_saved_source_allowed(uuid,jsonb) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Finite derived Onboarding source proof. This does not admit general Personnel writes.
+CREATE FUNCTION app.workforce_draft_active_admitted(p_draft uuid,p_source jsonb,p_employment uuid,p_person uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),p_source)
+ AND app.access_workforce_consumed_draft(p_source)
+ AND EXISTS(SELECT 1 FROM app.workforce_hire_source proof JOIN public.employment employment ON employment.id=proof.employment_id AND employment.tenant_id=proof.tenant_id
+  WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft
+   AND proof.source=p_source AND proof.employment_id=p_employment AND employment.person_id=p_person AND proof.authority_stamp=app.access_function_authority_stamp())
+ AND EXISTS(SELECT 1 FROM public.employee_draft actual WHERE actual.tenant_id=app.current_tenant_id() AND actual.id=p_draft AND to_jsonb(actual)=p_source);
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_active_admitted(uuid,jsonb,uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_active_completed(p_draft uuid,p_source jsonb,p_employment uuid,p_person uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),p_source)
+ AND app.access_workforce_consumed_draft(p_source)
+ AND EXISTS(SELECT 1 FROM app.workforce_hire_source proof JOIN public.employment employment ON employment.id=proof.employment_id AND employment.tenant_id=proof.tenant_id
+  WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft
+   AND proof.source=p_source AND proof.employment_id=p_employment AND employment.person_id=p_person AND proof.consumed AND proof.authority_stamp=app.access_function_authority_stamp())
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_mutation mutation WHERE mutation.xact_id=pg_current_xact_id() AND mutation.tenant_id=app.current_tenant_id() AND mutation.user_id=app.current_user_id() AND mutation.draft_id=p_draft AND mutation.operation='delete' AND mutation.before_source=p_source AND mutation.authority_stamp=app.access_function_authority_stamp())
+ AND NOT EXISTS(SELECT 1 FROM public.employee_draft actual WHERE actual.tenant_id=app.current_tenant_id() AND actual.id=p_draft)
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_audit audit JOIN public.domain_event event ON event.id=audit.event_id AND event.tenant_id=audit.tenant_id WHERE audit.xact_id=pg_current_xact_id() AND audit.tenant_id=app.current_tenant_id() AND audit.user_id=app.current_user_id() AND audit.draft_id=p_draft AND audit.event_type='employee-draft.completed' AND event.subject_employment_id=p_employment AND event.payload->>'employmentId'=p_employment::text AND event.payload->>'companyId'=p_source->>'company_id');
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_active_completed(uuid,jsonb,uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TABLE app.workforce_draft_discard_source(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,draft_id uuid NOT NULL,source jsonb NOT NULL,authority_stamp text NOT NULL,UNIQUE(xact_id,tenant_id,user_id,draft_id));
+CREATE TABLE app.workforce_draft_discard_port(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,draft_id uuid NOT NULL,source jsonb NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,draft_id));
+REVOKE ALL ON app.workforce_draft_discard_source,app.workforce_draft_discard_port FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_discard_begin(p_draft uuid,p_source jsonb) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE actual public.employee_draft%ROWTYPE;result uuid;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO actual FROM public.employee_draft WHERE id=p_draft AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND OR to_jsonb(actual) IS DISTINCT FROM p_source OR NOT app.access_workforce_draft_delete_allowed(p_draft) OR NOT app.data_permission_draft_matches(actual.tenant_id,app.current_user_id(),p_source) OR app.access_function_authority_stamp() IS NULL THEN RAISE EXCEPTION 'Draft discard source unavailable' USING ERRCODE='42501';END IF;
+ DELETE FROM app.workforce_draft_discard_source WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.workforce_draft_discard_source(xact_id,tenant_id,user_id,draft_id,source,authority_stamp) VALUES(pg_current_xact_id(),actual.tenant_id,app.current_user_id(),actual.id,p_source,app.access_function_authority_stamp()) ON CONFLICT(xact_id,tenant_id,user_id,draft_id) DO NOTHING RETURNING id INTO result;
+ IF result IS NULL THEN SELECT id INTO result FROM app.workforce_draft_discard_source WHERE xact_id=pg_current_xact_id() AND tenant_id=actual.tenant_id AND user_id=app.current_user_id() AND draft_id=actual.id AND source=p_source AND authority_stamp=app.access_function_authority_stamp();END IF;
+ IF result IS NULL THEN RAISE EXCEPTION 'Draft discard source changed' USING ERRCODE='42501';END IF;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_discard_begin(uuid,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Only the closed native port's actual DELETE trigger may record this receipt. The outer trigger
+-- is INVOKER so it observes the real port current_user before entering the private recorder.
+CREATE FUNCTION app.workforce_draft_discard_port_record(p_source jsonb) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF p_source->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Draft discard port source unavailable' USING ERRCODE='42501';END IF;
+ DELETE FROM app.workforce_draft_discard_port WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.workforce_draft_discard_port VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),(p_source->>'id')::uuid,p_source);
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_discard_port_record(jsonb) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.workforce_draft_discard_port_record(jsonb) TO ai_hr_draft_discard_port;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_discard_port_needed(p_draft uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.workforce_draft_discard_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft);
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_discard_port_needed(uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.workforce_draft_discard_port_needed(uuid) TO ai_hr_draft_discard_port;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_discard_port_trigger() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF current_user='ai_hr_draft_discard_port' THEN
+  IF app.workforce_draft_discard_port_needed(OLD.id) THEN PERFORM app.workforce_draft_discard_port_record(to_jsonb(OLD));END IF;
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_discard_port_trigger() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER workforce_draft_discard_port AFTER DELETE ON public.employee_draft FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_discard_port_trigger();
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_discard_completed(p_intent uuid,p_draft uuid,p_source jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),p_source)
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_discard_source proof WHERE proof.id=p_intent AND proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft AND proof.source=p_source AND proof.authority_stamp=app.access_function_authority_stamp())
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_discard_port port WHERE port.xact_id=pg_current_xact_id() AND port.tenant_id=app.current_tenant_id() AND port.user_id=app.current_user_id() AND port.draft_id=p_draft AND port.source=p_source)
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_mutation mutation WHERE mutation.xact_id=pg_current_xact_id() AND mutation.tenant_id=app.current_tenant_id() AND mutation.user_id=app.current_user_id() AND mutation.draft_id=p_draft AND mutation.operation='delete' AND mutation.before_source=p_source AND mutation.authority_stamp=app.access_function_authority_stamp())
+ AND NOT EXISTS(SELECT 1 FROM public.employee_draft actual WHERE actual.tenant_id=app.current_tenant_id() AND actual.id=p_draft)
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_audit audit WHERE audit.xact_id=pg_current_xact_id() AND audit.tenant_id=app.current_tenant_id() AND audit.user_id=app.current_user_id() AND audit.draft_id=p_draft AND audit.event_type='employee-draft.discarded');
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_discard_completed(uuid,uuid,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_discard_complete_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.workforce_draft_discard_completed(NEW.id,NEW.draft_id,NEW.source) THEN RAISE EXCEPTION 'Draft discard source effects incomplete' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_discard_complete_guard() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER workforce_draft_discard_complete AFTER INSERT ON app.workforce_draft_discard_source DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_discard_complete_guard();
+
+--> statement-breakpoint
+CREATE FUNCTION app.profile_changes_maintenance_delegation(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.is_group_admin() AND cap IN ('workforce.view','workforce.edit');
+$$;
+REVOKE ALL ON FUNCTION app.profile_changes_maintenance_delegation(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','edit'] LOOP
+  PERFORM app.register_function_action('profileChanges.maintenance',operation,'company','workforce.'||operation,'app.profile_changes_maintenance_delegation',
+  '{"moduleKey":"workforce","labelKey":"nav.profileChanges","kind":"native_acl","course":"administrative","screenKey":"profileChanges","href":"/admin/personnel/profile-changes","employeeBearing":true}'::jsonb);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_profile_maintenance_allowed(p_subject uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','edit') AND app.principal_snapshot_current() AND app.is_group_admin() AND app.can_admin_employment(p_subject)
+ AND EXISTS(SELECT 1 FROM public.employment employment JOIN public.access_capability family ON family.id='workforce.'||p_operation WHERE employment.tenant_id=app.current_tenant_id() AND employment.id=p_subject
+  AND (NOT family.supported OR app.access_allowed_for(app.current_user_id(),family.id,employment.company_id))
+  AND app.function_action_allowed('profileChanges.maintenance',p_operation,employment.company_id));
+$$;
+REVOKE ALL ON FUNCTION app.workforce_profile_maintenance_allowed(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.workforce_profile_maintenance_allowed(uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.profile_route_reader(p_subject uuid,p_assigned_user uuid,p_assigned_employment uuid,p_status text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT (app.can_admin_employment(p_subject) AND (
+  (p_assigned_user IS NOT NULL AND p_assigned_user=app.current_user_id() AND NOT app.login_blocked(p_assigned_user)
+    AND EXISTS(SELECT 1 FROM app.profile_route_principal(p_assigned_employment,p_subject) p WHERE p.user_id=p_assigned_user))
+  OR (p_assigned_user IS NULL AND (p_status<>'pending' OR NOT EXISTS(SELECT 1 FROM tenant_setting t WHERE t.tenant_id=app.current_tenant_id() AND t.key='ess.profile_change_routing') OR EXISTS(SELECT 1 FROM tenant_setting t WHERE t.tenant_id=app.current_tenant_id() AND t.key='ess.profile_change_routing' AND t.value->>'version' IN ('1','2') AND t.value->'enabled'='false'::jsonb)))
+  OR (current_setting('app.profile_route_maintenance',true)='on' AND app.workforce_profile_maintenance_allowed(p_subject,'view'))
+ )) OR (p_assigned_user=app.current_user_id() AND EXISTS(SELECT 1 FROM public.profile_change_request q
+ WHERE q.employment_id=p_subject AND q.tenant_id=app.current_tenant_id() AND q.route_approver_user_id=p_assigned_user
+ AND q.route_approver_employment_id=p_assigned_employment AND q.status::text=p_status AND app.data_permission_profile_responsibility(q.id))); $$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.profile_request_reader(p_request uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.profile_request_assignee(p_request) OR EXISTS(SELECT 1 FROM public.profile_change_request q
+  WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id() AND app.can_admin_employment(q.employment_id)
+   AND current_setting('app.profile_route_maintenance',true)='on' AND app.workforce_profile_maintenance_allowed(q.employment_id,'view'));
+$$;
+
+--> statement-breakpoint
+CREATE FUNCTION app.profile_changes_maintenance_write_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ -- Existing write-only privacy erasure is a different finite native course. It cannot reroute,
+ -- reassign an approver, retain a proposal or change any other request field.
+ IF NEW.proposed='{"redacted":true}'::jsonb AND NEW.decision_reason IS NULL AND NEW.route_history='[]'::jsonb AND NEW.route_context IS NULL
+  AND (to_jsonb(OLD)-ARRAY['proposed','decision_reason','route_history','route_context']) IS NOT DISTINCT FROM (to_jsonb(NEW)-ARRAY['proposed','decision_reason','route_history','route_context'])
+  AND app.principal_snapshot_current() AND app.can_admin_employment(OLD.employment_id) THEN RETURN NEW;END IF;
+ IF ROW(OLD.route_id,OLD.route_revision,OLD.route_approver_user_id,OLD.route_approver_employment_id,OLD.route_context,OLD.route_history) IS DISTINCT FROM ROW(NEW.route_id,NEW.route_revision,NEW.route_approver_user_id,NEW.route_approver_employment_id,NEW.route_context,NEW.route_history) THEN
+  PERFORM app.access_workforce_write_lock();
+  IF NOT app.workforce_profile_maintenance_allowed(OLD.employment_id,'edit') OR NOT app.workforce_profile_maintenance_allowed(NEW.employment_id,'edit') THEN RAISE EXCEPTION 'Profile maintenance action unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.profile_changes_maintenance_write_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER profile_changes_maintenance_write BEFORE UPDATE ON public.profile_change_request FOR EACH ROW EXECUTE FUNCTION app.profile_changes_maintenance_write_guard();
+CREATE CONSTRAINT TRIGGER profile_changes_maintenance_final AFTER UPDATE ON public.profile_change_request DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.profile_changes_maintenance_write_guard();
+
+--> statement-breakpoint
+CREATE FUNCTION app.profile_changes_maintenance_lock() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN PERFORM app.access_workforce_write_lock();END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.profile_changes_maintenance_lock() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER profile_changes_maintenance_lock BEFORE UPDATE ON public.profile_change_request FOR EACH STATEMENT EXECUTE FUNCTION app.profile_changes_maintenance_lock();
