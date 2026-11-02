@@ -71,9 +71,14 @@ async function askThroughHarness(session:SessionContext,route:Extract<Conversati
   return {ok:true,exchangeId:'teras-'+turn.turnId,answer:await ConversationReply({turn}),conversationToken:turn.continuation};
  }catch(error){
   const code=error instanceof ConversationTurnError?error.code:'provider_error';
+  // A failure the turn did not classify (staging, 2 November 2026: a missing TERAS_PROPOSAL_SECRET made every reply
+  // provider_error with nothing logged). Logged by kind only: never the question, the reply or provider text.
+  if(!(error instanceof ConversationTurnError))console.error('[noveri conversation turn] unclassified failure',unclassifiedFailure(error));
   return {ok:false,message:t.has(`errors.${code}`)?t(`errors.${code}`):t('errors.provider_error')};
  }
 }
+const unclassifiedFailure=(error:unknown)=>{const code=(error as {code?:unknown}|null)?.code;
+ return {name:error instanceof Error?error.name:typeof error,code:typeof code==='string'&&/^[A-Z0-9_]{1,40}$/.test(code)?code:null};};
 
 /** Home chat has no posted page context. It uses exactly the same command and authoritative replay. */
 export async function askFromWorkspaceAction(input: {question:unknown;previousExchangeId?:unknown;previousConversationToken?:unknown;clarificationExchangeId?:unknown}):Promise<LauncherReply>{

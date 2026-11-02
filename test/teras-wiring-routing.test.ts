@@ -75,4 +75,22 @@ describe('switch on: the Teras harness',()=>{
   expect(await askFromLauncherAction({question:'Annual',path:'/assistant',clarificationExchangeId:'closed-0'})).toEqual({ok:false,message:'aiCentre.conversation.errors.continuation_invalid'});
   expect(owner.ask).not.toHaveBeenCalled();
  });
+ it('logs an unclassified failure by kind only, after the turn or while rendering, and stays silent for a classified one',async()=>{
+  owner.route.mockResolvedValue({route:'harness',permit,attestedProvider:null,explainers:false});
+  const logged=vi.spyOn(console,'error').mockImplementation(()=>{});
+  try{
+   class ContinuationRefused extends Error{constructor(){super('PRIVATE continuation detail');this.name='ContinuationRefused';}}
+   owner.turn.mockRejectedValueOnce(new ContinuationRefused());
+   expect(await askFromWorkspaceAction({question:'What can you help me with?'})).toEqual({ok:false,message:'aiCentre.conversation.errors.provider_error'});
+   expect(logged).toHaveBeenLastCalledWith('[noveri conversation turn] unclassified failure',{name:'ContinuationRefused',code:null});
+   owner.render.mockRejectedValueOnce(Object.assign(Error('PRIVATE render detail'),{code:'22P02'}));
+   expect(await askFromWorkspaceAction({question:'How much annual leave do I have?'})).toEqual({ok:false,message:'aiCentre.conversation.errors.provider_error'});
+   expect(logged).toHaveBeenLastCalledWith('[noveri conversation turn] unclassified failure',{name:'Error',code:'22P02'});
+   expect(JSON.stringify(logged.mock.calls)).not.toMatch(/PRIVATE|help me|annual leave/);
+   const {ConversationTurnError}=await import('../core/teras-wiring/turn');
+   logged.mockClear();owner.turn.mockRejectedValueOnce(new (ConversationTurnError as unknown as new(code:string)=>Error)('budget_daily'));
+   expect(await askFromWorkspaceAction({question:'Hi'})).toEqual({ok:false,message:'aiCentre.conversation.errors.budget_daily'});
+   expect(logged).not.toHaveBeenCalled();
+  }finally{logged.mockRestore();}
+ });
 });
