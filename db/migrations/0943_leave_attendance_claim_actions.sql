@@ -2656,3 +2656,29 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.leave_ledger_source_identity() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER aaa_leave_ledger_source_identity BEFORE INSERT ON public.leave_ledger FOR EACH ROW EXECUTE FUNCTION app.leave_ledger_source_identity();
+
+--> statement-breakpoint
+-- A document always follows the actual request's tenant and subject, never a caller
+-- supplied employment alias. Pending uploads use the live human actor; the native
+-- approved split course retains the original uploader on its exact document copies.
+REVOKE UPDATE,DELETE ON public.leave_request_attachment FROM ai_hr_app;
+CREATE TRIGGER aaa_leave_attachment_access BEFORE INSERT OR UPDATE OR DELETE ON public.leave_request_attachment FOR EACH STATEMENT EXECUTE FUNCTION app.claim_native_source_statement_lock();
+CREATE FUNCTION app.leave_attachment_source_identity() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE request public.leave_request%ROWTYPE;rule public.leave_type%ROWTYPE;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ SELECT * INTO request FROM public.leave_request actual WHERE actual.id=NEW.leave_request_id AND actual.tenant_id=NEW.tenant_id AND actual.employment_id=NEW.employment_id;
+ IF NOT FOUND OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current()
+ OR NEW.size_bytes<=0 OR octet_length(NEW.content) IS DISTINCT FROM NEW.size_bytes THEN RAISE EXCEPTION 'Leave attachment source unavailable' USING ERRCODE='42501';END IF;
+ IF request.status::text='pending' THEN
+  SELECT * INTO rule FROM public.leave_type actual WHERE actual.id=request.leave_type_id AND actual.tenant_id=request.tenant_id;
+  IF NOT FOUND OR NEW.uploaded_by_user_id IS DISTINCT FROM app.current_user_id()
+   OR NEW.size_bytes>coalesce(rule.max_doc_bytes,10485760)
+   OR coalesce(cardinality(rule.allowed_mime_types),0)>0 AND NOT coalesce(NEW.mime_type=ANY(rule.allowed_mime_types),false) THEN
+   RAISE EXCEPTION 'Leave attachment upload unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_attachment_source_identity() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_leave_attachment_source_identity BEFORE INSERT ON public.leave_request_attachment FOR EACH ROW EXECUTE FUNCTION app.leave_attachment_source_identity();

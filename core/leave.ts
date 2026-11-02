@@ -5219,6 +5219,7 @@ export async function addLeaveAttachment(
 
 async function addLeaveAttachmentTx(tx: Tx, ctx: SessionContext, p: { leaveRequestId: string; fileName: string; mimeType: string; content: Buffer }): Promise<{ id: string }> {
     if (p.content.byteLength === 0) throw new Error('Empty file');
+    await lockLeaveRequestDependenciesTx(tx,ctx,p.leaveRequestId);
     // Doc-config: join the type to read its mime/size rule. The /me flow already validated upstream (so
     // a bad file never created an orphan request); this is defence-in-depth for any other caller and
     // replaces the previously hard-coded 10 MB ceiling with the type's configured limit.

@@ -633,3 +633,14 @@ it('commits the captured supporting file with the real application and rolls bac
  const audit=await owner.db.select({event:schema.domainEvent.eventType}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,leaveRequestId));
  expect(audit.map(row=>row.event).sort()).toEqual(['leave-request.document.attached','leave-request.submitted']);
 });
+
+it('binds stored Leave attachments to the actual request subject, human uploader and file size',async()=>{
+ const subject=await hire('employee'),other=await hire('employee'),typeId=await leaveType();
+ const apply=(who:Awaited<ReturnType<typeof hire>>)=>requestLeave(who.ctx,{employmentId:who.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const own=await apply(subject),foreign=await apply(other),content=Buffer.from('Fictional supporting file');
+ const row={tenantId:b.tenantId,employmentId:subject.employmentId,leaveRequestId:own.leaveRequestId,content,fileName:'fictional.pdf',mimeType:'application/pdf',sizeBytes:content.length,uploadedByUserId:subject.ctx.userId};
+ for(const candidate of [{...row,leaveRequestId:foreign.leaveRequestId},{...row,sizeBytes:row.sizeBytes-1},{...row,uploadedByUserId:other.ctx.userId}]){
+  expect(await withTenant(subject.ctx,tx=>tx.insert(schema.leaveRequestAttachment).values(candidate)).then(()=>null,pgSqlState)).toBe('42501');
+ }
+ expect(await owner.db.select().from(schema.leaveRequestAttachment).where(eq(schema.leaveRequestAttachment.tenantId,b.tenantId))).toEqual([]);
+});
