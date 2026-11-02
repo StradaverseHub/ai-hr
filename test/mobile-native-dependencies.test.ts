@@ -100,14 +100,15 @@ describe('native dependency fixes — actual installed callers', () => {
     } finally { clearTimeout(watchdog); await worker.terminate(); }
   }, 10000);
 
-  it('the patched UUID module still produces the Xcode project ids Expo needs', () => {
+  it('the installed Xcode generator produces project ids without the old UUID dependency', () => {
     const xcode = nativeRequire('xcode') as { project: (path: string) => { hash: unknown; generateUuid: () => string } };
     const project = xcode.project('fixture.pbxproj');
     project.hash = { project: { objects: {} } };
     const ids = new Set(Array.from({ length: 50 }, () => project.generateUuid()));
     expect(ids.size).toBe(50);
     for (const id of ids) expect(id).toMatch(/^[A-F0-9]{24}$/);
-    const fromXcode = createRequire(nativeRequire.resolve('xcode'));
-    expect((fromXcode('uuid/package.json') as { version: string }).version).toBe('11.1.1');
+    // SDK58 uses Xcode4, which removed this dependency. Keep the actual ID invariants
+    // above and require the obsolete dependency to stay absent instead of restoring it.
+    expect(nativeRequire('xcode/package.json').dependencies).not.toHaveProperty('uuid');
   });
 });
