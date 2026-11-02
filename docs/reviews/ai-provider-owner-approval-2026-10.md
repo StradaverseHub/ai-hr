@@ -489,3 +489,32 @@ Entra. This exact follow-up review adds no payload, contract, permission or huma
 The final 1150-file digest is `adbd370dd31e429d8090b935c4dbaa730a840d50506aa4443b70269205ca1055`; the same 24 record digests
 are rebound with all other fields and both pending blocks unchanged. The regenerated module digest
 is `2e96d752dfe314bf33eb449ab842a2b39577a67a4e07e5cc9645f122b3181274`.
+
+## Noveri conversation wiring
+
+Wiring the live chat through the Teras turn harness (ADR-0169 §5.1, ADR-0170 §11.3 change 4) adds one provider-data
+contract, `teras_harness_turn_v1` (lib/ai/teras-harness-policy.ts), registered for `hr_assistant` conversations only
+(lib/ai/provider-task-registry.ts), and makes `core/teras-wiring/switch.ts` and `core/teras-wiring/turn.ts` roots of
+the provider-data closure, together with the whole-stack review fixes (PR 202). The closure moves from 1150 files /
+`adbd370dd31e429d8090b935c4dbaa730a840d50506aa4443b70269205ca1055` (released main 50ea2471) to 1247 files /
+`9912948cae6aea43d6431745e4e6df8416264e25cda3e5c0287b9207c1449a47` (candidate 24febe13); the per-file delta is in
+docs/reviews/teras-whole-stack-20261102/final-binding-packet.md.
+
+Owner sign-off of the ADR-0169 privacy review, 2 November 2026: "Go ahead, signed off" (exported answers,
+2026-11-01T18:24:01Z). Processor route is the tenant's choice among existing adapters; a direct route must be
+attested for zero retention and no training, and OpenRouter requests carry data_collection=deny and zdr=true; UnifyAPI
+needs its own approval. Pay reads only as the caller ("Proceed but only based on the user's access").
+
+Remaining conditions: counsel's advice on PDPA cross-border transfer and the data processing agreement before any real
+tenant data reaches a provider; no tenant switch is on; the staging exception covers fictional data only; a
+production-path ceiling rerun must show this gate passing for the approved contract with 0 errors.
+
+The 24 approved records receive only the new sourceDigest (status, reviewer, evidence and timestamps preserved; both
+pending records byte-identical), and one record is added: `teras_harness_turn_v1`, approved, reviewer
+human:zenlam repository-owner provisional, evidence #noveri-conversation-wiring, reviewedAt 2026-11-01T18:24:01Z.
+
+The module-agent manifest is regenerated last, after these literals, from the accepted-source baseline
+`5c20fc595467c167a9dbd2dae60cfdf6ee72fc0175680e9aa3261f18ea8d0040` (456 files; main recorded the stale
+`2e96d752dfe314bf33eb449ab842a2b39577a67a4e07e5cc9645f122b3181274`), under the owner's "Yes, let it move".
+
+This record is not a runtime PASS, staging acceptance or deployment authorisation.
