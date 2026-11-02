@@ -3109,7 +3109,8 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_te
 DECLARE key text:=substring(cap FROM '^function[.](.+)[.][^.]+$');operation text:=substring(cap FROM '[^.]+$');unit public.reward_unit;roles text[];command text;route jsonb;entries jsonb;next_stage text;
 BEGIN
  IF co IS NULL OR cap IS NULL OR cap<>'function.'||key||'.'||operation OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=co AND c.tenant_id=t)OR NOT EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id))THEN RETURN false;END IF;
- IF key IN('rewards.review','rewards.configuration.assigned','rewards.configuration.administration')THEN IF operation<>'view'THEN RETURN false;END IF;
+ IF key IN('rewards.entries','rewards.facts')THEN IF operation NOT IN('view','edit')THEN RETURN false;END IF;
+ ELSIF key IN('rewards.review','rewards.configuration.assigned','rewards.configuration.administration')THEN IF operation<>'view'THEN RETURN false;END IF;
  ELSIF key IN('rewards.posting','rewards.cancellation.assigned','rewards.cancellation.administration')THEN IF operation NOT IN('view','execute')THEN RETURN false;END IF;
  ELSIF key IN('rewards.decisions.submit','rewards.decisions.approve','rewards.decisions.return','rewards.decisions.reject','rewards.decisions.withdraw')THEN
   command:=substring(key FROM '[^.]+$');IF operation<>'view'AND operation<>(CASE WHEN command='approve'THEN'approve'ELSE'execute'END)THEN RETURN false;END IF;
@@ -3121,7 +3122,11 @@ BEGIN
    CONTINUE;
   END IF;
   IF cardinality(roles)=0 THEN CONTINUE;END IF;
-  IF key='rewards.configuration.assigned'THEN
+  IF key IN('rewards.entries','rewards.facts')THEN
+   IF unit.status='draft'AND EXISTS(SELECT 1 FROM public.reward_entry e JOIN public.app_user a ON a.id=u AND a.tenant_id=t WHERE e.unit_id=unit.id AND e.tenant_id=t
+    AND app.reward_calc_entry_visible(jsonb_build_object('source',e.source,'facts',e.facts),roles,a.person_id)
+    AND CASE WHEN key='rewards.facts'THEN'gr'=ANY(roles)ELSE roles&&ARRAY['bu','gr']OR unit.kind<>'annual'AND'bg'=ANY(roles)OR e.facts->>'confidentiality'='ec'AND roles&&ARRAY['gr','ctro','ec']END)THEN RETURN true;END IF;
+  ELSIF key='rewards.configuration.assigned'THEN
    IF'gr'=ANY(roles)THEN RETURN true;END IF;
   ELSIF key='rewards.cancellation.assigned'THEN
    IF'gr'=ANY(roles)AND(operation='view'OR unit.status NOT IN('posted','withdrawn','rejected'))THEN RETURN true;END IF;
@@ -3515,36 +3520,252 @@ END $$;
 REVOKE ALL ON FUNCTION app.reward_decision_native_validate(),app.reward_post_native_validate(),app.reward_cancel_native_validate()FROM PUBLIC,ai_hr_app;
 
 --> statement-breakpoint
--- Private preparation for the existing saveRewardEntry owner. This returns actual locked
--- sources only to the fixed native owner; it is neither an application read nor a mutation
--- capability. Command-specific registration, physical receipts, terminal proof and cutover
--- remain separate prerequisites before any APP execution or raw-write tightening.
-CREATE FUNCTION app.reward_entry_save_admission(p_unit uuid,p_revision integer,p_entry uuid,p_recommendation jsonb,p_facts jsonb DEFAULT NULL)RETURNS jsonb
+-- Shared native unit admission precedes every facts target lookup, so an unseated,
+-- denied or non-GR caller cannot distinguish a real child from an unknown child.
+CREATE FUNCTION app.reward_entry_native_unit(p_unit uuid,p_revision integer,p_course text)RETURNS public.reward_unit
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE unit public.reward_unit;entry public.reward_entry;actor public.app_user;roles text[];recommendation jsonb;facts jsonb;stamp text;
+DECLARE unit public.reward_unit;roles text[];key text;
 BEGIN
  IF nullif(current_setting('app.agent_principal_id',true),'')IS NOT NULL OR app.current_agent_principal()IS NOT NULL OR NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
  PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
- recommendation:=app.reward_calc_recommendation(p_recommendation);
- IF p_facts IS NOT NULL THEN facts:=app.reward_calc_facts(p_facts);END IF;
+ IF p_course NOT IN('save','facts')OR p_course IS NULL THEN RAISE EXCEPTION 'Reward entry course unavailable' USING ERRCODE='42501';END IF;
  SELECT actual.* INTO unit FROM public.reward_unit actual WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id()AND actual.deleted_at IS NULL AND app.reward_unit_native_readable(actual.id)FOR UPDATE;
- SELECT actual.* INTO actor FROM public.app_user actual WHERE actual.id=app.current_user_id()AND actual.tenant_id=app.current_tenant_id()AND actual.archived_at IS NULL AND NOT app.login_blocked(actual.id);
  roles:=ARRAY(SELECT app.reward_roles(p_unit));
- IF unit.id IS NULL OR actor.id IS NULL OR cardinality(roles)=0 THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
- IF app.function_action_allowed('rewards.review','view',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward review function unavailable' USING ERRCODE='42501';END IF;
+ IF unit.id IS NULL OR cardinality(roles)=0 OR NOT EXISTS(SELECT 1 FROM public.app_user actual WHERE actual.id=app.current_user_id()AND actual.tenant_id=app.current_tenant_id()AND actual.archived_at IS NULL AND NOT app.login_blocked(actual.id))THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
  IF p_revision IS NULL OR unit.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'This review changed in another session. Reload before saving.' USING ERRCODE='40001';END IF;
  IF unit.status<>'draft'THEN RAISE EXCEPTION 'Return the unit to draft before changing its approved inputs.' USING ERRCODE='42501';END IF;
+ IF p_course='facts'AND NOT('gr'=ANY(roles))THEN RAISE EXCEPTION 'Only Group Rewards may import ratings and classifications.' USING ERRCODE='42501';END IF;
+ key:=CASE p_course WHEN'save'THEN'rewards.entries'ELSE'rewards.facts'END;
+ IF app.function_action_allowed(key,'view',unit.company_id)IS NOT TRUE OR app.function_action_allowed(key,'edit',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward entry function unavailable' USING ERRCODE='42501';END IF;
+ RETURN unit;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_entry_native_unit(uuid,integer,text)FROM PUBLIC,ai_hr_app;
+-- Private preparation returns locked actual sources only to the fixed native command owner.
+CREATE FUNCTION app.reward_entry_prepare_source(p_unit uuid,p_revision integer,p_entry uuid,p_recommendation jsonb,p_facts jsonb,p_course text)RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;entry public.reward_entry;actor public.app_user;roles text[];recommendation jsonb;facts jsonb;stamp text;
+BEGIN
+ unit:=app.reward_entry_native_unit(p_unit,p_revision,p_course);
+ IF p_course='save'THEN recommendation:=app.reward_calc_recommendation(p_recommendation);END IF;
+ IF p_facts IS NOT NULL THEN facts:=app.reward_calc_facts(p_facts);END IF;
+ SELECT actual.* INTO actor FROM public.app_user actual WHERE actual.id=app.current_user_id()AND actual.tenant_id=app.current_tenant_id()AND actual.archived_at IS NULL AND NOT app.login_blocked(actual.id);
+ roles:=ARRAY(SELECT app.reward_roles(p_unit));
  SELECT actual.* INTO entry FROM public.reward_entry actual WHERE actual.id=p_entry AND actual.unit_id=unit.id AND actual.tenant_id=unit.tenant_id FOR UPDATE;
  IF entry.id IS NULL OR NOT app.reward_calc_entry_visible(jsonb_build_object('source',entry.source,'facts',entry.facts),roles,actor.person_id)THEN RAISE EXCEPTION 'This reward record is not available to you.' USING ERRCODE='42501';END IF;
  IF NOT EXISTS(SELECT 1 FROM public.employment actual WHERE actual.id=entry.employment_id AND actual.tenant_id=entry.tenant_id AND entry.source->>'employmentId'=actual.id::text AND entry.source->>'personId'=actual.person_id::text)THEN RAISE EXCEPTION 'Reward recipient source unavailable' USING ERRCODE='42501';END IF;
- IF NOT(roles&&ARRAY['bu','gr']OR unit.kind<>'annual'AND'bg'=ANY(roles)OR entry.facts->>'confidentiality'='ec'AND roles&&ARRAY['gr','ctro','ec'])THEN RAISE EXCEPTION 'You cannot edit this reward recommendation.' USING ERRCODE='42501';END IF;
- IF entry.facts->>'confidentiality'<>'ec'AND recommendation->'bonusCents'<>'null'::jsonb THEN RAISE EXCEPTION 'Use the bonus multiplier for a standard or JG H employee.' USING ERRCODE='42501';END IF;
+ IF p_course='facts'THEN recommendation:=entry.recommendation;IF p_facts IS NULL THEN RAISE EXCEPTION 'Invalid reward facts' USING ERRCODE='22023';END IF;END IF;
+ IF p_course='save'AND NOT(roles&&ARRAY['bu','gr']OR unit.kind<>'annual'AND'bg'=ANY(roles)OR entry.facts->>'confidentiality'='ec'AND roles&&ARRAY['gr','ctro','ec'])THEN RAISE EXCEPTION 'You cannot edit this reward recommendation.' USING ERRCODE='42501';END IF;
+ IF p_course='save'AND entry.facts->>'confidentiality'<>'ec'AND recommendation->'bonusCents'<>'null'::jsonb THEN RAISE EXCEPTION 'Use the bonus multiplier for a standard or JG H employee.' USING ERRCODE='42501';END IF;
  IF p_facts IS NOT NULL AND NOT('gr'=ANY(roles))AND(NOT('bu'=ANY(roles))OR(facts-ARRAY['erDecision','pipDecision','caseReason'])IS DISTINCT FROM(entry.facts-ARRAY['erDecision','pipDecision','caseReason']))THEN RAISE EXCEPTION 'Only Group Rewards may verify employee inputs.' USING ERRCODE='42501';END IF;
  facts:=coalesce(facts,entry.facts);
  IF facts->'seniorPlan'IS DISTINCT FROM entry.facts->'seniorPlan'THEN RAISE EXCEPTION 'Use the checked Senior membership workflow to change selection.' USING ERRCODE='42501';END IF;
- IF CASE facts->>'confidentiality'WHEN'standard'THEN 0 WHEN'bg'THEN 1 WHEN'ec'THEN 2 ELSE -1 END<CASE coalesce(entry.source->>'confidentialityFloor','standard')WHEN'standard'THEN 0 WHEN'bg'THEN 1 WHEN'ec'THEN 2 ELSE 3 END THEN RAISE EXCEPTION 'Reward confidentiality cannot be below its native source floor' USING ERRCODE='42501';END IF;
+ IF (CASE facts->>'confidentiality'WHEN'standard'THEN 0 WHEN'bg'THEN 1 WHEN'ec'THEN 2 ELSE -1 END)<(CASE coalesce(entry.source->>'confidentialityFloor','standard')WHEN'standard'THEN 0 WHEN'bg'THEN 1 WHEN'ec'THEN 2 ELSE 3 END)THEN RAISE EXCEPTION 'Reward confidentiality cannot be below its native source floor' USING ERRCODE='42501';END IF;
  IF app.reward_calc_entry_visible(jsonb_build_object('source',entry.source,'facts',facts),roles,actor.person_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward recommendation unavailable' USING ERRCODE='42501';END IF;
  stamp:=app.access_function_authority_stamp();IF stamp IS NULL THEN RAISE EXCEPTION 'Reward entry authority unavailable' USING ERRCODE='42501';END IF;
- RETURN jsonb_build_object('tenantId',unit.tenant_id,'userId',actor.id,'unitId',unit.id,'entryId',entry.id,'unitBefore',to_jsonb(unit),'entryBefore',to_jsonb(entry),'recommendation',recommendation,'facts',facts,'authorityStamp',stamp);
+ RETURN jsonb_build_object('tenantId',unit.tenant_id,'userId',actor.id,'unitId',unit.id,'entryId',entry.id,'unitBefore',to_jsonb(unit),'entryBefore',to_jsonb(entry),'recommendation',recommendation,'facts',facts,'authorityStamp',stamp,'course',p_course,'functionKey',CASE WHEN p_course='save'THEN'rewards.entries'ELSE'rewards.facts'END,'positiveAdmission',true);
 END $$;
+REVOKE ALL ON FUNCTION app.reward_entry_prepare_source(uuid,integer,uuid,jsonb,jsonb,text)FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.reward_entry_save_admission(p_unit uuid,p_revision integer,p_entry uuid,p_recommendation jsonb,p_facts jsonb DEFAULT NULL)RETURNS jsonb
+LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.reward_entry_prepare_source(p_unit,p_revision,p_entry,p_recommendation,p_facts,'save'); $$;
 REVOKE ALL ON FUNCTION app.reward_entry_save_admission(uuid,integer,uuid,jsonb,jsonb)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+DO $$ DECLARE k text;op text;BEGIN
+ FOREACH k IN ARRAY ARRAY['rewards.entries','rewards.facts']LOOP FOREACH op IN ARRAY ARRAY['view','edit']LOOP
+  PERFORM app.register_function_action(k,op,'company',NULL,'app.rewards_function_legacy_allowed',jsonb_build_object('moduleKey','rewards','labelKey',CASE k WHEN'rewards.entries'THEN'rewards.recommendation'ELSE'rewards.import'END,'kind','native_acl','course','assigned','screenKey','rewards','href','/rewards','employeeBearing',false));
+ END LOOP;END LOOP;
+END $$;
+CREATE FUNCTION app.reward_entry_row_hash(p_row jsonb)RETURNS text
+LANGUAGE plpgsql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result jsonb:=p_row;k text;
+BEGIN
+ FOREACH k IN ARRAY ARRAY['created_at','updated_at']LOOP IF result?k AND result->k<>'null'::jsonb THEN result:=jsonb_set(result,ARRAY[k],to_jsonb(extract(epoch FROM(result->>k)::timestamptz)));END IF;END LOOP;
+ RETURN encode(sha256(convert_to(result::text,'UTF8')),'hex');
+END $$;
+CREATE TABLE app.reward_entry_native_effect(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),effect_order bigint NOT NULL DEFAULT nextval('app.reward_unit_native_effect_order'),
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,unit_id uuid NOT NULL,
+ course text NOT NULL CHECK(course IN('save','facts')),unit_before jsonb NOT NULL,unit_after jsonb,
+ event_id uuid NOT NULL,event_after jsonb,active boolean NOT NULL DEFAULT true,completed boolean NOT NULL DEFAULT false,recheck bigint NOT NULL DEFAULT 0
+);
+-- One indexed target per actual source. A native 10,000-row import must not repeatedly
+-- concatenate a whole batch of full rows or duplicate the unit policy on every target.
+CREATE TABLE app.reward_entry_native_target(
+ effect_id uuid NOT NULL REFERENCES app.reward_entry_native_effect(id)ON DELETE CASCADE,entry_id uuid NOT NULL,admission jsonb NOT NULL,before_row jsonb NOT NULL,after_row jsonb,
+ PRIMARY KEY(effect_id,entry_id)
+);
+CREATE INDEX reward_entry_native_target_entry ON app.reward_entry_native_target(entry_id,effect_id);
+CREATE TABLE app.reward_entry_native_receipt(
+ effect_id uuid NOT NULL REFERENCES app.reward_entry_native_effect(id)ON DELETE CASCADE,table_name text NOT NULL,row_id uuid NOT NULL,before_hash text NOT NULL,after_hash text NOT NULL,
+ PRIMARY KEY(effect_id,table_name,row_id,before_hash,after_hash)
+);
+CREATE INDEX reward_entry_native_transaction ON app.reward_entry_native_effect(xact_id,tenant_id,user_id,unit_id);
+ALTER TABLE app.reward_entry_native_effect ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.reward_entry_native_target ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.reward_entry_native_receipt ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.reward_entry_native_effect,app.reward_entry_native_target,app.reward_entry_native_receipt FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.reward_entry_native_capture()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof record;target uuid:=CASE WHEN TG_TABLE_NAME='reward_unit'THEN NEW.id ELSE(to_jsonb(NEW)->>'unit_id')::uuid END;
+BEGIN
+ FOR proof IN SELECT e.id FROM app.reward_entry_native_effect e WHERE e.xact_id=pg_current_xact_id()AND e.tenant_id=NEW.tenant_id AND e.tenant_id=app.current_tenant_id()AND e.user_id=app.current_user_id()AND e.unit_id=target AND e.active AND NOT e.completed
+ AND(TG_TABLE_NAME='reward_unit'OR EXISTS(SELECT 1 FROM app.reward_entry_native_target a WHERE a.effect_id=e.id AND a.entry_id=NEW.id))LOOP
+  INSERT INTO app.reward_entry_native_receipt VALUES(proof.id,TG_TABLE_NAME,NEW.id,CASE WHEN TG_TABLE_NAME='reward_unit'THEN app.reward_decision_row_hash(to_jsonb(OLD),'reward_unit')ELSE app.reward_entry_row_hash(to_jsonb(OLD))END,CASE WHEN TG_TABLE_NAME='reward_unit'THEN app.reward_decision_row_hash(to_jsonb(NEW),'reward_unit')ELSE app.reward_entry_row_hash(to_jsonb(NEW))END)ON CONFLICT DO NOTHING;
+ END LOOP;RETURN NULL;
+END $$;
+CREATE TRIGGER rewards_entry_native_capture AFTER UPDATE ON public.reward_unit FOR EACH ROW EXECUTE FUNCTION app.reward_entry_native_capture();
+CREATE TRIGGER rewards_entry_native_capture AFTER UPDATE ON public.reward_entry FOR EACH ROW EXECUTE FUNCTION app.reward_entry_native_capture();
+-- This logical predicate consumes only sealed actual source/proposal images. It grants no row
+-- access and never replaces the native locked admission above.
+CREATE FUNCTION app.reward_entry_course_allowed(p_course text,p_kind text,p_before jsonb,p_after jsonb,p_roles text[],p_person uuid)RETURNS boolean
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(cardinality(p_roles)>0
+ AND app.reward_calc_entry_visible(jsonb_build_object('source',p_before->'source','facts',p_before->'facts'),p_roles,p_person)
+ AND app.reward_calc_entry_visible(jsonb_build_object('source',p_after->'source','facts',p_after->'facts'),p_roles,p_person)
+ AND p_after->'facts'->'seniorPlan'=p_before->'facts'->'seniorPlan'
+ AND CASE p_after->'facts'->>'confidentiality'WHEN'standard'THEN 0 WHEN'bg'THEN 1 WHEN'ec'THEN 2 ELSE -1 END>=CASE coalesce(p_before->'source'->>'confidentialityFloor','standard')WHEN'standard'THEN 0 WHEN'bg'THEN 1 WHEN'ec'THEN 2 ELSE 3 END
+ AND CASE p_course WHEN'facts'THEN'gr'=ANY(p_roles)AND p_after->'recommendation'=p_before->'recommendation'
+ WHEN'save'THEN(p_roles&&ARRAY['bu','gr']OR p_kind<>'annual'AND'bg'=ANY(p_roles)OR p_before->'facts'->>'confidentiality'='ec'AND p_roles&&ARRAY['gr','ctro','ec'])
+ AND(p_before->'facts'->>'confidentiality'='ec'OR p_after->'recommendation'->'bonusCents'='null'::jsonb)
+ AND(p_after->'facts'=p_before->'facts'OR'gr'=ANY(p_roles)OR'bu'=ANY(p_roles)AND(p_after->'facts'-ARRAY['erDecision','pipDecision','caseReason'])=(p_before->'facts'-ARRAY['erDecision','pipDecision','caseReason']))ELSE false END,false);
+$$;
+-- Both logical unit and per-entry chains are finite same-root actual command receipts. Later
+-- posting may legitimately add enacted_compensation_id; only its reviewed physical entry
+-- receipt can extend an entry chain, and the unit-chain owner also validates that posting.
+CREATE VIEW app.reward_entry_native_nodes AS
+ SELECT e.id AS effect_id,e.effect_order,e.xact_id,e.tenant_id,e.user_id,e.unit_id,a.entry_id,app.reward_entry_row_hash(a.before_row)AS before_hash,app.reward_entry_row_hash(a.after_row)AS after_hash
+ FROM app.reward_entry_native_effect e JOIN app.reward_entry_native_target a ON a.effect_id=e.id WHERE e.completed AND NOT e.active
+ UNION ALL
+ SELECT c.id,c.effect_order,c.xact_id,c.tenant_id,c.user_id,c.unit_id,r.row_id,app.reward_entry_row_hash(r.before_row),app.reward_entry_row_hash(r.after_row)
+ FROM app.reward_post_native_context c JOIN app.reward_post_native_receipt r ON r.context_id=c.id AND r.table_name='reward_entry'WHERE c.completed AND NOT c.active;
+REVOKE ALL ON app.reward_entry_native_nodes FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.reward_entry_native_assert(p_effect uuid)RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.reward_entry_native_effect;actor public.app_user;unit public.reward_unit;target app.reward_entry_native_target;admission jsonb;before_image jsonb;after_image jsonb;roles text[];payload jsonb;closed boolean;key text;target_count integer;
+BEGIN
+ SELECT e.* INTO proof FROM app.reward_entry_native_effect e WHERE e.id=p_effect;
+ IF proof.id IS NULL OR proof.active OR NOT proof.completed OR proof.xact_id<>pg_current_xact_id()OR proof.tenant_id IS DISTINCT FROM app.current_tenant_id()OR proof.user_id IS DISTINCT FROM app.current_user_id()OR NOT app.principal_snapshot_current()OR nullif(current_setting('app.agent_principal_id',true),'')IS NOT NULL OR app.current_agent_principal()IS NOT NULL THEN RAISE EXCEPTION 'Reward entry authority changed' USING ERRCODE='42501';END IF;
+ SELECT a.* INTO actor FROM public.app_user a WHERE a.id=proof.user_id AND a.tenant_id=proof.tenant_id AND a.archived_at IS NULL AND NOT app.login_blocked(a.id);
+ SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=proof.unit_id AND u.tenant_id=proof.tenant_id AND u.deleted_at IS NULL;
+ roles:=ARRAY(SELECT app.reward_roles(proof.unit_id));key:=CASE proof.course WHEN'save'THEN'rewards.entries'ELSE'rewards.facts'END;
+ SELECT count(*)::integer INTO target_count FROM app.reward_entry_native_target a WHERE a.effect_id=proof.id;
+ IF actor.id IS NULL OR unit.id IS NULL OR proof.unit_before->>'status'<>'draft'OR target_count NOT BETWEEN 1 AND 10000 OR proof.course='save'AND target_count<>1
+ OR app.function_action_denial_clear(key,'edit',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward entry authority changed' USING ERRCODE='42501';END IF;
+ IF proof.unit_after-ARRAY['revision','approved_digest','updated_at']IS DISTINCT FROM proof.unit_before-ARRAY['revision','approved_digest','updated_at']OR proof.unit_after->'approved_digest'IS DISTINCT FROM'null'::jsonb OR(proof.unit_after->>'revision')::integer<>(proof.unit_before->>'revision')::integer+1
+ OR(SELECT count(*) FROM app.reward_entry_native_receipt r WHERE r.effect_id=proof.id)<>target_count+1
+ OR NOT EXISTS(SELECT 1 FROM app.reward_entry_native_receipt r WHERE r.effect_id=proof.id AND r.table_name='reward_unit'AND r.row_id=unit.id AND r.before_hash=app.reward_decision_row_hash(proof.unit_before,'reward_unit')AND r.after_hash=app.reward_decision_row_hash(proof.unit_after,'reward_unit'))THEN RAISE EXCEPTION 'Reward entry unit effect incomplete' USING ERRCODE='42501';END IF;
+ FOR target IN SELECT a.* FROM app.reward_entry_native_target a WHERE a.effect_id=proof.id ORDER BY a.entry_id LOOP
+  admission:=target.admission;before_image:=target.before_row;after_image:=target.after_row;
+  IF after_image IS NULL OR admission->>'entryId'IS DISTINCT FROM target.entry_id::text OR before_image->>'id'IS DISTINCT FROM target.entry_id::text OR admission->>'course'IS DISTINCT FROM proof.course OR admission->>'functionKey'IS DISTINCT FROM key OR admission->'positiveAdmission'IS DISTINCT FROM'true'::jsonb OR admission->>'authorityStamp'IS DISTINCT FROM app.access_function_authority_stamp()
+   OR admission->>'tenantId'IS DISTINCT FROM proof.tenant_id::text OR admission->>'userId'IS DISTINCT FROM proof.user_id::text OR admission->>'unitId'IS DISTINCT FROM proof.unit_id::text
+   OR after_image-ARRAY['recommendation','facts','updated_at']IS DISTINCT FROM before_image-ARRAY['recommendation','facts','updated_at']OR after_image->'recommendation'IS DISTINCT FROM admission->'recommendation'OR after_image->'facts'IS DISTINCT FROM admission->'facts'
+   OR app.reward_entry_course_allowed(proof.course,proof.unit_before->>'kind',before_image,after_image,roles,actor.person_id)IS NOT TRUE
+   OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=(before_image->>'employment_id')::uuid AND e.tenant_id=proof.tenant_id AND before_image->'source'->>'employmentId'=e.id::text AND before_image->'source'->>'personId'=e.person_id::text)
+   OR NOT EXISTS(SELECT 1 FROM app.reward_entry_native_receipt r WHERE r.effect_id=proof.id AND r.table_name='reward_entry'AND r.row_id=(before_image->>'id')::uuid AND r.before_hash=app.reward_entry_row_hash(before_image)AND r.after_hash=app.reward_entry_row_hash(after_image))THEN RAISE EXCEPTION 'Reward entry effect or authority unavailable' USING ERRCODE='42501';END IF;
+  WITH RECURSIVE chain(effect_order,after_hash)AS(
+   SELECT proof.effect_order,app.reward_entry_row_hash(after_image)
+   UNION SELECT n.effect_order,n.after_hash FROM chain c JOIN app.reward_entry_native_nodes n ON n.before_hash=c.after_hash AND n.effect_order>c.effect_order AND n.xact_id=proof.xact_id AND n.tenant_id=proof.tenant_id AND n.user_id=proof.user_id AND n.unit_id=proof.unit_id AND n.entry_id=(before_image->>'id')::uuid
+  )SELECT EXISTS(SELECT 1 FROM chain c JOIN public.reward_entry actual ON actual.id=(before_image->>'id')::uuid AND actual.tenant_id=proof.tenant_id AND actual.unit_id=proof.unit_id AND app.reward_entry_row_hash(to_jsonb(actual))=c.after_hash)INTO closed;
+  IF closed IS NOT TRUE THEN RAISE EXCEPTION 'Reward entry terminal source changed' USING ERRCODE='42501';END IF;
+ END LOOP;
+ payload:=CASE proof.course WHEN'save'THEN jsonb_build_object('entryId',(SELECT a.entry_id FROM app.reward_entry_native_target a WHERE a.effect_id=proof.id),'revision',proof.unit_after->'revision')ELSE jsonb_build_object('count',target_count,'revision',proof.unit_after->'revision')END;
+ IF NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.id=proof.event_id AND e.tenant_id=proof.tenant_id AND e.aggregate_type='reward-unit'AND e.aggregate_id=proof.unit_id AND e.event_type=CASE proof.course WHEN'save'THEN'reward-unit.recommendation-updated'ELSE'reward-unit.facts-imported'END AND e.actor_type='user'AND e.actor_id=proof.user_id AND e.subject_employment_id IS NULL AND e.payload=payload AND app.reward_decision_row_hash(to_jsonb(e),'domain_event')=app.reward_decision_row_hash(proof.event_after,'domain_event')AND EXISTS(SELECT 1 FROM app.lifecycle_row_transaction_receipt birth WHERE birth.xact_id=proof.xact_id AND birth.tenant_id=proof.tenant_id AND birth.user_id=proof.user_id AND birth.table_name='domain_event'AND birth.row_id=e.id))THEN RAISE EXCEPTION 'Reward entry audit effect incomplete' USING ERRCODE='42501';END IF;
+END $$;
+-- Extend the existing exact unit graph without turning a completed proof into admission.
+CREATE OR REPLACE VIEW app.reward_unit_native_nodes AS
+ SELECT 'decision'::text AS effect_kind,e.id AS effect_id,e.xact_id,e.tenant_id,e.user_id,e.unit_id,e.effect_order,e.admission->>'unitBeforeHash'AS before_hash,e.unit_after_hash AS after_hash FROM app.reward_decision_native_effect e WHERE e.completed AND NOT e.active
+ UNION ALL SELECT 'posting',c.id,c.xact_id,c.tenant_id,c.user_id,c.unit_id,c.effect_order,c.admission->>'unitBeforeHash',app.reward_decision_row_hash(c.effects->'unit'->'after','reward_unit')FROM app.reward_post_native_context c WHERE c.completed AND NOT c.active
+ UNION ALL SELECT 'cancellation',e.id,e.xact_id,e.tenant_id,e.user_id,e.unit_id,e.effect_order,e.admission->>'unitBeforeHash',app.reward_decision_row_hash(e.unit_after,'reward_unit')FROM app.reward_cancel_native_effect e WHERE e.completed AND NOT e.active
+ UNION ALL SELECT 'entry',e.id,e.xact_id,e.tenant_id,e.user_id,e.unit_id,e.effect_order,app.reward_decision_row_hash(e.unit_before,'reward_unit'),app.reward_decision_row_hash(e.unit_after,'reward_unit')FROM app.reward_entry_native_effect e WHERE e.completed AND NOT e.active;
+DO $$ DECLARE definition text;anchor text:='WHEN''posting''THEN PERFORM app.reward_post_native_assert(node.effect_id);';BEGIN
+ definition:=pg_get_functiondef('app.reward_unit_native_chain_closed(text,uuid)'::regprocedure);
+ IF(length(definition)-length(replace(definition,anchor,'')))/length(anchor)<>1 THEN RAISE EXCEPTION 'Reward unit chain dispatch changed';END IF;
+ EXECUTE replace(definition,anchor,'WHEN''entry''THEN PERFORM app.reward_entry_native_assert(node.effect_id);'||anchor);
+END $$;
+CREATE FUNCTION app.reward_entry_native_validate()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM app.reward_entry_native_effect e WHERE e.id=NEW.id)THEN RETURN NULL;END IF;
+ IF app.reward_unit_native_chain_closed('entry',NEW.id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward entry unit effect incomplete' USING ERRCODE='42501';END IF;RETURN NULL;
+END $$;
+CREATE CONSTRAINT TRIGGER rewards_entry_native_effect AFTER UPDATE ON app.reward_entry_native_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.completed AND NOT NEW.active)EXECUTE FUNCTION app.reward_entry_native_validate();
+CREATE FUNCTION app.reward_entry_authority_changed()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ UPDATE app.reward_entry_native_effect e SET recheck=e.recheck+1 WHERE e.xact_id=pg_current_xact_id()AND e.tenant_id=NEW.tenant_id AND e.completed AND NOT e.active;RETURN NULL;
+END $$;
+CREATE TRIGGER rewards_entry_authority_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.reward_entry_authority_changed();
+-- The only mutation owner: fixed course selects both exact payload and event, never caller
+-- SQL, actor, event name, audit namespace or row source. All admissions finish before writes.
+CREATE FUNCTION app.reward_entry_native(p_unit uuid,p_revision integer,p_course text,p_rows jsonb)RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE item jsonb;prepared jsonb;entry_id uuid;target public.reward_entry;admitted app.reward_entry_native_target;unit_before jsonb;native_unit_after jsonb;after_entry jsonb;effect uuid;event_id uuid:=gen_random_uuid();native_event_after jsonb;payload jsonb;target_count integer:=0;stamp text;
+BEGIN
+ IF p_course IS NULL OR p_course NOT IN('save','facts')OR jsonb_typeof(p_rows)IS DISTINCT FROM'array'THEN RAISE EXCEPTION 'Reward entry command unavailable' USING ERRCODE='22023';END IF;
+ IF jsonb_array_length(p_rows)NOT BETWEEN 1 AND 10000 OR p_course='save'AND jsonb_array_length(p_rows)<>1 THEN RAISE EXCEPTION 'Reward entry command unavailable' USING ERRCODE='22023';END IF;
+ -- Repeat actual unit admission before any child existence lookup.
+ IF p_course='facts'THEN PERFORM app.reward_entry_native_unit(p_unit,p_revision,'facts');END IF;
+ FOR item IN SELECT r FROM jsonb_array_elements(p_rows)r LOOP
+  IF p_course='save'THEN
+   IF NOT app.access_command_keys(item,ARRAY['entryId','recommendation']||(CASE WHEN item?'facts'THEN ARRAY['facts']ELSE ARRAY[]::text[]END))OR jsonb_typeof(item->'entryId')IS DISTINCT FROM'string'THEN RAISE EXCEPTION 'Reward entry command unavailable' USING ERRCODE='22023';END IF;
+   entry_id:=(item->>'entryId')::uuid;
+  ELSE
+   -- The original Zod row object strips extra input keys; only these two fields are consumed.
+   IF jsonb_typeof(item)IS DISTINCT FROM'object'OR NOT(item?&ARRAY['employmentId','facts'])OR jsonb_typeof(item->'employmentId')IS DISTINCT FROM'string'THEN RAISE EXCEPTION 'Reward facts import unavailable' USING ERRCODE='22023';END IF;
+   SELECT e.* INTO target FROM public.reward_entry e WHERE e.unit_id=p_unit AND e.tenant_id=app.current_tenant_id()AND e.employment_id=(item->>'employmentId')::uuid;
+   IF target.id IS NULL THEN RAISE EXCEPTION 'The import contains a duplicate or unavailable employee. Nothing was imported.' USING ERRCODE='42501';END IF;entry_id:=target.id;
+  END IF;
+  prepared:=app.reward_entry_prepare_source(p_unit,p_revision,entry_id,item->'recommendation',item->'facts',p_course);
+  IF effect IS NULL THEN
+   unit_before:=prepared->'unitBefore';stamp:=prepared->>'authorityStamp';
+   DELETE FROM app.reward_entry_native_effect e WHERE e.tenant_id=app.current_tenant_id()AND e.xact_id<pg_snapshot_xmin(pg_current_snapshot());
+   IF EXISTS(SELECT 1 FROM app.reward_entry_native_effect e WHERE e.xact_id=pg_current_xact_id()AND e.tenant_id=app.current_tenant_id()AND e.active)THEN RAISE EXCEPTION 'A native Reward entry command is already active' USING ERRCODE='42501';END IF;
+   INSERT INTO app.reward_entry_native_effect(xact_id,tenant_id,user_id,unit_id,course,unit_before,event_id)VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),p_unit,p_course,unit_before,event_id)RETURNING id INTO effect;
+  ELSIF unit_before IS DISTINCT FROM prepared->'unitBefore'OR stamp IS DISTINCT FROM prepared->>'authorityStamp'THEN RAISE EXCEPTION 'Reward entry source changed' USING ERRCODE='40001';END IF;
+  INSERT INTO app.reward_entry_native_target(effect_id,entry_id,admission,before_row)VALUES(effect,entry_id,prepared-ARRAY['unitBefore','entryBefore'],prepared->'entryBefore')ON CONFLICT DO NOTHING;
+  IF NOT FOUND THEN RAISE EXCEPTION 'The import contains a duplicate or unavailable employee. Nothing was imported.' USING ERRCODE='42501';END IF;
+  target_count:=target_count+1;
+ END LOOP;
+ FOR admitted IN SELECT a.* FROM app.reward_entry_native_target a WHERE a.effect_id=effect ORDER BY a.entry_id LOOP
+  UPDATE public.reward_entry actual SET recommendation=admitted.admission->'recommendation',facts=admitted.admission->'facts',updated_at=clock_timestamp()WHERE actual.id=admitted.entry_id AND actual.unit_id=p_unit AND actual.tenant_id=app.current_tenant_id()AND app.reward_entry_row_hash(to_jsonb(actual))=app.reward_entry_row_hash(admitted.before_row)RETURNING to_jsonb(actual)INTO after_entry;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Reward entry source changed' USING ERRCODE='40001';END IF;
+  UPDATE app.reward_entry_native_target a SET after_row=after_entry WHERE a.effect_id=effect AND a.entry_id=admitted.entry_id;
+ END LOOP;
+ UPDATE public.reward_unit actual SET revision=revision+1,approved_digest=NULL,updated_at=clock_timestamp()WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id()AND actual.revision=p_revision AND app.reward_decision_row_hash(to_jsonb(actual),'reward_unit')=app.reward_decision_row_hash(unit_before,'reward_unit')RETURNING to_jsonb(actual)INTO native_unit_after;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Reward entry source changed' USING ERRCODE='40001';END IF;
+ payload:=CASE p_course WHEN'save'THEN jsonb_build_object('entryId',entry_id,'revision',native_unit_after->'revision')ELSE jsonb_build_object('count',target_count,'revision',native_unit_after->'revision')END;
+ INSERT INTO public.domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)VALUES(event_id,app.current_tenant_id(),'reward-unit',p_unit,CASE p_course WHEN'save'THEN'reward-unit.recommendation-updated'ELSE'reward-unit.facts-imported'END,'user',app.current_user_id(),payload)RETURNING to_jsonb(domain_event)INTO native_event_after;
+ UPDATE app.reward_entry_native_effect e SET active=false,completed=true,unit_after=native_unit_after,event_after=native_event_after WHERE e.id=effect;
+END $$;
+CREATE FUNCTION app.reward_entry_save_command(p_unit uuid,p_revision integer,p_entry uuid,p_recommendation jsonb,p_facts jsonb DEFAULT NULL)RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app.reward_entry_native(p_unit,p_revision,'save',jsonb_build_array(jsonb_build_object('entryId',p_entry,'recommendation',p_recommendation)||CASE WHEN p_facts IS NULL THEN'{}'::jsonb ELSE jsonb_build_object('facts',p_facts)END));
+END $$;
+CREATE FUNCTION app.reward_facts_import_command(p_unit uuid,p_revision integer,p_rows jsonb)RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN PERFORM app.reward_entry_native(p_unit,p_revision,'facts',p_rows);END $$;
+REVOKE ALL ON FUNCTION app.reward_entry_row_hash(jsonb),app.reward_entry_native_capture(),app.reward_entry_course_allowed(text,text,jsonb,jsonb,text[],uuid),app.reward_entry_native_assert(uuid),app.reward_entry_native_validate(),app.reward_entry_authority_changed(),app.reward_entry_native(uuid,integer,text,jsonb),app.reward_entry_save_command(uuid,integer,uuid,jsonb,jsonb),app.reward_facts_import_command(uuid,integer,jsonb)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- An early constraint flush cannot retire a completed entry's exact source. Later fixed
+-- native owners validate their own completed chain; an unsealed change requeues the old
+-- source's assertion immediately or at the caller's existing deferred boundary.
+CREATE FUNCTION app.reward_entry_source_changed()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE image jsonb:=CASE WHEN TG_OP='DELETE'THEN to_jsonb(OLD)ELSE to_jsonb(NEW)END;t uuid:=(image->>'tenant_id')::uuid;u uuid:=app.current_user_id();row_id uuid:=(image->>'id')::uuid;target_unit uuid:=CASE WHEN TG_TABLE_NAME='reward_unit'THEN row_id ELSE(image->>'unit_id')::uuid END;root xid8:=pg_current_xact_id();
+BEGIN
+ IF TG_OP='UPDATE'AND to_jsonb(OLD)IS NOT DISTINCT FROM to_jsonb(NEW)THEN RETURN NULL;END IF;
+ IF NOT EXISTS(SELECT 1 FROM app.reward_entry_native_effect e WHERE e.xact_id=root AND e.tenant_id=t AND e.unit_id=target_unit AND e.completed AND NOT e.active)THEN RETURN NULL;END IF;
+ IF TG_OP='UPDATE'AND(
+  EXISTS(SELECT 1 FROM app.reward_entry_native_effect e WHERE e.xact_id=root AND e.tenant_id=t AND e.user_id=u AND e.unit_id=target_unit AND e.active AND NOT e.completed AND(TG_TABLE_NAME='reward_unit'OR EXISTS(SELECT 1 FROM app.reward_entry_native_target a WHERE a.effect_id=e.id AND a.entry_id=row_id)))
+  OR EXISTS(SELECT 1 FROM app.reward_post_native_context e WHERE e.xact_id=root AND e.tenant_id=t AND e.user_id=u AND e.unit_id=target_unit AND e.active AND NOT e.completed AND(TG_TABLE_NAME='reward_unit'OR EXISTS(SELECT 1 FROM jsonb_array_elements(e.source_plan->'sourcePlan')p WHERE p->>'entryId'=row_id::text)))
+  OR TG_TABLE_NAME='reward_unit'AND EXISTS(SELECT 1 FROM app.reward_decision_native_effect e WHERE e.xact_id=root AND e.tenant_id=t AND e.user_id=u AND e.unit_id=target_unit AND e.active AND NOT e.completed)
+  OR TG_TABLE_NAME='reward_unit'AND EXISTS(SELECT 1 FROM app.reward_cancel_native_effect e WHERE e.xact_id=root AND e.tenant_id=t AND e.user_id=u AND e.unit_id=target_unit AND e.active AND NOT e.completed)
+ )THEN RETURN NULL;END IF;
+ UPDATE app.reward_entry_native_effect e SET recheck=e.recheck+1 WHERE e.xact_id=root AND e.tenant_id=t AND e.unit_id=target_unit AND e.completed AND NOT e.active
+ AND(TG_TABLE_NAME='reward_unit'OR EXISTS(SELECT 1 FROM app.reward_entry_native_target a WHERE a.effect_id=e.id AND a.entry_id=row_id));RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_entry_source_changed()FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER rewards_entry_source_recheck AFTER UPDATE OR DELETE ON public.reward_unit FOR EACH ROW EXECUTE FUNCTION app.reward_entry_source_changed();
+CREATE TRIGGER rewards_entry_source_recheck AFTER UPDATE OR DELETE ON public.reward_entry FOR EACH ROW EXECUTE FUNCTION app.reward_entry_source_changed();
