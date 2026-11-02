@@ -14,6 +14,7 @@ import ta from '../messages/ta.json';
 
 const catalogues = { en, ms, zh, vi: viMessages, th, ta };
 const state = vi.hoisted(() => ({ locale: 'en' as 'en' | 'ms' | 'zh' | 'vi' | 'th' | 'ta' }));
+vi.mock('../core/organisation-access',()=>({settingsAccess:async()=>true}));
 vi.mock('server-only', () => ({}));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next-intl/server', () => ({

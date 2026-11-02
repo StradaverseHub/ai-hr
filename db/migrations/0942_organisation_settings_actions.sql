@@ -119,7 +119,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT EXISTS(SELECT 1 FROM app.access_function_action f JOIN app.access_function_definition d USING(function_key)
  WHERE f.capability_id=cap AND (f.parent_capability ~ '^(organisation|settings)\.' OR f.function_key LIKE 'systemLabels.profileOptions.%' AND f.parent_capability='function.systemLabels.profileOptions.'||f.operation)
  AND app.organisation_settings_legacy_allowed(t,u,CASE WHEN f.function_key LIKE 'systemLabels.profileOptions.%' THEN 'settings.'||f.operation ELSE f.parent_capability END,co)
- AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','loginPresentation.sessionPolicy','emailTemplates','entra') AND NOT(f.function_key IN ('workflowEmail','profileRequestSettings','profileApprovalRules') AND f.operation<>'view')
+ AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','loginPresentation.sessionPolicy','aiConfig','emailTemplates','entra') AND NOT(f.function_key IN ('workflowEmail','profileRequestSettings','profileApprovalRules') AND f.operation<>'view')
   OR EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN ('hr_admin','super_admin') AND r.company_id IS NULL)));
 $$;
 CREATE FUNCTION app.organisation_settings_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
@@ -128,7 +128,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND app.organisation_settings_function_legacy_allowed(t,u,cap,co)
  AND EXISTS(SELECT 1 FROM app.access_function_action f WHERE f.capability_id=cap
  AND app.organisation_settings_current_legacy_allowed(t,u,CASE WHEN f.function_key LIKE 'systemLabels.profileOptions.%' THEN 'settings.'||f.operation ELSE f.parent_capability END,co)
- AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','loginPresentation.sessionPolicy','emailTemplates','entra') AND NOT(f.function_key IN ('workflowEmail','profileRequestSettings','profileApprovalRules') AND f.operation<>'view') OR app.is_group_admin()));
+ AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','loginPresentation.sessionPolicy','aiConfig','emailTemplates','entra') AND NOT(f.function_key IN ('workflowEmail','profileRequestSettings','profileApprovalRules') AND f.operation<>'view') OR app.is_group_admin()));
 $$;
 CREATE FUNCTION app.organisation_settings_function_allowed(p_key text,p_operation text,p_company uuid DEFAULT NULL) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -448,3 +448,30 @@ CREATE POLICY settings_test_assignment_read ON public.test_assignment AS RESTRIC
  USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR tester_user_id=app.current_user_id());
 CREATE POLICY settings_test_catalogue_read ON public.test_catalogue_update AS RESTRICTIVE FOR SELECT TO ai_hr_app
  USING(app.organisation_settings_function_allowed('systemTesting','view',NULL));
+
+--> statement-breakpoint
+-- Candidate custody and protocol receipts are real configuration commands, not live-provider rows.
+-- Keep the original native actor predicate and add View to its finite public readers.
+DO $provider_actor$ DECLARE source text;anchor text:='SELECT app.current_tenant_id() IS NOT NULL';BEGIN
+ SELECT pg_get_functiondef('app._ai_provider_evaluation_actor_valid()'::regprocedure) INTO source;
+ IF (length(source)-length(replace(source,anchor,'')))/length(anchor)<>1 THEN RAISE EXCEPTION 'Provider actor owner anchor changed';END IF;
+ EXECUTE replace(source,anchor,'SELECT app.organisation_settings_function_allowed(''aiConfig'',''view'',NULL) AND app.current_tenant_id() IS NOT NULL');
+END $provider_actor$;
+CREATE FUNCTION app.ai_configuration_native_write_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE r jsonb:=CASE WHEN TG_OP='DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;
+ operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_TABLE_NAME='ai_provider_protocol_evaluation' AND TG_OP<>'DELETE' THEN operation:='edit';END IF;
+ IF TG_TABLE_NAME='ai_provider_candidate' AND TG_OP='INSERT' AND EXISTS(SELECT 1 FROM public.ai_provider_config actual WHERE actual.tenant_id=(r->>'tenant_id')::uuid AND actual.provider::text=r->>'provider') THEN operation:='edit';END IF;
+ IF r->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.principal_snapshot_current() OR NOT app.is_group_admin()
+ OR NOT app.organisation_settings_function_allowed('aiConfig',operation,NULL) THEN RAISE EXCEPTION 'Provider configuration action unavailable' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END;$$;
+REVOKE ALL ON FUNCTION app.ai_configuration_native_write_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER ai_configuration_native_write_guard AFTER INSERT OR UPDATE OR DELETE ON public.ai_provider_candidate FOR EACH ROW EXECUTE FUNCTION app.ai_configuration_native_write_guard();
+CREATE TRIGGER ai_configuration_native_write_guard AFTER INSERT OR UPDATE OR DELETE ON public.ai_provider_protocol_evaluation FOR EACH ROW EXECUTE FUNCTION app.ai_configuration_native_write_guard();
+CREATE TRIGGER organisation_settings_upsert_lock BEFORE INSERT OR UPDATE OR DELETE ON public.ai_provider_candidate FOR EACH STATEMENT EXECUTE FUNCTION app.organisation_settings_upsert_lock();
+CREATE TRIGGER organisation_settings_upsert_lock BEFORE INSERT OR UPDATE OR DELETE ON public.ai_provider_protocol_evaluation FOR EACH STATEMENT EXECUTE FUNCTION app.organisation_settings_upsert_lock();

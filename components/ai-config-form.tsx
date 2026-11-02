@@ -24,26 +24,29 @@ import {
   testConnectionAction,
 } from '@/app/admin/ai/actions';
 
-export function AiConfigForm({ config }: { config: AiConfigView }) {
+export type AiConfigurationActions={add:boolean;edit:boolean;delete:boolean};
+const noActions:AiConfigurationActions={add:false,edit:false,delete:false};
+export function AiConfigForm({ config,actionControls=noActions }: { config: AiConfigView;actionControls?:AiConfigurationActions }) {
   const t = useTranslations('admin.ai');
   const anyActive = config.providers.some((p) => p.isActive);
   return (
     <div className="space-y-4">
       {anyActive && (
         <form action={disableAiAction} className="flex justify-end">
-          <Button type="submit" variant="ghost" size="sm">
+          <Button type="submit" variant="ghost" size="sm" disabled={!actionControls.edit}>
             {t('deactivateTenantConfig')}
           </Button>
         </form>
       )}
       {config.providers.map((p) => (
-        <ProviderCard key={p.provider+':'+(p.candidateVersion??'live')} p={p} storable={config.storable} />
+        <ProviderCard key={p.provider+':'+(p.candidateVersion??'live')} p={p} storable={config.storable} actionControls={actionControls} />
       ))}
     </div>
   );
 }
 
-function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean }) {
+function ProviderCard({ p, storable,actionControls }: { p: AiProviderView; storable: boolean;actionControls:AiConfigurationActions }) {
+  const canWrite=p.configured?actionControls.edit:actionControls.add;
   const t = useTranslations('admin.ai'),f=useFormatter();
   const [model, setModel] = useState(p.model);
   const [key, setKey] = useState('');
@@ -86,7 +89,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
     JSON.stringify(options) === JSON.stringify(p.providerOptions);
   const receiptCurrent = evaluation && Date.parse(evaluation.expiresAt) > Math.max(receiptClock,Date.now()) && savedCandidateUnchanged && accountReview && consent && evaluation.candidateId === p.candidateId && evaluation.candidateVersion === p.candidateVersion;
   function onEvaluate() {
-    if(evaluationFlight.current||!savedCandidateUnchanged||!accountReview||!consent||!p.candidateId||!p.candidateVersion)return;
+    if(!actionControls.edit||evaluationFlight.current||!savedCandidateUnchanged||!accountReview||!consent||!p.candidateId||!p.candidateVersion)return;
     evaluationFlight.current=true;const sequence=++evaluationSequence.current,candidateId=p.candidateId,candidateVersion=p.candidateVersion;
     setEvaluation(null);setEvaluationFailed(false);
     startEvaluation(async()=>{
@@ -119,6 +122,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
 
       {router && p.activeModel && <p className="mt-2 text-xs text-muted-foreground">{t('candidateLiveModel', { model: p.activeModel })}</p>}
       <form onSubmit={invalidateEvaluation} action={saveAiProviderConfigAction} className="mt-3 space-y-3">
+        <fieldset disabled={!canWrite} className="space-y-3">
         <input type="hidden" name="provider" value={p.provider} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={t('model')}>
@@ -174,7 +178,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
         </fieldset>}
         {!storable && <p className="text-xs text-amber-600 dark:text-amber-400">{t('notStorable')}</p>}
         {router ? <p className="text-xs text-muted-foreground">{t('candidateSaveNote')}</p> : <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input type="checkbox" name="makeActive" defaultChecked={!p.isActive} className="size-4" />
+          <input type="checkbox" name="makeActive" disabled={!actionControls.edit} defaultChecked={actionControls.edit&&!p.isActive} className="size-4" />
           {t('makeActive')}
         </label>}
         <div className="flex flex-wrap items-center gap-2">
@@ -186,9 +190,11 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
             {testing ? t('testing') : t(router?'metadataTest':'test')}
           </Button>
         </div>
+        </fieldset>
       </form>
 
       {router && p.candidateSaved && <section className="mt-4 space-y-3 rounded-md border border-border p-3" aria-labelledby={routeId+'-evaluation'}>
+        <fieldset disabled={!actionControls.edit} className="space-y-3">
         <h4 id={routeId+'-evaluation'} className="text-sm font-medium">{t('evaluationTitle')}</h4>
         <p className="text-xs text-muted-foreground">{t('evaluationExplanation')}</p>
         {!savedCandidateUnchanged && <p className="text-sm">{t('evaluationSaveFirst')}</p>}
@@ -205,7 +211,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
         <form action={setActiveProviderAction}>
           <input type="hidden" name="provider" value="openrouter"/>
           <input type="hidden" name="evaluationReceipt" value={receiptCurrent && evaluation ? evaluation.receipt : ''}/>
-          <Button type="submit" disabled={!receiptCurrent || evaluating} className="min-h-11">{t('evaluationActivate')}</Button>
+          <Button type="submit" disabled={!actionControls.edit||!p.hasStoredConfiguration&&!actionControls.add||!receiptCurrent || evaluating} className="min-h-11">{t('evaluationActivate')}</Button>
         </form>
         {evaluation&&<div className="space-y-1 text-xs text-muted-foreground">
           <p>{t('evaluationElapsed',{value:f.number(evaluation.summary.elapsedMs)})}</p>
@@ -213,13 +219,14 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
           <p>{t('evaluationCredits',{value:evaluation.summary.accountChargeCredits==null?t('evaluationUnknown'):f.number(evaluation.summary.accountChargeCredits,{maximumSignificantDigits:15})})}</p>
           <p>{t('evaluationAccountingHelp')}</p>
         </div>}
+        </fieldset>
       </section>}
       {p.configured && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
           {!router && !p.isActive && (
             <form action={setActiveProviderAction}>
               <input type="hidden" name="provider" value={p.provider} />
-              <Button type="submit" variant="ghost" size="sm">
+              <Button type="submit" variant="ghost" size="sm" disabled={!actionControls.edit}>
                 <CheckCircle2 className="size-3.5" />
                 {t('useThis')}
               </Button>
@@ -227,7 +234,7 @@ function ProviderCard({ p, storable }: { p: AiProviderView; storable: boolean })
           )}
           <form action={removeAiProviderConfigAction} onSubmit={invalidateEvaluation}>
             <input type="hidden" name="provider" value={p.provider} />
-            <Button type="submit" variant="ghost" size="sm">
+            <Button type="submit" variant="ghost" size="sm" disabled={!actionControls.delete}>
               <Trash2 className="size-3.5" />
               {t('remove')}
             </Button>

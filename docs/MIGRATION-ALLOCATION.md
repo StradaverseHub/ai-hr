@@ -1169,3 +1169,15 @@ and unchanged original data. Manual/reserved values and every other materialized
 the three native negative custody cases and existing wizard positive assertion remain unchanged.
 The maintenance fixture's actual native context now has its declared SessionContext grant type,
 retaining concrete native user/person IDs without a cast or authority assertion suppression.
+
+### Native provider configuration custody (independent source)
+
+AI configuration now retains its actual group-administrator floor in stored/current function hooks.
+The native candidate reader repeats View; candidate save/edit/remove and protocol receipt writes
+consume their real configuration operations, including Edit before synthetic evaluation transport
+and again before its receipt. Statement locks precede both upsert targets. Configuration forms use
+server Add/Edit/Delete projections, preserve independent removal, and reset typed-key/evaluation
+state when those controls change. Existing native human consent, candidate/version proofs, budgets,
+provider protocol and activation gates are preserved. No provider request or activation is performed
+by this source preparation. Hosted native and DOM qualification is required; complete publication and
+all worker/receipt revocation coverage remain separate acceptance work.

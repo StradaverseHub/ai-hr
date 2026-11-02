@@ -1,3 +1,4 @@
+import {settingsAccess} from '@/core/organisation-access';
 import {createHash} from 'node:crypto';
 import {getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -18,7 +19,8 @@ export async function AiProviderScreen({
   const t = await getTranslations('admin.ai');
   const query=await searchParams,error=Object.prototype.hasOwnProperty.call(query,'error')?t('commandFailed'):undefined;
   const config = await getAiConfigView(s);
-  const formKey=createHash('sha256').update(JSON.stringify([principal,locale,config])).digest('hex');
+  const actionControls={add:await settingsAccess(s,'add','aiConfig'),edit:await settingsAccess(s,'edit','aiConfig'),delete:await settingsAccess(s,'delete','aiConfig')};
+  const formKey=createHash('sha256').update(JSON.stringify([principal,locale,config,actionControls])).digest('hex');
   const envLabel = config.envFallback
     ? config.providers.find((p) => p.provider === config.envFallback!.provider)?.label ?? config.envFallback.provider
     : null;
@@ -42,7 +44,7 @@ export async function AiProviderScreen({
 
       <Card className="p-4 text-xs text-muted-foreground">{t('privacyNote')}</Card>
 
-      <AiConfigForm key={formKey} config={config} />
+      <AiConfigForm key={formKey} config={config} actionControls={actionControls} />
     </div>
   );
 }

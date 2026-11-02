@@ -76,6 +76,7 @@ export type AiProviderView = {
   label: string;
   models: string[];
   defaultModel: string;
+  hasStoredConfiguration?: boolean;
   configured: boolean; // a key is stored for this provider
   model: string;
   keyLast4: string | null;
@@ -124,6 +125,7 @@ export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
         models: meta.models,
         defaultModel: meta.defaultModel,
         configured: Boolean(draft || row),
+        hasStoredConfiguration:Boolean(row),
         model: draft?.model ?? row?.model ?? meta.defaultModel,
         keyLast4: draft?.keyLast4 ?? row?.keyLast4 ?? null,
         isActive: row?.isActive ?? false,
@@ -370,6 +372,9 @@ export async function testConnection(
 
   const prepared:ResolvedAiConfig|ValidateResult=await withTenant(ctx, async (tx) => {
     await assertConfigurationAdminTx(tx,ctx);
+    const [stored]=await tx.select({id:aiProviderConfig.id}).from(aiProviderConfig).where(eq(aiProviderConfig.provider,p.provider as AiProvider)).limit(1);
+    const candidate=p.provider==='openrouter'?(await providerCandidatesTx(tx,ctx))[0]:undefined;
+    if(!await settingsAccessTx(tx,stored||candidate?'edit':'add','aiConfig'))throw new AiConfigError('Provider configuration action unavailable.');
     let cfg: ResolvedAiConfig;
     if (typed) {
       let gatewayBaseUrl: string | undefined;
