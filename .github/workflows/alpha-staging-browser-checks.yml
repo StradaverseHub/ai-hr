@@ -16,7 +16,7 @@ on:
         required: false
         default: browser-install
         type: choice
-        options: [browser-install, operator-transport, browser-image, browser-image-firefox, browser-image-suite, browser-image-suite-firefox]
+        options: [browser-install, operator-transport, browser-image, browser-image-firefox, browser-image-suite, browser-image-suite-firefox, browser-v9-keyboard-trace-firefox]
 permissions: {contents: read, actions: read}
 concurrency:
   group: browser-provisioning-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.probe_scope || 'browser-install' }}
@@ -129,7 +129,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   browser-image:
-    if: ${{ inputs.probe_scope == 'browser-image' || inputs.probe_scope == 'browser-image-firefox' || (inputs.probe_scope == 'browser-image-suite' || inputs.probe_scope == 'browser-image-suite-firefox') }}
+    if: ${{ inputs.probe_scope == 'browser-image' || inputs.probe_scope == 'browser-image-firefox' || (inputs.probe_scope == 'browser-image-suite' || inputs.probe_scope == 'browser-image-suite-firefox') || inputs.probe_scope == 'browser-v9-keyboard-trace-firefox' }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -147,7 +147,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: ${{ fromJSON((inputs.probe_scope == 'browser-image-firefox' || inputs.probe_scope == 'browser-image-suite-firefox') && '["firefox"]' || '["chromium","firefox","webkit"]') }}
+        engine: ${{ fromJSON((inputs.probe_scope == 'browser-image-firefox' || inputs.probe_scope == 'browser-image-suite-firefox' || inputs.probe_scope == 'browser-v9-keyboard-trace-firefox') && '["firefox"]' || '["chromium","firefox","webkit"]') }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
@@ -161,7 +161,7 @@ jobs:
           sha256sum pnpm-lock.yaml > "$RUNNER_TEMP/browser-image/lockfile-sha256.txt"
           node -e 'const assert=require("node:assert/strict"),fs=require("node:fs");const version=require("playwright/package.json").version;assert.equal(version,"1.62.1");fs.writeFileSync(process.env.RUNNER_TEMP+"/browser-image/image-binding.json",JSON.stringify({kind:"PINNED_OFFICIAL_IMAGE_TOOLING_NOT_TEST_OR_RELEASE_PASS",image:"mcr.microsoft.com/playwright@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e",playwrightVersion:version,nodeVersion:process.versions.node,candidate:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,baseline:process.env.AIHR_CI_MIGRATION_BASE,engine:process.env.ENGINE,runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,runtime:{node:process.versions.node,platform:process.platform,arch:process.arch},lang:process.env.LANG,tz:process.env.TZ,browsersPath:process.env.PLAYWRIGHT_BROWSERS_PATH,lockSha256:require("node:crypto").createHash("sha256").update(fs.readFileSync("pnpm-lock.yaml")).digest("hex"),releaseAuthorized:false},null,2))'
       - name: Native browser launch and multilingual raster with preinstalled dependencies
-        if: ${{ inputs.probe_scope != 'browser-image-suite' && inputs.probe_scope != 'browser-image-suite-firefox' }}
+        if: ${{ inputs.probe_scope != 'browser-image-suite' && inputs.probe_scope != 'browser-image-suite-firefox' && inputs.probe_scope != 'browser-v9-keyboard-trace-firefox' }}
         run: node ../automation/.github/ci/browser-tooling-probe.mjs "$ENGINE" "$RUNNER_TEMP/browser-image"
         env: {HOME: /root}
       - name: Complete original browser unit in pinned image
@@ -182,14 +182,27 @@ jobs:
           path: ${{ runner.temp }}/browser-image/image-binding.json
           if-no-files-found: error
           retention-days: 7
+      - name: Measure the original V9 Enter with passive tracing
+        if: ${{ inputs.probe_scope == 'browser-v9-keyboard-trace-firefox' }}
+        run: node ../automation/.github/ci/diagnostics/generate-v9-keyboard-diagnostic.mjs "$RUNNER_TEMP/v9-keyboard-evidence"
+        env: {HOME: /root}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && inputs.probe_scope == 'browser-v9-keyboard-trace-firefox' }}
+        with:
+          name: diagnostic-only-v9-keyboard-measurement-firefox
+          path: |
+            ${{ runner.temp }}/v9-keyboard-evidence/
+            ${{ runner.temp }}/browser-image/image-binding.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Retain container package and filesystem facts
-        if: ${{ always() && inputs.probe_scope != 'browser-image-suite-firefox' }}
+        if: ${{ always() && inputs.probe_scope != 'browser-image-suite-firefox' && inputs.probe_scope != 'browser-v9-keyboard-trace-firefox' }}
         run: |
           mkdir -p "$RUNNER_TEMP/browser-image"
           dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' > "$RUNNER_TEMP/browser-image/installed-packages.tsv"
           df -Pk . "$RUNNER_TEMP" > "$RUNNER_TEMP/browser-image/filesystem-capacity.txt"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: ${{ always() && inputs.probe_scope != 'browser-image-suite-firefox' }}
+        if: ${{ always() && inputs.probe_scope != 'browser-image-suite-firefox' && inputs.probe_scope != 'browser-v9-keyboard-trace-firefox' }}
         with:
           name: diagnostic-browser-image-${{ matrix.engine }}
           path: ${{ runner.temp }}/browser-image/
