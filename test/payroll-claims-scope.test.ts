@@ -11,13 +11,14 @@
  * employee with no compensation row now HARD-BLOCKS generatePayslips (PreProcessBlockedError; see
  * payroll-preprocess-advisory.test.ts), so (b) is exercised via a post-prefill scope narrow instead.
  */
-import { eq } from 'drizzle-orm';
+import { eq,sql } from 'drizzle-orm';
+import {randomUUID} from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import type { SessionContext } from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import { createClaimType, decideClaim, prefillClaimsForBatch, submitClaim } from '../core/claims';
 import { setCompensation } from '../core/comp';
-import { createBatch, generatePayslips, updateBatchScope } from '../core/payroll';
+import { createBatch, generatePayslips, updateBatchScope, resolveBatchScopeFilter } from '../core/payroll';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -50,6 +51,21 @@ describe('Payroll Process wizard — claims scope safety', () => {
   });
   afterAll(async () => {
     await closeAll();
+  });
+
+  it('shares the real department/explicit union and refuses an entire mixed subset outside the actor data ceiling',async()=>{
+    const a=adminCtx(base),inside=await hire(a,base,'ScopeInside',base.deptA),outside=await hire(a,base,'ScopeOutside',base.deptB);
+    const source=await withTenant(a,tx=>resolveBatchScopeFilter(tx,{departmentIds:[base.deptA],employmentIds:[inside.employmentId,outside.employmentId]}));
+    expect(source.employmentIds?.slice().sort()).toEqual([inside.employmentId,outside.employmentId].sort());
+    expect((await withTenant(a,tx=>resolveBatchScopeFilter(tx,null))).employmentIds).toBeNull();
+    const id=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'department',values:[base.deptA]}]};
+    await owner.client`insert into data_permission_profile(id,tenant_id,name) values(${id},${base.tenantId},${'Fictional payroll subset '+id})`;
+    await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by) values(${revision},${base.tenantId},${id},${JSON.stringify(rules)}::text::jsonb,${a.userId!})`;
+    await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
+    await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by) values(${base.tenantId},${a.userId!},${id},${a.userId!})`;
+    const [scope]=await withTenant(a,tx=>tx.execute<{inside:boolean;outside:boolean}>(sql`select app.data_permission_matches(${inside.employmentId}::uuid) as inside,app.data_permission_matches(${outside.employmentId}::uuid) as outside`));expect(scope).toEqual({inside:true,outside:false});
+    await expect(withTenant(a,tx=>resolveBatchScopeFilter(tx,{departmentIds:[base.deptA],employmentIds:[outside.employmentId]}))).rejects.toThrow();
+    expect((await withTenant(a,tx=>resolveBatchScopeFilter(tx,{departmentIds:[base.deptA]}))).employmentIds).toEqual([inside.employmentId]);
   });
 
   it('prefill reserves ONLY claims for employees in the batch scope', async () => {

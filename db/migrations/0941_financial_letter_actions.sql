@@ -472,19 +472,18 @@ REVOKE ALL ON FUNCTION app.financial_batch_subjects_allowed(uuid) FROM PUBLIC,ai
 --> statement-breakpoint
 CREATE FUNCTION app.access_payroll_batch_begin(p_batch uuid,p_operation text,p_targets uuid[] DEFAULT NULL) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE batch public.payroll_batch;starts date;ends date;
+DECLARE batch public.payroll_batch;starts date;ends date;scope_ids uuid[];
 BEGIN
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO batch FROM public.payroll_batch b WHERE b.id=p_batch AND b.tenant_id=app.current_tenant_id() FOR UPDATE;
  IF batch.id IS NULL OR p_operation NOT IN ('edit','delete') OR NOT app.access_financial_action_company('payroll',batch.company_id,p_operation) OR NOT app.function_action_allowed('payroll.process',p_operation,batch.company_id) OR NOT app.financial_batch_subjects_allowed(batch.id) THEN RAISE EXCEPTION 'Payroll action unavailable' USING ERRCODE='42501';END IF;
  starts:=(batch.pay_period||'-01')::date;ends:=(starts+interval '1 month'-interval '1 day')::date;
+ scope_ids:=app.financial_payroll_scope_ids(batch.tenant_id,batch.scope);
  -- Actual process membership mirrors employedByCompanyDuring + resolveBatchScopeFilter.
  -- Querying as the private owner prevents RLS from silently shrinking a requested payroll.
  IF EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=batch.tenant_id
   AND (p_targets IS NULL OR e.id=ANY(p_targets))
-  AND (p_targets IS NOT NULL OR (coalesce(jsonb_array_length(batch.scope->'employmentIds'),0)=0 AND coalesce(jsonb_array_length(batch.scope->'departmentIds'),0)=0)
-   OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(batch.scope->'employmentIds','[]'))picked(value) WHERE picked.value=e.id::text)
-   OR EXISTS(SELECT 1 FROM public.assignment a JOIN jsonb_array_elements_text(coalesce(batch.scope->'departmentIds','[]'))picked(value) ON a.department_id::text=picked.value WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL))
+  AND (p_targets IS NOT NULL OR scope_ids IS NULL OR e.id=ANY(scope_ids))
   AND e.hired_on<=ends AND (e.terminated_on IS NULL OR e.terminated_on>=starts)
   AND (e.company_id=batch.company_id OR EXISTS(SELECT 1 FROM public.assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL AND a.company_id=batch.company_id AND a.valid_from<=ends AND (a.valid_to IS NULL OR a.valid_to>starts)))
   AND NOT app.access_financial_action_employment('payroll',e.id,p_operation))
@@ -2190,3 +2189,33 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.performance_cycle_native_admin(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.performance_cycle_native_admin(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- One native batch subset owner: unsuperseded department assignees UNION explicit
+-- employments. This deliberately preserves the existing absence of an assignment date filter.
+CREATE FUNCTION app.financial_payroll_scope_ids(p_tenant uuid,p_scope jsonb) RETURNS uuid[]
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF coalesce(jsonb_array_length(p_scope->'departmentIds'),0)=0 AND coalesce(jsonb_array_length(p_scope->'employmentIds'),0)=0 THEN RETURN NULL;END IF;
+ RETURN ARRAY(SELECT member.id FROM (
+  SELECT value::uuid AS id FROM jsonb_array_elements_text(coalesce(p_scope->'employmentIds','[]'::jsonb))
+  UNION SELECT assignment.employment_id FROM public.assignment assignment WHERE assignment.tenant_id=p_tenant AND assignment.superseded_at IS NULL
+  AND EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(p_scope->'departmentIds','[]'::jsonb)) department(value) WHERE department.value::uuid=assignment.department_id)
+ ) member ORDER BY member.id);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_payroll_scope_ids(uuid,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.payroll_scope_employment_ids(p_scope jsonb) RETURNS uuid[]
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE members uuid[]:=app.financial_payroll_scope_ids(app.current_tenant_id(),p_scope);
+BEGIN
+ IF members IS NULL THEN RETURN NULL;END IF;
+ IF NOT app.principal_snapshot_current() OR EXISTS(SELECT 1 FROM unnest(members) member(id) WHERE NOT app.access_financial_action_employment('payroll',member.id,'view'))
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(p_scope->'departmentIds','[]'::jsonb)) selected(value)
+ WHERE NOT EXISTS(SELECT 1 FROM public.department department WHERE department.id=selected.value::uuid AND department.tenant_id=app.current_tenant_id() AND app.access_financial_action_company('payroll',department.company_id,'view'))) THEN
+  RAISE EXCEPTION 'Payroll subset source unavailable' USING ERRCODE='42501';END IF;
+ RETURN members;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.payroll_scope_employment_ids(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.payroll_scope_employment_ids(jsonb) TO ai_hr_app;
