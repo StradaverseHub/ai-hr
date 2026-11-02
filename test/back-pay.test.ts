@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
+import {withTenant} from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -41,6 +42,7 @@ import {
 import { seedPayComponentCatalog, upsertPayComponent } from '../core/pay-components';
 import {
   adminCtx,
+  createAppUser,
   closeAll,
   eventTypesFor,
   migrateTestDb,
@@ -197,7 +199,7 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
   });
 
   it('BK53 retains every contributing revision while pricing two overlapping revisions once', async () => {
-    const { a, employmentId } = await hire(3000);
+    const { a, employmentId, personId } = await hire(3000);
     const batchId = await runAndClose('2026-03');
     const before = await payslipRow(employmentId, batchId);
     await setCompensation(a, { employmentId, basicSalary: 3100, effectiveFrom: '2026-03-11' });
@@ -213,6 +215,15 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
     expect(total).toBe(138.71);
     const sources = await owner.db.select().from(schema.backPaySource).where(eq(schema.backPaySource.runId,runId));
     expect(sources.map(row=>row.sourceCompensationId).sort()).toEqual(candidates.map(row=>row.compensationId).sort());
+    const employeeUser = await createAppUser(base.tenantId,personId,'employee');
+    const employeeCtx = {...a,userId:employeeUser,personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+    expect(await withTenant(employeeCtx,tx=>tx.select().from(schema.backPaySource))).toEqual([]);
+    const [original] = await owner.db.select().from(schema.compensation).where(and(eq(schema.compensation.employmentId,employmentId),eq(schema.compensation.validFrom,'2026-01-01')));
+    await expect(withTenant(employeeCtx,tx=>tx.insert(schema.backPaySource).values({tenantId:base.tenantId,runId,sourceCompensationId:original.id})))
+      .rejects.toThrow(/row-level security/);
+    await expect(withTenant(a,tx=>tx.delete(schema.backPaySource).where(eq(schema.backPaySource.runId,runId))))
+      .rejects.toThrow(/permission denied/);
+    expect(await owner.db.select().from(schema.backPaySource).where(eq(schema.backPaySource.runId,runId))).toEqual(sources);
     expect((await backPayRunDetail(a, runId))!.perEmployee[0].total).toBe(138.71);
     expect(await detectArrears(a, { companyId: base.companyId })).toHaveLength(0);
     await cancelBackPayRun(a, { runId });
