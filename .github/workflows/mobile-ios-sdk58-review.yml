@@ -1,0 +1,63 @@
+name: mobile-ios-sdk58-review
+run-name: iOS SDK58 native review · 262a21c0b
+on:
+  push:
+    branches: [codex/mobile-sdk58-eval-20261103]
+    paths: [.github/workflows/mobile-ios-sdk58-review.yml]
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_PUBLIC_RUNTIME_CONNECTIONS: '1'
+      EXPO_PUBLIC_AUTH_PROVIDER: internal
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 262a21c0b46e547f6d3fbb07165db93259f2571a
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Select an installed supported Xcode without changing the runner image
+        run: |
+          python3 - <<'PY'
+          import pathlib,re,os
+          choices=[]
+          for p in pathlib.Path('/Applications').glob('Xcode*.app'):
+            m=re.fullmatch(r'Xcode_(\d+)\.(\d+)(?:\.\d+)?\.app',p.name)
+            if m and (v:=tuple(map(int,m.groups()))) >= (26,4): choices.append((v,p))
+          if not choices: raise SystemExit('Standard runner has no supported Xcode >=26.4; no paid runner fallback')
+          with open(os.environ['GITHUB_ENV'],'a') as f: f.write('DEVELOPER_DIR='+str(max(choices)[1]/'Contents/Developer')+'\n')
+          PY
+      - name: Compile the exact review source for Simulator without signing
+        run: |
+          test "$(git -C source rev-parse HEAD)" = 262a21c0b46e547f6d3fbb07165db93259f2571a
+          xcodebuild -version
+          npm ci --prefix source/mobile --no-audit --no-fund
+          npm --prefix source/mobile run eas-build-post-install
+          cd source/mobile
+          ./node_modules/.bin/expo prebuild --platform ios --no-install
+          cd ios
+          pod install
+          workspace=$(find . -maxdepth 1 -name '*.xcworkspace' -print -quit)
+          project=$(find . -maxdepth 1 -name '*.xcodeproj' -print -quit)
+          scheme=$(basename "$project" .xcodeproj)
+          mkdir -p "$RUNNER_TEMP/onehr-ios-sdk58-review"
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -configuration Release -derivedDataPath "$RUNNER_TEMP/onehr-ios-build" -jobs 2 CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/onehr-ios-sdk58-review/build.log" 2>&1 || { tail -120 "$RUNNER_TEMP/onehr-ios-sdk58-review/build.log"; exit 1; }
+          app=$(find "$RUNNER_TEMP/onehr-ios-build/Build/Products/Release-iphonesimulator" -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$app"
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/onehr-ios-sdk58-review/OneHR-simulator.zip"
+          printf '%s\n' '262a21c0b46e547f6d3fbb07165db93259f2571a' > "$RUNNER_TEMP/onehr-ios-sdk58-review/source.txt"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: onehr-ios-sdk58-review-262a21c0b
+          path: ${{ runner.temp }}/onehr-ios-sdk58-review/
+          retention-days: 1
+          if-no-files-found: warn
