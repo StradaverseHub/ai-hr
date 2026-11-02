@@ -33626,5 +33626,72 @@
       "forbidden": "You do not have permission to change this policy.",
       "unavailable": "Password settings are unavailable. Try again."
     }
+  },
+  "loginEditorial": {
+    "headlineOne": "Work,",
+    "headlineTwo": "reimagined.",
+    "intro": "Your people. Your next move.\nA different way to get there.",
+    "workspaceLabel": "Find your workspace",
+    "workspacePlaceholder": "Organization code",
+    "workspaceNote": "Use the code provided by your administrator.",
+    "continueLabel": "Continue to workspace",
+    "nextStep": "Next: Microsoft or password sign-in",
+    "accountTitle": "Welcome to your workspace.",
+    "accountSubtitle": "Choose how to sign in.",
+    "changeOrganization": "Change organization",
+    "closingOne": "A little less admin.",
+    "closingTwo": "A little more possibility.",
+    "signInHelp": "Sign-in help",
+    "language": "Language",
+    "brainHeadline": "{name}. The brain of your HR system.",
+    "brainDescription": "Ask once. Review in one place. Keep work moving.",
+    "genericAiName": "AI centre",
+    "storyLabel": "How Noveri connects your HR system",
+    "demoAlt": "Fictional AI centre: a team question brings together leave context and an assigned request ready for review.",
+    "demoCaption": "Illustrative preview · fictional data",
+    "storyDescription": "The AI centre brings context and a review action together, then swirls into the Interfaces layer of the Noveri OS clockwork. AI proposes; people stay in control.",
+    "clockTitle": "How {name} works",
+    "clockCaption": "Exploded view · like a watch movement",
+    "clockAlt": "Noveri OS: interfaces, model, harness, context, capabilities, system of record and governance.",
+    "stop": "Stop animation",
+    "replay": "Replay animation",
+    "clock": {
+      "interfaces": {
+        "name": "Interfaces",
+        "part": "the dial · chat · inbox · review pages"
+      },
+      "harness": {
+        "name": "Agentic harness",
+        "part": "the escapement · one step at a time"
+      },
+      "context": {
+        "name": "Context and knowledge",
+        "part": "the calendar ring · guides · pages · your role"
+      },
+      "capabilities": {
+        "name": "HR capabilities",
+        "part": "the gear train · reads · explainers · preparers"
+      },
+      "record": {
+        "name": "HR system of record",
+        "part": "the mainspring · leave · payroll · people"
+      },
+      "model": {
+        "name": "Model",
+        "part": "the balance wheel · decides nothing"
+      },
+      "foundation": {
+        "name": "Foundation: trust and governance",
+        "part": "the case · guard · outcome record · audit"
+      },
+      "guard": {
+        "name": "Guard",
+        "part": "the crown · checked before anything moves"
+      },
+      "outcome": {
+        "name": "Outcome record",
+        "part": "the engraved caseback · who · what · when"
+      }
+    }
   }
 }

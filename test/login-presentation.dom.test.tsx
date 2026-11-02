@@ -18,13 +18,15 @@ vi.mock('../app/admin/settings/login/actions', () => ({ saveLoginPresentationAct
 const wrap = (child: React.ReactNode, locale = 'en', messages = en) => render(<NextIntlClientProvider locale={locale} messages={messages} onError={e => { throw e; }}>{child}</NextIntlClientProvider>);
 afterEach(() => { cleanup(); save.mockClear(); });
 describe('login presentation', () => {
-  it.each(Object.entries({ en, ms, zh, ta, th, vi: vietnamese }))('renders the form and help in %s without missing translations', (locale, messages) => {
+  it.each(Object.entries({ en, ms, zh, ta, th, vi: vietnamese }))('renders the form and help in %s without missing translations', async (locale, messages) => {
     wrap(<InternalAuthForm organization="fixture"/>, locale, messages as typeof en);
-    expect(screen.getByRole('heading', { name: messages.loginPresentation.welcome })).toBeInTheDocument();
+    expect(screen.getByRole('heading', {level: 1})).toHaveTextContent(messages.loginEditorial.headlineOne);
+    await userEvent.click(screen.getByRole('button', {name: messages.loginEditorial.continueLabel}));
     expect(screen.getByRole('button', { name: messages.internalAuth.signIn })).toBeInTheDocument();
   });
   it('shows and hides the password without submitting the form', async () => {
     wrap(<InternalAuthForm organization="fixture"/>);
+    await userEvent.click(screen.getByRole('button', {name: en.loginEditorial.continueLabel}));
     const password = screen.getByLabelText(en.internalAuth.password);
     expect(password).toHaveAttribute('type', 'password');
     await userEvent.click(screen.getByRole('button', { name: en.loginPresentation.showPassword }));
@@ -35,8 +37,8 @@ describe('login presentation', () => {
   it('renders configured images and falls back after a broken image', () => {
     wrap(<LoginShell presentation={{ ...DEFAULT_LOGIN_PRESENTATION, mediaType: 'image', mediaUrl: 'https://example.test/welcome.png', alt: 'Fictional workspace' }}>Form</LoginShell>);
     fireEvent.error(screen.getByRole('img', { name: 'Fictional workspace' }));
-    expect(screen.queryByRole('img')).toBeNull();
-    expect(screen.getByRole('region', { name: en.loginTour.label })).toBeInTheDocument();
+    expect(screen.queryByRole('img', {name: 'Fictional workspace'})).toBeNull();
+    expect(screen.getByRole('region', { name: en.loginEditorial.storyLabel })).toBeInTheDocument();
   });
   it('keeps GIF motion stopped until chosen and lets the visitor stop it', async () => {
     wrap(<LoginShell presentation={{ ...DEFAULT_LOGIN_PRESENTATION, mediaType: 'gif', mediaUrl: 'https://example.test/welcome.gif', alt: 'Fictional animation' }}>Form</LoginShell>);

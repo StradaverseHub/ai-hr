@@ -8,15 +8,17 @@ vi.mock('next/image', () => ({ default: (props: Record<string, unknown>) => <img
 const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => navigation }));
 const fetcher = vi.fn<typeof fetch>();
-function view(props: Parameters<typeof InternalAuthForm>[0] = {},locale='en') {
+async function view(props: Parameters<typeof InternalAuthForm>[0] = {},locale='en') {
   vi.stubGlobal('fetch', fetcher);
-  return render(<NextIntlClientProvider locale={locale} messages={en}><InternalAuthForm organization="alpha" {...props}/></NextIntlClientProvider>);
+  const result = render(<NextIntlClientProvider locale={locale} messages={en}><InternalAuthForm organization="alpha" {...props}/></NextIntlClientProvider>);
+  if (!props.mode || props.mode === 'login') await userEvent.click(screen.getByRole('button', { name: en.loginEditorial.continueLabel }));
+  return result;
 }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); fetcher.mockReset(); navigation.replace.mockReset(); window.history.replaceState(null, '', '/'); });
 describe('embedded browser forms', () => {
   it('submits organization + username without exposing credentials in the URL and renders a safe refusal', async () => {
     fetcher.mockResolvedValue(Response.json({ error: 'invalidLogin' }, { status: 401 }));
-    view(); const user = userEvent.setup();
+    await view(); const user = userEvent.setup();
     expect(screen.getByLabelText(en.internalAuth.password).closest('form')).toHaveAttribute('method','post');
     await user.type(screen.getByLabelText(en.internalAuth.username), 'employee');
     await user.type(screen.getByLabelText(en.internalAuth.password), 'Private fixture password');
@@ -27,14 +29,14 @@ describe('embedded browser forms', () => {
     expect(init).toMatchObject({ method: 'POST', credentials: 'same-origin', redirect: 'error' });
   });
   it('binds a public recovery request to the language selected on the login page',async()=>{
-    fetcher.mockResolvedValue(Response.json({step:'sent'}));view({mode:'recovery'},'ms');const user=userEvent.setup();
+    fetcher.mockResolvedValue(Response.json({step:'sent'}));await view({mode:'recovery'},'ms');const user=userEvent.setup();
     await user.type(screen.getByLabelText(en.internalAuth.username),'employee');await user.click(screen.getByRole('button',{name:en.internalAuth.sendLink}));
     await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());const [url,init]=fetcher.mock.calls[0];expect(url).toBe('/login/api/recovery');expect(JSON.parse(String(init?.body))).toMatchObject({locale:'ms',organization:'alpha',username:'employee'});
   });
   it('finishes activation at login with the organization filled after recovery codes are saved', async () => {
     fetcher.mockResolvedValueOnce(Response.json({ step: 'enroll', challenge: 'a'.repeat(43), secret: 'MANUALKEY', qr: 'data:image/png;base64,fixture' }))
       .mockResolvedValueOnce(Response.json({ step: 'activated', organization: 'new-customer', recoveryCodes: Array.from({ length: 8 }, (_, i) => 'PRIVATE-CODE-' + i) }));
-    view({ mode: 'invite', invitation: 'i'.repeat(43) }); const user = userEvent.setup();
+    await view({ mode: 'invite', invitation: 'i'.repeat(43) }); const user = userEvent.setup();
     await user.type(screen.getByLabelText(en.internalAuth.username), 'new.user');
     await user.type(screen.getByLabelText(en.internalAuth.newPassword), 'A private secure phrase 775!');
     await user.type(screen.getByLabelText(en.internalAuth.confirmation), 'A private secure phrase 775!');
@@ -55,7 +57,7 @@ describe('embedded browser forms', () => {
   });
   it('routes an accepted existing account straight to login without an extra continue screen', async () => {
     fetcher.mockResolvedValueOnce(Response.json({ step: 'activated', organization: 'new-customer' }));
-    view({ mode: 'accept', invitation: 'i'.repeat(43), returnTo: '/operator' });
+    await view({ mode: 'accept', invitation: 'i'.repeat(43), returnTo: '/operator' });
     await userEvent.setup().click(screen.getByRole('button', { name: en.internalAuth.continue }));
     await waitFor(() => expect(navigation.replace).toHaveBeenCalledExactlyOnceWith('/login?organization=new-customer'));
     expect(fetcher.mock.calls[0][0]).toBe('/login/api/accept-invite');
@@ -65,7 +67,7 @@ describe('embedded browser forms', () => {
     vi.stubGlobal('location', { ...window.location, assign });
     fetcher.mockResolvedValueOnce(Response.json({ step: 'mfa', challenge: 'c'.repeat(43) }))
       .mockResolvedValueOnce(Response.json({ step: 'complete' }));
-    view({ returnTo: '/home' }); const user = userEvent.setup();
+    await view({ returnTo: '/home' }); const user = userEvent.setup();
     await user.type(screen.getByLabelText(en.internalAuth.username), 'employee');
     await user.type(screen.getByLabelText(en.internalAuth.password), 'Private fixture password');
     await user.click(screen.getByRole('button', { name: en.internalAuth.signIn }));
@@ -77,24 +79,24 @@ describe('embedded browser forms', () => {
     const auth = screen.getByRole('region', { name: en.internalAuth.signingInTitle });
     expect(within(auth).queryByRole('button')).toBeNull();
     expect(auth.querySelector('form')).toBeNull();
-    expect(screen.getByRole('region', { name: en.loginTour.label })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: en.loginEditorial.storyLabel })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: en.internalAuth.loginTitle })).toBeNull();
     expect(assign).toHaveBeenCalledExactlyOnceWith('/home');
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual(['/login/api/login', '/login/api/mfa']);
   });
   it('8e830f17: an activation without recovery codes shows the same status, not the generic form', async () => {
     fetcher.mockResolvedValueOnce(Response.json({ step: 'activated', organization: 'new-customer' }));
-    view({ mode: 'accept', invitation: 'i'.repeat(43) });
+    await view({ mode: 'accept', invitation: 'i'.repeat(43) });
     await userEvent.setup().click(screen.getByRole('button', { name: en.internalAuth.continue }));
     expect(await screen.findByRole('heading', { name: en.internalAuth.signingInTitle })).toBeInTheDocument();
     const auth = screen.getByRole('region', { name: en.internalAuth.signingInTitle });
     expect(within(auth).queryByRole('button')).toBeNull();
     expect(auth.querySelector('form')).toBeNull();
-    expect(screen.getByRole('region', { name: en.loginTour.label })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: en.loginEditorial.storyLabel })).toBeInTheDocument();
   });
   it('removes a recovery token from browser history and submits it only in the reset POST body', async () => {
     const token = 'r'.repeat(43); window.history.replaceState(null, '', '/reset-password#token=' + token);
-    fetcher.mockResolvedValue(Response.json({ step: 'resetDone' })); view({ mode: 'recovery' });
+    fetcher.mockResolvedValue(Response.json({ step: 'resetDone' })); await view({ mode: 'recovery' });
     await waitFor(() => expect(window.location.hash).toBe(''));
     const user = userEvent.setup();
     await user.type(screen.getByLabelText(en.internalAuth.newPassword), 'A replacement private phrase 881!');

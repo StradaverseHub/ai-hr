@@ -9,7 +9,8 @@ afterEach(cleanup);
 describe('Microsoft login choice',()=>{
  it('uses the entered organization without sending local passwords to a query string',()=>{
   render(<NextIntlClientProvider locale="en" messages={en}><InternalAuthForm organization="acme" returnTo="/me"/></NextIntlClientProvider>);
-  fireEvent.change(screen.getByLabelText(en.internalAuth.organization),{target:{value:'second-company'}});
+  fireEvent.change(screen.getByLabelText(en.loginEditorial.workspaceLabel),{target:{value:'second-company'}});
+  fireEvent.click(screen.getByRole('button',{name:en.loginEditorial.continueLabel}));
   fireEvent.change(screen.getByLabelText(en.internalAuth.password),{target:{value:'private-local-password'}});
   const button=screen.getByRole('button',{name:en.internalAuth.microsoft}),form=button.closest('form')!;
   expect(form).toHaveAttribute('action','/login/entra/start');expect(form).toHaveAttribute('method','get');
@@ -17,6 +18,7 @@ describe('Microsoft login choice',()=>{
  });
  it('shows a recoverable Microsoft failure while preserving the normal login controls',()=>{
   render(<NextIntlClientProvider locale="en" messages={en}><InternalAuthForm organization="acme" entraError/></NextIntlClientProvider>);
+  fireEvent.click(screen.getByRole('button',{name:en.loginEditorial.continueLabel}));
   expect(screen.getByRole('alert')).toHaveTextContent(en.internalAuth.microsoftError);expect(screen.getByLabelText(en.internalAuth.password)).toBeEnabled();
  });
 });

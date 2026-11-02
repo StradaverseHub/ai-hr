@@ -33626,5 +33626,72 @@
       "forbidden": "Bạn không có quyền thay đổi chính sách này.",
       "unavailable": "Không thể truy cập cài đặt mật khẩu. Hãy thử lại."
     }
+  },
+  "loginEditorial": {
+    "headlineOne": "Công việc,",
+    "headlineTwo": "theo cách mới.",
+    "intro": "Đội ngũ của bạn. Bước tiếp theo.\nMột cách khác để tiến về phía trước.",
+    "workspaceLabel": "Tìm không gian làm việc",
+    "workspacePlaceholder": "Mã tổ chức",
+    "workspaceNote": "Sử dụng mã do quản trị viên cung cấp.",
+    "continueLabel": "Tiếp tục vào không gian làm việc",
+    "nextStep": "Tiếp theo: đăng nhập bằng Microsoft hoặc mật khẩu",
+    "accountTitle": "Chào mừng đến không gian làm việc.",
+    "accountSubtitle": "Chọn cách đăng nhập.",
+    "changeOrganization": "Đổi tổ chức",
+    "closingOne": "Bớt việc hành chính.",
+    "closingTwo": "Thêm nhiều khả năng.",
+    "signInHelp": "Trợ giúp đăng nhập",
+    "language": "Ngôn ngữ",
+    "brainHeadline": "{name}. Bộ não của hệ thống nhân sự.",
+    "brainDescription": "Hỏi một lần. Xem xét tại một nơi. Tiếp tục công việc.",
+    "genericAiName": "Trung tâm AI",
+    "storyLabel": "Cách Noveri kết nối hệ thống nhân sự",
+    "demoAlt": "Trung tâm AI minh họa: câu hỏi về nhóm kết hợp thông tin nghỉ phép và yêu cầu sẵn sàng để xem xét.",
+    "demoCaption": "Bản xem trước minh họa · dữ liệu giả định",
+    "storyDescription": "Trung tâm AI kết hợp bối cảnh và thao tác xem xét, rồi xoáy vào lớp Giao diện của Noveri OS. AI đề xuất; con người giữ quyền kiểm soát.",
+    "clockTitle": "Cách {name} hoạt động",
+    "clockCaption": "Hình tách lớp · như bộ máy đồng hồ",
+    "clockAlt": "Noveri OS: giao diện, mô hình, bộ điều phối, bối cảnh, chức năng, hệ thống hồ sơ và quản trị.",
+    "stop": "Dừng hoạt ảnh",
+    "replay": "Phát lại hoạt ảnh",
+    "clock": {
+      "interfaces": {
+        "name": "Giao diện",
+        "part": "mặt số · trò chuyện · hộp thư · trang xem xét"
+      },
+      "harness": {
+        "name": "Bộ điều phối tác tử",
+        "part": "bộ thoát · mỗi lần một bước"
+      },
+      "context": {
+        "name": "Ngữ cảnh và kiến thức",
+        "part": "vòng lịch · hướng dẫn · trang · vai trò của bạn"
+      },
+      "capabilities": {
+        "name": "Năng lực HR",
+        "part": "bộ bánh răng · đọc · giải thích · chuẩn bị"
+      },
+      "record": {
+        "name": "Hệ thống hồ sơ HR",
+        "part": "dây cót · nghỉ phép · lương · nhân sự"
+      },
+      "model": {
+        "name": "Mô hình",
+        "part": "bánh xe cân bằng · không quyết định gì"
+      },
+      "foundation": {
+        "name": "Nền tảng: tin cậy và quản trị",
+        "part": "vỏ đồng hồ · lớp bảo vệ · bản ghi kết quả · kiểm toán"
+      },
+      "guard": {
+        "name": "Lớp bảo vệ",
+        "part": "núm vặn · kiểm tra trước khi có gì thay đổi"
+      },
+      "outcome": {
+        "name": "Bản ghi kết quả",
+        "part": "nắp lưng khắc chữ · ai · gì · khi nào"
+      }
+    }
   }
 }
