@@ -77,6 +77,7 @@ const REVIEW_REASONS: readonly BackPayReviewReason[] = [
   'nonPayableItem',
   'noBaselineSalary',
   'unpaidLeaveInPeriod',
+  'priorArrears',
 ];
 
 const ERROR_CODES = ['nothingToCalculate', 'targetRunNotDraft', 'wrongStatus', 'notFound', 'unknown'] as const;
