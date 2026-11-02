@@ -158,6 +158,9 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  const screened=(text:string,part:'question'|'history'|'memory')=>{const result=screenIdentifiers(text);screening[part]+=result.count;
   for(const kind of result.kinds)if(!screening.kinds.includes(kind))screening.kinds.push(kind);return result.text;};
  const question=screened(options.question,'question'),nonce=fenceNonce();
+ // Spec v12: the person's (screened) words go to the model labelled, unchanged; the gate, tools, history and memory
+ // keep the bare words. Unlabelled, the upstream's content filter stopped everyday questions (spec.question).
+ const asked=S.question.label+'\n'+question;
  const gateNote=gate.privateReads?null:TURN_GATE_NOTE[gate.reason],rawNote=memoryNote(current),note=rawNote?screened(rawNote,'memory'):null;
  // A turn about another person closes every private read; a caller with payroll access is told where they already see pay.
  const payNote=!gate.privateReads&&gate.reason==='other_person'?payViewNoteFor(ctx,candidates.destinations,options.scope.locale):null;
@@ -169,7 +172,7 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  for(const row of [...history].reverse()){historyChars+=row.content.length;if(historyChars>S.budgets.maxHistoryChars)break;kept.unshift(row);}
  while(kept.length&&kept[0].role!=='user')kept.shift();
  const messages:HarnessMessage[]=[{role:'system',content:system},...kept.map(row=>({role:row.role,content:screened(row.content,'history')}) as HarnessMessage),
-  {role:'user',content:rawGoal?rawGoal+'\n\n'+question:question}];
+  {role:'user',content:(rawGoal?rawGoal+'\n\n':'')+asked}];
  const declarations:HarnessToolDeclaration[]=[...offered.map(binding=>({name:binding.name,description:binding.spec.description,parameters:binding.spec.inputSchema as Record<string,unknown>})),finalDeclaration];
 
  const ledger=new DisclosureLedger(callerKey),seen=new Set<string>();
