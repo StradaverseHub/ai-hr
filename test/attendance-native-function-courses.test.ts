@@ -120,7 +120,7 @@ it('matches actual stored/current dated-rotation floors and registry delegation 
   const [floor]=await owner.withTenant(actor,tx=>tx.execute<{stored:boolean;current:boolean;delegation:boolean}>(sql`select app.module_function_legacy_allowed(${b.tenantId}::uuid,${actor.userId}::uuid,'function.attendancePolicy.rotations.edit',null) as stored,app.module_function_current_legacy_allowed(${b.tenantId}::uuid,${actor.userId}::uuid,'function.attendancePolicy.rotations.edit',null) as "current",app.access_function_delegation_floor('function.attendancePolicy.rotations.edit',null) as delegation`));
   expect(floor).toEqual({stored:expected,current:expected,delegation:expected});
  }
- const [group]=await owner.db.insert(s.attendanceRule).values({tenantId:b.tenantId,name:'Fictional raw rotation owner'}).returning({id:s.attendanceRule.id}),shift=await createShift(admin,shiftInput('Fictional raw rotation shift'));
+ const group=await createAttendanceRule(admin,ruleInput('Fictional raw rotation owner')),shift=await createShift(admin,shiftInput('Fictional raw rotation shift'));
  const date=new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+8*86400000).toISOString().slice(0,10);
  await expect(withTenant(companyHr,tx=>tx.insert(s.attendanceRotation).values({tenantId:b.tenantId,ruleId:group.id,effectiveFrom:date,anchorDate:date,unit:'day',length:1,allowedShiftIds:[shift.id],days:[{kind:'full',shiftId:shift.id}],createdBy:userId}))).rejects.toThrow();
  expect(await owner.db.select().from(s.attendanceRotation).where(eq(s.attendanceRotation.ruleId,group.id))).toEqual([]);

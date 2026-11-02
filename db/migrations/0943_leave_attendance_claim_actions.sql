@@ -1135,8 +1135,16 @@ REVOKE ALL ON FUNCTION app.claim_command_born() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER claim_command_born AFTER INSERT OR UPDATE ON public.claim_request FOR EACH ROW EXECUTE FUNCTION app.claim_command_born();
 --> statement-breakpoint
 -- Only the exact whole-Claim decision gets an assigned write course; no arbitrary field editor.
-CREATE POLICY claim_assigned_command ON public.claim_request FOR UPDATE TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND status::text='pending' AND app.claim_assigned_subject_for(tenant_id,app.current_user_id(),employment_id) AND app.claim_decision_allowed(employment_id))
- WITH CHECK(tenant_id=app.current_tenant_id() AND status::text IN ('approved','rejected') AND app.claim_assigned_subject_for(tenant_id,app.current_user_id(),employment_id) AND app.claim_decision_allowed(employment_id));
+-- RLS callers receive only the fixed current-principal predicate. Parameterized target/default
+-- helpers stay private; they cannot be called as arbitrary-user RPCs by the application role.
+CREATE FUNCTION app.claim_assigned_current(p_subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.claim_assigned_subject_for(app.current_tenant_id(),app.current_user_id(),p_subject) AND app.claim_decision_allowed(p_subject);
+$$;
+REVOKE ALL ON FUNCTION app.claim_assigned_current(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_assigned_current(uuid) TO ai_hr_app;
+CREATE POLICY claim_assigned_command ON public.claim_request FOR UPDATE TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND status::text='pending' AND app.claim_assigned_current(employment_id))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND status::text IN ('approved','rejected') AND app.claim_assigned_current(employment_id));
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.claim_own_receipt_read_allowed(p_claim uuid,p_subject uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -1486,15 +1494,70 @@ CREATE TRIGGER aaa_schedule_exception_action BEFORE INSERT ON public.attendance_
 CREATE TRIGGER module_schedule_exception_access BEFORE INSERT ON public.attendance_exception_revision FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
 
 --> statement-breakpoint
+-- Shared PRIVATE native key fact for actual/proposed role overrides. This is not an
+-- admission port: code-owned source guards supply real OLD/NEW, stored/claimed roles and key.
+-- All current consumers share the actual original HR/super defaults; unknown keys fail closed.
+CREATE FUNCTION app.native_permission_override_fact(p_tenant uuid,p_permission text,p_company uuid,p_roles text[],p_before jsonb DEFAULT NULL,p_after jsonb DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH projected AS(
+  SELECT g.role,g.allowed,g.company_id FROM public.payroll_permission_grant g WHERE g.tenant_id=p_tenant AND g.permission_key=p_permission AND (p_before IS NULL OR g.id IS DISTINCT FROM (p_before->>'id')::uuid)
+  UNION ALL SELECT p_after->>'role',(p_after->>'allowed')::boolean,(p_after->>'company_id')::uuid WHERE p_after IS NOT NULL AND (p_after->>'tenant_id')::uuid=p_tenant AND p_after->>'permission_key'=p_permission
+ ),applicable AS(SELECT * FROM projected WHERE company_id IS NULL OR company_id=p_company),
+ effective AS(SELECT role,allowed FROM applicable WHERE CASE WHEN EXISTS(SELECT 1 FROM applicable WHERE company_id IS NOT NULL) THEN company_id IS NOT NULL ELSE company_id IS NULL END)
+ SELECT coalesce(p_permission IN ('leave.apply_on_behalf','report.read.personnel','report.read.compensation','report.read.identity','report.read.bank','report.read.statutory','report.read.confidential_hr')
+ AND EXISTS(SELECT 1 FROM public.tenant tenant WHERE tenant.id=p_tenant) AND (p_company IS NULL OR EXISTS(SELECT 1 FROM public.company company WHERE company.id=p_company AND company.tenant_id=p_tenant))
+ AND CASE WHEN NOT EXISTS(SELECT 1 FROM effective) THEN coalesce(p_roles&&ARRAY['hr_admin','super_admin'],false)
+ ELSE EXISTS(SELECT 1 FROM effective allowed_role WHERE allowed_role.allowed AND allowed_role.role=ANY(p_roles) AND NOT EXISTS(SELECT 1 FROM effective denied_role WHERE denied_role.role=allowed_role.role AND NOT denied_role.allowed)) END,false);
+$$;
+REVOKE ALL ON FUNCTION app.native_permission_override_fact(uuid,text,uuid,text[],jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+-- Enumerate the complete affected native key scopes: a company mutation affects that company;
+-- a tenant mutation affects every current company plus the genuine future/global NULL scope.
+CREATE FUNCTION app.native_permission_override_scopes(p_tenant uuid,p_before jsonb,p_after jsonb) RETURNS TABLE(company_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH images AS(SELECT image FROM (VALUES(p_before),(p_after)) source_images(image) WHERE image IS NOT NULL),global_change AS(SELECT 1 FROM images WHERE image->>'company_id' IS NULL)
+ SELECT NULL::uuid WHERE EXISTS(SELECT 1 FROM global_change)
+ UNION SELECT company.id FROM public.company company WHERE company.tenant_id=p_tenant AND EXISTS(SELECT 1 FROM global_change)
+ UNION SELECT (image->>'company_id')::uuid FROM images WHERE image->>'company_id' IS NOT NULL;
+$$;
+CREATE FUNCTION app.native_permission_override_recipients(p_tenant uuid,p_permission text,p_before jsonb,p_after jsonb) RETURNS TABLE(user_id uuid,company_id uuid,before_allowed boolean,after_allowed boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT account.id,scope.company_id,app.native_permission_override_fact(p_tenant,p_permission,scope.company_id,roles.held,NULL,NULL),app.native_permission_override_fact(p_tenant,p_permission,scope.company_id,roles.held,p_before,p_after)
+ FROM public.app_user account CROSS JOIN app.native_permission_override_scopes(p_tenant,p_before,p_after) scope
+ CROSS JOIN LATERAL(SELECT ARRAY(SELECT assignment.role::text FROM public.role_assignment assignment WHERE assignment.tenant_id=p_tenant AND assignment.app_user_id=account.id AND (p_permission='leave.apply_on_behalf' OR app.access_scope_covers(assignment.company_id,scope.company_id,p_tenant))) AS held) roles
+ WHERE account.tenant_id=p_tenant AND account.archived_at IS NULL AND NOT app.login_blocked(account.id);
+$$;
+-- Singleton role transitions additionally cover unknown future recipients. Any OR-role gain is
+-- witnessed by at least one singleton, including gains caused by switching whole override sets.
+CREATE FUNCTION app.native_permission_override_role_changes(p_tenant uuid,p_permission text,p_before jsonb,p_after jsonb) RETURNS TABLE(role text,company_id uuid,before_allowed boolean,after_allowed boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT candidate_role.name,scope.company_id,app.native_permission_override_fact(p_tenant,p_permission,scope.company_id,ARRAY[candidate_role.name],NULL,NULL),app.native_permission_override_fact(p_tenant,p_permission,scope.company_id,ARRAY[candidate_role.name],p_before,p_after)
+ FROM unnest(enum_range(NULL::public.role)) actual_role CROSS JOIN LATERAL(SELECT actual_role::text AS name) candidate_role CROSS JOIN app.native_permission_override_scopes(p_tenant,p_before,p_after) scope;
+$$;
+REVOKE ALL ON FUNCTION app.native_permission_override_scopes(uuid,jsonb,jsonb),app.native_permission_override_recipients(uuid,text,jsonb,jsonb),app.native_permission_override_role_changes(uuid,text,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+
+-- Proposed recipients can become administrative even when no supported/default/current witness
+-- existed before this ACL change. Force only that classification in the canonical subset owner.
+DO $ceiling$ DECLARE source text;BEGIN
+ SELECT prosrc INTO source FROM pg_proc WHERE oid='app.data_permission_function_target_ceiling(uuid)'::regprocedure;
+ IF source IS NULL OR md5(source)<>'bb618986295af27b0152dbe5d9ed4fa8' OR (length(source)-length(replace(source,'administrative:=EXISTS(','')))/length('administrative:=EXISTS(')<>1 THEN RAISE EXCEPTION 'Native recipient profile ceiling source changed';END IF;
+ EXECUTE 'CREATE FUNCTION app.native_permission_recipient_data_ceiling(p_user uuid) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS '||quote_literal(replace(source,'administrative:=EXISTS(','administrative:=true OR EXISTS('));
+END $ceiling$;
+REVOKE ALL ON FUNCTION app.native_permission_recipient_data_ceiling(uuid) FROM PUBLIC,ai_hr_app;
+-- The existing letter ACL's future-company profile fact contains no Letter permission or role
+-- test. Reuse that exact shared data ceiling, without borrowing any Letter execution authority.
+CREATE FUNCTION app.native_permission_future_company_ceiling(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_letter_native_acl_company_ceiling(p_company);
+$$;
+REVOKE ALL ON FUNCTION app.native_permission_future_company_ceiling(uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
 -- One owner for the existing leave.apply_on_behalf role-override algebra. Company rows
 -- replace the entire tenant override set; role denial wins only against the same role.
 -- This fact adds no subject read, company/data ceiling, admission or ledger authority.
 CREATE FUNCTION app.leave_on_behalf_permission(p_tenant uuid,p_company uuid,p_roles text[]) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- WITH applicable AS(SELECT g.role,g.allowed,g.company_id FROM public.payroll_permission_grant g WHERE g.tenant_id=p_tenant AND g.permission_key='leave.apply_on_behalf' AND (g.company_id IS NULL OR g.company_id=p_company)),
- effective AS(SELECT role,allowed FROM applicable WHERE CASE WHEN EXISTS(SELECT 1 FROM applicable WHERE company_id IS NOT NULL) THEN company_id IS NOT NULL ELSE company_id IS NULL END)
- SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM effective) THEN coalesce(p_roles&&ARRAY['hr_admin','super_admin'],false)
- ELSE EXISTS(SELECT 1 FROM effective allow_role WHERE allow_role.allowed AND allow_role.role=ANY(p_roles) AND NOT EXISTS(SELECT 1 FROM effective deny_role WHERE deny_role.role=allow_role.role AND NOT deny_role.allowed)) END;
+ SELECT app.native_permission_override_fact(p_tenant,'leave.apply_on_behalf',p_company,p_roles,NULL,NULL);
 $$;
 REVOKE ALL ON FUNCTION app.leave_on_behalf_permission(uuid,uuid,text[]) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.leave_on_behalf_native(p_company uuid DEFAULT NULL) RETURNS boolean
@@ -1637,7 +1700,18 @@ BEGIN
  END IF;RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.clocking_site_guard() FROM PUBLIC,ai_hr_app;
-CREATE TRIGGER module_clocking_site_access BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+-- Every actual shared-site parent write has the same original group-admin floor, even if
+-- UPDATE RLS would otherwise clip all rows before the exact row-purpose guard can run.
+CREATE FUNCTION app.clocking_site_write_admission() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ PERFORM app.audit_access_order_lock_for(app.current_tenant_id());
+ IF app.principal_snapshot_current() IS NOT TRUE OR app.is_group_admin() IS NOT TRUE THEN RAISE EXCEPTION 'Clocking site native write unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app.access_workforce_write_lock();RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.clocking_site_write_admission() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_clocking_site_access BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location FOR EACH STATEMENT EXECUTE FUNCTION app.clocking_site_write_admission();
 CREATE TRIGGER module_clocking_site_action BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location FOR EACH ROW EXECUTE FUNCTION app.clocking_site_guard();
 CREATE FUNCTION app.clocking_site_born() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -1671,6 +1745,9 @@ END $$;
 REVOKE ALL ON FUNCTION app.clocking_site_company_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER module_clocking_site_company_access BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location_company FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
 CREATE TRIGGER module_clocking_site_company_action BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location_company FOR EACH ROW EXECUTE FUNCTION app.clocking_site_company_guard();
+-- Actual company-link writers use INSERT/DELETE only. Default public-table grants must not
+-- expose a silent RLS-filtered UPDATE course for this immutable child. Owner backfills retain rights.
+REVOKE UPDATE ON public.clocking_location_company FROM ai_hr_app;
 -- Assignment source joins the same Access serialization before touching tuples. Try-only admission
 -- prevents an existing native data lock from becoming a blocking Access lock-order upgrade.
 -- This fence adds no role, employee visibility, purpose grant or control/business epoch mutation.

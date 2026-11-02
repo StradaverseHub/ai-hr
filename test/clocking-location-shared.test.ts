@@ -250,7 +250,7 @@ describe('f9afd1ce — core/clocking-location.ts: every writer asserts group-adm
   it('listClockingLocations FILTERS by company (r423) but no location has an owner company', () => {
     // r423 — the options are the list's filters; `companyId` is "open to this company", a filter over the
     // join table, never an owner column on the location.
-    expect(service).toMatch(/export function listClockingLocations\(\s*ctx: SessionContext,\s*opts: ListClockingLocationsOptions = \{\},?\s*\)/);
+    expect(service).toMatch(/export function listClockingLocations\(\s*ctx: SessionContext,\s*opts: ListClockingLocationsOptions = \{\},\s*existingTx\?:\s*Tx,?\s*\)/);
     // r428 (83c0d3c8 contest) — the literal `'none'` joined the type: the company-first company list's
     // orphan row ("not open to any company") reads it, a `not exists` filter rather than a `= id` one.
     expect(service).toContain("companyId?: string | 'none';");
@@ -261,6 +261,7 @@ describe('f9afd1ce — core/clocking-location.ts: every writer asserts group-adm
     expect(service).not.toContain('usedByCompanies');
     // A non-group-admin sees only locations open to companies they administer, and only those names.
     expect(service).toContain('app.is_admin_for(vc.company_id)');
+    expect(service).toContain("await assertClockingSiteActionTx(tx,'view');return listClockingLocations(ctx,opts,tx)");
     expect(service).toContain('(app.is_group_admin() or app.is_admin_for(clc.company_id))');
   });
 });
@@ -315,7 +316,7 @@ describe('f9afd1ce / r423 — the screens', () => {
     const newPage = read('app/admin/work-locations/clocking/new/page.tsx');
     expect(newPage).toContain('const groupAdmin = isGroupAdmin(s);');
     expect(newPage).toContain("t('sharedManagedByGroupAdmin')");
-    expect(read('app/admin/work-locations/clocking/[id]/edit/page.tsx')).toContain('if (!isGroupAdmin(s)) redirect(clockingViewPage(site.id));');
+    expect(read('app/admin/work-locations/clocking/[id]/edit/page.tsx')).toContain('if (!isGroupAdmin(s) || !(await clockingSiteActionAccess(s, 'edit'))) redirect(clockingViewPage(site.id));');
   });
 
   it('the create action posts the companies allowed (companyIds), never an owner companyId', () => {
