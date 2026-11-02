@@ -4,8 +4,8 @@
  * real native owners as tools, the step 5a task-memory store, the outcome record and the retired accounting row.
  * Only the provider adapter's network call is scripted; no provider is contacted. The provider-data review lookup is
  * isolated here, as in test/ai-private-analysis.test.ts: the owner's approval record for the contract is a
- * separate, explicitly approved change, and the real refusal of an unreviewed contract is proved below and by
- * test/provider-data-review-gate.test.ts. No approval is claimed by this file.
+ * separate, explicitly approved change (the rebind, 72ead258), and the real refusal of a contract whose source moved
+ * past its review is proved below and by test/provider-data-review-gate.test.ts. No approval is claimed by this file.
  *
  * Proves: the harness runs when the switch is on; history sent back is the model side only; cross-person and
  * cross-tenant reads are refused; a tenant with no compliant provider is refused before any read or model call; a
@@ -14,9 +14,13 @@ import {randomUUID} from 'node:crypto';
 import {and,eq} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 const review=vi.hoisted(()=>({approved:true}));
+// Since the rebind (72ead258) the real record approves the contract. `approved:false` stands for a source that has
+// moved past the reviewed digest: the real assertion is called with a stale digest and refuses, as it would in production.
+const STALE_SOURCE='0'.repeat(64);
 vi.mock('../lib/ai/provider-data-reviews',async original=>{const actual=await original<typeof import('../lib/ai/provider-data-reviews')>();
- return{...actual,providerDataReviewStatus:(contractId:string)=>contractId==='teras_harness_turn_v1'&&review.approved?'approved':actual.providerDataReviewStatus(contractId),
-  assertProviderDataContractReviewed:(contractId:string,digest:string)=>{if(contractId==='teras_harness_turn_v1'&&review.approved)return;actual.assertProviderDataContractReviewed(contractId,digest);}};});
+ return{...actual,providerDataReviewStatus:(contractId:string)=>contractId==='teras_harness_turn_v1'?(review.approved?'approved':'pending'):actual.providerDataReviewStatus(contractId),
+  assertProviderDataContractReviewed:(contractId:string,digest:string)=>{if(contractId==='teras_harness_turn_v1'&&review.approved)return;
+   actual.assertProviderDataContractReviewed(contractId,contractId==='teras_harness_turn_v1'?STALE_SOURCE:digest);}};});
 import * as schema from '../db/schema';
 import {terasOutcomeRecord,terasTaskMemory} from '../db/teras-schema';
 import type {SessionContext} from '../db/client';
