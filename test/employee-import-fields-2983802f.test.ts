@@ -143,6 +143,8 @@ describe('2983802f §1 · the scope fence — today’s file still imports', () 
 
     const result = await commitEmployeeImport(a, { companyId: b.companyId, records });
     expect(result.imported).toBe(1);
+    const [newStatutory]=await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.tenantId,b.tenantId));
+    expect(newStatutory.subjectToSkbbk).toBe(true);
     expect(result.failed).toEqual([]);
     expect(result.dependentsImported).toBe(0);
     expect(result.superiorFailed).toEqual([]);
@@ -306,9 +308,9 @@ describe('2983802f §3 · the new columns are validated, per row and per column'
     return preview.rows[0].errors.join(' | ');
   };
 
-  it('a partial passport block is refused, naming the three columns', async () => {
+  it('optional foreign passport dates can be omitted', async () => {
     const e = await errorsFor({ passport_expiry_date: '' });
-    expect(e).toMatch(/passport_number, passport_issue_date and passport_expiry_date/);
+    expect(e).not.toMatch(/passport/);
   });
 
   it('a passport that expires before it was issued is refused', async () => {

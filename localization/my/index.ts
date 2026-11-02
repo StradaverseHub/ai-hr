@@ -11,7 +11,7 @@ import { MY_EA_REPORTING } from './ea-reporting';
 import { validateEpfElection } from './epf-election';
 import { convertLegacyEpfTopupsMY } from './epf-topup-conversion-db';
 import { legacyTopupConversionCsv } from './epf-topup-conversion';
-import { readReviewedTp3OpeningMYTx,prepareReviewedTp3OpeningMYTx,canMaintainPassportProfileMY,canMaintainBankProfileMY,readReviewedPassportMYTx,prepareReviewedPassportMYTx,prepareReviewedBankMYTx,readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
+import { readReviewedTp3OpeningMYTx,prepareReviewedTp3OpeningMYTx,canMaintainPassportProfileMY,canMaintainBankProfileMY,readReviewedPassportMYTx,prepareReviewedPassportMYTx,prepareReviewedBankMYTx,readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, initializeHiredStatutoryMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import {
@@ -84,6 +84,7 @@ export const myPack: CountryPack = {
   states: MY_STATES,
   statutory: {
     set: setStatutoryProfileMY,
+    initializeForHire: initializeHiredStatutoryMY,
     withWrite:withStatutoryProfileWriteMY,
     reviewed:{readEditable:readReviewedStatutoryEditableMYTx,choices:reviewedStatutoryChoiceMetadataMYTx,labels:readReviewedStatutoryLabelsMYTx,lockSubject:lockReviewedStatutoryProfileMYTx,prepare:prepareReviewedStatutoryProfileMYTx,confirm:confirmReviewedStatutoryProfileMYTx,readReference:readReviewedStatutoryProfileReferenceMYTx},
     get: getStatutoryProfileMY,
