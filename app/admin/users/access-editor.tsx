@@ -10,7 +10,7 @@ import type {AccessConfigurationPreview} from '@/core/access-configuration';
 import type {AccessEditorFailure,AccessEditorResult} from '@/lib/access-editor-result';
 export type {AccessEditorFailure,AccessEditorResult} from '@/lib/access-editor-result';
 
-export type AccessEditorCapability=Pick<AccessCapability,'id'|'scope'|'supported'>&{label:string};
+export type AccessEditorCapability=Pick<AccessCapability,'id'|'scope'|'supported'|'prerequisites'|'presentation'>&{label:string};
 type Choice={id:string;label:string};
 export type AccessEditorProps={
  actorUserId:string;scopeFingerprint:string;
@@ -25,7 +25,7 @@ export function AccessConfigurationEditor(props:AccessEditorProps){
  return <AccessConfigurationEditorDraft key={props.snapshot.tenantId+':'+props.snapshot.revision+':'+props.actorUserId+':'+props.scopeFingerprint} {...props}/>;
 }
 function AccessConfigurationEditorDraft({snapshot,capabilities,users,companies,previewAction,saveAction,history}:AccessEditorProps){
- const t=useTranslations('accessConfiguration'),router=useRouter();
+ const t=useTranslations('accessConfiguration'),all=useTranslations(),router=useRouter();
  const groups=snapshot.groups.filter(group=>!group.retired);
  const [groupId,setGroupId]=useState(groups[0]?.id??''),[userId,setUserId]=useState(users[0]?.id??'');
  const group=groups.find(row=>row.id===groupId);
@@ -45,14 +45,20 @@ function AccessConfigurationEditorDraft({snapshot,capabilities,users,companies,p
  const mutableCapabilities=capabilities.filter(capability=>capability.id!=='access.system_admin');
  const actionDomains=Object.entries(ACTION_MATRIX_DOMAINS).filter(([domain])=>capabilities.some(capability=>capability.id===domain+'.view'));
  const actionNames=['view','add','edit','delete'];
- const otherGroupCapabilities=mutableCapabilities.filter(capability=>!actionDomains.some(([domain])=>actionNames.some(action=>capability.id===domain+'.'+action))&&!capability.id.startsWith('workforce.'));
+ const functionModules=[...new Set(capabilities.flatMap(capability=>capability.presentation?[capability.presentation.moduleKey]:[]))].sort();
+ const functionRows=(moduleKey:string)=>capabilities.filter(capability=>capability.presentation?.moduleKey===moduleKey&&capability.id.endsWith('.view'));
+ const functionLabel=(capability:AccessEditorCapability)=>capability.presentation&&all.has(capability.presentation.labelKey)?all(capability.presentation.labelKey):capability.label;
+ const otherGroupCapabilities=mutableCapabilities.filter(capability=>!capability.presentation&&!actionDomains.some(([domain])=>actionNames.some(action=>capability.id===domain+'.'+action))&&!capability.id.startsWith('workforce.'));
  const actionScope=(domain:string)=>capabilities.find(capability=>capability.id===domain+'.view')?.scope==='tenant'?null:scope;
  function setActionGrant(domain:string,action:string,checked:boolean){
   const targetScope=actionScope(domain);
   invalidate();setGrants(rows=>{
    let next=rows.filter(row=>row.capabilityId!==domain+'.'+action||row.companyId!==targetScope);
-   if(action==='view'&&!checked)next=next.filter(row=>!['add','edit','delete','approve','issue'].some(operation=>row.capabilityId===domain+'.'+operation)||row.companyId!==targetScope);
-   if(checked){next.push({capabilityId:domain+'.'+action,companyId:targetScope});if(action!=='view'&&!next.some(row=>row.capabilityId===domain+'.view'&&row.companyId===targetScope))next.push({capabilityId:domain+'.view',companyId:targetScope});}
+   if(action==='view'&&!checked)next=next.filter(row=>!['add','edit','delete','approve','issue','execute'].some(operation=>row.capabilityId===domain+'.'+operation)||row.companyId!==targetScope);
+   if(checked){
+    const add=(id:string)=>{const definition=capabilities.find(capability=>capability.id===id);if(!definition)return;const companyId=definition.scope==='tenant'?null:targetScope;if(next.some(row=>row.capabilityId===id&&row.companyId===companyId))return;next.push({capabilityId:id,companyId});for(const required of definition.prerequisites??[])add(required);};
+    add(domain+'.'+action);if(action!=='view')add(domain+'.view');
+   }
    return next;
   });
  }
@@ -84,7 +90,7 @@ function AccessConfigurationEditorDraft({snapshot,capabilities,users,companies,p
   finally{saving.current=false;setPending(null);}
  }
  function permissionSources(resolution:AccessResolution){
-  return <ul className="mt-1 space-y-1 text-xs text-muted-foreground">{resolution.sources.map((source,index)=><li key={source.kind+source.id+index}>{source.kind==='individual'?t('individual'):snapshot.groups.find(row=>row.id===source.id)?.name??t('unavailable')}{' · '}{companyLabel(source.companyId)}{source.kind==='group'&&<span>{' · '}{t('membershipScope')}: {companyLabel(source.membershipCompanyId??null)}</span>}{source.membershipDerived&&<span>{' · '}{t('fromRoles')}</span>}{source.effect==='deny'&&<span>{' · '}{t('deny')}</span>}</li>)}</ul>;
+  return <ul className="mt-1 space-y-1 text-xs text-muted-foreground">{resolution.sources.map((source,index)=><li key={source.kind+source.id+index}>{source.kind==='individual'?t('individual'):snapshot.groups.find(row=>row.id===source.id)?.name??t('unavailable')}{' · '}{companyLabel(source.companyId)}{source.kind==='group'&&<span>{' · '}{t('membershipScope')}: {companyLabel(source.membershipCompanyId??null)}</span>}{source.nativeDerived&&<span>{' · '}{t('nativePrerequisites')}</span>}{source.membershipDerived&&<span>{' · '}{t('fromRoles')}</span>}{source.effect==='deny'&&<span>{' · '}{t('deny')}</span>}</li>)}</ul>;
  }
  function commandSubject(command:AccessConfigurationCommand){
   if(command.kind==='createGroup'||command.kind==='renameGroup')return command.name;
@@ -108,6 +114,15 @@ function AccessConfigurationEditorDraft({snapshot,capabilities,users,companies,p
       {group.systemAdministrator&&<p className="text-sm text-muted-foreground">{t('protectedHelp')}</p>}
       <p className="text-sm text-muted-foreground">{t('nativePrerequisites')}</p><p className="text-xs text-muted-foreground">{t('workforceHirePrerequisite')}</p>
       <div className="min-w-0 rounded-md border"><table className="w-full table-fixed text-xs sm:text-sm"><caption className="sr-only">{t('permissions')}</caption><thead><tr className="border-b bg-muted/40"><th className="w-[38%] break-words p-2 text-left font-medium sm:p-3">{t('permissions')}</th>{actionNames.map(action=><th key={action} className="break-words p-1 text-center font-medium sm:p-3">{t('matrix'+action[0].toUpperCase()+action.slice(1))}</th>)}</tr></thead><tbody>{actionDomains.map(([domain,label])=><tr key={domain}><th className="break-words p-2 text-left font-medium sm:p-3">{t(label)}<span className="mt-1 block text-xs font-normal text-muted-foreground">{capabilities.find(capability=>capability.id===domain+'.view')?.scope==='tenant'?t('tenantScope'):companyLabel(scope)}</span></th>{actionNames.map(action=>{const id=domain+'.'+action,definition=capabilities.find(capability=>capability.id===id);return <td key={id} className="p-1 text-center sm:p-3"><input type="checkbox" aria-label={definition?.label??t('unavailable')} checked={grants.some(grant=>grant.capabilityId===id&&grant.companyId===actionScope(domain))} disabled={!definition?.supported||group.systemAdministrator||disabled} onChange={event=>setActionGrant(domain,action,event.target.checked)} className="size-4"/>{!definition?.supported&&<span className="sr-only">{t('notSupported')}</span>}</td>;})}</tr>)}</tbody></table></div>
+      {functionModules.map(moduleKey=><section key={moduleKey} className="space-y-3 rounded-md border p-3" aria-label={all.has(moduleKey)?all(moduleKey):moduleKey}>
+       <h4 className="text-sm font-semibold">{all.has(moduleKey)?all(moduleKey):moduleKey}</h4>
+       <div className="overflow-x-auto"><table className="w-full table-fixed text-sm"><thead><tr><th className="w-2/5 p-1 text-left">{t('permissions')}</th>{actionNames.map(action=><th key={action} className="p-1 text-center">{t('matrix'+action[0].toUpperCase()+action.slice(1))}</th>)}</tr></thead><tbody>{functionRows(moduleKey).map(row=>{
+        const stem=row.id.slice(0,-5);return <tr key={stem} className="border-t"><th scope="row" className="break-words p-2 text-left font-medium">{functionLabel(row)}<span className="mt-1 block text-xs font-normal text-muted-foreground">{row.scope==='tenant'?t('tenantScope'):companyLabel(scope)}</span></th>{actionNames.map(action=>{
+         const id=stem+'.'+action,definition=capabilities.find(capability=>capability.id===id);return <td key={id} className="p-1 text-center">{definition?<input type="checkbox" className="size-4" aria-label={definition.label} checked={grants.some(grant=>grant.capabilityId===id&&grant.companyId===actionScope(stem))} disabled={!definition.supported||group.systemAdministrator||disabled} onChange={event=>setActionGrant(stem,action,event.target.checked)}/>:<span aria-label={t('notSupported')}>—</span>}</td>;
+        })}</tr>;
+       })}</tbody></table></div>
+       {capabilities.filter(capability=>capability.presentation?.moduleKey===moduleKey&&!actionNames.some(action=>capability.id.endsWith('.'+action))).map(capability=>{const stem=capability.id.slice(0,capability.id.lastIndexOf('.')),action=capability.id.slice(capability.id.lastIndexOf('.')+1);return <label key={capability.id} className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4" checked={grants.some(grant=>grant.capabilityId===capability.id&&grant.companyId===actionScope(stem))} disabled={!capability.supported||group.systemAdministrator||disabled} onChange={event=>setActionGrant(stem,action,event.target.checked)}/>{capability.label}</label>;})}
+      </section>)}
       <fieldset className="space-y-2"><legend className="mb-2 text-sm font-medium">{t('permissions')}</legend>{otherGroupCapabilities.map(capability=>{
        const companyId=capability.scope==='tenant'?null:scope;
        const checked=grants.some(grant=>grant.capabilityId===capability.id&&grant.companyId===companyId);

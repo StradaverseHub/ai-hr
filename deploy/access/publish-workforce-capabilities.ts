@@ -50,7 +50,7 @@ export const WORKFORCE_CAPABILITY_BINDINGS_V2=[...WORKFORCE_CAPABILITY_BINDINGS_
   {owner:'core/workforce-commands.ts',operation:'typed-native-admission'},
  ]})),
 ] as const;
-export type DomainPublication={capabilities:readonly {id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[]}[];requiredFunctions:readonly string[];legacyGroups:Record<string,readonly string[]>;legacyParityFunction?:string;delegationFloorFunction?:string;functions?:readonly FunctionActionDescriptor[];functionLegacyParityFunction?:string};
+export type DomainPublication={capabilities:readonly {id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[]}[];requiredFunctions:readonly string[];legacyGroups:Record<string,readonly string[]>;legacyParityFunction?:string;delegationFloorFunction?:string;functions?:readonly FunctionActionDescriptor[];functionLegacyParityFunction?:string;currentLegacyParityFunction?:string;functionCurrentLegacyParityFunction?:string};
 export const ACTION_DOMAIN_PUBLICATIONS:readonly DomainPublication[]=[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION];
 export const WORKFORCE_CAPABILITY_BINDINGS=[...WORKFORCE_CAPABILITY_BINDINGS_V2,...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.capabilities)];
 export const WORKFORCE_CAPABILITY_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,capabilities:WORKFORCE_CAPABILITY_BINDINGS})).digest('hex');
@@ -90,9 +90,11 @@ export function publishActionCapabilityPackage(owner:Sql,key:ActionCapabilityPac
 export function publishWorkforceCapabilities(owner:Sql){return installActionCapabilities(owner,'all');}
 async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'all'){
  const ACTION_DOMAIN_PUBLICATIONS=key==='workforce'?[]:key==='financial_letters'?[FINANCIAL_LETTER_CAPABILITY_PUBLICATION]:key==='organisation_settings'?[ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION]:[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION];
+ const domains=ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[];
+ for(const domain of domains){requireInstallation(!domain.legacyParityFunction||!!domain.currentLegacyParityFunction);requireInstallation(!domain.functions?.length||!!domain.functionLegacyParityFunction&&!!domain.functionCurrentLegacyParityFunction);}
  const includeWorkforce=key==='all'||key==='workforce';
  const WORKFORCE_CAPABILITY_BINDINGS:{id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[];prerequisites?:readonly string[]}[]=[...(includeWorkforce?WORKFORCE_CAPABILITY_BINDINGS_V2:[]),...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>[...domain.capabilities,...functionActionCapabilities((domain as DomainPublication).functions??[])])];
- const REQUIRED_FUNCTIONS=[...new Set([...(includeWorkforce?WORKFORCE_REQUIRED_FUNCTIONS:[]),...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.requiredFunctions),...(ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[]).flatMap(domain=>domain.functions?.length?[...(domain.functionLegacyParityFunction?[domain.functionLegacyParityFunction+'(uuid,uuid,text,uuid)']:[]),...domain.functions.flatMap(descriptor=>descriptor.actions.flatMap(action=>action.delegationFloorFunction?[action.delegationFloorFunction+'(uuid,uuid,text,uuid)']:[]))]:[]),...(key==='all'?['app.access_all_function_bindings_complete()']:[])])];
+ const REQUIRED_FUNCTIONS=[...new Set([...(includeWorkforce?WORKFORCE_REQUIRED_FUNCTIONS:[]),...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.requiredFunctions),...domains.flatMap(domain=>[domain.legacyParityFunction,domain.currentLegacyParityFunction,domain.functionLegacyParityFunction,domain.functionCurrentLegacyParityFunction].filter((hook):hook is string=>!!hook).map(hook=>hook+'(uuid,uuid,text,uuid)')),...(ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[]).flatMap(domain=>domain.functions?.length?[...(domain.functionLegacyParityFunction?[domain.functionLegacyParityFunction+'(uuid,uuid,text,uuid)']:[]),...domain.functions.flatMap(descriptor=>descriptor.actions.flatMap(action=>action.delegationFloorFunction?[action.delegationFloorFunction+'(uuid,uuid,text,uuid)']:[]))]:[]),...(key==='all'?['app.access_all_function_bindings_complete()']:[])])];
  const WORKFORCE_CAPABILITY_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,...(key==='all'?{}:{package:key}),capabilities:WORKFORCE_CAPABILITY_BINDINGS})).digest('hex');
  return owner.begin(async tx=>{
   await tx`set local lock_timeout='10s'`;await tx`set local statement_timeout='60s'`;
@@ -122,7 +124,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
   const uninstalled=rows.every(row=>!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0);
   const knownV1=rows.every(row=>{const old=WORKFORCE_CAPABILITY_BINDINGS_V1.find(item=>item.id===row.id);return old?row.supported&&exactBindings(row.bindings,old.bindings):!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0;});
   const knownV2=rows.every(row=>{const old=WORKFORCE_CAPABILITY_BINDINGS_V2.find(item=>item.id===row.id);return old?row.supported&&exactBindings(row.bindings,old.bindings):!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0;});
-  const knownComponents=rows.every((row,index)=>row.supported?exactBindings(row.bindings,expected[index].bindings):Array.isArray(row.bindings)&&row.bindings.length===0)&&[...new Set(rows.map(row=>row.id.split('.')[0]))].every(prefix=>{const group=rows.filter(row=>row.id.startsWith(prefix+'.'));return group.every(row=>row.supported)||group.every(row=>!row.supported);});
+  const knownComponents=rows.every((row,index)=>row.supported?exactBindings(row.bindings,expected[index].bindings):Array.isArray(row.bindings)&&row.bindings.length===0)&&[...(includeWorkforce?[WORKFORCE_CAPABILITY_BINDINGS_V2.map(capability=>capability.id)]:[]),...(ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[]).map(domain=>[...domain.capabilities.map(capability=>capability.id),...functionActionCapabilities(domain.functions??[]).map(capability=>capability.id)])].every(ids=>{const group=rows.filter(row=>ids.includes(row.id));return group.every(row=>row.supported)||group.every(row=>!row.supported);});
   requireInstallation(already||uninstalled||knownV1||knownV2||knownComponents); // Refuse partial/unknown versions without overwriting them.
   const functions=await tx<{count:number;owners:boolean}[]>`select count(*)::integer as count,
    coalesce(bool_and(p.proowner=c.relowner),false) as owners
@@ -130,6 +132,12 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    join pg_proc p on p.oid=to_regprocedure(f.signature)
    cross join pg_class c where c.oid='public.access_capability'::regclass`;
   requireInstallation(functions[0]?.count===REQUIRED_FUNCTIONS.length&&functions[0].owners);
+  const nativeHooks=[...new Set(domains.flatMap(domain=>[domain.legacyParityFunction,domain.currentLegacyParityFunction,domain.functionLegacyParityFunction,domain.functionCurrentLegacyParityFunction,...(domain.functions??[]).flatMap(descriptor=>descriptor.actions.map(action=>action.delegationFloorFunction))].filter((hook):hook is string=>!!hook)))];
+  for(const hook of nativeHooks){
+   requireInstallation(/^app\.[a-z][a-z0-9_]*$/.test(hook));
+   const [trusted]=await tx<{ok:boolean}[]>`select p.prosecdef and p.proowner=c.relowner and not has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as ok from pg_proc p cross join pg_class c where p.oid=to_regprocedure(${hook+'(uuid,uuid,text,uuid)'}) and c.oid='public.access_capability'::regclass`;
+   requireInstallation(trusted?.ok);
+  }
   if(already)return {version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,changed:false,capabilities:WORKFORCE_CAPABILITY_BINDINGS.length,tenantsFenced:0};
   const tenants=await tx<{id:string}[]>`select id from public.tenant order by id`;
   for(const tenant of tenants){
@@ -159,8 +167,8 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    cross join (values ('workforce.add'),('workforce.edit'),('workforce.delete'))new(id)
    where old.capability_id='workforce.maintain' and old.retired_at is null on conflict do nothing`;
   }
-  // Only source-defined legacy groups receive defaults. Individual native-floor parity also
-  // preserves installed roles with no legacy group (for example an operator with a letter ACL).
+  // Only source-defined legacy groups receive defaults. Live native sources separately preserve
+  // roles with no legacy group, without changing a human override or inventing a global role.
   // Each physical operation continues to enforce its original native floor after publication.
   for(const domain of ACTION_DOMAIN_PUBLICATIONS){
    for(const capability of domain.capabilities){
@@ -169,34 +177,15 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
     await tx`insert into public.access_group_grant(tenant_id,group_id,capability_id)
      select g.tenant_id,g.id,${capability.id} from public.access_group g
      where g.retired_at is null and g.legacy_key=any(${[...groups]}::text[]) on conflict do nothing`;
-    const hook=domain.legacyParityFunction;
-    if(hook){
-     // Identifier comes exclusively from this immutable source manifest; never from application input.
-     requireInstallation(/^app\.[a-z][a-z0-9_]*$/.test(hook));
-     const scope=capability.scope==='tenant'?'select null::uuid as id':'select c.id from public.company c where c.tenant_id=u.tenant_id';
-     await tx.unsafe(`insert into public.access_user_override(tenant_id,user_id,capability_id,company_id,effect)
-      select u.tenant_id,u.id,$1,scope.id,'allow' from public.app_user u cross join lateral (${scope}) scope
-      where u.archived_at is null and not app.login_blocked(u.id) and ${hook}(u.tenant_id,u.id,$1,scope.id)
-      and not exists(select 1 from public.access_effective_membership m join public.access_group g on g.tenant_id=m.tenant_id and g.id=m.group_id join public.access_group_grant a on a.tenant_id=g.tenant_id and a.group_id=g.id where m.tenant_id=u.tenant_id and m.user_id=u.id and g.retired_at is null and a.retired_at is null and a.capability_id=$1 and app.access_scope_covers(m.company_id,scope.id,u.tenant_id) and app.access_scope_covers(a.company_id,scope.id,u.tenant_id))
-      and not exists(select 1 from public.access_user_override o where o.tenant_id=u.tenant_id and o.user_id=u.id and o.capability_id=$1 and o.retired_at is null and app.access_scope_covers(o.company_id,scope.id,u.tenant_id))
-      on conflict do nothing`,[capability.id]);
-    }
+
    }
   }
-  // Exact function parity is independent of family defaults: a family can contain several
-  // different native ACL purposes. Only the source-owned native parity hook can seed a cell.
   for(const domain of ACTION_DOMAIN_PUBLICATIONS as readonly DomainPublication[]){
-   if(!domain.functions?.length)continue;
-   const hook=domain.functionLegacyParityFunction;
-   requireInstallation(hook&&/^app\.[a-z][a-z0-9_]*$/.test(hook));
-   for(const capability of functionActionCapabilities(domain.functions)){
-    if(rows.find(row=>row.id===capability.id)?.supported)continue;
-    const scope=capability.scope==='tenant'?'select null::uuid as id':'select c.id from public.company c where c.tenant_id=u.tenant_id';
-    await tx.unsafe(`insert into public.access_user_override(tenant_id,user_id,capability_id,company_id,effect)
-     select u.tenant_id,u.id,$1,scope.id,'allow' from public.app_user u cross join lateral (${scope}) scope
-     where u.archived_at is null and not app.login_blocked(u.id) and ${hook}(u.tenant_id,u.id,$1,scope.id)
-     and not exists(select 1 from public.access_user_override o where o.tenant_id=u.tenant_id and o.user_id=u.id and o.capability_id=$1 and o.retired_at is null and app.access_scope_covers(o.company_id,scope.id,u.tenant_id))
-     on conflict do nothing`,[capability.id]);
+   const defaults=[...(domain.legacyParityFunction?domain.capabilities.map(capability=>({id:capability.id,hook:domain.legacyParityFunction!,currentHook:domain.currentLegacyParityFunction!})):[]),...(domain.functionLegacyParityFunction?functionActionCapabilities(domain.functions??[]).map(capability=>({id:capability.id,hook:domain.functionLegacyParityFunction!,currentHook:domain.functionCurrentLegacyParityFunction!})):[])];
+   for(const definition of defaults){
+    const installed=await tx<{parity_function:string;current_parity_function:string}[]>`select parity_function,current_parity_function from app.access_native_capability_default where capability_id=${definition.id}`;
+    requireInstallation(!installed.length||installed[0].parity_function===definition.hook&&installed[0].current_parity_function===definition.currentHook);
+    await tx`insert into app.access_native_capability_default(capability_id,parity_function,current_parity_function) values(${definition.id},${definition.hook},${definition.currentHook}) on conflict do nothing`;
    }
   }
   // Bind serialized JSON as text before converting it. Drizzle replaces the client's JSON

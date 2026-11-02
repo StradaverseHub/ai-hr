@@ -27,7 +27,9 @@ export function parseAccessOwnerState(raw:unknown,tenantId:string){
   const check=(id:string)=>{if(visiting.has(id))return refuse();if(visited.has(id))return;visiting.add(id);const cap=catalog.find(c=>object(c)&&c.id===id) as Record<string,unknown>;for(const required of (cap.prerequisites??[]) as string[]){if(!capIds.has(required))return refuse();check(required);}visiting.delete(id);visited.add(id);};
   for(const id of capIds)check(id);
   const validGrant=(v:unknown):v is CapabilityGrant=>object(v)&&typeof v.capabilityId==='string'&&capIds.has(v.capabilityId)&&validScope(v.companyId)&&!(v.companyId!==null&&catalog.some(c=>object(c)&&c.id===v.capabilityId&&c.scope==='tenant'));
+  if(raw.nativeDefaults!==undefined&&(!list(raw.nativeDefaults,100000)||!raw.nativeDefaults.every(value=>object(value)&&uuid(value.userId)&&validGrant(value))))return refuse();
   for(const user of s.users){if(!object(user)||!uuid(user.id)||userIds.has(user.id)||typeof user.active!=='boolean')return refuse();userIds.add(user.id);}
+  if(raw.nativeDefaults!==undefined&&(raw.nativeDefaults as {userId:string}[]).some(row=>!userIds.has(row.userId)))return refuse();
   if(raw.recoveryUserIds.some(id=>!userIds.has(id))||!unique(raw.recoveryUserIds))return refuse();
   for(const group of s.groups){
     if(!object(group)||!uuid(group.id)||groupIds.has(group.id)||!text(group.name,100)||typeof group.retired!=='boolean'||typeof group.systemAdministrator!=='boolean'||!list(group.grants,2048)||!group.grants.every(validGrant))return refuse();
@@ -44,6 +46,7 @@ export function parseAccessOwnerState(raw:unknown,tenantId:string){
     users:checked.users.map(u=>({id:u.id,active:u.active})),
     groups:checked.groups.map(g=>({id:g.id,name:g.name,retired:g.retired,systemAdministrator:g.systemAdministrator,grants:g.grants.map(a=>({capabilityId:a.capabilityId,companyId:a.companyId}))})),
     memberships:checked.memberships.map(m=>({userId:m.userId,groupId:m.groupId,companyId:m.companyId,derived:m.derived===true})),
+    nativeDefaults:((raw.nativeDefaults??[]) as (CapabilityGrant&{userId:string})[]).map(row=>({userId:row.userId,capabilityId:row.capabilityId,companyId:row.companyId})),
     overrides:checked.overrides.map(o=>({userId:o.userId,capabilityId:o.capabilityId,companyId:o.companyId,effect:o.effect})),
   };
   const capabilities=(catalog as AccessCapability[]).map(c=>({id:c.id,scope:c.scope,supported:c.supported,prerequisites:c.prerequisites??[],...(c.presentation?{presentation:c.presentation}:{}),bindings:c.bindings.map(b=>({owner:b.owner,operation:b.operation}))}));

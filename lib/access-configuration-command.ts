@@ -15,7 +15,7 @@ export type AccessConfigurationCommand =
 
 // PostgreSQL UUID identities include existing seeded values without RFC version/variant bits.
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const CAPABILITY=/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){1,5}$/;
+const CAPABILITY=/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*){1,12}$/;
 const isId=(v:unknown):v is string=>typeof v==='string'&&UUID.test(v);
 const isScope=(v:unknown):v is string|null=>v===null||isId(v);
 const isName=(v:unknown):v is string=>typeof v==='string'&&v===v.trim()&&v.length>0&&v.length<=100&&!/[\u0000-\u001f\u007f]/.test(v);

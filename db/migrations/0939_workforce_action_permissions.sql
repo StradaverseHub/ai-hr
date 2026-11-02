@@ -2,6 +2,45 @@
 INSERT INTO access_capability(id,scope,supported,bindings) VALUES
  ('workforce.add','company',false,'[]'),('workforce.edit','company',false,'[]'),('workforce.delete','company',false,'[]');
 --> statement-breakpoint
+-- Installation defaults are evaluated from actual native authority on every resolution. They are
+-- separate from human overrides: native revocation takes effect without an asynchronous refresh.
+CREATE TABLE app.access_native_capability_default(capability_id text PRIMARY KEY REFERENCES public.access_capability(id),parity_function text NOT NULL CHECK(parity_function ~ '^app\.[a-z][a-z0-9_]*$'),current_parity_function text NOT NULL CHECK(current_parity_function ~ '^app\.[a-z][a-z0-9_]*$'));
+REVOKE ALL ON app.access_native_capability_default FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_native_default_allowed(p_tenant uuid,p_user uuid,p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE hook text;allowed boolean;
+BEGIN
+ SELECT d.parity_function INTO hook FROM app.access_native_capability_default d JOIN public.access_capability c ON c.id=d.capability_id JOIN public.app_user u ON u.id=p_user AND u.tenant_id=p_tenant WHERE d.capability_id=p_capability AND c.supported AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
+ IF NOT FOUND THEN RETURN false; END IF;
+ EXECUTE format('SELECT %s($1,$2,$3,$4)',hook) INTO allowed USING p_tenant,p_user,p_capability,p_company;
+ RETURN allowed IS TRUE;
+END; $$;
+REVOKE ALL ON FUNCTION app.access_native_default_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_native_default_current(p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE hook text;allowed boolean;
+BEGIN
+ SELECT d.current_parity_function INTO hook FROM app.access_native_capability_default d JOIN public.access_capability c ON c.id=d.capability_id WHERE d.capability_id=p_capability AND c.supported;
+ IF NOT FOUND OR NOT app.principal_snapshot_current() THEN RETURN false; END IF;
+ EXECUTE format('SELECT %s($1,$2,$3,$4)',hook) INTO allowed USING app.current_tenant_id(),app.current_user_id(),p_capability,p_company;
+ RETURN allowed IS TRUE;
+END; $$;
+REVOKE ALL ON FUNCTION app.access_native_default_current(text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_refresh_native_defaults(p_user uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected_tenant uuid;
+BEGIN
+ SELECT tenant_id INTO selected_tenant FROM public.app_user WHERE id=p_user;
+ IF NOT FOUND THEN RETURN; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||selected_tenant::text,0));
+ UPDATE public.access_configuration SET revision=gen_random_uuid(),updated_at=now() WHERE tenant_id=selected_tenant AND initialized;
+END; $$;
+REVOKE ALL ON FUNCTION app.access_refresh_native_defaults(uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
 -- Positive function grants remain independent of legacy HR roles. Only a genuinely narrowed
 -- principal carrier is scope-clamped; a full Employee-A carrier may still hold an explicit B grant.
 CREATE FUNCTION app.access_current_grants_full() RETURNS boolean
@@ -29,7 +68,7 @@ REVOKE ALL ON FUNCTION app.access_derived_carrier_covers(text,uuid) FROM PUBLIC,
 --> statement-breakpoint
 CREATE FUNCTION app.access_current_capability_source(p_capability text,p_company uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.access_current_carrier_covers(p_company) AND (
+ SELECT app.access_current_carrier_covers(p_company) AND (app.access_native_default_current(p_capability,p_company) OR
   EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=app.current_tenant_id() AND o.user_id=app.current_user_id() AND o.capability_id=p_capability AND o.effect='allow' AND o.retired_at IS NULL AND app.access_scope_covers(o.company_id,p_company,o.tenant_id))
   OR EXISTS(SELECT 1 FROM public.access_effective_membership m JOIN public.access_group g ON g.tenant_id=m.tenant_id AND g.id=m.group_id JOIN public.access_group_grant a ON a.tenant_id=g.tenant_id AND a.group_id=g.id
    WHERE m.tenant_id=app.current_tenant_id() AND m.user_id=app.current_user_id() AND g.retired_at IS NULL AND a.retired_at IS NULL AND a.capability_id=p_capability
@@ -118,7 +157,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
    AND NOT EXISTS(SELECT 1 FROM public.access_user_override o
     WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.effect='deny' AND o.retired_at IS NULL
      AND app.access_scope_covers(o.company_id,p_company,u.tenant_id))
-   AND (
+   AND (app.access_native_default_allowed(p_tenant,p_user,p_capability,p_company) OR
     EXISTS(SELECT 1 FROM public.access_user_override o
      WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.effect='allow' AND o.retired_at IS NULL
       AND app.access_scope_covers(o.company_id,p_company,u.tenant_id))
@@ -973,7 +1012,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
    AND CASE WHEN c.scope='tenant' THEN p_company IS NULL AND app.access_allowed_for(u.id,c.id,NULL)
     WHEN p_company IS NOT NULL THEN app.access_allowed_for(u.id,c.id,p_company)
     ELSE EXISTS(SELECT 1 FROM public.access_configuration s WHERE s.tenant_id=u.tenant_id AND s.initialized)
-     AND (EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.company_id IS NULL AND o.effect='allow' AND o.retired_at IS NULL)
+     AND (app.access_native_default_current(c.id,NULL) OR EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.company_id IS NULL AND o.effect='allow' AND o.retired_at IS NULL)
       OR EXISTS(SELECT 1 FROM public.access_effective_membership m JOIN public.access_group g ON g.id=m.group_id AND g.tenant_id=m.tenant_id
        JOIN public.access_group_grant a ON a.group_id=g.id AND a.tenant_id=g.tenant_id
        WHERE m.tenant_id=u.tenant_id AND m.user_id=u.id AND m.company_id IS NULL
@@ -1339,6 +1378,7 @@ BEGIN
     'grants',COALESCE((SELECT jsonb_agg(jsonb_build_object('capabilityId',a.capability_id,'companyId',a.company_id) ORDER BY a.capability_id,a.company_id NULLS FIRST) FROM public.access_group_grant a WHERE a.tenant_id=t AND a.group_id=g.id AND a.retired_at IS NULL),'[]'::jsonb)) ORDER BY g.id) FROM public.access_group g WHERE g.tenant_id=t),'[]'::jsonb),
    'memberships',COALESCE((SELECT jsonb_agg(jsonb_build_object('userId',m.user_id,'groupId',m.group_id,'companyId',m.company_id,'derived',m.derived) ORDER BY m.user_id,m.group_id,m.company_id NULLS FIRST,m.derived) FROM public.access_effective_membership m WHERE m.tenant_id=t),'[]'::jsonb),
    'overrides',COALESCE((SELECT jsonb_agg(jsonb_build_object('userId',o.user_id,'capabilityId',o.capability_id,'companyId',o.company_id,'effect',o.effect) ORDER BY o.user_id,o.capability_id,o.company_id NULLS FIRST) FROM public.access_user_override o WHERE o.tenant_id=t AND o.retired_at IS NULL),'[]'::jsonb)),
+  'nativeDefaults',COALESCE((SELECT jsonb_agg(jsonb_build_object('userId',u.id,'capabilityId',c.id,'companyId',scope.id) ORDER BY u.id,c.id,scope.id NULLS FIRST) FROM public.app_user u CROSS JOIN public.access_capability c CROSS JOIN LATERAL (SELECT NULL::uuid id WHERE c.scope='tenant' UNION ALL SELECT co.id FROM public.company co WHERE co.tenant_id=t AND c.scope='company') scope WHERE u.tenant_id=t AND app.access_native_default_allowed(t,u.id,c.id,scope.id)),'[]'::jsonb),
   'catalog',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id,'scope',c.scope,'supported',c.supported,'bindings',c.bindings,'prerequisites',c.prerequisites,'presentation',(SELECT d.metadata||jsonb_build_object('key',d.function_key) FROM app.access_function_action a JOIN app.access_function_definition d USING(function_key) WHERE a.capability_id=c.id)) ORDER BY c.id) FROM public.access_capability c),'[]'::jsonb),
   'companyIds',COALESCE((SELECT jsonb_agg(c.id ORDER BY c.id) FROM public.company c WHERE c.tenant_id=t),'[]'::jsonb),
   'coverage',COALESCE((SELECT jsonb_agg(jsonb_build_object('ancestor',a.id,'company',c.id) ORDER BY a.id,c.id) FROM public.company a JOIN public.company c ON a.tenant_id=c.tenant_id WHERE a.tenant_id=t AND a.id<>c.id AND app.is_company_descendant(c.id,a.id)),'[]'::jsonb),
@@ -1358,7 +1398,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT EXISTS(SELECT 1 FROM public.access_capability c JOIN public.app_user u ON u.id=p_user AND u.tenant_id=p_tenant JOIN public.access_configuration configuration ON configuration.tenant_id=u.tenant_id
  WHERE c.id=p_capability AND c.scope='company' AND c.supported AND jsonb_array_length(c.bindings)>0 AND configuration.initialized AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
  AND NOT EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=p_tenant AND o.user_id=p_user AND o.capability_id=c.id AND o.effect='deny' AND o.retired_at IS NULL)
- AND (EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=p_tenant AND o.user_id=p_user AND o.capability_id=c.id AND o.effect='allow' AND o.company_id IS NULL AND o.retired_at IS NULL)
+ AND (app.access_native_default_allowed(p_tenant,p_user,p_capability,NULL) OR EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=p_tenant AND o.user_id=p_user AND o.capability_id=c.id AND o.effect='allow' AND o.company_id IS NULL AND o.retired_at IS NULL)
  OR EXISTS(SELECT 1 FROM public.access_effective_membership m JOIN public.access_group g ON g.tenant_id=m.tenant_id AND g.id=m.group_id JOIN public.access_group_grant a ON a.tenant_id=g.tenant_id AND a.group_id=g.id WHERE m.tenant_id=p_tenant AND m.user_id=p_user AND m.company_id IS NULL AND g.retired_at IS NULL AND a.capability_id=c.id AND a.company_id IS NULL AND a.retired_at IS NULL))
  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements_text(c.prerequisites) needed(id) JOIN public.access_capability prerequisite ON prerequisite.id=needed.id WHERE NOT CASE WHEN prerequisite.scope='tenant' THEN app.access_allowed_for_tenant(p_tenant,p_user,needed.id,NULL) ELSE app.access_global_for_tenant(p_tenant,p_user,needed.id) END)
  AND (c.id !~ '^.+\.(add|edit|delete|approve|issue|execute)$' OR app.access_global_for_tenant(p_tenant,p_user,regexp_replace(c.id,'[^.]+$','view'))));
@@ -1374,3 +1414,17 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.function_global_action_allowed(text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.function_global_action_allowed(text,text) TO ai_hr_app;
+
+--> statement-breakpoint
+
+--> statement-breakpoint
+-- Target-data ceilings concern actual employee-bearing administrative authority. Own/assigned
+-- task and document courses remain independent; tenant catalogues do not imply employee access.
+CREATE FUNCTION app.access_user_has_administrative_function(p_user uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.app_user u JOIN public.company co ON co.tenant_id=u.tenant_id WHERE u.id=p_user AND app.access_allowed_for_tenant(u.tenant_id,u.id,'workforce.view',co.id))
+ OR EXISTS(SELECT 1 FROM public.app_user u CROSS JOIN app.access_function_definition d JOIN app.access_function_action a USING(function_key) JOIN public.access_capability c ON c.id=a.capability_id
+ CROSS JOIN LATERAL (SELECT NULL::uuid id WHERE c.scope='tenant' UNION ALL SELECT co.id FROM public.company co WHERE co.tenant_id=u.tenant_id AND c.scope='company') scope
+ WHERE u.id=p_user AND d.metadata->>'course'='administrative' AND d.metadata->'employeeBearing'='true'::jsonb AND app.access_allowed_for_tenant(u.tenant_id,u.id,c.id,scope.id) AND app.access_native_default_allowed(u.tenant_id,u.id,c.id,scope.id));
+$$;
+REVOKE ALL ON FUNCTION app.access_user_has_administrative_function(uuid) FROM PUBLIC,ai_hr_app;
