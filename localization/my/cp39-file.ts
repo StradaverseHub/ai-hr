@@ -33,6 +33,7 @@ import {
   payslip,
   person,
 } from '../../db/schema';
+import { informationReportRelation } from '../../core/information-correction-history';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
 import type { StatutoryPaymentFile } from '../country-pack';
 
@@ -302,8 +303,10 @@ export function cp39FileForBatch(
     if (!co?.eNo) {
       throw new Cp39NotReadyError('Company LHDN E-number is not set (Organization → statutory identity).');
     }
+    // Retained financial fields preserve the paying company without exposing current Workforce rows.
     const slips = await tx
       .select({
+        payslipId: payslip.id,
         employmentId: payslip.employmentId,
         name: person.fullName,
         tin: employeeStatutoryMy.taxNumber,
@@ -324,12 +327,17 @@ export function cp39FileForBatch(
         employeeNo: employment.employeeCode,
         statutory: payslip.statutory,
       })
-      .from(payslip)
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .from(informationReportRelation('payslip', p.companyId, p.periodKey))
+      .innerJoin(informationReportRelation('employment', p.companyId, p.periodKey), eq(employment.id, payslip.employmentId))
+      .innerJoin(informationReportRelation('person', p.companyId, p.periodKey), eq(person.id, employment.personId))
+      .leftJoin(informationReportRelation('employee_statutory_my', p.companyId, p.periodKey), eq(employeeStatutoryMy.personId, employment.personId))
       .where(inArray(payslip.batchId, batchIds))
       .orderBy(person.fullName);
+    const expected = await tx.select({id:payslip.id}).from(informationReportRelation('payslip', p.companyId, p.periodKey)).where(inArray(payslip.batchId,batchIds));
+    const resolved = new Set(slips.map(row=>row.payslipId));
+    if (resolved.size !== expected.length || expected.some(row=>!resolved.has(row.id))) {
+      throw new Cp39NotReadyError('Historical payroll identity is incomplete. Reconcile the retained report records before downloading.');
+    }
     // One CP39 row per employee: sum MTD across the period's runs (= the month's total MTD).
     type Agg = {
       name: string;

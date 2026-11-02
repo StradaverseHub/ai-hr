@@ -76,6 +76,7 @@ import {
   perkesoUploadFilename,
   type PerkesoFileLayout,
 } from '../../lib/perkeso-socso-file';
+import { informationReportRelation } from '../../core/information-correction-history';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
 // r372 — the month's wage, once, for all three statutory read paths. The Borang A read and the Borang 8A
 // read call the SAME function; see that module's header for why summing `bases` across the month's runs was
@@ -158,8 +159,10 @@ export function socsoEisFileForBatch(
     if (!co?.code) {
       throw new SocsoEisNotReadyError('Company SOCSO employer code is not set (Organization → statutory identity).');
     }
+    // Retained financial fields preserve the paying company without exposing current Workforce rows.
     const slips = await tx
       .select({
+        payslipId: payslip.id,
         employmentId: payslip.employmentId,
         name: person.fullName,
         ic: employeeStatutoryMy.icNumber,
@@ -169,13 +172,18 @@ export function socsoEisFileForBatch(
         // a wage. `run_seq` is NOT NULL DEFAULT 1 and unique per (pay_period_id, run_seq).
         runSeq: payrollBatch.runSeq,
       })
-      .from(payslip)
+      .from(informationReportRelation('payslip', p.companyId, p.periodKey))
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .innerJoin(informationReportRelation('employment', p.companyId, p.periodKey), eq(employment.id, payslip.employmentId))
+      .innerJoin(informationReportRelation('person', p.companyId, p.periodKey), eq(person.id, employment.personId))
+      .leftJoin(informationReportRelation('employee_statutory_my', p.companyId, p.periodKey), eq(employeeStatutoryMy.personId, employment.personId))
       .where(inArray(payslip.batchId, batchIds))
       .orderBy(person.fullName);
+    const expected = await tx.select({id:payslip.id}).from(informationReportRelation('payslip', p.companyId, p.periodKey)).where(inArray(payslip.batchId,batchIds));
+    const resolved = new Set(slips.map(row=>row.payslipId));
+    if (resolved.size !== expected.length || expected.some(row=>!resolved.has(row.id))) {
+      throw new SocsoEisNotReadyError('Historical payroll identity is incomplete. Reconcile the retained report records before downloading.');
+    }
     // THE MONTH'S SALARY BASE, ONCE, from the SAME derivation the Borang 8A read uses. Resolved from the
     // whole month before the accumulation loop, because "which run stamped the wage this file carries" is a
     // property of the month and not of a row the loop happens to be standing on.
