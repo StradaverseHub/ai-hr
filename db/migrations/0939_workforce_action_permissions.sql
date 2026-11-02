@@ -60,6 +60,15 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.access_workforce_action_employment(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.access_workforce_action_employment(uuid,text) TO ai_hr_app;
+CREATE FUNCTION app.access_workforce_initial_employment(p_employment uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.data_permission_employment_born(p_employment) AND app.access_workforce_action_employment(p_employment,'add');
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_initial_employment(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.access_workforce_initial_employment(uuid) TO ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.access_workforce_action_person(p_person uuid,p_action text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=app.current_tenant_id())
@@ -470,7 +479,7 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM jsonb_each(to_jsonb(NEW)) d WHERE d.key=ANY(app.access_workforce_service_info_columns()) AND d.value IS DISTINCT FROM to_jsonb(OLD)->d.key)
   OR app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
  IF OLD.id IS DISTINCT FROM NEW.id OR OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
-  OR NOT app.access_workforce_action_company(OLD.company_id,'edit') OR NOT app.access_workforce_action_company(NEW.company_id,'edit') THEN
+  OR NOT ((app.access_workforce_action_company(OLD.company_id,'edit') AND app.access_workforce_action_company(NEW.company_id,'edit')) OR (app.data_permission_employment_born(OLD.id) AND app.access_workforce_action_company(OLD.company_id,'add') AND app.access_workforce_action_company(NEW.company_id,'add'))) THEN
   RAISE EXCEPTION 'Workforce service information maintenance unavailable' USING ERRCODE='42501'; END IF;
  RETURN NEW;
 END; $$;
@@ -662,7 +671,7 @@ BEGIN
  END IF;
  data:=jsonb_set(data,'{profile}',profile);
  mode:=coalesce(nullif(btrim(data#>>'{statutory,epfMode}'),''),'auto');
- FOR section IN SELECT * FROM jsonb_each(data) WHERE key IN ('profile','employment','statutory','payroll') LOOP
+ FOR section IN SELECT * FROM jsonb_each(data) source_section WHERE source_section.key IN ('profile','employment','statutory','payroll') LOOP
   IF jsonb_typeof(section.value)<>'object' THEN CONTINUE;END IF;
   FOR entry IN SELECT * FROM jsonb_each(section.value) LOOP
    expected:=nullif(btrim(entry.value#>>'{}'),'');IF expected IS NULL THEN CONTINUE;END IF;
@@ -721,7 +730,7 @@ BEGIN
  -- Match the canonical family multiset, including duplicates; row/UI keys confer no storage authority.
  FOR family_row IN SELECT value FROM jsonb_array_elements(coalesce(data->'family','[]')) LOOP
   family_expected:='{}';
-  FOR entry IN SELECT * FROM jsonb_each(family_row) WHERE key<>'key' LOOP
+  FOR entry IN SELECT * FROM jsonb_each(family_row) source_entry WHERE source_entry.key<>'key' LOOP
    column_name:=lower(regexp_replace(entry.key,'([A-Z])','_\1','g'));
    expected:=nullif(btrim(entry.value#>>'{}'),'');
    IF entry.key IN ('marriageDate','marriageStatus','spouseWorking','companyName','employerAddress') AND family_row->>'relationship'<>'spouse' THEN expected:=NULL;END IF;
