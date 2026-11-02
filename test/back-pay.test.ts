@@ -220,9 +220,9 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
     expect(await withTenant(employeeCtx,tx=>tx.select().from(schema.backPaySource))).toEqual([]);
     const [original] = await owner.db.select().from(schema.compensation).where(and(eq(schema.compensation.employmentId,employmentId),eq(schema.compensation.validFrom,'2026-01-01')));
     await expect(withTenant(employeeCtx,tx=>tx.insert(schema.backPaySource).values({tenantId:base.tenantId,runId,sourceCompensationId:original.id})))
-      .rejects.toThrow(/row-level security/);
+      .rejects.toMatchObject({cause:{code:'42501',message:expect.stringMatching(/row-level security/)}});
     await expect(withTenant(a,tx=>tx.delete(schema.backPaySource).where(eq(schema.backPaySource.runId,runId))))
-      .rejects.toThrow(/permission denied/);
+      .rejects.toMatchObject({cause:{code:'42501',message:expect.stringMatching(/permission denied/)}});
     expect((await owner.db.select().from(schema.backPaySource).where(eq(schema.backPaySource.runId,runId))).map(row=>row.id).sort()).toEqual(sources.map(row=>row.id).sort());
     expect((await backPayRunDetail(a, runId))!.perEmployee[0].total).toBe(138.71);
     expect(await detectArrears(a, { companyId: base.companyId })).toHaveLength(0);
