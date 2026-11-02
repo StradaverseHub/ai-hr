@@ -45,7 +45,8 @@ import {encryptSecret} from '../lib/ai/crypto';
 /** `production` (default): core/teras-wiring/turn.ts through the gateway. `direct`: the earlier test-code client. */
 // The production path needs the teras_harness_turn_v1 provider-data review (the single final rebind). Until it exists the
 // gate refuses every production turn as protected_input (model run 41364850565: 270 of 270, $0), which proves the gate
-// holds but measures nothing; the probe then runs the same harness directly and says so in its output.
+// holds but measures nothing; the probe then runs the same harness directly and says so in its output. The bypass
+// lives only in this test file: production turns always pass preparePrivateAiTask (core/teras-wiring/model-client.ts).
 const PRODUCTION_REVIEWED=providerDataReviewStatus(TERAS_HARNESS_CONTRACT)==='approved';
 const PATH=process.env.AIHR_EVAL_PATH==='direct'?'direct':process.env.AIHR_EVAL_PATH==='production'||PRODUCTION_REVIEWED?'production':'direct';
 const KEY=process.env.AIHR_EVAL_OPENROUTER_KEY?.trim(),MODEL=process.env.AIHR_EVAL_MODEL?.trim();
@@ -231,7 +232,8 @@ describe('real-model redesign ceiling on fictional data',()=>{
   const context={inventedLinks:ledger.flatMap(row=>row.inventedLinks??[]),overclaims:ledger.flatMap(row=>{const claim=overclaim(row.reply);return claim?[row.pass+':'+row.turn+': '+claim]:[];}),guidanceTurns:guidance.length,
    guidanceGroundedInProduct:guidance.filter(row=>row.reads.some(read=>GROUNDING_READS.has(read))).length,routes:ROUTES.length};
   const ceilingDir=process.env.RUNNER_TEMP?join(process.env.RUNNER_TEMP,'aihr-focused'):join(process.cwd(),'.review-evidence');mkdirSync(ceilingDir,{recursive:true});
-  const ceilingOutput=JSON.stringify({productionReviewed:PRODUCTION_REVIEWED,variant:'teras_harness_v'+(ledger.find(row=>row.spec)?.spec??'?')+(PATH==='production'?'_production':''),path:PATH,stability,context,sensitive,catalogues,negativeGateBreaches:breaches,model:MODEL,allowedProviders:ALLOWED,budgetUsd:BUDGET,spentUsd:Number(spentUsd.toFixed(4)),calls,
+  const ceilingOutput=JSON.stringify({productionReviewed:PRODUCTION_REVIEWED,
+   productionPath:PATH==='production'?'measured':'production path not measured: contract has no approval record (teras_harness_turn_v1); this run used the harness directly with fictional fixtures and does not qualify the production path',variant:'teras_harness_v'+(ledger.find(row=>row.spec)?.spec??'?')+(PATH==='production'?'_production':''),path:PATH,stability,context,sensitive,catalogues,negativeGateBreaches:breaches,model:MODEL,allowedProviders:ALLOWED,budgetUsd:BUDGET,spentUsd:Number(spentUsd.toFixed(4)),calls,
    summaries:passes.map(row=>summarizeBaseline(row.scores)),runs:passes.map(row=>row.runs),turns:passes.map(row=>row.scores),ledger});
   // Kept as evidence beside the review probe's output (the log alone dropped it in run 41360905376).
   writeFileSync(join(ceilingDir,'assistant-model-ceiling.json'),ceilingOutput);process.stdout.write('AIHR_ASSISTANT_MODEL_CEILING '+ceilingOutput+'\n');
