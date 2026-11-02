@@ -17,6 +17,7 @@ import { setCompensation } from '../core/comp';
 import * as perf from '../packs/performance/service';
 import {assessmentDevelopmentContext} from '../packs/performance/onehr/development-suggestion-service';
 import { defaultPolicy, scorecard, type KPI } from '../packs/performance/onehr/model';
+import {assessmentReminderWork,type ReminderWorkGraph} from '../packs/performance/onehr/reminder-work';
 import framework from '../packs/performance/onehr/framework.json';
 import sourceGolden from './fixtures/onehr/source-golden.json';
 import { createRewardUnit, getRewardUnit, importOnehrRewardResults } from '../packs/rewards/service';
@@ -813,6 +814,14 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(data.reviews.find(r=>r.id===reviewId)).toMatchObject({facts:{resultsSubmitted:true,kpis:[{moderatorEmploymentId:manager.employmentId}]}});
     expect(data.panels.map(p=>p.employmentId).sort()).toEqual(peers.map(p=>p.employmentId).sort());
     const text=JSON.stringify(data);for(const privateValue of [privateTitle,privateRemark,String(privateAmount),'Private submitted evidence','Private KPI description','Approved private review text'])expect(text).not.toContain(privateValue);
+    const pendingGraph=system as ReminderWorkGraph;expect(pendingGraph.reviews.find(r=>r.id===reviewId)?.facts).toMatchObject({managerPerformance:null,managerComplete:false});
+    await perf.moderateOnehrKpi(mgr,reviewId,(await view(mgr)).revision,id,privateAmount,'');await perf.confirmOnehrPerformance(mgr,reviewId,(await view(mgr)).revision,'UA','');
+    const [confirmed]=await owner.db.select({band:schema.onehrReview.managerPerformance}).from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));expect(confirmed.band).toBe('UA');
+    const completed=await read({...a,userId:undefined,personId:undefined}) as ReminderWorkGraph;expect(completed.reviews.find(r=>r.id===reviewId)?.facts).toMatchObject({managerPerformance:null,managerComplete:true});expect(JSON.stringify(completed)).not.toContain('"UA"');
+    const nativeRows=await owner.db.select({id:schema.onehrReview.reviewId,band:schema.onehrReview.managerPerformance}).from(schema.onehrReview).where(eq(schema.onehrReview.cycleId,cycleId)),nativeBands=new Map(nativeRows.map(r=>[r.id,r.band]));
+    const originalShape:ReminderWorkGraph={...completed,reviews:completed.reviews.map(r=>({...r,facts:{...r.facts,managerComplete:undefined,managerPerformance:(nativeBands.get(r.id)??null) as typeof r.facts.managerPerformance}}))};
+    const now=new Date(),companies=new Set([b.companyId]),work=assessmentReminderWork(completed,companies,now);expect(work.length).toBeGreaterThan(0);expect(assessmentReminderWork(originalShape,companies,now)).toEqual(work);
+
     expect(await read(self)).toBeNull();expect(await read(peers[0].ctx)).toBeNull();expect(await read(a,randomUUID())).toBeNull();
     await expect(withTenant(a,tx=>tx.execute(sql`select app.assessment_admin_for(${self.userId}::uuid,${b.companyId}::uuid)`))).rejects.toThrow();
     let cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.setAssessmentParticipation(a,cycleId,cycle.revision,subject.employmentId,cycle.participants.find(p=>p.employmentId===subject.employmentId)!.revision,'remove');
