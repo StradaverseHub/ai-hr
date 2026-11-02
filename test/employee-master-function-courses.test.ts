@@ -8,7 +8,7 @@ import {hireEmployee} from '../core/org';
 import {decidePayrollPermission} from '../lib/payroll-permissions';
 import {pgSqlState} from '../lib/db-error';
 import {setPayrollPermissionGrant,deletePayrollPermissionGrant} from '../core/payroll-permissions-admin';
-import {masterReportCatalogue} from '../core/employee-master-access';
+import {masterReportCatalogue,masterReportActionAccess} from '../core/employee-master-access';
 import {saveEmployeeMasterReport,runEmployeeMasterReport,getEmployeeMasterReport} from '../core/employee-master-reports';
 import * as projection from '../core/employee-master-projection';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
@@ -69,4 +69,26 @@ it('discards a real report result when native sharing is revoked after its sourc
  await expect(getEmployeeMasterReport(peer,[b.companyId],saved.id)).rejects.toThrow('unavailable');
  const [stored]=await owner.db.select({shared:s.customReport.shared,roles:s.customReport.sharedRoleIds}).from(s.customReport).where(eq(s.customReport.id,saved.id));
  expect(stored).toEqual({shared:false,roles:[]});
+});
+
+it('keeps all native definition actions scoped to every actual before and proposed company',async()=>{
+ const [other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional separate report company'}).returning({id:s.company.id});
+ const userId=await createAppUser(b.tenantId,null,'employee');
+ await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:userId,role:'hr_admin',companyId:b.companyId});
+ const scoped:SessionContext={...ctx,userId,roles:['employee','hr_admin'],grants:[{role:'employee',companyId:null},{role:'hr_admin',companyId:b.companyId}]};
+ expect(await masterReportActionAccess(scoped,[b.companyId])).toEqual({canAdd:true,canEdit:true,canDelete:true});
+ expect(await masterReportActionAccess(scoped,[b.companyId,other.id])).toEqual({canAdd:false,canEdit:false,canDelete:false});
+ const code=PERSONNEL_FIELDS.find(field=>field.owner==='employment'&&field.ownerField==='employeeCode')!;
+ const spec:EmployeeMasterSpec={v:2,asAt:todayInKualaLumpur(),companyIds:[b.companyId],includeDrafts:false,columns:[defaultMasterColumn(code)],expression:{id:'root',type:'group',logic:'and',children:[]},sorts:[],groups:[],pdf:{paper:'A4',orientation:'landscape',margins:'normal',logo:false,pageBreakGroups:false}};
+ const saved=await saveEmployeeMasterReport(scoped,[b.companyId],{name:'Actual scoped definition',description:'Fixture',spec,sharedRoleIds:[]});
+ expect(await getEmployeeMasterReport(scoped,[b.companyId],saved.id)).toMatchObject({canEdit:true,canDelete:true,canDuplicate:true});
+ const before=await owner.db.select().from(s.customReport).where(eq(s.customReport.id,saved.id));
+ let denial:unknown;try{await withTenant(scoped,tx=>tx.execute(sql`update custom_report set spec=jsonb_set(spec,'{employeeMaster,companyIds}',${JSON.stringify([other.id])}::jsonb) where id=${saved.id}::uuid`));}catch(error){denial=error;}
+ expect(pgSqlState(denial)).toBe('42501');expect(await owner.db.select().from(s.customReport).where(eq(s.customReport.id,saved.id))).toEqual(before);
+});
+it('refuses raw Master definition creation by a real non-HR owner without a native report-category grant',async()=>{
+ const userId=await createAppUser(b.tenantId,null,'employee'),employee:SessionContext={...ctx,userId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+ expect(await masterReportActionAccess(employee,[b.companyId])).toEqual({canAdd:false,canEdit:false,canDelete:false});
+ let denial:unknown;try{await withTenant(employee,tx=>tx.insert(s.customReport).values({tenantId:b.tenantId,createdByUserId:userId,name:'Fictional refused raw definition',category:'master',datasetId:'master',spec:{datasetId:'master',columns:['name']}}));}catch(error){denial=error;}
+ expect(pgSqlState(denial)).toBe('42501');expect(await owner.db.select().from(s.customReport).where(eq(s.customReport.createdByUserId,userId))).toEqual([]);
 });

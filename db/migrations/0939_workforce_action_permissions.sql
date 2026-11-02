@@ -2197,7 +2197,7 @@ $$;
 REVOKE ALL ON FUNCTION app.employee_master_personnel_permission(uuid,uuid,text[]),app.employee_master_target_roles(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.employee_master_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT cap='function.employeeMasterReports.view'
+ SELECT cap IN ('function.employeeMasterReports.view','function.employeeMasterReports.add','function.employeeMasterReports.edit','function.employeeMasterReports.delete')
  AND EXISTS(SELECT 1 FROM public.app_user actor WHERE actor.id=u AND actor.tenant_id=t AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id))
  AND app.employee_master_personnel_permission(t,co,app.employee_master_target_roles(t,u,co))
  AND(co IS NOT NULL OR NOT EXISTS(SELECT 1 FROM public.company company WHERE company.tenant_id=t
@@ -2205,17 +2205,114 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 CREATE FUNCTION app.employee_master_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT cap='function.employeeMasterReports.view'AND t=app.current_tenant_id()AND u=app.current_user_id()AND app.principal_snapshot_current()
+ SELECT cap IN ('function.employeeMasterReports.view','function.employeeMasterReports.add','function.employeeMasterReports.edit','function.employeeMasterReports.delete')AND t=app.current_tenant_id()AND u=app.current_user_id()AND app.principal_snapshot_current()
  AND app.employee_master_personnel_permission(t,co,ARRAY(SELECT role FROM unnest(app.current_roles()) role WHERE app.has_role_for(role,co)))
  AND(co IS NOT NULL OR NOT EXISTS(SELECT 1 FROM public.company company WHERE company.tenant_id=t
   AND NOT app.employee_master_personnel_permission(t,company.id,ARRAY(SELECT role FROM unnest(app.current_roles()) role WHERE app.has_role_for(role,company.id)))));
 $$;
 REVOKE ALL ON FUNCTION app.employee_master_function_legacy_allowed(uuid,uuid,text,uuid),app.employee_master_function_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
-SELECT app.register_function_action('employeeMasterReports','view','company',NULL,'app.employee_master_function_current_legacy_allowed',
- '{"moduleKey":"workforce","labelKey":"employeeMasterReports.title","kind":"screen","course":"administrative","screenKey":"employeeMasterReports","href":"/reports/employee-master","employeeBearing":true}'::jsonb);
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+  PERFORM app.register_function_action('employeeMasterReports',operation,'company',NULL,'app.employee_master_function_current_legacy_allowed',
+   '{"moduleKey":"workforce","labelKey":"employeeMasterReports.title","kind":"screen","course":"administrative","screenKey":"employeeMasterReports","href":"/reports/employee-master","employeeBearing":true}'::jsonb);
+ END LOOP;
+END $$;
 -- Sharing, source-company and selected-column changes must invalidate a result
 -- read before the native repeatable-read publication fence completes. Incidental
 -- last_run_at/version counters alone do not change authority.
 CREATE TRIGGER data_permission_report_read_generation_insert AFTER INSERT ON custom_report REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
 CREATE TRIGGER data_permission_report_read_generation_update AFTER UPDATE ON custom_report REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('created_by_user_id,shared,shared_role_ids,spec');
 CREATE TRIGGER data_permission_report_read_generation_delete AFTER DELETE ON custom_report REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+
+--> statement-breakpoint
+-- A template shares a definition, never employee data. Every concrete selected
+-- company repeats the native report category and the selected action. Legacy
+-- definitions obtain their company list from the execution caller, so their
+-- metadata needs at least one actual accessible company; execution still checks
+-- the entire caller-selected scope through the unchanged field catalogue.
+CREATE FUNCTION app.employee_master_definition_allowed(p_spec jsonb,p_operation text) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected jsonb;p_company uuid;roles text[];
+BEGIN
+ IF p_operation NOT IN ('view','add','edit','delete') OR NOT app.principal_snapshot_current() OR app.current_user_id() IS NULL THEN RETURN false;END IF;
+ IF p_spec ? 'employeeMaster' THEN
+  selected:=p_spec->'employeeMaster'->'companyIds';
+  IF jsonb_typeof(selected) IS DISTINCT FROM 'array' OR jsonb_array_length(selected)=0 THEN RETURN false;END IF;
+  FOR p_company IN SELECT value::uuid FROM jsonb_array_elements_text(selected) LOOP
+   IF p_company IS NULL THEN RETURN false;END IF;
+   SELECT ARRAY(SELECT role FROM unnest(app.current_roles()) role WHERE app.has_role_for(role,p_company)) INTO roles;
+   IF NOT app.employee_master_personnel_permission(app.current_tenant_id(),p_company,roles)
+    OR NOT app.function_action_allowed('employeeMasterReports','view',p_company)
+    OR NOT app.function_action_allowed('employeeMasterReports',p_operation,p_company) THEN RETURN false;END IF;
+  END LOOP;
+  RETURN true;
+ END IF;
+ RETURN EXISTS(SELECT 1 FROM public.company company WHERE company.tenant_id=app.current_tenant_id()
+  AND app.employee_master_personnel_permission(company.tenant_id,company.id,ARRAY(SELECT role FROM unnest(app.current_roles()) role WHERE app.has_role_for(role,company.id)))
+  AND app.function_action_allowed('employeeMasterReports','view',company.id)
+  AND app.function_action_allowed('employeeMasterReports',p_operation,company.id));
+EXCEPTION WHEN invalid_text_representation THEN RETURN false;
+END $$;
+REVOKE ALL ON FUNCTION app.employee_master_definition_allowed(jsonb,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.employee_master_definition_allowed(jsonb,text) TO ai_hr_app;
+CREATE POLICY employee_master_definition_read ON public.custom_report AS RESTRICTIVE FOR SELECT
+ USING(dataset_id<>'master' OR app.employee_master_definition_allowed(spec,'view'));
+CREATE FUNCTION app.employee_master_definition_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE prior jsonb;proposed jsonb;operation text;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ IF TG_OP<>'INSERT' THEN prior:=to_jsonb(OLD);END IF;
+ IF TG_OP<>'DELETE' THEN proposed:=to_jsonb(NEW);END IF;
+ IF coalesce(prior->>'dataset_id','')<>'master' AND coalesce(proposed->>'dataset_id','')<>'master' THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ IF TG_OP='UPDATE' AND OLD.dataset_id IS DISTINCT FROM NEW.dataset_id THEN RAISE EXCEPTION 'Report dataset is immutable' USING ERRCODE='42501';END IF;
+ PERFORM app.access_workforce_write_lock();
+ operation:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+ -- The canonical run recorder updates only last_run_at; it does not edit a definition.
+ IF TG_OP='UPDATE' AND prior-ARRAY['last_run_at','version','updated_at']=proposed-ARRAY['last_run_at','version','updated_at'] THEN operation:='view';END IF;
+ IF TG_OP<>'INSERT' AND prior->>'dataset_id'='master' THEN
+  IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.custom_report_visible(OLD.created_by_user_id,OLD.shared,OLD.shared_role_ids)
+   OR (operation<>'view' AND OLD.created_by_user_id IS DISTINCT FROM app.current_user_id() AND NOT app.is_admin())
+   OR NOT app.employee_master_definition_allowed(OLD.spec,operation) THEN RAISE EXCEPTION 'Report action unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ IF TG_OP<>'DELETE' AND proposed->>'dataset_id'='master' THEN
+  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR (TG_OP='INSERT' AND NEW.created_by_user_id IS DISTINCT FROM app.current_user_id())
+   OR NOT app.employee_master_definition_allowed(NEW.spec,operation) THEN RAISE EXCEPTION 'Report action unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.employee_master_definition_guard() FROM PUBLIC,ai_hr_app;
+-- Acquire Access in a try-only statement fence before any report tuple, including
+-- callers which arrive with a native data lock already held. This is no grant.
+CREATE FUNCTION app.employee_master_write_fence() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN PERFORM app.audit_access_order_lock_for(app.current_tenant_id());END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.employee_master_write_fence() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_employee_master_access BEFORE INSERT OR UPDATE OR DELETE ON public.custom_report FOR EACH STATEMENT EXECUTE FUNCTION app.employee_master_write_fence();
+CREATE TRIGGER employee_master_definition_action BEFORE INSERT OR UPDATE OR DELETE ON public.custom_report FOR EACH ROW EXECUTE FUNCTION app.employee_master_definition_guard();
+
+--> statement-breakpoint
+CREATE FUNCTION app.employee_master_schedule_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE image jsonb;report public.custom_report;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ IF TG_OP='DELETE' THEN image:=to_jsonb(OLD);ELSE image:=to_jsonb(NEW);END IF;
+ SELECT * INTO report FROM public.custom_report WHERE id=(image->>'report_id')::uuid AND tenant_id=(image->>'tenant_id')::uuid;
+ -- An absent parent during DELETE is the actual FK cascade after its independently
+ -- admitted definition deletion; an INSERT/UPDATE still requires its physical parent.
+ IF NOT FOUND THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RAISE EXCEPTION 'Report action unavailable' USING ERRCODE='42501';END IF;END IF;
+ IF report.dataset_id='master' THEN
+  PERFORM app.access_workforce_write_lock();
+  IF report.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.custom_report_visible(report.created_by_user_id,report.shared,report.shared_role_ids)
+   OR (report.created_by_user_id IS DISTINCT FROM app.current_user_id() AND NOT app.is_admin())
+   OR NOT app.employee_master_definition_allowed(report.spec,'edit') THEN RAISE EXCEPTION 'Report action unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.employee_master_schedule_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_employee_master_schedule_access BEFORE INSERT OR UPDATE OR DELETE ON public.custom_report_schedule FOR EACH STATEMENT EXECUTE FUNCTION app.employee_master_write_fence();
+CREATE TRIGGER employee_master_schedule_action BEFORE INSERT OR UPDATE OR DELETE ON public.custom_report_schedule FOR EACH ROW EXECUTE FUNCTION app.employee_master_schedule_guard();

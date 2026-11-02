@@ -43,3 +43,14 @@ export async function masterReportFieldsTx(tx:Tx,ctx:SessionContext,companyIds:r
   }));
 }
 export function masterReportCatalogue(ctx:SessionContext,companyIds:readonly string[]){return withTenant(ctx,tx=>masterReportFieldsTx(tx,ctx,companyIds));}
+
+/** Exact action flags for the caller-selected scope; ownership is a separate per-template ceiling. */
+export async function masterReportActionAccessTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[]){
+ await assertReportPrincipalTx(tx,ctx);
+ const flags={canAdd:false,canEdit:false,canDelete:false};
+ if(!companyIds.length)return flags;
+ const spec=JSON.stringify({employeeMaster:{companyIds:[...companyIds]}});
+ const [row]=await tx.execute<{canAdd:boolean;canEdit:boolean;canDelete:boolean}>(sql`select app.employee_master_definition_allowed(${spec}::jsonb,'add') as "canAdd",app.employee_master_definition_allowed(${spec}::jsonb,'edit') as "canEdit",app.employee_master_definition_allowed(${spec}::jsonb,'delete') as "canDelete"`);
+ return {canAdd:row?.canAdd===true,canEdit:row?.canEdit===true,canDelete:row?.canDelete===true};
+}
+export function masterReportActionAccess(ctx:SessionContext,companyIds:readonly string[]){return withTenant(ctx,tx=>masterReportActionAccessTx(tx,ctx,companyIds));}

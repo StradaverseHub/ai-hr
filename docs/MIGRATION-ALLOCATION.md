@@ -1519,3 +1519,15 @@ historical fixture are preserved; no fabricated fixture flags are introduced. Ac
 report/unknown request projections and real Tracker denied/allowed withdrawal confirmation cases are
 authored, unrun. Genuine supported per-operation denial and remaining raw/effect/read/native courses
 still require qualification and source closure.
+
+### Employee Master definition actions and schedule maintenance
+
+The Master report course now distinguishes View, Add, Edit and Delete, preserving the original
+report-category override algebra, actual company role scope, private ownership and explicit sharing.
+The real builder/list controls consume fresh action flags. Definition changes check both their stored
+and proposed companies, while the run recorder's last-run timestamp remains a View consequence.
+Raw Master definition reads and mutations repeat these predicates; schedule maintenance repeats Edit
+and the actual report ownership ceiling, including the original FK deletion cascade. A try-only Access
+statement fence precedes tuples; no caller role/GUC, execution grant or employee data bypass is added.
+Native company relocation and non-HR raw creation cases are authored and require hosted qualification.
+This checkpoint does not claim complete publication or qualify delivery workers by itself.
