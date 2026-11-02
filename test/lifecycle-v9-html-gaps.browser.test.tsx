@@ -11,13 +11,14 @@ import '../app/atelier.css';
 import '../app/onboarding-workspace.css';
 import '../app/lifecycle/v9/workspace.css';
 const saves=vi.hoisted(()=>vi.fn());
+const removeDiagnosticListeners:(()=>void)[]=[];
 vi.mock('next/navigation',()=>({usePathname:()=>'/lifecycle/v9',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('next/link',async()=>{const React=await import('react');return {default:({prefetch,...props}:any)=>React.createElement('a',props,props.children)};});
 vi.mock('../components/user-menu',()=>({UserMenu:()=> <button>Account menu</button>}));
 vi.mock('../app/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:saves,setupV9:vi.fn()}));
 vi.mock('../app/lifecycle/onboarding/v31-actions',()=>({changeOnboarding:vi.fn(),saveOnboardingConfig:vi.fn(),saveOnboardingChecklistTasks:vi.fn(),writeOnboardingNote:vi.fn(),setupOnboarding:vi.fn(),loadOnboardingTask:vi.fn(),markOnboardingSeen:vi.fn()}));
 const {V9Workspace}=await import('../app/lifecycle/v9/workspace');
-afterEach(async()=>{cleanup();vi.clearAllMocks();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');await page.viewport(1280,720);});
+afterEach(async()=>{for(const remove of removeDiagnosticListeners.splice(0))remove();cleanup();vi.clearAllMocks();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');await page.viewport(1280,720);});
 function workspace(theme:'classic'|'monolith'|'atelier',view:V9WorkspaceView) {
  return <UiThemeProvider theme={theme}><NextIntlClientProvider locale="en" messages={messages}><div data-app-content className="p-6"><V9Workspace navigation="global" initialView={view} companyScope={['alpha','beta']} viewer={{name:'Fictional HR',employeeCode:null,employed:false}} initial={v9HtmlWorkspace()}/></div></NextIntlClientProvider></UiThemeProvider>;
 }
@@ -42,11 +43,24 @@ for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [
    else {for(const rect of [n,d,o]){expect(rect.left).toBeGreaterThanOrEqual(0);expect(rect.right).toBeLessThanOrEqual(391);}expect(d.top).toBeGreaterThan(n.bottom);}
    const rules=screen.getByRole('button',{name:'Assignment rules'}),tasks=screen.getByRole('button',{name:'Tasks'});
    expect(rules.getAttribute('aria-expanded')).toBe('false');expect(tasks.getAttribute('aria-expanded')).toBe('true');
+   // Diagnostic only: read focus/DOM state and actual key/click delivery; do not refocus or retry.
+   const mark=(phase:string,event?:Event)=>console.info('V9_TASKS_FOCUS_TIMING '+JSON.stringify({
+    theme,dark,mobile,route,phase,at:Math.round(performance.now()*100)/100,
+    documentFocused:document.hasFocus(),tasksFocused:document.activeElement===tasks,rulesFocused:document.activeElement===rules,
+    tasksConnected:tasks.isConnected,tasksExpanded:tasks.getAttribute('aria-expanded'),rulesExpanded:rules.getAttribute('aria-expanded'),
+    target:event?.target===tasks?'tasks':event?.target===rules?'rules':event?'other':null,
+    key:event instanceof KeyboardEvent?(event.key==='Enter'?'Enter':event.key===' '?'Space':'other'):null,
+   }));
+   const capture=(event:Event)=>{if(event.target===tasks||event.target===rules)mark(event.type,event);};
+   for(const type of ['keydown','keyup','click','focusin','focusout']){
+    document.addEventListener(type,capture,true);removeDiagnosticListeners.push(()=>document.removeEventListener(type,capture,true));
+   }
+
    rules.focus();await expect.poll(()=>document.activeElement).toBe(rules);await userEvent.keyboard('{Enter}');
    const rulesAtKeyReturn=rules.getAttribute('aria-expanded');await expect.poll(()=>rules.getAttribute('aria-expanded')).toBe('true');expect(screen.getByText(/Population preview/)).toBeVisible();
    console.info('V9_KEYBOARD_COMMIT '+JSON.stringify({theme,dark,mobile,route,atKeyReturn:rulesAtKeyReturn,committed:rules.getAttribute('aria-expanded'),focused:document.activeElement===rules}));
-   tasks.focus();await expect.poll(()=>document.activeElement).toBe(tasks);await userEvent.keyboard(' ');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('false');expect(screen.queryAllByRole('textbox',{name:'Task name'})).toHaveLength(0);
-   await userEvent.keyboard('{Enter}');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('true');expect(screen.getAllByRole('textbox',{name:'Task name'}).length).toBeGreaterThan(0);
+   tasks.focus();await expect.poll(()=>document.activeElement).toBe(tasks);mark('before-space');await userEvent.keyboard(' ');mark('space-returned');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('false');mark('space-committed');expect(screen.queryAllByRole('textbox',{name:'Task name'})).toHaveLength(0);
+   mark('before-reopen-enter');await userEvent.keyboard('{Enter}');mark('reopen-enter-returned');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('true');mark('reopen-enter-committed');expect(screen.getAllByRole('textbox',{name:'Task name'}).length).toBeGreaterThan(0);
    rules.focus();await expect.poll(()=>document.activeElement).toBe(rules);await userEvent.keyboard('{Enter}');await expect.poll(()=>rules.getAttribute('aria-expanded')).toBe('false');
    console.info('V9_CHECKLIST_GEOMETRY '+JSON.stringify({theme,dark,mobile,route,name:n.toJSON(),duplicate:d.toJSON(),owner:o.toJSON()}));
    // Fictional derived fixture only, never labelled as staging or the reference artifact.
