@@ -1,3 +1,4 @@
+import {z} from 'zod';
 import {establishRewardMembership} from './rewards-shared-policy-fixture';
 /**
  * ADR-0142 — the OneHR performance partner: performance administration WITHOUT compensation.
@@ -202,10 +203,10 @@ describe('OneHR performance partner (ADR-0142)', () => {
         const comments=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented')));expect(comments).toHaveLength(1);expect(comments[0]).toMatchObject({actorType:'user',actorId:userId,payload:{}});
         await expect(perf.commentAssessmentCareerProfile(partner,reviewId,commented.revision,'Borrowed administrative comment')).rejects.toThrow();
         expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([commented]);
-        const unicode='\ufeff\u00a0'+'😀'.repeat(2000)+'\u3000';expect(unicode.trim().length).toBe(4000);
+        const unicode='\ufeff\u00a0'+'😀'.repeat(4000)+'\u3000';expect([...unicode.trim()]).toHaveLength(4000);expect(z.string().trim().max(4000).safeParse(unicode).success).toBe(true);
         await perf.commentAssessmentCareerProfile(mixed,reviewId,commented.revision,unicode);const [unicodeStored]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));expect(unicodeStored.managerComment).toBe(unicode);expect(unicodeStored.revision).toBe(commented.revision+1);
         const unicodeEvents=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented'))).orderBy(schema.domainEvent.id);expect(unicodeEvents).toHaveLength(2);
-        const oversized='😀'.repeat(2001);await expect(perf.commentAssessmentCareerProfile(mixed,reviewId,unicodeStored.revision,oversized)).rejects.toThrow();
+        const oversized='😀'.repeat(4001);expect(z.string().trim().max(4000).safeParse(oversized).success).toBe(false);await expect(perf.commentAssessmentCareerProfile(mixed,reviewId,unicodeStored.revision,oversized)).rejects.toThrow();
         await expect(withTenant(mixed,tx=>tx.execute(sql`select app.onehr_career_comment(${reviewId}::uuid,${unicodeStored.revision}::integer,${oversized}::text)`))).rejects.toMatchObject({cause:expect.objectContaining({code:'22023',message:expect.stringMatching(/Invalid career comment/)})});
         expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([unicodeStored]);expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented'))).orderBy(schema.domainEvent.id)).toEqual(unicodeEvents);
 
