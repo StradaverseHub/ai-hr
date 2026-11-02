@@ -3,7 +3,7 @@ import { it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, existsSync, readdirSync, lstatSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve, relative } from 'node:path';
+import { join, resolve, relative, dirname } from 'node:path';
 import { createHash } from 'node:crypto';
 
 it('the real EAS archive implementation produces isolated input that typechecks and bundles both native platforms', () => {
@@ -24,6 +24,17 @@ it('the real EAS archive implementation produces isolated input that typechecks 
     const version = JSON.parse(readFileSync(join(tool, 'node_modules/eas-cli/package.json'), 'utf8')).version;
     expect(version).toBe('27.2.0');
     const copier = join(tool, 'node_modules/eas-cli/build/vcs/local.js');
+    const privateInput = join(work, 'private-input'), privateOutput = join(work, 'private-output');
+    mkdirSync(privateInput); copyFileSync(join(source, '.easignore'), join(privateInput, '.easignore'));
+    const forbidden = ['.env.local', 'mobile/credentials.json', 'mobile/private.key', 'db/client.ts', 'lib/session.ts'];
+    const allowed = ['mobile/entry.ts', 'lib/mobile-api/v2/team.ts'];
+    for (const path of [...forbidden, ...allowed]) {
+      mkdirSync(dirname(join(privateInput, path)), { recursive: true });
+      writeFileSync(join(privateInput, path), 'FICTIONAL_ARCHIVE_SENTINEL ' + path);
+    }
+    run(process.execPath, ['-e', `require(${JSON.stringify(copier)}).makeShallowCopyAsync(${JSON.stringify(privateInput)},${JSON.stringify(privateOutput)}).catch(e=>{console.error(e);process.exitCode=1})`], tool, 60000);
+    for (const path of forbidden) expect(existsSync(join(privateOutput, path))).toBe(false);
+    for (const path of allowed) expect(readFileSync(join(privateOutput, path), 'utf8')).toBe('FICTIONAL_ARCHIVE_SENTINEL ' + path);
     // This is the unmodified implementation used by the EAS archive stage. Its local copier/Ignore
     // module has no authentication or network operation; do not invoke build/upload/submit/init.
     run(process.execPath, ['-e', `require(${JSON.stringify(copier)}).makeShallowCopyAsync(${JSON.stringify(source)},${JSON.stringify(archive)}).catch(e=>{console.error(e);process.exitCode=1})`], tool, 60000);
@@ -31,6 +42,7 @@ it('the real EAS archive implementation produces isolated input that typechecks 
       version, lockSha256: createHash('sha256').update(readFileSync(join(tool, 'package-lock.json'))).digest('hex'),
       copierSha256: createHash('sha256').update(readFileSync(copier)).digest('hex'),
       source: process.env.AIHR_CI_HEAD ?? 'unbound', realEasCopier: true, expoServiceCalled: false,
+      ignoreSha256: createHash('sha256').update(readFileSync(join(source, '.easignore'))).digest('hex'), privateSentinelsRefused: forbidden,
     };
     console.log('EAS archive oracle', witness);
     if (process.env.RUNNER_TEMP) writeFileSync(join(process.env.RUNNER_TEMP, 'aihr-focused/eas-archive-oracle.json'), JSON.stringify(witness));
