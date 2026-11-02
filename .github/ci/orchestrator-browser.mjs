@@ -10,6 +10,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 import {hostHealth} from './host-health.mjs';
 import {CI_EXECUTION} from './manifest.mjs';
 import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEnv} from './postgres-evidence.mjs';
+import {admittedBuildNodeOptions} from './build-heap.mjs';
 
 const base = 'http://127.0.0.1:3174';
 const tenant = '11111111-1111-1111-1111-111111111111';
@@ -18,6 +19,16 @@ const locales = ['en', 'ms', 'zh', 'vi', 'th', 'ta'];
 // /control-tower/agents became the AI administration area (1c868f527) and no longer holds the work queue.
 const routes = ['/control-tower'];
 const postgres = fileURLToPath(new URL('./postgres.sh', import.meta.url));
+const buildHeap = fileURLToPath(new URL('./build-heap.mjs', import.meta.url));
+const closedDatabase = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
+
+/** Production build environment: closed DB URLs (built before PostgreSQL starts, reducing peak concurrent memory)
+ * and the bounded build heap profile shared with the canonical build. Never above 8192; refuses other runners. */
+export function productionBuildEnv(dbEnv) {
+  const env = {...dbEnv, NODE_ENV: 'production', NODE_OPTIONS: admittedBuildNodeOptions(dbEnv)};
+  for (const key of ['DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL']) env[key] = closedDatabase;
+  return env;
+}
 const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value);
 const git = (...args) => execFileSync('git', args, {encoding: 'utf8'}).trim();
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -130,10 +141,10 @@ async function main() {
   try {
     report.healthBefore = hostHealth(); assert(report.healthBefore.ok, 'Insufficient runner disk headroom');
     // Build with closed DB URLs before starting PostgreSQL, reducing peak concurrent memory.
-    const buildEnv = {...dbEnv, NODE_ENV: 'production', NODE_OPTIONS: '--max-old-space-size=6144'};
-    for (const key of ['DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL'])
-      buildEnv[key] = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
-    run('production-build', 'pnpm', ['build'], buildEnv, 900_000);
+    // Same bounded heap profile as the canonical build: 6144, or exactly 8192 when build-heap.mjs admitted this
+    // GitHub-hosted 16 GB Linux runner; peak RSS is recorded and judged against the same budget.
+    run('production-build', process.execPath, [buildHeap, 'measure', join(out, 'next-build-memory'), '--', 'pnpm', 'build'],
+      productionBuildEnv(dbEnv), 900_000);
     report.buildId = readFileSync('.next/BUILD_ID', 'utf8').trim(); assert(report.buildId);
     databaseStarted = true;
     run('postgres-setup', 'bash', [postgres, 'reset'], pgEnv);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {validateFixture, receiptExpectation} from './orchestrator-browser.mjs';
+import {validateFixture, receiptExpectation, productionBuildEnv} from './orchestrator-browser.mjs';
 
 const id = number => `00000000-0000-0000-0000-${String(number).padStart(12, '0')}`;
 function manifest(reused = false) {
@@ -91,4 +91,23 @@ test('database consumer requires exact v15 cap/budget identity and refuses legac
     {AIHR_CI_PG_MEMORY_GIB: '2'}, {AIHR_CI_PG_JIT: 'off'}, {AIHR_CI_PG_JIT: undefined}])
     assert.throws(() => assertBrowserPostgresProfile({...env, ...changes}));
   assert.throws(() => assertBrowserPostgresProfile({AIHR_CI_PG_PROFILE: 'legacy-2g', AIHR_CI_PG_MEMORY_GIB: '2', AIHR_CI_PG_JIT: 'on'}));
+});
+
+test('the production build child gets the shared bounded heap profile and closed database URLs, nothing else', () => {
+  const closed = 'postgres://nobody:nothing@127.0.0.1:1/no_database';
+  const db = {DATABASE_URL: 'postgres://ai_hr_app@127.0.0.1:5433/x', MIGRATION_DATABASE_URL: 'postgres://postgres@127.0.0.1:5433/x',
+    TEST_DATABASE_URL: 'postgres://ai_hr_app@127.0.0.1:5433/x', TEST_MIGRATION_DATABASE_URL: 'postgres://postgres@127.0.0.1:5433/x', NODE_ENV: 'development'};
+  const plain = productionBuildEnv(db);
+  assert.equal(plain.NODE_OPTIONS, '--max-old-space-size=6144'); assert.equal(plain.NODE_ENV, 'production');
+  for (const key of ['DATABASE_URL', 'MIGRATION_DATABASE_URL', 'TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL']) assert.equal(plain[key], closed);
+  assert.equal(db.NODE_ENV, 'development');
+  const hosted = {...db, GITHUB_ACTIONS: 'true', CI: 'true', RUNNER_ENVIRONMENT: 'github-hosted', RUNNER_OS: 'Linux',
+    AIHR_CI_BUILD_HEAP_PROFILE: 'hosted-linux-16g-8192', AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: '16374980'};
+  assert.equal(productionBuildEnv(hosted).NODE_OPTIONS, '--max-old-space-size=8192');
+  for (const patch of [{RUNNER_ENVIRONMENT: 'self-hosted'}, {RUNNER_OS: 'macOS'}, {AIHR_CI_BUILD_HEAP_PROFILE: 'hosted-linux-32g-12288'},
+    {AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: String(64 * 1024 ** 2)}, {AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: undefined}])
+    assert.throws(() => productionBuildEnv({...hosted, ...patch}), undefined, JSON.stringify(patch));
+  assert.throws(() => productionBuildEnv({...db, AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: '16374980'}));
+  // An inherited larger heap never reaches the build child.
+  assert.equal(productionBuildEnv({...db, NODE_OPTIONS: '--max-old-space-size=16384'}).NODE_OPTIONS, '--max-old-space-size=6144');
 });
