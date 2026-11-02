@@ -441,6 +441,7 @@ const messages: Record<MessageKey, string> = {
   approvalTeamPendingDate: "{date}（待审）",
   approvalDatesHeading: "待批准的日期",
   approvalReason: "原因（驳回时必填）",
+  approvalPartialReason: "原因（驳回部分日期时必填）",
   approvalReject: "驳回",
   approvalApprove: "批准",
   approvalConfirmHint: "发送前您将进行确认。",

@@ -441,6 +441,7 @@ const messages: Record<MessageKey, string> = {
   approvalTeamPendingDate: "{date} (đang chờ)",
   approvalDatesHeading: "Ngày cần duyệt",
   approvalReason: "Lý do (bắt buộc khi từ chối)",
+  approvalPartialReason: "Lý do (bắt buộc khi từ chối một số ngày)",
   approvalReject: "Từ chối",
   approvalApprove: "Phê duyệt",
   approvalConfirmHint: "Bạn sẽ xác nhận trước khi gửi.",

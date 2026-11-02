@@ -441,6 +441,7 @@ const messages: Record<MessageKey, string> = {
   approvalTeamPendingDate: "{date} (รอดำเนินการ)",
   approvalDatesHeading: "วันที่ที่จะอนุมัติ",
   approvalReason: "เหตุผล (จำเป็นเมื่อปฏิเสธ)",
+  approvalPartialReason: "เหตุผล (จำเป็นเมื่อปฏิเสธบางวันที่)",
   approvalReject: "ปฏิเสธ",
   approvalApprove: "อนุมัติ",
   approvalConfirmHint: "คุณจะได้ยืนยันอีกครั้งก่อนส่ง",

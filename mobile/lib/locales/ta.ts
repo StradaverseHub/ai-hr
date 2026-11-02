@@ -441,6 +441,7 @@ const messages: Record<MessageKey, string> = {
   approvalTeamPendingDate: "{date} (நிலுவையில்)",
   approvalDatesHeading: "ஒப்புதலளிக்க வேண்டிய தேதிகள்",
   approvalReason: "காரணம் (நிராகரிக்கத் தேவை)",
+  approvalPartialReason: "காரணம் (சில தேதிகளை நிராகரிக்கும்போது தேவை)",
   approvalReject: "நிராகரி",
   approvalApprove: "ஒப்புதல்",
   approvalConfirmHint: "அனுப்பும் முன் நீங்கள் உறுதிப்படுத்துவீர்கள்.",

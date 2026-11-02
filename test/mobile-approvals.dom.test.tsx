@@ -184,7 +184,7 @@ describe('approval detail', () => {
     expect(screen.getAllByRole('checkbox').every((c) => c.getAttribute('aria-checked') === 'true')).toBe(true);
     fireEvent.click(screen.getByRole('checkbox', { name: '2026-11-03' }));
     expect(screen.getByText('approvalApprove')).toBeDisabled();
-    fireEvent.change(screen.getByRole('textbox', { name: 'approvalReason' }), { target: { value: 'Stock take' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'approvalPartialReason' }), { target: { value: 'Stock take' } });
     fireEvent.click(screen.getByText('approvalApprove'));
     expect(String(f.alert.mock.calls[0][1])).toBe('approvalConfirmPartial Aisyah|2026-11-02, 2026-11-04|2026-11-03|Stock take');
     f.apiPostV2.mockResolvedValueOnce({ outcome: 'accepted', status: 'approved' });

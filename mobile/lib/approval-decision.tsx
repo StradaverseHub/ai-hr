@@ -297,8 +297,8 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
         })}
       </Card>}
       {(needsReasonToReject || partial) && <>
-        <Text style={{ color: palette.muted, fontSize: 14 }}>{t('approvalReason')}</Text>
-        <TextInput accessibilityLabel={t('approvalReason')} value={reason} onChangeText={setReason} multiline maxLength={1000} editable={!sent}
+        <Text style={{ color: palette.muted, fontSize: 14 }}>{t(partial ? 'approvalPartialReason' : 'approvalReason')}</Text>
+        <TextInput accessibilityLabel={t(partial ? 'approvalPartialReason' : 'approvalReason')} value={reason} onChangeText={setReason} multiline maxLength={1000} editable={!sent}
           placeholderTextColor={palette.muted} style={{ color: palette.text, minHeight: 48, borderWidth: 1, borderColor: palette.border, borderRadius: radius, padding: 12, fontSize: 16, textAlignVertical: 'top' }} />
       </>}
 
