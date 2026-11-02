@@ -7,7 +7,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, setPayrollInput } from '../packs/payroll/service';
-import { returnedRewardUnits, getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, decideRewardUnit, postRewardUnit } from '../packs/rewards/service';
+import { returnedRewardUnits, getRewardSeniorMembership, previewRewardSeniorMembership, saveRewardSeniorMembership, getRewardConfiguration, listRewardUnits, pendingRewardReviews, rewardSetupChoices, rewardNotificationRecipients, createOffcycleReview, createRewardUnit, getRewardUnit, saveRewardEntry, saveRewardPolicy, decideRewardUnit, postRewardUnit, canPostRewardUnit, rewardPayrollChoices } from '../packs/rewards/service';
 import { emptyFacts,emptyRecommendation,visibleEntry,isSeniorPlanMember, returnedState, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { dispatchNotificationsFromSweep, renderRewardRouted } from '../core/notifications';
@@ -281,6 +281,18 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await expect(saveRewardEntry(admin, unitId, rev, v.rows[0].id, v.rows[0].recommendation)).rejects.toThrow(/Return/);
     expect(await decideRewardUnit(admin, unitId, rev, 'return', 'Source salary needs refreshing')).toBe('draft');
     expect((await view()).unit.revision).toBe(rev + 1);
+  });
+  it('reads native payroll choices and posting-offer authority without any raw employee pay read',async()=>{
+    const batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)});
+    // A restrictive read trap proves absence of a raw invoker read, rather than letting load()
+    // silently return an empty roster. It adds no role, grant, bypass or private execution lease.
+    await owner.db.execute(sql`create policy rewards_metadata_forbid_raw on reward_entry as restrictive for select to ai_hr_app using(length(id::text)/0>0)`);
+    try{
+      await expect(withTenant(admin,tx=>tx.select({id:schema.rewardEntry.id}).from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)))).rejects.toThrow('division by zero');
+      expect(await canPostRewardUnit(admin,unitId)).toBe(true);expect(await rewardPayrollChoices(admin,unitId)).toEqual([{id:batch.batchId,period:today.slice(0,7)}]);
+      expect(await canPostRewardUnit(actors.bu!,unitId)).toBe(false);expect(await rewardPayrollChoices(actors.bu!,unitId)).toEqual([]);
+    }finally{await owner.db.execute(sql`drop policy rewards_metadata_forbid_raw on reward_entry`);}
+    expect((await view()).unit.status).toBe('draft');
   });
   it('owns the leave graph interval before reward funding/source/grade and payroll effects', async () => {
     const rev=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)});

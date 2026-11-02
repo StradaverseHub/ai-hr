@@ -226,7 +226,7 @@ async function rewardPostingAuthorityTx(tx: Tx, unit: { companyId: string }, rol
 /** The posting predicate for a caller without a transaction. True only when postRewardUnit's guard passes. */
 export async function canPostRewardUnit(ctx: SessionContext, unitId: string): Promise<boolean> {
   return withRewardsTenant(ctx, async tx => {
-    const { unit, roles } = await load(tx, unitId);
+    const { unit, roles } = await loadRewardUnitIdentityTx(tx,unitId);
     return (await rewardPostingAuthorityTx(tx, unit, roles)) === 'allowed';
   });
 }
@@ -243,6 +243,16 @@ export async function administersRewardsForAnyCompany(ctx: SessionContext): Prom
 async function requireAdmin(tx: Tx, companyId: string) {
   const [r] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${companyId}::uuid) as ok`);
   if (!r?.ok) throw new RewardError('Company administrator access is required.');
+}
+/** Native identity/seat metadata only. Payroll choices and posting-offer authority do not
+ * need the policy, roster, recommendation, pay snapshot or calculation course. */
+async function loadRewardUnitIdentityTx(tx:Tx,unitId:string){
+ idSchema.parse(unitId);
+ const [unit]=await tx.select({id:rewardUnit.id,companyId:rewardUnit.companyId}).from(rewardUnit).where(and(eq(rewardUnit.id,unitId),isNull(rewardUnit.deletedAt)));
+ if(!unit)throw new RewardError('Reward unit not found or access has been removed.');
+ const roles=await rolesFor(tx,unitId);
+ if(!roles.length)throw new RewardError('Ask an administrator to assign your Reward Desk role for this unit.');
+ return{unit,roles};
 }
 async function loadReviewUnit(tx: Tx, unitId: string, lock = false) {
   idSchema.parse(unitId);
@@ -1040,7 +1050,7 @@ export async function cancelRewardReviewTx(tx: Tx, ctx: SessionContext, unitId: 
 
 export async function rewardPayrollChoices(ctx: SessionContext, unitId: string) {
   return withRewardsTenant(ctx, async tx => {
-    const { unit, roles } = await load(tx, unitId);
+    const { unit, roles } = await loadRewardUnitIdentityTx(tx,unitId);
     if (!roles.includes('payroll')) return [];
     return tx.select({ id: payrollBatch.id, period: payrollBatch.payPeriod }).from(payrollBatch).where(and(eq(payrollBatch.companyId, unit.companyId), eq(payrollBatch.status, 'draft'))).orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.id));
   });
