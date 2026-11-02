@@ -21,6 +21,10 @@ const body={version:1,events:[{card:'today',action:'view'},{card:'today',action:
 const saved=()=>owner.db.execute(sql`SELECT tenant_id,observed_on::text,card,action,interactions::text FROM app.home_card_interaction_count ORDER BY tenant_id,observed_on,card,action`);
 const request=(value:unknown,origin='http://localhost')=>new Request('http://localhost/api/home/interactions',{method:'POST',headers:{origin,'Content-Type':'application/json'},body:JSON.stringify(value)});
 describe('anonymous Home card observations',()=>{
+ it('keeps the original native aggregate reader private behind the permission-bound summary',async()=>{
+  await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`select * from app.organisation_home_interactions_native()`))).rejects.toThrow();
+  expect((await readHomeCardInteractions(adminCtx(b))).every(row=>row.views===0&&row.clicks===0)).toBe(true);
+ });
  it('aggregates actual concurrent interactions under the server tenant/day without retaining individual content or identity',async()=>{
   const own=await worker();await Promise.all([recordHomeCardInteractions(own.ctx,body),recordHomeCardInteractions(own.ctx,body)]);
   expect(Array.from(await saved())).toEqual([

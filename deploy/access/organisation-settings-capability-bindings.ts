@@ -589,11 +589,12 @@ const sourceFunctions=[
  "screenKey": "loginPresentation",
  "floor": "app.organisation_settings_delegation_allowed"
 },
+{key:'dashboardCardConfig.usage',scope:'tenant',parent:'settings',labelKey:'employeeHome.usage.title',kind:'submenu',href:'/admin/settings/dashboard?section=content',operations:['view'],screenKey:'dashboardCardConfig',floor:'app.organisation_settings_delegation_allowed'},
 {key:'dashboardCardConfig.home',scope:'company',parent:'organisation',labelKey:'nav.dashboardCardConfig',kind:'submenu',href:'/admin/settings/dashboard?section=content',operations:['view','edit'],screenKey:'dashboardCardConfig',floor:'app.organisation_settings_delegation_allowed'}
 ] as const;
 export const ORGANISATION_SETTINGS_FUNCTIONS:readonly FunctionActionDescriptor[]=sourceFunctions.map(row=>({
  key:row.key,scope:row.scope,moduleKey:row.parent.startsWith('function.')?'settings':row.parent,labelKey:row.labelKey,kind:row.kind,course:'administrative',screenKey:row.screenKey,href:row.href,employeeBearing:false,
- actions:row.operations.map(operation=>({operation,parentCapability:row.parent+'.'+operation,delegationFloorFunction:row.floor,bindings:[{owner:'app.organisation_settings_function_allowed',operation},{owner:row.key==='dashboardCardConfig.home'?'app.organisation_home_configuration_action':'app.organisation_settings_write_guard',operation:'native-source-purpose'}]})),
+ actions:row.operations.map(operation=>({operation,parentCapability:row.parent+'.'+operation,delegationFloorFunction:row.floor,bindings:[{owner:'app.organisation_settings_function_allowed',operation},{owner:row.key==='dashboardCardConfig.home'?'app.organisation_home_configuration_action':row.key==='dashboardCardConfig.usage'?'app.home_card_interactions_summary':'app.organisation_settings_write_guard',operation:'native-source-purpose'}]})),
 }));
 /** Code-owned native action bindings. Publication refuses absent/unqualified owner prerequisites.
  * Existing role/company/native command floors remain authoritative; reference pickers are independent.

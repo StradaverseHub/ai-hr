@@ -119,7 +119,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT EXISTS(SELECT 1 FROM app.access_function_action f JOIN app.access_function_definition d USING(function_key)
  WHERE f.capability_id=cap AND (f.parent_capability ~ '^(organisation|settings)\.' OR f.function_key LIKE 'systemLabels.profileOptions.%' AND f.parent_capability='function.systemLabels.profileOptions.'||f.operation)
  AND app.organisation_settings_legacy_allowed(t,u,CASE WHEN f.function_key LIKE 'systemLabels.profileOptions.%' THEN 'settings.'||f.operation ELSE f.parent_capability END,co)
- AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','loginPresentation.sessionPolicy','aiConfig','emailTemplates','entra') AND NOT(f.function_key IN ('workflowEmail','profileRequestSettings','profileApprovalRules') AND f.operation<>'view')
+ AND (f.function_key NOT IN ('dashboardCardConfig.usage','employeeIdConfig.global','peopleGeneral','loginPresentation','loginPresentation.sessionPolicy','aiConfig','emailTemplates','entra') AND NOT(f.function_key IN ('workflowEmail','profileRequestSettings','profileApprovalRules') AND f.operation<>'view')
   OR EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN ('hr_admin','super_admin') AND r.company_id IS NULL)));
 $$;
 CREATE FUNCTION app.organisation_settings_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
@@ -128,7 +128,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND app.organisation_settings_function_legacy_allowed(t,u,cap,co)
  AND EXISTS(SELECT 1 FROM app.access_function_action f WHERE f.capability_id=cap
  AND app.organisation_settings_current_legacy_allowed(t,u,CASE WHEN f.function_key LIKE 'systemLabels.profileOptions.%' THEN 'settings.'||f.operation ELSE f.parent_capability END,co)
- AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','loginPresentation.sessionPolicy','aiConfig','emailTemplates','entra') AND NOT(f.function_key IN ('workflowEmail','profileRequestSettings','profileApprovalRules') AND f.operation<>'view') OR app.is_group_admin()));
+ AND (f.function_key NOT IN ('dashboardCardConfig.usage','employeeIdConfig.global','peopleGeneral','loginPresentation','loginPresentation.sessionPolicy','aiConfig','emailTemplates','entra') AND NOT(f.function_key IN ('workflowEmail','profileRequestSettings','profileApprovalRules') AND f.operation<>'view') OR app.is_group_admin()));
 $$;
 CREATE FUNCTION app.organisation_settings_function_allowed(p_key text,p_operation text,p_company uuid DEFAULT NULL) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -589,3 +589,19 @@ ALTER POLICY employee_home_configuration_read ON public.employee_home_configurat
 ALTER POLICY employee_home_configuration_insert ON public.employee_home_configuration_revision
  WITH CHECK(tenant_id=app.current_tenant_id() AND (SELECT app.principal_snapshot_current()) AND app.organisation_home_configuration_action(company_id,'edit')
   AND created_by_user_id=app.current_user_id());
+
+--> statement-breakpoint
+-- Tenant aggregate analytics retain their native group floor and exact bounded
+-- thirty-day projection; individual observations never require setup authority.
+SELECT app.register_function_action('dashboardCardConfig.usage','view','tenant','settings.view','app.organisation_settings_delegation_allowed','{"moduleKey":"settings","labelKey":"employeeHome.usage.title","kind":"submenu","course":"administrative","employeeBearing":false}');
+ALTER FUNCTION app.home_card_interactions_summary() RENAME TO organisation_home_interactions_native;
+REVOKE ALL ON FUNCTION app.organisation_home_interactions_native() FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.home_card_interactions_summary() RETURNS TABLE(card text,action text,interactions text)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.organisation_settings_function_allowed('dashboardCardConfig.usage','view',NULL) THEN RAISE EXCEPTION 'Home usage unavailable' USING ERRCODE='42501';END IF;
+ RETURN QUERY SELECT * FROM app.organisation_home_interactions_native();
+END;
+$$;
+REVOKE ALL ON FUNCTION app.home_card_interactions_summary() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.home_card_interactions_summary() TO ai_hr_app;

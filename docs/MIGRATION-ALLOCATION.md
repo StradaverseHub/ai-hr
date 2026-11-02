@@ -1133,7 +1133,7 @@ This source depends on root942 witness89bc7e9da and requires hosted failed/affec
 - `0938_data_permission_enforcement.sql`: `d41b686eec213708abc9b174762c3c9f37d7f9aba31e057854108b321b66805a`.
 - `0939_workforce_action_permissions.sql`: `21e42a337ca5abd835140c7b4b3c981d06da6fe1aa52d96a26eaa5381deba812`.
 - `0941_financial_letter_actions.sql`: `73dfa3504fd4f784a4078cb2e639a25ac9d47147d91cbd6d94a80dbdc578c9b8`.
-- `0942_organisation_settings_actions.sql`: `a049dc053e456d6218004a47b6d53f706dac677cd05bcf037a3bfb7304b59c0c`.
+- `0942_organisation_settings_actions.sql`: `dcdd32575cb9a2c0b914b0ef4ab712e0b58e47160d6309540ffb4d09ca8740c9`.
 - `0943_leave_attendance_claim_actions.sql`: `0147800c396f35f9bdd3b6225b0e64d6e7a86df897053d53c6ea6ff476451fc4`.
 - `0944_lifecycle_rewards_notice_actions.sql`: `096ff18f6d9ac1144912ef54ba54c1d849d33a84326cb3f74067ce0e22445fcf`.
 - `0945_financial_setup_actions.sql`: `77ef0067c30e55a48ab591938b3a5e892ba60161036f4b23c678ed280ea5f340`.
@@ -1255,3 +1255,7 @@ The actual editor receives fresh View/Edit independently and defaults mutation c
 ### Dashboard library and company Home configuration
 
 The library checks View before rows/counts and separates Add, Edit/status and Delete controls. The company/role Home editor has its own company-scoped View/Edit purpose, filtered company choices, Access-first saves and native INSERT policy; no Add/Delete operations are invented for immutable versions. The original active own-employment/assignment consumption branch is retained verbatim. Editors default read-only and refuse direct client submission when Edit is absent. Actual-page/six-locale controls and original native concurrency/history/tenant/own-read cases require hosted qualification.
+
+### Independent company Home and aggregate usage reads
+
+The Home content route checks its company View directly and does not read the separate card library. Tenant-wide anonymous usage has its own read-only View purpose with the original current group floor and fixed thirty-day aggregation; the original reader is private. Employee observation recording and active own-company configuration consumption retain their independent native owners. Source only, unqualified.

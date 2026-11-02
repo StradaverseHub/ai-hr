@@ -5,14 +5,15 @@ import {afterEach,it,expect,vi} from 'vitest';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
-const f=vi.hoisted(()=>({locale:'en' as keyof typeof catalogues,view:true,add:false,edit:false,delete:false,list:vi.fn()}));
+const f=vi.hoisted(()=>({locale:'en' as keyof typeof catalogues,view:true,add:false,edit:false,delete:false,list:vi.fn(),companies:vi.fn()}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:f.locale,messages:catalogues[f.locale],namespace})}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw Error('NOT_FOUND');}}));
 vi.mock('next/link',()=>({default:({children,...props}:React.ComponentProps<'a'>)=><a {...props}>{children}</a>}));
 vi.mock('@/lib/scope',()=>({scopedAdmin:async()=>({s:{tenantId:'fictional',userId:'fictional-admin'}})}));
 vi.mock('@/core/organisation-access',()=>({settingsActionAccess:async()=>({view:f.view,add:f.add,edit:f.edit,delete:f.delete})}));
 vi.mock('@/core/dashboard-card-config',()=>({listCards:f.list,DASHBOARD_CARD_AUDIENCES:['employee'],DASHBOARD_CARD_TYPES:['information','action','shortcut']}));
-vi.mock('@/components/employee-home/configuration-panel',()=>({HomeConfigurationPanel:()=>null}));
+vi.mock('@/components/employee-home/configuration-panel',()=>({HomeConfigurationPanel:()=> <p>Fictional company Home configuration</p>}));
+vi.mock('@/core/employee-home-configuration',()=>({employeeHomeConfigurationCompanies:f.companies}));
 vi.mock('@/components/ui/confirm-submit',()=>({ConfirmSubmit:({children}:React.PropsWithChildren)=><button type="submit">{children}</button>}));
 vi.mock('@/app/admin/settings/dashboard/actions',()=>({createCardAction:vi.fn(),updateCardAction:vi.fn(),setStatusAction:vi.fn(),deleteCardAction:vi.fn()}));
 import Page from '../app/admin/settings/dashboard/page';
@@ -35,4 +36,10 @@ it('keeps Add and Delete independent of Edit',async()=>{
 });
 it('refuses revoked View before loading card sources or counts',async()=>{
  f.view=false;await expect(Page({searchParams:Promise.resolve({})})).rejects.toThrow('NOT_FOUND');expect(f.list).not.toHaveBeenCalled();
+});
+it('keeps the company Home purpose independent of library View and never loads library sources',async()=>{
+ f.view=false;f.companies.mockResolvedValue([{id:'fictional-company',name:'Fictional company'}]);
+ render(await Page({searchParams:Promise.resolve({section:'content'})}));
+ expect(screen.getByText('Fictional company Home configuration')).toBeTruthy();expect(f.list).not.toHaveBeenCalled();
+ expect(screen.queryByRole('link',{name:en.dashboardCardConfig.manage.navLibrary})).toBeNull();
 });

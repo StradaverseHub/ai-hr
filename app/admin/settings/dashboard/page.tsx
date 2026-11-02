@@ -1,6 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import {notFound} from 'next/navigation';
 import {settingsActionAccess} from '@/core/organisation-access';
+import {employeeHomeConfigurationCompanies} from '@/core/employee-home-configuration';
 import Link from 'next/link';
 import { scopedAdmin } from '@/lib/scope';
 import {
@@ -53,18 +54,20 @@ export default async function DashboardCardConfigPage({
 }) {
   // scopedAdmin also fences the RLS session to an admin — the guard the reverse-completeness test asserts.
   const { s } = await scopedAdmin();
-  const access=await settingsActionAccess(s,'dashboardCardConfig');if(!access.view)notFound();
+  const access=await settingsActionAccess(s,'dashboardCardConfig');
   const t = await getTranslations('dashboardCardConfig');
   const tm = await getTranslations('dashboardCardConfig.manage');
   const sp = await searchParams;
   const { error, edit, new: newParam } = sp;
 
   const section: Section = isSection(sp.section) ? sp.section : 'library';
+  if(section==='content'){if(!(await employeeHomeConfigurationCompanies(s)).length)notFound();}
+  else if(!access.view)notFound();
   const q = (sp.q ?? '').trim();
   const typeFilter = isCardType(sp.type) ? sp.type : '';
   const statusFilter = sp.status === 'active' || sp.status === 'inactive' ? sp.status : '';
 
-  const cards = await listCards(s,true);
+  const cards = section==='content'?[]:await listCards(s,true);
   const editing: DashboardCardRow | null = edit ? cards.find((c) => c.id === edit) ?? null : null;
   const showForm = Boolean(editing ? access.edit : newParam && access.add);
 
@@ -145,18 +148,18 @@ export default async function DashboardCardConfigPage({
 
       <div className="grid gap-6 lg:grid-cols-[200px_1fr]">
         <nav aria-label={tm('title')} className="space-y-1 lg:sticky lg:top-4 lg:self-start">
-          <Link href={`${PAGE}?section=library`} className={navLinkCls(section === 'library')}>
+          {access.view&&<Link href={`${PAGE}?section=library`} className={navLinkCls(section === 'library')}>
             {tm('navLibrary')}
-          </Link>
-          <Link href={`${PAGE}?section=templates`} className={navLinkCls(section === 'templates')}>
+          </Link>}
+          {access.view&&<Link href={`${PAGE}?section=templates`} className={navLinkCls(section === 'templates')}>
             {tm('navTemplates')}
-          </Link>
+          </Link>}
           <Link href={`${PAGE}?section=content`} className={navLinkCls(section === 'content')}>
             {tm('navContent')}
           </Link>
-          <Link href={`${PAGE}?section=preview`} className={navLinkCls(section === 'preview')}>
+          {access.view&&<Link href={`${PAGE}?section=preview`} className={navLinkCls(section === 'preview')}>
             {tm('navPreview')}
-          </Link>
+          </Link>}
         </nav>
 
         <div className="min-w-0 space-y-6">
