@@ -33769,7 +33769,8 @@
       "hod": "Head of Department",
       "pbp": "People Business Partner",
       "gbs": "GBS People Ops",
-      "admin": "Named preparer"
+      "admin": "Named preparer",
+      "system": "Background processing"
     },
     "columns": {
       "employee": "Employee",
@@ -33826,7 +33827,8 @@
       "movement_done": "Personnel record updated",
       "handoff_done": "Offboarding handoff recorded",
       "completed": "Completed",
-      "failed": "Needs review"
+      "failed": "Needs review",
+      "release_requested": "Release requested"
     },
     "assessment": {
       "title": "{owner} assessment",
@@ -33930,7 +33932,8 @@
       "uploadHelp": "Upload the completed signed PDF with a reason. The original document is retained as evidence; this does not create a digital signature or release an outcome letter.",
       "pdf": "Completed review PDF",
       "upload": "Record PDF evidence",
-      "pendingPdf": "The signed review is saved. Filing its completed PDF is pending; the existing background worker will retry without changing the signed review."
+      "pendingPdf": "The signed review is saved. Filing its completed PDF is pending; the existing background worker will retry without changing the signed review.",
+      "filingPending": "Employee-file filing pending"
     },
     "tracker": {
       "title": "Probation tracker",
@@ -34086,7 +34089,13 @@
       "mergeHelp": "Use a single pair of braces for these read-only Personnel values. Add HR fields for information the preparer must complete.",
       "signing": "Signing and acknowledgement route",
       "reviewed": "The wording and both signature sections have been reviewed and are ready to publish.",
-      "routeHelp": "Every required HR signer must finish before the employee acknowledgement. Missing role holders block signing."
+      "routeHelp": "Every required HR signer must finish before the employee acknowledgement. Missing role holders block signing.",
+      "matching": "When this template applies",
+      "matchingHelp": "An empty selection matches all values within this company and outcome. Matching uses the recorded starting grade and current extension number.",
+      "extensionNumber": "Extension number",
+      "add": "Add {outcome} template",
+      "noExtension": "No extension",
+      "extension": "Extension {number}"
     },
     "errors": {
       "title": "Probation record unavailable",
@@ -34133,7 +34142,10 @@
       "release": "Release signed letter",
       "releaseHelp": "Release saves the request to file the completed signed PDF and apply the approved outcome. The existing background worker completes those steps; any delay or failure remains visible for retry. Every required current signature must be complete.",
       "tasks": "Outcome letters",
-      "open": "Open outcome letter"
+      "open": "Open outcome letter",
+      "preparationClosed": "Release has already been requested or completed. Review the saved letter and filing status from the case.",
+      "templateTie": "More than one template matches equally. Choose the reviewed template explicitly.",
+      "filingPending": "The release request is saved. The existing background worker will render and file the signed PDF before applying the outcome. Any failure stays visible for retry."
     },
     "dates": {
       "title": "Probation date review",
@@ -34147,6 +34159,23 @@
       "applied": "Applied through Personnel",
       "pending": "Awaiting GBS application",
       "apply": "Apply Personnel date adjustment"
+    },
+    "signers": {
+      "title": "Signing assignments",
+      "help": "Record a reason and effective dates for a named replacement. Employee acknowledgement cannot be delegated, and completed signatures keep their actual historical signer.",
+      "reason": "Reason for the assignment or route change",
+      "replace": "Replace a pending signer",
+      "step": "Signing step",
+      "kind": "Replacement reason",
+      "person": "Existing authorized user",
+      "currentHolder": "Current assigned holder",
+      "delegation": "Temporary delegation",
+      "holder_changed": "Role holder changed",
+      "missing_holder": "Role holder missing",
+      "record": "Record signer replacement",
+      "override": "Override the unsubmitted review route",
+      "saveRoute": "Save case route",
+      "discard": "Discard unsaved changes"
     }
   },
   "templateEditor": {
