@@ -93,8 +93,23 @@ it('profiles the native callback after the first observed service audit append a
  const spans=traces.map(t=>({admissionMs:t.callbackStart-t.start,callbackMs:t.callbackEnd-t.callbackStart,settlementMs:t.commitEnd-t.callbackEnd,firstObservedServiceAppendWaitAndSqlMs:t.firstAfter===undefined||t.firstBefore===undefined?null:t.firstAfter-t.firstBefore,postFirstObservedServiceAppendCallbackMs:t.firstAfter===undefined?null:t.callbackEnd-t.firstAfter,punchOwnerMs:t.punchEnd===undefined||t.punchStart===undefined?null:t.punchEnd-t.punchStart,postFirstAppendToPunchOwnerExitMs:t.punchEnd===undefined||t.firstAfter===undefined?null:t.punchEnd-t.firstAfter,postPunchOwnerCallbackMs:t.punchEnd===undefined?null:t.callbackEnd-t.punchEnd,auditHeldBeforeFirstObservedAppend:t.auditBeforeFirst??null,punchAuditWrites:t.punchAuditWrites,punchAuditEvents:t.punchAuditEvents,postPunchOwnerSegments:t.segments,postPunchServiceAudit:t.afterPunchAudit,firstEventType:t.firstType??null,events:t.events,failed:t.failed}));
  const audit=[];for(const b of bases)audit.push(await verifyTenantChain(adminCtx(b)));
  const batchSql=sqlProfile?(await owner.client`select coalesce(sum(s.calls),0)::int as calls,coalesce(sum(s.rows),0)::int as rows from pg_stat_statements s where s.dbid=(select oid from pg_database where datname=current_database())and lower(s.query)like 'insert into "domain_event"%' and s.rows>s.calls`)[0]:null;
- const formulaSql=sqlProfile?await owner.client`select queryid::text as id,calls::int as calls,total_plan_time as plan_ms,total_exec_time as execution_ms,mean_exec_time as mean_ms,rows::int as rows from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database()) and position('overtime_formula_candidate_for_day' in lower(query))>0 order by queryid`:null;
- const report={formulaSql,batchSql,kind:'NATIVE_AUDIT_SPAN_DIAGNOSTIC_NOT_CAPACITY_OR_PURE_LOCK_TIME',cases:cases.length,tenants:2,failures,spans,audit,limitations:'First service append can follow earlier native audit writes. Admission includes BEGIN; append includes wait+SQL; post-append callback includes SQL/client work; settlement includes commit and response. Owner segment and audit durations can overlap and must not be added as CPU or exclusive wall time. No deliberate delay or changed control.'};
+ const formulaStats=()=>owner.client`select queryid::text as id,calls::int as calls,total_plan_time as plan_ms,total_exec_time as execution_ms,mean_exec_time as mean_ms,rows::int as rows from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database()) and position('overtime_formula_candidate_for_day' in lower(query))>0 order by queryid`;
+ const formulaSql=sqlProfile?await formulaStats():null;
+ const formulaWarm=[];
+ if(formulaSql){
+  let previous=formulaSql;
+  for(let round=0;round<2;round++){
+   const start=performance.now();
+   const results=await Promise.all(cases.map(c=>realTenant(c.hr.ctx,async tx=>{
+    const [candidate]=await tx.execute(sql`select app.overtime_formula_candidate_for_day(${c.b.tenantId}::uuid,${c.worker.employmentId}::text,${on}::date,${c.b.companyId}::uuid) as id`);return candidate.id;
+   })));
+   const elapsedMs=performance.now()-start;expect(results).toEqual(cases.map(()=>null));
+   const after=await formulaStats(),calls=after.reduce((n,r)=>n+r.calls,0)-previous.reduce((n,r)=>n+r.calls,0),executionMs=after.reduce((n,r)=>n+r.execution_ms,0)-previous.reduce((n,r)=>n+r.execution_ms,0);
+   expect(calls).toBe(cases.length);formulaWarm.push({round,calls,executionMs,elapsedMs});previous=after;
+  }
+ }
+
+ const report={formulaWarm,formulaSql,batchSql,kind:'NATIVE_AUDIT_SPAN_DIAGNOSTIC_NOT_CAPACITY_OR_PURE_LOCK_TIME',cases:cases.length,tenants:2,failures,spans,audit,limitations:'First service append can follow earlier native audit writes. Admission includes BEGIN; append includes wait+SQL; post-append callback includes SQL/client work; settlement includes commit and response. Owner segment and audit durations can overlap and must not be added as CPU or exclusive wall time. No deliberate delay or changed control.'};
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/attendance-audit-spans.json',JSON.stringify(report));
  expect(failures).toEqual([]);expect(spans.filter(t=>t.firstEventType!==null)).toHaveLength(cases.length);expect(spans.filter(t=>t.punchOwnerMs!==null)).toHaveLength(cases.length);
  for(const c of cases){
