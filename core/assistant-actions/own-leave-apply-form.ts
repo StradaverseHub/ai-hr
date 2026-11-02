@@ -7,7 +7,7 @@
  * the leave types are the caller's own apply menu (core/read.ts listEligibleLeaveTypesFor) and the days and balance
  * are the leave service's own advisory preview (previewLeaveDeduction), exactly as the /leave form previews them.
  * A balance the company hides from the person (ess view) is never returned. */
-import {and,eq} from 'drizzle-orm';
+import {and,eq,inArray} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {leaveType} from '../../db/schema';
 import {todayInKualaLumpur} from '../../lib/hr-date';
@@ -25,7 +25,9 @@ export const CHAT_LEAVE_DURATIONS=['full_day','half_day_am','half_day_pm'] as co
 export type ChatLeaveDuration=typeof CHAT_LEAVE_DURATIONS[number];
 export const isChatLeaveDuration=(value:unknown):value is ChatLeaveDuration=>typeof value==='string'&&(CHAT_LEAVE_DURATIONS as readonly string[]).includes(value);
 
-export type OwnLeaveApplyType=Readonly<{id:string;name:string;code:string;durations:readonly string[]}>;
+export type OwnLeaveApplyType=Readonly<{id:string;name:string;code:string;durations:readonly string[];
+ /** leave_type.role, the tenant-independent kind (core/leave.ts LEAVE_TYPE_ROLES), or null when unclassified. */role:string|null;
+ /** The type's own name and its translations, so a request in any product language can name it. */names:readonly string[]}>;
 export type OwnLeaveApplyMenu=Readonly<{kind:'menu';employmentId:string;types:readonly OwnLeaveApplyType[]}>|Readonly<{kind:'unavailable'}>;
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
 
@@ -41,8 +43,16 @@ export async function readOwnLeaveApplyMenu(supplied:SessionContext,locale?:stri
   const current=(await myOwnEmploymentSubjectsTx(tx,actor)).filter(row=>row.hiredOn<=today&&!isEmploymentEnded(row,today));
   if(current.length!==1)return Object.freeze({kind:'unavailable' as const});
   const employmentId=current[0].employmentId;
-  const types=(await listEligibleLeaveTypesFor(actor,employmentId,locale,tx)).map(row=>Object.freeze({id:row.id,name:String(row.name),code:String(row.code),
-   durations:Object.freeze(Array.isArray(row.durations)?row.durations.filter((value):value is string=>typeof value==='string'):[])}))
+  const eligible=await listEligibleLeaveTypesFor(actor,employmentId,locale,tx);
+  // The menu projection drops the role and the other languages' names; read them for exactly these types.
+  const identities=eligible.length?await tx.select({id:leaveType.id,role:leaveType.role,name:leaveType.name,i18n:leaveType.i18n}).from(leaveType)
+   .where(and(eq(leaveType.tenantId,actor.tenantId),inArray(leaveType.id,eligible.map(row=>row.id)))):[];
+  const byId=new Map(identities.map(row=>[row.id,row]));
+  const types=eligible.map(row=>{const identity=byId.get(row.id),translated=Object.values(identity?.i18n??{}).map(entry=>entry?.name).filter((name):name is string=>typeof name==='string'&&name.trim()!=='');
+   return Object.freeze({id:row.id,name:String(row.name),code:String(row.code),
+    durations:Object.freeze(Array.isArray(row.durations)?row.durations.filter((value):value is string=>typeof value==='string'):[]),
+    role:typeof identity?.role==='string'&&identity.role!==''?identity.role:null,
+    names:Object.freeze([...new Set([String(identity?.name??row.name),...translated])])});})
    .sort((a,b)=>a.name.localeCompare(b.name)||a.id.localeCompare(b.id));
   return Object.freeze({kind:'menu' as const,employmentId,types:Object.freeze(types)});
  });

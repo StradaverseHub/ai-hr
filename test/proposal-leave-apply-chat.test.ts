@@ -199,6 +199,32 @@ describe('a range or a half day: the prefilled Request Leave form is the confirm
  });
 });
 
+describe('a leave type named in the person\'s own language',()=>{
+ it('maps 病假 and its synonyms to the caller\'s Medical Leave, asks when two types fit, and never picks one they cannot apply for',async()=>{
+  const [medical]=await owner.db.insert(schema.leaveType).values({tenantId:base.tenantId,code:'MEDICAL',name:'Medical Leave',role:'sick',paid:true,allowNegativeBalance:true}).returning({id:schema.leaveType.id});
+  const [maternity]=await owner.db.insert(schema.leaveType).values({tenantId:base.tenantId,code:'MATERNITY',name:'Maternity Leave',role:'maternity',paid:true,allowNegativeBalance:true,employeeCanApply:false}).returning({id:schema.leaveType.id});
+  const ctx=await caller(),before=await counts();
+  // The evaluation's defect: a Chinese request for sick leave asked for the type again.
+  for(const [words,given] of [['我想请病假','病假'],['Saya nak cuti sakit','cuti sakit'],['Tôi muốn nghỉ ốm','nghỉ ốm'],['மருத்துவ விடுப்பு வேண்டும்','மருத்துவ விடுப்பு'],['ขอลาป่วย','ลาป่วย'],['I need sick leave','sick leave']] as const){
+   const outcome=await prepareChatLeaveApplyProposal(ctx,{leaveType:given,startDate:date,endDate:nextDate},words,'en');
+   expect(outcome?.kind==='proposal'&&outcome.proposal.body.what.selectors.leaveTypeId,given).toBe(medical.id);
+  }
+  // Annual leave by its seeded code alone, in Chinese.
+  const annual=await prepareChatLeaveApplyProposal(ctx,{leaveType:'年假',startDate:date,endDate:nextDate},'年假','en');
+  expect(annual?.kind==='proposal'&&annual.proposal.body.what.selectors.leaveTypeId).toBe(base.annualLeaveTypeId);
+  // Maternity is not on this person's menu: the request is asked about, and the menu offered does not list it.
+  const notAllowed=await prepareChatLeaveApplyProposal(ctx,{leaveType:'产假',startDate:date,endDate:nextDate},'我要请产假','en');
+  expect(notAllowed).toMatchObject({kind:'ask',missing:['leaveType']});
+  expect(notAllowed?.kind==='ask'&&notAllowed.options.map(option=>option.leaveType)).not.toContain('Maternity Leave');
+  expect(maternity.id).not.toBe(medical.id);
+  // A second type of the same kind makes 病假 a choice between them.
+  await owner.db.insert(schema.leaveType).values({tenantId:base.tenantId,code:'OUTPATIENT',name:'Sick Leave (Outpatient)',paid:true,allowNegativeBalance:true});
+  expect(await prepareChatLeaveApplyProposal(ctx,{leaveType:'病假',startDate:date,endDate:nextDate},'病假','en')).toMatchObject({kind:'ask',missing:['leaveType']});
+  // Only form cards were prepared: nothing is saved or submitted.
+  expect(await counts()).toEqual(before);
+ });
+});
+
 describe('the harness turn',()=>{
  it('prepares the card from a clear request and hands it to the turn, never to the model',async()=>{
   const model=scriptedModel([{calls:[{name:'suggest_action',args:{action:'leave.apply',details:{leaveType:'Annual Leave',startDate:date}}}]},
