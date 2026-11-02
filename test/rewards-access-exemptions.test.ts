@@ -66,6 +66,22 @@ describe('Rewards authoritative immediate application and GR decisions',()=>{
   await decideRewardAccessRequest(independent,pending.requestId,true,'Different person independently reviewed');
   expect((await owner.db.select().from(s.rewardAccessRequest).where(eq(s.rewardAccessRequest.id,pending.requestId)))[0]).toMatchObject({status:'approved',decidedBy:independent.userId});
  });
+ it('decides ahead of a legacy archival waiting at the canonical barrier without acquiring its account tuple',async()=>{
+  const requester=await user('Non-exempt requester','super_admin'),target=await user('Pending recipient'),checker=await user('Independent live GR');await seat(checker,'gr');
+  const pending=await (await change(requester,target)).save();
+  let unlock!:()=>void,ready!:(pid:number)=>void;const held=new Promise<void>(resolve=>{unlock=resolve;}),started=new Promise<number>(resolve=>{ready=resolve;});
+  const decision=withTenant(checker,async tx=>{await tx.execute(sql`select app.access_workforce_write_lock()`);const [backend]=await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);ready(backend.pid);await held;const [r]=await tx.execute<{status:string}>(sql`select app.reward_access_request_decide(${pending.requestId}::uuid,true,'Independently checked before archival') as status`);return r.status;}).then(value=>({ok:true as const,value}),error=>({ok:false as const,error}));
+  let archival:Promise<{ok:boolean;error?:unknown}>|undefined;
+  try{
+   const blocker=await started;
+   archival=withTenant(admin,tx=>tx.execute(sql`update app_user set archived_at=now() where tenant_id=${b.tenantId}::uuid and id=${target.userId}::uuid`)).then(()=>({ok:true}),error=>({ok:false,error}));
+   let blocked=false;const deadline=Date.now()+3000;
+   while(Date.now()<deadline){const [wait]=await owner.db.execute<{blocked:boolean}>(sql`select exists(select 1 from pg_locks l where l.locktype='advisory' and not l.granted and ${blocker}::integer=any(pg_blocking_pids(l.pid))) as blocked`);if(wait.blocked){blocked=true;break;}await new Promise(resolve=>setTimeout(resolve,10));}
+   expect(blocked).toBe(true);unlock();
+   expect(await decision).toEqual({ok:true,value:'approved'});expect(await archival).toEqual({ok:true});
+   const [state]=await withTenant(checker,tx=>tx.execute<{eligible:boolean}>(sql`select app.reward_member_eligible(id) as eligible from reward_member where tenant_id=${b.tenantId}::uuid and unit_id=${unitId}::uuid and user_id=${target.userId}::uuid`));expect(state.eligible).toBe(false);
+  }finally{unlock();await decision;if(archival)await archival;}
+ });
  it('cannot acquire its own exemption through a pending grant and preserves existing pending rows after the role changes',async()=>{
   const requester=await user('Non-exempt administrator','super_admin'),gr=await user('Independent Group Rewards');await seat(gr,'gr');
   const self=await change(requester,requester,'gr'),pending=await self.save();expect(pending.pending).toBe(true);

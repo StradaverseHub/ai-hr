@@ -147,7 +147,8 @@ BEGIN
  SELECT * INTO q FROM public.reward_access_request WHERE id=wanted_request AND tenant_id=t;
  IF q.id IS NULL OR NOT app.reward_access_request_authorised(q.id) THEN RAISE EXCEPTION 'access request scope' USING ERRCODE='42501'; END IF;
  IF q.status<>'pending' THEN RAISE EXCEPTION 'access request already decided' USING ERRCODE='40001'; END IF;
- PERFORM 1 FROM public.app_user account WHERE account.tenant_id=t AND (account.id=actor OR account.id=q.requested_by OR account.id::text IN(SELECT value FROM jsonb_array_elements(q.changes) c CROSS JOIN LATERAL (VALUES(c->'before'->>'userId'),(c->'after'->>'userId')) identities(value))) ORDER BY account.id FOR SHARE;
+ -- Identity/archival writers join this canonical access barrier (0579); tuple locks here
+ -- would reverse their tuple-before-trigger ordering and deadlock an in-flight archive.
  IF NOT p_immediate AND NOT app.reward_access_request_independent(q.id,actor) THEN RAISE EXCEPTION 'independent Group Rewards checker required' USING ERRCODE='42501'; END IF;
  IF p_immediate THEN
  SELECT jsonb_object_agg(k.key,app.reward_access_exemption(k.key::uuid)) INTO exemptions FROM jsonb_each(q.unit_revisions) k;
