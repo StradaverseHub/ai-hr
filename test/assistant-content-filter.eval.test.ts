@@ -25,7 +25,7 @@ import {grantAssistant} from '../core/assistant-grant';
 import {setWorkerSwitch} from '../core/agent-registry/controls';
 import {hireEmployee} from '../core/org';
 import {seedGuides} from '../db/seed-guides';
-import {HARNESS_TEST_ONLY,runTurn} from '../core/harness/runner';
+import {HARNESS_TEST_ONLY,roleNoteFor,runTurn} from '../core/harness/runner';
 import {HARNESS_SPEC} from '../core/harness/spec';
 import {InMemoryTaskMemoryStore} from '../core/harness/memory';
 import type {HarnessMessage,ModelClient,ModelRequest} from '../core/harness/model-client';
@@ -132,7 +132,7 @@ describe('content-filter probe on fictional data',()=>{
  if(!KEY||!MODEL)it('stays disabled and calls no provider without the protected evaluation secret',()=>{expect(Boolean(KEY&&MODEL)).toBe(false);expect(calls).toBe(0);});
  else it('finds which part of the first request the upstream filters',async()=>{
   if(!ALLOWED.length)throw Error('The probe needs AIHR_EVAL_ALLOWED_PROVIDERS.');
-  const ctx=await employee(),today=todayInKualaLumpur(),roleNote=HARNESS_SPEC.roleNote.employee;
+  const ctx=await employee(),today=todayInKualaLumpur(),roleNote=roleNoteFor(ctx);
   const variants:Variant[]=[];
   for(const question of [...BLOCKED,CONTROL]){
    const request=await firstRequest(ctx,question),messages=request.messages.map(wire);
