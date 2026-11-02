@@ -25,6 +25,9 @@ import {explainOwnLeaveEntitlement} from '../core/explainers/entitlement';
 import {explainOwnAttendanceDay} from '../core/explainers/attendance';
 import {TERAS_CAPABILITIES} from '../core/explainers/capabilities';
 import {nativeToolProvider} from '../core/harness/tools';
+import {gateTurn} from '../lib/product-context/request-gate';
+import {offerFor} from '../core/harness/runner';
+import {HARNESS_SPEC} from '../core/harness/spec';
 import {setWorkerSwitch} from '../core/agent-registry/controls';
 import {setupCopilot,SetupCopilotRefused} from '../core/setup-copilot/copilot';
 import {coverageReadiness} from '../core/product-context/coverage-readiness';
@@ -198,11 +201,25 @@ describe('public administrative page guidance',()=>{
   // The provider accepts at most 31 native tools and reserves the 32nd for inert history. Do not raise it.
   expect(admin.bindings.length).toBeLessThanOrEqual(31);expect(new Set(names).size).toBe(names.length);
   for(const name of ['password_policy_guidance','correction_controls_guidance'])expect(admin.bindings.find(binding=>binding.name===name)!.spec.inputSchema).toMatchObject({type:'object',properties:{},required:[],additionalProperties:false});
+  const gate=gateTurn('Where are Password Policy and Correction Controls, and who confirms changes?',{sensitive:HARNESS_SPEC.sensitive.topics});
+  expect(gate).toEqual({privateReads:false,actions:true,reason:'other_person'});
+  const offered=offerFor(admin.bindings,gate),offeredNames=offered.map(binding=>binding.name);
+  for(const name of ['password_policy_guidance','correction_controls_guidance']){
+   expect(admin.bindings.find(binding=>binding.name===name)).toMatchObject({kind:'context',entity:name});expect(offeredNames).toContain(name);
+  }
+  for(const capability of TERAS_CAPABILITIES.filter(row=>!['password_policy_guidance','correction_controls_guidance'].includes(row.name)))expect(admin.bindings.find(binding=>binding.name===capability.name)!.kind).toBe('read');
+  const privateReads=admin.bindings.filter(binding=>binding.kind==='read');expect(privateReads.length).toBeGreaterThan(0);
+  for(const binding of privateReads)expect(offeredNames).not.toContain(binding.name);
+  expect(admin.bindings.find(binding=>binding.name==='setup_copilot')!.kind).toBe('read');expect(offeredNames).not.toContain('setup_copilot');
+  expect(offeredNames).not.toContain('setup_readiness');expect(offeredNames).not.toContain('company_setup');
   const ordinary=await nativeToolProvider(employee,scope,true);
   expect(ordinary.bindings.map(binding=>binding.name)).not.toContain('password_policy_guidance');expect(ordinary.bindings.map(binding=>binding.name)).not.toContain('correction_controls_guidance');
   const {result,model}=await turn(hr,'Where are Password Policy and Correction Controls, and who confirms changes?',[
    {calls:[{name:'password_policy_guidance'}]},{calls:[{name:'correction_controls_guidance'}]},{final:{reply:'An authorized human confirms each change on its native page.'}},
   ]);
+  expect(result.trace.gate).toEqual({privateReads:false,actions:true,reason:'other_person'});
+  expect(result.trace.offered).toContain('password_policy_guidance');expect(result.trace.offered).toContain('correction_controls_guidance');
+  for(const binding of privateReads)expect(result.trace.offered).not.toContain(binding.name);
   expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['password_policy_guidance','ok'],['correction_controls_guidance','ok']]);
   for(const applied of result.trace.disclosure){expect(applied.undeclared).toEqual([]);expect(applied.removed).toEqual([]);expect(applied.banded).toEqual([]);}
   expect(lastToolResult(model.requests[1])).toMatchObject({page:'/admin/security-center/password-policy',humanBoundary:expect.stringContaining('group administrator')});
