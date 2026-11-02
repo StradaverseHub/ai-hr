@@ -214,7 +214,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
   "contractId": "teras_harness_turn_v1",
   "status": "approved",
   "sourceDigest": "a70f0770b74b797ca6f8a70adb9f7e302215ef77a0d85f234330848646803644",
-  "reviewer": "human:zenlam repository-owner via Codex orchestrator relay",
+  "reviewer": "human:zenlam repository-owner provisional",
   "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#noveri-binding-approval",
   "reviewedAt": "2026-11-02T10:15:26Z"
 }

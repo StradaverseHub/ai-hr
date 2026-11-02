@@ -547,8 +547,8 @@ about 2026-11-02T10:29Z (receipt time, not the recorded approval time).
 
 The 24 approved records receive only the new sourceDigest (status, reviewer, evidence and reviewedAt preserved
 byte-for-byte; both pending records byte-identical), and one record is added: `teras_harness_turn_v1`, approved,
-reviewer human:zenlam repository-owner via Codex orchestrator relay, evidence #noveri-binding-approval, reviewedAt
-2026-11-02T10:15:26Z.
+reviewer human:zenlam repository-owner provisional (the repository's standard owner-provisional reviewer; the relay route
+is recorded in this section), evidence #noveri-binding-approval, reviewedAt 2026-11-02T10:15:26Z.
 
 The module-agent manifest is regenerated last, after these literals, from the accepted baseline
 `ad8874a425084aac18256dfad336bd30d54739346397c6258cbb2417ff4abf12` (456 files); both `--check` commands are then rerun.
