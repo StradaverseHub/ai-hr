@@ -15,6 +15,10 @@ on:
         description: JSON array of 1–64 tracked unit/DOM test paths; candidate classifier owns DB selection
         required: true
         type: string
+      profile_language_switch:
+        description: Isolated production-browser language diagnostic; not500-user or release acceptance
+        default: false
+        type: boolean
       qualify_restricted_port_prerequisites:
         description: Opt-in exact581 populated restricted-port prerequisite rehearsal before migrations; requires real Personnel DB files and whole typecheck
         default: false
@@ -151,7 +155,16 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk
+      - name: Profile language switching on an isolated production renderer
+        if: ${{ inputs.profile_language_switch }}
+        run: node scripts/performance/language-runner.mjs
+        env:
+          AIHR_CI_UNIT: db-1
+          AIHR_CI_PG_DURABLE: '1'
+          AIHR_CI_PG_STATEMENTS: '1'
+          AIHR_CI_PG_STATEMENTS_OWNER: system-http-profile
       - name: Classify and execute only selected files
+        if: ${{ !inputs.profile_language_switch }}
         run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"
         env:
           AIHR_FOCUSED_EVIDENCE_DIR: ${{ runner.temp }}/aihr-focused
@@ -163,11 +176,18 @@ jobs:
         run: bash ../automation/.github/ci/postgres.sh stop
         env:
           AIHR_CI_UNIT: db-1
-      - if: always()
+      - if: ${{ always() && !inputs.profile_language_switch }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: focused-development-evidence
           path: ${{ runner.temp }}/aihr-focused/
+          if-no-files-found: error
+          retention-days: 14
+      - if: ${{ always() && inputs.profile_language_switch }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: language-switch-development-evidence
+          path: ${{ runner.temp }}/service-performance-evidence/
           if-no-files-found: error
           retention-days: 14
   typecheck:
