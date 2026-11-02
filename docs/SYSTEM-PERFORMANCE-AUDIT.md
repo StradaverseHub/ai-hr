@@ -1,36 +1,33 @@
-## Current repair: Home correctness qualified; visibility hot-path experiment running
+## Current result: Home correctness qualified; visibility prototype awaits policy reconciliation
 
-Home sourcef27429d82ebcc5598b9ea443434a7920bfaedbd3 passes
-[41421768400](https://github.com/StradaverseHub/ai-hr/actions/runs/41421768400):
-109 database and75 other checks across28 affected files plus the whole compiler.
-Native APP setup is2→1 with populated subject/dated-company parity; archive/rebind
-committed before the new final principal check is refused. No result cache or
-atomic lock against later revocation is claimed. The original630a red
-[41421047287](https://github.com/StradaverseHub/ai-hr/actions/runs/41421047287)
-retains both actual failures (2 setups and mid-read archive selection).
+Homef274 qualification41421768400 passes109 database and75 other checks across28
+files plus the whole compiler. Native setup2→1 and actual late archive/rebind refusal
+pass,but paired40-read timings are mixed (former322.35/314.63ms,current332.14/288.35ms).
+No500-user rerun is justified by that counter alone. Its source remains separate.
 
-Paired40-read bursts are former322.35/314.63ms,current332.14/288.35ms. One is
-slower and the other faster; this is not consistent performance evidence. No full
-500-user pair is scheduled for this source merely because its counter improved.
-It remains correctness-qualified development outside release admission.
-Artifacts: /private/tmp/aihr-home-subject-{red-630a,f274}-attempt1.
+Refined reversible visibility source234b848b3f103d312a0e04b3735f38096d1734d3 /
+[41424615209](https://github.com/StradaverseHub/ai-hr/actions/runs/41424615209)
+passes563 native comparisons over500 principals and24 hierarchy/HOD contexts.
+Ordinary100-read bursts are13.75/13.89ms versus restored22.67/22.29ms; manager/HOD/HR
+fallback timings are retained in the [review](reviews/system-performance-visibility-self-review-20261102.md).
+Original function attributes remain equal,then original definition is restored and
+private donor dropped. Earlier1db fixture-array failure and f3a7 corrected563-control
+pass remain preserved. This is component evidence,not a whole-system speed claim.
 
-Retained load artifacts rank repeated admission,long Access/audit holds and repeated
-permission-query work. Reversible profile1db8c5dbf4c693bcc9042f9611a1cda6b777c7de /
-[41423425905](https://github.com/StradaverseHub/ai-hr/actions/runs/41423425905)
-now tests a necessary-only self-visibility branch on an independent retained07f
-baseline,excluding every unaccepted app variant. The original grants parsing/admin
-decision remains; any active administrative caller edge retains the full original
-query. Native500-principal and existing hierarchy/HOD contexts compare exact ordered
-outputs against a private original donor and independent can_see_employment rows.
-Live line/context changes and malformed inputs are checked; original function and
-attributes are restored and the donor dropped in finally. No application/migration
-implementation or reservation exists for this experiment yet; outcome pending.
+A fresh all-ref/WIP scan and read-only actual source inspection found direct overlap
+with the security owner's WIP0938_data_permission_enforcement: it rewrites both
+visibility functions with new data-permission restrictions. No foreign source is
+adopted or edited; no performance migration is allocated. Reconcile the measured
+principle with that owner's frozen final semantics and native denial cases before
+implementation. Never overlay the older function body onto those new restrictions.
+Both canonical refs now6ea889365; this is source freshness,not installed acceptance.
 
-Both original feedback-only500 failures below remain unchanged. No blind rerun,
-resource/timeout/workload change,applied SQL edit,literal approval refresh,release
-admission,queue entry,merge or deployment. Both canonical manifest checks pass,
-module last,with unchanged digests for the Home repair.
+Both original feedback-only500 failures below remain terminal:1s timeout last331
+completed/169 active;5s463 completed/37 failed.0/2 activity targets accepted. All
+original workloads,resources,thresholds,timeouts and failure accounting remain.
+No blind load retry,release admission,queue entry,merge,literal binding update or
+deployment. Applied SQL is unchanged. Detailed exact-source evidence and integration
+boundary are in the review linked above and the private task checkpoint.
 
 ## Current result: feedback-only500 qualification fails; release admission remains held
 
