@@ -226,6 +226,7 @@ export async function executeAction(
   ctx: SessionContext,
   p: { typeId: string; verdictIds: string[] },
 ): Promise<ExecuteResult> {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const type = actionTypeById(p.typeId);
   if (!type) throw new AgentActionError('unknown_type');
   const ids = [...new Set(p.verdictIds.filter(Boolean))];
