@@ -196,6 +196,25 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
     expect(await detectArrears(a, { companyId: base.companyId })).toHaveLength(0);
   });
 
+  it('BK53 retains every contributing revision while pricing two overlapping revisions once', async () => {
+    const { a, employmentId } = await hire(3000);
+    const batchId = await runAndClose('2026-03');
+    const before = await payslipRow(employmentId, batchId);
+    await setCompensation(a, { employmentId, basicSalary: 3100, effectiveFrom: '2026-03-11' });
+    await setCompensation(a, { employmentId, basicSalary: 3300, effectiveFrom: '2026-03-21' });
+    const candidates = await detectArrears(a, { companyId: base.companyId });
+    expect(candidates).toHaveLength(2);
+    const { runId, total } = await calculateBackPay(a, { companyId: base.companyId, targetPayPeriod: '2026-04' });
+    // March1–10:30000; March11–20:31000; March21–31:36300; /31=3138.71.
+    expect(total).toBe(138.71);
+    expect((await backPayRunDetail(a, runId))!.perEmployee[0].total).toBe(138.71);
+    expect(await detectArrears(a, { companyId: base.companyId })).toHaveLength(0);
+    await cancelBackPayRun(a, { runId });
+    expect((await detectArrears(a, { companyId: base.companyId })).map(row => row.compensationId).sort())
+      .toEqual(candidates.map(row => row.compensationId).sort());
+    expect(await payslipRow(employmentId, batchId)).toEqual(before);
+  });
+
   it('a backdated RISE produces a positive basic line, and the closed payslip is byte-identical afterwards', async () => {
     const { a, employmentId } = await hire(5000);
     const marchBatch = await runAndClose('2026-03');
