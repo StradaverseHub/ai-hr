@@ -225,6 +225,7 @@ CREATE FUNCTION app.access_letter_write_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE row_data jsonb;old_data jsonb;co uuid;native text;operation text;root uuid;parent_operation text;function_key text;function_operation text;deactivation_previous jsonb;needs_content_edit boolean:=false;
 BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN coalesce(NEW,OLD);END IF;
  IF TG_OP='DELETE' THEN row_data:=to_jsonb(OLD);ELSE row_data:=to_jsonb(NEW);END IF;
  IF TG_OP='UPDATE' THEN old_data:=to_jsonb(OLD);END IF;
  IF row_data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RAISE EXCEPTION 'Letter action unavailable' USING ERRCODE='42501';END IF;
@@ -1585,24 +1586,24 @@ ALTER TABLE app.financial_backpay_catalog_effect ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.financial_backpay_catalog_effect FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.backpay_component(p_run uuid,p_kind text) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE run public.back_pay_run;component public.pay_component;code text;
+DECLARE run public.back_pay_run;component public.pay_component;wanted_code text;
 BEGIN
  PERFORM app.access_workforce_write_lock();
  PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':pay-component-catalog',0));
  SELECT * INTO run FROM public.back_pay_run WHERE id=p_run AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF p_kind IS NULL OR p_kind NOT IN ('earning','deduction') OR run.id IS NULL OR run.status NOT IN ('draft','verified')
  OR NOT app.access_backpay_action(run.company_id,'execute') OR NOT app.financial_backpay_scope_allowed(run.id) THEN RAISE EXCEPTION 'Back Pay pay item source unavailable' USING ERRCODE='42501';END IF;
- code:=CASE p_kind WHEN 'earning' THEN 'BACKPAY' ELSE 'BACKPAY_RECOVERY' END;
- SELECT * INTO component FROM public.pay_component c WHERE c.tenant_id=run.tenant_id AND c.code=code;
+ wanted_code:=CASE p_kind WHEN 'earning' THEN 'BACKPAY' ELSE 'BACKPAY_RECOVERY' END;
+ SELECT * INTO component FROM public.pay_component c WHERE c.tenant_id=run.tenant_id AND c.code=wanted_code;
  IF FOUND THEN RETURN component.id;END IF;
  INSERT INTO public.pay_component(tenant_id,code,name,kind,included_in_epf,included_in_socso_eis,included_in_pcb,included_in_hrdf_base,is_non_payable,prorates,pcb_remuneration_type,pcb_exemption_code,display_category)
- VALUES(run.tenant_id,code,CASE p_kind WHEN 'earning' THEN 'Back Pay (Arrears)' ELSE 'Back Pay Recovery' END,
+ VALUES(run.tenant_id,wanted_code,CASE p_kind WHEN 'earning' THEN 'Back Pay (Arrears)' ELSE 'Back Pay Recovery' END,
   CASE p_kind WHEN 'earning' THEN 'allowance'::public.pay_component_kind ELSE 'deduction'::public.pay_component_kind END,
   true,true,true,true,false,false,NULL,NULL,CASE p_kind WHEN 'earning' THEN 'allowance' ELSE 'deduction' END)
  RETURNING * INTO component;
  INSERT INTO app.financial_backpay_catalog_effect VALUES(pg_current_xact_id(),run.tenant_id,app.current_user_id(),run.id,component.id,encode(sha256(convert_to(to_jsonb(component)::text,'UTF8')),'hex'));
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
- VALUES(run.tenant_id,'pay-component',component.id,'pay-component.created','user',app.current_user_id(),jsonb_build_object('code',code,'reason','back-pay-first-use'));
+ VALUES(run.tenant_id,'pay-component',component.id,'pay-component.created','user',app.current_user_id(),jsonb_build_object('code',wanted_code,'reason','back-pay-first-use'));
  RETURN component.id;
 END;
 $$;
@@ -1745,11 +1746,18 @@ END $$;
 --> statement-breakpoint
 CREATE CONSTRAINT TRIGGER financial_letter_recipient_function_final AFTER INSERT ON letter_recipient_event DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_letter_recipient_function_guard();
 CREATE CONSTRAINT TRIGGER financial_letter_recipient_function_final AFTER INSERT ON letter_access_token DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_letter_recipient_function_guard();
+CREATE FUNCTION app.letter_settings_record_read(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.letter_function_action('letterSettings','view',p_company)
+ AND app.letter_current_native_permission(app.current_tenant_id(),app.current_user_id(),p_company,'settings');
+$$;
+REVOKE ALL ON FUNCTION app.letter_settings_record_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_settings_record_read(uuid) TO ai_hr_app;
 CREATE POLICY financial_letter_function_read ON letter_record AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(
  app.letter_function_action('letterGenerate','view',company_id)
  OR app.letter_function_action('letterRegister','view',company_id)
  OR app.letter_function_action('letterReports','view',company_id)
- OR app.letter_current_native_permission(app.current_tenant_id(),app.current_user_id(),company_id,'settings') AND app.letter_function_action('letterSettings','view',company_id)
+ OR app.letter_settings_record_read(company_id)
  OR app.letter_function_action('letterApproval','view',company_id) AND app.letter_staff_scope(company_id,created_by,batch_id,id)
  OR state IN ('issued','void') AND app.letter_recipient_function_action('view') AND EXISTS(SELECT 1 FROM public.employment self WHERE self.id=employment_id AND self.tenant_id=letter_record.tenant_id AND app.is_self_person(self.person_id))
 );
