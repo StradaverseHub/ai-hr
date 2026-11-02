@@ -1330,3 +1330,12 @@ purpose, employee access, business/control epoch or new admission exception; the
 storage-owner maintenance distinction is unchanged. Source/assignment config writes now share the
 same Access key. A native APP pre-held-data-lock contention/refusal and later uncontended-statement
 case is authored, unrun. This serialization is not raw assignment constructor completion.
+
+Operational Leave preparation now factors the existing leave.apply_on_behalf override algebra into
+one private SQL fact and an actual-principal boolean port consumed by the existing composer/service
+resolver. Company overrides replace the whole tenant set; same-role denial beats its allow; absent
+overrides retain only original HR/super defaults. Current claimed roles plus current delegated-role
+carrier are preserved and revalidated, and a foreign company fails closed. This fact grants no subject
+visibility, employee-data admission, decision, ledger or source mutation. Independent existing policy
+oracle parity/native/private-input cases are authored, unrun. Exact operational function registration
+and raw constructor/terminal closure are still subsequent work; this fact is not module completion.

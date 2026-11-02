@@ -17,11 +17,8 @@ import {assertMyTeamSubjectTx} from './my-team-scope';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import { scopeOf } from '../lib/delegation-scope';
 import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
-// 5206539f — the pure "does this caller hold this key" decision (defaults ∘ tenant overrides ∘ company
-// overrides). Taken from the lib/ leaf rather than from core/payroll.ts's resolvePayrollPermission, which
-// is the same decision wrapped in a query: importing it would pull the whole payroll kernel into every
-// leave request path for fifteen lines of SELECT.
-import { decidePayrollPermission } from '../lib/payroll-permissions';
+// Existing on-behalf permission uses the private native SQL fact shared by composer and source guards.
+// Subject visibility, data scope, lifecycle, consent and effects remain owned by requestLeave below.
 import {calendarWindowDates} from '../lib/calendar-window';
 import {
   approversOf,
@@ -238,9 +235,6 @@ import {
   leaveRequestAttachment,
   leaveRequestDate,
   leaveType,
-  // 5206539f — the (key, role) override rows behind `leave.apply_on_behalf`. Its table name says "payroll"
-  // for historical reasons only; see the note in lib/payroll-permissions.ts.
-  payrollPermissionGrant,
   person,
   reportingLine,
   rosterAssignment,
@@ -3290,29 +3284,9 @@ type LeaveOverrideAudit = {
  *
  * Read inside the caller's own tx: the grant table is tenant-readable under RLS.
  */
-async function resolveApplyOnBehalfTx(tx: Tx, ctx: SessionContext, companyId: string | null): Promise<boolean> {
-  const rows = await tx
-    .select({
-      role: payrollPermissionGrant.role,
-      allowed: payrollPermissionGrant.allowed,
-      companyId: payrollPermissionGrant.companyId,
-    })
-    .from(payrollPermissionGrant)
-    .where(
-      and(
-        eq(payrollPermissionGrant.tenantId, ctx.tenantId),
-        eq(payrollPermissionGrant.permissionKey, 'leave.apply_on_behalf'),
-        companyId
-          ? or(isNull(payrollPermissionGrant.companyId), eq(payrollPermissionGrant.companyId, companyId))
-          : isNull(payrollPermissionGrant.companyId),
-      ),
-    );
-  return decidePayrollPermission({
-    key: 'leave.apply_on_behalf',
-    // Delegated grants count exactly as directly-assigned roles do, mirroring core/payroll.ts's callerRolesOf.
-    callerRoles: [...(ctx.roles ?? []), ...(ctx.grants ?? []).map((g) => g.role)],
-    overrides: rows.map((r) => ({ role: r.role, allowed: r.allowed, companyScoped: r.companyId != null })),
-  });
+async function resolveApplyOnBehalfTx(tx: Tx, _ctx: SessionContext, companyId: string | null): Promise<boolean> {
+  const [row] = await tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_native(${companyId}::uuid) as allowed`);
+  return row?.allowed === true;
 }
 
 /**

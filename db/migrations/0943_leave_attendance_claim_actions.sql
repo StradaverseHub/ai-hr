@@ -1472,6 +1472,26 @@ CREATE TRIGGER aaa_schedule_exception_action BEFORE INSERT ON public.attendance_
 CREATE TRIGGER module_schedule_exception_access BEFORE INSERT ON public.attendance_exception_revision FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
 
 --> statement-breakpoint
+-- One owner for the existing leave.apply_on_behalf role-override algebra. Company rows
+-- replace the entire tenant override set; role denial wins only against the same role.
+-- This fact adds no subject read, company/data ceiling, admission or ledger authority.
+CREATE FUNCTION app.leave_on_behalf_permission(p_tenant uuid,p_company uuid,p_roles text[]) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH applicable AS(SELECT g.role,g.allowed,g.company_id FROM public.payroll_permission_grant g WHERE g.tenant_id=p_tenant AND g.permission_key='leave.apply_on_behalf' AND (g.company_id IS NULL OR g.company_id=p_company)),
+ effective AS(SELECT role,allowed FROM applicable WHERE CASE WHEN EXISTS(SELECT 1 FROM applicable WHERE company_id IS NOT NULL) THEN company_id IS NOT NULL ELSE company_id IS NULL END)
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM effective) THEN coalesce(p_roles&&ARRAY['hr_admin','super_admin'],false)
+ ELSE EXISTS(SELECT 1 FROM effective allow_role WHERE allow_role.allowed AND allow_role.role=ANY(p_roles) AND NOT EXISTS(SELECT 1 FROM effective deny_role WHERE deny_role.role=allow_role.role AND NOT deny_role.allowed)) END;
+$$;
+REVOKE ALL ON FUNCTION app.leave_on_behalf_permission(uuid,uuid,text[]) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.leave_on_behalf_native(p_company uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND (p_company IS NULL OR EXISTS(SELECT 1 FROM public.company c WHERE c.id=p_company AND c.tenant_id=app.current_tenant_id()))
+ AND app.leave_on_behalf_permission(app.current_tenant_id(),p_company,ARRAY(SELECT DISTINCT role FROM(SELECT unnest(string_to_array(current_setting('app.roles',true),',')) role UNION SELECT g.role FROM app.current_grants() g) claimed));
+$$;
+REVOKE ALL ON FUNCTION app.leave_on_behalf_native(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_on_behalf_native(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
 -- Shared Clocking Sites retain the original group-admin write ceiling and ANY-HR maintenance
 -- View; scoped maintenance rows remain bounded by the native open-company reader.
 CREATE FUNCTION app.clocking_site_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean

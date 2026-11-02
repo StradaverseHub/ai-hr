@@ -19,14 +19,14 @@
  * admin, link app_users to those people, and drive each case through the role under test.
  */
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq,sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { canApplyLeaveOnBehalf, requestLeave, LeaveOnBehalfNotAllowedError } from '../core/leave';
 import { listEmployees, reportingLinesFor } from '../core/read';
-import { PAYROLL_PERMISSION_DEFAULTS, PAYROLL_PERMISSION_KEYS } from '../lib/payroll-permissions';
-import type { SessionContext } from '../db/client';
+import { PAYROLL_PERMISSION_DEFAULTS, PAYROLL_PERMISSION_KEYS,decidePayrollPermission } from '../lib/payroll-permissions';
+import {withTenant,type SessionContext} from '../db/client';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -455,4 +455,24 @@ describe('the screen and the service read ONE permission (AGENTS rule 17)', () =
     expect(body).toContain('const { s, employmentId } = await resolveMe();');
     expect(body, '/me started trusting a posted employment').not.toContain("formData.get('employmentId')");
   });
+});
+
+
+describe('one native on-behalf permission fact shared by the composer and raw source owners',()=>{
+ it('matches independent existing override algebra, including whole-set company replacement and role-specific denial',async()=>{
+  const ctx=adminCtx(b),roles=['hr_admin'];
+  const cases=[[],[{role:'hr_admin',allowed:false,companyScoped:false}],[{role:'hr_admin',allowed:true,companyScoped:false}],[{role:'hr_admin',allowed:true,companyScoped:false},{role:'manager',allowed:true,companyScoped:true}],[{role:'hr_admin',allowed:false,companyScoped:false},{role:'hr_admin',allowed:true,companyScoped:true}],[{role:'manager',allowed:true,companyScoped:true},{role:'hr_admin',allowed:false,companyScoped:true}]];
+  for(const overrides of cases){
+   await owner.db.delete(schema.payrollPermissionGrant).where(and(eq(schema.payrollPermissionGrant.tenantId,b.tenantId),eq(schema.payrollPermissionGrant.permissionKey,'leave.apply_on_behalf')));
+   for(const row of overrides)await grant({companyId:row.companyScoped?b.companyId:null,role:row.role,allowed:row.allowed});
+   const expected=decidePayrollPermission({key:'leave.apply_on_behalf',callerRoles:roles,overrides});
+   expect(await canApplyLeaveOnBehalf(ctx,b.companyId)).toBe(expected);
+   const [actual]=await withTenant(ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_native(${b.companyId}::uuid) as allowed`));expect(actual.allowed).toBe(expected);
+  }
+ });
+ it('refuses a foreign company and keeps role-list oracle input private',async()=>{
+  const ctx=adminCtx(b),foreign=await seedBase();
+  expect(await canApplyLeaveOnBehalf(ctx,foreign.companyId)).toBe(false);
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.leave_on_behalf_permission(${b.tenantId}::uuid,${b.companyId}::uuid,ARRAY['super_admin'])`))).rejects.toThrow();
+ });
 });
