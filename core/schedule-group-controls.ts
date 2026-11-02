@@ -76,7 +76,15 @@ export function saveScheduleGroupControl(ctx:SessionContext,p:{ruleId:string;kin
  });
 }
 /** No caller-supplied purpose can bypass this guard. Automatic rotations are derived, not manual rows. */
-export async function assertDutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:readonly {employmentId:string;shiftDate:string;shiftId?:string|null;isRestDay?:boolean;note?:string|null;clear?:boolean}[]) {
+type DutyRosterChange = {employmentId:string;shiftDate:string;shiftId?:string|null;isRestDay?:boolean;note?:string|null;clear?:boolean};
+/** Complete-set checks/locks only. Native per-date writers still own their audit and recalculation. */
+export async function lockDutyRosterWriteSetTx(tx:Tx,ctx:SessionContext,changes:readonly DutyRosterChange[]) {
+ return dutyRosterWriteTx(tx,ctx,changes,false);
+}
+export async function assertDutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:readonly DutyRosterChange[]) {
+ return dutyRosterWriteTx(tx,ctx,changes,true);
+}
+async function dutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:readonly DutyRosterChange[],record:boolean) {
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!isAdmin(ctx))throw new Error('Only an HR administrator can change the roster.');
  changes=changes.map(change=>({...change}));
@@ -101,6 +109,7 @@ export async function assertDutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:r
   for(const date of dates){if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(Date.parse(date+'T00:00:00Z')))throw new Error('Choose a valid roster date.');for(const batch of await lockPayrollForAttendanceChange(tx,emp.id,date))byBatch.set(batch.batchId,batch);}
   const batches=[...byBatch.values()];
   if(batches.some(b=>b.status==='closed'))throw new Error('The roster change touches a closed payroll attendance period.');
+  if(!record)continue; // All authority, policy, date and closed-period checks above still apply.
   await markPayrollForAttendanceChange(tx,ctx,batches,emp.id);
   const before=await tx.select().from(rosterAssignment).where(and(eq(rosterAssignment.employmentId,emp.id),inArray(rosterAssignment.shiftDate,dates))).orderBy(asc(rosterAssignment.shiftDate));
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:emp.id,eventType:'roster.manual-changes',subjectEmploymentId:emp.id,actor:actorOf(ctx),payload:{groupId:group?.id??null,changes:own.map(c=>({date:c.shiftDate,before:before.find(r=>r.shiftDate===c.shiftDate)??null,after:c.clear?null:{shiftId:c.shiftId??null,isRestDay:c.isRestDay??false,note:c.note??null}}))}});

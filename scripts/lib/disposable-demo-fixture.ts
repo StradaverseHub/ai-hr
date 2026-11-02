@@ -29,11 +29,11 @@ export function assertDisposableDemoUrl(value: string | undefined, kind: DemoFix
   }
 }
 
-type ObservedFixtureIdentity = { database: string; user: string; owner?: string; tenants: readonly string[] };
+type ObservedFixtureIdentity = { database: string; user: string; owner: string; tenants: readonly string[] };
 export function assertDisposableDemoIdentity(target: DemoFixtureTarget, actual: ObservedFixtureIdentity): void {
   if (
     actual.database !== target.database || actual.user !== target.user ||
-    (actual.owner !== undefined && actual.owner !== actual.user) ||
+    actual.owner !== actual.user ||
     !actual.tenants.includes(DEMO_TENANT_ID) ||
     actual.tenants.some(id => id !== DEMO_TENANT_ID && id !== SYSTEM_TENANT_ID)
   ) throw Error('Disposable fixture database/owner/tenant attestation refused.');
