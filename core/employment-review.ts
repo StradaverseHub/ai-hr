@@ -629,6 +629,7 @@ export async function sweepDueReviews(
     for (const r of rows) {
       const window = computeReviewWindow(r.employmentType, r);
       if (!window || !window.endDate || !window.dueDate) continue;
+      if(window.reviewType==='probation'){const[owned]=await tx.execute<{owned:boolean}>(sql`select app.probation_owns_legacy(${r.employmentId}::uuid) as owned`);if(owned?.owned)continue;}
       if (window.dueDate > today) continue; // not due yet
 
       // Exclude leavers with an open resignation (pending) — on their way out.
@@ -735,6 +736,7 @@ export async function sweepReviewReminders(
 
     let reminders = 0;
     for (const r of rows) {
+      if(r.reviewType==='probation'){const[owned]=await tx.execute<{owned:boolean}>(sql`select app.probation_owns_legacy(${r.employmentId}::uuid) as owned`);if(owned?.owned)continue;}
       if (r.terminatedOn != null) continue; // leaver — already terminated
       // Leaver with an open resignation — on their way out (mirrors sweepDueReviews).
       const [resign] = await tx

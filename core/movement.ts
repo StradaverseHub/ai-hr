@@ -1,4 +1,5 @@
 import {personnelInformationCorrections,type InformationHistoryCorrection} from '../lib/personnel-history';
+import {withProbationPersonnelIntentTx,probationMovementAuthorityTx} from './probation-effect-authority';
 import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
 import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
@@ -3045,7 +3046,7 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
 /** Private admission data never comes from a form or caller-supplied baseline. */
 async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,futureAdmission?:{baseline?:MovementCurrentState;capture?:(baseline:MovementCurrentState)=>void;expectedBehaviour?:string},correction?:{fromGroupId:string|null;allowInactive?:boolean}){
   const roles = ctx.roles ?? [];
-  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
+  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))&&!probationMovementAuthorityTx(tx,rawInput)) {
     throw new Error('Only an admin can record a movement.');
   }
   // 476f23ed — resolve the submitted event type through the tenant's CATALOGUE before anything else. A
@@ -4638,3 +4639,11 @@ export function resignationInformation(ctx:SessionContext,employmentId:string):P
     })) as ResignationInformation;
   });
 }
+
+/** Fixed source port: no arbitrary movement payload, authority role or field set is accepted. */
+export function applyReleasedProbationMovementTx(tx:Tx,ctx:SessionContext,outcomeId:string){return withProbationPersonnelIntentTx(tx,outcomeId,async intent=>{
+ if(intent.completed)return{alreadyApplied:true};
+ await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ const result=await dispatchMovementEventTx(tx,ctx,{employmentId:intent.employmentId,kind:intent.kind,effectiveDate:intent.effectiveDate,...(intent.endDate?{endDate:intent.endDate}:{}),remarks:intent.sourceKey});
+ return{alreadyApplied:false,result};
+});}

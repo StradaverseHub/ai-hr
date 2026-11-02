@@ -1,3 +1,4 @@
+import {probationDateAuthorityTx} from './probation-effect-authority';
 import { hasExitDateAuthorityTx } from './exit-date-authority';
 import { hasClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {assertCostAllocationTransferTx} from './employment-cost-allocations';
@@ -3050,7 +3051,7 @@ export async function setEmploymentInfo(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const roles = ctx.roles ?? [];
-  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
+  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))&&!probationDateAuthorityTx(outerTx,p as unknown as Record<string,unknown>)) {
     throw new Error('Only an admin can edit employment information.');
   }
 
@@ -3155,7 +3156,7 @@ export async function setEmploymentInfo(
   const run = async (tx: Tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    if(!probationDateAuthorityTx(tx,p as unknown as Record<string,unknown>))await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     // 1d58019a Step 2 — the exit-tag rule above, for one of the organisation's OWN Termination types. Its
     // code is not the string 'termination', so ask the catalogue (the custom row's behaviour). Only the
     // Movement writer's exit legs, which hold the exit-date authority, may carry an exit type's tag.
