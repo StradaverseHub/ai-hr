@@ -9162,9 +9162,12 @@
             "app.current_tenant_id",
             "app.current_user_id",
             "app.login_blocked",
+            "app.organisation_settings_function_allowed",
             "app.principal_snapshot_current",
+            "app.settings_action_allowed",
             "app/system-testing/executions/[id]/page.tsx:requireModule",
-            "app/system-testing/executions/[id]/page.tsx:scopedSession"
+            "app/system-testing/executions/[id]/page.tsx:scopedSession",
+            "core/system-testing-workspace.ts:requireTestingAdministrationTx"
           ],
           "tables": [
             "appUser",
@@ -9194,9 +9197,12 @@
             "app.current_tenant_id",
             "app.current_user_id",
             "app.login_blocked",
+            "app.organisation_settings_function_allowed",
             "app.principal_snapshot_current",
+            "app.settings_action_allowed",
             "app/system-testing/page.tsx:requireModule",
-            "app/system-testing/page.tsx:scopedSession"
+            "app/system-testing/page.tsx:scopedSession",
+            "core/system-testing-workspace.ts:requireTestingAdministrationTx"
           ],
           "tables": [
             "company",
@@ -9214,11 +9220,14 @@
         "app.current_tenant_id",
         "app.current_user_id",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
+        "app.settings_action_allowed",
         "app/system-testing/executions/[id]/page.tsx:requireModule",
         "app/system-testing/executions/[id]/page.tsx:scopedSession",
         "app/system-testing/page.tsx:requireModule",
-        "app/system-testing/page.tsx:scopedSession"
+        "app/system-testing/page.tsx:scopedSession",
+        "core/system-testing-workspace.ts:requireTestingAdministrationTx"
       ],
       "tables": [
         "appUser",
@@ -18209,12 +18218,15 @@
         {
           "path": "app/admin/system-testing/[id]/page.tsx",
           "entry": "TestCasePage",
-          "line": 15,
+          "line": 17,
           "surface": "route",
           "owners": [
             "app.login_blocked",
+            "app.organisation_settings_function_allowed",
+            "app.settings_action_allowed",
             "app/admin/system-testing/[id]/page.tsx:requireAdmin",
-            "app/admin/system-testing/[id]/page.tsx:requireModule"
+            "app/admin/system-testing/[id]/page.tsx:requireModule",
+            "core/system-testing-library.ts:requireTestingAdministrationTx"
           ],
           "tables": [
             "appUser",
@@ -18232,11 +18244,14 @@
         {
           "path": "app/admin/system-testing/executions/[id]/page.tsx",
           "entry": "TeamTestingExecutionPage",
-          "line": 6,
+          "line": 8,
           "surface": "route",
           "owners": [
+            "app.organisation_settings_function_allowed",
+            "app.settings_action_allowed",
             "app/admin/system-testing/executions/[id]/page.tsx:requireAdmin",
-            "app/admin/system-testing/executions/[id]/page.tsx:requireModule"
+            "app/admin/system-testing/executions/[id]/page.tsx:requireModule",
+            "core/system-testing-workspace.ts:requireTestingAdministrationTx"
           ],
           "tables": [
             "appUser",
@@ -18257,9 +18272,10 @@
         {
           "path": "app/admin/system-testing/new/page.tsx",
           "entry": "NewTestCasePage",
-          "line": 8,
+          "line": 10,
           "surface": "route",
           "owners": [
+            "app.organisation_settings_function_allowed",
             "app/admin/system-testing/new/page.tsx:requireAdmin",
             "app/admin/system-testing/new/page.tsx:requireModule"
           ],
@@ -18267,18 +18283,25 @@
             "dep"
           ],
           "boundaries": [
+            "db/client.ts#withTenant",
             "lib/session.ts#getSession"
           ]
         },
         {
           "path": "app/admin/system-testing/page.tsx",
           "entry": "SystemTestingPage",
-          "line": 9,
+          "line": 11,
           "surface": "route",
           "owners": [
+            "app.access_workforce_write_lock",
             "app.login_blocked",
+            "app.organisation_settings_function_allowed",
+            "app.settings_action_allowed",
             "app/admin/system-testing/page.tsx:requireAdmin",
-            "app/admin/system-testing/page.tsx:requireModule"
+            "app/admin/system-testing/page.tsx:requireModule",
+            "core/system-testing-catalogue.ts:requireTestingAdministrationTx",
+            "core/system-testing-library.ts:requireTestingAdministrationTx",
+            "core/system-testing-workspace.ts:requireTestingAdministrationTx"
           ],
           "tables": [
             "appUser",
@@ -18298,7 +18321,10 @@
         }
       ],
       "nativeOwners": [
+        "app.access_workforce_write_lock",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
+        "app.settings_action_allowed",
         "app/admin/system-testing/[id]/page.tsx:requireAdmin",
         "app/admin/system-testing/[id]/page.tsx:requireModule",
         "app/admin/system-testing/executions/[id]/page.tsx:requireAdmin",
@@ -18306,7 +18332,10 @@
         "app/admin/system-testing/new/page.tsx:requireAdmin",
         "app/admin/system-testing/new/page.tsx:requireModule",
         "app/admin/system-testing/page.tsx:requireAdmin",
-        "app/admin/system-testing/page.tsx:requireModule"
+        "app/admin/system-testing/page.tsx:requireModule",
+        "core/system-testing-catalogue.ts:requireTestingAdministrationTx",
+        "core/system-testing-library.ts:requireTestingAdministrationTx",
+        "core/system-testing-workspace.ts:requireTestingAdministrationTx"
       ],
       "tables": [
         "appUser",
@@ -33814,12 +33843,15 @@
     {
       "path": "app/admin/system-testing/[id]/page.tsx",
       "entry": "TestCasePage",
-      "line": 15,
+      "line": 17,
       "surface": "route",
       "owners": [
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
+        "app.settings_action_allowed",
         "app/admin/system-testing/[id]/page.tsx:requireAdmin",
-        "app/admin/system-testing/[id]/page.tsx:requireModule"
+        "app/admin/system-testing/[id]/page.tsx:requireModule",
+        "core/system-testing-library.ts:requireTestingAdministrationTx"
       ],
       "tables": [
         "appUser",
@@ -33889,8 +33921,11 @@
         "app.current_user_id",
         "app.is_self_person",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
-        "core/system-testing.ts:assertTestingAccess"
+        "app.settings_action_allowed",
+        "core/system-testing.ts:assertTestingAccess",
+        "core/system-testing.ts:requireTestingAdministrationTx"
       ],
       "tables": [
         "appUser",
@@ -33910,11 +33945,14 @@
     {
       "path": "app/admin/system-testing/executions/[id]/page.tsx",
       "entry": "TeamTestingExecutionPage",
-      "line": 6,
+      "line": 8,
       "surface": "route",
       "owners": [
+        "app.organisation_settings_function_allowed",
+        "app.settings_action_allowed",
         "app/admin/system-testing/executions/[id]/page.tsx:requireAdmin",
-        "app/admin/system-testing/executions/[id]/page.tsx:requireModule"
+        "app/admin/system-testing/executions/[id]/page.tsx:requireModule",
+        "core/system-testing-workspace.ts:requireTestingAdministrationTx"
       ],
       "tables": [
         "appUser",
@@ -33935,9 +33973,10 @@
     {
       "path": "app/admin/system-testing/new/page.tsx",
       "entry": "NewTestCasePage",
-      "line": 8,
+      "line": 10,
       "surface": "route",
       "owners": [
+        "app.organisation_settings_function_allowed",
         "app/admin/system-testing/new/page.tsx:requireAdmin",
         "app/admin/system-testing/new/page.tsx:requireModule"
       ],
@@ -33945,18 +33984,25 @@
         "dep"
       ],
       "boundaries": [
+        "db/client.ts#withTenant",
         "lib/session.ts#getSession"
       ]
     },
     {
       "path": "app/admin/system-testing/page.tsx",
       "entry": "SystemTestingPage",
-      "line": 9,
+      "line": 11,
       "surface": "route",
       "owners": [
+        "app.access_workforce_write_lock",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
+        "app.settings_action_allowed",
         "app/admin/system-testing/page.tsx:requireAdmin",
-        "app/admin/system-testing/page.tsx:requireModule"
+        "app/admin/system-testing/page.tsx:requireModule",
+        "core/system-testing-catalogue.ts:requireTestingAdministrationTx",
+        "core/system-testing-library.ts:requireTestingAdministrationTx",
+        "core/system-testing-workspace.ts:requireTestingAdministrationTx"
       ],
       "tables": [
         "appUser",
@@ -33979,7 +34025,12 @@
       "entry": "saveTestingInstructionAction",
       "line": 24,
       "surface": "server-action",
-      "owners": [],
+      "owners": [
+        "app.access_workforce_write_lock",
+        "app.organisation_settings_function_allowed",
+        "app.settings_action_allowed",
+        "core/system-testing-workspace.ts:requireTestingAdministrationTx"
+      ],
       "tables": [
         "dep",
         "domainEvent",
@@ -34000,7 +34051,11 @@
       "line": 34,
       "surface": "server-action",
       "owners": [
-        "app.login_blocked"
+        "app.access_workforce_write_lock",
+        "app.login_blocked",
+        "app.organisation_settings_function_allowed",
+        "app.settings_action_allowed",
+        "core/system-testing-workspace.ts:requireTestingAdministrationTx"
       ],
       "tables": [
         "appUser",
@@ -34088,7 +34143,12 @@
       "entry": "requestTestingRetestAction",
       "line": 59,
       "surface": "server-action",
-      "owners": [],
+      "owners": [
+        "app.access_workforce_write_lock",
+        "app.organisation_settings_function_allowed",
+        "app.settings_action_allowed",
+        "core/system-testing-library.ts:requireTestingAdministrationTx"
+      ],
       "tables": [
         "dep",
         "domainEvent",
@@ -34108,7 +34168,13 @@
       "entry": "confirmTestingCatalogueAction",
       "line": 66,
       "surface": "server-action",
-      "owners": [],
+      "owners": [
+        "app.access_workforce_write_lock",
+        "app.organisation_settings_function_allowed",
+        "app.settings_action_allowed",
+        "core/system-testing-catalogue.ts:requireTestingAdministrationTx",
+        "core/system-testing-workspace.ts:requireTestingAdministrationTx"
+      ],
       "tables": [
         "dep",
         "domainEvent",
@@ -34131,7 +34197,10 @@
       "surface": "server-action",
       "owners": [
         "app.login_blocked",
-        "core/system-testing.ts:assertTestingAccess"
+        "app.organisation_settings_function_allowed",
+        "app.settings_action_allowed",
+        "core/system-testing.ts:assertTestingAccess",
+        "core/system-testing.ts:requireTestingAdministrationTx"
       ],
       "tables": [
         "appUser",
@@ -66225,9 +66294,12 @@
         "app.current_tenant_id",
         "app.current_user_id",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
+        "app.settings_action_allowed",
         "app/system-testing/executions/[id]/page.tsx:requireModule",
-        "app/system-testing/executions/[id]/page.tsx:scopedSession"
+        "app/system-testing/executions/[id]/page.tsx:scopedSession",
+        "core/system-testing-workspace.ts:requireTestingAdministrationTx"
       ],
       "tables": [
         "appUser",
@@ -66257,9 +66329,12 @@
         "app.current_tenant_id",
         "app.current_user_id",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
+        "app.settings_action_allowed",
         "app/system-testing/page.tsx:requireModule",
-        "app/system-testing/page.tsx:scopedSession"
+        "app/system-testing/page.tsx:scopedSession",
+        "core/system-testing-workspace.ts:requireTestingAdministrationTx"
       ],
       "tables": [
         "company",
@@ -82878,6 +82953,15 @@
     },
     {
       "table": "test_execution_attachment",
+      "policy": "settings_testing_attachment_read",
+      "source": "db/migrations/0942_organisation_settings_actions.sql",
+      "owners": [
+        "app.organisation_settings_function_allowed",
+        "app.testing_owns_execution"
+      ]
+    },
+    {
+      "table": "test_execution_attachment",
       "policy": "test_attachment_insert",
       "source": "db/migrations/0561_versioned_system_testing.sql",
       "owners": [
@@ -82895,6 +82979,15 @@
         "app.testing_live_principal",
         "app.is_admin",
         "app.testing_owns_execution"
+      ]
+    },
+    {
+      "table": "test_execution",
+      "policy": "settings_testing_execution_read",
+      "source": "db/migrations/0942_organisation_settings_actions.sql",
+      "owners": [
+        "app.organisation_settings_function_allowed",
+        "app.current_user_id"
       ]
     },
     {
@@ -82925,6 +83018,32 @@
       "owners": [
         "app.current_tenant_id",
         "app.testing_owns_execution"
+      ]
+    },
+    {
+      "table": "test_run",
+      "policy": "settings_testing_run_insert",
+      "source": "db/migrations/0942_organisation_settings_actions.sql",
+      "owners": [
+        "app.testing_owns_execution"
+      ]
+    },
+    {
+      "table": "test_run",
+      "policy": "settings_testing_run_read",
+      "source": "db/migrations/0942_organisation_settings_actions.sql",
+      "owners": [
+        "app.organisation_settings_function_allowed",
+        "app.testing_owns_execution"
+      ]
+    },
+    {
+      "table": "test_run",
+      "policy": "settings_testing_run_update",
+      "source": "db/migrations/0942_organisation_settings_actions.sql",
+      "owners": [
+        "app.testing_owns_execution",
+        "app.organisation_settings_function_allowed"
       ]
     },
     {
