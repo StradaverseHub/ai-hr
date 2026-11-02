@@ -472,7 +472,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   });
 
   it('keeps colleague feedback conversations private, request-scoped and separate from human submission',async()=>{
-    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
+    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})),'administration');
     const request=(await perf.onehrAssignments(peers[0].ctx)).feedback.find(f=>f.subject==='Assessment subject')!,card=await perf.getOnehrFeedback(peers[0].ctx,request.id),statement=card.statements[0],principle=statement.principle;
     const text=`Record ${statement.text} as yes. ${principle} comment: Clear follow-through.`,span=(value:string)=>({start:text.indexOf(value),end:text.indexOf(value)+value.length});
     await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
@@ -488,7 +488,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
       expect(await withTenant(ctx,tx=>tx.select().from(schema.assessmentConversation).where(eq(schema.assessmentConversation.contextId,request.id)))).toEqual([]);
     }
     const [another]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,cycleId),eq(schema.onehrReview.employmentId,peers[1].employmentId)));
-    await perf.assignOnehrPanel(a,another.reviewId,another.revision,[peers[0],peers[2],peers[3],{employmentId:manager.employmentId}].map(p=>({employmentId:p.employmentId,relationship:'peer'})));
+    await perf.assignOnehrPanel(a,another.reviewId,another.revision,[peers[0],peers[2],peers[3],{employmentId:manager.employmentId}].map(p=>({employmentId:p.employmentId,relationship:'peer'})),'administration');
     const other=(await perf.onehrAssignments(peers[0].ctx)).feedback.find(f=>f.subject==='Peer 1')!;
     await expect(perf.sendFeedbackMessage(peers[0].ctx,reviewId,other.id,null,randomUUID(),text)).rejects.toThrow(/another assessment/);
     expect((await perf.getFeedbackConversation(peers[0].ctx,another.reviewId,other.id)).messages).toEqual([]);

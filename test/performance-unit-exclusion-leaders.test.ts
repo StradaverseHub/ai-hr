@@ -76,7 +76,7 @@ const GONE = /Assessment not found or access has been removed|Assessment not ass
 
 describe('the stored reviewer whose unit is out', () => {
   it('loses every manager right on the review', async () => {
-    await perf.assignOnehrPanel(f.a, rid.S, await revisionOf(rid.S), [{ employmentId: f.P.R.employmentId, relationship: 'peer' }]);
+    await perf.assignOnehrPanel(f.a, rid.S, await revisionOf(rid.S), [{ employmentId: f.P.R.employmentId, relationship: 'peer' }],'administration');
     const plan = await sharePlan();
     const panelRows = () => valueAs<number>(f.U.M0, sql`(select count(*)::int from app.onehr_manager_panel(${rid.S}::uuid))`);
     expect([await manager(f.U.M0, rid.S), await header(f.U.M0, rid.S) != null, await panelRows()], 'non-vacuous: the stored reviewer before the rule').toEqual([true, true, 1]);

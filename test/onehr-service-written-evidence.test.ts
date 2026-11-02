@@ -296,7 +296,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const opened=await perf.openCycle(a,{cycleId:next.cycleId});expect(opened.reviewsSpawned).toBe(preview.count);
     expect(await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,next.cycleId),eq(schema.performanceReview.employmentId,newcomer.employmentId)))).toHaveLength(0);
     const [target]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,next.cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));
-    await perf.assignOnehrPanel(a,target.id,1,[{employmentId:newcomer.employmentId,relationship:'peer'}]);
+    await perf.assignOnehrPanel(a,target.id,1,[{employmentId:newcomer.employmentId,relationship:'peer'}],'administration');
     const assignments=await perf.onehrAssignments(newcomerCtx);expect(assignments.reviews.some(r=>r.cycle==='Participation boundary')).toBe(false);expect(assignments.feedback.some(f=>f.subject==='Assessment subject')).toBe(true);
     let cycle=(await perf.getOnehrCycle(a,next.cycleId))!;
     const original=cycle.participants.find(p=>p.employmentId===newcomer.employmentId)!;expect(original).toMatchObject({takingPart:false,reason:'not_confirmed'});
@@ -817,7 +817,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(items.some(i=>i.view==='mine'&&i.kind==='review')).toBe(true);
     const bg=await make('bg');items=await perf.performanceWorkspace(mgr);
     expect(items.filter(i=>i.id===bg)).toMatchObject([{module:'cal',axis:'both',stage:'talent_box'}]);expect(items.some(i=>i.view==='mine')).toBe(false);
-    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'}]);
+    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'}],'administration');
     const pending=(await perf.performanceWorkspace(mgr)).filter(i=>i.view==='mine');expect(pending).toHaveLength(1);expect(pending[0]).toMatchObject({kind:'feedback',state:'open'});
     const card=await perf.getOnehrFeedback(mgr,pending[0].id);await perf.submitOnehrFeedback(mgr,pending[0].id,Object.fromEntries(card.statements.map(s=>[s.id,'no'])),'');
     expect((await perf.performanceWorkspace(mgr)).some(i=>i.view==='mine')).toBe(false);

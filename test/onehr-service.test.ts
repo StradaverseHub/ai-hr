@@ -71,7 +71,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Deliver outcomes',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);
     await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Agreed');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:100,note:'PRIVATE_RESULT_NOTE'}],'PRIVATE_REFLECTION');
     await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'no',remark:''},'skill-2':{answer:'no',remark:''}},false,'PRIVATE_COMPETENCY_WORDS');
-    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'},{employmentId:peers[0].employmentId,relationship:'peer'}]);
+    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'},{employmentId:peers[0].employmentId,relationship:'peer'}],'administration');
     const overview=await perf.getAssessmentOverview(a,cycleId),row=overview.overview!.rows[0];
     expect(row.cells.pm).toMatchObject({done:1,total:1,pct:100});expect(row.cells.competency).toMatchObject({done:1,total:6,pct:16});expect(row.cells.f360).toMatchObject({done:0,total:2,pct:0});expect(row.cells.idp).toMatchObject({done:0,total:6,pct:0});expect(row.cells.calibration).toMatchObject({done:0,total:1,pct:0});
     expect((await view()).managerPerformance).toBeNull();expect(JSON.stringify(overview)).not.toMatch(/PRIVATE_|salary|answers|managerRemark/);await expect(perf.getAssessmentOverview(self,cycleId)).rejects.toThrow();
@@ -113,7 +113,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.runAssessmentAdminAction(a,cycleId,{tool:'save_setting',args:{}})).rejects.toThrow();
   });
   it('Performance admin 360 reports count actual assessor assignments and preserve complete-group totals',async()=>{
-    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'},{employmentId:peers[0].employmentId,relationship:'peer'}]);
+    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'},{employmentId:peers[0].employmentId,relationship:'peer'}],'administration');
     const report=await perf.getAssessmentAdminReport(a,cycleId,{kind:'progress',module:'f360',groupBy:'company',status:'outstanding'});
     expect(report.rows).toHaveLength(1);expect(report.rows[0].slice(1)).toEqual([0,2,'0%']);
     const people=await perf.getAssessmentAdminReport(a,cycleId,{kind:'progress',module:'f360',groupBy:'person'});expect(people.rows).toHaveLength(2);
