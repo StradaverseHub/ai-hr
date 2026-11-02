@@ -251,9 +251,9 @@ $$;
 REVOKE ALL ON FUNCTION app.claim_own_native_allowed(uuid,uuid,text,uuid),app.claim_own_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 DO $$ BEGIN
- PERFORM app.register_function_action('claims.own','view','company',NULL,'app.claim_own_current_native_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"own","employeeBearing":false}'::jsonb);
+ PERFORM app.register_function_action('claims.own','view','company',NULL,'app.claim_own_current_native_allowed','{"moduleKey":"claims","labelKey":"claims.accessFunctions.own","kind":"native_acl","course":"own","employeeBearing":false}'::jsonb);
  PERFORM app.register_function_action('claims.own','delete','company',NULL,'app.claim_own_current_native_allowed','{}'::jsonb);
- PERFORM app.register_function_action('claims.administration','view','company','claims.view','app.module_action_delegation_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"administrative","employeeBearing":true}'::jsonb);
+ PERFORM app.register_function_action('claims.administration','view','company','claims.view','app.module_action_delegation_allowed','{"moduleKey":"claims","labelKey":"claims.accessFunctions.administration","kind":"native_acl","course":"administrative","employeeBearing":true}'::jsonb);
  PERFORM app.register_function_action('claims.administration','delete','company','claims.delete','app.module_action_delegation_allowed','{}'::jsonb);
  PERFORM app.register_function_action('claimsConfig.reimbursements','view','company','claims.view','app.module_action_delegation_allowed','{"moduleKey":"claims","labelKey":"admin.claimsTabs.reimbursements","kind":"submenu","course":"administrative","screenKey":"claimsConfig","href":"/admin/claims/reimbursements","employeeBearing":true}'::jsonb);
  PERFORM app.register_function_action('claimsConfig.reimbursements','execute','company','claims.edit','app.module_action_delegation_allowed','{}'::jsonb);
@@ -625,7 +625,7 @@ DO $$ DECLARE selected_key text;operation text;BEGIN
  FOREACH selected_key IN ARRAY ARRAY['drafts','submit'] LOOP
   FOREACH operation IN ARRAY (CASE selected_key WHEN 'drafts' THEN ARRAY['view','add','edit','delete'] ELSE ARRAY['view','execute'] END) LOOP
    PERFORM app.register_function_action('claims.own.'||selected_key,operation,'company','function.claims.own.view','app.claim_own_current_native_allowed',
-    jsonb_build_object('moduleKey','claims','labelKey','claims.title','kind','native_acl','course','own','employeeBearing',false));
+    jsonb_build_object('moduleKey','claims','labelKey','claims.accessFunctions.'||selected_key,'kind','native_acl','course','own','employeeBearing',false));
   END LOOP;
  END LOOP;
 END $$;
@@ -739,7 +739,7 @@ CREATE TRIGGER module_claim_write_lock BEFORE INSERT OR UPDATE OR DELETE ON publ
 -- source mutation, one file slot and its completed native source audit, never a caller flag alone.
 DO $$ DECLARE operation text;BEGIN
  FOREACH operation IN ARRAY ARRAY['view','add'] LOOP
-  PERFORM app.register_function_action('claims.own.receipts',operation,'company','function.claims.own.view','app.claim_own_current_native_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"own","employeeBearing":false}'::jsonb);
+  PERFORM app.register_function_action('claims.own.receipts',operation,'company','function.claims.own.view','app.claim_own_current_native_allowed','{"moduleKey":"claims","labelKey":"claims.accessFunctions.receipts","kind":"native_acl","course":"own","employeeBearing":false}'::jsonb);
  END LOOP;
 END $$;
 --> statement-breakpoint
@@ -908,7 +908,7 @@ REVOKE ALL ON FUNCTION app.claim_self_decision_native_allowed(uuid,uuid,text,uui
 --> statement-breakpoint
 DO $$ DECLARE operation text;BEGIN
  FOREACH operation IN ARRAY ARRAY['view','approve'] LOOP
-  PERFORM app.register_function_action('claims.selfDecision',operation,'company',NULL,'app.claim_self_decision_current_native_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"own","employeeBearing":true}');
+  PERFORM app.register_function_action('claims.selfDecision',operation,'company',NULL,'app.claim_self_decision_current_native_allowed','{"moduleKey":"claims","labelKey":"claims.accessFunctions.selfDecision","kind":"native_acl","course":"own","employeeBearing":true}');
  END LOOP;
 END $$;
 CREATE FUNCTION app.claim_self_decision_allowed(subject uuid,p_operation text) RETURNS boolean
@@ -940,7 +940,7 @@ REVOKE ALL ON FUNCTION app.claim_nonself_native_allowed(uuid,uuid,text,uuid),app
 DO $$ DECLARE key text;operation text;BEGIN
  FOREACH key IN ARRAY ARRAY['related','assigned'] LOOP
   FOREACH operation IN ARRAY (CASE key WHEN 'related' THEN ARRAY['view','execute','approve'] ELSE ARRAY['view','approve'] END) LOOP
-   PERFORM app.register_function_action('claims.'||key,operation,'company',NULL,'app.claim_nonself_current_native_allowed',jsonb_build_object('moduleKey','claims','labelKey','claims.title','kind','native_acl','course',CASE key WHEN 'assigned' THEN 'assigned' ELSE 'administrative' END,'employeeBearing',key<>'assigned'));
+   PERFORM app.register_function_action('claims.'||key,operation,'company',NULL,'app.claim_nonself_current_native_allowed',jsonb_build_object('moduleKey','claims','labelKey','claims.accessFunctions.'||key,'kind','native_acl','course',CASE key WHEN 'assigned' THEN 'assigned' ELSE 'administrative' END,'employeeBearing',key<>'assigned'));
   END LOOP;
  END LOOP;
  PERFORM app.register_function_action('claims.administration','execute','company','claims.add','app.module_action_delegation_allowed','{}');
@@ -1167,7 +1167,7 @@ REVOKE ALL ON FUNCTION app.claim_receipt_native_allowed(uuid,uuid,text,uuid),app
 DO $$ DECLARE key text;operation text;BEGIN
  FOREACH key IN ARRAY ARRAY['related','administration'] LOOP
   FOREACH operation IN ARRAY ARRAY['view','add'] LOOP
-   PERFORM app.register_function_action('claims.'||key||'.receipts',operation,'company','function.claims.'||key||'.view','app.claim_receipt_current_native_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"administrative","employeeBearing":true}');
+   PERFORM app.register_function_action('claims.'||key||'.receipts',operation,'company','function.claims.'||key||'.view','app.claim_receipt_current_native_allowed',jsonb_build_object('moduleKey','claims','labelKey','claims.accessFunctions.'||key||'Receipts','kind','native_acl','course','administrative','employeeBearing',true));
   END LOOP;
  END LOOP;
 END $$;

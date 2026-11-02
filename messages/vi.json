@@ -13885,6 +13885,18 @@
     }
   },
   "claims": {
+    "accessFunctions": {
+      "own": "Yêu cầu chi trả của bản thân",
+      "drafts": "Bản nháp yêu cầu chi trả của bản thân",
+      "submit": "Gửi yêu cầu chi trả của bản thân",
+      "receipts": "Biên nhận yêu cầu chi trả của bản thân",
+      "related": "Yêu cầu chi trả của nhân viên được quản lý",
+      "assigned": "Phê duyệt yêu cầu chi trả được giao",
+      "selfDecision": "Quản trị viên cấp cao phê duyệt yêu cầu của bản thân",
+      "administration": "Quản lý yêu cầu chi trả",
+      "relatedReceipts": "Biên nhận của nhân viên được quản lý",
+      "administrationReceipts": "Biên nhận quản lý yêu cầu chi trả"
+    },
     "title": "Khoản chi",
     "subtitle": "Nộp một khoản chi hoặc phúc lợi và theo dõi trạng thái của nó.",
     "newClaim": "Khoản chi mới",

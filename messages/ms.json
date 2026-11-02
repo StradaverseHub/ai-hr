@@ -13885,6 +13885,18 @@
     }
   },
   "claims": {
+    "accessFunctions": {
+      "own": "Tuntutan sendiri",
+      "drafts": "Draf tuntutan sendiri",
+      "submit": "Hantar tuntutan sendiri",
+      "receipts": "Resit tuntutan sendiri",
+      "related": "Tuntutan kakitangan di bawah seliaan",
+      "assigned": "Kelulusan tuntutan yang ditugaskan",
+      "selfDecision": "Kelulusan tuntutan sendiri oleh pentadbir super",
+      "administration": "Pentadbiran tuntutan",
+      "relatedReceipts": "Resit kakitangan di bawah seliaan",
+      "administrationReceipts": "Resit pentadbiran tuntutan"
+    },
     "title": "Tuntutan",
     "subtitle": "Hantar tuntutan perbelanjaan atau manfaat dan jejak statusnya.",
     "newClaim": "Tuntutan baharu",
