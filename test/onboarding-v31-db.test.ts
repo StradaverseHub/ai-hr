@@ -9,6 +9,7 @@ import { v9OwnTask, onboardingSetup, onboardingContext, onboardingList, onboardi
 import { appendEvent, actorOf } from '../db/events';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import {pgErrorChain} from '../lib/db-error';
 import { dayDate,decide as canonicalDecide,assignApproval as canonicalAssignApproval,cancelCase as canonicalCancelCase,addItem as canonicalAddItem,removeItem as canonicalRemoveItem } from '../lib/onboarding-model';
 import { onboardingConfigSchema } from '../lib/onboarding-validation';
 describe('V3.1 onboarding database and authorization', () => {
@@ -373,17 +374,22 @@ describe('V3.1 onboarding database and authorization', () => {
         for(const rows of Object.values(await read()))expect(rows).toEqual([]);
     });
     it('adds an actual hidden exception with native routing fallback, shared approvers, requester approval and manual steps',async()=>{
+        const unavailable=await hireEmployee(admin,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:dayDate(todayInKualaLumpur(),-30),person:{fullName:'Fictional subsequently unavailable reviewer',primaryEmail:'archived-exception-review@fixture.invalid'}}),unavailableUser=await createAppUser(b.tenantId,unavailable.personId,'employee');
         const context=await onboardingContext(admin),config=structuredClone(context.config);
         config.groups.push({id:'empty-routing',name:'Unavailable routing group',members:[],limit:0},{id:'fallback-routing',name:'Available routing group',members:[other.userId!],limit:0});
         config.routings.push({id:'exception-routing',name:'Exception routing',rows:[{id:'specific',rules:{company:[b.companyId]},group:'empty-routing'},{id:'fallback',rules:{},group:'fallback-routing'}]});
-        config.workflows.push({id:'exception-native',name:'Native exception approval',mode:'par',steps:[{id:'requester',label:'Requester',type:'person',target:tech.userId!,method:'manual'},{id:'route-one',label:'First routed review',type:'routing',target:'exception-routing',method:'rr'},{id:'route-two',label:'Shared routed review',type:'routing',target:'exception-routing',method:'rr'},{id:'manual',label:'Manual facility review',type:'group',target:'facility',method:'manual'},{id:'missing-person',label:'Missing person review',type:'person',target:randomUUID(),method:'manual'}]});
+        config.workflows.push({id:'exception-native',name:'Native exception approval',mode:'par',steps:[{id:'requester',label:'Requester',type:'person',target:tech.userId!,method:'manual'},{id:'route-one',label:'First routed review',type:'routing',target:'exception-routing',method:'rr'},{id:'route-two',label:'Shared routed review',type:'routing',target:'exception-routing',method:'rr'},{id:'manual',label:'Manual facility review',type:'group',target:'facility',method:'manual'},{id:'missing-person',label:'Missing person review',type:'person',target:unavailableUser,method:'manual'}]});
         config.catalogue.push({id:'exception-native',name:'Fictional exception access',type:'system',active:true,rules:{},workflow:'exception-native',team:'group-tech',card:false});
         await onboardingSaveConfig(admin,context.revision,config);const row=await prepared();
+        await owner.client`update app_user set archived_at=now()where id=${unavailableUser}::uuid`;
         const profile=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${profile},${b.tenantId},${'Exception scope '+profile})`;
         await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${profile},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
         await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${profile}`;await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${tech.userId!},${profile},${admin.userId!})`;
         expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)))).toEqual([]);
         const task=(await onboardingTasks(tech)).find(task=>task.caseId===row.case.id&&task.kind==='exceptionAdd')!;expect(task).toMatchObject({bounded:true,canExecute:true});
+        const capability='function.lifecycle.shared.exceptionAdditions.execute';
+        expect(await owner.withTenant(tech,tx=>tx.execute(sql`select (select capability_id from app.access_function_action where function_key='lifecycle.shared.exceptionAdditions'and operation='execute')as registered,app.lifecycle_exception_function_legacy_allowed(${b.tenantId}::uuid,${tech.userId!}::uuid,${capability},${b.companyId}::uuid)as pure,app.lifecycle_exception_function_current_legacy_allowed(${b.tenantId}::uuid,${tech.userId!}::uuid,${capability},${b.companyId}::uuid)as current,app.lifecycle_exception_function_legacy_allowed(${b.tenantId}::uuid,${tech.userId!}::uuid,'function.lifecycle.shared.exceptionAdditions.delete',${b.companyId}::uuid)as unsupported`))).toEqual([{registered:capability,pure:true,current:true,unsupported:false}]);
+        expect(await owner.withTenant(admin,tx=>tx.execute(sql`select app.lifecycle_exception_function_legacy_allowed(${b.tenantId}::uuid,${tech.userId!}::uuid,${capability},${b.companyId}::uuid)as pure,app.lifecycle_exception_function_current_legacy_allowed(${b.tenantId}::uuid,${tech.userId!}::uuid,${capability},${b.companyId}::uuid)as current`))).toEqual([{pure:true,current:false}]);
         const review=await onboardingBoundedTask(tech,task.id);expect(review.catalogue?.map(item=>item.id)).toEqual(['exception-native']);expect(JSON.stringify(review)).not.toContain('PRIVATE-IC');expect(JSON.stringify(review)).not.toContain('Prepare welcome pack');
         await expect(onboardingBoundedTask(other,task.id)).rejects.toThrow();
         await expect(onboardingCommand(other,row.case.id,row.revision,{type:'addItem',catalogueId:'exception-native',reason:'Unauthorised',approval:true,confirmedBy:null})).rejects.toThrow();
@@ -432,6 +438,7 @@ describe('V3.1 onboarding database and authorization', () => {
     it('keeps the HR from-case removal course inside its actual data profile',async()=>{
         const before=await onboardingContext(admin),config=structuredClone(before.config);config.access.onboarding.push(tech.userId!);config.catalogue.push({id:'from-case-exception',name:'Fictional case extra',type:'system',active:true,rules:{},workflow:null,team:'group-tech',card:false},{id:'hr-positive-extra',name:'Fictional HR case extra',type:'system',active:true,rules:{},workflow:null,team:'group-tech',card:false});await onboardingSaveConfig(admin,before.revision,config);
         let row=await prepared();await onboardingCommand(tech,row.case.id,row.revision,{type:'save',patch:{extras:[{catalogueId:'from-case-exception',reason:'Actual case source',approval:false},{catalogueId:'hr-positive-extra',reason:'Actual HR source',approval:false}]}});row=(await onboardingList(admin))[0]!;const target=row.case.requisitions[0]!.items.find(item=>item.catalogueId==='from-case-exception')!;expect(target).toMatchObject({fromCase:true,addedBy:tech.userId});
+        expect(await owner.withTenant(admin,tx=>tx.execute(sql`select app.access_function_delegation_floor('function.lifecycle.hr.exceptionRemovals.execute',${b.companyId}::uuid)as allowed`))).toEqual([{allowed:true}]);
         const positive=row.case.requisitions[0]!.items.find(item=>item.catalogueId==='hr-positive-extra')!,review=(await onboardingTasks(admin)).find(task=>task.kind==='exceptionRemove'&&task.itemIds?.includes(positive.id))!;expect((await onboardingBoundedTask(admin,review.id)).items).toEqual([{id:positive.id,name:positive.name}]);
         await expect(withTenant(admin,async tx=>{
             const [effect]=await tx.execute<{function_key:string;native_branch:string}>(sql`select * from app.onboarding_exception_update(${row.case.id}::uuid,${row.revision},'removeItem',${JSON.stringify({itemId:positive.id})}::jsonb)`);expect(effect).toMatchObject({function_key:'lifecycle.hr.exceptionRemovals',native_branch:'administrative-onboarding-exception-remove'});
@@ -443,6 +450,7 @@ describe('V3.1 onboarding database and authorization', () => {
         const profile=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${profile},${b.tenantId},${'HR exception scope '+profile})`;
         await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${profile},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
         await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${profile}`;await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${admin.userId!},${profile},${admin.userId!})`;
+        expect(await owner.withTenant(admin,tx=>tx.execute(sql`select app.access_function_delegation_floor('function.lifecycle.hr.exceptionRemovals.execute',${b.companyId}::uuid)as allowed`))).toEqual([{allowed:false}]);
         await expect(onboardingCommand(admin,row.case.id,row.revision,{type:'removeItem',itemId:target.id})).rejects.toThrow();
         await expect(onboardingCommand(other,row.case.id,row.revision,{type:'removeItem',itemId:target.id})).rejects.toThrow();
         const [unchanged]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id));expect(unchanged!.revision).toBe(row.revision);
@@ -623,7 +631,7 @@ describe('V3.1 onboarding database and authorization', () => {
         await onboardingCommand(admin,row.case.id,row.revision,{type:'saveSubmit',patch:{hiring:'new_hire',selected:['m365']}});
         row=(await onboardingList(admin))[0]!;
         const groupBefore=structuredClone(row.case.tasks.find(task=>task.id==='welcome'));
-        await expect(withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_sync_active_draft(${saved.id}::uuid,${randomUUID()}::uuid,${randomUUID()}::uuid)`))).rejects.toThrow('Draft activation source unavailable');
+        let refusal:unknown;try{await withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_sync_active_draft(${saved.id}::uuid,${randomUUID()}::uuid,${randomUUID()}::uuid)`));}catch(error){refusal=error;}expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Draft activation source unavailable'}));
         expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
         const active=await completeEmployeeDraft(admin,saved.id),after=(await onboardingList(admin))[0]!;
         expect(after.case).toMatchObject({id:row.case.id,employmentId:active.employmentId,personnelStatus:'Active'});
