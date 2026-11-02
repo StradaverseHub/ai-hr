@@ -29828,7 +29828,10 @@
     "matrixEdit": "Edit",
     "matrixDelete": "Delete",
     "matrixWorkforce": "Workforce",
-    "matrixOther": "Other permissions"
+    "matrixOther": "Other permissions",
+    "matrixPayroll": "Payroll",
+    "matrixPerformanceCompensation": "Performance and Compensation",
+    "matrixLetters": "Letters"
   },
   "myPayslip": {
     "title": "My Payslip",

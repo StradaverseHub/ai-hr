@@ -345,7 +345,7 @@ async function analyze(
   const read=<T,>(fn:(tx:Tx)=>Promise<T>)=>outerTx?fn(outerTx):withTenant(ctx,fn);
   if(Object.keys(registerRecords).some(key=>!(PERSONNEL_REGISTER_KINDS as readonly string[]).includes(key)))throw new Error('Unknown register sheet.');
   const [catalogCompanies, leaveTypes, maintainIds, viewIds] = await Promise.all([
-    listCompanies(ctx,{adminOnly:true},outerTx), listLeaveTypes(ctx,{},outerTx), workforceCompanies(ctx,'maintain',outerTx), workforceCompanies(ctx,'view',outerTx),
+    listCompanies(ctx,{adminOnly:true},outerTx), listLeaveTypes(ctx,{},outerTx), workforceCompanies(ctx,'add',outerTx), workforceCompanies(ctx,'view',outerTx),
   ]);
   const writable=new Set(maintainIds),readable=new Set(viewIds);
   if(!writable.has(companyId)||!readable.has(companyId))throw new WorkforceAccessError();
@@ -1258,9 +1258,9 @@ export async function validateEmployeeImport(
   await withTenant(ctx,async tx=>{
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await assertWorkforceCompanyTx(tx,ctx,p.companyId,'view');
-    await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
+    await assertWorkforceCompanyTx(tx,ctx,p.companyId,'add');
     for(const companyId of new Set(resolved.filter(row=>row.result.ok).map(row=>row.hire.companyId))){
-      await assertWorkforceCompanyTx(tx,ctx,companyId,'view');await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
+      await assertWorkforceCompanyTx(tx,ctx,companyId,'view');await assertWorkforceCompanyTx(tx,ctx,companyId,'add');
     }
   });
   if(p.allocationRecords?.length){

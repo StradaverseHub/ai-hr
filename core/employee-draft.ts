@@ -560,7 +560,7 @@ export async function createEmployeeDraftWithReservedCode(
 
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
-    await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
+    await assertWorkforceCompanyTx(tx,ctx,companyId,'add');
     let code: string;
     let configId: string | null = null;
     let number: number | null = null;
@@ -1057,7 +1057,7 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
     employeeCode: employeeCodeToIssue,
     // Without this the two-table uniqueness check would refuse the activation on the grounds that the ID
     // is taken — by the very draft being activated.
-    fromEmployeeDraftId: reservedCode ? id : undefined,
+    fromEmployeeDraftId: id,
     companyId,
     departmentId: str(e.departmentId)!,
     positionId: str(e.positionId),

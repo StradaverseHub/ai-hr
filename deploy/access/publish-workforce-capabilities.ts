@@ -1,9 +1,11 @@
 /** Restricted storage-owner installation step, never an application permission editor. */
 import {createHash} from 'node:crypto';
 import type {Sql} from 'postgres';
+import {FINANCIAL_LETTER_CAPABILITY_PUBLICATION} from './financial-letter-capability-bindings';
+import {ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION} from './organisation-settings-capability-bindings';
 
-export const WORKFORCE_CAPABILITY_PUBLICATION_VERSION=1;
-export const WORKFORCE_CAPABILITY_BINDINGS=[
+export const WORKFORCE_CAPABILITY_PUBLICATION_VERSION=3;
+export const WORKFORCE_CAPABILITY_BINDINGS_V1=[
  {id:'workforce.view',scope:'company',bindings:[
   {owner:'app.access_workforce_projection_company',operation:'bounded-company-scope'},
   {owner:'app.access_workforce_list_rows',operation:'bounded-list-search-filter-export'},
@@ -37,8 +39,23 @@ export const WORKFORCE_CAPABILITY_BINDINGS=[
   {owner:'core/person-photo.ts',operation:'pending-byte-privacy-and-own-canonical-photo'},
  ]},
 ] as const;
+export const WORKFORCE_CAPABILITY_BINDINGS_V2=[...WORKFORCE_CAPABILITY_BINDINGS_V1,
+ ...(['add','edit','delete'] as const).map(action=>({id:`workforce.${action}`,scope:'company' as const,bindings:[
+  {owner:'app.access_workforce_action_company',operation:action+'-with-view-and-deny-floor'},
+  {owner:'app.access_workforce_action_employment',operation:action+'-current-data-scope'},
+  {owner:'app.access_workforce_action_person',operation:action+'-all-retained-person-scope'},
+  {owner:'app.access_workforce_maintain_record',operation:'typed-native-and-reviewed-register-'+action},
+  {owner:'app.access_profile_value_guard',operation:'raw-sql-and-independent-witness-'+action},
+  {owner:'core/workforce-commands.ts',operation:'typed-native-admission'},
+ ]})),
+] as const;
+type DomainPublication={capabilities:readonly {id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[]}[];requiredFunctions:readonly string[];legacyGroups:Record<string,readonly string[]>;legacyParityFunction?:string;delegationFloorFunction?:string};
+export const ACTION_DOMAIN_PUBLICATIONS:readonly DomainPublication[]=[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION];
+export const WORKFORCE_CAPABILITY_BINDINGS=[...WORKFORCE_CAPABILITY_BINDINGS_V2,...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.capabilities)];
 export const WORKFORCE_CAPABILITY_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,capabilities:WORKFORCE_CAPABILITY_BINDINGS})).digest('hex');
-const REQUIRED_FUNCTIONS=[
+const WORKFORCE_REQUIRED_FUNCTIONS=[
+ 'app.access_workforce_statutory_action_guard()','app.access_workforce_photo_action_guard()','app.access_workforce_hire_effects_match(jsonb,uuid)','app.access_configuration_delegation_preview(jsonb)',
+ 'app.access_workforce_action_company(uuid,text)','app.access_workforce_action_employment(uuid,text)','app.access_workforce_action_person(uuid,text)',
  'app.access_workforce_projection_company(uuid)','app.access_workforce_list_rows()',
  'app.access_workforce_record(uuid)','app.access_workforce_related_read(uuid)',
  'app.access_workforce_command_allowed(uuid)','app.access_workforce_maintain_record(uuid,text,uuid,text,jsonb,text)',
@@ -49,6 +66,7 @@ const REQUIRED_FUNCTIONS=[
  'app.access_profile_value_begin(uuid)','app.access_profile_value_audit()',
  'app.access_withdraw_profile_requests(jsonb,text)',
 ] as const;
+const REQUIRED_FUNCTIONS=[...WORKFORCE_REQUIRED_FUNCTIONS,...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.requiredFunctions)];
 function requireInstallation(value:unknown):asserts value{
  if(!value)throw new Error('Workforce capability installation refused; review exact owner, catalogue, bindings and tenant readiness.');
 }
@@ -73,20 +91,22 @@ export async function publishWorkforceCapabilities(owner:Sql){
   await tx`lock table public.tenant in share mode`;
   await tx`lock table public.access_capability in share row exclusive mode`;
   const rows=await tx<CapabilityRow[]>`select id,scope,supported,bindings from public.access_capability
-   where id in ('workforce.view','workforce.maintain','profile.review') order by id for update`;
-  requireInstallation(rows.length===3);
+   where id=any(${WORKFORCE_CAPABILITY_BINDINGS.map(item=>item.id)}::text[]) order by id for update`;
+  requireInstallation(rows.length===WORKFORCE_CAPABILITY_BINDINGS.length);
   const expected=[...WORKFORCE_CAPABILITY_BINDINGS].sort((a,b)=>a.id.localeCompare(b.id));
   requireInstallation(rows.every((row,index)=>row.id===expected[index].id&&row.scope===expected[index].scope));
   const already=rows.every((row,index)=>row.supported&&exactBindings(row.bindings,expected[index].bindings));
   const uninstalled=rows.every(row=>!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0);
-  requireInstallation(already||uninstalled); // Refuse partial/unknown versions without overwriting them.
+  const knownV1=rows.every(row=>{const old=WORKFORCE_CAPABILITY_BINDINGS_V1.find(item=>item.id===row.id);return old?row.supported&&exactBindings(row.bindings,old.bindings):!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0;});
+  const knownV2=rows.every(row=>{const old=WORKFORCE_CAPABILITY_BINDINGS_V2.find(item=>item.id===row.id);return old?row.supported&&exactBindings(row.bindings,old.bindings):!row.supported&&Array.isArray(row.bindings)&&row.bindings.length===0;});
+  requireInstallation(already||uninstalled||knownV1||knownV2); // Refuse partial/unknown versions without overwriting them.
   const functions=await tx<{count:number;owners:boolean}[]>`select count(*)::integer as count,
    coalesce(bool_and(p.proowner=c.relowner),false) as owners
    from unnest(${[...REQUIRED_FUNCTIONS]}::text[]) f(signature)
    join pg_proc p on p.oid=to_regprocedure(f.signature)
    cross join pg_class c where c.oid='public.access_capability'::regclass`;
   requireInstallation(functions[0]?.count===REQUIRED_FUNCTIONS.length&&functions[0].owners);
-  if(already)return {version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,changed:false,capabilities:3,tenantsFenced:0};
+  if(already)return {version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,changed:false,capabilities:WORKFORCE_CAPABILITY_BINDINGS.length,tenantsFenced:0};
   const tenants=await tx<{id:string}[]>`select id from public.tenant order by id`;
   for(const tenant of tenants){
    await tx`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + tenant.id},0))`;
@@ -98,6 +118,47 @@ export async function publishWorkforceCapabilities(owner:Sql){
    ) and not exists(select 1 from public.tenant t where not exists(
     select 1 from app.access_profile_write_generation g where g.tenant_id=t.id)) as ready`;
   requireInstallation(readiness?.ready); // Never mint a recovery administrator or default grant here.
+  // One-time exact legacy parity: preserve every old fact and copy its active scope/effect.
+  // Refuse unknown prepublication action facts rather than silently broadening/narrowing a holder.
+  if(!rows.find(row=>row.id==='workforce.add')?.supported){
+  const [parity]=await tx<{ok:boolean}[]>`select not exists(select 1 from access_group_grant n where n.capability_id in ('workforce.add','workforce.edit','workforce.delete') and n.retired_at is null
+   and not exists(select 1 from access_group_grant old where old.tenant_id=n.tenant_id and old.group_id=n.group_id and old.capability_id='workforce.maintain' and old.company_id is not distinct from n.company_id and old.retired_at is null))
+   and not exists(select 1 from access_user_override n where n.capability_id in ('workforce.add','workforce.edit','workforce.delete') and n.retired_at is null
+   and not exists(select 1 from access_user_override old where old.tenant_id=n.tenant_id and old.user_id=n.user_id and old.capability_id='workforce.maintain' and old.company_id is not distinct from n.company_id and old.effect=n.effect and old.retired_at is null)) as ok`;
+  requireInstallation(parity?.ok);
+  await tx`insert into access_group_grant(tenant_id,group_id,capability_id,company_id)
+   select old.tenant_id,old.group_id,new.id,old.company_id from access_group_grant old
+   cross join (values ('workforce.add'),('workforce.edit'),('workforce.delete'))new(id)
+   where old.capability_id='workforce.maintain' and old.retired_at is null on conflict do nothing`;
+  await tx`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   select old.tenant_id,old.user_id,new.id,old.company_id,old.effect from access_user_override old
+   cross join (values ('workforce.add'),('workforce.edit'),('workforce.delete'))new(id)
+   where old.capability_id='workforce.maintain' and old.retired_at is null on conflict do nothing`;
+  }
+  // Only source-defined legacy groups receive defaults. Individual native-floor parity also
+  // preserves installed roles with no legacy group (for example an operator with a letter ACL).
+  // Each physical operation continues to enforce its original native floor after publication.
+  for(const domain of ACTION_DOMAIN_PUBLICATIONS){
+   for(const capability of domain.capabilities){
+    if(rows.find(row=>row.id===capability.id)?.supported)continue;
+    const groups=domain.legacyGroups[capability.id]??[];
+    await tx`insert into public.access_group_grant(tenant_id,group_id,capability_id)
+     select g.tenant_id,g.id,${capability.id} from public.access_group g
+     where g.retired_at is null and g.legacy_key=any(${[...groups]}::text[]) on conflict do nothing`;
+    const hook=domain.legacyParityFunction;
+    if(hook){
+     // Identifier comes exclusively from this immutable source manifest; never from application input.
+     requireInstallation(/^app\.[a-z][a-z0-9_]*$/.test(hook));
+     const scope=capability.scope==='tenant'?'select null::uuid as id':'select c.id from public.company c where c.tenant_id=u.tenant_id';
+     await tx.unsafe(`insert into public.access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+      select u.tenant_id,u.id,$1,scope.id,'allow' from public.app_user u cross join lateral (${scope}) scope
+      where u.archived_at is null and not app.login_blocked(u.id) and ${hook}(u.tenant_id,u.id,$1,scope.id)
+      and not exists(select 1 from public.access_effective_membership m join public.access_group g on g.tenant_id=m.tenant_id and g.id=m.group_id join public.access_group_grant a on a.tenant_id=g.tenant_id and a.group_id=g.id where m.tenant_id=u.tenant_id and m.user_id=u.id and g.retired_at is null and a.retired_at is null and a.capability_id=$1 and app.access_scope_covers(m.company_id,scope.id,u.tenant_id) and app.access_scope_covers(a.company_id,scope.id,u.tenant_id))
+      and not exists(select 1 from public.access_user_override o where o.tenant_id=u.tenant_id and o.user_id=u.id and o.capability_id=$1 and o.retired_at is null and app.access_scope_covers(o.company_id,scope.id,u.tenant_id))
+      on conflict do nothing`,[capability.id]);
+    }
+   }
+  }
   // Bind serialized JSON as text before converting it. Drizzle replaces the client's JSON
   // serializer, whereas the standalone installer retains postgres.js's JSON.stringify serializer.
   // A JSONB-typed parameter would therefore encode these strings twice in the real installer.
@@ -115,6 +176,6 @@ export async function publishWorkforceCapabilities(owner:Sql){
     values(${tenant.id}::uuid,'access-configuration',${tenant.id}::uuid,'access-configuration.capabilities-published','system',null,
      ${JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,capabilities:WORKFORCE_CAPABILITY_BINDINGS.map(c=>c.id),legacyRolesChanged:false})}::text::jsonb)`;
   }
-  return {version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,changed:true,capabilities:3,tenantsFenced:tenants.length};
+  return {version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256,changed:true,capabilities:WORKFORCE_CAPABILITY_BINDINGS.length,tenantsFenced:tenants.length};
  });
 }

@@ -11,7 +11,7 @@ import {employment} from '../db/schema';
 import {eq} from 'drizzle-orm';
 const captureCommandContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
 async function maintain<T>(ctx:SessionContext,employmentId:string,write:(tx:Tx)=>Promise<T>,outerTx?:Tx){
- const run=async(tx:Tx)=>{await assertWorkforceEmploymentTx(tx,ctx,employmentId,'maintain');return write(tx);};
+ const run=async(tx:Tx)=>{await assertWorkforceEmploymentTx(tx,ctx,employmentId,'edit');return write(tx);};
  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 export function hireEmployee(ctx:SessionContext,p:Parameters<typeof org.hireEmployee>[1],outerTx?:Tx){
@@ -38,7 +38,7 @@ export function setPersonComplianceFields(ctx:SessionContext,p:Parameters<typeof
   await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
   if(!subject)throw new Error('Employment not found (or not visible).');
-  await assertWorkforcePersonTx(tx,ctx,subject.personId,'maintain');
+  await assertWorkforcePersonTx(tx,ctx,subject.personId,'edit');
   return writeComplianceFields(ctx,p,tx);
  },outerTx);
 }

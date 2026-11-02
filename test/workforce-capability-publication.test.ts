@@ -12,7 +12,7 @@ import {readAccessConfigurationEditor} from '../core/access-configuration-editor
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 let b:Base;
-const ids=['workforce.view','workforce.maintain','profile.review'];
+const ids=WORKFORCE_CAPABILITY_BINDINGS.map(row=>row.id) as string[];
 beforeAll(migrateTestDb);
 beforeEach(async()=>{await resetDb();b=await seedBase();await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${ids}::text[])`;});
 afterAll(async()=>{try{await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${ids}::text[])`;}finally{await closeAll();}});
@@ -27,10 +27,13 @@ async function snapshot(){return{
  users:await owner.client`select * from app_user order by id`,
  events:await owner.client`select id from domain_event order by id`,
 };}
-it('publishes the exact three source bindings atomically, preserves actual role/grant/member facts and is idempotent',async()=>{
+it('publishes the complete source bindings atomically, preserves installed facts and is idempotent',async()=>{
  const before=await snapshot(),scope=await workforceCompanies(adminCtx(b));expect(scope).toContain(b.companyId);
- const result=await publishWorkforceCapabilities(owner.client);expect(result).toMatchObject({changed:true,capabilities:3,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256});
- const after=await snapshot();for(const key of ['grants','memberships','overrides','roles','users']as const)expect(after[key]).toEqual(before[key]);
+ const result=await publishWorkforceCapabilities(owner.client);expect(result).toMatchObject({changed:true,capabilities:WORKFORCE_CAPABILITY_BINDINGS.length,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256});
+ const after=await snapshot();for(const key of ['memberships','roles','users']as const)expect(after[key]).toEqual(before[key]);
+ for(const key of ['grants','overrides']as const)for(const original of before[key])expect(after[key]).toContainEqual(original);
+ for(const extra of after.grants.filter(row=>!before.grants.some(old=>old.id===row.id)))expect(ids).toContain(extra.capability_id);
+ for(const extra of after.overrides.filter(row=>!before.overrides.some(old=>old.id===row.id)))expect(ids).toContain(extra.capability_id);
  for(const expected of WORKFORCE_CAPABILITY_BINDINGS)expect(after.catalog.find(row=>row.id===expected.id)).toMatchObject({...expected,supported:true});
  for(const previous of before.catalog.filter(row=>!ids.includes(row.id)))expect(after.catalog.find(row=>row.id===previous.id)).toEqual(previous);
  for(const row of before.generation)expect(after.generation.find(next=>next.tenant_id===row.tenant_id)?.generation).toBe(String(BigInt(row.generation)+BigInt(1)));
@@ -41,9 +44,9 @@ it('publishes the exact three source bindings atomically, preserves actual role/
 it('publishes array bindings and object audits through the plain standalone installer connection',async()=>{
  const standalone=postgres(process.env.TEST_MIGRATION_DATABASE_URL!,{max:1});
  try{
-  expect(await publishWorkforceCapabilities(standalone)).toMatchObject({changed:true,capabilities:3});
+  expect(await publishWorkforceCapabilities(standalone)).toMatchObject({changed:true,capabilities:WORKFORCE_CAPABILITY_BINDINGS.length});
   const shapes=await owner.client`select id,jsonb_typeof(bindings) as shape from access_capability where id=any(${ids}::text[]) order by id`;
-  expect(shapes.map(row=>row.shape)).toEqual(['array','array','array']);
+  expect(shapes.map(row=>row.shape)).toEqual(Array.from({length:6},()=>'array'));
   const audits=await owner.client`select jsonb_typeof(payload) as shape,payload->>'bindingsSha256' as hash from domain_event where event_type='access-configuration.capabilities-published' order by tenant_id,id`;
   expect(audits.length).toBeGreaterThan(0);expect(audits.every(row=>row.shape==='object'&&row.hash===WORKFORCE_CAPABILITY_BINDINGS_SHA256)).toBe(true);
  }finally{await standalone.end({timeout:3});}

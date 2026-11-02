@@ -45,7 +45,10 @@ export async function setPersonPhoto(
   assertValidPhoto(p.mimeType, p.content);
   if(p.sizeBytes!==p.content.byteLength)throw new EssProfileError('invalid');
   return withTenant(ctx, async (tx) => {
-    await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');
+    await assertWorkforcePersonTx(tx,ctx,p.personId,'view');
+    await lockPersonPhotoTx(tx,ctx,p.personId);
+    const [existing]=await tx.select({id:personPhoto.id}).from(personPhoto).where(eq(personPhoto.personId,p.personId)).limit(1);
+    await assertWorkforcePersonTx(tx,ctx,p.personId,existing?'edit':'add');
     return setPersonPhotoTx(tx,ctx,p);
   });
 }
@@ -157,7 +160,7 @@ export function getProfilePhotoProposal(ctx:SessionContext,requestId:string){
 export async function removePersonPhoto(ctx: SessionContext, p: { personId: string }) {
   if(!isAdmin(ctx))throw new EssProfileError('permission');
   return withTenant(ctx, async (tx) => {
-    await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');
+    await assertWorkforcePersonTx(tx,ctx,p.personId,'delete');
     await lockProfileEditPolicyTx(tx,ctx.tenantId);
     await lockPersonPhotoTx(tx,ctx,p.personId);
     await tx.delete(personPhoto).where(eq(personPhoto.personId, p.personId));

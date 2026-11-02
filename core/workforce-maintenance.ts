@@ -20,9 +20,10 @@ const scalar=z.union([z.string().max(4000),z.boolean(),z.number().finite(),z.nul
 const registerSchema=(kind:'qualification'|'emergency'|'dependent')=>z.object({kind:z.literal(kind),id:z.uuid(),version,
  values:z.object(Object.fromEntries(workforceMaintenanceFields(kind).map(f=>[f.key,scalar]))).strict()}).strict();
 const profileSchema=z.object(Object.fromEntries(WORKFORCE_PROFILE_FIELDS.map(f=>[f.key,z.string().nullable()]))).strict();
-const editorSchema=z.object({profileVersion:version,profile:profileSchema,sharedMaintain:z.boolean(),employmentMaintain:z.boolean(),registers:z.array(z.discriminatedUnion('kind',[registerSchema('qualification'),registerSchema('emergency'),registerSchema('dependent')])).max(500)}).strict();
+const actionSchema=z.object({add:z.boolean(),edit:z.boolean(),delete:z.boolean()}).strict();
+const editorSchema=z.object({actionCapabilities:z.object({person:actionSchema,employment:actionSchema}).strict().optional(),profileVersion:version,profile:profileSchema,sharedMaintain:z.boolean(),employmentMaintain:z.boolean(),registers:z.array(z.discriminatedUnion('kind',[registerSchema('qualification'),registerSchema('emergency'),registerSchema('dependent')])).max(500)}).strict();
 export type WorkforceEditorRow={kind:'qualification'|'emergency'|'dependent';id:string;version:string;values:Record<string,WorkforceValue>};
-export type WorkforceEditor={profileVersion:string;profile:WorkforceProfile;sharedMaintain:boolean;employmentMaintain:boolean;registers:WorkforceEditorRow[];options:{category:string;value:string;label:string}[]};
+export type WorkforceEditor={actionCapabilities?:{person:{add:boolean;edit:boolean;delete:boolean};employment:{add:boolean;edit:boolean;delete:boolean}};profileVersion:string;profile:WorkforceProfile;sharedMaintain:boolean;employmentMaintain:boolean;registers:WorkforceEditorRow[];options:{category:string;value:string;label:string}[]};
 export class WorkforceMaintenanceValidationError extends Error{
  constructor(){super('Employee record input is invalid.');this.name='WorkforceMaintenanceValidationError';}
 }
@@ -48,7 +49,7 @@ export async function maintainWorkforceRecord(ctx:SessionContext,p:{employmentId
  try{const run=async(tx:Tx)=>{
   await lockProfileValueWritesTx(tx,ctx.tenantId);
   const workspace=await workforceEditorTx(tx,p.employmentId);
-  if(!workspace||!(p.kind==='qualification'?workspace.employmentMaintain:workspace.sharedMaintain))throw new WorkforceAccessError();
+  if(!workspace||!(workspace.actionCapabilities?workspace.actionCapabilities[p.kind==='qualification'?'employment':'person'][p.operation==='add'?'add':p.operation==='archive'?'delete':'edit']:(p.kind==='qualification'?workspace.employmentMaintain:workspace.sharedMaintain)))throw new WorkforceAccessError();
   const existing=p.rowId?workspace.registers.find(row=>row.id===p.rowId&&row.kind===p.kind):null;
   if(p.kind!=='person'&&p.operation!=='add'&&!existing)throw new WorkforceRecordChangedError();
   if(p.operation!=='add'&&p.expectedVersion!==(p.kind==='person'?workspace.profileVersion:existing!.version))throw new WorkforceRecordChangedError();

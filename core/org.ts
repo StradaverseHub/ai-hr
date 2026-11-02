@@ -207,8 +207,9 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
   const run = async (tx:Tx) => {
     // Hiring is a Workforce command even when called without a page/import facade. Acquire fresh
     // access before Criteria/data locks; reusing a person cannot cross their retained explicit deny.
-    await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
-    if(p.person.id)await assertWorkforcePersonTx(tx,ctx,p.person.id,'maintain');
+    await assertWorkforceCompanyTx(tx,ctx,p.companyId,'add');
+    if(p.person.id)await assertWorkforcePersonTx(tx,ctx,p.person.id,'add');
+    if(p.fromEmployeeDraftId)await tx.execute(sql`select app.access_workforce_prepare_hire_source(${p.fromEmployeeDraftId}::uuid,${p.companyId}::uuid)`);
     // A hire changes cohort membership and may create opening ledger grants. Own configuration
     // before Criteria, catalogue/template reads or any new person/employment/assignment is written.
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);

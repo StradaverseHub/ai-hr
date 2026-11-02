@@ -29828,7 +29828,10 @@
     "matrixEdit": "Edit",
     "matrixDelete": "Padam",
     "matrixWorkforce": "Tenaga kerja",
-    "matrixOther": "Kebenaran lain"
+    "matrixOther": "Kebenaran lain",
+    "matrixPayroll": "Gaji",
+    "matrixPerformanceCompensation": "Prestasi dan Pampasan",
+    "matrixLetters": "Surat"
   },
   "myPayslip": {
     "title": "Slip Gaji Saya",
