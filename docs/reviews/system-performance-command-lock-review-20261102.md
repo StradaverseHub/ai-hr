@@ -31,9 +31,14 @@ reuse onto retained7490/application07f. All659 inherited SQL files and journal
 entries,auth implementation,root layout and literal approvals remain exact. Existing
 UNAPPLIED0934/idx792/when334 is unchanged,with strict660/89 count expectations.
 Both canonical manifest checks pass (module last). Hosted affected native/Home/OneHR/
-populated-upgrade checks and whole compiler are running in
-[41414760893](https://github.com/StradaverseHub/ai-hr/actions/runs/41414760893).
-Both original500-user1s/5s profiles follow only after those prerequisites pass.
+populated-upgrade checks and whole compiler PASS in
+[41414760893](https://github.com/StradaverseHub/ai-hr/actions/runs/41414760893):
+19 database and11 other checks across10 files,including500 principals/516 native
+controls. Artifactfocused.json pins sourcef2b9 and controller6ea889365 explicitly.
+Both original500-user profiles are running against frozen source/controllerf2b9:
+[1s41416183769](https://github.com/StradaverseHub/ai-hr/actions/runs/41416183769) and
+[5s41416186817](https://github.com/StradaverseHub/ai-hr/actions/runs/41416186817).
+No load result or whole-system gain is established yet.
 No deployment,merge,queue admission,lease,provider approval or resource increase.
 
 Fresh08:38:49UTC read-only all-ref/WIP scan:1816 heads,320 journals,399 migration
