@@ -296,6 +296,58 @@ describe('V3.1 onboarding database and authorization', () => {
         await v9OwnTask(tech,{caseId:updated.case.id,revision:updated.revision,taskId:'welcome',status:'done',reason:''});
         expect((await onboardingList(admin))[0]!.case.tasks.find(task=>task.id==='welcome')?.status).toBe('done');
     });
+    it('records only native handover and note effects for a hidden assigned team',async()=>{
+        let row=await prepared();
+        const id=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Delivery scope '+id})`;
+        await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
+        await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
+        await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${tech.userId!},${id},${admin.userId!})`;
+        expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)))).toEqual([]);
+        const itemId=row.case.requisitions[0]!.items[0]!.id;
+        await expect(onboardingCommand(other,row.case.id,row.revision,{type:'fulfil',itemId,status:'done'})).rejects.toThrow();
+        await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_fulfil_item(${row.case.id}::uuid,${row.revision},${itemId},'done')`))).rejects.toThrow();
+        expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'fulfil',itemId,status:'done'});row=(await onboardingList(admin))[0]!;
+        expect(row.case.requisitions[0]!.items[0]!.state).toBe('ready');
+        await expect(onboardingCommand(other,row.case.id,row.revision,{type:'readNote'})).rejects.toThrow();
+        await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_delivery_update(${row.case.id}::uuid,${row.revision},'readNote','{}'::jsonb)`))).rejects.toThrow();
+        expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
+        const before=structuredClone(row.case);await onboardingCommand(tech,row.case.id,row.revision,{type:'readNote'});
+        row=(await onboardingList(admin))[0]!;
+        expect(row.case.requisitions[0]!.noteAcks[tech.userId!]).toBe(row.case.requisitions[0]!.noteVersion);
+        expect(row.case.tasks).toEqual(before.tasks);expect(row.case.source).toEqual(before.source);expect(row.case.local).toEqual(before.local);
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'handover'});row=(await onboardingList(admin))[0]!;
+        expect(row.case.requisitions[0]!.handedAt).toBeTruthy();expect(row.case.requisitions[0]!.items[0]!.state).toBe('handed');
+        const retained=row.revision;await onboardingCommand(tech,row.case.id,retained-1,{type:'handover'});expect((await onboardingList(admin))[0]!.revision).toBe(retained);
+        await owner.client`update lc_onboarding_config set data=jsonb_set(data,'{groups}',(select jsonb_agg(case when g->>'id'='group-tech' then jsonb_set(g,'{members}','[]'::jsonb)else g end)from jsonb_array_elements(data->'groups')g))where tenant_id=${b.tenantId}`;
+        await expect(onboardingCommand(tech,row.case.id,row.revision,{type:'readNote'})).rejects.toThrow();
+    });
+    it('keeps a hidden assigned conversation finite through author edit mention resolution and denial',async()=>{
+        const row=await prepared();
+        for(const actor of[tech,other]){
+            const id=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Conversation scope '+id})`;
+            await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
+            await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision}where id=${id}`;
+            await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${actor.userId!},${id},${admin.userId!})`;
+        }
+        const projection=(actor:SessionContext,context='welcome')=>withTenant(actor,tx=>tx.execute<{note:import('../lib/onboarding-model').Note}>(sql`select app.onboarding_conversation_rows(${row.case.id}::uuid,${context}) as note`));
+        await expect(onboardingNote(other,row.case.id,{context:'welcome',body:'UNASSIGNED',mentions:[]})).rejects.toThrow();
+        await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_conversation_update(${row.case.id}::uuid,'welcome',null,'NO-AUDIT','[]'::jsonb,false,false)`))).rejects.toThrow();
+        expect(await projection(tech)).toEqual([]);
+        await onboardingNote(tech,row.case.id,{context:'welcome',body:'Assigned conversation',mentions:[other.userId!]});
+        expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingNote).where(eq(schema.lcOnboardingNote.caseId,row.case.id)))).toEqual([]);
+        let notes=await projection(tech);expect(notes.map(n=>n.note.body)).toEqual(['Assigned conversation']);const note=notes[0]!.note;
+        expect((await projection(other)).map(n=>n.note.body)).toEqual(['Assigned conversation']);
+        await expect(onboardingNote(other,row.case.id,{id:note.id,context:'welcome',body:'OTHER-AUTHOR',mentions:[]})).rejects.toThrow('Only the author');
+        await onboardingNote(other,row.case.id,{id:note.id,context:'welcome',body:'',mentions:[],resolve:true});
+        expect((await projection(other))[0]!.note.resolved).toContain(other.userId);
+        await onboardingNote(tech,row.case.id,{id:note.id,context:'welcome',body:'Edited assigned conversation',mentions:[other.userId!]});
+        notes=await projection(tech);expect(notes[0]!.note.revisions?.[0]?.body).toBe('Assigned conversation');expect(notes[0]!.note.body).toBe('Edited assigned conversation');
+        expect(await projection(tech,'case')).toEqual([]);
+        await expect(onboardingNote(tech,row.case.id,{id:note.id,context:'case',body:'CONTEXT-SMUGGLE',mentions:[]})).rejects.toThrow();
+        expect((await projection(tech))[0]!.note.body).toBe('Edited assigned conversation');
+        expect((await owner.client`select count(*)::int as n from app.lifecycle_native_effect_context`)[0].n).toBe(0);
+    });
     it('preserves the same case when Personnel activates its draft', async () => {
         const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Activation Hire', employeeCode: 'ONB-ACT-1', primaryEmail: 'activation@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });
         const before = (await onboardingList(admin))[0]!;
