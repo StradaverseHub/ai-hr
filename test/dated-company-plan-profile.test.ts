@@ -38,7 +38,7 @@ it('profiles original / cached query plan / restored with live caller RLS and an
  type Point={employmentId:string;date:string};
  const oracle=async(tx:Tx,points:unknown)=>{
   const serialized=JSON.stringify(points);
-  const donor=(inner:Tx)=>inner.execute(sql`select employment_id::text as "employmentId",on_date::text as date,company_id::text as "companyId",reason from (${sql.raw(pieces[0])}${serialized}::jsonb${sql.raw(pieces[1])}) original order by employment_id,on_date`);
+  const donor=(inner:Tx)=>inner.execute(sql`select employment_id::text as "employmentId",on_date::text as date,company_id::text as "companyId",reason from (${sql.raw(pieces[0])}${serialized}::jsonb${sql.raw(pieces[1])}) original(employment_id,on_date,company_id,reason) order by employment_id,on_date`);
   const current=(inner:Tx)=>inner.execute(sql`select employment_id::text as "employmentId",on_date::text as date,company_id::text as "companyId",reason from app.proven_company_date_points(${serialized}::jsonb) order by employment_id,on_date`);
   const settle=async(run:(inner:Tx)=>PromiseLike<unknown>)=>{
    try{return {rows:await tx.transaction(async inner=>await run(inner))};}
