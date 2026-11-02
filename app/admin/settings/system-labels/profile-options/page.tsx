@@ -24,7 +24,7 @@ export default async function ProfileOptionsPage({ searchParams }: { searchParam
   const s = await requireAdmin();
   if(!await settingsAccess(s,'view','systemLabels.profileOptions'))notFound();
   const actionControls={add:await settingsAccess(s,'add','systemLabels.profileOptions'),edit:await settingsAccess(s,'edit','systemLabels.profileOptions'),delete:await settingsAccess(s,'delete','systemLabels.profileOptions')};
-  const categoryActionControls=Object.fromEntries(await Promise.all(PERSON_PROFILE_CATEGORIES.map(async category=>[category,{add:await settingsAccess(s,'add','systemLabels.profileOptions.'+category),edit:await settingsAccess(s,'edit','systemLabels.profileOptions.'+category),delete:await settingsAccess(s,'delete','systemLabels.profileOptions.'+category)}])));
+  const categoryActionControls=Object.fromEntries(await Promise.all(PERSON_PROFILE_CATEGORIES.map(async category=>[category,{add:await settingsAccess(s,'add','systemLabels.profileOptions.'+category),edit:await settingsAccess(s,'edit','systemLabels.profileOptions.'+category),delete:await settingsAccess(s,'delete','systemLabels.profileOptions.'+category)}] as const)));
   const t = await getTranslations('admin.profileOptions');
   const { error } = await searchParams;
   const all = await listAllProfileOptions(s, { activeOnly: false,maintenance:true });
