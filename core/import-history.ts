@@ -226,7 +226,9 @@ export async function revertImport(ctx:SessionContext,attemptId:string,handler:I
  if(typeof input.previewHash!=='string'||!/^[0-9a-f]{64}$/.test(input.previewHash))fail('Review what will be restored before confirming.');
  try{return await withTenant(ctx,async tx=>{
   await handler.lock?.(tx,ctx);
-  const source=await lockImportAttemptTx(tx,ctx,attemptId,handler.kind);
+  await lockImportAttemptHeaderTx(tx,ctx,attemptId,handler.kind);
+  await requireRevertAccessTx(tx,attemptId);
+  const source=await privateImportAttemptTx(tx,attemptId);if(!source||source.kind!==handler.kind)fail('Import attempt unavailable.');
   const plan=await revertPlanTx(tx,ctx,source,handler,true);
   if(plan.blockers.length)fail('This import cannot be reverted because some records changed after it.',plan.blockers);
   if(plan.previewHash!==input.previewHash)fail('What this revert would restore has changed. Review it again before confirming.');
