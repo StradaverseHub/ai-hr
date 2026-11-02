@@ -8,6 +8,7 @@ import {
   assertRosterAdmin,
   assertRosterDatesWritable,
   assignRosterRow,
+  assignRosterRows,
   assignShift,
   assignShiftBulk,
   clearRoster,
@@ -113,14 +114,8 @@ export async function bulkAssignAction(input: {
   try {
     assertRosterAdmin(s);
     assertRosterDatesWritable(s, input.shiftDates);
-    if (input.brush === 'clear') {
-      for (const employmentId of input.employmentIds) {
-        for (const shiftDate of input.shiftDates) await clearRoster(s, { employmentId, shiftDate });
-      }
-    } else if (input.brush === 'rest') {
-      for (const employmentId of input.employmentIds) {
-        for (const shiftDate of input.shiftDates) await setRestDay(s, { employmentId, shiftDate });
-      }
+    if (input.brush === 'clear' || input.brush === 'rest') {
+      await assignRosterRows(s, input);
     } else {
       await assignShiftBulk(s, { employmentIds: input.employmentIds, shiftDates: input.shiftDates, shiftId: input.brush });
     }

@@ -2155,10 +2155,10 @@ export async function assignShift(ctx: SessionContext, p: { employmentId: string
 }
 
 /** Mark a date as an explicit rest day for an employee (vs no row = company-policy fallback). */
-export async function setRestDay(ctx: SessionContext, p: { employmentId: string; shiftDate: string; note?: string }) {
+export async function setRestDay(ctx: SessionContext, p: { employmentId: string; shiftDate: string; note?: string }, existingTx?: Tx) {
   p={...p};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async (tx) => {
+  const perform = async (tx: Tx) => {
     await assertDutyRosterWriteTx(tx,ctx,[{...p,shiftId:null,isRestDay:true}]);
     const before = await rosterRowBefore(tx, p.employmentId, p.shiftDate);
     const [row] = await tx
@@ -2179,7 +2179,8 @@ export async function setRestDay(ctx: SessionContext, p: { employmentId: string;
       payload: { employmentId: p.employmentId, shiftDate: p.shiftDate, ...before },
     });
     return { id: row.id };
-  });
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
 }
 
 /**
