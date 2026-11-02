@@ -110,6 +110,8 @@ describe('AI centre step 5, rendered per role', () => {
     // In place: no fragment to scroll to, and the link keeps the page where it is (staging acceptance, 3 November 2026).
     expect(closed.container.querySelector('[data-recommendation-loader]')).toHaveAttribute('href', `/assistant?view=inbox&recommend=${LEAVE_ID}`);
     expect(closed.container.querySelector('[data-recommendation]')).toBeNull();
+    // Review opens the native page carrying the allow-listed Inbox origin, so that page offers the way back.
+    expect(closed.container.querySelector(`[data-proposal-card] a[href^="/approvals"]`)).toHaveAttribute('href', `/approvals?kind=leave&id=${LEAVE_ID}&from=ai-inbox`);
     closed.unmount();
     const view = wrap(<div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="inbox" isAdmin={false} />{await AiCentreInbox({ session, recommend: LEAVE_ID })}</div>);
     const panel = view.container.querySelector('[data-recommendation]') as HTMLElement;

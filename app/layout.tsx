@@ -69,6 +69,7 @@ import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlem
 import { currentUiTheme } from '@/lib/ui-theme-server';
 import { UiThemeProvider } from '@/components/ui-theme-context';
 import { NavIndexProvider } from '@/components/nav-index-context';
+import { BackToInbox } from '@/components/ai-centre/back-to-inbox';
 import { IntentBar } from '@/components/intent-bar';
 import { ShellRoutePath, ShellLiveClock, ShellStatusLine } from '@/components/shell-top-line';
 
@@ -474,7 +475,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   still allows PROGRAMMATIC scrolling — so any focus/scrollIntoView deep in a long
                   page shifted the whole canvas (header + sidebar off-screen) with no wheel recovery.
                   Making main the containing block keeps that overflow inside the scroller. */}
-              <main className="relative min-w-0 flex-1 overflow-y-auto pb-1"><AssistantImportHandoffProvider key={personnelImportBrowserKey(session,scopeIds??allowed.map(company=>company.id))}>{children}</AssistantImportHandoffProvider></main>
+              <main className="relative min-w-0 flex-1 overflow-y-auto pb-1"><Suspense fallback={null}><BackToInbox /></Suspense><AssistantImportHandoffProvider key={personnelImportBrowserKey(session,scopeIds??allowed.map(company=>company.id))}>{children}</AssistantImportHandoffProvider></main>
               <ShellStatusLine companies={allowed} selected={scopeIds} />
             </div>
           </div>

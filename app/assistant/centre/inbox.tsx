@@ -18,6 +18,7 @@ import { readLeaveRecommendation } from './recommendation';
 import { workerRunGate } from '@/core/agent-registry/controls';
 import { RECOMMENDER_WORKER } from '@/core/recommenders/leave-decision';
 import { FocusOnMount } from '@/components/ai-centre/focus-on-mount';
+import { withInboxOrigin } from '@/lib/ai-centre/inbox-origin';
 
 type Finding = { key: 'exceptions' | 'proposals' | 'readiness'; count: number; blocking?: number; href: string };
 
@@ -146,7 +147,7 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
                 <li key={`${task.kind}:${task.id}`}>
                   <ProposalCard tone="decide" icon={task.kind === 'noticeAcknowledgement' ? <ListChecks /> : <CalendarCheck />} title={taskTitle(task)}
                     meta={[t('inbox.items.fromApprovals'), f.dateTime(new Date(task.createdAt), { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' })]}
-                    href={task.linkPath} cta={t('inbox.items.review')} awaitingLabel={t('card.awaiting')} prepared={approvalPrepared} />
+                    href={withInboxOrigin(task.linkPath)} cta={t('inbox.items.review')} awaitingLabel={t('card.awaiting')} prepared={approvalPrepared} />
                   {task.kind === 'leave' && (opened?.id === task.id
                     ? <><RecommendationPanel id={`recommendation-${task.id}`} view={opened.view} /><FocusOnMount targetId={`recommendation-${task.id}`} /></>
                     : recommender ? <LeaveRecommendationLink leaveRequestId={task.id} /> : null)}
