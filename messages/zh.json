@@ -29772,7 +29772,10 @@
     "matrixEdit": "编辑",
     "matrixDelete": "删除",
     "matrixWorkforce": "员工",
-    "matrixOther": "其他权限"
+    "matrixOther": "其他权限",
+    "matrixPayroll": "薪资",
+    "matrixPerformanceCompensation": "绩效与薪酬",
+    "matrixLetters": "信函"
   },
   "myPayslip": {
     "title": "我的工资单",

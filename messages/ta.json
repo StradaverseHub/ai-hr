@@ -29772,7 +29772,10 @@
     "matrixEdit": "திருத்து",
     "matrixDelete": "நீக்கு",
     "matrixWorkforce": "பணியாளர்கள்",
-    "matrixOther": "மற்ற அனுமதிகள்"
+    "matrixOther": "மற்ற அனுமதிகள்",
+    "matrixPayroll": "சம்பளப்பட்டியல்",
+    "matrixPerformanceCompensation": "செயல்திறன் மற்றும் இழப்பீடு",
+    "matrixLetters": "கடிதங்கள்"
   },
   "myPayslip": {
     "title": "எனது ஊதியச்சீட்டு",

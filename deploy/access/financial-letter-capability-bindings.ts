@@ -13,11 +13,14 @@ const letters=['view','add','edit','delete','approve','issue'].map(operation=>({
  {owner:'app.access_letter_action_for_user',operation:`letters-${operation}`},
  {owner:operation==='view'?'app.letter_permission_for_user_at':'app.access_letter_write_guard',operation:'native-letter-acl-and-exact-action-floor'},
 ]}));
-const letterLegacy=['system_administrator','hr_admin','manager','employee','payroll_partner','performance_comp_partner'];
+const letterLegacy=['system_administrator','hr_admin'];
 export const FINANCIAL_LETTER_CAPABILITY_PUBLICATION={
  capabilities:[...finance,...letters],
+ legacyParityFunction:'app.financial_letter_legacy_allowed',
+ delegationFloorFunction:'app.financial_letter_delegation_allowed',
  requiredFunctions:[
   'app.financial_letter_legacy_allowed(uuid,uuid,text,uuid)',
+  'app.financial_letter_delegation_allowed(uuid,uuid,text,uuid)',
   'app.access_financial_action_company(text,uuid,text)',
   'app.access_financial_action_employment(text,uuid,text)',
   'app.access_financial_write_guard()',
