@@ -1,3 +1,4 @@
+import {assertModuleFunctionTx} from './module-action-access';
 import { tenantMutation } from '../db/tenant-mutation';
 /**
  * Admin / setup services — org structure, leave config, and role management.
@@ -795,6 +796,7 @@ export async function createLeaveType(
   return withTenant(ctx, async (tx) => {
     // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
     // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await assertModuleFunctionTx(tx,'leaveConfig.types','add');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // Name uniqueness (feedback 097de541): case-insensitive, ACTIVE types only (mirrors the partial code
     // index which only guards archived_at IS NULL). Enforced in the service — not a DB index — because
@@ -3966,6 +3968,7 @@ export async function updateLeaveType(
   return withTenant(ctx, async (tx) => {
     // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
     // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await assertModuleFunctionTx(tx,'leaveConfig.types','edit');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [before] = await tx
       .select({
@@ -4700,6 +4703,7 @@ export async function setLeaveTypeRules(
   return withTenant(ctx, async (tx) => {
     // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
     // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await assertModuleFunctionTx(tx,'leaveConfig.types','edit');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // r299 (3de1453a) — WHAT THIS TYPE IS, read apart from the rule row below so the rules event keeps
     // exactly the shape it always had. `role` + `code` are what `isEarnedAccrualType` reads.
@@ -4826,6 +4830,7 @@ export function archiveLeaveType(ctx: SessionContext, p: { id: string; archived:
   return withTenant(ctx, async (tx) => {
     // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
     // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await assertModuleFunctionTx(tx,'leaveConfig.types',p.archived?'delete':'edit');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // r299 (3de1453a) — RESTORING MUST NOT MAKE A SECOND ACTIVE ANNUAL LEAVE. The switch refuses to create
     // one; unarchiving is the other door to the same state (production holds an ARCHIVED "Annual Leave" that
@@ -4903,6 +4908,7 @@ export async function deleteLeaveType(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
     // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
     // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await assertModuleFunctionTx(tx,'leaveConfig.types','delete');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // 1. REFUSE on history. Counted from the shared declaration, so this can never count a different set
     //    of tables from the predicate that decided to show the button.

@@ -13,6 +13,8 @@ const CLAIM_CONFIGURATION_FUNCTIONS:readonly FunctionActionDescriptor[]=(['types
 }));
 
 export const LEAVE_ATTENDANCE_CLAIM_FUNCTIONS:readonly FunctionActionDescriptor[]=[...CLAIM_CONFIGURATION_FUNCTIONS,
+ {key:'leaveConfig.types',scope:'tenant',moduleKey:'leave',labelKey:'admin.leave.typesSectionTitle',kind:'submenu',course:'administrative',screenKey:'leaveConfig',href:'/admin/leave-config/types',employeeBearing:false,
+  actions:(['view','add','edit','delete'] as const).map(operation=>({operation,parentCapability:'leave_configuration.'+operation,delegationFloorFunction:'app.module_action_current_legacy_allowed',bindings:[{owner:operation==='view'?'app.module_function_allowed':'app.module_catalogue_action_guard',operation:'native-leave-type-'+operation},{owner:'core/admin.ts',operation:'actual-leave-type-owner'}]}))},
  {key:'claims.own',scope:'company',moduleKey:'claims',labelKey:'claims.title',kind:'native_acl',course:'own',employeeBearing:false,
   actions:(['view','delete'] as const).map(operation=>({operation,parentCapability:null,delegationFloorFunction:'app.claim_own_current_native_allowed',bindings:[{owner:'app.claim_cancel_native',operation:'actual-self-pending-cancellation'},{owner:'app.claim_native_effect_approved',operation:'same-purpose-final-denial'}]}))},
  {key:'claims.administration',scope:'company',moduleKey:'claims',labelKey:'claims.title',kind:'native_acl',course:'administrative',employeeBearing:true,

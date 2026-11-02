@@ -172,7 +172,7 @@ CREATE CONSTRAINT TRIGGER claim_configuration_range_close AFTER UPDATE ON claim_
 CREATE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap
-  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration')
+  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types')
   AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 --> statement-breakpoint
@@ -181,7 +181,7 @@ REVOKE ALL ON FUNCTION app.module_function_legacy_allowed(uuid,uuid,text,uuid) F
 CREATE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap
-  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration')
+  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types')
   AND app.module_action_current_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 --> statement-breakpoint
@@ -202,7 +202,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT coalesce((SELECT app.module_action_allowed(split_part(a.parent_capability,'.',1),split_part(a.parent_capability,'.',2),p_company)
   AND app.function_action_allowed(p_key,p_operation,p_company)
   FROM app.access_function_action a WHERE a.function_key=p_key AND a.operation=p_operation
-   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration')),false);
+   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types')),false);
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.module_function_allowed(text,text,uuid) FROM PUBLIC;
@@ -332,3 +332,42 @@ END; $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.claim_payment_and_cancel_guard() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER claim_payment_and_cancel_guard AFTER INSERT OR UPDATE ON public.claim_request DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_payment_and_cancel_guard();
+
+--> statement-breakpoint
+-- Maintenance-purpose library guard; shared employee/reference/calculation SELECT remains native.
+CREATE FUNCTION app.module_catalogue_action_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE old_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ new_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF coalesce(new_row->>'tenant_id',old_row->>'tenant_id') IS DISTINCT FROM app.current_tenant_id()::text
+  OR TG_OP='UPDATE' AND (old_row->>'id' IS DISTINCT FROM new_row->>'id' OR old_row->>'tenant_id' IS DISTINCT FROM new_row->>'tenant_id') THEN RAISE EXCEPTION 'Module catalogue identity unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='UPDATE' AND old_row->>'archived_at' IS NULL AND new_row->>'archived_at' IS NOT NULL THEN operation:='delete';END IF;
+ IF NOT app.module_action_allowed(TG_ARGV[0],operation,NULL) OR NOT app.function_action_allowed(TG_ARGV[1],operation,NULL) THEN RAISE EXCEPTION 'Module catalogue action unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.module_catalogue_action_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_catalogue_action BEFORE INSERT OR UPDATE OR DELETE ON public.leave_type FOR EACH ROW EXECUTE FUNCTION app.module_catalogue_action_guard('leave_configuration','leaveConfig.types');
+--> statement-breakpoint
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+  PERFORM app.register_function_action('leaveConfig.types',operation,'tenant','leave_configuration.'||operation,'app.module_action_current_legacy_allowed','{"moduleKey":"leave","labelKey":"admin.leave.typesSectionTitle","kind":"submenu","course":"administrative","screenKey":"leaveConfig","href":"/admin/leave-config/types","employeeBearing":false}'::jsonb);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.module_configuration_write_lock() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN PERFORM app.access_workforce_write_lock();END IF;RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.module_configuration_write_lock() FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE relation_name text;BEGIN
+ FOREACH relation_name IN ARRAY ARRAY['claim_type','claim_item','claim_policy','claim_mileage_rate','claim_form_field','leave_type'] LOOP
+  EXECUTE format('CREATE TRIGGER module_configuration_write_lock BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock()',relation_name);
+ END LOOP;
+END $$;
