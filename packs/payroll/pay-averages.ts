@@ -25,7 +25,7 @@
  *     least PAY_AVERAGE_MINIMUM_GROUP people together; otherwise the smallest published group is suppressed too;
  *  4. a suppressed company suppresses all its departments; the all-companies total is published only when every
  *     company with a run shares one currency.
- * A suppressed group shows no headcount and no figure. Medians are rounded to the nearest 10 currency units, so an
+ * A suppressed group shows why (withheldBecause) and no headcount or figure. Medians are rounded to the nearest 10 currency units, so an
  * odd-sized group's median is never one person's exact pay; averages are rounded half up to the cent. */
 import {and,asc,desc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
@@ -42,11 +42,11 @@ export const PAY_AVERAGE_MEASURE_LABEL='Basic pay paid in each company\'s latest
 export type PayAverageBreakdown='company'|'department';
 export type SuppressionReason='fewer_than_minimum'|'complement_too_small'|'protects_another_group'|'company_suppressed';
 export type PayAverageFigures=Readonly<{headcount:number;average:string;median:string}>;
-export type PayAverageCell=Readonly<{status:'published'}&PayAverageFigures>|Readonly<{status:'suppressed';reason:SuppressionReason}>;
+export type PayAverageCell=Readonly<{status:'published'}&PayAverageFigures>|Readonly<{status:'suppressed';withheldBecause:SuppressionReason}>;
 export type PayAverageDepartment=Readonly<{department:string|null}>&PayAverageCell;
 export type PayAverageCompany=Readonly<{companyId:string;company:string;currency:string;payPeriod:string;departments?:readonly PayAverageDepartment[]}>&PayAverageCell
  |Readonly<{companyId:string;company:string;currency:string;status:'no_closed_run'}>;
-export type PayAverageOverall=Readonly<{currency:string}>&PayAverageCell|Readonly<{status:'not_combined';reason:'mixed_currencies'}>|Readonly<{status:'no_closed_run'}>;
+export type PayAverageOverall=Readonly<{currency:string}>&PayAverageCell|Readonly<{status:'not_combined';withheldBecause:'mixed_currencies'}>|Readonly<{status:'no_closed_run'}>;
 export type PayAverages=Readonly<{ok:true;measure:typeof PAY_AVERAGE_MEASURE;measureLabel:string;breakdown:PayAverageBreakdown;minimumGroup:number;
  /** Always every company in the caller's scope, whatever the filter: a filtered total would difference a suppressed company. */
  overall:PayAverageOverall;companies:readonly PayAverageCompany[]}>;
@@ -99,7 +99,7 @@ export function suppressChildren(parent:number,children:readonly Readonly<{key:s
 }
 /** Code-point order: the same in every runtime and locale. */
 const compare=(a:string,b:string)=>a<b?-1:a>b?1:0;
-const cell=(values:readonly number[],reason:SuppressionReason|undefined):PayAverageCell=>reason?{status:'suppressed',reason}:{status:'published',...figuresOf(values)};
+const cell=(values:readonly number[],reason:SuppressionReason|undefined):PayAverageCell=>reason?{status:'suppressed',withheldBecause:reason}:{status:'published',...figuresOf(values)};
 
 /** The whole result from rows already read. Pure. `companies` lists every company in the caller's scope, in output
  * order; departments are listed by name, then key, with people of no single current department last. */
@@ -123,7 +123,7 @@ export function payAverageCells(companies:readonly PayAverageCompanyInput[],rows
  const companyDecisions=combined&&!overallSuppressed
   ?suppressChildren(allValues.length,withRun.map(row=>({key:row.companyId,people:valuesOf(row.companyId).length})))
   :new Map(withRun.filter(row=>valuesOf(row.companyId).length<PAY_AVERAGE_MINIMUM_GROUP||overallSuppressed).map(row=>[row.companyId,'fewer_than_minimum' as SuppressionReason]));
- const overall:PayAverageOverall=!withRun.length?{status:'no_closed_run'}:!combined?{status:'not_combined',reason:'mixed_currencies'}
+ const overall:PayAverageOverall=!withRun.length?{status:'no_closed_run'}:!combined?{status:'not_combined',withheldBecause:'mixed_currencies'}
   :{currency:[...currencies][0],...cell(allValues,overallSuppressed?'fewer_than_minimum':undefined)};
  const output=companies.filter(row=>!select||select.has(row.companyId)).map((row):PayAverageCompany=>{
   const base={companyId:row.companyId,company:row.company,currency:row.currency};

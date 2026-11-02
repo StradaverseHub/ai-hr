@@ -28,8 +28,8 @@ const people=(companyId:string,departmentKey:string|null,cents:readonly number[]
 const sized=(companyId:string,departmentKey:string|null,count:number,from=300_000)=>people(companyId,departmentKey,Array.from({length:count},(_,index)=>from+index*1_013+(index*index)%7));
 const NAMES=new Map([['d-a','Fictional Assembly'],['d-b','Fictional Bindery'],['d-c','Fictional Coating'],['d-d','Fictional Dispatch']]);
 type Row=PayAverages['companies'][number];
-const departments=(row:Row|undefined)=>(row&&'departments' in row?row.departments??[]:[]).map(cell=>[cell.department,cell.status,'reason' in cell?cell.reason:null]);
-const statusOf=(result:PayAverages)=>result.companies.map(row=>[row.company,row.status,'reason' in row?row.reason:null]);
+const departments=(row:Row|undefined)=>(row&&'departments' in row?row.departments??[]:[]).map(cell=>[cell.department,cell.status,'withheldBecause' in cell?cell.withheldBecause:null]);
+const statusOf=(result:PayAverages)=>result.companies.map(row=>[row.company,row.status,'withheldBecause' in row?row.withheldBecause:null]);
 
 // Fictional basic pay in cents. Expected figures below were computed by hand from these values.
 const A=[310137,325042,298811,412590,356277,287903],B=[505011,498733,512399,487265,530146],C=[221055,234567,219821,240289,228734];
@@ -54,7 +54,7 @@ describe('pay average statistics (pure)',()=>{
   expect(departments(four.companies[0])).toEqual([['Fictional Assembly','suppressed','protects_another_group'],['Fictional Bindery','suppressed','fewer_than_minimum'],['Fictional Coating','published',null]]);
   expect(four.companies[0]).toMatchObject({status:'published',headcount:19});
   const cell=four.companies[0] as unknown as {departments:readonly Record<string,unknown>[]};
-  for(const hidden of cell.departments.filter(row=>row.status==='suppressed'))expect(Object.keys(hidden).sort()).toEqual(['department','reason','status']);
+  for(const hidden of cell.departments.filter(row=>row.status==='suppressed'))expect(Object.keys(hidden).sort()).toEqual(['department','status','withheldBecause']);
  });
  it('withholds a department whose complement in its company is one to four people',()=>{
   const two=payAverageCells([company(C1,'Fictional One')],[...sized(C1,'d-a',10),...sized(C1,'d-b',3)],NAMES,'department');
@@ -90,12 +90,12 @@ describe('pay average statistics (pure)',()=>{
   const three=payAverageCells([...companies,company(C3,'Fictional Three')],[...sized(C1,'d-a',12),...sized(C2,'d-b',6),...sized(C3,'d-c',2)],NAMES,'company');
   expect(statusOf(three)).toEqual([['Fictional One','published',null],['Fictional Two','suppressed','protects_another_group'],['Fictional Three','suppressed','fewer_than_minimum']]);
   // A combined total of four people publishes nothing.
-  expect(payAverageCells(companies,[...sized(C1,'d-a',2),...sized(C2,'d-b',2)],NAMES,'company').overall).toEqual({currency:'MYR',status:'suppressed',reason:'fewer_than_minimum'});
+  expect(payAverageCells(companies,[...sized(C1,'d-a',2),...sized(C2,'d-b',2)],NAMES,'company').overall).toEqual({currency:'MYR',status:'suppressed',withheldBecause:'fewer_than_minimum'});
  });
  it('does not combine currencies, and lists a company with no closed run without figures',()=>{
   const result=payAverageCells([company(C1,'Fictional One'),company(C2,'Fictional Two','SGD'),company(C3,'Fictional Three','MYR',null)],
    [...people(C1,'d-a',A),...people(C1,'d-b',B),...sized(C2,'d-c',3)],NAMES,'company');
-  expect(result.overall).toEqual({status:'not_combined',reason:'mixed_currencies'});
+  expect(result.overall).toEqual({status:'not_combined',withheldBecause:'mixed_currencies'});
   // With no published total there is nothing to difference against: only the small company is withheld.
   expect(statusOf(result)).toEqual([['Fictional One','published',null],['Fictional Two','suppressed','fewer_than_minimum'],['Fictional Three','no_closed_run',null]]);
   expect(result.companies[0]).toMatchObject({headcount:11,average:'4113.01',median:'4130.00'});
@@ -103,7 +103,7 @@ describe('pay average statistics (pure)',()=>{
  it('lets a filter select companies but never change a figure or a decision',()=>{
   const companies=[company(C1,'Fictional One'),company(C2,'Fictional Two')],rows=[...people(C1,'d-a',A),...people(C1,'d-b',B),...sized(C2,'d-c',3)];
   const whole=payAverageCells(companies,rows,NAMES,'department'),one=payAverageCells(companies,rows,NAMES,'department',new Set([C1]));
-  expect(one.companies).toEqual([whole.companies[0]]);expect(one.companies[0]).toMatchObject({status:'suppressed',reason:'complement_too_small'});
+  expect(one.companies).toEqual([whole.companies[0]]);expect(one.companies[0]).toMatchObject({status:'suppressed',withheldBecause:'complement_too_small'});
   // The total stays every company in scope: a filtered total minus a published company would describe the withheld one.
   expect(one.overall).toEqual(whole.overall);
  });
@@ -147,15 +147,15 @@ async function run(base:Base,companyId:string,value:string,slips:readonly Slip[]
  return batch.id;
 }
 const money=(cents:number)=>(cents/100).toFixed(2);
-type Fixture={deptA:Hired[];deptB:Hired[];c2:Hired[];latestB:string;all:readonly number[]};
+type Fixture={deptA:Hired[];deptB:Hired[];c2:Hired[];all:readonly number[]};
 /** Company 1: six people in department A and six in B, of whom five are on the latest closed regular run; company 2:
  * five people. Older, draft and off-cycle runs carry figures that must never be read. Another tenant has its own run. */
-async function fixture():Promise<Fixture>{
+async function fixture(onLatestB=B.length):Promise<Fixture>{
  const {b,b2,company2,dept2}=m;
  const deptA=await hireAll(b,b.companyId,b.deptA,'A',A.length),deptB=await hireAll(b,b.companyId,b.deptB,'B',B.length+1),c2=await hireAll(b,company2,dept2,'C',C.length);
  // The first department A payslip prints a re-categorised Basic (displayEarnings) different from its stored column.
- const latestB=await run(b,b.companyId,RUN,[...A.map((value,index)=>index===0?{employmentId:deptA[index].employmentId,basic:'3000.00',display:value/100}:{employmentId:deptA[index].employmentId,basic:money(value)}),
-  ...B.map((value,index)=>({employmentId:deptB[index].employmentId,basic:money(value)}))]);
+ await run(b,b.companyId,RUN,[...A.map((value,index)=>index===0?{employmentId:deptA[index].employmentId,basic:'3000.00',display:value/100}:{employmentId:deptA[index].employmentId,basic:money(value)}),
+  ...B.slice(0,onLatestB).map((value,index)=>({employmentId:deptB[index].employmentId,basic:money(value)}))]);
  const ignored=(people:readonly Hired[])=>people.map(person=>({employmentId:person.employmentId,basic:'9876.54'}));
  await run(b,b.companyId,OLDER,ignored([...deptA,...deptB]));
  await run(b,b.companyId,DRAFT,ignored([...deptA,...deptB]),{status:'processed'});
@@ -163,7 +163,7 @@ async function fixture():Promise<Fixture>{
  await run(b,company2,RUN,C.map((value,index)=>({employmentId:c2[index].employmentId,basic:money(value)})));
  const other=await hireAll(b2,b2.companyId,b2.deptA,'Other',5);
  await run(b2,b2.companyId,RUN,other.map(person=>({employmentId:person.employmentId,basic:'4321.09'})));
- return{deptA,deptB,c2,latestB,all:[...A,...B,...C]};
+ return{deptA,deptB,c2,all:[...A,...B,...C]};
 }
 const ok=(result:Awaited<ReturnType<typeof payAverages>>):PayAverages=>{if(!result.ok)throw Error('Refused: '+result.message);return result;};
 /** The actor's session with the tenant's current modules (setModule after the matrix was built). */
@@ -188,13 +188,13 @@ describe('pay averages over the payroll owner, as the caller',()=>{
   ]);
  });
  it('suppresses after those filters: four people on the latest run are withheld, with the department they would reveal',async()=>{
-  const {deptB,latestB}=await fixture();
-  await owner.db.delete(schema.payslip).where(and(eq(schema.payslip.batchId,latestB),eq(schema.payslip.employmentId,deptB[4].employmentId)));
+  // Closed payslips cannot be deleted (app.guard_closed_payslip), so this fixture puts only four of B on the latest run.
+  await fixture(4);
   const result=ok(await payAverages(await session(m.groupAdmin),{breakdown:'department'}));
   // Department B keeps six employments and payslips on other runs; only four are on the latest closed regular run.
   const first=result.companies[0] as unknown as {departments:readonly Record<string,unknown>[]};
   expect(result.companies[0]).toMatchObject({status:'published',headcount:10,average:'3994.17',median:'3840.00'});
-  expect(first.departments.map(row=>[row.status,row.reason]).sort()).toEqual([['suppressed','complement_too_small'],['suppressed','fewer_than_minimum']]);
+  expect(first.departments.map(row=>[row.status,row.withheldBecause]).sort()).toEqual([['suppressed','complement_too_small'],['suppressed','fewer_than_minimum']]);
   expect(JSON.stringify(first.departments)).not.toMatch(/headcount|average|median/);
  });
  it('refuses everyone without payroll access, and a session claiming access the database does not hold',async()=>{
@@ -221,7 +221,8 @@ describe('pay averages over the payroll owner, as the caller',()=>{
   expect(other.companies).toEqual([expect.objectContaining({companyId:m.b2.companyId,status:'published',headcount:5,average:'4321.09'})]);
   for(const text of [m.b.companyId,m.company2,'Second Company','4113','3542','2288'])expect(JSON.stringify(other)).not.toContain(text);
   // A company whose payroll module is off is out of scope too.
-  await setModule(m.b.tenantId,'payroll','disabled',m.company2);
+  // Module rows only grant (core/entitlements.ts): payroll off tenant-wide, on for the first company alone.
+  await setModule(m.b.tenantId,'payroll','disabled');await setModule(m.b.tenantId,'payroll','active',m.b.companyId);
   expect(await names(m.groupAdmin)).toEqual(['Acme Sdn Bhd']);
  });
 

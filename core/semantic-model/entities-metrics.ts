@@ -26,7 +26,7 @@ export const PAY_AGGREGATE_REASONS=['fewer_than_minimum','complement_too_small',
 /** The figures of one group; absent when the group is suppressed. */
 const figures=():SemanticField[]=>[
  f('status','enum','full','published; suppressed (no figure is shown); no_closed_run (no closed regular payroll run with payslips); not_combined (companies pay in different currencies).',{values:PAY_AGGREGATE_STATUSES}),
- f('reason','enum','full','Why the group is not shown: fewer than five people, a complement of one to four people, protecting another withheld group, its company withheld, or mixed currencies.',{values:PAY_AGGREGATE_REASONS}),
+ f('withheldBecause','enum','full','Why the group is not shown: fewer than five people, a complement of one to four people, protecting another withheld group, its company withheld, or mixed currencies.',{values:PAY_AGGREGATE_REASONS}),
  f('headcount','integer','bands','People in the group.'),
  f('average','number','bands','Average of the measure over the group, to the cent.'),
  f('median','number','bands','Median of the measure over the group, rounded to the nearest 10 currency units.'),
