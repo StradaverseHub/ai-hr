@@ -333,20 +333,22 @@ export default async function DashboardCardConfigPage({
                     {returnFields}
 
                     <label className="flex flex-col gap-1">
-                      <span className="text-sm font-medium">{t('fieldKey')}</span>
+                      <span id="dashboard-card-key-label" className="text-sm font-medium">{t('fieldKey')}</span>
                       {editing ? (
                         // card_key is immutable on edit — it binds the row to a concrete renderer.
-                        <input className={`${inputCls} font-mono`} value={editing.cardKey} readOnly disabled />
+                        <input aria-labelledby="dashboard-card-key-label" aria-describedby="dashboard-card-key-hint" className={`${inputCls} font-mono`} value={editing.cardKey} readOnly disabled />
                       ) : (
                         <input
                           name="cardKey"
+                          aria-labelledby="dashboard-card-key-label"
+                          aria-describedby="dashboard-card-key-hint"
                           defaultValue=""
                           required
                           placeholder="myCard"
                           className={`${inputCls} font-mono`}
                         />
                       )}
-                      <span className="text-xs text-muted-foreground">{t('fieldKeyHint')}</span>
+                      <span id="dashboard-card-key-hint" className="text-xs text-muted-foreground">{t('fieldKeyHint')}</span>
                     </label>
 
                     <label className="flex flex-col gap-1">

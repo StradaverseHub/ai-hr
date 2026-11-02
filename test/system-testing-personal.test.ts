@@ -40,7 +40,8 @@ describe('personal System Testing isolation and immutable instructions', () => {
     expect((await listTestingAssignments(one)).rows.map(row=>row.assignmentId)).toContain(f.a.assignmentId);
     expect((await getTestingExecution(one,f.execution.executionId)).execution.id).toBe(f.execution.executionId);
     for(const read of [()=>listTestingLibrary(forged),()=>getTestingLibraryCase(forged,f.draft.caseId),()=>listTestingTesterOptions(forged),()=>listTestingAssignments(forged,{team:true}),()=>getTestingExecution(forged,f.execution.executionId,{team:true})]){
-      await expect(read()).rejects.toMatchObject({code:'not_assigned'});
+      // The canonical committed authority stamp rejects forged role claims before the library reader.
+      await expect(read()).rejects.toThrow('Forbidden: Data access is no longer available.');
     }
     expect((await getTestingExecution(one,f.execution.executionId)).execution.revision).toBe(0);
     const unassigned=await createAppUser(b.tenantId,null,'employee'),forgedUnassigned={...one,userId:unassigned,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};

@@ -542,6 +542,10 @@ CREATE OR REPLACE FUNCTION app.access_workforce_document_write() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE action text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
 BEGIN
+ -- Preserve the native approved Letters filing course: exact sealed artifact,
+ -- current source, issuer, employment and immutable pointer metadata only.
+ IF TG_OP='INSERT' AND NEW.letter_artifact_id IS NOT NULL
+  AND app.letter_document_pointer_allowed(to_jsonb(NEW)) THEN RETURN NEW;END IF;
  IF NOT app.access_workforce_storage_owner() THEN
   IF TG_OP='UPDATE' THEN
    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id

@@ -444,13 +444,13 @@ $$;
 --> statement-breakpoint
 -- Administrative library reads narrow with Settings View; actual assigned tester courses remain independent.
 CREATE POLICY settings_test_case_read ON public.test_case AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR app.testing_assigned(id));
+ USING(tenant_id=app.current_tenant_id() AND (app.organisation_settings_function_allowed('systemTesting','view',NULL) OR app.testing_assigned(id)));
 CREATE POLICY settings_test_version_read ON public.test_case_version AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR app.testing_assigned(test_case_id));
+ USING(tenant_id=app.current_tenant_id() AND (app.organisation_settings_function_allowed('systemTesting','view',NULL) OR app.testing_assigned(test_case_id)));
 CREATE POLICY settings_test_assignment_read ON public.test_assignment AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR tester_user_id=app.current_user_id());
+ USING(tenant_id=app.current_tenant_id() AND (app.organisation_settings_function_allowed('systemTesting','view',NULL) OR tester_user_id=app.current_user_id()));
 CREATE POLICY settings_test_catalogue_read ON public.test_catalogue_update AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING(app.organisation_settings_function_allowed('systemTesting','view',NULL));
+ USING(tenant_id=app.current_tenant_id() AND (app.organisation_settings_function_allowed('systemTesting','view',NULL)));
 
 --> statement-breakpoint
 -- Candidate custody and protocol receipts are real configuration commands, not live-provider rows.
@@ -610,18 +610,18 @@ GRANT EXECUTE ON FUNCTION app.home_card_interactions_summary() TO ai_hr_app;
 -- Administrative reads cannot borrow this actor's independently assigned tester
 -- course. Original permissive policies still establish every native own-row fact.
 CREATE POLICY settings_testing_execution_read ON public.test_execution AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR tester_user_id=app.current_user_id());
+ USING(tenant_id=app.current_tenant_id() AND (app.organisation_settings_function_allowed('systemTesting','view',NULL) OR tester_user_id=app.current_user_id()));
 CREATE POLICY settings_testing_run_read ON public.test_run AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR app.testing_owns_execution(execution_id));
+ USING(tenant_id=app.current_tenant_id() AND (app.organisation_settings_function_allowed('systemTesting','view',NULL) OR app.testing_owns_execution(execution_id)));
 CREATE POLICY settings_testing_attachment_read ON public.test_execution_attachment AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING(app.organisation_settings_function_allowed('systemTesting','view',NULL) OR app.testing_owns_execution(execution_id));
+ USING(tenant_id=app.current_tenant_id() AND (app.organisation_settings_function_allowed('systemTesting','view',NULL) OR app.testing_owns_execution(execution_id)));
 -- Retired legacy observation creation has no native command. Actual assigned
 -- execution/run creation remains its independent existing native owner.
 CREATE POLICY settings_testing_run_insert ON public.test_run AS RESTRICTIVE FOR INSERT TO ai_hr_app
- WITH CHECK(execution_id IS NOT NULL AND app.testing_owns_execution(execution_id));
+ WITH CHECK(tenant_id=app.current_tenant_id() AND (execution_id IS NOT NULL AND app.testing_owns_execution(execution_id)));
 CREATE POLICY settings_testing_run_update ON public.test_run AS RESTRICTIVE FOR UPDATE TO ai_hr_app
- USING(app.testing_owns_execution(execution_id) OR execution_id IS NULL AND app.organisation_settings_function_allowed('systemTesting','edit',NULL))
- WITH CHECK(app.testing_owns_execution(execution_id) OR execution_id IS NULL AND app.organisation_settings_function_allowed('systemTesting','edit',NULL));
+ USING(tenant_id=app.current_tenant_id() AND (app.testing_owns_execution(execution_id) OR execution_id IS NULL AND app.organisation_settings_function_allowed('systemTesting','edit',NULL)))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND (app.testing_owns_execution(execution_id) OR execution_id IS NULL AND app.organisation_settings_function_allowed('systemTesting','edit',NULL)));
 DO $$ DECLARE relation_name text;BEGIN
  FOREACH relation_name IN ARRAY ARRAY['test_case','test_case_version','test_assignment','test_catalogue_update'] LOOP
   EXECUTE format('CREATE TRIGGER organisation_settings_upsert_lock BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION app.organisation_settings_upsert_lock()',relation_name);
