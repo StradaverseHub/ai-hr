@@ -22,6 +22,7 @@
  * AIHR_ASSISTANT_SMART_EVAL summary line. scripts/teras/compare-smart-eval.ts compares runs. Hard assertions are only that
  * the run measured something (the first pass complete, at most 10% errored turns) and that no internal identifier
  * reached the model or a reply; quality and safety scores are reported, not asserted. */
+import {AsyncLocalStorage} from 'node:async_hooks';
 import {createHash,randomUUID} from 'node:crypto';
 import {mkdirSync,readdirSync,writeFileSync} from 'node:fs';
 import {join,relative} from 'node:path';
@@ -77,6 +78,9 @@ const wire=(message:HarnessMessage):Message=>message.role==='tool'?{role:'tool',
  :{role:message.role,content:message.content};
 /** Everything sent to the evaluated model, for the identifier audit. */
 const sentToModel:string[]=[];
+/** Per model call of a turn: how it finished, the upstream's own finish reason, whether the model returned a refusal and
+ * which upstream served it. Calibration runs showed a canned refusal from every model on two questions; this records why. */
+const callLog=new AsyncLocalStorage<NonNullable<SmartEvalRow['calls']>[number][]>();
 const provider=()=>({data_collection:'deny',zdr:true,only:ALLOWED,allow_fallbacks:false});
 /** The evaluated model, handed to the product harness. The run's call and spend caps apply. */
 const openRouter:ModelClient={get modelId(){return MODEL??'';},async complete(request){
@@ -85,8 +89,10 @@ const openRouter:ModelClient={get modelId(){return MODEL??'';},async complete(re
  const response=await fetch(OPENROUTER,{method:'POST',signal:request.signal,headers:{authorization:'Bearer '+KEY,'content-type':'application/json'},
   body:JSON.stringify({model:MODEL,messages:request.messages.map(wire),tools:request.tools.map(tool=>({type:'function',function:tool})),tool_choice:request.toolChoice,
    max_tokens:request.maxOutputTokens,usage:{include:true},provider:provider()})});
- const body=await response.json() as {choices?:{finish_reason?:string;message?:{content?:string|null;tool_calls?:{id:string;function:{name:string;arguments:string}}[]}}[];usage?:{cost?:number;prompt_tokens?:number;completion_tokens?:number}};
+ const body=await response.json() as {provider?:string;choices?:{finish_reason?:string;native_finish_reason?:string;message?:{content?:string|null;refusal?:string|null;tool_calls?:{id:string;function:{name:string;arguments:string}}[]}}[];usage?:{cost?:number;prompt_tokens?:number;completion_tokens?:number}};
  const cost=typeof body.usage?.cost==='number'?body.usage.cost:0;modelUsd+=cost;
+ const choice=body.choices?.[0];
+ callLog.getStore()?.push({status:response.status,finish:choice?.finish_reason??null,native:choice?.native_finish_reason??null,refusal:Boolean(choice?.message?.refusal),toolCalls:choice?.message?.tool_calls?.length??0,upstream:body.provider??null});
  if(!response.ok||!body.choices?.[0]?.message)throw Error('provider_'+response.status);
  const message=body.choices[0].message,finish=body.choices[0].finish_reason;
  return{content:message.content??null,toolCalls:(message.tool_calls??[]).map(call=>({id:call.id,name:call.function.name,arguments:call.function.arguments??''})),
@@ -211,7 +217,8 @@ describe('AI Centre scored evaluation on fictional data',()=>{
      const head={pass,conversation:conversation.id,turn:item.id,role:conversation.role,locale:item.locale,kind:item.kind,factor:item.factor,source:item.source.kind,
       ...(item.source.kind==='reconstructed'?{issues:item.source.issues}:{}),question:item.question},began=Date.now();
      try{
-      const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId,question:item.question,scope:{companyId:base.companyId,locale:item.locale},model:openRouter,memory,history});
+      const calls:NonNullable<SmartEvalRow['calls']>[number][]=[];
+      const result=await callLog.run(calls,()=>runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId,question:item.question,scope:{companyId:base.companyId,locale:item.locale},model:openRouter,memory,history}));
       const trace=result.trace,wallMs=Date.now()-began,reply=result.reply;
       // Only the cards this turn created: open cards from an earlier turn stay in task memory until confirmed.
       const proposals=result.proposals.filter(row=>Date.parse(row.body.createdAt)>=Date.parse(trace.startedAt)).map(row=>row.body.what.action);
@@ -220,7 +227,7 @@ describe('AI Centre scored evaluation on fictional data',()=>{
        overclaim:overclaim(reply),identifierKinds:[...identifiersIn(reply)],leakedIds:identifiers.filter(id=>reply.includes(id)).length,fixedReply:fixedReplyOf(reply)};
       pending.push({row:{...head,reply,mode:result.mode,gate:trace.gate.privateReads?'open':trace.gate.reason??'open',fallback:obs.fallback,budgetExhausted:obs.budgetExhausted,suggestion:obs.suggestion,proposals,reads:[...result.reads],
        steps:trace.budgets.steps,usd:trace.budgets.spendUsd,inputTokens:trace.budgets.inputTokens,outputTokens:trace.budgets.outputTokens,wallMs,
-       truncated:trace.retries.filter(row=>row.reason==='truncated'||row.reason==='blank').length,firstAttemptCheckFailures:obs.firstAttemptCheckFailures,fixedReply:obs.fixedReply},
+       truncated:trace.retries.filter(row=>row.reason==='truncated'||row.reason==='blank').length,firstAttemptCheckFailures:obs.firstAttemptCheckFailures,fixedReply:obs.fixedReply,calls},
        obs,earlier:[...earlier],item,card:cardText(result.suggestion,proposals)});
       history=[...history,...result.modelTurn];earlier.push({question:item.question,reply});
      }catch(error){

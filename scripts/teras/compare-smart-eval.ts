@@ -25,7 +25,10 @@ export type SmartEvalRow=Readonly<{pass:number;conversation:string;turn:string;r
  /** The pre-read gate: 'open', or why private reads were closed for the turn (a named other person, a sensitive topic …). */
  gate?:string;fallback:boolean;budgetExhausted:string|null;
  suggestion:string|null;proposals:readonly string[];reads:readonly string[];steps:number;usd:number;inputTokens:number;outputTokens:number;wallMs:number;truncated:number;
- firstAttemptCheckFailures:readonly string[];fixedReply:string|null;verdict:JudgeVerdict|null;judgeUsd:number;judgeError?:string;score:TurnScore}>;
+ firstAttemptCheckFailures:readonly string[];fixedReply:string|null;
+ /** Each model call of the turn: HTTP status, finish reason, the upstream's own finish reason, a refusal, tool calls, upstream. */
+ calls?:readonly Readonly<{status:number;finish:string|null;native:string|null;refusal:boolean;toolCalls:number;upstream:string|null}>[];
+ verdict:JudgeVerdict|null;judgeUsd:number;judgeError?:string;score:TurnScore}>;
 export type SmartEvalOutput=Readonly<{kind:'teras.smart-eval';version:1;model:string;allowedProviders:readonly string[];path:string;
  spec:Readonly<{version:number;digest:string}>;judge:Readonly<{model:string;version:number;reasoningEffort:string;seed:number;promptDigest:string}>;
  set:Readonly<{turns:number;digest:string}>;today:string;budgetUsd:number;spentUsd:Readonly<{model:number;judge:number;total:number}>;
