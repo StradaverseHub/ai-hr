@@ -1,12 +1,17 @@
 // `leave:accrue` (ADR-0040 2D-2) — monthly earned-leave accrual, run out-of-band (CLI/cron) like
 // statutory-sync.ts. Enumerates tenants with the owner role, then tops every earned policy up to the
 // amount earned by today via the SAME idempotent accrueEarnedLeave service the admin "Run earned
-// accrual" button calls. Runs with a SYSTEM context (no userId → the domain event's actor is `system`).
+// accrual" button calls. The app connection authenticates a configured service user per tenant.
 // Idempotent: a re-run grants nothing. Schedule monthly on the deploy host, e.g.
+// Provision a dedicated, enabled app user with a current group HR Administrator grant for
+// each in-scope tenant. Its Data Profile must retain full legacy company scope. Set
+// EARNED_LEAVE_SCHEDULER_USERS to a JSON object mapping tenant UUIDs to those app user UUIDs.
+// The job records accrual events under those users and reports missing mappings as failures.
 //   0 2 1 * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/accrue-earned.ts
+import { z } from 'zod';
 import { createDb } from '../db/client';
 import { describeSkips, loadSweepScope } from '../core/sweep-scope';
-import { accrueEarnedLeave, todayInKualaLumpur } from '../core/leave';
+import { accrueScheduledEarnedLeave, todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
 
 async function main() {
@@ -20,6 +25,7 @@ async function main() {
   // UTC day there — the last day of the PREVIOUS month — which would accrue against the wrong period.
   // The admin "Run earned accrual" button already uses this helper (app/admin/actions.ts).
   const asOf = todayInKualaLumpur();
+  const principals = z.record(z.uuid(), z.uuid()).parse(JSON.parse(process.env.EARNED_LEAVE_SCHEDULER_USERS ?? '{}'));
   const owner = createDb(ownerUrl);
   // ADR-0077 slice 9 — standing is consulted BEFORE any transaction opens. A tenant that is not in
   // good standing is stepped over, not attempted: withTenant would refuse the writes anyway, and
@@ -34,9 +40,9 @@ async function main() {
   let failures = 0;
   for (const t of tenants) {
     try {
-      // SYSTEM context: no userId, so actorOf(ctx) records the event actor as `system`. accrueEarnedLeave
-      // runs through the app-role connection (RLS enforced); the hr_admin role authorizes the writes.
-      const { granted } = await accrueEarnedLeave({ tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' }, { asOf });
+      const userId = principals[t.id];
+      if (!userId) throw new Error('Configure EARNED_LEAVE_SCHEDULER_USERS for this tenant.');
+      const { granted } = await accrueScheduledEarnedLeave(t.id, userId, asOf);
       totalGranted += granted;
       console.log(`  ✓ ${t.name} (${t.id}): ${granted} grant(s)`);
     } catch (e) {
