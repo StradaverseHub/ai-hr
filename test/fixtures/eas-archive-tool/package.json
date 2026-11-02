@@ -1,0 +1,7 @@
+{
+  "name": "aihr-eas-archive-oracle",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pinned auth-free EAS archive implementation for hosted shipping-input acceptance only",
+  "dependencies": {"eas-cli": "27.2.0"}
+}
