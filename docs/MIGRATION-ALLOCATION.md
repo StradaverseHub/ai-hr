@@ -1014,3 +1014,13 @@ all source claims and the post-Noveri installation ledger before any release adm
 ## Leave/Attendance/Claims Action source continuation — 2 November 2026
 
 Reserved `0943_leave_attendance_claim_actions`, aggregate idx765 / when1793330000343, is now journaled in its existing reserved position after0942 and before the integrated0944 Personnel source. Source SHA256 `7c07ce3f4ffd45f6af593193825bb0a03a52c14e7d0cdb2333eab11e63ccb369`. Current source installs dormant family definitions and native guarded Claim configuration writers only; operational Claim/Leave/Attendance and exact submenu closure remain incomplete. No publication sentinel or installed-history claim exists. This inclusion makes existing native Claim configuration imports executable for hosted development qualification. Re-audit actual ordered installation ledger and all coordinated reservations before admission.
+
+### Private canonical Draft → Onboarding source contract (unapplied)
+
+0939 now exposes private finite active admission/completion and discard intent/completion APIs to
+0944 only. The actual bound hire source carries the access authority stamp. Discard completion
+requires the exact native discard-port DELETE receipt, queued actual source mutation and same-TX
+native discard audit; preparing alone cannot commit. The INVOKER trigger observes the actual closed
+port role and only materializes OLD source data when the private native-sync intent exists. Metadata,
+regular Personnel writes and runtime proof minting gain no authority. This source requires hosted
+native activation/discard plus 0944 exact derived-case qualification before any completion claim.
