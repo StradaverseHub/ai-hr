@@ -5,7 +5,7 @@ import { tenantMutation } from '../db/tenant-mutation';
  * ADR-0006). RLS (migration 0002) requires an admin role for these writes.
  */
 import { and, desc, eq, getTableName, inArray, isNotNull, isNull, or, sql, type AnyColumn } from 'drizzle-orm';
-import { alias, type PgUpdateSetSource } from 'drizzle-orm/pg-core';
+import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
@@ -4201,10 +4201,9 @@ export async function updateLeaveType(
     }
     const payrollHits = touchPaid && before && p.paid !== before.paid
       ? await lockPayrollForLeavePaidSettingTx(tx, p.id, p.paid!) : [];
-    // Type-cost boundary: the patch is checked once against the exact `.set()` parameter type (drizzle's
-    // PgUpdateSetSource for leave_type) instead of inside the generic update-builder call. Same object,
-    // same key order, same values; built from local values only, so evaluating it first has no effect.
-    const leaveTypePatch: PgUpdateSetSource<typeof leaveType> = {
+    await tx
+      .update(leaveType)
+      .set({
         name,
         // Edit Leave Type Code (a7194511): the validated new code (only present when it actually changed for a
         // non-locked type). All downstream relations key on leave_type_id, so nothing detaches.
@@ -4241,10 +4240,7 @@ export async function updateLeaveType(
         ...roleSet,
         // r301 (83511d3b): the Cancel Approved Leave card — empty unless that card saved.
         ...cancelApprovedSet,
-      };
-    await tx
-      .update(leaveType)
-      .set(leaveTypePatch)
+      })
       .where(eq(leaveType.id, p.id))
       // Edit Leave Type Code (a7194511): DB backstop — the migration 0031 partial unique index on
       // (tenant_id, lower(code)) WHERE archived_at IS NULL is the last line of defence against a duplicate code
