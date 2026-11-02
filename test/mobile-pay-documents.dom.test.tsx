@@ -323,8 +323,8 @@ describe('the payslip index and offline', () => {
     ] });
     render(<f.PayslipsScreen />);
     await screen.findByText('Acme Sdn Bhd · 2026');
-    // The same tenant header as every other screen.
-    expect(screen.getByText('tenant-brand')).toBeTruthy();
+    // The signed-in app shell owns the tenant header; this screen must not repeat it.
+    expect(screen.queryByText('tenant-brand')).toBeNull();
     expect(f.apiGetV2.mock.calls[0][0]).toBe('v2/payslips');
     expect(f.apiGetV2.mock.calls[0][1]).toBe(v2pay.PayslipIndexV2);
     expect(screen.getByText('Beta Bhd · 2026')).toBeTruthy();
