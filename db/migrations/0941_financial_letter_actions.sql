@@ -3473,7 +3473,7 @@ GRANT EXECUTE ON FUNCTION app.onehr_competencies_submit(uuid,integer,jsonb,boole
 --> statement-breakpoint
 -- Native scorecard completeness belongs to the stored source owner; the pure TS
 -- parser remains the independent preview/oracle. No source targets leave this helper.
-CREATE FUNCTION app.financial_onehr_scorecard_complete(kpis jsonb) RETURNS void
+CREATE FUNCTION app.financial_onehr_scorecard_complete(kpis jsonb,require_total boolean DEFAULT true) RETURNS void
 LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE kpi jsonb;scoring jsonb;mechanism text;total double precision:=0;weight double precision;rate jsonb;previous double precision;current_rate double precision;target double precision;multiple double precision;
 BEGIN
@@ -3503,10 +3503,10 @@ BEGIN
    IF target=0 OR multiple<0 OR multiple>10000 THEN RAISE EXCEPTION 'Complete the required target numbers and check the threshold order.' USING ERRCODE='22023';END IF;
   ELSE RAISE EXCEPTION 'A scorecard must use one mechanism.' USING ERRCODE='22023';END IF;
  END LOOP;
- IF total<>10000 THEN RAISE EXCEPTION 'KPI weights must total exactly 100%%.' USING ERRCODE='22023';END IF;
+ IF require_total AND total<>10000 THEN RAISE EXCEPTION 'KPI weights must total exactly 100%%.' USING ERRCODE='22023';END IF;
 END;
 $$;
-REVOKE ALL ON FUNCTION app.financial_onehr_scorecard_complete(jsonb) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION app.financial_onehr_scorecard_complete(jsonb,boolean) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.onehr_scorecard_decide(wanted_review uuid,expected_revision integer,approve boolean,remark text) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;choices jsonb;own_ids uuid[];actionable uuid[]:='{}';next_kpis jsonb:='[]';kpi jsonb;chain jsonb;approvals jsonb;next_employment uuid;pending integer;acts boolean;live uuid[];stamp text:=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
@@ -3562,3 +3562,48 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_scorecard_decide(uuid,integer,boolean,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_scorecard_decide(uuid,integer,boolean,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Private scalar owner candidate. No native consumer is switched until its
+-- independent differential and stored-source fixtures have qualified.
+CREATE FUNCTION app.financial_onehr_scorecard(kpis jsonb,policy jsonb,wanted_company uuid,manager_course boolean) RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE kpi jsonb;scoring jsonb;actual double precision;rating double precision;raw double precision;target double precision;threshold double precision;cap double precision;multiple double precision;total double precision:=0;weighted double precision:=0;score double precision;minima jsonb;rate jsonb;position integer;band text;bands text[]:=ARRAY['UA','BE','ME','AE','OU'];
+BEGIN
+ IF manager_course IS NULL OR jsonb_typeof(kpis) IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Invalid scorecard source' USING ERRCODE='22023';END IF;
+ IF jsonb_array_length(kpis)=0 OR EXISTS(SELECT 1 FROM jsonb_array_elements(kpis) candidate WHERE CASE WHEN manager_course THEN NOT coalesce((candidate->>'locked')::boolean,false) ELSE candidate->>'actual' IS NULL END) THEN RETURN jsonb_build_object('score',NULL,'band',NULL);END IF;
+ PERFORM app.financial_onehr_scorecard_complete(kpis,false);
+ FOR kpi IN SELECT value FROM jsonb_array_elements(kpis) LOOP
+  scoring:=kpi->'scoring';
+  IF jsonb_typeof(CASE WHEN manager_course THEN kpi->'approvedActual' ELSE kpi->'actual' END) IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'A result must be a finite number.' USING ERRCODE='22023';END IF;
+  actual:=(CASE WHEN manager_course THEN kpi->>'approvedActual' ELSE kpi->>'actual' END)::double precision;
+  IF scoring->>'mechanism'='A' THEN
+   rating:=1;position:=0;
+   FOR rate IN SELECT value FROM jsonb_array_elements(scoring->'rates') LOOP
+    position:=position+1;
+    IF scoring->>'method'='more' AND actual>=(rate#>>'{}')::double precision OR scoring->>'method'='less' AND actual<=(rate#>>'{}')::double precision THEN rating:=position;END IF;
+   END LOOP;
+  ELSE
+   threshold:=(scoring->>'threshold')::double precision;target:=(scoring->>'target')::double precision;multiple:=coalesce((scoring->>'multiple')::double precision,0);
+   IF scoring->>'method'='more' AND actual<=threshold OR scoring->>'method'='less' AND actual>=threshold THEN rating:=0;
+   ELSE
+    raw:=CASE WHEN scoring->>'method'='more' THEN actual/target*100 ELSE (2-actual/target)*100 END;
+    IF scoring->>'variant'='excellence' THEN
+     cap:=CASE WHEN scoring->>'method'='more' THEN (scoring->>'excellence')::double precision/target*100 ELSE (2-(scoring->>'excellence')::double precision/target)*100 END;
+     rating:=least(raw,cap);
+    ELSE rating:=CASE WHEN raw<=100 THEN raw ELSE 100+(raw-100)*multiple/100 END;END IF;
+   END IF;
+  END IF;
+  total:=total+(kpi->>'weightBp')::double precision;
+  weighted:=weighted+rating*(kpi->>'weightBp')::double precision;
+ END LOOP;
+ IF total=0 THEN RETURN jsonb_build_object('score',NULL,'band',NULL);END IF;
+ score:=weighted/total;
+ IF kpis->0->'scoring'->>'mechanism'='A' THEN minima:=policy->'aBands';
+ ELSE SELECT configured->'minima' INTO minima FROM jsonb_array_elements(coalesce(policy->'bBands','[]'::jsonb)) configured WHERE configured->>'companyId'=wanted_company::text LIMIT 1;END IF;
+ IF minima IS NULL THEN RAISE EXCEPTION 'Configure achievement bands for this company.' USING ERRCODE='22023';END IF;
+ position:=0;FOR rate IN SELECT value FROM jsonb_array_elements(minima) LOOP position:=position+1;IF score>=(rate#>>'{}')::double precision THEN band:=bands[position];END IF;END LOOP;
+ RETURN jsonb_build_object('score',score,'band',band);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_scorecard(jsonb,jsonb,uuid,boolean) FROM PUBLIC,ai_hr_app;
