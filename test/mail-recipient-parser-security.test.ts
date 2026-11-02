@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import addressparser from 'nodemailer/lib/addressparser';
 import { describe, expect, it } from 'vitest';
 
 describe('mail recipient parsing — installed library without external delivery', () => {
@@ -22,14 +23,19 @@ describe('mail recipient parsing — installed library without external delivery
     expect(result.envelope.to).toEqual(['worker@example.test']);
   });
   it('keeps the authorized domain when a quoted local part contains an angle bracket', async () => {
+    const to = '<"a@intruder.invalid>"@example.test>';
+    expect(addressparser(to, { flatten: true }).map(mailbox => mailbox.address))
+      .toEqual(['"a@intruder.invalid>"@example.test']);
     const transport = nodemailer.createTransport({ jsonTransport: true });
     const result = await transport.sendMail({
-      from: 'sender@example.test', to: '<"a@intruder.invalid>"@example.test>',
+      from: 'sender@example.test', to,
       subject: 'Synthetic angle-address regression', text: 'No external transport.',
     });
+    // Raw parsing preserves quoted syntax. The composer separately sanitizes angle/control
+    // characters; its envelope must still contain one recipient at the intended domain.
     expect(result.envelope.to).toHaveLength(1);
-    expect(result.envelope.to[0]).toContain('a@intruder.invalid>');
     expect(result.envelope.to[0]).toMatch(/@example\.test$/);
+    expect(result.envelope.to[0]).not.toMatch(/@intruder\.invalid$/);
   });
   it('preserves a normal structured recipient and a legitimate Unicode display name', async () => {
     const transport = nodemailer.createTransport({ jsonTransport: true });
