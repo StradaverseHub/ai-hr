@@ -4292,3 +4292,90 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_review_task_pending(jsonb,uuid,text,timestamptz) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Private drafts carry the same selected native purpose as the controlled input;
+-- View reads an author's captured draft, while saving requires that purpose's Edit.
+CREATE FUNCTION app.financial_onehr_draft_source(wanted_review uuid,wanted_kind text,wanted_context uuid,operation text) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE review public.performance_onehr_review%ROWTYPE;header public.performance_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;card jsonb;course text;cell text;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL OR operation IS NULL OR operation NOT IN ('view','edit','delete') OR wanted_kind IS NULL OR wanted_kind NOT IN ('results','moderation','competency_self','competency_manager','feedback') THEN RETURN false;END IF;
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id();
+ IF review.review_id IS NULL THEN RETURN false;END IF;
+ IF wanted_kind='feedback' THEN
+  card:=app.onehr_feedback_card(wanted_context);
+  IF card IS NULL OR card->>'reviewId' IS DISTINCT FROM wanted_review::text THEN RETURN false;END IF;
+  IF operation='view' THEN RETURN true;END IF;
+  IF NOT app.function_action_allowed('performance.onehr.panelFeedback','edit',review.company_id) THEN RETURN false;END IF;
+  IF operation='delete' THEN RETURN true;END IF;
+  IF card->>'submitted'='true' OR card->>'frozen'='true' THEN RETURN false;END IF;cell:='f360';
+ ELSE
+  IF wanted_context IS DISTINCT FROM wanted_review THEN RETURN false;END IF;
+  course:=CASE WHEN wanted_kind IN ('results','competency_self') THEN 'self' ELSE 'assigned' END;
+  IF NOT app.onehr_review_task_view(wanted_review,course) THEN RETURN false;END IF;
+  IF wanted_kind IN ('results','competency_self') AND NOT app.onehr_self_employment(review.employment_id)
+  OR wanted_kind='competency_manager' AND (app.onehr_self_employment(review.employment_id) OR NOT app.onehr_effective_reviewer(wanted_review))
+  OR wanted_kind='moderation' AND (app.onehr_self_employment(review.employment_id) OR NOT app.onehr_moderator(wanted_review)) THEN RETURN false;END IF;
+  IF operation='view' THEN RETURN true;END IF;
+  IF NOT app.function_action_allowed(CASE WHEN course='self' THEN 'performance.onehr.selfReview' ELSE 'performance.onehr.assignedReview' END,'edit',review.company_id) THEN RETURN false;END IF;
+  IF operation='delete' THEN RETURN true;END IF;
+  cell:=CASE wanted_kind WHEN 'results' THEN 'pm_results' WHEN 'moderation' THEN 'pm_approve' WHEN 'competency_self' THEN 'tc_self' ELSE 'tc_approve' END;
+ END IF;
+ SELECT * INTO header FROM public.performance_review actual WHERE actual.id=wanted_review AND actual.tenant_id=review.tenant_id;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ IF cycle.status NOT IN ('open','calibration') OR header.closed_at IS NOT NULL OR EXISTS(SELECT 1 FROM app.onehr_review_frozen(wanted_review)) OR NOT app.assessment_review_participates(wanted_review) THEN RETURN false;END IF;
+ IF policy->'windows'->cell->>'opensAt' IS NOT NULL AND now()<(policy->'windows'->cell->>'opensAt')::timestamptz
+ OR policy->'windows'->cell->>'closesAt' IS NOT NULL AND now()>=(policy->'windows'->cell->>'closesAt')::timestamptz THEN RETURN false;END IF;
+ IF wanted_kind IN ('results','moderation') THEN
+  IF policy->'modules'->>'pm' IS DISTINCT FROM 'true' OR policy->>'kind'='quarterly' THEN RETURN false;END IF;
+  IF wanted_kind='results' AND (review.results_submitted_at IS NOT NULL OR EXISTS(SELECT 1 FROM jsonb_array_elements(review.kpis) kpi WHERE kpi->>'setting'<>'approved'))
+  OR wanted_kind='moderation' AND (review.results_submitted_at IS NULL OR review.manager_performance IS NOT NULL) THEN RETURN false;END IF;
+ ELSIF wanted_kind IN ('competency_self','competency_manager') THEN
+  IF policy->'modules'->>'tm' IS DISTINCT FROM 'true' OR jsonb_array_length(review.competencies)=0 OR review.competency_status IS DISTINCT FROM (CASE WHEN wanted_kind='competency_self' THEN 'pending' ELSE 'submitted' END) THEN RETURN false;END IF;
+ END IF;
+ RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_draft_source(uuid,text,uuid,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_draft_read(wanted_review uuid,wanted_kind text,wanted_context uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_draft_source(wanted_review,wanted_kind,wanted_context,'view'); $$;
+REVOKE ALL ON FUNCTION app.onehr_draft_read(uuid,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_draft_read(uuid,text,uuid) TO ai_hr_app;
+CREATE POLICY financial_onehr_draft_read ON public.performance_assessment_draft AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.onehr_draft_read(review_id,kind,context_id));
+CREATE FUNCTION app.financial_onehr_draft_write_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE draft public.performance_assessment_draft%ROWTYPE;review public.performance_onehr_review%ROWTYPE;payload jsonb;allowed text[];
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ IF TG_OP='DELETE' THEN draft:=OLD;ELSE draft:=NEW;END IF;
+ PERFORM app.audit_access_order_lock_for(draft.tenant_id);
+ IF draft.tenant_id IS DISTINCT FROM app.current_tenant_id() OR draft.actor_user_id IS DISTINCT FROM app.current_user_id() OR NOT app.financial_onehr_draft_source(draft.review_id,draft.kind,draft.context_id,CASE WHEN TG_OP='DELETE' THEN 'delete' ELSE 'edit' END) THEN RAISE EXCEPTION 'Assessment draft purpose or phase unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
+ IF TG_OP='UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.review_id IS DISTINCT FROM OLD.review_id OR NEW.actor_user_id IS DISTINCT FROM OLD.actor_user_id OR NEW.kind IS DISTINCT FROM OLD.kind OR NEW.context_id IS DISTINCT FROM OLD.context_id) THEN RAISE EXCEPTION 'Assessment draft identity is immutable' USING ERRCODE='42501';END IF;
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=draft.review_id AND actual.tenant_id=draft.tenant_id;
+ IF draft.review_revision IS DISTINCT FROM (CASE WHEN draft.kind='feedback' THEN 0 ELSE review.revision END) OR TG_OP='INSERT' AND NEW.revision<>1 OR TG_OP='UPDATE' AND NEW.revision<>OLD.revision+1 THEN RAISE EXCEPTION 'This draft changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ payload:=draft.payload;allowed:=CASE WHEN draft.kind IN ('results','moderation') THEN ARRAY['kind','lines','remark'] WHEN draft.kind='feedback' THEN ARRAY['kind','answers','comments','remark'] ELSE ARRAY['kind','answers','sections','remark'] END;
+ IF jsonb_typeof(payload) IS DISTINCT FROM 'object' OR payload->>'kind' IS DISTINCT FROM draft.kind OR payload-allowed<>'{}'::jsonb OR jsonb_typeof(payload->'remark') IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(payload->>'remark'))>4000 OR app.financial_onehr_js_words(payload->>'remark')>220 THEN RAISE EXCEPTION 'Invalid private assessment draft' USING ERRCODE='22023';END IF;
+ IF draft.kind IN ('results','moderation') THEN
+  IF jsonb_typeof(payload->'lines') IS DISTINCT FROM 'array' OR jsonb_array_length(payload->'lines')>100 OR jsonb_array_length(payload->'lines')<>(SELECT count(DISTINCT item->>'id') FROM jsonb_array_elements(payload->'lines') item)
+  OR EXISTS(SELECT 1 FROM jsonb_array_elements(payload->'lines') line WHERE jsonb_typeof(line) IS DISTINCT FROM 'object' OR NOT (line ?& ARRAY['id','actual','note']) OR line-ARRAY['id','actual','note']<>'{}'::jsonb OR jsonb_typeof(line->'actual') NOT IN ('number','null') OR jsonb_typeof(line->'note') IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(line->>'note'))>4000
+   OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(review.kpis) kpi WHERE kpi->>'id'=line->>'id' AND NOT coalesce((kpi->>'hrOwned')::boolean,false) AND (draft.kind='results' OR NOT coalesce((kpi->>'locked')::boolean,false) AND app.onehr_moderator(review.review_id,(kpi->>'id')::uuid)))) THEN RAISE EXCEPTION 'Use only assigned current KPI draft lines' USING ERRCODE='42501';END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(payload->'lines') line WHERE jsonb_typeof(line->'actual')='number' AND ((line->>'actual')::double precision IN ('Infinity'::double precision,'-Infinity'::double precision,'NaN'::double precision))) THEN RAISE EXCEPTION 'A draft result must be finite' USING ERRCODE='22023';END IF;
+ ELSE
+  IF jsonb_typeof(payload->'answers') IS DISTINCT FROM 'object' OR EXISTS(SELECT 1 FROM jsonb_each(payload->'answers') answer WHERE app.financial_onehr_utf16_length(answer.key)>100 OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN draft.kind='feedback' THEN review.statements ELSE review.competencies END) statement WHERE statement->>'id'=answer.key)) THEN RAISE EXCEPTION 'Use only assigned draft statements' USING ERRCODE='42501';END IF;
+  IF draft.kind='feedback' THEN
+   IF EXISTS(SELECT 1 FROM jsonb_each(payload->'answers') answer WHERE jsonb_typeof(answer.value) IS DISTINCT FROM 'string' OR answer.value#>>'{}' NOT IN ('yes','no')) THEN RAISE EXCEPTION 'Invalid feedback draft answer' USING ERRCODE='22023';END IF;
+  ELSIF EXISTS(SELECT 1 FROM jsonb_each(payload->'answers') answer WHERE jsonb_typeof(answer.value) IS DISTINCT FROM 'object' OR NOT (answer.value ?& ARRAY['answer','remark']) OR answer.value-ARRAY['answer','remark']<>'{}'::jsonb OR jsonb_typeof(answer.value->'answer') NOT IN ('string','null') OR jsonb_typeof(answer.value->'answer')='string' AND answer.value->>'answer' NOT IN ('yes','no') OR jsonb_typeof(answer.value->'remark') IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(answer.value->>'remark'))>4000) THEN RAISE EXCEPTION 'Invalid competency draft answer' USING ERRCODE='22023';END IF;
+  IF draft.kind='feedback' AND payload ? 'comments' THEN
+   IF jsonb_typeof(payload->'comments') IS DISTINCT FROM 'object' OR EXISTS(SELECT 1 FROM jsonb_each(payload->'comments') comment WHERE app.financial_onehr_utf16_length(comment.key)>200 OR jsonb_typeof(comment.value) IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(comment.value#>>'{}'))>2000 OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(review.statements) statement WHERE statement->>'principle'=comment.key)) THEN RAISE EXCEPTION 'Use only assigned draft leadership principles' USING ERRCODE='42501';END IF;
+  ELSIF payload ? 'sections' THEN
+   IF jsonb_typeof(payload->'sections') IS DISTINCT FROM 'object' OR EXISTS(SELECT 1 FROM jsonb_each(payload->'sections') section WHERE app.financial_onehr_utf16_length(section.key) NOT BETWEEN 1 AND 200 OR section.key IS DISTINCT FROM app.financial_onehr_js_trim(section.key) OR jsonb_typeof(section.value) IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(section.value#>>'{}'))>4000 OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(review.competencies) competency WHERE competency->>'principle'=section.key)) THEN RAISE EXCEPTION 'Use only assigned draft competency sections' USING ERRCODE='42501';END IF;
+  END IF;
+ END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_draft_write_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER z_financial_onehr_draft_write_guard BEFORE INSERT OR UPDATE OR DELETE ON public.performance_assessment_draft FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_draft_write_guard();

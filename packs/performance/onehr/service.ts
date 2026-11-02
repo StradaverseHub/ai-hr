@@ -1499,6 +1499,7 @@ export async function saveAssessmentDraft(ctx:SessionContext,reviewId:string,exp
 }
 
 export async function saveAssessmentDraftTx(tx:Tx,ctx:SessionContext,reviewId:string,expectedReview:number,expectedDraft:number|null,raw:unknown,contextId=reviewId) {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
   uuid.parse(reviewId);uuid.parse(contextId);const payload=assessmentDraftSchema.parse(raw);assertOverallRemark(payload.remark);
   if(!ctx.userId)throw Error('Sign in to save your draft.');
   let reviewRevision=expectedReview;
