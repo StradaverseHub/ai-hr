@@ -237,7 +237,7 @@ REVOKE ALL ON app.module_claim_effect FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.claim_own_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT (cap IN ('function.claims.own.view','function.claims.own.delete') OR cap ~ '^function\.claims\.own\.(drafts\.(view|add|edit|delete)|submit\.(view|execute))$') AND co IS NOT NULL
+ SELECT (cap IN ('function.claims.own.view','function.claims.own.delete') OR cap ~ '^function\.claims\.own\.(drafts\.(view|add|edit|delete)|submit\.(view|execute)|receipts\.(view|add))$') AND co IS NOT NULL
  AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.employment e ON e.tenant_id=actor.tenant_id AND e.person_id=actor.person_id
   WHERE actor.id=u AND actor.tenant_id=t AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
    AND e.company_id=co AND e.voided_at IS NULL);
@@ -635,7 +635,7 @@ GRANT EXECUTE ON FUNCTION app.claim_subject_is_own(uuid) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.claim_own_source_allowed(p_subject uuid,p_key text,p_operation text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.claim_subject_is_own(p_subject) AND p_key IN ('claims.own','claims.own.drafts','claims.own.submit')
+ SELECT app.claim_subject_is_own(p_subject) AND p_key IN ('claims.own','claims.own.drafts','claims.own.submit','claims.own.receipts')
  AND EXISTS(SELECT 1 FROM public.employment employment WHERE employment.id=p_subject AND employment.tenant_id=app.current_tenant_id() AND employment.voided_at IS NULL AND app.function_action_allowed('claims.own','view',employment.company_id) AND app.function_action_allowed(p_key,p_operation,employment.company_id));
 $$;
 REVOKE ALL ON FUNCTION app.claim_own_source_allowed(uuid,text,text) FROM PUBLIC;
@@ -719,3 +719,127 @@ REVOKE ALL ON FUNCTION app.claim_draft_delete_complete() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER claim_draft_delete_complete AFTER INSERT ON app.claim_draft_delete_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_draft_delete_complete();
 --> statement-breakpoint
 CREATE TRIGGER module_claim_write_lock BEFORE INSERT OR UPDATE OR DELETE ON public.claim_request FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+
+--> statement-breakpoint
+-- Real own receipt constructors. Logical draft/submit file initialization needs an actual
+-- source mutation, one file slot and its completed native source audit, never a caller flag alone.
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add'] LOOP
+  PERFORM app.register_function_action('claims.own.receipts',operation,'company','function.claims.own.view','app.claim_own_current_native_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"own","employeeBearing":false}'::jsonb);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE TABLE app.claim_own_source_mutation(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,claim_id uuid NOT NULL,course text NOT NULL CHECK(course IN ('draft-add','draft-edit','submit')),source jsonb NOT NULL,authority_stamp text NOT NULL,receipt_id uuid);
+CREATE TABLE app.claim_own_receipt_effect(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,receipt_id uuid NOT NULL,claim_id uuid NOT NULL,employment_id uuid NOT NULL,course text NOT NULL,source_id uuid,metadata jsonb NOT NULL,content_hash text NOT NULL,authority_stamp text NOT NULL,event_id uuid,born boolean NOT NULL DEFAULT false,completed boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,receipt_id));
+CREATE TABLE app.claim_own_source_audit(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,claim_id uuid NOT NULL,event_id uuid NOT NULL,event_type text NOT NULL,payload jsonb NOT NULL,PRIMARY KEY(xact_id,tenant_id,event_id));
+REVOKE ALL ON app.claim_own_source_mutation,app.claim_own_receipt_effect,app.claim_own_source_audit FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_source_mutation_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE course text;
+BEGIN
+ IF app.access_workforce_storage_owner() OR NOT app.claim_subject_is_own(NEW.employment_id) THEN RETURN NULL;END IF;
+ IF NEW.status::text='draft' THEN course:=CASE TG_OP WHEN 'INSERT' THEN 'draft-add' ELSE 'draft-edit' END;
+ ELSIF NEW.status::text='pending' AND (TG_OP='INSERT' OR OLD.status::text='draft') THEN course:='submit';ELSE RETURN NULL;END IF;
+ DELETE FROM app.claim_own_source_mutation WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.claim_own_source_mutation(xact_id,tenant_id,user_id,claim_id,course,source,authority_stamp) VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id,course,to_jsonb(NEW),app.access_function_authority_stamp());RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_own_source_mutation_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER claim_own_source_mutation AFTER INSERT OR UPDATE ON public.claim_request FOR EACH ROW EXECUTE FUNCTION app.claim_own_source_mutation_record();
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_source_audit_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.aggregate_type='claim-request' AND NEW.event_type IN ('claim-request.draft-saved','claim-request.submitted') AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() AND NEW.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() THEN
+  DELETE FROM app.claim_own_source_audit WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+  INSERT INTO app.claim_own_source_audit VALUES(pg_current_xact_id(),NEW.tenant_id,NEW.actor_id,NEW.aggregate_id,NEW.id,NEW.event_type,NEW.payload);
+ END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_own_source_audit_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER claim_own_source_audit AFTER INSERT ON public.domain_event FOR EACH ROW EXECUTE FUNCTION app.claim_own_source_audit_record();
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_receipt_native(p_claim uuid,p_name text,p_mime text,p_content bytea,p_course text DEFAULT 'receipt-add') RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE parent public.claim_request%ROWTYPE;attachment public.claim_attachment%ROWTYPE;source_id uuid;authority text;event uuid;operation text;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO parent FROM public.claim_request actual WHERE actual.id=p_claim AND actual.tenant_id=app.current_tenant_id() AND app.claim_subject_is_own(actual.employment_id) FOR UPDATE;
+ IF parent.id IS NULL OR parent.status::text NOT IN ('draft','pending') OR p_course IS NULL OR p_course NOT IN ('draft-add','draft-edit','submit','receipt-add') OR p_name IS NULL OR p_mime IS NULL OR p_mime NOT IN ('application/pdf','image/jpeg','image/png') OR p_content IS NULL OR octet_length(p_content) NOT BETWEEN 1 AND 10485760 OR NOT app.claim_own_source_allowed(parent.employment_id,'claims.own.receipts','view') THEN RAISE EXCEPTION 'Own claim receipt unavailable' USING ERRCODE='42501';END IF;
+ authority:=app.access_function_authority_stamp();
+ IF p_course='receipt-add' THEN
+  IF NOT app.claim_own_source_allowed(parent.employment_id,'claims.own.receipts','add') THEN RAISE EXCEPTION 'Own claim receipt Add unavailable' USING ERRCODE='42501';END IF;
+ ELSE
+  operation:=CASE p_course WHEN 'draft-add' THEN 'add' WHEN 'draft-edit' THEN 'edit' ELSE 'execute' END;
+  IF NOT app.claim_own_source_allowed(parent.employment_id,CASE WHEN p_course='submit' THEN 'claims.own.submit' ELSE 'claims.own.drafts' END,operation) THEN RAISE EXCEPTION 'Own receipt source action unavailable' USING ERRCODE='42501';END IF;
+  SELECT source.id INTO source_id FROM app.claim_own_source_mutation source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=parent.tenant_id AND source.user_id=app.current_user_id() AND source.claim_id=parent.id AND source.course=p_course AND source.source=to_jsonb(parent) AND source.authority_stamp=authority AND source.receipt_id IS NULL ORDER BY source.id LIMIT 1 FOR UPDATE;
+  IF source_id IS NULL THEN RAISE EXCEPTION 'Own receipt native source unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ attachment.id:=gen_random_uuid();attachment.tenant_id:=parent.tenant_id;attachment.claim_request_id:=parent.id;attachment.employment_id:=parent.employment_id;attachment.content:=p_content;attachment.file_name:=p_name;attachment.mime_type:=p_mime;attachment.size_bytes:=octet_length(p_content);attachment.uploaded_by_user_id:=app.current_user_id();attachment.created_at:=now();
+ DELETE FROM app.claim_own_receipt_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.claim_own_receipt_effect(xact_id,tenant_id,user_id,receipt_id,claim_id,employment_id,course,source_id,metadata,content_hash,authority_stamp) VALUES(pg_current_xact_id(),parent.tenant_id,app.current_user_id(),attachment.id,parent.id,parent.employment_id,p_course,source_id,to_jsonb(attachment)-'content',encode(sha256(p_content),'hex'),authority);
+ IF source_id IS NOT NULL THEN UPDATE app.claim_own_source_mutation SET receipt_id=attachment.id WHERE id=source_id;END IF;
+ INSERT INTO public.claim_attachment SELECT (attachment).*;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Own receipt insert changed' USING ERRCODE='40001';END IF;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(parent.tenant_id,'claim-request',parent.id,'claim-request.receipt-added','user',app.current_user_id(),parent.employment_id,jsonb_build_object('fileName',p_name,'sizeBytes',octet_length(p_content))) RETURNING id INTO event;
+ UPDATE app.claim_own_receipt_effect SET completed=true,event_id=event WHERE xact_id=pg_current_xact_id() AND tenant_id=parent.tenant_id AND user_id=app.current_user_id() AND receipt_id=attachment.id;
+ RETURN attachment.id;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_own_receipt_native(uuid,text,text,bytea,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_own_receipt_native(uuid,text,text,bytea,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_receipt_approved(p_receipt uuid,p_row jsonb,p_content bytea,p_final boolean) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.claim_own_receipt_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.receipt_id=p_receipt AND proof.metadata=p_row-'content' AND proof.content_hash=encode(sha256(p_content),'hex') AND proof.authority_stamp=app.access_function_authority_stamp()
+ AND app.claim_own_source_allowed(proof.employment_id,'claims.own.receipts','view')
+ AND CASE proof.course WHEN 'receipt-add' THEN app.claim_own_source_allowed(proof.employment_id,'claims.own.receipts','add') ELSE app.claim_own_source_allowed(proof.employment_id,CASE WHEN proof.course='submit' THEN 'claims.own.submit' ELSE 'claims.own.drafts' END,CASE proof.course WHEN 'submit' THEN 'execute' WHEN 'draft-add' THEN 'add' ELSE 'edit' END) END
+ AND (NOT p_final OR proof.born AND proof.completed AND EXISTS(SELECT 1 FROM public.domain_event event WHERE event.id=proof.event_id AND event.tenant_id=proof.tenant_id AND event.aggregate_id=proof.claim_id AND event.aggregate_type='claim-request' AND event.actor_type='user' AND event.actor_id=proof.user_id AND event.subject_employment_id=proof.employment_id AND event.event_type='claim-request.receipt-added' AND event.payload->>'fileName'=proof.metadata->>'file_name' AND event.payload->>'sizeBytes'=proof.metadata->>'size_bytes')
+ AND (proof.source_id IS NULL OR EXISTS(SELECT 1 FROM app.claim_own_source_mutation source JOIN app.claim_own_source_audit audit ON audit.xact_id=source.xact_id AND audit.tenant_id=source.tenant_id AND audit.user_id=source.user_id AND audit.claim_id=source.claim_id WHERE source.id=proof.source_id AND source.receipt_id=proof.receipt_id AND source.authority_stamp=proof.authority_stamp AND audit.event_type=CASE WHEN source.course='submit' THEN 'claim-request.submitted' ELSE 'claim-request.draft-saved' END AND audit.payload->>'claimTypeId'=source.source->>'claim_type_id' AND audit.payload->>'claimItemId' IS NOT DISTINCT FROM source.source->>'claim_item_id' AND audit.payload->>'incurredOn'=source.source->>'incurred_on'))));
+$$;
+REVOKE ALL ON FUNCTION app.claim_own_receipt_approved(uuid,jsonb,bytea,boolean) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_receipt_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE parent public.claim_request%ROWTYPE;image jsonb:=CASE WHEN TG_OP='DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;source jsonb;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ IF TG_OP='UPDATE' THEN RAISE EXCEPTION 'Claim receipts are immutable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN
+  SELECT proof.before_source INTO source FROM app.claim_draft_delete_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=OLD.tenant_id AND proof.user_id=app.current_user_id() AND proof.claim_id=OLD.claim_request_id AND proof.before_source->>'employment_id'=OLD.employment_id::text;
+  IF source IS NULL OR NOT app.claim_draft_delete_approved(OLD.claim_request_id,source,TG_WHEN='AFTER') THEN RAISE EXCEPTION 'Claim receipt removal source unavailable' USING ERRCODE='42501';END IF;RETURN OLD;
+ END IF;
+ IF EXISTS(SELECT 1 FROM app.claim_own_receipt_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.receipt_id=NEW.id) OR app.claim_subject_is_own(NEW.employment_id) THEN
+  IF NOT app.claim_own_receipt_approved(NEW.id,image,NEW.content,TG_WHEN='AFTER') THEN RAISE EXCEPTION 'Own claim receipt source unavailable' USING ERRCODE='42501';END IF;
+ ELSE
+  -- Nonself add remains under its native visibility owner until the separate exact-purpose chapter.
+  IF TG_WHEN='AFTER' THEN RETURN NULL;END IF;
+  SELECT * INTO parent FROM public.claim_request actual WHERE actual.id=NEW.claim_request_id AND actual.tenant_id=NEW.tenant_id;
+  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current() OR parent.id IS NULL OR parent.employment_id<>NEW.employment_id OR parent.status::text NOT IN ('draft','pending') OR NOT app.can_see_employment(parent.employment_id) OR NEW.uploaded_by_user_id IS DISTINCT FROM app.current_user_id() OR NEW.size_bytes IS DISTINCT FROM octet_length(NEW.content) OR NEW.size_bytes NOT BETWEEN 1 AND 10485760 OR NEW.mime_type NOT IN ('application/pdf','image/jpeg','image/png') THEN RAISE EXCEPTION 'Claim receipt native source unavailable' USING ERRCODE='42501';END IF;
+ END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_own_receipt_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER claim_own_receipt BEFORE INSERT OR UPDATE OR DELETE ON public.claim_attachment FOR EACH ROW EXECUTE FUNCTION app.claim_own_receipt_guard();
+CREATE CONSTRAINT TRIGGER claim_own_receipt_final AFTER INSERT OR UPDATE OR DELETE ON public.claim_attachment DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_own_receipt_guard();
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_receipt_born() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN UPDATE app.claim_own_receipt_effect proof SET born=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.receipt_id=NEW.id AND proof.metadata=to_jsonb(NEW)-'content' AND proof.content_hash=encode(sha256(NEW.content),'hex');END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_own_receipt_born() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER claim_own_receipt_born AFTER INSERT ON public.claim_attachment FOR EACH ROW EXECUTE FUNCTION app.claim_own_receipt_born();
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_receipt_read_allowed(p_claim uuid,p_subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.claim_request actual WHERE actual.id=p_claim AND actual.tenant_id=app.current_tenant_id() AND actual.employment_id=p_subject AND (NOT app.claim_subject_is_own(p_subject) OR app.claim_own_source_allowed(p_subject,'claims.own.receipts','view') AND app.claim_own_read_allowed(p_subject,actual.status::text='draft')));
+$$;
+REVOKE ALL ON FUNCTION app.claim_own_receipt_read_allowed(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_own_receipt_read_allowed(uuid,uuid) TO ai_hr_app;
+CREATE POLICY claim_own_receipt_read ON public.claim_attachment AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.claim_own_receipt_read_allowed(claim_request_id,employment_id));
+CREATE TRIGGER module_claim_receipt_lock BEFORE INSERT OR UPDATE OR DELETE ON public.claim_attachment FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_receipt_present(p_claim uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.claim_request actual WHERE actual.id=p_claim AND actual.tenant_id=app.current_tenant_id() AND actual.status::text='draft' AND app.claim_own_source_allowed(actual.employment_id,'claims.own.submit','execute') AND EXISTS(SELECT 1 FROM public.claim_attachment attachment WHERE attachment.claim_request_id=actual.id AND attachment.tenant_id=actual.tenant_id AND attachment.employment_id=actual.employment_id));
+$$;
+REVOKE ALL ON FUNCTION app.claim_own_receipt_present(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_own_receipt_present(uuid) TO ai_hr_app;

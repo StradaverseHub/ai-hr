@@ -1752,7 +1752,7 @@ export type EmployeeClaimType = {
 
 /** A navigation capability, not a budget check. Mirrors the form's active-type catalogue without
  * loading reimbursement amounts, grade rates, receipts or balances. Submission still owns policy. */
-export type OwnClaimActionAccess={view:boolean;draftView:boolean;draftAdd:boolean;draftEdit:boolean;draftDelete:boolean;submitView:boolean;submit:boolean;cancel:boolean};
+export type OwnClaimActionAccess={view:boolean;draftView:boolean;draftAdd:boolean;draftEdit:boolean;draftDelete:boolean;submitView:boolean;submit:boolean;cancel:boolean;receiptView:boolean;receiptAdd:boolean};
 /** Purpose flags are read-only and repeat the real current own-employment source. */
 export function ownClaimActionAccess(ctx:SessionContext,employmentId:string):Promise<OwnClaimActionAccess>{
  return withTenant(ctx,async tx=>{
@@ -1760,8 +1760,9 @@ export function ownClaimActionAccess(ctx:SessionContext,employmentId:string):Pro
    app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.drafts','view') as "draftView",app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.drafts','add') as "draftAdd",
    app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.drafts','edit') as "draftEdit",app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.drafts','delete') as "draftDelete",
    app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.submit','view') as "submitView",app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.submit','execute') as submit,
-   app.claim_own_source_allowed(${employmentId}::uuid,'claims.own','delete') as cancel`);
-  return row??{view:false,draftView:false,draftAdd:false,draftEdit:false,draftDelete:false,submitView:false,submit:false,cancel:false};
+   app.claim_own_source_allowed(${employmentId}::uuid,'claims.own','delete') as cancel,
+   app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.receipts','view') as "receiptView",app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.receipts','add') as "receiptAdd"`);
+  return row??{view:false,draftView:false,draftAdd:false,draftEdit:false,draftDelete:false,submitView:false,submit:false,cancel:false,receiptView:false,receiptAdd:false};
  });
 }
 
@@ -2538,6 +2539,7 @@ export async function submitClaimWithAttachment(
         claimRequestId: id,
         employmentId: p.employmentId,
         status: 'pending',
+        sourcePurpose:'submit',
         fileName: attachment.fileName,
         mimeType: attachment.mimeType,
         content: attachment.content,
@@ -2872,7 +2874,7 @@ async function saveClaimDraftOwnerTx(tx:Tx,ctx:SessionContext,p:ClaimDraftInput,
       await assertDraftOwner(tx, ctx, existing.employmentId);
       await tx.update(claimRequest).set(values).where(eq(claimRequest.id, p.id));
       if (attachment) {
-        await insertClaimAttachmentTx(tx, ctx, { claimRequestId: p.id, employmentId: p.employmentId, status: 'draft', ...attachment });
+        await insertClaimAttachmentTx(tx, ctx, { claimRequestId: p.id, employmentId: p.employmentId, status: 'draft', sourcePurpose:'draft-edit', ...attachment });
       }
       const savedEventId=await appendEvent(tx, {
         tenantId: ctx.tenantId,
@@ -2892,7 +2894,7 @@ async function saveClaimDraftOwnerTx(tx:Tx,ctx:SessionContext,p:ClaimDraftInput,
       .values({ tenantId: ctx.tenantId, employmentId: p.employmentId, status: 'draft', ...values })
       .returning({ id: claimRequest.id });
     if (attachment) {
-      await insertClaimAttachmentTx(tx, ctx, { claimRequestId: row.id, employmentId: p.employmentId, status: 'draft', ...attachment });
+      await insertClaimAttachmentTx(tx, ctx, { claimRequestId: row.id, employmentId: p.employmentId, status: 'draft', sourcePurpose:'draft-add', ...attachment });
     }
     const savedEventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -3137,11 +3139,9 @@ export async function submitDraftClaims(
 
 /** Does this draft already carry a receipt? Decides the type-level requiresReceipt check at submit. */
 async function draftHasAttachment(tx: Tx, claimRequestId: string): Promise<boolean> {
-  const [row] = await tx
-    .select({ n: sql<number>`count(*)::int` })
-    .from(claimAttachment)
-    .where(eq(claimAttachment.claimRequestId, claimRequestId));
-  return Number(row?.n ?? 0) > 0;
+  // Native submit needs only the real presence fact, not receipt names/bytes or an ordinary file View.
+  const [row]=await tx.execute<{present:boolean}>(sql`select app.claim_own_receipt_present(${claimRequestId}::uuid) as present`);
+  return row?.present===true;
 }
 
 /** Reviewed existing-draft submission only. New/direct/upload submissions remain native UI paths.
@@ -3204,7 +3204,7 @@ function assertValidAttachment(mimeType: string, content: Buffer): void {
 async function insertClaimAttachmentTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { claimRequestId: string; employmentId: string; status: string; fileName: string; mimeType: string; content: Buffer },
+  p: { claimRequestId: string; employmentId: string; status: string; fileName: string; mimeType: string; content: Buffer; sourcePurpose?:'draft-add'|'draft-edit'|'submit' },
 ): Promise<{ id: string }> {
   await tx.execute(sql`select app.access_workforce_write_lock()`);
   // e7eb5d83: 'draft' joins 'pending' here. A draft that could not carry its receipt would force the
@@ -3212,6 +3212,11 @@ async function insertClaimAttachmentTx(
   // the receipt REQUIREMENT is still enforced at submit, not at save, so this loosens nothing.
   if (p.status !== 'pending' && p.status !== 'draft') {
     throw new ClaimError('Receipts can only be added while the claim is a draft or pending');
+  }
+  const [subject]=await tx.execute<{own:boolean}>(sql`select app.claim_subject_is_own(${p.employmentId}::uuid) as own`);
+  if(subject?.own){
+    const [stored]=await tx.execute<{id:string}>(sql`select app.claim_own_receipt_native(${p.claimRequestId}::uuid,${p.fileName},${p.mimeType},${p.content},${p.sourcePurpose??'receipt-add'}) as id`);
+    if(!stored?.id)throw new ClaimError('Own claim receipt unavailable');return{id:stored.id};
   }
   const [row] = await tx
     .insert(claimAttachment)
