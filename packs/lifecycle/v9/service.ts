@@ -32,7 +32,7 @@ type Row = { id: string; revision: number; company_id: string; data: M.Case; nat
 export type DirectoryUser = { id: string; name: string };
 export type Options = { checklistOwnerIds?: string[]; users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; signatoryCandidatesByModule?:Record<M.Module,Record<string,string[]>>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
 export type Workspace = { permissions?:{onboarding:boolean;offboarding:boolean;administration:boolean;records?:boolean}; config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[] };
-export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'documents'> & { items:(M.Item&{canFulfil?:boolean})[]; own: boolean; equipment?: { id: string; name: string; kind: 'device'|'system'; state: string; approval: string; handedAt: string|null; receipt: {status:'received'|'problem';at:string;by:string;note:string}|null }[] };
+export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'tasks' | 'documents'> & { facts:Pick<M.Facts,'name'|'employeeNo'|'joinDate'|'lastDay'>&Partial<M.Facts>;items:(M.Item&{canFulfil?:boolean})[]; own: boolean; equipment?: { id: string; name: string; kind: 'device'|'system'; state: string; approval: string; handedAt: string|null; receipt: {status:'received'|'problem';at:string;by:string;note:string}|null }[] };
 export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[] };
 export type CaseDetail = { returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -74,7 +74,7 @@ async function load(tx: Tx, ctx: SessionContext, id: string): Promise<Row> {
   await admin(tx, row.company_id); return row;
 }
 async function record(tx: Tx, ctx: SessionContext, id: string, employmentId: string, action: string): Promise<void> {
-  await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-case', aggregateId: id, eventType: `lifecycle-v9.${action}`, actor: actorOf(ctx), subjectEmploymentId: employmentId || null, payload: { caseId: id, action } });
+  await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-case', aggregateId: id, eventType: `lifecycle-v9.${action}`, actor: actorOf(ctx), subjectEmploymentId: employmentId || null, payload: { caseId: id, action, ...(action==='providingTeamItemUpdated'?{functionKey:'lifecycle.shared.recovery',nativeBranch:'assigned-item'}:{}) } });
 }
 async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action: string): Promise<void> {
   if (row.native) {

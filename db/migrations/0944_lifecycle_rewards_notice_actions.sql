@@ -191,14 +191,29 @@ CREATE TABLE app.lifecycle_native_effect_receipt(
 ALTER TABLE app.lifecycle_native_effect_context ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app.lifecycle_native_effect_receipt ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.lifecycle_native_effect_context,app.lifecycle_native_effect_receipt FROM PUBLIC,ai_hr_app;
+-- Canonical native owners alone seal the selected offboarding item and the linked issuing
+-- recovery. Child rows avoid early context UPDATEs that would queue cleanup before row guards.
+CREATE TABLE app.lifecycle_native_item_admission(
+ context_id uuid PRIMARY KEY REFERENCES app.lifecycle_native_effect_context(id)ON DELETE CASCADE,
+ item_id text NOT NULL,status text NOT NULL,reason text NOT NULL
+);
+CREATE TABLE app.lifecycle_holding_recovery_admission(
+ context_id uuid PRIMARY KEY REFERENCES app.lifecycle_native_effect_context(id)ON DELETE CASCADE,
+ offboarding_case_id uuid NOT NULL,offboarding_item_id text NOT NULL,offboarding_revision integer NOT NULL,
+ offboarding_before_hash text NOT NULL,request_id text NOT NULL,item_id text NOT NULL,
+ employment_id uuid NOT NULL,company_id uuid NOT NULL,team text NOT NULL,offboarding_reason text NOT NULL
+);
+ALTER TABLE app.lifecycle_native_item_admission ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.lifecycle_holding_recovery_admission ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.lifecycle_native_item_admission,app.lifecycle_holding_recovery_admission FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.lifecycle_effect_function_identity(p_case uuid,p_purpose text)
 RETURNS TABLE(function_key text,operation text,company_id uuid)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT CASE p_purpose WHEN 'assigned-task'THEN'lifecycle.shared.tasks'WHEN'assigned-onboarding-task'THEN'lifecycle.shared.tasks'WHEN'assigned-onboarding-handover'THEN'lifecycle.shared.handover'WHEN'assigned-onboarding-note'THEN'lifecycle.shared.requisitionNotes'WHEN'own-onboarding-ack'THEN'lifecycle.self.acknowledgement'WHEN'assigned-onboarding-conversation'THEN'lifecycle.shared.conversations'WHEN'assigned-onboarding-fulfil'THEN'lifecycle.shared.fulfilment'WHEN'assigned-onboarding-approval'THEN'lifecycle.shared.approvals'WHEN'assigned-onboarding-approval-assignment'THEN'lifecycle.shared.approvalAssignments'WHEN'assigned-onboarding-exception-add'THEN'lifecycle.shared.exceptionAdditions'WHEN'assigned-onboarding-exception-remove'THEN'lifecycle.shared.exceptionRemovals'WHEN'assigned-onboarding-keep-providing'THEN'lifecycle.shared.retainedProvision'WHEN'administrative-onboarding-exception-remove'THEN'lifecycle.hr.exceptionRemovals'END,
+ SELECT CASE p_purpose WHEN'assigned-item'THEN'lifecycle.shared.recovery'WHEN'assigned-onboarding-holding-recovery'THEN'lifecycle.shared.recovery'WHEN 'assigned-task'THEN'lifecycle.shared.tasks'WHEN'assigned-onboarding-task'THEN'lifecycle.shared.tasks'WHEN'assigned-onboarding-handover'THEN'lifecycle.shared.handover'WHEN'assigned-onboarding-note'THEN'lifecycle.shared.requisitionNotes'WHEN'own-onboarding-ack'THEN'lifecycle.self.acknowledgement'WHEN'assigned-onboarding-conversation'THEN'lifecycle.shared.conversations'WHEN'assigned-onboarding-fulfil'THEN'lifecycle.shared.fulfilment'WHEN'assigned-onboarding-approval'THEN'lifecycle.shared.approvals'WHEN'assigned-onboarding-approval-assignment'THEN'lifecycle.shared.approvalAssignments'WHEN'assigned-onboarding-exception-add'THEN'lifecycle.shared.exceptionAdditions'WHEN'assigned-onboarding-exception-remove'THEN'lifecycle.shared.exceptionRemovals'WHEN'assigned-onboarding-keep-providing'THEN'lifecycle.shared.retainedProvision'WHEN'administrative-onboarding-exception-remove'THEN'lifecycle.hr.exceptionRemovals'END,
  CASE WHEN p_purpose='assigned-onboarding-approval'THEN'approve'ELSE'execute'END,source.company_id FROM(
- SELECT c.company_id FROM public.lc_v9_case c WHERE p_purpose='assigned-task'AND c.id=p_case AND c.tenant_id=app.current_tenant_id()
- UNION ALL SELECT c.company_id FROM public.lc_onboarding_case c WHERE p_purpose IN('assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment','assigned-onboarding-exception-add','assigned-onboarding-exception-remove','assigned-onboarding-keep-providing','administrative-onboarding-exception-remove')AND c.id=p_case AND c.tenant_id=app.current_tenant_id())source;
+ SELECT c.company_id FROM public.lc_v9_case c WHERE p_purpose IN('assigned-task','assigned-item')AND c.id=p_case AND c.tenant_id=app.current_tenant_id()
+ UNION ALL SELECT c.company_id FROM public.lc_onboarding_case c WHERE p_purpose IN('assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment','assigned-onboarding-exception-add','assigned-onboarding-exception-remove','assigned-onboarding-keep-providing','administrative-onboarding-exception-remove','assigned-onboarding-holding-recovery')AND c.id=p_case AND c.tenant_id=app.current_tenant_id())source;
 $$;
 REVOKE ALL ON FUNCTION app.lifecycle_effect_function_identity(uuid,text)FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -207,8 +222,8 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE result uuid;identity record;stamp text;
 BEGIN
  IF NOT app.principal_snapshot_current() OR app.current_user_id() IS NULL OR p_case IS NULL
-  OR p_purpose NOT IN('own-daa','own-document','assigned-task','own-return-report','assigned-item','own-equipment-receipt','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment','assigned-onboarding-exception-add','assigned-onboarding-exception-remove','assigned-onboarding-keep-providing','administrative-onboarding-exception-remove')
-  OR p_event NOT IN('lifecycle-case.daa-submitted','lifecycle-v9.employeeDocumentSigned','lifecycle-v9.employeeDocumentSaved','lifecycle-v9.assignedTaskUpdated','lifecycle-v9.returnReported','lifecycle-v9.providingTeamItemUpdated','lifecycle-v9.equipmentReceipt','onboarding.task','onboarding.handover','onboarding.readNote','onboarding.acknowledge','onboarding.note_changed','onboarding.fulfil','onboarding.approve','onboarding.assignApproval','onboarding.addItem','onboarding.removeItem','onboarding.keepProviding')
+  OR p_purpose NOT IN('own-daa','own-document','assigned-task','own-return-report','assigned-item','own-equipment-receipt','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment','assigned-onboarding-exception-add','assigned-onboarding-exception-remove','assigned-onboarding-keep-providing','administrative-onboarding-exception-remove','assigned-onboarding-holding-recovery')
+  OR p_event NOT IN('lifecycle-case.daa-submitted','lifecycle-v9.employeeDocumentSigned','lifecycle-v9.employeeDocumentSaved','lifecycle-v9.assignedTaskUpdated','lifecycle-v9.returnReported','lifecycle-v9.providingTeamItemUpdated','lifecycle-v9.equipmentReceipt','onboarding.task','onboarding.handover','onboarding.readNote','onboarding.acknowledge','onboarding.note_changed','onboarding.fulfil','onboarding.approve','onboarding.assignApproval','onboarding.addItem','onboarding.removeItem','onboarding.keepProviding','onboarding.holding_returned','onboarding.holding_revoked')
   OR EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND c.active)
  THEN RAISE EXCEPTION 'Invalid native Lifecycle effect context' USING ERRCODE='42501';END IF;
  SELECT * INTO identity FROM app.lifecycle_effect_function_identity(p_case,p_purpose);
@@ -225,6 +240,17 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'Native Lifecycle effect context changed' USING ERRCODE='42501';END IF;
 END $$;
 REVOKE ALL ON FUNCTION app.lifecycle_native_effect_begin(text,uuid,text),app.lifecycle_native_effect_complete(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.lifecycle_native_item_effect_begin(p_case uuid,p_item text,p_status text,p_reason text)RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE effect uuid;
+BEGIN
+ IF p_item IS NULL OR length(p_item)NOT BETWEEN 1 AND 100 OR p_status IS NULL OR p_status NOT IN('todo','progress','done')OR p_reason IS NULL OR length(p_reason)>4000 THEN RAISE EXCEPTION 'Invalid native return work admission' USING ERRCODE='42501';END IF;
+ effect:=app.lifecycle_native_effect_begin('assigned-item',p_case,'lifecycle-v9.providingTeamItemUpdated');
+ INSERT INTO app.lifecycle_native_item_admission(context_id,item_id,status,reason)VALUES(effect,p_item,p_status,trim(p_reason));
+ RETURN effect;
+END $$;
+REVOKE ALL ON FUNCTION app.lifecycle_native_item_effect_begin(uuid,text,text,text)FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.lifecycle_native_effect_capture()RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -310,12 +336,34 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.lifecycle_saved_source_completion(uuid)FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- Issuing recovery closes only through the actual selected native offboarding item owner.
+-- Its sealed payload/OLD image survives SAVEPOINTs and later legitimate sibling-item updates.
+CREATE FUNCTION app.lifecycle_holding_recovery_completed(p_context uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context source_context
+ JOIN app.lifecycle_holding_recovery_admission admission ON admission.context_id=source_context.id
+ JOIN public.lc_onboarding_case source_case ON source_case.id=source_context.case_id AND source_case.tenant_id=source_context.tenant_id AND source_case.company_id=admission.company_id AND source_case.employment_id=admission.employment_id
+ JOIN public.lc_v9_case exit_case ON exit_case.id=admission.offboarding_case_id AND exit_case.tenant_id=source_context.tenant_id AND exit_case.company_id=admission.company_id AND exit_case.employment_id=admission.employment_id AND exit_case.module='off'
+ WHERE source_context.id=p_context AND source_context.purpose='assigned-onboarding-holding-recovery'
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements(source_case.data->'requisitions')r,jsonb_array_elements(r->'items')i WHERE r->>'id'=admission.request_id AND i->>'id'=admission.item_id AND i->'recovery'->>'offboardingCaseId'=admission.offboarding_case_id::text AND i->'recovery'->>'by'=source_context.user_id::text AND i->'recovery'->>'outcome'=CASE WHEN i->>'type'='system'THEN'revoked'ELSE'returned'END AND(i->>'revokeNeeded')::boolean IS NOT TRUE)
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements(exit_case.data->'items')i WHERE i->>'id'=admission.offboarding_item_id AND i->>'status'='done'AND i->>'assignee'=source_context.user_id::text AND i->>'group'=admission.team AND i->'nativeSource'->>'caseId'=source_case.id::text AND i->'nativeSource'->>'requestId'=admission.request_id AND i->'nativeSource'->>'itemId'=admission.item_id)
+ AND EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context completion
+ JOIN app.lifecycle_native_item_admission selected ON selected.context_id=completion.id
+ JOIN app.lifecycle_native_effect_receipt receipt ON receipt.context_id=completion.id
+ WHERE completion.xact_id=source_context.xact_id AND completion.tenant_id=source_context.tenant_id AND completion.user_id=source_context.user_id AND completion.case_id=admission.offboarding_case_id AND completion.company_id=admission.company_id
+ AND completion.purpose='assigned-item'AND completion.function_key='lifecycle.shared.recovery'AND completion.function_operation='execute'AND completion.positive_admission AND completion.completed AND NOT completion.active AND completion.authority_stamp=source_context.authority_stamp
+ AND selected.item_id=admission.offboarding_item_id AND selected.status='done'AND selected.reason=admission.offboarding_reason AND receipt.table_name='lc_v9_case'AND receipt.before_hash=admission.offboarding_before_hash
+ AND EXISTS(SELECT 1 FROM public.domain_event event WHERE event.tenant_id=completion.tenant_id AND event.aggregate_id=completion.case_id AND event.event_type='lifecycle-v9.providingTeamItemUpdated'AND event.actor_type='user'AND event.actor_id=completion.user_id AND event.payload->>'functionKey'=completion.function_key AND event.payload->>'nativeBranch'=completion.purpose AND app.lifecycle_row_in_transaction('domain_event',event.id,to_jsonb(event)))));
+$$;
+REVOKE ALL ON FUNCTION app.lifecycle_holding_recovery_completed(uuid)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.lifecycle_native_effect_admission_valid(p_context uuid)RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.principal_snapshot_current()AND EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c
  JOIN public.app_user actor ON actor.id=c.user_id AND actor.tenant_id=c.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
  WHERE c.id=p_context AND c.xact_id=pg_current_xact_id()AND c.tenant_id=app.current_tenant_id()AND c.user_id=app.current_user_id()AND c.completed AND NOT c.active
  AND c.authority_stamp=app.access_function_authority_stamp()
+ AND(c.purpose<>'assigned-onboarding-holding-recovery'OR app.lifecycle_holding_recovery_completed(c.id))
  AND(c.purpose<>'source-draft-save' OR app.lifecycle_saved_source_completion(c.id))
  AND(c.purpose<>'source-draft-active' OR app.workforce_draft_active_completed(c.source_draft_id,c.source_data,c.source_employment_id,c.source_person_id)AND EXISTS(SELECT 1 FROM public.lc_onboarding_case actual WHERE actual.id=c.case_id AND actual.tenant_id=c.tenant_id AND actual.source_draft_id=c.source_draft_id AND actual.company_id=c.company_id AND actual.employment_id=c.source_employment_id AND actual.data->>'employmentId'=c.source_employment_id::text AND actual.data->>'personId'=c.source_person_id::text AND actual.data->>'personnelStatus'='Active'))
  AND(c.purpose<>'source-draft-discard' OR app.workforce_draft_discard_completed(c.source_intent,c.source_draft_id,c.source_data)AND EXISTS(SELECT 1 FROM public.lc_onboarding_case actual WHERE actual.id=c.case_id AND actual.tenant_id=c.tenant_id AND actual.source_draft_id=c.source_draft_id AND actual.company_id=c.company_id))
@@ -330,7 +378,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND c.completed AND NOT c.active
  AND app.lifecycle_native_effect_admission_valid(c.id)
  AND r.table_name=p_table AND r.before_hash=encode(sha256(convert_to(coalesce(p_before,'{}'::jsonb)::text,'UTF8')),'hex') AND r.after_hash=encode(sha256(convert_to(coalesce(p_after,'{}'::jsonb)::text,'UTF8')),'hex')
- AND EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=c.tenant_id AND e.aggregate_id=c.case_id AND e.event_type=c.event_type AND e.actor_type='user' AND e.actor_id=c.user_id AND(c.purpose NOT IN('assigned-onboarding-exception-add','assigned-onboarding-exception-remove','assigned-onboarding-keep-providing','administrative-onboarding-exception-remove')OR e.payload->>'functionKey'=c.function_key AND e.payload->>'nativeBranch'=c.purpose) AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e))));
+ AND EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=c.tenant_id AND e.aggregate_id=c.case_id AND e.event_type=c.event_type AND e.actor_type='user' AND e.actor_id=c.user_id AND(c.purpose NOT IN('assigned-onboarding-exception-add','assigned-onboarding-exception-remove','assigned-onboarding-keep-providing','administrative-onboarding-exception-remove','assigned-onboarding-holding-recovery','assigned-item')OR e.payload->>'functionKey'=c.function_key AND e.payload->>'nativeBranch'=c.purpose) AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e))));
 $$;
 REVOKE ALL ON FUNCTION app.lifecycle_native_effect_approved(text,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -338,7 +386,7 @@ CREATE FUNCTION app.lifecycle_native_effect_cleanup()RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c WHERE c.id=NEW.id)THEN RETURN NULL;END IF;
- IF NOT app.lifecycle_native_effect_admission_valid(NEW.id) OR NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=NEW.tenant_id AND e.aggregate_id=NEW.case_id AND e.event_type=NEW.event_type AND e.actor_type='user' AND e.actor_id=NEW.user_id AND(NEW.purpose NOT IN('assigned-onboarding-exception-add','assigned-onboarding-exception-remove','assigned-onboarding-keep-providing','administrative-onboarding-exception-remove')OR e.payload->>'functionKey'=NEW.function_key AND e.payload->>'nativeBranch'=NEW.purpose) AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e)))
+ IF NOT app.lifecycle_native_effect_admission_valid(NEW.id) OR NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=NEW.tenant_id AND e.aggregate_id=NEW.case_id AND e.event_type=NEW.event_type AND e.actor_type='user' AND e.actor_id=NEW.user_id AND(NEW.purpose NOT IN('assigned-onboarding-exception-add','assigned-onboarding-exception-remove','assigned-onboarding-keep-providing','administrative-onboarding-exception-remove','assigned-onboarding-holding-recovery','assigned-item')OR e.payload->>'functionKey'=NEW.function_key AND e.payload->>'nativeBranch'=NEW.purpose) AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e)))
  THEN RAISE EXCEPTION 'Native Lifecycle completion requires its actual audit event' USING ERRCODE='42501';END IF;
  DELETE FROM app.lifecycle_native_effect_context WHERE id=NEW.id;
  RETURN NULL;
@@ -367,7 +415,7 @@ BEGIN
   THEN RAISE EXCEPTION 'Lifecycle native mutation anchor changed: %',spec.signature;END IF;
   -- Insert backwards, preserving the entire original canonical body and all its validation.
   body:=overlay(body placing E'\n PERFORM app.lifecycle_native_effect_complete(action_effect);' from finish for 0);
-  entry:=format(' action_effect:=app.lifecycle_native_effect_begin(%L,%s,%s);',spec.purpose,spec.subject,spec.event)||E'\n';
+  entry:=CASE WHEN spec.purpose='assigned-item'THEN ' action_effect:=app.lifecycle_native_item_effect_begin(c.id,p_item,p_status,p_reason);'ELSE format(' action_effect:=app.lifecycle_native_effect_begin(%L,%s,%s);',spec.purpose,spec.subject,spec.event)END||E'\n';
   body:=overlay(body placing entry from mutation_at for 0);
   body:=overlay(body placing 'action_effect uuid; ' from declaration+8 for 0);
   mutation_at:=strpos(body,E'BEGIN\n');
@@ -662,9 +710,9 @@ CREATE FUNCTION app.lifecycle_task_function_legacy_allowed(t uuid,u uuid,cap tex
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT co IS NOT NULL AND cap IN('function.lifecycle.shared.tasks.view','function.lifecycle.shared.tasks.execute')
  AND EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id))
- AND (EXISTS(SELECT 1 FROM public.lc_onboarding_case c,jsonb_array_elements(c.data->'tasks')task WHERE c.tenant_id=t AND c.company_id=co AND c.data->>'state'='submitted' AND task->>'assignee'=u::text)
+ AND (EXISTS(SELECT 1 FROM public.lc_onboarding_case c,jsonb_array_elements(c.data->'tasks')task WHERE c.tenant_id=t AND c.company_id=co AND(cap='function.lifecycle.shared.tasks.view'OR c.data->>'state'='submitted') AND task->>'assignee'=u::text)
  OR EXISTS(SELECT 1 FROM public.lc_v9_case c JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id,jsonb_array_elements(c.data->'tasks')task
- WHERE c.tenant_id=t AND c.company_id=co AND c.data->>'state'='submitted' AND(task->>'assignee'=u::text OR task->>'by'='employee' AND EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.person_id=e.person_id))));
+ WHERE c.tenant_id=t AND c.company_id=co AND(cap='function.lifecycle.shared.tasks.view'OR c.data->>'state'='submitted') AND(task->>'assignee'=u::text OR task->>'by'='employee' AND EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.person_id=e.person_id))));
 $$;
 CREATE FUNCTION app.lifecycle_task_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid)RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -1586,3 +1634,117 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.onboarding_exception_task_rows()FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_exception_task_rows()TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.lifecycle_recovery_function_legacy_allowed(t uuid,u uuid,cap text,co uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap IN('function.lifecycle.shared.recovery.view','function.lifecycle.shared.recovery.execute')AND EXISTS(
+ SELECT 1 FROM public.lc_v9_case c JOIN public.app_user actor ON actor.id=u AND actor.tenant_id=c.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
+ CROSS JOIN LATERAL jsonb_array_elements(c.data->'items')i WHERE c.tenant_id=t AND c.company_id=co AND c.module='off'AND i->>'assignee'=u::text
+ AND(cap='function.lifecycle.shared.recovery.view'OR c.data->>'state'='submitted'AND EXISTS(SELECT 1 FROM public.lc_onboarding_config cfg,jsonb_array_elements(cfg.data->'groups')g WHERE cfg.tenant_id=t AND g->>'id'=i->>'group'AND g->'members'?u::text)));
+$$;
+CREATE FUNCTION app.lifecycle_recovery_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id()AND u=app.current_user_id()AND app.lifecycle_recovery_function_legacy_allowed(t,u,cap,co);
+$$;
+REVOKE ALL ON FUNCTION app.lifecycle_recovery_function_legacy_allowed(uuid,uuid,text,uuid),app.lifecycle_recovery_function_current_legacy_allowed(uuid,uuid,text,uuid)FROM PUBLIC,ai_hr_app;
+DO $$DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','execute']LOOP
+  PERFORM app.register_function_action('lifecycle.shared.recovery',operation,'company',NULL,'app.lifecycle_recovery_function_legacy_allowed','{"moduleKey":"lifecycle","labelKey":"onboardingV31.copy.caseReturnRevoke","kind":"native_acl","course":"assigned","href":"/me/lifecycle","employeeBearing":false}'::jsonb);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.lifecycle_holding_recovery_pending(p_source uuid,p_request text,p_item text,p_exit uuid,p_exit_item text,p_exit_revision integer)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current()AND EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context context
+ JOIN app.lifecycle_holding_recovery_admission admission ON admission.context_id=context.id
+ JOIN app.lifecycle_native_effect_receipt receipt ON receipt.context_id=context.id
+ JOIN public.lc_onboarding_case source ON source.id=context.case_id AND source.tenant_id=context.tenant_id
+ WHERE context.xact_id=pg_current_xact_id()AND context.tenant_id=app.current_tenant_id()AND context.user_id=app.current_user_id()AND context.purpose='assigned-onboarding-holding-recovery'AND context.case_id=p_source AND context.completed AND NOT context.active
+ AND context.function_key='lifecycle.shared.recovery'AND context.positive_admission AND context.authority_stamp=app.access_function_authority_stamp()AND app.function_action_denial_clear('lifecycle.shared.recovery','execute',context.company_id)
+ AND admission.offboarding_case_id=p_exit AND admission.offboarding_item_id=p_exit_item AND admission.offboarding_revision=p_exit_revision AND admission.request_id=p_request AND admission.item_id=p_item
+ AND receipt.table_name='lc_onboarding_case'AND receipt.row_id=source.id::text AND source.company_id=admission.company_id AND source.employment_id=admission.employment_id
+ AND EXISTS(SELECT 1 FROM public.domain_event event WHERE event.tenant_id=context.tenant_id AND event.aggregate_id=context.case_id AND event.event_type=context.event_type AND event.actor_type='user'AND event.actor_id=context.user_id AND event.payload->>'functionKey'=context.function_key AND event.payload->>'nativeBranch'=context.purpose AND app.lifecycle_row_in_transaction('domain_event',event.id,to_jsonb(event))));
+$$;
+REVOKE ALL ON FUNCTION app.lifecycle_holding_recovery_pending(uuid,text,text,uuid,text,integer)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.onboarding_recover_assigned_holding(p_exit uuid,p_revision integer,p_exit_item text,p_source uuid,p_request text,p_item text,p_employment uuid,p_company uuid,p_reason text)
+RETURNS TABLE(source_case_id uuid,employment_id uuid,company_id uuid,did_change boolean,event_type text,function_key text,native_branch text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE scope jsonb;off_case public.lc_v9_case;c public.lc_onboarding_case;request jsonb;request_index bigint;item jsonb;item_index bigint;items jsonb;requests jsonb;next_data jsonb;effect uuid;actor_name text;stamp text;reason text;outcome text;recovery jsonb;entry jsonb;
+BEGIN
+ PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();
+ PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
+ PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
+ PERFORM pg_advisory_xact_lock(hashtextextended('lifecycle-v9:'||app.current_tenant_id()::text,0));
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL OR p_reason IS NULL OR length(p_reason)>4000 OR p_request IS NULL OR length(p_request)NOT BETWEEN 1 AND 100 OR p_item IS NULL OR length(p_item)NOT BETWEEN 1 AND 100 THEN RAISE EXCEPTION 'Recovery work unavailable'USING ERRCODE='42501';END IF;
+ scope:=app.lc_v9_assigned_item(p_exit,p_revision,p_exit_item);
+ IF scope->>'companyId'IS DISTINCT FROM p_company::text OR scope->>'employmentId'IS DISTINCT FROM p_employment::text OR scope->'item'->'nativeSource'->>'caseId'IS DISTINCT FROM p_source::text OR scope->'item'->'nativeSource'->>'requestId'IS DISTINCT FROM p_request OR scope->'item'->'nativeSource'->>'itemId'IS DISTINCT FROM p_item THEN RAISE EXCEPTION 'The open offboarding case does not contain this issued item.'USING ERRCODE='40001';END IF;
+ IF app.function_action_allowed('lifecycle.shared.recovery','execute',p_company)IS NOT TRUE THEN RAISE EXCEPTION 'Recovery function unavailable'USING ERRCODE='42501';END IF;
+ SELECT actual.* INTO off_case FROM public.lc_v9_case actual WHERE actual.id=p_exit AND actual.tenant_id=app.current_tenant_id();
+ SELECT actual.* INTO c FROM public.lc_onboarding_case actual WHERE actual.id=p_source AND actual.tenant_id=app.current_tenant_id()AND actual.company_id=p_company AND actual.employment_id=p_employment FOR UPDATE;
+ IF c.id IS NULL THEN RAISE EXCEPTION 'The issuing onboarding record is no longer linked to this employment.'USING ERRCODE='40001';END IF;
+ SELECT r,n INTO request,request_index FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY all_requests(r,n)WHERE r->>'id'=p_request ORDER BY n LIMIT 1;
+ SELECT i,n INTO item,item_index FROM jsonb_array_elements(request->'items')WITH ORDINALITY all_items(i,n)WHERE i->>'id'=p_item ORDER BY n LIMIT 1;
+ IF item IS NULL OR NOT(item->>'state'='handed'AND request->>'handedAt'IS NOT NULL OR coalesce((item->>'revokeNeeded')::boolean,false))THEN RAISE EXCEPTION 'The original item is no longer recorded as issued. Review the holding before closing it.'USING ERRCODE='40001';END IF;
+ IF item->'recovery'IS NOT NULL AND item->'recovery'<>'null'::jsonb THEN
+  IF item->'recovery'->>'offboardingCaseId'=p_exit::text THEN RETURN QUERY SELECT c.id,c.employment_id,c.company_id,false,NULL::text,'lifecycle.shared.recovery'::text,'assigned-onboarding-holding-recovery'::text;RETURN;END IF;
+  RAISE EXCEPTION 'Another case has already recorded this item recovery.'USING ERRCODE='40001';
+ END IF;
+ IF coalesce(scope->'item'->>'status','')NOT IN('todo','progress')OR item->>'team'IS DISTINCT FROM scope->'item'->>'group'OR app.onboarding_group_member(item->>'team')IS NOT TRUE THEN RAISE EXCEPTION 'The issuing providing team changed. Review the recovery assignment.'USING ERRCODE='40001';END IF;
+ SELECT coalesce(person.full_name,'User '||left(actor.id::text,8))INTO actor_name FROM public.app_user actor LEFT JOIN public.person person ON person.id=actor.person_id AND person.tenant_id=actor.tenant_id WHERE actor.id=app.current_user_id()AND actor.tenant_id=c.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id);
+ IF actor_name IS NULL THEN RAISE EXCEPTION 'Your login is not available'USING ERRCODE='42501';END IF;
+ stamp:=to_char(clock_timestamp()AT TIME ZONE'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+ reason:=btrim(p_reason,U&'\0020\0009\000A\000B\000C\000D\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF');outcome:=CASE WHEN item->>'type'='system'THEN'revoked'ELSE'returned'END;
+ recovery:=jsonb_build_object('offboardingCaseId',p_exit,'outcome',outcome,'at',stamp,'by',app.current_user_id(),'reason',reason);
+ item:=item||jsonb_build_object('recovery',recovery,'revokeNeeded',false);
+ SELECT jsonb_agg(CASE WHEN n=item_index THEN item ELSE i END ORDER BY n)INTO items FROM jsonb_array_elements(request->'items')WITH ORDINALITY all_items(i,n);
+ request:=jsonb_set(request,'{items}',items);SELECT jsonb_agg(CASE WHEN n=request_index THEN request ELSE r END ORDER BY n)INTO requests FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY all_requests(r,n);
+ entry:=jsonb_build_object('id',gen_random_uuid(),'at',stamp,'by',app.current_user_id(),'name',actor_name,'action','holding.'||outcome,'detail',(item->>'name')||' · confirmed by the assigned providing team on offboarding case '||p_exit::text||CASE WHEN reason<>''THEN' · '||reason ELSE''END);
+ next_data:=(c.data-ARRAY['caseValues','caseContactEmail'])||jsonb_build_object('source',coalesce(c.data->'source','{}')-ARRAY['costCentre','ic','passport'],'local',coalesce(c.data->'local','{}')-ARRAY['costCentre','ic','passport'],'requisitions',requests,'history',coalesce(c.data->'history','[]')||jsonb_build_array(entry));
+ IF app.onboarding_native_case_size(next_data)>10000000 THEN RAISE EXCEPTION 'This update is too large.'USING ERRCODE='23514';END IF;
+ effect:=app.lifecycle_native_effect_begin('assigned-onboarding-holding-recovery',c.id,'onboarding.holding_'||outcome);
+ INSERT INTO app.lifecycle_holding_recovery_admission(context_id,offboarding_case_id,offboarding_item_id,offboarding_revision,offboarding_before_hash,request_id,item_id,employment_id,company_id,team,offboarding_reason)
+ VALUES(effect,p_exit,p_exit_item,p_revision,encode(sha256(convert_to(to_jsonb(off_case)::text,'UTF8')),'hex'),p_request,p_item,p_employment,p_company,scope->'item'->>'group',trim(p_reason));
+ INSERT INTO public.lc_onboarding_case_revision(tenant_id,case_id,company_id,revision,data)VALUES(c.tenant_id,c.id,c.company_id,c.revision,c.data)ON CONFLICT DO NOTHING;
+ UPDATE public.lc_onboarding_case actual SET data=next_data,revision=c.revision+1,updated_at=clock_timestamp()WHERE actual.id=c.id AND actual.tenant_id=c.tenant_id;
+ PERFORM app.lifecycle_native_effect_complete(effect);
+ RETURN QUERY SELECT c.id,c.employment_id,c.company_id,true,'onboarding.holding_'||outcome,'lifecycle.shared.recovery'::text,'assigned-onboarding-holding-recovery'::text;
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_recover_assigned_holding(uuid,integer,text,uuid,text,text,uuid,uuid,text)FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_recover_assigned_holding(uuid,integer,text,uuid,text,text,uuid,uuid,text)TO ai_hr_app;
+--> statement-breakpoint
+-- Append exact source-owner changes without rewriting the immutable original V9 migrations.
+DO $recovery_owners$
+DECLARE body text;anchor text;replacement text;signature text;
+BEGIN
+ signature:='app.lc_v9_assigned_item(uuid,integer,text)';body:=pg_get_functiondef(signature::regprocedure);
+ anchor:=' RETURN jsonb_build_object(''companyId'',c.company_id';
+ IF strpos(body,anchor)=0 OR strpos(substr(body,strpos(body,anchor)+length(anchor)),anchor)>0 OR strpos(body,'Recovery view unavailable')>0 THEN RAISE EXCEPTION 'Native recovery scope owner changed';END IF;
+ body:=replace(body,anchor,E' IF NOT app.function_action_allowed(''lifecycle.shared.recovery'',''view'',c.company_id)THEN RAISE EXCEPTION ''Recovery view unavailable'' USING ERRCODE=''42501'';END IF;\n'||anchor);EXECUTE body;
+ signature:='app.lc_v9_fulfil_item(uuid,integer,text,text,text)';body:=pg_get_functiondef(signature::regprocedure);
+ anchor:=' scope:=app.lc_v9_assigned_item(p_case,p_revision,p_item);item:=scope->''item'';';
+ IF strpos(body,anchor)=0 OR strpos(substr(body,strpos(body,anchor)+length(anchor)),anchor)>0 OR strpos(body,'Recovery function unavailable')>0 THEN RAISE EXCEPTION 'Native return command owner changed';END IF;
+ body:=replace(body,anchor,anchor||E'\n IF NOT app.function_action_allowed(''lifecycle.shared.recovery'',''execute'',(scope->>''companyId'')::uuid)THEN RAISE EXCEPTION ''Recovery function unavailable'' USING ERRCODE=''42501'';END IF;');
+ anchor:='n.xmin::text=pg_current_xact_id()::text';
+ IF strpos(body,anchor)=0 OR strpos(substr(body,strpos(body,anchor)+length(anchor)),anchor)>0 THEN RAISE EXCEPTION 'Native issuing confirmation witness changed';END IF;
+ -- Physical native intent replaces tuple xmin, which is a subtransaction ID under SAVEPOINT.
+ body:=replace(body,anchor,'app.lifecycle_holding_recovery_pending(n.id,r->>''id'',i->>''id'',p_case,p_item,p_revision)');EXECUTE body;
+ signature:='app.lc_v9_work(uuid)';body:=pg_get_functiondef(signature::regprocedure);
+ anchor:='WHERE c.tenant_id=app.current_tenant_id() AND app.current_user_id() IS NOT NULL';
+ IF strpos(body,anchor)=0 OR strpos(substr(body,strpos(body,anchor)+length(anchor)),anchor)>0 THEN RAISE EXCEPTION 'Native work principal boundary changed';END IF;
+ body:=replace(body,anchor,'WHERE c.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.current_user_id() IS NOT NULL');
+ anchor:='WHERE app.function_action_allowed(''lifecycle.shared.tasks'',''view'',a.company_id) AND (t->>''assignee''=a.uid OR a.own AND t->>''by''=''employee'')';
+ IF strpos(body,anchor)=0 OR strpos(substr(body,strpos(body,anchor)+length(anchor)),anchor)>0 THEN RAISE EXCEPTION 'Native assigned task read owner changed';END IF;
+ body:=replace(body,anchor,'WHERE (t->>''assignee''=a.uid AND app.function_action_allowed(''lifecycle.shared.tasks'',''view'',a.company_id) OR a.own AND t->>''by''=''employee'')');
+ anchor:='i->>''assignee''=a.uid AND app.onboarding_group_member(i->>''group'')';
+ IF strpos(body,anchor)=0 OR strpos(substr(body,strpos(body,anchor)+length(anchor)),anchor)>0 THEN RAISE EXCEPTION 'Native return execution projection changed';END IF;
+ body:=replace(body,anchor,anchor||' AND app.function_action_allowed(''lifecycle.shared.recovery'',''execute'',a.company_id)');
+ anchor:='WHERE a.own OR i->>''assignee''=a.uid';
+ IF strpos(body,anchor)=0 OR strpos(substr(body,strpos(body,anchor)+length(anchor)),anchor)>0 THEN RAISE EXCEPTION 'Native assigned return read owner changed';END IF;
+ body:=replace(body,anchor,'WHERE a.own OR i->>''assignee''=a.uid AND(a.module<>''off'' OR app.function_action_allowed(''lifecycle.shared.recovery'',''view'',a.company_id))');
+ anchor:='''facts'',(data->''facts'')-ARRAY[''finalConfirmationDate'',''confirmationDate'',''probationEndDate'',''provisionalEndOn'']';
+ IF strpos(body,anchor)=0 OR strpos(substr(body,strpos(body,anchor)+length(anchor)),anchor)>0 THEN RAISE EXCEPTION 'Native assigned return fact projection changed';END IF;
+ replacement:='''facts'',CASE WHEN own OR module<>''off'' THEN(data->''facts'')-ARRAY[''finalConfirmationDate'',''confirmationDate'',''probationEndDate'',''provisionalEndOn''] ELSE jsonb_build_object(''name'',data->''facts''->>''name'',''employeeNo'',data->''facts''->>''employeeNo'',''joinDate'',data->''facts''->>''joinDate'',''lastDay'',data->''facts''->>''lastDay'')END';
+ body:=replace(body,anchor,replacement);EXECUTE body;
+END $recovery_owners$;
