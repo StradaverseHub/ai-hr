@@ -61,12 +61,19 @@ it('reads the canonical v2 task list rather than treating unread notifications a
 
 it('shows kinds v1 omits, so waiting replacement leave or a notice acknowledgement is never "nothing needs you"', () => {
   const f = fixture(); f.design.composition.pages[1].blocks = [newMobileBlock('tasks', 'pending')];
-  f.tasks.data = { items: [taskRow('replacementLeave', 'Replacement colleague'), taskRow('noticeAcknowledgement', '')], nextCursor: null };
+  f.tasks.data = { items: [
+    v2tasks.TaskItemV2.parse(taskRow('replacementLeave', 'Replacement colleague')),
+    v2tasks.TaskItemV2.parse(taskRow('noticeAcknowledgement', '')),
+  ], nextCursor: null };
   render(<f.ComposedPage design={f.design} id="benefits" />);
   expect(screen.getByText('task_replacementLeave: Replacement colleague')).toBeTruthy();
   expect(screen.getByText('task_noticeAcknowledgement: —')).toBeTruthy();
   expect(screen.queryByText('nothingNeedsYou')).toBeNull();
-  expect(screen.getByRole('button', { name: 'openApprovals' })).toBeTruthy();
+  expect(f.calls).toEqual(['v2/tasks']);
+  // This build retains the server's ordinary web-only contract; it does not opt into expanded native decisions.
+  expect(f.v2params).toEqual([{ limit: expect.stringMatching(/^(4|20)$/) }]);
+  fireEvent.click(screen.getByRole('button', { name: 'openApprovals' }));
+  expect(f.push).toHaveBeenCalledWith('/approvals');
 });
 
 it('says "nothing needs you" only for a settled, successful, empty list — never while loading, failed or stale', () => {
