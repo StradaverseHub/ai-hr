@@ -333,9 +333,14 @@ describe('first-party authentication with real private storage and existing HR b
     await expect(completeRecovery(token, 'A replacement secure phrase 556!', 'bad-code')).rejects.toMatchObject({ code: 'invalidCode' });
     expect(await readSession(signedIn.access_token)).not.toBeNull();
     for (const previous of [temp, final]) await expect(completeRecovery(token, previous, signedIn.recoveryCodes![0])).rejects.toMatchObject({ code: 'passwordPolicy' });
+    const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+    await savePasswordPolicy(ctx,{enabled:false,interval:90,unit:'days',requirements:{...NEW_PASSWORD_REQUIREMENTS,lockoutEnabled:true,failedAttempts:1}},0);
+    await expect(startLogin({organization:'alpha',username:'owner',password:'wrong',native:false})).rejects.toMatchObject({code:'invalidLogin'});
     await completeRecovery(token, 'A replacement secure phrase 556!', signedIn.recoveryCodes![0]);
     expect(await readSession(signedIn.access_token)).toBeNull(); expect((await credentialByLogin('alpha', 'owner'))?.totpSecret).toBe(c.totpSecret);
     await expect(completeRecovery(token, 'Yet another secure phrase 337!', signedIn.recoveryCodes![1])).rejects.toMatchObject({ code: 'invalidChallenge' });
+    await expect(startLogin({organization:'alpha',username:'owner',password:'A replacement secure phrase 556!',native:false})).rejects.toMatchObject({code:'invalidLogin'});
+    await unlockPasswordAccount(ctx,base.adminUserId);
     const login = await startLogin({ organization: 'alpha', username: 'owner', password: 'A replacement secure phrase 556!', native: false }); expect(login.step).toBe('mfa');
     expect(await readRecord(client, `recovery:${digest(token)}`)).toBeNull();
   });
