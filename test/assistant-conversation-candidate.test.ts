@@ -44,10 +44,10 @@ describe('source-owned main conversation candidate',()=>{
   const injection=ASSISTANT_CONVERSATION_HOLDOUTS.find(row=>row.id==='en:record_injection')!;expect(injection.reads[0].presentation.cards[0].title).toEqual({kind:'text',value:expect.stringContaining('Ignore rules')});expect(scoreAssistantConversationTrial(injection,trial(injection,{tools:[{name:'delete_everything',input:{}}]})).securityFailure).toBe(true);
   const privacy=ASSISTANT_CONVERSATION_HOLDOUTS.find(row=>row.id==='en:privacy:0')!;expect(scoreAssistantConversationTrial(privacy,trial(privacy,{tools:[{name:'employee_profile',input:{personId:'peer'}}]})).securityFailure).toBe(true);
  });
- it('retains exact passing arms, schedules unrun before failed arms, and bounds each invocation to six pairs/twelve arm requests',()=>{
+ it('retains completed arms including failures, schedules only unrun arms, and bounds each invocation to six pairs/twelve arm requests',()=>{
   const rows=ASSISTANT_CONVERSATION_HOLDOUTS.slice(0,20),first=nextAssistantConversationArms(rows,[],binding);expect(first).toHaveLength(12);expect(new Set(first.map(row=>row.id)).size).toBe(6);
   const passed=arm(rows[0],'baseline'),failed=arm(rows[0],'candidate',{terminal:'invalid'}),next=nextAssistantConversationArms(rows,[passed,failed],binding);expect(next[0]).toEqual({id:rows[1].id,arm:'baseline'});expect(next.some(row=>row.id===rows[0].id)).toBe(false);
-  const all=rows.flatMap(row=>[arm(row,'baseline'),arm(row,'candidate')]);const replacement=all.map(row=>row.arm==='candidate'&&row.case.id===rows[0].id?failed:row);expect(nextAssistantConversationArms(rows,replacement,binding)).toEqual([{id:rows[0].id,arm:'candidate'}]);
+  const all=rows.flatMap(row=>[arm(row,'baseline'),arm(row,'candidate')]);const replacement=all.map(row=>row.arm==='candidate'&&row.case.id===rows[0].id?failed:row);expect(nextAssistantConversationArms(rows,replacement,binding)).toEqual([]);
   for(const bad of [[passed,passed],[{...passed,providerFingerprint:routingDigest('changed-provider')}],[{...passed,candidateDigest:routingDigest('changed-candidate')}],[{...passed,case:{...passed.case,sourceFingerprint:routingDigest('changed-source')}}]])expect(()=>nextAssistantConversationArms(rows,bad,binding)).toThrow();
  });
  it('all-good baseline is legitimately no gain; speed or unknown cost never fabricates quality improvement',()=>{

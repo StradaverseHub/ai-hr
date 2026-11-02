@@ -42,12 +42,12 @@ describe('paired independently adjudicated prompt measurement',()=>{
   const partial=await executePromptHoldout(candidate,cfg);expect(partial).toMatchObject({completedCases:0,completedRequests:1,state:'incomplete'});
   generated.mockClear();const report=await complete(partial);expect(generated).toHaveBeenCalledTimes(287);expect(generated.mock.calls.filter(([,args])=>args.prompt===PROMPT_HOLDOUTS[0].question&&args.system===baseSystem)).toHaveLength(0);expect(report.state).toBe('complete');
  });
- it('finishes unrun arms before retrying failures and retains all exact passing arms on a failed-only retry',async()=>{
+ it('finishes unrun arms and retains completed failures without resampling them',async()=>{
   generated.mockImplementation(async(_cfg,args)=>args.system===candidateSystem&&args.prompt===PROMPT_HOLDOUTS[0].question?JSON.stringify({decision:'refuse',modules:[]}):answer(args.prompt));
   const first=await executePromptHoldout(candidate,cfg);expect(first.cases.find(row=>row.id===PROMPT_HOLDOUTS[0].id&&row.arm==='candidate')?.state).toBe('failed');
   generated.mockClear();const next=await executePromptHoldout(candidate,cfg,first);expect(generated.mock.calls.some(([,args])=>args.prompt===PROMPT_HOLDOUTS[0].question)).toBe(false);expect(next.retainedFailures).toBe(1);
   const failed=await complete(next);generated.mockClear();generated.mockImplementation(async(_cfg,args)=>answer(args.prompt));const repaired=await executePromptHoldout(candidate,cfg,failed);
-  expect(generated).toHaveBeenCalledTimes(1);expect(repaired).toMatchObject({state:'complete',attemptedRequests:1,retainedPasses:287,retainedFailures:0,comparison:{qualityImproved:false}});
+  expect(generated).not.toHaveBeenCalled();expect(repaired).toMatchObject({state:'complete',attemptedRequests:0,retainedPasses:287,retainedFailures:1,qualityFailures:1,comparison:{qualityImproved:false}});
  });
  it('refuses retention under changed suite or candidate configuration binding',async()=>{const report=await complete();generated.mockClear();await executePromptHoldout(candidate,cfg,{...report,suiteDigest:'changed'});expect(generated).toHaveBeenCalledTimes(12);generated.mockClear();await executePromptHoldout(PROMPT_BASELINE,cfg,report);expect(generated).toHaveBeenCalledTimes(12);});
 });

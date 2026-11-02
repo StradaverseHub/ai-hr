@@ -23,8 +23,9 @@ export async function executePromptHoldout(configuration:unknown,cfg:ResolvedAiC
    if(previous&&(previous.state==='passed'||previous.state==='failed')&&previous.measurement&&typeof previous.outputDigest==='string'&&/^[a-f0-9]{64}$/.test(previous.outputDigest))outcomes.set(key(fixture.id,arm),Object.freeze({...previous,retained:true}));}
  }
  const arms=PROMPT_HOLDOUTS.flatMap((fixture,index)=>(index%2?['candidate','baseline'] as const:['baseline','candidate'] as const).map(arm=>({fixture,arm})));
- // One shared budget across both arms; no silent doubling. Passing exact arms remain immutable.
- const queue=[...arms.filter(row=>!outcomes.has(key(row.fixture.id,row.arm))),...arms.filter(row=>outcomes.get(key(row.fixture.id,row.arm))?.state==='failed')];
+ // One fixed trial per case/arm for this source/candidate/provider binding. A valid wrong answer
+ // remains measured; resumption fills only genuinely unrun work. Transport failures stay separate.
+ const queue=arms.filter(row=>!outcomes.has(key(row.fixture.id,row.arm)));
  for(const {fixture,arm} of queue){
   if(attemptedRequests>=PROMPT_HOLDOUT_REQUEST_LIMIT)break;attemptedRequests++;
   const observation:{settled?:Parameters<NonNullable<AiAdmissionLifecycle['settled']>>[1]}={};let text:string;const callStarted=performance.now();

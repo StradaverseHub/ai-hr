@@ -51,8 +51,9 @@ export function nextAssistantConversationArms(cases:readonly ConversationCaseCon
  const keys=new Set<string>(),requests:{id:string;arm:'baseline'|'candidate'}[]=[];
  for(const value of Object.values(binding))if(!/^[a-f0-9]{64}$/.test(value))return fail();
  for(const arm of arms){const expected=cases.find(row=>row.id===arm.case.id),key=arm.case.id+':'+arm.arm;if(!expected||!['baseline','candidate'].includes(arm.arm)||keys.has(key)||arm.candidateDigest!==binding.candidateDigest||arm.providerFingerprint!==binding.providerFingerprint||arm.case.sourceFingerprint!==expected.sourceFingerprint)return fail();keys.add(key);}
- // Finish genuinely unrun arms first; retain exact passing arms. Failed-only retries follow.
- for(const retry of [false,true])for(const contract of cases)for(const arm of ['baseline','candidate'] as const){const prior=arms.find(row=>row.arm===arm&&row.case.id===contract.id);if(retry?prior&&!prior.case.passed:!prior)requests.push({id:contract.id,arm});}
+ // Every completed trial is immutable, including wrong answers. Only resume unrun case/arm pairs;
+ // another quality sample needs a separately declared trial, not a failed-only replacement.
+ for(const contract of cases)for(const arm of ['baseline','candidate'] as const){if(!keys.has(contract.id+':'+arm))requests.push({id:contract.id,arm});}
  const selected:typeof requests=[],pairs=new Set<string>();for(const request of requests){if(!pairs.has(request.id)&&pairs.size>=ASSISTANT_CONVERSATION_POLICY.maxPairs)continue;pairs.add(request.id);selected.push(request);if(selected.length===ASSISTANT_CONVERSATION_POLICY.maxNewCalls)break;}return Object.freeze(selected.map(row=>Object.freeze(row)));
 }
 export function compareAssistantConversationArms(cases:readonly ConversationCaseContract[],arms:readonly ConversationArm[],binding:{candidateDigest:string;providerFingerprint:string}){

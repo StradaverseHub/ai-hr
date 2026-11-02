@@ -59,13 +59,14 @@ describe('actual independent prompt-to-plan evaluation custody',()=>{
   // the author trial share the same actual root; no retry/arm/principal mints a fresh allowance.
   expect(allocation).toEqual({roots:1,reservations:expectedModelRuns(),held:expectedModelRuns(),reserved:(BigInt(expectedModelRuns())*BigInt("1000000")).toString()});
  });
- it('retains authentic passing cases and reruns only a failed exact-input case',async()=>{
+ it('retains authentic completed cases and never erases a valid failure through retries',async()=>{
   const a=await candidate(),sent=await transport(a.author);const normal=sent.getMockImplementation()!;
   sent.mockImplementation(async(cfg,args)=>args.system!==promptCandidateSystem(PROMPT_BASELINE)&&args.prompt===PROMPT_HOLDOUTS.find(row=>row.id==='reject-peer')!.question?JSON.stringify({decision:'read',modules:['payroll']}):normal(cfg,args));
   const failed=await completeEvaluation(a.reviewer,{candidateId:a.candidateId,consent:consent()});expect(failed.securityFailures).toBe(1);
   sent.mockImplementation(normal);sent.mockClear();
   const repaired=await completeEvaluation(a.reviewer,{candidateId:a.candidateId,consent:consent()});
-  expect(repaired).toMatchObject({retainedPasses:2*PROMPT_HOLDOUTS.length-1,retainedFailures:0,attemptedRequests:1,completedRequests:1,securityFailures:0,qualityFailures:0});expect(sent).toHaveBeenCalledTimes(1);
+  expect(repaired).toMatchObject({retainedPasses:2*PROMPT_HOLDOUTS.length-1,retainedFailures:1,attemptedRequests:0,completedRequests:0,securityFailures:1,qualityFailures:1});expect(sent).not.toHaveBeenCalled();
+  await expect(promotePromptAgentCandidate(a.promoter,{candidateId:a.candidateId,maxJobs:1,hours:1})).rejects.toThrow();
   const [evidence]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_evaluation where candidate_id=${a.candidateId}::uuid`);expect(evidence.n).toBe(Math.ceil(2*PROMPT_HOLDOUTS.length/PROMPT_HOLDOUT_REQUEST_LIMIT)+1);
  });
  it('does not convert incomplete or changed-provider evidence into promotable quality',async()=>{
