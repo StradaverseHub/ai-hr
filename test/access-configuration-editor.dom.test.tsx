@@ -5,6 +5,8 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {AccessConfigurationEditor,type AccessEditorProps,type AccessEditorResult} from '../app/admin/users/access-editor';
+import {FINANCIAL_LETTER_FUNCTIONS} from '../deploy/access/financial-letter-function-bindings';
+import {functionActionCapabilities} from '../deploy/access/function-action-contract';
 import type {AccessConfigurationPreview} from '../core/access-configuration';
 const routing=vi.hoisted(()=>({refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>routing}));
@@ -45,6 +47,27 @@ describe('access editor decisions and stale preview behavior',()=>{
   const f=fixture(true);f.chooseReaders();f.view.rerender(f.tree({...f.props,capabilities:[...f.props.capabilities,...(['view','add','edit','delete'] as const).map(operation=>({id:'settings.'+operation,label:operation+' tenant settings',scope:'tenant' as const,supported:true}))]}));
   fireEvent.click(screen.getByRole('checkbox',{name:'add tenant settings'}));fireEvent.click(screen.getByRole('button',{name:'Preview permission changes'}));
   await waitFor(()=>expect(f.preview).toHaveBeenCalledOnce());expect(f.preview.mock.calls[0][0].command).toMatchObject({kind:'replaceGroupGrants',grants:expect.arrayContaining([{capabilityId:'settings.view',companyId:null},{capabilityId:'settings.add',companyId:null}])});
+ });
+ it('renders real function rows and clears dependent submenu grants when a parent View is removed',async()=>{
+  const f=fixture(true);f.chooseReaders();
+  const descriptors=FINANCIAL_LETTER_FUNCTIONS.filter(row=>row.key==='payroll.process');expect(descriptors).toHaveLength(1);
+  const children=functionActionCapabilities(descriptors).map(capability=>({...capability,supported:true,label:'Payroll Process · '+capability.id.slice(capability.id.lastIndexOf('.')+1)}));
+  const family=(['view','add','edit','delete'] as const).map(operation=>({id:'payroll.'+operation,label:operation+' payroll',scope:'company' as const,supported:true}));
+  f.view.rerender(f.tree({...f.props,capabilities:[...f.props.capabilities,...family,...children]}));
+  expect(screen.getByRole('region',{name:'Payroll'})).toBeTruthy();
+  fireEvent.click(screen.getByRole('checkbox',{name:'Payroll Process · add'}));
+  expect(screen.getByRole('checkbox',{name:'Payroll Process · view'})).toBeChecked();
+  expect(screen.getByRole('checkbox',{name:'view payroll'})).toBeChecked();
+  expect(screen.getByRole('checkbox',{name:'add payroll'})).toBeChecked();
+  fireEvent.click(screen.getByRole('checkbox',{name:'view payroll'}));
+  expect(screen.getByRole('checkbox',{name:'Payroll Process · add'})).not.toBeChecked();
+  expect(screen.getByRole('checkbox',{name:'Payroll Process · view'})).not.toBeChecked();
+  // The add/clear round trip restores the initial draft; a real additional change enables preview.
+  expect(screen.getByRole('button',{name:'Preview permission changes'})).toBeDisabled();
+  fireEvent.click(screen.getByRole('checkbox',{name:'View workforce records'}));
+  fireEvent.click(screen.getByRole('button',{name:'Preview permission changes'}));
+  await waitFor(()=>expect(f.preview).toHaveBeenCalledOnce());
+  expect(f.preview.mock.calls[0][0].command).toMatchObject({kind:'replaceGroupGrants',grants:[{capabilityId:'workforce.view',companyId:companyB}]});
  });
  it('preserves permissions in another company when changing the selected scope',async()=>{
   const f=fixture();f.chooseReaders();fireEvent.click(screen.getByRole('checkbox',{name:/View workforce records/}));

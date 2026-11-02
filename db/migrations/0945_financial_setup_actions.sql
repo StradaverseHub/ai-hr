@@ -547,3 +547,53 @@ DO $$DECLARE name text;BEGIN
  EXECUTE format('CREATE TRIGGER financial_history_written AFTER INSERT ON public.%I FOR EACH ROW EXECUTE FUNCTION app.financial_history_capture_written()',name);
  END LOOP;
 END;$$;
+
+--> statement-breakpoint
+-- Final ordered delegation composition. Execution may preserve ANY native Letter course;
+-- delegation of a family cell must prove ALL represented native operations in current claims.
+CREATE FUNCTION app.access_financial_current_delegation_floor(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE native_operation text;selected_company uuid;
+BEGIN
+ IF t IS DISTINCT FROM app.current_tenant_id() OR u IS DISTINCT FROM app.current_user_id() OR NOT app.principal_snapshot_current() THEN RETURN false;END IF;
+ IF app.financial_letter_native_operations(cap) IS NULL THEN RETURN app.financial_letter_current_legacy_allowed(t,u,cap,co);END IF;
+ IF co IS NULL THEN
+  IF NOT EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('hr_admin','super_admin') AND g.company_id IS NULL) THEN RETURN false;END IF;
+  FOR selected_company IN SELECT c.id FROM public.company c WHERE c.tenant_id=t AND c.archived_at IS NULL LOOP
+   IF NOT app.access_financial_current_delegation_floor(t,u,cap,selected_company) THEN RETURN false;END IF;
+  END LOOP;RETURN true;
+ END IF;
+ FOREACH native_operation IN ARRAY app.financial_letter_native_operations(cap) LOOP
+  IF NOT app.letter_current_native_permission(t,u,co,native_operation) THEN RETURN false;END IF;
+ END LOOP;RETURN true;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_financial_current_delegation_floor(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_can_delegate(p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.access_capability c
+  JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id()
+  WHERE c.id=p_capability
+   AND (p_capability !~ '^(payroll|performance_compensation|letters)\.' OR app.financial_letter_delegation_allowed(u.tenant_id,u.id,p_capability,p_company) AND app.access_financial_current_delegation_floor(u.tenant_id,u.id,p_capability,p_company))
+   AND (p_capability !~ '^(organisation|settings)\.' OR app.organisation_settings_delegation_allowed(u.tenant_id,u.id,p_capability,p_company)
+    AND app.organisation_settings_current_legacy_allowed(u.tenant_id,u.id,p_capability,p_company)
+    AND (p_capability NOT LIKE 'settings.%' OR app.is_group_admin()))
+   AND (p_capability NOT LIKE 'payroll_configuration.%' OR p_company IS NULL AND app.financial_setup_delegation_allowed(u.tenant_id,u.id,p_capability,NULL) AND app.financial_setup_current_legacy_allowed(u.tenant_id,u.id,p_capability,NULL))
+   AND app.access_function_delegation_floor(p_capability,p_company) AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements_text(c.prerequisites) needed(id) LEFT JOIN public.access_capability prerequisite ON prerequisite.id=needed.id WHERE prerequisite.id IS NULL OR NOT app.access_can_delegate(needed.id,CASE WHEN prerequisite.scope='tenant' THEN NULL ELSE p_company END)) AND app.access_current_capability_source(p_capability,p_company) AND (p_capability NOT IN ('workforce.add','workforce.edit','workforce.delete','workforce.maintain') OR CASE WHEN p_company IS NULL THEN app.is_group_admin() ELSE app.is_admin_for(p_company) END) AND (p_capability !~ '^.+\.(add|edit|delete|approve|issue|execute)$' OR app.access_can_delegate(regexp_replace(p_capability,'[^.]+$','view'),p_company)) AND c.supported AND jsonb_array_length(c.bindings)>0
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND CASE WHEN c.scope='tenant' THEN p_company IS NULL AND app.access_allowed_for(u.id,c.id,NULL)
+    WHEN p_company IS NOT NULL THEN app.access_allowed_for(u.id,c.id,p_company)
+    ELSE EXISTS(SELECT 1 FROM public.access_configuration s WHERE s.tenant_id=u.tenant_id AND s.initialized)
+     AND (app.access_native_default_current(c.id,NULL) OR EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.company_id IS NULL AND o.effect='allow' AND o.retired_at IS NULL)
+      OR EXISTS(SELECT 1 FROM public.access_effective_membership m JOIN public.access_group g ON g.id=m.group_id AND g.tenant_id=m.tenant_id
+       JOIN public.access_group_grant a ON a.group_id=g.id AND a.tenant_id=g.tenant_id
+       WHERE m.tenant_id=u.tenant_id AND m.user_id=u.id AND m.company_id IS NULL
+        AND g.retired_at IS NULL AND a.capability_id=c.id AND a.company_id IS NULL AND a.retired_at IS NULL)) END
+   AND NOT EXISTS(SELECT 1 FROM public.access_user_override o
+    WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.effect='deny' AND o.retired_at IS NULL
+     AND (p_company IS NULL OR o.company_id IS NULL
+      OR app.access_scope_covers(o.company_id,p_company,u.tenant_id)
+      OR app.access_scope_covers(p_company,o.company_id,u.tenant_id)))
+ );
+$$;
