@@ -753,7 +753,8 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(await actualWorker.withEvent(recipient.sourceEventId!,tx=>perf.assessmentReminderRecipientsTx(tx,recipient.id))).toEqual([subject.employmentId]);
     await expect(deliverNotificationEmails(system,async<T>()=>({version:1,ready:false} as T),{onehrSweep:{tenantId:system.tenantId,withEvent:actualWorker.withEvent}})).rejects.toThrow('does not match');
     expect(await withOnehrWorkerSource(system,owner,{kind:'recipient',id:recipient.id},tx=>perf.assessmentReminderRecipientsTx(tx,recipient.id))).toEqual([subject.employmentId]);
-    const [delivery]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.sourceEventId,recipient.sourceEventId!)),token=randomUUID();
+    const projected=await owner.db.select({id:schema.notification.id}).from(schema.notification).where(and(eq(schema.notification.sourceEventId,recipient.sourceEventId!),eq(schema.notification.kind,'performance.reminder')));expect(projected).toHaveLength(1);
+    const [delivery]=await owner.db.select().from(schema.notificationDelivery).where(eq(schema.notificationDelivery.sourceEventId,recipient.sourceEventId!)),token=randomUUID();expect(delivery).toBeTruthy();
     await owner.db.update(schema.notificationDelivery).set({leaseToken:token,leaseUntil:new Date(Date.now()+60000)}).where(eq(schema.notificationDelivery.id,delivery.id));
     await restrictedReminderMailOwner(async role=>{
       await owner.client.begin(async tx=>{

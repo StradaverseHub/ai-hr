@@ -1132,7 +1132,8 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
             severity: r.severity,
             sourceEventId: ev.id,
           });
-          if(spec.category!==null)await tx.execute(sql`select app.notification_email_enqueue(${notificationId}::uuid,${spec.category},${ev.sequence}::bigint)`);
+          if(spec.kind==='performance.reminder')await tx.execute(sql`select app.onehr_reminder_email_enqueue(${notificationId}::uuid,${ev.sequence}::bigint)`);
+          else if(spec.category!==null)await tx.execute(sql`select app.notification_email_enqueue(${notificationId}::uuid,${spec.category},${ev.sequence}::bigint)`);
           created += 1;
         }
       }
