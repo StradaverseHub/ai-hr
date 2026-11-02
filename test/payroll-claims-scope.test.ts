@@ -87,6 +87,25 @@ describe('Payroll Process wizard — claims scope safety', () => {
     await expect(withTenant(a,tx=>tx.execute(sql`select * from app.financial_claim_port_effect`))).rejects.toMatchObject({cause:expect.objectContaining({code:'42501'})});
   });
 
+  it('refuses mixed agent markers at the native Claim money port before its financial effects',async()=>{
+    const a=adminCtx(base),employee=await hire(a,base,'AgentClaim',base.deptA);
+    const {id:typeId}=await createClaimType(a,{code:'AGENT',name:'Actor source',defaultTaxable:true,requiresReceipt:false});
+    const {id:claimId}=await submitClaim(a,{employmentId:employee.employmentId,claimTypeId:typeId,amount:77,incurredOn:recent()});await decideClaim(a,{claimRequestId:claimId,decision:'approve'});
+    const {batchId}=await createBatch(a,{companyId:base.companyId,payPeriod:'2026-05',scope:{employmentIds:[employee.employmentId]}});
+    const [principal]=await owner.client`insert into app.ai_agent_principal(tenant_id) values(${base.tenantId}) on conflict(tenant_id) do update set tenant_id=excluded.tenant_id returning id`;
+    const [before]=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claimId));
+    for(const marker of [principal.id as string,'invalid-agent-marker']){
+      let code:string|undefined,message='';try{await withTenant(a,async tx=>{
+        await tx.execute(sql`select app.access_payroll_batch_begin(${batchId}::uuid,'edit')`);
+        const source=await tx.execute<{id:string}>(sql`select id from app.payroll_claim_prefill_sources(${batchId}::uuid)`);expect(source.map(row=>row.id)).toContain(claimId);
+        await tx.execute(sql`select set_config('app.agent_principal_id',${marker},true)`);
+        const [human]=await tx.execute<{current:boolean}>(sql`select app.principal_snapshot_current() as current`);expect(human.current).toBe(true);
+        await tx.execute(sql`select * from app.payroll_claim_apply(${batchId}::uuid,'reserve',ARRAY[${claimId}::uuid],null::uuid[])`);
+      });}catch(error){let cause:unknown=error;while(cause&&typeof cause==='object'){const row=cause as {code?:string;message?:string;cause?:unknown};code=row.code??code;message+=' '+(row.message??'');cause=row.cause;}}
+      expect(code).toBe('42501');expect(message).toContain('Payroll claim actor unavailable');expect(await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claimId))).toEqual([before]);
+    }
+  });
+
   it('prefill reserves ONLY claims for employees in the batch scope', async () => {
     const a = adminCtx(base);
     const inScope = await hire(a, base, 'InScope', base.deptA);

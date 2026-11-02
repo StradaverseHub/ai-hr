@@ -3,6 +3,15 @@
 INSERT INTO access_capability(id,scope,supported,bindings) SELECT domain||'.'||operation,'company',false,'[]'::jsonb FROM (VALUES('payroll'),('performance_compensation'))d(domain) CROSS JOIN (VALUES('view'),('add'),('edit'),('delete'))o(operation);
 INSERT INTO access_capability(id,scope,supported,bindings) SELECT 'letters.'||operation,'company',false,'[]'::jsonb FROM (VALUES('view'),('add'),('edit'),('delete'),('approve'),('issue'))o(operation);
 --> statement-breakpoint
+-- A hardcoded human effect may not adopt an agent marker, even when a mixed
+-- caller also carries a current human snapshot. Invalid raw markers fail closed.
+CREATE FUNCTION app.financial_human_principal_current() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL THEN false
+ ELSE app.current_agent_principal() IS NULL AND app.principal_snapshot_current() END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_human_principal_current() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 -- Top-level transaction receipts also cover successful native savepoint writes;
 -- tuple xmin alone is a subtransaction ID in per-employee reprocessing.
 CREATE TABLE app.financial_audit_effect(transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,event_id uuid NOT NULL,PRIMARY KEY(transaction_id,tenant_id,user_id,event_id));
@@ -76,7 +85,7 @@ REVOKE ALL ON FUNCTION app.financial_letter_legacy_allowed(uuid,uuid,text,uuid) 
 -- canonical capability resolver (which itself consults this hook).
 CREATE FUNCTION app.letter_current_native_permission(p_tenant uuid,p_user uuid,p_company uuid,p_native text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT p_tenant=app.current_tenant_id() AND p_user=app.current_user_id() AND app.principal_snapshot_current()
+ SELECT p_tenant=app.current_tenant_id() AND p_user=app.current_user_id() AND app.financial_human_principal_current()
  AND app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,p_native)
  AND EXISTS(SELECT 1 FROM public.role_assignment r JOIN app.current_grants() claimed ON claimed.role=r.role::text
   WHERE r.tenant_id=p_tenant AND r.app_user_id=p_user
@@ -88,7 +97,7 @@ CREATE FUNCTION app.financial_letter_current_legacy_allowed(p_tenant uuid,p_user
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE native_roles text[];native_operation text;selected_company uuid;
 BEGIN
- IF p_tenant IS DISTINCT FROM app.current_tenant_id() OR p_user IS DISTINCT FROM app.current_user_id() OR NOT app.principal_snapshot_current()
+ IF p_tenant IS DISTINCT FROM app.current_tenant_id() OR p_user IS DISTINCT FROM app.current_user_id() OR NOT app.financial_human_principal_current()
  OR NOT app.financial_letter_legacy_allowed(p_tenant,p_user,p_capability,p_company) THEN RETURN false;END IF;
  IF p_capability=ANY(ARRAY['payroll.view','payroll.add','payroll.edit','payroll.delete']) THEN native_roles:=ARRAY['hr_admin','super_admin','payroll_partner'];
  ELSIF p_capability=ANY(ARRAY['performance_compensation.view','performance_compensation.add','performance_compensation.edit','performance_compensation.delete']) THEN native_roles:=ARRAY['hr_admin','super_admin','performance_comp_partner'];
@@ -155,7 +164,7 @@ REVOKE ALL ON FUNCTION app.financial_letter_capability_allowed_current(text,uuid
 CREATE FUNCTION app.access_financial_action_company(p_domain text,p_company uuid,p_operation text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT p_domain IN ('payroll','performance_compensation') AND p_operation IN ('view','add','edit','delete')
- AND app.principal_snapshot_current() AND app.financial_letter_legacy_allowed(app.current_tenant_id(),app.current_user_id(),p_domain||'.'||p_operation,p_company)
+ AND app.financial_human_principal_current() AND app.financial_letter_legacy_allowed(app.current_tenant_id(),app.current_user_id(),p_domain||'.'||p_operation,p_company)
  AND CASE WHEN p_domain='payroll' THEN app.grants_payroll_admin_for((SELECT jsonb_agg(jsonb_build_object('role',g.role,'companyId',g.company_id)) FROM app.current_grants() g),p_company)
  ELSE app.grants_admin_for((SELECT jsonb_agg(jsonb_build_object('role',g.role,'companyId',g.company_id)) FROM app.current_grants() g),p_company) OR app.grants_have_role_for((SELECT jsonb_agg(jsonb_build_object('role',g.role,'companyId',g.company_id)) FROM app.current_grants() g),'performance_comp_partner',p_company) END
  AND app.financial_letter_capability_allowed_current(p_domain||'.view',p_company)
@@ -183,7 +192,7 @@ REVOKE ALL ON FUNCTION app.access_letter_action_for_user(uuid,uuid,uuid,text,tex
 --> statement-breakpoint
 CREATE FUNCTION app.access_letter_action(p_company uuid,p_native text,p_operation text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND app.access_letter_action_for_user(app.current_tenant_id(),app.current_user_id(),p_company,p_native,p_operation)
+ SELECT app.financial_human_principal_current() AND app.access_letter_action_for_user(app.current_tenant_id(),app.current_user_id(),p_company,p_native,p_operation)
  AND app.financial_letter_capability_allowed_current('letters.view',p_company) AND app.financial_letter_capability_allowed_current('letters.'||p_operation,p_company);
 $$;
 REVOKE ALL ON FUNCTION app.access_letter_action(uuid,text,text) FROM PUBLIC;
@@ -474,6 +483,7 @@ CREATE FUNCTION app.access_payroll_batch_begin(p_batch uuid,p_operation text,p_t
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE batch public.payroll_batch;starts date;ends date;scope_ids uuid[];
 BEGIN
+ IF NOT app.financial_human_principal_current() THEN RAISE EXCEPTION 'Payroll actor unavailable' USING ERRCODE='42501';END IF;
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO batch FROM public.payroll_batch b WHERE b.id=p_batch AND b.tenant_id=app.current_tenant_id() FOR UPDATE;
  IF batch.id IS NULL OR p_operation NOT IN ('edit','delete') OR NOT app.access_financial_action_company('payroll',batch.company_id,p_operation) OR NOT app.function_action_allowed('payroll.process',p_operation,batch.company_id) OR NOT app.financial_batch_subjects_allowed(batch.id) THEN RAISE EXCEPTION 'Payroll action unavailable' USING ERRCODE='42501';END IF;
@@ -615,7 +625,7 @@ CREATE FUNCTION app.access_letter_counter_action_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF app.current_user_id() IS NULL AND app.letter_notification_storage_owner() AND app.letter_automation_insert_allowed('letter_counter',to_jsonb(NEW)||jsonb_build_object('next_value',1)) THEN RETURN NEW;END IF;
- IF NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.tenant_id=NEW.tenant_id AND app.access_letter_action(c.id,'generate','add')) THEN RAISE EXCEPTION 'Letter reference allocation unavailable' USING ERRCODE='42501';END IF;
+ IF NOT app.financial_human_principal_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.tenant_id=NEW.tenant_id AND app.access_letter_action(c.id,'generate','add')) THEN RAISE EXCEPTION 'Letter reference allocation unavailable' USING ERRCODE='42501';END IF;
  RETURN NEW;
 END;
 $$;
@@ -797,6 +807,7 @@ CREATE FUNCTION app.financial_mark_source_payroll_stale(p_employments uuid[],p_c
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE batch public.payroll_batch;before_row jsonb;after_row jsonb;targets uuid[];combined jsonb;starts date;
 BEGIN
+ IF NOT app.financial_human_principal_current() THEN RAISE EXCEPTION 'Payroll source actor unavailable' USING ERRCODE='42501';END IF;
  PERFORM app.access_workforce_write_lock();
  IF NOT app.principal_snapshot_current() OR p_category NOT IN ('compensation','statutory','transfer','hire_date','termination') OR p_employments IS NULL OR cardinality(p_employments)=0 THEN RAISE EXCEPTION 'Payroll source consequence unavailable' USING ERRCODE='42501';END IF;
  IF NOT EXISTS(SELECT 1 FROM app.financial_source_change proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.employment_id=ANY(p_employments) AND proof.category=p_category) THEN RETURN;END IF;
@@ -1128,6 +1139,7 @@ CREATE FUNCTION app.financial_fixed_replacement_begin(p_source uuid,p_expected j
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE source public.employment_pay_component%ROWTYPE;
 BEGIN
+ IF NOT app.financial_human_principal_current() THEN RAISE EXCEPTION 'Fixed payroll actor unavailable' USING ERRCODE='42501';END IF;
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO source FROM public.employment_pay_component c WHERE c.id=p_source AND c.tenant_id=app.current_tenant_id() FOR UPDATE;
  IF NOT FOUND OR source.superseded_at IS NOT NULL OR NOT app.access_fixed_payroll_action(source.employment_id,'edit')
@@ -1600,6 +1612,7 @@ CREATE FUNCTION app.backpay_component(p_run uuid,p_kind text) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE run public.back_pay_run;component public.pay_component;wanted_code text;
 BEGIN
+ IF NOT app.financial_human_principal_current() THEN RAISE EXCEPTION 'Back Pay actor unavailable' USING ERRCODE='42501';END IF;
  PERFORM app.access_workforce_write_lock();
  PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':pay-component-catalog',0));
  SELECT * INTO run FROM public.back_pay_run WHERE id=p_run AND tenant_id=app.current_tenant_id() FOR UPDATE;
@@ -1709,7 +1722,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 CREATE OR REPLACE FUNCTION app.access_letter_action(p_company uuid,p_native text,p_operation text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND app.letter_current_native_permission(app.current_tenant_id(),app.current_user_id(),p_company,p_native)
+ SELECT app.financial_human_principal_current() AND app.letter_current_native_permission(app.current_tenant_id(),app.current_user_id(),p_company,p_native)
  AND app.access_letter_action_for_user(app.current_tenant_id(),app.current_user_id(),p_company,p_native,p_operation)
  AND CASE
  WHEN p_native='approve' THEN app.letter_function_action('letterApproval','approve',p_company) OR app.letter_function_action('letterSettings.signature','add',p_company) OR app.letter_function_action('letterSettings.signature','view',p_company)
@@ -1860,7 +1873,7 @@ CREATE TRIGGER financial_letter_native_grant_after AFTER INSERT OR UPDATE OR DEL
 -- prove the actual claimed role/scope, so retained global Employee cannot lend a narrowed-away HR seat.
 CREATE FUNCTION app.performance_current_native_roles(p_company uuid,p_roles text[]) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.app_user account
+ SELECT app.financial_human_principal_current() AND EXISTS(SELECT 1 FROM public.app_user account
  JOIN public.role_assignment stored ON stored.app_user_id=account.id AND stored.tenant_id=account.tenant_id
  JOIN app.current_grants() claimed ON claimed.role=stored.role::text
  WHERE account.id=app.current_user_id() AND account.tenant_id=app.current_tenant_id() AND account.archived_at IS NULL AND NOT app.login_blocked(account.id)
@@ -2017,7 +2030,7 @@ GRANT EXECUTE ON FUNCTION app.onehr_setup_read(uuid) TO ai_hr_app;
 -- administrative projections. Preserve historical self and actual assigned work.
 CREATE FUNCTION app.onehr_self_employment(p_employment uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+ SELECT app.financial_human_principal_current() AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
  WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id));
 $$;
 REVOKE ALL ON FUNCTION app.onehr_self_employment(uuid) FROM PUBLIC;
@@ -2029,7 +2042,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  FROM public.performance_review r JOIN public.performance_onehr_cycle config ON config.cycle_id=r.cycle_id AND config.tenant_id=r.tenant_id
  JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
  JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=r.tenant_id
- WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id() AND app.financial_human_principal_current() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
  AND (e.person_id=u.person_id OR app.onehr_manager(r.id) OR app.onehr_effective_reviewer(r.id) OR app.onehr_moderator(r.id)
  OR app.onehr_cycle_admin(r.cycle_id) AND app.onehr_admin(e.company_id) AND app.data_permission_matches(e.id));
 $$;
@@ -2171,7 +2184,7 @@ SELECT app.register_function_action(key,'view','company',NULL,'app.financial_del
 FROM (VALUES('performance.onehr.selfReview','onehr.nativeWorkflow','own'),('performance.onehr.assignedReview','onehr.assignments','assigned')) definition(key,label,course);
 CREATE FUNCTION app.onehr_review_task_view(wanted_review uuid,wanted_course text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND wanted_course IN ('self','assigned') AND EXISTS(SELECT 1 FROM public.performance_review review JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ SELECT app.financial_human_principal_current() AND wanted_course IN ('self','assigned') AND EXISTS(SELECT 1 FROM public.performance_review review JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
  WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id()
  AND app.financial_onehr_review_course_for(review.tenant_id,app.current_user_id(),review.id)=wanted_course
  AND app.function_action_allowed(CASE wanted_course WHEN 'self' THEN 'performance.onehr.selfReview' ELSE 'performance.onehr.assignedReview' END,'view',subject.company_id));
@@ -2185,7 +2198,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  FROM public.performance_review review JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
  JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id JOIN public.person person ON person.id=subject.person_id AND person.tenant_id=subject.tenant_id
  JOIN public.app_user account ON account.id=app.current_user_id() AND account.tenant_id=review.tenant_id
- WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND account.archived_at IS NULL AND NOT app.login_blocked(account.id)
+ WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id() AND app.financial_human_principal_current() AND account.archived_at IS NULL AND NOT app.login_blocked(account.id)
  AND CASE WHEN subject.person_id=account.person_id THEN app.onehr_review_task_view(review.id,'self')
  WHEN app.onehr_manager(review.id) OR app.onehr_effective_reviewer(review.id) OR app.onehr_moderator(review.id) THEN app.onehr_review_task_view(review.id,'assigned')
  ELSE app.onehr_cycle_admin(review.cycle_id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id) END;
@@ -2273,6 +2286,7 @@ CREATE FUNCTION app.financial_claim_sources_capture(p_batch uuid,p_kind text,p_s
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE batch public.payroll_batch%ROWTYPE;candidate public.claim_request%ROWTYPE;members uuid[];operation text;cutoff jsonb;upper_bound timestamptz;
 BEGIN
+ IF NOT app.financial_human_principal_current() THEN RAISE EXCEPTION 'Payroll claim actor unavailable' USING ERRCODE='42501';END IF;
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO batch FROM public.payroll_batch actual WHERE actual.id=p_batch AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
  operation:=CASE WHEN app.financial_batch_intent_allowed(p_batch,'edit') THEN 'edit' WHEN app.financial_batch_intent_allowed(p_batch,'delete') THEN 'delete' END;
@@ -2333,6 +2347,7 @@ CREATE FUNCTION app.payroll_claim_apply(p_batch uuid,p_mode text,p_claims uuid[]
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE candidate public.claim_request%ROWTYPE;changed public.claim_request%ROWTYPE;actual_ids uuid[];period text;before_row jsonb;wanted_source_kind text;
 BEGIN
+ IF NOT app.financial_human_principal_current() THEN RAISE EXCEPTION 'Payroll claim actor unavailable' USING ERRCODE='42501';END IF;
  IF p_mode IS NULL OR p_mode NOT IN ('reserve','pay','unpay','requeue') OR p_mode='reserve' AND p_claims IS NULL
  OR p_claims IS NOT NULL AND (array_position(p_claims,NULL) IS NOT NULL OR cardinality(p_claims)<>(SELECT count(DISTINCT value) FROM unnest(p_claims) value))
  OR p_employments IS NOT NULL AND array_position(p_employments,NULL) IS NOT NULL
@@ -2372,6 +2387,7 @@ CREATE FUNCTION app.payroll_claim_source_hashes(p_batch uuid) RETURNS TABLE(id u
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE candidate public.claim_request%ROWTYPE;operation text;batch_company uuid;
 BEGIN
+ IF NOT app.financial_human_principal_current() THEN RAISE EXCEPTION 'Payroll claim actor unavailable' USING ERRCODE='42501';END IF;
  PERFORM app.access_workforce_write_lock();
  SELECT batch.company_id INTO batch_company FROM public.payroll_batch batch WHERE batch.id=p_batch AND batch.tenant_id=app.current_tenant_id() AND batch.status IN ('draft','processed') FOR UPDATE;
  operation:=CASE WHEN app.financial_batch_intent_allowed(p_batch,'edit') THEN 'edit' WHEN app.financial_batch_intent_allowed(p_batch,'delete') THEN 'delete' END;
@@ -2635,6 +2651,8 @@ CREATE FUNCTION app.onehr_reminder_dispatch_update(p_recipient uuid,p_expected j
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE source jsonb;recipient public.performance_assessment_reminder_recipient%ROWTYPE;now_at timestamptz;deadline timestamptz;boundary timestamptz;words jsonb:=nullif(p_words,'null'::jsonb);
 BEGIN
+ IF nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL THEN RAISE EXCEPTION 'OneHR worker principal unavailable' USING ERRCODE='42501';END IF;
+ IF app.current_agent_principal() IS NOT NULL THEN RAISE EXCEPTION 'OneHR worker principal unavailable' USING ERRCODE='42501';END IF;
  PERFORM app.access_workforce_write_lock();
  source:=app.onehr_reminder_dispatch_source(p_recipient);IF source IS NULL OR source IS DISTINCT FROM p_expected THEN RETURN false;END IF;
  SELECT * INTO recipient FROM public.performance_assessment_reminder_recipient actual WHERE actual.id=p_recipient AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
@@ -3010,6 +3028,8 @@ CREATE FUNCTION app.onehr_reminder_dispatch_update(p_recipient uuid,p_expected j
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE opened boolean;changed boolean;
 BEGIN
+ IF nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL THEN RAISE EXCEPTION 'OneHR worker principal unavailable' USING ERRCODE='42501';END IF;
+ IF app.current_agent_principal() IS NOT NULL THEN RAISE EXCEPTION 'OneHR worker principal unavailable' USING ERRCODE='42501';END IF;
  opened:=app.financial_onehr_recipient_context_begin(p_recipient,true,false);
  changed:=app.financial_onehr_dispatch_update_native(p_recipient,p_expected,p_outcome,p_tasks,p_words,p_until,p_tenant_epoch,p_cycle_epoch,p_review_ids);
  IF opened THEN PERFORM app.financial_onehr_recipient_context_end(p_recipient);END IF;

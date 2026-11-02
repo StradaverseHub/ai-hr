@@ -650,6 +650,13 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(forged).toEqual({scope:false,source:null,graph:null,access:{},notice:null});
     await expect(withTenant(system,tx=>tx.execute(sql`select app.financial_onehr_worker_enroll('recipient',${recipient.id}::uuid)`))).rejects.toMatchObject({cause:expect.objectContaining({code:'42501'})});
     await expect(withOnehrWorkerSource(system,{withTenant},{kind:'recipient',id:recipient.id},async()=>true)).rejects.toThrow('explicit privileged database connection');
+    const [beforeAgent]=await owner.db.select().from(schema.assessmentReminderRecipient).where(eq(schema.assessmentReminderRecipient.id,recipient.id));
+    let agentCode:string|undefined,agentMessage='';try{await withTenant(a,async tx=>{
+      const [actual]=await tx.execute<{source:unknown}>(sql`select app.onehr_reminder_dispatch_source(${recipient.id}::uuid) as source`);expect(actual.source).not.toBeNull();
+      await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent-marker',true)`);
+      await tx.execute(sql`select app.onehr_reminder_dispatch_update(${recipient.id}::uuid,${JSON.stringify(actual.source)}::jsonb,'noPendingWork','[]'::jsonb,null::jsonb,null::timestamptz,null::bigint,null::bigint)`);
+    });}catch(error){let cause:unknown=error;while(cause&&typeof cause==='object'){const row=cause as {code?:string;message?:string;cause?:unknown};agentCode=row.code??agentCode;agentMessage+=' '+(row.message??'');cause=row.cause;}}
+    expect(agentCode).toBe('42501');expect(agentMessage).toContain('OneHR worker principal unavailable');expect(await owner.db.select().from(schema.assessmentReminderRecipient).where(eq(schema.assessmentReminderRecipient.id,recipient.id))).toEqual([beforeAgent]);
     const actualWorker=await createOnehrWorkerAccess(system,owner);
     expect(await actualWorker.withEvent(recipient.sourceEventId!,tx=>perf.assessmentReminderRecipientsTx(tx,recipient.id))).toEqual([subject.employmentId]);
     await expect(deliverNotificationEmails(system,async<T>()=>({version:1,ready:false} as T),{onehrSweep:{tenantId:system.tenantId,withEvent:actualWorker.withEvent}})).rejects.toThrow('does not match');
