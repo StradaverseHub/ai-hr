@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {sourceBoundBuild} from './release-ci.mjs';
 import {buildPacketFixture,fixtureHash} from './build-artifact-test-fixture.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
-import {initAiManifestFixture,regenerateAiManifests,commitAiManifestFixture} from './ai-manifest-test-fixture.mjs';
+import {initAiManifestFixture,regenerateAiManifests,commitAiManifestFixture,writeFixture} from './ai-manifest-test-fixture.mjs';
 test('actual async verifier requires frozen source manifests and canonical preparation, refusing source/evidence drift',async()=>{
  const root=realpathSync(mkdtempSync(join(tmpdir(),'ci-source-bind-'))),source=join(root,'candidate'),dir=join(root,'evidence'),packet=join(dir,BUILD_ARTIFACT);
  try{
@@ -33,4 +33,14 @@ test('actual async verifier requires frozen source manifests and canonical prepa
   writeFileSync(join(packet,'bytes/build-bundle.tar.gz'),'changed binary');
   await assert.rejects(sourceBoundBuild({candidatePath:source,dir,p,jobs}),/archive bytes differ/);
  }finally{rmSync(root,{recursive:true,force:true});}
+});
+
+test('independent source binding refuses stale approval-order input before reading build evidence',async()=>{
+ const source=realpathSync(mkdtempSync(join(tmpdir(),'ci-stale-source-bind-')));
+ try{
+  initAiManifestFixture(source);
+  writeFixture(source,'lib/ai/provider-data-approvals.ts','// Changed after module generation\n');
+  const candidate=commitAiManifestFixture(source);
+  await assert.rejects(sourceBoundBuild({candidatePath:source,dir:'/nonexistent-synthetic-evidence',p:{candidate},jobs:[]}),/AI manifest --check refused: scripts\/ai-agent-source-manifest.mjs/);
+ }finally{rmSync(source,{recursive:true,force:true});}
 });

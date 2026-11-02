@@ -48,5 +48,5 @@ test('normal plan, canonical build, and all operator recovery source bindings re
  }
  const operator=readFileSync(join(root,'.github/ci/release-ci.mjs'),'utf8');
  assert(operator.includes('admitAiManifests(candidatePath,p.candidate);'));
- for(const name of ['focused-recovery.mjs','repair-recovery.mjs'])assert(readFileSync(join(root,'.github/ci',name),'utf8').includes('await sourceBoundBuild('));
+ for(const name of ['focused-recovery.mjs','repair-recovery.mjs','browser-recovery.mjs'])assert(readFileSync(join(root,'.github/ci',name),'utf8').includes('await sourceBoundBuild('));
 });
