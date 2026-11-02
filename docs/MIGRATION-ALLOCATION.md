@@ -945,3 +945,11 @@ index759 reserved for the independent0937 / when1793330000337 bypass-owner migra
 The integration owner must merge0937 in chronological order and re-audit competing claims and live
 watermark before installation. This central row-scope prerequisite does not claim that the complete
 requested action-binding expansion has passed acceptance or is ready for release.
+
+## Bounded approval task sources — 2 November 2026 (provisional)
+
+Parent allocation audit reserved `0940_bounded_approval_task_sources`, aggregate idx762 /
+when1793330000340, after0939's independently owned action split. It preserves exact Profile
+and Leave task responsibility through request-bound projections and native effect witnesses,
+without a general Personnel read exception. Branch `codex/approved-board-task-projections-20261102`.
+Unapplied source only; re-audit live watermark and refs before coordinated release. No installation authority.

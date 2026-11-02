@@ -1,3 +1,4 @@
+import {profileTaskProjectionTx,profileTaskEffectSourceTx,type ProfileTaskSource} from './profile-task-source';
 import {appendEvent,actorOf} from '../db/events';
 import {profileFieldApproval,profileLegacyPrimaryApprovalRequired} from '../lib/profile-edit-policy-value';
 import {splitProfileSubmission} from '../lib/profile-submission-policy';
@@ -61,6 +62,7 @@ async function mastersTx(tx:Tx,ctx:SessionContext,subject:Awaited<ReturnType<typ
  if([dependents,qualifications,emergency].some(rows=>rows.length>500))throw new EssProfileError('unavailable');
  return {pack,stat,snapshot,snapshotSupported:Boolean(pack?.statutory.getEditSnapshot),dependents,dependentRevisions,qualifications,emergency};
 }
+function taskMasters(source:ProfileTaskSource){return {pack:packFor(source.subject.country),stat:source.stat,snapshot:source.snapshot,snapshotSupported:true,dependents:source.dependents.map(row=>row.record),dependentRevisions:new Map(source.dependents.map(row=>[row.record.id,row.revision])),qualifications:source.qualifications,emergency:source.emergency};}
 function registryValues(owner:string,row:object){
  const values:Record<string,EssScalar>={};
  for(const field of PERSONNEL_FIELDS){if(field.ess.visibility==='visible'&&field.ess.binding?.owner===owner)values[field.id]=scalar(record(row)[field.ess.binding.field]);}
@@ -149,12 +151,14 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
  if(approval){
   if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new EssProfileError('permission');
   const scoped=await tx.execute(sql`select app.can_admin_employment(${employmentId}::uuid) allowed`);
-  if((scoped as unknown as {allowed:boolean}[])[0]?.allowed!==true)throw new EssProfileError('permission');
+  const task=(scoped as unknown as {allowed:boolean}[])[0]?.allowed===true?null:await profileTaskEffectSourceTx(tx,undefined,employmentId);
+  if((scoped as unknown as {allowed:boolean}[])[0]?.allowed!==true&&!task)throw new EssProfileError('permission');
   const [row]=await tx.select({id:employment.id,personId:employment.personId,companyId:employment.companyId,country:company.country}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,employmentId))).limit(1).for('update');
-  if(!row)throw new EssProfileError('unavailable');if(row.personId===ctx.personId)throw new EssProfileError('permission');subject=row;
-  const [p]=await tx.select().from(person).where(eq(person.id,row.personId)).limit(1).for('update');if(!p)throw new EssProfileError('unavailable');master=p;
+  if(!row&&!task)throw new EssProfileError('unavailable');subject=row??task!.subject;if(subject.personId===ctx.personId)throw new EssProfileError('permission');
+  const [p]=await tx.select().from(person).where(eq(person.id,subject.personId)).limit(1).for('update');if(!p&&!task)throw new EssProfileError('unavailable');master=p??task!.master;
  }else({subject,master}=await ownProfileSubjectTx(tx,policy.ctx,employmentId));
- const rows=await mastersTx(tx,policy.ctx,subject);
+ const task=approval?await profileTaskEffectSourceTx(tx,subject.personId,subject.id):null;
+ const rows=task?taskMasters(task):await mastersTx(tx,policy.ctx,subject);
  const current:Record<string,EssScalar>={...registryValues('person',master),...registryValues('compliance',master)};
  if(rows.stat)for(const owner of ['bank','identity','passport','registration','taxLegacy'])Object.assign(current,registryValues(owner,rows.stat));
  // Stored pre-v2 requests never had CAS evidence. Bind their known fields to this locked snapshot
@@ -322,14 +326,15 @@ export function submitOwnProfileEdit(ctx:SessionContext,p:{employmentId:string;p
 }
 
 /** Approver-only review facts for exact submitted identities. This read grants no edit/decision authority. */
-export async function currentProfileRequestValuesTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;personId:string;proposed:unknown}){
+export async function currentProfileRequestValuesTx(tx:Tx,ctx:SessionContext,p:{id?:string;employmentId:string;personId:string;proposed:unknown}){
  const out:Record<string,{value:EssScalar|undefined;recordName:string|null;state:'existing'|'missing'|'new'}>={};
  const [allowed]=await tx.execute(sql`select app.can_admin_employment(${p.employmentId}::uuid) allowed`);
- if(allowed?.allowed!==true)return out;
- const [subject]=await tx.select({id:employment.id,personId:employment.personId,companyId:employment.companyId,country:company.country}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,p.employmentId),eq(employment.personId,p.personId))).limit(1);
- if(!subject)return out;
- const [master]=await tx.select().from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,subject.personId))).limit(1);if(!master)return out;
- const rows=await mastersTx(tx,ctx,subject,false);
+ const task=allowed?.allowed===true?null:p.id?await profileTaskProjectionTx(tx,p.id):null;
+ if(allowed?.allowed!==true&&!task)return out;
+ const [row]=await tx.select({id:employment.id,personId:employment.personId,companyId:employment.companyId,country:company.country}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,p.employmentId),eq(employment.personId,p.personId))).limit(1);
+ const subject=row??task?.subject;if(!subject)return out;
+ const [personRow]=await tx.select().from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,subject.personId))).limit(1);const master=personRow??task?.master;if(!master)return out;
+ const rows=task?taskMasters(task):await mastersTx(tx,ctx,subject,false);
  const current={...registryValues('person',master),...registryValues('compliance',master)};if(rows.stat)for(const owner of ['bank','identity','passport','registration','taxLegacy'])Object.assign(current,registryValues(owner,rows.stat));
  if(p.proposed&&typeof p.proposed==='object'&&!Array.isArray(p.proposed)&&'v' in p.proposed&&p.proposed.v===2){
   let proposal:EssProfileProposal;try{proposal=parseEssProfileProposal(p.proposed);}catch{return out;}
