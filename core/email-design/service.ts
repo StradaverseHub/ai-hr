@@ -11,6 +11,12 @@ export type EmailDesignRow = {
     updatedAt: string;
     updatedBy: string | null;
 };
+export async function requireEmailDesignEdit(ctx:SessionContext) {
+    await withTenant(ctx,async tx=>{
+        const [row]=await tx.execute<{allowed:boolean}>(sql`select app.email_design_admin() and app.organisation_settings_function_allowed('emailTemplates','edit',NULL) as allowed`);
+        if(row?.allowed!==true)throw Error('Email design permission required.');
+    });
+}
 export async function listEmailDesigns(ctx: SessionContext): Promise<EmailDesignRow[]> {
     return withTenant(ctx, async (tx) => {
         const [access] = await tx.execute<{

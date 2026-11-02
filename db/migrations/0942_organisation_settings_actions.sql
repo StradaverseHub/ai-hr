@@ -526,3 +526,31 @@ BEGIN
  PERFORM app.append_auth_event(app.current_tenant_id(),'entra-workforce',p_person,'entra.reconciliation-requested','user',app.current_user_id(),NULL);
 END;
 $$;
+
+--> statement-breakpoint
+-- Keep the original validator, revision, history and audit owner intact. Join
+-- Access before its per-design lock and require Edit before either native writer.
+ALTER FUNCTION app.email_design_save(text,text,jsonb,integer) RENAME TO organisation_email_design_save_native;
+REVOKE ALL ON FUNCTION app.organisation_email_design_save_native(text,text,jsonb,integer) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.email_design_save(p_kind text,p_locale text,p_document jsonb,p_expected integer) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.email_design_admin() OR NOT app.organisation_settings_function_allowed('emailTemplates','edit',NULL) THEN RAISE EXCEPTION 'Email design permission required.' USING ERRCODE='42501';END IF;
+ RETURN app.organisation_email_design_save_native(p_kind,p_locale,p_document,p_expected);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.email_design_save(text,text,jsonb,integer) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.email_design_save(text,text,jsonb,integer) TO ai_hr_app;
+ALTER FUNCTION app.email_asset_save(text,bytea) RENAME TO organisation_email_asset_save_native;
+REVOKE ALL ON FUNCTION app.organisation_email_asset_save_native(text,bytea) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.email_asset_save(p_mime text,p_bytes bytea) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.email_design_admin() OR NOT app.organisation_settings_function_allowed('emailTemplates','edit',NULL) THEN RAISE EXCEPTION 'Email design permission required.' USING ERRCODE='42501';END IF;
+ RETURN app.organisation_email_asset_save_native(p_mime,p_bytes);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.email_asset_save(text,bytea) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.email_asset_save(text,bytea) TO ai_hr_app;

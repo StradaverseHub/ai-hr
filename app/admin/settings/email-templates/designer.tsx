@@ -27,8 +27,9 @@ function newBlock(type: typeof blockTypes[number]): EmailBlock {
         case 'footer': return { ...base, type, text: '' };
     }
 }
-function SortableBlock({ block, index, selected, onSelect, onMove, onRemove, labels }: {
+function SortableBlock({ block, index, selected, onSelect, onMove, onRemove, labels,mayEdit }: {
     block: EmailBlock;
+    mayEdit:boolean;
     index: number;
     selected: boolean;
     onSelect: () => void;
@@ -43,14 +44,15 @@ function SortableBlock({ block, index, selected, onSelect, onMove, onRemove, lab
         system: string;
     };
 }) {
-    const sort = useSortable({ id: block.id });
+    const sort = useSortable({ id: block.id,disabled:!mayEdit });
     return <div ref={sort.setNodeRef} style={{ transform: CSS.Transform.toString(sort.transform), transition: sort.transition }} className={`rounded-md border p-3 ${selected ? 'border-primary bg-primary/5' : 'bg-card'}`}>
-  <div className="flex items-center gap-2"><button type="button" {...sort.attributes} {...sort.listeners} aria-label={labels.drag} className="cursor-grab rounded p-2 touch-none">⠿</button><button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left text-sm font-medium">{index + 1}. {labels.name}</button>{block.type === 'system' && <span className="text-xs">🔒 {labels.system}</span>}</div>
-  <div className="mt-2 flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => onMove(-1)}>{labels.up}</Button><Button type="button" variant="outline" onClick={() => onMove(1)}>{labels.down}</Button>{block.type !== 'system' && <Button type="button" variant="outline" onClick={onRemove}>{labels.remove}</Button>}</div>
+  <div className="flex items-center gap-2"><button type="button" disabled={!mayEdit} {...sort.attributes} {...sort.listeners} aria-label={labels.drag} className="cursor-grab rounded p-2 touch-none">⠿</button><button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left text-sm font-medium">{index + 1}. {labels.name}</button>{block.type === 'system' && <span className="text-xs">🔒 {labels.system}</span>}</div>
+  <div className="mt-2 flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={!mayEdit} onClick={() => onMove(-1)}>{labels.up}</Button><Button type="button" variant="outline" disabled={!mayEdit} onClick={() => onMove(1)}>{labels.down}</Button>{block.type !== 'system' && <Button type="button" variant="outline" disabled={!mayEdit} onClick={onRemove}>{labels.remove}</Button>}</div>
  </div>;
 }
-export function EmailDesigner({ designs,sampleSystems }: {
+export function EmailDesigner({ designs,sampleSystems,canEdit=false }: {
     designs: EmailDesignRow[];
+    canEdit?:boolean;
     sampleSystems:Record<EmailKind,Record<EmailLocale,EmailSystemContent>>;
 }) {
     const t = useTranslations('emailDesign');
@@ -61,7 +63,7 @@ export function EmailDesigner({ designs,sampleSystems }: {
     const [history, setHistory] = useState<Awaited<ReturnType<typeof loadEmailDesignHistoryAction>>>([]), [copyFrom, setCopyFrom] = useState('');
     useEffect(()=>{if(!dirty)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty]);
     const gate = useRef(false), current = rows.find(row => row.kind === kind && row.locale === locale), block = doc.blocks.find(value => value.id === selected);
-    const edit = (next: EmailDocument) => { setRestoringDefault(false);setDoc(next); setDirty(true); setMessage(''); };
+    const edit = (next: EmailDocument) => { if(!canEdit)return; setRestoringDefault(false);setDoc(next); setDirty(true); setMessage(''); };
     const update = (next: EmailBlock) => edit({ ...doc, blocks: doc.blocks.map(value => value.id === next.id ? next : value) });
     const switchDesign = (nextKind: EmailKind, nextLocale: EmailLocale) => {
         if (dirty && !window.confirm(t('discard')))
@@ -87,6 +89,7 @@ export function EmailDesigner({ designs,sampleSystems }: {
         setBusy(false);
     } }
     async function save(reset = false) {
+        if(!canEdit)return;
         await perform(async () => {
             const restoreSystem=reset||restoringDefault;
             const parsed = restoreSystem ? null : emailDocument.parse(doc), revision = await saveEmailDesignAction(kind, locale, parsed, current?.revision ?? 0);
@@ -101,9 +104,9 @@ export function EmailDesigner({ designs,sampleSystems }: {
             setMessage(t('saved'));
         });
     }
-    function move(id: string, offset: number) { if(gate.current)return;const from = doc.blocks.findIndex(value => value.id === id), to = from + offset; if (to >= 0 && to < doc.blocks.length)
+    function move(id: string, offset: number) { if(!canEdit||gate.current)return;const from = doc.blocks.findIndex(value => value.id === id), to = from + offset; if (to >= 0 && to < doc.blocks.length)
         edit({ ...doc, blocks: arrayMove(doc.blocks, from, to) }); }
-    function dropped(event: DragEndEvent) { if (gate.current || !event.over || event.active.id === event.over.id)
+    function dropped(event: DragEndEvent) { if (!canEdit || gate.current || !event.over || event.active.id === event.over.id)
         return; edit({ ...doc, blocks: arrayMove(doc.blocks, doc.blocks.findIndex(value => value.id === event.active.id), doc.blocks.findIndex(value => value.id === event.over!.id)) }); }
     let preview = '';
     try {
@@ -119,19 +122,19 @@ export function EmailDesigner({ designs,sampleSystems }: {
   <div className="grid gap-4 md:grid-cols-3"><Field label={t('email')}><select className={inputCls} value={kind} onChange={event => switchDesign(event.target.value as EmailKind, locale)}>{emailKinds.map(value => <option key={value} value={value}>{t(`kinds.${value.replace('.', '_')}`)}</option>)}</select></Field><Field label={t('language')}><select className={inputCls} value={locale} onChange={event => switchDesign(kind, event.target.value as EmailLocale)}>{['en', 'ms', 'zh', 'vi', 'ta', 'th'].map(value => <option key={value} value={value}>{t(`languages.${value}`)}</option>)}</select></Field><div className="self-end text-sm text-muted-foreground">{t(current?.document ? 'custom' : 'default')} · {t('revision', { revision: current?.revision ?? 0 })}</div></div>
   <details className="rounded-xl border p-4"><summary className="cursor-pointer font-semibold">{t('list')}</summary><div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="p-2">{t('email')}</th><th className="p-2">{t('when')}</th><th className="p-2">{t('recipients')}</th><th className="p-2">{t('style')}</th></tr></thead><tbody>{emailKinds.map(value => { const category = value === 'invitation' || value === 'recovery' ? 'account' : value === 'employee_master_report' ? 'report' : 'workflow'; return <tr key={value} className="border-t"><td className="p-2"><button type="button" className="text-primary underline" onClick={() => switchDesign(value, locale)}>{t(`kinds.${value.replace('.', '_')}`)}</button></td><td className="p-2">{t(`${category}When`)}</td><td className="p-2">{t(`${category}To`)}</td><td className="p-2">{t(rows.some(row => row.kind === value && row.locale === locale && row.document) ? 'custom' : 'default')}</td></tr>; })}</tbody></table></div></details>
   <p className="text-sm text-muted-foreground">{t('deliveryHelp')}</p>
-  <div className="flex flex-wrap items-center gap-3"><Button type="button" disabled={busy || !preview} onClick={() => save()}>{busy ? t('working') : t('save')}</Button><Button type="button" variant="outline" disabled={busy || !preview} onClick={() => perform(async () => { await sendEmailDesignTestAction(kind, locale, doc); setMessage(t('testSent')); })}>{t('sendTest')}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => { if (window.confirm(t('restoreConfirm')))
+  <div className="flex flex-wrap items-center gap-3"><Button type="button" disabled={!canEdit || busy || !preview} onClick={() => save()}>{busy ? t('working') : t('save')}</Button><Button type="button" variant="outline" disabled={!canEdit || busy || !preview} onClick={() => perform(async () => { await sendEmailDesignTestAction(kind, locale, doc); setMessage(t('testSent')); })}>{t('sendTest')}</Button><Button type="button" variant="outline" disabled={!canEdit || busy} onClick={() => { if (window.confirm(t('restoreConfirm')))
         void save(true); }}>{t('restoreDefault')}</Button><Button type="button" variant="outline" onClick={() => setMobile(value => !value)}>{t(mobile ? 'desktop' : 'mobile')}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => perform(async () => setHistory(await loadEmailDesignHistoryAction(kind, locale)))}>{t('history')}</Button>{dirty && <span className="text-sm text-amber-700">{t('unsaved')}</span>}</div>
   {message && <p role="status" className="rounded-md border p-3 text-sm">{message}</p>}
   {!preview && <p role="alert" className="text-sm text-destructive">{t('invalid')}</p>}
-  {history.length > 0 && <Card className="p-4"><h2 className="font-semibold">{t('history')}</h2><ul className="divide-y">{history.map(row => <li key={row.revision} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"><span>{t('revision', { revision: row.revision })} · {row.createdAt} · {row.createdBy}</span><Button type="button" variant="outline" onClick={() => { const value = row.document ?? defaultEmailDocument(kind); edit(value);setRestoringDefault(row.document===null); setSelected(value.blocks[0].id); }}>{t('restoreVersion')}</Button></li>)}</ul></Card>}
+  {history.length > 0 && <Card className="p-4"><h2 className="font-semibold">{t('history')}</h2><ul className="divide-y">{history.map(row => <li key={row.revision} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"><span>{t('revision', { revision: row.revision })} · {row.createdAt} · {row.createdBy}</span><Button type="button" variant="outline" disabled={!canEdit} onClick={() => { const value = row.document ?? defaultEmailDocument(kind); edit(value);setRestoringDefault(row.document===null); setSelected(value.blocks[0].id); }}>{t('restoreVersion')}</Button></li>)}</ul></Card>}
   <div className="grid items-start gap-5 xl:grid-cols-[240px_minmax(320px,1fr)_300px]">
-   <Card className="space-y-3 p-4"><h2 className="font-semibold">{t('blocks')}</h2><p className="text-xs text-muted-foreground">{t('reorderHelp')}</p><fieldset disabled={busy} className="grid gap-2">{blockTypes.map(type => <Button key={type} type="button" variant="outline" onClick={() => { const value = newBlock(type); edit({ ...doc, blocks: [...doc.blocks, value] }); setSelected(value.id); }}>{t(`blocksNames.${type}`)}</Button>)}</fieldset><Field label={t('reuse')}><select className={inputCls} value={copyFrom} onChange={event => setCopyFrom(event.target.value)}><option value="">{t('choose')}</option>{rows.filter(row => row.document).map(row => <option key={row.kind + row.locale} value={row.kind + ':' + row.locale}>{t(`kinds.${row.kind.replace('.', '_')}`)} · {t(`languages.${row.locale}`)}</option>)}</select></Field><Button type="button" variant="outline" disabled={!copyFrom || busy} onClick={() => { const source = rows.find(row => row.kind + ':' + row.locale === copyFrom)?.document; if (source) {
+   <fieldset disabled={!canEdit}><Card className="space-y-3 p-4"><h2 className="font-semibold">{t('blocks')}</h2><p className="text-xs text-muted-foreground">{t('reorderHelp')}</p><fieldset disabled={busy} className="grid gap-2">{blockTypes.map(type => <Button key={type} type="button" variant="outline" onClick={() => { const value = newBlock(type); edit({ ...doc, blocks: [...doc.blocks, value] }); setSelected(value.id); }}>{t(`blocksNames.${type}`)}</Button>)}</fieldset><Field label={t('reuse')}><select className={inputCls} value={copyFrom} onChange={event => setCopyFrom(event.target.value)}><option value="">{t('choose')}</option>{rows.filter(row => row.document).map(row => <option key={row.kind + row.locale} value={row.kind + ':' + row.locale}>{t(`kinds.${row.kind.replace('.', '_')}`)} · {t(`languages.${row.locale}`)}</option>)}</select></Field><Button type="button" variant="outline" disabled={!copyFrom || busy} onClick={() => { const source = rows.find(row => row.kind + ':' + row.locale === copyFrom)?.document; if (source) {
         const value = { ...source, kind, blocks: source.blocks.map(block => ({ ...block, id: crypto.randomUUID() })) };
         edit(value);
         setSelected(value.blocks[0].id);
-    } }}>{t('useLayout')}</Button></Card>
-   <div className="space-y-4"><div className="rounded-xl bg-muted p-3 sm:p-6"><iframe title={t('preview')} sandbox="" srcDoc={preview} className="mx-auto h-[650px] max-w-full rounded border bg-white" style={{ width: mobile ? 360 : '100%' }}/></div><DndContext collisionDetection={closestCenter} onDragEnd={dropped}><SortableContext items={doc.blocks.map(block => block.id)} strategy={verticalListSortingStrategy}><div className="grid gap-2">{doc.blocks.map((value, index) => <SortableBlock key={value.id} block={value} index={index} selected={value.id === selected} onSelect={() => setSelected(value.id)} onMove={offset => move(value.id, offset)} onRemove={() => edit({ ...doc, blocks: doc.blocks.filter(block => block.id !== value.id) })} labels={{ name: t(`blocksNames.${value.type}`), up: t('up'), down: t('down'), remove: t('remove'), drag: t('drag'), system: t('protected') }}/>)}</div></SortableContext></DndContext></div>
-   <Card className="space-y-4 p-4"><h2 className="font-semibold">{t('style')}</h2>{textField(t('subject'), doc.subject, value => edit({ ...doc, subject: value }))}<Field label={t('canvasColor')}><input type="color" value={doc.background} onChange={event => edit({ ...doc, background: event.target.value })}/></Field>
+    } }}>{t('useLayout')}</Button></Card></fieldset>
+   <div className="space-y-4"><div className="rounded-xl bg-muted p-3 sm:p-6"><iframe title={t('preview')} sandbox="" srcDoc={preview} className="mx-auto h-[650px] max-w-full rounded border bg-white" style={{ width: mobile ? 360 : '100%' }}/></div><DndContext collisionDetection={closestCenter} onDragEnd={dropped}><SortableContext items={doc.blocks.map(block => block.id)} strategy={verticalListSortingStrategy}><div className="grid gap-2">{doc.blocks.map((value, index) => <SortableBlock mayEdit={canEdit} key={value.id} block={value} index={index} selected={value.id === selected} onSelect={() => setSelected(value.id)} onMove={offset => move(value.id, offset)} onRemove={() => edit({ ...doc, blocks: doc.blocks.filter(block => block.id !== value.id) })} labels={{ name: t(`blocksNames.${value.type}`), up: t('up'), down: t('down'), remove: t('remove'), drag: t('drag'), system: t('protected') }}/>)}</div></SortableContext></DndContext></div>
+   <fieldset disabled={!canEdit}><Card className="space-y-4 p-4"><h2 className="font-semibold">{t('style')}</h2>{textField(t('subject'), doc.subject, value => edit({ ...doc, subject: value }))}<Field label={t('canvasColor')}><input type="color" value={doc.background} onChange={event => edit({ ...doc, background: event.target.value })}/></Field>
     {block && <><h3 className="text-sm font-medium">{t(`blocksNames.${block.type}`)}</h3><div className="grid grid-cols-2 gap-3"><Field label={t('background')}><input type="color" value={block.style.background ?? '#ffffff'} onChange={event => common('background', event.target.value)}/></Field><Field label={t('textColor')}><input type="color" value={block.style.color ?? '#202020'} onChange={event => common('color', event.target.value)}/></Field></div>
     {block.type === 'system' ? <p className="text-sm text-muted-foreground">{t('protectedHelp')}</p> : <><Field label={t('font')}><select className={inputCls} value={block.style.font ?? 'Arial'} onChange={event => common('font', event.target.value)}>{['Arial', 'Georgia', 'Verdana', 'Tahoma', 'Trebuchet MS'].map(font => <option key={font}>{font}</option>)}</select></Field><Field label={t('size')}><input className={inputCls} type="number" min={10} max={48} value={block.style.size ?? 16} onChange={event => common('size', Number(event.target.value))}/></Field><Field label={t('alignment')}><select className={inputCls} value={block.style.align ?? 'left'} onChange={event => common('align', event.target.value)}>{['left', 'center', 'right'].map(value => <option key={value} value={value}>{t(value)}</option>)}</select></Field><Field label={t('spacing')}><input className={inputCls} type="number" min={0} max={64} value={block.style.padding ?? 20} onChange={event => common('padding', Number(event.target.value))}/></Field></>}
     {block.type === 'header' && textField(t('text'), block.label, value => update({ ...block, label: value }))}
@@ -144,7 +147,7 @@ export function EmailDesigner({ designs,sampleSystems }: {
     {block.type === 'social' && <>{block.links.map((link, index) => <div key={index}>{textField(t('text'), link.label, value => update({ ...block, links: block.links.map((item, i) => i === index ? { ...item, label: value } : item) }))}{textField(t('link'), link.href, value => update({ ...block, links: block.links.map((item, i) => i === index ? { ...item, href: value } : item) }))}</div>)}<Button type="button" variant="outline" onClick={() => update({ ...block, links: [...block.links, { label: 'Website', href: 'https://example.com/' }] })}>{t('addLink')}</Button></>}
     </>}
     <h3 className="text-sm font-semibold">{t('details')}</h3><p className="break-words text-sm">{emailPlaceholders(kind).map(key => `{${key}}`).join(' · ')}</p>
-   </Card>
+   </Card></fieldset>
   </div>
  </fieldset>;
 }

@@ -1133,7 +1133,7 @@ This source depends on root942 witness89bc7e9da and requires hosted failed/affec
 - `0938_data_permission_enforcement.sql`: `d41b686eec213708abc9b174762c3c9f37d7f9aba31e057854108b321b66805a`.
 - `0939_workforce_action_permissions.sql`: `21e42a337ca5abd835140c7b4b3c981d06da6fe1aa52d96a26eaa5381deba812`.
 - `0941_financial_letter_actions.sql`: `73dfa3504fd4f784a4078cb2e639a25ac9d47147d91cbd6d94a80dbdc578c9b8`.
-- `0942_organisation_settings_actions.sql`: `334e64b8185c994049758112c7a17478a5fe5b2781aef4bb06e63472947c1e93`.
+- `0942_organisation_settings_actions.sql`: `b04039d82250c4eb00789792acd886c467639987f27b3ce5f3ee6113ce81fead`.
 - `0943_leave_attendance_claim_actions.sql`: `0147800c396f35f9bdd3b6225b0e64d6e7a86df897053d53c6ea6ff476451fc4`.
 - `0944_lifecycle_rewards_notice_actions.sql`: `096ff18f6d9ac1144912ef54ba54c1d849d33a84326cb3f74067ce0e22445fcf`.
 - `0945_financial_setup_actions.sql`: `77ef0067c30e55a48ab591938b3a5e892ba60161036f4b23c678ed280ea5f340`.
@@ -1247,3 +1247,7 @@ outbox closure remains separate work and no completion sentinel is added.
 ### Entra maintenance command authority
 
 Every direct maintenance action now requests fresh Edit before private connector reads or outbound connection tests. Native configure, bind, retry and reconciliation join the existing Access-first lock owner; reconciliation preserves its original uncertain-create predicates and audit event while requiring exact Edit. Direct-action and native stale-principal rollback cases await hosted qualification; no directory call or activation was performed.
+
+### Email template View and Edit separation
+
+The actual editor receives fresh View/Edit independently and defaults mutation controls closed. Preview, language selection and immutable history remain available to readers. Test-to-self mail requires exact Edit before identity or SMTP work. The original native design/asset writers remain private behind Access-first, Edit-checked ports, preserving native validation, revisions and audit. Six-locale read-only controls, identity/transport refusal cases and native writer privacy await hosted qualification; no mail was sent.
