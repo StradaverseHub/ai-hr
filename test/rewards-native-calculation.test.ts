@@ -190,3 +190,12 @@ it('preserves the native Number.toFixed money conversion after IEEE754 payroll b
  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_calc_fixed_money(1)`))).rejects.toThrow();
  for(const invalid of ['NaN','Infinity','-Infinity','-1','1e21']){const refused=await owner.db.execute(sql`select app.reward_calc_fixed_money(${invalid}::double precision)`).then(()=>false,error=>{expect(pgErrorChain(error)).toContainEqual(expect.objectContaining({code:'22003'}));return true;});expect(refused).toBe(true);}
 });
+
+it('preserves native independent standard and H unused-pool funding for annual posting',async()=>{
+ const policy=defaultPolicy(2026),ordinary=entry('funding-standard'),h=entry('funding-h');h.source.grade='H';
+ for(const entries of [[],[ordinary],[h],[ordinary,h]]){
+  const calculation=calculateRewards(entries,policy),expected={standard:calculation.budgets.standard.pools.reduce((sum,pool,i)=>sum+Math.max(0,pool-calculation.budgets.standard.used[i]),0),h:calculation.budgets.h.pools.reduce((sum,pool,i)=>sum+Math.max(0,pool-calculation.budgets.h.used[i]),0)},[row]=await owner.db.execute<{value:unknown}>(sql`select app.reward_post_funding('annual','{"standard":123,"h":456}',${JSON.stringify(calculation)}::jsonb)as value`);expect(row.value).toEqual(expected);
+  const [retained]=await owner.db.execute<{value:unknown}>(sql`select app.reward_post_funding('adhoc','{"standard":123,"h":456}',${JSON.stringify(calculation)}::jsonb)as value`);expect(retained.value).toEqual({standard:123,h:456});
+ }
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_post_funding('annual','{}','{}')`))).rejects.toThrow();
+});

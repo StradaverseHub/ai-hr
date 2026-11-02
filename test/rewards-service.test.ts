@@ -348,6 +348,30 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(Number(input.bonusAmount)).toBe(10055); expect(Number(input.overtimeAmount)).toBe(123); expect(Number(input.tp1Deduction)).toBe(44); expect(Number(input.zakat)).toBe(9);
     expect((await view()).unit.status).toBe('posted');
   });
+  it('privately closes captured posting construction under owner inspection without granting an app mutation port',async()=>{
+    // This qualifies private construction only; owner sessions do not establish the app's
+    // financial guard positive. The eventual public finite owner must use its real reviewed ACL.
+    const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)}),before=await view();
+    await setPayrollInput(admin,{batchId:batch.batchId,employmentId,overtimeAmount:123,bonusAmount:55,tp1Deduction:44,zakat:9});
+    await owner.withTenant(admin,async tx=>{
+      const [posted]=await tx.execute<{value:{alreadyPosted:boolean}}>(sql`select app.reward_post_native(${unitId}::uuid,${revision},${batch.batchId}::uuid)as value`);expect(posted.value).toEqual({alreadyPosted:false});await tx.execute(sql`set constraints all immediate`);
+      const [proof]=await tx.execute<{completed:number;receipts:number}>(sql`select count(*)::integer as completed,(select count(*)::integer from app.reward_post_native_receipt r join app.reward_post_native_context c on c.id=r.context_id where c.xact_id=pg_current_xact_id()and c.unit_id=${unitId}::uuid)as receipts from app.reward_post_native_context where xact_id=pg_current_xact_id()and unit_id=${unitId}::uuid and completed and not active`);expect(proof.completed).toBe(1);expect(proof.receipts).toBeGreaterThanOrEqual(5);
+    });
+    const after=await view();expect(after.unit.status).toBe('posted');const [input]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batch.batchId));expect(input).toMatchObject({overtimeAmount:'123.00',bonusAmount:(55+(before.rows[0].bonusCents+before.rows[0].lumpCents)/100).toFixed(2),tp1Deduction:'44.00',zakat:'9.00'});
+    const compensation=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,employmentId));expect(compensation.filter(row=>row.validTo===null&&row.supersededAt===null).map(row=>row.basicSalary)).toEqual([(before.rows[0].newBasicCents/100).toFixed(2)]);
+    await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_post_native(${unitId}::uuid,${revision},${batch.batchId}::uuid)`))).rejects.toThrow();expect(await postRewardUnit(admin,unitId,revision,batch.batchId)).toEqual({alreadyPosted:true});
+  });
+  it.each([false,true])('rechecks private completed posting after an early constraint flush and later authority mutation (restore=%s)',async restore=>{
+    const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)}),before=await view(),salaries=await owner.db.select().from(schema.compensation),inputs=await owner.db.select().from(schema.payrollInput),events=await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id),[role]=await owner.db.select().from(schema.roleAssignment).where(and(eq(schema.roleAssignment.appUserId,admin.userId!),eq(schema.roleAssignment.role,'hr_admin')));expect(role).toBeTruthy();let flushed=false,didRestore=false,refusal:unknown;
+    try{await owner.withTenant(admin,async tx=>{
+      await tx.execute(sql`select app.reward_post_native(${unitId}::uuid,${revision},${batch.batchId}::uuid)`);await tx.execute(sql`set constraints all immediate`);flushed=true;
+      if(restore)await tx.execute(sql`set constraints app.rewards_post_native_effect,app.rewards_post_native_completed deferred`);
+      await tx.execute(sql`update role_assignment set role='manager'where id=${role.id}::uuid`);
+      if(restore){await tx.execute(sql`update role_assignment set role='hr_admin'where id=${role.id}::uuid`);didRestore=true;}
+    });}catch(error){refusal=error;}
+    expect(flushed).toBe(true);expect(didRestore).toBe(restore);expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward posting authority changed'}));expect(await view()).toEqual(before);expect(await owner.db.select().from(schema.compensation)).toEqual(salaries);expect(await owner.db.select().from(schema.payrollInput)).toEqual(inputs);expect(await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id)).toEqual(events);
+    await owner.withTenant(admin,tx=>tx.execute(sql`select app.reward_post_native(${unitId}::uuid,${revision},${batch.batchId}::uuid)`));expect((await view()).unit.status).toBe('posted');
+  });
   it('rolls back an orphan private salary construction instead of committing a partial Rewards posting',async()=>{
     // Owner inspection proves construction/rollback only. Actual app financial guard positivity
     // must use the future reviewed finite port's real ACL; no fixture grants or fake bridge.
