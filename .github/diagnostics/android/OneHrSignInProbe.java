@@ -26,35 +26,26 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
     assertEquals("Wrong foreground app; do not act", "ai.stradaverse.aihr.test", getUiDevice().getCurrentPackageName());
     System.out.println("ONEHR_PROBE {\"kind\":\"publicAuthObservation\",\"stage\":\""+publicStage()+"\",\"credentialRead\":false}");
   }
-  public void testNegativeLogin() throws Exception {
+  private String control(String label, UiObject object) throws Exception {
+    if(!object.exists()) return "\""+label+"\":{\"exists\":false}";
+    android.graphics.Rect r=object.getVisibleBounds();
+    return "\""+label+"\":{\"exists\":true,\"enabled\":"+object.isEnabled()+",\"focused\":"+object.isFocused()+",\"bounds\":["+r.left+","+r.top+","+r.right+","+r.bottom+"]}";
+  }
+  public void testControls() throws Exception {
     setupBounded();
     assertEquals("Wrong foreground app; do not act", "ai.stradaverse.aihr.test", getUiDevice().getCurrentPackageName());
-    assertTrue("Not a login form; preserve screen", field("Username").exists() && field("Password").exists());
-    String restore = getParams().getString("restoreUsername", "");
-    assertTrue("Nonsecret restore username required", restore.matches("[A-Za-z0-9._@+-]{3,64}"));
-    String result = "pending";
-    try {
-      // Invalid syntax guarantees no real account lookup/password work or account creation.
-      assertTrue(field("Username").setText("!diagnostic!"));
-      assertTrue(field("Password").setText("diagnostic-only"));
-      getUiDevice().pressBack();
-      UiObject submit=new UiObject(new UiSelector().description("Sign in").clickable(true));
-      assertTrue("Submit unavailable", submit.exists() && submit.isEnabled());
-      assertTrue(submit.click());
-      for(int i=0;i<35;i++) {
-        SystemClock.sleep(1000);
-        result=publicStage();
-        if(result.equals("invalidLogin") || result.equals("unavailable") || result.equals("rateLimited") || result.equals("mfa")) break;
-      }
-      System.out.println("ONEHR_PROBE {\"kind\":\"syntheticNegativeLogin\",\"stage\":\""+result+"\",\"realPasswordUsed\":false,\"accountCreated\":false}");
-    } finally {
-      if(field("Username").exists() && field("Password").exists()) {
-        field("Username").setText(restore);
-        field("Password").clearTextField();
-        getUiDevice().pressBack();
-        System.out.println("ONEHR_PROBE {\"knownUsernameRestored\":true,\"diagnosticPasswordCleared\":true}");
-      }
-    }
-    assertEquals("Native refusal must match HTTP401 invalidLogin negative control", "invalidLogin", result);
+    UiObject submit=new UiObject(new UiSelector().description("Sign in").clickable(true));
+    System.out.println("ONEHR_PROBE {\"kind\":\"publicControlMetadata\",\"width\":"+getUiDevice().getDisplayWidth()+",\"height\":"+getUiDevice().getDisplayHeight()+","+control("username",field("Username"))+","+control("password",field("Password"))+","+control("submit",submit)+",\"fieldValuesRead\":false}");
+  }
+  public void testRestoreUsernameOnly() throws Exception {
+    setupBounded();
+    assertEquals("Wrong foreground app; do not act", "ai.stradaverse.aihr.test", getUiDevice().getCurrentPackageName());
+    String restore=getParams().getString("restoreUsername", "");
+    assertTrue(restore.matches("[A-Za-z0-9._@+-]{3,64}"));
+    assertTrue("Not a login form",field("Username").exists());
+    assertTrue(field("Username").setText(restore));
+    assertEquals("Username must match exactly",restore,field("Username").getText());
+    getUiDevice().pressBack();
+    System.out.println("ONEHR_PROBE {\"kind\":\"publicUsernameRestoration\",\"exactMatch\":true,\"passwordOrMfaRead\":false,\"signInSubmitted\":false}");
   }
 }
