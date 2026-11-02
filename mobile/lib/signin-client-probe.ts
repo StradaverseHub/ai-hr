@@ -14,6 +14,21 @@ function errorKind(error: unknown): string {
   if (error instanceof RangeError) return 'range';
   return 'other';
 }
+/** This descriptor is only produced for the unauthenticated public setup GET, before any login request. */
+function publicTransportFailure(error: unknown, company: VerifiedCompanyProfile | null): string {
+  if (!(error instanceof Error)) return 'non-error-transport-failure';
+  let text = error.message;
+  if (company) {
+    for (const value of [company.apiOrigin, new URL(company.apiOrigin).hostname]) {
+      const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      text = text.replace(new RegExp(escaped, 'gi'), '[origin]');
+    }
+  }
+  return text.replace(/https?:\/\/[^\s"'<>]+/gi, '[origin]')
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, '[address]')
+    .replace(/\[[a-f\d:]+\](?::\d+)?/gi, '[address]')
+    .replace(/(?:[a-f\d]{0,4}:){2,}[a-f\d]{0,4}/gi, '[address]').slice(0, 240);
+}
 export async function runSignInClientProbe(company: VerifiedCompanyProfile | null, publish: (value: string) => void): Promise<string> {
   const result: Record<string, unknown> = { marker: 'ONEHR_CLIENT_PROBE', realCredentialsUsed: false };
   let phase = 'runtime';
@@ -60,6 +75,7 @@ export async function runSignInClientProbe(company: VerifiedCompanyProfile | nul
     result.outcome = result.expectedInvalidLogin ? 'pass' : 'unexpected';
   } catch (error) {
     result.outcome = 'fail'; result.phase = phase; result.errorKind = errorKind(error);
+    if (phase === 'company-fetch') result.publicTransportFailure = publicTransportFailure(error, company);
     // No exception messages, bodies, endpoints, profiles or field values leave this function.
   }
   finally { emit(); }
