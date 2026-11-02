@@ -34053,6 +34053,7 @@
     "withdrawEvidenceReason": "Reason for withdrawing the evidence",
     "chooseVerifiedEvidence": "Select verified retirement evidence",
     "retirementEvidencePending": "Review the recorded retirement evidence before opening this case.",
-    "acceptancePaused": "Signing is paused for this workflow. You can still decline the offer."
+    "acceptancePaused": "Signing is paused for this workflow. You can still decline the offer.",
+    "employeeIdentityUnavailable": "The employee’s linked login is unavailable or cannot be confirmed. Assigned People Ops must work with the Access owner to resolve it. The issued PDF is preserved."
   }
 }

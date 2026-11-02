@@ -34053,6 +34053,7 @@
     "withdrawEvidenceReason": "Sebab menarik balik bukti",
     "chooseVerifiedEvidence": "Pilih bukti persaraan yang disahkan",
     "retirementEvidencePending": "Semak bukti persaraan yang direkodkan sebelum membuka kes ini.",
-    "acceptancePaused": "Tandatangan dijeda untuk aliran kerja ini. Anda masih boleh menolak tawaran."
+    "acceptancePaused": "Tandatangan dijeda untuk aliran kerja ini. Anda masih boleh menolak tawaran.",
+    "employeeIdentityUnavailable": "Log masuk yang dipautkan kepada pekerja tidak tersedia atau tidak dapat disahkan. People Ops yang ditugaskan perlu bekerjasama dengan pemilik Akses untuk menyelesaikannya. PDF yang telah dikeluarkan dikekalkan."
   }
 }

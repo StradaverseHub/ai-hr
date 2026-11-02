@@ -117,6 +117,13 @@ describe('Contract Management scoped interactions',()=>{
  it.each([{patch:{allowanceCents:null},message:'sourceIncomplete'},{patch:{salaryCents:null,sourceIssue:'unsupported_pay_basis'},message:'sourcePayBasisUnsupported'},{patch:{sourceIssue:'unsupported_currency'},message:'sourceCurrencyUnsupported'}] as const)('blocks incomplete or unsupported intake: $message',async({patch,message})=>{
   mocks.command.mockResolvedValue({ok:true,result:{...source,...patch}});wrap(<ContractIntake companies={[{...companies[0],canIntake:true}]} employees={[{companyId,rows:[{id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}]}]}/>);await userEvent.selectOptions(screen.getByLabelText(messages.contractManagement.employee),employeeId);await userEvent.click(screen.getByRole('button',{name:messages.contractManagement.previewSource}));await waitFor(()=>expect(screen.getByText(messages.contractManagement[message])).toBeInTheDocument());expect(screen.getByRole('button',{name:messages.contractManagement.openCase})).toBeDisabled();expect(mocks.command).toHaveBeenCalledTimes(1);if(message==='sourceCurrencyUnsupported')expect(screen.queryByText(/RM\s*5,000\.00/)).not.toBeInTheDocument();
  });
+ it('routes a missing employee login to People Ops without offering Personnel reconciliation',()=>{
+  const v=view(),m=messages.contractManagement;
+  v.employee=false;v.gbs=true;v.record.state='e_acceptance';v.employeeIdentityUnavailable=true;
+  wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);
+  expect(screen.getByText(m.employeeIdentityUnavailable)).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:m.reconcile})).not.toBeInTheDocument();
+ });
  it('keeps decline available when the pinned workflow pauses signature collection',async()=>{
   const v=view(),m=messages.contractManagement;
   v.record.state='e_acceptance';v.acceptancePaused=true;

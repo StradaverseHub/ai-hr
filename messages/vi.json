@@ -34053,6 +34053,7 @@
     "withdrawEvidenceReason": "Lý do rút bằng chứng",
     "chooseVerifiedEvidence": "Chọn bằng chứng nghỉ hưu đã xác minh",
     "retirementEvidencePending": "Xem xét bằng chứng nghỉ hưu đã ghi nhận trước khi mở hồ sơ này.",
-    "acceptancePaused": "Quy trình này đang tạm dừng việc ký. Bạn vẫn có thể từ chối đề nghị."
+    "acceptancePaused": "Quy trình này đang tạm dừng việc ký. Bạn vẫn có thể từ chối đề nghị.",
+    "employeeIdentityUnavailable": "Tài khoản đăng nhập đã liên kết của nhân viên không khả dụng hoặc không thể xác nhận. Bộ phận Vận hành Nhân sự được giao xử lý cần làm việc với người phụ trách quyền truy cập. PDF đã phát hành vẫn được giữ lại."
   }
 }

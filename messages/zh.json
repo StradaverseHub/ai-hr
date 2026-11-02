@@ -34053,6 +34053,7 @@
     "withdrawEvidenceReason": "撤回证据的原因",
     "chooseVerifiedEvidence": "请选择已核实的退休证据",
     "retirementEvidencePending": "打开此个案前，请先审核已记录的退休证据。",
-    "acceptancePaused": "此工作流程的签署已暂停。您仍可拒绝此邀约。"
+    "acceptancePaused": "此工作流程的签署已暂停。您仍可拒绝此邀约。",
+    "employeeIdentityUnavailable": "员工关联的登录账户不可用或无法确认。负责此事项的人事运营人员须联系访问权限负责人解决。已签发的 PDF 会保留。"
   }
 }
