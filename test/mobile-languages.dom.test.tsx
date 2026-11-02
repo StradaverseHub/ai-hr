@@ -85,8 +85,16 @@ describe('six language catalogues', () => {
   });
   it('the connection screens and sign-in speak all six languages, the sign-in in the web’s own words', async () => {
     const copy = JSON.parse(readFileSync('mobile/lib/internal-auth-copy.json', 'utf8'));
-    for (const code of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
-      expect(copy[code]).toEqual(JSON.parse(readFileSync(`messages/${code}.json`, 'utf8')).internalAuth);
+    const visibilityLabels = {
+      en: ['Show password', 'Hide password'], ms: ['Tunjukkan kata laluan', 'Sembunyikan kata laluan'],
+      zh: ['显示密码', '隐藏密码'], ta: ['கடவுச்சொல்லைக் காட்டு', 'கடவுச்சொல்லை மறை'],
+      th: ['แสดงรหัสผ่าน', 'ซ่อนรหัสผ่าน'], vi: ['Hiện mật khẩu', 'Ẩn mật khẩu'],
+    };
+    for (const code of ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const) {
+      const { showPassword, hidePassword, ...shared } = copy[code];
+      expect(shared).toEqual(JSON.parse(readFileSync(`messages/${code}.json`, 'utf8')).internalAuth);
+      // These two controls are mobile-specific; retain exact translation checks for them.
+      expect([showPassword, hidePassword]).toEqual(visibilityLabels[code]);
     }
     const keys = (o: object, p = ''): string[] => Object.entries(o).flatMap(([k, v]) => (v && typeof v === 'object' ? keys(v, p + k + '.') : [p + k])).sort();
     // The English connection copy, read from its source (importing the screen would pull in native modules).
