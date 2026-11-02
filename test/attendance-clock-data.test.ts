@@ -95,10 +95,14 @@ describe('approved attendance clock-data corrections', () => {
   });
   it('keeps self-approval refused and records the pending request', async () => {
     const { a, employmentId, personId } = await fixture();
-    const self = { ...a, personId };
+    // A real login must belong to the supplied person; changing only personId
+    // correctly fails the principal guard before self-approval can be exercised.
+    const self = { ...a, userId: await createAppUser(b.tenantId, personId, 'hr_admin'), personId };
     const raw = await attendanceClockData(self, employmentId, date);
+    await expect(requestAttendanceCorrection({ ...a, personId }, { employmentId, date, reason: 'Mismatched principal', clockChanges: { version: 1, baseline: raw.baseline, entries: [] } })).rejects.toThrow(/Current command principal required/);
     const { correctionId } = await requestAttendanceCorrection(self, { employmentId, date, reason: 'Own attendance', clockChanges: { version: 1, baseline: raw.baseline, entries: [] } });
     await expect(decideAttendanceCorrection(self, { correctionId, decision: 'approved' })).rejects.toThrow(/cannot decide your own/);
+    expect((await owner.db.select().from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id, correctionId)))[0].status).toBe('pending');
     expect((await attendanceClockData(a, employmentId, date)).rows.filter(r => r.voidedAt)).toHaveLength(0);
   });
   it('refuses changes to dates owned by a closed payroll', async () => {
