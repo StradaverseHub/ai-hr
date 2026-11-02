@@ -1,12 +1,12 @@
 import {revalidatePath} from 'next/cache';
-import {requireModule} from '@/lib/authz';
+import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {isSameOriginBrowserRequest} from '@/lib/request-origin';
 import {readBoundedBody,BodyReadError} from '@/lib/bounded-body';
 import {uploadProbationEvidence} from '@/packs/probation/service';
 export const runtime='nodejs';
 const headers={'cache-control':'private, no-store'},MAX=10*1024*1024;
 export async function POST(request:Request,{params}:{params:Promise<{id:string;partId:string}>}){
- const ctx=await requireModule('lifecycle');if(!isSameOriginBrowserRequest(request))return Response.json({ok:false},{status:403,headers});
+ const ctx=await requireScopedLifecycleModule();if(!isSameOriginBrowserRequest(request))return Response.json({ok:false},{status:403,headers});
  const {id,partId}=await params,type=request.headers.get('content-type');if(!type?.startsWith('multipart/form-data;'))return Response.json({ok:false},{status:400,headers});
  try{
   const bytes=await readBoundedBody(request,MAX+65536,20000,request.signal),form=await new Response(bytes,{headers:{'content-type':type}}).formData();
