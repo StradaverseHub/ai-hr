@@ -682,6 +682,7 @@ BEGIN
     IF entry.key='employeeCode' THEN target:=to_jsonb(e);END IF;
     IF entry.key='icNumber' OR entry.key LIKE 'passport%' THEN target:=stat;END IF;
     IF entry.key='icNumber' THEN expected:=regexp_replace(expected,'[^0-9]','','g');END IF;
+    IF entry.key='passportIssuingCountryCode' THEN expected:=upper(expected);END IF;
    ELSIF section.key='employment' THEN
     IF entry.key IN ('departmentId','positionId','costCenterId','employmentType') THEN target:=placement;END IF;
     IF entry.key='reportingManagerEmploymentId' THEN
@@ -723,8 +724,8 @@ BEGIN
    END IF;
    actual:=nullif(btrim(target->>column_name),'');
    IF jsonb_typeof(target->column_name)='number' AND expected IS NOT NULL THEN
-    IF actual::numeric IS DISTINCT FROM expected::numeric THEN RETURN false;END IF;
-   ELSIF actual IS DISTINCT FROM expected THEN RETURN false;END IF;
+    IF actual::numeric IS DISTINCT FROM expected::numeric THEN RAISE LOG 'Hire source binding unavailable (%/%)',section.key,entry.key;RETURN false;END IF;
+   ELSIF actual IS DISTINCT FROM expected THEN RAISE LOG 'Hire source binding unavailable (%/%)',section.key,entry.key;RETURN false;END IF;
   END LOOP;
  END LOOP;
  -- Match the canonical family multiset, including duplicates; row/UI keys confer no storage authority.
