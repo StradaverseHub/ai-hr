@@ -1132,7 +1132,7 @@ This source depends on root942 witness89bc7e9da and requires hosted failed/affec
 
 - `0938_data_permission_enforcement.sql`: `cef45c7d9ee037e3b7ff1e5b2d3578eb35c3a96083ffd29e830119421cf52c73`.
 - `0939_workforce_action_permissions.sql`: `b4e9617a9aa7721c2e2926a1c39315b320f0beeba90354a0520dbfaf5e8a2b26`.
-- `0941_financial_letter_actions.sql`: `0bc82b27e44eead6785d5d5bc44a0e977f9ff46544188402654feb54d0f71b16`.
+- `0941_financial_letter_actions.sql`: `738db11a605f45d7a86ccc6e2d358cf6100280790f7ceb7a6c7536f910a99f2d`.
 - `0942_organisation_settings_actions.sql`: `1160474bb42ffdbeb6e24169940b34fdfbb5c028038172df590f18652bc79a03`.
 - `0943_leave_attendance_claim_actions.sql`: `c8bb5098b96dfe424e28565e871e610281db57ec704ff2ce7f7534b9c256ffe0`.
 - `0944_lifecycle_rewards_notice_actions.sql`: `e798a37b42491aed76cf0a6dc9e9ab9e12c13fc167b5f74d927b88d4aeaa49f2`.
