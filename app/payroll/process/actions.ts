@@ -239,6 +239,9 @@ export async function resumeRunAction(formData: FormData) {
   const submittedEmploymentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
   const scope = touched && submittedEmploymentIds.length ? { employmentIds: submittedEmploymentIds } : undefined;
   try {
+    if (touched && submittedEmploymentIds.length === 0) {
+      throw new Error('Select at least one employee to process this payroll run.');
+    }
     // Only re-set scope when the admin actually touched the selection; an untouched resume leaves the
     // existing scope as-is (no needless write, no spurious removal cleanup).
     if (touched) {
