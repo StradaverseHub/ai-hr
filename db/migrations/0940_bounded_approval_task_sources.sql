@@ -603,11 +603,15 @@ CREATE POLICY bounded_approval_task_read ON attendance_workflow_participant_deci
 --> statement-breakpoint
 -- The finite legacy whole-request decision course. Chains/per-date routes remain under their
 -- existing owners; this is never a generic request editor or a ledger adjustment permission.
+CREATE TABLE app.leave_task_effect(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,request_id uuid NOT NULL,before_hash text NOT NULL,decision text,ledger_id uuid,ledger_row jsonb,audited boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,request_id));
+ALTER TABLE app.leave_task_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.leave_task_effect FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.leave_task_whole_decider(p_request uuid)RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.leave_request q WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id() AND q.status='pending'
  AND NOT app.is_self_person((SELECT person_id FROM public.employment WHERE id=q.employment_id AND tenant_id=q.tenant_id)) AND (app.workflow_direct_manager(q.employment_id) OR app.can_decide_via_delegation(q.employment_id,'leave','leave.application'))
- AND NOT EXISTS(SELECT 1 FROM public.leave_approval_step s WHERE s.leave_request_id=q.id AND s.tenant_id=q.tenant_id)
+ AND (NOT EXISTS(SELECT 1 FROM public.leave_approval_step step WHERE step.leave_request_id=q.id AND step.tenant_id=q.tenant_id) OR (SELECT count(*) FROM public.leave_approval_step step WHERE step.leave_request_id=q.id AND step.tenant_id=q.tenant_id)=1 AND EXISTS(SELECT 1 FROM public.leave_approval_step step WHERE step.leave_request_id=q.id AND step.tenant_id=q.tenant_id AND step.step_index=0 AND step.approver_kind='direct_manager' AND step.approver_employment_id IS NULL AND (step.status='pending' OR EXISTS(SELECT 1 FROM app.leave_task_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=q.tenant_id AND proof.user_id=app.current_user_id() AND proof.request_id=q.id))))
  AND NOT EXISTS(SELECT 1 FROM public.leave_request_date d WHERE d.leave_request_id=q.id AND d.tenant_id=q.tenant_id));
 $$;
 REVOKE ALL ON FUNCTION app.leave_task_whole_decider(uuid) FROM PUBLIC;
@@ -615,9 +619,6 @@ GRANT EXECUTE ON FUNCTION app.leave_task_whole_decider(uuid) TO ai_hr_app;
 CREATE POLICY bounded_leave_task_update ON leave_request FOR UPDATE TO ai_hr_app USING(app.leave_task_whole_decider(id)) WITH CHECK(tenant_id=app.current_tenant_id());
 CREATE POLICY bounded_leave_task_debit ON leave_ledger FOR INSERT TO ai_hr_app WITH CHECK(tenant_id=app.current_tenant_id() AND entry_type='debit' AND app.leave_task_whole_decider(source_request_id));
 --> statement-breakpoint
-CREATE TABLE app.leave_task_effect(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,request_id uuid NOT NULL,before_hash text NOT NULL,decision text,ledger_id uuid,ledger_row jsonb,audited boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,request_id));
-ALTER TABLE app.leave_task_effect ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON app.leave_task_effect FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.leave_task_effect_begin(p_request uuid)RETURNS void
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -632,9 +633,9 @@ REVOKE ALL ON FUNCTION app.leave_task_effect_begin(uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.leave_task_request_guard()RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF app.access_workforce_storage_owner() OR app.data_permission_record_read(OLD.employment_id) THEN RETURN NEW;END IF;
+ IF app.access_workforce_storage_owner() OR app.data_permission_record_read(OLD.employment_id) AND NOT app.leave_task_whole_decider(OLD.id) THEN RETURN NEW;END IF;
  PERFORM app.leave_task_effect_begin(OLD.id);
- IF NEW.status::text NOT IN ('approved','rejected') OR NEW.decided_at IS NULL OR NEW.decided_at IS DISTINCT FROM now()
+ IF EXISTS(SELECT 1 FROM public.leave_approval_step step WHERE step.leave_request_id=OLD.id AND step.tenant_id=OLD.tenant_id AND step.status::text IS DISTINCT FROM NEW.status::text) OR NEW.status::text NOT IN ('approved','rejected') OR NEW.decided_at IS NULL OR NEW.decided_at IS DISTINCT FROM now()
  OR (to_jsonb(NEW)-ARRAY['status','decided_at','decided_by_employment_id'])IS DISTINCT FROM(to_jsonb(OLD)-ARRAY['status','decided_at','decided_by_employment_id'])
  OR NEW.decided_by_employment_id IS NOT NULL AND NOT app.is_self_person((SELECT person_id FROM public.employment WHERE id=NEW.decided_by_employment_id AND tenant_id=NEW.tenant_id))
  THEN RAISE EXCEPTION 'Leave task transition unavailable' USING ERRCODE='42501';END IF;
@@ -648,7 +649,7 @@ CREATE FUNCTION app.leave_task_ledger_guard()RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE q public.leave_request;lt public.leave_type;balance numeric;need numeric;floor numeric;
 BEGIN
- IF app.access_workforce_storage_owner() OR app.data_permission_record_read(NEW.employment_id) THEN RETURN NEW;END IF;
+ IF app.access_workforce_storage_owner() OR app.data_permission_record_read(NEW.employment_id) AND NOT app.leave_task_whole_decider(NEW.source_request_id) THEN RETURN NEW;END IF;
  PERFORM app.leave_task_effect_begin(NEW.source_request_id);
  SELECT * INTO q FROM public.leave_request WHERE id=NEW.source_request_id AND tenant_id=NEW.tenant_id;
  SELECT * INTO lt FROM public.leave_type WHERE id=q.leave_type_id AND tenant_id=q.tenant_id;
@@ -696,9 +697,9 @@ REVOKE ALL ON FUNCTION app.leave_task_effect_complete() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER bounded_leave_task_complete AFTER INSERT ON app.leave_task_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.leave_task_effect_complete();
 
 --> statement-breakpoint
-CREATE FUNCTION app.leave_task_subject(p_request uuid)RETURNS TABLE(employment_id uuid,company_id uuid,hired_on date)
+CREATE FUNCTION app.leave_task_subject(p_request uuid)RETURNS TABLE(employment_id uuid,company_id uuid,hired_on text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT e.id,e.company_id,e.hired_on FROM public.leave_request q JOIN public.employment e ON e.id=q.employment_id AND e.tenant_id=q.tenant_id WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id() AND app.workflow_task_reader('leave.application',q.id);
+ SELECT e.id,e.company_id,e.hired_on::text FROM public.leave_request q JOIN public.employment e ON e.id=q.employment_id AND e.tenant_id=q.tenant_id WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id() AND app.workflow_task_reader('leave.application',q.id);
 $$;
 REVOKE ALL ON FUNCTION app.leave_task_subject(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.leave_task_subject(uuid) TO ai_hr_app;
@@ -750,3 +751,18 @@ BEGIN
  DELETE FROM app.leave_task_effect WHERE xact_id=pg_current_xact_id() AND tenant_id=NEW.tenant_id AND user_id=NEW.actor_id AND request_id=NEW.aggregate_id;
  RETURN NULL;
 END $$;
+
+--> statement-breakpoint
+CREATE POLICY bounded_leave_task_step_read ON leave_approval_step FOR SELECT TO ai_hr_app USING(app.workflow_task_reader('leave.application',leave_request_id));
+CREATE POLICY bounded_leave_task_step_update ON leave_approval_step FOR UPDATE TO ai_hr_app USING(app.leave_task_whole_decider(leave_request_id))WITH CHECK(tenant_id=app.current_tenant_id());
+CREATE FUNCTION app.leave_task_step_guard()RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() OR app.data_permission_record_read(OLD.subject_employment_id) AND NOT app.leave_task_whole_decider(OLD.leave_request_id) THEN RETURN NEW;END IF;
+ PERFORM app.leave_task_effect_begin(OLD.leave_request_id);
+ IF OLD.status<>'pending' OR NEW.status::text NOT IN ('approved','rejected') OR NEW.decided_at IS NULL OR NEW.decided_at IS DISTINCT FROM now()
+ OR (to_jsonb(NEW)-ARRAY['status','decided_at','decided_by_employment_id'])IS DISTINCT FROM(to_jsonb(OLD)-ARRAY['status','decided_at','decided_by_employment_id'])
+ OR NEW.decided_by_employment_id IS NOT NULL AND NOT app.is_self_person((SELECT person_id FROM public.employment WHERE id=NEW.decided_by_employment_id AND tenant_id=NEW.tenant_id)) THEN RAISE EXCEPTION 'Leave task step transition unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_task_step_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER bounded_leave_task_step_transition BEFORE UPDATE ON leave_approval_step FOR EACH ROW EXECUTE FUNCTION app.leave_task_step_guard();
