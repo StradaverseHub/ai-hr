@@ -23,7 +23,7 @@ import { and, eq,sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { canApplyLeaveOnBehalf, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess } from '../core/leave';
+import { canApplyLeaveOnBehalf, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess,ownLeaveRequestActionAccess } from '../core/leave';
 import { listEmployees, reportingLinesFor } from '../core/read';
 import { PAYROLL_PERMISSION_DEFAULTS, PAYROLL_PERMISSION_KEYS,decidePayrollPermission } from '../lib/payroll-permissions';
 import {withTenant,type SessionContext} from '../db/client';
@@ -514,4 +514,14 @@ it('refuses a raw pending application by a visible-report manager without the na
  let failure:unknown;try{await withTenant(manager.ctx,tx=>tx.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END,days:'2.00',status:'pending'}));}catch(error){failure=error;}
  let denied=false;for(let cause=failure;cause&&typeof cause==='object';cause=(cause as {cause?:unknown}).cause)if((cause as {code?:string}).code==='42501'&&(cause as {message?:string}).message==='On-behalf Leave application unavailable')denied=true;
  expect(denied).toBe(true);expect(await requestCount(subject.employmentId)).toBe(0);
+});
+
+
+it('projects own pending request controls without granting them for a visible report or an unknown source',async()=>{
+ const manager=await hire('manager'),subject=await hire('employee');await reportsTo(subject.employmentId,manager.employmentId);const typeId=await leaveType();
+ const own=await requestLeave(manager.ctx,{employmentId:manager.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const other=await requestLeave(adminCtx(b),{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const unknown=randomUUID(),flags=await ownLeaveRequestActionAccess(manager.ctx,[own.leaveRequestId,other.leaveRequestId,unknown]);
+ expect(flags[own.leaveRequestId]).toEqual({canEdit:true,canDelete:true});expect(flags[other.leaveRequestId]).toEqual({canEdit:false,canDelete:false});expect(flags[unknown]).toBeUndefined();
+ expect(await ownLeaveRequestActionAccess(manager.ctx,[])).toEqual({});
 });

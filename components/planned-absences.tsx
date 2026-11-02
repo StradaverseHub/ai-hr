@@ -96,6 +96,7 @@ export async function PlannedAbsences({
   // Edit/cancel-by-status (item c9a19e34): the SAME cancelOwnLeaveAction the Leave page posts, for the viewer's
   // OWN PENDING leave (an immediate self-withdraw, no dates picker). Optional — absent ⇒ no affordance.
   selfCancelAction,
+  selfCancelAllowedRequestIds,
   // 8cb7b089: when the viewer can decide approvals (manager/admin), pills awaiting a decision gain a
   // deep-link arrow to the matching /approvals section. Own rows are excluded (the Approvals page filters
   // the viewer's own cancellations out entirely, so linking there would be a dead end).
@@ -115,6 +116,7 @@ export async function PlannedAbsences({
   viewerIsAdmin?: boolean;
   adminCancelAction?: (fd: FormData) => void | Promise<void>;
   selfCancelAction?: (fd: FormData) => void | Promise<void>;
+  selfCancelAllowedRequestIds:readonly string[];
   viewerCanApprove?: boolean;
   focusPersonId?: string | null;
 }) {
@@ -171,6 +173,7 @@ export async function PlannedAbsences({
   const canOfferSelfCancel = !!selfCancelAction;
   const selfCancelEligible = (personId: string, l: Leave): boolean =>
     canOfferSelfCancel &&
+    selfCancelAllowedRequestIds?.includes(l.id)===true &&
     viewerPersonId != null &&
     personId === viewerPersonId &&
     l.status === 'pending' &&
