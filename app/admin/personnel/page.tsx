@@ -439,7 +439,7 @@ export default async function PeoplePage({
                 filter's `q` box and does not narrow this table: it JUMPS to a profile. Both controls
                 are here because they answer different questions — "show me these people" and "take me
                 to this person" — and the second one previously had no answer at all. */}
-            <EmployeeSwitcher remote />
+            <EmployeeSwitcher remote key={scopeIds.join(',')} />
             <FilterPanel
               action="/admin/personnel"
               fields={filterFields}

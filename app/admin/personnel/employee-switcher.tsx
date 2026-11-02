@@ -139,7 +139,6 @@ export function EmployeeSwitcher({
         onChange={(e) => {
           setQuery(e.target.value);
           setResponse(null);
-          setResponse(null);
           setActive(0);
           setOpen(true);
         }}

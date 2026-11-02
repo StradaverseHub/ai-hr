@@ -43,6 +43,7 @@ describe('c002b3c3 · the switcher is mounted on both screens and stays an RSC-s
     expect(src).toContain('dataTour="people-search"');
     // Search remains whole-scope, but is requested only when typed rather than preloaded.
     expect(src).toContain('<EmployeeSwitcher remote');
+    expect(src).toContain("key={scopeIds.join(',')}");
     expect(src).not.toContain('listWorkforcePickOptions(session, scopeIds)');
   });
 

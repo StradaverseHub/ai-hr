@@ -478,17 +478,28 @@ export async function searchWorkforceEmployeesTx(ctx:SessionContext,tx:Tx,compan
   const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query);
   if(!raw||!companyIds.length)return [];
   await lockAccessConfigurationTx(tx,ctx.tenantId);
-  const columns=workforcePickerColumns(),name=sql`lower(${columns.name})`,code=sql`lower(coalesce(${columns.employeeCode},''))`;
-  const compact=sql`regexp_replace(${code}, '[[:space:]._-]', '', 'g')`;
+  const columns=workforcePickerColumns(),name=sql`workforce_row.search_name`,code=sql`workforce_row.search_code`;
+  const compact=sql`workforce_row.search_compact`;
   const rank=sql<number>`case
     when ${folded} <> '' and ${compact} <> '' and ${compact} = ${folded} then 0
     when ${folded} <> '' and ${compact} <> '' and left(${compact},length(${folded})) = ${folded} then 1
     when left(${name},length(${raw})) = ${raw} then 2
     when position(${raw} in ${code}) > 0 or (${folded} <> '' and position(${folded} in ${compact}) > 0) then 3
     when position(${raw} in ${name}) > 0 then 4 else 5 end`;
-  const source=sql`app.access_workforce_picker_rows(null,null::date,null::date) as workforce_row(value)`;
-  return tx.select(columns).from(source).where(and(workforceListWhere({companyIds},workforceListColumns()),sql`${rank} < 5`))
-    .orderBy(rank,columns.name,columns.employmentId).limit(EMPLOYEE_SEARCH_RESULT_CAP);
+  // Normalize each authorized candidate once; ranking otherwise repeats these expressions in
+  // both its filter and ordering. This is statement-local work, not a permission/result cache.
+  const source=sql`(
+    with normalized as materialized (
+      select workforce_row.value, lower(${columns.name}) as search_name,
+        lower(coalesce(${columns.employeeCode},'')) as search_code,
+        regexp_replace(lower(coalesce(${columns.employeeCode},'')), '[[:space:]._-]', '', 'g') as search_compact
+      from app.access_workforce_picker_rows(null,null::date,null::date) as workforce_row(value)
+      where ${workforceListWhere({companyIds},workforceListColumns())}
+    )
+    select workforce_row.value, ${rank} as search_rank from normalized as workforce_row
+  ) as workforce_row`;
+  return tx.select(columns).from(source).where(sql`workforce_row.search_rank < 5`)
+    .orderBy(sql`workforce_row.search_rank`,columns.name,columns.employmentId).limit(EMPLOYEE_SEARCH_RESULT_CAP);
 }
 
 /**
