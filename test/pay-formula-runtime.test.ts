@@ -173,7 +173,7 @@ it('BK39 preserves the owner-confirmed all-rows-of-code RM0 fixed aggregate for 
  expect(evaluations).toEqual(expect.arrayContaining([expect.objectContaining({formulaId:'RUNTIME',amount:'1'})]));
 });
 
-it.each(['hire','exit','custom divisor','working days','custom cutoff','entity transfer','explicit calendar defaults'] as const)(
+it.each(['hire','exit','custom divisor','working days','custom cutoff','anchor-one cutoff','entity transfer','explicit calendar defaults'] as const)(
  'R15 preserves deferred %s behavior and its formula preview',async(kind)=>{
   context={...context,period:'2026-04',asOf:'2026-04-30'};
   await setCompensation(ctx,{employmentId:employee.employmentId,basicSalary:3300,monthlyAllowance:0,effectiveFrom:'2026-04-01'});
@@ -191,9 +191,11 @@ it.each(['hire','exit','custom divisor','working days','custom cutoff','entity t
    ...(kind==='custom divisor'?{proration:{divisor:'custom_days' as const,customDays:26}}:{}),
    ...(kind==='working days'?{proration:{includeSaturday:false}}:{}),
    ...(kind==='custom cutoff'?{cutOff:{mode:'custom' as const,anchorDay:26}}:{}),
-   ...(kind==='explicit calendar defaults'?{proration:{divisor:'calendar_month' as const},cutOff:{mode:'custom' as const,anchorDay:1}}:{}),
+   ...(kind==='anchor-one cutoff'?{cutOff:{mode:'custom' as const,anchorDay:1}}:{}),
+   ...(kind==='explicit calendar defaults'?{proration:{divisor:'calendar_month' as const},cutOff:{mode:'calendar' as const}}:{}),
   };
   const {id:policyId}=await createPolicy(ctx,{companyId:policyCompany,name:`Deferred ${kind}`,policyType:'monthly',config});
+  if(kind==='explicit calendar defaults')await owner.db.update(schema.payrollPolicy).set({config}).where(eq(schema.payrollPolicy.id,policyId));
   await assignPolicy(ctx,{employmentId:employee.employmentId,policyId});
   const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});
   await generatePayslips(ctx,{batchId});
@@ -203,6 +205,10 @@ it.each(['hire','exit','custom divisor','working days','custom cutoff','entity t
   const expected=kind==='explicit calendar defaults'?3450:4300;
   expect(Number(slip.basicSalary)).toBe(expected);
   const saved=await savePayFormula(ctx,{formulaId:'DEFERRED',description:'Owner-confirmed compatibility',method:'write',source:'Return {#PayItem}("BASIC")'});
+  if(kind==='exit'){
+   await expect(testPayFormula(ctx,{...saved,context:{...context,batchId} as PayFormulaContext})).rejects.toThrow(/employer segment/);
+   context={...context,asOf:'2026-04-20'}; // Keep the existing refusal after the employee's owned segment.
+  }
   const preview=await testPayFormula(ctx,{...saved,context:{...context,batchId} as PayFormulaContext});
   expect(preview.passed,preview.error??'compatibility preview').toBe(true);
   expect(Number(preview.amount)).toBe(expected);
