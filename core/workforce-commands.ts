@@ -38,7 +38,7 @@ export function setPersonComplianceFields(ctx:SessionContext,p:Parameters<typeof
   await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
   if(!subject)throw new Error('Employment not found (or not visible).');
-  await assertWorkforcePersonTx(tx,ctx,subject.personId,'edit');
+  await assertWorkforcePersonTx(tx,ctx,subject.personId,'maintain');
   return writeComplianceFields(ctx,p,tx);
  },outerTx);
 }
