@@ -58,7 +58,7 @@ describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigati
   expect(gears).toHaveLength(1);const gear=gears[0];
   if(gear.getAttribute('aria-expanded')!=='true')fireEvent.click(gear);
   const panel=document.getElementById(gear.getAttribute('aria-controls')!);expect(panel).not.toBeNull();
-  expect(within(panel!).getByRole('link',{name:messages.nav.systemLabels})).toHaveAttribute('href','/admin/settings/system-labels');
+  expect(within(panel!).queryByRole('link',{name:messages.nav.systemLabels})).toBeNull();
  });
  it('offers only self-service Payroll to employees and keeps current-link ownership out of My Profile',()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);route.pathname='/me/payslip';route.search='';

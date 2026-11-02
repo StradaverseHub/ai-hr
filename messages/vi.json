@@ -7648,7 +7648,8 @@
         "saving": "Đang lưu…",
         "saved": "Đã lưu cài đặt điều chỉnh bảng lương.",
         "invalid": "Chọn giá trị bật hoặc tắt hợp lệ.",
-        "failed": "Không thể lưu cài đặt. Vui lòng thử lại."
+        "failed": "Không thể lưu cài đặt. Vui lòng thử lại.",
+        "cta": "Mở kiểm soát điều chỉnh"
       },
       "formulaBuilder": {
         "title": "Trình tạo công thức lương",

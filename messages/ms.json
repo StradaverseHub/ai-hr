@@ -7648,7 +7648,8 @@
         "saving": "Menyimpan…",
         "saved": "Tetapan pembetulan gaji disimpan.",
         "invalid": "Pilih nilai hidup atau mati yang sah.",
-        "failed": "Tetapan tidak dapat disimpan. Cuba lagi."
+        "failed": "Tetapan tidak dapat disimpan. Cuba lagi.",
+        "cta": "Buka kawalan pembetulan"
       },
       "formulaBuilder": {
         "title": "Pembina Formula Gaji",

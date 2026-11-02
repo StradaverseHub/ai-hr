@@ -7648,7 +7648,8 @@
         "saving": "Saving…",
         "saved": "Payroll correction setting saved.",
         "invalid": "Choose a valid on or off value.",
-        "failed": "Could not save the setting. Try again."
+        "failed": "Could not save the setting. Try again.",
+        "cta": "Open correction controls"
       },
       "formulaBuilder": {
         "title": "Pay Formula Builder",

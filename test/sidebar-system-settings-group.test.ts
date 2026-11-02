@@ -153,7 +153,7 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
     }
     expect(navigationPlacement('/admin/settings/employee-id')).toEqual({area:'ops',module:'people',section:'config'});
     expect(navigationPlacement('/admin/settings/dashboard')).toEqual({area:'system'});
-    expect(navigationPlacement('/admin/settings/system-labels')).toEqual({area:'system'});
+    expect(navigationPlacement('/admin/settings/system-labels')).toEqual({area:'ops',module:'people',section:'config'});
   });
 
   it('carries EVERY child in the declared order — no row appended, clipped or reshuffled unnoticed', () => {
@@ -248,7 +248,7 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
   it('separates People configuration and daily HR work from the shared System Configuration gear', () => {
     expect(navigationPlacement('/admin/organization')).toEqual({area:'ops',module:'people',section:'config'});
     expect(navigationPlacement('/admin/personnel')).toEqual({area:'ops',module:'people',section:'hr'});
-    for (const href of ['/admin/holidays','/admin/settings/system-labels','/admin/settings/email','/admin/ai']) {
+    for (const href of ['/admin/holidays','/admin/settings/email','/admin/ai']) {
       expect(navigationPlacement(href), href).toEqual({area:'system'});
     }
   });
