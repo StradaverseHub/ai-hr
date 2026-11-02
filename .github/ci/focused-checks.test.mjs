@@ -1,7 +1,7 @@
 /** Controller-only regressions; no app imports, database, compiler or provider calls. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseSelection, partitionSelection, verifyFocusedResult} from './focused-checks.mjs';
+import {parseSelection, partitionSelection, verifyFocusedResult, classifierEnvironment, admitFocusedEvaluation} from './focused-checks.mjs';
 
 const files = ['test/example.test.ts', 'test/screen.dom.test.tsx'];
 test('Manifest retains exact file identities and sorts a copied selection', () => {
@@ -148,4 +148,31 @@ test('Requested model evaluation keeps human review and unmet quality separate f
     const context = requestedEvalContext(); context.receipt.outcomes[0].criteria[0].status = status;
     assert.throws(() => verifyFocusedResult(disabledEvalResult(), [evalFile], '/candidate', context));
   }
+});
+
+test('candidate classifier receives no eval or spend-receipt capability, preserving ordinary DB/resource configuration', () => {
+  const env = {AIHR_EVAL_OPENROUTER_KEY: 'fictional-secret', AIHR_EVAL_MODEL: 'openai/gpt-6-luna',
+    AIHR_EVAL_BUDGET_USD: '15', AIHR_EVAL_FUTURE_CREDENTIAL: 'future-secret',
+    AI_SPEND_RECEIPT_SIGNING_KEY: 'fictional-signer', AI_SPEND_RECEIPT_FUTURE: 'future-capability',
+    DATABASE_URL: 'postgres://fixture', TEST_DB_NAMESPACE: 'aifocus', AIHR_CI_PG_PROFILE: '2',
+    AIHR_CI_PG_JIT: 'on', RUNNER_TEMP: '/runner/private', PATH: '/usr/bin', CI: 'true'};
+  const filtered = classifierEnvironment(env);
+  assert.deepEqual(filtered, {DATABASE_URL: 'postgres://fixture', TEST_DB_NAMESPACE: 'aifocus', AIHR_CI_PG_PROFILE: '2',
+    AIHR_CI_PG_JIT: 'on', RUNNER_TEMP: '/runner/private', PATH: '/usr/bin', CI: 'true'});
+  assert.notEqual(filtered, env); assert.equal(env.AIHR_EVAL_OPENROUTER_KEY, 'fictional-secret');
+});
+test('missing trusted budget adapter refuses before a candidate-classification callback can execute', () => {
+  const {request, identity} = requestedEvalContext(); let classifications = 0;
+  const env = {AIHR_EVAL_MODEL: request.model, AIHR_EVAL_OPENROUTER_KEY: 'fictional-secret', AIHR_EVAL_PATH: 'production',
+    AIHR_EVAL_BUDGET_USD: '15', AIHR_EVAL_ALLOWED_PROVIDERS: 'azure', AIHR_EVAL_REPEATS: '1', AIHR_EVAL_PROFILE: 'fixture'};
+  const attempt = () => {
+    admitFocusedEvaluation({env, files: [evalFile], identity, loadPlan: () => ({fixture: 'read-only plan'})});
+    classifications++;
+  };
+  assert.throws(attempt, /verified budget admission is unavailable/);
+  assert.equal(classifications, 0);
+});
+test('ordinary classifier preflight does not load an eval plan or require a paid adapter', () => {
+  assert.deepEqual(admitFocusedEvaluation({env: {}, files, identity: undefined,
+    loadPlan() { throw Error('ordinary CI must not load an evaluation plan'); }}), {request: null, plan: null});
 });

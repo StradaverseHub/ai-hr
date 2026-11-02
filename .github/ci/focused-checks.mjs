@@ -63,6 +63,24 @@ export function verifyFocusedResult(result, files, cwd, evalContext) {
   return assertions;
 }
 
+/** The candidate classifier is source execution, but never a credential consumer.
+ * Preserve its ordinary DB/resource/runtime environment without forwarding evaluation capabilities. */
+export function classifierEnvironment(env) {
+  return Object.fromEntries(Object.entries(env).filter(([key]) =>
+    !key.startsWith('AIHR_EVAL_') && !key.startsWith('AI_SPEND_RECEIPT_')));
+}
+
+/** Must finish before any candidate subprocess. loadPlan only reads pinned source bytes. */
+export function admitFocusedEvaluation({env, files, identity, loadPlan, budgetAdmission, budgetVerifier}) {
+  const request = captureRequestedEval(env, files, identity);
+  if (!request) return {request: null, plan: null};
+  const plan = loadPlan(request);
+  if (typeof budgetAdmission !== 'function' || typeof budgetVerifier !== 'function'
+    || budgetAdmission({request, plan, identity})?.admitted !== true)
+    throw Error('Requested model evaluation: verified budget admission is unavailable');
+  return {request, plan};
+}
+
 function runnerOnly() {
   if (process.env.GITHUB_ACTIONS !== 'true' || process.env.CI !== 'true' || process.platform !== 'linux'
     || process.env.RUNNER_ENVIRONMENT !== 'github-hosted' || process.env.GITHUB_REPOSITORY !== 'StradaverseHub/ai-hr'
@@ -119,45 +137,43 @@ export function runFocused(destination, {evalBudgetAdmission, evalBudgetVerifier
   if (!/^[0-9a-f]{40}$/.test(controller ?? '')) throw Error('Missing exact focused controller identity');
   const files = parseSelection(process.env.AIHR_FOCUSED_TESTS);
   checkedTrackedFiles(cwd, files);
-  const classifier = 'scripts/gate-db-classify.ts';
-  const output = execFileSync(process.execPath, ['--import', 'tsx', classifier, 'explain'], {
-    cwd, input: files.join('\n') + '\n', encoding: 'utf8', maxBuffer: 1024 * 1024,
-  });
-  const groups = partitionSelection(files, output);
-  const qualifyPort = restrictedPortRequest(process.env.AIHR_QUALIFY_RESTRICTED_PORT, groups, process.env.AIHR_RESTRICTED_PORT_TYPECHECK);
-  const postgresProfile = groups.DB.length ? assertFocusedPostgresProfile(process.env) : null;
   const dir = resolve(destination), runnerTemp = realpathSync(process.env.RUNNER_TEMP);
   if (!relative(runnerTemp, dir) || relative(runnerTemp, dir).startsWith('../') || isAbsolute(relative(runnerTemp, dir)))
     throw Error('Evidence must use an owned directory under RUNNER_TEMP');
   mkdirSync(dir, {recursive: true});
-  const identity = focusedPlanIdentity({sha, controller, files, groups, classifierHash: hash(readFileSync(classifier)),
-    execution: {workers: 2, postgres: postgresProfile, ...(qualifyPort?{restrictedPortPrerequisite:{version:2,sourcePins:SOURCE_PINS}}:{})}});
-  const report = {kind: 'FOCUSED_ONLY', releaseEligible: false, schemaVersion: 1, sha, controller,
-    runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT,
-    runtime: {node: process.versions.node, platform: process.platform, arch: process.arch},
-    startedAt: new Date().toISOString(), ...identity, manifestHash: hash(JSON.stringify(files)), batches: [], exitCode: 1};
-  const pgEnv = {...process.env, AIHR_CI_UNIT: 'db-1'};
-  let touchedDatabase = false;
-  let evalRequest = null, evalPlan = null;
   const evalIdentity = {sourceSha: sha, controllerSha: controller,
     runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT,
     runtime: {node: process.versions.node, platform: process.platform, arch: process.arch}};
+  const report = {kind: 'FOCUSED_ONLY', releaseEligible: false, schemaVersion: 1, sha, controller,
+    runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT,
+    runtime: evalIdentity.runtime, startedAt: new Date().toISOString(),
+    files, manifestHash: hash(JSON.stringify(files)), batches: [], exitCode: 1};
+  const pgEnv = {...process.env, AIHR_CI_UNIT: 'db-1'};
+  let touchedDatabase = false, postgresProfile = null;
+  let evalRequest = null, evalPlan = null;
   try {
-    evalRequest = captureRequestedEval(process.env, files, evalIdentity);
-    if (evalRequest) {
+    if (process.env.AIHR_EVAL_MODEL?.trim() || process.env.AIHR_EVAL_REQUESTED === 'true')
       report.evaluation = {requested: true, status: 'admission_refused', executionComplete: false,
         measurementPassed: false, safetyPassed: null, qualityPassed: null, requiresHumanReview: null,
         budgetVerified: false, releaseEligible: false};
-      evalPlan = loadEvalPlan(evalRequest, cwd);
-      report.evaluation = {...report.evaluation, request: evalRequest, planHash: evalPlan.planHash,
-        corpusReviewDigest: evalPlan.corpusReviewDigest, plannedCaseIds: evalPlan.cases.map(row => row.id)};
-      // An adapter must establish actual reservation authority. Neither an environment scalar,
-      // presence of a key nor a receipt-authored budget claim is admission.
-      if (typeof evalBudgetAdmission !== 'function' || typeof evalBudgetVerifier !== 'function'
-        || evalBudgetAdmission({request: evalRequest, plan: evalPlan, identity: evalIdentity})?.admitted !== true)
-        throw Error('Requested model evaluation: verified budget admission is unavailable');
-      report.evaluation.status = 'admitted_not_measured';
-    }
+    ({request: evalRequest, plan: evalPlan} = admitFocusedEvaluation({env: process.env, files,
+      identity: evalIdentity, loadPlan: request => loadEvalPlan(request, cwd),
+      budgetAdmission: evalBudgetAdmission, budgetVerifier: evalBudgetVerifier}));
+    if (evalRequest) report.evaluation = {...report.evaluation, request: evalRequest,
+      planHash: evalPlan.planHash, corpusReviewDigest: evalPlan.corpusReviewDigest,
+      plannedCaseIds: evalPlan.cases.map(row => row.id), status: 'admitted_not_measured'};
+
+    // All requested monetary admission precedes this first candidate subprocess, even classification.
+    const classifier = 'scripts/gate-db-classify.ts';
+    const output = execFileSync(process.execPath, ['--import', 'tsx', classifier, 'explain'], {
+      cwd, input: files.join('\n') + '\n', encoding: 'utf8', maxBuffer: 1024 * 1024,
+      env: classifierEnvironment(process.env),
+    });
+    const groups = partitionSelection(files, output);
+    const qualifyPort = restrictedPortRequest(process.env.AIHR_QUALIFY_RESTRICTED_PORT, groups, process.env.AIHR_RESTRICTED_PORT_TYPECHECK);
+    postgresProfile = groups.DB.length ? assertFocusedPostgresProfile(process.env) : null;
+    Object.assign(report, focusedPlanIdentity({sha, controller, files, groups, classifierHash: hash(readFileSync(classifier)),
+      execution: {workers: 2, postgres: postgresProfile, ...(qualifyPort?{restrictedPortPrerequisite:{version:2,sourcePins:SOURCE_PINS}}:{})}}));
     report.healthBefore = hostHealth();
     if (!report.healthBefore.ok) throw Error('Runner disk headroom below shared resource guard');
     for (const kind of ['NODB', 'DB']) {
