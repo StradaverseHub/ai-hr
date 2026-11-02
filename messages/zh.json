@@ -33629,5 +33629,11 @@
       "forbidden": "您无权更改此策略。",
       "unavailable": "密码设置暂不可用。请重试。"
     }
+  },
+  "workflowModules": {
+    "label": "工作流模块",
+    "legacy": "入职与离职",
+    "probation": "试用期",
+    "contract_staff": "合同管理"
   }
 }
