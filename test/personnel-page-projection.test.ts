@@ -50,7 +50,21 @@ it('retains native scope, exact rows/order, pager and status facets while evalua
  expect(empty).toEqual({rows:[],total:0,headcount:{total:0,byStatus:{}}});
  const foreignOnly=await personnelListPage(ctx,{...all.page,companyIds:[foreign.companyId]},{...all.facets,companyIds:[foreign.companyId]});
  expect(foreignOnly).toEqual(empty);
- const report={kind:'NATIVE_PERSONNEL_PROJECTION_COUNT_NOT_SYSTEM_CAPACITY',fictionalEmployments:519,visibleEmployments:512,pageRows:25,elapsedMs,projectionCalls:before===null||after===null?null:after-before,expectedProjectionCalls:1,exactRowsOrderPagerAndFacets:true,emptyAndForeignScopeRefused:true,limitations:'Fictional retained-volume fixture, not native hiring throughput or millions of Personnel records. No public function or policy changed.'};
+ const pairedTimings: {round:number;order:string;legacyMs:number;composedMs:number}[]=[];
+ for(let round=0;round<4;round++){
+  let legacyMs=0,composedMs=0;
+  const legacy=async()=>{
+   const start=performance.now();const [rows,counts]=await Promise.all([listEmployeesPage(ctx,all.page,'workforce'),countEmployeesByStatus(ctx,all.facets,'workforce')]);
+   legacyMs=performance.now()-start;expect({...rows,headcount:counts}).toEqual({...listing,headcount});
+  };
+  const composed=async()=>{
+   const start=performance.now();const result=await personnelListPage(ctx,all.page,all.facets);
+   composedMs=performance.now()-start;expect(result).toEqual({...listing,headcount});
+  };
+  if(round%2===0){await legacy();await composed();}else{await composed();await legacy();}
+  pairedTimings.push({round,order:round%2===0?'legacy-composed':'composed-legacy',legacyMs,composedMs});
+ }
+ const report={pairedTimings,kind:'NATIVE_PERSONNEL_PROJECTION_COUNT_NOT_SYSTEM_CAPACITY',fictionalEmployments:519,visibleEmployments:512,pageRows:25,elapsedMs,projectionCalls:before===null||after===null?null:after-before,expectedProjectionCalls:1,exactRowsOrderPagerAndFacets:true,emptyAndForeignScopeRefused:true,limitations:'Fictional retained-volume fixture, not native hiring throughput or millions of Personnel records. No public function or policy changed.'};
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/personnel-page-projection.json',JSON.stringify(report));
  if(profile){expect(before).toBeGreaterThanOrEqual(3);expect(after!-before!).toBe(1);}
 },240000);
