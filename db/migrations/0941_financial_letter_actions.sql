@@ -2436,6 +2436,31 @@ REVOKE ALL ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,
 GRANT EXECUTE ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jsonb,jsonb,timestamptz,bigint,bigint) TO ai_hr_app;
 -- The delayed-notice reader needs workflow flags and actual assigned IDs, never
 -- raw self/manager answers, KPI amounts, review text or a stored performance band.
+-- Notification eligibility belongs to each actual recipient, never to the dispatcher.
+CREATE FUNCTION app.financial_onehr_target_task_view(t uuid,u uuid,r uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce((SELECT c.supported=false OR app.access_allowed_for_tenant(t,u,c.id,subject.company_id)
+ FROM public.performance_review review JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ CROSS JOIN LATERAL (SELECT app.financial_onehr_review_course_for(t,u,review.id) AS course) native
+ JOIN app.access_function_action action ON action.function_key=CASE native.course WHEN 'self' THEN 'performance.onehr.selfReview' WHEN 'assigned' THEN 'performance.onehr.assignedReview' END AND action.operation='view'
+ JOIN public.access_capability c ON c.id=action.capability_id
+ WHERE review.id=r AND review.tenant_id=t AND native.course IN ('self','assigned')),false);
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_target_task_view(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_review_task_recipient_access(p_cycle uuid,p_user uuid DEFAULT NULL) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(jsonb_object_agg(review.id::text,(SELECT coalesce(jsonb_agg(account.id ORDER BY account.id),'[]'::jsonb)
+ FROM public.app_user account WHERE account.tenant_id=review.tenant_id AND (p_user IS NULL OR account.id=p_user)
+ AND app.financial_onehr_target_task_view(review.tenant_id,account.id,review.id))),'{}'::jsonb)
+ FROM public.performance_review review JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
+ JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ JOIN public.review_cycle cycle ON cycle.id=review.cycle_id AND cycle.tenant_id=review.tenant_id
+ WHERE review.cycle_id=p_cycle AND review.tenant_id=app.current_tenant_id() AND cycle.status IN ('open','calibration')
+ AND (app.assessment_dispatcher_scope() OR app.onehr_cycle_admin(cycle.id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id)) AND app.assessment_review_participates(review.id);
+$$;
+REVOKE ALL ON FUNCTION app.onehr_review_task_recipient_access(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_task_recipient_access(uuid,uuid) TO ai_hr_app;
+
 CREATE FUNCTION app.onehr_review_notice_source(p_review uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  WITH source AS MATERIALIZED (
@@ -2455,7 +2480,11 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  'frozen',source.closed_at IS NOT NULL OR EXISTS(SELECT 1 FROM public.performance_onehr_result result WHERE result.review_id=source.review_id AND result.tenant_id=source.tenant_id),
  'moderatorIds',(SELECT coalesce(jsonb_agg(moderator->'id'),'[]'::jsonb) FROM jsonb_array_elements(source.moderators) moderator),
  'liveIds',(SELECT coalesce(jsonb_agg(DISTINCT employment.id ORDER BY employment.id),'[]'::jsonb) FROM candidates JOIN public.employment employment ON employment.id=candidates.id AND employment.tenant_id=source.tenant_id
- JOIN public.app_user account ON account.person_id=employment.person_id AND account.tenant_id=employment.tenant_id WHERE account.archived_at IS NULL AND NOT app.login_blocked(account.id) AND (employment.terminated_on IS NULL OR employment.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND NOT app.assessment_unit_out(source.cycle_id,employment.id)),
+ JOIN public.app_user account ON account.person_id=employment.person_id AND account.tenant_id=employment.tenant_id WHERE account.archived_at IS NULL AND NOT app.login_blocked(account.id) AND (employment.terminated_on IS NULL OR employment.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND NOT app.assessment_unit_out(source.cycle_id,employment.id)
+ AND app.financial_onehr_target_task_view(source.tenant_id,account.id,source.review_id)
+ -- Employment-addressed notices are visible to every active account of that person.
+ AND NOT EXISTS(SELECT 1 FROM public.app_user other WHERE other.tenant_id=employment.tenant_id AND other.person_id=employment.person_id
+ AND other.archived_at IS NULL AND NOT app.login_blocked(other.id) AND NOT app.financial_onehr_target_task_view(source.tenant_id,other.id,source.review_id))),
  'facts',jsonb_build_object('competenciesAssigned',jsonb_array_length(source.competencies)>0,'competencyStatus',source.competency_status,'resultsSubmitted',source.results_submitted_at IS NOT NULL,'managerPerformance',NULL,'managerComplete',source.manager_performance IS NOT NULL,
  'planStatus',(SELECT plan.status FROM public.performance_onehr_plan plan WHERE plan.tenant_id=source.tenant_id AND plan.employment_id=source.employment_id AND plan.plan_year=extract(year from source.period_end)::integer+CASE WHEN source.policy->>'kind'='year_end' THEN 1 ELSE 0 END),
  'kpis',(SELECT coalesce(jsonb_agg(jsonb_build_object('hrOwned',coalesce((kpi->>'hrOwned')::boolean,false),'setting',kpi->'setting','locked',kpi->'locked','moderatorEmploymentId',kpi->'moderatorEmploymentId','checkIn',kpi->'checkIn' IS NOT NULL AND kpi->'checkIn'<>'null'::jsonb,

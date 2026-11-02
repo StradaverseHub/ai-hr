@@ -152,6 +152,16 @@ describe('OneHR performance partner (ADR-0142)', () => {
     }
   });
 
+  it('binds dispatch task authority to the actual review and current active recipient',async()=>{
+    const userId=await createAppUser(b.tenantId,subject.personId,'employee');
+    const allowed=async(userId:string)=>{const [row]=await owner.db.execute<{ok:boolean}>(sql`select app.financial_onehr_target_task_view(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid) as ok`);return row.ok;};
+    expect(await allowed(userId)).toBe(true);
+    expect(await allowed(partner.userId!)).toBe(false);
+    await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,userId));
+    expect(await allowed(userId)).toBe(false);
+    const [privilege]=await owner.db.execute<{ok:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_target_task_view(uuid,uuid,uuid)','EXECUTE') as ok`);expect(privilege.ok).toBe(false);
+  });
+
   // ───────────────────────────── TS gates (UX mirror) ─────────────────────────────
   it('narrowed Partner-A claims cannot borrow stored global Partner through retained global Employee',async()=>{
     const global=await partnerCtx(null,null);
