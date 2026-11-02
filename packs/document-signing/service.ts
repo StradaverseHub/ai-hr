@@ -32,9 +32,12 @@ export async function recordDocumentSigningActionTx(tx:Tx,ctx:SessionContext,inp
   const [result]=await tx.execute<{document:SigningDocument}>(sql`select app.document_signing_act(${row.id}::uuid,${JSON.stringify(action)}::jsonb) as document`);
   return result.document;
 }
-export async function reviseSigningDocumentTx(tx:Tx,ctx:SessionContext,input:{id:string;hash:string;reason:string}):Promise<SigningDocument>{
+export async function reviseSigningDocumentTx(tx:Tx,ctx:SessionContext,input:{id:string;hash:string;reason:string;route?:SigningRoute}):Promise<SigningDocument>{
   if(!input.reason.trim())throw new SigningError('invalid','Explain why the signed content is being revised.');
-  const row=await load(tx,ctx,input.id),next=reviseSigningDocument(row.data,input.hash);
+  const row=await load(tx,ctx,input.id);
+  const route=input.route?await hydrateRoute(tx,ctx,input.route):undefined;
+  if(route)validateSigningRoute(route,row.guardrails);
+  const next=reviseSigningDocument(row.data,input.hash,route);
   await store(tx,row,next,'revise',input.reason);return next;
 }
 export async function replaceDocumentSignerTx(tx:Tx,ctx:SessionContext,input:{id:string;stepId:string;holderId:string;reason:string;kind:'delegation'|'holder_changed'|'missing_holder'}):Promise<SigningDocument>{

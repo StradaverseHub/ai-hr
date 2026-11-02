@@ -4,8 +4,8 @@ import {randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
 import * as S from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActionTx,replaceDocumentSignerTx,type SigningRoute,type SigningDocument} from '../packs/document-signing/service';
-import {signingComplete} from '../lib/document-signing-model';
+import {reviseSigningDocumentTx,createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActionTx,replaceDocumentSignerTx,type SigningRoute,type SigningDocument} from '../packs/document-signing/service';
+import {pendingSigningSteps,signingComplete} from '../lib/document-signing-model';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 const hash='a'.repeat(64),rules={requiredRoles:['lm','employee'],independentApprovalFromRole:'lm'};
 let b:Base,admin:SessionContext,subjectId:string,employmentId:string;
@@ -42,7 +42,7 @@ async function rawAct(documentId:string,who:typeof manager,action:unknown){retur
 beforeEach(async()=>{
  await resetDb();b=await seedBase();admin=adminCtx(b);manager=await actor('Fictional Manager');const staff=await actor('Fictional Employee');employee=staff;employmentId=staff.employmentId;head=await actor('Fictional Head');delegate=await actor('Fictional Delegate');subjectId=randomUUID();
  route={version:1,steps:[{id:'lm',role:'lm',kind:'sign',stage:0,holderId:manager.userId,holderPersonId:manager.personId,required:true},{id:'employee',role:'employee',kind:'acknowledge',stage:1,holderId:employee.userId,holderPersonId:employee.personId,required:true},{id:'hod',role:'hod',kind:'approve',stage:2,holderId:head.userId,holderPersonId:head.personId,required:true}]};
- await owner.db.execute(sql`insert into test_document_signing_subject(id,tenant_id,company_id,employment_id,admin_id,readers,route,rules,content) values(${subjectId}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${employmentId}::uuid,${admin.userId}::uuid,${[admin.userId!,manager.userId,employee.userId,head.userId,delegate.userId]}::uuid[],${JSON.stringify(route)}::jsonb,${JSON.stringify(rules)}::jsonb,${JSON.stringify({contentHash:hash,contentRevision:1,companyId:b.companyId,employmentId})}::jsonb)`);
+ await owner.db.execute(sql`insert into test_document_signing_subject(id,tenant_id,company_id,employment_id,admin_id,readers,route,rules,content) values(${subjectId}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${employmentId}::uuid,${admin.userId}::uuid,array[${sql.join([admin.userId!,manager.userId,employee.userId,head.userId,delegate.userId].map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${JSON.stringify(route)}::jsonb,${JSON.stringify(rules)}::jsonb,${JSON.stringify({contentHash:hash,contentRevision:1,companyId:b.companyId,employmentId})}::jsonb)`);
 });
 describe('authoritative signing persistence and SQL boundaries',()=>{
  it('reads with SELECT-only rights and signs a real scoped route with authoritative person/name/time and private audit',async()=>{
@@ -58,11 +58,19 @@ describe('authoritative signing persistence and SQL boundaries',()=>{
   expect((await withTenant(manager.ctx,tx=>readSigningDocumentTx(tx,manager.ctx,d.id))).actions).toEqual([]);
  });
  it('rejects missing/null signature method, absent identity and forged person through direct SQL',async()=>{
-  const d=await create();for(const signature of [{consent:true,value:'Forged'}, {method:null,consent:true,value:'Forged'},null]){await expect(rawAct(d.id,manager,{...rawAction(manager),signature})).rejects.toThrow();}
+  const d=await create();for(const signature of [{consent:true,value:'Forged'}, {method:null,consent:true,value:'Forged'}, {method:'typed',consent:'true',value:'Forged'}, {method:'drawn',consent:true,value:'data:image/png;base64,Zm9yZ2Vk'},null]){await expect(rawAct(d.id,manager,{...rawAction(manager),signature})).rejects.toThrow();}
+  for(const patch of [{id:1},{stepId:1},{contentRevision:'1'}])await expect(rawAct(d.id,manager,{...rawAction(manager),...patch})).rejects.toThrow();
   const missing=rawAction(manager);delete missing.id;await expect(rawAct(d.id,manager,missing)).rejects.toThrow();await expect(rawAct(d.id,manager,{...rawAction(manager),actorPersonId:head.personId})).rejects.toThrow();expect((await withTenant(manager.ctx,tx=>readSigningDocumentTx(tx,manager.ctx,d.id))).actions).toEqual([]);
  });
  it('rejects fabricated content at creation and a previously current hash after authoritative content changes',async()=>{
   await expect(create('b'.repeat(64))).rejects.toThrow();const d=await create();await owner.db.execute(sql`update test_document_signing_subject set content=content||${JSON.stringify({contentHash:'b'.repeat(64),contentRevision:2})}::jsonb where id=${subjectId}::uuid`);await expect(rawAct(d.id,manager,rawAction(manager))).rejects.toThrow();expect((await withTenant(manager.ctx,tx=>readSigningDocumentTx(tx,manager.ctx,d.id))).actions).toEqual([]);
+ });
+ it('adopts an authoritative revised route while retaining old signatures as history',async()=>{
+  const d=await create();await sign(d.id,manager,'lm');const next=structuredClone(route);next.version=2;next.steps.push({id:'pbp',role:'pbp',kind:'approve',stage:2,required:true,holderId:delegate.userId,holderPersonId:delegate.personId});const nextHash='c'.repeat(64);
+  await owner.db.execute(sql`update test_document_signing_subject set content=content||${JSON.stringify({contentHash:nextHash,contentRevision:2})}::jsonb,route=${JSON.stringify(next)}::jsonb where id=${subjectId}::uuid`);
+  await expect(withTenant(admin,tx=>reviseSigningDocumentTx(tx,admin,{id:d.id,hash:'d'.repeat(64),route:next,reason:'Forged source'}))).rejects.toThrow();
+  await expect(withTenant(admin,tx=>reviseSigningDocumentTx(tx,admin,{id:d.id,hash:nextHash,route,reason:'Old route'}))).rejects.toThrow();
+  const revised=await withTenant(admin,tx=>reviseSigningDocumentTx(tx,admin,{id:d.id,hash:nextHash,route:next,reason:'Approved review route changed'}));expect(revised.contentRevision).toBe(2);expect(revised.route).toEqual(next);expect(revised.actions).toHaveLength(1);expect(revised.actions[0].contentRevision).toBe(1);expect(pendingSigningSteps(revised).map(s=>s.id)).toEqual(['lm']);expect(signingComplete(revised,rules)).toBe(false);
  });
  it('rechecks current holder routes at action and permits an audited pending delegation',async()=>{
   const d=await create(),next=structuredClone(route);next.steps[0]={...next.steps[0],holderId:delegate.userId,holderPersonId:delegate.personId,representedId:manager.userId};await updateRoute(next);
