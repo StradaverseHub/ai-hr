@@ -767,6 +767,11 @@ BEGIN
  SELECT * INTO p FROM public.person WHERE id=NEW.person_id AND tenant_id=NEW.tenant_id;
  FOR source IN SELECT * FROM app.workforce_hire_source s WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=NEW.tenant_id AND s.user_id=app.current_user_id() AND s.company_id=NEW.company_id AND s.employment_id IS NULL FOR UPDATE LOOP
   expected_code:=coalesce(nullif(source.source->>'reserved_employee_code',''),nullif(btrim(source.source#>>'{data,profile,employeeCode}'),''));
+  -- Auto may ignore an old manual textbox only when the real native allocator actually issued
+  -- this exact new code in the same actor/tenant/company transaction. Held/manual codes stay exact.
+  IF expected_code IS NOT NULL AND upper(expected_code) IS DISTINCT FROM NEW.employee_code
+   AND nullif(source.source->>'reserved_employee_code','') IS NULL AND source.source#>>'{data,profile,employeeIdMode}'='auto'
+   AND app.organisation_employee_code_issued(NEW.company_id,NEW.employee_code) THEN expected_code:=NEW.employee_code;END IF;
   IF btrim(source.source#>>'{data,profile,fullName}') IS DISTINCT FROM btrim(p.full_name)
    OR lower(btrim(source.source#>>'{data,profile,primaryEmail}')) IS DISTINCT FROM lower(btrim(p.primary_email))
    OR source.source#>>'{data,employment,hiredOn}' IS DISTINCT FROM NEW.hired_on::text

@@ -1118,14 +1118,24 @@ cutoff/scope query was removed from that reader. Ordinary own Claim View grants 
 exception. Native reserve/pay/unpay/requeue ports remain Security-owned prerequisites before whole
 Claim publication; the existing AFTER financial effect and deferred money/audit checks stay in place.
 
+
+### Exact native Auto-code source witness
+
+The0939 hire source may ignore a leftover explicit Auto-mode textbox value only when private942
+`organisation_employee_code_issued(company,code)` proves that exact code was successfully issued
+in this actor/tenant/company transaction. Reserved and manual source codes remain exact. Original
+wizard Manual→Auto positive coverage is retained; new native negative cases reject posted Auto
+without an issuer and reject using a real automatic issuance to replace manual or reserved codes.
+This source depends on root942 witness89bc7e9da and requires hosted failed/affected qualification.
+
 ### Current permissions repair source identities (unapplied)
 
 - `0938_data_permission_enforcement.sql`: `d41b686eec213708abc9b174762c3c9f37d7f9aba31e057854108b321b66805a`.
-- `0939_workforce_action_permissions.sql`: `c9e5f412f9b21935fdc774b59687afa583d81c9e2e869072aa0a68517c42e7e0`.
+- `0939_workforce_action_permissions.sql`: `b572e6105861c458c61bd1c4dce18424c41f88a5b35699d2c4af9ebf52397e3b`.
 - `0941_financial_letter_actions.sql`: `485fb3ff0f977a943c736e6b5d181bcc4bbe52dc5f8148d668f5128bdacb9f7a`.
 - `0942_organisation_settings_actions.sql`: `0c268b9a28c6512ead695c577e235dde77438d54e77721d1d669d13caf0eac00`.
 - `0943_leave_attendance_claim_actions.sql`: `7b95a64208a79b545b982ad50e7b974b030afdb1b9b300df048e84d3acf3475d`.
 - `0944_lifecycle_rewards_notice_actions.sql`: `3ef5430b333e3c3287f9217172809aaf39aa8efbfa5aa15df1dcef3eb41b3ddf`.
 - `0945_financial_setup_actions.sql`: `77ef0067c30e55a48ab591938b3a5e892ba60161036f4b23c678ed280ea5f340`.
 
-These are source identities only. Original frozen failures and earlier source hashes remain historical evidence; no applied SQL is rewritten and admission still requires post-Noveri/nine ledger reconciliation.
+Source identities only; frozen failures remain preserved. Admission requires post-Noveri/nine ledger reconciliation without rewriting applied bytes.

@@ -6,9 +6,10 @@ import {withTenant} from '../db/client';
 import * as s from '../db/schema';
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand} from '../core/data-permissions';
 import {hireEmployee,setEmploymentGrade} from '../core/org';
-import {saveEmployeeDraft,completeEmployeeDraft,getEmployeeDraft,discardEmployeeDraft} from '../core/employee-draft';
+import {saveEmployeeDraft,completeEmployeeDraft,getEmployeeDraft,discardEmployeeDraft,createEmployeeDraftWithReservedCode} from '../core/employee-draft';
 import {publishWorkforceActionPackage as publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS_V2 as WORKFORCE_CAPABILITY_BINDINGS} from '../deploy/access/publish-workforce-capabilities';
 import {maintainWorkforceRecord,workforceEditor} from '../core/workforce-maintenance';
+import {createConfig,listConfigs} from '../core/employee-id-config';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -230,3 +231,21 @@ it('returns only the actual native Add image and cannot turn a conflicting ID in
  await expect(withTenant(actor,tx=>tx.execute(sql`insert into app.workforce_draft_read_birth(xact_id,tenant_id,user_id,draft_id,source,source_hash) values(pg_current_xact_id(),${b.tenantId}::uuid,${actor.userId}::uuid,${randomUUID()}::uuid,'{}','forged')`))).rejects.toThrow();
  expect(await withTenant(actor,tx=>tx.execute<{allowed:boolean}>(sql`select app.data_permission_draft_read(${randomUUID()}::uuid) as allowed`))).toEqual([{allowed:false}]);
 });
+
+for(const scenario of ['auto-without-issuer','manual-with-issuer','reserved-with-issuer'] as const){
+ it(`keeps exact hire source code custody for ${scenario}`,async()=>{
+  const actor=await ctx(),fullName='Fictional exact code source',primaryEmail=randomUUID()+'@fixture.invalid';
+  if(scenario!=='auto-without-issuer')await createConfig(actor,{companyId:b.companyId,prefix:'ISS',startNumber:10,numberLength:4,increment:1,allowManualOverride:true});
+  const data={profile:{fullName,primaryEmail,employeeCode:'MANUAL-SOURCE',employeeIdMode:scenario==='manual-with-issuer'?'manual':'auto'},employment:{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'}};
+  let draft:{id:string};
+  if(scenario==='reserved-with-issuer'){const held=await createEmployeeDraftWithReservedCode(actor,{companyId:b.companyId,fullName,primaryEmail});draft=held;await saveEmployeeDraft(actor,{id:held.id,data:{...data,profile:{...data.profile,employeeCode:held.employeeCode}},currentStep:2});}
+  else draft=await saveEmployeeDraft(actor,{data,currentStep:1});
+  const before=await listConfigs(actor),employments=await owner.db.select().from(s.employment).where(eq(s.employment.tenantId,b.tenantId));
+  let failure:unknown;try{await hireEmployee(actor,{person:{fullName,primaryEmail},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01',fromEmployeeDraftId:draft.id,...(scenario==='auto-without-issuer'?{employeeCode:'FORGED-AUTO'}:{})});}catch(error){failure=error;}
+  const messages:string[]=[];for(let error=failure;error&&typeof error==='object';error=(error as {cause?:unknown}).cause)messages.push(String((error as {message?:unknown}).message));
+  expect(messages.join('\n')).toContain('Hire source differs from created employment');
+  expect(await owner.db.select().from(s.employment).where(eq(s.employment.tenantId,b.tenantId))).toEqual(employments);
+  expect(await listConfigs(actor)).toEqual(before);
+  expect(await getEmployeeDraft(actor,draft.id)).not.toBeNull();
+ });
+}
