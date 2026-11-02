@@ -861,7 +861,7 @@ BEGIN
  IF inserted IS NULL THEN RETURN NULL;END IF;
  -- A transaction below the global snapshot xmin has no live/deferred consumer. Do
  -- this once per transaction, retaining every in-flight actor's exact receipts.
- FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody'] LOOP
+ FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody','financial_letter_proposed_birth'] LOOP
   EXECUTE format('DELETE FROM app.%I WHERE transaction_id<$1',table_name) USING oldest;
  END LOOP;
  DELETE FROM app.financial_receipt_epoch WHERE transaction_id<oldest;
@@ -2293,3 +2293,79 @@ LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp
 REVOKE ALL ON FUNCTION app.payroll_claim_prefill_sources(uuid),app.payroll_claim_linked_sources(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.payroll_claim_prefill_sources(uuid),app.payroll_claim_linked_sources(uuid,text) TO ai_hr_app;
 CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_claim_source_custody FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+
+--> statement-breakpoint
+-- Actual BEFORE-row custody permits only its own INSERT RETURNING row; successful
+-- materialization and the real complete-batch event must still close in this transaction.
+CREATE TABLE app.financial_letter_proposed_birth(
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,letter_id uuid NOT NULL,company_id uuid NOT NULL,employment_id uuid NOT NULL,batch_id uuid NOT NULL,row_hash text NOT NULL,completed boolean NOT NULL DEFAULT false,
+ PRIMARY KEY(transaction_id,tenant_id,user_id,letter_id)
+);
+ALTER TABLE app.financial_letter_proposed_birth ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_letter_proposed_birth FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_letter_proposed_birth_capture() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_user_id() IS NULL THEN RETURN NEW;END IF;
+ IF NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.created_by IS DISTINCT FROM app.current_user_id()
+ OR NOT app.letter_function_action('letterGenerate','add',NEW.company_id) OR NOT app.letter_function_action('letterGenerate','view',NEW.company_id)
+ OR NOT app.access_letter_action(NEW.company_id,'generate','add') OR NOT app.data_permission_matches(NEW.employment_id)
+ OR NEW.confidential AND NOT app.can_admin_payroll_for(NEW.company_id)
+ OR NOT EXISTS(SELECT 1 FROM public.letter_generation_batch parent JOIN public.employment subject ON subject.id=NEW.employment_id AND subject.tenant_id=parent.tenant_id AND subject.company_id=parent.company_id
+ WHERE parent.id=NEW.batch_id AND parent.tenant_id=NEW.tenant_id AND parent.company_id=NEW.company_id AND parent.created_by=NEW.created_by
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements_text(parent.selection->'employmentIds') selected(value) WHERE selected.value=subject.id::text))
+ OR EXISTS(SELECT 1 FROM public.letter_record existing WHERE existing.id=NEW.id)
+ THEN RAISE EXCEPTION 'Letter proposed birth unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO app.financial_letter_proposed_birth VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id,NEW.company_id,NEW.employment_id,NEW.batch_id,encode(sha256(convert_to(to_jsonb(NEW)::text,'UTF8')),'hex'),false);
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_proposed_birth_capture() FROM PUBLIC,ai_hr_app;
+-- Sort after the native letter_insert_binding trigger, which validates the draft and parent.
+CREATE TRIGGER z_financial_letter_proposed_birth BEFORE INSERT ON letter_record FOR EACH ROW EXECUTE FUNCTION app.financial_letter_proposed_birth_capture();
+CREATE FUNCTION app.financial_letter_proposed_birth_finish() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_LEVEL='ROW' THEN
+  UPDATE app.financial_letter_proposed_birth SET completed=true WHERE transaction_id=pg_current_xact_id() AND tenant_id=NEW.tenant_id AND user_id=app.current_user_id() AND letter_id=NEW.id AND row_hash=encode(sha256(convert_to(to_jsonb(NEW)::text,'UTF8')),'hex');
+ ELSE
+  DELETE FROM app.financial_letter_proposed_birth WHERE transaction_id=pg_current_xact_id() AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND NOT completed;
+ END IF;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_proposed_birth_finish() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_letter_proposed_birth_finish AFTER INSERT ON letter_record FOR EACH ROW EXECUTE FUNCTION app.financial_letter_proposed_birth_finish();
+CREATE TRIGGER financial_letter_proposed_birth_cleanup AFTER INSERT ON letter_record FOR EACH STATEMENT EXECUTE FUNCTION app.financial_letter_proposed_birth_finish();
+CREATE FUNCTION app.letter_record_birth_read(p_row jsonb) RETURNS boolean
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.principal_snapshot_current() OR p_row->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR p_row->>'created_by' IS DISTINCT FROM app.current_user_id()::text THEN RETURN false;END IF;
+ RETURN EXISTS(SELECT 1 FROM app.financial_letter_proposed_birth proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+ AND proof.letter_id=(p_row->>'id')::uuid AND proof.company_id=(p_row->>'company_id')::uuid AND proof.employment_id=(p_row->>'employment_id')::uuid AND proof.batch_id=(p_row->>'batch_id')::uuid AND proof.row_hash=encode(sha256(convert_to(p_row::text,'UTF8')),'hex')
+ AND app.letter_function_action('letterGenerate','view',proof.company_id) AND app.letter_function_action('letterGenerate','add',proof.company_id) AND app.access_letter_action(proof.company_id,'generate','add') AND app.data_permission_matches(proof.employment_id)
+ AND (NOT (p_row->>'confidential')::boolean OR app.can_admin_payroll_for(proof.company_id)));
+END;
+$$;
+REVOKE ALL ON FUNCTION app.letter_record_birth_read(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_record_birth_read(jsonb) TO ai_hr_app;
+ALTER POLICY letter_record_read ON letter_record USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND
+ ((app.letter_permission(company_id,'read') AND app.letter_staff_scope(company_id,created_by,batch_id,id) AND (NOT confidential OR app.can_admin_payroll_for(company_id))) OR
+ (state IN ('issued','void') AND EXISTS(SELECT 1 FROM public.employment self WHERE self.id=employment_id AND self.tenant_id=letter_record.tenant_id AND app.is_self_person(self.person_id))) OR app.letter_record_birth_read(to_jsonb(letter_record))));
+CREATE FUNCTION app.financial_letter_proposed_birth_validate() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM app.financial_letter_proposed_birth proof JOIN public.letter_record actual ON actual.id=proof.letter_id AND actual.tenant_id=proof.tenant_id AND actual.company_id=proof.company_id AND actual.employment_id=proof.employment_id AND actual.batch_id=proof.batch_id AND actual.created_by=proof.user_id
+ JOIN public.letter_generation_batch parent ON parent.id=proof.batch_id AND parent.tenant_id=proof.tenant_id AND parent.created_by=proof.user_id
+ WHERE proof.transaction_id=NEW.transaction_id AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.user_id AND proof.letter_id=NEW.letter_id AND proof.completed
+ AND proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+ AND app.letter_function_action('letterGenerate','add',proof.company_id) AND app.data_permission_matches(proof.employment_id)
+ AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.tenant_id=proof.tenant_id AND audit.aggregate_type='letter' AND audit.aggregate_id=proof.batch_id AND audit.event_type='letter.batch.created' AND audit.actor_type='user' AND audit.actor_id=proof.user_id AND app.financial_audit_written(audit.id)
+ AND (audit.payload->>'count')::integer=jsonb_array_length(parent.selection->'employmentIds') AND (audit.payload->>'count')::integer=(SELECT count(*) FROM public.letter_record member WHERE member.batch_id=proof.batch_id AND member.tenant_id=proof.tenant_id))) THEN
+  RAISE EXCEPTION 'Letter birth did not complete' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_proposed_birth_validate() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER financial_letter_proposed_birth_complete AFTER INSERT ON app.financial_letter_proposed_birth DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_letter_proposed_birth_validate();
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_letter_proposed_birth FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();

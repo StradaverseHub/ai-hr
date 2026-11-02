@@ -11,7 +11,7 @@ let b:Base,userId:string;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();userId=await createAppUser(b.tenantId,null,'employee');});
 async function context():Promise<SessionContext>{return {...await entitledCtx(b),userId,personId:undefined,roles:['employee'],grants:[{role:'employee',companyId:null}]};}
-async function acl(capability:LetterCapability,companyId=b.companyId){await owner.db.insert(s.letterCapabilityGrant).values({tenantId:b.tenantId,companyId,role:'employee',capability,allowed:true});}
+async function acl(capability:LetterCapability,companyId=b.companyId){await saveLetterPermission(await entitledCtx(b),{companyId,role:'employee',capability,allowed:true});}
 async function allowed(key:string,operation:string,companyId:string|null=b.companyId,ctx?:SessionContext){
  const [row]=await withTenant(ctx??await context(),tx=>tx.execute<{allowed:boolean}>(sql`select app.letter_function_action(${key},${operation},${companyId}::uuid) as allowed`));return row.allowed;
 }
