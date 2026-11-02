@@ -56,7 +56,7 @@ describe('closed public context offer',()=>{
  it('keeps private reads closed even when a read is named like an approved public guide',()=>{
   const gate=gateTurn('Where are Password Policy and Correction Controls, and who confirms changes?',{sensitive:HARNESS_SPEC.sensitive.topics});
   expect(gate).toEqual({privateReads:false,actions:true,reason:'other_person'});
-  const binding=(name:string,kind:ToolBinding['kind']):ToolBinding=>({name,kind,entity:null,identifierInputs:[],spec:{name,description:'Fictional offer-only fixture.',inputSchema:{type:'object',properties:{},additionalProperties:false}},run:async()=>({ok:true,content:{}})});
+  const binding=(name:string,kind:ToolBinding['kind']):ToolBinding=>({name,kind,entity:null,identifierInputs:[],spec:{name,description:'Fictional offer-only fixture.',inputSchema:{type:'object',properties:{},required:[],additionalProperties:false}},run:async()=>({ok:true,content:{}})});
   for(const name of ['password_policy_guidance','correction_controls_guidance']){
    const context=binding(name,'context'),forgedRead=binding(name,'read');
    expect(offerFor([context,forgedRead,binding('setup_copilot','read'),binding('unlisted_context','context')],gate)).toEqual([context]);
@@ -66,7 +66,7 @@ describe('closed public context offer',()=>{
  });
  it('refuses a gated private call before its owner executes, including an allowlisted name tagged read',async()=>{
   let executed=0;
-  const binding=(name:string):ToolBinding=>({name,kind:'read',entity:null,identifierInputs:[],spec:{name,description:'Fictional private owner.',inputSchema:{type:'object',properties:{},additionalProperties:false}},run:async()=>{executed++;return{ok:true,content:{private:'must never execute'}};}});
+  const binding=(name:string):ToolBinding=>({name,kind:'read',entity:null,identifierInputs:[],spec:{name,description:'Fictional private owner.',inputSchema:{type:'object',properties:{},required:[],additionalProperties:false}},run:async()=>{executed++;return{ok:true,content:{private:'must never execute'}};}});
   const {result}=await turn('Where are Password Policy and Correction Controls, and who confirms changes?',[
    {calls:[{name:'setup_copilot'},{name:'password_policy_guidance'}]},{final:{reply:'An authorized human checks the native page.'}},
   ],{tools:async()=>({bindings:[binding('setup_copilot'),binding('password_policy_guidance')],reviewRoutes:[],destinations:[]})});
