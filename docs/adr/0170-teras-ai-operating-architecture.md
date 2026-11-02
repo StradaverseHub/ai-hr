@@ -162,7 +162,7 @@ Status key: **Prod** = in production; **Branch** = built on PR 170, fictional da
 | --- | --- | --- |
 | Own-scope reads | Leave, payslip, claims, profile, team leave, approval queue | Prod 12 + Branch approval queue |
 | **Explainers** | Statutory deductions, attendance day, entitlement | Owners Prod; tools **Build** |
-| **Recommenders** | Approver card: *recommend approve / needs review / recommend reject*, from native checks (balance, overlap, coverage, policy version); the model only words it; "needs review" is the default | **Build** (Ramp pattern) |
+| **Recommenders** | Approver card: *recommend approve* or *needs review* (never *reject*, owner decision 2 November 2026, §3.15), from native checks (balance, overlap, coverage, policy version); the model only words it; "needs review" is the default | **Build** (Ramp pattern) |
 | Change preparers | Every human-confirmed registry action, pre-filled, rejected when fields are missing | Prod (registry + review pages); Branch (suggest any action) |
 | **What-if previews** | "If Annual Leave becomes 16 days, who is affected?", using native dry runs | **Build**, only where a native preview exists |
 | **Compliance watch** | Holiday minimum (exists), statutory filing deadlines, rule expiry, in plain language | **Build** on deterministic detectors |
@@ -339,6 +339,48 @@ The Assistant is the visible part. Behind it run detectors, chasers, narrators a
 
 **One surface.** The Control Tower (`/control-tower/agents/*`) becomes that page: every registered worker with its family, owner, switch, last run, what it read and did, and its acceptance and reversal rates (the existing agreement view, extended). Mandates appear there as rows with their grantor. The exportable agent registry for customers' own control towers (§11.3 change 6) is generated from the same list.
 
+### 3.14 Owner decisions on signing and rule versions (1 November 2026)
+
+**Proposal signing secret.** A new, dedicated secret used only to sign proposal objects (`TERAS_PROPOSAL_SECRET`, as built in step 0b), never derived from another secret:
+- a separate secret per environment, so a staging proposal can never verify in production;
+- stored in the existing private secret store as configuration, never in source or the repository;
+- rotatable without downtime: verification accepts the current and the previous key for a short overlap, and issuing uses only the current one.
+
+**Rule versions.** Two owners, one convention:
+- **Statutory rules** (EPF, SOCSO, EIS, PCB, holiday minimums) are maintained by the product team as code in the country packs, and each release publishes their version. Customers never upload them.
+- **Company policy** (leave types, entitlement tables, eligibility, approval chains, claim limits) is configured by the customer's administrators on the existing setup screens. Every edit creates a new dated version automatically; entitlement tables already do, and the other owners gain the same label.
+- Native checks return the version they used, and the outcome record (§3.11) stores it, so a result can say which company rule and which statutory schedule applied. Delivered with step 5a.
+- A company handbook upload is only ever compared against the configuration (§3.5 policy versus configuration), never applied.
+
+### 3.15 Build decisions taken under delegated authority (1 November 2026)
+
+The owner delegated ordinary design questions to the coordinating session ("go with the best recommendation; only extra-sensitive questions come to me"). Questions on disclosure to a provider, legal notice and retention, and anything that widens access stay with the owner or the reviewers. Decisions taken:
+
+| Question (step) | Decision |
+| --- | --- |
+| Approve-leave proposals: prepared only when the person's own words ask to approve and exactly one request is pending (2) | Accepted. With several pending, the harness lists them and asks which; it never picks one |
+| Approver card shows balance now, not after (2) | Show balance now plus the days requested. A post-approval figure comes only when the leave owner publishes a deterministic projection (backlog); the model never computes it |
+| Approved-leave cancellation: own Assistant review and custody (2) | Not now. The native cancellation request with its normal approval is sufficient; revisit with usage data |
+| Card labels English only (2) | Translated with production wiring, through the existing six-language messages |
+| Delegates admitted by the decision source but untested (2) | Add a covering-delegate test at integration |
+| Mandate run identity: controlled as the agent principal, reads under the grantor's freshly resolved authority (5a) | Accepted: this is "for, never as" (§3.10 rule 3 and 9) |
+| Revocation by the grantor's manager (5a) | Built with the agent registry in step 5, where tenant policy allows |
+| Task memory erased per login on transcript retirement (5a) | Accepted for now; a conversation id is added when production wiring exists |
+| Customer-facing outcome summary and export (5a) | Built in step 5 with the agent registry |
+| Notice wording and retention of outcome records (5a) | **Reserved for the privacy reviewer.** Default stays `not_given` and audit retention |
+| Entitlement and payslip explanation figures as bands, including the person's own payslip (4) | Accepted. The model sees bands; the exact figure the person may see is restored locally from the native owner |
+| `module_work.data` pay figures banded (4) | Accepted |
+| Co-pilot description to name pending logins (4) | Yes, in the next spec description change, measured by the next run |
+| `mf-entitlement-why` reviewed ideal still requires the balances read (4) | Add the entitlement explainer as an accepted alternative read; the original corpus stays unchanged |
+| Fold `ENTITY_FIELD_EXTENSIONS` into `entities.ts`, widen `EntityId` (4) | At integration, after step 2 is merged in |
+| Leave generation run volumes are tenant-wide (4) | Backlog: a company-scoped run owner in the leave pack |
+| Holdouts used as ratchet inputs become "seen" (1) | Accepted for harness invariants. A fresh, unseen holdout set is authored by a separate session with no access to the corpus or code, as an interim for ADR-0169 §6; a human-written set remains required before pilot |
+| Spend up about 25% (1) | Accepted; revisit if a later spec version grows it further |
+| Destination registry too narrow (1) | Settled in step 4: every page the caller's role may open is linkable, pinned by a drift test |
+| Sensitive-topic categories a tenant may switch off (3) | Self-harm and crisis: never. Others: only through an audited override by a group administrator. The setting is built with production wiring |
+| Approver recommendation outcomes (5); **owner decision, 2 November 2026** | The AI **never recommends rejecting** a request. Outcomes are *recommend approve* or *needs review*. A blocking rule failure shows as *needs review* with the failed rule and its version; the approver decides |
+| Connect identifiers via opaque per-client handles (0b) | **Reserved for the Connect legal review** (§3.9) |
+
 ## 4. A turn, end to end
 
 1. **Surface.** The person asks in chat, or opens a card or a "Why?".
@@ -498,6 +540,64 @@ Acceptance for each step follows ADR-0169 §6. In addition, every new capability
 **Recommendation on this brief.** **Atoll.** It is the one word found that says all three things at once: open to everything, firm at the boundary, calm within. Two syllables, and the word exists in most languages. The trademark search must look hard at Atolio, which is close in both spelling and field. Alternate: **Hull**. Fram, Prow and Vorn stay on record from the forward-looking passes; a final choice may combine the two briefs (for example a coined word), which is work for a naming professional.
 
 **No "OS" suffix (1 November 2026).** The owner found "Atoll OS" awkward. The name stands alone and the prose describes it ("the AI operating architecture", "built on X"); features take the name as a prefix (X Connect, X mandates, Ask X). Reasons: §11.1 found every "AI OS" on the market to be a control plane plus a shell and the vocabulary scan rated every "OS" label as hype, so the suffix invites the agent-washing test this record applies to itself; and the strongest brands surveyed (Attio, Glean, Agentforce, Palantir AIP, Workday Illuminate) stand alone. If a suffix is ever wanted, names ending in a hard consonant carry it (Fram, Hull, Vorn); Atoll and Prow do not.
+
+**Owner (2 November 2026): more options needed.** Sixth pass, rare real words that hold firm, and coined words:
+
+| Name | Meaning and fit | Finding |
+| --- | --- | --- |
+| **Keelson** (2) | The beam laid over a ship's keel that holds the whole hull firm: the hidden backbone everything rests on | **No product found.** Near: Keel, a London operations-platform startup |
+| **Velor** (2, coined) | From velocity and valour: momentum with courage | **No product found.** Near: Velora (small apps) |
+| **Sinew** (2) | The tissue that connects and moves the body | No exact match (Sinequa, enterprise search, is near); some may find it too anatomical |
+| **Orvel** (2, coined) | No meaning; easy to say | No exact match, but Orvello (frontline-team management SaaS) is HR-adjacent: a real risk |
+| Cairn (1) | Stones stacked to mark the way | Crowded: Cairn Labs, a "cairn" MCP server, Kairntech |
+| Tenon (2) | The joint that holds two pieces together | Taken: Tenon (marketing software on ServiceNow) |
+| Corva (2, coined) | | Taken: Corva (oil and gas AI, with its own Copilot) |
+| Novar (2, coined) | | Taken: Novar (Honeywell building-automation brand) |
+
+Clean candidates across all passes that can stand alone: **Atoll, Fram, Keelson, Velor, Vorn, Hull, Prow**. A coined name is easier to register; a real word carries meaning without explanation.
+
+**Owner (2 November 2026): the shortlist is not good; new shortlist.** Seventh pass, four territories away from the ship metaphors. "HR OS" was also considered and rejected: HROS is used by several HR companies (Vienna, Hungary, an onboarding product), "HR operating system" is a category slogan (Aragorn AI, Kronjop, Shapes "PeopleOS"), and a descriptive name cannot be registered; it is kept as the tagline instead.
+
+| Territory | Name | Finding |
+| --- | --- | --- |
+| Modern coined | **Orivo** | No exact match. Near: Oriveo (a multi-model AI tool), Oryo (agent identity) |
+| Modern coined | **Velyn** | No exact match. Near: Vely, VelyxLabs |
+| Modern coined | **Lumae** (suggests light) | No exact match. Near: Lumea (digital pathology) |
+| Modern coined | **Ivara** | No exact AI match. Near: Aivar, iVERA; an older asset-management product of this name is believed to exist (not verified) |
+| Classical | Arete (excellence) | **Taken in HR:** Arete HRMS & Payroll |
+| Classical | Telos (purpose) | Crowded: Telos Corp, Telos Foundry, telosplatforms |
+| Human and work | Guild | **Taken:** Guild.ai, an AI agent control plane ($44M, 2026) |
+| Human and work | Hearth | Taken: Hearth (contractor platform), Hearth AI |
+| Agreement | Pact | Crowded, including Decagon's PACT agent-trust protocol |
+| Agreement | Accord | **Taken in HR:** AccordHRM, Accord eHR |
+
+**Finding.** Across seven passes and 82 names, almost every meaningful real word in English, Latin, Greek and the maritime vocabulary is already used by an AI or HR product. Clean options are now mostly coined words, which also register most easily. Recommendation: choose a coined name (Orivo, Velyn, Lumae) or engage a naming professional with this brief and record for a coined set screened by trademark search, and use "the AI operating system for HR" as the tagline.
+
+**Owner brief (2 November 2026), eighth pass.** A blend of real roots; feeling intelligent and trustworthy; smooth and modern with a light touch; aimed first at investors and partners. Built from roots for wisdom (*nous*, *sophia*, *prudentia*, *sapiens*) and trust (*fides*, *credo*, *veritas*).
+
+| Name | Roots and meaning | Finding |
+| --- | --- | --- |
+| **Noveri** (no-VAIR-ee) | *nous* (mind) + *veritas* (truth); also reads as "new" | No exact match. Near: Novera A.i. (early-stage, 2025), Noveo.ai; the "Nove-" prefix is busy |
+| **Sofida** (so-FEE-da) | *sophia* (wisdom) + *fides* (trust) | No exact match. Near: SofIA (an OpenSistemas assistant), Soffi, Sofy |
+| **Prudia** (PROO-dee-a) | *prudentia*: practical wisdom with care, the classical virtue of judging well | No exact match, but PrudAI (Dutch audit-grade AI assistants for regulated professions) is close in sound **and** field |
+| **Fidara** (fi-DAR-a) | *fides* (trust) | No exact match. Near: FiduraAI, Fidacta |
+| Noesia | *noesis* (understanding) | No exact match. Near: Noesis Solutions (AI assistant), Neysa, Nesa |
+| Sophera | *sophia* | Near the SOPHEVA trademark for AI software |
+| Sapira, Sapio | *sapiens* | Too close to Saphira AI (YC) and Sapia.ai, an HR AI company |
+| Mindora | | **Taken in HR AI:** Mindora (UK wellbeing AI for HR), MindoraAI |
+| Credia | *credo* | Taken: Credia (AI SOP platform) |
+| Veridia | *veritas* | Crowded root: Veridium, Veridion, Veridian AI |
+| Fidelo | *fides* | Taken: Fidelo (school software) |
+
+**Recommendation on this brief:** **Noveri** first (mind plus truth, and "new"; the meaning holds without a tagline), **Sofida** second (wisdom plus trust, the most exact fit to the brief), **Prudia** third (the strongest meaning, but the closest live competitor). Each still needs the trademark screen below.
+
+**Owner choice (2 November 2026): Noveri.** Earlier proposals considered and set aside by the owner after screening: "Nous OS" (Nous Research, a well-known open-source AI lab), "Medha OS" (MedhaHR, an AI recruitment platform; "Medha K", an AI HR assistant at CSM Technologies; a common first name), "Animus OS" (in English "animus" means hostility and, in employment law, discriminatory intent; strongly associated with Assassin's Creed's Animus).
+
+- **Name:** Noveri (no-VAIR-ee), from *nous* (mind) and *veritas* (truth); it also reads as "new".
+- **Use:** the name stands alone; the tagline carries the category: "Noveri, the AI operating system for HR". Features take the name as a prefix (Noveri Connect, Noveri mandates, Ask Noveri).
+- **Status:** chosen, **not yet cleared**. Adoption needs the checks below; the nearest names found are Novera A.i. (an early-stage B2B AI company) and Noveo.ai.
+- **"Noveri OS" (owner, 2 November 2026):** used only where the architecture itself is explained. The How it works section is headed "How Noveri works", the line under it reads "Noveri OS: the AI operating system for HR, built around your people and your rules", and the closed clockwork face reads "Noveri OS". Everywhere else the name is "Noveri" alone.
+- **In code:** the working label "Teras" remains in identifiers and file names; user-facing copy reads one product-name constant, so the switch to Noveri is one change once clearance passes.
 
 **Before adopting any name:** MyIPO, USPTO, EUIPO and SIPO (China) searches in the software and SaaS classes; domain and app-store checks; a native-speaker check of meaning in all six interface languages; a check against the final list of markets.
 
