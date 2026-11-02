@@ -110,6 +110,15 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
     assertTrue("Restore only known nonsecret username",restored);
     assertTrue("Clear only synthetic password through normal control",cleared);
   }
+  public void testCompareUsernameOnly() throws Exception {
+    setupBounded();
+    String expected=getParams().getString("expectedUsername", "");
+    assertTrue(expected.equals("!diagnostic!") || expected.matches("[A-Za-z0-9._@+-]{3,64}"));
+    UiObject username=new UiObject(new UiSelector().packageName("ai.stradaverse.aihr.test").className("android.widget.EditText").description("Username"));
+    boolean exists=username.exists();
+    boolean match=exists && expected.equals(username.getText());
+    System.out.println("ONEHR_USERNAME_MATCH {\"exists\":"+exists+",\"matchesExpected\":"+match+",\"passwordOrMfaRead\":false}");
+  }
   public void testScopedReviewState() throws Exception {
     setupBounded();
     UiSelector scope=new UiSelector().packageName("ai.stradaverse.aihr.test");
