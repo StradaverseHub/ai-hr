@@ -1,6 +1,6 @@
 import { useEffect,useRef,useState,type ReactNode } from 'react';
-import { AppState,Platform,Pressable,TextInput,View } from 'react-native';
-import DateTimePicker,{ DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { AppState,Pressable,TextInput,View } from 'react-native';
+import DateTimePicker from '@expo/ui/community/datetime-picker';
 import { DesignText as Text } from './design';
 import * as DocumentPicker from 'expo-document-picker';
 import { File,Directory,Paths } from 'expo-file-system';
@@ -27,22 +27,23 @@ const toPicker=(mode:'date'|'time',value:string|undefined,today:string)=>{
 };
 const fromPicker=(mode:'date'|'time',d:Date)=>mode==='date'?`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`:`${pad(d.getHours())}:${pad(d.getMinutes())}`;
 /**
- * D9 — the platform's own date/time control instead of free text. Android opens the system dialog; iOS shows the
- * spinner under the field and commits on Done, so a value is never set by merely looking at it.
+ * The platform control stays inside the protected app window. Opening an Android system dialog loses window focus
+ * and correctly triggers the session guard; an inline picker avoids that focus change without weakening the guard.
+ * Both platforms commit only on Done, so looking at or cancelling a picker changes nothing.
  */
 export function PickerField({label,mode,value,today,disabled,onChange}:{label:string;mode:'date'|'time';value:string|undefined;today:string;disabled:boolean;onChange:(value:string)=>void}){
   const {palette}=useTenantDesign();const [open,setOpen]=useState<Date|null>(null);
   function show(){
     if(disabled)return;const seed=toPicker(mode,value,today);
-    if(Platform.OS==='android')DateTimePickerAndroid.open({value:seed,mode,is24Hour:true,onChange:(event,picked)=>{if(event.type==='set'&&picked)onChange(fromPicker(mode,picked));}});
-    else setOpen(open?null:seed);
+    setOpen(open?null:seed);
   }
-  return <View style={{gap:6,flex:1}}>
+  return <View style={{gap:6,flex:1,minWidth:open?'100%':120}}>
     <Text style={{color:palette.muted,fontSize:14}}>{label}</Text>
     <Button title={value||t('pickerChoose')} accessibilityLabel={label} kind="quiet" disabled={disabled} onPress={show}/>
-    {open&&Platform.OS!=='android'&&<>
-      <DateTimePicker accessibilityLabel={label} value={open} mode={mode} display="spinner" onChange={(_event,picked)=>{if(picked)setOpen(picked);}}/>
+    {open&&!disabled&&<>
+      <DateTimePicker testID={label} value={open} mode={mode} display="spinner" presentation="inline" is24Hour accentColor={palette.accent} style={{width:'100%'}} onChange={(_event,picked)=>{if(picked)setOpen(picked);}}/>
       <Button title={t('pickerDone')} onPress={()=>{onChange(fromPicker(mode,open));setOpen(null);}}/>
+      <Button title={t('cancel')} kind="quiet" onPress={()=>setOpen(null)}/>
     </>}
   </View>;
 }
@@ -221,10 +222,10 @@ export function LeaveRequestForm({options,today,onSubmitted,notices={},cards=[]}
     <ListRow label={t('leaveType')} value={selected?[selected.name,figureOf(selected.id)].filter(Boolean).join(' · '):t('chooseLeaveType')} onPress={()=>{if(!disabled)setPicking(true);}}/>
     {header}
     {draft.command.durationType==='full_day'
-      ?<View style={{flexDirection:'row',gap:10}}><PickerField label={t('startDate')} mode="date" value={draft.command.startDate} today={today} disabled={!!disabled} onChange={v=>edit({startDate:v,...(v>draft.command.endDate?{endDate:v}:{})})}/><PickerField label={t('endDate')} mode="date" value={draft.command.endDate} today={today} disabled={!!disabled} onChange={v=>edit({endDate:v})}/></View>
+      ?<View style={{flexDirection:'row',flexWrap:'wrap',gap:10}}><PickerField label={t('startDate')} mode="date" value={draft.command.startDate} today={today} disabled={!!disabled} onChange={v=>edit({startDate:v,...(v>draft.command.endDate?{endDate:v}:{})})}/><PickerField label={t('endDate')} mode="date" value={draft.command.endDate} today={today} disabled={!!disabled} onChange={v=>edit({endDate:v})}/></View>
       :<PickerField label={t('leaveDate')} mode="date" value={draft.command.startDate} today={today} disabled={!!disabled} onChange={v=>edit({startDate:v,endDate:v})}/>}
     {(selected?.durations.length??0)>1&&<View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{dayParts.filter(p=>selected?.durations.includes(p.d)).map(p=><Chip key={p.d} title={t(p.key)} selected={p.d===draft.command.durationType} disabled={!!disabled} onPress={()=>edit({durationType:p.d,endDate:p.d==='full_day'?draft.command.endDate:draft.command.startDate})}/>)}</View>}
-    {draft.command.durationType==='hourly'&&<View style={{flexDirection:'row',gap:10}}><PickerField label={t('fromTime')} mode="time" value={draft.command.fromTime} today={today} disabled={!!disabled} onChange={v=>edit({fromTime:v})}/><PickerField label={t('toTime')} mode="time" value={draft.command.toTime} today={today} disabled={!!disabled} onChange={v=>edit({toTime:v})}/></View>}
+    {draft.command.durationType==='hourly'&&<View style={{flexDirection:'row',flexWrap:'wrap',gap:10}}><PickerField label={t('fromTime')} mode="time" value={draft.command.fromTime} today={today} disabled={!!disabled} onChange={v=>edit({fromTime:v})}/><PickerField label={t('toTime')} mode="time" value={draft.command.toTime} today={today} disabled={!!disabled} onChange={v=>edit({toTime:v})}/></View>}
     {selected?.emergencySplit&&<><Text style={{color:palette.muted}}>{t('emergencyCategory')}</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{(['illness','personal','other'] as const).map(c=><Chip key={c} title={t(c)} selected={draft.command.reasonCategory===c} disabled={!!disabled} onPress={()=>edit({reasonCategory:c})}/>)}</View>{checkbox(t('unpaidConsent'),!!draft.command.unpaidConsent,()=>edit({unpaidConsent:!draft.command.unpaidConsent}))}</>}
     {selected?.maternity&&<>{field(t('survivingChildren'),draft.command.survivingChildren==null?'':String(draft.command.survivingChildren),v=>edit({survivingChildren:v===''?undefined:Number(v)}))}<PickerField label={t('confinementDate')} mode="date" value={draft.command.confinementDate} today={today} disabled={!!disabled} onChange={v=>edit({confinementDate:v})}/></>}
     {extrasShown?<View style={{gap:8}}>

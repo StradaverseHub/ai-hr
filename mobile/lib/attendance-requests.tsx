@@ -114,7 +114,7 @@ export function AttendanceCorrectionScreen({ date }: { date: string }) {
       {!sent && !found.correction.offered && <Muted>{t(found.correction.blockedBy === 'future' ? 'attCorrectionFuture' : 'attCorrectionPending')}</Muted>}
       {!sent && found.correction.offered && <>
         <Muted>{t('attCorrectionHint')}</Muted>
-        <View style={{ flexDirection: 'row', gap: 12 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
           <PickerField label={t('attProposedIn')} mode="time" value={checkIn ?? undefined} today={found.today} disabled={locked} onChange={(v) => setTimes((s) => ({ ...s, checkIn: v }))} />
           <PickerField label={t('attProposedOut')} mode="time" value={checkOut ?? undefined} today={found.today} disabled={locked} onChange={(v) => setTimes((s) => ({ ...s, checkOut: v }))} />
         </View>
@@ -220,7 +220,7 @@ function ReplacementClaim({ offer, date, onSent }: { offer: ReplacementLeaveOffe
       {found.approvedOvertime && <Muted>{t('attRlApprovedOt', { hours: fmtMinutes(found.approvedOvertime.minutes) })}</Muted>}
     </Card>}
     {found && <>
-      <View style={{ flexDirection: 'row', gap: 12 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         <PickerField label={t('attClaimStart')} mode="time" value={claim.start} today={offer.today} disabled={locked} onChange={(v) => setClaim((c) => ({ ...c, start: v }))} />
         <PickerField label={t('attClaimEnd')} mode="time" value={claim.end} today={offer.today} disabled={locked} onChange={(v) => setClaim((c) => ({ ...c, end: v }))} />
       </View>

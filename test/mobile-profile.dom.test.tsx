@@ -84,7 +84,7 @@ function fixture() {
   const edit = load('mobile/lib/profile-edit.tsx', {
     ...base, './profile': profile,
     'expo-crypto': { randomUUID: () => `${String(++seq).padStart(8, '0')}-bbbb-4bbb-8bbb-bbbbbbbbbbbb` },
-    '@react-native-community/datetimepicker': { default: () => null, DateTimePickerAndroid: { open: vi.fn() } },
+    '@expo/ui/community/datetime-picker': { default: () => null, DateTimePickerAndroid: { open: vi.fn() } },
   });
   const confirm = async (index = 0) => { const buttons = alert.mock.calls[index][2]; await act(async () => { buttons[1].onPress(); }); };
   return { ...profile, ...edit, set, reload, apiPostV2, push, alert, openURL, confirm };

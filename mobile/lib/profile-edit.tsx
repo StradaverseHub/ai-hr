@@ -12,8 +12,8 @@
  * applied twice. Only CHANGED fields are sent.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Platform, Pressable, TextInput, View } from 'react-native';
-import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import { Alert, Pressable, TextInput, View } from 'react-native';
+import DateTimePicker from '@expo/ui/community/datetime-picker';
 import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { DesignText as Text, useTenantDesign } from './design';
@@ -35,20 +35,21 @@ const toPicker = (value: string | null) => {
 };
 const fromPicker = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-/** D9 — the platform date control (Android dialog; iOS spinner committed with Done). */
+/** Stay in the protected app window; a native Android dialog would trigger the session's blur lock. */
 function DateField({ label, value, disabled, onChange }: { label: string; value: string | null; disabled: boolean; onChange: (value: string) => void }) {
   const [open, setOpen] = useState<Date | null>(null);
+  const { palette } = useTenantDesign();
   function show() {
     if (disabled) return;
     const seed = toPicker(value);
-    if (Platform.OS === 'android') DateTimePickerAndroid.open({ value: seed, mode: 'date', onChange: (event, picked) => { if (event.type === 'set' && picked) onChange(fromPicker(picked)); } });
-    else setOpen(open ? null : seed);
+    setOpen(open ? null : seed);
   }
   return <View style={{ gap: 6 }}>
     <Button title={value || t('profileChoose')} accessibilityLabel={label} kind="quiet" disabled={disabled} onPress={show} />
-    {open && Platform.OS !== 'android' && <>
-      <DateTimePicker accessibilityLabel={label} value={open} mode="date" display="spinner" onChange={(_event, picked) => { if (picked) setOpen(picked); }} />
+    {open && !disabled && <>
+      <DateTimePicker testID={label} value={open} mode="date" display="spinner" presentation="inline" accentColor={palette.accent} style={{width:'100%'}} onChange={(_event, picked) => { if (picked) setOpen(picked); }} />
       <Button title={t('pickerDone')} onPress={() => { onChange(fromPicker(open)); setOpen(null); }} />
+      <Button title={t('cancel')} kind="quiet" onPress={() => setOpen(null)} />
     </>}
   </View>;
 }

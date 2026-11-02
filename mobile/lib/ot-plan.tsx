@@ -109,7 +109,7 @@ export function OvertimePlanScreen() {
         {found && <Text style={{ color: palette.text, fontSize: 15 }}>{scheduleText(found.day.schedule)}</Text>}
         {day.data?.outcome === 'refused' && <Muted>{t('otRosterUnavailable')}</Muted>}
       </Card>}
-      <View style={{ flexDirection: 'row', gap: 12 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         <PickerField label={t('otStart')} mode="time" value={start} today={o.today} disabled={locked} onChange={setStart} />
         <PickerField label={t('otEnd')} mode="time" value={end} today={o.today} disabled={locked} onChange={setEnd} />
       </View>
