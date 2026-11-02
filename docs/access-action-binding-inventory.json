@@ -2887,6 +2887,8 @@
           "line": 10,
           "surface": "route",
           "owners": [
+            "app.attendance_shift_allowed",
+            "app.module_function_allowed",
             "app/admin/attendance/[shiftId]/page.tsx:requireAdmin"
           ],
           "tables": [
@@ -2969,9 +2971,10 @@
         {
           "path": "app/admin/attendance/new/page.tsx",
           "entry": "NewShiftPage",
-          "line": 11,
+          "line": 12,
           "surface": "route",
           "owners": [
+            "app.module_function_allowed",
             "app/admin/attendance/new/page.tsx:requireAdmin"
           ],
           "tables": [
@@ -2989,6 +2992,8 @@
           "line": 37,
           "surface": "route",
           "owners": [
+            "app.attendance_shift_allowed",
+            "app.module_function_allowed",
             "app/admin/attendance/page.tsx:requireAdmin"
           ],
           "tables": [
@@ -3363,6 +3368,7 @@
       "nativeOwners": [
         "app.access_workforce_employment",
         "app.access_workforce_write_lock",
+        "app.attendance_shift_allowed",
         "app.attendance_standard_rule_ensure",
         "app.can_admin_payroll_for",
         "app.can_correct_attendance",
@@ -17269,9 +17275,11 @@
             "app.principal_snapshot_current",
             "app.reward_access_observe",
             "app.reward_admin",
+            "app.reward_annual_calculation",
             "app.reward_deletion_reason",
             "app.reward_funding",
             "app.reward_member_eligible",
+            "app.reward_offcycle_calculation",
             "app.reward_policy_unit_origin",
             "app.reward_roles",
             "app.reward_senior_awards_for_post",
@@ -17335,14 +17343,13 @@
             "app.principal_snapshot_current",
             "app.reward_access_observe",
             "app.reward_admin",
-            "app.reward_funding",
+            "app.reward_annual_calculation",
+            "app.reward_offcycle_calculation",
             "app.reward_roles",
-            "app.reward_senior_awards_for_post",
             "app/rewards/[unitId]/people/[entryId]/page.tsx:requireModule",
             "app/rewards/[unitId]/people/[entryId]/page.tsx:scopedSession"
           ],
           "tables": [
-            "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
             "businessUnit",
             "company",
             "dep",
@@ -17352,11 +17359,9 @@
             "rewardCalendar",
             "rewardCycle",
             "rewardDecision",
-            "rewardEntry",
             "rewardGovernance",
             "rewardGovernancePublic",
             "rewardMember",
-            "rewardSeniorAward",
             "rewardUnit"
           ],
           "boundaries": [
@@ -17377,17 +17382,16 @@
             "app.login_blocked",
             "app.principal_snapshot_current",
             "app.reward_admin",
+            "app.reward_annual_calculation",
             "app.reward_deletion_reason",
-            "app.reward_funding",
             "app.reward_member_eligible",
+            "app.reward_offcycle_calculation",
             "app.reward_policy_unit_origin",
             "app.reward_roles",
-            "app.reward_senior_awards_for_post",
             "app/rewards/page.tsx:requireModule",
             "app/rewards/page.tsx:scopedSession"
           ],
           "tables": [
-            "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
             "appUser",
             "businessUnit",
             "company",
@@ -17398,11 +17402,9 @@
             "rewardCalendar",
             "rewardCycle",
             "rewardDecision",
-            "rewardEntry",
             "rewardGovernance",
             "rewardGovernancePublic",
             "rewardMember",
-            "rewardSeniorAward",
             "rewardUnit"
           ],
           "boundaries": [
@@ -17420,9 +17422,11 @@
         "app.principal_snapshot_current",
         "app.reward_access_observe",
         "app.reward_admin",
+        "app.reward_annual_calculation",
         "app.reward_deletion_reason",
         "app.reward_funding",
         "app.reward_member_eligible",
+        "app.reward_offcycle_calculation",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
         "app.reward_senior_awards_for_post",
@@ -17689,14 +17693,13 @@
             "app.principal_snapshot_current",
             "app.reward_access_observe",
             "app.reward_admin",
-            "app.reward_funding",
+            "app.reward_annual_calculation",
+            "app.reward_offcycle_calculation",
             "app.reward_roles",
-            "app.reward_senior_awards_for_post",
             "app/rewards/approvals/page.tsx:requireModule",
             "app/rewards/approvals/page.tsx:scopedSession"
           ],
           "tables": [
-            "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
             "businessUnit",
             "company",
             "dep",
@@ -17706,11 +17709,9 @@
             "rewardCalendar",
             "rewardCycle",
             "rewardDecision",
-            "rewardEntry",
             "rewardGovernance",
             "rewardGovernancePublic",
             "rewardMember",
-            "rewardSeniorAward",
             "rewardUnit"
           ],
           "boundaries": [
@@ -17727,14 +17728,13 @@
         "app.principal_snapshot_current",
         "app.reward_access_observe",
         "app.reward_admin",
-        "app.reward_funding",
+        "app.reward_annual_calculation",
+        "app.reward_offcycle_calculation",
         "app.reward_roles",
-        "app.reward_senior_awards_for_post",
         "app/rewards/approvals/page.tsx:requireModule",
         "app/rewards/approvals/page.tsx:scopedSession"
       ],
       "tables": [
-        "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
         "businessUnit",
         "company",
         "dep",
@@ -17744,11 +17744,9 @@
         "rewardCalendar",
         "rewardCycle",
         "rewardDecision",
-        "rewardEntry",
         "rewardGovernance",
         "rewardGovernancePublic",
         "rewardMember",
-        "rewardSeniorAward",
         "rewardUnit"
       ],
       "status": "owner-traced-not-runtime-attested"
@@ -20976,6 +20974,8 @@
       "line": 10,
       "surface": "route",
       "owners": [
+        "app.attendance_shift_allowed",
+        "app.module_function_allowed",
         "app/admin/attendance/[shiftId]/page.tsx:requireAdmin"
       ],
       "tables": [
@@ -21444,9 +21444,10 @@
     {
       "path": "app/admin/attendance/new/page.tsx",
       "entry": "NewShiftPage",
-      "line": 11,
+      "line": 12,
       "surface": "route",
       "owners": [
+        "app.module_function_allowed",
         "app/admin/attendance/new/page.tsx:requireAdmin"
       ],
       "tables": [
@@ -21464,6 +21465,8 @@
       "line": 37,
       "surface": "route",
       "owners": [
+        "app.attendance_shift_allowed",
+        "app.module_function_allowed",
         "app/admin/attendance/page.tsx:requireAdmin"
       ],
       "tables": [
@@ -21823,6 +21826,7 @@
       "owners": [
         "app.access_workforce_write_lock",
         "app.attendance_payroll_protection",
+        "app.attendance_rotation_allowed",
         "app.current_tenant_id",
         "app.is_group_admin",
         "app.mark_attendance_payroll_recalc",
@@ -22616,7 +22620,9 @@
       "line": 198,
       "surface": "server-action",
       "owners": [
-        "app.current_tenant_id"
+        "app.access_workforce_write_lock",
+        "app.current_tenant_id",
+        "app.module_function_allowed"
       ],
       "tables": [
         "attendanceRotation",
@@ -22636,7 +22642,9 @@
       "line": 211,
       "surface": "server-action",
       "owners": [
-        "app.current_tenant_id"
+        "app.access_workforce_write_lock",
+        "app.current_tenant_id",
+        "app.module_function_allowed"
       ],
       "tables": [
         "attendanceRotation",
@@ -22656,7 +22664,9 @@
       "line": 223,
       "surface": "server-action",
       "owners": [
-        "app.current_tenant_id"
+        "app.access_workforce_write_lock",
+        "app.current_tenant_id",
+        "app.module_function_allowed"
       ],
       "tables": [
         "domainEvent",
@@ -22673,7 +22683,9 @@
       "line": 238,
       "surface": "server-action",
       "owners": [
-        "app.current_tenant_id"
+        "app.access_workforce_write_lock",
+        "app.current_tenant_id",
+        "app.module_function_allowed"
       ],
       "tables": [
         "domainEvent",
@@ -22690,7 +22702,9 @@
       "line": 254,
       "surface": "server-action",
       "owners": [
-        "app.current_tenant_id"
+        "app.access_workforce_write_lock",
+        "app.current_tenant_id",
+        "app.module_function_allowed"
       ],
       "tables": [
         "attendanceRotation",
@@ -22710,7 +22724,9 @@
       "line": 270,
       "surface": "server-action",
       "owners": [
-        "app.current_tenant_id"
+        "app.access_workforce_write_lock",
+        "app.current_tenant_id",
+        "app.module_function_allowed"
       ],
       "tables": [
         "attendanceDayAdjustment",
@@ -22733,7 +22749,9 @@
       "line": 281,
       "surface": "server-action",
       "owners": [
-        "app.current_tenant_id"
+        "app.access_workforce_write_lock",
+        "app.current_tenant_id",
+        "app.module_function_allowed"
       ],
       "tables": [
         "domainEvent",
@@ -61502,7 +61520,6 @@
         "app.ai_spend_reviewed_carrier",
         "app.ai_spend_reviewed_metered_carrier",
         "app.ai_spend_settle",
-        "app.assessment_competency_started",
         "app.assessment_evidence_people",
         "app.assessment_file_lock_proof",
         "app.assessment_file_lock_targets",
@@ -61531,17 +61548,18 @@
         "app.onehr_cycle_admin",
         "app.onehr_decisions",
         "app.onehr_effective_reviewer",
-        "app.onehr_employment",
         "app.onehr_feedback_card",
         "app.onehr_frozen_visible",
         "app.onehr_kpi_moderator_assign",
         "app.onehr_manager",
         "app.onehr_manager_panel",
-        "app.onehr_manager_panel_member",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_panel_assign",
+        "app.onehr_panel_state",
         "app.onehr_plan_goal_review",
         "app.onehr_plan_review",
+        "app.onehr_profile_assign",
         "app.onehr_release_admin",
         "app.onehr_release_leaders",
         "app.onehr_release_people",
@@ -61599,7 +61617,6 @@
         "onehrResult",
         "onehrReview",
         "payload",
-        "peerFeedbackRequest",
         "performanceAttachment",
         "performanceKpiLibrary",
         "performanceReview",
@@ -61617,11 +61634,12 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "onehrFeedbackAction",
-      "line": 185,
+      "line": 189,
       "surface": "server-action",
       "owners": [
         "app.assessment_review_participates",
         "app.onehr_effective_reviewer",
+        "app.onehr_feedback_apply",
         "app.onehr_feedback_card",
         "app.onehr_manager",
         "app.onehr_moderator",
@@ -61633,10 +61651,8 @@
         "assessmentDraft",
         "assessmentReviewerRemark",
         "domainEvent",
-        "onehrPanel",
         "onehrPlan",
         "onehrReview",
-        "peerFeedbackRequest",
         "reviewCycle"
       ],
       "boundaries": [
@@ -61647,7 +61663,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "agreeDepartmentAction",
-      "line": 191,
+      "line": 195,
       "surface": "server-action",
       "owners": [
         "app.assessment_review_participates",
@@ -61674,7 +61690,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "lockGroupPeopleAction",
-      "line": 196,
+      "line": 200,
       "surface": "server-action",
       "owners": [
         "app.assessment_review_participates",
@@ -61703,7 +61719,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "changeGroupBandAction",
-      "line": 202,
+      "line": 206,
       "surface": "server-action",
       "owners": [
         "app.assessment_review_participates",
@@ -61744,7 +61760,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "saveCalibrationBandAction",
-      "line": 207,
+      "line": 211,
       "surface": "server-action",
       "owners": [
         "app.assessment_review_participates",
@@ -61771,7 +61787,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "onehrCalibrationAction",
-      "line": 212,
+      "line": 216,
       "surface": "server-action",
       "owners": [
         "app.assessment_review_participates",
@@ -61808,7 +61824,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "onehrDraftAction",
-      "line": 217,
+      "line": 221,
       "surface": "server-action",
       "owners": [
         "app.ai_active_provider_config_v2",
@@ -61917,7 +61933,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "saveAssessmentDraftAction",
-      "line": 230,
+      "line": 234,
       "surface": "server-action",
       "owners": [
         "app.assessment_review_participates",
@@ -61945,7 +61961,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "reviewConversationAction",
-      "line": 235,
+      "line": 239,
       "surface": "server-action",
       "owners": [
         "app.ai_active_provider_config_v2",
@@ -62071,7 +62087,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "assessmentKpiImportAction",
-      "line": 240,
+      "line": 244,
       "surface": "server-action",
       "owners": [
         "app.assessment_review_participates",
@@ -62100,7 +62116,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "assessmentCompanyKpiAction",
-      "line": 249,
+      "line": 253,
       "surface": "server-action",
       "owners": [
         "app.assessment_review_participates",
@@ -62124,7 +62140,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "captureRatingRecordsAction",
-      "line": 258,
+      "line": 262,
       "surface": "server-action",
       "owners": [
         "app.assessment_rating_records_capture",
@@ -62142,7 +62158,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "bulkReleaseAction",
-      "line": 267,
+      "line": 271,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -62168,7 +62184,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "assessmentArchitectureAction",
-      "line": 280,
+      "line": 284,
       "surface": "server-action",
       "owners": [
         "app.onehr_admin",
@@ -62192,7 +62208,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "assessmentGenerateProfilesAction",
-      "line": 283,
+      "line": 287,
       "surface": "server-action",
       "owners": [
         "app.assessment_competency_started",
@@ -62217,27 +62233,17 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "assessmentPanelsBuildAction",
-      "line": 287,
+      "line": 291,
       "surface": "server-action",
       "owners": [
         "app.assessment_peer_load",
         "app.assessment_review_participates",
         "app.assessment_unit_out",
-        "app.is_admin_report_of",
         "app.is_self_person",
         "app.login_blocked",
         "app.onehr_admin",
         "app.onehr_cycle_admin",
-        "app.onehr_effective_reviewer",
-        "app.onehr_employment",
-        "app.onehr_manager",
-        "app.onehr_manager_panel",
-        "app.onehr_manager_panel_member",
-        "app.onehr_moderator",
-        "app.onehr_moderator_choices",
-        "app.onehr_review_frozen",
-        "app.onehr_review_task_header",
-        "app.onehr_self_employment"
+        "app.onehr_panel_assign"
       ],
       "tables": [
         "JSON.stringify(value)",
@@ -62245,9 +62251,7 @@
         "onehrCycle",
         "onehrEmployment",
         "onehrPanel",
-        "onehrPlan",
         "onehrReview",
-        "peerFeedbackRequest",
         "reviewCycle"
       ],
       "boundaries": [
@@ -62258,27 +62262,17 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "assessmentPanelsImportAction",
-      "line": 290,
+      "line": 294,
       "surface": "server-action",
       "owners": [
         "app.assessment_review_participates",
         "app.assessment_unit_out",
-        "app.is_admin_report_of",
         "app.is_self_person",
         "app.login_blocked",
         "app.onehr_admin",
         "app.onehr_cycle_admin",
-        "app.onehr_effective_reviewer",
-        "app.onehr_employment",
-        "app.onehr_manager",
-        "app.onehr_manager_panel",
-        "app.onehr_manager_panel_member",
-        "app.onehr_moderator",
-        "app.onehr_moderator_choices",
-        "app.onehr_review_frozen",
-        "app.onehr_review_task_header",
-        "app.onehr_self_employment",
-        "packs/performance/onehr/service.ts:requireAdmin"
+        "app.onehr_panel_assign",
+        "app.onehr_panel_state"
       ],
       "tables": [
         "JSON.stringify(value)",
@@ -62286,9 +62280,7 @@
         "onehrCycle",
         "onehrEmployment",
         "onehrPanel",
-        "onehrPlan",
         "onehrReview",
-        "peerFeedbackRequest",
         "reviewCycle"
       ],
       "boundaries": [
@@ -62299,7 +62291,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "saveAssessmentKpiSettingAction",
-      "line": 294,
+      "line": 298,
       "surface": "server-action",
       "owners": [
         "app.ai_active_provider_config_v2",
@@ -62389,7 +62381,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "assessmentTalentInsightAction",
-      "line": 304,
+      "line": 308,
       "surface": "server-action",
       "owners": [
         "app.ai_active_provider_config_v2",
@@ -62472,7 +62464,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "assessmentTalentPersonAction",
-      "line": 307,
+      "line": 311,
       "surface": "server-action",
       "owners": [
         "app.ai_active_provider_config_v2",
@@ -62548,7 +62540,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "saveAssessmentTalentRemarkAction",
-      "line": 310,
+      "line": 314,
       "surface": "server-action",
       "owners": [
         "app.assessment_talent_remark_access",
@@ -62574,7 +62566,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "previewCalibrationFitAction",
-      "line": 314,
+      "line": 318,
       "surface": "server-action",
       "owners": [
         "app.ai_active_provider_config_v2",
@@ -62649,7 +62641,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "applyCalibrationFitAction",
-      "line": 317,
+      "line": 321,
       "surface": "server-action",
       "owners": [
         "app.ai_active_provider_config_v2",
@@ -62726,7 +62718,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "keepCompetencyReflectionAction",
-      "line": 321,
+      "line": 325,
       "surface": "server-action",
       "owners": [
         "app.ai_active_provider_config_v2",
@@ -62820,7 +62812,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "assessmentCalibrationPersonAction",
-      "line": 325,
+      "line": 329,
       "surface": "server-action",
       "owners": [
         "app.assessment_review_participates",
@@ -62852,7 +62844,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "askPerformanceGuideAction",
-      "line": 329,
+      "line": 333,
       "surface": "server-action",
       "owners": [
         "app.ai_active_provider_config_v2",
@@ -62963,7 +62955,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "performanceGuideReportAction",
-      "line": 332,
+      "line": 336,
       "surface": "server-action",
       "owners": [
         "app.assessment_guide_report"
@@ -62977,7 +62969,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "performanceGuideExportAction",
-      "line": 335,
+      "line": 339,
       "surface": "server-action",
       "owners": [
         "app.assessment_guide_report"
@@ -62991,7 +62983,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "performanceAdminAssistantAction",
-      "line": 339,
+      "line": 343,
       "surface": "server-action",
       "owners": [
         "app.ai_active_provider_config_v2",
@@ -63048,7 +63040,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "performanceAdminAskAction",
-      "line": 340,
+      "line": 344,
       "surface": "server-action",
       "owners": [
         "app.ai_active_provider_config_v2",
@@ -63113,7 +63105,7 @@
     {
       "path": "app/performance/onehr-actions.ts",
       "entry": "performanceAdminToolAction",
-      "line": 341,
+      "line": 345,
       "surface": "server-action",
       "owners": [
         "app.ai_active_provider_config_v2",
@@ -64925,23 +64917,20 @@
       "owners": [
         "app.reward_access_observe",
         "app.reward_admin",
-        "app.reward_funding",
-        "app.reward_roles",
-        "app.reward_senior_awards_for_post"
+        "app.reward_annual_calculation",
+        "app.reward_offcycle_calculation",
+        "app.reward_roles"
       ],
       "tables": [
-        "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
         "businessUnit",
         "company",
         "domainEvent",
         "rewardCalendar",
         "rewardCycle",
         "rewardDecision",
-        "rewardEntry",
         "rewardGovernance",
         "rewardGovernancePublic",
         "rewardMember",
-        "rewardSeniorAward",
         "rewardUnit"
       ],
       "boundaries": [
@@ -64971,9 +64960,11 @@
         "app.principal_snapshot_current",
         "app.reward_access_observe",
         "app.reward_admin",
+        "app.reward_annual_calculation",
         "app.reward_deletion_reason",
         "app.reward_funding",
         "app.reward_member_eligible",
+        "app.reward_offcycle_calculation",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
         "app.reward_senior_awards_for_post",
@@ -65037,14 +65028,13 @@
         "app.principal_snapshot_current",
         "app.reward_access_observe",
         "app.reward_admin",
-        "app.reward_funding",
+        "app.reward_annual_calculation",
+        "app.reward_offcycle_calculation",
         "app.reward_roles",
-        "app.reward_senior_awards_for_post",
         "app/rewards/[unitId]/people/[entryId]/page.tsx:requireModule",
         "app/rewards/[unitId]/people/[entryId]/page.tsx:scopedSession"
       ],
       "tables": [
-        "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
         "businessUnit",
         "company",
         "dep",
@@ -65054,11 +65044,9 @@
         "rewardCalendar",
         "rewardCycle",
         "rewardDecision",
-        "rewardEntry",
         "rewardGovernance",
         "rewardGovernancePublic",
         "rewardMember",
-        "rewardSeniorAward",
         "rewardUnit"
       ],
       "boundaries": [
@@ -65350,12 +65338,11 @@
       "owners": [
         "app.reward_access_observe",
         "app.reward_admin",
-        "app.reward_funding",
-        "app.reward_roles",
-        "app.reward_senior_awards_for_post"
+        "app.reward_annual_calculation",
+        "app.reward_offcycle_calculation",
+        "app.reward_roles"
       ],
       "tables": [
-        "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
         "businessUnit",
         "company",
         "domainEvent",
@@ -65366,7 +65353,6 @@
         "rewardGovernance",
         "rewardGovernancePublic",
         "rewardMember",
-        "rewardSeniorAward",
         "rewardUnit"
       ],
       "boundaries": [
@@ -65382,12 +65368,11 @@
       "owners": [
         "app.reward_access_observe",
         "app.reward_admin",
-        "app.reward_funding",
-        "app.reward_roles",
-        "app.reward_senior_awards_for_post"
+        "app.reward_annual_calculation",
+        "app.reward_offcycle_calculation",
+        "app.reward_roles"
       ],
       "tables": [
-        "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
         "businessUnit",
         "company",
         "domainEvent",
@@ -65398,7 +65383,6 @@
         "rewardGovernance",
         "rewardGovernancePublic",
         "rewardMember",
-        "rewardSeniorAward",
         "rewardUnit",
         "{length:width}"
       ],
@@ -65462,12 +65446,11 @@
       "owners": [
         "app.reward_access_observe",
         "app.reward_admin",
-        "app.reward_funding",
-        "app.reward_roles",
-        "app.reward_senior_awards_for_post"
+        "app.reward_annual_calculation",
+        "app.reward_offcycle_calculation",
+        "app.reward_roles"
       ],
       "tables": [
-        "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
         "businessUnit",
         "company",
         "domainEvent",
@@ -65478,7 +65461,6 @@
         "rewardGovernance",
         "rewardGovernancePublic",
         "rewardMember",
-        "rewardSeniorAward",
         "rewardUnit"
       ],
       "boundaries": [
@@ -65689,8 +65671,10 @@
         "app.principal_snapshot_current",
         "app.reward_access_observe",
         "app.reward_admin",
+        "app.reward_annual_calculation",
         "app.reward_funding",
         "app.reward_member_eligible",
+        "app.reward_offcycle_calculation",
         "app.reward_roles",
         "app.reward_senior_awards_for_post",
         "app/rewards/approvals/actions.ts:scopedSession"
@@ -65732,14 +65716,13 @@
         "app.principal_snapshot_current",
         "app.reward_access_observe",
         "app.reward_admin",
-        "app.reward_funding",
+        "app.reward_annual_calculation",
+        "app.reward_offcycle_calculation",
         "app.reward_roles",
-        "app.reward_senior_awards_for_post",
         "app/rewards/approvals/page.tsx:requireModule",
         "app/rewards/approvals/page.tsx:scopedSession"
       ],
       "tables": [
-        "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
         "businessUnit",
         "company",
         "dep",
@@ -65749,11 +65732,9 @@
         "rewardCalendar",
         "rewardCycle",
         "rewardDecision",
-        "rewardEntry",
         "rewardGovernance",
         "rewardGovernancePublic",
         "rewardMember",
-        "rewardSeniorAward",
         "rewardUnit"
       ],
       "boundaries": [
@@ -65876,17 +65857,16 @@
         "app.login_blocked",
         "app.principal_snapshot_current",
         "app.reward_admin",
+        "app.reward_annual_calculation",
         "app.reward_deletion_reason",
-        "app.reward_funding",
         "app.reward_member_eligible",
+        "app.reward_offcycle_calculation",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
-        "app.reward_senior_awards_for_post",
         "app/rewards/page.tsx:requireModule",
         "app/rewards/page.tsx:scopedSession"
       ],
       "tables": [
-        "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
         "appUser",
         "businessUnit",
         "company",
@@ -65897,11 +65877,9 @@
         "rewardCalendar",
         "rewardCycle",
         "rewardDecision",
-        "rewardEntry",
         "rewardGovernance",
         "rewardGovernancePublic",
         "rewardMember",
-        "rewardSeniorAward",
         "rewardUnit"
       ],
       "boundaries": [
