@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { actorOf, appendEvent } from '../db/events';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { hireEmployee, setEmploymentInfo, updatePersonProfilePartial } from '../core/org';
 import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -1025,7 +1026,25 @@ it('snapshots handed Native items by employment and records recovery on their or
   expect(currentReq((await onboardingList(admin)).find(row=>row.case.id===joiner.case.id)!.case)!.items.every(item=>!item.recovery)).toBe(true);
   await expect(v9ReportOwnReturn(holder,{caseId:first.id,revision:declared.revision,itemId:device.id,note:'Duplicate'})).rejects.toThrow();
   const assigned = first.items[0], workInput={caseId:first.id,revision:declared.revision,itemId:assigned.id,status:'progress' as const,reason:'Fictional provider recovery'};
-  expect((await v9OwnWork(employee)).find(row=>row.id===first.id)?.items).toEqual([expect.objectContaining({id:assigned.id,canFulfil:true})]);
+  // A real assigned providing-team course remains finite outside the actor's Personnel data scope.
+  const profile=randomUUID(),profileRevision=randomUUID();
+  await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${profile},${base.tenantId},${'Recovery scope '+profile})`;
+  await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${profileRevision},${base.tenantId},${profile},${JSON.stringify({legacyCompany:false,predicates:[{field:'employeeId',values:['NO-PERSONNEL-RECOVERY-SUBJECT']}]})}::text::jsonb,${admin.userId!})`;
+  await owner.client`update data_permission_profile set enabled=true,active_revision_id=${profileRevision} where id=${profile}`;
+  await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${base.tenantId},${employee.userId!},${profile},${admin.userId!})`;
+  expect(await withTenant(employee,tx=>tx.execute(sql`select id from lc_onboarding_case where id=${joiner.case.id}::uuid`))).toEqual([]);
+  expect(await withTenant(employee,tx=>tx.execute(sql`select case_id from lc_onboarding_private where case_id=${joiner.case.id}::uuid`))).toEqual([]);
+  expect(await withTenant(employee,tx=>tx.execute(sql`select id from lc_v9_case where id=${first.id}::uuid`))).toEqual([]);
+  const boundedRecovery=(await v9OwnWork(employee)).find(row=>row.id===first.id)!;
+  expect(boundedRecovery.items).toEqual([expect.objectContaining({id:assigned.id,canFulfil:true})]);
+  expect(Object.keys(boundedRecovery.facts).sort()).toEqual(['employeeNo','joinDate','lastDay','name']);
+  expect(boundedRecovery.documents).toEqual([]);
+  for(const operation of ['view','execute']as const){
+    const capability=`function.lifecycle.shared.recovery.${operation}`;
+    expect(await owner.withTenant(employee,tx=>tx.execute(sql`select (select capability_id from app.access_function_action where function_key='lifecycle.shared.recovery'and operation=${operation})as registered,app.lifecycle_recovery_function_legacy_allowed(${base.tenantId}::uuid,${employee.userId!}::uuid,${capability},${base.companyId}::uuid) as pure,app.lifecycle_recovery_function_current_legacy_allowed(${base.tenantId}::uuid,${employee.userId!}::uuid,${capability},${base.companyId}::uuid) as current`))).toEqual([{registered:capability,pure:true,current:true}]);
+    expect(await owner.withTenant(other,tx=>tx.execute(sql`select (select capability_id from app.access_function_action where function_key='lifecycle.shared.recovery'and operation=${operation})as registered,app.lifecycle_recovery_function_legacy_allowed(${base.tenantId}::uuid,${employee.userId!}::uuid,${capability},${base.companyId}::uuid) as pure,app.lifecycle_recovery_function_current_legacy_allowed(${base.tenantId}::uuid,${employee.userId!}::uuid,${capability},${base.companyId}::uuid) as current`))).toEqual([{registered:capability,pure:true,current:false}]);
+  }
+  expect(await owner.withTenant(employee,tx=>tx.execute(sql`select app.lifecycle_recovery_function_legacy_allowed(${base.tenantId}::uuid,${employee.userId!}::uuid,'function.lifecycle.shared.recovery.delete',${base.companyId}::uuid) as allowed`))).toEqual([{allowed:false}]);
   expect((await v9OwnWork(holder)).find(row=>row.id===first.id)?.items.every(item=>!item.canFulfil)).toBe(true);
   await expect(v9CaseDetail(employee,first.id)).rejects.toThrow();
   await expect(v9OwnItem(holder,workInput)).rejects.toThrow();
@@ -1035,6 +1054,36 @@ it('snapshots handed Native items by employment and records recovery on their or
   for(const [revision,status] of [[null,'done'],[declared.revision,null],[declared.revision,'notNeeded'],[declared.revision,'done']] as const){
     await expect(withTenant(employee,tx=>tx.execute(sql`select app.lc_v9_fulfil_item(${first.id}::uuid,${revision},${assigned.id},${status},'')`))).rejects.toThrow();
   }
+  await expect(withTenant(employee,tx=>onboardingRecoverHoldingTx(employee,tx,active.employmentId,base.companyId,{...assigned.nativeSource!,caseId:randomUUID()},first.id,workInput.reason,{revision:declared.revision,itemId:assigned.id}))).rejects.toThrow();
+  const sourceRecovery=(tx:Tx)=>onboardingRecoverHoldingTx(employee,tx,active.employmentId,base.companyId,assigned.nativeSource!,first.id,workInput.reason,{revision:declared.revision,itemId:assigned.id});
+  const teamAudit=(tx:Tx)=>appendEvent(tx,{tenantId:base.tenantId,aggregateType:'lifecycle-v9-case',aggregateId:first.id,eventType:'lifecycle-v9.providingTeamItemUpdated',actor:actorOf(employee),subjectEmploymentId:active.employmentId,payload:{caseId:first.id,action:'providingTeamItemUpdated',functionKey:'lifecycle.shared.recovery',nativeBranch:'assigned-item'}});
+  // A source update and even its actual audit cannot commit without the exact paired done transition.
+  await expect(withTenant(employee,sourceRecovery)).rejects.toThrow();
+  await expect(withTenant(employee,async tx=>{
+    await sourceRecovery(tx);
+    await tx.execute(sql`select app.lc_v9_fulfil_item(${first.id}::uuid,${declared.revision},${assigned.id},'progress',${workInput.reason})`);
+    await teamAudit(tx);
+  })).rejects.toThrow();
+  await expect(withTenant(employee,async tx=>{
+    await sourceRecovery(tx);
+    await tx.execute(sql`select app.lc_v9_fulfil_item(${first.id}::uuid,${declared.revision},${assigned.id},'done',${workInput.reason})`);
+  })).rejects.toThrow();
+  expect((await v9CaseDetail(admin,first.id)).case.revision).toBe(declared.revision);
+  expect(currentReq((await onboardingList(admin)).find(row=>row.case.id===joiner.case.id)!.case)!.items.every(item=>!item.recovery)).toBe(true);
+  // Both actual owners and audits close under a real savepoint. Deliberately roll back after
+  // forcing all deferred guards, retaining the normal production command assertion below.
+  await expect(withTenant(employee,async tx=>{
+    await tx.execute(sql`savepoint native_recovery`);
+    await sourceRecovery(tx);
+    await tx.execute(sql`select app.lc_v9_fulfil_item(${first.id}::uuid,${declared.revision},${assigned.id},'done',${workInput.reason})`);
+    await teamAudit(tx);
+    await tx.execute(sql`release savepoint native_recovery`);
+    await tx.execute(sql`set constraints all immediate`);
+    const [actual]=await tx.execute<{work:{items:{id:string;status:string}[]}}>(sql`select app.lc_v9_work(${first.id}::uuid) as work`);
+    expect(actual.work.items.find(item=>item.id===assigned.id)?.status).toBe('done');
+    throw new Error('Verified native recovery rollback');
+  })).rejects.toThrow('Verified native recovery rollback');
+  expect((await v9CaseDetail(admin,first.id)).case.revision).toBe(declared.revision);
   // A real source-owner update is rolled back with the caller's failed transaction.
   await expect(withTenant(employee,async tx=>{
     await onboardingRecoverHoldingTx(employee,tx,active.employmentId,base.companyId,assigned.nativeSource!,first.id,'Fictional rollback',{revision:declared.revision,itemId:assigned.id});
