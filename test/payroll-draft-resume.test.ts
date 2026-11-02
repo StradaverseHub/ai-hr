@@ -307,6 +307,22 @@ describe('Payroll draft-resume — updateBatchScope (DB)', () => {
     expect((payload.after.employmentIds ?? []).sort()).toEqual([e1.employmentId, e2.employmentId].sort());
   });
 
+  it('R49 refuses an explicit population whose members are all stale or outside the company', async () => {
+    const a = adminCtx(base);
+    const e = await hire(base, 'Retained subset');
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05', scope: { employmentIds: [e.employmentId] } });
+    await setPayrollInput(a, { batchId, employmentId: e.employmentId, bonusAmount: 321 });
+    const snapshot = async () => ({
+      batch: await batchRow(batchId),
+      inputs: await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId, batchId)),
+      events: await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId, batchId)),
+    });
+    const before = await snapshot();
+    await expect(updateBatchScope(a, { batchId, scope: { employmentIds: ['11111111-1111-4111-8111-111111111111'] } }))
+      .rejects.toThrow('Select at least one employee');
+    expect(await snapshot()).toEqual(before);
+  });
+
   it('b2. an empty selection normalises the scope back to whole-company (null)', async () => {
     const a = adminCtx(base);
     const e1 = await hire(base, 'Solo');
