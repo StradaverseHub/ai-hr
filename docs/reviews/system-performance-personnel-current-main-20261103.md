@@ -56,6 +56,40 @@ module digest `327d3182c2f9a6549a062f2b8e1a485020b4bdb69f0fddbbb5aae2b3905c2e17`
 Both static checks pass. No human binding refresh or provider access is authorized
 by this evidence.
 
+## Larger matched comparison: 16,384 visible records
+
+Fixture-only source `2e19ed97046c2353856e5de4a462a5877b730ff9` /
+[41490476721](https://github.com/StradaverseHub/ai-hr/actions/runs/41490476721)
+finishes SUCCESS. Controller is `5badda421caa712c9a04c5377c0b1e3899a4c8cd`.
+The only source diff from qualified app3eab is fixture cardinality512→16,384 and
+deriving report counts from that constant. No application, SQL, lock, resources,
+timeout, comparison order or correctness assertion changes. No compiler rerun:
+3eab/41488356642 remains the exact original app/compiler receipt, not relabelled.
+
+|Round/order|Former composition|Single projection|
+|---|---:|---:|
+|0 / former first|1,102.33ms|459.77ms|
+|1 / composed first|1,096.20ms|462.77ms|
+|2 / former first|1,130.50ms|494.49ms|
+|3 / composed first|1,108.39ms|461.67ms|
+
+Same-run means **1,109.35→469.67ms (57.66% lower)**. All four new reads satisfy the
+1,000ms *single-component diagnostic* budget; none of this is HTTP/browser or500-user
+acceptance. Native actual-role, independent exact page IDs/order, full totals/facets,
+filters, empty/foreign scope and projection3→1 controls pass on16,384 visible plus
+seven foreign fictional records. Test timeout remains240seconds. Standard hosted
+execution/PostgreSQL profile2/JITon, peak772,923,392bytes, zero OOM/cap events.
+The runner resource declaration is unchanged; no paid/larger runner is used.
+
+Artifact `/private/tmp/aihr-personnel-main-volume-2e19-attempt1`; extracted immutable
+identity/settings/measurements `/private/tmp/aihr-personnel-main-volume-result-20261103.json`.
+The existing512-record evidence and original red remain. The new measurement is
+within one larger matched run, not a percentage across runners or policy versions.
+The eagerly loaded chooser and full page/server render are outside this benchmark.
+This does not establish million-Personnel capacity, native hiring/bulk import or
+create/edit/delete throughput. No new full500 pair is justified until the compatible
+security/native candidate is published, integrated and qualified.
+
 ## Remaining admission and dependency hold
 
 Fresh fetch still resolves published security owner to incomplete

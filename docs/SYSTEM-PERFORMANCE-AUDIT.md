@@ -11,6 +11,13 @@ still lacks three required contracts; unpublished local owner work is not adopte
 See [current-main review](reviews/system-performance-personnel-current-main-20261103.md).
 No deployment or release admission; original500 acceptance remains0/2.
 
+Larger fixture-only2e19ed970 /41490476721 now passes native controls at16,384 visible
+records: same-run four alternating pairs average1,109.35→469.67ms (57.66% lower),
+composed range459.77–494.49ms. Exactly one source variable, fixture cardinality,
+changes; application/SQL/locks/resources/240s timeout remain unchanged. Compiler
+proof stays on3eab/41488356642 rather than being relabelled. This is retained-data
+component scaling evidence, not rendered-page or500-user/million-Personnel acceptance.
+
 ## Current result: Personnel read qualified; whole-system500-user target remains unmet
 
 The Personnel page now reuses one existing authorized Workforce projection for its
