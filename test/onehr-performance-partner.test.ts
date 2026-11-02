@@ -138,8 +138,7 @@ describe('OneHR performance partner (ADR-0142)', () => {
     const [proof]=await withTenant(partner,tx=>tx.execute<{shown:boolean;hidden:boolean}>(sql`select app.data_permission_matches(${partnerPerson.employmentId}::uuid) as shown,app.data_permission_matches(${subject.employmentId}::uuid) as hidden`));expect(proof).toEqual({shown:true,hidden:false});
     const [admin]=await withTenant(partner,tx=>tx.execute<{header:unknown;employmentIds:string[];assignmentIds:string[];labels:number}>(sql`select app.onehr_review_header(${reviewId}::uuid) as header,array(select id from app.onehr_employment_facts()) as "employmentIds",array(select employment_id from app.onehr_assignment_facts()) as "assignmentIds",(select count(*)::int from app.onehr_person_labels(array[${subject.employmentId}::uuid])) as labels`));
     expect(admin.header).toBeNull();expect(admin.employmentIds).toContain(partnerPerson.employmentId);expect(admin.employmentIds).not.toContain(subject.employmentId);expect(admin.assignmentIds).not.toContain(subject.employmentId);expect(admin.labels).toBe(0);
-    await restrict(partner.userId!);
-    const [adminCard]=await withTenant(partner,tx=>tx.execute<{card:unknown}>(sql`select app.onehr_result_card(${reviewId}::uuid) as card`));expect(adminCard.card).toBeNull();
+    const [adminCard]=await withTenant(partner,tx=>tx.execute<{card:unknown;input:unknown;decisions:unknown[];moderators:unknown[];career:boolean}>(sql`select app.onehr_result_card(${reviewId}::uuid) as card,app.onehr_assessment_inputs(${reviewId}::uuid) as input,app.onehr_decisions(${reviewId}::uuid) as decisions,app.onehr_moderator_choices(${reviewId}::uuid) as moderators,app.assessment_career_access(${subject.employmentId}::uuid) as career`));expect(adminCard).toEqual({card:null,input:null,decisions:[],moderators:[],career:false});
     for(const [identity,self] of [[subject,true],[manager,false]] as const){
       const userId=await createAppUser(b.tenantId,identity.personId,'employee');await restrict(userId);
       const actor={...a,userId,personId:identity.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
@@ -150,7 +149,16 @@ describe('OneHR performance partner (ADR-0142)', () => {
       const [task]=await withTenant(actor,tx=>tx.execute<{header:{name:string;ownEmploymentIds:string[]}|null;self:boolean;master:boolean}>(sql`select app.onehr_review_header(${reviewId}::uuid) as header,app.onehr_self_employment(${subject.employmentId}::uuid) as self,exists(select 1 from employment where id=${subject.employmentId}::uuid) as master`));
       expect(task.header).not.toBeNull();expect(task.header!.name).toBe('Partner subject');expect(task.self).toBe(self);expect(task.master).toBe(self);
       const view=await perf.getOnehrReview(actor,reviewId);expect(view).not.toBeNull();expect(view!.self).toBe(self);
-      if(self){const personal=await perf.getAssessmentPersonalRecord(actor,reviewId);expect(personal.currentId).toBe(reviewId);expect(personal.current).not.toBeNull();}
+      if(self){
+        await perf.saveAssessmentCareerProfile(actor,reviewId,null,{aspiration:'Own career remains native',mobility:null,mobilityNote:'',targetProfileId:null});
+        const personal=await perf.getAssessmentPersonalRecord(actor,reviewId);expect(personal.currentId).toBe(reviewId);expect(personal.current).not.toBeNull();
+      }else{
+        await assignRole(a,{appUserId:userId,role:'performance_partner',companyId:b.companyId});
+        const mixed={...actor,roles:['employee','performance_partner'],grants:[{role:'employee',companyId:null},{role:'performance_partner',companyId:b.companyId}]};
+        const [before]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));expect(before).toBeDefined();
+        expect(await refusal(withTenant(mixed,tx=>tx.update(schema.assessmentCareerProfile).set({career:{...(before.career as Record<string,unknown>),aspiration:'Borrowed admin rewrite'}}).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))),'42501')).toContain('Career administrative data unavailable');
+        expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([before]);
+      }
     }
   });
 

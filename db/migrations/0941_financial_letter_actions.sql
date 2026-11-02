@@ -2656,3 +2656,75 @@ REVOKE ALL ON FUNCTION app.onehr_result_administration(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_result_administration(uuid) TO ai_hr_app;
 CREATE POLICY financial_onehr_result_read ON public.performance_onehr_result AS RESTRICTIVE FOR SELECT TO ai_hr_app
  USING(tenant_id=app.current_tenant_id() AND app.onehr_result_administration(review_id));
+
+--> statement-breakpoint
+-- Current source ceilings apply to the administrative arm. Actual assigned
+-- calibration and review courses remain independent of administrative profiles.
+CREATE FUNCTION app.financial_onehr_named_source_allowed(p_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.performance_review review
+ WHERE review.id=p_review AND review.tenant_id=app.current_tenant_id() AND NOT app.onehr_self_employment(review.employment_id)
+ AND (app.financial_onehr_result_admin(review.id) OR app.onehr_manager(review.id) OR app.onehr_effective_reviewer(review.id)
+ OR EXISTS(SELECT 1 FROM public.performance_onehr_calibration_entry entry JOIN public.performance_onehr_calibration session ON session.id=entry.session_id AND session.tenant_id=entry.tenant_id
+ WHERE entry.review_id=review.id AND entry.tenant_id=review.tenant_id AND app.onehr_calibration_reviewer(session.id,app.current_user_id()))));
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_named_source_allowed(uuid) FROM PUBLIC,ai_hr_app;
+ALTER FUNCTION app.onehr_assessment_inputs(uuid) RENAME TO financial_onehr_native_assessment_inputs;
+CREATE OR REPLACE FUNCTION app.financial_onehr_native_assessment_inputs(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT jsonb_build_object('reviewId',r.review_id,'employmentId',r.employment_id,'companyId',r.company_id,'department',coalesce((SELECT d.name FROM assignment a JOIN department d ON d.id=a.department_id AND d.tenant_id=a.tenant_id WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (a.valid_to IS NULL OR a.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) ORDER BY a.valid_from DESC,a.id LIMIT 1),''),'businessGroupId',coalesce((SELECT c.parent_company_id::text FROM company c WHERE c.id=r.company_id AND c.tenant_id=r.tenant_id),''),'businessGroup',coalesce((SELECT g.legal_name FROM company c JOIN company g ON g.id=c.parent_company_id AND g.tenant_id=c.tenant_id WHERE c.id=r.company_id AND c.tenant_id=r.tenant_id),''),'grade',r.grade,'name',p.full_name,'performance',CASE WHEN pm.ok THEN r.manager_performance END,'managerScore',CASE WHEN pm.ok THEN r.manager_score END,'finalized',EXISTS(SELECT 1 FROM performance_onehr_result f WHERE f.review_id=r.review_id),'competencyStatus',r.competency_status,'competencyAssigned',jsonb_array_length(r.competencies)>0,'selfCompetencies',CASE WHEN r.competency_status IN ('submitted','reviewed') THEN r.competencies ELSE '[]'::jsonb END,'submittedKpis',CASE WHEN r.results_submitted_at IS NOT NULL AND pm.ok THEN r.kpis ELSE '[]'::jsonb END,'competencies',CASE WHEN r.competency_status='reviewed' THEN r.competencies ELSE '[]'::jsonb END,'principles',coalesce((SELECT jsonb_agg(jsonb_build_object('principle',q.principle,'pct',q.pct)) FROM (SELECT st->>'principle' principle,100*sum(CASE WHEN a.answers->>(st->>'id')='yes' THEN CASE WHEN (st->>'future')::boolean THEN 1.5 ELSE 1 END ELSE 0 END)/nullif(sum(CASE WHEN (st->>'future')::boolean THEN 1.5 ELSE 1 END),0) pct FROM performance_onehr_panel a CROSS JOIN LATERAL jsonb_array_elements(r.statements) st WHERE a.review_id=r.review_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL GROUP BY st->>'principle') q),'[]'::jsonb),'leadership',coalesce((SELECT jsonb_agg(jsonb_build_object('score',app.onehr_adjusted_score(a.request_id,(SELECT sum(CASE WHEN a.answers->>(st->>'id')='yes' THEN CASE WHEN (st->>'future')::boolean THEN 1.5 ELSE 1 END ELSE 0 END) FROM jsonb_array_elements(r.statements) st),(SELECT sum(CASE WHEN (st->>'future')::boolean THEN 1.5 ELSE 1 END) FROM jsonb_array_elements(r.statements) st)),'max',(SELECT sum(CASE WHEN (st->>'future')::boolean THEN 1.5 ELSE 1 END) FROM jsonb_array_elements(r.statements) st))) FROM performance_onehr_panel a WHERE a.review_id=r.review_id AND a.submitted_at IS NOT NULL AND a.archived_at IS NULL),'[]'::jsonb))
+ FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ CROSS JOIN LATERAL (SELECT (app.financial_onehr_result_admin(r.review_id) OR app.onehr_manager(r.review_id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce JOIN performance_onehr_calibration cs ON cs.id=ce.session_id WHERE ce.review_id=r.review_id AND (app.financial_onehr_result_admin(r.review_id) OR app.onehr_calibration_reviewer(cs.id,app.current_user_id())) AND NOT app.is_self_person(p.id))) AS ok OFFSET 0) pm
+ WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(p.id) AND (pm.ok OR app.onehr_effective_reviewer(r.review_id))
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_native_assessment_inputs(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_assessment_inputs(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_onehr_native_assessment_inputs(wanted_review) WHERE app.financial_onehr_named_source_allowed(wanted_review);
+$$;
+REVOKE ALL ON FUNCTION app.onehr_assessment_inputs(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_assessment_inputs(uuid) TO ai_hr_app;
+ALTER FUNCTION app.onehr_decisions(uuid) RENAME TO financial_onehr_native_decisions;
+CREATE OR REPLACE FUNCTION app.financial_onehr_native_decisions(wanted_review uuid) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT coalesce(jsonb_agg(jsonb_build_object('tier',s.tier,'mode',s.mode,'performance',e.performance,'potential',e.potential,'performanceLocked',app.assessment_calibration_axis_confirmed(s.tier,e.performance_locked_at,s.performance_locked_at),'potentialLocked',app.assessment_calibration_axis_confirmed(s.tier,e.potential_locked_at,s.potential_locked_at),'locked',app.assessment_calibration_axis_confirmed(s.tier,e.locked_at,s.locked_at),'pipConfirmed',s.pip_locked_at IS NOT NULL,'promotionConfirmed',s.promotion_locked_at IS NOT NULL,'pip',coalesce((a.actions->>'pip')::boolean,false),'promotion',coalesce((a.actions->>'promotion')::boolean,false),'specialReward',coalesce((a.actions->>'specialReward')::boolean,false)) ORDER BY CASE s.tier WHEN 'hod' THEN 1 WHEN 'bu' THEN 2 WHEN 'bg' THEN 3 WHEN 'group' THEN 4 ELSE 5 END),'[]'::jsonb)
+ FROM performance_onehr_calibration_entry e JOIN performance_onehr_calibration s ON s.id=e.session_id AND s.tenant_id=e.tenant_id JOIN performance_review r ON r.id=e.review_id AND r.tenant_id=e.tenant_id JOIN employment emp ON emp.id=e.employment_id AND emp.tenant_id=e.tenant_id
+ LEFT JOIN performance_assessment_talent a ON a.review_id=e.review_id AND a.tenant_id=e.tenant_id
+ WHERE e.review_id=wanted_review AND e.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(emp.person_id) AND (app.financial_onehr_result_admin(r.id) OR app.onehr_manager(r.id) OR EXISTS(SELECT 1 FROM performance_onehr_calibration_entry ce WHERE ce.review_id=r.id AND (app.financial_onehr_result_admin(r.id) OR app.onehr_calibration_reviewer(ce.session_id,app.current_user_id()))))
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_native_decisions(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_decisions(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.financial_onehr_named_source_allowed(wanted_review) THEN app.financial_onehr_native_decisions(wanted_review) ELSE '[]'::jsonb END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_decisions(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_decisions(uuid) TO ai_hr_app;
+ALTER FUNCTION app.onehr_moderator_choices(uuid) RENAME TO financial_onehr_native_moderator_choices;
+REVOKE ALL ON FUNCTION app.financial_onehr_native_moderator_choices(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_moderator_choices(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.assessment_dispatcher_scope() OR app.onehr_review_header(wanted_review) IS NOT NULL THEN app.financial_onehr_native_moderator_choices(wanted_review) ELSE '[]'::jsonb END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_moderator_choices(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_moderator_choices(uuid) TO ai_hr_app;
+CREATE OR REPLACE FUNCTION app.assessment_career_access(wanted_employment uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment subject WHERE subject.id=wanted_employment AND subject.tenant_id=app.current_tenant_id()
+ AND (app.onehr_self_employment(subject.id) OR app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id)
+ OR EXISTS(SELECT 1 FROM public.performance_onehr_review review JOIN public.review_cycle cycle ON cycle.id=review.cycle_id AND cycle.tenant_id=review.tenant_id
+ WHERE review.employment_id=subject.id AND review.tenant_id=subject.tenant_id AND cycle.status IN ('open','calibration') AND (app.onehr_effective_reviewer(review.review_id) OR app.onehr_moderator(review.review_id)))));
+$$;
+CREATE FUNCTION app.financial_onehr_career_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE admin_course boolean;own_course boolean;placeholder boolean;cycle_status text;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Career principal unavailable' USING ERRCODE='42501';END IF;
+ admin_course:=app.financial_onehr_result_admin(NEW.review_id);own_course:=app.onehr_self_employment(NEW.employment_id);
+ SELECT cycle.status::text INTO cycle_status FROM public.performance_review review JOIN public.review_cycle cycle ON cycle.id=review.cycle_id AND cycle.tenant_id=review.tenant_id WHERE review.id=NEW.review_id AND review.tenant_id=NEW.tenant_id AND review.employment_id=NEW.employment_id;
+ IF cycle_status IS NULL OR NOT admin_course AND cycle_status NOT IN ('open','calibration') THEN RAISE EXCEPTION 'Career period unavailable' USING ERRCODE='42501';END IF;
+ placeholder:=TG_OP='INSERT' AND NOT own_course AND (app.onehr_effective_reviewer(NEW.review_id) OR app.onehr_moderator(NEW.review_id)) AND NEW.career=jsonb_build_object('aspiration','','mobility',NULL,'mobilityNote','','targetProfileId',NULL,'selfProfileId',NULL);
+ IF NOT admin_course AND NOT own_course AND NOT placeholder AND (TG_OP='INSERT' OR NEW.career IS DISTINCT FROM OLD.career) THEN RAISE EXCEPTION 'Career administrative data unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_career_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER z_financial_onehr_career_guard BEFORE INSERT OR UPDATE ON public.performance_assessment_career_profile FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_career_guard();
