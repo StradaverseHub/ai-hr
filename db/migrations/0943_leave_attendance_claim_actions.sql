@@ -2030,7 +2030,12 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   WHERE NOT EXISTS(SELECT 1 FROM app.access_function_action action JOIN app.access_function_definition definition USING(function_key)
    JOIN public.access_capability capability ON capability.id=action.capability_id
    WHERE action.function_key='leave.onBehalf.application' AND action.operation=requested.operation_name AND capability.id='function.leave.onBehalf.application.'||requested.operation_name
-   AND definition.scope='company' AND definition.metadata->>'kind'='native_acl' AND definition.metadata->>'course'='administrative' AND capability.scope='company' AND capability.prerequisites='[]'::jsonb
+   AND definition.scope='company' AND definition.metadata->>'kind'='native_acl' AND definition.metadata->>'course'='administrative' AND capability.scope='company'
+   AND action.parent_capability IS NULL
+   AND capability.prerequisites=CASE requested.operation_name
+     WHEN 'view' THEN '[]'::jsonb
+     WHEN 'add' THEN jsonb_build_array('function.leave.onBehalf.application.view')
+   END
    AND CASE WHEN capability.supported THEN
     EXISTS(SELECT 1 FROM public.access_configuration configuration WHERE configuration.tenant_id=app.current_tenant_id() AND configuration.initialized)
     AND jsonb_array_length(capability.bindings)>0 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(capability.bindings) binding WHERE jsonb_typeof(binding)<>'object' OR coalesce(binding->>'owner','')='' OR coalesce(binding->>'operation','')='')

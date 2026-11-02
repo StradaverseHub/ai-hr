@@ -68,8 +68,8 @@ it('commits native self-narrowing with the original audit in immediate mode and 
   return created.id;
  });
  const [source]=await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id));expect(source).toMatchObject({permissionKey:key,companyId:b.companyId,role:'hr_admin',allowed:false});
- await expect(withTenant(admin,tx=>tx.update(s.payrollPermissionGrant).set({allowed:true}).where(eq(s.payrollPermissionGrant.id,id)))).rejects.toThrow('Leave permission source unavailable');
- await expect(withTenant(admin,tx=>tx.delete(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id)))).rejects.toThrow('Leave permission source unavailable');
+ await expect(withTenant(admin,tx=>tx.update(s.payrollPermissionGrant).set({allowed:true}).where(eq(s.payrollPermissionGrant.id,id)))).rejects.toMatchObject({cause:{code:'42501',message:'Leave permission source unavailable'}});
+ await expect(withTenant(admin,tx=>tx.delete(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id)))).rejects.toMatchObject({cause:{code:'42501',message:'Leave permission source unavailable'}});
  await expect(withTenant(admin,tx=>tx.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id)))).resolves.toEqual([source]);
  const events=await owner.db.select({event:s.domainEvent.eventType,actor:s.domainEvent.actorId,payload:s.domainEvent.payload}).from(s.domainEvent).where(eq(s.domainEvent.aggregateId,id));
  expect(events).toEqual([{event:'payroll-permission-grant.created',actor:b.adminUserId,payload:{companyId:b.companyId,permissionKey:key,role:'hr_admin',allowed:false}}]);

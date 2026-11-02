@@ -111,7 +111,7 @@ it('rolls back unconsumed Company cleanup and refuses a forged completion withou
  await expect(withTenant(companyHr,async tx=>{
   const [proof]=await tx.execute<{id:string}>(sql`select app.module_company_cleanup_begin(${child.id}::uuid) as id`);expect(proof.id).toBeTruthy();
   await tx.execute(sql`select app.module_company_cleanup_finish(${proof.id}::uuid)`);
- })).rejects.toThrow('Company cleanup completion unavailable');
+ })).rejects.toMatchObject({cause:{code:'42501',message:'Company cleanup completion unavailable'}});
  expect(await owner.db.select().from(s.company).where(eq(s.company.id,child.id))).toHaveLength(1);
  expect(await owner.db.select().from(s.clockingLocationCompany).where(and(eq(s.clockingLocationCompany.clockingLocationId,site.id),eq(s.clockingLocationCompany.companyId,child.id)))).toHaveLength(1);
  for(const id of [leave.id,report.id])expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id))).toHaveLength(1);
