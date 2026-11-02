@@ -653,3 +653,39 @@ human:zenlam repository-owner provisional, and takes evidence #noveri-release-re
 rerun.
 
 This record is not a runtime PASS, staging acceptance or deployment authorisation.
+
+## Audit maintainability and authority-history source binding — 3 November 2026
+
+The owner explicitly approved the exact combined binding for reviewed candidate
+`1209ec4464a8c9f189c647962c37c439f61c6f68`, provider source digest
+`51212910eb02c5d72c88f40b130cb74141c374bffb0dcffff427da1bbdcac580` (1,258 files).
+The session recorded the answer **“Approve exact combined binding”** at receipt on
+2 November 2026, 16:56 UTC (3 November in Asia/Kuala_Lumpur).
+
+The candidate normally reconciles prior audit/P1/map source `7153fe4d02f678c08b574b0f7a89982676dd0335`
+with main `dfbcf85b1f03e6e3266df6244694079a98e17dc9`, preserving both histories. It adds the
+unchanged pure leave-cycle owner and the owner's separate access-change history restart decision
+in ADR-0170. Independent immutable-Git traversal reproduced the provider digest above and module
+source digest `64e4a4ee5056e33264a1f0f5db42b03e13a7e56ddd63e3fec971e63740c57b4b` (457 files).
+The targeted source review found no blocking issue in the history delta; canonical native principal
+checks and protected P1 owners remain. This is compositional review of the previously reviewed parents
+and covered changes, not a new claim to have reread all 1,258 files.
+
+The registry update changes only the 25 existing approved `sourceDigest` values. All original human
+metadata and the two pending contracts remain byte-for-byte unchanged. No new purpose, provider
+activation, protected-branch merge or deployment is approved. This approval covers this closure only
+and does not transfer to a changed one.
+
+Native history baseline [41484503406](https://github.com/StradaverseHub/ai-hr/actions/runs/41484503406)
+retains its actual RED result: normal continuation passed; real company-grant withdrawal prevented new
+native reads but left the old name in a captured next model request. No real provider received it.
+The repair's affected native/compiler run
+[41485734098](https://github.com/StradaverseHub/ai-hr/actions/runs/41485734098) was still running when
+this source binding was approved; its actual outcome must be recorded separately. Earlier fixture
+and merge-test failures remain failed. Neither this binding nor a build-only packet is release evidence.
+
+Applying the approved registry substitutions necessarily refreshes the derived module manifest to
+`4e6eb6e2a47df2324bd2a71f834c5dc3c869d9244bf848a456997d576e7b0a23` (still 457 files): that
+manifest includes the approval registry. The provider closure deliberately excludes the registry and
+both generated manifests, so its approved `51212910…` digest remains unchanged. No covered runtime
+implementation changed during this mechanical binding step.
