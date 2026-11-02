@@ -54,13 +54,13 @@ import { withTenant, type SessionContext } from '../db/client';
 let b: Base;
 
 /** A payroll admin (hr_admin) scoped to a company — carries the grant so authz + RLS see it. */
-async function adminFor(companyId: string | null): Promise<SessionContext> {
+async function adminFor(companyId: string | null, role:'hr_admin'|'payroll_partner'='hr_admin'): Promise<SessionContext> {
   const [u] = await owner.db
     .insert(schema.appUser)
     .values({ tenantId: b.tenantId, workosUserId: `user_${randomUUID()}`, personId: null })
     .returning({ id: schema.appUser.id });
-  await owner.db.insert(schema.roleAssignment).values({ tenantId: b.tenantId, appUserId: u.id, companyId, role: 'hr_admin' });
-  return { tenantId: b.tenantId, userId: u.id, grants: [{ role: 'hr_admin', companyId }] };
+  await owner.db.insert(schema.roleAssignment).values({ tenantId: b.tenantId, appUserId: u.id, companyId, role });
+  return { tenantId: b.tenantId, userId: u.id, grants: [{ role, companyId }] };
 }
 
 /** A non-admin employee — used to prove tenant-wide READ works and WRITE is blocked. */
@@ -291,6 +291,14 @@ describe('payroll cycle master (ADR-0069)', () => {
     expect((await listPayrollCycles(authorized,b.companyId)).map(c=>c.id)).toContain(id);
     await deletePayrollCycle(authorized,id);
     expect((await listPayrollCycles(authorized,b.companyId)).map(c=>c.id)).not.toContain(id);
+  });
+
+  it('preserves deletion by a genuine company-scoped payroll partner',async()=>{
+    const partner=await adminFor(b.companyId,'payroll_partner');
+    const {id}=await upsertPayrollCycle(partner,{companyId:b.companyId,name:'Partner unused cycle',runType:'off_cycle'});
+    await deletePayrollCycle(partner,id);
+    expect((await listPayrollCycles(partner,b.companyId)).map(c=>c.id)).not.toContain(id);
+    expect(await eventTypesFor(b.tenantId,id)).toEqual(['payroll-cycle.created','payroll-cycle.deleted']);
   });
 
   it('GRANT regression: a real ai_hr_app payroll admin can INSERT…RETURNING, read, and update (not fail-closed)', async () => {
