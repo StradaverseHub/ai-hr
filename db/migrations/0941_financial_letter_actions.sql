@@ -586,7 +586,7 @@ BEGIN
  IF TG_OP='UPDATE' AND (NEW.status<>'cancelled' OR NEW.lease_token IS NOT NULL OR NEW.lease_until IS NOT NULL
   OR data-ARRAY['status','lease_token','lease_until','last_error'] IS DISTINCT FROM to_jsonb(OLD)-ARRAY['status','lease_token','lease_until','last_error']) THEN RAISE EXCEPTION 'Letter cancellation consequence unavailable' USING ERRCODE='42501';END IF;
  -- Native draft creation is an Add consequence, not a fabricated Edit/Approve.
- IF TG_OP='INSERT' AND NEW.kind='notification' AND NEW.status='pending' AND NEW.attempts=0 AND NEW.lease_token IS NULL AND NEW.lease_until IS NULL THEN
+ IF TG_OP='INSERT' AND NEW.kind='notification' AND NEW.status='queued' AND NEW.attempts=0 AND NEW.lease_token IS NULL AND NEW.lease_until IS NULL THEN
   IF NEW.payload->>'purpose'='draftCreated' AND app.letter_function_action('letterGenerate','view',NEW.company_id) AND app.letter_function_action('letterGenerate','add',NEW.company_id)
   AND app.access_letter_action(NEW.company_id,'generate','add') AND app.letter_draft_created_job_current(NEW.tenant_id,NEW.id)
   AND EXISTS(SELECT 1 FROM app.financial_letter_proposed_birth birth JOIN public.letter_record actual ON actual.id=birth.letter_id AND actual.tenant_id=birth.tenant_id AND actual.company_id=birth.company_id AND actual.batch_id=birth.batch_id AND actual.created_by=birth.user_id
@@ -2286,7 +2286,7 @@ BEGIN
   IF (cutoff->>'active')::boolean THEN upper_bound:=((cutoff->>'end')||'T23:59:59.999Z')::timestamptz;END IF;
  END IF;
  FOR candidate IN SELECT claim.* FROM public.claim_request claim JOIN public.employment subject ON subject.id=claim.employment_id AND subject.tenant_id=claim.tenant_id
-  WHERE claim.tenant_id=batch.tenant_id AND claim.status::text=p_status
+  WHERE claim.tenant_id=batch.tenant_id AND claim.status::text=p_status AND claim.employment_id=ANY((SELECT app.visible_employment_ids())::uuid[])
   AND (p_kind='reserve' AND claim.taxable AND claim.payroll_batch_id IS NULL AND subject.company_id=batch.company_id AND (members IS NULL OR subject.id=ANY(members)) AND (upper_bound IS NULL OR claim.decided_at<=upper_bound)
    OR p_kind='linked' AND claim.payroll_batch_id=batch.id)
   ORDER BY claim.id FOR UPDATE OF claim
@@ -2376,7 +2376,7 @@ BEGIN
  SELECT batch.company_id INTO batch_company FROM public.payroll_batch batch WHERE batch.id=p_batch AND batch.tenant_id=app.current_tenant_id() AND batch.status IN ('draft','processed') FOR UPDATE;
  operation:=CASE WHEN app.financial_batch_intent_allowed(p_batch,'edit') THEN 'edit' WHEN app.financial_batch_intent_allowed(p_batch,'delete') THEN 'delete' END;
  IF batch_company IS NULL OR operation IS NULL OR NOT app.financial_batch_subjects_allowed(p_batch) OR NOT app.function_action_allowed('payroll.process','view',batch_company) THEN RAISE EXCEPTION 'Payroll claim source unavailable' USING ERRCODE='42501';END IF;
- FOR candidate IN SELECT claim.* FROM public.claim_request claim WHERE claim.tenant_id=app.current_tenant_id() AND claim.payroll_batch_id=p_batch ORDER BY claim.id LIMIT 10001 FOR UPDATE NOWAIT
+ FOR candidate IN SELECT claim.* FROM public.claim_request claim WHERE claim.tenant_id=app.current_tenant_id() AND claim.payroll_batch_id=p_batch AND claim.employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]) ORDER BY claim.id LIMIT 10001 FOR UPDATE NOWAIT
  LOOP
   IF NOT app.access_financial_action_employment('payroll',candidate.employment_id,operation) THEN RAISE EXCEPTION 'Payroll claim subject unavailable' USING ERRCODE='42501';END IF;
   id:=candidate.id;source_hash:=encode(sha256(convert_to(to_jsonb(candidate)::text,'UTF8')),'hex');RETURN NEXT;
@@ -2501,7 +2501,7 @@ BEGIN
  WHERE config.cycle_id=(source->'run'->>'cycleId')::uuid AND config.tenant_id=recipient.tenant_id AND cell.key IN ('opensAt','closesAt') AND cell.value::timestamptz>now_at;IF boundary IS NOT NULL THEN deadline:=least(deadline,boundary);END IF;
  IF p_until IS NULL OR p_until<=now_at OR p_until>deadline OR p_tenant_epoch IS DISTINCT FROM (source->>'tenantEpoch')::bigint OR p_cycle_epoch IS DISTINCT FROM (source->>'cycleEpoch')::bigint
  OR jsonb_typeof(p_tasks) IS DISTINCT FROM 'array' OR jsonb_array_length(p_tasks) NOT BETWEEN 1 AND 16 OR octet_length(p_tasks::text)>20000
- OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_tasks) task WHERE jsonb_typeof(task)<>'object' OR NOT app.access_command_keys(task,ARRAY['key','count','closesAt','people']) OR NOT task ?& ARRAY['key','count','closesAt']
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_tasks) task WHERE jsonb_typeof(task)<>'object' OR task-ARRAY['key','count','closesAt','people']<>'{}'::jsonb OR NOT task ?& ARRAY['key','count','closesAt']
  OR task->>'key' NOT IN ('own_results','own_checkin','own_competency','own_plan','feedback','team_setting','team_results','team_competency','team_plan','team_career','hod_performance','hod_potential','bu_performance','bu_potential','bg_talent','group_performance')
  OR jsonb_typeof(task->'count') IS DISTINCT FROM 'number' OR (task->>'count')::numeric NOT BETWEEN 1 AND 1000000 OR (task->>'count')::numeric<>trunc((task->>'count')::numeric)
  OR task->'closesAt'<>'null'::jsonb AND jsonb_typeof(task->'closesAt') IS DISTINCT FROM 'string'
