@@ -1935,13 +1935,34 @@ REVOKE ALL ON FUNCTION app.workforce_draft_saved_source_allowed(uuid,jsonb) FROM
 --> statement-breakpoint
 -- Finite derived Onboarding source proof. This does not admit general Personnel writes.
 CREATE FUNCTION app.workforce_draft_active_admitted(p_draft uuid,p_source jsonb,p_employment uuid,p_person uuid) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE admitted boolean;diagnostics jsonb;
+BEGIN
  SELECT app.principal_snapshot_current() AND app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),p_source)
  AND app.access_workforce_consumed_draft(p_source)
  AND EXISTS(SELECT 1 FROM app.workforce_hire_source proof JOIN public.employment employment ON employment.id=proof.employment_id AND employment.tenant_id=proof.tenant_id
   WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft
    AND proof.source=p_source AND proof.employment_id=p_employment AND employment.person_id=p_person AND proof.authority_stamp=app.access_function_authority_stamp())
- AND EXISTS(SELECT 1 FROM public.employee_draft actual WHERE actual.tenant_id=app.current_tenant_id() AND actual.id=p_draft AND to_jsonb(actual)=p_source);
+ AND EXISTS(SELECT 1 FROM public.employee_draft actual WHERE actual.tenant_id=app.current_tenant_id() AND actual.id=p_draft AND to_jsonb(actual)=p_source) INTO admitted;
+ IF admitted IS NOT TRUE THEN
+  -- Private server diagnostics contain only predicate outcomes, never source values or identities.
+  -- Keep the admission predicate above intact; these do not mint or retain any authority.
+  SELECT jsonb_build_object(
+   'principal',app.principal_snapshot_current(),
+   'scope',app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),p_source),
+   'supported',app.access_workforce_hire_source_supported(p_source->'data'),
+   'birth',app.data_permission_employment_born(p_employment),
+   'materialized',app.access_workforce_hire_effects_match(p_source->'data',p_employment),
+   'consumed',app.access_workforce_consumed_draft(p_source),
+   'bound',EXISTS(SELECT 1 FROM app.workforce_hire_source proof JOIN public.employment employment ON employment.id=proof.employment_id AND employment.tenant_id=proof.tenant_id
+    WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft AND proof.source=p_source AND proof.employment_id=p_employment AND employment.person_id=p_person),
+   'stamp',EXISTS(SELECT 1 FROM app.workforce_hire_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft AND proof.authority_stamp=app.access_function_authority_stamp()),
+   'stored',EXISTS(SELECT 1 FROM public.employee_draft actual WHERE actual.tenant_id=app.current_tenant_id() AND actual.id=p_draft AND to_jsonb(actual)=p_source)
+  ) INTO diagnostics;
+  RAISE LOG 'Draft activation admission predicates: %',diagnostics;
+ END IF;
+ RETURN admitted;
+END;
 $$;
 REVOKE ALL ON FUNCTION app.workforce_draft_active_admitted(uuid,jsonb,uuid,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
