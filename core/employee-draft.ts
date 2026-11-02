@@ -413,7 +413,7 @@ export async function saveEmployeeDraft(
   assertAdmin(ctx);
   const currentStep = Math.min(Math.max(Math.trunc(p.currentStep) || 1, 1), 20);
   const run=async(tx:Tx)=>{
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     const [existing]=p.id?await tx.select({id:employeeDraft.id,companyId:employeeDraft.companyId,reservedEmployeeCode:employeeDraft.reservedEmployeeCode,data:employeeDraft.data}).from(employeeDraft).where(and(eq(employeeDraft.id,p.id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update'):[];
     if(p.id&&!existing)throw new DraftActivationValidationError('draft_unavailable',[]);
     let data =
@@ -559,7 +559,7 @@ export async function createEmployeeDraftWithReservedCode(
   }
 
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     await assertWorkforceCompanyTx(tx,ctx,companyId,'add');
     let code: string;
     let configId: string | null = null;
