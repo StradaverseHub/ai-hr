@@ -483,3 +483,12 @@ describe('remembered authenticator verification — server-owned device proofs',
     expect((await startLogin({ ...input, rememberedDevice: signedIn.remembered_device_token })).step).toBe('mfa');
   });
 });
+
+it('refuses remembered-MFA policy edits from forged tenant context and revoked administrator authority', async () => {
+  const ctx = { ...adminCtx(base), grants: [{ role: 'hr_admin' as const, companyId: null }] };
+  await expect(saveRememberedMfaPolicy({ ...ctx, tenantId: randomUUID() }, { rememberDays: 7 }, 0)).rejects.toThrow();
+  await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId, base.adminUserId));
+  await expect(saveRememberedMfaPolicy(ctx, { rememberDays: 7 }, 0)).rejects.toThrow();
+  await expect(readRememberedMfaPolicyEditor(ctx)).rejects.toThrow();
+  expect(await readRecord(client, `remembered-mfa-policy:${base.tenantId}`)).toBeNull();
+});
