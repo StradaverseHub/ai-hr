@@ -33796,6 +33796,14 @@
     }
   },
   "contractManagement": {
+    "dateAmendmentPending": "Việc điều chỉnh ngày kết thúc hợp đồng đang chờ cập nhật hồ sơ được ủy quyền. Ngày kết thúc hiện tại vẫn có hiệu lực cho đến khi cập nhật thành công.",
+    "dateAmendmentFailed": "Việc điều chỉnh ngày kết thúc cần được xem xét. Kiểm tra Hồ sơ nhân sự hiện tại trước khi thử lại.",
+    "retryDateAmendment": "Thử điều chỉnh lại ngày kết thúc",
+    "reviewedDocumentLocked": "Hợp đồng này đã được xem xét. Cần có quyết định sửa đổi trước khi chuẩn bị PDF khác.",
+    "cancelDateAmendment": "Hủy điều chỉnh ngày",
+    "dateAmendmentCancelled": "Đã hủy điều chỉnh ngày kết thúc",
+    "readOnlyNote": "Hợp đồng này hiện chỉ cho phép xem. Người có quyền vẫn có thể truy cập lịch sử hợp đồng và các tài liệu đã phát hành.",
+    "sourceIncomplete": "Kiểm tra ngày hợp đồng, lương cơ bản và khoản phụ cấp cố định MYR đã cấu hình trong Hồ sơ nhân sự trước khi mở hồ sơ này.",
     "retryFiling": "Thử lưu vào hồ sơ nhân sự lại",
     "generationPending": "Đang chuẩn bị PDF hợp đồng. Việc phê duyệt và ký sẽ tiếp tục khi tài liệu hiện tại đã sẵn sàng.",
     "generationFailed": "PDF hợp đồng cần được xem xét. People Ops có thể kiểm tra điều khoản hiện tại và thử chuẩn bị lại.",
@@ -33998,6 +34006,7 @@
       "skipped": "Không bắt buộc"
     },
     "effect": {
+      "date_amendment": "Điều chỉnh ngày kết thúc hợp đồng",
       "generation": "PDF hợp đồng",
       "personnel": "Cập nhật nhân sự",
       "payroll": "Cập nhật thu nhập",
