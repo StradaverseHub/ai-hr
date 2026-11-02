@@ -5267,6 +5267,7 @@
     "otPolicyPlanTotalsHelp": "Các tổng này thể hiện từng yêu cầu. Các khoảng thời gian đã duyệt bị trùng chỉ được tính một lần khi tính làm thêm giờ."
   },
   "approvals": {
+    "viewOnly": "Chỉ xem",
     "title": "Phê duyệt",
     "sortBy": "Sắp xếp theo",
     "sortLatest": "Mới nhất trước",

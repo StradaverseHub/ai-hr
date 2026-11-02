@@ -5267,6 +5267,7 @@
     "otPolicyPlanTotalsHelp": "Jumlah ini merujuk kepada setiap permohonan. Tempoh diluluskan yang bertindih dikira sekali sahaja dalam pengiraan kerja lebih masa."
   },
   "approvals": {
+    "viewOnly": "Lihat sahaja",
     "title": "Kelulusan",
     "sortBy": "Isih mengikut",
     "sortLatest": "Terkini dahulu",

@@ -5267,6 +5267,7 @@
     "otPolicyPlanTotalsHelp": "这些合计按每项申请统计。已批准的重叠时段在加班计算中只计一次。"
   },
   "approvals": {
+    "viewOnly": "仅查看",
     "title": "审批",
     "sortBy": "排序方式",
     "sortLatest": "最新优先",
