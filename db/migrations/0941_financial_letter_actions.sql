@@ -3383,26 +3383,28 @@ SELECT app.register_function_action('performance.onehr.assignedReview','edit','c
  'moduleKey','performance_compensation','labelKey','onehr.assignments','kind','native_acl','course','assigned','href','/performance/workspace','employeeBearing',false));
 CREATE FUNCTION app.onehr_plan_review(wanted_plan uuid,expected_revision integer,comment text,conversation text,close_plan boolean DEFAULT false,active_review uuid DEFAULT NULL,held_on date DEFAULT NULL,held_supplied boolean DEFAULT false) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE plan public.performance_onehr_plan%ROWTYPE;review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;wanted_review uuid;next_status text;next_held_on date;next_ack timestamptz;
+DECLARE plan public.performance_onehr_plan%ROWTYPE;review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;wanted_review uuid;next_status text;next_held_on date;next_ack timestamptz;effect_id uuid;completed_event_id uuid;next_plan jsonb;
 BEGIN
  IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR plan actor unavailable' USING ERRCODE='42501';END IF;
  IF comment IS NULL OR conversation IS NULL OR close_plan IS NULL OR held_supplied IS NULL OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(comment))>4000 OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(conversation))>4000
  OR app.financial_onehr_js_words(comment)>220 THEN RAISE EXCEPTION 'Invalid plan review text' USING ERRCODE='22023';END IF;
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO plan FROM public.performance_onehr_plan actual WHERE actual.id=wanted_plan AND actual.tenant_id=app.current_tenant_id();
- IF plan.id IS NULL THEN RAISE EXCEPTION 'Plan not found' USING ERRCODE='42501';END IF;
+ IF plan.id IS NULL OR NOT (EXISTS(SELECT 1 FROM app.onehr_review_task_plans(plan.review_id) plan_source WHERE plan_source.id=plan.id)
+ OR active_review IS NOT NULL AND EXISTS(SELECT 1 FROM app.onehr_review_task_plans(active_review) plan_source WHERE plan_source.id=plan.id)) THEN RAISE EXCEPTION 'Plan review not assigned to you' USING ERRCODE='42501';END IF;
  wanted_review:=coalesce(active_review,plan.review_id);
  SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=plan.tenant_id FOR UPDATE;
  SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
  SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
  SELECT * INTO plan FROM public.performance_onehr_plan actual WHERE actual.id=wanted_plan AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
- IF review.review_id IS NULL OR plan.id IS NULL OR review.employment_id IS DISTINCT FROM plan.employment_id
- OR plan.plan_year IS DISTINCT FROM (extract(year from cycle.period_end)::integer+CASE WHEN policy->>'kind'='year_end' THEN 1 ELSE 0 END)
+ IF review.review_id IS NULL OR plan.id IS NULL
  OR app.onehr_self_employment(plan.employment_id) OR NOT (app.onehr_effective_reviewer(review.review_id) OR app.onehr_moderator(review.review_id))
  OR NOT app.onehr_review_task_view(review.review_id,'assigned') OR NOT app.function_action_allowed('performance.onehr.assignedReview','edit',review.company_id)
  THEN RAISE EXCEPTION 'Plan review not assigned to you' USING ERRCODE='42501';END IF;
  IF plan.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
- IF policy->'modules'->>'idp' IS DISTINCT FROM 'true' OR NOT app.assessment_review_participates(review.review_id) OR cycle.status NOT IN ('open','calibration') THEN RAISE EXCEPTION 'This assessment period is read-only' USING ERRCODE='42501';END IF;
+ IF policy->'modules'->>'idp' IS DISTINCT FROM 'true' THEN RAISE EXCEPTION 'Development plans are disabled.' USING ERRCODE='42501';END IF;
+ IF review.employment_id IS DISTINCT FROM plan.employment_id OR plan.plan_year IS DISTINCT FROM (extract(year from cycle.period_end)::integer+CASE WHEN policy->>'kind'='year_end' THEN 1 ELSE 0 END) THEN RAISE EXCEPTION 'This assessment does not own the plan year.' USING ERRCODE='42501';END IF;
+ IF NOT app.assessment_review_participates(review.review_id) OR cycle.status NOT IN ('open','calibration') THEN RAISE EXCEPTION 'This assessment period is read-only' USING ERRCODE='42501';END IF;
  IF policy->'windows'->'idp_review'->>'opensAt' IS NOT NULL AND now()<(policy->'windows'->'idp_review'->>'opensAt')::timestamptz
  OR policy->'windows'->'idp_review'->>'closesAt' IS NOT NULL AND now()>=(policy->'windows'->'idp_review'->>'closesAt')::timestamptz THEN RAISE EXCEPTION 'This step is closed' USING ERRCODE='42501';END IF;
  IF comment IS DISTINCT FROM plan.manager_comment AND NOT app.assessment_plan_remark_writer(review.review_id) THEN RAISE EXCEPTION 'Only the eligible line manager writes the overall plan feedback.' USING ERRCODE='42501';END IF;
@@ -3411,11 +3413,15 @@ BEGIN
  next_status:=CASE WHEN close_plan OR plan.status='closed' THEN 'closed' ELSE 'shared' END;
  next_held_on:=CASE WHEN held_supplied THEN held_on ELSE plan.conversation_held_on END;
  next_ack:=CASE WHEN conversation IS DISTINCT FROM plan.conversation OR held_supplied AND held_on IS DISTINCT FROM plan.conversation_held_on THEN NULL ELSE plan.acknowledged_at END;
+ next_plan:=to_jsonb(plan)||jsonb_build_object('manager_comment',comment,'conversation',conversation,'conversation_held_on',next_held_on,'acknowledged_at',next_ack,'status',next_status,'revision',plan.revision+1);
+ INSERT INTO app.financial_onehr_plan_effect(transaction_id,tenant_id,user_id,plan_id,operation,before_row,after_row) VALUES(pg_current_xact_id(),plan.tenant_id,app.current_user_id(),plan.id,'review',to_jsonb(plan),next_plan) RETURNING id INTO effect_id;
  UPDATE public.performance_onehr_plan actual SET manager_comment=comment,conversation=onehr_plan_review.conversation,conversation_held_on=next_held_on,acknowledged_at=next_ack,status=next_status,revision=plan.revision+1 WHERE actual.id=plan.id AND actual.tenant_id=plan.tenant_id;
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
  VALUES(plan.tenant_id,'onehr',plan.id,CASE WHEN close_plan THEN 'onehr.plan-closed' ELSE 'onehr.plan-reviewed' END,'user',app.current_user_id(),plan.employment_id,
  jsonb_build_object('reviewId',review.review_id,'previous',jsonb_build_object('comment',plan.manager_comment,'conversation',plan.conversation,'heldOn',plan.conversation_held_on,'status',plan.status),
- 'next',jsonb_build_object('comment',comment,'conversation',conversation,'heldOn',next_held_on,'status',next_status)));
+ 'next',jsonb_build_object('comment',comment,'conversation',conversation,'heldOn',next_held_on,'status',next_status))) RETURNING id INTO completed_event_id;
+ UPDATE app.financial_onehr_plan_effect effect SET event_id=completed_event_id WHERE effect.id=effect_id AND effect.transaction_id=pg_current_xact_id() AND effect.consumed;
+ IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM public.performance_onehr_plan actual WHERE actual.id=plan.id AND actual.tenant_id=plan.tenant_id AND to_jsonb(actual)=next_plan) THEN RAISE EXCEPTION 'Plan review did not complete' USING ERRCODE='42501';END IF;
  RETURN plan.revision+1;
 END;
 $$;
@@ -4417,7 +4423,7 @@ GRANT EXECUTE ON FUNCTION app.onehr_kpi_checkin(uuid,integer,uuid,text,text) TO 
 --> statement-breakpoint
 CREATE TABLE app.financial_onehr_plan_effect(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,plan_id uuid NOT NULL,
- operation text NOT NULL CHECK(operation IN ('reopen','acknowledge','progress')),before_row jsonb NOT NULL,after_row jsonb NOT NULL,consumed boolean NOT NULL DEFAULT false,event_id uuid REFERENCES public.domain_event(id)
+ operation text NOT NULL CHECK(operation IN ('reopen','acknowledge','progress','review')),before_row jsonb NOT NULL,after_row jsonb NOT NULL,consumed boolean NOT NULL DEFAULT false,event_id uuid REFERENCES public.domain_event(id)
 );
 ALTER TABLE app.financial_onehr_plan_effect ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.financial_onehr_plan_effect FROM PUBLIC,ai_hr_app;
@@ -4671,3 +4677,26 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.onehr_administrative_skill_history(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_administrative_skill_history(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- A recorded plan review must come from the actual assigned review writer; an
+-- Own raw mutation may not manufacture the closed-plan acknowledgement source.
+CREATE FUNCTION app.financial_onehr_plan_review_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE receipt uuid;review_delta boolean;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF TG_OP='INSERT' THEN
+  IF NEW.status='closed' OR NEW.manager_comment<>'' OR NEW.conversation<>'' OR NEW.conversation_held_on IS NOT NULL THEN RAISE EXCEPTION 'Plan review source unavailable' USING ERRCODE='42501';END IF;RETURN NEW;
+ END IF;
+ UPDATE app.financial_onehr_plan_effect effect SET consumed=true WHERE effect.id=(SELECT candidate.id FROM app.financial_onehr_plan_effect candidate
+ WHERE candidate.transaction_id=pg_current_xact_id() AND candidate.tenant_id=NEW.tenant_id AND candidate.user_id=app.current_user_id() AND candidate.plan_id=NEW.id AND candidate.operation='review' AND NOT candidate.consumed
+ AND candidate.before_row=to_jsonb(OLD) AND candidate.after_row=to_jsonb(NEW) LIMIT 1) RETURNING id INTO receipt;
+ IF receipt IS NOT NULL THEN IF NOT app.financial_human_principal_current() THEN RAISE EXCEPTION 'Plan review principal unavailable' USING ERRCODE='42501';END IF;RETURN NEW;END IF;
+ review_delta:=NEW.manager_comment IS DISTINCT FROM OLD.manager_comment OR NEW.conversation IS DISTINCT FROM OLD.conversation OR NEW.conversation_held_on IS DISTINCT FROM OLD.conversation_held_on OR NEW.status='closed' AND NEW.status IS DISTINCT FROM OLD.status OR NEW.acknowledged_at IS NULL AND OLD.acknowledged_at IS NOT NULL;
+ IF review_delta AND NOT EXISTS(SELECT 1 FROM app.financial_onehr_plan_effect sibling WHERE sibling.transaction_id=pg_current_xact_id() AND sibling.tenant_id=NEW.tenant_id AND sibling.user_id=app.current_user_id() AND sibling.plan_id=NEW.id AND sibling.operation='reopen' AND sibling.consumed AND sibling.before_row=to_jsonb(OLD) AND sibling.after_row=to_jsonb(NEW)) THEN RAISE EXCEPTION 'Plan review source unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_plan_review_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER z_financial_onehr_plan_review_guard BEFORE INSERT OR UPDATE ON public.performance_onehr_plan FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_plan_review_guard();
