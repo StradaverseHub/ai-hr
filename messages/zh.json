@@ -29785,7 +29785,15 @@
       "profileReview": "审核符合条件的资料更改",
       "workforceAdd": "添加员工记录",
       "workforceEdit": "编辑员工记录",
-      "workforceDelete": "删除员工记录"
+      "workforceDelete": "删除员工记录",
+      "organisationView": "组织 · 查看",
+      "organisationAdd": "组织 · 添加",
+      "organisationEdit": "组织 · 编辑",
+      "organisationDelete": "组织 · 删除",
+      "settingsView": "设置 · 查看",
+      "settingsAdd": "设置 · 添加",
+      "settingsEdit": "设置 · 编辑",
+      "settingsDelete": "设置 · 删除"
     },
     "workforceReadOnly": "您可以查看此员工记录。您当前的人事权限不允许修改。",
     "workforceCommandHint": "您可以修改员工编号。此页的其他资料仅供查看。",
@@ -29823,7 +29831,9 @@
     "matrixOther": "其他权限",
     "matrixPayroll": "薪资",
     "matrixPerformanceCompensation": "绩效与薪酬",
-    "matrixLetters": "信函"
+    "matrixLetters": "信函",
+    "matrixOrganisation": "组织",
+    "matrixSettings": "设置"
   },
   "myPayslip": {
     "title": "我的工资单",

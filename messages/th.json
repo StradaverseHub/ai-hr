@@ -29785,7 +29785,15 @@
       "profileReview": "ตรวจสอบคำขอเปลี่ยนข้อมูลที่มีสิทธิ์",
       "workforceAdd": "เพิ่มข้อมูลพนักงาน",
       "workforceEdit": "แก้ไขข้อมูลพนักงาน",
-      "workforceDelete": "ลบข้อมูลพนักงาน"
+      "workforceDelete": "ลบข้อมูลพนักงาน",
+      "organisationView": "องค์กร · ดู",
+      "organisationAdd": "องค์กร · เพิ่ม",
+      "organisationEdit": "องค์กร · แก้ไข",
+      "organisationDelete": "องค์กร · ลบ",
+      "settingsView": "การตั้งค่า · ดู",
+      "settingsAdd": "การตั้งค่า · เพิ่ม",
+      "settingsEdit": "การตั้งค่า · แก้ไข",
+      "settingsDelete": "การตั้งค่า · ลบ"
     },
     "workforceReadOnly": "คุณดูข้อมูลพนักงานนี้ได้ แต่สิทธิ์ด้านบุคลากรปัจจุบันไม่อนุญาตให้แก้ไข",
     "workforceCommandHint": "คุณเปลี่ยนรหัสพนักงานได้ ส่วนข้อมูลอื่นในหน้านี้ดูได้อย่างเดียว",
@@ -29823,7 +29831,9 @@
     "matrixOther": "สิทธิ์อื่น",
     "matrixPayroll": "เงินเดือน",
     "matrixPerformanceCompensation": "ผลงานและค่าตอบแทน",
-    "matrixLetters": "จดหมาย"
+    "matrixLetters": "จดหมาย",
+    "matrixOrganisation": "องค์กร",
+    "matrixSettings": "การตั้งค่า"
   },
   "myPayslip": {
     "title": "สลิปเงินเดือนของฉัน",

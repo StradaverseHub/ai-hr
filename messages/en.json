@@ -29785,7 +29785,15 @@
       "profileReview": "Review eligible profile changes",
       "workforceAdd": "Add workforce records",
       "workforceEdit": "Edit workforce records",
-      "workforceDelete": "Delete workforce records"
+      "workforceDelete": "Delete workforce records",
+      "organisationView": "Organisation · View",
+      "organisationAdd": "Organisation · Add",
+      "organisationEdit": "Organisation · Edit",
+      "organisationDelete": "Organisation · Delete",
+      "settingsView": "Settings · View",
+      "settingsAdd": "Settings · Add",
+      "settingsEdit": "Settings · Edit",
+      "settingsDelete": "Settings · Delete"
     },
     "workforceReadOnly": "You can view this employee record. Your current Workforce permission does not allow changes.",
     "workforceCommandHint": "You can change the Employee ID. Other details on this page are view only.",
@@ -29823,7 +29831,9 @@
     "matrixOther": "Other permissions",
     "matrixPayroll": "Payroll",
     "matrixPerformanceCompensation": "Performance and Compensation",
-    "matrixLetters": "Letters"
+    "matrixLetters": "Letters",
+    "matrixOrganisation": "Organisation",
+    "matrixSettings": "Settings"
   },
   "myPayslip": {
     "title": "My Payslip",

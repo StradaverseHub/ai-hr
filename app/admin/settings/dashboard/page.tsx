@@ -61,7 +61,7 @@ export default async function DashboardCardConfigPage({
   const typeFilter = isCardType(sp.type) ? sp.type : '';
   const statusFilter = sp.status === 'active' || sp.status === 'inactive' ? sp.status : '';
 
-  const cards = await listCards(s);
+  const cards = await listCards(s,true);
   const editing: DashboardCardRow | null = edit ? cards.find((c) => c.id === edit) ?? null : null;
   const showForm = Boolean(editing || newParam);
 

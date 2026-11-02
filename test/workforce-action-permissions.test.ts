@@ -37,7 +37,7 @@ describe('genuine Workforce operations',()=>{
   await expect(maintainWorkforceRecord(bounded,{employmentId:employee.employmentId,kind:'qualification',rowId:added.id,operation:'update',patch:{description:'Denied edit'},expectedVersion:row.version})).rejects.toThrow();
   await expect(maintainWorkforceRecord(bounded,{employmentId:employee.employmentId,kind:'qualification',rowId:added.id,operation:'archive',patch:{},expectedVersion:row.version})).rejects.toThrow();
   const [outside]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional outside action company'}).returning();
-  const [department]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:outside.id,name:'Fictional outside department',code:'OUT'}).returning();
+  const [department]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:outside.id,name:'Fictional outside department'}).returning();
   const other=await hireEmployee(context,{person:{fullName:'Fictional outside person',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:outside.id,departmentId:department.id,employmentType:'full_time',hiredOn:'2026-01-01'});
   await expect(maintainWorkforceRecord(bounded,{employmentId:other.employmentId,kind:'qualification',rowId:null,operation:'add',patch:{qualification:'Denied outside company',isHighest:false},expectedVersion:null})).rejects.toThrow();
   await expect(hireEmployee(bounded,{person:{fullName:'No fake HR',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'})).rejects.toThrow();

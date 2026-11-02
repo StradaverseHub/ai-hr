@@ -29785,7 +29785,15 @@
       "profileReview": "Xét duyệt thay đổi hồ sơ đủ điều kiện",
       "workforceAdd": "Thêm hồ sơ nhân sự",
       "workforceEdit": "Sửa hồ sơ nhân sự",
-      "workforceDelete": "Xóa hồ sơ nhân sự"
+      "workforceDelete": "Xóa hồ sơ nhân sự",
+      "organisationView": "Tổ chức · Xem",
+      "organisationAdd": "Tổ chức · Thêm",
+      "organisationEdit": "Tổ chức · Sửa",
+      "organisationDelete": "Tổ chức · Xóa",
+      "settingsView": "Cài đặt · Xem",
+      "settingsAdd": "Cài đặt · Thêm",
+      "settingsEdit": "Cài đặt · Sửa",
+      "settingsDelete": "Cài đặt · Xóa"
     },
     "workforceReadOnly": "Bạn có thể xem hồ sơ nhân viên này. Quyền nhân sự hiện tại của bạn không cho phép thay đổi.",
     "workforceCommandHint": "Bạn có thể đổi mã nhân viên. Các thông tin khác trên trang này chỉ được xem.",
@@ -29823,7 +29831,9 @@
     "matrixOther": "Quyền khác",
     "matrixPayroll": "Tiền lương",
     "matrixPerformanceCompensation": "Hiệu suất và đãi ngộ",
-    "matrixLetters": "Thư"
+    "matrixLetters": "Thư",
+    "matrixOrganisation": "Tổ chức",
+    "matrixSettings": "Cài đặt"
   },
   "myPayslip": {
     "title": "Phiếu lương của tôi",

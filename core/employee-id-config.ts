@@ -386,51 +386,9 @@ export async function issueEmployeeCode(
   tenantId: string,
   companyId: string,
 ): Promise<{ code: string; configId: string; number: number } | null> {
-  // Company-specific wins over global. One SELECT ordered so the company row (company_id = companyId) sorts
-  // before the global row (company_id NULL); FOR UPDATE row-locks the chosen config so concurrent hires
-  // serialize on it (belt-and-braces with the tenant-wide employee_code unique index).
-  const rows = await tx
-    .select({
-      id: employeeIdConfig.id,
-      prefix: employeeIdConfig.prefix,
-      suffix: employeeIdConfig.suffix,
-      startNumber: employeeIdConfig.startNumber,
-      numberLength: employeeIdConfig.numberLength,
-      increment: employeeIdConfig.increment,
-      currentRunningNumber: employeeIdConfig.currentRunningNumber,
-      companyId: employeeIdConfig.companyId,
-    })
-    .from(employeeIdConfig)
-    .where(
-      and(
-        eq(employeeIdConfig.tenantId, tenantId),
-        eq(employeeIdConfig.status, 'active'),
-        or(eq(employeeIdConfig.companyId, companyId), isNull(employeeIdConfig.companyId)),
-      ),
-    )
-    // company-specific (companyId NOT NULL) first, then global.
-    .orderBy(sql`${employeeIdConfig.companyId} is null`)
-    .limit(1)
-    .for('update');
-  const cfg = rows[0];
-  if (!cfg) return null;
-  // Atomic advance (plumbing — no DomainEvent; the issued code rides on the existing employment.hired event).
-  // next = startNumber on first issue (current < start), else current + increment. Row-locked by FOR UPDATE.
-  const [advanced] = await tx
-    .update(employeeIdConfig)
-    .set({
-      currentRunningNumber: sql`case
-        when ${employeeIdConfig.currentRunningNumber} < ${cfg.startNumber} then ${cfg.startNumber}
-        else ${employeeIdConfig.currentRunningNumber} + ${cfg.increment} end`,
-      updatedAt: sql`now()`,
-    })
-    .where(eq(employeeIdConfig.id, cfg.id))
-    .returning({ n: employeeIdConfig.currentRunningNumber });
-  return {
-    code: formatEmployeeCode(cfg.prefix, advanced.n, cfg.numberLength, cfg.suffix),
-    configId: cfg.id,
-    number: advanced.n,
-  };
+  const [row]=await tx.execute<{code:string;config_id:string;number:number}>(sql`select * from app.organisation_allocate_employee_code(${companyId}::uuid)`);
+  if(row && row.code.length>EMPLOYEE_CODE_MAX_LEN)throw new EmployeeCodeTooLongError(`Generated Employee ID exceeds ${EMPLOYEE_CODE_MAX_LEN} characters — widen the number length or reset the sequence`);
+  return row?{code:row.code,configId:row.config_id,number:row.number}:null;
 }
 
 // ─────────────────────────── Reads ───────────────────────────

@@ -982,7 +982,13 @@ BEGIN
   ELSIF TG_OP='UPDATE' THEN UPDATE app.data_permission_read_generation g SET generation=g.generation+1 WHERE g.tenant_id IN(SELECT id FROM new_rows);END IF;
   RETURN NULL;
  END IF;
- IF TG_OP='UPDATE' AND cardinality(columns)>0 THEN
+ -- Agent execution switches change work, not who may see employee records. ESS policy
+ -- settings do change record/field/approval authority and remain part of this fence.
+ IF TG_TABLE_NAME='tenant_setting' THEN
+  IF TG_OP='UPDATE' THEN
+   query:='SELECT DISTINCT tenant_id FROM (SELECT tenant_id,key FROM new_rows UNION ALL SELECT tenant_id,key FROM old_rows) changed WHERE key LIKE ''ess.%''';
+  ELSE query:='SELECT DISTINCT tenant_id FROM '||CASE WHEN TG_OP='DELETE' THEN 'old_rows' ELSE 'new_rows' END||' WHERE key LIKE ''ess.%''';END IF;
+ ELSIF TG_OP='UPDATE' AND cardinality(columns)>0 THEN
   query:='SELECT DISTINCT n.tenant_id FROM new_rows n JOIN old_rows o USING(id) WHERE EXISTS(SELECT 1 FROM unnest($1::text[]) column_name WHERE to_jsonb(n)->column_name IS DISTINCT FROM to_jsonb(o)->column_name)';
  ELSE query:='SELECT DISTINCT tenant_id FROM '||CASE WHEN TG_OP='DELETE' THEN 'old_rows' ELSE 'new_rows' END;END IF;
  FOR t IN EXECUTE query USING columns LOOP

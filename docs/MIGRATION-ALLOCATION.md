@@ -940,19 +940,11 @@ and release evidence, and grants no deployment authority. Existing applied SQL i
 ## Administrative data-profile central enforcement — 2 November 2026 (provisional)
 
 Security worker appends `0938_data_permission_enforcement`, aggregate index760,
-when1793330000338, SQL SHA256 `11013445c30fbfb8a30244989801370d3095a00bdcf5964ead3c43ec200eeb32`. Its owned source journal leaves
+when1793330000338, SQL SHA256 `4f6e420f99ce792b628e86e21cfd0f89ef5fd16a689b6c53d3a613580d174b42`. Its owned source journal leaves
 index759 reserved for the independent0937 / when1793330000337 bypass-owner migration.
 The integration owner must merge0937 in chronological order and re-audit competing claims and live
 watermark before installation. This central row-scope prerequisite does not claim that the complete
 requested action-binding expansion has passed acceptance or is ready for release.
-
-## Bounded approval task sources — 2 November 2026 (provisional)
-
-Parent allocation audit reserved `0940_bounded_approval_task_sources`, aggregate idx762 /
-when1793330000340, after0939's independently owned action split. It preserves exact Profile
-and Leave task responsibility through request-bound projections and native effect witnesses,
-without a general Personnel read exception. Branch `codex/approved-board-task-projections-20261102`.
-Unapplied source only; re-audit live watermark and refs before coordinated release. No installation authority.
 
 ## Workforce action split — 2 November 2026 (provisional source claim)
 
@@ -962,6 +954,37 @@ owners, exact birth/source custody and retained independent workflow witnesses. 
 unapplied source, requires aggregate hosted migration/behavior checks and re-audit before
 installation, and grants no deployment authority. The full module-binding item is not yet
 accepted solely by this Workforce checkpoint.
+
+## Bounded approval task sources — 2 November 2026 (provisional)
+
+Parent allocation audit reserved `0940_bounded_approval_task_sources`, aggregate idx762 /
+when1793330000340, after0939's independently owned action split. It preserves exact Profile
+and Leave task responsibility through request-bound projections and native effect witnesses,
+without a general Personnel read exception. Branch `codex/approved-board-task-projections-20261102`.
+Unapplied source only; re-audit live watermark and refs before coordinated release. No installation authority.
+
+## Financial and Letters action restrictions — 2 November 2026 (provisional)
+
+Security worker reserves `0941_financial_letter_actions`, aggregate index763,
+when1793330000341, SQL SHA256 `22f31fc660d771383ab50c6ecd12d18c6dde6aa31d13f5e04739eefec2f44a5e`. This source checkpoint depends on
+0939 Workforce action helpers and0940 bounded Profile effect proofs. Parent owns0942
+Organisation/Settings and0945 Financial setup/history;0943/0944 are independently allocated.
+The code-owned publisher requires `app.financial_letter_bindings_complete()`; this checkpoint
+intentionally does not define that final closure prerequisite while kernel action bindings remain
+in progress. A parsed migration and legacy pass do not claim completed action coverage.
+Re-audit every ref/worktree journal and installation watermark before release; no deployment is
+authorized.
+
+## Organisation and shared configuration actions — 2 November 2026 (provisional)
+
+Parent BOARD owner reserves `0942_organisation_settings_actions`, aggregate idx764 /
+when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `135ccc711c6d3bfc801df1dd55c4a6b6834ff85dd08a069a032309696948d369`.
+This is unapplied implementation source. It retains native role/company floors, separates
+reference pickers from maintenance views, guards current/proposed organisation scopes, and
+binds employee-number allocation/release to private native effects. Hosted SQL/behavior and
+populated-upgrade evidence remain pending. Shared settings coverage is still being extended;
+no completed binding or installation claim follows this checkpoint. Recheck every source
+reservation and the actual post-Noveri installation ledger before release admission.
 
 ## Lifecycle, Rewards and Notice action owners — 2 November 2026 (provisional source claim)
 

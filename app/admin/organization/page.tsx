@@ -1,3 +1,4 @@
+import {organisationAccess,organisationViewCompanies} from '@/core/organisation-access';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -106,12 +107,15 @@ export default async function OrganizationPage({
   // Three reads, all RLS-scoped. The per-company panel data (bank profiles, statutory authorities,
   // signatories, profile options, payroll cycles) moved to the maintenance page with the panel it
   // feeds — a browse screen has no business running an N+1 over payroll cycles.
-  const [companies, tree, statutory] = await Promise.all([
+  const [sourceCompanies, sourceTree, statutory] = await Promise.all([
     listCompanies(s, { includeArchived: true, adminOnly: true }),
     companyTree(s),
     // Rung 5c — company statutory rows come through the pack registry (ADR-0080 D1), not a direct import.
     packFor('MY')?.companyStatutory.list(s) ?? [],
   ]);
+  const visible=new Set(await organisationViewCompanies(s));
+  const companies=sourceCompanies.filter(row=>visible.has(row.id));
+  const tree=sourceTree.filter(row=>visible.has(row.id));
   const statBy = new Map(statutory.map((r) => [r.companyId, r]));
 
   // Feedback efece4ce — the active Malaysian companies with NO statutory record at all. Payroll resolves a
@@ -142,13 +146,15 @@ export default async function OrganizationPage({
     return `/admin/organization?${p.toString()}`;
   };
 
+  const canAddCompany=await organisationAccess(s,'add',null);
+  const actionControls=Object.fromEntries(await Promise.all(pageRows.map(async row=>[row.id,{edit:await organisationAccess(s,'edit',row.id),delete:await organisationAccess(s,'delete',row.id)}])));
   return (
     <div className={pageWideCls}>
       <PageHeader
         title={t('pageTitle')}
         description={t('pageDescription')}
         actions={
-          <Link href="/admin/organization/new" data-tour="people-org-add" className={btnPrimary}>
+          canAddCompany && <Link href="/admin/organization/new" data-tour="people-org-add" className={btnPrimary}>
             <span aria-hidden className="text-base leading-none">
               +
             </span>
@@ -284,6 +290,7 @@ export default async function OrganizationPage({
                   unarchive: t('actionUnarchive'),
                 }}
                 archiveAction={archiveCompanyAction}
+                actionControls={actionControls}
               />
             </tbody>
           </table>
