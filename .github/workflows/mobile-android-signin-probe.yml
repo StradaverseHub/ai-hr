@@ -24,7 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           export JAVA_HOME="$JAVA_HOME_17_X64"
-          export PATH="$JAVA_HOME/bin:$PATH"
+          export PATH="$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           sdkmanager 'platforms;android-34'
           platform="$ANDROID_HOME/platforms/android-34"
           build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
