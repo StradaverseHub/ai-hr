@@ -3477,7 +3477,7 @@ CREATE FUNCTION app.financial_onehr_scorecard_complete(kpis jsonb,require_total 
 LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE kpi jsonb;scoring jsonb;mechanism text;total double precision:=0;weight double precision;rate jsonb;previous double precision;current_rate double precision;target double precision;multiple double precision;
 BEGIN
- IF jsonb_typeof(kpis) IS DISTINCT FROM 'array' OR jsonb_array_length(kpis)=0 OR jsonb_array_length(kpis)>100 THEN RAISE EXCEPTION 'KPI weights must total exactly 100%%.' USING ERRCODE='22023';END IF;
+ IF jsonb_typeof(kpis) IS DISTINCT FROM 'array' OR jsonb_array_length(kpis)=0 THEN RAISE EXCEPTION 'KPI weights must total exactly 100%%.' USING ERRCODE='22023';END IF;
  FOR kpi IN SELECT value FROM jsonb_array_elements(kpis) LOOP
   IF jsonb_typeof(kpi->'weightBp') IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'Invalid KPI weight' USING ERRCODE='22023';END IF;
   weight:=(kpi->>'weightBp')::double precision;
@@ -3571,7 +3571,7 @@ LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg
 DECLARE kpi jsonb;scoring jsonb;actual double precision;rating double precision;raw double precision;target double precision;threshold double precision;cap double precision;multiple double precision;total double precision:=0;weighted double precision:=0;score double precision;minima jsonb;rate jsonb;position integer;band text;bands text[]:=ARRAY['UA','BE','ME','AE','OU'];
 BEGIN
  IF manager_course IS NULL OR jsonb_typeof(kpis) IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Invalid scorecard source' USING ERRCODE='22023';END IF;
- IF jsonb_array_length(kpis)=0 OR EXISTS(SELECT 1 FROM jsonb_array_elements(kpis) candidate WHERE CASE WHEN manager_course THEN NOT coalesce((candidate->>'locked')::boolean,false) ELSE candidate->>'actual' IS NULL END) THEN RETURN jsonb_build_object('score',NULL,'band',NULL);END IF;
+ IF jsonb_array_length(kpis)=0 OR EXISTS(SELECT 1 FROM jsonb_array_elements(kpis) candidate WHERE CASE WHEN manager_course THEN NOT coalesce((candidate->>'locked')::boolean,false) ELSE candidate->>'actual' IS NULL END) THEN RETURN jsonb_build_object('score',NULL,'band',NULL,'scoreText',NULL);END IF;
  PERFORM app.financial_onehr_scorecard_complete(kpis,false);
  FOR kpi IN SELECT value FROM jsonb_array_elements(kpis) LOOP
   scoring:=kpi->'scoring';
@@ -3587,23 +3587,24 @@ BEGIN
    threshold:=(scoring->>'threshold')::double precision;target:=(scoring->>'target')::double precision;multiple:=coalesce((scoring->>'multiple')::double precision,0);
    IF scoring->>'method'='more' AND actual<=threshold OR scoring->>'method'='less' AND actual>=threshold THEN rating:=0;
    ELSE
-    raw:=CASE WHEN scoring->>'method'='more' THEN actual/target*100 ELSE (2-actual/target)*100 END;
+    raw:=app.financial_onehr_ieee('multiply',CASE WHEN scoring->>'method'='more' THEN app.financial_onehr_ieee('divide',actual,target) ELSE app.financial_onehr_ieee('subtract',2,app.financial_onehr_ieee('divide',actual,target)) END,100);
     IF scoring->>'variant'='excellence' THEN
-     cap:=CASE WHEN scoring->>'method'='more' THEN (scoring->>'excellence')::double precision/target*100 ELSE (2-(scoring->>'excellence')::double precision/target)*100 END;
-     rating:=least(raw,cap);
-    ELSE rating:=CASE WHEN raw<=100 THEN raw ELSE 100+(raw-100)*multiple/100 END;END IF;
+     cap:=app.financial_onehr_ieee('multiply',CASE WHEN scoring->>'method'='more' THEN app.financial_onehr_ieee('divide',(scoring->>'excellence')::double precision,target) ELSE app.financial_onehr_ieee('subtract',2,app.financial_onehr_ieee('divide',(scoring->>'excellence')::double precision,target)) END,100);
+     rating:=CASE WHEN raw='NaN'::double precision OR cap='NaN'::double precision THEN 'NaN'::double precision ELSE least(raw,cap) END;
+    ELSE rating:=CASE WHEN raw<=100 THEN raw ELSE app.financial_onehr_ieee('add',100,app.financial_onehr_ieee('divide',app.financial_onehr_ieee('multiply',app.financial_onehr_ieee('subtract',raw,100),multiple),100)) END;END IF;
    END IF;
   END IF;
-  total:=total+(kpi->>'weightBp')::double precision;
-  weighted:=weighted+rating*(kpi->>'weightBp')::double precision;
+  total:=app.financial_onehr_ieee('add',total,(kpi->>'weightBp')::double precision);
+  weighted:=app.financial_onehr_ieee('add',weighted,app.financial_onehr_ieee('multiply',rating,(kpi->>'weightBp')::double precision));
  END LOOP;
- IF total=0 THEN RETURN jsonb_build_object('score',NULL,'band',NULL);END IF;
- score:=weighted/total;
+ IF total=0 THEN RETURN jsonb_build_object('score',NULL,'band',NULL,'scoreText','NaN');END IF;
+ score:=app.financial_onehr_ieee('divide',weighted,total);
  IF kpis->0->'scoring'->>'mechanism'='A' THEN minima:=policy->'aBands';
  ELSE SELECT configured->'minima' INTO minima FROM jsonb_array_elements(coalesce(policy->'bBands','[]'::jsonb)) configured WHERE configured->>'companyId'=wanted_company::text LIMIT 1;END IF;
  IF minima IS NULL THEN RAISE EXCEPTION 'Configure achievement bands for this company.' USING ERRCODE='22023';END IF;
- position:=0;FOR rate IN SELECT value FROM jsonb_array_elements(minima) LOOP position:=position+1;IF score>=(rate#>>'{}')::double precision THEN band:=bands[position];END IF;END LOOP;
- RETURN jsonb_build_object('score',score,'band',band);
+ position:=0;FOR rate IN SELECT value FROM jsonb_array_elements(minima) LOOP position:=position+1;IF score<>'NaN'::double precision AND score>=(rate#>>'{}')::double precision THEN band:=bands[position];END IF;END LOOP;
+ RETURN jsonb_build_object('score',CASE WHEN score IN ('NaN'::double precision,'Infinity'::double precision,'-Infinity'::double precision) THEN NULL ELSE score END,'band',band,
+ 'scoreText',CASE WHEN score=0 THEN '0' ELSE score::text END);
 END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_scorecard(jsonb,jsonb,uuid,boolean) FROM PUBLIC,ai_hr_app;
@@ -3702,3 +3703,25 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_kpi_moderator_assign(uuid,integer,uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_kpi_moderator_assign(uuid,integer,uuid,uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- PostgreSQL raises on derived float overflow/underflow where the original JS
+-- double owner produces IEEE Infinity/zero. Handle only that arithmetic condition;
+-- authority, source and storage errors are never caught here.
+CREATE FUNCTION app.financial_onehr_ieee(operation text,a double precision,b double precision) RETURNS double precision
+LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE negative boolean;
+BEGIN
+ CASE operation WHEN 'add' THEN RETURN a+b;WHEN 'subtract' THEN RETURN a-b;WHEN 'multiply' THEN RETURN a*b;WHEN 'divide' THEN RETURN a/b;
+ ELSE RAISE EXCEPTION 'Unknown scalar operation' USING ERRCODE='22023';END CASE;
+EXCEPTION WHEN numeric_value_out_of_range THEN
+ IF operation IN ('multiply','divide') AND a<>0 AND b<>0 AND a NOT IN ('NaN'::double precision,'Infinity'::double precision,'-Infinity'::double precision) AND b NOT IN ('NaN'::double precision,'Infinity'::double precision,'-Infinity'::double precision) THEN
+  negative:=(a<0)<>(b<0);
+  IF (CASE WHEN operation='multiply' THEN ln(abs(a))+ln(abs(b)) ELSE ln(abs(a))-ln(abs(b)) END)<0 THEN RETURN CASE WHEN negative THEN '-0'::double precision ELSE '0'::double precision END;END IF;
+  RETURN CASE WHEN negative THEN '-Infinity'::double precision ELSE 'Infinity'::double precision END;
+ ELSIF operation IN ('add','subtract') THEN RETURN CASE WHEN a<0 THEN '-Infinity'::double precision ELSE 'Infinity'::double precision END;
+ END IF;
+ RAISE;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_ieee(text,double precision,double precision) FROM PUBLIC,ai_hr_app;
