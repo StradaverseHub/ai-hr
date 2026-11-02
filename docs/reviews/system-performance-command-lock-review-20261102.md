@@ -1,64 +1,43 @@
-## Current result: punch batching is component-correct; both original500-user profiles still fail
+## Current result: Personnel read qualified; whole-system500-user target remains unmet
 
-**Not staging-ready;0/2 activity targets accepted.** Frozen application candidate
-29f806a36a957fe808cdaf90d14e4ede853357cb finishes both original workloads FAIL:
+The Personnel page now reuses one existing authorized Workforce projection for its
+rows, exact total and status facets. Ownedbb8a2bfdf /41450897584 passes137 affected
+checks across13 files plus the fresh whole compiler. Same-run alternating comparison
+435006109 /41453113143 measures193.64→91.58ms mean over four paired native reads
+with512 visible records,52.71% lower elapsed time for this component. Projection
+count3→1 is proven by native PostgreSQL statistics; the original red341b/41449936703
+is preserved. Rows, order, filters, totals and tenant boundaries remain exact.
+See [Personnel repair review](system-performance-personnel-page-review-20261102.md) for source, controls and limits.
 
-|Activity|Complete user accounting|HTTP stage|Hydrated browsers|Audit chains|
-|---|---|---|---|---|
-|[1s41438476472](https://github.com/StradaverseHub/ai-hr/actions/runs/41438476472)|497 completed/3 failed/0 active;552 iterations|579.720s,within600s|6/6|valid2823/2166 checked,no interior gaps|
-|[5s41438488700](https://github.com/StradaverseHub/ai-hr/actions/runs/41438488700)|439 completed/61 failed/0 active;445 iterations|593.691s,within600s|6/6|valid2005/2166 checked,no interior gaps|
+The primary draft now includes this qualified Personnel change and the genuine
+self-approval test-fixture repair alongside its earlier performance work. The punch-audit, shell and authentication variants
+remain separate. Existing bounded remote Personnel search is still in this candidate;
+staging's installed source has not received it. No change has been deployed.
 
-All functional errors are request aborts; bounded server metadata records no native
-SQL failure. This does not prove a latent lock race fixed. Both retain3 loaded Home
-failures. Role read p95 is58.909–61.171s/61.157–64.457s; write83.761–86.997s/
-85.701–87.326s for1s/5s. Employee/manager navigation p95 is110.584/114.352s and
-115.939/122.198s. Both speed targets fail. No aggregate percentile or accepted overall
-improvement percentage follows. Strict source/controller/resource/fixture extraction:
-/private/tmp/aihr-punch-audit-terminal-results-20261102.json. Original workload,
-30routes/six mixed workflows,six browser contexts,500principals,two million retained
-Claims/Attendance rows,1worker,pool10,heap4096MiB,standard4CPU,durable~2GiB PostgreSQL,
-5mhold,90srequests and600sparent remain unchanged. This is development capacity
-work,not production-equivalent acceptance or every system mutation.
+Read-only live checks confirm the recorded staging source and disk build match and
+the projection body matches0676. The user completed sign-in and the Personnel list
+now renders. The browser observations do not establish authenticated server TTFB;
+automation times include bridge overhead. Private runtime details stay private.
 
-Retained native/compiler evidence qualifies only the local punch batching seam:
-41435188440 whole compiler and255/256 checks pass; its original user/person fixture
-failure is preserved. Test-only29f8 recovery41436873302 passes20/20 and the fresh
-whole compiler,keeping explicit identity mismatch/self-approval refusal. Isolated
-41436877396 passes12 approvals,exact ordered4-event payloads/actors/subjects,
-12batchSQL/48rows,2valid108-event chains,and actual final-audit SQL rollback of
-punches,journal and participant evidence followed by valid120-event recovery.
-Mean isolated callback874.045→704.370ms and post-first append134.341→76.179ms
-justified this pair; neither component result establishes system capacity. Candidate
-base is retained07f plus only this punch repair,excluding unaccepted f2b feedback
-and shell/auth experiments. Benchmark bytes equal f2b,but direct causal percentage
-versus f2b is not claimed. Punch batching is not promoted into the primary draft.
-See [independent contention review](system-performance-independent-contention-20261102.md).
+**0/2 original500-user activity targets accepted.** Latest frozen29f8 runs
+[1s41438476472](https://github.com/StradaverseHub/ai-hr/actions/runs/41438476472) and
+[5s41438488700](https://github.com/StradaverseHub/ai-hr/actions/runs/41438488700) both
+finish FAIL with complete accounting:497/3 and439/61 completed/failed,6/6 browsers,
+two valid tenant audit chains each,3 Home failures each and unmet p95 targets.
+The Personnel component result is not an overall system percentage or acceptance
+of millions of Personnel records. No blind full-load retry follows.
 
-The new failures still show visibility/authority and shared-barrier pressure.
-The existing recursive visibility SQL records207865/183197 calls and166.79/186.30s
-nested execution; Access/Audit sampled waiter occurrences are187/129 and144/109
-across426/431samples. These overlap and are neither exclusive wall time nor CPU.
-No cache,guard removal,timeout increase or blind retry is justified by these totals.
+Security-compatible visibility935b/41429150346 remains a qualified private prototype
+against owner300fc; the old unscoped patch is incompatible. Implementation requires
+security-owner incorporation/frozen handoff and current full profile/write/birth
+qualification. Latest observed ownerd407d190 preserves the reviewed visibility body
+but changes adjacent helpers. No foreign draft or overlapping SQL is edited.
+See [security compatibility review](system-performance-security-compatibility-20261102.md) and
+[independent contention review](system-performance-independent-contention-20261102.md).
 
-The security-compatible private prototype935b/41429150346 passes563 comparisons
-and measures ordinary100reads330.26/332.79ms versus owner4119.33/4113.66ms on
-reviewed300fc. A review-only exact-predicate patch remains with security owner
-codex/approved-board-security-20261102. Latest read-onlyd407d190 has the same
-visibility declaration/body,but adjacent helper semantics changed and foreign WIP
-exists. No foreign draft is edited,no overlapping SQL allocated,and evidence is not
-relabelled. Owner incorporation/frozen handoff plus full current profile/write/birth
-qualification remains required. See [security compatibility review](system-performance-security-compatibility-20261102.md).
-
-Both manifests pass under existing task metadata authority. Literal provider approval
-bindings remain unchanged and egress blocked. No merge,release admission,queue entry,
-lease or deployment. No new full load pair is scheduled without a new measured fix.
-
-
-Independent next attribution is test-onlyfde8ef786afdf33e6bc29d026d7dc0854e297ac5 /
-41442927885,pending. It forwards the real overtime refresh,replacement-leave check
-and service audit writes while recording bounded numeric spans after punch-owner
-exit. All prior functional,payload,chain and final-audit rollback assertions remain.
-It adds no application or policy change and cannot justify a broad load retry alone.
+Both generated manifests pass under task-scoped metadata authority. Literal provider
+approval bindings remain unchanged and egress blocked. System Optimization remains
+outside release admission; no merge to main/alpha, queue entry, lease or deployment.
 
 ## Current result: feedback-only500 qualification fails; release admission remains held
 

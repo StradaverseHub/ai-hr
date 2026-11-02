@@ -175,8 +175,35 @@ Results:/private/tmp/aihr-punch-audit-terminal-results-20261102.json.
 Remaining contention:/private/tmp/aihr-punch-audit-remaining-contention-20261102.json.
 No blind full-load retry,resources/limits change or deployment follows.
 
-Independent next attribution is test-onlyfde8ef786afdf33e6bc29d026d7dc0854e297ac5 /
-41442927885,pending. It forwards the real overtime refresh,replacement-leave check
-and service audit writes while recording bounded numeric spans after punch-owner
-exit. All prior functional,payload,chain and final-audit rollback assertions remain.
-It adds no application or policy change and cannot justify a broad load retry alone.
+Independent test-onlyfde8ef786afdf33e6bc29d026d7dc0854e297ac5 /
+41442927885 PASS forwards real overtime refresh,replacement-leave checks and service
+audit writes. All12 decisions,payloads,batchSQL counts,chains and actual final-audit
+rollback/recovery assertions pass. Mean post-punch callback142.02ms; named refresh
+49.52ms,replacement-leave0.06ms,effect audit6.82ms,amendment audit9.99ms,stage audit
+3.31ms and final approval audit3.48ms. These nested client/SQL envelopes may overlap;
+they cannot be added into exclusive CPU or lock time. This does not transfer the
+prior isolated callback speed percentage to another run or system workload.
+Report:/private/tmp/aihr-attendance-tail-attribution-20261102.json.
+
+The largest named segment was further split by test-only05d894e9cbaf7075ceb01c38da5c3d3d179e49f6 /
+41443697066 PASS: pattern detection34.27ms of44.91ms refresh; retained-policy
+lookup1.55ms,dated-company proof2.11ms per call (36 calls).
+Forwarding spies retain real arguments,results,SQL guards and all prior functional
+assertions. Production source and both failed full-load aliases remain exact29f8.
+Neither diagnostic changes a policy or justifies a new full-load pair alone.
+
+
+Detailed native b3cbbfeb62fa5b06928d606993d30964134ee196 /41444607921 also PASS:
+formula candidate query12calls,261.70ms total execution,21.81ms mean,0.084ms outer
+planning. The same source retains every original functional and rollback control.
+Warm-read diagnosticde6505667aed8bc9be1a160ca53c9d379462471c /41446085223 PASS
+adds two genuine12-principal APP bursts:437.43/384.25ms total native execution,
+36.45/32.02ms per call,61.89/53.69ms burst wall time. It does not disappear on this
+warm check. Native aggregate execution across concurrent backends is not exclusive
+CPU, cannot be summed into page latency, and is not capacity acceptance.
+Reports:/private/tmp/aihr-attendance-{refresh,formula-sql,formula-warm}-attribution-20261102.json.
+
+The user then prioritized Personnel. The empty-formula prototype worktree was
+created clean but not implemented. No public formula function changed and no new
+full500 pair was dispatched. The independent Personnel duplicate-projection repair
+is now qualified; see system-performance-personnel-page-review-20261102.md.
