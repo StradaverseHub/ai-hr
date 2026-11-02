@@ -69,7 +69,7 @@ export default async function ReimbursementsPage({
                   {due.map((r) => (
                     <tr key={r.id}>
                       <td className="px-4 py-2.5">
-                        <input type="checkbox" name="claimId" value={r.id} defaultChecked className="size-4" />
+                        <input type="checkbox" name="claimId" value={r.id} defaultChecked={r.canMarkPaid} disabled={!r.canMarkPaid} className="size-4" />
                       </td>
                       <td className="px-4 py-2.5 font-medium">
                         {/* Employee ID left-of-name (feedback 38668d9b) */}
@@ -106,7 +106,7 @@ export default async function ReimbursementsPage({
                 {t('payoutRefLabel')}
                 <input name="payoutRef" placeholder={t('payoutRefPlaceholder')} className={`${inputCls} w-56`} />
               </label>
-              <Button type="submit" size="sm">
+              <Button type="submit" size="sm" disabled={!due.some(row=>row.canMarkPaid)}>
                 {t('markPaid')}
               </Button>
             </div>

@@ -1,3 +1,4 @@
+import {assertModuleFunction} from '@/core/module-action-access';
 import { permanentRedirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 
@@ -20,6 +21,7 @@ import { requireAdmin } from '@/lib/authz';
  * permanentRedirect (308) rather than redirect (307): the move is not temporary.
  */
 export default async function ClaimFormsPage() {
-  await requireAdmin();
+  const s=await requireAdmin();
+  await assertModuleFunction(s,'claimsConfig.types','view');
   permanentRedirect('/admin/claims');
 }
