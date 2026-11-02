@@ -165,7 +165,7 @@ export default async function AssistantPage({
       {centreTabs}
       <div className="grid items-start gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <section className="min-w-0 space-y-3 lg:order-2">
-          <PageHeader title={aiCentreName(t('title'))} />
+          <PageHeader title={aiCentreName((await getTranslations('aiCentre'))('genericName'))} />
           <OwnClearStatus status={sp.ownClear}/>
           <ErrorBanner message={errorMessage??(sp.e&&!selectedChat?t('workspace.conversation.unavailable'):undefined)} />
           <WorkspaceConversation key={scopeReset+':'+(sp.e??'')+':'+(sp.chatReset??'')} fullHeight resetKey={(sp.chatReset??'')+':'+scopeReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}

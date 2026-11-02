@@ -5,7 +5,6 @@ import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/reac
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {enWithAiCentre,withAiCentre} from './helpers/ai-centre-messages';
-import {AI_PRODUCT_NAME} from '../lib/ai-centre/brand';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
@@ -18,7 +17,8 @@ vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{chil
 vi.mock('../app/assistant/launcher-actions',()=>({askFromLauncherAction:state.ask}));
 import {AssistantLauncher} from '../components/assistant/assistant-launcher';
 // AI centre (2 Nov 2026): the launcher reads the configured product name (lib/ai-centre/brand.ts).
-const copy={...en.assistant.launcher,open:enWithAiCentre.aiCentre.launcher.open.replace('{name}',AI_PRODUCT_NAME!),title:AI_PRODUCT_NAME!};
+// Owner, 3 November 2026: the chat is the AI Centre's; "Noveri" appears only on How it works.
+const copy={...en.assistant.launcher,open:enWithAiCentre.aiCentre.launcher.open.replace('{name}',enWithAiCentre.aiCentre.genericName),title:enWithAiCentre.aiCentre.genericName};
 const show=(hiddenAreas:string[]=[],position:'bottom-right'|'bottom-left'='bottom-right')=>render(<NextIntlClientProvider locale="en" messages={enWithAiCentre}><AssistantLauncher position={position} hiddenAreas={hiddenAreas as never}/></NextIntlClientProvider>);
 beforeEach(()=>{state.path='/leave';state.ask.mockReset();});
 afterEach(cleanup);
@@ -73,7 +73,7 @@ describe('floating Assistant',()=>{
  it.each(Object.entries({en,ms,zh,ta,th,vi:viMessages}))('%s identifies itself as AI and greets the person without claiming a human operator',(_locale,messages)=>{
   const labels=messages.assistant.launcher,merged=withAiCentre(_locale,messages as never) as typeof enWithAiCentre;
   render(<NextIntlClientProvider locale={_locale} messages={merged}><AssistantLauncher position="bottom-right" hiddenAreas={[]}/></NextIntlClientProvider>);
-  fireEvent.click(screen.getByRole('button',{name:merged.aiCentre.launcher.open.replace('{name}',AI_PRODUCT_NAME!)}));
+  fireEvent.click(screen.getByRole('button',{name:merged.aiCentre.launcher.open.replace('{name}',merged.aiCentre.genericName)}));
   expect(labels.identity).toContain('AI');expect(labels.welcome).toContain('AI');
   expect(screen.getByText(labels.identity)).toBeInTheDocument();expect(screen.getByText(labels.welcome)).toBeInTheDocument();
  });

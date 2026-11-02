@@ -4,7 +4,6 @@ import Link from './intent-link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { AI_PRODUCT_NAME } from '@/lib/ai-centre/brand';
 import { useIsMonolith, useUiTheme } from './ui-theme-context';
 import {
   ArrowLeftRight,
@@ -693,10 +692,9 @@ export function Sidebar({
   const searchParams = useSearchParams();
   const search = searchParams.toString();
   const tNav = useTranslations('nav');
-  // AI centre: its row shows the configured product name (lib/ai-centre/brand.ts), never translated;
-  // every other row reads its own nav label.
-  const t = Object.assign(((key: string, values?: Record<string, string | number>) =>
-    key === 'aiCentre' && AI_PRODUCT_NAME ? AI_PRODUCT_NAME : tNav(key as never, values as never)) as typeof tNav, tNav);
+  // Every row, AI Centre included, reads its own translated nav label (owner, 3 November 2026: the product name
+  // appears only on How it works).
+  const t = tNav;
   const tWorkspace = useTranslations('onehr.workspace');
   // `common`, NOT `nav`: the brand name lives at common.appName. Reading it off `t` would resolve
   // nav.appName, which does not exist — and a MISSING_MESSAGE passes tsc, the suite and `next build`

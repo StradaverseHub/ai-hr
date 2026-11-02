@@ -21,6 +21,17 @@ import { AI_ARCHITECTURE_LABEL, AI_PRODUCT_NAME, aiCentreName } from '../lib/ai-
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+/** Every product source file (app, components, lib, core, packs), repository-relative. */
+const walkSource = (): string[] => {
+  const out: string[] = [];
+  const walk = (dir: string) => { for (const entry of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+    const rel = path.join(dir, entry.name);
+    if (entry.isDirectory()) { if (entry.name !== 'node_modules' && !entry.name.startsWith('.')) walk(rel); }
+    else if (/\.(tsx?|mjs)$/.test(entry.name)) out.push(rel);
+  } };
+  for (const dir of ['app', 'components', 'lib', 'core', 'packs']) if (fs.existsSync(path.join(ROOT, dir))) walk(dir);
+  return out;
+};
 const pageOf = (href: string) => `app${href.split('?')[0]}/page.tsx`.replace('app/page.tsx', 'app/page.tsx');
 
 describe('AI centre tabs keep every permission identical', () => {
@@ -142,13 +153,20 @@ describe('AI centre messages', () => {
     expect(request).toContain('import(`../messages/ai-centre/${locale}.json`)');
   });
 
-  it('names the product through one constant, never in copy, and derives the OS label from it', () => {
+  it('names the architecture through one constant, never in copy, and shows it only on How it works', () => {
     expect(AI_PRODUCT_NAME).toBe('Noveri');
-    expect(aiCentreName('AI centre')).toBe('Noveri');
+    // Owner, 3 November 2026: the product surface is "AI Centre"; "Noveri" only on How it works.
+    expect(aiCentreName('AI Centre')).toBe('AI Centre');
+    for (const file of walkSource()) if (!['lib/ai-centre/brand.ts', 'components/ai-centre/how-it-works.tsx', 'app/assistant/page.tsx'].includes(file))
+      expect(read(file), file).not.toMatch(/\bAI_PRODUCT_NAME\b|\bAI_ARCHITECTURE_LABEL\b/);
+    // On the Ask page the name is used only by the How it works view.
+    for (const line of read('app/assistant/page.tsx').split('\n').filter(line => /AI_PRODUCT_NAME|AI_ARCHITECTURE_LABEL/.test(line) && !/^import /.test(line)))
+      expect(line).toMatch(/sp\.view === 'how'/);
     expect(AI_ARCHITECTURE_LABEL).toBe(`${AI_PRODUCT_NAME} OS`);
     expect(read('lib/ai-centre/brand.ts')).not.toMatch(/'Noveri OS'/);
     for (const locale of ['en', 'ms', 'zh', 'vi', 'ta', 'th'])
-      for (const [key, text] of catalogue(locale)) expect(text, `${locale} ${key}`).not.toMatch(/\b(Teras|Noveri)\b/);
+      // Both catalogues, all six locales: no copy names Teras or Noveri; How it works injects the name through {name}.
+      for (const [key, text] of [...catalogue(locale), ...flat(JSON.parse(read(`messages/${locale}.json`)))]) expect(text, `${locale} ${key}`).not.toMatch(/\b(Teras|Noveri)\b/);
     for (const file of ['components/ai-centre/how-it-works.tsx', 'components/ai-centre/clockwork-figure.tsx', 'components/ai-centre/centre-tabs.tsx', 'components/assistant/assistant-launcher.tsx', 'components/sidebar.tsx', 'app/assistant/page.tsx'])
       expect(read(file), file).not.toMatch(/['"`]Noveri/);
   });

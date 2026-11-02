@@ -1,14 +1,14 @@
 {
   "nav": {
-    "aiCentre": "AI centre",
-    "aiCentreAdmin": "AI centre administration",
+    "aiCentre": "AI Centre",
+    "aiCentreAdmin": "AI Centre administration",
     "aiCentreWorkers": "Workers",
     "aiCentreSetup": "Setup",
     "aiCentreSpend": "Spend and providers",
-    "sectionAiManagement": "AI centre administration"
+    "sectionAiManagement": "AI Centre administration"
   },
   "aiCentre": {
-    "genericName": "AI centre",
+    "genericName": "AI Centre",
     "tabsLabel": "{name} sections",
     "subnavLabel": "In this section",
     "tabs": {

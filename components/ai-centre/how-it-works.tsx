@@ -154,7 +154,7 @@ function RequestJourney() {
           layers show as the stacked list. Either way the step text below carries the meaning. */}
       <div className="hidden xl:block">
         <ClockworkFigure active={target} labels={labels} reduced={reduced} label={t('mapLabel')}
-          title={AI_PRODUCT_NAME ? t('titleNamed', { name: AI_PRODUCT_NAME }) : t('title')} caption={t('figureCaption')} mark={aiCentreName(tc('genericName'))} faceLabel={AI_ARCHITECTURE_LABEL ?? undefined} />
+          title={AI_PRODUCT_NAME ? t('titleNamed', { name: AI_PRODUCT_NAME }) : t('title')} caption={t('figureCaption')} mark={AI_PRODUCT_NAME ?? aiCentreName(tc('genericName'))} faceLabel={AI_ARCHITECTURE_LABEL ?? undefined} />
       </div>
       <div ref={map} role="img" aria-label={t('mapLabel')} className="relative rounded-2xl border border-border bg-card p-4 sm:p-5 xl:hidden">
         <span aria-hidden data-how-token className={cn('pointer-events-none absolute left-0 top-0 z-10 size-3.5 rounded-full bg-primary shadow-[0_0_0_4px_color-mix(in_srgb,var(--primary)_22%,transparent),0_2px_6px_rgb(0_0_0/0.18)]',
