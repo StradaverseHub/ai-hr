@@ -375,6 +375,10 @@ TABLE_COUNT=$(grep -c '^table' "$TABLES_OUT" 2>/dev/null || echo 0)
 } > "$MANIFEST"
 ok "manifest written ($TABLE_COUNT tables, $(grep -c '^role' "$MANIFEST" || echo 0) ACL roles)"
 
+# Freeze the local manifest witness before giving transport commands any files.
+MANIFEST_BYTES="$(blib_bytes "$MANIFEST")"
+MANIFEST_SHA="$(blib_sha256 "$MANIFEST")"
+
 # ── 8. ship it, and read it back ─────────────────────────────────────────────────────────────────
 STAGE=ship
 say "3/5  shipping to $DEST"
@@ -415,8 +419,6 @@ readback_one() {
 }
 readback_one "$DUMP" "$DUMP_NAME" "$DUMP_BYTES" "$DUMP_SHA" \
   || die 8 verify-arrival "Independent readback of $DUMP_NAME failed. Nothing was pruned; staged recovery files are retained. Custom destinations require BACKUP_READ_CMD."
-MANIFEST_BYTES="$(blib_bytes "$MANIFEST")"
-MANIFEST_SHA="$(blib_sha256 "$MANIFEST")"
 readback_one "$MANIFEST" "$MANIFEST_NAME" "$MANIFEST_BYTES" "$MANIFEST_SHA" \
   || die 8 verify-arrival "Independent readback of $MANIFEST_NAME failed. Nothing was pruned; staged recovery files are retained."
 # Existing custom verification remains an optional additional owner check, never arrival authority.

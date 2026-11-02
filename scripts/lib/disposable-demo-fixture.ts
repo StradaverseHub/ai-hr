@@ -16,12 +16,12 @@ export function assertDisposableDemoUrl(value:string|undefined,kind:DemoFixtureK
   return {database:databases[kind],user,host:url.hostname,port:url.port};
  } catch {throw Error('An explicit named loopback disposable fixture target is required; no URL overrides or remote targets.');}
 }
-export function assertDisposableDemoIdentity(target:DemoFixtureTarget,actual:{database:string;user:string;tenants:readonly string[]}):void {
- if(actual.database!==target.database||actual.user!==target.user||!actual.tenants.includes(DEMO_TENANT_ID)||
+export function assertDisposableDemoIdentity(target:DemoFixtureTarget,actual:{database:string;user:string;owner?:string;tenants:readonly string[]}):void {
+ if(actual.database!==target.database||actual.user!==target.user||(actual.owner!==undefined&&actual.owner!==actual.user)||!actual.tenants.includes(DEMO_TENANT_ID)||
   actual.tenants.some(id=>id!==DEMO_TENANT_ID&&id!==SYSTEM_TENANT_ID))throw Error('Disposable fixture database/owner/tenant attestation refused.');
 }
 export async function attestDisposableDemoDatabase(client:Sql,target:DemoFixtureTarget):Promise<void> {
- const [identity]=await client<{database:string;user:string}[]>`select current_database() as database,current_user as "user"`;
+ const [identity]=await client<{database:string;user:string;owner:string}[]>`select current_database() as database,current_user as "user",pg_get_userbyid(datdba) as owner from pg_database where datname=current_database()`;
  const tenants=await client<{id:string}[]>`select id from tenant order by id`;
  assertDisposableDemoIdentity(target,{...identity,tenants:tenants.map(row=>row.id)});
 }

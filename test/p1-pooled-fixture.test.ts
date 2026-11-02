@@ -17,7 +17,7 @@ async function setup(){
  return {base,employee,pool,borrower,foreign,group};
 }
 it('rerun and clear preserve an unowned same-date/type request and restore only the owned route preimage',async()=>{
- const f=await setup(),ledger=await owner.db.select().from(s.leaveLedger);
+ const f=await setup(),ledger=await owner.db.select().from(s.leaveLedger).orderBy(s.leaveLedger.id);
  const receipt=await owner.db.transaction(tx=>preparePooledFixture(tx,f.base.tenantId,'2026-12-31','source-fixture'));
  expect(receipt.requests).toHaveLength(1);expect(receipt.requests[0].id).not.toBe(f.foreign.id);
  const reused=await owner.db.transaction(tx=>preparePooledFixture(tx,f.base.tenantId,'2027-01-01','source-fixture',JSON.parse(JSON.stringify(receipt))));
@@ -31,12 +31,12 @@ it('rerun and clear preserve an unowned same-date/type request and restore only 
 it('changed owned rows refuse cleanup without touching either population',async()=>{
  const f=await setup(),receipt=await owner.db.transaction(tx=>preparePooledFixture(tx,f.base.tenantId,'2026-11-02','source'));
  await owner.db.update(s.leaveRequest).set({reason:'Actual browser edit must survive'}).where(eq(s.leaveRequest.id,receipt.requests[0].id));
- const before=await owner.db.select().from(s.leaveRequest);
+ const before=await owner.db.select().from(s.leaveRequest).orderBy(s.leaveRequest.id);
  await expect(owner.db.transaction(tx=>clearPooledFixture(tx,f.base.tenantId,receipt))).rejects.toThrow('changed');
  expect(await owner.db.select().from(s.leaveRequest)).toEqual(before);
 });
 it('a late preparation failure rolls back groups, requests and borrowed routing together',async()=>{
- const f=await setup(),before={groups:await owner.db.select().from(s.leaveSharedGroup),requests:await owner.db.select().from(s.leaveRequest),types:await owner.db.select().from(s.leaveType)};
+ const f=await setup(),before={groups:await owner.db.select().from(s.leaveSharedGroup).orderBy(s.leaveSharedGroup.id),requests:await owner.db.select().from(s.leaveRequest).orderBy(s.leaveRequest.id),types:await owner.db.select().from(s.leaveType).orderBy(s.leaveType.id)};
  await expect(owner.db.transaction(async tx=>{const prepared=await preparePooledFixture(tx,f.base.tenantId,'2026-11-02','source');expect(prepared.requests).toHaveLength(1);throw Error('late fixture failure');})).rejects.toThrow('late fixture failure');
- expect({groups:await owner.db.select().from(s.leaveSharedGroup),requests:await owner.db.select().from(s.leaveRequest),types:await owner.db.select().from(s.leaveType)}).toEqual(before);
+ expect({groups:await owner.db.select().from(s.leaveSharedGroup).orderBy(s.leaveSharedGroup.id),requests:await owner.db.select().from(s.leaveRequest).orderBy(s.leaveRequest.id),types:await owner.db.select().from(s.leaveType).orderBy(s.leaveType.id)}).toEqual(before);
 });

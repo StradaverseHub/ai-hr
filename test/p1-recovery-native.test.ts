@@ -59,3 +59,23 @@ it.each(['shift','rest','clear'] as const)('one row Save rolls back earlier %s w
  expect(await assignRosterRow(ctx,{employmentId:person.employmentId,shiftDates:dates,brush:brush==='shift'?shift.id:brush})).toEqual({applied:2});
  const after=await snapshot();expect(after.rows).toHaveLength(brush==='clear'?0:2);expect(after.events.length-before.events.length).toBe(2);
 });
+
+it.each(['rest','clear'] as const)('bulk %s action reports failure only after rolling back the whole selected population',async brush=>{
+ const base=await seedBase(),ctx=adminCtx(base);session=ctx;
+ const employees=[];
+ for(let i=0;i<2;i++)employees.push((await hireEmployee(ctx,{companyId:base.companyId,departmentId:base.deptA,hiredOn:'2020-01-01',employmentType:'full_time',person:{fullName:`Bulk rollback ${i}`,primaryEmail:`bulk-${i}@test.invalid`}})).employmentId);
+ const shift=await createShift(ctx,{companyId:base.companyId,name:'Bulk shift',code:'P1_BULK',startTime:'08:00:00',endTime:'17:00:00'}),dates=['2026-07-06','2026-07-07'];
+ if(brush==='clear')for(const employmentId of employees)await assignRosterRow(ctx,{employmentId,shiftDates:dates,brush:shift.id});
+ const snapshot=async()=>({rows:await owner.client`select row_to_json(r) as row from roster_assignment r where tenant_id=${base.tenantId}::uuid order by id`,events:await owner.client`select row_to_json(e) as row from domain_event e where tenant_id=${base.tenantId}::uuid order by id`});
+ const before=await snapshot();
+ await owner.client`create sequence public.p1_bulk_reach`;
+ await owner.client.unsafe(`create function public.p1_bulk_fault() returns trigger language plpgsql as $$ begin perform nextval('public.p1_bulk_reach'); if coalesce(NEW.shift_date,OLD.shift_date)=date '2026-07-07' then raise exception 'P1 late bulk fault' using errcode='P1001'; end if; return coalesce(NEW,OLD); end $$`);
+ await owner.client`create trigger p1_bulk_fault before insert or update or delete on roster_assignment for each row execute function public.p1_bulk_fault()`;
+ const log=vi.spyOn(console,'error').mockImplementation(()=>{});
+ try {
+  const {bulkAssignAction}=await import('../app/roster/actions');expect((await bulkAssignAction({employmentIds:employees,shiftDates:dates,brush})).ok).toBe(false);
+  expect(Number((await owner.client`select last_value from p1_bulk_reach`)[0].last_value)).toBeGreaterThanOrEqual(2);expect(await snapshot()).toEqual(before);
+ } finally {log.mockRestore();await owner.client`drop trigger p1_bulk_fault on roster_assignment`;await owner.client`drop function public.p1_bulk_fault()`;await owner.client`drop sequence public.p1_bulk_reach`;}
+ const {bulkAssignAction}=await import('../app/roster/actions');expect(await bulkAssignAction({employmentIds:employees,shiftDates:dates,brush})).toEqual({ok:true});
+ const after=await snapshot();expect(after.rows).toHaveLength(brush==='clear'?0:4);expect(after.events.length-before.events.length).toBe(4);
+});
