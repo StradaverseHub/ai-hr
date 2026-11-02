@@ -203,7 +203,52 @@ warm check. Native aggregate execution across concurrent backends is not exclusi
 CPU, cannot be summed into page latency, and is not capacity acceptance.
 Reports:/private/tmp/aihr-attendance-{refresh,formula-sql,formula-warm}-attribution-20261102.json.
 
-The user then prioritized Personnel. The empty-formula prototype worktree was
-created clean but not implemented. No public formula function changed and no new
-full500 pair was dispatched. The independent Personnel duplicate-projection repair
-is now qualified; see system-performance-personnel-page-review-20261102.md.
+The Personnel duplicate-projection repair is qualified separately; see
+system-performance-personnel-page-review-20261102.md. Its137 affected checks/compiler
+and four alternating paired timings remain intact. Whole-system acceptance is0/2.
+
+## Formula candidate plans: completed and rejected
+
+Only test/overtime-discovery-plan.test.ts changes on the isolated prototype branch.
+A private SECURITY INVOKER function is created in the fictional runner database,
+retains the original full query and caller RLS, and is dropped afterward. The public
+function's complete definition, ACL, volatility and configuration remain unchanged.
+Tests compare against both the independent original query and public native helper:
+individual/group configuration, date and raw target spelling, foreign tenant,
+user rebind, forged roles, archived user, and malformed grants. No production SQL,
+policy, migration, provider binding or application path is changed.
+
+Initial91a7803aeb4d8de95d7f47640f63d81eafeb7310 /
+41456599232 FAIL is retained: both functions emit the expected malformed-JSON refusal,
+but catching it under a raw savepoint leaves the driver's outer transaction failed.
+The test repair catches each refusal outside its fully rolled-back withTenant command;
+it never converts a refused SQL statement into a successful business transaction.
+
+Recovery303ab0470b4425c942b197d49e5a8b57015890fc /
+[41457510926](https://github.com/StradaverseHub/ai-hr/actions/runs/41457510926)
+PASS preserves all parity/refusal and cleanup assertions. The extra empty-assignment
+check improves the empty12-reader burst, but makes configured lookups slower.
+Alternative assignment-first materialized pland863860e2d6dac00c8a4eeaf1e5051b7638b0e50 /
+[41458613741](https://github.com/StradaverseHub/ai-hr/actions/runs/41458613741)
+also PASS preserves those controls, but provides no consistent timing improvement.
+
+|Private plan|Empty burst current/prototype mean|Configured burst current/prototype mean|Disposition|
+|---|---|---|---|
+|Extra empty-set read|101.16/32.30ms|52.74/112.16ms|Reject: configured regression|
+|Assignment-first CTE|90.26/92.78ms|55.92/56.41ms|Reject: no demonstrated gain|
+
+These are alternating-order native12-reader bursts over6 principals and2 tenants,
+not500-user tests or CPU totals. Neither proposal is promoted. Original failures
+and passing semantic evidence retain their exact source/controller identities.
+No whole compiler is claimed for these test-only prototype sources. Artifacts:
+/private/tmp/aihr-formula-empty-{91a7,303a}-attempt1 and
+/private/tmp/aihr-formula-assignment-plan-d863-attempt1.
+
+The remaining large visibility-query repair still overlaps the security owner's
+unfinished Roles/Actions/Data Permissions proposal. Latest observed6cc977ef keeps
+the reviewed visibility section byte-identical, but the surrounding contract is
+still moving. The parent's compact coordination snapshot142 confirms BOARD work
+is unfinished and System Optimization is outside release admission. A frozen owner
+handoff/current full-profile qualification is required before overlapping SQL work.
+No new original500 pair is justified by the rejected formula plans. No resources,
+workloads, bounds or safeguards are relaxed, and nothing is deployed.

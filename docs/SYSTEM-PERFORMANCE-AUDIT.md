@@ -30,10 +30,16 @@ of millions of Personnel records. No blind full-load retry follows.
 Security-compatible visibility935b/41429150346 remains a qualified private prototype
 against owner300fc; the old unscoped patch is incompatible. Implementation requires
 security-owner incorporation/frozen handoff and current full profile/write/birth
-qualification. Latest observed ownerd407d190 preserves the reviewed visibility body
+qualification. Latest observed owner6cc977ef preserves the reviewed visibility body
 but changes adjacent helpers. No foreign draft or overlapping SQL is edited.
 See [security compatibility review](reviews/system-performance-security-compatibility-20261102.md) and
 [independent contention review](reviews/system-performance-independent-contention-20261102.md).
+
+Independent native formula-query alternatives have now completed. The empty-set
+shortcut regresses configured lookups; the assignment-first plan shows no consistent
+gain. Both preserve semantic controls but are rejected for production, with the
+original harness failure retained. No public function or application path changes
+and no new500-user pair follows. Their exact evidence is in the contention review.
 
 Both generated manifests pass under task-scoped metadata authority. Literal provider
 approval bindings remain unchanged and egress blocked. System Optimization remains
