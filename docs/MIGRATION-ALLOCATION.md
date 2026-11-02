@@ -1270,3 +1270,24 @@ Attendance configuration/Schedule delegation floor; actual stored/current ordina
 remain ANY-HR. Dated rotation's genuine group-only service/RLS floor is retained. Company-HR ordinary
 constructor/edit/copy and stored/current parity versus actual dated-rotation refusal/copy rollback
 cases are authored, not executed or relabeled as installed default/recipient evidence.
+
+### Shared Shift native function chapter (unapplied)
+
+`attendancePolicy.shifts` retains the actual 0197 ANY-HR tenant library and inherits canonical global
+Attendance configuration operations/View plus its own exact View. Actual create/copy, edit/pay settings,
+archive/delete and reactivation writers repeat the exact purpose; raw parent and OT-window guards
+repeat tenant/reference custody. New/copy window initialization is Add only over actual actor/XID
+parent birth; existing replacement is Edit; a cascading removal is Delete only over actual consumed
+parent removal. Shared routing/payroll/employee metadata getters retain independent native references;
+explicit maintenance facades use exact View without configuration write locks. Native list/new/edit
+screens project exact Add/Edit/Delete, with missing/denied flags disabling actual controls.
+
+A private actual Shift AFTER INSERT birth/full-source/stamp can admit only its original first group
+membership. Actual child before/after images complete it; pre-use parent mutation invalidates it.
+Additional, neighbor or changed memberships retain their Group owner. No posted flag, generic Group
+Edit grant or borrowed native-positive group default is introduced. Current-XID completed contexts
+are rechecked on actual control epoch changes after early constraint flush. APP native source/child
+window/copy and reference/refusal cases are authored; owner-held exact-predicate simulations are
+explicitly not strict APP-login qualification. Supported-deny/default/recipient tests still require
+genuine full component publication. Dated rotations, remaining settings/imports and operational
+Attendance/Leave/Claim closure remain open; this chapter adds no completion sentinel.

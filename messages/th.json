@@ -11598,6 +11598,7 @@
       "breakMismatchNote": "ช่วงพักแสดงเพื่ออ้างอิงเท่านั้น การคำนวณชั่วโมงจะหัก {minutes} นาที (ยอดรวมเวลาพักที่บันทึกไว้)",
       "breakMismatchBadge": "ใช้ {minutes} นาที",
       "editShift": "แก้ไข",
+      "viewShift": "ดูรายละเอียดกะ",
       "duplicate": "ทำสำเนา",
       "archiveShift": "เก็บถาวร",
       "shiftName": "ชื่อกะ",

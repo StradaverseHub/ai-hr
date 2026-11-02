@@ -195,7 +195,7 @@ CREATE CONSTRAINT TRIGGER claim_configuration_range_close AFTER UPDATE ON claim_
 CREATE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap
-  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule')
+  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts')
   AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 --> statement-breakpoint
@@ -204,7 +204,7 @@ REVOKE ALL ON FUNCTION app.module_function_legacy_allowed(uuid,uuid,text,uuid) F
 CREATE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap
-  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule')
+  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts')
   AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 --> statement-breakpoint
@@ -225,7 +225,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT coalesce((SELECT app.module_action_allowed(split_part(a.parent_capability,'.',1),split_part(a.parent_capability,'.',2),p_company)
   AND app.function_action_allowed(p_key,p_operation,p_company)
   FROM app.access_function_action a WHERE a.function_key=p_key AND a.operation=p_operation
-   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule')),false);
+   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts')),false);
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.module_function_allowed(text,text,uuid) FROM PUBLIC;
@@ -471,6 +471,7 @@ BEGIN
  ELSE
   parent_id:=coalesce((after_row->>'rule_id')::uuid,(before_row->>'rule_id')::uuid);
   old_parent:=(before_row->>'rule_id')::uuid;
+  IF TG_TABLE_NAME='attendance_rule_shift' AND TG_OP='INSERT' AND app.shift_initial_membership_allowed(after_row) THEN RETURN NULL;END IF;
   -- Physical OT-band replacement is one Edit of an existing Schedule, not Delete+Add. Initial
   -- bands are Add only when their parent was actually inserted by this actor in this transaction.
   operation:=CASE WHEN TG_OP='DELETE' AND EXISTS(SELECT 1 FROM app.module_configuration_removed source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=actual_tenant AND source.user_id=app.current_user_id() AND source.kind='attendance_rule' AND source.row_id=parent_id)
@@ -990,12 +991,12 @@ ALTER POLICY claim_own_action_read ON public.claim_request USING(app.claim_sourc
 CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
- OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
- OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 
 --> statement-breakpoint
@@ -1378,12 +1379,12 @@ CREATE TRIGGER module_leave_approval_assignment_action BEFORE INSERT OR UPDATE O
 CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
- OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
- OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 
 
@@ -1504,3 +1505,111 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.leave_approval_assignment_slot(uuid,uuid,uuid,text,integer,integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.leave_approval_assignment_slot(uuid,uuid,uuid,text,integer,integer) TO ai_hr_app;
+
+--> statement-breakpoint
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+  PERFORM app.register_function_action('attendancePolicy.shifts',operation,'tenant','attendance_configuration.'||operation,'app.module_action_current_legacy_allowed','{"moduleKey":"attendance","labelKey":"nav.shift","kind":"submenu","course":"administrative","screenKey":"attendancePolicy","href":"/admin/attendance","employeeBearing":false}');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.attendance_shift_allowed(p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.module_function_allowed('attendancePolicy.shifts','view',NULL) AND app.module_function_allowed('attendancePolicy.shifts',p_operation,NULL);
+$$;
+REVOKE ALL ON FUNCTION app.attendance_shift_allowed(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.attendance_shift_allowed(text) TO ai_hr_app;
+CREATE TABLE app.shift_constructor_source(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,shift_id uuid NOT NULL,source jsonb NOT NULL,authority_stamp text NOT NULL,invalidated boolean NOT NULL DEFAULT false,membership jsonb,membership_born boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,shift_id));
+CREATE TABLE app.shift_removed_source(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,shift_id uuid NOT NULL,source jsonb NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,shift_id));
+REVOKE ALL ON app.shift_constructor_source,app.shift_removed_source FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.attendance_shift_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;image public.shift%ROWTYPE;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_OP='DELETE' THEN image:=OLD;ELSE image:=NEW;END IF;
+ IF TG_OP='UPDATE' AND OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL THEN operation:='delete';END IF;
+ IF image.tenant_id IS DISTINCT FROM app.current_tenant_id() OR TG_OP='UPDATE' AND ROW(OLD.id,OLD.tenant_id) IS DISTINCT FROM ROW(NEW.id,NEW.tenant_id)
+ OR NOT app.attendance_shift_allowed(operation)
+ OR image.company_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=image.company_id AND c.tenant_id=image.tenant_id)
+ OR image.rule_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.attendance_rule r WHERE r.id=image.rule_id AND r.tenant_id=image.tenant_id)
+ THEN RAISE EXCEPTION 'Shift action unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='UPDATE' THEN UPDATE app.shift_constructor_source proof SET invalidated=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=OLD.tenant_id AND proof.shift_id=OLD.id AND NOT proof.membership_born;END IF;
+ IF TG_OP='DELETE' THEN
+  DELETE FROM app.shift_removed_source WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+  INSERT INTO app.shift_removed_source VALUES(pg_current_xact_id(),OLD.tenant_id,app.current_user_id(),OLD.id,to_jsonb(OLD));RETURN OLD;
+ END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.attendance_shift_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_shift_access BEFORE INSERT OR UPDATE OR DELETE ON public.shift FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+CREATE TRIGGER module_shift_action BEFORE INSERT OR UPDATE OR DELETE ON public.shift FOR EACH ROW EXECUTE FUNCTION app.attendance_shift_guard();
+CREATE FUNCTION app.attendance_shift_born() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN
+  DELETE FROM app.shift_constructor_source WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+  INSERT INTO app.shift_constructor_source(xact_id,tenant_id,user_id,shift_id,source,authority_stamp) VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id,to_jsonb(NEW),app.access_function_authority_stamp());
+ END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.attendance_shift_born() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_shift_born AFTER INSERT ON public.shift FOR EACH ROW EXECUTE FUNCTION app.attendance_shift_born();
+CREATE FUNCTION app.attendance_shift_window_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE image public.shift_ot_window%ROWTYPE;parent public.shift%ROWTYPE;operation text:='edit';
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_OP='DELETE' THEN image:=OLD;ELSE image:=NEW;END IF;
+ IF image.tenant_id IS DISTINCT FROM app.current_tenant_id() OR TG_OP='UPDATE' AND ROW(OLD.id,OLD.tenant_id,OLD.shift_id) IS DISTINCT FROM ROW(NEW.id,NEW.tenant_id,NEW.shift_id) THEN RAISE EXCEPTION 'Shift window identity unavailable' USING ERRCODE='42501';END IF;
+ SELECT * INTO parent FROM public.shift actual WHERE actual.id=image.shift_id AND actual.tenant_id=image.tenant_id;
+ IF TG_OP='DELETE' AND parent.id IS NULL AND EXISTS(SELECT 1 FROM app.shift_removed_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=image.tenant_id AND proof.user_id=app.current_user_id() AND proof.shift_id=image.shift_id) THEN operation:='delete';
+ ELSIF parent.id IS NULL THEN RAISE EXCEPTION 'Shift window parent unavailable' USING ERRCODE='42501';
+ ELSIF EXISTS(SELECT 1 FROM app.shift_constructor_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=image.tenant_id AND proof.user_id=app.current_user_id() AND proof.shift_id=parent.id AND NOT proof.invalidated AND proof.authority_stamp=app.access_function_authority_stamp()) THEN operation:='add';END IF;
+ IF NOT app.attendance_shift_allowed(operation) THEN RAISE EXCEPTION 'Shift window action unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.attendance_shift_window_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_shift_window_access BEFORE INSERT OR UPDATE OR DELETE ON public.shift_ot_window FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+CREATE TRIGGER module_shift_window_action BEFORE INSERT OR UPDATE OR DELETE ON public.shift_ot_window FOR EACH ROW EXECUTE FUNCTION app.attendance_shift_window_guard();
+-- Original first-membership construction belongs to Shift Add; every later/neighbor membership
+-- remains under its Schedule owner. A posted purpose or caller-owned GUC mints nothing here.
+CREATE FUNCTION app.shift_initial_membership_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF TG_WHEN='BEFORE' THEN
+  IF app.attendance_shift_allowed('add') THEN
+   UPDATE app.shift_constructor_source proof SET membership=to_jsonb(NEW) FROM public.shift actual
+   WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.shift_id=NEW.shift_id
+   AND proof.tenant_id=NEW.tenant_id AND NOT proof.invalidated AND proof.membership IS NULL AND proof.authority_stamp=app.access_function_authority_stamp()
+   AND actual.id=proof.shift_id AND actual.tenant_id=proof.tenant_id AND to_jsonb(actual)=proof.source AND proof.source->>'rule_id'=NEW.rule_id::text;
+  END IF;
+ ELSE
+  UPDATE app.shift_constructor_source proof SET membership_born=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.shift_id=NEW.shift_id AND proof.membership=to_jsonb(NEW) AND NOT proof.invalidated AND proof.authority_stamp=app.access_function_authority_stamp();
+ END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.shift_initial_membership_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_shift_initial_membership BEFORE INSERT ON public.attendance_rule_shift FOR EACH ROW EXECUTE FUNCTION app.shift_initial_membership_record();
+CREATE TRIGGER aaa_shift_initial_membership_born AFTER INSERT ON public.attendance_rule_shift FOR EACH ROW EXECUTE FUNCTION app.shift_initial_membership_record();
+CREATE FUNCTION app.shift_initial_membership_allowed(p_row jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.attendance_shift_allowed('add') AND EXISTS(SELECT 1 FROM app.shift_constructor_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.shift_id=(p_row->>'shift_id')::uuid
+ AND proof.membership=p_row AND proof.membership_born AND NOT proof.invalidated AND proof.authority_stamp=app.access_function_authority_stamp() AND proof.source->>'rule_id'=p_row->>'rule_id' AND proof.tenant_id::text=p_row->>'tenant_id');
+$$;
+REVOKE ALL ON FUNCTION app.shift_initial_membership_allowed(jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.shift_initial_membership_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.shift_constructor_source%ROWTYPE;
+BEGIN
+ SELECT * INTO proof FROM app.shift_constructor_source actual WHERE actual.xact_id=NEW.xact_id AND actual.tenant_id=NEW.tenant_id AND actual.user_id=NEW.user_id AND actual.shift_id=NEW.shift_id;
+ IF NOT FOUND OR proof.membership_born IS NOT TRUE OR app.shift_initial_membership_allowed(proof.membership) IS NOT TRUE THEN RAISE EXCEPTION 'Shift initialization incomplete' USING ERRCODE='42501';END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.shift_initial_membership_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER module_shift_initial_membership_complete AFTER UPDATE ON app.shift_constructor_source DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.membership_born) EXECUTE FUNCTION app.shift_initial_membership_complete();
+CREATE FUNCTION app.shift_constructor_authority_changed() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.epoch IS DISTINCT FROM OLD.epoch THEN UPDATE app.shift_constructor_source proof SET membership_born=proof.membership_born WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.membership_born;END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.shift_constructor_authority_changed() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER shift_constructor_authority_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.shift_constructor_authority_changed();

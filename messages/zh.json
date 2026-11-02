@@ -11598,6 +11598,7 @@
       "breakMismatchNote": "休息时段仅供参考；工时计算扣除 {minutes} 分钟（已保存的休息总额）。",
       "breakMismatchBadge": "按 {minutes} 分钟计",
       "editShift": "编辑",
+      "viewShift": "查看班次",
       "duplicate": "复制",
       "archiveShift": "归档",
       "shiftName": "班次名称",

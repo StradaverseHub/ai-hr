@@ -2,7 +2,7 @@ import { AttendanceSettingsNavigation } from '@/components/attendance-settings-n
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
-import { listShiftsForTenant } from '@/core/roster';
+import { listShiftsForMaintenance,shiftActionAccess } from '@/core/roster';
 import { listAttendanceRules } from '@/core/attendance-rule';
 import { formatBreakDisplay } from '@/core/shift-break-display';
 import { weekPatternFor, weekPatternGroupFor } from '@/core/week-pattern';
@@ -40,6 +40,7 @@ export default async function ShiftSettingsPage({
   searchParams: Promise<{ error?: string; showArchived?: string }>;
 }) {
   const s = await requireAdmin();
+  const [canAdd,canEdit,canDelete]=await Promise.all((['add','edit','delete'] as const).map(operation=>shiftActionAccess(s,operation)));
   const settingsT = await getTranslations('attendanceSettingsHub');
   const t = await getTranslations('admin.attendancePolicy');
   const tr = await getTranslations('admin.attendanceRule');
@@ -51,7 +52,7 @@ export default async function ShiftSettingsPage({
 
   // The shared library — every non-archived shift in the tenant (same set the roster + personnel pickers
   // use), plus the deactivated ones when the toggle is on.
-  const shifts = await listShiftsForTenant(s, { includeArchived });
+  const shifts = await listShiftsForMaintenance(s, { includeArchived });
   // r429 (f6819e19) · D8 — the Schedule Group each shift resolves to, and the working days ACTUALLY IN
   // FORCE (weekPatternFor — group-first, shift-second), not the shift's own raw row. A shift's own week is
   // still what the group falls back to, but a reader of this LIST asking "which days does this shift work"
@@ -68,9 +69,9 @@ export default async function ShiftSettingsPage({
         actions={
           // af7a8eb4 — the reporter's own wording, and the string the rule library next door already shows.
           // `addShift` ("Add shift") stays as the FORM's submit label.
-          <Link href="/admin/attendance/new" className={btnPrimary}>
+          {canAdd===true && <Link href="/admin/attendance/new" className={btnPrimary}>
             {tr('addNew')}
-          </Link>
+          </Link>}
         }
       />
       <ErrorBanner message={error} />
@@ -254,26 +255,26 @@ export default async function ShiftSettingsPage({
                               href={`/admin/attendance/${sh.id}`}
                               className="text-xs font-medium text-primary hover:underline"
                             >
-                              {t('editShift')}
+                              {canEdit===true?t('editShift'):t('viewShift')}
                             </Link>
                             {/* cf21e554 — Copy. NOT the retired cross-company duplicateShift (R33
                                 f21d6eee): one new template in the SAME shared library, landing on its own
                                 edit form. */}
                             <form action={copyShiftAction}>
                               <input type="hidden" name="shiftId" value={sh.id} />
-                              <button className="text-xs font-medium text-primary hover:underline">{t('copyShift')}</button>
+                              <button disabled={canAdd!==true} className="text-xs font-medium text-primary hover:underline">{t('copyShift')}</button>
                             </form>
                             {deactivated ? (
                               <form action={unarchiveShiftAction}>
                                 <input type="hidden" name="shiftId" value={sh.id} />
-                                <button className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-400">
+                                <button disabled={canEdit!==true} className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-400">
                                   {t('unarchiveShift')}
                                 </button>
                               </form>
                             ) : (
                               <form action={archiveShiftAction}>
                                 <input type="hidden" name="shiftId" value={sh.id} />
-                                <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+                                <button disabled={canDelete!==true} className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
                                   {t('archiveShift')}
                                 </button>
                               </form>
@@ -282,7 +283,7 @@ export default async function ShiftSettingsPage({
                                 referenced shift and tells HR to archive instead. */}
                             <form action={deleteShiftAction}>
                               <input type="hidden" name="shiftId" value={sh.id} />
-                              <button
+                              <button disabled={canDelete!==true}
                                 className="text-xs font-medium text-rose-700 hover:underline dark:text-rose-300"
                                 title={t('deleteShiftHint')}
                               >

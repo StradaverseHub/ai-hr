@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { listShiftOtWindows, listShiftsForTenant } from '@/core/roster';
+import { listShiftOtWindowsForMaintenance, listShiftsForMaintenance,shiftActionAccess } from '@/core/roster';
 import { listAttendanceRules } from '@/core/attendance-rule';
 import { ShiftForm } from '../shift-form';
 
@@ -15,16 +15,17 @@ export default async function EditShiftPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const s = await requireAdmin();
+  const canWrite=await shiftActionAccess(s,'edit');
   const { shiftId } = await params;
   const { error } = await searchParams;
 
-  const shifts = await listShiftsForTenant(s, { includeArchived: true });
+  const shifts = await listShiftsForMaintenance(s, { includeArchived: true });
   const shift = shifts.find((sh) => sh.id === shiftId);
   if (!shift) notFound();
 
   // The edited shift's overtime grid, and the rule dropdown's options. An INACTIVE rule stays offered when
   // this shift already points at it, so opening the form cannot silently re-point the shift at Standard.
-  const otWindows = await listShiftOtWindows(s, shift.id);
+  const otWindows = await listShiftOtWindowsForMaintenance(s, shift.id);
   //
   // aec53564 — …AND the tenant's Standard rule, whatever its status. Blank on this dropdown means "the
   // Standard rule", and core/attendance-rule.ts `resolveRuleTx` resolves it WITHOUT looking at `status`, so
@@ -34,5 +35,5 @@ export default async function EditShiftPage({
   const allRules = await listAttendanceRules(s);
   const ruleOptions = allRules.filter((r) => r.status === 'active' || r.id === shift.ruleId || r.isDefault);
 
-  return <ShiftForm shift={shift} otWindows={otWindows} ruleOptions={ruleOptions} error={error} />;
+  return <ShiftForm canWrite={canWrite} shift={shift} otWindows={otWindows} ruleOptions={ruleOptions} error={error} />;
 }

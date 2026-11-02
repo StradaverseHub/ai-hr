@@ -11598,6 +11598,7 @@
       "breakMismatchNote": "Khoảng nghỉ hiển thị để tham khảo; phép tính giờ khấu trừ {minutes} phút (tổng nghỉ đã lưu).",
       "breakMismatchBadge": "dùng {minutes} phút",
       "editShift": "Sửa",
+      "viewShift": "Xem ca làm việc",
       "duplicate": "Nhân bản",
       "archiveShift": "Lưu trữ",
       "shiftName": "Tên ca",
