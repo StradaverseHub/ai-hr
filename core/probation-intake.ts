@@ -3,6 +3,7 @@ import {z} from 'zod';
 import type {SessionContext} from '../db/client';
 import {withScopedLifecycleTenant} from './module-gate';
 import {assertModuleEnabled,isModuleEnabledOrFalse} from './entitlements';
+import {validateProbationOfflinePdf} from '../lib/probation-offline-pdf';
 import {ProbationError,type ProbationPersonnel} from './probation';
 import type {ProbationIntakeDisposition,ProbationIntakeStageOption,ProbationRequiredIntakePart,ProbationOfflineFinalDecision} from '../lib/probation-intake-model';
 export type ProbationIntakeCandidate={source:ProbationPersonnel;classification:'excluded'|'held'|'ready'|'already_admitted';issues:string[];canReview:boolean;canValidate:boolean;requiredParts:ProbationRequiredIntakePart[];stageOptions:ProbationIntakeStageOption[];offlineDecisionReady:boolean;offlineDecision:ProbationOfflineFinalDecision|null;holders:{role:string;name:string;userId:string}[];sourceDigest:string;disposition:ProbationIntakeDisposition|null;evidence:{id:string;name:string;reason:string;createdAt:string}[]};
@@ -14,8 +15,7 @@ export function saveProbationIntakeDisposition(ctx:SessionContext,input:{employm
  const[row]=await tx.execute<{id:string}>(sql`select app.probation_intake_save(${employmentId}::uuid,${revision},${sourceDigest},${JSON.stringify(data)}::jsonb) as id`);return row.id;
 });}
 export function uploadProbationCutoverEvidence(ctx:SessionContext,input:{employmentId:string;name:string;content:Buffer;reason:string}){return withScopedLifecycleTenant(ctx,async tx=>{
- id.parse(input.employmentId);if(input.content.length>10*1024*1024)throw new ProbationError('invalid','Use an offline PDF up to 10 MiB.');
- try{const{PDFDocument}=await import('pdf-lib');const document=await PDFDocument.load(input.content);if(document.getPageCount()<1||document.getPageCount()>200)throw new Error('pages');}catch{throw new ProbationError('invalid','Upload the original readable offline PDF, with one to 200 pages.');}
+ id.parse(input.employmentId);await validateProbationOfflinePdf(input.content);
  const[row]=await tx.execute<{id:string}>(sql`select app.probation_intake_upload(${input.employmentId}::uuid,${input.name},${input.content},${input.reason}) as id`);return row.id;
 });}
 export function readProbationCutoverEvidence(ctx:SessionContext,input:{employmentId:string;evidenceId:string}):Promise<{name:string;content:Buffer}>{return withScopedLifecycleTenant(ctx,async tx=>{const[row]=await tx.execute<{name:string;content:Buffer}>(sql`select * from app.probation_intake_evidence_read(${id.parse(input.employmentId)}::uuid,${id.parse(input.evidenceId)}::uuid)`);if(!row)throw new ProbationError('forbidden','The original scoped offline PDF is unavailable.');return row;});}

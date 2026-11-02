@@ -76,7 +76,7 @@ export type ProbationCase={
   id:string;employmentId:string;companyId:string;sourceKey:string;startOn:string;originalEndOn:string;endOn:string;gradeAtStart:string;
   revision:number;config:ProbationConfig;planMonths:number;planFlag:boolean;extensionCount:number;kpiAcknowledged:boolean;
   state:'kpi_setting'|'in_review'|'pending_approval'|'outcome_pending'|'confirmed'|'extended'|'not_confirmed'|'withdrawn';
-  parts:ProbationPart[];pendingOutcome:ProbationOutcome|null;
+  parts:ProbationPart[];pendingOutcome:ProbationOutcome|null;milestones?:{kpiReminderOn:string;kpiOverdueOn:string};
 };
 function validDay(day:string):void{if(!isCalendarDate(day))reject('Enter a valid calendar date.');}
 export function addProbationMonths(day:string,months:number):string{
