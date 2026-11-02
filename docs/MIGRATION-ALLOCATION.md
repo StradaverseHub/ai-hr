@@ -926,3 +926,13 @@ Parent coordinated0937 / when1793330000337 / aggregate index759 to the independe
 worker;0938 / when1793330000338 / aggregate index760 is reserved to Security for central scope.
 These are additive uninstalled source claims. Re-audit all refs/worktree journals and live watermark
 before release; no deployment or installation is authorized.
+
+## Approved board data scope reader bypasses — 2 November 2026 (coordinated source claim)
+
+The approved-board security owner reserved `0936_data_permission_profiles` at idx758 /
+when1793330000336 and its central row-policy successor0938 at idx760 /when1793330000338.
+The delegated reader/worker work reserves `0937_data_permission_reader_bypasses` at idx759 /
+when1793330000337, between those dependencies. Its isolated branch is
+`codex/approved-board-bypasses-20261102`; it must be integrated with0936 and0938 before hosted
+migration/behavior checks. This is unapplied source only, requires the normal aggregate migration
+and release evidence, and grants no deployment authority. Existing applied SQL is unchanged.
