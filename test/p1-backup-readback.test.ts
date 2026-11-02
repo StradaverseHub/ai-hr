@@ -54,3 +54,30 @@ finally:
   expect(result.error).toBeUndefined();expect(result.status).toBe(78);expect(result.stderr).toContain('cleanup is uncertain');
  } finally {rmSync(dir,{recursive:true,force:true});}
 });
+
+it('an OS refusal while terminating the owned reader is cleanup uncertainty, not an ordinary verified stop',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'readback-stop-refused-'));
+ const code=`import subprocess,runpy,sys,hashlib,os,signal
+real=subprocess.Popen
+kill=os.killpg
+children=[]
+def started(*a,**k):
+ child=real(*a,**k);children.append(child);return child
+def refuse(*a):
+ raise PermissionError('synthetic owned-group signal refusal')
+subprocess.Popen=started
+os.killpg=refuse
+sys.argv=[${JSON.stringify(resolve('scripts/backup-readback.py'))},'2',hashlib.sha256(b'ok').hexdigest(),${JSON.stringify(join(dir,'out'))},'1','--',${JSON.stringify(process.execPath)},'-e','process.stdout.write("ok")']
+try:
+ runpy.run_path(sys.argv[0],run_name='__main__')
+finally:
+ for child in children:
+  try: kill(child.pid,signal.SIGKILL)
+  except ProcessLookupError: pass
+  child.wait(timeout=5)
+`;
+ try {
+  const result=spawnSync('python3',['-c',code],{encoding:'utf8',timeout:10000});
+  expect(result.error).toBeUndefined();expect(result.status).toBe(78);expect(result.stderr).toContain('cleanup is uncertain');
+ } finally {rmSync(dir,{recursive:true,force:true});}
+});
