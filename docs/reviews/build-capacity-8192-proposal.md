@@ -5,6 +5,12 @@ Status: **proposal, not adopted.** Branch `claude/build-capacity-proposal`, cut 
 Merging into `main`/`alpha`, deployment, staging, production and AI-binding changes are out of scope. If
 adopted, the change needs owner review because it raises a canonical build capacity limit.
 
+Code commits (both required; see section 4 for rollback):
+
+- `8576fb1fb5a2784924312b15981d81370835ca40`: bounded admission, focused and canonical build steps, telemetry.
+- `c8c6208f072a8d935da89082e6c5252afc1fe1b5`: browser orchestrator under the same profile, exact-source policy
+  tests, controller test wiring, canonical step-summary telemetry.
+
 ## Problem (facts)
 
 `pnpm build` (`next build`, which type-checks `tsconfig.build.json` because `next.config.ts:13` selects it when
@@ -24,278 +30,227 @@ are measurements only, taken from the throwaway branch `claude/teras-build-diag`
 Qualify run 41367575598 (hotspot repair): typecheck PASS; `linux-build` OOM at about 6.0 GB under 6144.
 
 How to read these numbers (analysis): TypeScript's "Memory used" is the heap in use at the end of a run with a
-12 GB cap. Under that cap the garbage collector runs lazily. `main` reports 8.70 GB there and still builds at
-6144, so these figures do not give the minimum heap a tree needs, and they cannot predict whether 8192 fits.
-Teras adds only about 1.2% more types, 1.2% more instantiations and 89 more files than `main`, which suggests it
-sits just above the 6144 line. Only a real build run settles the question (section 5).
+12 GB cap. Under that cap the garbage collector runs lazily, so these figures do not give the minimum heap a tree
+needs. Only real build runs settle fit (section 7).
 
-## The patch
+## 1. Canonical release path (Node 22 recipe and the artifact the operator installs)
 
-Commit `8576fb1fb5a2784924312b15981d81370835ca40`:
+Finding (facts, verified in source): the release artifact is produced by exactly one build, the `build` job of
+`alpha-staging.yml`, and nothing downstream rebuilds it.
 
-- `.github/ci/build-heap.mjs` (new): bounded admission and telemetry.
-  - `admit` enforces four conditions:
-    - `GITHUB_ACTIONS=true` and `CI=true`;
-    - `RUNNER_ENVIRONMENT=github-hosted` (the env form of `runner.environment`);
-    - `RUNNER_OS=Linux`;
-    - `/proc/meminfo` MemTotal between 15 and 17 GiB (the standard public 16 GB ubuntu-24.04 class).
-
-    It accepts exactly `AIHR_CI_BUILD_HEAP_MB=8192` and emits `node_options=--max-old-space-size=8192`, the
-    profile `hosted-linux-16g-8192` and `memtotal_kib` as step outputs.
-  - Refusals: any value above 8192 fails with the message "exceeds the 8192 MB ceiling; raising it needs owner
-    review". Every other value (6144, 7000 and so on) is refused as unreviewed. A self-hosted runner, a non-Linux
-    runner or another memory class also fails the step, which then fails the job.
-  - `measure DIR -- cmd` re-checks the admitted environment. It then runs the command under `/usr/bin/time -v -o`,
-    samples `MemAvailable` every 2 s, and writes `build-memory.json` with the peak RSS, the minimum MemAvailable,
-    the heap and the verdict. It also writes the step summary.
-  - Budget: a warning above 10 GiB peak RSS. Above 12 GiB the step fails, even when the build succeeded.
-  - `assertBuildHeapEnvironment` is shared with consumers. It accepts only the exact default 6144 with no
-    profile, or the exact admitted 8192 profile.
-- `.github/workflows/alpha-focused-checks.yml` `linux-build`:
-  - new `Admit bounded next build heap` step;
-  - the build step is now `build-heap.mjs measure "$RUNNER_TEMP/next-build-memory" -- pnpm build`, with the
-    step-level `NODE_OPTIONS` taken from the admission output;
-  - a `next-build-memory` artifact is uploaded with `always()` after admission;
-  - the resolve job's "Focused controller regression checks" now also run `build-heap.test.mjs`,
-    `next-application-cache.test.mjs` and `next-build-cache-policy.test.mjs`.
-- `.github/workflows/alpha-staging.yml` `build`:
-  - new `Admit bounded next build heap` step;
-  - only the `Canonical System Testing production build and byte bundle` step gets the step-level
-    `NODE_OPTIONS` override and the admission env;
-  - the job-level `NODE_OPTIONS: --max-old-space-size=6144` stays for every other step (setup, cache binding,
-    uploads).
-- `.github/ci/next-application-cache-protocol.mjs`:
-  - `assertManagedNextInvocation` still requires `AIHR_CI_CAPACITY_PROFILE=bounded-canonical-build`, and now
-    delegates the heap check to `assertBuildHeapEnvironment`;
-  - `build-heap.mjs` is added to `NEXT_APPLICATION_CODE`, the publisher code identity.
-- `.github/ci/next-build-cache-policy.mjs`: `validateNextContext` accepts `nodeOptions` of exactly 6144 or 8192.
-  A graph is reused only when its whole context, heap included, is deep-equal (`validateNextState`), so a 6144
-  graph is never reused under 8192 and the reverse is also refused.
-- `.github/ci/next-application-cache.mjs`:
-  - records `report.memory`: heap, profile, minimum MemAvailable, and the canonical build's peak RSS parsed from
-    the GNU time output it already wrote (`/usr/bin/time -v` was already the wrapper);
-  - warns above 10 GiB and fails above 12 GiB;
-  - fails if the telemetry is missing;
-  - the peak RSS is also recorded when the build fails, in the `next-application-build-failure` diagnostics.
-
-What does not change (verified by `build-heap.test.mjs` and the diff):
-
-- no `skipLibCheck`, no `typescript.ignoreBuildErrors`, and no change to `tsconfig*.json`, `next.config.ts` or
-  the checked files;
-- no typecheck or security step is skipped;
-- the canonical log check still requires `Finished TypeScript in` and refuses
-  `Skipping validation of types|error TS`.
-
-Rollback: `git revert 8576fb1fb5a2784924312b15981d81370835ca40` (one commit) restores 6144 in both build steps,
-the 6144-only protocol and policy, and removes the helper. A revert commit is enough because the helper adds no
-state, migration, cache namespace or artifact name that any other path depends on.
-
-## 1. Every `next build` entry point
-
-| Entry point (file:line on the patched branch) | Runner | Heap before | Heap after |
-|---|---|---|---|
-| `.github/workflows/alpha-focused-checks.yml:200,204`: `linux-build` (`run_build=true`), plain `pnpm build`, Node 20 | GitHub-hosted ubuntu-24.04 | 6144 (former line 197) | **8192, admitted** |
-| `.github/workflows/alpha-staging.yml:404,407`: `build` job → `.github/ci/next-application-cache.mjs` → `build-production.mjs --ci` → `scripts/improve/system-testing-build-cli.ts:46` `spawnSync('pnpm',['build'])` (inherits env). Triggers: dispatch, push to alpha, ready PR into alpha | GitHub-hosted ubuntu-24.04 | 6144 (job env line 357, enforced by protocol line 18 on main) | **8192 on that one step only, admitted**; job env stays 6144 |
-| `.github/workflows/alpha-staging-diagnostics.yml:377`: transport-producer diagnostic build (pinned to `codex/test-suite-efficiency-review-20261025`) | GitHub-hosted | 6144 | 6144 (unchanged) |
-| `.github/workflows/alpha-staging-diagnostics.yml:697,711`: `next-build-cache` diagnostic (`next-build-cache.mjs`) | GitHub-hosted | 6144 | 6144 (unchanged) |
-| `.github/ci/orchestrator-browser.mjs:133`: `ai-orchestrator-walkthrough.yml:72`, production renderer build, `pnpm build` | GitHub-hosted ubuntu-24.04 | 6144 | 6144 (unchanged, see risk R5) |
-| `deploy/deploy.sh:377`: staging/demo server build through `system-testing-build-cli.ts build` | Operator server (VMware guest, about 3.9 GB RAM plus about 12 GB swap) | 6144 | 6144 (unchanged; not GitHub-hosted) |
-| `deploy/deploy.sh:384`: server `pnpm build` when no Testing record is selected | Operator server | 6144 | 6144 (unchanged) |
-| `deploy/deploy.sh:370-372`: `AIHR_SELECTED_CI_BUILD_INSTALL`, installs the CI-built packet | Operator server | no build | no build |
-| `deploy/deploy-customer.sh:18`: `exec deploy.sh --customer`, same build lines as above | Customer server | 6144 | 6144 (unchanged) |
-| `deploy/DEPLOY.md:61`: documented manual small-box build | Manual | 2048 | 2048 (documentation, unchanged) |
-
-Other heap settings checked and left unchanged:
-
-- `.github/ci/typecheck.sh:69`: whole-repository `tsc` at **12288** with a 4 GB swapfile. This is not
-  `next build`; it is unchanged and outside the 8192 mechanism.
-- `scripts/improve/release.ts:80` `tscEnv`: operator `npx tsc --noEmit` at 6144 (pinned by
-  `test/r417-release-gate.test.ts:93-97`).
-- Native typecheck (4096) and Metro export (6144).
-- Diagnostic compiler probes at 12288.
-
-Installers:
-
-- **Staging** installs either the CI-built packet (no build on the server) or builds on the staging server
-  through `deploy/deploy.sh:377/384` at **6144**. This patch does not touch that path. A server-side build of
-  the Teras tree at 6144 is therefore expected to hit the same V8 limit (see R4).
-- **Production** does not build. Production packages capture `.next` and `node_modules` from the accepted
-  staging build (`docs/PRODUCTION-PACKAGES.md`, step 3).
-- **Customer installs** that run `deploy-customer.sh` build on the server at 6144.
-
-## 2. Policy tests that pin 6144 or reject 8192
-
-| File:line (main) | What it pins | Change |
+| Step | Entry point (file:line on this branch) | What happens |
 |---|---|---|
-| `.github/ci/next-application-cache-protocol.mjs:18` | `NODE_OPTIONS === '--max-old-space-size=6144'` | Delegates to `assertBuildHeapEnvironment`: exact 6144 (no profile), or exact 8192 with profile `hosted-linux-16g-8192`, `RUNNER_OS=Linux` and an admitted MemTotal of 15–17 GiB |
-| `.github/ci/next-build-cache-policy.mjs:43` | context `nodeOptions === 6144` | Accepts exactly 6144 or 8192; reuse still needs the same heap |
-| `.github/ci/next-application-cache.test.mjs:18` | rejects `NODE_OPTIONS=8192` | Unchanged: an unadmitted 8192 is still rejected. Adds: admitted 8192 is accepted; 12288, 8193, missing profile, 64 GiB MemTotal, macOS, self-hosted, a legacy capacity profile, and 6144 carrying a profile are all rejected |
-| `.github/ci/next-application-cache.test.mjs:63` | a 6144 packet refuses an 8192 current context | Unchanged (still refused). Adds: an 8192 packet is accepted under an 8192 context and refused under 6144; 12288 and 8193 packets are refused |
-| `.github/ci/next-build-cache-policy.test.mjs:37` | a 6144 envelope refuses an 8192 context | Unchanged (still refused). Adds: an 8192 context is valid by itself; 12288, 8193, 4096, empty and missing are refused |
-| `.github/ci/next-application-test-fixtures.mjs:7` | fixture context 6144 | Unchanged; tests derive the 8192 variants from it |
-| `.github/ci/build-heap.test.mjs` (new) | ceiling 8192, default 6144, budget 10/12 GiB, admission and refusals, and the workflow wiring (8192 only in `linux-build` and the canonical step; diagnostics, typecheck and native jobs have no 8192; no `skipLibCheck` or `ignoreBuildErrors`) | New |
-| `test/r417-release-gate.test.ts:93-97` | operator `tscEnv` adds 6144 and respects an operator-set 8192 | Unchanged (operator tsc, not `next build`) |
-| `.github/ci/build-production.test.mjs:67` (`BUILD_CAPACITY_PROFILE`) | byte-capacity profile v3 | Unchanged (archive and zip bytes, not heap) |
-| `.github/ci/runner-capacity.test.mjs` (`bounded-canonical-build`) | disk floor for the canonical build | Unchanged (disk, not heap) |
-| `.github/ci/diagnostics/compiler-compatible.test.mjs:9,31` | diagnostic compiler at 12288 | Unchanged |
+| 1. Recipe | `.github/workflows/alpha-staging.yml:342-372` `build` job, `runs-on: ubuntu-24.04`, `setup-alpha` with `node: '22.23.3'`, `capacity_profile: bounded-canonical-build`; job env `NODE_OPTIONS: --max-old-space-size=6144` (line 357) | GitHub-hosted runner, Node 22.23.3, closed database URLs |
+| 2. Heap admission (new) | `alpha-staging.yml:402-405` `build-heap.mjs admit` with `AIHR_CI_BUILD_HEAP_MB: '8192'` | Refuses anything except exactly 8192 on a hosted 16 GB Linux runner |
+| 3. Canonical build | `alpha-staging.yml:406-412` → `.github/ci/next-application-cache.mjs:129` `command('canonical-build', … build-production.mjs --ci …)` → `.github/ci/build-production.mjs:177` (`--ci` purpose) → `build-production.mjs:123,131` `system-testing-build-cli.ts` `runTestingProductionBuild` → `scripts/improve/system-testing-build-cli.ts:46` `spawnSync('pnpm',['build'])` (inherits the step env) | Real `next build`, under `/usr/bin/time -v` and `prlimit`; `next-application-cache.mjs:138-139` refuses the build unless the log has `Compiled successfully in` and `Finished TypeScript in` and has no `Skipping validation of types` or `error TS` |
+| 4. Artifact | `alpha-staging.yml:413-420` uploads `production-build-v1` (`build-artifact.mjs:7`): `system-testing.json`, `successful-build.json`, `build-provenance.json` and the byte bundle (`build-production.mjs:151-172`) | The release artifact |
+| 5. Release verification | `.github/ci/operator-release.mjs:48` → `release-ci.mjs:29` `verifyCi` → `release-policy.mjs:21-22` (run must be `alpha-staging.yml`, head branch `main` or `alpha`, `head_sha` equal to the operator's clean controller) and `release-policy.mjs:40-50` (exact artifact inventory) → `release-ci.mjs:21` `inspectCiBuildPacket` | Operator's trusted controller checkout on the Mac |
+| 6. Staging install | `.github/ci/staging-ci-promotion.mjs:29,40` `transferAndLaunchCiBuild` → `deploy/deploy.sh --ci-build=UUID --testing-build-record=UUID` → `deploy.sh:141-143` (pinned `/opt/node22`) → `deploy.sh:370-372` `staging-build-install.mjs stage` and `deploy.sh:483-486` `activate` | **No build on the server**; the CI bytes are installed |
+| 7. Production package | `docs/PRODUCTION-PACKAGES.md` steps 2-3: capture `.next` and `node_modules` from the accepted staging build | **No rebuild** |
 
-Other hits for `6144`, `8192` and `max-old-space-size` in the repository are payload and byte limits, SQL
-`chr(8192)`, or other services' own heaps. None of them is a `next build` heap.
+`build-production.mjs:40-44` also has a `release` purpose restricted to `alpha-staging.yml@refs/heads/(main|alpha)`;
+no workflow or script invokes it (`git grep build-production.mjs` shows only `--ci` from `next-application-cache.mjs`).
+The server-side builds in `deploy.sh:377,384` (6144) are the non-CI install path, not the release recipe.
 
-## 3. Controller, recipe, cache keys, digests and qualifications
+What the patch changes on this path:
 
-- **Trusted CI controller: changed.** `alpha-staging.yml`, `next-application-cache*.mjs` and
-  `next-build-cache-policy.mjs` are controller code. The release verifier (`release-policy.mjs:21-22`,
-  `release-ci.mjs`) accepts only runs whose controller is the head of `main` or `alpha`, with the same SHA as the
-  operator's clean controller checkout. Runs from this branch can therefore never be release evidence.
-- **Operator route: code unchanged.** `operator-release.mjs`, `release.ts` and `deploy.sh` are untouched. After
-  adoption, the operator's controller checkout becomes the new `main` SHA, so evidence must come from runs of
-  that controller.
-- **Canonical build recipe: changed in heap only.** The steps, commands, `prlimit`, `time -v`, typegen,
-  `build-production.mjs --ci`, bundle and packet are the same. Only the canonical step's `NODE_OPTIONS` changes.
-- **Capacity profile names.** The disk profile `bounded-canonical-build` and the byte profile
-  `BUILD_CAPACITY_PROFILE` v3 are unchanged. A new heap profile name, `hosted-linux-16g-8192`, is added.
-- **Build-cache keys.**
-  - The Turbopack `actions/cache` key (`aihr-next-compiler-v2-…`, hashed from the lockfile, configs and CSS) is
-    unchanged.
-  - The application compiler graph context includes `nodeOptions`, so it changes. Every existing
-    `next-application-state-v1` graph and the pinned bootstrap seed (`NEXT_APPLICATION_SEED`, run 40251838329,
-    6144) become unusable under 8192.
-  - Adding `build-heap.mjs` to `NEXT_APPLICATION_CODE` also makes graphs published by pre-patch controllers fail
-    `verifyNextPublisherTree`.
-  - Effect: the first post-adoption canonical builds run cold (graceful fallback; the build always runs anyway),
-    until a run under the new controller publishes a new 8192 graph.
-- **Artifact digests and source manifests.** `build-provenance.json` and `BUILD_CAPACITY_PROFILE` are unchanged.
-  The producer report (`comparison.json` and the `producer.json` member) gains a `memory` object, so the bytes of
-  new packets differ. Heap size does not change the compiled bytes.
-- **What is invalidated.**
-  - No existing PASS. Earlier green canonical builds remain valid for their exact source and controller pair.
-  - Teras qualifications at 6144 (41367575598 and earlier) are failures and stay failures. They are not
-    relabelled.
-  - Any qualification still in progress under the old controller has to finish and keep its record as it is.
+- **Trusted controller: changed.** `alpha-staging.yml`, `next-application-cache*.mjs`, `next-build-cache-policy.mjs`
+  and the new `build-heap.mjs` are controller code. Runs from this branch can never be release evidence
+  (`release-policy.mjs:22`). After adoption the operator's controller becomes the new `main` SHA.
+- **Recipe identity: changed in heap only.** Same job, runner, Node 22.23.3, commands, `prlimit`, `time -v`, typegen,
+  `build-production.mjs --ci`, bundle and packet. Only the canonical step's `NODE_OPTIONS` changes (6144 → admitted
+  8192), plus the memory line in the log and step summary.
+- **Cache keys.** The Turbopack `actions/cache` key (`aihr-next-compiler-v2-…`, `alpha-staging.yml:373-397`) is
+  unchanged. The application compiler-graph context includes `nodeOptions` (`next-build-cache.mjs:31`), so 6144
+  graphs and the pinned seed (`NEXT_APPLICATION_SEED`, 6144) are not reused under 8192; `build-heap.mjs` is in
+  `NEXT_APPLICATION_CODE`, so pre-patch publishers fail `verifyNextPublisherTree`. Effect: cold canonical builds
+  until a post-adoption publisher runs (the build always runs anyway).
+- **Artifact digest.** The `production-build-v1` packet format is unchanged (`build-provenance.json` format 2,
+  `BUILD_CAPACITY_PROFILE` v3); the heap is not recorded in it. Packet bytes differ from build to build anyway
+  (random build record UUID, timestamps, runner boot hash), so no existing digest is comparable or carried over.
+  The optional `next-application-state-v1` graph's `producer.json` gains a `memory` object.
+- **Artifact inventory: unchanged on purpose.** `release-policy.mjs:42-45` refuses any artifact name outside the
+  required set plus the two graph namespaces. The canonical path therefore records telemetry in the job log, the
+  step summary and the optional graph's `producer.json`, not in a new artifact (the focused and orchestrator paths,
+  which are not release evidence, upload it).
 
-## 4. Rerunning exact-source qualification under the new profile
+Did it run in CI without deploying? **Yes.** `alpha-staging.yml` has a `build_only` dispatch ("Canonical byte build
+only; never emits a gate PASS"). `assertCiCandidateBuildInvocation` (`build-production.mjs:47-56`) accepts a
+dispatch from any same-repository branch, the workflow holds no server credentials, and `deployment-hold`
+(`alpha-staging.yml:603-616`) asserts `STAGING_DEPLOY_ENABLED=false` and `PRODUCTION_DEPLOY_ENABLED=false`. Run
+41381652213 (section 7) exercised steps 1-4 with the patched controller on the Teras merge. Steps 5-7 cannot run
+before adoption, by design: the verifier refuses non-`main`/`alpha` controllers.
 
-Only after owner approval and adoption into the release controller:
+## 2. Every `next build` entry point
 
-1. Freeze the candidate: the Teras head, or the hotspot repair `11930f14`/`7e68eb4f` if the owner prefers it,
-   rebased or merged onto the new controller so that `AIHR_CI_HEAD` and the controller are the exact intended
-   pair.
-2. Dispatch the normal `alpha-staging.yml` gate from the adopted `main`/`alpha` controller with
-   `candidate_ref`/`expected_sha` (the authenticated CI operator route, not the focused workflow). Let every
-   planned chunk finish.
-3. Valid evidence:
-   - The whole-repository typecheck PASS (12288, unaffected by this change) stays valid only for the same
-     candidate SHA and controller. A new controller SHA means a new run by policy; it is not carried over.
-   - Unit and DB test units do not depend on the build heap. Retaining them still has to go through the
-     repair/resume evidence policy (`resume-source.mjs`, `repair-recovery.mjs`), because the controller differs.
-   - Focused passes never authorize release.
-4. The `build` job must show:
-   - a successful canonical build;
-   - `report.memory.verdict` of `within` or `warn`;
-   - peak RSS and minimum MemAvailable recorded;
-   - the packet published.
+| Entry point (file:line) | Runner | Before | After |
+|---|---|---|---|
+| `alpha-focused-checks.yml:197-217` `linux-build` (`run_build=true`), `pnpm build` under `build-heap.mjs measure`, Node 20 | GitHub-hosted ubuntu-24.04 | 6144 | **8192, admitted** |
+| `alpha-staging.yml:402-412` canonical build (section 1), Node 22.23.3 | GitHub-hosted ubuntu-24.04 | 6144 | **8192 on that one step, admitted**; job env stays 6144 |
+| `ai-orchestrator-walkthrough.yml:74-83` → `orchestrator-browser.mjs:27-31,146-147` production renderer build, Node 20 | GitHub-hosted ubuntu-24.04 | 6144 | **8192 for the `next build` child only, admitted, under `build-heap.mjs measure`** |
+| `alpha-staging-diagnostics.yml:377`, `:697` diagnostic builds (pinned diagnostic branches) | GitHub-hosted | 6144 | 6144 (unchanged; not release, not the qualification recipe) |
+| `deploy/deploy.sh:377`, `:384` server builds (no `--ci-build`) | Operator/customer server | 6144 | 6144 (unchanged; the hard-coded trailing flag overrides any inherited value) |
+| `deploy/deploy-customer.sh:18` → `deploy.sh --customer` | Customer server | 6144 | 6144 (unchanged) |
+| `deploy/DEPLOY.md:61` documented manual small-box build | Manual | 2048 | 2048 (documentation) |
 
-   A `fail` verdict or an OOM is recorded as a failure and must not be retried into a PASS.
+Other heap settings, unchanged: `.github/ci/typecheck.sh:69` whole-repository `tsc` at 12288 (not `next build`);
+`scripts/improve/release.ts:80` operator `tsc` at 6144; native typecheck 4096; Metro export 6144; diagnostic
+compiler probes 12288.
 
-## 5. Memory evidence
+## 3. The bounded profile (identical everywhere it applies)
 
-Proof runs use `alpha-focused-checks.yml` with `run_build=true` and `selected_tests=["test/module-gate.test.ts"]`.
-The workflow is taken from the `--ref` branch, so the patched workflow runs.
+`hosted-linux-16g-8192`, defined once in `.github/ci/build-heap.mjs`:
 
-| Candidate | SHA (`AIHR_CI_HEAD`) | Run | `linux-build` | Peak RSS | Min MemAvailable |
-|---|---|---|---|---|---|
-| `claude/build-capacity-proposal` (main + patch) | `8576fb1fb5a2784924312b15981d81370835ca40` | 41369736880 | **success** (Compiled 2.2 min, `Finished TypeScript in 3.3min`, exit 0) | 8,934,616 KiB (8.52 GiB) | 6,081,732 KiB (5.80 GiB) |
-| `claude/build-capacity-proof-teras` (throwaway merge of the patch into `39c1301a`) | `496134a19a84cebb76586fdd9fa39028711c0e87` | 41369739915 | **success** (Compiled 2.2 min, `Finished TypeScript in 3.4min`, exit 0) | 9,013,112 KiB (8.60 GiB) | 5,748,976 KiB (5.48 GiB) |
+- **Runner class.** `admit` and every consumer assert `GITHUB_ACTIONS=true`, `CI=true`,
+  `RUNNER_ENVIRONMENT=github-hosted`, `RUNNER_OS=Linux`, and `/proc/meminfo` MemTotal 15-17 GiB (observed
+  16,367,524 KiB on every run). Self-hosted, macOS, Windows, larger or smaller machines fail the step.
+- **Hard ceiling 8192.** `assertRequestedHeapMb`: above 8192 fails with "exceeds the 8192 MB ceiling; raising it
+  needs owner review"; any other value (6144, 7168, padded, decimal) is refused as unreviewed.
+- **Consumers.** `assertBuildHeapEnvironment` (canonical protocol and `measure`) accepts only exact 6144 with no
+  profile, or exact 8192 with the profile and an admitted MemTotal on the admitted runner class.
+  `admittedBuildNodeOptions` (orchestrator child) returns exactly 6144 without admission, exactly 8192 with it, and
+  fails closed on a partial or mixed admission. `validateNextContext` accepts only those two strings; a graph is
+  reused only under an identical heap.
+- **Where it applies.** Exactly three admitting workflows, each with one admission requesting `'8192'` in one
+  `ubuntu-24.04` job (pinned by `build-heap.test.mjs`). No workflow may contain any heap value above 8192 or the
+  string `self-hosted`.
+- **Telemetry and budget.** Peak RSS is GNU time `Maximum resident set size` (largest single descendant process,
+  not the sum); minimum `MemAvailable` is sampled. Budget: warn above 10 GiB, fail above 12 GiB even when the build
+  succeeded; missing telemetry fails. Focused and orchestrator paths write `build-memory.json` and `time-v.txt`
+  (artifacts `next-build-memory` and `orchestrator-production-renderer-development-evidence`); the canonical path
+  writes the log line, the step summary and `producer.json.memory` (section 1 explains why no artifact).
+- **Refusing elsewhere.** Any other runner fails `admit`; an unadmitted 8192 fails the canonical protocol; server
+  builds keep a hard-coded 6144.
 
-Details shared by both runs:
+## 4. Rollback (exact)
 
-- `AIHR_CI_HEAD` in the logs equals the SHA in the table.
-- Admission recorded `github-hosted`, `Linux`, MemTotal 16,367,524 KiB (15.61 GiB) and `--max-old-space-size=8192`.
-- The RSS verdict was `within` (below the 10 GiB warning budget) on both.
-- Telemetry is in the `next-build-memory` artifact of each run (`build-memory.json`, `time-v.txt`).
-- In both runs the resolve job's "Focused controller regression checks" passed 202 of 202, including
-  `build-heap.test.mjs`, `next-application-cache.test.mjs` and `next-build-cache-policy.test.mjs`.
-- `selected-tests` (`test/module-gate.test.ts`) passed.
+Verified in a scratch worktree: reverting both code commits on `c8c6208f` leaves `.github`, `deploy` and `scripts`
+byte-identical to main `50ea2471` (`git diff --stat 50ea2471 -- . ':!docs'` empty).
 
-These runs are development checks on non-release branches. They do not qualify or authorize release.
+- If adopted as a squash (recommended, so adoption is one commit): `git revert --no-edit <squash-sha>`.
+- If adopted as these commits, one rollback commit:
+  `git revert --no-commit c8c6208f072a8d935da89082e6c5252afc1fe1b5 8576fb1fb5a2784924312b15981d81370835ca40 && git commit -m "Revert bounded 8192 next build heap; restore 6144"`.
+
+The helper adds no state, migration, cache namespace or artifact name that another path depends on. After a
+rollback, 8192 graphs published meanwhile are refused by the restored 6144-only policy (cold build, not a failure).
+
+## 5. Exact-source policy tests
+
+| Test | Accepts | Rejects |
+|---|---|---|
+| `build-heap.test.mjs` | admitted 8192 on hosted 16 GB Linux; default 6144 | 8193, 12288, 16384, 999999, 6144/7000/4096 as requests, padded/decimal; self-hosted, macOS, Windows, non-Actions; MemTotal 7, 15-ε, 17+ε, 32, 64 GiB; stacked flags; profile on 6144; partial admission; ceiling/default/budget constants changed |
+| `build-heap.test.mjs` workflow inventory | exactly `ai-orchestrator-walkthrough.yml`, `alpha-focused-checks.yml`, `alpha-staging.yml` admit, each once, `'8192'`, in one `ubuntu-24.04` job without `container:`/`services:` | any other admitting workflow; any heap above 8192 in any workflow; `self-hosted`; 8192 in typecheck, native, selected-tests or diagnostics; `skipLibCheck`/`ignoreBuildErrors`; orchestrator source with a literal heap |
+| `next-application-cache.test.mjs` (invocation) | default 6144; admitted 8192 | unadmitted 8192; 12288, 8193, 7168, 16384, `8192 ` , `08192`, stacked flags, `6144 … 8192`; other profile names; missing/8 GiB/64 GiB/padded MemTotal; missing or other runner/OS/Actions; legacy capacity profile |
+| `next-application-cache.test.mjs` (graph reuse) with fixtures `applicationStateFixture({}, {nodeOptions})` (`next-application-test-fixtures.mjs`) | 6144 graph under 6144; 8192 graph under 8192 | 6144 graph under 8192 and the reverse; 12288, 8193, 16384, 7168, 4096, padded, stacked, empty, missing |
+| `next-build-cache-policy.test.mjs` | 6144 or 8192 context | 12288, 8193, 16384, 7168, 4096, whitespace, `08192`, stacked, underscore spelling, empty, missing, numeric; cross-heap reuse |
+| `orchestrator-browser.test.mjs` | 6144 without admission; 8192 with admission; closed DB URLs | self-hosted, macOS, other profile, 64 GiB, missing MemTotal, partial admission; inherited 16384 never reaches the build child |
+
+Mutation check (local, scratch copy): setting the walkthrough request to 8193, the ceiling to 12288, the canonical
+job to `[self-hosted, linux]`, a literal 8192 in the orchestrator, or adding 12288 to the cache policy each made
+the suite fail.
+
+Where they run on Actions: `alpha-focused-checks.yml:87-88` "Focused controller regression checks" (now including
+`orchestrator-browser.test.mjs`), `alpha-staging.yml:87-88` "CI integrity regression checks" (now including
+`build-heap.test.mjs`, `next-build-cache-policy.test.mjs`, `orchestrator-browser.test.mjs`), and
+`ai-orchestrator-walkthrough.yml:40`. Results: section 7.
+
+Not changed: `test/r417-release-gate.test.ts:93-97` (operator `tsc`), `build-production.test.mjs`
+`BUILD_CAPACITY_PROFILE` (bytes), `runner-capacity.test.mjs` (disk), `diagnostics/compiler-compatible.test.mjs`
+(12288 compiler).
+
+## 6. Requalification plan (only after owner approval and adoption)
+
+1. Adopt as one squash commit into the release controller (`main`, then aligned `alpha`) under owner review.
+2. Freeze the candidate: the Teras head (or the hotspot repair, if the owner prefers it) merged onto the adopted
+   controller, so that `AIHR_CI_HEAD` and the controller are the intended pair.
+3. Dispatch the full `alpha-staging.yml` gate from the adopted controller with `candidate_ref`/`expected_sha` (the
+   authenticated CI operator route, not `build_only`, not focused). Let every planned chunk finish.
+4. The `build` job must show `Compiled successfully` and `Finished TypeScript`, a `within` or `warn` memory verdict,
+   peak RSS and minimum `MemAvailable` in the log and summary, and a published `production-build-v1`. `fail` or OOM
+   is a failure and is not retried into a PASS.
+5. Then the normal operator route: `operator-release.mjs` verification, staging install of the CI packet,
+   acceptance, and only then package capture.
+
+Evidence validity:
+
+- **Invalidated for release:** nothing that was a PASS becomes a FAIL, but no existing evidence carries over to the
+  new controller. Typecheck, unit, DB and browser units are heap-independent, yet the controller SHA differs, so
+  retention needs the repair/resume evidence policy (`resume-source.mjs`, `repair-recovery.mjs`) or a fresh run.
+- **Failures stay failures:** Teras qualifications at 6144 (41367575598 and earlier) are not relabelled.
+- **Digests:** packet digests are per build and are never carried over; the 6144 graph seed and graphs are
+  unusable under 8192 (cold build expected; run 41381652213 took 7 min 6 s cold, inside the 720 s step limit).
+- **The proof runs below are development evidence only.** They are not release evidence and do not qualify.
+
+## 7. Evidence
+
+All runs: standard GitHub-hosted ubuntu-24.04, admission `github-hosted`/`Linux`, MemTotal 16,367,524 KiB
+(15.61 GiB), `--max-old-space-size=8192`, profile `hosted-linux-16g-8192`, `AIHR_CI_HEAD` equal to the SHA shown.
+
+| Run | Path | Controller | Candidate (`AIHR_CI_HEAD`) | Build | Peak RSS | Min MemAvailable |
+|---|---|---|---|---|---|---|
+| 41369736880 | focused `linux-build` | 8576fb1f | main + patch 8576fb1f | success | 8,934,616 KiB (8.52 GiB) | 6,081,732 KiB |
+| 41369739915 | focused `linux-build` | 496134a1 | Teras merge 496134a1 | success | 9,013,112 KiB (8.60 GiB) | 5,748,976 KiB |
+| 41380900334 | focused `linux-build` | c8c6208f | main + patch c8c6208f | success (Compiled 2.2 min, TypeScript 3.3 min) | 8,812,752 KiB (8.40 GiB) | 5,835,644 KiB |
+| 41380903331 | focused `linux-build` | ffd33f2b | Teras merge ffd33f2b | success (Compiled 98 s, TypeScript 2.3 min) | 9,092,288 KiB (8.67 GiB) | 5,990,220 KiB |
+| **41381652213** | **canonical `alpha-staging.yml` `build_only`, Node 22.23.3** | c8c6208f | **Teras merge ffd33f2b** | **success**; cold (graph lookups failed: `gh` timeouts, seed refused); canonical-build 7 min 6 s; `production-build-v1` 274,435,193 bytes `sha256:9c53214c…57719cc`; `deployment-hold` success | 9,115,456 KiB (8.69 GiB) | 5,386,920 KiB |
+| 41381655480 | `ai-orchestrator-walkthrough.yml` | c8c6208f | main + patch c8c6208f | `production-build` phase **success** (286 s); job **failure** later at `migrate-fictional-database` (exit 1, 4 s) | 8,822,540 KiB (8.41 GiB) | 6,200,880 KiB |
+| 41382858043 | `ai-orchestrator-walkthrough.yml` control, unpatched workflow | main 50ea2471 | main 50ea2471 | `production-build` phase success at 6144 (477 s); job **failure** at `migrate-fictional-database` (exit 1, 6 s), same last notice (migration 0749) | n/a (6144, no telemetry on main) | n/a |
+
+All verdicts `within` (below the 10 GiB warning). Controller tests: focused resolve 233/233 on both 41380900334 and
+41380903331 (202 before this round); canonical resolve "CI integrity regression checks" 692/692 plus the Python and
+staging suites in 41381652213; `selected-tests` (`test/module-gate.test.ts`) passed on both focused runs.
+
+Orchestrator failure (analysis): the build finished and exited 0 before PostgreSQL started; the migration process
+uses the normal database environment, not the build heap. `drizzle-kit migrate` printed no error text, only
+notices through migration 0749. Control run 41382858043 on unpatched main (6144, no heap code) fails at the same phase with the same last notice, so the migration failure is pre-existing on main and independent of this patch. It is not relabelled: the walkthrough job is a failure, and only its `production-build` phase is evidence here. Diagnosing the 0749-or-later migration on a fresh fictional database is a separate item (the error text is suppressed by `drizzle-kit`; rerun `scripts/migrate-with-focused-prerequisites.ts` with verbose output on a disposable database).
 
 How to read this evidence:
 
-- **Fit:** the Teras tree, which OOMs at 6144, built successfully at 8192 on a standard 16 GB hosted runner.
-- **Peak RSS is not a measure of need.** `main`, which builds at 6144, also peaked at 8.52 GiB under 8192.
-  V8 grows toward whatever cap it is given before collecting garbage harder. The Teras peak (8.60 GiB) is only
-  about 77 MB above `main`'s, so the real margin below the 8192 cap is unknown. It is not "8 GiB minus about
-  6 GiB".
-- **System headroom:** the lowest observed `MemAvailable` was 5.48 GiB. Kernel-kill risk at this tree size is
-  low, but the margin against the V8 cap itself is unmeasured (see R2).
-- **Path not exercised:** the proof used the focused `linux-build` path (Node 20, plain `pnpm build`). The
-  canonical `alpha-staging.yml` build path (Node 22.23.3, `next-application-cache.mjs` and
-  `build-production.mjs`, with the new memory report) was **not** run here. It cannot be run as release
-  evidence from a non-`main`/`alpha` controller. It must be proved under section 4 after any adoption.
+- **Fit:** the Teras tree, which OOMs at 6144, built successfully at 8192 on standard 16 GB hosted runners in both
+  the focused recipe and the canonical Node 22 release recipe.
+- **Peak RSS is not a measure of need.** `main`, which builds at 6144, also peaked around 8.4-8.5 GiB under 8192:
+  V8 grows toward its cap before collecting harder. The Teras margin below the 8192 cap is unmeasured.
+- **System headroom:** lowest `MemAvailable` observed 5.39 GiB (canonical, Teras). Kernel-kill risk at this size is
+  low; V8-cap margin is unknown (R2).
+- **Canonical artifact:** the `production-build-v1` packet from 41381652213 is from a non-`main` controller and can
+  never be installed or used as release evidence (`release-policy.mjs:22`); it expires after one day.
 
-## 6. Risks and alternatives
+## 8. Risks and alternatives
 
-Risks:
+- **R1. Out-of-memory kill headroom.** V8 8 GiB is not the whole footprint (young generation, code space, Turbopack
+  and SWC native memory, workers); the runner OS takes about 1-1.5 GB; build jobs add no swap. Mitigations: sampled
+  `MemAvailable`, 12 GiB fail budget, hard ceiling. Residual: a SIGKILL can truncate telemetry (exit and signal are
+  still recorded).
+- **R2. Growth.** A larger heap buys headroom, not a fix. Nothing above 8192 fits a 16 GB runner safely and the owner
+  forbids larger paid runners. Treat a `warn` verdict as the trigger to stop relying on heap.
+- **R3. Cold cache.** Confirmed: the canonical proof was cold and took 7 min 6 s against a 720 s step limit, about
+  1 min 54 s of headroom on this tree. Monitor after adoption; a growing tree can reach the limit.
+- **R4. Server builds stay at 6144.** `deploy.sh:377,384` builds on a server with about 3.9 GB RAM plus swap. The
+  Teras tree is expected to fail there; use the CI-packet install (`--ci-build`). Raising the server heap is a
+  separate operator decision.
+- **R5. Orchestrator (resolved this round).** The walkthrough now uses the same profile; its build fits (8.41 GiB on
+  main + patch). Its later migration failure is outside the heap change (section 7).
+- **R6. Masking type-volume regressions.** Telemetry and the warning make growth visible; review the budget with
+  type and instantiation counts.
+- **R7. Shared graph discovery.** Graph lookup reads the latest three `next-application-state-v1` artifacts
+  repository-wide (`next-application-cache.mjs:33`). The `build_only` proof published one 8192 graph (356,057 bytes,
+  one-day retention). Current main-controller builds refuse it (6144 context, different publisher code) and fall
+  back to a cold build if it displaces a usable graph. This is a performance effect only; no extra build-only proofs
+  were run for that reason.
 
-- **R1. Out-of-memory kill headroom on 16 GB.** A V8 heap of 8 GiB is not the process's whole footprint: young
-  generation (16–64 MB), code space, Turbopack and SWC native memory, and buffers all come on top. In addition:
-  - `next build` runs Turbopack workers and the type check, so concurrent processes add up;
-  - GNU time's `Maximum resident set size` is the **largest single process**, not the sum;
-  - the runner agent and OS take about 1–1.5 GB;
-  - the hosted image has 4 GB of swap (on the typecheck path `typecheck.sh` adds its own swapfile; the build
-    jobs do not).
+Alternatives (durable fixes):
 
-  If the total exceeds RAM plus swap, the kernel kills a process. That turns a clean V8 "heap limit" error into
-  a SIGKILL with poorer diagnostics. Mitigations: the minimum `MemAvailable` is sampled to show system-wide
-  pressure; there is a 12 GiB fail budget; 8192 is a hard ceiling that only owner review can raise. Residual
-  risk: a SIGKILL can cut the telemetry short, but the exit code and signal are still recorded.
-- **R2. Growth.** Raising the heap buys headroom, not a fix. With type volume growing by about 1% per feature
-  merge, the next limit arrives in an unknown number of rounds. Nothing above 8192 fits a 16 GB runner safely,
-  and the owner forbids larger paid runners.
-- **R3. Cold cache.** The application compiler graph is cold until an 8192 publisher runs on the new controller.
-  Expect slower first canonical builds. The canonical step has a 720 s timeout and the job 45 min; verify both
-  on the cold proof.
-- **R4. Server builds stay at 6144.** `deploy.sh` builds on the staging and customer servers at 6144 on a box
-  with about 3.9 GB RAM. If the Teras tree needs more than 6144, a server-side build fails. The CI-packet install
-  path (`AIHR_SELECTED_CI_BUILD_INSTALL`) avoids building on the server. Raising the server heap is a separate
-  operator decision: the cap must fit RAM plus free swap.
-- **R5. `orchestrator-browser.mjs:133` stays at 6144.** That walkthrough builds the harness candidate on a
-  hosted runner. It will OOM on the Teras tree. This was left out deliberately, to keep the change to the two
-  gate build steps. If wanted, adding it is a one-line follow-up through the same admission.
-- **R6. Masking type-volume regressions.** A larger heap hides type growth. The RSS telemetry and its warning
-  threshold make the growth visible; the budget should be reviewed alongside the type and instantiation counts.
+- **TypeScript project references and composite builds** for `packs/*`, `core/` and `lib/`: most effective for peak
+  memory; needs ADR-level review (path aliases, Next's single `tsconfigPath`, shrink-only allowlists).
+- **Reduce type volume at hotspots:** explicit interfaces plus `satisfies` instead of re-inferring large Zod unions;
+  annotated return types on shared Drizzle helpers; narrower conditional and mapped types in assistant packets.
+  `claude/teras-type-hotspots` (11930f14) did not reduce instantiations (18,535,906 before and after).
+- **Separate type check from the bundler** at the existing 12288 typecheck heap: changes the canonical "the build
+  type-checks" contract (`Finished TypeScript in` is asserted); owner review required; Next 16.3.8 support unverified.
+- **Do nothing for Teras** until type volume falls below the 6144 line: safest; timeline unknown.
 
-Alternatives (the durable fixes):
-
-- **TypeScript project references and composite builds.** Split `packs/*`, `core/` and `lib/` into referenced
-  projects so that each compile holds one subset of the graph. This is the most effective way to cut peak
-  memory. It needs a careful restructuring with ADR-level review: path aliases, Next's single `tsconfigPath`,
-  and the import and drift allowlists that may only shrink.
-- **Reduce type volume at the hotspots.**
-  - Zod-inferred packet unions (`z.infer` over large discriminated unions). Use explicit interface types plus
-    `satisfies` checks instead of re-inferring.
-  - Drizzle query-builder generics. Annotate return types of shared query helpers to stop deep instantiation.
-  - Wide conditional and mapped types in assistant and action packets.
-
-  `--generateTrace` from the diagnostic runs identifies the files. `claude/teras-type-hotspots` (11930f14)
-  tried this without reducing instantiations: 18,535,906 before and after.
-- **Isolate the type check from the bundler.** Run the `tsconfig.build.json` check as its own step at the
-  existing 12288 typecheck heap, then build without Next's own type step. Which flag or config the installed
-  Next 16.3.8 offers for that is unverified here; check `node_modules/next/dist/docs/` first. Both claims,
-  "types checked" and "bundle built", stay, but this changes the canonical recipe's "the build type-checks"
-  contract (`Finished TypeScript in` is asserted). It needs owner review, and it is not a bypass only if the
-  separate check is mandatory and bound to the same source.
-- **Do nothing for Teras.** Ship Teras only after the type volume is reduced below the 6144 line. This is the
-  safest, but its timeline is unknown.
-
-Recommendation (confidence: medium):
-
-- Both proofs fit with system headroom: Teras peak RSS 8.60 GiB, minimum MemAvailable 5.48 GiB.
-- The bounded 8192 is therefore a viable **time-boxed** capacity bridge for Teras, subject to owner review of
-  the raised ceiling.
-- The margin against the 8192 cap itself is unmeasured, and type volume keeps growing. Pair adoption with a
-  type-volume or project-reference work item, and treat a `warn` verdict as the trigger to stop relying on
-  heap.
-- The canonical `alpha-staging` path still needs its own proof after adoption.
-- Server builds in `deploy.sh` stay at 6144 (R4), so Teras on staging should use the CI-packet install path.
+Recommendation (confidence: medium): the bounded 8192 profile is a viable **time-boxed** capacity bridge for Teras.
+It is now one profile across every hosted `next build`, the canonical Node 22 recipe built the Teras tree with
+5.39 GiB system headroom, and a two-commit (or one squash) revert restores 6144 exactly. The V8-cap margin is
+unmeasured and the tree keeps growing, so pair adoption with a type-volume or project-reference work item. Release
+qualification still requires the section 6 rerun from the adopted controller.
