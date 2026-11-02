@@ -493,6 +493,22 @@ describe('§2 every computed translation key resolves, in all six locales', () =
 
 // ── §3 the lifecycle, against a real database ─────────────────────────────────────────────────────
 describe('§3 a draft creates nothing until it is completed', () => {
+  it('persists SKBBK for new applicable drafts and preserves No and historical omissions', async () => {
+    const ctx=adminCtx(b),data=completeDraft();
+    const {id}=await saveEmployeeDraft(ctx,{data,currentStep:1});
+    expect((await getEmployeeDraft(ctx,id))?.data.statutory?.subjectToSkbbk).toBe('yes');
+    await saveEmployeeDraft(ctx,{id,data:{...data,statutory:{subjectToSkbbk:'no'}},currentStep:2});
+    await saveEmployeeDraft(ctx,{id,data,currentStep:3});
+    expect((await getEmployeeDraft(ctx,id))?.data.statutory?.subjectToSkbbk).toBe('no');
+    // Model a pre-change saved payload without the server-owned creation cohort.
+    await owner.db.update(schema.employeeDraft).set({data}).where(eq(schema.employeeDraft.id,id));
+    await saveEmployeeDraft(ctx,{id,data:{...data,creationDefaultsVersion:1},currentStep:2});
+    expect((await getEmployeeDraft(ctx,id))?.data.statutory?.subjectToSkbbk).toBeUndefined();
+    const delayed=await saveEmployeeDraft(ctx,{data:{profile:{fullName:'Unassigned'}},currentStep:1});
+    await saveEmployeeDraft(ctx,{id:delayed.id,data,currentStep:2});
+    expect((await getEmployeeDraft(ctx,delayed.id))?.data.statutory?.subjectToSkbbk).toBe('yes');
+  });
+
   it('saving a draft creates NO person, NO employment and NO employee code', async () => {
     const ctx = adminCtx(b);
     const before = await counts();
@@ -910,6 +926,7 @@ describe('§7 an Employee ID held by a draft', () => {
     await config({ startNumber: 7, numberLength: 6 });
     const before = await counts();
     const { id, employeeCode } = await createEmployeeDraftWithReservedCode(ctx, four());
+    expect((await getEmployeeDraft(ctx,id))?.data.statutory?.subjectToSkbbk).toBe('yes');
     expect(employeeCode).toBe('ABC000007');
     // The counter moved — that IS the reservation, and it is the one thing 6d671f44 promised would not
     // happen. Everything else that item promised still holds, which is what `counts()` proves.

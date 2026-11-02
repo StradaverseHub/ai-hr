@@ -305,7 +305,7 @@ export function EmployeeWizard({
    */
   const noBasicSalary = noBasicSalaryAmount(data.payroll?.basicSalary);
 
-  const set = <K extends keyof EmployeeDraftData>(section: K, patch: Partial<NonNullable<EmployeeDraftData[K]>>) => {
+  const set = <K extends Exclude<keyof EmployeeDraftData, 'creationDefaultsVersion'>>(section: K, patch: Partial<NonNullable<EmployeeDraftData[K]>>) => {
     setSaved(false);
     setData((d) => {
       const merged = { ...(d[section] ?? {}), ...patch };

@@ -1,3 +1,5 @@
+import {notFound} from 'next/navigation';
+import {organisationAccess} from '@/core/organisation-access';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { DEFAULT_PAYROLL_CYCLES } from '@/packs/payroll/service';
@@ -53,6 +55,7 @@ export default async function NewCompanyPage({
 }) {
   // Same admin gate as the rest of the module. The create itself is re-authorised by the service.
   const { s } = await scopedAdmin();
+  if(!await organisationAccess(s,'add',null))notFound();
   const { error } = await searchParams;
   const t = await getTranslations('admin.organization');
 

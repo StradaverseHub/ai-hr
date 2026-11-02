@@ -6,13 +6,13 @@ import {eq,sql} from 'drizzle-orm';
 import {migrateTestDb,resetDb,seedBase,adminCtx,owner,closeAll,type Base} from './harness';
 import {client,db} from '../db/client';
 import {appUser,tenant} from '../db/schema';
-import {publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS,WORKFORCE_CAPABILITY_BINDINGS_SHA256} from '../deploy/access/publish-workforce-capabilities';
+import {publishWorkforceActionPackage as publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS_V2 as WORKFORCE_CAPABILITY_BINDINGS,WORKFORCE_ACTION_PACKAGE_BINDINGS_SHA256 as WORKFORCE_CAPABILITY_BINDINGS_SHA256} from '../deploy/access/publish-workforce-capabilities';
 import {workforceCompanies} from '../core/workforce-access';
 import {readAccessConfigurationEditor} from '../core/access-configuration-editor';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 let b:Base;
-const ids=['workforce.view','workforce.maintain','profile.review'];
+const ids=WORKFORCE_CAPABILITY_BINDINGS.map(row=>row.id) as string[];
 beforeAll(migrateTestDb);
 beforeEach(async()=>{await resetDb();b=await seedBase();await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${ids}::text[])`;});
 afterAll(async()=>{try{await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${ids}::text[])`;}finally{await closeAll();}});
@@ -27,10 +27,13 @@ async function snapshot(){return{
  users:await owner.client`select * from app_user order by id`,
  events:await owner.client`select id from domain_event order by id`,
 };}
-it('publishes the exact three source bindings atomically, preserves actual role/grant/member facts and is idempotent',async()=>{
+it('publishes the complete source bindings atomically, preserves installed facts and is idempotent',async()=>{
  const before=await snapshot(),scope=await workforceCompanies(adminCtx(b));expect(scope).toContain(b.companyId);
- const result=await publishWorkforceCapabilities(owner.client);expect(result).toMatchObject({changed:true,capabilities:3,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256});
- const after=await snapshot();for(const key of ['grants','memberships','overrides','roles','users']as const)expect(after[key]).toEqual(before[key]);
+ const result=await publishWorkforceCapabilities(owner.client);expect(result).toMatchObject({changed:true,capabilities:WORKFORCE_CAPABILITY_BINDINGS.length,bindingsSha256:WORKFORCE_CAPABILITY_BINDINGS_SHA256});
+ const after=await snapshot();for(const key of ['memberships','roles','users']as const)expect(after[key]).toEqual(before[key]);
+ for(const key of ['grants','overrides']as const)for(const original of before[key])expect(after[key]).toContainEqual(original);
+ for(const extra of after.grants.filter(row=>!before.grants.some(old=>old.id===row.id)))expect(ids).toContain(extra.capability_id);
+ for(const extra of after.overrides.filter(row=>!before.overrides.some(old=>old.id===row.id)))expect(ids).toContain(extra.capability_id);
  for(const expected of WORKFORCE_CAPABILITY_BINDINGS)expect(after.catalog.find(row=>row.id===expected.id)).toMatchObject({...expected,supported:true});
  for(const previous of before.catalog.filter(row=>!ids.includes(row.id)))expect(after.catalog.find(row=>row.id===previous.id)).toEqual(previous);
  for(const row of before.generation)expect(after.generation.find(next=>next.tenant_id===row.tenant_id)?.generation).toBe(String(BigInt(row.generation)+BigInt(1)));
@@ -41,9 +44,9 @@ it('publishes the exact three source bindings atomically, preserves actual role/
 it('publishes array bindings and object audits through the plain standalone installer connection',async()=>{
  const standalone=postgres(process.env.TEST_MIGRATION_DATABASE_URL!,{max:1});
  try{
-  expect(await publishWorkforceCapabilities(standalone)).toMatchObject({changed:true,capabilities:3});
+  expect(await publishWorkforceCapabilities(standalone)).toMatchObject({changed:true,capabilities:WORKFORCE_CAPABILITY_BINDINGS.length});
   const shapes=await owner.client`select id,jsonb_typeof(bindings) as shape from access_capability where id=any(${ids}::text[]) order by id`;
-  expect(shapes.map(row=>row.shape)).toEqual(['array','array','array']);
+  expect(shapes.map(row=>row.shape)).toEqual(Array.from({length:6},()=>'array'));
   const audits=await owner.client`select jsonb_typeof(payload) as shape,payload->>'bindingsSha256' as hash from domain_event where event_type='access-configuration.capabilities-published' order by tenant_id,id`;
   expect(audits.length).toBeGreaterThan(0);expect(audits.every(row=>row.shape==='object'&&row.hash===WORKFORCE_CAPABILITY_BINDINGS_SHA256)).toBe(true);
  }finally{await standalone.end({timeout:3});}
@@ -86,4 +89,34 @@ it('fences an actual pre-pinned repeatable-read maintenance transaction after pu
  await reached;try{expect(pinnedReached).toBe(true);await publishWorkforceCapabilities(owner.client);}finally{resume();}
  const error=await outcome;let code:string|undefined;for(let e=error;e&&typeof e==='object';e=e.cause){if(typeof e.code==='string'){code=e.code;break;}}
  expect(code).toBe('40001');
+});
+
+it('keeps unknown function keys closed and rejects runtime registry mutation',async()=>{
+ const result=await client.begin(async tx=>{
+  const ctx=adminCtx(b);await tx`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${b.adminUserId},true)`;
+  return tx`select app.function_action_allowed('unregistered.fixture','add',${b.companyId}::uuid) as bounded,app.function_global_action_allowed('unregistered.fixture','add') as global`;
+ });
+ expect(result[0]).toMatchObject({bounded:false,global:false});
+ await expect(client`select app.register_function_action('unregistered.fixture','view','company',NULL,NULL,'{}'::jsonb)`).rejects.toMatchObject({code:'42501'});
+});
+
+
+it('registers exact mixed-case native submenu IDs while preserving closed grammar and operations',async()=>{
+ const metadata={moduleKey:'financial',labelKey:'nav.payComponents',kind:'submenu',course:'administrative'};
+ // Preserve the production key's exact mixed-case grammar without colliding with its migration.
+ await owner.client.begin(async tx=>{
+  await tx`select app.register_function_action('payComponents.catalogueRegistrationRegression','view','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`;
+  await tx`select app.register_function_action('payComponents.catalogueRegistrationRegression','add','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`;
+  const rows=await tx`select id,prerequisites,supported from access_capability where id like 'function.payComponents.catalogueRegistrationRegression.%' order by id`;
+  expect(rows).toEqual([
+   {id:'function.payComponents.catalogueRegistrationRegression.add',prerequisites:['function.payComponents.catalogueRegistrationRegression.view'],supported:false},
+   {id:'function.payComponents.catalogueRegistrationRegression.view',prerequisites:[],supported:false},
+  ]);
+ });
+ for(const key of ['payComponents..catalogue','payComponents.catalogueRegistrationRegression.','payComponents/catalogue']){
+  await expect(owner.client`select app.register_function_action(${key},'view','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`).rejects.toMatchObject({code:'42501'});
+ }
+ await expect(owner.client`select app.register_function_action('payComponents.invalidOperation','VIEW','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`).rejects.toMatchObject({code:'42501'});
+ await expect(owner.client`insert into access_capability(id,scope) values('Legacy.MixedCase','tenant')`).rejects.toMatchObject({code:'23514'});
+ await expect(owner.client`insert into access_capability(id,scope) values('function.payComponents.catalogueRegistrationRegression.destroy','tenant')`).rejects.toMatchObject({code:'23514'});
 });

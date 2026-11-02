@@ -22,7 +22,7 @@ const digest=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{64}$/.test
 const aad=(ctx:SessionContext,id:string)=>JSON.stringify(['ai-hr.personnel-import-header.v1',ctx.tenantId,ctx.userId,id]);
 async function guard(tx:Tx,ctx:SessionContext,companyId:string){
  if(!uuid(companyId))return fail();await assertAiPrincipalTx(tx,ctx);
- await assertWorkforceCompanyTx(tx,ctx,companyId,'view');await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
+ await assertWorkforceCompanyTx(tx,ctx,companyId,'view');await assertWorkforceCompanyTx(tx,ctx,companyId,'add');
 }
 function binding(value:PersonnelImportAssistanceBinding){
  const p={...value,...(value.evaluationBinding?{evaluationBinding:EmployeeImportEvaluationBindingSchema.parse(value.evaluationBinding)}:{})};if(!uuid(p.attemptId)||!uuid(p.companyId)||p.attemptVersion!==1||!digest(p.sourceRevision)||!digest(p.registryDigest)||!digest(p.inputDigest)||p.registryDigest!==PERSONNEL_IMPORT_ASSISTANCE_REGISTRY_DIGEST)return fail();return Object.freeze(p);

@@ -1,3 +1,4 @@
+import {settingsAccessTx} from './organisation-access';
 import { createHash } from 'node:crypto';
 /** Workflow email configuration. Policy and consent have separate owners and never imply SMTP readiness. */
 import { and, asc, eq, getTableColumns, isNotNull, sql } from 'drizzle-orm';
@@ -28,7 +29,7 @@ function categories(input: readonly string[]) {
 }
 export async function readNotificationEmailPolicy(ctx: SessionContext) {
   requireModule(ctx); if (!isAdmin(ctx)) throw new NotificationEmailSettingsError('forbidden');
-  return withTenant(ctx, tx => tx.select().from(notificationEmailPolicy).where(eq(notificationEmailPolicy.tenantId, ctx.tenantId)).orderBy(asc(notificationEmailPolicy.category)));
+  return withTenant(ctx,async tx=>{if(!await settingsAccessTx(tx,'view'))throw new NotificationEmailSettingsError('forbidden');return tx.select().from(notificationEmailPolicy).where(eq(notificationEmailPolicy.tenantId,ctx.tenantId)).orderBy(asc(notificationEmailPolicy.category));});
 }
 export async function saveNotificationEmailPolicy(ctx: SessionContext, enabledCategories: readonly string[]) {
   requireAdmin(ctx); const selected = categories(enabledCategories);

@@ -178,6 +178,7 @@ export function SystemLabelsGrid({
   data,
   companies,
   writableCompanyIds,
+  companyActionControls,
   headByCompany = {},
   isGroupAdmin,
   actions,
@@ -203,6 +204,7 @@ export function SystemLabelsGrid({
    * this set are therefore read-only, with the Criteria, archive and Duplicate actions withheld too.
    */
   writableCompanyIds: string[];
+  companyActionControls?:Record<string,{add:boolean;edit:boolean;delete:boolean}>;
   /**
    * r285 — HEAD OPTIONS PER COMPANY, for the Head (leave approver) column on the department and
    * business_unit kinds. Keyed by the row's OWN company, because `resolveHeadEmploymentId`
@@ -320,8 +322,8 @@ export function SystemLabelsGrid({
   // `newRowCompany`, and its own INSERT is what decides.
   const writableIds = useMemo(() => new Set(writableCompanyIds), [writableCompanyIds]);
   const canWrite = useCallback(
-    (r: { companyId: string; isNew?: boolean }) => !!r.isNew || writableIds.has(r.companyId),
-    [writableIds],
+    (r: { companyId: string; isNew?: boolean }) => writableIds.has(r.companyId) && (companyActionControls?.[r.companyId]?.[r.isNew?'add':'edit']??true),
+    [writableIds,companyActionControls],
   );
 
   /** f1bbc572 — every server refusal reaches the banner through here: a token (lib/label-error-token.ts)
@@ -363,7 +365,7 @@ export function SystemLabelsGrid({
     if (input) { input.focus(); input.select(); focusDraft.current = null; }
   }, [rowsByKind, kind, pq.page]);
   function addRow() {
-    if (!newRowCompany) return;
+    if (!newRowCompany || companyActionControls?.[newRowCompany]?.add===false) return;
     draftSeq.current += 1;
     const draft = emptyDraft(`draft-${draftSeq.current}`, newRowCompany, isGroupAdmin);
     const next = [draft, ...rows];
@@ -381,7 +383,7 @@ export function SystemLabelsGrid({
    * refusal of a value the user never chose. `isGroupAdmin` is the same gate `addRow` already applies.
    */
   function duplicateRow(src: RowState) {
-    if (!canWrite(src)) return;
+    if (!writableIds.has(src.companyId) || companyActionControls?.[src.companyId]?.add===false) return;
     draftSeq.current += 1;
     const copy = { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal && isGroupAdmin), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, label: src.label, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, description: src.description };
     const next = [copy, ...rows];
@@ -394,7 +396,7 @@ export function SystemLabelsGrid({
   function toggleArchive(key: string) {
     // Archiving is an UPDATE (archived_at), so it needs the same write right as a text edit.
     const target = rows.find((r) => r.key === key);
-    if (!target || !canWrite(target)) return;
+    if (!target || !writableIds.has(target.companyId) || companyActionControls?.[target.companyId]?.[target.archived?'edit':'delete']===false) return;
     patchRows(rows.map((r) => (r.key === key ? { ...r, archived: !r.archived, dirty: true } : r)));
   }
 
@@ -797,7 +799,7 @@ export function SystemLabelsGrid({
             {showFilters ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
           </button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={addRow} disabled={!newRowCompany || pending}>
+            <Button type="button" variant="outline" size="sm" onClick={addRow} disabled={!newRowCompany || pending || companyActionControls?.[newRowCompany]?.add===false}>
               {t('addRow')}
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={() => setCopyOpen((v) => !v)} disabled={selected.size === 0}>
@@ -1047,9 +1049,9 @@ export function SystemLabelsGrid({
                         {/* Duplicate INSERTS under this row's own company, so on a read-only row it is
                             withheld rather than offered and refused — see duplicateRow. */}
                         <RowIconButton
-                          title={readOnly ? t('readOnlyRow') : t('duplicateRow')}
+                          title={(!writableIds.has(r.companyId)||companyActionControls?.[r.companyId]?.add===false) ? t('readOnlyRow') : t('duplicateRow')}
                           onClick={() => duplicateRow(r)}
-                          disabled={readOnly}
+                          disabled={!writableIds.has(r.companyId) || companyActionControls?.[r.companyId]?.add===false}
                         >
                           <Copy className="size-3.5" aria-hidden />
                         </RowIconButton>
@@ -1059,9 +1061,9 @@ export function SystemLabelsGrid({
                           </RowIconButton>
                         ) : (
                           <RowIconButton
-                            title={readOnly ? t('readOnlyRow') : r.archived ? t('unarchive') : t('archive')}
+                            title={r.archived ? t('unarchive') : t('archive')}
                             onClick={() => toggleArchive(r.key)}
-                            disabled={readOnly || (r.inUse && !r.archived)}
+                            disabled={!writableIds.has(r.companyId) || companyActionControls?.[r.companyId]?.[r.archived?'edit':'delete']===false || (r.inUse && !r.archived)}
                           >
                             {r.archived ? <ArchiveRestore className="size-3.5" aria-hidden /> : <Trash2 className="size-3.5" aria-hidden />}
                           </RowIconButton>

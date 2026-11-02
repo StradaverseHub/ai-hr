@@ -57,6 +57,7 @@
  * All writes go through the server actions passed in from the page; each still appends its DomainEvent.
  */
 
+import {LEGACY_CONFIGURATION_ACTION_CONTROLS,type ConfigurationActionControls} from '@/lib/configuration-action-controls';
 import { refreshEditableRows } from '@/lib/refresh-editable-rows';
 import { Fragment, useEffect, useCallback, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
@@ -136,7 +137,7 @@ function toRow(r: GradeGridRecord): RowState {
   };
 }
 
-export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; actions: GradeGridActions }) {
+export function GradeLabelsGrid({ data, actions, actionControls=LEGACY_CONFIGURATION_ACTION_CONTROLS }: { data: GradeGridRecord[]; actions: GradeGridActions;actionControls?:ConfigurationActionControls }) {
   const t = useTranslations('admin.systemLabels');
   /** f1bbc572 — the grade actions share the label actions' failure vocabulary: a recognised refusal
    *  arrives as a TOKEN to translate here, and a raw database string never arrives at all
@@ -175,12 +176,15 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
   const activeFilterCount = (search.trim() ? 1 : 0) + (statusFilter !== 'active' ? 1 : 0);
 
   function updateCell(key: string, field: 'code' | 'name' | 'description' | 'rank', value: string) {
+    const target=rows.find(r=>r.key===key);if(!target||!(target.isNew?actionControls.add:actionControls.edit))return;
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, [field]: value, dirty: true } : r)));
   }
   function toggleArchive(key: string) {
+    const target=rows.find(r=>r.key===key);if(!target||!(target.isNew?actionControls.add:target.archived?actionControls.edit:actionControls.delete))return;
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, archived: !r.archived, dirty: true } : r)));
   }
   function addRow() {
+    if(!actionControls.add)return;
     draftSeq.current += 1;
     const nextRank = rows.reduce((m, r) => Math.max(m, Number(r.rank) || 0), -1) + 1;
     const draft: RowState = {
@@ -414,7 +418,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
           {showFilters ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
         </button>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={addRow}>
+          <Button type="button" variant="outline" size="sm" onClick={addRow} disabled={!actionControls.add}>
             {t('addRow')}
           </Button>
           <Button type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
@@ -524,7 +528,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                     <input
                       data-cell={`code:${rowIdx}`}
                       value={r.code}
-                      onChange={(e) => updateCell(r.key, 'code', e.target.value)}
+                      readOnly={!(r.isNew?actionControls.add:actionControls.edit)} onChange={(e) => updateCell(r.key, 'code', e.target.value)}
                       onKeyDown={(e) => onCellKey(e, rowIdx, 'code')}
                       title={err && err.field === 'code' ? err.message : r.code}
                       className={`${cellInput} w-full min-w-0 font-mono text-xs uppercase ${
@@ -536,7 +540,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                     <input
                       data-cell={`name:${rowIdx}`}
                       value={r.name}
-                      onChange={(e) => updateCell(r.key, 'name', e.target.value)}
+                      readOnly={!(r.isNew?actionControls.add:actionControls.edit)} onChange={(e) => updateCell(r.key, 'name', e.target.value)}
                       onKeyDown={(e) => onCellKey(e, rowIdx, 'name')}
                       title={err && err.field === 'name' ? err.message : r.name}
                       className={`${cellInput} w-full min-w-0 ${err?.field === 'name' ? 'border-destructive' : ''}`}
@@ -548,7 +552,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                     <input
                       data-cell={`description:${rowIdx}`}
                       value={r.description}
-                      onChange={(e) => updateCell(r.key, 'description', e.target.value)}
+                      readOnly={!(r.isNew?actionControls.add:actionControls.edit)} onChange={(e) => updateCell(r.key, 'description', e.target.value)}
                       onKeyDown={(e) => onCellKey(e, rowIdx, 'description')}
                       title={r.description}
                       className={`${cellInput} w-full min-w-0`}
@@ -558,7 +562,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                     <input
                       data-cell={`rank:${rowIdx}`}
                       value={r.rank}
-                      onChange={(e) => updateCell(r.key, 'rank', e.target.value)}
+                      readOnly={!(r.isNew?actionControls.add:actionControls.edit)} onChange={(e) => updateCell(r.key, 'rank', e.target.value)}
                       onKeyDown={(e) => onCellKey(e, rowIdx, 'rank')}
                       aria-label={t('col.rank')}
                       title={err && err.field === 'rank' ? err.message : undefined}
@@ -594,7 +598,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                           {/* Archive/restore batches into Save (undoable via Discard), so no confirm here. */}
                           <RowIconButton
                             title={r.archived ? t('unarchive') : t('archive')}
-                            onClick={() => toggleArchive(r.key)}
+                            disabled={!(r.isNew?actionControls.add:r.archived?actionControls.edit:actionControls.delete)} onClick={() => toggleArchive(r.key)}
                           >
                             {r.archived ? (
                               <ArchiveRestore className="size-3.5" aria-hidden />
@@ -612,8 +616,7 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                           {r.archived ? (
                             <button
                               type="button"
-                              onClick={() => setConfirmDelete(r)}
-                              disabled={r.inUse}
+                              onClick={() => actionControls.delete && setConfirmDelete(r)} disabled={!actionControls.delete || r.inUse}
                               className="inline-flex h-7 items-center gap-1 rounded-md border border-input px-2 text-xs font-medium transition hover:bg-accent disabled:opacity-40"
                             >
                               <X className="size-3.5" aria-hidden />
@@ -622,8 +625,8 @@ export function GradeLabelsGrid({ data, actions }: { data: GradeGridRecord[]; ac
                           ) : (
                             <RowIconButton
                               title={r.inUse ? t('gradeInUseHint') : t('deleteRow')}
-                              disabled={r.inUse}
-                              onClick={() => setConfirmDelete(r)}
+                              disabled={!actionControls.delete || r.inUse}
+                              onClick={() => actionControls.delete && setConfirmDelete(r)}
                             >
                               <X className="size-3.5" aria-hidden />
                             </RowIconButton>

@@ -14,6 +14,7 @@ import { classifyNonCashBenefit, NonCashBenefitConfigurationError } from '../loc
  */
 import { and, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {payrollCatalogueAccessTx} from './financial-setup-access';
 import { actorOf, appendEvent } from '../db/events';
 import {
   attendance,
@@ -316,8 +317,9 @@ export function getEmploymentPayComponent(
   });
 }
 
-export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean; readyOnly?: boolean } = {}) {
+export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean; readyOnly?: boolean; maintenance?:boolean } = {}) {
   return withTenant(ctx, async (tx) => {
+    if(opts.maintenance&&!await payrollCatalogueAccessTx(tx,'view'))throw new Error('Forbidden');
     const rows = await tx.select().from(payComponent).where(eq(payComponent.tenantId, ctx.tenantId)).orderBy(payComponent.code);
     return rows.filter(r => (opts.includeArchived || r.archivedAt == null) && (!opts.readyOnly || r.pendingInputKind == null));
   });
@@ -893,7 +895,9 @@ async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponen
 async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponentInput,
   options: { createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean } = {}) {
     p=structuredClone(p);ctx=capturePayCatalogContext(ctx);options={...options};
+    if(!await payrollCatalogueAccessTx(tx,'view'))throw new Error('Forbidden');
     const {rule,label,existing,storedCode,description,pending}=await preparePayComponentWriteTx(tx,ctx,p,options);
+    if(!await payrollCatalogueAccessTx(tx,existing?'edit':'add'))throw new Error('Forbidden');
     let id: string;
     let changed: string[] = [];
     if (existing) {
@@ -955,6 +959,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
 export function archivePayComponent(ctx: SessionContext, p: { id: string; archived: boolean }) {
   p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
   return withTenant(ctx, async (tx) => {
+    if(!await payrollCatalogueAccessTx(tx,p.archived?'delete':'edit'))throw new Error('Forbidden');
     await lockPayComponentCatalogTx(tx,ctx);
     await tx.update(payComponent).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(payComponent.id, p.id));
     await appendEvent(tx, {
@@ -1660,6 +1665,7 @@ export function seedOvertimeMultipliers(
 export function deletePayComponent(ctx: SessionContext, id: string) {
   ctx=capturePayCatalogContext(ctx);
   return withTenant(ctx, async (tx) => {
+    if(!await payrollCatalogueAccessTx(tx,'delete'))throw new Error('Forbidden');
     await lockPayComponentCatalogTx(tx,ctx);
     const [rec] = await tx
       .select({ n: sql<number>`count(*)::int` })

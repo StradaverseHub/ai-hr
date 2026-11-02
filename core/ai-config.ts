@@ -1,3 +1,4 @@
+import {settingsAccessTx} from './organisation-access';
 import {createUngovernedProbe} from '../lib/ai/governance';
 /**
  * AI provider configuration service (ADR-0023). Per-tenant BYOK: an admin configures a provider with
@@ -100,6 +101,7 @@ export type AiConfigView = {
 export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    if(!await settingsAccessTx(tx,'view'))throw new Error('Forbidden');
     await assertConfigurationAdminTx(tx,ctx);
     // Explicit column list — the ciphertext is not even granted to the app role, but be unambiguous.
     const rows = await tx

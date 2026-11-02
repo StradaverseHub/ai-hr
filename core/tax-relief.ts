@@ -1497,7 +1497,12 @@ export async function saveTp1DraftForPerson(
   ctx: SessionContext,
   p: { personId: string } & Tp1WriteInput,
 ): Promise<{ id: string }> {
-  return saveTp1DraftForPersonId(ctx, requireAdminTarget(ctx, p.personId), p);
+  return saveTp1DraftForPersonId(ctx, requireAdminTarget(ctx, p.personId), p, false, true);
+}
+
+async function assertTp1AdministrativeAction(tx:Tx,personId:string,operation:'view'|'add'|'edit'|'delete') {
+  const result=await tx.execute(sql`select app.financial_tp1_admin_action(${personId}::uuid,${operation}) as allowed`);
+  if(!result[0]?.allowed)throw new TaxReliefError('TP1 administrative action unavailable.');
 }
 
 async function saveTp1DraftForPersonId(
@@ -1505,6 +1510,7 @@ async function saveTp1DraftForPersonId(
   personId: string,
   p: Tp1WriteInput,
   ownOnly=false,
+  administrative=false,
 ): Promise<{ id: string }> {
   const { year, amount, categories } = resolveInput(p);
   const deductionMonth = validateMonth(p.deductionMonth, 'Deduction month');
@@ -1514,6 +1520,7 @@ async function saveTp1DraftForPersonId(
   const isCatalogue = isTp1Categories2026(categories);
   return withTenant(ctx, async (tx) => {
     if(ownOnly)await assertMyTp1OwnerTx(tx,personId);
+    if(administrative)await assertTp1AdministrativeAction(tx,personId,'view');
     await checkTp1RevisionTx(tx,ctx,personId,year,deductionMonth,p.expectedRevision);
     // ⚠️ THE YEAR-TO-DATE CHECK RUNS ON A DRAFT TOO (r352, item 0df7dd44), and until this round it did
     // not. `resolveInput` above has always checked THIS claim on its own — each sub-line against its
@@ -1558,6 +1565,7 @@ async function saveTp1DraftForPersonId(
       .orderBy(desc(tp1Relief.createdAt),desc(tp1Relief.id))
       .limit(1);
     let id: string;
+    if(administrative)await assertTp1AdministrativeAction(tx,personId,draft?'edit':'add');
     if (draft) {
       await tx
         .update(tp1Relief)
@@ -1608,7 +1616,7 @@ export async function submitTp1ForPerson(
   ctx: SessionContext,
   p: { personId: string } & Tp1WriteInput,
 ): Promise<{ id: string }> {
-  return submitTp1ForPersonId(ctx, requireAdminTarget(ctx, p.personId), p);
+  return submitTp1ForPersonId(ctx, requireAdminTarget(ctx, p.personId), p, false, true);
 }
 
 async function submitTp1ForPersonId(
@@ -1616,6 +1624,7 @@ async function submitTp1ForPersonId(
   personId: string,
   p: Tp1WriteInput,
   ownOnly=false,
+  administrative=false,
 ): Promise<{ id: string }> {
   const { year, amount, categories } = resolveInput(p);
   const deductionMonth = validateMonth(p.deductionMonth, 'Deduction month');
@@ -1632,6 +1641,7 @@ async function submitTp1ForPersonId(
   }
   return withTenant(ctx, async (tx) => {
     if(ownOnly)await assertMyTp1OwnerTx(tx,personId);
+    if(administrative)await assertTp1AdministrativeAction(tx,personId,'add');
     await checkTp1RevisionTx(tx,ctx,personId,year,deductionMonth,p.expectedRevision);
     // The person-year lock above serializes claims and consent before this canonical headroom check.
     if (isCatalogue) {
@@ -1822,6 +1832,7 @@ async function decide(
   stamps: Record<string, unknown>,
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
+    await assertTp1AdministrativeAction(tx,personId,status==='cancelled'?'delete':'edit');
     await lockTp1YearTx(tx,ctx,personId,current.assessmentYear);
     const [live]=await tx.select().from(tp1Relief).where(and(eq(tp1Relief.id,current.id),eq(tp1Relief.personId,personId))).limit(1);
     if(!live || tp1Revision(live)!==tp1Revision(current))throw new Tp1ChangedError();

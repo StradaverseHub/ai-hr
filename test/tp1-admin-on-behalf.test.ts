@@ -14,6 +14,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
+import { withTenant } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -101,6 +102,21 @@ describe('Standardize TP1 — HR admin-on-behalf', () => {
   function tp1Rows(personId: string) {
     return owner.db.select().from(schema.tp1Relief).where(eq(schema.tp1Relief.personId, personId));
   }
+
+  it('own declaration authority cannot approve or rewrite a submitted declaration through raw SQL', async () => {
+    const employee = await hire('Fictional independent declarant', 'independent-declarant@fixture.invalid');
+    const self = await employeeCtx(employee.personId);
+    const declaration = await submitTp1(self, { assessmentYear: YEAR, categories: { individual: 3000 } });
+    await expect(withTenant(self, tx => tx.update(schema.tp1Relief).set({
+      status: 'approved', approvedBy: self.userId, approvedAt: new Date(), approvedMonth: 1, approvedYear: YEAR,
+    }).where(eq(schema.tp1Relief.id, declaration.id)))).rejects.toThrow();
+    await expect(withTenant(self, tx => tx.update(schema.tp1Relief).set({ tp1Amount: '1.00' })
+      .where(eq(schema.tp1Relief.id, declaration.id)))).rejects.toThrow();
+    const [stored] = await tp1Rows(employee.personId);
+    expect(stored.status).toBe('submitted');
+    expect(stored.approvedBy).toBeNull();
+    expect(Number(stored.tp1Amount)).toBe(3000);
+  });
 
   // (a) single source: admin writes → the employee reads the SAME row; exactly one master per person/year.
   it('admin writes the SAME tp1_relief row the employee reads (no duplicate store)', async () => {

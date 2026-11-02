@@ -1571,7 +1571,7 @@ export function listLeaveRequests(
       .limit(limit);
     // R51 (baf56348): keep delegation-routed rows whose subject sits OUTSIDE the delegation's org coverage
     // out of the approver-facing list (row visibility itself is unchanged — see filterDelegationOrgScopeTx).
-    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId,r=>({kind:'leave.application',id:r.id}));
     return resolveLeaveWorkingDates(tx, scoped);
   });
 }
@@ -1902,7 +1902,7 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
       )
       .orderBy(desc(leaveCancellationRequest.createdAt));
     // R51 (baf56348): same org-coverage trim as listLeaveRequests (a cancellation is a leave pending item).
-    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId,r=>({kind:'leave.cancellation',id:r.id}));
     return scoped.map(({ i18n, cancelDates, ...r }) => {
       const cancel = (cancelDates as string[]) ?? [];
       const cancelSet = new Set(cancel);

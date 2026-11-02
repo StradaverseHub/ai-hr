@@ -193,7 +193,7 @@ export async function validateEmergencyContactInputTx(tx:Tx, personId:string|nul
     const relationship=trimOrNull(input.relationship);
     if(relationship && relationship!==existing?.relationship &&
       !(personId && (await storedRelationships(tx,personId)).includes(relationship)))
-      await assertProfileValueAllowed(tx,'relationship',relationship,null);
+      {const [task]=personId?await tx.execute<{allowed:boolean}>(sql`select app.profile_task_relationship_tolerated(${personId}::uuid,${relationship}) as allowed`):[];if(task?.allowed!==true)await assertProfileValueAllowed(tx,'relationship',relationship,null);}
     patch.relationship=relationship;
   }
   for(const key of ['mobilePhone','homePhone','address','remarks'] as const)

@@ -1,3 +1,4 @@
+import {organisationAccess,organisationViewCompanies} from '@/core/organisation-access';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -63,10 +64,13 @@ export default async function CompanyMaintenancePage({
   const { error, tab } = await searchParams;
   const t = await getTranslations('admin.organization');
 
-  const [companies, tree] = await Promise.all([
+  const [sourceCompanies, sourceTree] = await Promise.all([
     listCompanies(s, { includeArchived: true, adminOnly: true }),
     companyTree(s),
   ]);
+  const visible=new Set(await organisationViewCompanies(s));
+  const companies=sourceCompanies.filter(row=>visible.has(row.id));
+  const tree=sourceTree.filter(row=>visible.has(row.id));
   // THE REFUSAL. Out of the administrable set ⇒ this company does not exist as far as this screen is
   // concerned. Resolved before any per-company read runs, so an out-of-scope id never even hits them.
   const c = companies.find((x) => x.id === companyId);
@@ -132,6 +136,7 @@ export default async function CompanyMaintenancePage({
           inside it is unchanged except its own greys (see components/company-panel.tsx). */}
       <Card>
       <CompanyPanel
+        organisationPermissions={{edit:await organisationAccess(s,'edit',c.id),delete:await organisationAccess(s,'delete',c.id)}}
         company={{
           id: c.id,
           name: c.name,

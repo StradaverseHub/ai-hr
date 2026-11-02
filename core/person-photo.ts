@@ -45,7 +45,10 @@ export async function setPersonPhoto(
   assertValidPhoto(p.mimeType, p.content);
   if(p.sizeBytes!==p.content.byteLength)throw new EssProfileError('invalid');
   return withTenant(ctx, async (tx) => {
-    await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');
+    await assertWorkforcePersonTx(tx,ctx,p.personId,'view');
+    await lockPersonPhotoTx(tx,ctx,p.personId);
+    const [existing]=await tx.select({id:personPhoto.id}).from(personPhoto).where(eq(personPhoto.personId,p.personId)).limit(1);
+    await assertWorkforcePersonTx(tx,ctx,p.personId,existing?'edit':'add');
     return setPersonPhotoTx(tx,ctx,p);
   });
 }
@@ -130,14 +133,11 @@ export function setOwnPersonPhoto(ctx:SessionContext,p:{employmentId:string;cont
 export async function applyProfilePhotoProposalTx(tx:Tx,ctx:SessionContext,request:typeof profileChangeRequest.$inferSelect){
  if(!isProfilePhotoProposal(request.proposed))throw new EssProfileError('invalid');
  const policy=await freshProfileEditPolicyTx(tx,ctx);if(!ownPhotoSubmissionAllowed(policy))throw new EssProfileError('fieldClosed',[PROFILE_PHOTO_FIELD]);
- // The subject must still be active and have a live login; the reviewer is not the subject context.
- const [active]=await tx.execute(sql`select exists(select 1 from employment e join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id where e.id=${request.employmentId}::uuid and e.person_id=${request.personId}::uuid and e.tenant_id=${ctx.tenantId}::uuid and e.blacklisted_at is null and e.hired_on<=(now() at time zone 'Asia/Kuala_Lumpur')::date and (least(e.resignation_date,e.last_working_date,e.terminated_on) is null or least(e.resignation_date,e.last_working_date,e.terminated_on)>=(now() at time zone 'Asia/Kuala_Lumpur')::date) and u.archived_at is null and not app.login_blocked(u.id)) allowed`);
- if(active?.allowed!==true)throw new EssProfileError('unavailable');
- await lockPersonPhotoTx(tx,ctx,request.personId);
- if(await photoBaselineTx(tx,request.personId)!==request.proposed.baselineHash)throw new EssProfileError('stale');
- const [photo]=await tx.select().from(profilePhotoProposal).where(eq(profilePhotoProposal.requestId,request.id)).limit(1);
- if(!photo)throw new EssProfileError('unavailable');assertValidPhoto(photo.mimeType,photo.content);
- return setPersonPhotoTx(tx,ctx,{personId:request.personId,content:photo.content,mimeType:photo.mimeType,sizeBytes:photo.content.byteLength,fileName:'profile-photo'+(photo.mimeType==='image/png'?'.png':'.jpg')});
+ // The SQL storage owner binds the exact current task, active subject, stored bytes and baseline.
+ const [stored]=await tx.execute<{value:{personId:string;mimeType:string;sizeBytes:number}}>(sql`select app.profile_task_store_photo(${request.id}::uuid) as value`);
+ if(!stored?.value)throw new EssProfileError('unavailable');
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'person',aggregateId:request.personId,eventType:'person.photo.set',actor:actorOf(ctx),subjectEmploymentId:request.employmentId,payload:{mimeType:stored.value.mimeType,sizeBytes:stored.value.sizeBytes}});
+ return {personId:request.personId};
 }
 /** Pending proposal bytes have their own request visibility; no extra master/Personnel authority. */
 export function getProfilePhotoProposal(ctx:SessionContext,requestId:string){
@@ -157,7 +157,7 @@ export function getProfilePhotoProposal(ctx:SessionContext,requestId:string){
 export async function removePersonPhoto(ctx: SessionContext, p: { personId: string }) {
   if(!isAdmin(ctx))throw new EssProfileError('permission');
   return withTenant(ctx, async (tx) => {
-    await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');
+    await assertWorkforcePersonTx(tx,ctx,p.personId,'delete');
     await lockProfileEditPolicyTx(tx,ctx.tenantId);
     await lockPersonPhotoTx(tx,ctx,p.personId);
     await tx.delete(personPhoto).where(eq(personPhoto.personId, p.personId));

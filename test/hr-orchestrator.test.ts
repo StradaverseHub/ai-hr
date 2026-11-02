@@ -107,6 +107,7 @@ describe('central HR orchestrator', () => {
     expect(run.nudge).toMatchObject({ status: 'succeeded', value: { disabled: true } });
     expect(run.triage).toMatchObject({ status: 'succeeded', value: { disabled: true } });
     expect((await cases()).length).toBeGreaterThan(0);
+    await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:base.adminUserId,role:'employee',companyId:null});
     const reader = { ...adminCtx(base), grants: [
       { role: 'hr_admin', companyId: null }, { role: 'employee', companyId: null },
     ] };
@@ -114,7 +115,9 @@ describe('central HR orchestrator', () => {
     expect((await orchestrationQueue(reader)).lastRun?.steps).toEqual({
       observe: 'succeeded', readiness: 'succeeded', claims: 'succeeded', verify: 'succeeded',
     });
-    expect((await orchestrationQueue({ ...adminCtx(base), grants: [{ role: 'super_admin', companyId: null }] })).observedAt).not.toBeNull();
+    await expect(orchestrationQueue({ ...adminCtx(base), grants: [{ role: 'super_admin', companyId: null }] })).rejects.toThrow('Forbidden');
+    await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:base.adminUserId,role:'super_admin',companyId:null});
+    expect((await orchestrationQueue({...adminCtx(base),grants:[{role:'hr_admin',companyId:null},{role:'employee',companyId:null},{role:'super_admin',companyId:null}]})).observedAt).not.toBeNull();
   });
 
   it('keeps pass receipts scoped to the matching administrative authority and tenant', async () => {

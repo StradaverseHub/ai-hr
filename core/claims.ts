@@ -1,3 +1,4 @@
+import {assertModuleActionTx} from './module-action-access';
 import {assertClaimsProviderSourceTx} from './claims-provider-source';
 import {createHash} from 'node:crypto';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
@@ -716,6 +717,7 @@ export async function createClaimType(
   const maxReceiptAgeDays = receiptAgeOrNull(p.maxReceiptAgeDays);
   const isMileage = p.isMileage ?? false;
   return withTenant(ctx, async (tx) => {
+    await assertModuleActionTx(tx,'claims_configuration','add');
     if (isMileage) await assertSingleMileageType(tx, null);
     const [row] = await tx
       .insert(claimType)
@@ -758,6 +760,7 @@ export async function updateClaimType(
   const description = p.description?.trim() || null;
   const maxReceiptAgeDays = receiptAgeOrNull(p.maxReceiptAgeDays);
   await withTenant(ctx, async (tx) => {
+    await assertModuleActionTx(tx,'claims_configuration','edit');
     if (p.isMileage === true) await assertSingleMileageType(tx, p.id);
     const [row] = await tx
       .update(claimType)
@@ -802,6 +805,7 @@ export async function getMileageClaimType(ctx: SessionContext): Promise<ClaimTyp
  */
 export async function deleteClaimType(ctx: SessionContext, id: string): Promise<void> {
   await withTenant(ctx, async (tx) => {
+    await assertModuleActionTx(tx,'claims_configuration','delete');
     const [ct] = await tx.select({ id: claimType.id, code: claimType.code }).from(claimType).where(eq(claimType.id, id)).limit(1);
     if (!ct) return;
     const [used] = await tx
@@ -827,6 +831,7 @@ export async function deleteClaimType(ctx: SessionContext, id: string): Promise<
 
 export async function archiveClaimType(ctx: SessionContext, id: string): Promise<void> {
   await withTenant(ctx, async (tx) => {
+    await assertModuleActionTx(tx,'claims_configuration','delete');
     const [row] = await tx
       .update(claimType)
       .set({ archivedAt: new Date() })
@@ -855,6 +860,7 @@ export async function createClaimItem(
   if (!code) throw new Error('Claim item code is required');
   if (!p.name.trim()) throw new Error('Claim item name is required');
   return withTenant(ctx, async (tx) => {
+    await assertModuleActionTx(tx,'claims_configuration','add');
     const [row] = await tx
       .insert(claimItem)
       .values({ tenantId: ctx.tenantId, claimTypeId: p.claimTypeId, code, name: p.name.trim() })
@@ -874,6 +880,7 @@ export async function createClaimItem(
 export async function updateClaimItem(ctx: SessionContext, p: { id: string; name: string }): Promise<void> {
   if (!p.name.trim()) throw new Error('Claim item name is required');
   await withTenant(ctx, async (tx) => {
+    await assertModuleActionTx(tx,'claims_configuration','edit');
     const [row] = await tx
       .update(claimItem)
       .set({ name: p.name.trim() })
@@ -893,6 +900,7 @@ export async function updateClaimItem(ctx: SessionContext, p: { id: string; name
 
 export async function archiveClaimItem(ctx: SessionContext, id: string): Promise<void> {
   await withTenant(ctx, async (tx) => {
+    await assertModuleActionTx(tx,'claims_configuration','delete');
     const [row] = await tx
       .update(claimItem)
       .set({ archivedAt: new Date() })
@@ -1052,6 +1060,7 @@ export async function setClaimPolicyTx(
   if (p.rateConfig != null) assertValidRateConfig(p.rateConfig);
   const gradeId = p.gradeId ?? null;
   const claimItemId = p.claimItemId ?? null;
+  await tx.execute(sql`select app.claim_configuration_admit('claim_policy',${p.claimTypeId}::uuid,${gradeId}::uuid,${claimItemId}::uuid,NULL)`);
 
   // ── Per block: validate the rule as a WHOLE, before anything is written ──
   // "All four or none" is checked here with a readable message; claim_policy_block_ck is the backstop for
@@ -1428,6 +1437,8 @@ export async function setMileageRateTable(
   if (p.bands.length > 0) assertValidMileageBands(p.bands);
   const gradeId = p.gradeId ?? null;
   return withTenant(ctx, async (tx) => {
+    if(p.bands.length===0)await assertModuleActionTx(tx,'claims_configuration','delete');
+    else await tx.execute(sql`select app.claim_configuration_admit('claim_mileage_rate',${p.claimTypeId}::uuid,${gradeId}::uuid,NULL,${vehicleClass})`);
     // Close the open version of THIS tier only — a null-safe grade compare so setting the Executive table
     // never closes the Manager one (setClaimPolicy's exact idiom).
     await tx
@@ -1629,6 +1640,7 @@ export async function createClaimFormField(
   const options = (p.options ?? []).map((o) => o.trim()).filter((o) => o.length > 0);
   if (p.kind === 'select' && options.length === 0) throw new ClaimError('A dropdown field needs at least one choice');
   return withTenant(ctx, async (tx) => {
+    await assertModuleActionTx(tx,'claims_configuration','add');
     const [ct] = await tx.select({ id: claimType.id }).from(claimType).where(and(eq(claimType.id, p.claimTypeId), isNull(claimType.archivedAt))).limit(1);
     if (!ct) throw new ClaimError('Unknown or archived claim type');
     const existing = await activeFormFieldsFor(tx, p.claimTypeId);
@@ -1670,6 +1682,7 @@ export async function updateClaimFormField(
   const options = (p.options ?? []).map((o) => o.trim()).filter((o) => o.length > 0);
   if (p.kind === 'select' && options.length === 0) throw new ClaimError('A dropdown field needs at least one choice');
   await withTenant(ctx, async (tx) => {
+    await assertModuleActionTx(tx,'claims_configuration','edit');
     const [row] = await tx.select().from(claimFormField).where(eq(claimFormField.id, p.id)).limit(1);
     if (!row || row.archivedAt) throw new ClaimError('That claim form field no longer exists');
     await tx.update(claimFormField).set({ label, kind: p.kind, required: p.required, options }).where(eq(claimFormField.id, p.id));
@@ -1688,6 +1701,7 @@ export async function updateClaimFormField(
  *  claims must survive, and a claim whose stored values reference a vanished field is unreadable. */
 export async function archiveClaimFormField(ctx: SessionContext, id: string): Promise<void> {
   await withTenant(ctx, async (tx) => {
+    await assertModuleActionTx(tx,'claims_configuration','delete');
     const [row] = await tx.select().from(claimFormField).where(eq(claimFormField.id, id)).limit(1);
     if (!row || row.archivedAt) throw new ClaimError('That claim form field no longer exists');
     await tx.update(claimFormField).set({ archivedAt: new Date() }).where(eq(claimFormField.id, id));
@@ -1706,6 +1720,7 @@ export async function archiveClaimFormField(ctx: SessionContext, id: string): Pr
  *  (two fields at 3) cannot make the order depend on insertion time. */
 export async function moveClaimFormField(ctx: SessionContext, p: { id: string; direction: 'up' | 'down' }): Promise<void> {
   await withTenant(ctx, async (tx) => {
+    await assertModuleActionTx(tx,'claims_configuration','edit');
     const [row] = await tx.select().from(claimFormField).where(eq(claimFormField.id, p.id)).limit(1);
     if (!row || row.archivedAt) throw new ClaimError('That claim form field no longer exists');
     const fields = await activeFormFieldsFor(tx, row.claimTypeId);
@@ -3457,7 +3472,7 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
       .where(and(eq(claimRequest.status, 'pending'),opts.requestId?eq(claimRequest.id,opts.requestId):undefined))
       .orderBy(desc(claimRequest.createdAt));
     // R51 (baf56348): trim delegation-routed rows whose subject is outside the delegation's org coverage.
-    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId,r=>({kind:'claims.claim',id:r.id}));
     const atts = await attachmentsByClaim(tx, scoped.map((r) => r.id));
     return scoped.map((r) => toRow(r, atts));
   });
@@ -3600,6 +3615,7 @@ export async function prefillClaimsForBatch(
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
     if (!batch) throw new ClaimError('Payroll batch not found');
+    await tx.execute(sql`select app.access_payroll_batch_begin(${batch.id}::uuid,'edit')`);
     if (batch.status !== 'draft') throw new ClaimError('Claims can only be prefilled onto a draft batch');
 
     // c7fdfcf6 (Payroll Schedule) — the CLAIM cut-off window for this run. A claim is queued only when it was
@@ -3816,7 +3832,7 @@ export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:st
    .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
     companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
    .orderBy(desc(claimRequest.createdAt),claimRequest.id);
-  return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
+  return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId,row=>({kind:'claims.claim',id:row.id}));
  });
  const allowed=new Set(await actionablePendingClaimIds(ctx,candidates.map(row=>row.id)));
  return candidates.filter(row=>allowed.has(row.id));

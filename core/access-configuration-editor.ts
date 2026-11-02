@@ -19,6 +19,6 @@ export function readAccessConfigurationEditor(ctx:SessionContext){
   const metadata=parseAccessEditorMetadata(row?.metadata,current.snapshot,current.evidence.knownCompanyIds);
   // No owner/evidence functions, lifecycle eligibility, binding paths or session grants are props.
   return {snapshot:current.snapshot,scopeFingerprint:current.scopeFingerprint,
-   capabilities:current.catalog.map(({id,scope,supported})=>({id,scope,supported})),...metadata};
+   capabilities:current.catalog.map(({id,scope,supported,prerequisites,presentation})=>({id,scope,supported,prerequisites,presentation})),...metadata};
  });
 }

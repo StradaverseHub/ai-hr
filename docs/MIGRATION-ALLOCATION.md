@@ -927,14 +927,41 @@ worker;0938 / when1793330000338 / aggregate index760 is reserved to Security for
 These are additive uninstalled source claims. Re-audit all refs/worktree journals and live watermark
 before release; no deployment or installation is authorized.
 
+## Approved board data scope reader bypasses — 2 November 2026 (coordinated source claim)
+
+The approved-board security owner reserved `0936_data_permission_profiles` at idx758 /
+when1793330000336 and its central row-policy successor0938 at idx760 /when1793330000338.
+The delegated reader/worker work reserves `0937_data_permission_reader_bypasses` at idx759 /
+when1793330000337, between those dependencies. Its isolated branch is
+`codex/approved-board-bypasses-20261102`; it must be integrated with0936 and0938 before hosted
+migration/behavior checks. This is unapplied source only, requires the normal aggregate migration
+and release evidence, and grants no deployment authority. Existing applied SQL is unchanged.
+
 ## Administrative data-profile central enforcement — 2 November 2026 (provisional)
 
 Security worker appends `0938_data_permission_enforcement`, aggregate index760,
-when1793330000338, SQL SHA256 `39c84d466a84e3d5e87059dabda2ed93159af0fae130d0cad7e377bff8cd6898`. Its owned source journal leaves
+when1793330000338, SQL SHA256 `814a93e976eeadc01b38ac02540efde2c376f58fbd044f7c2159ea6772af2f9f`. Its owned source journal leaves
 index759 reserved for the independent0937 / when1793330000337 bypass-owner migration.
 The integration owner must merge0937 in chronological order and re-audit competing claims and live
 watermark before installation. This central row-scope prerequisite does not claim that the complete
 requested action-binding expansion has passed acceptance or is ready for release.
+
+## Workforce action split — 2 November 2026 (provisional source claim)
+
+Actions owner reserves `0939_workforce_action_permissions`, aggregate idx761 /
+when1793330000339, after0938. This additive source identity includes the typed operation
+owners, exact birth/source custody and retained independent workflow witnesses. It is
+unapplied source, requires aggregate hosted migration/behavior checks and re-audit before
+installation, and grants no deployment authority. The full module-binding item is not yet
+accepted solely by this Workforce checkpoint.
+
+## Bounded approval task sources — 2 November 2026 (provisional)
+
+Parent allocation audit reserved `0940_bounded_approval_task_sources`, aggregate idx762 /
+when1793330000340, after0939's independently owned action split. It preserves exact Profile
+and Leave task responsibility through request-bound projections and native effect witnesses,
+without a general Personnel read exception. Branch `codex/approved-board-task-projections-20261102`.
+Unapplied source only; re-audit live watermark and refs before coordinated release. No installation authority.
 
 ## Financial and Letters action restrictions — 2 November 2026 (provisional)
 
@@ -947,3 +974,27 @@ intentionally does not define that final closure prerequisite while kernel actio
 in progress. A parsed migration and legacy pass do not claim completed action coverage.
 Re-audit every ref/worktree journal and installation watermark before release; no deployment is
 authorized.
+
+## Organisation and shared configuration actions — 2 November 2026 (provisional)
+
+Parent BOARD owner reserves `0942_organisation_settings_actions`, aggregate idx764 /
+when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `6fd3aa99be497c6660792e7f7aa7d02e30b1ac95d1fcdc9a43cb1077ba75a5d1`.
+This is unapplied implementation source. It retains native role/company floors, separates
+reference pickers from maintenance views, guards current/proposed organisation scopes, and
+binds employee-number allocation/release to private native effects. Hosted SQL/behavior and
+populated-upgrade evidence remain pending. Shared settings coverage is still being extended;
+no completed binding or installation claim follows this checkpoint. Recheck every source
+reservation and the actual post-Noveri installation ledger before release admission.
+
+## Financial setup/native import boundary — 2 November 2026 (provisional)
+
+BOARD parent reserves `0945_financial_setup_actions`, aggregate idx767 /when1793330000345.
+Source SHA256 `11f14fccf4292453dbbcd779578e3ee6bfab244d7ea640b117c069d166f9814f`. Reserved0943/idx765 and0944/idx766 remain with
+parallel owners and must be inserted in timestamp order during integration; no existing entry
+is renumbered. This is an unapplied development checkpoint, not installed or accepted source.
+Its catalogue, history, tax, formula and loan guards still require hosted qualification,
+precise module/submenu facts, and TP1/CP38/statutory input qualification and binding closure.
+`financial_setup_bindings_complete()` deliberately remains absent. The genuine owner publisher
+must refuse the incomplete family. Preserve all native self/assigned and financial calculation
+courses; new authority cannot arise from posted roles or a context flag. Re-audit current refs,
+all source claims and the post-Noveri installation ledger before any release admission.

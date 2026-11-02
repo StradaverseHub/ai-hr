@@ -167,6 +167,17 @@ describe('immutable payroll history correction and recovery',()=>{
   expect(outcomes.filter(result=>result.status==='fulfilled')).toHaveLength(1);
   expect(await effective()).toHaveLength(1);expect(await owner.db.select().from(schema.payslip)).toHaveLength(1);
  });
+ it('an empty history selection proves only a complete unchanged confirmation, never an omitted financial write',async()=>{
+  const first=await upload();
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.financial_history_begin(${first.attemptId}::uuid,'[]'::jsonb)`))).rejects.toThrow();
+  expect(await owner.db.select().from(schema.payslip)).toEqual([]);
+  await confirm(first);
+  const repeated=await upload();expect(repeated.plan.counts).toEqual({created:0,replaced:0,unchanged:1,invalid:0});
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.financial_history_begin(${repeated.attemptId}::uuid,'[]'::jsonb)`))).rejects.toThrow();
+  expect(await owner.db.select().from(schema.payrollHistoryImportEvent).where(and(eq(schema.payrollHistoryImportEvent.attemptId,repeated.attemptId),eq(schema.payrollHistoryImportEvent.kind,'confirmed')))).toEqual([]);
+  await confirm(repeated);
+  expect(await owner.db.select().from(schema.payslip)).toHaveLength(1);
+ });
  it('imports two authorised companies with same-named cycles into distinct canonical records',async()=>{
   const other=await createCompany(ctx,{legalName:'Fictional second history company',companyLabel:'000BC',country:'MY',currency:'MYR'});
   const department=await createDepartment(ctx,{companyId:other.id,name:'Fixture department'});await seedPayrollCycleCatalog(ctx,other.id);

@@ -23,7 +23,7 @@ export async function freshProfileEditPolicyTx(tx:Tx,ctx:SessionContext){
 export async function assertProfilePolicyWriteAuthorityTx(tx:Tx,ctx:SessionContext):Promise<void>{
  try{
   await assertAiPrincipalTx(tx,ctx);
-  const [current]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);
+  const [current]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() and app.settings_action_allowed('edit') as allowed`);
   if(current?.allowed!==true)throw new TenantSettingError('not_group_admin');
  }catch{throw new TenantSettingError('not_group_admin');}
 }

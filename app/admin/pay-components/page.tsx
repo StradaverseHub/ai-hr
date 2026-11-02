@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import { listPayComponents } from '@/core/pay-components';
+import {payrollCatalogueActions} from '@/core/financial-setup-access';
 import type { FormulaOp, FormulaOperand, PayRule, PayRuleKind } from '@/core/pay-rule';
 import { payRuleInWords } from './pay-rule-words';
 import { Card, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
@@ -37,6 +38,7 @@ export default async function PayComponentsPage({
   searchParams: Promise<{ edit?: string; new?: string; q?: string; status?: string; page?: string; size?: string }>;
 }) {
   const s = await requireAdmin();
+  const capabilities=await payrollCatalogueActions(s);
   const t = await getTranslations('payComponents');
   // 61bf109d rev2 — the formula description reads the BUILDER's own operand/operator strings, so the list
   // and the editor cannot word the same formula two different ways. See ./pay-rule-words.ts.
@@ -48,7 +50,7 @@ export default async function PayComponentsPage({
   if (sp.edit) redirect(`${PAGE}/${encodeURIComponent(sp.edit)}`);
   // includeArchived is LOAD-BEARING: the page does its own Active/Inactive/All filtering. Without it a
   // deactivated row would vanish from the list with no UI path back to reactivate it.
-  const components = await listPayComponents(s, { includeArchived: true });
+  const components = await listPayComponents(s, { includeArchived: true, maintenance: true });
   const q = (sp.q ?? '').trim();
   const status: Status = sp.status === 'inactive' || sp.status === 'all' ? sp.status : 'active';
 
@@ -140,7 +142,7 @@ export default async function PayComponentsPage({
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between gap-3 pr-4">
           <SectionHeader title={t('catalogTitle')} count={rows.length} />
-          {components.length === 0 && (
+          {capabilities.add && components.length === 0 && (
             <form action={seedCatalogAction}>
               <button className={btnPrimary}>{t('seedDefaults')}</button>
             </form>
@@ -149,9 +151,9 @@ export default async function PayComponentsPage({
 
         {/* Toolbar — create (primary, opens the dedicated maintenance screen), search, status filter, export. */}
         <div className="flex flex-wrap items-center gap-3 px-4 pb-3">
-          <Link href={`${PAGE}/new`} className={btnPrimary}>
+          {capabilities.add && <Link href={`${PAGE}/new`} className={btnPrimary}>
             {t('createNew')}
-          </Link>
+          </Link>}
           <form action={PAGE} method="get" className="flex items-center gap-2">
             <input type="hidden" name="status" value={status} />
             {/* The chosen rows-per-page survives a search; the PAGE does not — a new search is a new list. */}
@@ -179,7 +181,7 @@ export default async function PayComponentsPage({
             ))}
           </nav>
           <div className="ml-auto flex flex-wrap items-center gap-3">
-            <ImportPayItems />
+            {capabilities.add && <ImportPayItems />}
             <DownloadCsv columns={exportColumns} rows={exportRows} filename="pay-items.csv" />
           </div>
         </div>
@@ -262,28 +264,29 @@ export default async function PayComponentsPage({
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center justify-end gap-3">
-                      <Link href={`${PAGE}/${encodeURIComponent(c.code)}`} className="text-xs font-medium text-primary hover:underline">
+                      {capabilities.edit && <Link href={`${PAGE}/${encodeURIComponent(c.code)}`} className="text-xs font-medium text-primary hover:underline">
                         {t('edit')}
-                      </Link>
+                      </Link>}
                       {/* a6da1387 — Copy Pay Code: open a blank CREATE form pre-filled from this item (the
                           copy flag makes the code field editable + blank; uniqueness is enforced on save). */}
-                      <Link
+                      {capabilities.add && <Link
                         href={`${PAGE}/new?from=${encodeURIComponent(c.code)}`}
                         className="text-xs font-medium text-primary hover:underline"
                       >
                         {t('copy')}
-                      </Link>
+                      </Link>}
                       {c.archivedAt ? (
                         <form action={archiveComponentAction}>
                           <input type="hidden" name="id" value={c.id} />
                           <input type="hidden" name="archived" value="false" />
-                          <button className="text-xs font-medium text-primary hover:underline">{t('activate')}</button>
+                          <button disabled={!capabilities.edit} className="text-xs font-medium text-primary hover:underline disabled:opacity-50">{t('activate')}</button>
                         </form>
                       ) : (
                         <form action={archiveComponentAction}>
                           <input type="hidden" name="id" value={c.id} />
                           <input type="hidden" name="archived" value="true" />
                           <ConfirmSubmit
+                            disabled={!capabilities.delete}
                             variant="outline"
                             title={t('archiveTitle')}
                             description={t('archiveDescription', { code: c.code })}
@@ -297,6 +300,7 @@ export default async function PayComponentsPage({
                       <form action={deleteComponentAction}>
                         <input type="hidden" name="id" value={c.id} />
                         <ConfirmSubmit
+                          disabled={!capabilities.delete}
                           title={t('deleteTitle')}
                           description={t('deleteDescription', { code: c.code })}
                           confirmLabel={t('delete')}

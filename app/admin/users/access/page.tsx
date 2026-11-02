@@ -5,7 +5,7 @@ import {AccessConfigurationEditor} from '../access-editor';
 import {previewAccessConfigurationAction,saveAccessConfigurationAction} from './actions';
 import {actionCapabilityLabelKey} from '@/lib/access-action-presentation';
 import {SecurityBackLink} from '../security-page';
-const capabilityKeys:Record<string,string>={'access.system_admin':'systemAdministrator','access.configure':'configure','workforce.view':'workforceView','workforce.add':'workforceAdd','workforce.edit':'workforceEdit','workforce.delete':'workforceDelete','workforce.maintain':'workforceMaintain','profile.review':'profileReview'};
+const capabilityKeys:Record<string,string>={'access.system_admin':'systemAdministrator','access.configure':'configure','workforce.view':'workforceView','workforce.add':'workforceAdd','workforce.edit':'workforceEdit','workforce.delete':'workforceDelete','workforce.maintain':'workforceMaintain','profile.review':'profileReview','organisation.view':'organisationView','organisation.add':'organisationAdd','organisation.edit':'organisationEdit','organisation.delete':'organisationDelete','settings.view':'settingsView','settings.add':'settingsAdd','settings.edit':'settingsEdit','settings.delete':'settingsDelete'};
 export default async function AccessConfigurationPage(){
  const {session,data}=await requireAccessConfiguration(),t=await getTranslations('accessConfiguration'),locale=await getLocale();
  const users=data.users.map(user=>({...user,label:data.snapshot.users.find(row=>row.id===user.id)?.active?user.label:`${user.label} · ${t('inactive')}`}));

@@ -1,5 +1,5 @@
 import type {PayFormulaView} from '@/lib/pay-formula-model';
-export type FormulaCapabilities={view:boolean;edit:boolean;test:boolean;activate:boolean;deactivate:boolean;delete:boolean};
+export type FormulaCapabilities={view:boolean;add?:boolean;edit:boolean;test:boolean;activate:boolean;deactivate:boolean;delete:boolean};
 export type FormulaBuilderOptions={companies:{id:string;name:string}[];employees:{id:string;companyId:string;code:string;name:string}[];cycles:{id:string;companyId:string;code:string;label:string}[];payItems:{code:string;name:string}[];activeFormulas:{id:string;formulaId:string;description:string;revisionId:string;dependencies:string[]}[];accumulations:{id:string;code:string;members:string[]}[];capabilities:FormulaCapabilities};
 export type FormulaBuilderView=PayFormulaView&{capabilities?:FormulaCapabilities};
 export const NO_FORMULA_CAPABILITIES:FormulaCapabilities={view:false,edit:false,test:false,activate:false,deactivate:false,delete:false};
