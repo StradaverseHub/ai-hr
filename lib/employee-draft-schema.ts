@@ -411,6 +411,7 @@ export function draftEpfCitizenship(v: string | undefined): 'citizen' | 'pr' | '
  * `hireEmployee` either way.
  */
 export type DraftStatutoryRules = {
+  validatePassport?: (value: EmployeeDraftProfile,nationality?:string|null)=>boolean;
   epfElectionGap?: (
     uiMode: string | null | undefined,
     employeeRate: string | null | undefined,
@@ -505,6 +506,8 @@ export type EmployeeDraftFamilyMember = {
 };
 
 export type EmployeeDraftData = {
+  /** Server-owned creation-default cohort; absent on historical drafts. */
+  creationDefaultsVersion?: 1;
   profile?: EmployeeDraftProfile;
   employment?: EmployeeDraftEmployment;
   statutory?: EmployeeDraftStatutory;
@@ -815,7 +818,8 @@ export function missingByTab(data: EmployeeDraftData, rules?: DraftStatutoryRule
   const passportTrio = [p.passportNumber, p.passportIssueDate, p.passportExpiryDate];
   const passportAny = [...passportTrio, p.passportIssuingCountry, p.passportIssuingCountryCode, p.passportRemark]
     .some((v) => !blank(v));
-  if (passportAny && passportTrio.some((v) => blank(v))) profile.push('passport');
+  if (rules?.validatePassport ? (passportAny||!blank(p.nationality))&&!rules.validatePassport(p,p.nationality) : passportAny&&blank(p.passportNumber)) profile.push('passport');
+  if(p.passportIssueDate&&p.passportExpiryDate&&p.passportExpiryDate<p.passportIssueDate&&!profile.includes('passport'))profile.push('passport');
   // Both passport dates reach Postgres as a `date` and throw THERE — after the employee exists — so a
   // value that is not ISO is named here instead, under the same name as the block it belongs to.
   for (const d of [p.passportIssueDate, p.passportExpiryDate]) {

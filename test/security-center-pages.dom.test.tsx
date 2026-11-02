@@ -11,7 +11,7 @@ import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
 const copies={en,ms,zh,vi:viCopy,ta,th};
-const m=vi.hoisted(()=>({locale:'en' as keyof typeof copies,access:{admin:true,configure:true,provision:true},load:vi.fn(),guard:vi.fn(),replace:vi.fn(),enabled:true}));
+const m=vi.hoisted(()=>({locale:'en' as keyof typeof copies,access:{admin:true,configure:true,provision:true,passwordPolicy:true},load:vi.fn(),guard:vi.fn(),replace:vi.fn(),enabled:true}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error('REDIRECT '+path);},useRouter:()=>({replace:m.replace,refresh:vi.fn()})}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>m.locale,getTranslations:async(namespace:any)=>createTranslator({locale:m.locale,messages:copies[m.locale],namespace})}));
@@ -21,6 +21,7 @@ vi.mock('../app/admin/users/data',()=>({loadUsersData:m.load,ROLES:['employee','
 vi.mock('../lib/internal-auth/config',()=>({internalSelected:()=>m.enabled}));
 vi.mock('../lib/identity/config',()=>({keycloakSelected:()=>false}));
 vi.mock('../app/admin/actions',()=>({inviteUserAction:vi.fn(),archiveUserAction:vi.fn(),assignRoleAction:vi.fn(),revokeRoleAction:vi.fn(),revokeInvitationAction:vi.fn(),setAssistantGrantAction:vi.fn()}));
+vi.mock('../app/admin/users/password-unlock-actions',()=>({unlockPasswordAccountAction:vi.fn()}));
 vi.mock('../app/admin/users/manual-actions',()=>({createManualAccountAction:vi.fn(),resumeManualAccountAction:vi.fn(),cancelManualAccountAction:vi.fn()}));
 import Hub from '../app/admin/security-center/page';
 import Directory from '../app/admin/users/page';
@@ -37,20 +38,20 @@ async function serverTree(node:ReactNode):Promise<ReactNode>{
  return cloneElement(node,{},...children);
 }
 async function show(node:ReactNode){return render(<NextIntlClientProvider locale={m.locale} messages={copies[m.locale]} onError={error=>{throw error;}}>{await serverTree(node)}</NextIntlClientProvider>);}
-beforeEach(()=>{vi.clearAllMocks();m.locale='en';m.enabled=true;m.access={admin:true,configure:true,provision:true};m.guard.mockResolvedValue({tenantId:'fictional'});m.load.mockResolvedValue({rows:[],groupAdmin:true,companies:[],roleOptions:['employee'],assistantGranted:new Set(),peopleOptions:[person],pendingEmployees:[person],manualEnrollments:[]});window.history.replaceState(null,'','/admin/users');});
+beforeEach(()=>{vi.clearAllMocks();m.locale='en';m.enabled=true;m.access={admin:true,configure:true,provision:true,passwordPolicy:true};m.guard.mockResolvedValue({tenantId:'fictional'});m.load.mockResolvedValue({rows:[],groupAdmin:true,companies:[],roleOptions:['employee'],assistantGranted:new Set(),peopleOptions:[person],pendingEmployees:[person],manualEnrollments:[]});window.history.replaceState(null,'','/admin/users');});
 afterEach(cleanup);
 describe('independent Security Center pages',()=>{
- it.each(Object.keys(copies) as (keyof typeof copies)[])('%s renders the real overview with five authorized cards',async locale=>{
+ it.each(Object.keys(copies) as (keyof typeof copies)[])('%s renders the real overview with six authorized cards',async locale=>{
   m.locale=locale;await show(await Hub());expect(screen.getByRole('heading',{level:1,name:copies[locale].securityCenter.title})).toBeTruthy();
-  expect(screen.getAllByRole('link')).toHaveLength(5);expect(m.load).not.toHaveBeenCalled();
+  expect(screen.getAllByRole('link')).toHaveLength(6);expect(m.load).not.toHaveBeenCalled();
   await captureAiReviewScreenshots(aiReviewDomHtml(document.body),locale,'security-overview','real components; fictional read owners; no authenticated server journey','atelier');
  },60000);
  it('renders only configure-authorized cards without querying user data',async()=>{
-  m.access={admin:false,configure:true,provision:false};await show(await Hub());expect(screen.getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/admin/users/access']);expect(m.load).not.toHaveBeenCalled();
+  m.access={admin:false,configure:true,provision:false,passwordPolicy:false};await show(await Hub());expect(screen.getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/admin/users/access']);expect(m.load).not.toHaveBeenCalled();
  });
  it('keeps manual selected-person controls, password requirements, provider unavailable and success/error states',async()=>{
   await show(await Create({searchParams:Promise.resolve({activate:person.id,manualSuccess:'created'})}));
-  expect(document.querySelector<HTMLInputElement>('input[name="personId"]')?.value).toBe(person.id);expect(document.querySelector<HTMLInputElement>('input[name="email"]')?.value).toBe(person.email);expect(document.querySelector<HTMLInputElement>('input[name="password"]')?.minLength).toBe(14);expect(document.querySelector<HTMLInputElement>('input[name="ownershipAttested"]')?.required).toBe(true);
+  expect(document.querySelector<HTMLInputElement>('input[name="personId"]')?.value).toBe(person.id);expect(document.querySelector<HTMLInputElement>('input[name="email"]')?.value).toBe(person.email);expect(document.querySelector<HTMLInputElement>('input[name="password"]')?.minLength).toBe(1);expect(document.querySelector<HTMLInputElement>('input[name="ownershipAttested"]')?.required).toBe(true);
   expect(screen.getByRole('status')).toHaveTextContent(en.admin.users.manual.success.created);expect(screen.queryByText(en.admin.users.inviteTitle)).toBeNull();
   await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en','security-create');
   cleanup();m.enabled=false;await show(await Create({searchParams:Promise.resolve({manualError:'unavailable'})}));expect(screen.getByText(en.admin.users.manual.notEnabled)).toBeTruthy();expect(document.querySelector('form')).toBeNull();expect(screen.getByRole('alert')).toBeTruthy();

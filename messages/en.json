@@ -509,7 +509,8 @@
     "functionAccess": "Function Access",
     "securityCenter": "Security Center",
     "aiManagementInventory": "AI inventory",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "passwordPolicy": "Password Policy"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1570,7 +1571,7 @@
       "passportIssueDate": "Passport issue date",
       "passportExpiryDate": "Passport expiry date",
       "passportRemark": "Passport remark",
-      "passportHint": "Passport number, issue date and expiry date are required for non-Malaysian employees. A Malaysian employee's passport is optional, but the three must be filled together. Issuing country and remark are optional.",
+      "passportHint": "A passport number is required for non-Malaysian employees. Issue date, expiry date, issuing country, country code and remark are optional. Supplied dates and country codes must be valid. For Malaysian employees, passport information is optional; include the number and both dates when entering details, or clear all six fields to remove it.",
       "savePassport": "Save passport information",
       "identityNricTitle": "Identity No (NRIC)",
       "oldIcNumber": "Old identity card no.",
@@ -2113,7 +2114,7 @@
       "superiorFailedCount": "{count, plural, one {# employee was imported, but their direct superior could not be linked} other {# employees were imported, but their direct superior could not be linked}}",
       "familyRelationshipLabel": "Family relationship",
       "familyGenderLabel": "Family member gender",
-      "instructionPassport": "Passport Number, Issue Date and Expiry Date must be filled in together, or all three left blank. Passport Issuing Country uses the same list as Nationality — see the Reference sheet.",
+      "instructionPassport": "A passport number is required for non-Malaysian employees. Issue date, expiry date, issuing country, country code and remark are optional. Supplied dates and country codes must be valid. For Malaysian employees, passport information is optional; include the number and both dates when entering details, or clear all six fields to remove it.",
       "instructionAddress": "The address columns are the employee’s home address. State and Country must match a value on the Reference sheet.",
       "instructionProbation": "Probation End Date applies to full-time employees only. Probation and notice periods are whole numbers of months and days.",
       "instructionSuperior": "Direct Superior takes an Employee ID or work email. It may name someone further down this file, or someone already employed.",
@@ -7648,7 +7649,8 @@
         "saving": "Saving…",
         "saved": "Payroll correction setting saved.",
         "invalid": "Choose a valid on or off value.",
-        "failed": "Could not save the setting. Try again."
+        "failed": "Could not save the setting. Try again.",
+        "cta": "Open correction controls"
       },
       "formulaBuilder": {
         "title": "Pay Formula Builder",
@@ -11118,7 +11120,7 @@
         "scope": "Company scope",
         "groupWide": "Group-wide",
         "usernameHelp": "3–64 letters, numbers or . _ @ + -. Usernames are saved in lowercase. Existing accounts cannot be replaced.",
-        "passwordHelp": "14–128 characters. The user must choose a new password at first sign-in. Further installation password rules may apply.",
+        "passwordHelp": "Use a password that meets the configured password policy. First-sign-in changes follow the saved policy.",
         "attestation": "I have verified this person and their ownership of this email address. I will give the temporary password to them through a private channel.",
         "create": "Create login",
         "working": "Working…",
@@ -20236,7 +20238,8 @@
         "sections": {
           "profile": "Profile",
           "employment": "Employment",
-          "payroll": "Payroll"
+          "payroll": "Payroll",
+          "statutory": "Statutory"
         },
         "defaults": {
           "initialBasicSalary": "Initial basic salary (blank means native zero)",
@@ -20261,7 +20264,8 @@
           "payMode": "Pay mode",
           "paymentTerm": "Payment term",
           "rateAmount": "Daily/hourly rate",
-          "remarks": "Remarks"
+          "remarks": "Remarks",
+          "subjectToSkbbk": "Subject to SKBBK"
         },
         "states": {
           "awaiting_confirmation": "Awaiting confirmation",
@@ -20984,7 +20988,7 @@
         "blank": "Not set",
         "title": "Passport Information",
         "description": "Review a passport update for an existing Malaysia statutory profile.",
-        "intro": "Enter the exact passport details. A non-Malaysian employee needs a passport number, issue date and expiry date. For a Malaysian employee, clear all six fields to remove optional passport information. Partial details must include the number and both dates.",
+        "intro": "A passport number is required for non-Malaysian employees. Issue date, expiry date, issuing country, country code and remark are optional. Supplied dates and country codes must be valid. For Malaysian employees, passport information is optional; include the number and both dates when entering details, or clear all six fields to remove it.",
         "invalid": "Check the passport details before continuing.",
         "consequence": "Saves these six passport fields only. It does not change IC, date of birth, TP3, pay or access.",
         "sharedNote": "Passport information belongs to the person and affects all retained employments.",
@@ -26831,7 +26835,7 @@
     "password": "Password",
     "newPassword": "New password",
     "confirmation": "Confirm password",
-    "passwordHelp": "Use at least 14 characters. Do not include your username or email address.",
+    "passwordHelp": "Follow your organisation’s password policy. Do not include your username or email address.",
     "passwordTitle": "Choose your own password",
     "enrollTitle": "Set up your authenticator",
     "enrollHelp": "Open your authenticator app first, choose Add account, then use its built-in scanner to scan this QR code. You can also enter the manual setup key. Return here and enter the current six-digit code.",
@@ -26866,7 +26870,7 @@
       "invalidLogin": "The organization, username or password is incorrect, or this account is unavailable.",
       "invalidChallenge": "This setup or recovery link has expired or is no longer valid. Start again.",
       "invalidCode": "This code is incorrect, expired or already used. Try the next authenticator code or an unused recovery code.",
-      "passwordPolicy": "Use a password you have not used before, with at least 14 characters, excluding your username and email.",
+      "passwordPolicy": "Choose a password that meets your organisation’s password policy and excludes your username and email.",
       "passwordMismatch": "The passwords do not match.",
       "rateLimited": "Too many attempts. Please wait before trying again.",
       "unavailable": "Sign-in or recovery is temporarily unavailable. Try again later or contact your administrator.",
@@ -27291,7 +27295,8 @@
           "product_feedback_text": "Product feedback text",
           "closed_references": "Opaque references and closed categories (source text and values stay local)",
           "coarse_aggregate_bands": "Coarse aggregate bands (not an anonymity guarantee)",
-          "pseudonymous_person_bands": "Per-person bands with random aliases (not anonymous)"
+          "pseudonymous_person_bands": "Per-person bands with random aliases (not anonymous)",
+          "authored_formula_request": "User-authored formula requirement"
         },
         "redaction": {
           "pii_masked": "Masked",
@@ -29325,7 +29330,55 @@
       "c5d9c3ec58913": "Search people to add to",
       "c95332e75dac8": "Works from My tasks",
       "v9NoTaskLimit": "No task limit",
-      "cd1a339556dbb": "open tasks"
+      "cd1a339556dbb": "open tasks",
+      "caseDocuments": "Documents",
+      "caseCaseFiles": "Case files",
+      "caseWorkflows": "Workflows",
+      "casePersonEmails": "Emails for this person",
+      "caseSentEmails": "Sent emails",
+      "caseNoDocuments": "No documents generated yet.",
+      "caseNoFiles": "No files uploaded.",
+      "caseNoEmails": "No email deliveries recorded.",
+      "caseDocumentsWhenRun": "Documents appear when their workflow runs.",
+      "caseNoEquipment": "No equipment or access requested.",
+      "caseRequestedItems": "{count} requested items",
+      "caseSelectedItems": "{count} selected items",
+      "caseEmailHelp": "Preview the current case, edit its email text, or send a test to yourself.",
+      "caseEditedPerson": "Edited for this person",
+      "casePreview": "Preview",
+      "caseGenerate": "Generate",
+      "caseRegenerate": "Regenerate",
+      "caseOpen": "Open",
+      "caseStartNow": "Start now",
+      "caseContinue": "Continue",
+      "caseOpenWorkflow": "Open workflow",
+      "caseSendTest": "Send test",
+      "caseEditPerson": "Edit for this person",
+      "casePaused": "Paused",
+      "caseRunning": "Running",
+      "caseWaiting": "Waiting",
+      "caseNeedsReview": "Needs review",
+      "caseSkipped": "Skipped",
+      "casePersonWorkflows": "Workflows for this person",
+      "caseNoWorkflows": "No live workflows match this case.",
+      "caseSubmitDocuments": "Submit the onboarding case to start its documents.",
+      "casePreviewMessage": "Preview message",
+      "casePreviewDocument": "Preview document",
+      "caseCancelOffboarding": "Cancel offboarding case",
+      "caseExitClearance": "Exit clearance",
+      "caseLastWorkingDay": "Last working day",
+      "caseLeavers": "Leavers",
+      "caseNeedsHrReview": "Needs HR review",
+      "caseNoPersonnelChanges": "No changes awaiting Personnel Management review.",
+      "caseNoChecklistTasks": "No checklist tasks.",
+      "caseNoReturnItems": "No return or revoke items recorded.",
+      "caseOffboardingChecklist": "Offboarding checklist",
+      "caseOpenDocument": "Open document",
+      "caseReturnRevoke": "Return and revoke",
+      "caseItem": "Item",
+      "caseType": "Type",
+      "caseProvidedBy": "Provided by",
+      "caseReturnDue": "Return or revoke by"
     }
   },
   "processAssessment": {
@@ -32842,6 +32895,10 @@
     "users": {
       "title": "Users",
       "description": "Find users and manage roles, invitations and account access."
+    },
+    "passwordPolicy": {
+      "title": "Password Policy",
+      "description": "New complexity rules apply when a password is created, changed or reset. External organisation sign-ins keep their provider’s password policy."
     }
   },
   "payFormula": {
@@ -33231,7 +33288,7 @@
       "title": "Formula Test & Result",
       "sample": "Sample values",
       "employee": "Real employee",
-      "sampleHelp": "Works before saving. Uses only the numbers you type here; nothing is written to payroll.",
+      "sampleHelp": "Works before saving. Uses only the values you enter here; nothing is written to payroll.",
       "fields": {
         "Basic": "Basic Salary",
         "FixedAllowances": "Fixed Allowances",
@@ -33267,6 +33324,46 @@
         "division_by_zero": "Line {line} divides by 0. Payroll would stop with a calculation error for this employee.",
         "out_of_range": "The result is outside the amounts a Pay Item can pay (0 to 100,000,000)."
       }
+    },
+    "generator": {
+      "title": "AI Formula Generator",
+      "requirement": "Describe the calculation",
+      "disclosure": "Your description is sent to your organisation’s approved AI provider. Use fictional examples and do not include employee records.",
+      "consent": "I understand what will be sent.",
+      "generate": "Generate Formula",
+      "regenerate": "Regenerate Formula",
+      "working": "Generating…",
+      "clear": "Clear",
+      "apply": "Apply to Formula Editor",
+      "variables": "Variables used",
+      "valid": "Formula syntax checked. Review and test before saving.",
+      "needsClarification": "Clarification or a supported alternative is needed.",
+      "replaceTitle": "Replace the editor content?",
+      "replaceHelp": "Applying this draft replaces the current editor text. Unsaved edits will be replaced.",
+      "replace": "Replace editor content",
+      "cancel": "Cancel",
+      "draftOnly": "AI drafts never save, activate or apply themselves to payroll. Sample tests use the payroll evaluator.",
+      "failed": "The draft could not be generated or validated. Review your request and try again.",
+      "unavailable": "No approved AI connection is available. Manual editing remains available.",
+      "reviewRequired": "Formula generation requires approval of its data-sharing contract. Manual editing remains available.",
+      "applied": "Draft applied to the editor. Review and test before saving.",
+      "fields": {
+        "joinDate": "Join date",
+        "groupJoinDate": "Group join date",
+        "resignationDate": "Resignation date",
+        "confirmationDate": "Confirmation date",
+        "lastWorkingDate": "Last working date",
+        "employmentType": "Employment type",
+        "employeeNo": "Employee number",
+        "departmentCode": "Department code",
+        "positionCode": "Position code",
+        "gradeCode": "Grade code",
+        "dateOfBirth": "Date of birth",
+        "gender": "Gender",
+        "nationality": "Nationality",
+        "maritalStatus": "Marital status"
+      },
+      "conditions": "Verified conditions"
     }
   },
   "payrollTaxBasis": {
@@ -33610,7 +33707,7 @@
     }
   },
   "passwordPolicy": {
-    "title": "Password security",
+    "title": "Password Policy",
     "description": "Configure recurring changes for HR passwords. Manage Microsoft passwords and Conditional Access in Entra.",
     "enabled": "Require recurring password changes",
     "interval": "Change every",
@@ -33628,6 +33725,35 @@
       "conflict": "Another administrator changed this policy. Reload before saving.",
       "forbidden": "You do not have permission to change this policy.",
       "unavailable": "Password settings are unavailable. Try again."
+    },
+    "full": {
+      "minLength": "Minimum password length",
+      "maxLength": "Maximum password length",
+      "uppercase": "Require uppercase letters",
+      "lowercase": "Require lowercase letters",
+      "numbers": "Require numbers",
+      "special": "Require special characters",
+      "historyEnabled": "Prevent reuse of previous passwords",
+      "historyCount": "Previous passwords to remember",
+      "lockoutEnabled": "Lock account after failed attempts",
+      "failedAttempts": "Consecutive failed attempts",
+      "autoUnlock": "Automatically unlock account",
+      "unlockMinutes": "Unlock after (minutes)",
+      "forceFirstChange": "Force password change on first login",
+      "firstResetVerification": "Authenticator or recovery code on first login or reset",
+      "complexity": "Complexity and expiry",
+      "expiry": "Password expiry",
+      "account": "Account protection",
+      "firstLogin": "First login and reset",
+      "manualUnlock": "Only an authorised administrator can unlock an account when automatic unlock is off.",
+      "legacy": "Existing authentication rules remain effective until you save this configuration. Saving replaces the previous complexity and history rules with the values shown.",
+      "mfa": "Existing normal-login authenticator requirements continue to apply. This setting does not turn off mandatory MFA or allow recovery by email alone.",
+      "effect": "New complexity rules apply when a password is created, changed or reset. External organisation sign-ins keep their provider’s password policy.",
+      "unlockTitle": "Unlock password account",
+      "unlockUser": "User account",
+      "unlockChoose": "Select a user",
+      "unlockAction": "Unlock account",
+      "unlocked": "Account unlocked."
     }
   }
 }

@@ -78,7 +78,7 @@ import { issueEmployeeCode, listConfigs, resolveEmployeeIdRule } from './employe
 import { findEmployeeCodeClaim } from './employee-code-claims';
 import { isDatabaseError } from '../lib/db-error';
 import { labelUsableByCompany,lockLabelCriteriaTx } from './system-labels';
-import { requirePackFor } from '../localization/registry';
+import { requirePackFor, packFor } from '../localization/registry';
 import { normalizeEmployeeCode, requireEmployeeCode } from '../lib/employee-code';
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-mode';
 // a72610af — the EPF category the draft stores is the UI value; this is the SAME mapper the Personnel
@@ -388,6 +388,23 @@ export function getEmployeeDraft(ctx: SessionContext, id: string): Promise<Emplo
  * with it would show HR one ID while another was being kept for them. The continue form renders both
  * read-only, so this is the server refusing to be told otherwise rather than a rule HR can trip over.
  */
+/** Creation defaults are persisted once. Historical drafts never gain the cohort marker on update. */
+async function draftCreationDefaultsTx(tx:Tx,ctx:SessionContext,input:EmployeeDraftData,existing?:EmployeeDraftData):Promise<EmployeeDraftData>{
+ const next=structuredClone(input);
+ if(existing?.statutory?.subjectToSkbbk!==undefined&&next.statutory?.subjectToSkbbk===undefined)next.statutory={...next.statutory,subjectToSkbbk:existing.statutory.subjectToSkbbk};
+ const cohort=existing ? existing.creationDefaultsVersion : 1;
+ delete next.creationDefaultsVersion;
+ if(cohort!==1)return next;
+ next.creationDefaultsVersion=1;
+ if(next.statutory?.subjectToSkbbk!==undefined)return next;
+ const companyId=next.employment?.companyId;
+ if(!companyId)return next;
+ const [row]=await tx.select({country:company.country}).from(company).where(and(eq(company.id,companyId),eq(company.tenantId,ctx.tenantId),sql`app.is_admin_for(${company.id})`));
+ const value=row?packFor(row.country)?.client.statutory.creationDefaults?.subjectToSkbbk:undefined;
+ if(value!==undefined)next.statutory={...next.statutory,subjectToSkbbk:value?'yes':'no'};
+ return next;
+}
+
 export async function saveEmployeeDraft(
   ctx: SessionContext,
   p: { id?: string; data: EmployeeDraftData; currentStep: number },
@@ -397,9 +414,9 @@ export async function saveEmployeeDraft(
   const currentStep = Math.min(Math.max(Math.trunc(p.currentStep) || 1, 1), 20);
   const run=async(tx:Tx)=>{
     await lockAccessConfigurationTx(tx,ctx.tenantId);
-    const [existing]=p.id?await tx.select({id:employeeDraft.id,companyId:employeeDraft.companyId,reservedEmployeeCode:employeeDraft.reservedEmployeeCode}).from(employeeDraft).where(and(eq(employeeDraft.id,p.id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update'):[];
+    const [existing]=p.id?await tx.select({id:employeeDraft.id,companyId:employeeDraft.companyId,reservedEmployeeCode:employeeDraft.reservedEmployeeCode,data:employeeDraft.data}).from(employeeDraft).where(and(eq(employeeDraft.id,p.id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update'):[];
     if(p.id&&!existing)throw new DraftActivationValidationError('draft_unavailable',[]);
-    const data =
+    let data =
       existing?.reservedEmployeeCode
         ? {
             ...p.data,
@@ -407,6 +424,7 @@ export async function saveEmployeeDraft(
             employment: { ...(p.data.employment ?? {}), companyId: existing.companyId ?? undefined },
           }
         : p.data;
+    data=await draftCreationDefaultsTx(tx,ctx,data,existing?asData(existing.data):undefined);
     const label = draftLabel(data);
     const companyId = str(data.employment?.companyId) ?? null;
     let id = p.id;
@@ -597,6 +615,7 @@ export async function createEmployeeDraftWithReservedCode(
       }
     }
     data.profile!.employeeCode = code;
+    Object.assign(data,await draftCreationDefaultsTx(tx,ctx,data));
 
     // `employee_draft_reserved_code_uq` (0415) is the race net the check above cannot be: two
     // administrators pressing Create on the same hand-keyed ID in the same second both pass the read and
@@ -968,6 +987,7 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
   // from a hardcoded jurisdiction, and fail-loud when the country resolves nothing.
   const country=companyRow.country;
   const pack = requirePackFor(country);
+  if ((str(p.nationality)||[p.passportNumber,p.passportIssueDate,p.passportExpiryDate,p.passportIssuingCountry,p.passportIssuingCountryCode,p.passportRemark].some(value=>str(value)))&&!pack.statutory.validatePassport({personId:ctx.personId??"00000000-0000-0000-0000-000000000000",...p},p.nationality))throw new DraftActivationValidationError("profile_invalid",[{tab:"profile",field:"passport"}]);
   const icNumber = str(p.icNumber);
   // Optional (item e3ce0d4d — a non-Malaysian passport holder has no IC) but validated when supplied,
   // because an invalid IC stored now is a payroll fault later.
@@ -1065,6 +1085,7 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
   // rate left in a box after switching to Auto lands nowhere (`mapEpfUiMode` nulls it), so it must not
   // conjure a row on its own.
   if (icNumber || hasAnyStatutory(withoutUnusedEpfBoxes(withoutCustomHolder(s), epfElection)) || holderOn) {
+    const currentStatutory=s.subjectToSkbbk===undefined?await pack.statutory.get(ctx,personId,tx):null;
     await pack.statutory.set(ctx, {
       personId,
       // Item 35524d1f — null, not ''. The setter used to reject a blank IC, so a draft carrying any statutory
@@ -1105,7 +1126,7 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
       epfCitizenship: draftEpfCitizenship(s.epfCitizenship),
       // r393 (685d2380 step 3b) — "Subject to SKBBK". Absent ⇒ undefined ⇒ the setter's false, the column
       // default for a new employee, so a draft saved before this change is unchanged.
-      subjectToSkbbk: boolOrUndef(s.subjectToSkbbk),
+      subjectToSkbbk: boolOrUndef(s.subjectToSkbbk)??currentStatutory?.subjectToSkbbk,
       // a72610af — the EPF CATEGORY, through the same mapper the Personnel statutory action uses, and
       // (r393, 685d2380 step 3b) WITH the rate and amount boxes and the reason: `epfElection` above, already
       // judged by the pack's own rule before `hireEmployee`, so the setter cannot refuse it here.

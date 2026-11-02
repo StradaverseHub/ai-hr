@@ -8,6 +8,7 @@ describe('human saved draft nomination',()=>{
   for(const value of [{...human,data:{}},{...human,employmentId:id},{...human,confirmed:true},{...human,actor:'hr_admin'}])expect(C.Human.safeParse(value).success).toBe(false);
   expect(Packet.safeParse({action:C.action,operation:'confirm',confirmation:{...human,actionId:id,reviewedDigest:'a'.repeat(64)}}).success).toBe(false);
  });
+ it('supports persisted creation metadata and reviews only exact SKBBK elections',()=>{for(const choice of ['yes','no'])expect(supportedEmployeeDraftActivationData({creationDefaultsVersion:1,statutory:{subjectToSkbbk:choice}})).toBe(true);for(const value of [{creationDefaultsVersion:2},{statutory:{subjectToSkbbk:'maybe'}},{statutory:{subjectToSkbbk:'yes',bankAccountNo:'private'}}])expect(supportedEmployeeDraftActivationData(value)).toBe(false);});
  it('keeps unsupported captured facts in native review instead of silently dropping them',()=>{
   expect(supportedEmployeeDraftActivationData({profile:{fullName:'Fictional'},employment:{companyId:id},payroll:{basicSalary:'3000'}})).toBe(true);
   for(const value of [{profile:{preferredName:'Human entered name'}},{statutory:{bankName:'Human bank'}},{family:[{fullName:'Human child'}]},{employment:{gradeId:id}},{profile:{fullName:42}}])expect(supportedEmployeeDraftActivationData(value)).toBe(false);

@@ -9,6 +9,10 @@ import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 const person='11111111-2222-3333-4444-555555555555';
 describe('closed Security Center navigation',()=>{
+ it('uses the explicit password-policy availability independently of other administration links',()=>{
+  expect(securityDestinationAllowed('/admin/security-center/password-policy',{admin:true,configure:true,provision:true,passwordPolicy:false})).toBe(false);
+  expect(securityDestinationAllowed('/admin/security-center/password-policy',{admin:true,configure:true,provision:true,passwordPolicy:true})).toBe(true);
+ });
  it.each([
   [{admin:true,configure:true,provision:true},6],
   [{admin:true,configure:false,provision:false},3],

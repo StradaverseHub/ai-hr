@@ -3,7 +3,7 @@ import {z} from 'zod';
 export const EMPLOYEE_DRAFT_ACTIVATION_ACTION='employees.draft.activate' as const;
 const uuid=z.guid(),digest=z.string().regex(/^[a-f0-9]{64}$/),text=z.string().max(4000),base={action:z.literal(EMPLOYEE_DRAFT_ACTIVATION_ACTION),contractVersion:z.literal(1)};
 const Human=z.object({...base,draftId:uuid,companyId:uuid}).strict();
-const Field=z.object({section:z.enum(['profile','employment','payroll']),key:text,value:text}).strict();
+const Field=z.object({section:z.enum(['profile','employment','statutory','payroll']),key:text,value:text}).strict();
 const Item=z.object({draftId:uuid,companyId:uuid,companyName:text,country:text,currency:text,departmentName:text,reservedEmployeeCode:text,fields:z.array(Field).max(30),standingLeaveTypes:z.array(z.object({id:uuid,code:text,name:text}).strict()).max(30),openingLeaveGrants:z.array(z.object({leaveTypeId:uuid,code:text,name:text,entryType:text,days:z.string().regex(/^-?\d+\.\d{2}$/),effectiveOn:z.iso.date()}).strict()).max(100),initialBasicSalary:text,initialMonthlyAllowance:text,payMode:text,paymentTerm:text,rateAmount:text,remarks:text}).strict();
 const Receipt=z.object({kind:z.literal('activated'),draftId:uuid,companyId:uuid,employmentId:uuid,personId:uuid,employeeCode:text,eventId:uuid,semantics:z.literal('employment_created_not_payroll_processed_or_access_granted')}).strict();
 const consequence='employment_created_with_native_initial_compensation_and_standing_leave_not_payroll_or_login' as const;

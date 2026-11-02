@@ -275,6 +275,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <Sidebar
               letterDestinations={letterDestinations}
               canConfigureLoginPresentation={isGroupAdmin(session)}
+              canConfigurePasswordPolicy={isGroupAdmin(session)&&internalSelected()}
               // ADR-0049: a partner is an admin who sees a subset, so it gets the admin nav group;
               // each page's route guard (requirePayrollAccess / requirePerfCompAccess) 403/redirects
               // the pages it can't enter. The cap ORs isAdmin into every partner capability so a user

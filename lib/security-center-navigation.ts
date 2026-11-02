@@ -6,9 +6,11 @@ export const SECURITY_PAGES = [
  {href:'/admin/users/create',key:'create',navKey:'createLogin'},
  {href:'/admin/users/invite',key:'invite',navKey:'inviteUser'},
  {href:'/admin/users',key:'users',navKey:'users'},
+ {href:'/admin/security-center/password-policy',key:'passwordPolicy',navKey:'passwordPolicy'},
 ] as const;
-export type SecurityAvailability = {admin:boolean;configure:boolean;provision:boolean};
+export type SecurityAvailability = {admin:boolean;configure:boolean;provision:boolean;passwordPolicy?:boolean};
 export function securityDestinationAllowed(href:string, access:SecurityAvailability):boolean {
+ if(href==='/admin/security-center/password-policy')return access.passwordPolicy===true;
  if(href===SECURITY_CENTER)return access.admin||access.configure;
  if(href==='/admin/users/access')return access.configure;
  if(href==='/admin/users/create'||href==='/admin/users/invite')return access.provision;

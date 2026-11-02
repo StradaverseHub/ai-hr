@@ -5,6 +5,36 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Nine-item BOARD split: post-Noveri refresh — 3 November 2026 (unapplied)
+
+The nine-item candidate preserves the complete648-entry journal from aligned main/alpha
+`dfbcf85b1f03e6e3266df6244694079a98e17dc9`, including all0924–0929 applied SQL bytes.
+An independent read-only live comparison matched all ordered timestamps/hashes through
+1793330000329; the restricted0859 source function still has its original prosrc SHA256
+`c3a2744b7924ff9e4313c579dc9d831c5101a5d2b265dcad380cbab63b645ca9`, restricted child owner,
+SECURITY DEFINER and no child schema CREATE. Full ledger/custody evidence is retained privately.
+
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+|0935_password_account_unlock|763|1793330000335|3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa|
+|0946_draft_creation_cohort_custody|793|1793330000346|cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390|
+
+0935's old provisional idx757 is superseded by763 because Noveri's applied prefix now ends at762.
+Its filename, timestamp and SQL bytes remain unchanged.0946 retains its prior reservation and
+strictly increasing index gap; the existing validator permits gaps. A fresh read-only audit of1910
+heads,331journal blobs and325worktrees found maximum filename946/idx793/when1793330000346 and no
+parse errors. This is source coordination, not installation or lease admission.
+
+0946 changes only the exact0859 restricted function's root-literal1 numeric exception, preserving
+applied0859 bytes, OID, child ownership, ACL, function configuration, SECURITY DEFINER, compression,
+size and all other numeric refusals. It is independently necessary for genuinely new SKBBK drafts.
+
+The unfinished permissions0936–0945 remain excluded and unapplied. Their later owning release must
+relocate entries above the then-installed accepted journal tail, and recognize/reuse0946's compatible
+function body instead of requiring the obsolete0859 prosrc. Preserve every then-applied prefix and
+SQL byte. The continuation owner has the original reservation handoff. Both LOGIN items and System
+Optimization remain outside this nine-item scope. Recheck source claims and live ledger at admission.
+
 ## Idle sign-out policy — 2 November 2026 (provisional source claim)
 
 `claude/idle-session-timeout` appends `0898_session_idle_timeout` (ADR-0171) as journal idx755 /
@@ -943,6 +973,17 @@ index 756, after `0898` at 755. The complete main/alpha prefix through `0876` / 
 This is an owned aggregate source reservation, not adoption of either member's gate evidence.
 Recheck the then-live watermark and release order before integration or installation; later accepted
 migrations can require reallocation of both uninstalled identities. No lease or staging operation is claimed.
+
+## Approved Password Policy manual unlock — 2 November 2026 (provisional)
+
+`codex/approved-board-security-20261102` appends `0935_password_account_unlock` at
+when1793330000335, index757 on its own main0899 source journal. Parent coordination scanned
+local/origin journals and found claims through0934 / when1793330000334; no other approved-item
+worker is allocating migrations. SQL SHA256 `3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa`.
+This helper preserves revoked raw identity access and checks current tenant/group-administration
+authority under the canonical access lock. Recheck all claims, aggregate journal and live watermark
+before integration/installation; adjust the unapplied index on aggregation. This is source allocation,
+with no deployment or installation authorization.
 
 ## Teras re-allocation above the Entra watermark — 2 November 2026 (provisional source claim)
 

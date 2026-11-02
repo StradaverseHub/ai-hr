@@ -136,12 +136,36 @@ describe('atomic Draft activation', () => {
     await rejectedWithoutChanges(ctx, id, 'draft_unavailable');
   });
 
-  it('keeps optional groups blank and uses the existing explicit zero-salary rule', async () => {
+  it.each(['new', 'historical'] as const)('keeps optional groups blank and the zero-salary rule for a %s draft, apart from the new-cohort SKBBK default', async cohort => {
     const data = input({ statutory: {}, family: [], payroll: { basicSalary: '', remarks: 'Quarterly director fees' } });
     const { ctx, id } = await held(data);
+    const stored = await getEmployeeDraft(ctx, id);
+    expect(stored?.data.creationDefaultsVersion).toBe(1);
+    expect(stored?.data.statutory?.subjectToSkbbk).toBe('yes');
+    if (cohort === 'historical') {
+      // Populate the actual old persisted shape. Posting missing metadata through today's create
+      // owner would correctly make a NEW cohort, so it cannot represent a historical draft.
+      if (!stored) throw new Error('Expected the real held draft');
+      const historical = structuredClone(stored.data);
+      delete historical.creationDefaultsVersion;
+      delete historical.statutory!.subjectToSkbbk;
+      await owner.db.update(schema.employeeDraft).set({data: historical}).where(eq(schema.employeeDraft.id, id));
+      const reloaded = await getEmployeeDraft(ctx, id);
+      expect(reloaded?.data.creationDefaultsVersion).toBeUndefined();
+      expect(reloaded?.data.statutory?.subjectToSkbbk).toBeUndefined();
+    }
     const { employmentId } = await completeEmployeeDraft(ctx, id);
     const [emp] = await owner.db.select().from(schema.employment).where(eq(schema.employment.id, employmentId));
-    expect(await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId, emp.personId))).toHaveLength(0);
+    const statutory = await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId, emp.personId));
+    expect(statutory).toHaveLength(cohort === 'new' ? 1 : 0);
+    if (cohort === 'new') expect(statutory[0]).toMatchObject({
+      subjectToSkbbk: true,
+      icNumber: null, passportNumber: null, passportIssueDate: null, passportExpiryDate: null,
+      epfNumber: null, socsoNumber: null, taxNumber: null, bankName: null, bankAccountNo: null,
+      epfEmployeeRate: null, epfEmployerRate: null, epfEmployeeAmount: null, epfEmployerAmount: null,
+      epfManualReason: null, subjectToHrdf: null, numChildren: 0,
+    });
+    expect(await owner.db.select().from(schema.employeeDependent).where(eq(schema.employeeDependent.personId, emp.personId))).toHaveLength(0);
     const [comp] = await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId, employmentId));
     expect(Number(comp.basicSalary)).toBe(0);
     expect(comp.remarks).toBe('Quarterly director fees');

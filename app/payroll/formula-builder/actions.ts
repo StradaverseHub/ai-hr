@@ -3,7 +3,7 @@ import {revalidatePath} from 'next/cache';
 import {getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
 import {getPayFormula,savePayFormula,testPayFormula,samplePayFormula,setPayFormulaActive,deletePayFormula,saveFormulaAccumulationGroup} from '@/packs/payroll/service';
-import {PAY_FORMULA_SAMPLE_VARIABLES,type PayFormulaSampleValues} from '@/lib/pay-formula-sample';
+import {PAY_FORMULA_SAMPLE_VARIABLES,payFormulaSampleFields,type PayFormulaSampleValues} from '@/lib/pay-formula-sample';
 import {PayFormulaError,type PayFormulaContext,type PayFormulaMethod} from '@/lib/pay-formula-model';
 import {PayFormulaError as FormulaLanguageError} from '@/lib/pay-formula-language';
 const PAGE='/payroll/formula-builder';
@@ -23,7 +23,7 @@ export async function testFormulaAction(input:{id:string;revisionId:string;conte
 /** Sample-value test of the unsaved source: formula catalogue access only; reads no employee data and
  * writes nothing (core samplePayFormula). Only the known sample variables are forwarded. */
 export async function sampleFormulaAction(input:{source:string;values:PayFormulaSampleValues}){
- return execute(async()=>{const values:PayFormulaSampleValues={};for(const name of PAY_FORMULA_SAMPLE_VARIABLES){const value=input?.values?.[name];if(typeof value==='string')values[name]=value.slice(0,40);}return samplePayFormula(await getSession(),{source:String(input?.source??''),values});});
+ return execute(async()=>{const values:PayFormulaSampleValues={};for(const name of PAY_FORMULA_SAMPLE_VARIABLES){const value=input?.values?.[name];if(typeof value==='string')values[name]=value.slice(0,40);}const source=String(input?.source??'');values.fields={};for(const field of payFormulaSampleFields(source)){const raw=input?.values?.fields?.[field.key];if(typeof raw==='string')values.fields[field.key]=raw.slice(0,501);}return samplePayFormula(await getSession(),{source,values});});
 }
 export async function formulaStateAction(input:{id:string;revisionId?:string;testId?:string;active:boolean}){
  return execute(async()=>{const ctx=await getSession();await setPayFormulaActive(ctx,{id:input.id,revisionId:input.revisionId,testId:input.testId,active:input.active});revalidatePath(PAGE);revalidatePath(PAGE+'/'+input.id);return await getPayFormula(ctx,input.id);});
@@ -39,3 +39,12 @@ export async function searchFormulaEmployeesAction(input:{query:string;companyId
 }
 
 export async function listFormulaBatchesAction(input:{companyId:string;period:string;cycleId:string}){return execute(async()=>{const {listPayFormulaBatches}=await import('@/packs/payroll/service');return listPayFormulaBatches(await getSession(),input);});}
+
+export async function draftFormulaAction(input:unknown){
+ try{const {draftPayFormula}=await import('@/packs/payroll/service');return {ok:true as const,value:await draftPayFormula(await getSession(),input)};}
+ catch(error){
+  const t=await getTranslations('payFormula.generator');
+  const code=error instanceof Error&&error.name==='AiPrivacyGateError'?'reviewRequired':error instanceof Error&&error.message==='not_configured'?'unavailable':'failed';
+  return {ok:false as const,error:t(code)};
+ }
+}

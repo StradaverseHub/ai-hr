@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import {validateTenantPassword} from './password-policy';
 import { generateSecret } from 'otplib';
 import { client } from '../../db/client';
 import { internalConfig, internalIssuer } from './config';
-import { digest, opaque, passwordHash, validOpaque, validatePassword } from './crypto';
+import { digest, opaque, passwordHash, validOpaque } from './crypto';
 import { authTransaction, readRecord, writeRecord } from './store';
 import { InternalAuthError, loginKey, takeRate, type Credential, type Organization, type AuthReply } from './service';
 import { sendInternalMail, type MailTransport } from './mail';
@@ -31,7 +32,7 @@ export async function startInvitation(token: string, username: string, password:
   const org = await readRecord<Organization>(client, `tenant:${invitation.tenant_id}`);
   username = username.trim().toLowerCase();
   if (!org || !/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username)) throw new InternalAuthError('invalidChallenge');
-  try { validatePassword(password, username, invitation.email); } catch { throw new InternalAuthError('passwordPolicy'); }
+  await validateTenantPassword(client,{tenantId:org.tenantId,username,email:invitation.email},password);
   if (await readRecord(client, loginKey(org.code, username))) throw new InternalAuthError('conflict');
   const c: Credential = { subject: randomUUID(), tenantId: org.tenantId, issuer: internalIssuer(org.tenantId), organization: org.code,
     username, email: invitation.email, emailVerified: false, enabled: false, password: await passwordHash(password), passwordChangedAt: Date.now(), mustChange: false,

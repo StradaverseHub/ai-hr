@@ -509,7 +509,8 @@
     "functionAccess": "Truy cập chức năng",
     "securityCenter": "Trung tâm bảo mật",
     "aiManagementInventory": "Danh mục AI",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "passwordPolicy": "Chính sách mật khẩu"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1570,7 +1571,7 @@
       "passportIssueDate": "Ngày cấp hộ chiếu",
       "passportExpiryDate": "Ngày hết hạn hộ chiếu",
       "passportRemark": "Ghi chú hộ chiếu",
-      "passportHint": "Số hộ chiếu, ngày cấp và ngày hết hạn là bắt buộc với nhân viên không phải quốc tịch Malaysia. Hộ chiếu của nhân viên Malaysia là tùy chọn, nhưng ba mục này phải được điền cùng nhau. Quốc gia cấp và ghi chú là tùy chọn.",
+      "passportHint": "Nhân viên không mang quốc tịch Malaysia phải có số hộ chiếu. Ngày cấp, ngày hết hạn, quốc gia cấp, mã quốc gia và ghi chú là tùy chọn. Ngày và mã quốc gia đã nhập phải hợp lệ. Với nhân viên Malaysia, thông tin hộ chiếu là tùy chọn; khi nhập phải có số và cả hai ngày, hoặc xóa cả sáu trường để bỏ thông tin.",
       "savePassport": "Lưu thông tin hộ chiếu",
       "identityNricTitle": "Số định danh (NRIC)",
       "oldIcNumber": "Số CMND cũ",
@@ -2113,7 +2114,7 @@
       "superiorFailedCount": "{count, plural, one {# nhân viên đã được nhập nhưng chưa liên kết được cấp trên trực tiếp} other {# nhân viên đã được nhập nhưng chưa liên kết được cấp trên trực tiếp}}",
       "familyRelationshipLabel": "Quan hệ gia đình",
       "familyGenderLabel": "Giới tính thành viên gia đình",
-      "instructionPassport": "Số hộ chiếu, Ngày cấp và Ngày hết hạn phải được điền cùng nhau, hoặc để trống cả ba. Quốc gia cấp hộ chiếu dùng chung danh sách với Quốc tịch — xem trang tính Tham chiếu.",
+      "instructionPassport": "Nhân viên không mang quốc tịch Malaysia phải có số hộ chiếu. Ngày cấp, ngày hết hạn, quốc gia cấp, mã quốc gia và ghi chú là tùy chọn. Ngày và mã quốc gia đã nhập phải hợp lệ. Với nhân viên Malaysia, thông tin hộ chiếu là tùy chọn; khi nhập phải có số và cả hai ngày, hoặc xóa cả sáu trường để bỏ thông tin.",
       "instructionAddress": "Các cột địa chỉ là địa chỉ nhà của nhân viên. Tỉnh/Bang và Quốc gia phải khớp với một giá trị trên trang tính Tham chiếu.",
       "instructionProbation": "Ngày kết thúc thử việc chỉ áp dụng cho nhân viên toàn thời gian. Thời gian thử việc và thời gian báo trước là số nguyên tháng và ngày.",
       "instructionSuperior": "Cấp trên trực tiếp nhận Mã nhân viên hoặc email công việc. Có thể là người ở phía dưới trong tệp này, hoặc người đã đang làm việc.",
@@ -7648,7 +7649,8 @@
         "saving": "Đang lưu…",
         "saved": "Đã lưu cài đặt điều chỉnh bảng lương.",
         "invalid": "Chọn giá trị bật hoặc tắt hợp lệ.",
-        "failed": "Không thể lưu cài đặt. Vui lòng thử lại."
+        "failed": "Không thể lưu cài đặt. Vui lòng thử lại.",
+        "cta": "Mở kiểm soát điều chỉnh"
       },
       "formulaBuilder": {
         "title": "Trình tạo công thức lương",
@@ -11118,7 +11120,7 @@
         "scope": "Phạm vi công ty",
         "groupWide": "Toàn tập đoàn",
         "usernameHelp": "3–64 chữ cái, chữ số hoặc . _ @ + -. Tên đăng nhập được lưu bằng chữ thường. Không thể thay thế tài khoản hiện có.",
-        "passwordHelp": "14–128 ký tự. Người dùng phải chọn mật khẩu mới khi đăng nhập lần đầu. Các quy tắc mật khẩu khác có thể áp dụng.",
+        "passwordHelp": "Dùng mật khẩu đáp ứng chính sách đã cấu hình. Việc đổi mật khẩu ở lần đăng nhập đầu tuân theo chính sách đã lưu.",
         "attestation": "Tôi đã xác minh danh tính và quyền sở hữu địa chỉ email này. Tôi sẽ chuyển mật khẩu tạm thời qua kênh riêng tư.",
         "create": "Tạo tài khoản",
         "working": "Đang xử lý…",
@@ -20236,7 +20238,8 @@
         "sections": {
           "profile": "Hồ sơ",
           "employment": "Việc làm",
-          "payroll": "Bảng lương"
+          "payroll": "Bảng lương",
+          "statutory": "Pháp định"
         },
         "defaults": {
           "initialBasicSalary": "Lương cơ bản ban đầu (trống nghĩa là không)",
@@ -20261,7 +20264,8 @@
           "payMode": "Chế độ trả lương",
           "paymentTerm": "Kỳ thanh toán",
           "rateAmount": "Mức theo ngày/giờ",
-          "remarks": "Ghi chú"
+          "remarks": "Ghi chú",
+          "subjectToSkbbk": "Thuộc diện SKBBK"
         },
         "states": {
           "awaiting_confirmation": "Chờ xác nhận",
@@ -20984,7 +20988,7 @@
         "blank": "Chưa thiết lập",
         "title": "Thông tin hộ chiếu",
         "description": "Xem xét cập nhật hộ chiếu cho hồ sơ pháp định Malaysia hiện có.",
-        "intro": "Nhập thông tin hộ chiếu chính xác. Nhân viên không mang quốc tịch Malaysia cần số hộ chiếu, ngày cấp và ngày hết hạn. Với nhân viên Malaysia, xóa cả sáu trường để bỏ thông tin hộ chiếu tùy chọn. Nếu nhập một phần, phải có số và cả hai ngày.",
+        "intro": "Nhân viên không mang quốc tịch Malaysia phải có số hộ chiếu. Ngày cấp, ngày hết hạn, quốc gia cấp, mã quốc gia và ghi chú là tùy chọn. Ngày và mã quốc gia đã nhập phải hợp lệ. Với nhân viên Malaysia, thông tin hộ chiếu là tùy chọn; khi nhập phải có số và cả hai ngày, hoặc xóa cả sáu trường để bỏ thông tin.",
         "invalid": "Kiểm tra thông tin hộ chiếu trước khi tiếp tục.",
         "consequence": "Chỉ lưu sáu trường hộ chiếu này. Không thay đổi IC, ngày sinh, TP3, lương hay quyền truy cập.",
         "sharedNote": "Thông tin hộ chiếu thuộc về cá nhân và áp dụng cho mọi quan hệ lao động được lưu giữ.",
@@ -26831,7 +26835,7 @@
     "password": "Mật khẩu",
     "newPassword": "Mật khẩu mới",
     "confirmation": "Xác nhận mật khẩu",
-    "passwordHelp": "Dùng ít nhất 14 ký tự. Không chứa tên đăng nhập hoặc địa chỉ email.",
+    "passwordHelp": "Tuân theo chính sách mật khẩu của tổ chức. Không chứa tên đăng nhập hoặc địa chỉ email.",
     "passwordTitle": "Chọn mật khẩu riêng",
     "enrollTitle": "Thiết lập ứng dụng xác thực",
     "enrollHelp": "Trước tiên, hãy mở ứng dụng xác thực, chọn Thêm tài khoản rồi dùng trình quét trong ứng dụng để quét mã QR này. Bạn cũng có thể nhập khóa thiết lập thủ công. Quay lại đây và nhập mã sáu chữ số hiện tại.",
@@ -26866,7 +26870,7 @@
       "invalidLogin": "Mã tổ chức, tên đăng nhập hoặc mật khẩu không đúng, hoặc tài khoản không khả dụng.",
       "invalidChallenge": "Liên kết thiết lập hoặc khôi phục đã hết hạn hoặc không còn hợp lệ. Vui lòng bắt đầu lại.",
       "invalidCode": "Mã không đúng, hết hạn hoặc đã dùng. Thử mã xác thực tiếp theo hoặc mã khôi phục chưa dùng.",
-      "passwordPolicy": "Dùng mật khẩu chưa từng sử dụng, có ít nhất 14 ký tự, không chứa tên đăng nhập hoặc email.",
+      "passwordPolicy": "Chọn mật khẩu đáp ứng chính sách của tổ chức và không chứa tên đăng nhập hoặc email của bạn.",
       "passwordMismatch": "Mật khẩu không khớp.",
       "rateLimited": "Quá nhiều lần thử. Vui lòng đợi rồi thử lại.",
       "unavailable": "Đăng nhập hoặc khôi phục tạm thời không khả dụng. Thử lại sau hoặc liên hệ quản trị viên.",
@@ -27291,7 +27295,8 @@
           "product_feedback_text": "Văn bản phản hồi sản phẩm",
           "closed_references": "Tham chiếu mờ và danh mục cố định (văn bản và giá trị nguồn ở lại cục bộ)",
           "coarse_aggregate_bands": "Khoảng tổng hợp thô (không bảo đảm ẩn danh)",
-          "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)"
+          "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)",
+          "authored_formula_request": "Yêu cầu công thức do người dùng viết"
         },
         "redaction": {
           "pii_masked": "Đã che",
@@ -29105,7 +29110,7 @@
       "c0b5cb6ac48b3": "Số hộ chiếu",
       "c81f34b111b8a": "Hệ thống truy cập",
       "cc1f88e9d6c41": "Đang thực hiện",
-      "c100ec1bc78a4": "To do",
+      "c100ec1bc78a4": "Cần làm",
       "ca4c3ed04a95a": "xong",
       "cb4fe3d529dee": "Ngoại lệ",
       "c4118fb4fed0e": "Đã loại bỏ",
@@ -29325,7 +29330,55 @@
       "c5d9c3ec58913": "Tìm người để thêm vào",
       "c95332e75dac8": "Làm việc qua Công việc của tôi",
       "v9NoTaskLimit": "Không giới hạn công việc",
-      "cd1a339556dbb": "công việc đang mở"
+      "cd1a339556dbb": "công việc đang mở",
+      "caseDocuments": "Tài liệu",
+      "caseCaseFiles": "Tệp hồ sơ",
+      "caseWorkflows": "Quy trình",
+      "casePersonEmails": "Email cho người này",
+      "caseSentEmails": "Email đã gửi",
+      "caseNoDocuments": "Chưa tạo tài liệu.",
+      "caseNoFiles": "Chưa tải tệp lên.",
+      "caseNoEmails": "Chưa ghi nhận lần gửi email.",
+      "caseDocumentsWhenRun": "Tài liệu xuất hiện khi quy trình chạy.",
+      "caseNoEquipment": "Chưa yêu cầu thiết bị hoặc quyền truy cập.",
+      "caseRequestedItems": "Đã yêu cầu {count} mục",
+      "caseSelectedItems": "Đã chọn {count} mục",
+      "caseEmailHelp": "Xem trước hồ sơ, sửa nội dung email hoặc gửi thử cho chính bạn.",
+      "caseEditedPerson": "Đã sửa cho người này",
+      "casePreview": "Xem trước",
+      "caseGenerate": "Tạo",
+      "caseRegenerate": "Tạo lại",
+      "caseOpen": "Mở",
+      "caseStartNow": "Bắt đầu ngay",
+      "caseContinue": "Tiếp tục",
+      "caseOpenWorkflow": "Mở quy trình",
+      "caseSendTest": "Gửi thử",
+      "caseEditPerson": "Sửa cho người này",
+      "casePaused": "Tạm dừng",
+      "caseRunning": "Đang chạy",
+      "caseWaiting": "Đang chờ",
+      "caseNeedsReview": "Cần xem xét",
+      "caseSkipped": "Đã bỏ qua",
+      "casePersonWorkflows": "Quy trình cho người này",
+      "caseNoWorkflows": "Không có quy trình đang hoạt động phù hợp hồ sơ này.",
+      "caseSubmitDocuments": "Gửi hồ sơ hội nhập để bắt đầu tạo tài liệu.",
+      "casePreviewMessage": "Xem trước tin nhắn",
+      "casePreviewDocument": "Xem trước tài liệu",
+      "caseCancelOffboarding": "Hủy hồ sơ nghỉ việc",
+      "caseExitClearance": "Xác nhận hoàn tất nghỉ việc",
+      "caseLastWorkingDay": "Ngày làm việc cuối cùng",
+      "caseLeavers": "Nhân viên nghỉ việc",
+      "caseNeedsHrReview": "Cần HR xem xét",
+      "caseNoPersonnelChanges": "Không có thay đổi chờ Quản lý nhân sự xem xét.",
+      "caseNoChecklistTasks": "Không có nhiệm vụ trong danh sách.",
+      "caseNoReturnItems": "Chưa ghi nhận mục cần trả hoặc thu hồi.",
+      "caseOffboardingChecklist": "Danh sách kiểm tra nghỉ việc",
+      "caseOpenDocument": "Mở tài liệu",
+      "caseReturnRevoke": "Trả lại và thu hồi",
+      "caseItem": "Mục",
+      "caseType": "Loại",
+      "caseProvidedBy": "Bên cung cấp",
+      "caseReturnDue": "Hạn trả hoặc thu hồi"
     }
   },
   "processAssessment": {
@@ -32842,6 +32895,10 @@
     "users": {
       "title": "Người dùng",
       "description": "Tìm người dùng và quản lý vai trò, lời mời cùng quyền truy cập tài khoản."
+    },
+    "passwordPolicy": {
+      "title": "Chính sách mật khẩu",
+      "description": "Quy tắc mới áp dụng khi tạo, đổi hoặc đặt lại mật khẩu. Đăng nhập qua tổ chức bên ngoài giữ chính sách của nhà cung cấp."
     }
   },
   "payFormula": {
@@ -33231,7 +33288,7 @@
       "title": "Kiểm thử & Kết quả công thức",
       "sample": "Giá trị mẫu",
       "employee": "Nhân viên thực",
-      "sampleHelp": "Dùng được trước khi lưu. Chỉ dùng các số bạn nhập ở đây; không ghi gì vào bảng lương.",
+      "sampleHelp": "Có thể kiểm tra trước khi lưu. Chỉ dùng giá trị bạn nhập ở đây; không ghi vào bảng lương.",
       "fields": {
         "Basic": "Lương cơ bản",
         "FixedAllowances": "Phụ cấp cố định",
@@ -33267,6 +33324,46 @@
         "division_by_zero": "Dòng {line} chia cho 0. Việc tính lương sẽ dừng với lỗi tính toán cho nhân viên này.",
         "out_of_range": "Kết quả nằm ngoài số tiền mà Khoản lương có thể trả (0 đến 100,000,000)."
       }
+    },
+    "generator": {
+      "title": "Trình tạo công thức AI",
+      "requirement": "Mô tả phép tính",
+      "disclosure": "Mô tả được gửi tới nhà cung cấp AI được tổ chức phê duyệt. Dùng ví dụ hư cấu, không đưa hồ sơ nhân viên vào.",
+      "consent": "Tôi hiểu thông tin sẽ được gửi.",
+      "generate": "Tạo công thức",
+      "regenerate": "Tạo lại công thức",
+      "working": "Đang tạo…",
+      "clear": "Xóa",
+      "apply": "Áp dụng vào trình sửa công thức",
+      "variables": "Biến được dùng",
+      "valid": "Đã kiểm tra cú pháp. Xem lại và thử trước khi lưu.",
+      "needsClarification": "Cần làm rõ hoặc chọn phương án được hỗ trợ.",
+      "replaceTitle": "Thay nội dung trình sửa?",
+      "replaceHelp": "Bản nháp thay thế văn bản hiện tại và các sửa đổi chưa lưu.",
+      "replace": "Thay nội dung",
+      "cancel": "Hủy",
+      "draftOnly": "AI không tự lưu, kích hoạt hay áp dụng công thức vào bảng lương. Kiểm thử mẫu dùng bộ tính lương.",
+      "failed": "Không thể tạo hoặc xác thực bản nháp. Kiểm tra yêu cầu rồi thử lại.",
+      "unavailable": "Không có kết nối AI được phê duyệt. Vẫn có thể sửa thủ công.",
+      "reviewRequired": "Tạo công thức cần phê duyệt quy tắc chia sẻ dữ liệu. Vẫn có thể sửa thủ công.",
+      "applied": "Đã áp dụng bản nháp. Xem lại và thử trước khi lưu.",
+      "fields": {
+        "joinDate": "Ngày vào làm",
+        "groupJoinDate": "Ngày vào tập đoàn",
+        "resignationDate": "Ngày từ chức",
+        "confirmationDate": "Ngày xác nhận",
+        "lastWorkingDate": "Ngày làm cuối",
+        "employmentType": "Loại việc làm",
+        "employeeNo": "Mã nhân viên",
+        "departmentCode": "Mã phòng ban",
+        "positionCode": "Mã vị trí",
+        "gradeCode": "Mã ngạch",
+        "dateOfBirth": "Ngày sinh",
+        "gender": "Giới tính",
+        "nationality": "Quốc tịch",
+        "maritalStatus": "Tình trạng hôn nhân"
+      },
+      "conditions": "Điều kiện đã xác thực"
     }
   },
   "payrollTaxBasis": {
@@ -33610,7 +33707,7 @@
     }
   },
   "passwordPolicy": {
-    "title": "Bảo mật mật khẩu",
+    "title": "Chính sách mật khẩu",
     "description": "Thiết lập đổi mật khẩu HR định kỳ. Quản lý mật khẩu Microsoft và Truy nhập có điều kiện trong Entra.",
     "enabled": "Yêu cầu đổi mật khẩu định kỳ",
     "interval": "Đổi sau mỗi",
@@ -33628,6 +33725,35 @@
       "conflict": "Quản trị viên khác đã đổi chính sách. Tải lại trước khi lưu.",
       "forbidden": "Bạn không có quyền thay đổi chính sách này.",
       "unavailable": "Không thể truy cập cài đặt mật khẩu. Hãy thử lại."
+    },
+    "full": {
+      "minLength": "Độ dài mật khẩu tối thiểu",
+      "maxLength": "Độ dài mật khẩu tối đa",
+      "uppercase": "Yêu cầu chữ hoa",
+      "lowercase": "Yêu cầu chữ thường",
+      "numbers": "Yêu cầu chữ số",
+      "special": "Yêu cầu ký tự đặc biệt",
+      "historyEnabled": "Ngăn dùng lại mật khẩu cũ",
+      "historyCount": "Số mật khẩu cũ cần nhớ",
+      "lockoutEnabled": "Khóa tài khoản sau các lần đăng nhập lỗi",
+      "failedAttempts": "Số lần lỗi liên tiếp",
+      "autoUnlock": "Tự động mở khóa tài khoản",
+      "unlockMinutes": "Mở khóa sau (phút)",
+      "forceFirstChange": "Bắt buộc đổi mật khẩu ở lần đăng nhập đầu",
+      "firstResetVerification": "Ứng dụng xác thực hoặc mã khôi phục khi đăng nhập lần đầu hay đặt lại",
+      "complexity": "Độ phức tạp và thời hạn",
+      "expiry": "Thời hạn mật khẩu",
+      "account": "Bảo vệ tài khoản",
+      "firstLogin": "Đăng nhập lần đầu và đặt lại",
+      "manualUnlock": "Chỉ quản trị viên được phép mới có thể mở khóa khi tắt mở khóa tự động.",
+      "legacy": "Quy tắc xác thực hiện tại vẫn áp dụng đến khi lưu. Khi lưu, các giá trị hiển thị thay thế quy tắc độ phức tạp và lịch sử cũ.",
+      "mfa": "Yêu cầu xác thực cho đăng nhập thông thường vẫn áp dụng. Thiết lập này không tắt MFA bắt buộc hay cho phép khôi phục chỉ qua email.",
+      "effect": "Quy tắc mới áp dụng khi tạo, đổi hoặc đặt lại mật khẩu. Đăng nhập qua tổ chức bên ngoài giữ chính sách của nhà cung cấp.",
+      "unlockTitle": "Mở khóa tài khoản mật khẩu",
+      "unlockUser": "Tài khoản người dùng",
+      "unlockChoose": "Chọn người dùng",
+      "unlockAction": "Mở khóa tài khoản",
+      "unlocked": "Đã mở khóa tài khoản."
     }
   }
 }

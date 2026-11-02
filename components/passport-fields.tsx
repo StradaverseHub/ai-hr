@@ -1,36 +1,7 @@
 'use client';
 
-/**
- * THE PASSPORT BLOCK — number, issue date, expiry date, issuing country, country code and remark —
- * shared between the Personnel Profile tab's Identity Information card and the Create New Employee
- * draft (item a72610af).
- *
- * IT WAS EXPLICITLY NOT SHARED BEFORE, and the note that said so (components/personnel-identity.tsx)
- * was right about the reason and is answered rather than ignored. It read: sharing it "is not a field-
- * definition question, it is a write-path one. `setPassportProfileMY` makes the number/issue/expiry trio
- * MANDATORY for a non-Malaysian, so a wizard that offered these boxes would refuse to create a hire whose
- * passport HR does not have to hand — stricter than `hireEmployee` and the bulk importer."
- *
- * WHAT CHANGED IS THE WRITE PATH, NOT THE FIELDS. `completeEmployeeDraft` calls `setPassport` ONLY when
- * the draft carries at least one passport value — exactly what `commitEmployeeImport` has done since item
- * 2983802f — so a draft that names no passport never reaches that writer and never meets its mandatory
- * trio. The all-or-nothing rule that remains is judged on the TAB (`missingByTab`, profile → 'passport'),
- * before anything is created, because that writer can only run after `hireEmployee` has committed and a
- * refusal there would fail an activation that had already made an employee. So the wizard is no stricter
- * than the importer, and the statutory decision the old note was waiting on is not needed: nothing here
- * makes a passport mandatory for anybody.
- *
- *   mode: 'form'        → `name`d inputs read out of FormData by `setPassportAction`. `required` is
- *                         driven by `requiredTrio`, which the Personnel card derives from the LIVE
- *                         nationality selection; the server re-derives it from the person record and
- *                         never trusts this.
- *   mode: 'controlled'  → value/onChange bound to the draft's React state, NO `name`, and NO `required`:
- *                         a draft refuses nothing until Activate, and `missingByTab` is what names an
- *                         incomplete block.
- *
- * LABELS FROM `people.detail.passport*` — the Personnel card's own keys, so the two screens cannot drift
- * and this change adds no message key.
- */
+/** Shared passport controls. Non-local employees require the number; dates/country/code are optional.
+ * Controlled drafts persist their values; activation and native writes use country-owned validation. */
 import { useTranslations } from 'next-intl';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { inputCls } from '@/components/ui';
@@ -55,7 +26,7 @@ export type PassportValue = {
  */
 export type PassportPatch = { [K in keyof PassportValue]?: string };
 
-/** The three fields `setPassportProfileMY` requires TOGETHER once any passport detail is entered. */
+/** Legacy block keys retained for consumers; requiredness is determined per field. */
 export const PASSPORT_TRIO = ['passportNumber', 'passportIssueDate', 'passportExpiryDate'] as const;
 
 type Common = {
@@ -78,8 +49,7 @@ export function PassportFields(
   props:
     | (Common & {
         mode: 'form';
-        /** Personnel only: a non-Malaysian's passport is their primary identification, so the trio is
-         *  marked required. Advisory — the server re-derives it from `person.nationality`. */
+        /** Personnel only: require the number for a non-local employee; date fields remain optional. */
         requiredTrio: boolean;
         /** r422 — OPT-IN: draw the two dates as DD-MMM-YYYY (components/ui/date-field.tsx), posting the same
          *  names and ISO values. The Personnel profile passes it; the Create New Employee draft (controlled

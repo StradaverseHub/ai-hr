@@ -118,9 +118,10 @@ async function selectionOf(employmentId: string) {
   return row;
 }
 
-async function activate(data: EmployeeDraftData) {
+async function activate(data: EmployeeDraftData, historical = false) {
   const ctx = adminCtx(b);
   const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 3 });
+  if(historical)await owner.db.update(schema.employeeDraft).set({data}).where(eq(schema.employeeDraft.id,id));
   const { employmentId } = await completeEmployeeDraft(ctx, id);
   return { id, employmentId };
 }
@@ -296,7 +297,7 @@ describe('§3 a blank box stays statutory (null), never 0% or RM0.00', () => {
   });
 
   it('EPF boxes the category does not use conjure no statutory row on their own', async () => {
-    const { employmentId } = await activate(minimal({ epfEmployeeRate: '15', epfEmployeeAmount: '200' }));
+    const { employmentId } = await activate(minimal({ epfEmployeeRate: '15', epfEmployeeAmount: '200' }), true);
     expect(await statutoryOf(employmentId), 'no statutory row').toBeUndefined();
   });
 });
@@ -316,8 +317,15 @@ describe('§5 Subject to SKBBK, Employer bears tax contribution and the income t
     expect(a.subjectToSkbbk).toBe(false);
     expect(a.employerBearsTax).toBe(false);
     const c = await statutoryOf((await activate(minimal({ epfNumber: '1' }))).employmentId);
-    expect(c.subjectToSkbbk, 'absent ⇒ default false').toBe(false);
+    expect(c.subjectToSkbbk, 'new applicable draft persists the creation default').toBe(true);
     expect(c.employerBearsTax, 'absent ⇒ default false').toBe(false);
+  });
+
+  it('activates a historical draft without applying new creation defaults',async()=>{
+    const ctx=adminCtx(b),data=minimal({epfNumber:'1'}),{id}=await saveEmployeeDraft(ctx,{data,currentStep:3});
+    await owner.db.update(schema.employeeDraft).set({data}).where(eq(schema.employeeDraft.id,id));
+    const {employmentId}=await completeEmployeeDraft(ctx,id);
+    expect((await statutoryOf(employmentId)).subjectToSkbbk).toBe(false);
   });
 
   it('taxResidency non_resident: hire selection, is_resident and tax_residency all non-resident', async () => {
@@ -399,7 +407,7 @@ describe('§4 a draft with NONE of the new keys activates exactly as before', ()
   };
 
   it('every employee_statutory_my column equals the row the pre-r393 writer calls produce', async () => {
-    const viaDraft = await activate(minimal(LEGACY));
+    const viaDraft = await activate(minimal(LEGACY), true);
     const ctx = adminCtx(b);
     const pack = packFor('MY')!;
     // THE REFERENCE: the hire and the two writer calls d358d909's completeEmployeeDraft made for this draft,
