@@ -83,7 +83,6 @@ import { toCsv } from '../lib/csv';
 import {
   assignment,
   attendance,
-  claimRequest,
   company,
   companyPayrollConfig,
   companyStatutoryMy,
@@ -1657,6 +1656,16 @@ function normalizeScope(scope?: BatchScope): BatchScope | null {
  * with any explicitly-named individuals. Returns `undefined` (no filter ⇒ whole company) when the scope
  * is empty/absent — identical to today's dynamic whole-company behaviour.
  */
+type PayrollClaimSource={id:string;employmentId:string;amount:string;decidedAt:Date|null};
+async function payrollClaimSourcesTx(tx:Tx,batchId:string,status:'approved'|'paid'){
+ return tx.execute<PayrollClaimSource>(sql`select id,employment_id as "employmentId",amount,decided_at as "decidedAt" from app.payroll_claim_linked_sources(${batchId}::uuid,${status})`);
+}
+async function applyPayrollClaimsTx(tx:Tx,batchId:string,mode:'pay'|'unpay'|'requeue',claimIds:string[]|null=null,employmentIds:string[]|null=null){
+ const ids=claimIds===null?sql`null::uuid[]`:sql`ARRAY(select value::uuid from jsonb_array_elements_text(${JSON.stringify(claimIds)}::jsonb))`;
+ const subjects=employmentIds===null?sql`null::uuid[]`:sql`ARRAY(select value::uuid from jsonb_array_elements_text(${JSON.stringify(employmentIds)}::jsonb))`;
+ return tx.execute<{id:string;employmentId:string}>(sql`select id,employment_id as "employmentId" from app.payroll_claim_apply(${batchId}::uuid,${mode},${ids},${subjects})`);
+}
+
 export async function resolveBatchScopeFilter(
   tx: Tx,
   scope: BatchScope | null,
@@ -2495,11 +2504,7 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
   // appends (their per-row history lives on their own aggregates' earlier events); only the two rows with
   // cross-aggregate state (loan reservation, claim link) get per-row events here.
 
-  const detachedClaims = await tx
-    .update(claimRequest)
-    .set({ payrollBatchId: null })
-    .where(eq(claimRequest.payrollBatchId, batchId))
-    .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId });
+  const detachedClaims = await applyPayrollClaimsTx(tx,batchId,'requeue');
   for (const c of detachedClaims) {
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -7930,16 +7935,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       //    an add is not, so the disbursement is checked rather than assumed.
       const claimAddedIds = addedNowIds.filter((id) => (claimAllowanceByEmp.get(id) ?? 0) > 0);
       if (claimAddedIds.length > 0) {
-        const addedClaims = await tx
-          .select({ id: claimRequest.id, employmentId: claimRequest.employmentId, amount: claimRequest.amount })
-          .from(claimRequest)
-          .where(
-            and(
-              eq(claimRequest.payrollBatchId, p.batchId),
-              eq(claimRequest.status, 'approved'),
-              inArray(claimRequest.employmentId, claimAddedIds),
-            ),
-          );
+        const addedClaims = (await payrollClaimSourcesTx(tx,p.batchId,'approved')).filter(claim=>claimAddedIds.includes(claim.employmentId));
         // …AND WHAT IT PAYS MUST BE ACCOUNTED FOR. See ReprocessAddClaimUnreconciledError: an allowance
         // with no matching held claim is a claim that was requeued and will be paid again elsewhere.
         const unreconciled = claimAddedIds
@@ -7953,11 +7949,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           .filter((r) => r.allowance !== r.reserved);
         if (unreconciled.length > 0) throw new ReprocessAddClaimUnreconciledError(unreconciled);
         if (addedClaims.length > 0) {
-          const paidNow = await tx
-            .update(claimRequest)
-            .set({ status: 'paid', paidAt: new Date(), payoutRef: `payroll:${batch.payPeriod}` })
-            .where(inArray(claimRequest.id, addedClaims.map((c) => c.id)))
-            .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId });
+          const paidNow = await applyPayrollClaimsTx(tx,p.batchId,'pay',addedClaims.map(claim=>claim.id));
           for (const c of paidNow) {
             await appendEvent(tx, {
               tenantId: ctx.tenantId,
@@ -8118,21 +8110,14 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // marked paid, exactly as for a comp-less or out-of-scope employment. No new code — this is the
     // existing money-safety filter continuing to be right because `emps` means "who was paid".
     const paidEmploymentIds = new Set(emps.map((e) => e.employmentId));
-    const reservedClaims = await tx
-      .select({ id: claimRequest.id, employmentId: claimRequest.employmentId })
-      .from(claimRequest)
-      .where(and(eq(claimRequest.payrollBatchId, p.batchId), eq(claimRequest.status, 'approved')));
+    const reservedClaims = await payrollClaimSourcesTx(tx,p.batchId,'approved');
     const toMarkPaid = reservedClaims.filter((c) => paidEmploymentIds.has(c.employmentId)).map((c) => c.id);
     const toRequeue = reservedClaims.filter((c) => !paidEmploymentIds.has(c.employmentId)).map((c) => c.id);
     const paidClaims = toMarkPaid.length
-      ? await tx
-          .update(claimRequest)
-          .set({ status: 'paid', paidAt: new Date(), payoutRef: `payroll:${batch.payPeriod}` })
-          .where(inArray(claimRequest.id, toMarkPaid))
-          .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId })
+      ? await applyPayrollClaimsTx(tx,p.batchId,'pay',toMarkPaid)
       : [];
     if (toRequeue.length) {
-      await tx.update(claimRequest).set({ payrollBatchId: null }).where(inArray(claimRequest.id, toRequeue));
+      await applyPayrollClaimsTx(tx,p.batchId,'requeue',toRequeue);
     }
     for (const c of paidClaims) {
       await appendEvent(tx, {
@@ -9039,11 +9024,7 @@ export async function resetProcessedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:
     // They go back to 'approved' but STAY stamped on the batch, exactly the pre-generation queued
     // state, so the corrected re-run re-picks them. (Claims the generation UNLINKED — out-of-scope
     // employments — already have payroll_batch_id null and need no reversal.)
-    const revertedClaims = await tx
-      .update(claimRequest)
-      .set({ status: 'approved', paidAt: null, payoutRef: null })
-      .where(and(eq(claimRequest.payrollBatchId, p.batchId), eq(claimRequest.status, 'paid')))
-      .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId });
+    const revertedClaims = await applyPayrollClaimsTx(tx,p.batchId,'unpay');
     for (const c of revertedClaims) {
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
@@ -10252,17 +10233,7 @@ export async function removeEmployeePayrollTx(
   // Claims THIS run paid, for these people only. Back to 'approved' but still STAMPED on the batch —
   // the pre-generation queued state, so re-processing the corrected employee re-picks them. Somebody
   // else's paid claim on the same run is not in the predicate and cannot move.
-  const revertedClaims = await tx
-    .update(claimRequest)
-    .set({ status: 'approved', paidAt: null, payoutRef: null })
-    .where(
-      and(
-        eq(claimRequest.payrollBatchId, p.batchId),
-        eq(claimRequest.status, 'paid'),
-        inArray(claimRequest.employmentId, removedIds),
-      ),
-    )
-    .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId });
+  const revertedClaims = await applyPayrollClaimsTx(tx,p.batchId,'unpay',null,removedIds);
   for (const c of revertedClaims) {
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -12306,6 +12277,7 @@ export async function previewReviewedPayrollResetTx(tx:Tx,supplied:SessionContex
  if(batch.status!=='processed')throw new BatchNotResettableError();
  if(!settingEnabled(ctx,'payroll.reset_enabled'))throw new SettingNotEnabledError('payroll.reset_enabled','Payroll reset is not enabled.');
  if(!p.reason.trim())throw new ResetReasonRequiredError();
+ await tx.execute(sql`select app.access_payroll_batch_begin(${batchId}::uuid,'edit')`);
  const budget=(sets:readonly (readonly unknown[])[])=>{
   if(sets.reduce((n,rows)=>n+rows.length,0)>10000||Buffer.byteLength(JSON.stringify(sets),'utf8')>1000000)throw new Error('Payroll reset requires native handoff');
  };
@@ -12320,7 +12292,7 @@ export async function previewReviewedPayrollResetTx(tx:Tx,supplied:SessionContex
  const lockSources=async()=>{
   const slips=await tx.select().from(payslip).where(eq(payslip.batchId,batchId)).orderBy(payslip.id).limit(10001).for('update',{noWait:true});
   // Lock every batch claim, including currently approved rows: status can change without changing FK.
-  const claims=await tx.select().from(claimRequest).where(eq(claimRequest.payrollBatchId,batchId)).orderBy(claimRequest.id).limit(10001).for('update',{noWait:true});
+  const claims=await tx.execute<{id:string;sourceHash:string}>(sql`select id,source_hash as "sourceHash" from app.payroll_claim_source_hashes(${batchId}::uuid)`);
   const individuals=await tx.select().from(payrollIndividualTxn).where(or(eq(payrollIndividualTxn.batchId,batchId),eq(payrollIndividualTxn.consumedBatchId,batchId))).orderBy(payrollIndividualTxn.id).limit(10001).for('update',{noWait:true});
   const inputs=await tx.select().from(payrollInput).where(eq(payrollInput.batchId,batchId)).orderBy(payrollInput.id).limit(10001).for('update',{noWait:true});
   const components=await tx.select().from(payrollBatchComponent).where(eq(payrollBatchComponent.batchId,batchId)).orderBy(payrollBatchComponent.id).limit(10001).for('update',{noWait:true});
