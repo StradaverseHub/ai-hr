@@ -19,6 +19,8 @@ export const FINANCIAL_LETTER_CAPABILITY_PUBLICATION={
  legacyParityFunction:'app.financial_letter_legacy_allowed',
  delegationFloorFunction:'app.financial_letter_delegation_allowed',
  requiredFunctions:[
+  // Defined only after the complete installed action binding inventory passes review.
+  'app.financial_letter_bindings_complete()',
   'app.financial_letter_legacy_allowed(uuid,uuid,text,uuid)',
   'app.financial_letter_delegation_allowed(uuid,uuid,text,uuid)',
   'app.access_financial_action_company(text,uuid,text)',

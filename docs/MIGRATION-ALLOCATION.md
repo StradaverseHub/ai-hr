@@ -962,3 +962,15 @@ when1793330000340, after0939's independently owned action split. It preserves ex
 and Leave task responsibility through request-bound projections and native effect witnesses,
 without a general Personnel read exception. Branch `codex/approved-board-task-projections-20261102`.
 Unapplied source only; re-audit live watermark and refs before coordinated release. No installation authority.
+
+## Financial and Letters action restrictions — 2 November 2026 (provisional)
+
+Security worker reserves `0941_financial_letter_actions`, aggregate index763,
+when1793330000341, SQL SHA256 `22f31fc660d771383ab50c6ecd12d18c6dde6aa31d13f5e04739eefec2f44a5e`. This source checkpoint depends on
+0939 Workforce action helpers and0940 bounded Profile effect proofs. Parent owns0942
+Organisation/Settings and0945 Financial setup/history;0943/0944 are independently allocated.
+The code-owned publisher requires `app.financial_letter_bindings_complete()`; this checkpoint
+intentionally does not define that final closure prerequisite while kernel action bindings remain
+in progress. A parsed migration and legacy pass do not claim completed action coverage.
+Re-audit every ref/worktree journal and installation watermark before release; no deployment is
+authorized.
