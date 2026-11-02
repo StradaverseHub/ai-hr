@@ -283,7 +283,7 @@ BEGIN
   body:=overlay(body placing 'action_effect uuid; ' from declaration+8 for 0);
   mutation_at:=strpos(body,E'BEGIN\n');
   IF mutation_at=0 THEN RAISE EXCEPTION 'Lifecycle native entry changed: %',spec.signature;END IF;
-  body:=overlay(body placing E' PERFORM app.access_workforce_write_lock();\n' from mutation_at+6 for 0);
+  body:=overlay(body placing E' PERFORM app.audit_access_order_lock();\n PERFORM app.access_workforce_write_lock();\n' from mutation_at+6 for 0);
   EXECUTE body;
  END LOOP;
 END $install$;
@@ -407,6 +407,7 @@ RETURNS TABLE(revision integer,employment_id uuid,company_id uuid)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE c public.lc_onboarding_case;target jsonb;target_index bigint;current_request jsonb;tasks jsonb;entry jsonb;actor_name text;stamp text;effect uuid;
 BEGIN
+ PERFORM app.audit_access_order_lock();
  PERFORM app.access_workforce_write_lock();
  PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
  PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
@@ -532,3 +533,21 @@ CREATE POLICY data_permission_case_read ON lc_onboarding_case_revision AS RESTRI
 CREATE POLICY data_permission_case_read ON lc_onboarding_note AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.onboarding_data_subject_read(case_id));
 CREATE POLICY data_permission_case_read ON lc_v9_case_revision AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.lifecycle_v9_data_subject_read(case_id));
 CREATE POLICY data_permission_case_read ON lc_v9_file AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(CASE WHEN case_id IS NOT NULL THEN app.lifecycle_v9_data_subject_read(case_id) ELSE app.onboarding_data_subject_read(onboarding_case_id)END);
+
+--> statement-breakpoint
+-- Two original native owners acquire audit/onboarding locks before any event insert. Join the
+-- shared no-wait order admission before those manual locks, retaining their actual native bodies.
+DO $order$
+DECLARE signature text;body text;anchor text;at integer;
+BEGIN
+ FOREACH signature IN ARRAY ARRAY['app.onboarding_v9_save_case_values(uuid,integer,jsonb)','app.lc_v9_assigned_item(uuid,integer,text)']LOOP
+  body:=pg_get_functiondef(to_regprocedure(signature));
+  IF body IS NULL OR strpos(body,'app.audit_access_order_lock()')>0 THEN RAISE EXCEPTION 'Lifecycle audit order owner changed: %',signature;END IF;
+  anchor:=CASE WHEN signature LIKE 'app.onboarding_v9_save_case_values%' THEN ' PERFORM pg_advisory_xact_lock(hashtext(''audit-chain:''||app.current_tenant_id()::text));'
+   ELSE ' PERFORM pg_advisory_xact_lock(hashtext(''audit-chain:'' || app.current_tenant_id()::text));'END;
+  at:=strpos(body,anchor);
+  IF at=0 OR strpos(substr(body,at+length(anchor)),anchor)>0 THEN RAISE EXCEPTION 'Lifecycle audit order anchor changed: %',signature;END IF;
+  body:=overlay(body placing E' PERFORM app.audit_access_order_lock();\n' from at for 0);
+  EXECUTE body;
+ END LOOP;
+END $order$;
