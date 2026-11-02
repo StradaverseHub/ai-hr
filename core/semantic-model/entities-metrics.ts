@@ -21,12 +21,12 @@ const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child
 export const PAY_AGGREGATE_MEASURES=['basic_pay_paid'] as const;
 export const PAY_AGGREGATE_BREAKDOWNS=['company','department'] as const;
 export const PAY_AGGREGATE_STATUSES=['published','suppressed','no_closed_run','not_combined'] as const;
-export const PAY_AGGREGATE_REASONS=['fewer_than_minimum','complement_too_small','protects_another_group','company_suppressed','mixed_currencies'] as const;
+export const PAY_AGGREGATE_REASONS=['fewer_than_minimum','values_identical','complement_too_small','protects_another_group','company_suppressed','mixed_currencies'] as const;
 
 /** The figures of one group; absent when the group is suppressed. */
 const figures=():SemanticField[]=>[
  f('status','enum','full','published; suppressed (no figure is shown); no_closed_run (no closed regular payroll run with payslips); not_combined (companies pay in different currencies).',{values:PAY_AGGREGATE_STATUSES}),
- f('withheldBecause','enum','full','Why the group is not shown: fewer than five people, a complement of one to four people, protecting another withheld group, its company withheld, or mixed currencies.',{values:PAY_AGGREGATE_REASONS}),
+ f('withheldBecause','enum','full','Why the group is not shown: fewer than five people, every member paid the same, a complement of one to four people, protecting another withheld group, its company withheld, or mixed currencies.',{values:PAY_AGGREGATE_REASONS}),
  f('headcount','integer','bands','People in the group.'),
  f('average','number','bands','Average of the measure over the group, to the cent.'),
  f('median','number','bands','Median of the measure over the group, rounded to the nearest 10 currency units.'),

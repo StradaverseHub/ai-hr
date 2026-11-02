@@ -92,6 +92,33 @@ describe('pay average statistics (pure)',()=>{
   // A combined total of four people publishes nothing.
   expect(payAverageCells(companies,[...sized(C1,'d-a',2),...sized(C2,'d-b',2)],NAMES,'company').overall).toEqual({currency:'MYR',status:'suppressed',withheldBecause:'fewer_than_minimum'});
  });
+ it('withholds a group whose members are all paid the same, and publishes one where a single member differs',()=>{
+  // Five people on 4123.45 each: the average and median would be every member's exact pay.
+  const same=payAverageCells([company(C1,'Fictional One')],people(C1,'d-a',[412345,412345,412345,412345,412345]),NAMES,'department');
+  expect(same.companies[0]).toEqual({companyId:C1,company:'Fictional One',currency:'MYR',payPeriod:'2026-09',status:'suppressed',withheldBecause:'values_identical',
+   departments:[{department:'Fictional Assembly',status:'suppressed',withheldBecause:'company_suppressed'}]});
+  expect(same.overall).toEqual({currency:'MYR',status:'suppressed',withheldBecause:'values_identical'});
+  expect(JSON.stringify(same)).not.toContain('4123');
+  // One member on 4567.89: sum 2106169 / 5 = 421233.8 -> 4212.34; median 4123.45 -> nearest 10 = 4120.00.
+  const differs=payAverageCells([company(C1,'Fictional One')],people(C1,'d-a',[412345,412345,412345,412345,456789]),NAMES,'company');
+  expect(differs.companies[0]).toMatchObject({status:'published',headcount:5,average:'4212.34',median:'4120.00'});
+  expect(differs.overall).toEqual({currency:'MYR',status:'published',headcount:5,average:'4212.34',median:'4120.00'});
+ });
+ it('lets an identical-values department trigger complementary suppression like any other withheld group',()=>{
+  const rows=[...people(C1,'d-a',[300011,301022,302033,303044,304055,305066]),...people(C1,'d-b',[250000,250000,250000,250000,250000]),...sized(C1,'d-c',10)];
+  const result=payAverageCells([company(C1,'Fictional One')],rows,NAMES,'department');
+  // Bindery alone withheld would be the company total minus the rest, so the smallest published sibling goes with it.
+  expect(departments(result.companies[0])).toEqual([['Fictional Assembly','suppressed','protects_another_group'],['Fictional Bindery','suppressed','values_identical'],['Fictional Coating','published',null]]);
+  // Two withheld groups on the same single value still describe it together: a third is withheld.
+  const together=suppressChildren(15,[{key:'a',people:5,values:[300011,301022,302033,303044,304055]},{key:'b',people:5,values:Array(5).fill(250000)},{key:'c',people:5,values:Array(5).fill(250000)}]);
+  expect([...together]).toEqual([['b','values_identical'],['c','values_identical'],['a','protects_another_group']]);
+ });
+ it('withholds an identical-values total over companies, and each identical company',()=>{
+  const result=payAverageCells([company(C1,'Fictional One'),company(C2,'Fictional Two')],[...people(C1,'d-a',Array(5).fill(333333)),...people(C2,'d-b',Array(6).fill(333333))],NAMES,'company');
+  expect(result.overall).toEqual({currency:'MYR',status:'suppressed',withheldBecause:'values_identical'});
+  expect(statusOf(result)).toEqual([['Fictional One','suppressed','values_identical'],['Fictional Two','suppressed','values_identical']]);
+  expect(JSON.stringify(result)).not.toContain('3333');
+ });
  it('does not combine currencies, and lists a company with no closed run without figures',()=>{
   const result=payAverageCells([company(C1,'Fictional One'),company(C2,'Fictional Two','SGD'),company(C3,'Fictional Three','MYR',null)],
    [...people(C1,'d-a',A),...people(C1,'d-b',B),...sized(C2,'d-c',3)],NAMES,'company');
@@ -218,7 +245,9 @@ describe('pay averages over the payroll owner, as the caller',()=>{
   const outside=await payAverages(await session(m.companyAdmin),{companyIds:[m.company2]}),none=await payAverages(await session(m.employee));
   expect(outside).toEqual(none);
   const other=ok(await payAverages(await session(m.otherTenant)));
-  expect(other.companies).toEqual([expect.objectContaining({companyId:m.b2.companyId,status:'published',headcount:5,average:'4321.09'})]);
+  // The other tenant's five people are all on 4321.09: identical values are withheld, the total with them.
+  expect(other.companies).toEqual([expect.objectContaining({companyId:m.b2.companyId,status:'suppressed',withheldBecause:'values_identical'})]);
+  expect(other.overall).toEqual({currency:'MYR',status:'suppressed',withheldBecause:'values_identical'});expect(JSON.stringify(other)).not.toContain('4321');
   for(const text of [m.b.companyId,m.company2,'Second Company','4113','3542','2288'])expect(JSON.stringify(other)).not.toContain(text);
   // A company whose payroll module is off is out of scope too.
   // Module rows only grant (core/entitlements.ts): payroll off tenant-wide, on for the first company alone.

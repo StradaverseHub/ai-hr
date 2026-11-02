@@ -18,15 +18,19 @@
  * SUPPRESSION (fail closed). Groups count PEOPLE (a person with two payslips in one company's run is one person, their
  * basic summed); each person counts once per company. Every rule is decided on the caller's whole scope BEFORE any
  * filter selects what is returned, so a filter can only hide cells, never reveal one or change a decision:
- *  1. a group of fewer than PAY_AVERAGE_MINIMUM_GROUP people is suppressed;
+ *  1. a group of fewer than PAY_AVERAGE_MINIMUM_GROUP people is suppressed, and so is a group (company, department
+ *     or the all-companies total) whose values are all equal, since its average and median would be each member's
+ *     exact pay;
  *  2. differencing: a group whose complement within its parent (company within all companies, department within
  *     its company) is 1 to 4 people is suppressed, since the parent minus it would describe that small complement;
  *  3. complementary suppression: within a parent, the suppressed groups must be none, or at least two holding at
- *     least PAY_AVERAGE_MINIMUM_GROUP people together; otherwise the smallest published group is suppressed too;
+ *     least PAY_AVERAGE_MINIMUM_GROUP people together whose values are not all equal (the parent minus the published
+ *     groups describes them together); otherwise the smallest published group is suppressed too;
  *  4. a suppressed company suppresses all its departments; the all-companies total is published only when every
  *     company with a run shares one currency.
- * A suppressed group shows why (withheldBecause) and no headcount or figure. Medians are rounded to the nearest 10 currency units, so an
- * odd-sized group's median is never one person's exact pay; averages are rounded half up to the cent. */
+ * A suppressed group shows why (withheldBecause) and no headcount or figure. Medians are rounded to the nearest 10
+ * currency units, so an odd-sized group's median is never one person's exact pay; averages are rounded half up to the
+ * cent. */
 import {and,asc,desc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {assignment,company,department,employment,payrollBatch,payslip} from '../../db/schema';
@@ -40,7 +44,7 @@ export const PAY_AVERAGE_MEDIAN_STEP_CENTS=1000;
 export const PAY_AVERAGE_MEASURE='basic_pay_paid' as const;
 export const PAY_AVERAGE_MEASURE_LABEL='Basic pay paid in each company\'s latest closed regular payroll run, as printed under Basic on the payslip and in the Payroll Register: prorated for joiners and leavers, rate x days or hours for daily- and hourly-paid staff, before unpaid leave and every other deduction, and excluding allowances, overtime, bonus and claims. Each person counts once per company; a payslip with zero basic counts.';
 export type PayAverageBreakdown='company'|'department';
-export type SuppressionReason='fewer_than_minimum'|'complement_too_small'|'protects_another_group'|'company_suppressed';
+export type SuppressionReason='fewer_than_minimum'|'values_identical'|'complement_too_small'|'protects_another_group'|'company_suppressed';
 export type PayAverageFigures=Readonly<{headcount:number;average:string;median:string}>;
 export type PayAverageCell=Readonly<{status:'published'}&PayAverageFigures>|Readonly<{status:'suppressed';withheldBecause:SuppressionReason}>;
 export type PayAverageDepartment=Readonly<{department:string|null}>&PayAverageCell;
@@ -82,16 +86,26 @@ export function figuresOf(values:readonly number[]):PayAverageFigures{
  const twiceMedian=count%2?2*sorted[middle]:sorted[middle-1]+sorted[middle];
  return{headcount:count,average:centsText(roundHalfUp(sum,count)),median:centsText(roundHalfUp(twiceMedian,2*PAY_AVERAGE_MEDIAN_STEP_CENTS)*PAY_AVERAGE_MEDIAN_STEP_CENTS)};
 }
-/** Suppression of the children of one published parent of `parent` people (rules 1 to 3). Keys are compared as
- * given, so the order of `children` decides ties deterministically. Returns the suppressed keys and why. */
-export function suppressChildren(parent:number,children:readonly Readonly<{key:string;people:number}>[]):ReadonlyMap<string,SuppressionReason>{
+/** True when a group's values are all equal: its average and median would be every member's exact pay. */
+export const valuesIdentical=(values:readonly number[])=>values.length>0&&values.every(value=>value===values[0]);
+/** The rule 1 reason for a group on its own, or undefined. */
+const primaryReason=(values:readonly number[]):SuppressionReason|undefined=>
+ values.length<PAY_AVERAGE_MINIMUM_GROUP?'fewer_than_minimum':valuesIdentical(values)?'values_identical':undefined;
+/** Suppression of the children of one published parent of `parent` people (rules 1 to 3). A child carrying its
+ * `values` is also judged for identical values, alone and, with the other withheld children, as what the parent minus
+ * the published children describes. Keys are compared as given, so the order of `children` decides ties
+ * deterministically. Returns the suppressed keys and why. */
+export function suppressChildren(parent:number,children:readonly Readonly<{key:string;people:number;values?:readonly number[]}>[]):ReadonlyMap<string,SuppressionReason>{
  const out=new Map<string,SuppressionReason>(),minimum=PAY_AVERAGE_MINIMUM_GROUP;
  for(const child of children){
   if(child.people<minimum)out.set(child.key,'fewer_than_minimum');
+  else if(child.values&&valuesIdentical(child.values))out.set(child.key,'values_identical');
   else if(parent-child.people>0&&parent-child.people<minimum)out.set(child.key,'complement_too_small');
  }
- const held=()=>children.filter(child=>out.has(child.key)).reduce((total,child)=>total+child.people,0);
- while(out.size&&(out.size<2||held()<minimum)){
+ const unsafe=()=>{const held=children.filter(child=>out.has(child.key)),people=held.reduce((total,child)=>total+child.people,0);
+  const values=held.flatMap(child=>child.values??[]);
+  return held.length<2||people<minimum||(values.length===people&&valuesIdentical(values));};
+ while(out.size&&unsafe()){
   const next=children.filter(child=>!out.has(child.key)).sort((a,b)=>a.people-b.people)[0];
   if(!next)break;out.set(next.key,'protects_another_group');
  }
@@ -119,12 +133,12 @@ export function payAverageCells(companies:readonly PayAverageCompanyInput[],rows
  const combined=currencies.size===1;
  const allValues=withRun.flatMap(row=>valuesOf(row.companyId));
  // The all-companies total is a parent only when it is published; otherwise only rule 1 applies to companies.
- const overallSuppressed=combined&&allValues.length<PAY_AVERAGE_MINIMUM_GROUP;
- const companyDecisions=combined&&!overallSuppressed
-  ?suppressChildren(allValues.length,withRun.map(row=>({key:row.companyId,people:valuesOf(row.companyId).length})))
-  :new Map(withRun.filter(row=>valuesOf(row.companyId).length<PAY_AVERAGE_MINIMUM_GROUP||overallSuppressed).map(row=>[row.companyId,'fewer_than_minimum' as SuppressionReason]));
+ const overallReason=combined?primaryReason(allValues):undefined;
+ const companyDecisions:ReadonlyMap<string,SuppressionReason>=combined&&!overallReason
+  ?suppressChildren(allValues.length,withRun.map(row=>{const values=valuesOf(row.companyId);return{key:row.companyId,people:values.length,values};}))
+  :new Map(withRun.flatMap(row=>{const reason=primaryReason(valuesOf(row.companyId));return reason?[[row.companyId,reason] as const]:[];}));
  const overall:PayAverageOverall=!withRun.length?{status:'no_closed_run'}:!combined?{status:'not_combined',withheldBecause:'mixed_currencies'}
-  :{currency:[...currencies][0],...cell(allValues,overallSuppressed?'fewer_than_minimum':undefined)};
+  :{currency:[...currencies][0],...cell(allValues,overallReason)};
  const output=companies.filter(row=>!select||select.has(row.companyId)).map((row):PayAverageCompany=>{
   const base={companyId:row.companyId,company:row.company,currency:row.currency};
   if(row.payPeriod===null||!withRun.includes(row))return{...base,status:'no_closed_run'};
@@ -136,7 +150,7 @@ export function payAverageCells(companies:readonly PayAverageCompanyInput[],rows
   const name=(key:string)=>key?departmentNames.get(key)??'':'';
   const ordered=[...groups.keys()].sort((a,b)=>(a===''?1:0)-(b===''?1:0)||compare(name(a),name(b))||compare(a,b));
   const decisions=companyReason?new Map(ordered.map(key=>[key,'company_suppressed' as SuppressionReason]))
-   :suppressChildren(values.length,ordered.map(key=>({key,people:groups.get(key)!.length})));
+   :suppressChildren(values.length,ordered.map(key=>({key,people:groups.get(key)!.length,values:groups.get(key)!})));
   return{...result,departments:ordered.map(key=>({department:key?name(key):null,...cell(groups.get(key)!,decisions.get(key))}))};
  });
  const result:PayAverages={ok:true,measure:PAY_AVERAGE_MEASURE,measureLabel:PAY_AVERAGE_MEASURE_LABEL,breakdown,minimumGroup:PAY_AVERAGE_MINIMUM_GROUP,overall,companies:output};

@@ -206,9 +206,9 @@ Nothing in this record authorises a disclosure change, deployment or production 
 **Who may ask.** Only a caller with payroll access: an HR administrator or a payroll partner (`canManagePayroll`). The harness offers the read only to them. Each company is then admitted by the database's own payroll scope (`app.can_admin_payroll_for`, the payslip RLS owner), for a current principal, with the payroll module enabled. The read runs as the caller under RLS. Everyone else is refused in one sentence, and a company filter outside the scope gets the same sentence, so the refusal is not an existence oracle.
 
 **Suppression**, decided over the caller's whole scope before any filter selects what is returned:
-1. Any group of fewer than 5 people is withheld (people, not payslips; each person counts once per company).
+1. Any group of fewer than 5 people is withheld (people, not payslips; each person counts once per company). So is any group, the all-companies total included, whose members are all paid the same: its average and median would be each member's exact pay.
 2. Differencing: a group whose complement within its parent is 1–4 people is withheld. The parent is the company for a department, and all companies combined for a company.
-3. Complementary suppression: within a parent, the withheld groups must be none, or at least two groups holding at least 5 people together. Otherwise the smallest published group is withheld too, so no single withheld cell can be recovered as the total minus the rest.
+3. Complementary suppression: within a parent, the withheld groups must be none, or at least two groups holding at least 5 people together whose values are not all equal. Otherwise the smallest published group is withheld too, so no single withheld cell, and no set of withheld cells on one shared value, can be recovered as the total minus the rest.
 4. A withheld company withholds all its departments.
 5. The all-companies total covers the caller's whole scope whatever the filter. It is published only when the companies share one currency.
 
@@ -221,6 +221,6 @@ A withheld group carries a reason and no headcount or figure.
 - the trace records counts, paths and digests only.
 
 **Residual risks** (not addressed here):
-- a group whose members all earn the same reveals each member's pay through its average;
+- a group where most members share one value still shows that value through its median when it is a multiple of 10;
 - results compared across months, or between callers with different scopes, can be differenced;
 - the department is the current assignment, not the one at the run date.
