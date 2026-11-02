@@ -23,7 +23,7 @@ it('OneHR Partner cannot create a generic cycle or borrow its native authority t
  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:userId,role:'performance_partner',companyId:b.companyId});
  const partner={...ctx,userId,roles:['performance_partner'],grants:[{role:'performance_partner',companyId:b.companyId}]};
  await expect(createCycle(partner,{...cycleInput,companyId:b.companyId})).rejects.toThrow();
- await expect(withTenant(partner,tx=>tx.update(s.reviewCycle).set({name:'Forbidden generic edit'}).where(eq(s.reviewCycle.id,cycleId)))).rejects.toThrow();
+ const affected=await withTenant(partner,tx=>tx.update(s.reviewCycle).set({name:'Forbidden generic edit'}).where(eq(s.reviewCycle.id,cycleId)).returning({id:s.reviewCycle.id}));expect(affected).toEqual([]);
  const [row]=await owner.db.select({name:s.reviewCycle.name}).from(s.reviewCycle).where(eq(s.reviewCycle.id,cycleId));expect(row.name).toBe(cycleInput.name);
 });
 it('a current narrowed native carrier cannot widen an existing cycle through its independent eligibility company filter',async()=>{

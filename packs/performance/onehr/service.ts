@@ -107,7 +107,7 @@ async function loadReview(tx: Tx, reviewId: string, lock = false) {
   uuid.parse(reviewId);
   const q=tx.select().from(onehrReview).where(eq(onehrReview.reviewId,reviewId));
   const [row]=await (lock?q.for('update'):q);if(!row)throw Error('Assessment not found or access has been removed.');
-  const [header]=await tx.execute<{value:{reviewerEmploymentId:string|null;closedAt:string|null;name:string;ownEmploymentIds:string[]}|null}>(sql`select app.onehr_review_header(${reviewId}::uuid) as value`);
+  const [header]=await tx.execute<{value:{reviewerEmploymentId:string|null;closedAt:string|null;name:string;ownEmploymentIds:string[]}|null}>(sql`select app.onehr_review_task_header(${reviewId}::uuid) as value`);
   if(!header?.value)throw Error('Assessment not assigned to you.');
   const cycle=await loadCycle(tx,row.cycleId);
   return {row,native:header.value,cycle,kpis:z.array(kpiSchema).parse(row.kpis),competencies:z.array(competencySchema).parse(row.competencies)};
