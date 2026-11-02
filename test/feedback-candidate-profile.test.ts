@@ -43,7 +43,8 @@ it('measures the real standard-feedback reader against bounded native candidates
  END;$projection$; REVOKE ALL ON FUNCTION app.perf_feedback_projection() FROM PUBLIC; GRANT EXECUTE ON FUNCTION app.perf_feedback_projection() TO ai_hr_app`);
  const invoker=(context:SessionContext)=>withTenant(context,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,context);
-  const rows=await tx.execute<{id:string;subjectName:string;sourceUpdatedAt:Date}>(sql`select id,subject_name as "subjectName",source_updated_at as "sourceUpdatedAt" from app.perf_feedback_projection()`);
+  const rows=await tx.select({id:sql<string>`projection.id`,subjectName:sql<string>`projection.subject_name`,
+   sourceUpdatedAt:sql`projection.source_updated_at`.mapWith(s.peerFeedbackRequest.createdAt)}).from(sql`app.perf_feedback_projection() projection`);
   return rows.map(row=>({...row,kind:'feedback' as const,linkPath:'/me/performance#feedback-'+row.id}));
  });
  const candidate=(context:SessionContext)=>withTenant(context,async tx=>{
