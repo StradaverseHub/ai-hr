@@ -513,3 +513,18 @@ CREATE FUNCTION app.profile_task_photo_complete()RETURNS trigger LANGUAGE plpgsq
 BEGIN IF NOT app.profile_task_photo_approved(NEW.person_id)THEN RAISE EXCEPTION 'Profile photo completion unavailable' USING ERRCODE='42501';END IF;RETURN NULL;END $$;
 REVOKE ALL ON FUNCTION app.profile_task_photo_complete() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER profile_task_photo_complete AFTER INSERT ON app.profile_task_photo_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.profile_task_photo_complete();
+--> statement-breakpoint
+-- The compatibility label projection may retain an actual task subject, never manufacture a name
+-- directory from a reporting relationship or delegation plus an arbitrary posted employment ID.
+CREATE OR REPLACE FUNCTION app.delegated_approval_subject(subject_id uuid,wanted_module text,wanted_task text)
+RETURNS TABLE(person_id uuid,employee text,employee_code text,company_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT e.person_id,p.full_name,e.employee_code,e.company_id FROM public.employment e JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ WHERE e.id=subject_id AND e.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+ AND (app.data_permission_record_read(e.id) AND app.can_see_employment(e.id)
+ OR wanted_module='leave' AND wanted_task='leave.application' AND EXISTS(SELECT 1 FROM public.leave_request q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND app.workflow_task_reader(wanted_task,q.id))
+ OR wanted_module='leave' AND wanted_task='leave.cancellation' AND EXISTS(SELECT 1 FROM public.leave_cancellation_request q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND app.workflow_task_reader(wanted_task,q.id))
+ OR wanted_module='leave' AND wanted_task='leave.replacement' AND EXISTS(SELECT 1 FROM public.replacement_leave_request q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND app.workflow_task_reader(wanted_task,q.id))
+ OR wanted_module='claims' AND wanted_task='claims.claim' AND EXISTS(SELECT 1 FROM public.claim_request q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND q.status<>'draft' AND app.workflow_task_reader(wanted_task,q.id))
+ OR wanted_module='attendance' AND wanted_task='attendance.correction' AND EXISTS(SELECT 1 FROM public.attendance_correction q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND app.workflow_task_reader(wanted_task,q.id)));
+$$;
