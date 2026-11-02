@@ -33645,5 +33645,16 @@
     "when": "何时",
     "onlyIf": "仅当",
     "then": "然后"
+  },
+  "documentSigning": {
+    "title": "您的签名",
+    "method": "签名方式",
+    "typed": "输入签名",
+    "drawn": "手写签名",
+    "fullName": "输入您的全名",
+    "canvas": "手写您的签名",
+    "clear": "清除签名",
+    "consent": "我确认这是我的签名，并同意签署本文件。",
+    "submit": "签署并提交"
   }
 }

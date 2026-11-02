@@ -33645,5 +33645,16 @@
     "when": "Bila",
     "onlyIf": "Hanya jika",
     "then": "Kemudian"
+  },
+  "documentSigning": {
+    "title": "Tandatangan anda",
+    "method": "Kaedah tandatangan",
+    "typed": "Taip tandatangan",
+    "drawn": "Lukis tandatangan",
+    "fullName": "Taip nama penuh anda",
+    "canvas": "Lukis tandatangan anda",
+    "clear": "Padam tandatangan",
+    "consent": "Saya mengesahkan bahawa ini ialah tandatangan saya dan bersetuju untuk menandatangani dokumen ini.",
+    "submit": "Tandatangan dan hantar"
   }
 }
