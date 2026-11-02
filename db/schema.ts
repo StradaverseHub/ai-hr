@@ -11357,6 +11357,7 @@ export const payrollLeaveException = pgTable('payroll_leave_exception', {
 export const accessCapability = pgTable('access_capability', {
   id: text('id').primaryKey(), scope: text('scope').notNull().$type<'tenant'|'company'>(),
   supported: boolean('supported').notNull().default(false),
+  prerequisites: jsonb('prerequisites').notNull().default(sql`'[]'::jsonb`).$type<string[]>(),
   bindings: jsonb('bindings').notNull().default(sql`'[]'::jsonb`).$type<{owner:string;operation:string}[]>(),
 });
 export const accessConfiguration = pgTable('access_configuration', {
