@@ -1,12 +1,12 @@
 'use server';
 import {revalidatePath} from 'next/cache';
-import {getSession} from '@/lib/session';
+import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import * as owner from '@/packs/contracts/service';
 import {z} from 'zod';
 export type ContractCommand='previewIntake'|'intake'|'previewDecision'|'decision'|'confirm'|'approval'|'generate'|'accept'|'release'|'retry'|'handoff'|'reconcile'|'verifyRecords'|'setup'|'configure'|'role'|'captureEvidence'|'verifyEvidence'|'amendEnd'|'refreshApprovers'|'saveDecisionDraft'|'revokeRole';
 /** Every request authenticates again; the owner independently validates scope, capability and revision. */
 export async function runContractCommand(command:ContractCommand,input:unknown){
- const session=await getSession();if(!session)return{ok:false as const,error:'session'};
+ const session=await requireScopedLifecycleModule();if(!session)return{ok:false as const,error:'session'};
  try{
   let result:unknown;
   switch(command){
@@ -39,12 +39,12 @@ export async function runContractCommand(command:ContractCommand,input:unknown){
  }catch(error){return{ok:false as const,error:error instanceof Error&&error.name==='ContractManagementError'?error.message:error instanceof z.ZodError?'invalid':'failed'};}
 }
 export async function readContractRetirementContext(employmentId:string){
- const session=await getSession();if(!session)return{ok:false as const,error:'session'};
+ const session=await requireScopedLifecycleModule();if(!session)return{ok:false as const,error:'session'};
  try{z.uuid().parse(employmentId);const choices=await owner.contractRetirementChoices(session,employmentId),evidence=(await owner.contractRetirementEvidence(session)).filter(row=>row.employmentId===employmentId);return{ok:true as const,choices,evidence};}catch{return{ok:false as const,error:'failed'};}
 }
 
 export async function readContractLetterEditor(caseId:string,type:'renewal'|'end'|'declined'|'retirement'){
- const session=await getSession();if(!session)return{ok:false as const,error:'session'};
+ const session=await requireScopedLifecycleModule();if(!session)return{ok:false as const,error:'session'};
  try{return{ok:true as const,editor:await owner.contractLetterEditor(session,z.uuid().parse(caseId),z.enum(['renewal','end','declined','retirement']).parse(type))};}catch{return{ok:false as const,error:'failed'};}
 
 }

@@ -1,7 +1,7 @@
 import {redirect} from 'next/navigation';
-import {getSession} from '@/lib/session';
+import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {contractCompanies,contractCases,contractTemplates} from '@/packs/contracts/service';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import {ContractCases} from './cases';
 import '../v9/workspace.css';
-export default async function Page(){const session=await getSession();if(!session)redirect('/login');const companies=await contractCompanies(session);const templatesAvailable=companies.some(c=>c.gbs)||(await contractTemplates(session)).length>0;const rows=await contractCases(session,companies.map(c=>c.id));return <main className="v9-workspace"><ContractCases rows={rows} templatesAvailable={templatesAvailable} companies={companies} today={todayInKualaLumpur()}/></main>;}
+export default async function Page(){const session=await requireScopedLifecycleModule();if(!session)redirect('/login');const companies=await contractCompanies(session);const templatesAvailable=companies.some(c=>c.gbs)||(await contractTemplates(session)).length>0;const rows=await contractCases(session,companies.map(c=>c.id));return <main className="v9-workspace"><ContractCases rows={rows} templatesAvailable={templatesAvailable} companies={companies} today={todayInKualaLumpur()}/></main>;}
