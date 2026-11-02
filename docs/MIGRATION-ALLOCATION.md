@@ -5,6 +5,27 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+
+## Audit P1 security and back-pay repairs — 2 November 2026 (provisional source claims)
+
+Owned audit branches are based on fetched main/alpha `50ea247177a9fe1373d3e79d9c742f0fc399ebb7`.
+A refreshed origin-ref and registered-worktree scan found claims through filename0929 and
+when1793330000329 (2,942 refs, 316 unique committed journals and 490 readable worktree journals).
+Reserve the following source-only successors; the live installation watermark has not been queried.
+
+| Owner | Filename | Sequence | Proposed aggregate idx |
+| --- | --- | ---: | ---: |
+| Audit authority |0930_anomaly_event_privacy |1793330000330 |757 |
+| Audit authority |0931_ordinary_delete_authority |1793330000331 |758 |
+| Audit authority |0932_import_private_custody |1793330000332 |759 |
+| Audit financial |0933_back_pay_contributing_sources |1793330000333 |760 |
+
+The financial branch may use its next local index until composition; only unapplied journal indices
+are then reconciled to the aggregate. Preserve the complete accepted journal prefix and every applied
+SQL byte. Recheck competing claims and the actual ledger before integration or application. These
+reservations grant no deployment, protected-branch integration or waiver of migration verification.
+
+
 ## Idle sign-out policy — 2 November 2026 (provisional source claim)
 
 `claude/idle-session-timeout` appends `0898_session_idle_timeout` (ADR-0171) as journal idx755 /

@@ -22,6 +22,8 @@ Use focused tests during development and the repository gate/resource policy bef
 | Published tenant/operator guidance | `content/guides/`, `content/operator-guides/` |
 | Verification | `test/`, `.github/ci/`, `scripts/` |
 
+See the [development map](docs/DEVELOPMENT-MAP.md) for domain owners, entrypoints, transaction boundaries and verification examples.
+
 ## References
 
 - [Architecture decisions](docs/adr/README.md): decisions at their recorded date, with later amendments taking precedence.
