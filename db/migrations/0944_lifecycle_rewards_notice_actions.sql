@@ -2639,3 +2639,49 @@ BEGIN
  RETURN jsonb_build_object('alreadyPosted',false,'tenantId',unit.tenant_id,'userId',actor.id,'unitId',unit.id,'revision',unit.revision,'batchId',p_batch,'authorityStamp',authority,'decisionDigest',hash,'unitBeforeHash',app.reward_decision_row_hash(to_jsonb(unit),'reward_unit'),'calculation',calculation,'postingAwards',awards,'hasBonus',has_bonus);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_post_admission(uuid,integer,uuid)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Exact ordinary posting source plan, still private and effect-free. The eventual mutation
+-- owner must consume this within this transaction, retain exact physical receipts, and recheck
+-- authority after effects; this result alone is never a reusable write or disclosure proof.
+CREATE FUNCTION app.reward_post_sources(p_unit uuid,p_revision integer,p_batch uuid DEFAULT NULL)RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE admission jsonb;unit public.reward_unit;item jsonb;emp public.employment;salary public.compensation;grade public.job_grade;target_grade public.job_grade;pay_input public.payroll_input;award jsonb;provenance jsonb;effects jsonb:='[]';current_grade text;whitespace text:=chr(9)||chr(10)||chr(11)||chr(12)||chr(13)||chr(32)||chr(160)||chr(5760)||chr(8192)||chr(8193)||chr(8194)||chr(8195)||chr(8196)||chr(8197)||chr(8198)||chr(8199)||chr(8200)||chr(8201)||chr(8202)||chr(8232)||chr(8233)||chr(8239)||chr(8287)||chr(12288)||chr(65279);is_senior boolean;amount numeric;
+BEGIN
+ admission:=app.reward_post_admission(p_unit,p_revision,p_batch);
+ IF(admission->>'alreadyPosted')::boolean THEN RETURN admission;END IF;
+ SELECT actual.* INTO unit FROM public.reward_unit actual WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id();
+ FOR item IN SELECT value FROM jsonb_array_elements(admission->'calculation'->'rows')ORDER BY value->'source'->>'employmentId'COLLATE "C" LOOP
+  SELECT actual.* INTO emp FROM public.employment actual WHERE actual.id=(item->'source'->>'employmentId')::uuid AND actual.tenant_id=unit.tenant_id FOR UPDATE;
+  IF emp.id IS NULL OR emp.company_id<>unit.company_id OR emp.terminated_on IS NOT NULL OR emp.grade_id IS DISTINCT FROM(item->'source'->>'gradeId')::uuid THEN RAISE EXCEPTION 'An employee changed company, grade or employment status. Return and refresh the review.' USING ERRCODE='42501';END IF;
+  is_senior:=app.reward_calc_senior(unit.policy,item);
+  grade:=NULL;target_grade:=NULL;pay_input:=NULL;provenance:=NULL;
+  IF is_senior THEN
+   SELECT actual.* INTO grade FROM public.job_grade actual WHERE actual.id=emp.grade_id AND actual.tenant_id=unit.tenant_id FOR SHARE;
+   current_grade:=app.reward_access_reason_trim(regexp_replace(coalesce(grade.code,''),'^[jJ][gG]['||whitespace||']*',''));
+   IF current_grade IS DISTINCT FROM item->'source'->>'grade'OR NOT app.reward_calc_senior_grade(current_grade)THEN RAISE EXCEPTION 'The Senior employee grade changed after the snapshot. Return and refresh the review.' USING ERRCODE='42501';END IF;
+  END IF;
+  SELECT actual.* INTO salary FROM public.compensation actual WHERE actual.employment_id=emp.id AND actual.tenant_id=unit.tenant_id AND actual.valid_to IS NULL AND actual.superseded_at IS NULL FOR UPDATE;
+  IF salary.id IS NULL OR salary.id IS DISTINCT FROM(item->'source'->>'compensationId')::uuid OR salary.basic_salary*100 IS DISTINCT FROM(item->'source'->>'basicCents')::numeric OR salary.currency IS DISTINCT FROM item->'source'->>'currency'OR salary.pay_mode::text IS DISTINCT FROM item->'source'->>'payMode'THEN RAISE EXCEPTION 'Salary data changed after the snapshot. Return and refresh the review.' USING ERRCODE='42501';END IF;
+  IF(item->>'newBasicCents')::numeric<>(item->'source'->>'basicCents')::numeric AND(unit.policy->>'effectiveFrom')::date<=salary.valid_from THEN RAISE EXCEPTION 'The salary effective date must follow the current salary record.' USING ERRCODE='42501';END IF;
+  IF coalesce(item->'recommendation'->>'promotionGrade','')<>''AND coalesce(item->'source'->>'leftOn','')=''AND NOT is_senior THEN
+   IF(unit.policy->>'effectiveFrom')::date<>(clock_timestamp() AT TIME ZONE'Asia/Kuala_Lumpur')::date THEN RAISE EXCEPTION 'A promotion must be posted on its effective date because Job Grade is not effective-dated.' USING ERRCODE='42501';END IF;
+   SELECT actual.* INTO target_grade FROM public.job_grade actual WHERE actual.tenant_id=unit.tenant_id AND actual.archived_at IS NULL AND regexp_replace(actual.code,'^[jJ][gG]['||whitespace||']*','')=item->'recommendation'->>'promotionGrade'LIMIT 1 FOR SHARE;
+   IF target_grade.id IS NULL THEN RAISE EXCEPTION 'The approved promotion grade does not exist in Job Grades.' USING ERRCODE='42501';END IF;
+  END IF;
+  amount:=(item->>'bonusCents')::numeric+(item->>'lumpCents')::numeric;
+  IF(amount<>0 OR is_senior)AND p_batch IS NOT NULL THEN
+   SELECT actual.* INTO pay_input FROM public.payroll_input actual WHERE actual.batch_id=p_batch AND actual.employment_id=emp.id AND actual.tenant_id=unit.tenant_id FOR UPDATE;
+   IF is_senior THEN
+    award:=admission->'postingAwards'->(item->>'id');
+    IF coalesce(award->>'confirmedBy','')=''OR coalesce(award->>'confirmedAt','')=''THEN RAISE EXCEPTION 'Senior decision lost its independent confirmation.' USING ERRCODE='42501';END IF;
+    SELECT coalesce(jsonb_agg(value ORDER BY n),'[]'::jsonb)INTO provenance FROM jsonb_array_elements(coalesce(pay_input.reward_provenance,'[]'::jsonb))WITH ORDINALITY sources(value,n)WHERE value->>'unitId'IS DISTINCT FROM unit.id::text OR value->>'entryId'IS DISTINCT FROM item->>'id';
+    provenance:=provenance||jsonb_build_array(jsonb_build_object('unitId',unit.id,'entryId',item->>'id','revision',unit.revision,'plan','Senior plan','confirmedBy',award->'confirmedBy','confirmedAt',award->'confirmedAt','historicalOnly',true));
+    IF jsonb_array_length(provenance)>100 THEN RAISE EXCEPTION 'This payroll input has too many historical reward sources.' USING ERRCODE='42501';END IF;
+   END IF;
+  END IF;
+  effects:=effects||jsonb_build_array(jsonb_build_object('entryId',item->>'id','employmentBefore',to_jsonb(emp),'compensationBefore',to_jsonb(salary),'seniorGradeBefore',to_jsonb(grade),'promotionGrade',to_jsonb(target_grade),'payrollInputBefore',to_jsonb(pay_input),'newBasicCents',item->'newBasicCents','awardCents',amount,'rewardProvenance',provenance));
+ END LOOP;
+ RETURN admission||jsonb_build_object('sourcePlan',effects,'transactionId',pg_current_xact_id()::text);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_post_sources(uuid,integer,uuid)FROM PUBLIC,ai_hr_app;
