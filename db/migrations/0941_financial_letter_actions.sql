@@ -1799,3 +1799,38 @@ $$;
 REVOKE ALL ON FUNCTION app.financial_letter_native_grant_ceiling() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER financial_letter_native_grant_before BEFORE INSERT OR UPDATE OR DELETE ON letter_capability_grant FOR EACH ROW EXECUTE FUNCTION app.financial_letter_native_grant_ceiling();
 CREATE TRIGGER financial_letter_native_grant_after AFTER INSERT OR UPDATE OR DELETE ON letter_capability_grant FOR EACH ROW EXECUTE FUNCTION app.financial_letter_native_grant_ceiling();
+
+--> statement-breakpoint
+-- OneHR's Performance Partner is a distinct native course, not Financial/PerformanceComp authority.
+-- Pure assessment_admin_for remains the arbitrary stored-target owner. CURRENT native callers also
+-- prove the actual claimed role/scope, so retained global Employee cannot lend a narrowed-away HR seat.
+CREATE FUNCTION app.performance_current_native_roles(p_company uuid,p_roles text[]) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.app_user account
+ JOIN public.role_assignment stored ON stored.app_user_id=account.id AND stored.tenant_id=account.tenant_id
+ JOIN app.current_grants() claimed ON claimed.role=stored.role::text
+ WHERE account.id=app.current_user_id() AND account.tenant_id=app.current_tenant_id() AND account.archived_at IS NULL AND NOT app.login_blocked(account.id)
+ AND stored.role::text=ANY(p_roles)
+ AND (p_company IS NULL AND stored.company_id IS NULL AND claimed.company_id IS NULL
+  OR p_company IS NOT NULL AND app.access_scope_covers(stored.company_id,p_company,account.tenant_id) AND app.access_scope_covers(claimed.company_id,p_company,account.tenant_id)));
+$$;
+REVOKE ALL ON FUNCTION app.performance_current_native_roles(uuid,text[]) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_admin(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.assessment_admin_for(app.current_user_id(),wanted_company)
+ AND app.performance_current_native_roles(wanted_company,ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner']);
+$$;
+CREATE OR REPLACE FUNCTION app.onehr_admin_nonpartner(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.performance_current_native_roles(wanted_company,ARRAY['hr_admin','super_admin','performance_comp_partner']);
+$$;
+CREATE OR REPLACE FUNCTION app.onehr_partner_for(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.performance_current_native_roles(wanted_company,ARRAY['performance_partner']);
+$$;
+CREATE OR REPLACE FUNCTION app.onehr_admin_anywhere() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.onehr_admin(NULL) OR EXISTS(SELECT 1 FROM app.current_grants() claimed WHERE claimed.company_id IS NOT NULL
+ AND claimed.role IN ('hr_admin','super_admin','performance_comp_partner','performance_partner') AND app.onehr_admin(claimed.company_id));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_admin_nonpartner(uuid) FROM PUBLIC,ai_hr_app;
