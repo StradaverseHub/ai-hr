@@ -939,7 +939,7 @@ requested action-binding expansion has passed acceptance or is ready for release
 ## Financial and Letters action restrictions — 2 November 2026 (provisional)
 
 Security worker reserves `0941_financial_letter_actions`, aggregate index763,
-when1793330000341, SQL SHA256 `74cfeb9ee5927e81e114474a3d866230b1e1070e309b0c68faab042f5b939986`. This source checkpoint depends on
+when1793330000341, SQL SHA256 `bcd2cf16a305427c6b721133d58b0fa996eb12a1e79d46ac332384a816581c94`. This source checkpoint depends on
 0939 Workforce action helpers and0940 bounded Profile effect proofs. Parent owns0942
 Organisation/Settings and0945 Financial setup/history;0943/0944 are independently allocated.
 The code-owned publisher requires `app.financial_letter_bindings_complete()`; this checkpoint

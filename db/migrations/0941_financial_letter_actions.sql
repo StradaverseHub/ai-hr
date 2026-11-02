@@ -1139,3 +1139,106 @@ CREATE CONSTRAINT TRIGGER financial_fixed_action AFTER INSERT OR UPDATE OR DELET
 CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_audit_effect FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
 
 CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_fixed_replacement FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+
+--> statement-breakpoint
+-- Exact function parity is distinct from the aggregate family: a template operator's
+-- installed native course does not imply Approval or Settings ownership.
+CREATE FUNCTION app.financial_function_native(p_tenant uuid,p_user uuid,p_capability text,p_company uuid,p_current boolean) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE function_key text:=regexp_replace(substr(p_capability,10),'\.[^.]+$','');operation text:=substring(p_capability from '[^.]+$');native text;selected uuid;family text;
+BEGIN
+ IF p_capability NOT LIKE 'function.%' THEN RETURN false;END IF;
+ CASE function_key
+ WHEN 'payroll.process' THEN family:='payroll';
+ WHEN 'payroll.fixedTransactions' THEN family:='payroll';
+ WHEN 'payroll.individualTransactions' THEN family:='payroll';
+ WHEN 'payroll.statutoryAdjustments' THEN family:='payroll';
+ WHEN 'letterFields' THEN native:='template';
+ WHEN 'letterTemplates' THEN native:='template';
+ WHEN 'letterGenerate' THEN native:='generate';
+ WHEN 'letterApproval' THEN native:='approve';
+ WHEN 'letterRegister' THEN native:=CASE WHEN operation='issue' OR operation='delete' THEN 'issue' ELSE 'read' END;
+ WHEN 'letterSettings' THEN native:='settings';
+ ELSE RETURN false;END CASE;
+ IF family IS NOT NULL THEN
+  IF operation NOT IN ('view','add','edit','delete') THEN RETURN false;END IF;
+  IF function_key='payroll.fixedTransactions' AND NOT EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=p_tenant AND r.app_user_id=p_user AND r.role::text IN ('hr_admin','super_admin') AND (p_company IS NULL AND r.company_id IS NULL OR p_company IS NOT NULL AND app.access_scope_covers(r.company_id,p_company,p_tenant))) THEN RETURN false;END IF;
+  RETURN CASE WHEN p_current THEN app.financial_letter_current_legacy_allowed(p_tenant,p_user,family||'.'||operation,p_company)
+   AND (function_key<>'payroll.fixedTransactions' OR EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('hr_admin','super_admin') AND (p_company IS NULL AND g.company_id IS NULL OR p_company IS NOT NULL AND app.access_scope_covers(g.company_id,p_company,p_tenant))))
+   ELSE app.financial_letter_legacy_allowed(p_tenant,p_user,family||'.'||operation,p_company) END;
+ END IF;
+ IF p_company IS NULL THEN
+  IF NOT EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=p_tenant AND r.app_user_id=p_user AND r.company_id IS NULL AND r.role::text IN ('super_admin','hr_admin')) THEN RETURN false;END IF;
+  IF p_current AND NOT EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('super_admin','hr_admin') AND g.company_id IS NULL) THEN RETURN false;END IF;
+  FOR selected IN SELECT c.id FROM public.company c WHERE c.tenant_id=p_tenant AND c.archived_at IS NULL LOOP
+   IF NOT app.financial_function_native(p_tenant,p_user,p_capability,selected,p_current) THEN RETURN false;END IF;
+  END LOOP;RETURN true;
+ END IF;
+ RETURN CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native)
+ ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_function_native(uuid,uuid,text,uuid,boolean) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_function_legacy_allowed(p_tenant uuid,p_user uuid,p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(p_tenant,p_user,p_capability,p_company,false); $$;
+CREATE FUNCTION app.financial_function_current_legacy_allowed(p_tenant uuid,p_user uuid,p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(p_tenant,p_user,p_capability,p_company,true); $$;
+REVOKE ALL ON FUNCTION app.financial_function_legacy_allowed(uuid,uuid,text,uuid),app.financial_function_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_delegate_payroll_process(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.payroll.process.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_payroll_process(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('payroll.process','view','company','payroll.view','app.financial_delegate_payroll_process','{"moduleKey":"payroll","labelKey":"nav.payrollProcess","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.process','add','company','payroll.add','app.financial_delegate_payroll_process','{"moduleKey":"payroll","labelKey":"nav.payrollProcess","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.process','edit','company','payroll.edit','app.financial_delegate_payroll_process','{"moduleKey":"payroll","labelKey":"nav.payrollProcess","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.process','delete','company','payroll.delete','app.financial_delegate_payroll_process','{"moduleKey":"payroll","labelKey":"nav.payrollProcess","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_payroll_fixedTransactions(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.payroll.fixedTransactions.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_payroll_fixedTransactions(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('payroll.fixedTransactions','view','company','payroll.view','app.financial_delegate_payroll_fixedTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.fixed.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/fixed","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.fixedTransactions','add','company','payroll.add','app.financial_delegate_payroll_fixedTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.fixed.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/fixed","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.fixedTransactions','edit','company','payroll.edit','app.financial_delegate_payroll_fixedTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.fixed.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/fixed","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.fixedTransactions','delete','company','payroll.delete','app.financial_delegate_payroll_fixedTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.fixed.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/fixed","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_payroll_individualTransactions(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.payroll.individualTransactions.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_payroll_individualTransactions(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('payroll.individualTransactions','view','company','payroll.view','app.financial_delegate_payroll_individualTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.individual.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/individual","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.individualTransactions','add','company','payroll.add','app.financial_delegate_payroll_individualTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.individual.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/individual","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.individualTransactions','edit','company','payroll.edit','app.financial_delegate_payroll_individualTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.individual.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/individual","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.individualTransactions','delete','company','payroll.delete','app.financial_delegate_payroll_individualTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.individual.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/individual","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_payroll_statutoryAdjustments(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.payroll.statutoryAdjustments.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_payroll_statutoryAdjustments(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('payroll.statutoryAdjustments','view','company','payroll.view','app.financial_delegate_payroll_statutoryAdjustments','{"moduleKey":"payroll","labelKey":"payroll.statutoryAdjustment.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/statutory-adjustment","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.statutoryAdjustments','add','company','payroll.add','app.financial_delegate_payroll_statutoryAdjustments','{"moduleKey":"payroll","labelKey":"payroll.statutoryAdjustment.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/statutory-adjustment","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.statutoryAdjustments','edit','company','payroll.edit','app.financial_delegate_payroll_statutoryAdjustments','{"moduleKey":"payroll","labelKey":"payroll.statutoryAdjustment.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/statutory-adjustment","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.statutoryAdjustments','delete','company','payroll.delete','app.financial_delegate_payroll_statutoryAdjustments','{"moduleKey":"payroll","labelKey":"payroll.statutoryAdjustment.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/statutory-adjustment","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_letterFields(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterFields.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_letterFields(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterFields','view','company','letters.view','app.financial_delegate_letterFields','{"moduleKey":"letters","labelKey":"nav.letterFields","kind":"submenu","course":"administrative","screenKey":"letterFields","href":"/letters/fields","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterFields','add','company','letters.add','app.financial_delegate_letterFields','{"moduleKey":"letters","labelKey":"nav.letterFields","kind":"submenu","course":"administrative","screenKey":"letterFields","href":"/letters/fields","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterFields','edit','company','letters.edit','app.financial_delegate_letterFields','{"moduleKey":"letters","labelKey":"nav.letterFields","kind":"submenu","course":"administrative","screenKey":"letterFields","href":"/letters/fields","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterFields','delete','company','letters.delete','app.financial_delegate_letterFields','{"moduleKey":"letters","labelKey":"nav.letterFields","kind":"submenu","course":"administrative","screenKey":"letterFields","href":"/letters/fields","employeeBearing":false}'::jsonb);
+CREATE FUNCTION app.financial_delegate_letterTemplates(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterTemplates.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_letterTemplates(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterTemplates','view','company','letters.view','app.financial_delegate_letterTemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterTemplates','add','company','letters.add','app.financial_delegate_letterTemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterTemplates','edit','company','letters.edit','app.financial_delegate_letterTemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterTemplates','delete','company','letters.delete','app.financial_delegate_letterTemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterTemplates','approve','company','letters.approve','app.financial_delegate_letterTemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
+CREATE FUNCTION app.financial_delegate_letterGenerate(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterGenerate.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_letterGenerate(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterGenerate','view','company','letters.view','app.financial_delegate_letterGenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterGenerate','add','company','letters.add','app.financial_delegate_letterGenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterGenerate','edit','company','letters.edit','app.financial_delegate_letterGenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterGenerate','delete','company','letters.delete','app.financial_delegate_letterGenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_letterApproval(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterApproval.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_letterApproval(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterApproval','view','company','letters.view','app.financial_delegate_letterApproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"administrative","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterApproval','approve','company','letters.approve','app.financial_delegate_letterApproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"administrative","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_letterRegister(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterRegister.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_letterRegister(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterRegister','view','company','letters.view','app.financial_delegate_letterRegister','{"moduleKey":"letters","labelKey":"nav.letterRegister","kind":"submenu","course":"administrative","screenKey":"letterRegister","href":"/letters/register","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterRegister','issue','company','letters.issue','app.financial_delegate_letterRegister','{"moduleKey":"letters","labelKey":"nav.letterRegister","kind":"submenu","course":"administrative","screenKey":"letterRegister","href":"/letters/register","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterRegister','delete','company','letters.delete','app.financial_delegate_letterRegister','{"moduleKey":"letters","labelKey":"nav.letterRegister","kind":"submenu","course":"administrative","screenKey":"letterRegister","href":"/letters/register","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_letterSettings(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterSettings.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_letterSettings(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterSettings','view','company','letters.view','app.financial_delegate_letterSettings','{"moduleKey":"letters","labelKey":"nav.letterSettings","kind":"submenu","course":"administrative","screenKey":"letterSettings","href":"/letters/settings","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterSettings','add','company','letters.add','app.financial_delegate_letterSettings','{"moduleKey":"letters","labelKey":"nav.letterSettings","kind":"submenu","course":"administrative","screenKey":"letterSettings","href":"/letters/settings","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterSettings','edit','company','letters.edit','app.financial_delegate_letterSettings','{"moduleKey":"letters","labelKey":"nav.letterSettings","kind":"submenu","course":"administrative","screenKey":"letterSettings","href":"/letters/settings","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterSettings','delete','company','letters.delete','app.financial_delegate_letterSettings','{"moduleKey":"letters","labelKey":"nav.letterSettings","kind":"submenu","course":"administrative","screenKey":"letterSettings","href":"/letters/settings","employeeBearing":false}'::jsonb);
