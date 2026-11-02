@@ -9,6 +9,9 @@ import * as events from '../db/events';
 import * as punchOwner from '../core/attendance-punch-change';
 import * as attendancePack from '../packs/attendance/service';
 import * as toilOwner from '../core/toil';
+import * as patternOwner from '../packs/attendance/overtime-patterns';
+import * as policyOwner from '../packs/attendance/policy-selection';
+import * as companyOwner from '../core/employment-company';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection} from '../core/attendance';
@@ -36,10 +39,10 @@ it('profiles the native callback after the first observed service audit append a
   cases.push({b,worker,hr,id:request.correctionId});
  }
  const role=await tenantDb.withTenant(cases[0].hr.ctx,tx=>tx.execute(sql`select current_user as role`));expect(role[0].role).toBe('ai_hr_app');
- type Trace={start:number;callbackStart:number;callbackEnd:number;commitEnd:number;firstBefore?:number;firstAfter?:number;firstType?:string;auditBeforeFirst?:boolean;punchStart?:number;punchEnd?:number;events:number;punchAuditWrites:number;punchAuditEvents:number;segments:{owner:'overtime-refresh'|'replacement-leave';elapsedMs:number}[];afterPunchAudit:{eventType:string;elapsedMs:number}[];failed:boolean};
+ type Trace={start:number;callbackStart:number;callbackEnd:number;commitEnd:number;firstBefore?:number;firstAfter?:number;firstType?:string;auditBeforeFirst?:boolean;punchStart?:number;punchEnd?:number;events:number;punchAuditWrites:number;punchAuditEvents:number;segments:{owner:'overtime-refresh'|'replacement-leave'|'pattern-detection'|'recorded-policy'|'dated-company';elapsedMs:number}[];afterPunchAudit:{eventType:string;elapsedMs:number}[];failed:boolean};
  const sqlProfile=process.env.AIHR_CI_PG_STATEMENTS==='1';
  if(sqlProfile){await owner.client.unsafe('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');await owner.client`select pg_stat_statements_reset()`;}
- const traces:Trace[]=[],byTx=new WeakMap<Tx,Trace>(),realTenant=tenantDb.withTenant,realAppend=events.appendEvent,realBatch=events.appendEvents,realPunch=punchOwner.applyClockChangesTx,realRefresh=attendancePack.refreshOvertimePatternDayTx,realAccrual=toilOwner.maybeAutoAccrueOnApprovalTx;
+ const traces:Trace[]=[],byTx=new WeakMap<Tx,Trace>(),realTenant=tenantDb.withTenant,realAppend=events.appendEvent,realBatch=events.appendEvents,realPunch=punchOwner.applyClockChangesTx,realRefresh=attendancePack.refreshOvertimePatternDayTx,realAccrual=toilOwner.maybeAutoAccrueOnApprovalTx,realDetection=patternOwner.hasOvertimePatternForDayTx,realPolicy=policyOwner.hasRecordedAttendanceGroupPolicyTx,realCompany=companyOwner.provenCompanyDatesTx;
  const observe:typeof realTenant=async<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>,options?:{readOnlySnapshot:true})=>{
   const t:Trace={start:performance.now(),callbackStart:0,callbackEnd:0,commitEnd:0,events:0,punchAuditWrites:0,punchAuditEvents:0,segments:[],afterPunchAudit:[],failed:false};
   try{return await realTenant(ctx,async tx=>{t.callbackStart=performance.now();byTx.set(tx,t);try{return await read(tx);}finally{t.callbackEnd=performance.now();}},options);}
@@ -76,9 +79,16 @@ it('profiles the native callback after the first observed service audit append a
   const t=byTx.get(args[0]),start=performance.now(),afterPunch=t?.punchEnd!==undefined;
   try{return await realAccrual(...args);}finally{if(t&&afterPunch)t.segments.push({owner:'replacement-leave',elapsedMs:performance.now()-start});}
  });
+ const segment=async<T>(tx:Tx,owner:Trace['segments'][number]['owner'],run:()=>Promise<T>):Promise<T>=>{
+  const t=byTx.get(tx),start=performance.now(),afterPunch=t?.punchEnd!==undefined;
+  try{return await run();}finally{if(t&&afterPunch)t.segments.push({owner,elapsedMs:performance.now()-start});}
+ };
+ const detectionSpy=vi.spyOn(patternOwner,'hasOvertimePatternForDayTx').mockImplementation((...args)=>segment(args[0],'pattern-detection',()=>realDetection(...args)));
+ const policySpy=vi.spyOn(policyOwner,'hasRecordedAttendanceGroupPolicyTx').mockImplementation((...args)=>segment(args[0],'recorded-policy',()=>realPolicy(...args)));
+ const companySpy=vi.spyOn(companyOwner,'provenCompanyDatesTx').mockImplementation((...args)=>segment(args[0],'dated-company',()=>realCompany(...args)));
  let settled:PromiseSettledResult<unknown>[];
  try{settled=await Promise.allSettled(cases.map(c=>decideAttendanceCorrection(c.hr.ctx,{correctionId:c.id,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'})));}
- finally{accrualSpy.mockRestore();refreshSpy.mockRestore();punchSpy.mockRestore();batchSpy.mockRestore();appendSpy.mockRestore();tenantSpy.mockRestore();}
+ finally{companySpy.mockRestore();policySpy.mockRestore();detectionSpy.mockRestore();accrualSpy.mockRestore();refreshSpy.mockRestore();punchSpy.mockRestore();batchSpy.mockRestore();appendSpy.mockRestore();tenantSpy.mockRestore();}
  const failures=settled.filter(x=>x.status==='rejected').map(x=>String((x as PromiseRejectedResult).reason));
  const spans=traces.map(t=>({admissionMs:t.callbackStart-t.start,callbackMs:t.callbackEnd-t.callbackStart,settlementMs:t.commitEnd-t.callbackEnd,firstObservedServiceAppendWaitAndSqlMs:t.firstAfter===undefined||t.firstBefore===undefined?null:t.firstAfter-t.firstBefore,postFirstObservedServiceAppendCallbackMs:t.firstAfter===undefined?null:t.callbackEnd-t.firstAfter,punchOwnerMs:t.punchEnd===undefined||t.punchStart===undefined?null:t.punchEnd-t.punchStart,postFirstAppendToPunchOwnerExitMs:t.punchEnd===undefined||t.firstAfter===undefined?null:t.punchEnd-t.firstAfter,postPunchOwnerCallbackMs:t.punchEnd===undefined?null:t.callbackEnd-t.punchEnd,auditHeldBeforeFirstObservedAppend:t.auditBeforeFirst??null,punchAuditWrites:t.punchAuditWrites,punchAuditEvents:t.punchAuditEvents,postPunchOwnerSegments:t.segments,postPunchServiceAudit:t.afterPunchAudit,firstEventType:t.firstType??null,events:t.events,failed:t.failed}));
  const audit=[];for(const b of bases)audit.push(await verifyTenantChain(adminCtx(b)));
@@ -98,6 +108,7 @@ it('profiles the native callback after the first observed service audit append a
  expect(spans.every(t=>t.postPunchOwnerSegments.filter(s=>s.owner==='overtime-refresh').length===1)).toBe(true);
  expect(spans.every(t=>t.postPunchOwnerSegments.filter(s=>s.owner==='replacement-leave').length===1)).toBe(true);
  expect(spans.every(t=>t.postPunchServiceAudit.length>0)).toBe(true);
+ for(const owner of ['pattern-detection','recorded-policy','dated-company'])expect(spans.every(t=>t.postPunchOwnerSegments.some(s=>s.owner===owner))).toBe(true);
  expect(audit.every(a=>a.valid)).toBe(true);
  expect(spans.every(t=>t.auditHeldBeforeFirstObservedAppend===false)).toBe(true);
  expect(spans.every(t=>t.punchAuditEvents===4)).toBe(true);
