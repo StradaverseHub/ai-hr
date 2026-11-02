@@ -237,10 +237,10 @@ $$;
 --> statement-breakpoint
 CREATE FUNCTION app.data_permission_record_read(p_employment uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment e
+ SELECT app.principal_snapshot_current() AND (NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id())
+ OR EXISTS(SELECT 1 FROM public.employment e
  WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
- AND (app.data_permission_matches(e.id) OR app.is_self_person(e.person_id)
-));
+ AND (app.data_permission_matches(e.id) OR app.is_self_person(e.person_id))));
 $$;
 REVOKE ALL ON FUNCTION app.data_permission_record_read(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.data_permission_record_read(uuid) TO ai_hr_app;
