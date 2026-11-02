@@ -5,7 +5,7 @@ import { resolveActiveAiConfig } from './ai-config';
 import { preparePrivateAiTask, withAiAdmissionCheck } from './ai-governance';
 import { generateDraft } from '../lib/ai';
 import { draftInputDigest } from '../lib/ai/draft-input';
-import { assertPayFormulaDraftAuthorTx, validatePayFormulaDraft } from './pay-formula';
+import { assertPayFormulaDraftAuthorTx, validatePayFormulaDraft } from '../packs/payroll/service';
 import { adjudicatePayFormulaDraft, PAY_FORMULA_DRAFT_CONTRACT, payFormulaDraftRequest } from '../lib/pay-formula-ai';
 
 export async function draftPayFormula(ctx: SessionContext, input: unknown) {
