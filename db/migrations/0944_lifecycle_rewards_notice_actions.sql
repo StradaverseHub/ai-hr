@@ -3035,3 +3035,69 @@ BEGIN
  RETURN result;
 END $$;
 REVOKE ALL ON FUNCTION app.reward_senior_evidence_read(uuid,uuid)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Pure target-user defaults must use the same native membership windows, restoration source
+-- fingerprint, notice/BU eligibility and login rules as reward_roles, without borrowing the
+-- current caller's tenant/claims. Copy exact actual native bodies, refusing unexpected ambient
+-- dependencies; originals and their custody/ACL remain unchanged.
+DO $$
+DECLARE spec record;definition text;body text;expected_calls text[];actual_calls text[];header text;replacement text;
+BEGIN
+ FOR spec IN SELECT * FROM(VALUES
+  ('reward_member_people_fingerprint','uuid,uuid','rewards_member_fingerprint_for_tenant','p_tenant uuid, ',ARRAY['current_tenant_id']::text[]),
+  ('reward_member_state','uuid','rewards_member_state_for_tenant','p_tenant uuid, ',ARRAY['current_tenant_id','login_blocked_on','reward_member_people_fingerprint']::text[]),
+  ('reward_roles','uuid','rewards_roles_for_tenant','p_tenant uuid, p_user uuid, ',ARRAY['current_tenant_id','current_user_id','reward_member_eligible_internal']::text[])
+ )sources(name,args,target,parameters,calls)LOOP
+  SELECT p.prosrc INTO body FROM pg_proc p WHERE p.oid=to_regprocedure('app.'||spec.name||'('||spec.args||')')AND p.prosecdef AND p.provolatile='s';
+  IF body IS NULL THEN RAISE EXCEPTION 'Native Rewards eligibility owner unavailable: %',spec.name;END IF;
+  SELECT array_agg(DISTINCT found[1]ORDER BY found[1])INTO actual_calls FROM regexp_matches(body,'app[.]([A-Za-z_][A-Za-z0-9_]*)[(]','g')found;
+  IF actual_calls IS DISTINCT FROM spec.calls OR(length(body)-length(replace(body,'app.current_tenant_id()','')))/length('app.current_tenant_id()')<>1 THEN RAISE EXCEPTION 'Native Rewards eligibility dependencies changed: %',spec.name;END IF;
+  definition:=pg_get_functiondef(to_regprocedure('app.'||spec.name||'('||spec.args||')'));
+  header:='FUNCTION app.'||spec.name||'(';replacement:='FUNCTION app.'||spec.target||'('||spec.parameters;
+  IF strpos(definition,header)=0 THEN RAISE EXCEPTION 'Native Rewards eligibility header changed: %',spec.name;END IF;
+  definition:=replace(replace(definition,header,replacement),'app.current_tenant_id()','p_tenant');
+  IF spec.name='reward_member_state'THEN
+   IF strpos(definition,'app.reward_member_people_fingerprint(m.user_id,m.unit_id)')=0 THEN RAISE EXCEPTION 'Native Rewards restore source changed';END IF;
+   definition:=replace(definition,'app.reward_member_people_fingerprint(m.user_id,m.unit_id)','app.rewards_member_fingerprint_for_tenant(p_tenant,m.user_id,m.unit_id)');
+  ELSIF spec.name='reward_roles'THEN
+   IF strpos(definition,'app.reward_member_eligible_internal(m.id)')=0 OR(length(body)-length(replace(body,'app.current_user_id()','')))/length('app.current_user_id()')<>1 THEN RAISE EXCEPTION 'Native Rewards role source changed';END IF;
+   definition:=replace(replace(definition,'app.current_user_id()','p_user'),'app.reward_member_eligible_internal(m.id)','app.rewards_member_state_for_tenant(p_tenant,m.id)IS NULL');
+  END IF;
+  EXECUTE definition;
+ END LOOP;
+END $$;
+REVOKE ALL ON FUNCTION app.rewards_member_fingerprint_for_tenant(uuid,uuid,uuid),app.rewards_member_state_for_tenant(uuid,uuid),app.rewards_roles_for_tenant(uuid,uuid,uuid)FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.rewards_function_legacy_allowed(t uuid,u uuid,cap text,co uuid)RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE key text:=substring(cap FROM '^function[.](.+)[.][^.]+$');operation text:=substring(cap FROM '[^.]+$');unit public.reward_unit;roles text[];command text;route jsonb;entries jsonb;next_stage text;
+BEGIN
+ IF co IS NULL OR cap IS NULL OR cap<>'function.'||key||'.'||operation OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=co AND c.tenant_id=t)OR NOT EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id))THEN RETURN false;END IF;
+ IF key='rewards.review'THEN IF operation<>'view'THEN RETURN false;END IF;
+ ELSIF key='rewards.posting'THEN IF operation NOT IN('view','execute')THEN RETURN false;END IF;
+ ELSIF key IN('rewards.decisions.submit','rewards.decisions.approve','rewards.decisions.return','rewards.decisions.reject','rewards.decisions.withdraw')THEN
+  command:=substring(key FROM '[^.]+$');IF operation<>'view'AND operation<>(CASE WHEN command='approve'THEN'approve'ELSE'execute'END)THEN RETURN false;END IF;
+ ELSE RETURN false;END IF;
+ FOR unit IN SELECT r.* FROM public.reward_unit r WHERE r.tenant_id=t AND r.company_id=co AND r.deleted_at IS NULL LOOP
+  roles:=ARRAY(SELECT app.rewards_roles_for_tenant(t,u,unit.id));IF cardinality(roles)=0 THEN CONTINUE;END IF;
+  IF key='rewards.posting'THEN
+   IF'payroll'=ANY(roles)AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN('hr_admin','super_admin')AND app.access_scope_covers(r.company_id,co,t))THEN RETURN true;END IF;
+  ELSIF operation='view'THEN RETURN true;
+  ELSE
+   route:='["bu","bg","gr","ctro","ec"]'::jsonb;
+   IF unit.kind<>'annual'THEN
+    SELECT coalesce(jsonb_agg(jsonb_build_object('source',jsonb_build_object('grade',e.source->'grade'),'recommendation',jsonb_build_object('promotionGrade',e.recommendation->'promotionGrade'),'facts',jsonb_build_object('confidentiality',e.facts->'confidentiality'))),'[]'::jsonb)INTO entries FROM public.reward_entry e WHERE e.unit_id=unit.id AND e.tenant_id=t;
+    route:=app.reward_calc_offcycle_route(unit.kind,unit.offcycle,entries);
+   END IF;
+   BEGIN next_stage:=app.reward_calc_transition(unit.kind,unit.status,roles,command,route);RETURN next_stage IS NOT NULL;EXCEPTION WHEN SQLSTATE '42501' THEN CONTINUE;END;
+  END IF;
+ END LOOP;
+ RETURN false;
+END $$;
+CREATE FUNCTION app.rewards_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT co IS NOT NULL AND t=app.current_tenant_id()AND u=app.current_user_id()AND app.principal_snapshot_current()
+ AND app.rewards_function_legacy_allowed(t,u,cap,co)
+ AND CASE WHEN cap IN('function.rewards.posting.view','function.rewards.posting.execute')THEN app.reward_admin(co)ELSE true END;
+$$;
+REVOKE ALL ON FUNCTION app.rewards_function_legacy_allowed(uuid,uuid,text,uuid),app.rewards_function_current_legacy_allowed(uuid,uuid,text,uuid)FROM PUBLIC,ai_hr_app;
