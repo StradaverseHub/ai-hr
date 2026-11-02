@@ -14,6 +14,7 @@
  * promotion. Only fictional records exist.
  * The corpus runs in AIHR_EVAL_REPEATS concurrent passes (default 3) so single-run variance is measured, not guessed. */
 import {randomUUID} from 'node:crypto';
+import {AsyncLocalStorage} from 'node:async_hooks';
 import {mkdirSync,readdirSync,writeFileSync} from 'node:fs';
 import {providerDataReviewStatus} from '../lib/ai/provider-data-reviews';
 import {TERAS_HARNESS_CONTRACT} from '../lib/ai/teras-harness-policy';
@@ -68,7 +69,7 @@ const ROUTES=routes();
 const inventedLinks=(reply:string)=>[...reply.matchAll(/(?:^|[\s(`"'])(\/[a-z][a-z0-9-]*(?:\/[a-z0-9-[\]]+)*)/g)].map(match=>match[1].split(/[?#]/)[0])
  .filter(path=>!ROUTES.some(route=>route.test(path)));
 let base:Base;let spentUsd=0,calls=0;
-const ledger:{pass:number;conversation:string;turn:string;question:string;gate?:string;mode:string|null;reads:string[];proposed:string|null;proposals?:string[];reply:string;usd:number;steps:number;inventedLinks?:string[];truncated?:number;error?:string;
+const ledger:{wire?:string[];pass:number;conversation:string;turn:string;question:string;gate?:string;mode:string|null;reads:string[];proposed:string|null;proposals?:string[];reply:string;usd:number;steps:number;inventedLinks?:string[];truncated?:number;error?:string;
  /** Harness outcomes: reply-check failures (before any retry), whether the shown reply is the spec fallback, and the spec version. */
  checkFailures?:string[];fallback?:boolean;budgetExhausted?:string|null;undeclaredRemoved?:number;spec?:number}[]=[];
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -134,11 +135,24 @@ const PUBLIC_CONTEXT=new Set(['product_destinations','product_guidance','availab
 /** `history` is the model-side transcript (each earlier turn's modelTurn), never the replies the person was shown. */
 /** Production path: the signed model-side continuation of each open conversation, keyed by the caller's conversation id. */
 const continuations=new Map<string,string>();
+// Wire evidence for a production turn that errors (run 41377392382: 57 provider_error turns, deterministic per turn).
+// The adapter reports every failure as one generic error, so each turn's OpenRouter calls are recorded here: path,
+// status and, for a failed response, the first 300 characters of its error body. Fictional data only; test-only.
+const wire=new AsyncLocalStorage<string[]>();
+if(KEY&&MODEL){const realFetch=globalThis.fetch;
+ globalThis.fetch=(async(input:Parameters<typeof fetch>[0],init?:Parameters<typeof fetch>[1])=>{
+  const events=wire.getStore(),url=typeof input==='string'?input:input instanceof URL?input.href:input.url,ours=events&&url.includes('openrouter.ai');
+  try{const response=await realFetch(input,init);
+   if(ours){let note=new URL(url).pathname+' '+response.status;if(!response.ok){try{note+=' '+(await response.clone().text()).slice(0,300);}catch{}}events.push(note);}
+   return response;}
+  catch(error){if(ours)events.push(new URL(url).pathname+' threw '+String((error as Error)?.message??error).slice(0,160));throw error;}
+ }) as typeof fetch;}
 async function produced(ctx:SessionContext,question:string,companyId:string,conversationId:string){
  if(calls>=MAX_CALLS||spentUsd>=BUDGET)throw Error('evaluation_budget_exhausted');
  const route=await conversationRoute(ctx);if(route.route!=='harness')throw Error('conversation_switch_closed');
- const previous=continuations.get(conversationId);
- const result=await runConversationTurn(ctx,route,{question,companyId,locale:'en',...(previous?{continuation:previous}:{})});
+ const previous=continuations.get(conversationId),events:string[]=[];
+ const result=await wire.run(events,()=>runConversationTurn(ctx,route,{question,companyId,locale:'en',...(previous?{continuation:previous}:{})}))
+  .catch(error=>{throw Object.assign(error as Error,{wire:events.slice(-6)});});
  continuations.set(conversationId,result.continuation);calls+=result.trace.budgets.steps;spentUsd+=result.trace.budgets.spendUsd;
  return result;
 }
@@ -176,7 +190,7 @@ describe('real-model redesign ceiling on fictional data',()=>{
       ledger.push({pass:index,conversation:conversation.id,turn:item.id,question:item.question,gate:result.gate,mode:result.mode,reads:result.reads,proposed:result.proposed,proposals:result.proposals,reply:result.reply.slice(0,1200),usd:result.usd,steps:result.steps,truncated:result.truncated,inventedLinks:inventedLinks(result.reply),
        checkFailures:result.checkFailures,fallback:result.fallback,budgetExhausted:result.budgetExhausted,undeclaredRemoved:result.undeclaredRemoved,spec:result.spec});
       history=[...history,...result.modelTurn];
-     }catch(error){observation={plan:null,reads:[],providerCalls:0,error:(error as Error).message};ledger.push({pass:index,conversation:conversation.id,turn:item.id,question:item.question,mode:null,reads:[],proposed:null,reply:'',usd:0,steps:0,error:(error as Error).message});}
+     }catch(error){observation={plan:null,reads:[],providerCalls:0,error:(error as Error).message};ledger.push({pass:index,conversation:conversation.id,turn:item.id,question:item.question,mode:null,reads:[],proposed:null,reply:'',usd:0,steps:0,error:(error as Error).message,wire:(error as {wire?:string[]}).wire});}
      const score=scoreBaselineTurn(item,observation);rows.push(score);scores.push(score);
      // Hard gates: a negative never yields a proposed effect, and the fixed pre-read gate leaves it no private read.
      // Collected and asserted after the ledger is printed, so a breach keeps its evidence.
@@ -190,12 +204,12 @@ describe('real-model redesign ceiling on fictional data',()=>{
   const passes=await Promise.all(Array.from({length:REPEATS},(_,index)=>pass(index)));
   // ADR-0170 step 3: the sensitive-topic and workplace-harms corpus, one fresh conversation per turn, reported apart
   // from the reviewed corpus so its numbers stay comparable. Hard findings are asserted after the output is printed.
-  const sensitiveRows=(await Promise.all(Array.from({length:REPEATS},async(_,index)=>{const rows:{pass:number;turn:string;expect:string;gate?:string;reads?:string[];proposed?:string|null;mode?:string|null;steps?:number;usd?:number;fallback?:boolean;inventedLinks?:string[];route?:boolean;crisisFirst?:boolean;harmRefusal?:boolean;reply?:string;error?:string}[]=[];
+  const sensitiveRows=(await Promise.all(Array.from({length:REPEATS},async(_,index)=>{const rows:{wire?:string[];pass:number;turn:string;expect:string;gate?:string;reads?:string[];proposed?:string|null;mode?:string|null;steps?:number;usd?:number;fallback?:boolean;inventedLinks?:string[];route?:boolean;crisisFirst?:boolean;harmRefusal?:boolean;reply?:string;error?:string}[]=[];
    for(const item of SENSITIVE_CORPUS){if(spentUsd>=BUDGET)break;
     try{const result=await turn(item.persona==='admin'?hr:employee,[],item.question,base.companyId,randomUUID(),new InMemoryTaskMemoryStore());
      rows.push({pass:index,turn:item.id,expect:item.expect,gate:result.gate,reads:result.reads,proposed:result.proposed,mode:result.mode,steps:result.steps,usd:result.usd,fallback:result.fallback,inventedLinks:inventedLinks(result.reply),
       route:result.reply.endsWith(routeReply()),crisisFirst:result.reply.startsWith(HARNESS_SPEC.sensitive.crisisReply),harmRefusal:result.reply===HARNESS_SPEC.sensitive.workplaceHarmReply,reply:result.reply.slice(0,900)});}
-    catch(error){rows.push({pass:index,turn:item.id,expect:item.expect,error:(error as Error).message});}}
+    catch(error){rows.push({pass:index,turn:item.id,expect:item.expect,error:(error as Error).message,wire:(error as {wire?:string[]}).wire});}}
    return rows;}))).flat();
   const sensitiveFindings=sensitiveRows.flatMap(row=>{if(row.error)return[];const found:string[]=[];
    if(row.gate!==row.expect)found.push('gate '+row.gate);
