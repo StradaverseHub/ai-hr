@@ -101,6 +101,7 @@ export function applyAccessConfigurationCommand(
         after.groups=after.groups.map(g=>g.id===group.id?{...g,grants:command.grants.map(grant=>({...grant}))}:g);
       }else if(command.kind==='retireGroup'){
         if(group.systemAdministrator)throw new AccessPermissionError('lastAdministrator');
+        if(before.memberships.some(row=>row.groupId===group.id))throw new AccessPermissionError('invalid');
         after.groups=after.groups.map(g=>g.id===group.id?{...g,retired:true}:g);
       }else{
         if(before.groups.some(g=>g.id!==group.id&&g.name.toLocaleLowerCase('en')===command.name.toLocaleLowerCase('en')))throw new AccessPermissionError('invalid');

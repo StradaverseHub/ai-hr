@@ -4509,6 +4509,13 @@
       "when": 1793330000336,
       "tag": "0936_data_permission_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 760,
+      "version": "7",
+      "when": 1793330000338,
+      "tag": "0938_data_permission_enforcement",
+      "breakpoints": true
     }
   ]
 }
