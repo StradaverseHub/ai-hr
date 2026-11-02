@@ -1592,12 +1592,20 @@ GRANT EXECUTE ON FUNCTION app.access_configuration_transition_preview(uuid,text,
 --> statement-breakpoint
 -- Exact native Workforce screen. Dormant registrations do not activate incomplete submenu coverage.
 -- Independent employee/assigned services retain their own final effect owners.
+CREATE FUNCTION app.profile_changes_maintenance_native(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap IN ('function.profileChanges.maintenance.view','function.profileChanges.maintenance.edit')
+ AND (co IS NULL OR EXISTS(SELECT 1 FROM public.company company WHERE company.tenant_id=t AND company.id=co))
+ AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.role_assignment role ON role.tenant_id=actor.tenant_id AND role.app_user_id=actor.id WHERE actor.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(u) AND (role.role::text='super_admin' OR role.role::text='hr_admin' AND role.company_id IS NULL));
+$$;
+REVOKE ALL ON FUNCTION app.profile_changes_maintenance_native(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.workforce_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$'
+ SELECT (cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$'
  AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.role_assignment r ON r.tenant_id=actor.tenant_id AND r.app_user_id=actor.id
   WHERE actor.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
-   AND r.role::text IN ('hr_admin','super_admin') AND CASE WHEN co IS NULL THEN r.company_id IS NULL ELSE app.access_scope_covers(r.company_id,co,t) END);
+   AND r.role::text IN ('hr_admin','super_admin') AND CASE WHEN co IS NULL THEN r.company_id IS NULL ELSE app.access_scope_covers(r.company_id,co,t) END)) OR app.profile_changes_maintenance_native(t,u,cap,co);
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.workforce_function_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
@@ -1606,7 +1614,7 @@ CREATE FUNCTION app.workforce_function_current_legacy_allowed(t uuid,u uuid,cap 
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
  AND app.workforce_function_legacy_allowed(t,u,cap,co)
- AND CASE WHEN co IS NULL THEN EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('hr_admin','super_admin') AND g.company_id IS NULL)
+ AND CASE WHEN cap LIKE 'function.profileChanges.maintenance.%' THEN app.is_group_admin() WHEN co IS NULL THEN EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('hr_admin','super_admin') AND g.company_id IS NULL)
   ELSE app.is_admin_for(co) END;
 $$;
 --> statement-breakpoint
@@ -1945,3 +1953,75 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.workforce_draft_discard_complete_guard() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER workforce_draft_discard_complete AFTER INSERT ON app.workforce_draft_discard_source DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_discard_complete_guard();
+
+--> statement-breakpoint
+CREATE FUNCTION app.profile_changes_maintenance_delegation(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.is_group_admin() AND cap IN ('workforce.view','workforce.edit');
+$$;
+REVOKE ALL ON FUNCTION app.profile_changes_maintenance_delegation(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','edit'] LOOP
+  PERFORM app.register_function_action('profileChanges.maintenance',operation,'company','workforce.'||operation,'app.profile_changes_maintenance_delegation',
+  '{"moduleKey":"workforce","labelKey":"nav.profileChanges","kind":"native_acl","course":"administrative","screenKey":"profileChanges","href":"/admin/personnel/profile-changes","employeeBearing":true}'::jsonb);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_profile_maintenance_allowed(p_subject uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','edit') AND app.principal_snapshot_current() AND app.is_group_admin() AND app.can_admin_employment(p_subject)
+ AND EXISTS(SELECT 1 FROM public.employment employment JOIN public.access_capability family ON family.id='workforce.'||p_operation WHERE employment.tenant_id=app.current_tenant_id() AND employment.id=p_subject
+  AND (NOT family.supported OR app.access_allowed_for(app.current_user_id(),family.id,employment.company_id))
+  AND app.function_action_allowed('profileChanges.maintenance',p_operation,employment.company_id));
+$$;
+REVOKE ALL ON FUNCTION app.workforce_profile_maintenance_allowed(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.workforce_profile_maintenance_allowed(uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.profile_route_reader(p_subject uuid,p_assigned_user uuid,p_assigned_employment uuid,p_status text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT (app.can_admin_employment(p_subject) AND (
+  (p_assigned_user IS NOT NULL AND p_assigned_user=app.current_user_id() AND NOT app.login_blocked(p_assigned_user)
+    AND EXISTS(SELECT 1 FROM app.profile_route_principal(p_assigned_employment,p_subject) p WHERE p.user_id=p_assigned_user))
+  OR (p_assigned_user IS NULL AND (p_status<>'pending' OR NOT EXISTS(SELECT 1 FROM tenant_setting t WHERE t.tenant_id=app.current_tenant_id() AND t.key='ess.profile_change_routing') OR EXISTS(SELECT 1 FROM tenant_setting t WHERE t.tenant_id=app.current_tenant_id() AND t.key='ess.profile_change_routing' AND t.value->>'version' IN ('1','2') AND t.value->'enabled'='false'::jsonb)))
+  OR (current_setting('app.profile_route_maintenance',true)='on' AND app.workforce_profile_maintenance_allowed(p_subject,'view'))
+ )) OR (p_assigned_user=app.current_user_id() AND EXISTS(SELECT 1 FROM public.profile_change_request q
+ WHERE q.employment_id=p_subject AND q.tenant_id=app.current_tenant_id() AND q.route_approver_user_id=p_assigned_user
+ AND q.route_approver_employment_id=p_assigned_employment AND q.status::text=p_status AND app.data_permission_profile_responsibility(q.id))); $$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.profile_request_reader(p_request uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.profile_request_assignee(p_request) OR EXISTS(SELECT 1 FROM public.profile_change_request q
+  WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id() AND app.can_admin_employment(q.employment_id)
+   AND current_setting('app.profile_route_maintenance',true)='on' AND app.workforce_profile_maintenance_allowed(q.employment_id,'view'));
+$$;
+
+--> statement-breakpoint
+CREATE FUNCTION app.profile_changes_maintenance_write_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ -- Existing write-only privacy erasure is a different finite native course. It cannot reroute,
+ -- reassign an approver, retain a proposal or change any other request field.
+ IF NEW.proposed='{"redacted":true}'::jsonb AND NEW.decision_reason IS NULL AND NEW.route_history='[]'::jsonb AND NEW.route_context IS NULL
+  AND (to_jsonb(OLD)-ARRAY['proposed','decision_reason','route_history','route_context']) IS NOT DISTINCT FROM (to_jsonb(NEW)-ARRAY['proposed','decision_reason','route_history','route_context'])
+  AND app.principal_snapshot_current() AND app.can_admin_employment(OLD.employment_id) THEN RETURN NEW;END IF;
+ IF ROW(OLD.route_id,OLD.route_revision,OLD.route_approver_user_id,OLD.route_approver_employment_id,OLD.route_context,OLD.route_history) IS DISTINCT FROM ROW(NEW.route_id,NEW.route_revision,NEW.route_approver_user_id,NEW.route_approver_employment_id,NEW.route_context,NEW.route_history) THEN
+  PERFORM app.access_workforce_write_lock();
+  IF NOT app.workforce_profile_maintenance_allowed(OLD.employment_id,'edit') OR NOT app.workforce_profile_maintenance_allowed(NEW.employment_id,'edit') THEN RAISE EXCEPTION 'Profile maintenance action unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.profile_changes_maintenance_write_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER profile_changes_maintenance_write BEFORE UPDATE ON public.profile_change_request FOR EACH ROW EXECUTE FUNCTION app.profile_changes_maintenance_write_guard();
+CREATE CONSTRAINT TRIGGER profile_changes_maintenance_final AFTER UPDATE ON public.profile_change_request DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.profile_changes_maintenance_write_guard();
+
+--> statement-breakpoint
+CREATE FUNCTION app.profile_changes_maintenance_lock() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN PERFORM app.access_workforce_write_lock();END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.profile_changes_maintenance_lock() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER profile_changes_maintenance_lock BEFORE UPDATE ON public.profile_change_request FOR EACH STATEMENT EXECUTE FUNCTION app.profile_changes_maintenance_lock();

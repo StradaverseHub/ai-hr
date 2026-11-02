@@ -1025,3 +1025,14 @@ native discard audit; preparing alone cannot commit. The INVOKER trigger observe
 port role and only materializes OLD source data when the private native-sync intent exists. Metadata,
 regular Personnel writes and runtime proof minting gain no authority. This source requires hosted
 native activation/discard plus 0944 exact derived-case qualification before any completion claim.
+
+
+### Profile-change queue maintenance (unapplied source)
+
+0939 registers the company-scoped `profileChanges.maintenance` View/Edit purpose separately from
+assigned Profile task decisions and configuration screens. Its real stored/current native floor is
+Group HR; each consumed source repeats current employee data/company scope and canonical controls.
+Both SQL maintenance-flag read arms and raw route-field OLD/NEW updates use that same helper.
+The native write-only exact privacy redaction remains an independent finite course. Hosted actual
+route, photo/field approvals, private task, privacy-erasure and maintenance regression checks remain
+required. No whole Workforce/submenu publication or installed-history claim follows from this source.

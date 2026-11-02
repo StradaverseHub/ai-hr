@@ -146,12 +146,15 @@ export async function saveProfileRoutingPolicy(ctx:SessionContext,p:{expectedRev
 export function rerouteProfileRequest(ctx:SessionContext,p:{requestId:string;reason:string}){
  if(!p.reason.trim()||p.reason.length>2000)throw new ProfileRoutingError('reasonRequired');
  return withTenant(ctx,async tx=>{
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   if(!isGroupAdmin(ctx))throw new ProfileRoutingError('unauthorized');
   const fresh=await freshProfileEditPolicyTx(tx,ctx);
   await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
   const [row]=await tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,status:profileChangeRequest.status,proposed:profileChangeRequest.proposed,routeId:profileChangeRequest.routeId,routeRevision:profileChangeRequest.routeRevision,routeApproverUserId:profileChangeRequest.routeApproverUserId,routeApproverEmploymentId:profileChangeRequest.routeApproverEmploymentId,routeContext:profileChangeRequest.routeContext,routeHistory:profileChangeRequest.routeHistory}).from(profileChangeRequest).where(eq(profileChangeRequest.id,p.requestId)).limit(1).for('update');
   if(!row||row.status!=='pending')throw new ProfileRoutingError('changed');
+  const [admission]=await tx.execute<{allowed:boolean}>(sql`select app.workforce_profile_maintenance_allowed(${row.employmentId}::uuid,'edit') as allowed`);
+  if(!admission?.allowed)throw new ProfileRoutingError('unauthorized');
   const route=await resolveProfileRouteTx(tx,fresh.ctx,row.employmentId,profileRequestType(row.proposed))??{routeId:null,routeRevision:null,routeApproverUserId:null,routeApproverEmploymentId:null,routeContext:null};
   await tx.update(profileChangeRequest).set({...route,routeHistory:[...(Array.isArray(row.routeHistory)?row.routeHistory:[]),{before:{routeId:row.routeId,revision:row.routeRevision,approverUserId:row.routeApproverUserId,approverEmploymentId:row.routeApproverEmploymentId},after:route,reason:p.reason.trim(),changedAt:new Date().toISOString(),changedByUserId:ctx.userId}]}).where(eq(profileChangeRequest.id,row.id));
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'profile-change',aggregateId:row.id,eventType:'profile-change.rerouted',actor:actorOf(ctx),subjectEmploymentId:row.employmentId,payload:{before:{routeId:row.routeId,revision:row.routeRevision,approverUserId:row.routeApproverUserId,approverEmploymentId:row.routeApproverEmploymentId},after:{routeId:route.routeId,revision:route.routeRevision,approverUserId:route.routeApproverUserId,approverEmploymentId:route.routeApproverEmploymentId},reasonProvided:true}});
@@ -172,7 +175,7 @@ export function profileRerouteCandidates(ctx:SessionContext,p:{query?:string;aft
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
   const like=`%${query.replace(/[\\%_]/g,'\\$&')}%`,after=p.after?new Date(p.after.createdAt):null;
-  const rows=await tx.select({id:profileChangeRequest.id,employeeCode:employment.employeeCode,name:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest).innerJoin(employment,eq(employment.id,profileChangeRequest.employmentId)).innerJoin(person,eq(person.id,profileChangeRequest.personId)).where(and(eq(profileChangeRequest.status,'pending'),query?or(ilike(employment.employeeCode,like),ilike(person.fullName,like)):undefined,p.after&&after?or(gt(profileChangeRequest.createdAt,after),and(eq(profileChangeRequest.createdAt,after),gte(profileChangeRequest.id,p.after.id))):undefined)).orderBy(asc(profileChangeRequest.createdAt),asc(profileChangeRequest.id)).limit(51);
+  const rows=await tx.select({id:profileChangeRequest.id,employeeCode:employment.employeeCode,name:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest).innerJoin(employment,eq(employment.id,profileChangeRequest.employmentId)).innerJoin(person,eq(person.id,profileChangeRequest.personId)).where(and(sql`app.workforce_profile_maintenance_allowed(${profileChangeRequest.employmentId},'view')`,eq(profileChangeRequest.status,'pending'),query?or(ilike(employment.employeeCode,like),ilike(person.fullName,like)):undefined,p.after&&after?or(gt(profileChangeRequest.createdAt,after),and(eq(profileChangeRequest.createdAt,after),gte(profileChangeRequest.id,p.after.id))):undefined)).orderBy(asc(profileChangeRequest.createdAt),asc(profileChangeRequest.id)).limit(51);
   // The first omitted row is the inclusive boundary of the next page, never an inferred business identity.
   const next=rows.slice(50,51)[0];
   return {rows:rows.slice(0,50),nextCursor:next?{createdAt:next.createdAt.toISOString(),id:next.id}:null};
