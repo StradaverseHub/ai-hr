@@ -45,8 +45,10 @@ export const HARNESS_SPEC=freeze({
   * stronger models obeyed by refusing managers' and payroll partners' own work. "Yes, I can …" when an action is listed;
   * "prepared … for you to review and confirm" only when this turn prepared a card, which the overclaim check now admits
   * exactly then; never submitted, approved, closed or done. A turn about another person tells a caller with payroll
-  * access where they can already see that pay (the destination registry), instead of their own payslips. */
- version:11,
+  * access where they can already see that pay (the destination registry), instead of their own payslips.
+  * 12: the person's words reach the model with question.label in front of them, unchanged (the upstream content filter
+  * stopped "apply leave for me" and "how much leave do i have left" sent bare; see question below). */
+ version:12,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -127,6 +129,14 @@ export const HARNESS_SPEC=freeze({
   routedQuestion:'[The person raised a sensitive matter; it was referred to HR and not sent.]',
   refusedQuestion:'[The person asked for a judgement about someone; it was refused and not sent.]',
   overrideQuestion:'[The person asked the Assistant to set aside its rules; it was refused and not sent.]',
+ },
+ question:{
+  /** v12: sent in front of the person's words in their message to the model; the words themselves are unchanged and
+   * the gate, screening, fences and checks see exactly what they saw before. Probe runs 41524993691 and 41525976468
+   * (test/assistant-content-filter.eval.test.ts, gpt-6-luna, Azure): the upstream's content filter stopped "apply
+   * leave for me" and "how much leave do i have left" sent as the bare message, alone or with the system text and
+   * tools, on spec 8 as on 10; with this label neither was stopped, twice each, on both request shapes. */
+  label:'Message from the signed-in person to the HR assistant:',
  },
  replyChecks:{
   order:['non_blank','destination_links','workplace_channel','overclaim','identifiers'],
@@ -233,4 +243,5 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  9:'ab7b3f340e264951c1ddc2e44f6a164fb5b97770b455776228a9ab2aaed19dd7',
  10:'89abb78413f4c4ac88a7d631cf3fbef97b96fdd8a2a1af79b70292292e739f84',
  11:'a3c59f8abff04934166ec0f5002d8bb95fcc96124c01661a19345e0ca6762ccf',
+ 12:'c5fa36868fa6a153aefef022237df18c9a0bcb2184250c68b219a3af1c41a230',
 });
