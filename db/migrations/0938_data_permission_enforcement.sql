@@ -1089,3 +1089,47 @@ CREATE TRIGGER data_permission_identity_generation_update AFTER UPDATE ON app_ex
 CREATE TRIGGER data_permission_identity_generation_delete AFTER DELETE ON app_external_identity REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();
 CREATE TRIGGER data_permission_credential_generation_update AFTER UPDATE ON app_internal_auth_record REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();
 CREATE TRIGGER data_permission_credential_generation_delete AFTER DELETE ON app_internal_auth_record REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();
+
+--> statement-breakpoint
+-- Function delegation cannot give a recipient a wider employee-data ceiling than its author.
+-- Own/assigned workflow authority is independent and is not classified as administrative reach.
+CREATE FUNCTION app.data_permission_function_target_ceiling(p_user uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE actor_rules jsonb;target_rules jsonb;bound jsonb;proposed jsonb;administrative boolean;assigned boolean;
+BEGIN
+ IF app.current_user_id() IS NULL OR NOT app.principal_snapshot_current() OR NOT EXISTS(
+  SELECT 1 FROM public.app_user u WHERE u.id=p_user AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL
+ ) THEN RETURN false;END IF;
+ SELECT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id()) INTO assigned;
+ IF NOT assigned THEN RETURN true;END IF;
+ SELECT r.rules INTO actor_rules FROM public.user_data_permission_assignment a
+ JOIN public.data_permission_profile p ON p.id=a.profile_id AND p.tenant_id=a.tenant_id AND p.enabled AND p.retired_at IS NULL
+ JOIN public.data_permission_revision r ON r.id=p.active_revision_id AND r.profile_id=p.id AND r.tenant_id=p.tenant_id
+ WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id();
+ IF actor_rules IS NULL OR NOT app.data_permission_rules_valid(actor_rules) THEN RETURN false;END IF;
+ IF (actor_rules->>'legacyCompany')::boolean THEN RETURN true;END IF;
+ administrative:=EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=app.current_tenant_id() AND r.app_user_id=p_user
+  AND r.role::text IN ('super_admin','hr_admin','payroll_partner','performance_comp_partner','performance_partner'));
+ IF to_regprocedure('app.access_user_has_administrative_function(uuid)') IS NOT NULL THEN
+  EXECUTE 'SELECT app.access_user_has_administrative_function($1)' INTO assigned USING p_user;
+  administrative:=administrative OR coalesce(assigned,false);
+ END IF;
+ IF NOT administrative THEN RETURN true;END IF;
+ SELECT r.rules INTO target_rules FROM public.user_data_permission_assignment a
+ JOIN public.data_permission_profile p ON p.id=a.profile_id AND p.tenant_id=a.tenant_id AND p.enabled AND p.retired_at IS NULL
+ JOIN public.data_permission_revision r ON r.id=p.active_revision_id AND r.profile_id=p.id AND r.tenant_id=p.tenant_id
+ WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=p_user;
+ IF target_rules IS NULL OR NOT app.data_permission_rules_valid(target_rules) OR (target_rules->>'legacyCompany')::boolean THEN RETURN false;END IF;
+ FOR bound IN SELECT item FROM jsonb_array_elements(actor_rules->'predicates') AS actor_fields(item) LOOP
+  SELECT item INTO proposed FROM jsonb_array_elements(target_rules->'predicates') AS target_fields(item) WHERE item->>'field'=bound->>'field';
+  IF proposed IS NULL THEN RETURN false;END IF;
+  IF bound->>'field'='company' THEN
+   IF EXISTS(SELECT 1 FROM jsonb_array_elements_text(proposed->'values') AS target_values(candidate) WHERE NOT EXISTS(
+    SELECT 1 FROM jsonb_array_elements_text(bound->'values') AS actor_values(ceiling) WHERE app.access_scope_covers(ceiling::uuid,candidate::uuid,app.current_tenant_id())
+   )) THEN RETURN false;END IF;
+  ELSIF EXISTS(SELECT 1 FROM jsonb_array_elements_text(proposed->'values') AS target_values(candidate) WHERE NOT (bound->'values' ? candidate)) THEN RETURN false;END IF;
+ END LOOP;
+ RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_function_target_ceiling(uuid) FROM PUBLIC,ai_hr_app;
