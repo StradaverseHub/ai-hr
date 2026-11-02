@@ -839,7 +839,7 @@ BEGIN
  IF inserted IS NULL THEN RETURN NULL;END IF;
  -- A transaction below the global snapshot xmin has no live/deferred consumer. Do
  -- this once per transaction, retaining every in-flight actor's exact receipts.
- FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect'] LOOP
+ FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth'] LOOP
   EXECUTE format('DELETE FROM app.%I WHERE transaction_id<$1',table_name) USING oldest;
  END LOOP;
  DELETE FROM app.financial_receipt_epoch WHERE transaction_id<oldest;
@@ -1360,6 +1360,12 @@ CREATE TABLE app.financial_backpay_posting(
 );
 ALTER TABLE app.financial_backpay_posting ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.financial_backpay_posting FROM PUBLIC,ai_hr_app;
+CREATE TABLE app.financial_backpay_birth(
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,run_id uuid NOT NULL,company_id uuid NOT NULL,row_hash text NOT NULL,completed boolean NOT NULL DEFAULT false,
+ PRIMARY KEY(transaction_id,tenant_id,user_id,run_id)
+);
+ALTER TABLE app.financial_backpay_birth ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_backpay_birth FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.access_backpay_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE a jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
@@ -1374,6 +1380,8 @@ BEGIN
   IF NOT app.access_backpay_action(NEW.company_id,operation) THEN RAISE EXCEPTION 'Back Pay action unavailable' USING ERRCODE='42501';END IF;
   IF TG_OP='INSERT' THEN
    IF NEW.status<>'draft' OR NEW.created_by_user_id IS DISTINCT FROM app.current_user_id() OR NEW.approved_by_user_id IS NOT NULL OR NEW.approved_at IS NOT NULL OR NEW.posted_at IS NOT NULL OR NEW.cancelled_by_user_id IS NOT NULL OR NEW.cancelled_at IS NOT NULL THEN RAISE EXCEPTION 'Back Pay must start as an owned draft' USING ERRCODE='42501';END IF;
+   IF EXISTS(SELECT 1 FROM public.back_pay_run existing WHERE existing.id=NEW.id) THEN RAISE EXCEPTION 'Back Pay source identity already exists' USING ERRCODE='23505';END IF;
+   INSERT INTO app.financial_backpay_birth VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id,NEW.company_id,encode(sha256(convert_to(a::text,'UTF8')),'hex'),false);
   ELSE
    IF a-ARRAY['status','approved_by_user_id','approved_at','posted_at','cancelled_by_user_id','cancelled_at','updated_at'] IS DISTINCT FROM b-ARRAY['status','approved_by_user_id','approved_at','posted_at','cancelled_by_user_id','cancelled_at','updated_at']
     OR NOT (operation='execute' AND NEW.approved_by_user_id=app.current_user_id() AND NEW.approved_at IS NOT NULL AND NEW.posted_at IS NOT NULL AND a-ARRAY['status','approved_by_user_id','approved_at','posted_at','updated_at'] IS NOT DISTINCT FROM b-ARRAY['status','approved_by_user_id','approved_at','posted_at','updated_at']
@@ -1406,6 +1414,34 @@ REVOKE ALL ON FUNCTION app.access_backpay_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER financial_backpay_action BEFORE INSERT OR UPDATE OR DELETE ON back_pay_run FOR EACH ROW EXECUTE FUNCTION app.access_backpay_guard();
 CREATE TRIGGER financial_backpay_action BEFORE INSERT OR UPDATE OR DELETE ON back_pay_line FOR EACH ROW EXECUTE FUNCTION app.access_backpay_guard();
 CREATE TRIGGER financial_backpay_birth AFTER INSERT ON back_pay_run FOR EACH ROW EXECUTE FUNCTION app.financial_letter_record_birth();
+CREATE FUNCTION app.financial_backpay_birth_finish() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_LEVEL='ROW' THEN
+  UPDATE app.financial_backpay_birth SET completed=true WHERE transaction_id=pg_current_xact_id() AND tenant_id=NEW.tenant_id AND user_id=app.current_user_id() AND run_id=NEW.id AND company_id=NEW.company_id AND row_hash=encode(sha256(convert_to(to_jsonb(NEW)::text,'UTF8')),'hex');
+ ELSE
+  DELETE FROM app.financial_backpay_birth WHERE transaction_id=pg_current_xact_id() AND tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND NOT completed;
+ END IF;RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_backpay_birth_finish() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_backpay_birth_finish AFTER INSERT ON back_pay_run FOR EACH ROW EXECUTE FUNCTION app.financial_backpay_birth_finish();
+CREATE TRIGGER financial_backpay_birth_cleanup AFTER INSERT ON back_pay_run FOR EACH STATEMENT EXECUTE FUNCTION app.financial_backpay_birth_finish();
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_backpay_birth FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+CREATE FUNCTION app.financial_backpay_birth_validate() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM app.financial_backpay_birth proof JOIN public.back_pay_run run ON run.id=proof.run_id AND run.tenant_id=proof.tenant_id AND run.company_id=proof.company_id AND run.created_by_user_id=proof.user_id
+ WHERE proof.transaction_id=NEW.transaction_id AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.user_id AND proof.run_id=NEW.run_id AND proof.completed
+ AND proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+ AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.tenant_id=proof.tenant_id AND audit.aggregate_type='back-pay-run' AND audit.aggregate_id=proof.run_id AND audit.event_type='back-pay.calculated' AND audit.actor_type='user' AND audit.actor_id=proof.user_id AND app.financial_audit_written(audit.id))) THEN RAISE EXCEPTION 'Back Pay birth did not complete' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_backpay_birth_validate() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER financial_backpay_birth_complete AFTER INSERT ON app.financial_backpay_birth DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_backpay_birth_validate();
+
+
 CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_backpay_posting FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
 --> statement-breakpoint
 CREATE FUNCTION app.financial_backpay_posting_approved(p_before jsonb,p_after jsonb) RETURNS boolean
@@ -1446,8 +1482,7 @@ CREATE FUNCTION app.financial_backpay_subjects_allowed(p_run uuid) RETURNS boole
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT NOT EXISTS(SELECT 1 FROM public.back_pay_line line WHERE line.run_id=p_run AND line.tenant_id=app.current_tenant_id() AND NOT app.data_permission_matches(line.employment_id));
 $$;
-REVOKE ALL ON FUNCTION app.financial_backpay_subjects_allowed(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.financial_backpay_subjects_allowed(uuid) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.financial_backpay_subjects_allowed(uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.financial_backpay_scope_allowed(p_run uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.back_pay_run run WHERE run.id=p_run AND run.tenant_id=app.current_tenant_id()
@@ -1456,9 +1491,19 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.financial_backpay_scope_allowed(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.financial_backpay_scope_allowed(uuid) TO ai_hr_app;
--- INSERT RETURNING sees the proposed row through policy columns, before a STABLE helper can
--- re-query its own newborn root. Child INSERT guards independently check every proposed subject.
-CREATE POLICY financial_backpay_read ON back_pay_run AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.access_backpay_action(company_id,'view') AND app.financial_backpay_subjects_allowed(id));
+CREATE FUNCTION app.financial_backpay_row_read(p_row jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND p_row->>'tenant_id'=app.current_tenant_id()::text
+ AND app.access_backpay_action((p_row->>'company_id')::uuid,'view')
+ AND (EXISTS(SELECT 1 FROM public.back_pay_run run WHERE run.id=(p_row->>'id')::uuid AND run.tenant_id=app.current_tenant_id() AND run.company_id=(p_row->>'company_id')::uuid)
+  OR EXISTS(SELECT 1 FROM app.financial_backpay_birth proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.run_id=(p_row->>'id')::uuid AND proof.company_id=(p_row->>'company_id')::uuid AND proof.row_hash=encode(sha256(convert_to(p_row::text,'UTF8')),'hex')))
+ AND app.financial_backpay_subjects_allowed((p_row->>'id')::uuid);
+$$;
+REVOKE ALL ON FUNCTION app.financial_backpay_row_read(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.financial_backpay_row_read(jsonb) TO ai_hr_app;
+-- The public predicate first proves an actual native-visible root or its exact private proposed
+-- birth. The raw subject predicate has no application EXECUTE or guessed-ID existence oracle.
+CREATE POLICY financial_backpay_read ON back_pay_run AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.financial_backpay_row_read(to_jsonb(back_pay_run)));
 CREATE POLICY financial_backpay_read ON back_pay_line AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.financial_backpay_scope_allowed(run_id) AND app.data_permission_matches(employment_id));
 
 --> statement-breakpoint
