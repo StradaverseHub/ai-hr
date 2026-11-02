@@ -1,3 +1,4 @@
+import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../lib/employee-search';
 import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
 import {isCalendarDate} from '../lib/calendar-date';
@@ -471,6 +472,37 @@ export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{co
 }
 
 
+/** Top matches for profile navigation, through the current Workforce-purpose projection.
+ * This deliberately offers no continuation: the switcher is an eight-result jump control. */
+export async function searchWorkforceEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string){
+  if(query.length>200)throw new RangeError('Invalid employee search');
+  const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query);
+  if(!raw||!companyIds.length)return [];
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const columns=workforcePickerColumns(),name=sql`workforce_row.search_name`,code=sql`workforce_row.search_code`;
+  const compact=sql`workforce_row.search_compact`;
+  const rank=sql<number>`case
+    when ${folded} <> '' and ${compact} <> '' and ${compact} = ${folded} then 0
+    when ${folded} <> '' and ${compact} <> '' and left(${compact},length(${folded})) = ${folded} then 1
+    when left(${name},length(${raw})) = ${raw} then 2
+    when position(${raw} in ${code}) > 0 or (${folded} <> '' and position(${folded} in ${compact}) > 0) then 3
+    when position(${raw} in ${name}) > 0 then 4 else 5 end`;
+  // Normalize each authorized candidate once; ranking otherwise repeats these expressions in
+  // both its filter and ordering. This is statement-local work, not a permission/result cache.
+  const source=sql`(
+    with normalized as materialized (
+      select workforce_row.value, lower(${columns.name}) as search_name,
+        lower(coalesce(${columns.employeeCode},'')) as search_code,
+        regexp_replace(lower(coalesce(${columns.employeeCode},'')), '[[:space:]._-]', '', 'g') as search_compact
+      from app.access_workforce_picker_rows(null,null::date,null::date) as workforce_row(value)
+      where ${workforceListWhere({companyIds},workforceListColumns())}
+    )
+    select workforce_row.value, ${rank} as search_rank from normalized as workforce_row
+  ) as workforce_row`;
+  return tx.select(columns).from(source).where(sql`workforce_row.search_rank < 5`)
+    .orderBy(sql`workforce_row.search_rank`,columns.name,columns.employmentId).limit(EMPLOYEE_SEARCH_RESULT_CAP);
+}
+
 /**
  * Headcount by DERIVED Employee Status over the whole filtered set (feedback 579255c3, point 5) —
  * `{ active: 30, resigned: 9, probation: 1, … }` plus the grand total.
@@ -526,6 +558,66 @@ export function countEmployeesByStatus(
       total += n;
     }
     return { total, byStatus };
+  });
+}
+
+/** Personnel page rows, exact total and facets reuse one authorized native projection.
+ * No persistent/result cache: all consumers share this single caller-scoped statement. */
+export async function personnelListPage(
+  ctx: SessionContext,
+  page: Parameters<typeof listEmployeesPage>[1],
+  facets: EmployeeListFilters,
+) {
+  return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    const columns = workforceListColumns();
+    const pageWhere = workforceListWhere(page, columns) ?? sql`true`;
+    const facetWhere = workforceListWhere(facets, columns) ?? sql`true`;
+    const pageNameSort = page.sort === 'company' ? sql`lower(${columns.name})` : columns.name;
+    const pageOrder = page.sort === 'company'
+      ? sql`lower(${workforceListValue('company')}), ${pageNameSort}` : pageNameSort;
+    const aggregateOrder = page.sort === 'company'
+      ? sql`page_rows.company_sort, page_rows.name_sort` : sql`page_rows.name_sort`;
+    const [result] = await tx.execute<{
+      rows: EmployeeListRow[];
+      total: number;
+      status_counts: {status: EmploymentStatus; count: number}[];
+    }>(sql`
+      with workforce_projection(value) as materialized (
+        select workforce_row.value from ${workforceListSource}
+      )
+      select coalesce((
+        select jsonb_agg(page_rows.value order by ${aggregateOrder})
+        from (
+          select workforce_row.value,
+            lower(${workforceListValue('company')}) as company_sort,
+            ${pageNameSort} as name_sort
+          from workforce_projection as workforce_row
+          where ${pageWhere}
+          order by ${pageOrder}
+          limit ${page.limit} offset ${page.offset}
+        ) page_rows
+      ), '[]'::jsonb) as rows,
+      (select count(distinct ${workforceListUuid('employmentId')})::int
+        from workforce_projection as workforce_row where ${pageWhere}) as total,
+      coalesce((
+        select jsonb_agg(jsonb_build_object('status', facet_counts.status, 'count', facet_counts.count))
+        from (
+          select ${columns.status} as status,
+            count(distinct ${workforceListUuid('employmentId')})::int as count
+          from workforce_projection as workforce_row where ${facetWhere}
+          group by 1
+        ) facet_counts
+      ), '[]'::jsonb) as status_counts
+    `);
+    const byStatus: Partial<Record<EmploymentStatus, number>> = {};
+    let total = 0;
+    for (const row of result.status_counts) {
+      const count = Number(row.count);
+      byStatus[row.status] = count;
+      total += count;
+    }
+    return {rows: result.rows, total: Number(result.total), headcount: {total, byStatus}};
   });
 }
 
