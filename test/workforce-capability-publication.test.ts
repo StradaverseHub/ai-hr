@@ -4,9 +4,9 @@ import postgres from 'postgres';
 import {beforeAll,beforeEach,afterAll,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {migrateTestDb,resetDb,seedBase,adminCtx,owner,closeAll,type Base} from './harness';
-import {client,db} from '../db/client';
-import {appUser,tenant} from '../db/schema';
-import {publishWorkforceActionPackage as publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS_V2 as WORKFORCE_CAPABILITY_BINDINGS,WORKFORCE_ACTION_PACKAGE_BINDINGS_SHA256 as WORKFORCE_CAPABILITY_BINDINGS_SHA256} from '../deploy/access/publish-workforce-capabilities';
+import {client,db,withTenant,type SessionContext} from '../db/client';
+import {appUser,tenant,company,roleAssignment} from '../db/schema';
+import {publishActionCapabilityPackage,publishWorkforceActionPackage as publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS_V2 as WORKFORCE_CAPABILITY_BINDINGS,WORKFORCE_ACTION_PACKAGE_BINDINGS_SHA256 as WORKFORCE_CAPABILITY_BINDINGS_SHA256} from '../deploy/access/publish-workforce-capabilities';
 import {workforceCompanies} from '../core/workforce-access';
 import {readAccessConfigurationEditor} from '../core/access-configuration-editor';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
@@ -119,4 +119,27 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
  await expect(owner.client`select app.register_function_action('payComponents.invalidOperation','VIEW','tenant',NULL,NULL,${JSON.stringify(metadata)}::jsonb)`).rejects.toMatchObject({code:'42501'});
  await expect(owner.client`insert into access_capability(id,scope) values('Legacy.MixedCase','tenant')`).rejects.toMatchObject({code:'23514'});
  await expect(owner.client`insert into access_capability(id,scope) values('function.payComponents.catalogueRegistrationRegression.destroy','tenant')`).rejects.toMatchObject({code:'23514'});
+});
+
+it('derives new native holders live, preserves overrides and refuses narrowed-away native defaults',async()=>{
+ await publishActionCapabilityPackage(owner.client,'organisation_settings');
+ const [other]=await owner.db.insert(company).values({tenantId:b.tenantId,legalName:'Fictional native default other company'}).returning();
+ const [user]=await owner.db.insert(appUser).values({tenantId:b.tenantId,workosUserId:'native_defaults_'+randomUUID()}).returning();
+ await owner.db.insert(roleAssignment).values([{tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:null},{tenantId:b.tenantId,appUserId:user.id,role:'employee',companyId:null}]);
+ const context={...adminCtx(b),userId:user.id,roles:['hr_admin','employee'],grants:[{role:'hr_admin',companyId:null},{role:'employee',companyId:null}]};
+ const allowed=(ctx:SessionContext)=>withTenant(ctx,async tx=>(await tx.execute<{allowed:boolean}>(sql`select app.access_allowed_for(${user.id}::uuid,'organisation.view',${other.id}::uuid) as allowed`))[0].allowed);
+ expect(await allowed(context)).toBe(true);
+ expect(await owner.client`select * from access_user_override where tenant_id=${b.tenantId}::uuid and user_id=${user.id}::uuid`).toEqual([]);
+ const narrowed={...context,grants:[{role:'hr_admin',companyId:b.companyId},{role:'employee',companyId:null}]};
+ expect(await allowed(narrowed)).toBe(false);
+ // Pure target/recovery resolution deliberately retains the user's complete stored native state.
+ const [pure]=await owner.client`select app.access_allowed_for_tenant(${b.tenantId}::uuid,${user.id}::uuid,'organisation.view',${other.id}::uuid) as allowed`;
+ expect(pure.allowed).toBe(true);
+ await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect) values(${b.tenantId}::uuid,${user.id}::uuid,'organisation.view',${other.id}::uuid,'deny')`;
+ expect(await allowed(context)).toBe(false);
+ await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and user_id=${user.id}::uuid`;
+ await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId,user.id));
+ const employeeOnly={...context,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+ await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'employee',companyId:null});
+ expect(await allowed(employeeOnly)).toBe(false);
 });
