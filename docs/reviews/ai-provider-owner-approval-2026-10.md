@@ -489,3 +489,45 @@ Entra. This exact follow-up review adds no payload, contract, permission or huma
 The final 1150-file digest is `adbd370dd31e429d8090b935c4dbaa730a840d50506aa4443b70269205ca1055`; the same 24 record digests
 are rebound with all other fields and both pending blocks unchanged. The regenerated module digest
 is `2e96d752dfe314bf33eb449ab842a2b39577a67a4e07e5cc9645f122b3181274`.
+
+
+## Exact technical review — Phase 0/P1 native repairs and import custody
+
+On 2 November 2026, the isolated audit candidate adopts the same 24 approved finite-contract
+purposes from base `50ea247177a9fe1373d3e79d9c742f0fc399ebb7`. The old 1150-file source
+digest is `adbd370dd31e429d8090b935c4dbaa730a840d50506aa4443b70269205ca1055`.
+The reviewed closure now has 1152 files and digest
+`ba018e33802786eecc280a7b9f26866c7478d1e574708d8b781bb5a69157cc9d`.
+An independent immutable-blob calculation matched the original baseline and the canonical
+generator before re-attestation. This is an agent technical source review within the existing
+purposes, not a new human privacy approval, provider certification or installation acceptance.
+
+Covered changes are the native owners for absence dates, bounded clock/lifecycle names,
+back-pay provenance, claim reservations/error classification, import-history custody, leave
+cancellation, immutable prompt/conversation trials, formula/basic payroll intervals, anomaly
+closure, payroll-cycle authority, roster transactions, schedule preflight, TP1 headroom and
+retained CP39 reporting; `db/schema.ts` adds contributing back-pay witnesses. The only added
+covered modules are `core/anomaly-fixed-upstream.ts` and `lib/bounded-unique-name.ts`.
+All six dictionary changes add only `payroll.backPay.review.priorArrears`; Assistant, OneHR
+and AI-management dictionary subtrees remain unchanged. No covered source is removed.
+
+Provider serializers, transports, prompts, descriptors, contract definitions, spend controls
+and review validation are unchanged. Money remains deterministic native output; models
+nominate rather than execute sensitive effects. Completed valid wrong trials remain failures;
+only genuinely unrun arms resume. Deferred combined salary cases preserve the owner's
+existing behavior. Native authority narrows and immutable historical rows are retained.
+
+The import bridge in `616a9e8f9d73076bc52462c3cf581090668bcc29` preserves the immutable
+968 worker's raw SQL ABI through full-company physical-row custody, while fixed guarded
+metadata views preserve partial-company web history. Core source matches that independently
+reviewed bridge. Migration0932 separately checks projection ownership/RLS assumptions and
+grants read-only views; it is outside this static closure and still needs its own native
+security/archived-worker qualification. No new database role or private-data disclosure is added.
+
+Only `sourceDigest` on the same 24 approved literal records is rebound. Original statuses,
+human reviewers, dates and evidence anchors are unchanged. The pending
+`structured_canonical_records_v1` and `attendance_trend_analysis_v1` records are identical.
+Generated hashes alone do not authorize disclosure. Hosted failed/affected recovery must
+verify exact source binding, refusal controls, native outcomes and immutable-worker behavior;
+source re-attestation is separate from real-model answer quality. No provider call, secret
+transfer, activation, merge or deployment is established by this technical review.
