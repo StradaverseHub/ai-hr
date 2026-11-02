@@ -24,9 +24,10 @@ export type ContractApprovalStep={
   id:string;name:string;stage:number;holderIds:string[];quorum:'any'|'all';when:'always'|'pay_changed';
   state:'pending'|'approved'|'rejected'|'skipped';actions:{actorId:string;action:'approve'|'reject';comment:string;at:string}[];
 };
+export type ContractDecisionDraft={kind:'renew'|'end';months:number|null;basicSalary:string;fixedAllowance:string;reason:string;savedBy:string;savedAt:string;sourceRevision:string};
 export type ContractCase={
   id:string;number:string;term:ContractTerm;revision:number;state:ContractState;settings:ContractSettings;
-  decision:ContractDecision|null;decisionHistory:ContractDecision[];approvals:ContractApprovalStep[];
+  decision:ContractDecision|null;decisionDraft?:ContractDecisionDraft|null;decisionHistory:ContractDecision[];approvals:ContractApprovalStep[];
   document:{id:string;hash:string;templateId:string;templateVersion:number;decisionRevision:number;issuedAt:string|null;acceptedAt:string|null;declinedAt:string|null;declineReason:string|null}|null;
   effects:{personnel:string|null;payroll:string|null;verificationTask:string|null;offboarding:string|null;manualHandoff:string|null};
   sourceRetirementApprovalId:string|null;healthCompletedAt:string|null;
