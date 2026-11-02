@@ -4,6 +4,8 @@
 import {Children,isValidElement,type ReactElement,type ReactNode} from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+const permissions=vi.hoisted(()=>({fieldsView:true,fieldsEdit:true,rulesView:true,rulesEdit:true}));
+vi.mock('@/core/organisation-access',()=>({settingsAccess:async(_ctx:unknown,operation:string,key:string)=>key==='profileApprovalRules'?(operation==='view'?permissions.rulesView:permissions.rulesEdit):key==='profileRequestSettings'?(operation==='view'?permissions.fieldsView:permissions.fieldsEdit):false}));
 const actions=vi.hoisted(()=>({photo:vi.fn(),save:vi.fn(),preview:vi.fn(),fields:vi.fn(),legacy:vi.fn()}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>Object.assign((key:string)=>key,{has:()=>false})}));
 vi.mock('@/lib/authz',()=>({requireAdmin:async()=>({tenantId:'fictional',roles:['hr_admin']}),isGroupAdmin:()=>true}));
@@ -33,14 +35,21 @@ function descendants(node:ReactNode):ReactElement<ElementProps>[] {
  return found;
 }
 async function pageTree(){return Page({searchParams:Promise.resolve({})});}
+async function routingTree(){const tree=await ProfileRoutingSetup({session:{tenantId:'fictional',userId:'fictional',roles:['hr_admin']}});expect(tree).not.toBeNull();if(!tree)throw new Error('Authorized routing fixture unavailable');return tree;}
 beforeEach(()=>{
  vi.clearAllMocks();
+ Object.assign(permissions,{fieldsView:true,fieldsEdit:true,rulesView:true,rulesEdit:true});
  actions.photo.mockResolvedValue(undefined);actions.save.mockResolvedValue(undefined);
  actions.preview.mockResolvedValue({ok:true,matched:7,missing:2,overlapping:0,ineligible:0,fingerprint:'a'.repeat(64)});
 });
 afterEach(cleanup);
 
 describe('Employee Change Requests actual page action composition',()=>{
+ it('keeps named routing View and Edit separate from field policy permissions',async()=>{
+  permissions.rulesView=false;const nodes=descendants(await pageTree());expect(nodes.some(node=>node.props.href==='/admin/settings/profile-requests/rules')).toBe(false);
+  expect(await ProfileRoutingSetup({session:{tenantId:'fictional',roles:['hr_admin']}})).toBeNull();
+  permissions.rulesView=true;permissions.rulesEdit=false;const routing=await routingTree();expect(routing.props.disabled).toBe(true);
+ });
  it('wires the photo form exclusively to its setting saver and passes separate named Save and Preview owners',async()=>{
   // Evaluating the actual async Page also catches omitted action imports before any render.
   const tree=await pageTree(),nodes=descendants(tree);
@@ -49,7 +58,7 @@ describe('Employee Change Requests actual page action composition',()=>{
   expect(nodes.filter(node=>node.type==='form'&&node.props.action===actions.legacy)).toHaveLength(0);
   expect(nodes.some(node=>node.type===ProfileRoutingForm)).toBe(false);
   expect(nodes.some(node=>node.props.href==='/admin/settings/profile-requests/rules')).toBe(true);
-  const routing=await ProfileRoutingSetup({session:{tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never});expect(routing!.props.action).toBe(actions.save);
+  const routing=await routingTree();expect(routing!.props.action).toBe(actions.save);
   expect(routing!.props.previewAction).toBe(actions.preview);
   expect(nodes.filter(node=>node.type==='form'&&node.props.action===actions.preview)).toHaveLength(0);
 
@@ -66,7 +75,7 @@ describe('Employee Change Requests actual page action composition',()=>{
  });
 
  it('Preview executes the page-supplied preview owner; Save keeps its revision and never aliases Preview',async()=>{
-  const routing=await ProfileRoutingSetup({session:{tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never});
+  const routing=await routingTree();
   expect(routing.props.action).toBe(actions.save);expect(routing.props.previewAction).toBe(actions.preview);
   render(routing);
   fireEvent.click(screen.getByRole('button',{name:'routingPreview'}));
