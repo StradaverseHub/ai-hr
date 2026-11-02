@@ -33233,7 +33233,7 @@
       "title": "Ujian & Keputusan Formula",
       "sample": "Nilai contoh",
       "employee": "Pekerja sebenar",
-      "sampleHelp": "Berfungsi sebelum menyimpan. Hanya menggunakan nombor yang anda taip di sini; tiada apa-apa ditulis ke gaji.",
+      "sampleHelp": "Boleh diuji sebelum disimpan. Hanya nilai yang anda masukkan di sini digunakan; tiada apa-apa ditulis ke daftar gaji.",
       "fields": {
         "Basic": "Gaji Pokok",
         "FixedAllowances": "Elaun Tetap",

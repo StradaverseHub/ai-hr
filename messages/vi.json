@@ -33233,7 +33233,7 @@
       "title": "Kiểm thử & Kết quả công thức",
       "sample": "Giá trị mẫu",
       "employee": "Nhân viên thực",
-      "sampleHelp": "Dùng được trước khi lưu. Chỉ dùng các số bạn nhập ở đây; không ghi gì vào bảng lương.",
+      "sampleHelp": "Có thể kiểm tra trước khi lưu. Chỉ dùng giá trị bạn nhập ở đây; không ghi vào bảng lương.",
       "fields": {
         "Basic": "Lương cơ bản",
         "FixedAllowances": "Phụ cấp cố định",

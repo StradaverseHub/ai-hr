@@ -33233,7 +33233,7 @@
       "title": "Formula Test & Result",
       "sample": "Sample values",
       "employee": "Real employee",
-      "sampleHelp": "Works before saving. Uses only the numbers you type here; nothing is written to payroll.",
+      "sampleHelp": "Works before saving. Uses only the values you enter here; nothing is written to payroll.",
       "fields": {
         "Basic": "Basic Salary",
         "FixedAllowances": "Fixed Allowances",

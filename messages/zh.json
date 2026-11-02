@@ -33233,7 +33233,7 @@
       "title": "公式测试与结果",
       "sample": "示例数值",
       "employee": "真实员工",
-      "sampleHelp": "保存前即可使用。只使用您在此输入的数字；不会写入任何薪资数据。",
+      "sampleHelp": "保存前即可测试。仅使用您在此输入的值；不会写入薪资记录。",
       "fields": {
         "Basic": "基本工资",
         "FixedAllowances": "固定津贴",
