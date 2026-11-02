@@ -678,6 +678,14 @@ BEGIN
  IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
  PERFORM app.access_workforce_write_lock();
  IF coalesce(NEW.tenant_id,OLD.tenant_id) IS DISTINCT FROM app.current_tenant_id() OR TG_OP='UPDATE' AND ROW(OLD.id,OLD.tenant_id,OLD.employment_id) IS DISTINCT FROM ROW(NEW.id,NEW.tenant_id,NEW.employment_id) THEN RAISE EXCEPTION 'Claim source identity unavailable' USING ERRCODE='42501';END IF;
+ -- A row-level FK does not establish tenant custody or the selected item's actual parent.
+ -- Repeat the native reference owner at creation/reference changes, including raw app SQL.
+ IF TG_OP='INSERT' OR TG_OP='UPDATE' AND ROW(OLD.claim_type_id,OLD.claim_item_id) IS DISTINCT FROM ROW(NEW.claim_type_id,NEW.claim_item_id) THEN
+  IF NOT EXISTS(SELECT 1 FROM public.employment employee WHERE employee.id=NEW.employment_id AND employee.tenant_id=NEW.tenant_id)
+   OR NOT EXISTS(SELECT 1 FROM public.claim_type catalogue WHERE catalogue.id=NEW.claim_type_id AND catalogue.tenant_id=NEW.tenant_id AND catalogue.archived_at IS NULL)
+   OR NEW.claim_item_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.claim_item item WHERE item.id=NEW.claim_item_id AND item.tenant_id=NEW.tenant_id AND item.claim_type_id=NEW.claim_type_id AND item.archived_at IS NULL)
+  THEN RAISE EXCEPTION 'Claim source reference unavailable' USING ERRCODE='42501';END IF;
+ END IF;
  -- Native nonself submission/decision courses retain their current owner until their exact chapter.
  IF NOT app.claim_subject_is_own(subject) AND (TG_OP='INSERT' AND NEW.status='draft' OR TG_OP<>'INSERT' AND OLD.status='draft') THEN RAISE EXCEPTION 'Only the claimant can edit or submit their own draft claim' USING ERRCODE='42501';END IF;
  IF NOT app.claim_subject_is_own(subject) THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;

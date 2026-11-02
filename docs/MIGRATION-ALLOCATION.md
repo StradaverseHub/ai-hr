@@ -1136,3 +1136,12 @@ actual Payroll input/audit custody; no ordinary Claim View, raw metadata exempti
 money witness is introduced. Security checkpoint b600c025b is merged normally as the prerequisite.
 Existing Payroll Claim scope/native positive and deferred incomplete-source negatives require hosted
 qualification together; no local test or compiler execution is claimed.
+
+
+### Claim source reference custody
+
+The real Claim source guard now repeats tenant ownership of employment and Claim Type plus the
+selected Item's tenant/parent at creation and reference changes, including raw app SQL. It preserves
+historical archived references for unchanged decision/financial effects. Authored negative cases use
+actual foreign-tenant catalogue and wrong-parent Item rows and assert source/audit rollback; hosted
+qualification remains required. This adds no native actor course or publication completion marker.
