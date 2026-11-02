@@ -177,12 +177,22 @@ CREATE TRIGGER settings_successful_birth AFTER INSERT ON public.test_case FOR EA
 CREATE TABLE app.organisation_number_intent(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,config_id uuid NOT NULL,before_number integer NOT NULL,after_number integer NOT NULL,draft_id uuid,PRIMARY KEY(xact_id,tenant_id,user_id,config_id));
 ALTER TABLE app.organisation_number_intent ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.organisation_number_intent FROM PUBLIC,ai_hr_app;
+-- A code is witnessed only after the native allocator successfully changes its real counter.
+CREATE TABLE app.organisation_issued_code(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,company_id uuid NOT NULL,config_id uuid NOT NULL,number integer NOT NULL,code text NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,company_id,code));
+ALTER TABLE app.organisation_issued_code ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.organisation_issued_code FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.organisation_employee_code_issued(p_company uuid,p_code text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.organisation_issued_code i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=app.current_tenant_id() AND i.user_id=app.current_user_id() AND i.company_id=p_company AND i.code=p_code);
+$$;
+REVOKE ALL ON FUNCTION app.organisation_employee_code_issued(uuid,text) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.organisation_allocate_employee_code(p_company uuid) RETURNS TABLE(code text,config_id uuid,number integer)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE c public.employee_id_config%ROWTYPE;n integer;
 BEGIN
  PERFORM app.access_workforce_write_lock();
  DELETE FROM app.organisation_number_intent WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ DELETE FROM app.organisation_issued_code WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
  IF NOT app.is_admin_for(p_company) OR NOT app.access_workforce_action_company(p_company,'add') THEN RAISE EXCEPTION 'Employee admission unavailable' USING ERRCODE='42501';END IF;
  SELECT * INTO c FROM public.employee_id_config WHERE tenant_id=app.current_tenant_id() AND status='active' AND (company_id=p_company OR company_id IS NULL) ORDER BY company_id IS NULL LIMIT 1 FOR UPDATE;
  IF NOT FOUND THEN RETURN;END IF;
@@ -190,6 +200,7 @@ BEGIN
  INSERT INTO app.organisation_number_intent VALUES(pg_current_xact_id(),c.tenant_id,app.current_user_id(),c.id,c.current_running_number,n,NULL)
  ON CONFLICT ON CONSTRAINT organisation_number_intent_pkey DO UPDATE SET before_number=EXCLUDED.before_number,after_number=EXCLUDED.after_number;
  UPDATE public.employee_id_config SET current_running_number=n,updated_at=now() WHERE id=c.id;
+ INSERT INTO app.organisation_issued_code VALUES(pg_current_xact_id(),c.tenant_id,app.current_user_id(),p_company,c.id,n,c.prefix||lpad(n::text,greatest(c.number_length,length(n::text)),'0')||c.suffix);
  RETURN QUERY SELECT c.prefix||lpad(n::text,greatest(c.number_length,length(n::text)),'0')||c.suffix,c.id,n;
 END;$$;
 REVOKE ALL ON FUNCTION app.organisation_allocate_employee_code(uuid) FROM PUBLIC;

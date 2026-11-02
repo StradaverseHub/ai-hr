@@ -46,7 +46,7 @@ it('matches the independent typed planner for explicit, builder and aggregate de
  const [cycle]=await owner.db.insert(s.payrollCycle).values({tenantId:b.tenantId,companyId:b.companyId,name:'Rank Monthly',code:'RANK_MONTHLY',runType:'regular'}).returning();
  const formula=await savePayFormula(ctx,{formulaId:'RANK_FORMULA',description:'Actual tested rank source',method:'write',source:'Return {#PayItem}("BASIC") / 10'});
  const tested=await testPayFormula(ctx,{...formula,context:{companyId:b.companyId,employmentId:employee.employmentId,cycleId:cycle.id,period:'2026-10',asOf:'2026-10-30',currentCode:'OVERTIME',input:'1'}});
- expect(tested.passed,tested.error??'real formula activation receipt').toBe(true);expect(tested.amount).toBe('500.00');
+ expect(tested.passed,tested.error??'real formula activation receipt').toBe(true);expect(tested.amount).toBe('500');
  await setPayFormulaActive(ctx,{...formula,testId:tested.id,active:true});
  await owner.db.insert(s.payComponent).values([
   {tenantId:b.tenantId,code:'RANK_BASE',name:'base',kind:'allowance',orpOvertime:true},

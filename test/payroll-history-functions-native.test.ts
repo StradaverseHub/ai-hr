@@ -19,7 +19,9 @@ it('keeps scoped HR history actions inside the native company and refuses a futu
  for(const co of [other.id,null])expect(await access(ctx,co)).toEqual({view:false,add:false,edit:false,delete:false,invented:false});
 });
 it('retains separate native Import and Revert ACLs without borrowing catalogue maintenance',async()=>{
- const userId=await createAppUser(b.tenantId,null,'payroll_partner'),ctx={...adminCtx(b),userId,personId:null,roles:['payroll_partner'],grants:[{role:'payroll_partner',companyId:null}]};
+ const userId=await createAppUser(b.tenantId,null,'employee');
+ await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:userId,role:'payroll_partner',companyId:null});
+ const ctx={...adminCtx(b),userId,personId:null,roles:['payroll_partner'],grants:[{role:'payroll_partner',companyId:null}]};
  expect(await access(ctx,b.companyId)).toEqual({view:true,add:false,edit:false,delete:false,invented:false});
  await owner.db.insert(s.payrollPermissionGrant).values({tenantId:b.tenantId,companyId:b.companyId,permissionKey:'payroll.history.import',role:'payroll_partner',allowed:true});
  expect(await access(ctx,b.companyId)).toEqual({view:true,add:true,edit:true,delete:false,invented:false});
