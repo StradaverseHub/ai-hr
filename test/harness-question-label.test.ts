@@ -47,8 +47,9 @@ describe('the person\'s message to the model (spec v12)',()=>{
   const {model}=await turn('and pending?',[{final:{reply:'None pending.',mode:'answer'}}],{memory,history:first.result.modelTurn});
   const messages=model.requests[0].messages,last=String(messages.at(-1)!.content);
   expect(messages[1]).toEqual({role:'user',content:'How much leave do I have?'});
-  expect(last).toMatch(/^<<untrusted-data tool="conversation_goal" nonce="[^"]+">>\n\{"goal":"How much leave do I have\?"\}\n<<end-untrusted-data[^\n]*\n\n/);
-  expect(last.endsWith('\n\n'+LABEL+'\nand pending?')).toBe(true);expect(last.split(LABEL)).toHaveLength(2);
+  // The fenced goal (after its own introduction line), a blank line, then the label and the words, once.
+  expect(last).toMatch(/<<untrusted-data tool="conversation_goal" nonce="[^"]+">>\n\{"goal":"How much leave do I have\?"\}\n<<end-untrusted-data[^\n]*\n\nMessage from the signed-in person to the HR assistant:\nand pending\?$/);
+  expect(last.split(LABEL)).toHaveLength(2);
  });
  it('does not reach the gate: a crisis message still gets the fixed reply and no model call',async()=>{
   const {result,model,dispatched}=await turn('I want to end my life.');
