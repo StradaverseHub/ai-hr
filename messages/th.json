@@ -20236,7 +20236,8 @@
         "sections": {
           "profile": "ข้อมูลส่วนตัว",
           "employment": "การจ้างงาน",
-          "payroll": "เงินเดือน"
+          "payroll": "เงินเดือน",
+          "statutory": "ข้อมูลตามกฎหมาย"
         },
         "defaults": {
           "initialBasicSalary": "เงินเดือนพื้นฐานเริ่มต้น (ว่างหมายถึงศูนย์)",
@@ -20261,7 +20262,8 @@
           "payMode": "รูปแบบค่าจ้าง",
           "paymentTerm": "รอบการจ่าย",
           "rateAmount": "อัตรารายวัน/รายชั่วโมง",
-          "remarks": "หมายเหตุ"
+          "remarks": "หมายเหตุ",
+          "subjectToSkbbk": "อยู่ภายใต้ SKBBK"
         },
         "states": {
           "awaiting_confirmation": "รอการยืนยัน",

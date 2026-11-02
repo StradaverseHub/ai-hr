@@ -20236,7 +20236,8 @@
         "sections": {
           "profile": "சுயவிவரம்",
           "employment": "பணியமர்த்தல்",
-          "payroll": "சம்பளப் பட்டியல்"
+          "payroll": "சம்பளப் பட்டியல்",
+          "statutory": "சட்டப்பூர்வம்"
         },
         "defaults": {
           "initialBasicSalary": "ஆரம்ப அடிப்படை ஊதியம் (வெற்று என்றால் பூஜ்ஜியம்)",
@@ -20261,7 +20262,8 @@
           "payMode": "ஊதிய முறை",
           "paymentTerm": "கட்டணக் காலம்",
           "rateAmount": "தினசரி/மணிநேர விகிதம்",
-          "remarks": "குறிப்புகள்"
+          "remarks": "குறிப்புகள்",
+          "subjectToSkbbk": "SKBBK-க்கு உட்பட்டது"
         },
         "states": {
           "awaiting_confirmation": "உறுதிப்படுத்தலுக்குக் காத்திருக்கிறது",

@@ -22,14 +22,15 @@ export function employeeDraftActivationEntitlements(snapshot:SessionContext['ent
  if(!snapshot)return snapshot;
  return canonicalEntitlementsForDigest(snapshot);
 }
-const allowed={profile:['fullName','primaryEmail','employeeCode','employeeIdMode','phone'],employment:['companyId','departmentId','employmentType','hiredOn'],payroll:['basicSalary','monthlyAllowance','payMode','paymentTerm','rateAmount','remarks']} as const;
+const allowed={profile:['fullName','primaryEmail','employeeCode','employeeIdMode','phone'],employment:['companyId','departmentId','employmentType','hiredOn'],statutory:['subjectToSkbbk'],payroll:['basicSalary','monthlyAllowance','payMode','paymentTerm','rateAmount','remarks']} as const;
 /** A closed supported subset. No nonempty captured field may be silently ignored by this review. */
 export function supportedEmployeeDraftActivationData(value:unknown):value is EmployeeDraftData{
  if(!value||typeof value!=='object'||Array.isArray(value))return false;
  const data=value as Record<string,unknown>;
  for(const [section,contents]of Object.entries(data)){
+  if(section==='creationDefaultsVersion'){if(contents!==1)return false;continue;}
   if(section==='family'){if(!Array.isArray(contents)||contents.length)return false;continue;}
-  if(section==='statutory'){if(!contents||typeof contents!=='object'||Array.isArray(contents)||Object.values(contents).some(v=>v!==null&&v!==''))return false;continue;}
+  if(section==='statutory'){if(!contents||typeof contents!=='object'||Array.isArray(contents)||Object.entries(contents).some(([key,v])=>v!==null&&v!==''&&(key!=='subjectToSkbbk'||!['yes','no'].includes(v as string))))return false;continue;}
   if(!Object.hasOwn(allowed,section)||!contents||typeof contents!=='object'||Array.isArray(contents))return false;
   const known=allowed[section as keyof typeof allowed] as readonly string[];
   if(Object.entries(contents).some(([key,v])=>typeof v!=='string'||v.length>2000||!known.includes(key)))return false;
@@ -57,7 +58,7 @@ async function source(tx:Tx,ctx:SessionContext,p:Human){
  // The Criteria epoch advances on lock acquisition, including our own preview. Bind actual
  // selected-department availability instead; its row/global state and company remain bound above.
  const configuration=await tx.execute<{kind:string;rows:unknown}>(sql`select 'payroll' as kind,coalesce(jsonb_agg(to_jsonb(c) order by c.id),'[]'::jsonb) as rows from company_payroll_config c where c.tenant_id=${ctx.tenantId}::uuid and c.company_id=${p.companyId}::uuid union all select 'criteria',coalesce(jsonb_agg(to_jsonb(c) order by c.company_id,c.id),'[]'::jsonb) from label_company_assignment c where c.tenant_id=${ctx.tenantId}::uuid and c.label_kind='department' and c.label_id=${departmentId}::uuid union all select 'templates',coalesce(jsonb_agg(to_jsonb(c) order by c.id),'[]'::jsonb) from entitlement_template c where c.tenant_id=${ctx.tenantId}::uuid union all select 'eligibility',coalesce(jsonb_agg(to_jsonb(c) order by c.id),'[]'::jsonb) from entitlement_eligibility_rule c where c.tenant_id=${ctx.tenantId}::uuid`);
- const fields=Object.entries(data).flatMap(([section,contents])=>Object.hasOwn(allowed,section)?Object.entries(contents as Record<string,string>).map(([key,value])=>({section,key,value})):[]);
+ const fields=Object.entries(data).flatMap(([section,contents])=>Object.hasOwn(allowed,section)?Object.entries(contents as Record<string,string>).filter(([key,value])=>value!==null&&(section!=='statutory'||key==='subjectToSkbbk'&&value!=='')).map(([key,value])=>({section,key,value})):[]);
  const native=await previewSavedEmployeeDraftActivationTx(tx,ctx,{id:p.draftId,data,currentStep:draft.currentStep}),pay=native.compensation;
  const review=C.Item.parse({draftId:p.draftId,companyId:p.companyId,companyName:company.name,country:company.country,currency:pay.currency,departmentName:department.name,reservedEmployeeCode:draft.reservedEmployeeCode,fields,standingLeaveTypes:types.map(t=>({id:t.id,code:t.code,name:t.name})),openingLeaveGrants:native.openingLeaveGrants,initialBasicSalary:pay.basicSalary,initialMonthlyAllowance:pay.monthlyAllowance,payMode:pay.payMode,paymentTerm:pay.paymentTerm,rateAmount:pay.rateAmount??'',remarks:pay.remarks??''});
  return{draft,data,review,reviewedDigest:hash([1,C.action,draft,company.snapshot,department.snapshot,rule,types,Array.from(configuration).sort((a,b)=>a.kind<b.kind?-1:a.kind>b.kind?1:0),lifecycle,native,employeeDraftActivationEntitlements(ctx.entitlements)])};

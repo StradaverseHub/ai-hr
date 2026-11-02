@@ -741,7 +741,8 @@ describe('§2 activate a draft with every field set, and read every landing back
 
     it('a draft that names NO statutory value at all leaves subject_to_hrdf following the company', async () => {
       const ctx = adminCtx(b);
-      const { id } = await saveEmployeeDraft(ctx, { data: minimal(), currentStep: 1 });
+      const data=minimal(),{ id } = await saveEmployeeDraft(ctx, { data, currentStep: 1 });
+      await owner.db.update(schema.employeeDraft).set({data}).where(eq(schema.employeeDraft.id,id));
       const { employmentId } = await completeEmployeeDraft(ctx, id);
       const { personId } = await statOf(employmentId);
       const rows = await owner.db

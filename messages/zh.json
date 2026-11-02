@@ -20236,7 +20236,8 @@
         "sections": {
           "profile": "个人资料",
           "employment": "雇佣信息",
-          "payroll": "薪资"
+          "payroll": "薪资",
+          "statutory": "法定资料"
         },
         "defaults": {
           "initialBasicSalary": "初始基本工资（空白表示零）",
@@ -20261,7 +20262,8 @@
           "payMode": "计薪模式",
           "paymentTerm": "付款周期",
           "rateAmount": "日薪／时薪",
-          "remarks": "备注"
+          "remarks": "备注",
+          "subjectToSkbbk": "需缴纳 SKBBK"
         },
         "states": {
           "awaiting_confirmation": "等待确认",

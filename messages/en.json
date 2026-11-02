@@ -20236,7 +20236,8 @@
         "sections": {
           "profile": "Profile",
           "employment": "Employment",
-          "payroll": "Payroll"
+          "payroll": "Payroll",
+          "statutory": "Statutory"
         },
         "defaults": {
           "initialBasicSalary": "Initial basic salary (blank means native zero)",
@@ -20261,7 +20262,8 @@
           "payMode": "Pay mode",
           "paymentTerm": "Payment term",
           "rateAmount": "Daily/hourly rate",
-          "remarks": "Remarks"
+          "remarks": "Remarks",
+          "subjectToSkbbk": "Subject to SKBBK"
         },
         "states": {
           "awaiting_confirmation": "Awaiting confirmation",
