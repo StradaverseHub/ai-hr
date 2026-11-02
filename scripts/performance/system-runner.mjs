@@ -1,6 +1,7 @@
 /** Development-only production renderer and durable job-owned PostgreSQL. No target credentials. */
 import assert from 'node:assert/strict';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
+import {createPerformanceRequestRouter} from './request-routing.mjs';
 import {randomBytes} from 'node:crypto';
 import {mkdirSync,writeFileSync,readFileSync,readdirSync,openSync,closeSync} from 'node:fs';
 import {join,resolve} from 'node:path';
@@ -24,9 +25,18 @@ const env={...process.env,AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUIT
 for(const key of Object.keys(env))if(key.startsWith('WORKOS_')||key==='SHARE_PASSWORD'||key==='DEV_USER_ID')delete env[key];
 env.SHARE_PASSWORD='';env.DEV_USER_ID='';
 const workers=Number(process.env.PERF_APP_WORKERS||'1');assert([1,2].includes(workers));
+// Isolated configuration experiment: application and workload source files are byte-identical to07f.
+const applicationReference='07f07749fc3c9ea74c7769c032812723a4c74961';
+const diagnosticFiles=new Set(['scripts/performance/system-runner.mjs','scripts/performance/request-routing.mjs','test/performance-request-routing.test.ts']);
+const changedPaths=git('diff','--name-only',applicationReference,'HEAD').split('\n').filter(Boolean);
+assert(changedPaths.every(path=>path.startsWith('docs/')||diagnosticFiles.has(path)),'Application or workload differs from the frozen07f control');
+const routingMode=workers===2?'method-split':'round-robin';
+const chooseWorker=createPerformanceRequestRouter(workers,routingMode);
+const routedRequests=Array.from({length:workers},()=>Object.create(null));
+
 const ports=Array.from({length:workers},(_,index)=>3174+index),poolPerWorker=10/workers,heapPerWorker=4096/workers;
 const report={kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:false,sha,controller:process.env.AIHR_CI_CONTROL_HEAD,
- run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool:10,heapMiBPerWorker:heapPerWorker,totalHeapMiB:4096,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host:{cpus:os.availableParallelism(),memoryBytes:os.totalmem()},phases:[],exitCode:1};
+ run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,applicationReference,requestScheduling:{routingMode,byWorker:routedRequests},topology:{workers,poolPerWorker,totalApplicationPool:10,heapMiBPerWorker:heapPerWorker,totalHeapMiB:4096,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host:{cpus:os.availableParallelism(),memoryBytes:os.totalmem()},phases:[],exitCode:1};
 const save=()=>writeFileSync(join(out,'runner.json'),JSON.stringify(report,null,2));
 save();
 async function assertPortFree(port){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});await new Promise(resolve=>server.close(resolve));}
@@ -68,9 +78,10 @@ function summarizeCpu(){
 }
 function summarizeNativeFailures(){
  // The raw logs remain private. Publish only generated references, SQLSTATEs and fixed diagnostic flags.
- const failures=[];
+ const failures=[],processFailures=[];
  for(const name of readdirSync(privateDir).filter(name=>/^server-[0-9]+\.log$/.test(name))){
   const text=readFileSync(join(privateDir,name),'utf8');
+  if(/JavaScript heap out of memory|Reached heap limit/.test(text))processFailures.push({worker:Number(name.match(/[0-9]+/)[0]),heapOutOfMemory:true});
   // The public-error owner logs one explicit SQLSTATE beside each generated reference.
   // Publish that closed metadata only; never the surrounding SQL, values or stack.
   for(const match of text.matchAll(/\[database error (DB-[A-Z]-[A-F0-9]{6})\] sqlstate=([0-9A-Z]{5}|none)/g)){
@@ -87,7 +98,7 @@ function summarizeNativeFailures(){
     deadlockMessage:/deadlock detected/.test(block),permissionDeniedMessage:/permission denied/.test(block)});
   }
  }
- writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'Exact public-error reference/SQLSTATE metadata plus bounded native Draft marker blocks; Draft block errors may overlap; raw logs and SQL excluded',failures},null,2));
+ writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'Exact public-error reference/SQLSTATE metadata plus bounded native Draft marker blocks; Draft block errors may overlap; raw logs and SQL excluded',failures,processFailures},null,2));
 }
 const apps=[],appFds=[];let proxy,upstream,dbStarted=false;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
@@ -111,9 +122,11 @@ try{
  }
  // Avoid replaying a mutation onto a backend socket that closed during an idle interval.
  // Fresh loopback connections also avoid unsafe automatic retries after an ambiguous write.
- upstream=new http.Agent({keepAlive:false,maxSockets:4000});let nextWorker=0;
+ upstream=new http.Agent({keepAlive:false,maxSockets:4000});
  proxy=https.createServer({key:readFileSync(join(privateDir,'key.pem')),cert:readFileSync(join(privateDir,'cert.pem'))},(req,res)=>{
-  const request=http.request({host:'127.0.0.1',port:ports[nextWorker++%ports.length],path:req.url,method:req.method,agent:upstream,
+  const worker=chooseWorker(req.method),method=req.method??'UNKNOWN';
+  routedRequests[worker][method]=(routedRequests[worker][method]??0)+1;
+  const request=http.request({host:'127.0.0.1',port:ports[worker],path:req.url,method:req.method,agent:upstream,
    headers:{...req.headers,host:'localhost:3443','x-forwarded-host':'localhost:3443','x-forwarded-proto':'https'}},response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res);});
   request.on('error',error=>{
    report.proxyErrors.push({at:new Date().toISOString(),method:req.method,path:req.url.split('?')[0],code:error.code??error.name,reusedSocket:request.reusedSocket,headersSent:res.headersSent,clientAborted:Boolean(req.aborted||res.destroyed)});save();
