@@ -2594,3 +2594,48 @@ BEGIN
  RETURN jsonb_set(p_calculation,'{rows}',rows);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_calc_post_senior(jsonb,jsonb,jsonb)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Ordinary native posting preparation. This private owner does not enact salary, grade,
+-- payroll, funding or audit effects. Reviewed Assistant preparation retains its separate
+-- NOWAIT/full nominated-source contract; no caller flag can weaken that contract here.
+CREATE FUNCTION app.reward_post_admission(p_unit uuid,p_revision integer,p_batch uuid DEFAULT NULL)RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;actor public.app_user;batch public.payroll_batch;roles text[];entries jsonb;funding jsonb;calculation jsonb;awards jsonb;hash text;has_bonus boolean;authority text;
+BEGIN
+ IF nullif(current_setting('app.agent_principal_id',true),'')IS NOT NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
+ IF app.current_agent_principal()IS NOT NULL OR NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
+ PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();
+ IF current_setting('transaction_isolation')<>'read committed'OR current_setting('transaction_read_only')<>'off'OR NOT pg_try_advisory_xact_lock(hashtextextended('leave-dependency-configuration:'||app.current_tenant_id()::text,0))THEN RAISE EXCEPTION 'Leave source is unavailable; review it again.' USING ERRCODE='55P03';END IF;
+ funding:=app.reward_funding(p_unit,true);
+ SELECT actual.* INTO unit FROM public.reward_unit actual WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id()AND actual.deleted_at IS NULL FOR UPDATE;
+ SELECT actual.* INTO actor FROM public.app_user actual WHERE actual.id=app.current_user_id()AND actual.tenant_id=app.current_tenant_id()AND actual.archived_at IS NULL AND NOT app.login_blocked(actual.id);
+ roles:=ARRAY(SELECT app.reward_roles(p_unit));
+ IF unit.id IS NULL OR actor.id IS NULL THEN RAISE EXCEPTION 'Reward posting unavailable' USING ERRCODE='42501';END IF;
+ IF unit.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'This review changed in another session. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF NOT('payroll'=ANY(roles))THEN RAISE EXCEPTION 'The assigned payroll role is required.' USING ERRCODE='42501';END IF;
+ IF NOT app.reward_admin(unit.company_id)THEN RAISE EXCEPTION 'Company administrator access is required.' USING ERRCODE='42501';END IF;
+ -- Native idempotence precedes fresh source, calculation and batch checks, but never authority.
+ IF unit.status='posted'THEN RETURN jsonb_build_object('alreadyPosted',true,'unitId',unit.id,'revision',unit.revision);END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',e.id,'source',e.source,'facts',e.facts,'recommendation',e.recommendation)ORDER BY e.id),'[]'::jsonb)INTO entries FROM public.reward_entry e WHERE e.tenant_id=unit.tenant_id AND e.unit_id=unit.id;
+ hash:=app.reward_calc_decision_digest(unit.policy,unit.kind,unit.parent_unit_id,unit.offcycle,entries);
+ IF unit.status<>'approved'OR unit.approved_digest IS DISTINCT FROM hash THEN RAISE EXCEPTION 'Only the unchanged, fully approved review can be posted.' USING ERRCODE='42501';END IF;
+ IF NOT app.reward_calc_source_identity_current(unit.id,unit.tenant_id)THEN RAISE EXCEPTION 'Reward recipient source unavailable' USING ERRCODE='42501';END IF;
+ -- Canonical post-purpose reader derives actual approved/payroll/admin authority itself.
+ -- It never supplies approval evidence/reference/reason/date or a generic raw-pay grant.
+ awards:=app.reward_senior_awards_for_post(unit.id);
+ IF unit.kind='annual'THEN calculation:=app.reward_calc_post_senior(app.reward_calc_annual_unit(unit.id,unit.revision),unit.policy,awards);ELSE
+  calculation:=app.reward_calc_offcycle(entries,unit.kind,unit.offcycle,funding);
+  IF(funding->>'duplicate')::boolean THEN calculation:=jsonb_set(calculation,'{flags}',(calculation->'flags')||app.reward_calc_flag('block','OC-12','An employee already has an open off-cycle request against this annual review.'));END IF;
+ END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(calculation->'flags')f WHERE f->>'severity'='block')THEN RAISE EXCEPTION 'The approved review no longer passes validation.' USING ERRCODE='42501';END IF;
+ SELECT EXISTS(SELECT 1 FROM jsonb_array_elements(calculation->'rows')e WHERE(e->>'bonusCents')::numeric+(e->>'lumpCents')::numeric>0 OR app.reward_calc_senior(unit.policy,e))INTO has_bonus;
+ IF has_bonus AND p_batch IS NULL THEN RAISE EXCEPTION 'Select a draft payroll batch for the bonus and lump-sum awards.' USING ERRCODE='42501';END IF;
+ IF p_batch IS NOT NULL THEN
+  SELECT actual.* INTO batch FROM public.payroll_batch actual WHERE actual.id=p_batch AND actual.tenant_id=unit.tenant_id FOR UPDATE;
+  IF batch.id IS NULL OR batch.company_id<>unit.company_id OR batch.status<>'draft'THEN RAISE EXCEPTION 'The payroll batch must be a draft in this company.' USING ERRCODE='42501';END IF;
+ END IF;
+ authority:=app.access_function_authority_stamp();IF authority IS NULL THEN RAISE EXCEPTION 'Reward posting authority unavailable' USING ERRCODE='42501';END IF;
+ RETURN jsonb_build_object('alreadyPosted',false,'tenantId',unit.tenant_id,'userId',actor.id,'unitId',unit.id,'revision',unit.revision,'batchId',p_batch,'authorityStamp',authority,'decisionDigest',hash,'unitBeforeHash',app.reward_decision_row_hash(to_jsonb(unit),'reward_unit'),'calculation',calculation,'postingAwards',awards,'hasBonus',has_bonus);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_post_admission(uuid,integer,uuid)FROM PUBLIC,ai_hr_app;

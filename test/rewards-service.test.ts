@@ -324,6 +324,18 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     const after=await state();expect(after.unit.unit.status).toBe('posted');
     expect(await postRewardUnit(admin,unitId,rev,batch.batchId)).toEqual({alreadyPosted:true});expect(await state()).toEqual(after);
   });
+  it('privately admits actual ordinary posting with canonical awards and no effects, preserving authority-first posted retries',async()=>{
+    const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)}),expected=await calculationOracle(admin,unitId);
+    const snapshot=async()=>({units:await owner.db.select().from(schema.rewardUnit),entries:await owner.db.select().from(schema.rewardEntry),decisions:await owner.db.select().from(schema.rewardDecision),compensation:await owner.db.select().from(schema.compensation),inputs:await owner.db.select().from(schema.payrollInput),events:await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id)}),before=await snapshot();
+    const admit=(actor:SessionContext,rev=revision,batchId:string|null=batch.batchId)=>owner.withTenant(actor,tx=>tx.execute<{value:{alreadyPosted:boolean;authorityStamp:string;decisionDigest:string;calculation:{rows:unknown[];flags:unknown[];budgets:typeof expected.budgets};postingAwards:Record<string,unknown>}}>(sql`select app.reward_post_admission(${unitId}::uuid,${rev},${batchId}::uuid)as value`));
+    const [result]=await admit(admin);expect(result.value.alreadyPosted).toBe(false);expect(result.value.authorityStamp).toMatch(/^[a-f0-9]{64}$/);expect(result.value.decisionDigest).toBe(expected.unit.approvedDigest);expect(result.value.calculation.rows).toEqual(expected.rows);expect(result.value.calculation.flags).toEqual(expected.flags);expect(result.value.calculation.budgets.standard).toEqual(expected.budgets.standard);expect(result.value.calculation.budgets.h).toEqual(expected.budgets.h);expect(result.value.postingAwards).toEqual({});expect(await snapshot()).toEqual(before);
+    await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_post_admission(${unitId}::uuid,${revision},${batch.batchId}::uuid)`))).rejects.toThrow();
+    await expect(admit(actors.bu!)).rejects.toThrow('assigned payroll');await expect(admit(admin,revision+1)).rejects.toThrow('another session');await expect(admit(admin,revision,null)).rejects.toThrow('draft payroll batch');
+    await expect(owner.withTenant(admin,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','not-a-valid-agent',true)`);await tx.execute(sql`select app.reward_post_admission(${unitId}::uuid,${revision},${batch.batchId}::uuid)`);})).rejects.toThrow('current human');
+    expect(await snapshot()).toEqual(before);
+    await postRewardUnit(admin,unitId,revision,batch.batchId);const posted=await snapshot();
+    const [retry]=await admit(admin,revision,null);expect(retry.value).toEqual({alreadyPosted:true,unitId,revision});await expect(admit(actors.bu!,revision,null)).rejects.toThrow('assigned payroll');expect(await snapshot()).toEqual(posted);
+  });
   it('posts exactly once, adds awards to existing payroll and preserves unrelated inputs', async () => {
     const rev = await approve();
     const batch = await createBatch(admin, { companyId: b.companyId, payPeriod: today.slice(0, 7) });
