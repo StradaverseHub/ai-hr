@@ -3080,14 +3080,21 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_te
 DECLARE key text:=substring(cap FROM '^function[.](.+)[.][^.]+$');operation text:=substring(cap FROM '[^.]+$');unit public.reward_unit;roles text[];command text;route jsonb;entries jsonb;next_stage text;
 BEGIN
  IF co IS NULL OR cap IS NULL OR cap<>'function.'||key||'.'||operation OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=co AND c.tenant_id=t)OR NOT EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id))THEN RETURN false;END IF;
- IF key='rewards.review'THEN IF operation<>'view'THEN RETURN false;END IF;
+ IF key IN('rewards.review','rewards.configuration.assigned','rewards.configuration.administration')THEN IF operation<>'view'THEN RETURN false;END IF;
  ELSIF key='rewards.posting'THEN IF operation NOT IN('view','execute')THEN RETURN false;END IF;
  ELSIF key IN('rewards.decisions.submit','rewards.decisions.approve','rewards.decisions.return','rewards.decisions.reject','rewards.decisions.withdraw')THEN
   command:=substring(key FROM '[^.]+$');IF operation<>'view'AND operation<>(CASE WHEN command='approve'THEN'approve'ELSE'execute'END)THEN RETURN false;END IF;
  ELSE RETURN false;END IF;
  FOR unit IN SELECT r.* FROM public.reward_unit r WHERE r.tenant_id=t AND r.company_id=co AND r.deleted_at IS NULL LOOP
-  roles:=ARRAY(SELECT app.rewards_roles_for_tenant(t,u,unit.id));IF cardinality(roles)=0 THEN CONTINUE;END IF;
-  IF key='rewards.posting'THEN
+  roles:=ARRAY(SELECT app.rewards_roles_for_tenant(t,u,unit.id));
+  IF key='rewards.configuration.administration'THEN
+   IF EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN('hr_admin','super_admin')AND app.access_scope_covers(r.company_id,co,t))THEN RETURN true;END IF;
+   CONTINUE;
+  END IF;
+  IF cardinality(roles)=0 THEN CONTINUE;END IF;
+  IF key='rewards.configuration.assigned'THEN
+   IF'gr'=ANY(roles)THEN RETURN true;END IF;
+  ELSIF key='rewards.posting'THEN
    IF'payroll'=ANY(roles)AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN('hr_admin','super_admin')AND app.access_scope_covers(r.company_id,co,t))THEN RETURN true;END IF;
   ELSIF operation='view'THEN RETURN true;
   ELSE
@@ -3105,7 +3112,7 @@ CREATE FUNCTION app.rewards_function_current_legacy_allowed(t uuid,u uuid,cap te
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT co IS NOT NULL AND t=app.current_tenant_id()AND u=app.current_user_id()AND app.principal_snapshot_current()
  AND app.rewards_function_legacy_allowed(t,u,cap,co)
- AND CASE WHEN cap IN('function.rewards.posting.view','function.rewards.posting.execute')THEN app.reward_admin(co)ELSE true END;
+ AND CASE WHEN cap IN('function.rewards.posting.view','function.rewards.posting.execute','function.rewards.configuration.administration.view')THEN app.reward_admin(co)ELSE true END;
 $$;
 REVOKE ALL ON FUNCTION app.rewards_function_legacy_allowed(uuid,uuid,text,uuid),app.rewards_function_current_legacy_allowed(uuid,uuid,text,uuid)FROM PUBLIC,ai_hr_app;
 
@@ -3217,9 +3224,9 @@ BEGIN
  IF NOT administrator AND NOT is_gr THEN RAISE EXCEPTION 'Rewards configuration requires company administrator or Group Rewards access.' USING ERRCODE='42501';END IF;
  -- Eligibility selects the native course once. A denied assigned course cannot retry through HR.
  IF is_gr THEN
-  IF app.function_action_allowed('rewards.review','view',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward review function unavailable' USING ERRCODE='42501';END IF;
+  IF app.function_action_allowed('rewards.configuration.assigned','view',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward review function unavailable' USING ERRCODE='42501';END IF;
   SELECT g.state INTO state FROM public.reward_governance g WHERE g.unit_id=unit.id AND g.tenant_id=unit.tenant_id;
- ELSIF app.lifecycle_reward_notice_action('rewards','view',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Rewards configuration unavailable' USING ERRCODE='42501';END IF;
+ ELSIF app.function_action_allowed('rewards.configuration.administration','view',unit.company_id)IS NOT TRUE OR app.lifecycle_reward_notice_action('rewards','view',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Rewards configuration unavailable' USING ERRCODE='42501';END IF;
  policy:=app.reward_calc_effective_policy(unit.policy,state);
  IF NOT is_gr THEN policy:=policy||jsonb_build_object('patActual',0,'patTarget',100);END IF;
  -- An explicit field list prevents a future private unit column becoming public implicitly.
@@ -3231,3 +3238,9 @@ BEGIN
  RETURN jsonb_build_object('unit',unit_projection,'cycle',cycle,'name',label,'members',members,'canReadPat',is_gr,'policyOrigin',app.reward_policy_unit_origin(unit.id),'canConfigure',is_gr AND unit.status='draft'AND unit.kind='annual','canManageMembers',administrator AND unit.status='draft');
 END $$;
 REVOKE ALL ON FUNCTION app.reward_configuration_review(uuid)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Distinct real configuration read purposes. They stay dormant and private; defining View
+-- does not assert that policy/member mutation purposes are closed or publication is complete.
+SELECT app.register_function_action('rewards.configuration.assigned','view','company',NULL,'app.rewards_function_legacy_allowed','{"moduleKey":"rewards","labelKey":"rewards.configuration","kind":"native_acl","course":"assigned","screenKey":"rewardsAdmin","href":"/rewards","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('rewards.configuration.administration','view','company','rewards.view','app.rewards_function_legacy_allowed','{"moduleKey":"rewards","labelKey":"rewards.configuration","kind":"native_acl","course":"administrative","screenKey":"rewardsAdmin","href":"/rewards","employeeBearing":false}'::jsonb);

@@ -17,6 +17,8 @@ export const REWARDS_FUNCTIONS:readonly FunctionActionDescriptor[]=[
    {owner:'app.reward_offcycle_calculation',operation:'actual-visible-offcycle-review'},
    {owner:'app.reward_calc_projection',operation:'native-self-confidential-Senior-disclosure'},
   ]}]},
+ ...(['assigned','administration']as const).map(course=>({key:`rewards.configuration.${course}`,scope:'company' as const,moduleKey:'rewards',labelKey:'rewards.configuration',kind:'native_acl' as const,course:course==='assigned'?'assigned' as const:'administrative' as const,screenKey:'rewardsAdmin',href:'/rewards',employeeBearing:false,
+  actions:[{operation:'view' as const,parentCapability:course==='administration'?'rewards.view':null,delegationFloorFunction:'app.rewards_function_legacy_allowed',bindings:[{owner:'app.reward_configuration_review',operation:course==='assigned'?'native-GR-configuration-metadata':'native-company-HR-configuration-metadata'}]}]})),
  ...decisionCourses.map(({command,operation,labelKey}):FunctionActionDescriptor=>({key:`rewards.decisions.${command}`,scope:'company',moduleKey:'rewards',labelKey,kind:'native_acl',course:'assigned',screenKey:'rewards',href:'/rewards',employeeBearing:false,
   actions:(['view',operation]as readonly FunctionOperation[]).map(action=>({operation:action,parentCapability:null,delegationFloorFunction:'app.rewards_function_legacy_allowed',bindings:[
    {owner:'app.reward_decision_command',operation:`fixed-human-${command}-frontdoor`},
@@ -47,6 +49,7 @@ export const REWARDS_FUNCTION_REQUIRED_OWNERS=[
  'app.rewards_roles_for_tenant(uuid,uuid,uuid)',
  'app.rewards_function_legacy_allowed(uuid,uuid,text,uuid)',
  'app.rewards_function_current_legacy_allowed(uuid,uuid,text,uuid)',
+ 'app.reward_configuration_review(uuid)',
  'app.reward_decision_command(uuid,integer,text,text,boolean)',
  'app.reward_post_command(uuid,integer,uuid)',
 ]as const;

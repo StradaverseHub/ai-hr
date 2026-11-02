@@ -128,8 +128,11 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
       const normalize=(value:typeof expected)=>({...value,unit:{...value.unit,createdAt:new Date(value.unit.createdAt).toISOString(),updatedAt:new Date(value.unit.updatedAt).toISOString(),postedAt:value.unit.postedAt?new Date(value.unit.postedAt).toISOString():null,deletedAt:value.unit.deletedAt?new Date(value.unit.deletedAt).toISOString():null}});
       expect(normalize(result.value)).toEqual(normalize(expected));expect(result.value).not.toHaveProperty('rows');expect(result.value.members.length).toBeGreaterThan(0);
       if(actor===hr)expect(result.value).toMatchObject({canReadPat:false,canConfigure:false,canManageMembers:true,unit:{policy:{patActual:0,patTarget:100}}});
+      const [floor]=await owner.db.execute<{assigned:boolean;administration:boolean}>(sql`select app.rewards_function_legacy_allowed(${b.tenantId}::uuid,${actor.userId!}::uuid,'function.rewards.configuration.assigned.view',${b.companyId}::uuid)as assigned,app.rewards_function_legacy_allowed(${b.tenantId}::uuid,${actor.userId!}::uuid,'function.rewards.configuration.administration.view',${b.companyId}::uuid)as administration`);expect(floor).toEqual({assigned:actor===admin,administration:true});
       await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_configuration_review(${unitId}::uuid)`))).rejects.toThrow();
     }
+    const claimed={...hr,roles:['employee']as SessionContext['roles'],grants:undefined};
+    const [current]=await owner.withTenant(claimed,tx=>tx.execute<{pure:boolean;current:boolean}>(sql`select app.rewards_function_legacy_allowed(${b.tenantId}::uuid,${hr.userId!}::uuid,'function.rewards.configuration.administration.view',${b.companyId}::uuid)as pure,app.rewards_function_current_legacy_allowed(${b.tenantId}::uuid,${hr.userId!}::uuid,'function.rewards.configuration.administration.view',${b.companyId}::uuid)as current`));expect(current).toEqual({pure:true,current:false});
     await expect(owner.withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_configuration_review(${unitId}::uuid)`))).rejects.toThrow();
   });
   it('refuses duplicate, unavailable, stale and altered-preview selections with no writes', async () => {
