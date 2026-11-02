@@ -18,7 +18,7 @@ import * as Notifications from 'expo-notifications';
 import { router, type Href } from 'expo-router';
 import { apiPostV2 } from './api';
 import { DesignText as Text, useTenantDesign } from './design';
-import { SignInRequiredError } from './errors';
+import { SessionChangedError, SignInRequiredError } from './errors';
 import { t, type MessageKey } from './i18n';
 import { notificationHref } from './inbox';
 import {
@@ -61,22 +61,30 @@ export function pushNotificationId(response: Notifications.NotificationResponse 
   return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : null;
 }
 /** Resolve the id through the server's read command and allowlist; open that fixed screen, or the Inbox. */
-export async function openPushedNotification(notificationId: string | null): Promise<void> {
+export async function openPushedNotification(notificationId: string | null, visible: () => boolean = () => true): Promise<void> {
+  const owner = identityKey();
+  const current = () => visible() && AppState.currentState === 'active' && identityKey() === owner;
+  if (!current()) return;
+  const assertCurrent = () => { if (!current()) throw new SessionChangedError(); };
   if (!notificationId) { router.push('/inbox' as Href); return; }
   try {
-    const answer = await apiPostV2('v2/notifications/read', NotificationReadResult, { ids: [notificationId] });
+    const answer = await apiPostV2('v2/notifications/read', NotificationReadResult, { ids: [notificationId] }, {}, { assertCurrent });
+    if (!current()) return;
     const fresh = answer.outcome === 'read' ? answer.items.find((i) => i.id.toLowerCase() === notificationId) : undefined;
     router.push(notificationHref(fresh?.destination) ?? ('/inbox' as Href));
-  } catch { router.push('/inbox' as Href); }
+  } catch { if (current()) router.push('/inbox' as Href); }
 }
 /** One tap, handled once. Navigation waits a tick: a cold-start tap is read while the root Stack is still mounting. */
-export function respondToNotification(response: Notifications.NotificationResponse) {
+export function respondToNotification(response: Notifications.NotificationResponse, visible: () => boolean = () => true) {
+  const owner = identityKey();
+  const current = () => visible() && AppState.currentState === 'active' && identityKey() === owner;
+  if (!current()) return;
   const request = response.notification.request, once = `${request.identifier}:${response.notification.date}:${response.actionIdentifier}`;
   if (handled.has(once)) return;
   handled.add(once);
   try { Notifications.clearLastNotificationResponse(); } catch { /* older native module */ }
   const reminder = isShiftReminder(request.identifier), id = pushNotificationId(response);
-  setTimeout(() => { if (reminder) router.push('/clock' as Href); else void openPushedNotification(id); }, 0);
+  setTimeout(() => { if (!current()) return; if (reminder) router.push('/clock' as Href); else void openPushedNotification(id, current); }, 0);
 }
 
 // ── Mounted pieces ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -94,18 +102,22 @@ export function PushLifecycle() {
     void requestShiftReminders(employmentId);
   }, [employmentId]); // `refused` reads refs only
   useEffect(() => {
+    let visible = true;
+    const current = () => visible;
+    const tappedResponse = (response: Notifications.NotificationResponse) => respondToNotification(response, current);
+    const blur = AppState.addEventListener('blur', () => { visible = false; });
     const appState = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') return;
+      if (state !== 'active') { visible = false; return; }
       syncPush(employment.current).catch(refused);
       void requestShiftReminders(employment.current);
     });
     const token = Notifications.addPushTokenListener(() => { syncPush(employment.current, true).catch(() => undefined); });
     const received = Notifications.addNotificationReceivedListener((n) => { if (!isShiftReminder(n.request.identifier)) void requestShiftReminders(employment.current); });
-    const tapped = Notifications.addNotificationResponseReceivedListener(respondToNotification);
+    const tapped = Notifications.addNotificationResponseReceivedListener(tappedResponse);
     const signal = onShiftReminderRefresh(() => { void requestShiftReminders(employment.current); });
     const last = Notifications.getLastNotificationResponse();
-    if (last) respondToNotification(last);
-    return () => { appState.remove(); token.remove(); received.remove(); tapped.remove(); signal(); };
+    if (last) tappedResponse(last);
+    return () => { visible = false; blur.remove(); appState.remove(); token.remove(); received.remove(); tapped.remove(); signal(); };
   }, []); // the listeners read refs only
   return null;
 }

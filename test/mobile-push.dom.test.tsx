@@ -86,6 +86,12 @@ function fixture(o: { permission?: 'granted' | 'denied' | 'undetermined'; grant?
     if (path === 'v2/notifications/read') return { outcome: 'read', unreadCount: 0, items: [{ id: NOTE, destination: { screen: 'leaveHistory' } }] };
     throw new Error('Unexpected command ' + path);
   });
+  let generation = 1;
+  const appListeners: Record<string, ((value: any) => void)[]> = {};
+  const AppState = { currentState: 'active', addEventListener: (name: string, fn: (value: any) => void) => { (appListeners[name] ??= []).push(fn); return { remove: () => { appListeners[name] = appListeners[name].filter(f => f !== fn); } }; } };
+  const changeAccount = () => { generation++; };
+  const background = () => { AppState.currentState = 'background'; for (const fn of appListeners.change ?? []) fn('background'); };
+  const blur = () => { for (const fn of appListeners.blur ?? []) fn(undefined); };
   const push = vi.fn(), openSettings = vi.fn(async () => undefined), signOut = vi.fn(async () => undefined);
   const session = { employmentId: 'own-emp', signOut, status: o.status ?? 'signedIn' };
   const installation = vi.fn(async (check: () => void) => { check(); return INSTALL; });
@@ -93,7 +99,7 @@ function fixture(o: { permission?: 'granted' | 'denied' | 'undetermined'; grant?
   const core = load('mobile/lib/push-core.ts', {
     'react-native': { Platform: { OS: 'ios' }, Linking: { openSettings } }, 'expo-notifications': Notifications, 'expo-secure-store': SecureStore,
     'expo-constants': { __esModule: true, default: { expoConfig: { version: '1.0.3' } } }, 'expo-crypto': { randomUUID: () => crypto.randomUUID() },
-    './api': { apiGetV2, apiPostV2 }, './auth': { authGeneration: () => 1, assertAuthGeneration: () => {} },
+    './api': { apiGetV2, apiPostV2 }, './auth': { authGeneration: () => generation, assertAuthGeneration: (owner: number) => { if (owner !== generation) throw new errors.SessionChangedError(); } },
     './config': { config: { apiUrl: 'https://hr.test' }, identityNamespace: () => 'company' }, './errors': errors, './i18n': { appLocale: () => 'en', t },
     './submission-native': { nativeIntegrityInstallationId: installation },
     './shift-reminders': load('mobile/lib/shift-reminders.ts', {}),
@@ -108,7 +114,7 @@ function fixture(o: { permission?: 'granted' | 'denied' | 'undetermined'; grant?
   const Switch = (p: { value: boolean; disabled?: boolean; accessibilityLabel?: string; onValueChange: (v: boolean) => void }) =>
     <input type="checkbox" role="switch" aria-label={p.accessibilityLabel} checked={p.value} disabled={p.disabled} onChange={(e) => p.onValueChange(e.target.checked)} />;
   const screens = load('mobile/lib/push.tsx', {
-    react: React, 'react/jsx-runtime': jsx, 'react-native': { AppState: { addEventListener: () => ({ remove() {} }) }, Switch, View, Pressable: (p: { accessibilityLabel?: string; disabled?: boolean; onPress?: () => void; children?: React.ReactNode }) => <button aria-label={p.accessibilityLabel} disabled={p.disabled} onClick={p.onPress}>{p.children}</button> },
+    react: React, 'react/jsx-runtime': jsx, 'react-native': { AppState, Switch, View, Pressable: (p: { accessibilityLabel?: string; disabled?: boolean; onPress?: () => void; children?: React.ReactNode }) => <button aria-label={p.accessibilityLabel} disabled={p.disabled} onClick={p.onPress}>{p.children}</button> },
     'expo-notifications': Notifications, 'expo-router': { router: { push } }, './api': { apiPostV2 },
     './design': { DesignText: Text, useTenantDesign: () => ({ palette: { text: 'black' } }) }, './errors': errors, './i18n': { t },
     './inbox': { notificationHref: (d: { screen?: string } | null | undefined) => (d?.screen === 'leaveHistory' ? '/leave/history' : null) },
@@ -118,7 +124,7 @@ function fixture(o: { permission?: 'granted' | 'denied' | 'undetermined'; grant?
   const posted = (path: string) => apiPostV2.mock.calls.filter((c) => c[0] === path) as unknown as [string, unknown, Record<string, any>, Record<string, string>][];
   const ours = () => [...Notifications.scheduled.keys()].filter((k) => k.startsWith('aihr-shift:')).sort();
   // Object.assign keeps the loaded module's index signature (an object spread drops it).
-  return Object.assign({} as Loaded, screens, { core, Notifications, SecureStore, stored, apiGetV2, apiPostV2, posted, push, openSettings, signOut, installation, ours, day });
+  return Object.assign({} as Loaded, screens, { core, Notifications, SecureStore, stored, apiGetV2, apiPostV2, posted, push, openSettings, signOut, installation, ours, day, changeAccount, background, blur });
 }
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
@@ -201,6 +207,54 @@ describe('opening a notification', () => {
     f.respondToNotification(response('aihr-shift:start:2026-11-03', { aihrReminder: 'start' }));
     await waitFor(() => expect(f.push).toHaveBeenCalledWith('/clock'));
     expect(f.posted('v2/notifications/read')).toHaveLength(0);
+  });
+});
+
+describe('notification session and visibility races', () => {
+  const response = (identifier: string) => ({ actionIdentifier: 'default', notification: { date: 1, request: { identifier, content: { data: { notificationId: NOTE } } } } });
+  it('drops a queued remote or reminder tap when the account changes before the tick', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    f.respondToNotification(response('remote-race'));
+    f.respondToNotification(response('aihr-shift:start:2026-11-03'));
+    f.changeAccount();
+    await vi.runAllTimersAsync();
+    expect(f.push).not.toHaveBeenCalled();
+    expect(f.posted('v2/notifications/read')).toHaveLength(0);
+  });
+  it.each(['resolve', 'reject'])('ignores a late notification read %s after an account change', async outcome => {
+    const f = fixture();
+    let finish!: (value?: any) => void;
+    f.apiPostV2.mockImplementationOnce(() => new Promise((resolve, reject) => { finish = outcome === 'resolve' ? resolve : reject; }));
+    const opening = f.openPushedNotification(NOTE);
+    f.changeAccount();
+    finish(outcome === 'resolve' ? { outcome: 'read', items: [{ id: NOTE, destination: { screen: 'leaveHistory' } }] } : new errors.SessionChangedError());
+    await opening;
+    expect(f.push).not.toHaveBeenCalled();
+  });
+  it('drops a queued tap on unmount or Android blur without making a read command', async () => {
+    vi.useFakeTimers();
+    for (const end of ['unmount', 'blur']) {
+      const f = fixture();
+      const tree = render(<f.PushLifecycle />);
+      f.Notifications.listeners.response[0](response('queued-' + end));
+      if (end === 'unmount') tree.unmount(); else f.blur();
+      await vi.runAllTimersAsync();
+      expect(f.push).not.toHaveBeenCalled();
+      expect(f.posted('v2/notifications/read')).toHaveLength(0);
+      tree.unmount();
+    }
+  });
+  it('does not navigate or mark read when backgrounded; a current read failure still opens Inbox', async () => {
+    const f = fixture();
+    f.background();
+    await f.openPushedNotification(NOTE);
+    expect(f.push).not.toHaveBeenCalled();
+    expect(f.posted('v2/notifications/read')).toHaveLength(0);
+    const g = fixture();
+    g.apiPostV2.mockRejectedValueOnce(new errors.UnavailableError());
+    await g.openPushedNotification(NOTE);
+    expect(g.push).toHaveBeenCalledWith('/inbox');
   });
 });
 
