@@ -1,4 +1,5 @@
 'use client';
+import {useOnboardingCopy} from '@/lib/onboarding-copy';
 import {CaseSection,CaseDocumentsList,CaseDocumentRow} from '@/components/lifecycle-v9/case-layout';
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -15,6 +16,7 @@ import { CaseWorkflows } from './case-workflows';
 import { CaseEmails } from './email-composer';
 
 export function NativeCaseDocuments({ initial, config, actor, writableKeys, users = [], eligibleSignatoryIds }: { initial: Case; config: Config; actor: Actor; writableKeys: string[]; users?:{id:string;name:string}[]; eligibleSignatoryIds?:string[] }) {
+  const copy=useOnboardingCopy();
   const [c, setCase] = useState(initial), [selected, select] = useState<string | null>(null), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, start] = useTransition();
   const router = useRouter(), dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { setCase(previous => initial.revision >= previous.revision ? initial : previous); }, [initial]);
@@ -35,15 +37,15 @@ export function NativeCaseDocuments({ initial, config, actor, writableKeys, user
   }
   return <section className="v9-workspace v9-native-documents" aria-label="Onboarding documents"><div className="v9-stack">
     {error && <p role="alert" className="v9-notice v9-error">{error}</p>}{notice && <p role="status" className="v9-notice">{notice}</p>}
-    <CaseSection title="Documents" className="v9-stack">
-      <CaseDocumentsList empty="No documents generated yet.">{c.documents.length?c.documents.map(document=><CaseDocumentRow key={document.id} name={document.name} detail={`v${document.version} · ${document.status}`} actions={<><button type="button" className="v9-button" onClick={()=>select(document.id)}>Open {document.name}</button>{canRegenerate(c,document)&&<button type="button" className="v9-button" disabled={busy} onClick={()=>void command({type:'documentRegenerate',id:document.id})}>Regenerate {document.name}</button>}</>}/>):null}</CaseDocumentsList>
-      <div className="v9-actions">{templates.map(template => <button key={template.id} type="button" className="v9-button" disabled={busy || c.state !== 'submitted'} onClick={() => void command({ type: 'generate', template: template.id })}>Generate {template.name}</button>)}</div>
-      {c.state === 'pending' && <p className="v9-notice">Submit the onboarding case to start its documents.</p>}
+    <CaseSection title={copy("Documents")} className="v9-stack">
+      <CaseDocumentsList empty={copy("No documents generated yet.")}>{c.documents.length?c.documents.map(document=><CaseDocumentRow key={document.id} name={document.name} detail={<>v{document.version} · {copy(document.status)}</>} actions={<><button type="button" className="v9-button" onClick={()=>select(document.id)}>{copy("Open")} {document.name}</button>{canRegenerate(c,document)&&<button type="button" className="v9-button" disabled={busy} onClick={()=>void command({type:'documentRegenerate',id:document.id})}>{copy("Regenerate")} {document.name}</button>}</>}/>):null}</CaseDocumentsList>
+      <div className="v9-actions">{templates.map(template => <button key={template.id} type="button" className="v9-button" disabled={busy || c.state !== 'submitted'} onClick={() => void command({ type: 'generate', template: template.id })}>{copy("Generate")} {template.name}</button>)}</div>
+      {c.state === 'pending' && <p className="v9-notice">{copy("Submit the onboarding case to start its documents.")}</p>}
     </CaseSection>
     <PersonnelReview c={c} busy={busy} writableKeys={writableKeys} command={value => void command(value)}/>
     <CaseFiles key={c.id} c={c} config={config} readOnly/>
     <CaseWorkflows c={c} config={config} busy={busy} command={command}/>
-    <CaseEmails c={c} config={config} busy={busy} command={command}/><CaseSection title="Sent emails">{c.mails.length?<CaseMailHistory caseId={c.id} mails={c.mails} open={c.state === 'submitted'} busy={busy} command={command}/>:<p className="onb-muted">No email deliveries recorded.</p>}</CaseSection>
+    <CaseEmails c={c} config={config} busy={busy} command={command}/><CaseSection title={copy("Sent emails")}>{c.mails.length?<CaseMailHistory caseId={c.id} mails={c.mails} open={c.state === 'submitted'} busy={busy} command={command}/>:<p className="onb-muted">{copy("No email deliveries recorded.")}</p>}</CaseSection>
     {document && <dialog className="v9-dialog" aria-label={document.name} ref={dialog} onCancel={() => select(null)}><header><h2>{document.name}</h2><button type="button" className="v9-button" aria-label="Close document" onClick={() => select(null)}><X size={18}/></button></header><CaseDocument key={`${document.id}:${c.revision}`} c={c} document={document} eligibleSignatoryIds={eligibleSignatoryIds} template={config.templates.find(template => template.id === document.templateId)} actor={actor} config={config} users={users} busy={busy} command={command}/></dialog>}
   </div></section>;
 }

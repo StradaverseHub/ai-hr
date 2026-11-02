@@ -1,16 +1,18 @@
 'use client';
+import {useOnboardingCopy} from '@/lib/onboarding-copy';
 import {CaseSection} from '@/components/lifecycle-v9/case-layout';
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Case, Config } from '@/lib/lifecycle-v9-model';
 export function CaseFiles({ c, config, emailId, readOnly = false }: { c: Case; config: Config; emailId?: string; readOnly?: boolean }) {
+  const copy=useOnboardingCopy();
   const input = useRef<HTMLInputElement>(null);
   const router = useRouter(), [busy, start] = useTransition(), [slot, setSlot] = useState(''), [file, setFile] = useState<File | null>(null), [error, setError] = useState('');
   const options = new Map<string, string>(config.emails.filter(e => e.module === c.module && (!emailId || e.id === emailId)).flatMap(e => e.slots.map(s => [`${e.id}:${s.id}`, `${e.name} · ${s.label}`] as const)));
   if (!emailId) for (const workflow of [...config.workflows.filter(w => w.module === c.module), ...c.runs.flatMap(r => r.definition ? [r.definition] : [])]) for (const step of workflow.steps) if (step.type === 'waitFile') options.set(step.slot, step.label);
   const visible = emailId ? c.files.filter(file => options.has(file.slot) || c.mails.some(mail => mail.templateId === emailId && mail.fileIds.includes(file.id))) : c.files;
   const reserved = c.files.some(file => file.slot === slot && c.mails.some(mail => !mail.test && ['pending','sending','uncertain'].includes(mail.status) && mail.fileIds.includes(file.id)));
-  return <CaseSection className="v9-stack"><h2>{emailId ? 'Files for this person' : 'Case files'}</h2><ul className="v9-list">{visible.map(f => <li key={f.id}><a className="v9-link" href={`/lifecycle/v9/files/${c.id}?file=${encodeURIComponent(f.storageId)}`}>{f.name}</a><div className="v9-muted">{options.get(f.slot) ?? 'Supporting file'}</div></li>)}</ul>{!visible.length && <p className="v9-muted">No files uploaded.</p>}
+  return <CaseSection className="v9-stack"><h2>{copy(emailId ? 'Files for this person' : 'Case files')}</h2><ul className="v9-list">{visible.map(f => <li key={f.id}><a className="v9-link" href={`/lifecycle/v9/files/${c.id}?file=${encodeURIComponent(f.storageId)}`}>{f.name}</a><div className="v9-muted">{options.get(f.slot) ?? 'Supporting file'}</div></li>)}</ul>{!visible.length && <p className="v9-muted">{copy("No files uploaded.")}</p>}
     {!readOnly && ['pending', 'submitted'].includes(c.state) && options.size > 0 && <form className="v9-stack" onSubmit={event => {
       event.preventDefault(); if (!file || !slot) return; setError('');
       if (file.size > 10 * 1024 * 1024) { setError('Choose a file of at most 10 MB.'); return; }
