@@ -223,27 +223,24 @@ export function Wizard({
   // uses a single shared cycle across the selected companies (plan §"Step 1"); the primary company's cycle
   // catalog drives the picker (regular is the common month-end case).
   const step1Valid = companyIds.length > 0 && /^\d{4}-\d{2}$/.test(payPeriod) && !!cycleId;
-  // Step 2 never blocks on a selection (empty/no-filter ⇒ whole company). In resume mode the cycle is fixed
-  // on the persisted draft and never re-posted, so the submit gate must NOT require a fresh cycleId — only a
-  // valid (seeded) company + period. A fresh run still requires step1Valid (which includes the cycle).
+  // Resume reviews the persisted company/period; only a fresh run requires a new cycle selection.
   const step2Valid = isResume ? !!companyId && /^\d{4}-\d{2}$/.test(payPeriod) : step1Valid;
 
   // The canonical payroll phase the current wizard step belongs to (drives the rail highlight).
   const currentPhase = payrollPhaseIndex(STEPS[step].phase);
-  // Continue is a per-step gate now that there are three steps: Step 1 (period) requires a valid selection
-  // (resume uses the seeded-identity check); Step 2 (employee selection) never blocks — an empty selection
-  // means "whole company" only while untouched; an explicit empty selection is refused. The final Process button lives on Step 3 (Validation) and has its own gate.
-  const canContinue = step === 0 ? (isResume ? step2Valid : step1Valid) : true;
+  // Untouched selection retains the whole-company default; explicitly clearing it must never widen scope.
+  const hasSelection = !filtersTouched || selected.size > 0;
+  const canContinue = step === 0 ? (isResume ? step2Valid : step1Valid) : hasSelection;
   // Process is blocked while the validation check is still running or when it found hard blockers (missing
   // compensation / missing BASIC component) — the operator must fix those before the run can proceed.
-  const canProcess = step2Valid && !isPending && !validation.loading && !validation.hasBlockers;
+  const canProcess = step2Valid && hasSelection && !isPending && !validation.loading && !validation.hasBlockers;
 
   const submitting=useRef(false);
   const [pendingIntent,setPendingIntent]=useState<'draft'|'process'>('process');
   const regularDraftCycle=cycleOptions.find(c=>c.id===cycleId)?.runType==='regular';
-  const canSaveDraft=!isResume&&step2Valid&&!isPending&&regularDraftCycle;
+  const canSaveDraft=!isResume&&step2Valid&&hasSelection&&!isPending&&regularDraftCycle;
   const submit = (mode:'process'|'draft'='process') => {
-    if(submitting.current||isPending||mode==='draft'&&!canSaveDraft)return;
+    if(submitting.current||isPending||!hasSelection||mode==='draft'&&!canSaveDraft)return;
     submitting.current=true;setPendingIntent(mode);
     const fd = new FormData();
     if (isResume && resumeBatch) {
@@ -421,6 +418,8 @@ export function Wizard({
         )}
       </div>
 
+      {!hasSelection && <p role="alert" className="px-4 text-sm text-destructive">{t('reason.EMPTY_SELECTION')}</p>}
+
       <div className="flex flex-wrap items-start justify-between gap-3 border-t border-border px-4 py-3">
         {/* Back is enabled from Step 2 in BOTH modes now that resume has a real (read-only) Step 1 to go
             back to (feedback 4f00d8f0). */}
@@ -429,7 +428,7 @@ export function Wizard({
         </Button>
         {step < STEPS.length - 1 ? (
           // Continue advances through Preparation (Step 1 gates on a valid period/company; Step 2 selection
-          // never blocks) into the Validation step. The terminal Process button only appears on Step 3.
+          // requires a nonempty set once touched) into the Validation step. The terminal Process button only appears on Step 3.
           <Button type="button" onClick={() => setStep((s) => s + 1)} disabled={!canContinue}>
             {t('continue')}
           </Button>
