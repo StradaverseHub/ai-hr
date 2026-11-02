@@ -1,4 +1,6 @@
 import {expect,it} from 'vitest';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {createPerformanceRequestRouter} from '../scripts/performance/request-routing.mjs';
 it('keeps reads in one lane and every other method in the other, independent of arrival order',()=>{
  const route=createPerformanceRequestRouter(2,'method-split');
@@ -13,4 +15,8 @@ it.each(['round-robin','method-split'] as const)('keeps the one-worker baseline 
 it('preserves the original round-robin control independently of methods',()=>{
  const route=createPerformanceRequestRouter(2,'round-robin');
  expect(['POST','GET','GET','POST','DELETE','HEAD'].map(route)).toEqual([0,1,0,1,0,1]);
+});
+
+it('parses the actual production-renderer profiling controller without executing it',()=>{
+ expect(()=>execFileSync(process.execPath,['--check',fileURLToPath(new URL('../scripts/performance/system-runner.mjs',import.meta.url))],{stdio:'pipe'})).not.toThrow();
 });
