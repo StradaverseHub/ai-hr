@@ -31,6 +31,8 @@ async function work(tx:Tx,cycleId:string,ctx:SessionContext,now=new Date()){
  await access(tx,cycleId);
  const [row]=await tx.execute<{value:ReminderWorkGraph|null}>(sql`select app.assessment_pending_work(${cycleId}::uuid) as value`),graph=row?.value;
  if(!graph)return null;
+ const [rights]=await tx.execute<{access:Record<string,string[]>}>(sql`select app.onehr_review_task_recipient_access(${cycleId}::uuid,null::uuid) as access`);
+ for(const review of graph.reviews)review.taskUserIds=rights?.access[review.id]??[];
  const companies=new Set(graph.reviews.map(r=>r.companyId));if(graph.cycle.companyId)companies.add(graph.cycle.companyId);for(const s of graph.sessions){if(s.companyId)companies.add(s.companyId);for(const e of s.entries)companies.add(e.companyId);}
  const enabled=new Set([...companies].filter(companyId=>isModuleEnabled(ctx,'performance',companyId)));if(!enabled.size&&!isModuleEnabled(ctx,'performance'))return null;
  return {graph,recipients:assessmentReminderWork(graph,enabled,now)};
@@ -198,7 +200,14 @@ export async function assessmentReminderRecipientsTx(tx:Tx,recipientId:string){
  const epochs=reminderDispatchEpochs(recipient);
  const prepared=await projection(tx,recipient.run.tenantId,recipient.run.cycleId,epochs),{state,mailRoutes}=prepared;
  if(recipient.run.mode==='automatic'&&!rules(state).enabled)return skip('changed');
- const actor=prepared.actors.get(recipient.recipient.userId);
+ // Re-read this target's exact access even if native workflow facts remain cached.
+ // Access revocation need not mutate a review or its reminder epoch.
+ const [rights]=await tx.execute<{access:Record<string,string[]>}>(sql`select app.onehr_review_task_recipient_access(${recipient.run.cycleId}::uuid,${recipient.recipient.userId}::uuid) as access`);
+ const graph=prepared.current?.graph;
+ const companies=new Set(graph?.reviews.map(review=>review.companyId)??[]);if(graph?.cycle.companyId)companies.add(graph.cycle.companyId);for(const session of graph?.sessions??[]){if(session.companyId)companies.add(session.companyId);for(const entry of session.entries)companies.add(entry.companyId);}
+ const actor=graph?assessmentReminderWork({...graph,reviews:graph.reviews.map(review=>({...review,taskUserIds:rights?.access[review.id]??[]}))},
+ new Set([...companies].filter(companyId=>isModuleEnabled(state,'performance',companyId))))
+ .find(actor=>actor.userId===recipient.recipient.userId):undefined;
  if(!actor||!actor.employmentIds.includes(recipient.recipient.employmentId))return skip('noPendingWork');
  if(await cooling(tx,recipient.run.cycleId,actor.userId,recipientId))return skip('cooldown');
  if(mailRoutes.get(actor.userId)!==recipient.recipient.employmentId)return skip('noConsent');
