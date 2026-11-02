@@ -71,7 +71,10 @@ it('keeps draft-derived admission/completion private and rejects absent native s
 });
 
 it('keeps actual native employment revision fences and repeated read locks authority-neutral',async()=>{
- await ownerContext(tx=>tx`select app.access_bootstrap(${b.tenantId}::uuid)`);
+ await ownerContext(async tx=>{
+  await tx`select app.access_install_defaults(${b.tenantId}::uuid,${b.adminUserId}::uuid)`;
+  expect(await tx`select initialized from access_configuration where tenant_id=${b.tenantId}::uuid`).toEqual([{initialized:true}]);
+ });
  const read=()=>ownerContext(tx=>tx`select app.access_function_authority_stamp() as stamp,(select revision from access_configuration where tenant_id=${b.tenantId}::uuid) as revision,(select epoch::text from app.access_control_epoch where tenant_id=${b.tenantId}::uuid) as epoch`);
  const [before]=await read();expect(before.stamp).toMatch(/^[a-f0-9]{64}$/);
  await ownerContext(async tx=>{await tx`select app.access_workforce_write_lock()`;await tx`select app.access_workforce_write_lock()`;await tx`update access_configuration set revision=revision where tenant_id=${b.tenantId}::uuid`;});
@@ -82,7 +85,8 @@ it('keeps actual native employment revision fences and repeated read locks autho
 });
 it('still invalidates a real role revoke and restore and configuration initialization changes',async()=>{
  await ownerContext(async tx=>{
-  await tx`select app.access_bootstrap(${b.tenantId}::uuid)`;
+  await tx`select app.access_install_defaults(${b.tenantId}::uuid,${b.adminUserId}::uuid)`;
+  expect(await tx`select initialized from access_configuration where tenant_id=${b.tenantId}::uuid`).toEqual([{initialized:true}]);
   const [before]=await tx`select app.access_function_authority_stamp() as stamp,(select epoch from app.access_control_epoch where tenant_id=${b.tenantId}::uuid) as epoch`;
   const roles=await tx`select * from role_assignment where tenant_id=${b.tenantId}::uuid and app_user_id=${b.adminUserId}::uuid order by id`;
   await tx`update role_assignment set role='employee' where tenant_id=${b.tenantId}::uuid and app_user_id=${b.adminUserId}::uuid and role='hr_admin'`;
