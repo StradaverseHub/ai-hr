@@ -1323,3 +1323,10 @@ employees from the UI count. The maintenance list/detail and direct form routes 
 operation projections. Native source/floor and rendered projection cases are authored, unrun.
 Genuine supported-denial/default/recipient qualification, all native constructor business rules and
 cross-source assignment/config serialization remain qualification work; this is not module completion.
+
+The employee_clocking_location statement source now joins the exact canonical Access advisory fence
+through private audit_access_order_lock_for(current tenant), try-only before row locks. It adds no
+purpose, employee access, business/control epoch or new admission exception; the existing genuine
+storage-owner maintenance distinction is unchanged. Source/assignment config writes now share the
+same Access key. A native APP pre-held-data-lock contention/refusal and later uncontended-statement
+case is authored, unrun. This serialization is not raw assignment constructor completion.

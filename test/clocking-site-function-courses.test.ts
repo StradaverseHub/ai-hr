@@ -57,3 +57,19 @@ it('rejects forged cross-tenant parents and immutable company-link rewrites with
  await expect(withTenant(admin,async tx=>{await tx.execute(sql`select set_config('app.clocking_site_birth','true',true)`);await tx.execute(sql`update clocking_location_company set company_id=${foreign.companyId}::uuid where clocking_location_id=${site.id}::uuid`);})).rejects.toThrow();
  expect((await listClockingLocationsForMaintenance(admin)).find(row=>row.id===site.id)?.companies.map(row=>row.id)).toEqual([b.companyId]);
 });
+
+it('joins the canonical try-only Access fence before a raw assignment statement without a blocking upgrade',async()=>{
+ const hired=await hireEmployee(admin,{person:{fullName:'Fictional lock-order subject',primaryEmail:`${randomUUID()}@test.local`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+ await owner.db.transaction(async tx=>{
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended('access-configuration:'||${b.tenantId}::text,0))`);
+  let failure:unknown;
+  try{await withTenant(admin,async appTx=>{
+   // A legitimate existing data lock must not turn the later Access request into a wait/deadlock.
+   const rows=await appTx.select({id:s.employment.id}).from(s.employment).where(eq(s.employment.id,hired.employmentId)).for('update');expect(rows).toEqual([{id:hired.employmentId}]);
+   await appTx.delete(s.employeeClockingLocation).where(eq(s.employeeClockingLocation.employmentId,randomUUID()));
+  });}catch(error){failure=error;}
+  let retryable=false;for(let cause=failure;cause&&typeof cause==='object';cause=(cause as {cause?:unknown}).cause)if((cause as {code?:string}).code==='55P03')retryable=true;
+  expect(retryable).toBe(true);
+ });
+ await withTenant(admin,tx=>tx.delete(s.employeeClockingLocation).where(eq(s.employeeClockingLocation.employmentId,randomUUID())));
+});

@@ -1557,6 +1557,20 @@ END $$;
 REVOKE ALL ON FUNCTION app.clocking_site_company_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER module_clocking_site_company_access BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location_company FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
 CREATE TRIGGER module_clocking_site_company_action BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location_company FOR EACH ROW EXECUTE FUNCTION app.clocking_site_company_guard();
+-- Assignment source joins the same Access serialization before touching tuples. Try-only admission
+-- prevents an existing native data lock from becoming a blocking Access lock-order upgrade.
+-- This fence adds no role, employee visibility, purpose grant or control/business epoch mutation.
+CREATE FUNCTION app.clocking_assignment_access_fence() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN
+  PERFORM app.audit_access_order_lock_for(app.current_tenant_id());
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.clocking_assignment_access_fence() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_clocking_assignment_access BEFORE INSERT OR UPDATE OR DELETE ON public.employee_clocking_location FOR EACH STATEMENT EXECUTE FUNCTION app.clocking_assignment_access_fence();
+
 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
