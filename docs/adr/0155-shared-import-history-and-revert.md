@@ -101,3 +101,30 @@ and tenant-wide visibility.
   were already restorable through the merged writer. The one blank that still blocks is income tax residency:
   "" there means the employer-scoped selection is awaiting confirmation, a state only the selection's transition
   produces — the tab cannot choose it and no owner writes it.
+
+
+## 6. Amendment — whole-file custody and mixed-version workers (2 November 2026)
+
+Any-company history visibility is a metadata contract, not permission to read a multi-company
+file, full plan or retained diagnostic/revert reason. Physical `import_attempt` and
+`import_attempt_event` rows require current-principal view authority for every listed company.
+Empty-company attempts remain creator-only. Per-company items keep their existing scope.
+
+Fixed read-only `app.import_attempt_history` and `app.import_attempt_event_history` definer
+views expose safe metadata/counts and scoped diagnostics under explicit fresh-principal,
+any-company and information-history guards. Native readers, cursor lookup, operation-key
+lookup and failure/revert visibility checks use these projections. Private source access and
+central audit payloads retain whole-file custody. No historical row is rewritten.
+
+This preserves the unchanged archived Bank worker's full-row SQL reads for authorized full
+custodians without a new database role. A SELECT grant is safe only together with the
+restrictive physical-row policy; never restore that grant alone. The INSERT RETURNING guard
+uses the new tuple's company list, rather than a STABLE helper that cannot yet see that row.
+The migration refuses unsupported RLS/FORCE/owner configurations before installing definer
+projections. Projection privileges are explicitly reset to SELECT-only.
+
+Current Bank row saves still use the bounded header lock. Native tests temporarily deny
+private-column reads to prove that path, restoring the fixture's original supported ACL.
+Compatibility tests execute the immutable old worker source against the new schema and
+canonical web admission, with replay/tenant controls. This is Git-source fixture evidence;
+authenticated packet boot, installed role/owner checks and release acceptance remain separate.
