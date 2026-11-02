@@ -1,0 +1,47 @@
+name: mobile-android-backup-review
+run-name: Android backup artifact review · c3b72a116
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mobile-android-backup-review
+  cancel-in-progress: false
+jobs:
+  review-apk:
+    if: github.repository == 'StradaverseHub/ai-hr'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      EXPECTED_SOURCE: c3b72a11630f3b82254c41286150ccb0312c842e
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_PUBLIC_RUNTIME_CONNECTIONS: '1'
+      EXPO_PUBLIC_AUTH_PROVIDER: internal
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.sha }}
+          path: controller
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: c3b72a11630f3b82254c41286150ccb0312c842e
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: source/mobile/package-lock.json
+      - name: Compile exact native source using the existing public review signing
+        run: bash controller/.github/ci/native-android-backup-review.sh
+      - name: Retain review APK and provenance briefly
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: onehr-android-backup-review-c3b72a116
+          path: ${{ runner.temp }}/onehr-android-backup-review/
+          if-no-files-found: warn
+          retention-days: 1
