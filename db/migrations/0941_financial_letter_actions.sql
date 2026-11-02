@@ -2769,7 +2769,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT app.financial_human_principal_current() AND EXISTS(SELECT 1 FROM public.performance_review review
  JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
  JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
- WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id()
+ WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id() AND NOT app.onehr_self_employment(review.employment_id)
  AND app.onehr_cycle_admin(review.cycle_id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id)
  AND app.function_action_allowed('performance.onehr.reviewAdministration','view',subject.company_id));
 $$;

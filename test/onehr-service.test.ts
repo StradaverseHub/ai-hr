@@ -12,6 +12,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
+import {assignRole} from '../core/admin';
 import { setCompensation } from '../core/comp';
 import * as perf from '../packs/performance/service';
 import { defaultPolicy, type KPI } from '../packs/performance/onehr/model';
@@ -453,6 +454,17 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
     await expect(perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:2,achievementPct:100})).rejects.toThrow(/archived/);
   });
+  it('preserves native Self privacy when the same person has current Group HR and selects Administration',async()=>{
+    await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    const [stored]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId));expect(stored).toBeDefined();expect((stored.result as Record<string,unknown>).performance).not.toBeNull();expect((stored.result as Record<string,unknown>).potential).not.toBeNull();expect(stored.performanceReleasedAt).toBeNull();expect(stored.potentialReleasedAt).toBeNull();
+    await assignRole(a,{appUserId:self.userId!,role:'hr_admin'});
+    const mixed={...self,roles:['employee','hr_admin'],grants:[{role:'employee',companyId:null},{role:'hr_admin',companyId:null}]};
+    const [source]=await withTenant(mixed,tx=>tx.execute<{native:boolean;control:boolean;self:boolean;administration:boolean}>(sql`select app.onehr_admin(${b.companyId}::uuid) as native,app.function_action_allowed('performance.onehr.reviewAdministration','view',${b.companyId}::uuid) as control,app.onehr_review_task_view(${reviewId}::uuid,'self') as self,app.onehr_review_administration(${reviewId}::uuid) as administration`));expect(source).toEqual({native:true,control:true,self:true,administration:false});
+    expect(await perf.getOnehrReviewForPurpose(mixed,reviewId,'administration')).toBeNull();expect(await perf.getOnehrAdministrativeReview(mixed,reviewId)).toBeNull();expect(await withTenant(mixed,tx=>tx.execute(sql`select review_id from app.onehr_review_administration_fields(${reviewId}::uuid)`))).toEqual([]);
+    const own=await perf.getOnehrReviewForPurpose(mixed,reviewId,'task');expect(own).not.toBeNull();expect(own).toMatchObject({self:true,admin:false,potential:null,peers:[],result:{performance:null,potential:null,talent:null}});
+    expect(await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId))).toEqual([stored]);
+  });
+
   it('writes assigned competency answers through the finite native course when raw review storage is profile-fenced',async()=>{
     const answers={'skill-1':{answer:'no' as const,remark:''},'skill-2':{answer:'no' as const,remark:''}};
     await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,answers,false,'Own native competency reflection.',{Technical:'Employee section retained.'});
