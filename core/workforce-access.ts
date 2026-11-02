@@ -22,7 +22,7 @@ export async function assertWorkforceCompanyTx(tx:Tx,ctx:SessionContext,companyI
 }
 export async function assertWorkforceEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string,operation:WorkforceOperation){
  await lockWorkforceOperationTx(tx,ctx,operation);
- const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,${'workforce.'+(operation==='maintain'?'edit':operation)}) as allowed`);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select (app.access_workforce_employment(${employmentId}::uuid,${'workforce.'+(operation==='maintain'?'edit':operation)}) OR ${operation==='maintain'} AND app.access_workforce_initial_employment(${employmentId}::uuid)) as allowed`);
  if(!row?.allowed)throw new WorkforceAccessError();
 }
 export async function assertWorkforcePersonTx(tx:Tx,ctx:SessionContext,personId:string,operation:WorkforceOperation){
