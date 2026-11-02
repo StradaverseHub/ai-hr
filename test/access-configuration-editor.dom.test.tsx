@@ -62,9 +62,12 @@ describe('access editor decisions and stale preview behavior',()=>{
   fireEvent.click(screen.getByRole('checkbox',{name:'view payroll'}));
   expect(screen.getByRole('checkbox',{name:'Payroll Process · add'})).not.toBeChecked();
   expect(screen.getByRole('checkbox',{name:'Payroll Process · view'})).not.toBeChecked();
+  // The add/clear round trip restores the initial draft; a real additional change enables preview.
+  expect(screen.getByRole('button',{name:'Preview permission changes'})).toBeDisabled();
+  fireEvent.click(screen.getByRole('checkbox',{name:'View workforce records'}));
   fireEvent.click(screen.getByRole('button',{name:'Preview permission changes'}));
   await waitFor(()=>expect(f.preview).toHaveBeenCalledOnce());
-  expect(f.preview.mock.calls[0][0].command).toMatchObject({kind:'replaceGroupGrants',grants:[{capabilityId:'workforce.view',companyId:companyA},{capabilityId:'workforce.view',companyId:companyB}]});
+  expect(f.preview.mock.calls[0][0].command).toMatchObject({kind:'replaceGroupGrants',grants:[{capabilityId:'workforce.view',companyId:companyB}]});
  });
  it('preserves permissions in another company when changing the selected scope',async()=>{
   const f=fixture();f.chooseReaders();fireEvent.click(screen.getByRole('checkbox',{name:/View workforce records/}));
