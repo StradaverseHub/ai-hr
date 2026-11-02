@@ -1,0 +1,11 @@
+{
+  "origin": "docs/design/ai-centre/renders/04-ask.png",
+  "sourceCommit": "7dfd45bc812b9987a2f2a083c3bb094c2d178cd8",
+  "description": "Owner-reviewed AI centre illustration with fictional data; cropped to application content. Public presentation only; no live tenant or employee data.",
+  "crop": [
+    218,
+    123,
+    1280,
+    800
+  ]
+}

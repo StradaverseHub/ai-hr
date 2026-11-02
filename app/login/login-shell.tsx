@@ -4,11 +4,15 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Pause, Play } from 'lucide-react';
 import type { LoginPresentation } from '@/lib/login-presentation';
-import { LoginTour } from './login-tour';
+import { LoginEditorialMessages } from './editorial-messages';
+import { NoveriStory } from './noveri-story';
+import { LoginLanguage } from './login-language';
+import { aiCentreName } from '@/lib/ai-centre/brand';
 
-export function LoginShell({ children, presentation }: { children: ReactNode; presentation?: LoginPresentation }) {
+function LoginShellContent({ children, presentation }: { children: ReactNode; presentation?: LoginPresentation }) {
   const t = useTranslations('loginPresentation');
   const common = useTranslations('common');
+  const editorial = useTranslations('loginEditorial');
   const video = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [mediaFailed, setMediaFailed] = useState(false);
@@ -21,10 +25,10 @@ export function LoginShell({ children, presentation }: { children: ReactNode; pr
   const media = presentation?.mediaUrl && !mediaFailed;
   return <main className="login-shell">
     <aside className="login-welcome" aria-label={common('appName')}>
-      <a href="/login" className="login-brand"><span aria-hidden className="login-brand-mark">AI</span>{common('appName')}</a>
+      <a href="/login" className="login-brand">{common('appName')}</a>
       <div className="login-welcome-content">
-        <h2>{t('headline')}</h2>
-        <p>{t('description')}</p>
+        <h2>{editorial('brainHeadline', { name: aiCentreName(editorial('genericAiName')) })}</h2>
+        <p>{editorial('brainDescription')}</p>
         {media ? <div className="login-media">
           {presentation.mediaType === 'video' ? <>
             <video ref={video} src={presentation.mediaUrl} muted playsInline loop controls preload="metadata"
@@ -41,13 +45,24 @@ export function LoginShell({ children, presentation }: { children: ReactNode; pr
             <img referrerPolicy="no-referrer" src={presentation.mediaUrl} alt={presentation.alt || t('mediaAlt')} onError={() => setMediaFailed(true)}/>
             {presentation.mediaType === 'gif' && <button type="button" className="login-media-toggle" onClick={() => setShowAnimation(false)}><Pause size={16}/>{t('pauseMedia')}</button>}
           </>}
-        </div> : <LoginTour/>}
+        </div> : <NoveriStory/>}
       </div>
       <p className="login-welcome-foot">{t('footer')}</p>
     </aside>
     <div className="login-form-panel">
-      <a href="/login" className="login-mobile-brand">{common('appName')}</a>
+      <div className="login-form-top">
+        <a href="/login" className="login-desktop-brand">{common('appName')}</a>
+        <a href="/login" className="login-mobile-brand">{common('appName')}</a>
+        <LoginLanguage/>
+      </div>
       <div className="login-form-content">{children}</div>
+      <footer className="login-editorial-footer"><p>{editorial('closingOne')}<br/>{editorial('closingTwo')}</p>
+        <details className="login-footer-help"><summary>{editorial('signInHelp')}</summary><div><p>{t('getHelpBody')}</p><p>{t('firstTimeHelp')}</p></div></details>
+      </footer>
     </div>
   </main>;
+}
+
+export function LoginShell(props: Parameters<typeof LoginShellContent>[0]) {
+  return <LoginEditorialMessages><LoginShellContent {...props}/></LoginEditorialMessages>;
 }

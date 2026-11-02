@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useId, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import Image from 'next/image';
 import { authenticatorSetupUri } from '@/lib/authenticator-setup';
 import { useRouter } from 'next/navigation';
@@ -8,20 +8,27 @@ import { Eye, EyeOff } from 'lucide-react';
 import { LoginShell } from './login-shell';
 import type { LoginPresentation } from '@/lib/login-presentation';
 import { useTranslations,useLocale } from 'next-intl';
+import { LoginWorkspaceStep } from './workspace-step';
+import { LoginEditorialMessages } from './editorial-messages';
 
 type Reply = { step: string; organization?: string; challenge?: string; secret?: string; qr?: string; account?: string; recoveryCodes?: string[]; error?: string };
-export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation, entraError = false, idleSignedOut = false }: {
+function InternalAuthFields({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation, entraError = false, idleSignedOut = false }: {
   presentation?: LoginPresentation; entraError?:boolean; idleSignedOut?:boolean; organization?: string; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
 }) {
   const t = useTranslations('internalAuth'),locale=useLocale();
   const [microsoftOrganization,setMicrosoftOrganization]=useState(organization);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const visitedWorkspace = useRef(false);
   const router = useRouter();
   const copy = useTranslations('loginPresentation');
+  const editorial = useTranslations('loginEditorial');
   const passwordId = useId();
   const [showPassword, setShowPassword] = useState(false);
   const [state, setState] = useState<Reply>({ step: mode });
   const [resetToken, setResetToken] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  useEffect(() => { if (workspaceReady) heading.current?.focus({ preventScroll: true }); }, [workspaceReady, state.step]);
   useEffect(() => {
     if (mode !== 'recovery') return;
     const token = new URLSearchParams(window.location.hash.slice(1)).get('token');
@@ -61,11 +68,18 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
   const button = 'login-submit';
   const errors = ['invalidLogin', 'invalidChallenge', 'invalidCode', 'passwordPolicy', 'passwordMismatch', 'rateLimited', 'unavailable', 'conflict', 'forbidden'];
   const title = state.step === 'signing-in' ? 'signingInTitle' : ['complete', 'activated'].includes(state.step) && state.recoveryCodes ? 'codesTitle' : `${['login','recovery','invite','accept','password','enroll','mfa','sent','reset','resetDone'].includes(state.step) ? state.step : 'login'}Title`;
+  if (state.step === 'login' && !workspaceReady) return <LoginShell presentation={presentation}>
+    <div className="login-workspace-container">
+      {idleSignedOut && <p role="status" data-idle-signed-out className="login-notice">{t('idleSignedOut')}</p>}
+      {entraError && <p role="alert" className="login-notice">{t('microsoftError')}</p>}
+      <LoginWorkspaceStep organization={microsoftOrganization} onChange={setMicrosoftOrganization} focusOnMount={visitedWorkspace.current} onContinue={() => { visitedWorkspace.current = true; setWorkspaceReady(true); }}/>
+    </div>
+  </LoginShell>;
   return <LoginShell presentation={presentation}>
-    <section aria-labelledby="internal-auth-title" className="space-y-8">
+    <section aria-labelledby="internal-auth-title" className="login-auth space-y-8">
       <header className="space-y-3">
-        <h1 id="internal-auth-title">{state.step === 'login' ? copy('welcome') : t(title)}</h1>
-        {state.step === 'login' && <p>{copy('signInSubtitle')}</p>}
+        <h1 ref={heading} tabIndex={-1} className="outline-none" id="internal-auth-title">{state.step === 'login' ? editorial('accountTitle') : t(title)}</h1>
+        {state.step === 'login' && <><p>{editorial('accountSubtitle')}</p><div className="login-workspace-context"><span>{microsoftOrganization}</span><button type="button" onClick={() => setWorkspaceReady(false)}>{editorial('changeOrganization')}</button></div></>}
       </header>
       {idleSignedOut && state.step === 'login' && !error && <p role="status" data-idle-signed-out className="rounded-lg border border-border bg-muted/40 p-3 text-sm">{t('idleSignedOut')}</p>}
       {entraError && state.step==='login' && <p role="alert" className="text-sm text-destructive">{t('microsoftError')}</p>}
@@ -88,7 +102,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         </form>
       </div> : <form method="post" onSubmit={submit} className="space-y-4">
         {['login','recovery'].includes(state.step) && <>
-          <label className="block space-y-1.5"><span className="text-sm font-medium">{t('organization')}</span><input className={field} name="organization" required value={microsoftOrganization} onChange={e=>setMicrosoftOrganization(e.target.value)} maxLength={64} autoCapitalize="none" spellCheck={false} autoComplete="organization"/></label>
+          {state.step === 'login' ? <input type="hidden" name="organization" value={microsoftOrganization}/> : <label className="block space-y-1.5"><span className="text-sm font-medium">{t('organization')}</span><input className={field} name="organization" required value={microsoftOrganization} onChange={e=>setMicrosoftOrganization(e.target.value)} maxLength={64} autoCapitalize="none" spellCheck={false} autoComplete="organization"/></label>}
           <label className="block space-y-1.5"><span className="text-sm font-medium">{t('username')}</span><input className={field} name="username" required maxLength={64} autoCapitalize="none" spellCheck={false} autoComplete="username"/></label>
         </>}
         {state.step === 'invite' && <label className="block space-y-1.5"><span className="text-sm font-medium">{t('username')}</span><input name="username" required minLength={3} maxLength={64} autoComplete="username" autoCapitalize="none" spellCheck={false} className={field}/></label>}
@@ -113,11 +127,11 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         {state.step === 'invite' && <a href={`/login?returnTo=${encodeURIComponent(`/invite/${invitation}/activate`)}`} className="block text-center text-sm underline">{t('existingLogin')}</a>}
         {!['login','invite','accept'].includes(state.step) && <a href="/login" className="block text-center text-sm underline">{t('back')}</a>}
       </form>}
-      {state.step==='login'&&<form action="/login/entra/start" method="get" className="space-y-3"><input type="hidden" name="organization" value={microsoftOrganization}/><input type="hidden" name="returnTo" value={returnTo}/><button className={button} disabled={busy||!microsoftOrganization.trim()}>{t('microsoft')}</button></form>}
-      {state.step === 'login' && <div className="login-help">
-        <details><summary>{copy('firstTime')}</summary><p className="mt-2">{copy('firstTimeHelp')}</p></details>
-        <details><summary>{copy('getHelp')}</summary><p className="mt-2">{copy('getHelpBody')}</p></details>
-      </div>}
+      {state.step==='login'&&<form action="/login/entra/start" method="get" className="login-microsoft-form"><input type="hidden" name="organization" value={microsoftOrganization}/><input type="hidden" name="returnTo" value={returnTo}/><button className="login-microsoft" disabled={busy||!microsoftOrganization.trim()}><svg aria-hidden viewBox="0 0 20 20" width={18} height={18}><path fill="#f25022" d="M1 1h8v8H1z"/><path fill="#7fba00" d="M11 1h8v8h-8z"/><path fill="#00a4ef" d="M1 11h8v8H1z"/><path fill="#ffb900" d="M11 11h8v8h-8z"/></svg>{t('microsoft')}</button></form>}
     </section>
   </LoginShell>;
+}
+
+export function InternalAuthForm(props: Parameters<typeof InternalAuthFields>[0]) {
+  return <LoginEditorialMessages><InternalAuthFields {...props}/></LoginEditorialMessages>;
 }

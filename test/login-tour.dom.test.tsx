@@ -5,11 +5,14 @@ import { LoginShell } from '../app/login/login-shell';
 import { LoginTour } from '../app/login/login-tour';
 import { DEFAULT_LOGIN_PRESENTATION } from '../lib/login-presentation';
 import en from '../messages/en.json';
+import editorial from '../messages/login-editorial/en.json';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import vietnamese from '../messages/vi.json';
+
+vi.mock('../app/i18n-actions', () => ({ setLocale: vi.fn() }));
 
 let reducedMotion = false;
 beforeEach(() => {
@@ -29,12 +32,13 @@ const log = () => screen.getByRole('list');
 const tour = en.loginTour;
 
 describe('login tour', () => {
-  it('is the default welcome when no media is configured, and stays out when media is', () => {
+  it('uses the Noveri story when no media is configured, and keeps configured media', () => {
     const view = wrap(<LoginShell presentation={DEFAULT_LOGIN_PRESENTATION}>Form</LoginShell>);
-    expect(screen.getByRole('region', { name: tour.label })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: editorial.storyLabel })).toBeInTheDocument();
     view.unmount();
     wrap(<LoginShell presentation={{ ...DEFAULT_LOGIN_PRESENTATION, mediaType: 'video', mediaUrl: 'https://example.test/a.mp4', alt: 'Fictional film' }}>Form</LoginShell>);
-    expect(screen.queryByRole('region', { name: tour.label })).toBeNull();
+    expect(screen.queryByRole('region', { name: editorial.storyLabel })).toBeNull();
+    expect(document.querySelector('video')).toHaveAttribute('src', 'https://example.test/a.mp4');
   });
 
   it.each(Object.entries({ en, ms, zh, ta, th, vi: vietnamese }))('plays every topic in %s without missing translations', (locale, messages) => {
