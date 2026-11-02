@@ -868,3 +868,74 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.onboarding_fulfil_item(uuid,integer,text,text)FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_fulfil_item(uuid,integer,text,text)TO ai_hr_app;
+--> statement-breakpoint
+-- Native work metadata: only actual current team items, ready handovers, unread workflow notes
+-- and unresolved mentions. No private parent or sibling task payload is returned.
+CREATE FUNCTION app.onboarding_delivery_task_rows()RETURNS TABLE(task jsonb,updated_at timestamptz)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE c public.lc_onboarding_case;cfg jsonb;request jsonb;item jsonb;note public.lc_onboarding_note;facts jsonb;base jsonb;due text;claim_name text;today date:=(now()AT TIME ZONE'Asia/Kuala_Lumpur')::date;actor uuid:=app.current_user_id();
+BEGIN
+ IF NOT app.principal_snapshot_current() OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=actor AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))THEN RETURN;END IF;
+ SELECT data INTO cfg FROM public.lc_onboarding_config WHERE tenant_id=app.current_tenant_id();
+ FOR c IN SELECT * FROM public.lc_onboarding_case x WHERE x.tenant_id=app.current_tenant_id()AND x.data->>'state'='submitted'ORDER BY x.id LOOP
+  facts:=coalesce(c.data->'local','{}'::jsonb)||coalesce(c.data->'source','{}'::jsonb);
+  base:=jsonb_build_object('caseId',c.id,'revision',c.revision,'joiner',coalesce(facts->>'fullName',''),'businessGroup',coalesce(facts->>'businessGroup',''),'joinDate',coalesce(facts->>'joinDate',''),'due',coalesce(facts->>'joinDate',''),'overdue',coalesce(facts->>'joinDate','')<>'' AND facts->>'joinDate'<today::text,'assigned',false,'tagged',false,'team',true,'bounded',true);
+  SELECT r INTO request FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY q(r,n)WHERE r->>'cancelledAt'IS NULL ORDER BY n LIMIT 1;
+  IF request IS NOT NULL AND request->>'handedAt'IS NULL THEN
+   IF app.function_action_allowed('lifecycle.shared.fulfilment','view',c.company_id)THEN
+    FOR item IN SELECT i FROM jsonb_array_elements(request->'items')i WHERE NOT(i->>'removed')::boolean AND i->>'approval'NOT IN('pending','rejected','withdrawn')AND i->>'state'NOT IN('ready','handed')AND app.onboarding_group_member(i->>'team')LOOP
+     due:=((facts->>'joinDate')::date+CASE WHEN coalesce((item->>'dueDay')::integer,1)>0 THEN coalesce((item->>'dueDay')::integer,1)-1 ELSE coalesce((item->>'dueDay')::integer,1)END)::text;
+     claim_name:=NULL;
+     IF item->>'claim'IS NOT NULL THEN
+      SELECT CASE WHEN p.id IS NOT NULL AND app.data_permission_person_read(p.id)THEN p.full_name ELSE'A teammate'END INTO claim_name FROM public.app_user u LEFT JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id::text=item->>'claim'AND u.tenant_id=c.tenant_id;
+     END IF;
+     task:=base||jsonb_build_object('id',c.id::text||':team:'||(item->>'id'),'kind','team','canExecute',app.function_action_allowed('lifecycle.shared.fulfilment','execute',c.company_id),'title',item->>'name','itemIds',jsonb_build_array(item->>'id'),'due',due,'overdue',due<today::text,'status',CASE WHEN item->>'state'='progress'THEN'progress'ELSE'todo'END,'assigned',coalesce(item->>'claim'=actor::text,false),'locked',item->>'claim'IS NOT NULL AND item->>'claim'<>actor::text,'claimedBy',claim_name);updated_at:=c.updated_at;RETURN NEXT;
+    END LOOP;
+   END IF;
+   IF app.function_action_allowed('lifecycle.shared.handover','view',c.company_id)AND app.onboarding_group_member(cfg->>'techGroup')AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(request->'items')i WHERE NOT(i->>'removed')::boolean AND i->>'approval'='pending')AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(request->'items')i WHERE NOT(i->>'removed')::boolean AND i->>'approval'NOT IN('pending','rejected','withdrawn')AND i->>'state'<>'ready')THEN
+    task:=base||jsonb_build_object('id',c.id::text||':handover:','kind','handover','canExecute',app.function_action_allowed('lifecycle.shared.handover','execute',c.company_id),'title','Record Day 1 handover','overdue',coalesce(facts->>'joinDate','')<>'' AND facts->>'joinDate'<=today::text);updated_at:=c.updated_at;RETURN NEXT;
+   END IF;
+   IF app.function_action_allowed('lifecycle.shared.requisitionNotes','view',c.company_id)AND coalesce(request->>'hrNote','')<>'' AND(request->'noteAcks'->actor::text)IS DISTINCT FROM(request->'noteVersion')AND(EXISTS(SELECT 1 FROM jsonb_array_elements(request->'items')i WHERE app.onboarding_group_member(i->>'team'))OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(cfg->'exceptions'->'groups')g WHERE app.onboarding_group_member(g)))THEN
+    task:=base||jsonb_build_object('id',c.id::text||':hrNote:','kind','hrNote','canExecute',app.function_action_allowed('lifecycle.shared.requisitionNotes','execute',c.company_id),'title','Read People GBS note');updated_at:=c.updated_at;RETURN NEXT;
+   END IF;
+  END IF;
+  IF app.function_action_allowed('lifecycle.shared.conversations','view',c.company_id)THEN
+   FOR note IN SELECT * FROM public.lc_onboarding_note n WHERE n.case_id=c.id AND n.tenant_id=c.tenant_id AND NOT(n.data->>'deleted')::boolean AND(c.data->>'submittedAt'IS NULL OR n.data->>'at'>=c.data->>'submittedAt')AND n.data->'mentions'?actor::text AND NOT(n.data->'resolved'?actor::text)ORDER BY n.created_at,n.id LOOP
+    task:=base||jsonb_build_object('id',c.id::text||':mention:'||note.id::text,'kind','mention','canExecute',app.function_action_allowed('lifecycle.shared.conversations','execute',c.company_id),'title',(note.data->>'name')||' mentioned you','noteId',note.id,'context',note.data->>'context','assigned',true,'tagged',true,'team',false,'overdue',coalesce(facts->>'joinDate','')<>'' AND facts->>'joinDate'<=(today+coalesce((cfg->'exceptions'->>'remindDays')::integer,0))::text);updated_at:=c.updated_at;RETURN NEXT;
+   END LOOP;
+  END IF;
+ END LOOP;
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_delivery_task_rows()FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_delivery_task_rows()TO ai_hr_app;
+--> statement-breakpoint
+--> statement-breakpoint
+CREATE FUNCTION app.onboarding_checklist_task_rows()RETURNS TABLE(task jsonb,updated_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('id',r.case_id::text||':'||CASE WHEN r.task_by='joiner'AND r.gate THEN'acknowledgement'ELSE'checklist'END||':'||r.task_id,
+ 'caseId',r.case_id,'revision',r.revision,'kind',CASE WHEN r.task_by='joiner'AND r.gate THEN'acknowledgement'ELSE'checklist'END,'title',r.title,'joiner',r.joiner,'businessGroup',r.business_group,'joinDate',r.join_date,
+ 'due',coalesce(r.due_on,r.join_date),'overdue',coalesce(r.due_on,r.join_date,'')<>'' AND coalesce(r.due_on,r.join_date)<to_char(now()AT TIME ZONE'Asia/Kuala_Lumpur','YYYY-MM-DD'),
+ 'assigned',true,'tagged',false,'team',false,'taskId',r.task_id,'context',r.task_id,'status',r.status,'bounded',true,'canExecute',app.function_action_allowed('lifecycle.shared.tasks','execute',(SELECT c.company_id FROM public.lc_onboarding_case c WHERE c.id=r.case_id AND c.tenant_id=app.current_tenant_id())),
+ 'locked',coalesce(r.opens_on>to_char(now()AT TIME ZONE'Asia/Kuala_Lumpur','YYYY-MM-DD'),false)OR r.gate AND NOT coalesce(r.handed,false),
+ 'lockReason',CASE WHEN r.gate AND NOT coalesce(r.handed,false)THEN'After Day 1 handover'WHEN r.opens_on>to_char(now()AT TIME ZONE'Asia/Kuala_Lumpur','YYYY-MM-DD')THEN'Opens '||to_char(r.opens_on::date,'DD/MM/YYYY')ELSE NULL END),r.updated_at
+ FROM app.onboarding_assigned_task_rows()r;
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_checklist_task_rows()FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_checklist_task_rows()TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.onboarding_delivery_task_detail(p_task text)RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected jsonb;c public.lc_onboarding_case;request jsonb;body text:='';conversation jsonb:='[]'::jsonb;
+BEGIN
+ SELECT r.task INTO selected FROM(SELECT task FROM app.onboarding_delivery_task_rows()UNION ALL SELECT task FROM app.onboarding_checklist_task_rows())r WHERE r.task->>'id'=p_task;
+ IF selected IS NULL THEN RETURN NULL;END IF;
+ SELECT * INTO c FROM public.lc_onboarding_case x WHERE x.id::text=selected->>'caseId'AND x.tenant_id=app.current_tenant_id();
+ SELECT r INTO request FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY q(r,n)WHERE r->>'cancelledAt'IS NULL ORDER BY n LIMIT 1;
+ selected:=selected||jsonb_build_object('canReply',selected->>'kind'IN('mention','checklist')AND app.function_action_allowed('lifecycle.shared.conversations','execute',c.company_id));
+ IF selected->>'kind'='hrNote'THEN body:=coalesce(request->>'hrNote','');END IF;
+ IF selected->>'kind'IN('mention','checklist')THEN SELECT coalesce(jsonb_agg(n),'[]'::jsonb)INTO conversation FROM app.onboarding_conversation_rows(c.id,selected->>'context')n;END IF;
+ RETURN jsonb_build_object('task',selected,'body',body,'notes',conversation,'requestNumber',request->>'number');
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_delivery_task_detail(text)FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_delivery_task_detail(text)TO ai_hr_app;
