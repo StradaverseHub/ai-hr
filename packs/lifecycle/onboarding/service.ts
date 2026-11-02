@@ -370,12 +370,14 @@ export type OnboardingCommand = ({ type: 'equipmentBulk' } & M.EquipmentBulk) | 
 export async function onboardingCommand(ctx: SessionContext, id: string, revision: number, command: OnboardingCommand) {
     command = onboardingCommandSchema.parse(command);
     jsonSize(command);
-    if(command.type==='task'||command.type==='handover'||command.type==='readNote'||command.type==='acknowledge'||command.type==='fulfil'){
+    if(command.type==='task'||command.type==='handover'||command.type==='readNote'||command.type==='acknowledge'||command.type==='fulfil'||command.type==='approve'||command.type==='assignApproval'){
         const taskCommand=command;
         return withTenant(ctx,async tx=>{
             let result:{revision:number;employment_id:string|null;company_id:string;did_change?:boolean};
             try{
                 if(taskCommand.type==='task')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_assigned_task_update(${id}::uuid,${revision},${taskCommand.taskId},${taskCommand.status})`);
+                else if(taskCommand.type==='assignApproval')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_approval_assign(${id}::uuid,${revision},${taskCommand.itemId},${taskCommand.stepId},${taskCommand.user})`);
+                else if(taskCommand.type==='approve')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_approval_decide(${id}::uuid,${revision},${JSON.stringify(taskCommand.itemIds)}::jsonb,${taskCommand.decision})`);
                 else if(taskCommand.type==='fulfil')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_fulfil_item(${id}::uuid,${revision},${taskCommand.itemId},${taskCommand.status})`);
                 else [result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_delivery_update(${id}::uuid,${revision},${taskCommand.type},${JSON.stringify(taskCommand.type==='acknowledge'?taskCommand.data:{})}::jsonb)`);
             }catch(error){
@@ -481,12 +483,6 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
                 break;
             case 'assignTask':
                 M.manualTask(config, c, command.taskId, command.user, actor, env, command.roundRobin);
-                break;
-            case 'approve':
-                M.decide(config, c, command.itemIds, command.decision, actor, env);
-                break;
-            case 'assignApproval':
-                M.assignApproval(config, c, command.itemId, command.stepId, command.user, actor, env);
                 break;
             case 'removeItem': {
                 const i = r?.items.find(i => i.id === command.itemId);
@@ -926,14 +922,15 @@ export type OnboardingTask = {
     claimedBy?: string | null;
     context?: string;
     lockReason?: string;
+    bounded?: boolean;
+    canExecute?: boolean;
+    canReply?: boolean;
 };
 type AssignedChecklistRow={case_id:string;revision:number;updated_at:Date|string;joiner:string;business_group:string;join_date:string;task_id:string;title:string;task_by:string;gate:boolean;opens_on:string|null;due_on:string|null;status:string;handed:boolean|null};
 export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTask[]> {
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config), today = todayInKualaLumpur();
         const list = await tx.select().from(cases).orderBy(asc(cases.id)), out: OnboardingTask[] = [];
-        const allNotes = await tx.select().from(notes).orderBy(asc(notes.createdAt), asc(notes.id));
-        const names = await directoryTx(tx);
         for (const row of list) {
             const c = row.data, f = M.effectiveFacts(c), r = M.currentReq(c);
             if (c.state === 'cancelled')
@@ -957,38 +954,14 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
             if (r && !r.cancelledAt && !r.handedAt) {
                 if (actor.module && r.items.some(i => !i.removed && !i.team))
                     add({ kind: 'owner', title: 'Choose a fulfilling team', itemIds: r.items.filter(i => !i.removed && !i.team).map(i => i.id) });
-                const actionable = r.items.filter(i => !i.removed && i.approval === 'pending' && i.steps.some(s => M.stepOpen(i, s) && s.status === 'pending' && (!s.manual || s.user) && (s.user === actor.id || M.inGroup(config, s.group, actor.id))));
-                if (actionable.length)
-                    add({ kind: 'approval', title: 'Approve ' + actionable.length + ' items', itemIds: actionable.map(i => i.id), assigned: actionable.some(i => i.steps.some(s => s.user === actor.id && M.stepOpen(i, s))), team: true });
-                const manual = new Set<string>();
-                for (const i of r.items.filter(i => !i.removed)) {
-                    for (const s of i.steps)
-                        if (M.stepOpen(i, s) && s.manual && !s.user && M.inGroup(config, s.group, actor.id) && !manual.has(s.id + ':' + s.group)) {
-                            manual.add(s.id + ':' + s.group);
-                            add({ kind: 'manualApproval', title: 'Choose an approver: ' + s.label, itemIds: [i.id], stepId: s.id, team: true });
-                        }
-                    if (M.activeItem(i) && i.state !== 'ready' && i.state !== 'handed' && M.inGroup(config, i.team, actor.id))
-                        add({ kind: 'team', title: i.name, itemIds: [i.id], due: M.equipmentDate(c, i), status: i.state === 'progress' ? 'progress' : 'todo', team: true, assigned: i.claim === actor.id, locked: !!i.claim && i.claim !== actor.id, claimedBy: i.claim ? names.find(u => u.id === i.claim)?.name ?? 'A teammate' : null });
-                }
-                if (M.inGroup(config, config.techGroup, actor.id) && !r.items.some(i => !i.removed && i.approval === 'pending') && r.items.filter(M.activeItem).every(i => i.state === 'ready'))
-                    add({ kind: 'handover', title: 'Record Day 1 handover', team: true, overdue: !!f.joinDate && f.joinDate <= today });
-                if (r.hrNote && r.noteAcks[actor.id] !== r.noteVersion && (r.items.some(i => M.inGroup(config, i.team, actor.id)) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id))))
-                    add({ kind: 'hrNote', title: 'Read People GBS note', team: true });
             }
-            for (const n of allNotes.filter(n => n.caseId === c.id).map(n => n.data))
-                if (!n.deleted && (!c.submittedAt || n.at >= c.submittedAt) && n.mentions.includes(actor.id) && !n.resolved.includes(actor.id)) {
-                    const within = !!f.joinDate && f.joinDate <= M.dayDate(today, config.exceptions.remindDays + 1);
-                    add({ kind: 'mention', title: n.name + ' mentioned you', noteId: n.id, context: n.context, tagged: true, assigned: true, overdue: within });
-                }
         }
         // Fixed actual-assignee projection also covers a task whose subject is outside the user's
         // general data profile. It returns no private case, note, document or sibling-task payload.
-        const own=await tx.execute<AssignedChecklistRow>(sql`select * from app.onboarding_assigned_task_rows()`);
-        for(const row of own){
-            const kind=row.task_by==='joiner'&&row.gate?'acknowledgement':'checklist',due=row.due_on??row.join_date;
-            const locked=Boolean(row.opens_on&&row.opens_on>today||row.gate&&!row.handed),lockReason=row.gate&&!row.handed?'After Day 1 handover':row.opens_on&&row.opens_on>today?'Opens '+row.opens_on.split('-').reverse().join('/'):undefined;
-            out.push({id:row.case_id+':'+kind+':'+row.task_id,caseId:row.case_id,revision:row.revision,kind,title:row.title,joiner:row.joiner,businessGroup:row.business_group,joinDate:row.join_date,due,overdue:Boolean(due&&due<today),assigned:true,tagged:false,team:false,taskId:row.task_id,status:row.status,locked,lockReason});
-        }
+        const own=await tx.execute<{task:OnboardingTask}>(sql`select task from app.onboarding_checklist_task_rows()`);
+        out.push(...own.map(row=>row.task));
+        const delivery=await tx.execute<{task:OnboardingTask}>(sql`select task from app.onboarding_delivery_task_rows()`);
+        out.push(...delivery.map(row=>row.task));
         return out.sort((a, b) => Number(b.overdue) - Number(a.overdue) || (a.due || '9999').localeCompare(b.due || '9999') || a.id.localeCompare(b.id));
     });
 }
@@ -1005,6 +978,8 @@ export async function onboardingAssignedTaskMetadata(ctx:SessionContext):Promise
             for(const row of rows)updated.set(row.id,row.updatedAt);
         }
         const actual=await tx.execute<AssignedChecklistRow>(sql`select * from app.onboarding_assigned_task_rows()`);
+        const delivery=await tx.execute<{task:OnboardingTask;updated_at:Date|string}>(sql`select * from app.onboarding_delivery_task_rows()`);
+        for(const row of delivery)updated.set(row.task.caseId,row.updated_at instanceof Date?row.updated_at:new Date(row.updated_at));
         const actualTasks=new Map(actual.map(row=>[row.case_id+':'+row.task_id,row.updated_at instanceof Date?row.updated_at:new Date(row.updated_at)]));
         return assigned.flatMap(item=>{
             const sourceUpdatedAt=item.taskId&&(item.kind==='checklist'||item.kind==='acknowledgement')?actualTasks.get(item.caseId+':'+item.taskId):updated.get(item.caseId);if(!sourceUpdatedAt)return [];
@@ -1404,4 +1379,13 @@ export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, em
     M.log(c, actor, { now, id: randomUUID } as M.Environment, 'holding.' + item.recovery.outcome, `${item.name} · confirmed by ${assigned?'the assigned providing team':'HR'} on offboarding case ${offboardingCaseId}${reason.trim() ? ' · ' + reason.trim() : ''}`);
     await storeTx(tx, ctx, row, c, false);
     await auditTx(tx, ctx, c, 'holding_' + item.recovery.outcome);
+}
+
+/** A finite native task review; it never returns a full case or an administrative authority flag. */
+export async function onboardingBoundedTask(ctx:SessionContext,taskId:string){
+    if(typeof taskId!=='string'||taskId.length===0||taskId.length>500||/[\u0000-\u001f]/.test(taskId))M.fail('This work is not available.','forbidden');
+    return withTenant(ctx,async tx=>{
+        const [row]=await tx.execute<{detail:{task:OnboardingTask;body:string;notes:M.Note[];requestNumber:string|null;items?:{id:string;name:string}[];candidates?:{id:string;name:string}[]}|null}>(sql`select app.onboarding_delivery_task_detail(${taskId})as detail`);
+        if(!row?.detail)M.fail('This work is not available.','forbidden');return row.detail;
+    });
 }

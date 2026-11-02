@@ -5,11 +5,11 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { saveEmployeeDraft, discardEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { hireEmployee } from '../core/org';
-import { v9OwnTask, onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingAssignedTaskMetadata, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingSyncDraftTx, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
+import { v9OwnTask, onboardingSetup, onboardingContext, onboardingList, onboardingDetail, onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingTasks, onboardingBoundedTask, onboardingAssignedTaskMetadata, onboardingNote, sweepOnboarding, onboardingNotices, onboardingReadNotice, createOnboardingCase, caseHistory, refreshOnboardingPersonnel, onboardingSyncDraftTx, onboardingRequisitions, onboardingNavigation } from '../packs/lifecycle/service';
 import { appendEvent, actorOf } from '../db/events';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { dayDate } from '../lib/onboarding-model';
+import { dayDate,decide as canonicalDecide,assignApproval as canonicalAssignApproval } from '../lib/onboarding-model';
 import { onboardingConfigSchema } from '../lib/onboarding-validation';
 describe('V3.1 onboarding database and authorization', () => {
     let b: Base, admin: SessionContext, tech: SessionContext, other: SessionContext;
@@ -303,12 +303,18 @@ describe('V3.1 onboarding database and authorization', () => {
         await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
         await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${tech.userId!},${id},${admin.userId!})`;
         expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)))).toEqual([]);
+        const deliveryQueue=await onboardingTasks(tech),teamTask=deliveryQueue.find(task=>task.kind==='team'&&task.caseId===row.case.id)!;
+        expect(teamTask).toMatchObject({bounded:true,itemIds:[row.case.requisitions[0]!.items[0]!.id]});
+        expect((await onboardingBoundedTask(tech,teamTask.id)).task.id).toBe(teamTask.id);
+        await expect(onboardingBoundedTask(other,teamTask.id)).rejects.toThrow();
         const itemId=row.case.requisitions[0]!.items[0]!.id;
         await expect(onboardingCommand(other,row.case.id,row.revision,{type:'fulfil',itemId,status:'done'})).rejects.toThrow();
         await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_fulfil_item(${row.case.id}::uuid,${row.revision},${itemId},'done')`))).rejects.toThrow();
         expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
         await onboardingCommand(tech,row.case.id,row.revision,{type:'fulfil',itemId,status:'done'});row=(await onboardingList(admin))[0]!;
         expect(row.case.requisitions[0]!.items[0]!.state).toBe('ready');
+        expect((await onboardingTasks(tech)).some(task=>task.id===teamTask.id)).toBe(false);
+        expect((await onboardingTasks(tech)).find(task=>task.kind==='handover'&&task.caseId===row.case.id)?.bounded).toBe(true);
         await expect(onboardingCommand(other,row.case.id,row.revision,{type:'readNote'})).rejects.toThrow();
         await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_delivery_update(${row.case.id}::uuid,${row.revision},'readNote','{}'::jsonb)`))).rejects.toThrow();
         expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
@@ -327,7 +333,7 @@ describe('V3.1 onboarding database and authorization', () => {
         for(const actor of[tech,other]){
             const id=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Conversation scope '+id})`;
             await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
-            await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision}where id=${id}`;
+            await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
             await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${actor.userId!},${id},${admin.userId!})`;
         }
         const projection=(actor:SessionContext,context='welcome')=>withTenant(actor,tx=>tx.execute<{note:import('../lib/onboarding-model').Note}>(sql`select app.onboarding_conversation_rows(${row.case.id}::uuid,${context}) as note`));
@@ -338,6 +344,9 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingNote).where(eq(schema.lcOnboardingNote.caseId,row.case.id)))).toEqual([]);
         let notes=await projection(tech);expect(notes.map(n=>n.note.body)).toEqual(['Assigned conversation']);const note=notes[0]!.note;
         expect((await projection(other)).map(n=>n.note.body)).toEqual(['Assigned conversation']);
+        const mentioned=(await onboardingTasks(other)).find(task=>task.noteId===note.id)!;expect(mentioned).toMatchObject({bounded:true,kind:'mention'});
+        expect((await onboardingBoundedTask(other,mentioned.id)).notes.map(n=>n.body)).toEqual(['Assigned conversation']);
+        expect((await onboardingAssignedTaskMetadata(other)).some(task=>task.id===mentioned.id)).toBe(true);
         await expect(onboardingNote(other,row.case.id,{id:note.id,context:'welcome',body:'OTHER-AUTHOR',mentions:[]})).rejects.toThrow('Only the author');
         await onboardingNote(other,row.case.id,{id:note.id,context:'welcome',body:'',mentions:[],resolve:true});
         expect((await projection(other))[0]!.note.resolved).toContain(other.userId);
@@ -347,6 +356,50 @@ describe('V3.1 onboarding database and authorization', () => {
         await expect(onboardingNote(tech,row.case.id,{id:note.id,context:'case',body:'CONTEXT-SMUGGLE',mentions:[]})).rejects.toThrow();
         expect((await projection(tech))[0]!.note.body).toBe('Edited assigned conversation');
         expect((await owner.client`select count(*)::int as n from app.lifecycle_native_effect_context`)[0].n).toBe(0);
+    });
+    it('decides exact hidden assigned approvals with canonical requester auto-approval and no sibling rewrite',async()=>{
+        const context=await onboardingContext(admin),config=structuredClone(context.config);config.catalogue[0]!.workflow='standard';
+        config.workflows[0]!.steps.push({id:'requester-confirmation',label:'Requester confirmation',type:'person',target:admin.userId!,method:'rr'});
+        await onboardingSaveConfig(admin,context.revision,config);const row=await prepared(),item=row.case.requisitions[0]!.items[0]!;
+        expect(item.approval).toBe('pending');expect(item.steps[0]!.user).toBe(tech.userId);
+        const id=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Approval scope '+id})`;
+        await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
+        await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
+        await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${tech.userId!},${id},${admin.userId!})`;
+        expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)))).toEqual([]);
+        const task=(await onboardingTasks(tech)).find(task=>task.kind==='approval'&&task.caseId===row.case.id)!;expect(task).toMatchObject({bounded:true,itemIds:[item.id]});
+        const review=await onboardingBoundedTask(tech,task.id);expect(review.items).toEqual([{id:item.id,name:item.name}]);expect(JSON.stringify(review)).not.toContain('PRIVATE-IC');
+        await expect(onboardingCommand(other,row.case.id,row.revision,{type:'approve',itemIds:[item.id],decision:'approve'})).rejects.toThrow();
+        await expect(onboardingCommand(tech,row.case.id,row.revision,{type:'approve',itemIds:[item.id,item.id],decision:'approve'})).rejects.toThrow('only once');
+        await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_approval_decide(${row.case.id}::uuid,${row.revision},${JSON.stringify([item.id])}::jsonb,'approve')`))).rejects.toThrow();
+        expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
+        const expected=structuredClone(row.case);canonicalDecide(config,expected,[item.id],'approve',{id:tech.userId!,name:'Kevin Tech',master:false,hr:false,module:false},{now:'2026-11-02T00:00:00.000Z',today:todayInKualaLumpur(),id:randomUUID,nextNumber:()=>'',leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:[tech.userId!,admin.userId!],userNames:{[admin.userId!]:item.requesterName??'User'}});
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'approve',itemIds:[item.id],decision:'approve'});
+        const updated=(await onboardingList(admin))[0]!.case,actual=updated.requisitions[0]!.items[0]!,wanted=expected.requisitions[0]!.items[0]!;
+        const decisions=(entry:typeof item)=>entry.steps.map(({when,...step})=>step);expect(decisions(actual)).toEqual(decisions(wanted));expect(actual.approval).toBe('approved');
+        expect(updated.tasks).toEqual(expected.tasks);expect(updated.source).toEqual(expected.source);expect(updated.local).toEqual(expected.local);
+        const history=(c:typeof expected)=>c.history.slice(row.case.history.length).map(({id,at,...entry})=>entry);expect(history(updated)).toEqual(history(expected));
+        expect((await onboardingTasks(tech)).some(task=>task.id===review.task.id)).toBe(false);
+    });
+    it('assigns only the actual pending approval group across its recorded siblings under hidden data scope',async()=>{
+        const context=await onboardingContext(admin),config=structuredClone(context.config);config.workflows[0]!.steps[0]!.method='manual';config.catalogue[0]!.workflow='standard';config.catalogue.push({...config.catalogue[0]!,id:'vpn',name:'Fictional VPN'});config.groups.find(group=>group.id==='tech-bp')!.members=[tech.userId!,admin.userId!];
+        await onboardingSaveConfig(admin,context.revision,config);await draft();let row=(await onboardingList(admin))[0]!;
+        await onboardingCommand(admin,row.case.id,row.revision,{type:'saveSubmit',patch:{hiring:'new_hire',local:{supervisor:'Manager'},selected:['m365','vpn']}});row=(await onboardingList(admin))[0]!;const item=row.case.requisitions[0]!.items[0]!,step=item.steps[0]!;
+        expect(step).toMatchObject({manual:true,user:null,status:'pending'});
+        const id=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Manual approval scope '+id})`;
+        await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
+        await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
+        await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${tech.userId!},${id},${admin.userId!})`;
+        expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)))).toEqual([]);
+        const task=(await onboardingTasks(tech)).find(task=>task.kind==='manualApproval'&&task.caseId===row.case.id)!;expect(task).toMatchObject({bounded:true,stepId:step.id});
+        const review=await onboardingBoundedTask(tech,task.id);expect(review.candidates?.map(candidate=>candidate.id)).toEqual([tech.userId,admin.userId]);expect(review.candidates?.find(candidate=>candidate.id===admin.userId)?.name).toBe('User '+admin.userId!.slice(0,8));
+        await expect(onboardingCommand(other,row.case.id,row.revision,{type:'assignApproval',itemId:item.id,stepId:step.id,user:tech.userId!})).rejects.toThrow();
+        await expect(onboardingCommand(tech,row.case.id,row.revision,{type:'assignApproval',itemId:item.id,stepId:step.id,user:other.userId!})).rejects.toThrow('member');
+        await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_approval_assign(${row.case.id}::uuid,${row.revision},${item.id},${step.id},${tech.userId!})`))).rejects.toThrow();
+        const expected=structuredClone(row.case);canonicalAssignApproval(config,expected,item.id,step.id,tech.userId!,{id:tech.userId!,name:'Kevin Tech',master:false,hr:false,module:false},{now:'2026-11-02T00:00:00.000Z',today:todayInKualaLumpur(),id:randomUUID,nextNumber:()=>'',leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:[tech.userId!,admin.userId!]});
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'assignApproval',itemId:item.id,stepId:step.id,user:tech.userId!});const actual=(await onboardingList(admin))[0]!.case;
+        const selections=(c:typeof actual)=>c.requisitions[0]!.items.map(item=>item.steps.map(({when,assignments,...step})=>({...step,assignments:assignments.map(({at,...assignment})=>assignment)})));expect(selections(actual)).toEqual(selections(expected));expect(actual.tasks).toEqual(expected.tasks);
+        expect((await onboardingTasks(tech)).some(task=>task.id===review.task.id)).toBe(false);
     });
     it('preserves the same case when Personnel activates its draft', async () => {
         const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Activation Hire', employeeCode: 'ONB-ACT-1', primaryEmail: 'activation@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });

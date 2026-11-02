@@ -1,7 +1,7 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
-import { onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingNote, onboardingSetup, onboardingDetail, onboardingMarkSeen, type OnboardingCommand, type OnboardingConfig } from '@/packs/lifecycle/service';
+import { onboardingCommand, onboardingBoundedTask, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingNote, onboardingSetup, onboardingDetail, onboardingMarkSeen, type OnboardingCommand, type OnboardingConfig } from '@/packs/lifecycle/service';
 import type { TaskDef } from '@/lib/onboarding-model';
 import { OnboardingError } from '@/lib/onboarding-model';
 import { ZodError } from 'zod';
@@ -73,3 +73,8 @@ export async function loadOnboardingTask(id: string) {
     }
 }
 export async function markOnboardingSeen(id: string) { await onboardingMarkSeen(await getSession(), id); revalidatePath('/lifecycle/onboarding'); }
+
+export async function loadOnboardingBoundedTask(taskId:string){
+    try{return{detail:await onboardingBoundedTask(await getSession(),taskId),error:null};}
+    catch(e){return{detail:null,...failure(e)};}
+}

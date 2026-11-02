@@ -4,9 +4,9 @@ import { NextIntlClientProvider } from 'next-intl';
 import { readFileSync } from 'node:fs';
 import type { OnboardingTask } from '../packs/lifecycle/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
-const mocks = vi.hoisted(() => ({ change: vi.fn(), load: vi.fn(), note: vi.fn(), seen: vi.fn(), refresh: vi.fn(), config: vi.fn(), tasks: vi.fn() }));
+const mocks = vi.hoisted(() => ({ change: vi.fn(), bounded:vi.fn(), load: vi.fn(), note: vi.fn(), seen: vi.fn(), refresh: vi.fn(), config: vi.fn(), tasks: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh, push: vi.fn() }) }));
-vi.mock('../app/lifecycle/onboarding/v31-actions', () => ({ changeOnboarding: mocks.change, loadOnboardingTask: mocks.load, writeOnboardingNote: mocks.note, markOnboardingSeen: mocks.seen, saveOnboardingConfig: mocks.config, saveOnboardingChecklistTasks: mocks.tasks }));
+vi.mock('../app/lifecycle/onboarding/v31-actions', () => ({ changeOnboarding: mocks.change, loadOnboardingTask: mocks.load, loadOnboardingBoundedTask:mocks.bounded, writeOnboardingNote: mocks.note, markOnboardingSeen: mocks.seen, saveOnboardingConfig: mocks.config, saveOnboardingChecklistTasks: mocks.tasks }));
 const { OnboardingSettings } = await import('../app/admin/lifecycle/onboarding/settings');
 const { Joiners } = await import('../app/lifecycle/onboarding/joiners');
 const { OnboardingCaseView } = await import('../app/lifecycle/onboarding/case-view');
@@ -31,6 +31,42 @@ describe('V3.1 localized task controls', () => {
         fireEvent.change(select, { target: { value: 'done' } });
         await waitFor(() => expect(mocks.change).toHaveBeenCalledWith('case', 7, { type: 'task', taskId: 'welcome', status: 'done' }));
         expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    });
+    it.each(['en','ms','zh','ta','th','vi'])('reviews a finite assigned note and saves its native action without requesting a private case (%s)',async locale=>{
+        const bounded={...task,id:'case:hrNote:',kind:'hrNote' as const,taskId:undefined,title:'Read People GBS note',bounded:true};
+        mocks.bounded.mockResolvedValue({error:null,detail:{task:bounded,body:'Fictional note for the actual fulfilling team',notes:[],requestNumber:'IT-REQ-1'}});
+        render(<NextIntlClientProvider locale={locale}messages={messages(locale)}timeZone="Asia/Kuala_Lumpur"><TasksView items={[bounded]}existing={[]}/></NextIntlClientProvider>);
+        fireEvent.click(screen.getByRole('button',{name:translation(locale,'Review')}));
+        await waitFor(()=>expect(screen.getByText('Fictional note for the actual fulfilling team')).toBeVisible());
+        expect(mocks.bounded).toHaveBeenCalledWith('case:hrNote:');expect(mocks.load).not.toHaveBeenCalled();
+        const controls=screen.getAllByRole('button',{name:translation(locale,'Mark as read')});fireEvent.click(controls[0]!);
+        await waitFor(()=>expect(mocks.change).toHaveBeenCalledWith('case',7,{type:'readNote'}));
+        expect(mocks.refresh).toHaveBeenCalled();
+    });
+    it('keeps a native View-only task readable and its execution control disabled',async()=>{
+        const bounded={...task,id:'case:team:item',kind:'team' as const,itemIds:['item'],taskId:undefined,bounded:true,canExecute:false};
+        mocks.bounded.mockResolvedValue({error:null,detail:{task:bounded,body:'',notes:[],requestNumber:'IT-REQ-1'}});
+        render(<NextIntlClientProvider locale="en"messages={messages('en')}timeZone="Asia/Kuala_Lumpur"><TasksView items={[bounded]}existing={[]}/></NextIntlClientProvider>);
+        expect(screen.getByRole('combobox',{name:translation('en','Status')})).toBeDisabled();
+        fireEvent.click(screen.getByRole('button',{name:translation('en','Review')}));
+        await waitFor(()=>expect(screen.getByRole('button',{name:translation('en','Close task details')})).toBeVisible());
+        expect(screen.getByRole('combobox',{name:translation('en','Status')})).toBeDisabled();expect(mocks.change).not.toHaveBeenCalled();
+    });
+    it('reviews only selected native approval items before sending the actual approval command',async()=>{
+        const bounded={...task,id:'case:approval:item',kind:'approval' as const,itemIds:['item'],taskId:undefined,bounded:true,canExecute:true};
+        mocks.bounded.mockResolvedValue({error:null,detail:{task:bounded,body:'',notes:[],requestNumber:'IT-REQ-1',items:[{id:'item',name:'Fictional selected laptop'}]}});
+        render(<NextIntlClientProvider locale="en"messages={messages('en')}timeZone="Asia/Kuala_Lumpur"><TasksView items={[bounded]}existing={[]}/></NextIntlClientProvider>);
+        fireEvent.click(screen.getByRole('button',{name:translation('en','Review')}));await waitFor(()=>expect(screen.getByText('Fictional selected laptop')).toBeVisible());
+        expect(mocks.load).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:translation('en','Approve all')}));
+        await waitFor(()=>expect(mocks.change).toHaveBeenCalledWith('case',7,{type:'approve',itemIds:['item'],decision:'approve'}));
+    });
+    it('chooses a current native approval-group candidate without opening a private case',async()=>{
+        const bounded={...task,id:'case:manualApproval:item:step',kind:'manualApproval' as const,itemIds:['item'],stepId:'step',taskId:undefined,bounded:true,canExecute:true};
+        mocks.bounded.mockResolvedValue({error:null,detail:{task:bounded,body:'',notes:[],requestNumber:'IT-REQ-1',items:[{id:'item',name:'Fictional selected laptop'}],candidates:[{id:'candidate',name:'Fictional eligible colleague'}]}});
+        render(<NextIntlClientProvider locale="en"messages={messages('en')}timeZone="Asia/Kuala_Lumpur"><TasksView items={[bounded]}existing={[]}/></NextIntlClientProvider>);
+        fireEvent.click(screen.getByRole('button',{name:translation('en','Choose an approver')}));await waitFor(()=>expect(screen.getByRole('option',{name:'Fictional eligible colleague'})).toBeVisible());
+        expect(mocks.load).not.toHaveBeenCalled();fireEvent.change(screen.getByRole('combobox',{name:translation('en','Choose an approver')}),{target:{value:'candidate'}});fireEvent.click(screen.getByRole('button',{name:translation('en','Choose an approver')}));
+        await waitFor(()=>expect(mocks.change).toHaveBeenCalledWith('case',7,{type:'assignApproval',itemId:'item',stepId:'step',user:'candidate'}));
     });
     it('autosaves checklist tasks without unrelated configuration writes and sequences revisions', async () => {
         const config = defaultConfig('owner');
