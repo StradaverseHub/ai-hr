@@ -1,8 +1,8 @@
 name: mobile-android-backup-review
-run-name: Android complete text-layout review · e57335aed
+run-name: Android SDK58 security candidate review · 262a21c0b
 on:
   push:
-    branches: [codex/mobile-text-row-review-controller-20261103]
+    branches: [codex/mobile-sdk58-eval-20261103]
     paths:
       - .github/workflows/mobile-android-backup-review.yml
       - .github/ci/native-android-backup-review.sh
@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: mobile-android-text-row-review
+  group: mobile-android-sdk58-review
   cancel-in-progress: false
 jobs:
   review-apk:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      EXPECTED_SOURCE: e57335aed02610c1d34fbcfadfb3b23c28921eab
+      EXPECTED_SOURCE: 262a21c0b46e547f6d3fbb07165db93259f2571a
       CI: '1'
       EXPO_NO_TELEMETRY: '1'
       EXPO_PUBLIC_RUNTIME_CONNECTIONS: '1'
@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: e57335aed02610c1d34fbcfadfb3b23c28921eab
+          ref: 262a21c0b46e547f6d3fbb07165db93259f2571a
           path: source
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
@@ -46,7 +46,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: onehr-android-backup-review-e57335aed
+          name: onehr-android-backup-review-262a21c0b
           path: ${{ runner.temp }}/onehr-android-backup-review/
           if-no-files-found: warn
           retention-days: 1

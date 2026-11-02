@@ -4,7 +4,7 @@
 set -euo pipefail
 [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_OS:-}" == Linux ]]
 [[ "${GITHUB_REPOSITORY:-}" == StradaverseHub/ai-hr ]]
-[[ "${EXPECTED_SOURCE:-}" == e57335aed02610c1d34fbcfadfb3b23c28921eab ]]
+[[ "${EXPECTED_SOURCE:-}" == 262a21c0b46e547f6d3fbb07165db93259f2571a ]]
 [[ "$(git -C source rev-parse HEAD)" == "$EXPECTED_SOURCE" ]]
 [[ -z "$(git -C source status --porcelain)" ]]
 [[ -d "${JAVA_HOME_17_X64:?Standard runner JDK17 required}" ]]
