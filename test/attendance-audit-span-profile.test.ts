@@ -79,10 +79,34 @@ it('profiles the native callback after the first observed service audit append a
   const effect=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,c.id),eq(s.domainEvent.eventType,'attendance-correction.effect.recorded')));expect(effect).toHaveLength(1);expect(effect[0].chainSeq).not.toBeNull();
   const punches=await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateType,'attendance-punch'),sql`${s.domainEvent.payload}->>'correctionId'=${c.id}`)).orderBy(asc(s.domainEvent.sequence));
   expect(punches.map(e=>e.eventType)).toEqual(['attendance.punch.voided','attendance.punch.voided','attendance.punch.added','attendance.punch.added']);expect(punches.every(e=>e.actorId===c.hr.ctx.userId&&e.subjectEmploymentId===c.worker.employmentId)).toBe(true);
+  expect(punches[0].payload).toMatchObject({correctionId:c.id,reason:'Fictional real audit span probe',before:{punchAt:'08:00:00',direction:'in'},after:{voidedBy:c.hr.ctx.userId,voidReason:'Fictional real audit span probe'}});
+  expect(punches[1].payload).toMatchObject({before:{punchAt:'17:00:00',direction:'out'}});expect(punches[2].payload).toMatchObject({after:{punchAt:'09:00:00',direction:'in',method:'admin'}});expect(punches[3].payload).toMatchObject({after:{punchAt:'18:00:00',direction:'out',method:'admin'}});
  }
  expect(audit.every(a=>a.valid)).toBe(true);
  expect(spans.every(t=>t.auditHeldBeforeFirstObservedAppend===false)).toBe(true);
  expect(spans.every(t=>t.punchAuditEvents===4)).toBe(true);
  expect(spans.every(t=>t.punchAuditWrites===1)).toBe(true);
  if(batchSql){expect(batchSql.calls).toBe(cases.length);expect(batchSql.rows).toBe(cases.length*4);}
+ // An actual failure on the last punch audit must undo every effect and participant decision.
+ const c=cases[0],root=adminCtx(c.b),date=new Date(on+'T12:00:00Z');date.setUTCDate(date.getUTCDate()-7);const failOn=date.toISOString().slice(0,10);
+ await checkIn(root,{employmentId:c.worker.employmentId,date:failOn,time:'08:00',manual:true});await checkOut(root,{employmentId:c.worker.employmentId,date:failOn,time:'17:00',manual:true});
+ const pending=await requestAttendanceCorrection(c.worker.ctx,{employmentId:c.worker.employmentId,date:failOn,checkIn:'09:00',checkOut:'18:00',reason:'Fictional rollback witness'});
+ const punches=()=>owner.db.select().from(s.attendancePunch).where(and(eq(s.attendancePunch.employmentId,c.worker.employmentId),eq(s.attendancePunch.attendanceDate,failOn))).orderBy(asc(s.attendancePunch.punchAt),asc(s.attendancePunch.id));
+ const journal=()=>owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.tenantId,c.b.tenantId),sql`(${s.domainEvent.aggregateId}=${pending.correctionId}::uuid OR ${s.domainEvent.payload}->>'correctionId'=${pending.correctionId})`)).orderBy(asc(s.domainEvent.sequence));
+ const beforePunches=await punches(),beforeEvents=await journal();
+ await owner.client.unsafe("CREATE FUNCTION public.perf_refuse_last_punch_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='attendance.punch.added' AND NEW.payload->'after'->>'direction'='out' THEN RAISE EXCEPTION 'Fictional final punch audit refusal' USING ERRCODE='P0001'; END IF; RETURN NEW; END $$");
+ let triggered=false,refusal:unknown;
+ try{
+  await owner.client.unsafe('CREATE TRIGGER perf_refuse_last_punch_event AFTER INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION public.perf_refuse_last_punch_event()');triggered=true;
+  try{await decideAttendanceCorrection(c.hr.ctx,{correctionId:pending.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});}catch(error){refusal=error;}
+ }finally{if(triggered)await owner.client.unsafe('DROP TRIGGER perf_refuse_last_punch_event ON domain_event');await owner.client.unsafe('DROP FUNCTION public.perf_refuse_last_punch_event()');}
+ let cause=refusal as {code?:string;message?:string;cause?:unknown};while(cause?.cause&&!cause.code)cause=cause.cause as typeof cause;
+ expect(cause?.code).toBe('P0001');expect(cause.message).toContain('Fictional final punch audit refusal');
+ expect(await punches()).toEqual(beforePunches);expect(await journal()).toEqual(beforeEvents);
+ const [pendingState]=await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,pending.correctionId));expect(pendingState.status).toBe('pending');
+ const [decisions]=await owner.client`select count(*)::int as n from attendance_workflow_participant_decision d join attendance_workflow_request r on r.id=d.request_id where r.correction_id=${pending.correctionId}::uuid`;expect(decisions.n).toBe(0);
+ await decideAttendanceCorrection(c.hr.ctx,{correctionId:pending.correctionId,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'});
+ const finalAudit=await verifyTenantChain(root);expect(finalAudit.valid).toBe(true);expect(finalAudit.unchainedInsideChain).toBe(0);
+ Object.assign(report,{lastAuditSqlFailureRollback:true,participantEvidenceRolledBack:true,recoveryAfterRemovedFixtureFailure:true,finalAudit});
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/attendance-audit-spans.json',JSON.stringify(report));
 },240000);
