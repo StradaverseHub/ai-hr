@@ -126,3 +126,15 @@ it('binds an initial draft receipt to the actual same-transaction source and ref
  const receipts=await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.claimRequestId,actual.id));
  expect(receipts).toHaveLength(1);expect(await getClaimAttachment(own,receipts[0].id)).toEqual(file);
 });
+
+it('refuses foreign-tenant and wrong-parent native claim references before a raw source can be born',async()=>{
+ const other=await seedBase(),foreignType=randomUUID(),secondType=randomUUID(),wrongItem=randomUUID();
+ await owner.db.insert(s.claimType).values([{id:foreignType,tenantId:other.tenantId,code:'FOREIGN',name:'Fictional foreign type'},{id:secondType,tenantId:b.tenantId,code:'OTHER',name:'Fictional other parent'}]);
+ await owner.db.insert(s.claimItem).values({id:wrongItem,tenantId:b.tenantId,claimTypeId:secondType,code:'OTHER',name:'Fictional other item'});
+ const audits=await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`;
+ const raw=(claimTypeId:string,claimItemId:string|null)=>withTenant(own,tx=>tx.insert(s.claimRequest).values({tenantId:b.tenantId,employmentId:subject.employmentId,claimTypeId,claimItemId,amount:'25.00',incurredOn:todayInKualaLumpur(),taxable:false,status:'draft'}));
+ await refusal(raw(foreignType,null),'Claim source reference unavailable');
+ await refusal(raw(typeId,wrongItem),'Claim source reference unavailable');
+ expect(await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.employmentId,subject.employmentId))).toEqual([]);
+ expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audits);
+});
