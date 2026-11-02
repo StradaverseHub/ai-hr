@@ -472,3 +472,63 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.onboarding_assigned_task_rows() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_assigned_task_rows() TO ai_hr_app;
+
+--> statement-breakpoint
+-- Workflow identity eligibility remains tenant-local and independent of administrative Person
+-- access. An assigned data profile may mask a name; it must not silently revoke an eligible user ID.
+CREATE OR REPLACE FUNCTION app.onboarding_directory()RETURNS TABLE(id uuid,name text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT u.id,CASE WHEN p.id IS NOT NULL AND app.data_permission_person_read(p.id)
+  THEN coalesce(p.full_name,'User '||left(u.id::text,8)) ELSE 'User '||left(u.id::text,8) END
+ FROM public.app_user u LEFT JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id
+ WHERE u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ AND app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.app_user actor
+  WHERE actor.id=app.current_user_id() AND actor.tenant_id=u.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id))
+ ORDER BY 2,u.id;
+$$;
+
+--> statement-breakpoint
+-- Prospective joiners have no Employment yet. Match only source-owned facts from the current
+-- Personnel draft, never the editable Onboarding local overrides or caller-supplied JSON. Fields
+-- absent from the draft contract remain NULL, so predicates on those fields fail closed.
+CREATE FUNCTION app.onboarding_data_subject_read(p_case uuid)RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE c public.lc_onboarding_case;draft public.employee_draft;profile public.data_permission_profile;rules jsonb;subject jsonb;
+BEGIN
+ IF NOT app.principal_snapshot_current()THEN RETURN false;END IF;
+ SELECT * INTO c FROM public.lc_onboarding_case x WHERE x.id=p_case AND x.tenant_id=app.current_tenant_id();
+ IF c.id IS NULL THEN RETURN false;END IF;
+ IF c.employment_id IS NOT NULL THEN RETURN app.data_permission_record_read(c.employment_id);END IF;
+ SELECT p.* INTO profile FROM public.user_data_permission_assignment a LEFT JOIN public.data_permission_profile p ON p.id=a.profile_id AND p.tenant_id=a.tenant_id
+ WHERE a.tenant_id=c.tenant_id AND a.user_id=app.current_user_id();
+ IF NOT FOUND THEN RETURN true;END IF;
+ IF profile.id IS NULL OR NOT profile.enabled OR profile.retired_at IS NOT NULL OR profile.active_revision_id IS NULL THEN RETURN false;END IF;
+ SELECT * INTO draft FROM public.employee_draft d WHERE d.id=c.source_draft_id AND d.tenant_id=c.tenant_id AND d.company_id=c.company_id;
+ IF draft.id IS NULL THEN RETURN false;END IF;
+ SELECT r.rules INTO rules FROM public.data_permission_revision r WHERE r.id=profile.active_revision_id AND r.profile_id=profile.id AND r.tenant_id=c.tenant_id;
+ subject:=jsonb_build_object('tenant',draft.tenant_id::text,'company',draft.company_id::text,
+ 'businessUnit',(SELECT d.business_unit_id::text FROM public.department d WHERE d.id::text=draft.data->'employment'->>'departmentId' AND d.tenant_id=draft.tenant_id),
+ 'department',nullif(draft.data->'employment'->>'departmentId',''),'position',nullif(draft.data->'employment'->>'positionId',''),
+ 'grade',nullif(draft.data->'employment'->>'gradeId',''),'employmentType',nullif(draft.data->'employment'->>'employmentType',''),
+ 'costCentre',nullif(draft.data->'employment'->>'costCenterId',''),'nationality',nullif(draft.data->'profile'->>'nationality',''),
+ 'gender',nullif(draft.data->'profile'->>'gender',''),'maritalStatus',nullif(draft.data->'profile'->>'maritalStatus',''),
+ 'employeeId',coalesce(draft.reserved_employee_code,nullif(draft.data->'profile'->>'employeeCode','')));
+ RETURN app.data_permission_rules_match(rules,subject);
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_data_subject_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_data_subject_read(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.lifecycle_v9_data_subject_read(p_case uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.lc_v9_case c WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND app.data_permission_record_read(c.employment_id));
+$$;
+REVOKE ALL ON FUNCTION app.lifecycle_v9_data_subject_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lifecycle_v9_data_subject_read(uuid) TO ai_hr_app;
+--> statement-breakpoint
+ALTER POLICY data_permission_subject_read ON lc_onboarding_case USING(app.onboarding_data_subject_read(id));
+CREATE POLICY data_permission_case_read ON lc_onboarding_private AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.onboarding_data_subject_read(case_id));
+CREATE POLICY data_permission_case_read ON lc_onboarding_private_revision AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.onboarding_data_subject_read(case_id));
+CREATE POLICY data_permission_case_read ON lc_onboarding_case_revision AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.onboarding_data_subject_read(case_id));
+CREATE POLICY data_permission_case_read ON lc_onboarding_note AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.onboarding_data_subject_read(case_id));
+CREATE POLICY data_permission_case_read ON lc_v9_case_revision AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.lifecycle_v9_data_subject_read(case_id));
+CREATE POLICY data_permission_case_read ON lc_v9_file AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(CASE WHEN case_id IS NOT NULL THEN app.lifecycle_v9_data_subject_read(case_id) ELSE app.onboarding_data_subject_read(onboarding_case_id)END);
