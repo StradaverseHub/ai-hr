@@ -9,7 +9,7 @@ const unique=(rows:readonly string[])=>new Set(rows).size===rows.length;
 const refuse=():never=>{throw new AccessPermissionError('invalid');};
 
 export function parseAccessOwnerState(raw:unknown,tenantId:string){
-  if(!object(raw)||!object(raw.snapshot)||!list(raw.catalog,256)||!list(raw.companyIds,5000)||!list(raw.coverage,1000000)||!text(raw.scopeFingerprint,64)||!/^[a-f0-9]{64}$/.test(raw.scopeFingerprint))return refuse();
+  if(!object(raw)||!object(raw.snapshot)||!list(raw.catalog,2048)||!list(raw.companyIds,5000)||!list(raw.coverage,1000000)||!text(raw.scopeFingerprint,64)||!/^[a-f0-9]{64}$/.test(raw.scopeFingerprint))return refuse();
   const s=raw.snapshot,catalog=raw.catalog;
   if(s.tenantId!==tenantId||!uuid(s.revision)||!list(s.users,5000)||!list(s.groups,256)||!list(s.memberships,100000)||!list(s.overrides,100000))return refuse();
   if(!raw.companyIds.every(uuid)||!unique(raw.companyIds))return refuse();
@@ -19,13 +19,20 @@ export function parseAccessOwnerState(raw:unknown,tenantId:string){
   for(const cap of raw.catalog){
     if(!object(cap)||!text(cap.id,200)||capIds.has(cap.id)||(cap.scope!=='tenant'&&cap.scope!=='company')||typeof cap.supported!=='boolean'||!list(cap.bindings,128))return refuse();
     if(!cap.bindings.every(b=>object(b)&&text(b.owner,300)&&text(b.operation,100))||cap.supported&&cap.bindings.length===0)return refuse();
+    if(cap.prerequisites!==undefined&&(!list(cap.prerequisites,16)||!cap.prerequisites.every(id=>text(id,200))))return refuse();
+    if(cap.presentation!==undefined&&cap.presentation!==null&&(!object(cap.presentation)||!text(cap.presentation.key,160)||!text(cap.presentation.moduleKey,100)||!text(cap.presentation.labelKey,200)||!['screen','submenu','native_acl'].includes(String(cap.presentation.kind))||!['administrative','own','assigned'].includes(String(cap.presentation.course))))return refuse();
     capIds.add(cap.id);
   }
+  const visiting=new Set<string>(),visited=new Set<string>();
+  const check=(id:string)=>{if(visiting.has(id))return refuse();if(visited.has(id))return;visiting.add(id);const cap=catalog.find(c=>object(c)&&c.id===id) as Record<string,unknown>;for(const required of (cap.prerequisites??[]) as string[]){if(!capIds.has(required))return refuse();check(required);}visiting.delete(id);visited.add(id);};
+  for(const id of capIds)check(id);
   const validGrant=(v:unknown):v is CapabilityGrant=>object(v)&&typeof v.capabilityId==='string'&&capIds.has(v.capabilityId)&&validScope(v.companyId)&&!(v.companyId!==null&&catalog.some(c=>object(c)&&c.id===v.capabilityId&&c.scope==='tenant'));
+  if(raw.nativeDefaults!==undefined&&(!list(raw.nativeDefaults,100000)||!raw.nativeDefaults.every(value=>object(value)&&uuid(value.userId)&&validGrant(value))))return refuse();
   for(const user of s.users){if(!object(user)||!uuid(user.id)||userIds.has(user.id)||typeof user.active!=='boolean')return refuse();userIds.add(user.id);}
+  if(raw.nativeDefaults!==undefined&&(raw.nativeDefaults as {userId:string}[]).some(row=>!userIds.has(row.userId)))return refuse();
   if(raw.recoveryUserIds.some(id=>!userIds.has(id))||!unique(raw.recoveryUserIds))return refuse();
   for(const group of s.groups){
-    if(!object(group)||!uuid(group.id)||groupIds.has(group.id)||!text(group.name,100)||typeof group.retired!=='boolean'||typeof group.systemAdministrator!=='boolean'||!list(group.grants,256)||!group.grants.every(validGrant))return refuse();
+    if(!object(group)||!uuid(group.id)||groupIds.has(group.id)||!text(group.name,100)||typeof group.retired!=='boolean'||typeof group.systemAdministrator!=='boolean'||!list(group.grants,2048)||!group.grants.every(validGrant))return refuse();
     if(!unique(group.grants.map(g=>g.capabilityId+':'+g.companyId)))return refuse();groupIds.add(group.id);
   }
   for(const member of s.memberships)if(!object(member)||typeof member.userId!=='string'||!userIds.has(member.userId)||typeof member.groupId!=='string'||!groupIds.has(member.groupId)||!validScope(member.companyId)||member.derived!==undefined&&typeof member.derived!=='boolean')return refuse();
@@ -39,8 +46,9 @@ export function parseAccessOwnerState(raw:unknown,tenantId:string){
     users:checked.users.map(u=>({id:u.id,active:u.active})),
     groups:checked.groups.map(g=>({id:g.id,name:g.name,retired:g.retired,systemAdministrator:g.systemAdministrator,grants:g.grants.map(a=>({capabilityId:a.capabilityId,companyId:a.companyId}))})),
     memberships:checked.memberships.map(m=>({userId:m.userId,groupId:m.groupId,companyId:m.companyId,derived:m.derived===true})),
+    nativeDefaults:((raw.nativeDefaults??[]) as (CapabilityGrant&{userId:string})[]).map(row=>({userId:row.userId,capabilityId:row.capabilityId,companyId:row.companyId})),
     overrides:checked.overrides.map(o=>({userId:o.userId,capabilityId:o.capabilityId,companyId:o.companyId,effect:o.effect})),
   };
-  const capabilities=(catalog as AccessCapability[]).map(c=>({id:c.id,scope:c.scope,supported:c.supported,bindings:c.bindings.map(b=>({owner:b.owner,operation:b.operation}))}));
+  const capabilities=(catalog as AccessCapability[]).map(c=>({id:c.id,scope:c.scope,supported:c.supported,prerequisites:c.prerequisites??[],...(c.presentation?{presentation:c.presentation}:{}),bindings:c.bindings.map(b=>({owner:b.owner,operation:b.operation}))}));
   return {snapshot,catalog:capabilities,evidence,scopeFingerprint:raw.scopeFingerprint,recoveryUserIds:new Set(raw.recoveryUserIds)};
 }

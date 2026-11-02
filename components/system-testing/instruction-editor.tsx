@@ -3,20 +3,20 @@ import { useActionState,useEffect,useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { saveTestingInstructionAction } from '@/app/admin/system-testing/workspace-actions';
-import { INITIAL_TESTING_ACTION_STATE } from '@/lib/system-testing/action-model';
+import { INITIAL_TESTING_ACTION_STATE,type TestingActionState } from '@/lib/system-testing/action-model';
 import { TESTING_AREAS,TESTING_CATEGORIES,TESTING_PRIORITIES,TESTING_LIMITS,type InstructionDefinition } from '@/lib/system-testing/model';
 import { btnPrimary,inputCls } from '@/components/ui';
-export function TestingInstructionEditor({ initial,caseId,versionId,draftRevision,modules,screens }: { initial: InstructionDefinition; caseId: string|null; versionId: string|null; draftRevision: number; modules: { code: string; name: string }[]; screens: { screenKey: string; label: string }[] }) {
+export function TestingInstructionEditor({ initial,caseId,versionId,draftRevision,modules,screens,canDraft=false,canPublish=false }: { canDraft?:boolean;canPublish?:boolean; initial: InstructionDefinition; caseId: string|null; versionId: string|null; draftRevision: number; modules: { code: string; name: string }[]; screens: { screenKey: string; label: string }[] }) {
   const t=useTranslations('systemTestingWorkspace'),router=useRouter(),[definition,setDefinition]=useState(initial);
   const [opened]=useState({caseId,versionId,revision:draftRevision});
   const encoded=JSON.stringify(definition),tooLarge=new TextEncoder().encode(encoded).byteLength>TESTING_LIMITS.instructionBytes;
-  const [state,submit,pending]=useActionState(saveTestingInstructionAction,INITIAL_TESTING_ACTION_STATE);
+  const [state,submit,pending]=useActionState(async(state:TestingActionState,form:FormData):Promise<TestingActionState>=>{const intent=form.get('intent')??'draft';if(!(intent==='draft'?canDraft:intent==='publish'&&canPublish))return {...state,error:'not_assigned'};return saveTestingInstructionAction(state,form);},INITIAL_TESTING_ACTION_STATE);
   const pointer=state.savedDraft??opened;
   useEffect(()=>{if(!opened.caseId&&state.savedDraft&&!state.error)router.replace(`/admin/system-testing/${state.savedDraft.caseId}`);},[opened.caseId,state.savedDraft,state.error,router]);
-  function set<K extends keyof InstructionDefinition>(key: K,value: InstructionDefinition[K]) { setDefinition(d=>({...d,[key]:value})); }
-  function move(index: number,offset: number) { setDefinition(d=>{ const steps=[...d.steps],target=index+offset; if(target<0||target>=steps.length)return d; [steps[index],steps[target]]=[steps[target],steps[index]]; return {...d,steps}; }); }
+  function set<K extends keyof InstructionDefinition>(key: K,value: InstructionDefinition[K]) { if(!canDraft&&!canPublish)return; setDefinition(d=>({...d,[key]:value})); }
+  function move(index: number,offset: number) { if(!canDraft&&!canPublish)return; setDefinition(d=>{ const steps=[...d.steps],target=index+offset; if(target<0||target>=steps.length)return d; [steps[index],steps[target]]=[steps[target],steps[index]]; return {...d,steps}; }); }
   const lineFields=['prerequisites','testData','permissions'] as const;
-  return <form action={submit} className="space-y-5">
+  return <form action={submit} className="space-y-5"><fieldset disabled={pending||(!canDraft&&!canPublish)} className="space-y-5">
     <input type="hidden" name="caseId" value={pointer.caseId??''}/><input type="hidden" name="versionId" value={pointer.versionId??''}/><input type="hidden" name="draftRevision" value={pointer.revision}/><input type="hidden" name="definition" value={encoded}/>
     <div className="grid gap-4 sm:grid-cols-2">
       {(['title','objective','functionKey','expectedBehavior','expectedFunction'] as const).map(key=><label key={key} className={key==='title'?'sm:col-span-2':''}><span className="mb-1 block text-sm font-medium">{t(key)}</span><textarea className={`${inputCls} h-auto min-h-20 py-2`} value={definition[key]} maxLength={key==='title'?240:8000} onChange={e=>set(key,e.target.value)}/></label>)}
@@ -32,7 +32,7 @@ export function TestingInstructionEditor({ initial,caseId,versionId,draftRevisio
     <fieldset className="space-y-3"><legend className="text-base font-semibold">{t('steps')}</legend>{definition.steps.map((step,index)=><div key={step.id} className="rounded-lg border border-border p-3"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-medium">{t('stepNumber',{number:index+1})}</span><div className="flex gap-2">{([-1,1] as const).map(offset=><button key={offset} type="button" disabled={index+offset<0||index+offset>=definition.steps.length} className="rounded border px-2 py-1 text-sm disabled:opacity-40" onClick={()=>move(index,offset)} aria-label={t(offset<0?'moveUp':'moveDown',{number:index+1})}>{t(offset<0?'up':'down')}</button>)}<button type="button" className="rounded border px-2 py-1 text-sm" onClick={()=>set('steps',definition.steps.filter(s=>s.id!==step.id))}>{t('remove')}</button></div></div><div className="grid gap-3 sm:grid-cols-2">{(['action','expected'] as const).map(key=><label key={key}><span className="mb-1 block text-sm">{t(key)}</span><textarea className={`${inputCls} h-auto min-h-20 py-2`} value={step[key]} onChange={e=>set('steps',definition.steps.map(s=>s.id===step.id?{...s,[key]:e.target.value}:s))}/></label>)}</div></div>)}<button type="button" className="rounded border px-3 py-2 text-sm" disabled={definition.steps.length>=TESTING_LIMITS.steps} onClick={()=>{let n=1;while(definition.steps.some(s=>s.id===`step${n}`))n++;set('steps',[...definition.steps,{id:`step${n}`,action:'',expected:''}]);}}>{t('addStep')}</button></fieldset>
     {tooLarge&&<p role="alert" className="text-sm text-destructive">{t('errors.limit')}</p>}
     {state.error&&<p role="alert" className="break-words text-sm text-destructive">{t(`errors.${state.error}`)}</p>}
-    <div className="flex flex-wrap gap-3"><button className={btnPrimary} type="submit" name="intent" value="draft" disabled={pending||tooLarge}>{pending?t('saving'):t('saveDraft')}</button><button className="rounded-md border px-4 py-2 text-sm font-medium" type="submit" name="intent" value="publish" disabled={pending||tooLarge}>{t('savePublish')}</button></div>
+    <div className="flex flex-wrap gap-3"><button className={btnPrimary} type="submit" name="intent" value="draft" disabled={!canDraft||pending||tooLarge}>{pending?t('saving'):t('saveDraft')}</button><button className="rounded-md border px-4 py-2 text-sm font-medium" type="submit" name="intent" value="publish" disabled={!canPublish||pending||tooLarge}>{t('savePublish')}</button></div>
     <p className="text-sm text-muted-foreground">{t('publishNote')}</p>
-  </form>;
+  </fieldset></form>;
 }

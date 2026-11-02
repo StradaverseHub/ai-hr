@@ -36,15 +36,17 @@ export function ImportWorkbench({
   companies,
   defaultCompanyId,
   reference,
+  canCreate,canExecute,createCompanyIds,
 }: {
   companies: { id: string; name: string }[];
   defaultCompanyId: string;
   reference: ImportReference;
+  canCreate:boolean;canExecute:boolean;createCompanyIds:readonly string[];
 }) {
   const t = useTranslations('people.import');
   const allocations=useTranslations('costAllocations');
   const information=useTranslations('people.informationCorrection');
-  const [choice, setChoice] = useState<PersonnelImportChoice|'cost_allocations'|'information_correction'>('full');
+  const [choice, setChoice] = useState<PersonnelImportChoice|'cost_allocations'|'information_correction'>(canCreate?'full':canExecute?'profile':'full');
   const [committing, setCommitting] = useState(false);
 
   // Literal `t()` calls (see the note in section-import.tsx): a computed key is invisible to
@@ -61,6 +63,8 @@ export function ImportWorkbench({
     emergency:{title:t('sectionEmergency'),hint:t('sectionEmergencyHint')},
   };
 
+  const createCompanies=companies.filter(company=>createCompanyIds.includes(company.id));
+  const createDefault=createCompanies.some(company=>company.id===defaultCompanyId)?defaultCompanyId:createCompanies[0]?.id??'';
   return (
     <div className="space-y-6">
       <Card className="space-y-3 p-5">
@@ -111,14 +115,14 @@ export function ImportWorkbench({
       </Card>
 
       {choice!=='cost_allocations'&&choice!=='information_correction'&&<ImportExplanations choice={choice}/>}
-      {choice==='information_correction'?<InformationCorrectionImport onCommitPendingChange={setCommitting}/>:choice==='cost_allocations'?<CostAllocationImport onCommitPendingChange={setCommitting}/>:choice === 'full' ? (
-        <EmployeeImport companies={companies} defaultCompanyId={defaultCompanyId} reference={reference} onCommitPendingChange={setCommitting} />
+      {choice==='information_correction'?<InformationCorrectionImport canImport={canExecute} onCommitPendingChange={setCommitting}/>:choice==='cost_allocations'?<CostAllocationImport canImport={canExecute} onCommitPendingChange={setCommitting}/>:choice === 'full' ? (
+        <EmployeeImport canImport={canCreate} companies={createCompanies} defaultCompanyId={createDefault} reference={reference} onCommitPendingChange={setCommitting} />
       ) : choice==='movement' ? (
-        <MovementImport onCommitPendingChange={setCommitting}/>
+        <MovementImport canImport={canExecute} onCommitPendingChange={setCommitting}/>
       ) : (
         // Keyed on the choice so switching sections REMOUNTS the island: the loaded file, the preview
         // and the result all belong to one column contract and must not survive a change of contract.
-        <SectionImport key={choice} section={choice} reference={reference} onCommitPendingChange={setCommitting} />
+        <SectionImport canImport={canExecute} key={choice} section={choice} reference={reference} onCommitPendingChange={setCommitting} />
       )}
     </div>
   );

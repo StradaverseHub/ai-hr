@@ -120,7 +120,7 @@ export async function setTenantSetting(
     // lock-order repair for arbitrary supplied transactions. No model or posted role is authority.
     try {
       await assertAiPrincipalTx(tx,ctx);
-      const [current]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);
+      const [current]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() and app.tenant_setting_action_allowed(${p.key},'edit') as allowed`);
       if(current?.allowed!==true)throw new TenantSettingError('not_group_admin');
     } catch { throw new TenantSettingError('not_group_admin'); }
     if(p.key==='ess.profile_change_fields'||p.key==='ess.profile_change_approver'||p.key==='ess.profile_photo_edit'||p.key===PROFILE_ROUTING_KEY)await lockProfileEditPolicyTx(tx,ctx.tenantId);

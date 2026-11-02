@@ -3,9 +3,10 @@
  * with its original file, every movement an employee's transaction created is an item, and a whole import
  * can be reverted once, all or nothing, through the Movement owner's own rollback.
  */
+import {assertWorkforceSectionImportCompanyTx,assertWorkforceSectionImportEmploymentTx} from './workforce-access';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {createImportAttemptTx,importAttemptEventsTx,importAttemptItemsTx,lockImportAttemptTx,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError,type ImportAttemptItemRow,type ImportRevertHandler} from './import-history';
+import {createImportAttemptTx,importPreviewReadStamp,importAttemptEventsTx,importAttemptItemsTx,lockImportAttemptTx,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError,type ImportAttemptItemRow,type ImportRevertHandler} from './import-history';
 import {commitMovementImport,previewMovementImport,movementImportTypes,movementImportStateTx,type MovementImportItemState} from './movement-import';
 import {createMovementEventTx,editMovementEventTx,movementCorrectionBaseTx,movementHistoryTx,movementLedgerMarkerTx,movementReversalBlockerTx,reverseMovementForImportTx,type CreateMovementInput} from './movement';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
@@ -30,6 +31,8 @@ async function sourceRecords(ctx:SessionContext,name:string,content:Buffer,words
 }
 /** Checks an uploaded file and records it as an import attempt with the original bytes. Nothing is saved. */
 export async function previewMovementUpload(ctx:SessionContext,input:{name:string;content:Buffer;operationKey?:string}&Words):Promise<{attemptId:string;previewHash:string;preview:MovementImportPreview}>{
+ input={...input,content:Buffer.from(input.content)};
+ const reviewStamp=await importPreviewReadStamp(ctx);
  const source=await sourceRecords(ctx,input.name,input.content,input);
  let preview:MovementImportPreview={inputHash:'',selection:[],fileErrors:source.fileErrors,employees:[],excluded:0,valid:0};
  if(!source.fileErrors.length)preview=await previewMovementImport(ctx,{csv:'',records:source.records,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash});
@@ -39,7 +42,7 @@ export async function previewMovementUpload(ctx:SessionContext,input:{name:strin
  const plan=sealImportPlan<MovementImportPlan>({version:1,kind:'movement',inputHash:preview.inputHash,sourceHash:source.sourceHash,catalogueHash:source.catalogueHash,fingerprints:Object.fromEntries(preview.employees.filter(e=>e.fingerprint).map(e=>[movementEmployeeKey(e),e.fingerprint!])),employees,
   counts:{total:movements,valid,invalid:movements-valid},issues:source.fileErrors.map(code=>({rowNum:1,reason:describe([code])})),previewHash:''});
  const companyIds=[...new Set(employees.map(e=>e.companyId).filter((id):id is string=>!!id))];
- const created=await withTenant(ctx,tx=>createImportAttemptTx(tx,ctx,{kind:'movement',sourceName:input.name,content:input.content,companyIds,plan,operationKey:input.operationKey}));
+ const created=await withTenant(ctx,tx=>createImportAttemptTx(tx,ctx,{kind:'movement',sourceName:input.name,content:input.content,companyIds,plan,operationKey:input.operationKey,reviewStamp}));
  return{attemptId:created.attemptId,previewHash:created.plan.previewHash,preview};
 }
 export type MovementUploadResult=MovementImportResult&{attemptId:string;alreadyCommitted:boolean};
@@ -117,6 +120,8 @@ const revertOrder=(items:ImportAttemptItemRow[])=>[...items].sort((a,b)=>(a.empl
 async function revertItemTx(tx:Tx,ctx:SessionContext,i:ImportAttemptItemRow,reason:string){
  const after=itemState(i.after),before=itemState(i.before);
  if(!i.employmentId)throw new ImportHistoryError('This import cannot be reverted.');
+ await assertWorkforceSectionImportCompanyTx(tx,ctx,i.companyId);
+ await assertWorkforceSectionImportEmploymentTx(tx,ctx,i.employmentId);
  if(after.action==='update'){
   if(!after.movementId||!before.original)throw new ImportHistoryError('This import cannot be reverted.');
   await editMovementEventTx(tx,ctx,{...(before.original as CreateMovementInput),employmentId:i.employmentId,movementId:after.movementId,reason});
@@ -127,6 +132,7 @@ async function revertItemTx(tx:Tx,ctx:SessionContext,i:ImportAttemptItemRow,reas
   if(!after.movementId)throw new ImportHistoryError('This import cannot be reverted.');
   await reverseMovementForImportTx(tx,ctx,i.employmentId,after.movementId,reason);
  }
+ await assertWorkforceSectionImportEmploymentTx(tx,ctx,i.employmentId);
 }
 /** Static blockers of an Update or Delete item: the event it touched changed later, or a later movement would
  *  be overwritten by re-recording a deleted one. The rehearsal below catches every owner refusal besides. */

@@ -22,8 +22,8 @@ const query=(index:number)=>dialect.sqlToQuery(ports.execute.mock.calls[index][0
 beforeEach(()=>{
  vi.resetAllMocks();ports.session.mockResolvedValue(ctx);ports.identity.mockResolvedValue(identity);ports.internal.mockReturnValue(true);
  ports.tenant.mockImplementation(async(_ctx:unknown,run:(tx:unknown)=>unknown)=>run({execute:ports.execute}));
- // Execute the actual listEmailDesigns admission first, then the exact identity binding lookup.
- ports.execute.mockResolvedValueOnce([{allowed:true}]).mockResolvedValueOnce([]).mockResolvedValueOnce([principal]);
+ // Execute actual fresh Edit admission, then the exact identity binding lookup.
+ ports.execute.mockResolvedValueOnce([{allowed:true}]).mockResolvedValueOnce([principal]);
  ports.send.mockResolvedValue(undefined);
 });
 describe('Email designer authenticated test-to-self action',()=>{
@@ -31,8 +31,8 @@ describe('Email designer authenticated test-to-self action',()=>{
   const doc=document();expect(await sendEmailDesignTestAction('invitation','ms',doc)).toEqual({sent:true});
   expect(ports.tenant).toHaveBeenCalledTimes(2);
   for(const [session] of ports.tenant.mock.calls)expect(session).toBe(ctx);
-  expect(query(0).sql).toContain('app.email_design_admin()');
-  expect(query(2).sql).toContain('app.principal_by_identity(');expect(query(2).params).toEqual([identity.issuer,identity.subject]);
+  expect(query(0).sql).toContain('app.email_design_admin()');expect(query(0).sql).toContain("app.organisation_settings_function_allowed('emailTemplates','edit',NULL)");
+  expect(query(1).sql).toContain('app.principal_by_identity(');expect(query(1).params).toEqual([identity.issuer,identity.subject]);
   expect(ports.send).toHaveBeenCalledExactlyOnceWith({to:identity.email,...renderEmailDesign(doc,'invitation','ms',sampleEmailSystem('invitation','ms'),sampleEmailData)});
   const mail=ports.send.mock.calls[0][0];expect(mail.html).toContain('https://example.com/aihr-preview');expect(mail.text).toContain('https://example.com/aihr-preview');
  });
@@ -44,7 +44,7 @@ describe('Email designer authenticated test-to-self action',()=>{
  it.each([null,{...identity,emailVerified:false},{...identity,email:''},{...identity,issuer:''}])('refuses absent or unverified provider identity before binding or SMTP: %j',async value=>{
   ports.identity.mockResolvedValue(value);
   await expect(sendEmailDesignTestAction('invitation','en',document())).rejects.toThrow('A verified email address');
-  expect(ports.execute).toHaveBeenCalledTimes(2);expect(ports.send).not.toHaveBeenCalled();
+  expect(ports.execute).toHaveBeenCalledTimes(1);expect(ports.send).not.toHaveBeenCalled();
  });
  it('refuses a compatibility provider even with a verified address',async()=>{
   ports.internal.mockReturnValue(false);
@@ -55,16 +55,16 @@ describe('Email designer authenticated test-to-self action',()=>{
   {name:'another user binding',rows:[{...principal,app_user_id:'44444444-4444-4444-8444-444444444444'}]},
   {name:'another tenant binding',rows:[{...principal,tenant_id:'55555555-5555-4555-8555-555555555555'}]},
  ])('refuses $name before SMTP',async({rows})=>{
-  ports.execute.mockReset().mockResolvedValueOnce([{allowed:true}]).mockResolvedValueOnce([]).mockResolvedValueOnce(rows);
+  ports.execute.mockReset().mockResolvedValueOnce([{allowed:true}]).mockResolvedValueOnce(rows);
   await expect(sendEmailDesignTestAction('invitation','en',document())).rejects.toThrow('The signed-in identity changed.');
-  expect(ports.execute).toHaveBeenCalledTimes(3);expect(query(2).sql).toContain('app.principal_by_identity(');expect(query(2).params).toEqual([identity.issuer,identity.subject]);
+  expect(ports.execute).toHaveBeenCalledTimes(2);expect(query(1).sql).toContain('app.principal_by_identity(');expect(query(1).params).toEqual([identity.issuer,identity.subject]);
   expect(ports.send).not.toHaveBeenCalled();
  });
  it('looks up a forged issuer/subject as supplied and refuses its absent canonical binding',async()=>{
   const forged={...identity,issuer:'https://foreign.example.test/auth/tenant',subject:'forged-subject',email:'foreign@example.test'};ports.identity.mockResolvedValue(forged);
-  ports.execute.mockReset().mockResolvedValueOnce([{allowed:true}]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+  ports.execute.mockReset().mockResolvedValueOnce([{allowed:true}]).mockResolvedValueOnce([]);
   await expect(sendEmailDesignTestAction('invitation','en',document())).rejects.toThrow('The signed-in identity changed.');
-  expect(query(2).params).toEqual([forged.issuer,forged.subject]);expect(ports.send).not.toHaveBeenCalled();
+  expect(query(1).params).toEqual([forged.issuer,forged.subject]);expect(ports.send).not.toHaveBeenCalled();
  });
  it('does not accept a recipient address hidden in the client document',async()=>{
   await expect(sendEmailDesignTestAction('invitation','en',{...document(),to:'other-person@example.test'})).rejects.toThrow();expect(ports.send).not.toHaveBeenCalled();

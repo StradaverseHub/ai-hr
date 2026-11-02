@@ -1,3 +1,4 @@
+import {assertModuleFunction,moduleFunctionAccess} from '@/core/module-action-access';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { CLAIM_FIELD_KINDS, listClaimFormFields, listClaimTypes } from '@/core/claims';
@@ -31,6 +32,8 @@ import {
  */
 export default async function ClaimsConfigPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const s = await requireAdmin();
+  await assertModuleFunction(s,'claimsConfig.types','view');
+  const [canAdd,canEdit,canDelete]=await Promise.all((['add','edit','delete'] as const).map(operation=>moduleFunctionAccess(s,'claimsConfig.types',operation)));
   const t = await getTranslations('admin.claims');
   const { error } = await searchParams;
   const types = await listClaimTypes(s);
@@ -63,7 +66,7 @@ export default async function ClaimsConfigPage({ searchParams }: { searchParams:
             ?error= on a refusal; with the panel closed by default the message would be visible in the
             banner while the form that produced it was hidden, so the admin would have nothing to correct.
             Any ?error= forces it open — over-opening is harmless, hiding the failing form is not. */}
-        <details className="group" open={error != null}>
+        {canAdd === true ? <details className="group" open={error != null}>
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 border-b border-border px-4 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
             <span>
               {t('typesTitle')}
@@ -109,7 +112,7 @@ export default async function ClaimsConfigPage({ searchParams }: { searchParams:
             <p className="mt-3 text-xs text-muted-foreground">{t('taxableHint')}</p>
             <p className="mt-1 text-xs text-muted-foreground">{t('limitsMovedHint')}</p>
           </div>
-        </details>
+        </details> : <h2 className="px-4 py-3 text-sm font-medium">{t('typesTitle')} ({types.length})</h2>}
         {types.length === 0 ? (
           <p className="px-4 py-6 text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
@@ -117,6 +120,9 @@ export default async function ClaimsConfigPage({ searchParams }: { searchParams:
             {types.map((ct) => (
               <ClaimTypePanel
                 key={ct.id}
+                canAdd={canAdd}
+                canEdit={canEdit}
+                canDelete={canDelete}
                 id={ct.id}
                 code={ct.code}
                 name={ct.name}

@@ -329,8 +329,9 @@ describe('who reads what', () => {
   it('E-1: a line manager reads frozen bands only once they are released to leaders, in the review and in the performance report', async () => {
     const review = await calibrated(cycleId, S[0]);
     await freeze(review);
-    // The frozen row stays readable to the manager under RLS (the frozen-guards rely on it): the projection masks it.
-    expect(await withTenant(U.lm, (tx) => tx.select({ id: schema.onehrResult.id }).from(schema.onehrResult).where(eq(schema.onehrResult.reviewId, review)))).toHaveLength(1);
+    // Whole frozen storage remains private; the actual assigned task projection preserves native release masks.
+    expect(await withTenant(U.lm, (tx) => tx.select({ id: schema.onehrResult.id }).from(schema.onehrResult).where(eq(schema.onehrResult.reviewId, review)))).toEqual([]);
+    const [taskResult]=await withTenant(U.lm,tx=>tx.execute<{value:{id:string;frozen:boolean;result:{performance:null;potential:null;talent:null}}}>(sql`select app.onehr_task_result_card(${review}::uuid) as value`));expect(taskResult.value).toMatchObject({id:expect.any(String),frozen:true,result:{performance:null,potential:null,talent:null}});
     const viewed = async () => (await perf.getOnehrReview(U.lm, review))!;
     const reported = async () => (await performanceReviewReport(U.lm, {})).find((r) => r.assessmentResultId && r.name === 'Subject 0');
     expect((await viewed()).manager).toBe(true);

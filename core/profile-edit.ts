@@ -1,3 +1,4 @@
+import {profileTaskProjectionTx,profileTaskEffectSourceTx,type ProfileTaskSource} from './profile-task-source';
 import {appendEvent,actorOf} from '../db/events';
 import {profileFieldApproval,profileLegacyPrimaryApprovalRequired} from '../lib/profile-edit-policy-value';
 import {splitProfileSubmission} from '../lib/profile-submission-policy';
@@ -19,7 +20,7 @@ import {freshProfileEditPolicyTx,type ProfilePresentationPolicy} from './profile
 import {packFor} from '../localization/registry';
 import {updatePersonProfilePartial,type PersonProfileFields} from './org';
 import {setPersonComplianceFields,requestProfileChange,updateOwnContact} from './profile';
-import {addDependent,updateDependent,validateDependentInputTx,childAgeYears,isChildReliefEligible,type DependentInput} from './dependents';
+import {addDependent,updateDependent,validateDependentInputTx,normaliseDependentPatchTx,syncChildReliefFromFamily,childAgeYears,isChildReliefEligible,type DependentInput} from './dependents';
 import {addQualification,updateQualification,validateQualificationInputTx} from './qualifications';
 import {addEmergencyContact,updateEmergencyContact,validateEmergencyContactInputTx} from './emergency-contacts';
 import {assertProfileValueAllowed} from './profile-options';
@@ -61,6 +62,7 @@ async function mastersTx(tx:Tx,ctx:SessionContext,subject:Awaited<ReturnType<typ
  if([dependents,qualifications,emergency].some(rows=>rows.length>500))throw new EssProfileError('unavailable');
  return {pack,stat,snapshot,snapshotSupported:Boolean(pack?.statutory.getEditSnapshot),dependents,dependentRevisions,qualifications,emergency};
 }
+function taskMasters(source:ProfileTaskSource){return {pack:packFor(source.subject.country),stat:source.stat,snapshot:source.snapshot,snapshotSupported:true,dependents:source.dependents.map(row=>row.record),dependentRevisions:new Map(source.dependents.map(row=>[row.record.id,row.revision])),qualifications:source.qualifications,emergency:source.emergency};}
 function registryValues(owner:string,row:object){
  const values:Record<string,EssScalar>={};
  for(const field of PERSONNEL_FIELDS){if(field.ess.visibility==='visible'&&field.ess.binding?.owner===owner)values[field.id]=scalar(record(row)[field.ess.binding.field]);}
@@ -149,12 +151,14 @@ export async function prepareProfileProposalTx(tx:Tx,ctx:SessionContext,employme
  if(approval){
   if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new EssProfileError('permission');
   const scoped=await tx.execute(sql`select app.can_admin_employment(${employmentId}::uuid) allowed`);
-  if((scoped as unknown as {allowed:boolean}[])[0]?.allowed!==true)throw new EssProfileError('permission');
+  const task=(scoped as unknown as {allowed:boolean}[])[0]?.allowed===true?null:await profileTaskEffectSourceTx(tx,undefined,employmentId);
+  if((scoped as unknown as {allowed:boolean}[])[0]?.allowed!==true&&!task)throw new EssProfileError('permission');
   const [row]=await tx.select({id:employment.id,personId:employment.personId,companyId:employment.companyId,country:company.country}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,employmentId))).limit(1).for('update');
-  if(!row)throw new EssProfileError('unavailable');if(row.personId===ctx.personId)throw new EssProfileError('permission');subject=row;
-  const [p]=await tx.select().from(person).where(eq(person.id,row.personId)).limit(1).for('update');if(!p)throw new EssProfileError('unavailable');master=p;
+  if(!row&&!task)throw new EssProfileError('unavailable');subject=row??task!.subject;if(subject.personId===ctx.personId)throw new EssProfileError('permission');
+  const [p]=await tx.select().from(person).where(eq(person.id,subject.personId)).limit(1).for('update');if(!p&&!task)throw new EssProfileError('unavailable');master=p??task!.master;
  }else({subject,master}=await ownProfileSubjectTx(tx,policy.ctx,employmentId));
- const rows=await mastersTx(tx,policy.ctx,subject);
+ const task=approval?await profileTaskEffectSourceTx(tx,subject.personId,subject.id):null;
+ const rows=task?taskMasters(task):await mastersTx(tx,policy.ctx,subject);
  const current:Record<string,EssScalar>={...registryValues('person',master),...registryValues('compliance',master)};
  if(rows.stat)for(const owner of ['bank','identity','passport','registration','taxLegacy'])Object.assign(current,registryValues(owner,rows.stat));
  // Stored pre-v2 requests never had CAS evidence. Bind their known fields to this locked snapshot
@@ -258,6 +262,23 @@ function emergencyInput(values:Record<string,unknown>){
 }
 async function applyRegisterTx(tx:Tx,ctx:SessionContext,subject:{id:string;personId:string},row:EssRegisterChange){
  const values=patch(row.fields);
+ if(row.kind==='dependent'&&values.childReliefPercentage!==undefined&&values.childReliefPercentage!==null)values.childReliefPercentage=number(values,'childReliefPercentage')??null;
+ const task=await profileTaskEffectSourceTx(tx,subject.personId,subject.id);
+ if(task){
+  const existing=row.kind==='dependent'?task.dependents.find(item=>item.record.id===row.id)?.record:row.kind==='qualification'?task.qualifications.find(item=>item.id===row.id):task.emergency.find(item=>item.id===row.id);
+  if(row.id&&!existing)throw new EssProfileError('stale',row.fields.map(field=>field.fieldId));
+  const normalized=row.kind==='dependent'?await normaliseDependentPatchTx(tx,row.id?values:dependentInput(values),existing&&'fullName'in existing&&'relationship'in existing?{fullName:existing.fullName,relationship:existing.relationship!}:undefined)
+   :row.kind==='qualification'?await validateQualificationInputTx(tx,row.id?values:qualificationInput(values),existing&&'qualification'in existing?existing:undefined)
+   :await validateEmergencyContactInputTx(tx,subject.personId,row.id?values:emergencyInput(values),existing&&'relationship'in existing?existing:undefined);
+  const [stored]=await tx.execute<{value:{id:string;clearedId:string|null}}>(sql`select app.profile_task_store_register(${subject.personId}::uuid,${row.kind},${row.id}::uuid,${row.clientId??null},${JSON.stringify(normalized)}::jsonb) as value`);
+  if(!stored?.value?.id)throw new EssProfileError('unavailable');
+  const facts=normalized as Record<string,unknown>;
+  const added=row.id===null,kind=row.kind,event=row.kind==='dependent'?'dependent':row.kind==='qualification'?'qualification':'emergency-contact';
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:kind==='dependent'?'employee-dependent':kind==='qualification'?'employee-qualification':'person-emergency-contact',aggregateId:stored.value.id,eventType:`${event}.${added?'added':'updated'}`,actor:actorOf(ctx),subjectEmploymentId:subject.id,
+   payload:added?(kind==='dependent'?{relationship:facts.relationship,isBeneficiary:'isBeneficiary'in normalized?normalized.isBeneficiary??false:false}:kind==='qualification'?{qualification:'qualification'in normalized?normalized.qualification:null,isHighest:'isHighest'in normalized?normalized.isHighest??false:false,...(stored.value.clearedId?{clearedHighestId:stored.value.clearedId}:{})}:{relationship:facts.relationship,priority:'priority'in normalized?normalized.priority:null,...(stored.value.clearedId?{demotedId:stored.value.clearedId}:{})}):{diff:Object.keys(normalized),...(stored.value.clearedId?{[kind==='qualification'?'clearedHighestId':'demotedId']:stored.value.clearedId}:{})}});
+  if(kind==='dependent')await syncChildReliefFromFamily(ctx,subject.personId,tx);
+  return;
+ }
  if(row.kind==='dependent'){
   if(values.childReliefPercentage!==undefined&&values.childReliefPercentage!==null)values.childReliefPercentage=number(values,'childReliefPercentage')??null;
   if(row.id)await updateDependent(ctx,{id:row.id,...values},tx);else await addDependent(ctx,{personId:subject.personId,...dependentInput(values)},tx);
@@ -322,14 +343,15 @@ export function submitOwnProfileEdit(ctx:SessionContext,p:{employmentId:string;p
 }
 
 /** Approver-only review facts for exact submitted identities. This read grants no edit/decision authority. */
-export async function currentProfileRequestValuesTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;personId:string;proposed:unknown}){
+export async function currentProfileRequestValuesTx(tx:Tx,ctx:SessionContext,p:{id?:string;employmentId:string;personId:string;proposed:unknown}){
  const out:Record<string,{value:EssScalar|undefined;recordName:string|null;state:'existing'|'missing'|'new'}>={};
  const [allowed]=await tx.execute(sql`select app.can_admin_employment(${p.employmentId}::uuid) allowed`);
- if(allowed?.allowed!==true)return out;
- const [subject]=await tx.select({id:employment.id,personId:employment.personId,companyId:employment.companyId,country:company.country}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,p.employmentId),eq(employment.personId,p.personId))).limit(1);
- if(!subject)return out;
- const [master]=await tx.select().from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,subject.personId))).limit(1);if(!master)return out;
- const rows=await mastersTx(tx,ctx,subject,false);
+ const task=allowed?.allowed===true?null:p.id?await profileTaskProjectionTx(tx,p.id):null;
+ if(allowed?.allowed!==true&&!task)return out;
+ const [row]=await tx.select({id:employment.id,personId:employment.personId,companyId:employment.companyId,country:company.country}).from(employment).innerJoin(company,eq(company.id,employment.companyId)).where(and(eq(employment.tenantId,ctx.tenantId),eq(employment.id,p.employmentId),eq(employment.personId,p.personId))).limit(1);
+ const subject=row??task?.subject;if(!subject)return out;
+ const [personRow]=await tx.select().from(person).where(and(eq(person.tenantId,ctx.tenantId),eq(person.id,subject.personId))).limit(1);const master=personRow??task?.master;if(!master)return out;
+ const rows=task?taskMasters(task):await mastersTx(tx,ctx,subject,false);
  const current={...registryValues('person',master),...registryValues('compliance',master)};if(rows.stat)for(const owner of ['bank','identity','passport','registration','taxLegacy'])Object.assign(current,registryValues(owner,rows.stat));
  if(p.proposed&&typeof p.proposed==='object'&&!Array.isArray(p.proposed)&&'v' in p.proposed&&p.proposed.v===2){
   let proposal:EssProfileProposal;try{proposal=parseEssProfileProposal(p.proposed);}catch{return out;}

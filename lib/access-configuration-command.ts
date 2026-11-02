@@ -15,7 +15,7 @@ export type AccessConfigurationCommand =
 
 // PostgreSQL UUID identities include existing seeded values without RFC version/variant bits.
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const CAPABILITY=/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){1,5}$/;
+const CAPABILITY=/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*){1,82}$/;
 const isId=(v:unknown):v is string=>typeof v==='string'&&UUID.test(v);
 const isScope=(v:unknown):v is string|null=>v===null||isId(v);
 const isName=(v:unknown):v is string=>typeof v==='string'&&v===v.trim()&&v.length>0&&v.length<=100&&!/[\u0000-\u001f\u007f]/.test(v);
@@ -30,7 +30,7 @@ export function isAccessConfigurationCommand(value:unknown):value is AccessConfi
     case 'createGroup':case 'renameGroup':return exact(value,['kind','groupId','name'])&&isId(value.groupId)&&isName(value.name);
     case 'retireGroup':return exact(value,['kind','groupId'])&&isId(value.groupId);
     case 'replaceGroupGrants':{
-      if(!exact(value,['kind','groupId','grants'])||!isId(value.groupId)||!Array.isArray(value.grants)||value.grants.length>256||!value.grants.every(isGrant))return false;
+      if(!exact(value,['kind','groupId','grants'])||!isId(value.groupId)||!Array.isArray(value.grants)||value.grants.length>2048||!value.grants.every(isGrant))return false;
       return new Set(value.grants.map(g=>g.capabilityId+':'+g.companyId)).size===value.grants.length;
     }
     case 'setMembership':return exact(value,['kind','groupId','userId','companyId','enabled'])&&isId(value.groupId)&&isId(value.userId)&&isScope(value.companyId)&&typeof value.enabled==='boolean';
@@ -101,6 +101,7 @@ export function applyAccessConfigurationCommand(
         after.groups=after.groups.map(g=>g.id===group.id?{...g,grants:command.grants.map(grant=>({...grant}))}:g);
       }else if(command.kind==='retireGroup'){
         if(group.systemAdministrator)throw new AccessPermissionError('lastAdministrator');
+        if(before.memberships.some(row=>row.groupId===group.id))throw new AccessPermissionError('invalid');
         after.groups=after.groups.map(g=>g.id===group.id?{...g,retired:true}:g);
       }else{
         if(before.groups.some(g=>g.id!==group.id&&g.name.toLocaleLowerCase('en')===command.name.toLocaleLowerCase('en')))throw new AccessPermissionError('invalid');

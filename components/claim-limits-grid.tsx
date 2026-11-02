@@ -115,12 +115,14 @@ const sameValues = (a: ClaimLimitGridValues, b: ClaimLimitGridValues): boolean =
 
 export function ClaimLimitsGrid({
   rows,
+  writableRows = [],
   gradeId,
   gradeLabel,
   today,
   mileageHref,
 }: {
   rows: ClaimLimitGridRow[];
+  writableRows: readonly string[];
   gradeId: string | null;
   /** The grade's name, or the company-wide label — for the Save button, which names what it writes. */
   gradeLabel: string;
@@ -132,12 +134,13 @@ export function ClaimLimitsGrid({
   const [values, setValues] = useState<Record<string, ClaimLimitGridValues>>(initial);
   const [effectiveFrom, setEffectiveFrom] = useState(today);
 
-  const set = (key: string, patch: Partial<ClaimLimitGridValues>) =>
-    setValues((v) => ({ ...v, [key]: { ...v[key], ...patch } }));
+  const set = (key: string, patch: Partial<ClaimLimitGridValues>) => {
+    if(writableRows.includes(key))setValues((v) => ({ ...v, [key]: { ...v[key], ...patch } }));
+  };
 
   // The diff, recomputed on every keystroke. Cheap (nine rows, eight scalars) and it is what makes both
   // the payload and the Save button's disabled state come from ONE source rather than two that can drift.
-  const changed = rows.filter((r) => !sameValues(values[r.key], initial[r.key]));
+  const changed = rows.filter((r) => writableRows.includes(r.key) && !sameValues(values[r.key], initial[r.key]));
   const payload = JSON.stringify(
     changed.map((r) => {
       const v = values[r.key];
@@ -177,6 +180,7 @@ export function ClaimLimitsGrid({
             name="effectiveFrom"
             type="date"
             required
+            disabled={writableRows.length === 0}
             value={effectiveFrom}
             onChange={(e) => setEffectiveFrom(e.target.value)}
             className={`${inputCls} w-40`}
@@ -234,18 +238,21 @@ export function ClaimLimitsGrid({
                   </td>
                   <td className="px-3 py-2">
                     <input
+                      disabled={!writableRows.includes(r.key)}
                       type="number" min="0" step="0.01" placeholder={t('noCap')} className={numCls}
                       value={v.perClaimCap} onChange={(e) => set(r.key, { perClaimCap: e.target.value })}
                     />
                   </td>
                   <td className="px-3 py-2">
                     <input
+                      disabled={!writableRows.includes(r.key)}
                       type="number" min="0" step="0.01" placeholder={t('unlimited')} className={numCls}
                       value={v.monthlyLimit} onChange={(e) => set(r.key, { monthlyLimit: e.target.value })}
                     />
                   </td>
                   <td className="px-3 py-2">
                     <input
+                      disabled={!writableRows.includes(r.key)}
                       type="number" min="0" step="0.01" placeholder={t('unlimited')} className={numCls}
                       value={v.annualBudget} onChange={(e) => set(r.key, { annualBudget: e.target.value })}
                     />
@@ -256,13 +263,14 @@ export function ClaimLimitsGrid({
                         nothing for as long as this cell has existed. Do not "tidy" either back. */}
                     <div className={blockCellCls}>
                       <input
+                      disabled={!writableRows.includes(r.key)}
                         type="checkbox" className="size-4 shrink-0" checked={v.blockEnabled}
                         aria-label={t('blockEnableLabel')}
                         onChange={(e) => set(r.key, { blockEnabled: e.target.checked })}
                       />
                       <input
                         type="number" min="0" step="0.01" placeholder={t('unlimited')}
-                        disabled={!v.blockEnabled}
+                        disabled={!writableRows.includes(r.key) || !v.blockEnabled}
                         className={`${inputCls} ${blockBoxCls} basis-24 text-right tabular-nums`}
                         value={v.blockLimit} onChange={(e) => set(r.key, { blockLimit: e.target.value })}
                       />
@@ -270,12 +278,12 @@ export function ClaimLimitsGrid({
                         {t('blockEveryLabel').toLowerCase()}
                       </span>
                       <input
-                        type="number" min="1" step="1" disabled={!v.blockEnabled}
+                        type="number" min="1" step="1" disabled={!writableRows.includes(r.key) || !v.blockEnabled}
                         className={`${inputCls} ${blockBoxCls} basis-14 text-right tabular-nums`}
                         value={v.blockLength} onChange={(e) => set(r.key, { blockLength: e.target.value })}
                       />
                       <select
-                        disabled={!v.blockEnabled}
+                        disabled={!writableRows.includes(r.key) || !v.blockEnabled}
                         className={`${inputCls} ${blockBoxCls} basis-28`}
                         value={v.blockUnit} onChange={(e) => set(r.key, { blockUnit: e.target.value })}
                       >
@@ -286,6 +294,7 @@ export function ClaimLimitsGrid({
                   </td>
                   <td className="px-3 py-2">
                     <input
+                      disabled={!writableRows.includes(r.key)}
                       type="number" min="0" step="1" placeholder={t('unlimited')} className={numCls}
                       value={v.maxClaimsPerYear} onChange={(e) => set(r.key, { maxClaimsPerYear: e.target.value })}
                     />

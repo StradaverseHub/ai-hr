@@ -34,7 +34,7 @@ it('requires a reason and an explicit before/after confirmation before saving th
 it('shows Excel row errors before confirmation and displays durable batch results',async()=>{
  actions.upload.mockResolvedValue({attemptId:'attempt-fixture',plan:{version:1,previewHash:'checked',counts:{total:2,valid:1,invalid:1},issues:[],rows:[{row:2,companyCode:'DEMO',employeeCode:'EMP-001',values:{},errors:[],preview},{row:3,companyCode:'DEMO',employeeCode:'MISSING',values:{},errors:['Employee ID is unavailable.']}]}});
  actions.confirm.mockResolvedValue({attemptId:'attempt-fixture',succeeded:1,failed:1,unchanged:0,rows:[{row:2,status:'applied',errors:[]},{row:3,status:'failed',errors:['Employee ID is unavailable.']}]});
- render(<NextIntlClientProvider locale="en" messages={en}><InformationCorrectionImport onCommitPendingChange={()=>{}}/></NextIntlClientProvider>);
+ render(<NextIntlClientProvider locale="en" messages={en}><InformationCorrectionImport canImport={true} onCommitPendingChange={()=>{}}/></NextIntlClientProvider>);
  const file=new File(['fixture'],'corrections.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
  fireEvent.change(screen.getByLabelText(en.people.informationCorrection.file),{target:{files:[file]}});
  fireEvent.submit(screen.getByRole('button',{name:'Validate file'}).closest('form')!);

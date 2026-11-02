@@ -21,6 +21,9 @@ function Identity({employmentId,kind,section,row,editor}:Omit<Props,'values'|'ro
 /** Server-rendered fixed fields, using the same declaration/catalog vocabulary as the existing owners. */
 export function WorkforceValueForm(props:Props){
  const {kind,section,row,values,editor,root,access}=props;
+ const caps=editor.actionCapabilities?.[kind==='qualification'?'employment':'person'];
+ const canSave=!caps||caps[row||kind==='person'?'edit':'add'];
+ const canArchive=Boolean(row)&&(!caps||caps.delete);
  const prefix=`workforce-${kind}-${section??row?.id??'new'}`;
  // A new CAS revision must reset uncontrolled controls and relationship state together. Otherwise
  // React could retain a typed old value beside the refreshed hidden revision after revalidation.
@@ -48,7 +51,7 @@ export function WorkforceValueForm(props:Props){
      </div>};
     });
  return <div className="space-y-4 p-4">
-  <form key={formVersion} action={saveWorkforceRecordAction} className="space-y-4">
+  {canSave&&<form key={formVersion} action={saveWorkforceRecordAction} className="space-y-4">
    <Identity {...props}/><input type="hidden" name="operation" value={row||kind==='person'?'update':'add'}/>
    {kind==='dependent'?<WorkforceRelationshipFields initialRelationship={String(values.relationship??'')} fields={fields}/>:
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{fields.map(field=>field.content)}</div>}
@@ -56,8 +59,8 @@ export function WorkforceValueForm(props:Props){
    {kind==='emergency'&&<p className="text-xs text-muted-foreground">{root('people.detail.emergency.primaryHint')}</p>}
    {kind==='dependent'&&<p className="text-xs text-muted-foreground">{access('workforceEdit.familyHint')}</p>}
    <WorkforceSubmit label={access('workforceEdit.save')} pendingLabel={access('workforceEdit.saving')}/>
-  </form>
-  {row&&<details className="border-t pt-3">
+  </form>}
+  {canArchive&&<details className="border-t pt-3">
    <summary className="cursor-pointer text-sm text-muted-foreground">{access('workforceEdit.archive')}</summary>
    <form action={saveWorkforceRecordAction} className="mt-3 space-y-3">
     <Identity {...props}/><input type="hidden" name="operation" value="archive"/>

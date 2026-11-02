@@ -4,7 +4,7 @@ import {notFound} from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { requireModule } from '@/lib/authz';
 import {ownClaimSubject} from './subject';
-import { claimRecordFacts, getEmployeeClaimTypes, listClaimsForEmployment } from '@/packs/claims/service';
+import { claimRecordFacts, getEmployeeClaimTypes, listClaimsForEmployment, ownClaimActionAccess } from '@/packs/claims/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ClaimForm, type ClaimDraftPrefill, type ClaimFormType } from '@/components/claim-form';
 import { Button } from '@/components/ui';
@@ -62,6 +62,8 @@ export default async function ClaimsPage({
     );
   }
 
+  const permissions=await ownClaimActionAccess(s,me.employmentId);
+  if(!permissions.view)notFound();
   const [types, allClaims] = await Promise.all([
     getEmployeeClaimTypes(s, me.employmentId),
     listClaimsForEmployment(s, me.employmentId),
@@ -125,7 +127,7 @@ export default async function ClaimsPage({
       <PageHeader title={t('title')} description={[t('subtitle'),...(selectedQuery.employmentId?[me.company,me.employeeCode]:[])].filter(Boolean).join(' · ')} />
       <ErrorBanner message={error} />
 
-      <Card data-tour="claims-compose" className="p-4">
+      {(permissions.submitView||permissions.draftView)&&<Card data-tour="claims-compose" className="p-4">
         <h2 className="mb-3 text-sm font-semibold">{editing ? t('editDraft') : t('newClaim')}</h2>
         {types.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('noTypes')}</p>
@@ -139,9 +141,12 @@ export default async function ClaimsPage({
             todayUtc={today}
             draft={draftPrefill}
             employmentId={selectedQuery.employmentId}
+            allowSave={Boolean(editing?permissions.draftEdit:permissions.draftAdd)}
+            allowSubmit={permissions.submit&&(!editing||permissions.draftEdit)}
+            allowReceipt={permissions.receiptView}
           />
         )}
-      </Card>
+      </Card>}
 
       {drafts.length > 0 && (
         <Card className="overflow-hidden">
@@ -165,7 +170,7 @@ export default async function ClaimsPage({
                 {drafts.map((d) => (
                   <tr key={d.id} className="border-t border-border align-top">
                     <td className="px-4 py-2.5">
-                      <input type="checkbox" name="draftIds" value={d.id} aria-label={d.typeName} className="size-4 align-middle" />
+                      <input disabled={!permissions.submit} type="checkbox" name="draftIds" value={d.id} aria-label={d.typeName} className="size-4 align-middle" />
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="font-medium">{d.typeName}</div>
@@ -180,22 +185,22 @@ export default async function ClaimsPage({
                     <td className="px-4 py-2.5 tabular-nums">{d.amount > 0 ? rm(d.amount) : <span className="text-muted-foreground">{t('draftNoAmount')}</span>}</td>
                     <td className="px-4 py-2.5 tabular-nums">{d.incurredOn}</td>
                     <td className="px-4 py-2.5 text-right">
-                      <Link href={'/claims?'+new URLSearchParams({draft:d.id,...selectedQuery})} className="mr-3 text-xs text-primary underline-offset-2 hover:underline">
+                      {permissions.draftEdit&&<Link href={'/claims?'+new URLSearchParams({draft:d.id,...selectedQuery})} className="mr-3 text-xs text-primary underline-offset-2 hover:underline">
                         {t('edit')}
-                      </Link>
+                      </Link>}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <div className="flex items-center gap-3 border-t border-border px-4 py-3">
-              <Button type="submit" size="sm">{t('submitSelected')}</Button>
+              <Button disabled={!permissions.submit} type="submit" size="sm">{t('submitSelected')}</Button>
               <span className="text-xs text-muted-foreground">{t('submitSelectedHint')}</span>
             </div>
           </form>
           {/* Deletion is its own form: nesting it inside the bulk-submit form would post both. */}
           <div className="flex flex-wrap gap-2 border-t border-border px-4 py-3">
-            {drafts.map((d) => (
+            {permissions.draftDelete&&drafts.map((d) => (
               <form key={d.id} action={deleteDraftAction}>
                 {subjectField}
                 <input type="hidden" name="id" value={d.id} />
@@ -263,7 +268,7 @@ export default async function ClaimsPage({
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right">
-                    {c.status === 'pending' && (
+                    {c.status === 'pending' && permissions.cancel && (
                       <form action={cancelClaimAction}>
                         {subjectField}
                         <input type="hidden" name="id" value={c.id} />

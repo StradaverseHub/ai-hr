@@ -21,6 +21,7 @@ import {
   employment,
   payComponent,
   payrollBatch,
+  payrollDocumentBatch,
   payslip,
   person,
   position,
@@ -534,12 +535,23 @@ async function loadBatchRows(
     // The monthly statutory return is ONE filing for the month, so aggregate across ALL runs of the
     // period. Runs store delta figures, so summing per employee yields the exact monthly total — with a
     // single run this is byte-identical to before. (Mirrors loadYearRows, scoped to one month.)
-    const monthBatches = await tx
+    const ordinaryBatches = tx
       .select({ id: payrollBatch.id, status: payrollBatch.status, runSeq: payrollBatch.runSeq })
       .from(payrollBatch)
       .where(
         and(eq(payrollBatch.companyId, params.companyId), eq(payrollBatch.payPeriod, params.periodKey)),
       );
+    // A retained payslip can still belong to the filing company after the employee has moved.
+    // Add only run identities that the existing retained report source actually supplies.
+    const retainedBatches = tx
+      .select({ id: payrollDocumentBatch.id, status: payrollDocumentBatch.status, runSeq: payrollDocumentBatch.runSeq })
+      .from(payrollDocumentBatch)
+      .where(and(
+        eq(payrollDocumentBatch.companyId, params.companyId),
+        eq(payrollDocumentBatch.payPeriod, params.periodKey),
+        sql`exists (select 1 from app.information_report_records('payslip', ${params.companyId}::uuid, ${params.periodKey}) as retained(data) where (retained.data->>'batch_id')::uuid=${payrollDocumentBatch.id})`,
+      ));
+    const monthBatches = await ordinaryBatches.union(retainedBatches);
     if (monthBatches.length === 0) return { hasBatch: false, rows: [] };
     // r409 — the runs the caller ticked, or the whole month (`undefined`, and every caller but CP39).
     const selection = opts.honourRunSeqs ? runSelectionSet(params.runSeqs) : undefined;
@@ -953,11 +965,11 @@ async function loadYearRows(
         statutory: payslip.statutory,
       })
       .from(informationReportRelation('payslip',companyId,year))
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(payrollDocumentBatch, eq(payrollDocumentBatch.id, payslip.batchId))
       .innerJoin(informationReportRelation('employment',companyId,year), eq(employment.id, payslip.employmentId))
       .innerJoin(informationReportRelation('person',companyId,year), eq(person.id, employment.personId))
       .leftJoin(informationReportRelation('employee_statutory_my',companyId,year), eq(employeeStatutoryMy.personId, employment.personId))
-      .where(and(eq(payrollBatch.companyId, companyId), like(payrollBatch.payPeriod, `${year}-%`)));
+      .where(and(eq(payrollDocumentBatch.companyId, companyId), like(payrollDocumentBatch.payPeriod, `${year}-%`)));
 
     const corrections = await readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
     const correctionEmploymentIds = new Set(slips.filter(s => corrections.has(s.id)).map(s => s.employmentId));
@@ -1046,15 +1058,15 @@ async function formECounts(
     const paid = await tx
       .select({
         employmentId: payslip.employmentId,
-        payPeriod: payrollBatch.payPeriod,
+        payPeriod: payrollDocumentBatch.payPeriod,
         joinDate: employmentInformationAt('joinDate',sql`${yEnd}`,sql`${employment.joinDate}`),
         hiredOn: employmentInformationAt('hiredOn',sql`${yEnd}`,sql`${employment.hiredOn}`),
         terminatedOn: employment.terminatedOn,
       })
       .from(informationReportRelation('payslip',companyId,year))
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(payrollDocumentBatch, eq(payrollDocumentBatch.id, payslip.batchId))
       .innerJoin(informationReportRelation('employment',companyId,year), eq(employment.id, payslip.employmentId))
-      .where(and(eq(payrollBatch.companyId, companyId), like(payrollBatch.payPeriod, `${year}-%`)));
+      .where(and(eq(payrollDocumentBatch.companyId, companyId), like(payrollDocumentBatch.payPeriod, `${year}-%`)));
 
     type Member = { joinDate: string | null; hiredOn: string; terminatedOn: string | null; lastPeriod: string | null };
     const pop = new Map<string, Member>();
@@ -1611,11 +1623,11 @@ export async function eaCompaniesInYear(
 ): Promise<{ companyId: string; name: string; isCurrent: boolean }[]> {
   return withTenant(ctx, async (tx) => {
     const paid = await tx
-      .selectDistinct({ companyId: payrollBatch.companyId, name: company.legalName, first: payrollBatch.payPeriod })
+      .selectDistinct({ companyId: payrollDocumentBatch.companyId, name: company.legalName, first: payrollDocumentBatch.payPeriod })
       .from(informationReportRelation('payslip',undefined,p.year))
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .where(and(eq(payslip.employmentId, p.employmentId), like(payrollBatch.payPeriod, `${p.year}-%`)));
+      .innerJoin(payrollDocumentBatch, eq(payrollDocumentBatch.id, payslip.batchId))
+      .innerJoin(company, eq(company.id, payrollDocumentBatch.companyId))
+      .where(and(eq(payslip.employmentId, p.employmentId), like(payrollDocumentBatch.payPeriod, `${p.year}-%`)));
 
     // Oldest employer first, so a transfer year reads in the order it happened.
     const byCompany = new Map<string, { companyId: string; name: string; first: string }>();
@@ -1929,7 +1941,7 @@ export async function eaStatement(
     const slips = await tx
       .select({
         id: payslip.id,
-        payPeriod: payrollBatch.payPeriod,
+        payPeriod: payrollDocumentBatch.payPeriod,
         basic: payslip.basicSalary,
         allowance: payslip.allowance,
         overtime: payslip.overtimePay,
@@ -1938,17 +1950,17 @@ export async function eaStatement(
         statutory: payslip.statutory,
       })
       .from(informationReportRelation('payslip',p.companyId,p.year))
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(payrollDocumentBatch, eq(payrollDocumentBatch.id, payslip.batchId))
       .where(
         and(
           eq(payslip.employmentId, p.employmentId),
-          like(payrollBatch.payPeriod, `${p.year}-%`),
+          like(payrollDocumentBatch.payPeriod, `${p.year}-%`),
           // THE FIX. A payslip belongs to the company whose batch paid it, and no later transfer rewrites
           // that — so this join is company-true for closed years as well as the current one.
-          eq(payrollBatch.companyId, employerId),
+          eq(payrollDocumentBatch.companyId, employerId),
           // r413 — the CP22A's narrowings; absent for every EA caller (see the parameter note above).
-          ...(p.throughPeriod ? [lte(payrollBatch.payPeriod, p.throughPeriod)] : []),
-          ...(p.processedOnly ? [inArray(payrollBatch.status, ['processed', 'closed'] as const)] : []),
+          ...(p.throughPeriod ? [lte(payrollDocumentBatch.payPeriod, p.throughPeriod)] : []),
+          ...(p.processedOnly ? [inArray(payrollDocumentBatch.status, ['processed', 'closed'] as const)] : []),
         ),
       )
       // r351 — AN EXPLICIT ORDERING, because D.6 below takes "the LAST month's relief snapshot" and
@@ -1956,7 +1968,7 @@ export async function eaStatement(
       // … any asserted array from a query needs ORDER BY"). Every other figure this feeds is a SUM and
       // did not care; that one does. The column itself is NOT selected — ordering by a joined table's
       // column needs no projection, and adding one here would be a field nothing reads.
-      .orderBy(payrollBatch.payPeriod);
+      .orderBy(payrollDocumentBatch.payPeriod);
 
     /**
      * ⚠️ 5d721048 — THE SAME REFUSAL `localization/my/pcb2ii.ts` MAKES, AND FOR THE SAME REASON.

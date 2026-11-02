@@ -1,3 +1,5 @@
+import {claimConfigurationWriteAccess} from '@/core/claims';
+import {assertModuleFunction} from '@/core/module-action-access';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -52,6 +54,7 @@ export default async function ClaimMileagePage({
   searchParams: Promise<{ error?: string; gradeId?: string; vehicleClass?: string }>;
 }) {
   const s = await requireAdmin();
+  await assertModuleFunction(s,'claimsConfig.mileage','view');
   const t = await getTranslations('admin.claims');
   const { error, gradeId: rawGradeId, vehicleClass: rawClass } = await searchParams;
   const [selectedType, grades] = await Promise.all([getMileageClaimType(s), listJobGrades(s)]);
@@ -63,9 +66,7 @@ export default async function ClaimMileagePage({
   // cannot 500 either.
   const selectedGradeId = activeGrades.some((g) => g.id === rawGradeId) ? (rawGradeId as string) : null;
   const selectedGrade = activeGrades.find((g) => g.id === selectedGradeId) ?? null;
-  const vehicleClass = (MILEAGE_VEHICLE_CLASSES as readonly string[]).includes(rawClass ?? '')
-    ? (rawClass as string)
-    : 'any';
+  const vehicleClass = MILEAGE_VEHICLE_CLASSES.find(value=>value===rawClass) ?? 'any';
 
   const today = todayInKualaLumpur();
   const { tables } = selectedType
@@ -75,6 +76,7 @@ export default async function ClaimMileagePage({
   // An INHERITED table is shown for reference but is NOT loaded into the editor: pre-filling the form with
   // the company-wide numbers makes "save" look like a no-op when it actually creates a grade override.
   const editorBands = editing && !editing.inherited ? editing.bands : [];
+  const [canWrite]=selectedType ? await claimConfigurationWriteAccess(s,[{kind:'claim_mileage_rate',claimTypeId:selectedType.id,gradeId:selectedGradeId,vehicleClass}]) : [false];
 
   const href = (p: { gradeId?: string | null; vehicleClass?: string }): string => {
     const q = new URLSearchParams();
@@ -187,7 +189,7 @@ export default async function ClaimMileagePage({
           <Card className="p-4">
             <h2 className="mb-1 text-sm font-semibold">{t('mileageEditorTitle')}</h2>
             <p className="mb-3 text-xs text-muted-foreground">{t('mileageEditorHint')}</p>
-            <form action={setMileageRateTableAction} className="space-y-3">
+            <fieldset disabled={canWrite !== true}><form action={setMileageRateTableAction} className="space-y-3">
               <input type="hidden" name="claimTypeId" value={selectedType.id} />
               <input type="hidden" name="gradeId" value={selectedGradeId ?? ''} />
               <input type="hidden" name="vehicleClass" value={vehicleClass} />
@@ -236,7 +238,7 @@ export default async function ClaimMileagePage({
               </div>
               <p className="text-xs text-muted-foreground">{t('mileageBandsHint')}</p>
               <p className="text-xs text-muted-foreground">{t('mileageStampHint')}</p>
-            </form>
+            </form></fieldset>
           </Card>
           </div>
         </div>

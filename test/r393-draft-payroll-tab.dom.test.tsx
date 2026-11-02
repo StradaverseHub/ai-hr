@@ -99,6 +99,7 @@ const wrap = (
       onError={(e) => intlErrors.push(e)}
     >
       <EmployeeWizard
+        actions={{canEdit:true,canDiscard:true,canActivate:true}}
         today={today}
         draftId="draft-1"
         reservedEmployeeCode="ABC00100"

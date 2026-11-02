@@ -329,6 +329,8 @@ export async function createClockingLocation(
   const remarks = cleanOptional(p.remarks);
   const reportLabel = cleanReportLabel(p.reportLabel);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertClockingSiteActionTx(tx,'add');
     const locationId = await resolveLocationLink(tx, p.locationId);
     const companies = await resolveCompanies(tx, p.companyIds);
     const state = cleanState(p.state, companies.countries);
@@ -393,6 +395,8 @@ export async function updateClockingLocation(
   const remarks = cleanOptional(p.remarks);
   const reportLabel = cleanReportLabel(p.reportLabel);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertClockingSiteActionTx(tx,'view');
     const [before] = await tx
       .select({
         name: clockingLocation.name,
@@ -419,7 +423,8 @@ export async function updateClockingLocation(
 
     // r423 — a company cannot be unticked while its employees are assigned here: their only usable site
     // would vanish under them with no message. Counted as the caller (a group administrator sees every
-    // employment), so the number is the whole number, not the part one company admin could see.
+    // employment in the native course). A restricted administrative profile can narrow this UI count;
+    // the private source guard independently refuses every actual assigned-company removal.
     if (removed.length) {
       const inUse = await tx
         .select({
@@ -476,6 +481,8 @@ export async function updateClockingLocation(
 export async function archiveClockingLocation(ctx: SessionContext, p: { clockingLocationId: string }) {
   assertGroupAdmin(ctx);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertClockingSiteActionTx(tx,'delete');
     touched(
       await tx
         .update(clockingLocation)
@@ -498,6 +505,8 @@ export async function archiveClockingLocation(ctx: SessionContext, p: { clocking
 export async function restoreClockingLocation(ctx: SessionContext, p: { clockingLocationId: string }) {
   assertGroupAdmin(ctx);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertClockingSiteActionTx(tx,'edit');
     touched(
       await tx
         .update(clockingLocation)
@@ -534,6 +543,8 @@ export class ClockingLocationInUseError extends Error {
 export async function deleteClockingLocation(ctx: SessionContext, p: { clockingLocationId: string }) {
   assertGroupAdmin(ctx);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertClockingSiteActionTx(tx,'delete');
     const [assignRefs] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(employeeClockingLocation)
@@ -634,9 +645,10 @@ export type ListClockingLocationsOptions = {
 export function listClockingLocations(
   ctx: SessionContext,
   opts: ListClockingLocationsOptions = {},
+  existingTx?:Tx,
 ): Promise<ClockingLocationRow[]> {
   const groupAdmin = isGroupAdmin(withEffectiveGrants(ctx));
-  return withTenant(ctx, async (tx) => {
+  const perform=async (tx:Tx) => {
     const conds = [];
     const status = opts.status ?? (opts.includeArchived ? 'all' : 'active');
     if (status === 'active') conds.push(isNull(clockingLocation.archivedAt));
@@ -700,7 +712,8 @@ export function listClockingLocations(
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(asc(clockingLocation.name), asc(clockingLocation.id));
     return rows;
-  });
+  };
+  return existingTx?perform(existingTx):withTenant(ctx,perform);
 }
 
 export type AssignedClockingLocation = {
@@ -918,4 +931,17 @@ export function setAttendancePhotoSetting(
     return { employmentId: p.employmentId, attendancePhotoSetting: p.setting };
   };
   return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+
+async function assertClockingSiteActionTx(tx:Tx,operation:'view'|'add'|'edit'|'delete'){
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.clocking_site_allowed(${operation}) as allowed`);
+ if(row?.allowed!==true)throw new Error('Clocking site action unavailable');
+}
+/** Purpose-bound maintenance read; personnel/own-clock/history consumers retain native references. */
+export function listClockingLocationsForMaintenance(ctx:SessionContext,opts:ListClockingLocationsOptions={}){
+ return withTenant(ctx,async tx=>{await assertClockingSiteActionTx(tx,'view');return listClockingLocations(ctx,opts,tx);});
+}
+export function clockingSiteActionAccess(ctx:SessionContext,operation:'view'|'add'|'edit'|'delete'){
+ return withTenant(ctx,async tx=>{const [row]=await tx.execute<{allowed:boolean}>(sql`select app.clocking_site_allowed(${operation}) as allowed`);return row?.allowed===true;});
 }

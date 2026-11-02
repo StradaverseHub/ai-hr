@@ -158,10 +158,14 @@ describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL
       expect(to, 'canonical membership reader closes').toBeGreaterThan(from);
       const membership = owner.slice(from, to);
       expect(membership).toContain("if (!isAdmin(ctx)) throw new InquiryQueryError('Forbidden')");
-      expect(membership).toContain('const companies = (await adminCompaniesTx(tx)).filter(c => selectedCompanyIds.includes(c.id))');
+      expect(membership).toContain('let companies = (await adminCompaniesTx(tx)).filter(c => selectedCompanyIds.includes(c.id))');
       expect(membership).toContain('const companyIds = companies.map(c => c.id)');
-      expect(membership).toContain('const employees = companyIds.length ? await listEmployeesTx(tx, companyIds) : []');
+      expect(membership).toContain('let employees = companyIds.length ? await listEmployeesTx(tx, companyIds) : []');
       expect(membership.match(/\blistEmployeesTx\(/g)).toHaveLength(1);
+      expect(membership).toContain("app.leave_employee_records_company_allowed(selected.id::uuid, 'view')");
+      expect(membership).toContain('companies = companies.filter(c => ids.has(c.id))');
+      expect(membership).toContain("app.leave_employee_records_subject_allowed(selected.id::uuid, 'view')");
+      expect(membership).toContain('employees = employees.filter(e => ids.has(e.employmentId))');
       expect(membership).toContain('employees.find(e => e.employmentId === query.emp)');
       expect(membership).toContain("if (query.emp && !selected) throw new InquiryQueryError('Employee is unavailable in the selected companies')");
       expect(src).toContain('const panelEmployees: ScopeEmployee[] = employees.map((e) => ({');

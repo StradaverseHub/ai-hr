@@ -1,3 +1,4 @@
+import {assertModuleFunctionTx} from './module-action-access';
 import { tenantMutation } from '../db/tenant-mutation';
 /**
  * Admin / setup services — org structure, leave config, and role management.
@@ -8,6 +9,7 @@ import { and, desc, eq, getTableName, inArray, isNotNull, isNull, or, sql, type 
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
+import { isAiPrincipalCurrentTx } from './ai-principal';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { actorOf, appendEvent } from '../db/events';
 // ADR-0077 slice 5 — the per-company install hook (see createCompany).
@@ -795,6 +797,7 @@ export async function createLeaveType(
   return withTenant(ctx, async (tx) => {
     // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
     // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await assertModuleFunctionTx(tx,'leaveConfig.types','add');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // Name uniqueness (feedback 097de541): case-insensitive, ACTIVE types only (mirrors the partial code
     // index which only guards archived_at IS NULL). Enforced in the service — not a DB index — because
@@ -3966,6 +3969,7 @@ export async function updateLeaveType(
   return withTenant(ctx, async (tx) => {
     // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
     // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await assertModuleFunctionTx(tx,'leaveConfig.types','edit');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [before] = await tx
       .select({
@@ -4700,6 +4704,7 @@ export async function setLeaveTypeRules(
   return withTenant(ctx, async (tx) => {
     // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
     // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await assertModuleFunctionTx(tx,'leaveConfig.types','edit');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // r299 (3de1453a) — WHAT THIS TYPE IS, read apart from the rule row below so the rules event keeps
     // exactly the shape it always had. `role` + `code` are what `isEarnedAccrualType` reads.
@@ -4826,6 +4831,7 @@ export function archiveLeaveType(ctx: SessionContext, p: { id: string; archived:
   return withTenant(ctx, async (tx) => {
     // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
     // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await assertModuleFunctionTx(tx,'leaveConfig.types',p.archived?'delete':'edit');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // r299 (3de1453a) — RESTORING MUST NOT MAKE A SECOND ACTIVE ANNUAL LEAVE. The switch refuses to create
     // one; unarchiving is the other door to the same state (production holds an ARCHIVED "Annual Leave" that
@@ -4903,6 +4909,7 @@ export async function deleteLeaveType(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
     // Configuration ownership precedes source reads, annual-role/Payroll locks and all mutations.
     // Participating leave commands hold the shared side; busy configuration requires fresh review.
+    await assertModuleFunctionTx(tx,'leaveConfig.types','delete');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // 1. REFUSE on history. Counted from the shared declaration, so this can never count a different set
     //    of tables from the predicate that decided to show the button.
@@ -5345,9 +5352,11 @@ export class CompanyNotFoundError extends Error {
  * (the check in step 3 runs as the caller). That is the `other` refusal, said in words; the original error is
  * logged on the server, never shown.
  */
-export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
+export async function deleteCompany(ctx: SessionContext, p: { id: string }, existingTx?: Tx) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async (tx) => {
+  const execute = async (tx: Tx) => {
+    // A caller-owned transaction must not borrow the supplied session's tenant or audit actor.
+    if (existingTx && !await isAiPrincipalCurrentTx(tx, ctx)) throw new CompanyDeleteForbiddenError();
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const rows = (await tx.execute(sql`
@@ -5373,8 +5382,15 @@ export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
     if (isCompanyDeleteBlock(reason)) throw new CompanyInUseError(reason);
 
     let usageSnapshotRows = 0;
+    let moduleCleanup: string | null = null;
     try {
-      for (const ref of cascadedReferrers()) {
+      const refs = cascadedReferrers();
+      if (refs.some((ref) => ref.sealedModuleCleanup)) {
+        const [cleanup] = await tx.execute<{ id: string | null }>(sql`select app.module_company_cleanup_begin(${p.id}::uuid) as id`);
+        moduleCleanup = cleanup?.id ?? null;
+      }
+      for (const ref of refs) {
+        if (ref.sealedModuleCleanup) continue;
         if (ref.deleteFunction) {
           // A table the app role may not DELETE from (the usage metering record): migration 0511's function
           // removes the all-zero rows, re-checking the caller's authority, and says how many.
@@ -5412,5 +5428,7 @@ export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
         usageSnapshotRows,
       },
     });
-  });
+    if (moduleCleanup) await tx.execute(sql`select app.module_company_cleanup_finish(${moduleCleanup}::uuid)`);
+  };
+  return existingTx ? execute(existingTx) : withTenant(ctx, execute);
 }

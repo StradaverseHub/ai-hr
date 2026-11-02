@@ -1,7 +1,8 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
-import { listPayrollPermissionGrants } from '@/core/payroll-permissions-admin';
+import { listPayrollPermissionGrants, payrollPermissionManagementAccess } from '@/core/payroll-permissions-admin';
+import { notFound } from 'next/navigation';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { PAYROLL_PERMISSION_DEFAULTS, PAYROLL_PERMISSION_KEYS } from '@/lib/payroll-permissions';
 import { setPayrollPermissionAction, deletePayrollPermissionAction } from './actions';
@@ -30,6 +31,8 @@ export default async function PayrollPermissionsPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const s = await requireAdmin();
+  const access=await payrollPermissionManagementAccess(s);
+  if(!access.canView)notFound();
   const t = await getTranslations('admin.payrollPermissions');
   const reportLabels=await getTranslations('employeeMasterReports.permissions');
   const keyLabel=(key:string)=>key.startsWith('report.read.')?reportLabels(key.slice('report.read.'.length)):key;
@@ -92,12 +95,12 @@ export default async function PayrollPermissionsPage({
                     <td className="px-4 py-2.5">{g.role}</td>
                     <td className="px-4 py-2.5">{g.allowed ? t('allow') : t('deny')}</td>
                     <td className="px-4 py-2.5 text-right">
-                      <form action={deletePayrollPermissionAction}>
+                      {g.canRemove&&<form action={deletePayrollPermissionAction}>
                         <input type="hidden" name="id" value={g.id} />
                         <Button type="submit" size="sm" variant="secondary">
                           {t('remove')}
                         </Button>
-                      </form>
+                      </form>}
                     </td>
                   </tr>
                 ))}
@@ -107,7 +110,7 @@ export default async function PayrollPermissionsPage({
         )}
       </Card>
 
-      <Card>
+      {access.canSave&&<Card>
         <SectionHeader title={t('addTitle')} />
         <form action={setPayrollPermissionAction} className="grid grid-cols-1 gap-3 px-4 py-4 sm:grid-cols-5">
           <label className="block">
@@ -152,7 +155,7 @@ export default async function PayrollPermissionsPage({
             <Button type="submit">{t('addButton')}</Button>
           </div>
         </form>
-      </Card>
+      </Card>}
     </div>
   );
 }

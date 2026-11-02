@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { LoginShell } from '../app/login/login-shell';
 import { InternalAuthForm } from '../app/login/internal-form';
+import { SessionPolicyForm } from '../app/admin/settings/login/session-policy-form';
 import { LoginPresentationForm } from '../app/admin/settings/login/presentation-form';
 import { DEFAULT_LOGIN_PRESENTATION } from '../lib/login-presentation';
 import en from '../messages/en.json';
@@ -14,10 +15,17 @@ import th from '../messages/th.json';
 import vietnamese from '../messages/vi.json';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 const save = vi.hoisted(() => vi.fn(async () => ({ status: 'saved', revision: 1 })));
-vi.mock('../app/admin/settings/login/actions', () => ({ saveLoginPresentationAction: (...args: unknown[]) => save(...args as []) }));
+vi.mock('../app/admin/settings/login/actions', () => ({ saveLoginPresentationAction: (...args: unknown[]) => save(...args as []),saveSessionPolicyAction: (...args:unknown[])=>save(...args as []) }));
 const wrap = (child: React.ReactNode, locale = 'en', messages = en) => render(<NextIntlClientProvider locale={locale} messages={messages} onError={e => { throw e; }}>{child}</NextIntlClientProvider>);
 afterEach(() => { cleanup(); save.mockClear(); });
 describe('login presentation', () => {
+  it.each(Object.entries({en,ms,zh,ta,th,vi:vietnamese}))('keeps presentation and idle policy read-only without Edit in %s',(locale,messages)=>{
+    wrap(<><LoginPresentationForm presentation={DEFAULT_LOGIN_PRESENTATION} revision={0}/><SessionPolicyForm idleTimeoutMinutes={15} revision={0}/></>,locale,messages as typeof en);
+    for(const name of [messages.loginPresentation.save,messages.sessionTimeout.save])for(const control of screen.getAllByRole('button',{name}))expect(control.matches(':disabled')).toBe(true);
+    expect(screen.getByRole('combobox').matches(':disabled')).toBe(true);expect(screen.getByRole('spinbutton').matches(':disabled')).toBe(true);
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it.each(Object.entries({ en, ms, zh, ta, th, vi: vietnamese }))('renders the form and help in %s without missing translations', (locale, messages) => {
     wrap(<InternalAuthForm organization="fixture"/>, locale, messages as typeof en);
     expect(screen.getByRole('heading', { name: messages.loginPresentation.welcome })).toBeInTheDocument();
@@ -52,7 +60,7 @@ describe('login presentation', () => {
     expect(video).toHaveAttribute('controls'); expect(video).toHaveAttribute('playsinline'); expect(video).not.toHaveAttribute('autoplay');
   });
   it('saves clearing media while retaining a configurable browser icon, then allows another save', async () => {
-    wrap(<LoginPresentationForm presentation={{ ...DEFAULT_LOGIN_PRESENTATION, iconUrl: 'https://example.test/icon.png' }} revision={0}/>);
+    wrap(<LoginPresentationForm presentation={{ ...DEFAULT_LOGIN_PRESENTATION, iconUrl: 'https://example.test/icon.png' }} revision={0} canEdit/>);
     await userEvent.click(screen.getByRole('button', { name: en.loginPresentation.save }));
     expect(await screen.findByRole('status')).toHaveTextContent(en.loginPresentation.result.saved);
     const form = save.mock.calls[0] as unknown as [unknown, FormData];

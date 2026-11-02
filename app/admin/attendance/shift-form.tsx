@@ -66,11 +66,13 @@ export type ShiftRuleOption = Awaited<ReturnType<typeof listAttendanceRules>>[nu
  */
 export async function ShiftForm({
   shift,
+  canWrite = false,
   otWindows,
   ruleOptions,
   error,
 }: {
   shift: ShiftRow | null;
+  canWrite:boolean;
   otWindows: ShiftOtWindowRow[];
   ruleOptions: ShiftRuleOption[];
   error?: string;
@@ -140,7 +142,7 @@ export async function ShiftForm({
       {/* `key` forces React to reset the ShiftTimeFields island's internal state when the route switches
           between add and a specific shift's edit. R33 f21d6eee — no company picker: a shift is a
           tenant-global template. */}
-      <form id="shift-form" key={editing?.id ?? 'new'} action={editing ? updateShiftAction : createShiftAction} className="space-y-6">
+      <fieldset disabled={canWrite!==true}><form id="shift-form" key={editing?.id ?? 'new'} action={editing ? updateShiftAction : createShiftAction} className="space-y-6">
         {editing && <input type="hidden" name="shiftId" value={editing.id} />}
 
         {/* ── SECTION 1 · SHIFT INFORMATION ──────────────────────────────────────────────────────────── */}
@@ -223,7 +225,7 @@ export async function ShiftForm({
             {t('cancelEdit')}
           </Link>
         </div>
-      </form>
+      </form></fieldset>
 
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">{t('breakPaidHint')}</p>

@@ -141,7 +141,9 @@ export type TemplateActions = {
 
 /** Assignment Template actions (9b0d99f3 — section 2 of the Approval Workflow tab).
  *  r79 0322 — the action that flipped the per-company Multi-Step Approval switch is gone with the switch. */
+export type AssignmentPreviewInput={templateId:string;companyIds:string[];leaveTypeIds:string[];eligibilityRuleIds:string[];minDays:number|null;maxDays:number|null};
 export type AssignmentActions = {
+  preview:(input:AssignmentPreviewInput)=>Promise<{allowed:boolean;count:number}>;
   assign: (fd: FormData) => void | Promise<void>;
   unassign: (fd: FormData) => void | Promise<void>;
 };
@@ -171,12 +173,14 @@ const nameOf = (opts: Option[], id: string | null) => (id ? (opts.find((o) => o.
  */
 export function ApprovalTemplateManager({
   templates,
+  access = {add:false,edit:false,delete:false},
   actions,
   labels,
   employees = [],
   endedEmploymentIds = [],
 }: {
   templates: TemplateRow[];
+  access: {add:boolean;edit:boolean;delete:boolean};
   actions: TemplateActions;
   labels: TemplateManagerLabels;
   /** r293 phase 3 — the population a named-approver level may point at, already scope-fenced. */
@@ -232,6 +236,7 @@ export function ApprovalTemplateManager({
     levels.map((l) => approversOf(l).map(approverText).join(` ${labels.orLabel} `)).join(' → ');
 
   function openDrawer(target: TemplateRow | 'new') {
+    if((target==='new'?access.add:access.edit)!==true)return;
     closing.current = false;
     drawerSettled.current = false;
     pendingFocus.current = null;
@@ -264,7 +269,7 @@ export function ApprovalTemplateManager({
 
   function save(fd: FormData) {
     // Closing or closed (a slide-out still has a form in it), or a save already on its way: nothing to post.
-    if (closing.current || inFlight.current) return;
+    if (closing.current || inFlight.current || (editing==='new'?access.add:access.edit)!==true) return;
     inFlight.current = true;
     setError(null);
     startSaving(async () => {
@@ -332,7 +337,7 @@ export function ApprovalTemplateManager({
           </div>
           {/* r304 — no longer hidden while a template is open: the drawer's overlay already keeps it out of
               reach, and a button that disappears and comes back moves the header under the pointer. */}
-          <Button type="button" variant="outline" size="sm" onClick={() => openDrawer('new')}>
+          <Button type="button" variant="outline" size="sm" disabled={access.add!==true} onClick={() => openDrawer('new')}>
             {labels.addTemplate}
           </Button>
         </div>
@@ -379,20 +384,21 @@ export function ApprovalTemplateManager({
                           type="button"
                           variant="outline"
                           size="sm"
+                          disabled={access.edit!==true}
                           onClick={() => openDrawer(tpl)}
                         >
                           {labels.editTemplate}
                         </Button>
                         <form action={actions.duplicateTemplate}>
                           <input type="hidden" name="templateId" value={tpl.id} />
-                          <Button type="submit" variant="ghost" size="sm">
+                          <Button disabled={access.add!==true} type="submit" variant="ghost" size="sm">
                             {labels.duplicateTemplate}
                           </Button>
                         </form>
                         {tpl.active && (
                           <form action={actions.setDefault}>
                             {!tpl.isTenantDefault && <input type="hidden" name="templateId" value={tpl.id} />}
-                            <Button type="submit" variant="ghost" size="sm">
+                            <Button disabled={access.edit!==true} type="submit" variant="ghost" size="sm">
                               {tpl.isTenantDefault ? labels.unsetTenantDefault : labels.setTenantDefault}
                             </Button>
                           </form>
@@ -400,13 +406,13 @@ export function ApprovalTemplateManager({
                         <form action={actions.setActive}>
                           <input type="hidden" name="templateId" value={tpl.id} />
                           <input type="hidden" name="active" value={tpl.active ? '0' : '1'} />
-                          <Button type="submit" variant="ghost" size="sm">
+                          <Button disabled={(tpl.active?access.delete:access.edit)!==true} type="submit" variant="ghost" size="sm">
                             {tpl.active ? labels.deactivateTemplate : labels.activateTemplate}
                           </Button>
                         </form>
                         <form action={actions.deleteTemplate}>
                           <input type="hidden" name="templateId" value={tpl.id} />
-                          <ConfirmSubmit
+                          <ConfirmSubmit disabled={access.delete!==true}
                             size="sm"
                             title={labels.deleteTemplate}
                             description={labels.deleteTemplateConfirm}
@@ -450,7 +456,7 @@ export function ApprovalTemplateManager({
               type="submit"
               form={TEMPLATE_FORM_ID}
               size="sm"
-              disabled={!formStatus.canSave || saving || editing === null}
+              disabled={!formStatus.canSave || saving || editing === null || (editing==='new'?access.add:access.edit)!==true}
             >
               {labels.save}
             </Button>
@@ -531,6 +537,8 @@ export function ApprovalTemplateManager({
  */
 export function ApprovalAssignmentManager({
   templates,
+  assignableCompanies = [],
+  deletableCompanies = [],
   assignments,
   companies,
   leaveTypes,
@@ -541,6 +549,8 @@ export function ApprovalAssignmentManager({
   labels,
 }: {
   templates: TemplateRow[];
+  assignableCompanies: readonly string[];
+  deletableCompanies: readonly string[];
   assignments: AssignmentRow[];
   companies: Option[];
   leaveTypes: Option[];
@@ -596,7 +606,7 @@ export function ApprovalAssignmentManager({
           <p className="text-xs text-muted-foreground">{labels.assignmentsHint}</p>
         </div>
         {!assigning && templates.some((x) => x.active) && (
-          <Button type="button" variant="outline" size="sm" onClick={() => setAssigning(true)}>
+          <Button type="button" variant="outline" size="sm" disabled={assignableCompanies.length===0} onClick={() => {if(assignableCompanies.length)setAssigning(true);}}>
             {labels.assign}
           </Button>
         )}
@@ -655,7 +665,7 @@ export function ApprovalAssignmentManager({
                               <form action={actions.unassign}>
                                 <input type="hidden" name="ruleId" value={a.ruleId} />
                                 <input type="hidden" name="companyId" value={a.companyId} />
-                                <ConfirmSubmit
+                                <ConfirmSubmit disabled={!deletableCompanies.includes(a.companyId)}
                                   size="sm"
                                   title={labels.unassign}
                                   description={labels.unassignConfirm}
@@ -680,10 +690,11 @@ export function ApprovalAssignmentManager({
         {assigning && (
           <AssignForm
             templates={templates.filter((x) => x.active)}
-            companies={companies}
+            companies={companies.filter(company=>assignableCompanies.includes(company.id))}
             leaveTypes={leaveTypes}
             eligibilityRules={eligibilityRules}
             assignAction={actions.assign}
+            previewAction={actions.preview}
             labels={labels}
             onCancel={() => setAssigning(false)}
           />
@@ -942,6 +953,7 @@ function AssignForm({
   leaveTypes,
   eligibilityRules,
   assignAction,
+  previewAction,
   labels,
   onCancel,
 }: {
@@ -950,9 +962,12 @@ function AssignForm({
   leaveTypes: Option[];
   eligibilityRules: EligibilityRuleOption[];
   assignAction: (fd: FormData) => void | Promise<void>;
+  previewAction:AssignmentActions['preview'];
   labels: TemplateManagerLabels;
   onCancel: () => void;
 }) {
+  const [selectedTemplate,setSelectedTemplate]=useState('');
+  const [preview,setPreview]=useState<{key:string;allowed:boolean}>({key:'',allowed:false});
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [selectedLeaveTypes, setSelectedLeaveTypes] = useState<string[]>([]);
   const [selectedRules, setSelectedRules] = useState<string[]>([]);
@@ -987,15 +1002,25 @@ function AssignForm({
   const [v2, setV2] = useState('');
   const minDays = !condOn ? '' : operator === 'lte' ? '' : v1;
   const maxDays = !condOn ? '' : operator === 'gte' ? '' : operator === 'lte' ? v1 : v2;
+  const previewKey=JSON.stringify([selectedTemplate,selectedCompanies,selectedLeaveTypes,selectedRules,minDays,maxDays]);
+  const mayAssign=preview.key===previewKey&&preview.allowed;
+  useEffect(()=>{
+   let cancelled=false;
+   if(!selectedTemplate||selectedCompanies.length===0||selectedLeaveTypes.length===0||pickedNotAssignable.length>0)return;
+   const request:AssignmentPreviewInput={templateId:selectedTemplate,companyIds:selectedCompanies,leaveTypeIds:selectedLeaveTypes,eligibilityRuleIds:selectedRules,minDays:minDays===''?null:Number(minDays),maxDays:maxDays===''?null:Number(maxDays)};
+   const timer=setTimeout(()=>{void previewAction(request).then(result=>{if(!cancelled)setPreview({key:previewKey,allowed:result.allowed===true&&result.count>0});}).catch(()=>{if(!cancelled)setPreview({key:previewKey,allowed:false});});},200);
+   return()=>{cancelled=true;clearTimeout(timer);};
+  },[selectedTemplate,selectedCompanies,selectedLeaveTypes,selectedRules,minDays,maxDays,previewAction,previewKey,pickedNotAssignable.length]);
+
 
   return (
     <div className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 dark:border-indigo-900 dark:bg-indigo-950/20">
       <div className="text-sm font-semibold">{labels.assignTemplate}</div>
 
-      <form action={assignAction} className="space-y-4">
+      <form action={assignAction} onChange={()=>setPreview({key:'',allowed:false})} onSubmit={event=>{if(!mayAssign)event.preventDefault();}} className="space-y-4">
         <label className="block space-y-1 text-sm">
           <span className="text-xs font-medium text-muted-foreground">{labels.selectTemplate}</span>
-          <select name="templateId" required className={inputCls} defaultValue="">
+          <select name="templateId" required className={inputCls} value={selectedTemplate} onChange={event=>setSelectedTemplate(event.target.value)}>
             <option value="" disabled>
               —
             </option>
@@ -1125,7 +1150,7 @@ function AssignForm({
         )}
         <div className="flex items-center gap-2">
           {/* The service refuses such a rule too, and names the axis — this only saves the round trip. */}
-          <Button type="submit" size="sm" disabled={pickedNotAssignable.length > 0}>
+          <Button type="submit" size="sm" disabled={!mayAssign || pickedNotAssignable.length > 0}>
             {labels.assign}
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>

@@ -32,7 +32,7 @@ export default async function NewNoticePage({
   const locale=await getLocale();
   const { error } = await searchParams;
   const vocab = await criteriaVocabulary(s);
-  const authoring=await noticeAuthoringScope(s);
+  const authoring=await noticeAuthoringScope(s,'add');
   const today = todayInKualaLumpur();
 
   return (

@@ -12,6 +12,16 @@ import { actorOf, appendEvent } from '../db/events';
 import { payrollPermissionGrant } from '../db/schema';
 import { PAYROLL_PERMISSION_KEYS, isPayrollPermissionKey } from '../lib/payroll-permissions';
 
+export function payrollPermissionManagementAccess(ctx:SessionContext) {
+  return withTenant(ctx,async tx=>{
+    const [row]=await tx.execute<{view:boolean;add:boolean;edit:boolean}>(sql`select
+      app.financial_setup_catalog_function('payComponents.catalogue','view') as view,
+      app.financial_setup_catalog_function('payComponents.catalogue','add') as add,
+      app.financial_setup_catalog_function('payComponents.catalogue','edit') as edit`);
+    return {canView:row?.view===true,canSave:row?.add===true||row?.edit===true};
+  });
+}
+
 export function listPayrollPermissionGrants(ctx: SessionContext) {
   return withTenant(ctx, (tx) =>
     tx
@@ -21,8 +31,10 @@ export function listPayrollPermissionGrants(ctx: SessionContext) {
         permissionKey: payrollPermissionGrant.permissionKey,
         role: payrollPermissionGrant.role,
         allowed: payrollPermissionGrant.allowed,
+        canRemove: sql<boolean>`app.payroll_permission_grant_can_remove_current(${payrollPermissionGrant.id})`,
       })
       .from(payrollPermissionGrant)
+      .where(sql`app.financial_setup_catalog_function('payComponents.catalogue','view')`)
       .orderBy(desc(payrollPermissionGrant.createdAt)),
   );
 }
@@ -43,6 +55,16 @@ export async function setPayrollPermissionGrant(
     await assertAiPrincipalTx(tx,ctx);
     const [admin]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
     if(admin?.allowed!==true)throw new Error('Payroll permission administration required.');
+    if (p.permissionKey === 'leave.apply_on_behalf') {
+      const [written] = await tx.execute<{ id: string }>(sql`select app.leave_on_behalf_grant_set(${companyId}::uuid, ${p.role}, ${p.allowed}) as id`);
+      if (!written?.id) throw new Error('Leave permission write unavailable.');
+      return { id: written.id };
+    }
+    if (p.permissionKey.startsWith('report.read.')) {
+      const [written]=await tx.execute<{id:string|null}>(sql`select app.report_permission_grant_set(${companyId}::uuid,${p.permissionKey},${p.role},${p.allowed}) as id`);
+      if(!written?.id)throw new Error('Report permission write unavailable.');
+      return {id:written.id};
+    }
     const [existing] = await tx
       .select({ id: payrollPermissionGrant.id })
       .from(payrollPermissionGrant)
@@ -87,6 +109,16 @@ export async function deletePayrollPermissionGrant(ctx: SessionContext, p: { id:
     await assertAiPrincipalTx(tx,ctx);
     const [admin]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
     if(admin?.allowed!==true)throw new Error('Payroll permission administration required.');
+    const [existing] = await tx.select({ permissionKey: payrollPermissionGrant.permissionKey })
+      .from(payrollPermissionGrant).where(eq(payrollPermissionGrant.id, p.id)).for('update');
+    if (existing?.permissionKey === 'leave.apply_on_behalf') {
+      const [written] = await tx.execute<{ deleted: boolean }>(sql`select app.leave_on_behalf_grant_delete(${p.id}::uuid) as deleted`);
+      return { deleted: written?.deleted === true };
+    }
+    if(existing?.permissionKey.startsWith('report.read.')&&isPayrollPermissionKey(existing.permissionKey)){
+      const [written]=await tx.execute<{deleted:boolean}>(sql`select app.report_permission_grant_delete(${p.id}::uuid) as deleted`);
+      return {deleted:written?.deleted===true};
+    }
     const [row] = await tx
       .delete(payrollPermissionGrant)
       .where(eq(payrollPermissionGrant.id, p.id))

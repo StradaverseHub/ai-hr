@@ -26,7 +26,7 @@ const locales=[
   {locale:'th',messages:th,title:'ข้อมูลที่จัดการในหน้าบุคลากร'},
   {locale:'vi',messages:viMessages,title:'Các trường được quản lý trong Nhân sự'},
 ] as const;
-function mount(entry:(typeof locales)[number]=locales[0]){return render(<NextIntlClientProvider locale={entry.locale} messages={entry.messages}><ImportWorkbench companies={[{id:'fixture',name:'Fixture'}]} defaultCompanyId="fixture" reference={reference}/></NextIntlClientProvider>);}
+function mount(entry:(typeof locales)[number]=locales[0]){return render(<NextIntlClientProvider locale={entry.locale} messages={entry.messages}><ImportWorkbench canCreate={true} canExecute={true} createCompanyIds={['fixture']} companies={[{id:'fixture',name:'Fixture'}]} defaultCompanyId="fixture" reference={reference}/></NextIntlClientProvider>);}
 beforeEach(()=>{
   mocks.build.mockReset().mockResolvedValue(new Uint8Array([1]));
   Object.defineProperty(URL,'createObjectURL',{configurable:true,value:()=> 'blob:fixture'});

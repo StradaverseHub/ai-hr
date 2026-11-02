@@ -23,15 +23,15 @@ export async function connectorByOrganization(organization: string) {
   if((await registeredOrganization(config.tenantId)).code!==code)throw new EntraError('forbidden');
   return config;
 }
-export async function requireEntraAdmin(ctx: SessionContext) {
+export async function requireEntraAdmin(ctx: SessionContext, operation:'view'|'edit'='view') {
   if (!internalSelected() || !ctx.userId) throw new EntraError('forbidden');
   await withTenant(ctx, async tx => {
-    const rows = await tx.execute(sql`select app.entra_admin() allowed`) as unknown as {allowed:boolean}[];
+    const rows = await tx.execute(sql`select app.entra_admin() and app.organisation_settings_function_allowed('entra',${operation},NULL) allowed`) as unknown as {allowed:boolean}[];
     if (!rows[0]?.allowed) throw new EntraError('forbidden');
   });
 }
 export async function saveConnector(ctx: SessionContext, input: EntraConfig, expectedRevision: string|null) {
-  await requireEntraAdmin(ctx);
+  await requireEntraAdmin(ctx,'edit');
   const config = entraConfigSchema.parse(input);
   if (config.tenantId !== ctx.tenantId) throw new EntraError('forbidden');
   if((await registeredOrganization(ctx.tenantId)).code!==config.organization)throw new EntraError('conflict');

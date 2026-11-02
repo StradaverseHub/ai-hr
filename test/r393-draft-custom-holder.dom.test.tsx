@@ -80,6 +80,7 @@ const wrap = (data: EmployeeDraftData, opts: { messages?: Msgs; locale?: string 
   render(
     <NextIntlClientProvider locale={opts.locale ?? 'en'} messages={opts.messages ?? en} onError={(e) => intlErrors.push(e)}>
       <EmployeeWizard
+        actions={{canEdit:true,canDiscard:true,canActivate:true}}
         today={today}
         draftId="draft-1"
         reservedEmployeeCode="ABC00100"

@@ -31,7 +31,7 @@ import { businessUnit, payslipInformationSetting, payrollHistoryEffectiveBatch }
 import { randomUUID } from 'node:crypto';
 import {readPayrollOvertimePatternCashTx, OvertimePayrollError, type OvertimePayrollErrorCode} from './payroll-overtime-pattern';
 import {OvertimeOwnerError} from '../packs/attendance/service';
-import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { type SQLWrapper, and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { type SessionContext, type Tx } from '../db/client';
 import { pricesChildReliefFromGrid } from './dependents';
@@ -92,6 +92,7 @@ import {
   jobGrade,
   loanRepayment,
   payComponent,
+  payrollDocumentBatch,
   payrollBatch,
   payrollBatchComponent,
   payrollCycle,
@@ -175,7 +176,7 @@ const filterRunTypeSql = sql`app.payroll_filter_run_type(${payrollBatch.historyI
 /** Optional period narrowing on a 'YYYY-MM' pay-period column (default payroll_batch.pay_period; the
  *  Individual inquiry passes the txn row's own pay_period so unattached rows filter too): year+month →
  *  exact month; year only → that year; month only → that month across years. */
-function periodFilter(year?: number, month?: number, col: typeof payrollBatch.payPeriod | typeof payrollIndividualTxn.payPeriod = payrollBatch.payPeriod) {
+function periodFilter(year?: number, month?: number, col: SQLWrapper = payrollBatch.payPeriod) {
   const mm = month != null ? String(month).padStart(2, '0') : null;
   if (year != null && mm) return eq(col, `${year}-${mm}`);
   if (year != null) return like(col, `${year}-%`);
@@ -459,6 +460,7 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
     .where(
       and(
         inArray(payrollIndividualTxn.companyId, p.companyIds),
+        sql`app.function_action_allowed('payroll.individualTransactions','view',${payrollIndividualTxn.companyId})`,
         periodFilter(p.year, p.month, payrollIndividualTxn.payPeriod),
         p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
         kind ? eq(payrollIndividualTxn.kind, kind) : undefined,
@@ -528,6 +530,7 @@ export function listIndividualTxnCreators(
           eq(domainEvent.aggregateType, INDIVIDUAL_TXN_AGGREGATE),
           eq(domainEvent.eventType, INDIVIDUAL_TXN_CREATED),
           inArray(payrollBatch.companyId, p.companyIds),
+          sql`app.function_action_allowed('payroll.individualTransactions','view',${payrollIndividualTxn.companyId})`,
         ),
       )
       .orderBy(asc(creatorPerson.fullName));
@@ -1050,6 +1053,7 @@ export function listProcessedPayslipsAcross(
     limit?: number;
   },
 ): Promise<ProcessedPayslipViewRow[]> {
+  const payrollBatch=payrollDocumentBatch;
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
   const cycle = cleanRunType(p.cycle);
   const limit = Number.isInteger(p.limit) && p.limit! > 0 ? p.limit! : undefined;
@@ -1100,7 +1104,7 @@ export function listProcessedPayslipsAcross(
       .where(
         and(
           inArray(payrollBatch.companyId, p.companyIds),
-          periodFilter(p.year, p.month),
+          periodFilter(p.year, p.month, payrollBatch.payPeriod),
           p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
           // b240c0ff — imported history filters under its real Pay Cycle (see `filterRunTypeSql`).
           cycle ? sql`${filterRunTypeSql} = ${cycle}` : undefined,
@@ -1177,6 +1181,7 @@ export function listPayslipRunsFor(
   ctx: SessionContext,
   p: { companyIds: string[]; employmentId: string },
 ): Promise<PayslipRunRow[]> {
+  const payrollBatch=payrollDocumentBatch;
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
   return withTenant(ctx, async (tx) => {
     const rows=await tx
@@ -1298,6 +1303,7 @@ export function listPayrollRegisterAcross(
   ctx: SessionContext,
   p: { companyIds: string[]; year?: number; month?: number; cycle?: string },
 ): Promise<PayrollRegisterRow[]> {
+  const payrollBatch=payrollDocumentBatch;
   if (p.companyIds.length === 0) return Promise.resolve([]);
   const cycle = cleanRunType(p.cycle);
   return withTenant(ctx, async (tx) => {
@@ -1352,7 +1358,7 @@ export function listPayrollRegisterAcross(
       .where(
         and(
           inArray(payrollBatch.companyId, p.companyIds),
-          periodFilter(p.year, p.month),
+          periodFilter(p.year, p.month, payrollBatch.payPeriod),
           cycle ? eq(payrollBatch.runType, cycle) : undefined,
         ),
       )
@@ -1532,6 +1538,7 @@ export function payslipForReview(
   ctx: SessionContext,
   p: { companyIds: string[]; payslipId: string },
 ): Promise<PayslipReviewRow | null> {
+  const payrollBatch=payrollDocumentBatch;
   if (p.companyIds.length === 0) return Promise.resolve(null); // fail closed — no scope, no payslip
   return withTenant(ctx, async (tx) => {
     const [liveRow] = await tx
@@ -2020,6 +2027,7 @@ const cleanZakatStatus = (v: unknown): 'processed' | 'closed' | undefined =>
 /** Shared query for the Zakat "Applied in payroll" history AND its CSV export (one source of truth). Zakat
  *  actually deducted (`payslip.statutory->>'zakat' > 0`) across processed runs in the scoped companies. */
 function queryZakatTxns(tx: Tx, p: ZakatTxnFilter): Promise<ZakatTxnViewRow[]> {
+  const payrollBatch=payrollDocumentBatch;
   const cycle = cleanRunType(p.cycle);
   const status = cleanZakatStatus(p.status);
   return tx
@@ -2045,7 +2053,7 @@ function queryZakatTxns(tx: Tx, p: ZakatTxnFilter): Promise<ZakatTxnViewRow[]> {
     .where(
       and(
         inArray(payrollBatch.companyId, p.companyIds),
-        periodFilter(p.year, p.month),
+        periodFilter(p.year, p.month, payrollBatch.payPeriod),
         p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
         cycle ? eq(payrollBatch.runType, cycle) : undefined,
         status ? eq(payrollBatch.status, status) : undefined,

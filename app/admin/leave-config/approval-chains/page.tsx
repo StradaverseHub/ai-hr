@@ -1,3 +1,4 @@
+import {leaveApprovalCompanyAccess} from '@/core/leave-approval-action-access';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 
@@ -6,9 +7,10 @@ import { listCompanies, listEmployeePickOptions, listEmployees, listJobGrades, l
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import type { LeaveLevelKind } from '@/lib/leave-approval-kinds';
 import { previewApprovalChain } from '@/core/leave';
-import { getLeaveEscalationPolicy } from '@/core/leave-approval-policy';
+import { getLeaveEscalationPolicyForMaintenance } from '@/core/leave-approval-policy';
 import {
   listApprovalTemplates,
+  approvalTemplateActionAccess,
   listEligibilityRuleScopes,
   listTemplateAssignments,
 } from '@/core/leave-approval-template';
@@ -22,6 +24,7 @@ import {
 } from '../../leave-approval/template-manager';
 import {
   assignApprovalTemplateAction,
+  previewApprovalTemplateAssignmentAction,
   deleteApprovalTemplateAction,
   duplicateApprovalTemplateAction,
   saveApprovalTemplateAction,
@@ -102,6 +105,7 @@ export default async function LeaveConfigApprovalChainsPage({
   searchParams: Promise<{ error?: string; previewEmployment?: string; previewLeaveType?: string }>;
 }) {
   const { s, scopeIds } = await scopedSession();
+  const [templateView,templateAdd,templateEdit,templateDelete]=await Promise.all((['view','add','edit','delete'] as const).map(operation=>approvalTemplateActionAccess(s,operation)));
   const t = await getTranslations('leaveApproval');
   const tr = await getTranslations('admin.leaveConfigApprovalChains');
   // r304 fix 3 — the template drawer's footer says the plain common "Save" (the approved plan and mockup:
@@ -112,6 +116,9 @@ export default async function LeaveConfigApprovalChainsPage({
   const all = await listCompanies(s);
   const companies = all.filter((c) => scopeIds.includes(c.id));
   const companyIds = companies.map((c) => c.id);
+  const assignmentAccess=await Promise.all(companies.map(async company=>({id:company.id,flags:await leaveApprovalCompanyAccess(s,'leaveApproval.assignments',company.id,['add','edit','delete'])})));
+  const assignableCompanies=assignmentAccess.filter(row=>row.flags[0]||row.flags[1]).map(row=>row.id);
+  const deletableCompanies=assignmentAccess.filter(row=>row.flags[2]).map(row=>row.id);
 
   const [leaveTypesAll, gradesAll, eligibilityRulesAll] = await Promise.all([
     listLeaveTypes(s),
@@ -123,9 +130,11 @@ export default async function LeaveConfigApprovalChainsPage({
     listEligibilityRuleScopes(s),
   ]);
 
-  const rows = await Promise.all(
-    companies.map(async (c) => ({ company: c, esc: await getLeaveEscalationPolicy(s, c.id) })),
-  );
+  const rows = (await Promise.all(companies.map(async c=>{
+    const [view,edit]=await leaveApprovalCompanyAccess(s,'leaveApproval.escalation',c.id,['view','edit']);
+    if(!view)return null;
+    return {company:c,esc:await getLeaveEscalationPolicyForMaintenance(s,c.id),canEdit:edit};
+  }))).filter(row=>row!==null);
 
   const [templates, allAssignments, employeePickOptions] = await Promise.all([
     listApprovalTemplates(s),
@@ -380,12 +389,13 @@ export default async function LeaveConfigApprovalChainsPage({
       ) : (
         <>
           {/* ══ Section 1 — Approval Template Creation: build the flow and its steps. ══ */}
-          <section className="space-y-3">
+          {templateView === true && <section className="space-y-3">
             <div>
               <h2 className="text-base font-semibold">{t('templateCreationTitle')}</h2>
               <p className="text-xs text-muted-foreground">{t('templateCreationHint')}</p>
             </div>
             <ApprovalTemplateManager
+              access={{add:templateAdd,edit:templateEdit,delete:templateDelete}}
               templates={templates}
               employees={employeeSearchOptions}
               endedEmploymentIds={endedEmploymentIds}
@@ -413,7 +423,7 @@ export default async function LeaveConfigApprovalChainsPage({
               labels={previewLabels}
               searchLabels={employeeSearchLabels}
             />
-          </section>
+          </section>}
 
           {/* ══ Section 2 — Assignment Template: who each flow applies to, and the escalation that
               chases it (r79 0322 put the escalation editor inside this card). ══ */}
@@ -424,6 +434,8 @@ export default async function LeaveConfigApprovalChainsPage({
             </div>
 
             <ApprovalAssignmentManager
+              assignableCompanies={assignableCompanies}
+              deletableCompanies={deletableCompanies}
               templates={templates}
               assignments={assignments.map((a) => ({
                 ruleId: a.ruleId,
@@ -453,6 +465,7 @@ export default async function LeaveConfigApprovalChainsPage({
                 }))}
               actions={{
                 assign: assignApprovalTemplateAction,
+                preview: previewApprovalTemplateAssignmentAction,
                 unassign: unassignApprovalTemplateAction,
               }}
               labels={templateLabels}
@@ -463,7 +476,7 @@ export default async function LeaveConfigApprovalChainsPage({
                     <p className="text-xs text-muted-foreground">{t('escalationSectionHint')}</p>
                   </div>
                   <ul className="divide-y divide-border">
-                    {rows.map(({ company, esc }) => (
+                    {rows.map(({ company, esc, canEdit }) => (
                       <li key={company.id}>
                         <details className="group">
                           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
@@ -473,6 +486,7 @@ export default async function LeaveConfigApprovalChainsPage({
                             </span>
                           </summary>
                           <LeaveEscalationEditor
+                            canWrite={canEdit}
                             companyId={company.id}
                             action={saveLeaveEscalationPolicyAction}
                             initial={{

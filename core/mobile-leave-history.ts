@@ -59,7 +59,7 @@ export async function ownLeaveRequestsPage(
   employmentId: string,
   q: { status?: Status; from?: string; to?: string; limit: number; cursor: readonly [string, string] | null },
 ): Promise<LeaveRequestsPageV2> {
-  const filter = { employmentIds: [employmentId], from: q.from, to: q.to };
+  const filter = { purpose: 'ownApplication' as const, employmentIds: [employmentId], from: q.from, to: q.to };
   const page = await listLeaveRequestsPage(ctx, {
     ...filter, statuses: q.status ? [q.status] : undefined, sort: 'start', dir: 'desc', limit: q.limit + 1, offset: 0,
     before: q.cursor ? { startDate: q.cursor[0], id: q.cursor[1] } : undefined,
@@ -78,7 +78,7 @@ export async function ownLeaveRequestsPage(
 
 /** The row, only when it belongs to `employmentId` (the caller's own, verified upstream). */
 async function ownRow(ctx: SessionContext, employmentId: string, id: string): Promise<Row | null> {
-  const { rows } = await listLeaveRequestsPage(ctx, { employmentIds: [employmentId], ids: [id], limit: 1, offset: 0 });
+  const { rows } = await listLeaveRequestsPage(ctx, { purpose: 'ownApplication', employmentIds: [employmentId], ids: [id], limit: 1, offset: 0 });
   return rows[0] ?? null;
 }
 
@@ -116,13 +116,14 @@ export async function ownLeaveRequestDetail(ctx: SessionContext, employmentId: s
   const r = await ownRow(ctx, employmentId, id);
   if (!r) return { outcome: 'refused', code: 'not_found' };
   const today = todayInKualaLumpur();
-  const [breakdown, offers, progress, trails, cancellations, rejections] = await Promise.all([
-    leaveRequestDateBreakdown(ctx, r.id),
+  const [breakdown, offers, progress, trails, cancellations, rejections, actions] = await Promise.all([
+    leaveRequestDateBreakdown(ctx, r.id, 'ownApplication'),
     employeeCancelOffers(ctx, [r], today),
     r.status === 'approved' && r.pendingCancellationId ? pendingCancellationProgress(ctx, [r.pendingCancellationId]) : Promise.resolve(new Map()),
     ownLeaveApprovalTrails(ctx, [r.id]),
     r.status === 'cancelled' ? ownLeaveCancellations(ctx, [r.id]) : Promise.resolve(new Map()),
     r.status === 'rejected' ? ownLeaveRejections(ctx, [r.id]) : Promise.resolve(new Map()),
+    leave.ownLeaveRequestActionAccess(ctx, [r.id]),
   ]);
   const trail = trails.get(r.id);
   // The web's rule: the application's per-date outcome when there is one, else this row's own per-date record.
@@ -133,7 +134,7 @@ export async function ownLeaveRequestDetail(ctx: SessionContext, employmentId: s
   const cancellation = cancellations.get(r.id);
   const pending = progress.get(r.pendingCancellationId ?? '');
   const firstWaiting = pending?.levels.find((l: { status: string }) => l.status === 'pending')?.stepIndex ?? null;
-  const withdraw = ownLeaveWithdrawable(r);
+  const withdraw = actions[r.id]?.canDelete === true && ownLeaveWithdrawable(r);
   const hourly = r.durationType === 'hourly';
   return {
     outcome: 'found',

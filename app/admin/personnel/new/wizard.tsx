@@ -161,13 +161,15 @@ import {
 } from '@/lib/employee-draft-schema';
 // 759dfc7d — the Family tab, the first of the active record's tabs a draft gets (plan work item 1).
 import { DraftFamilyStep } from './family-step';
-import { saveDraftAction, discardDraftAction, createEmployeeAction } from './actions';
+import { saveDraftAction, discardDraftAction, createEmployeeAction, activateStoredDraftAction } from './actions';
+import type { EmployeeDraftActions } from '@/core/employee-draft';
 
 type Option = { id: string; label: string; companies?: string; businessUnitId?: string; buCompanies?: string };
 
 export function EmployeeWizard({
   today,
   draftId,
+  actions,
   reservedEmployeeCode,
   initialData,
   initialStep,
@@ -189,6 +191,7 @@ export function EmployeeWizard({
 }: {
   today: string;
   draftId: string;
+  actions: EmployeeDraftActions;
   /** The Employee ID held for this record since Create (item 06f0cb8f). Null only on a draft written
    *  before that item — it then behaves exactly as it always did and is issued an ID at Activate. */
   reservedEmployeeCode: string | null;
@@ -344,7 +347,7 @@ export function EmployeeWizard({
 
   /** SAVE. Deliberately unvalidated, from whichever tab is open — that is the whole of what a draft is. */
   const saveDraft = () => {
-    if(deleteTarget||!beginMutation('save'))return;
+    if(!actions.canEdit||deleteTarget||!beginMutation('save'))return;
     startTransition(async()=>{
       try {
         await saveDraftAction(id,data,stepNumber(tab));
@@ -355,14 +358,14 @@ export function EmployeeWizard({
     });
   };
   const openDelete=()=>{
-    if(busy||mutationRef.current)return;
+    if(!actions.canDiscard||busy||mutationRef.current)return;
     setDeleteError(null);
     setDeleteTarget({id,name:data.profile?.fullName?.trim()||t('untitledDraft'),code:reservedEmployeeCode??''});
   };
   const closeDelete=()=>{if(!mutationRef.current){setDeleteTarget(null);setDeleteError(null);}};
   const confirmDelete=()=>{
     const target=deleteTarget;
-    if(!target||target.id!==id||!beginMutation('delete'))return;
+    if(!actions.canDiscard||!target||target.id!==id||!beginMutation('delete'))return;
     setDeleteError(null);
     startTransition(async()=>{
       let result:DraftDeleteActionResult;
@@ -378,10 +381,10 @@ export function EmployeeWizard({
   };
   /** ACTIVATE. Only a confirmed owner result becomes navigation; validation stays on this Draft. */
   const activate=()=>{
-    if(deleteTarget||!beginMutation('activate'))return;
+    if(!actions.canActivate||deleteTarget||!beginMutation('activate'))return;
     startTransition(async()=>{
       let result:DraftActivateActionResult;
-      try {result=await createEmployeeAction(id,data,stepNumber(tab));}
+      try {result=actions.canEdit?await createEmployeeAction(id,data,stepNumber(tab)):await activateStoredDraftAction(id);}
       catch {if(mountedRef.current){setError(t('activationFailed'));finishMutation();}return;}
       if(!mountedRef.current)return;
       if(result?.ok){
@@ -533,11 +536,9 @@ export function EmployeeWizard({
               renders (components/passport-fields.tsx), under the same heading and in the same order.
               It sits inside Personal Details because that is where the record keeps it.
 
-              OPTIONAL FOR EVERYBODY HERE, including a non-Malaysian. `setPassportProfileMY` makes the
-              trio mandatory for a non-Malaysian WHENEVER IT IS CALLED, and `completeEmployeeDraft` calls
-              it only when the draft carries a passport value — so this screen never becomes stricter than
-              `hireEmployee` or the bulk importer. The one rule it does carry is all-or-nothing, judged by
-              `missingByTab` on this tab, where a refusal costs nothing.
+              The country pack owns completeness. A Malaysian who starts a passport must provide its
+              number and both dates; for a foreign passport the number is required and dates are optional.
+              The wizard and native activation use that same rule.
 
               THE ISSUING COUNTRY LIST IS THE NATIONALITY CATALOG, not the country one, because that is
               what the Personnel card is fed (its own comment calls the value a demonym). Passing the
@@ -1349,6 +1350,11 @@ export function EmployeeWizard({
     ),
   };
 
+  if(!actions.canEdit)for(const key of DRAFT_TABS) {
+    const panel=panels[key];
+    if(panel)panels[key]=<fieldset disabled className="min-w-0 border-0 p-0">{panel}</fieldset>;
+  }
+
   return (
     <div className="space-y-6">
       {/* THE RECORD THAT ALREADY EXISTS (item 06f0cb8f) — its held Employee ID, its name and its company,
@@ -1456,7 +1462,7 @@ export function EmployeeWizard({
       <div className="flex flex-wrap items-center gap-2">
         {/* Deliberately UNVALIDATED: a draft that refused to save until it was complete would not be
             a draft. The reporter's whole ask is "keep what I have and come back to it". */}
-        <Button variant="secondary" onClick={() => saveDraft()} disabled={busy||!!deleteTarget}>
+        <Button variant="secondary" onClick={() => saveDraft()} disabled={!actions.canEdit||busy||!!deleteTarget}>
           {operation==='save' ? t('saving') : t('saveDraft')}
         </Button>
         {saved && <span className="text-xs text-emerald-600 dark:text-emerald-400">{t('draftSaved')}</span>}
@@ -1465,12 +1471,12 @@ export function EmployeeWizard({
             type="button"
             ref={deleteTriggerRef}
             onClick={openDelete}
-            disabled={busy}
+            disabled={!actions.canDiscard||busy}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
             {t('deleteRecord')}
           </button>
-          <Button onClick={activate} disabled={busy||!!deleteTarget||outstanding.length>0}>
+          <Button onClick={activate} disabled={!actions.canActivate||busy||!!deleteTarget||outstanding.length>0}>
             {operation==='activate' ? t('activating') : t('activate')}
           </Button>
         </div>

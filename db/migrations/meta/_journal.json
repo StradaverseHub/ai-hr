@@ -4551,6 +4551,76 @@
       "when": 1793330000346,
       "tag": "0946_draft_creation_cohort_custody",
       "breakpoints": true
+    },
+    {
+      "idx": 794,
+      "version": "7",
+      "when": 1793330000347,
+      "tag": "0947_data_permission_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 795,
+      "version": "7",
+      "when": 1793330000348,
+      "tag": "0948_data_permission_reader_bypasses",
+      "breakpoints": true
+    },
+    {
+      "idx": 796,
+      "version": "7",
+      "when": 1793330000349,
+      "tag": "0949_data_permission_enforcement",
+      "breakpoints": true
+    },
+    {
+      "idx": 797,
+      "version": "7",
+      "when": 1793330000350,
+      "tag": "0950_workforce_action_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 798,
+      "version": "7",
+      "when": 1793330000351,
+      "tag": "0951_bounded_approval_task_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 799,
+      "version": "7",
+      "when": 1793330000352,
+      "tag": "0952_financial_letter_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 800,
+      "version": "7",
+      "when": 1793330000353,
+      "tag": "0953_organisation_settings_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 801,
+      "version": "7",
+      "when": 1793330000354,
+      "tag": "0954_leave_attendance_claim_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 802,
+      "version": "7",
+      "when": 1793330000355,
+      "tag": "0955_lifecycle_rewards_notice_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 803,
+      "version": "7",
+      "when": 1793330000356,
+      "tag": "0956_financial_setup_actions",
+      "breakpoints": true
     }
   ]
 }

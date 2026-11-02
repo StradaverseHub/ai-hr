@@ -23,7 +23,7 @@
  * the screen) exactly as setCompanyDefaultPayrollCycle and setLeaveEscalationPolicy are. Every write
  * appends a DomainEvent with a before → after payload (the setLeaveHalfDayFullDeduction audit precedent).
  */
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { company } from '../db/schema';
@@ -82,7 +82,7 @@ export function listHiringDefaults(ctx: SessionContext, companyIds?: string[]): 
         reviewReminderDays: company.reviewReminderDays,
       })
       .from(company);
-    return companyIds && companyIds.length ? q.where(inArray(company.id, companyIds)) : q;
+    return q.where(and(sql`app.organisation_action_allowed('view',${company.id})`,companyIds && companyIds.length ? inArray(company.id,companyIds):undefined));
   });
 }
 

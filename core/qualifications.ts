@@ -377,7 +377,7 @@ export async function archiveQualification(
     if (!existing || existing.archivedAt != null) {
       throw new QualificationValidationError('Qualification record not found.');
     }
-    await assertWorkforceEmploymentTx(tx,ctx,existing.employmentId,'maintain');
+    await assertWorkforceEmploymentTx(tx,ctx,existing.employmentId,'delete');
     await tx
       .update(employeeQualification)
       .set({ archivedAt: new Date(), updatedAt: new Date() })

@@ -10,10 +10,11 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
  try{
   const data=await readNoticeUploadRequest(request,NOTICE_ATTACHMENT_MAX_BYTES);
   const one=(name:string)=>{const values=data.getAll(name);return values.length===1?values[0]:null;};
-  const file=one('file'),uploadKey=one('uploadKey'),version=one('contentVersion');
+  const file=one('file'),uploadKey=one('uploadKey'),version=one('contentVersion'),attachNow=one('attachNow');
+  if(attachNow!==null&&attachNow!=='true')return response({error:'file'},400);
   if(!(file instanceof File)||typeof uploadKey!=='string'||typeof version!=='string'||!/^\d+$/.test(version))return response({error:'file'},400);
   if(!file.size||file.size>NOTICE_ATTACHMENT_MAX_BYTES)return response({error:'tooLarge'},413);
-  const result=await addNoticeAttachment(ctx,id,Number(version),{uploadKey,fileName:file.name,content:Buffer.from(await file.arrayBuffer())},{attach:false});
+  const result=await addNoticeAttachment(ctx,id,Number(version),{uploadKey,fileName:file.name,content:Buffer.from(await file.arrayBuffer())},{attach:attachNow==='true'});
   return response(result,201);
  }catch(error){
   if(error instanceof NoticeUploadRequestError)return response({error:error.reason},error.status);

@@ -1,3 +1,4 @@
+import {assertModuleFunction} from '@/core/module-action-access';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -47,6 +48,7 @@ export default async function AddScheduleGroupPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const s = await requireAdmin();
+  await assertModuleFunction(s,'attendancePolicy.schedule','add');
   const t = await getTranslations('admin.scheduleConfig');
   const tr = await getTranslations('admin.attendanceRule');
   const sp = await searchParams;

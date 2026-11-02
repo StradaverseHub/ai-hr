@@ -48,8 +48,8 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
 
  it('gives the application role append-only privileges with RLS enabled on all three tables',async()=>{
   for(const table of ['import_attempt','import_attempt_item','import_attempt_event']){
-   const[p]=await withTenant(a,tx=>tx.execute<Record<string,unknown>>(sql`select has_table_privilege(current_user,${'public.'+table},'SELECT') as read,has_table_privilege(current_user,${'public.'+table},'INSERT') as insert,has_table_privilege(current_user,${'public.'+table},'UPDATE') as update,has_table_privilege(current_user,${'public.'+table},'DELETE') as delete,(select relrowsecurity from pg_class where oid=${'public.'+table}::regclass) as rls`));
-   expect(p).toEqual({read:true,insert:true,update:false,delete:false,rls:true});
+   const[p]=await withTenant(a,tx=>tx.execute<Record<string,unknown>>(sql`select has_table_privilege(current_user,${'public.'+table},'SELECT') as read,has_column_privilege(current_user,${'public.'+table},'id','SELECT') as header,has_table_privilege(current_user,${'public.'+table},'INSERT') as insert,has_table_privilege(current_user,${'public.'+table},'UPDATE') as update,has_table_privilege(current_user,${'public.'+table},'DELETE') as delete,(select relrowsecurity from pg_class where oid=${'public.'+table}::regclass) as rls`));
+   expect(p).toEqual({read:table==='import_attempt_item',header:true,insert:true,update:false,delete:false,rls:true});
   }
   const{attemptId}=await upload(a,[row('ACME','AC001','ACME-OPS','100')]);
   await expect(withTenant(a,tx=>tx.execute(sql`update import_attempt set source_name='changed' where id=${attemptId}::uuid`))).rejects.toThrow();
@@ -160,6 +160,15 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
   const seen=await getImportAttempt(betaOnly,mixed.attemptId);
   expect(seen?.items.map(i=>i.employmentId)).toEqual([betaEmp]);expect(JSON.stringify(seen?.items)).not.toContain('AC002');
   expect(seen).toMatchObject({canDownloadSource:false,canRevert:false});expect(await importAttemptSource(betaOnly,mixed.attemptId)).toBeNull();
+  await expect(withTenant(betaOnly,tx=>tx.execute(sql`select source_content,plan from import_attempt where id=${mixed.attemptId}::uuid`))).rejects.toThrow();
+  const [partialPacket]=await withTenant(betaOnly,tx=>tx.execute(sql`select app.import_attempt_source_current(${mixed.attemptId}::uuid) as bytes,app.import_attempt_plan_current(${mixed.attemptId}::uuid) as plan`));
+  expect(partialPacket).toEqual({bytes:null,plan:null});
+  await expect(withTenant(betaOnly,tx=>tx.execute(sql`select reason,detail from import_attempt_event where attempt_id=${mixed.attemptId}::uuid`))).rejects.toThrow();
+  expect(seen?.plan.previewHash).toBe('');
+  expect(JSON.stringify(seen?.plan)).not.toContain('AC002');
+  const downloaded=await importAttemptSource(a,mixed.attemptId);
+  expect(downloaded?.content.toString('utf8')).toContain('AC002');
+  expect(downloaded?.content.toString('utf8')).toContain('BE001');
   await expect(previewImportRevertForAttempt(betaOnly,mixed.attemptId)).rejects.toThrow(/maintain permission for every company/);
   const preview=await previewImportRevertForAttempt(a,mixed.attemptId);
   await expect(revertImportForAttempt(betaOnly,mixed.attemptId,{previewHash:preview.previewHash,reason:'Not mine'})).rejects.toThrow(/maintain permission for every company/);

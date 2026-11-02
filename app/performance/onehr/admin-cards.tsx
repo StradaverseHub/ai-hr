@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import type { getOnehrCycle } from '@/packs/performance/service';
+import {getOnehrSetup,cycleFunctionAccess,type getOnehrCycle} from '@/packs/performance/service';
+import {getSession} from '@/lib/session';
 import { pmBands, assessmentModuleKeys, ratedPerformance, tiers, windowCells } from '@/packs/performance/onehr/model';
 import type { ProgressModule } from '@/packs/performance/onehr/progress-model';
 import { adminCardShown, adminPartShown, type AdminCardId, type AdminCycleState, type AdminPart } from '@/packs/performance/onehr/admin-sections';
@@ -41,7 +42,10 @@ const catalogueSectionOf:Record<Extract<AdminPart,`catalogue.${string}`>,Catalog
  * address) rides the forms so a save comes back to the page it was made on.
  */
 export async function adminCardRenderer(v:View,{progress,returnTo}:{progress?:ProgressQuery;returnTo?:string}={}){
-  const t=await getTranslations('onehr');const {cycle,policy}=v;
+  const t=await getTranslations('onehr'),session=await getSession();const {cycle}=v;
+  const [setup,cycleAccess]=await Promise.all([getOnehrSetup(session,cycle.id),cycleFunctionAccess(session,[cycle.companyId])]);
+  const policy=setup?.policy??v.policy;
+  const setupPart=(id:string)=>['policy','modules','windows','framework','catalogue'].includes(id)||id.startsWith('catalogue.');
   const state:AdminCycleState={status:cycle.status,policy,kpiNames:v.kpiNames.length};
   const back=returnTo?<input type="hidden" name="returnTo" value={returnTo}/>:null;
   const fields=<><input type="hidden" name="cycleId" value={cycle.id}/><input type="hidden" name="revision" value={v.revision}/>{back}</>;
@@ -78,7 +82,7 @@ export async function adminCardRenderer(v:View,{progress,returnTo}:{progress?:Pr
     'catalogue.generate':()=>catalogueCard([catalogueSectionOf['catalogue.generate']]),
     kpiImport:()=><section id="kpi-import"><AssessmentKpiImport cycleId={cycle.id}/></section>,
     companyKpi:()=><CompanyKpiFill cycleId={cycle.id} companies={v.companies} names={v.kpiNames}/>,
-    assessments:()=><Card className="space-y-4 p-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 id="assessments" className="font-semibold">{t('assessments')} ({v.reviews.length})</h2><span className="flex flex-wrap gap-4"><Link href={`/performance/${cycle.id}/release`} className="text-sm text-primary hover:underline">{t('resultRelease.open')}</Link><Link href={`/performance/${cycle.id}/records`} className="text-sm text-primary hover:underline">{t('records.title')}</Link></span></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{['employee','grade','managerAssessment','finalResult'].map(k=><th className="p-3" key={k}>{t(k)}</th>)}</tr></thead><tbody className="divide-y divide-border">{v.reviews.map(r=><tr key={r.reviewId}><td className="p-3"><Link className="text-primary hover:underline" href={`/performance/review/${r.reviewId}`}>{r.name}</Link></td><td className="p-3">{r.grade}</td><td className="p-3">{r.managerPerformance??'—'}</td><td className="p-3">{r.frozenId?t('finalized'):t('pending')}</td></tr>)}</tbody></table></div></Card>,
+    assessments:()=><Card className="space-y-4 p-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 id="assessments" className="font-semibold">{t('assessments')} ({v.reviews.length})</h2><span className="flex flex-wrap gap-4"><Link href={`/performance/${cycle.id}/release`} className="text-sm text-primary hover:underline">{t('resultRelease.open')}</Link><Link href={`/performance/${cycle.id}/records`} className="text-sm text-primary hover:underline">{t('records.title')}</Link></span></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{['employee','grade','managerAssessment','finalResult'].map(k=><th className="p-3" key={k}>{t(k)}</th>)}</tr></thead><tbody className="divide-y divide-border">{v.reviews.map(r=><tr key={r.reviewId}><td className="p-3"><Link className="text-primary hover:underline" href={`/performance/review/${r.reviewId}?purpose=administration`}>{r.name}</Link></td><td className="p-3">{r.grade}</td><td className="p-3">{r.managerPerformance??'—'}</td><td className="p-3">{r.frozenId?t('finalized'):t('pending')}</td></tr>)}</tbody></table></div></Card>,
     profit:()=><Card className="space-y-4 p-5"><h2 id="profit" className="font-semibold">{t('talentCurve.configuration')}</h2><p className="text-sm text-muted-foreground">{t('talentCurve.configurationHelp')}</p>{v.companies.filter(unit=>unit.profitEligible).map(unit=>{const figure=v.profitAchievements.find(row=>row.companyId===unit.id);return <form key={unit.id} action={onehrCycleAction} className="flex flex-wrap items-end gap-3">{fields}<input type="hidden" name="action" value="profit-achievement"/><input type="hidden" name="companyId" value={unit.id}/><input type="hidden" name="profitRevision" value={figure?.revision??''}/><Field label={unit.name}><input aria-label={t('talentCurve.inputFor',{name:unit.name})} name="achievementPct" type="number" step="any" defaultValue={figure?.achievementPct??''} disabled={cycle.status==='closed'} className={inputCls}/></Field><Button type="submit" variant="secondary" disabled={cycle.status==='closed'}>{t('save')}</Button></form>;})}</Card>,
     reminders:()=><section id="reminders"><AssessmentReminderAdmin cycleId={cycle.id} returnTo={returnTo}/></section>,
     'calibration.sessions':()=><Card className="space-y-4 p-5"><h2 id="calibration" className="font-semibold">{t('calibration')}</h2>{sessions}</Card>,
@@ -93,7 +97,9 @@ export async function adminCardRenderer(v:View,{progress,returnTo}:{progress?:Pr
   };
   return {
     state,
-    card:(id:AdminCardId)=>adminCardShown(id,state)?<div key={id} data-admin-card={id}>{(whole[id]??parts[id as AdminPart])()}</div>:null,
-    part:(id:AdminPart)=>adminPartShown(id,state)?<div key={id} data-admin-part={id}>{parts[id]()}</div>:null,
+    canReadSetup:!!setup,
+    setupPart,
+    card:(id:AdminCardId)=>adminCardShown(id,state)&&(!setupPart(id)||!!setup)&&(id!=='cycleActions'||cycleAccess[0]?.canEdit)?<div key={id} data-admin-card={id}>{setupPart(id)?<fieldset disabled={!setup?.canEdit}>{(whole[id]??parts[id as AdminPart])()}</fieldset>:(whole[id]??parts[id as AdminPart])()}</div>:null,
+    part:(id:AdminPart)=>adminPartShown(id,state)&&(!setupPart(id)||!!setup)&&(id!=='cycleActions'||cycleAccess[0]?.canEdit)?<div key={id} data-admin-part={id}>{setupPart(id)?<fieldset disabled={!setup?.canEdit}>{parts[id]()}</fieldset>:parts[id]()}</div>:null,
   };
 }

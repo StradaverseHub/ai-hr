@@ -87,7 +87,7 @@ describe('Home Waiting for You projects complete actual owner assignments',()=>{
   const {cycleId}=await perf.createCycle(a,{name:'Fictional current 360',companyId:b.companyId,periodStart:date(-30),periodEnd:date(30)});
   await perf.configureOnehrCycle(a,cycleId,null,defaultPolicy(framework));expect(await perf.openCycle(a,{cycleId})).toMatchObject({reviewsSpawned:3});
   const [review]=await owner.db.select({id:s.performanceReview.id}).from(s.performanceReview).where(and(eq(s.performanceReview.cycleId,cycleId),eq(s.performanceReview.employmentId,subject.employmentId)));
-  const view=await perf.getOnehrReview(a,review.id);await perf.assignOnehrPanel(a,review.id,view!.revision,[{employmentId:peer.employmentId,relationship:'peer'}]);
+  const view=await perf.getOnehrReview(a,review.id);await perf.assignOnehrPanel(a,review.id,view!.revision,[{employmentId:peer.employmentId,relationship:'peer'}],'administration');
   const assigned=await perf.pendingOnehrFeedbackTaskMetadata(peer.ctx);expect(assigned).toHaveLength(1);expect(assigned[0].linkPath).toBe('/performance/assessment/feedback/'+assigned[0].id);
   expect(await perf.pendingStandardFeedbackTaskMetadata(peer.ctx)).toEqual([]);expect(await perf.pendingOnehrFeedbackTaskMetadata(subject.ctx)).toEqual([]);
   let cycle=await perf.getOnehrCycle(a,cycleId);

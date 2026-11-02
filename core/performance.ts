@@ -67,13 +67,27 @@ import type {GenerateArgs} from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { onehrAttachmentSubjectTx, assertStandardCycleTx, prepareAssessmentClosureTx, initializeOnehrCycleTx } from '../packs/performance/onehr/service';
+import { onehrAttachmentSubjectTx, assertStandardCycleTx, assertStandardFeedbackTx, prepareAssessmentClosureTx, initializeOnehrCycleTx } from '../packs/performance/onehr/service';
 
 export class PerfError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'PerfError';
   }
+}
+
+/** Generic cycle administration is independent from assigned OneHR work. */
+async function assertCycleFunctionTx(tx:Tx,companyId:string|null,operation:'view'|'add'|'edit') {
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.performance_cycle_function_action(${companyId}::uuid,${operation}) as allowed`);
+ if(!row?.allowed)throw new PerfError('Performance cycle action unavailable');
+}
+
+/** Exact current action availability for existing native cycle controls. */
+export async function cycleFunctionAccess(ctx:SessionContext,companyIds:readonly (string|null)[]) {
+ return withTenant(ctx,async tx=>Promise.all([...new Set(companyIds)].map(async companyId=>{
+  const [row]=await tx.execute<{canView:boolean;canAdd:boolean;canEdit:boolean}>(sql`select app.performance_cycle_function_action(${companyId}::uuid,'view') as "canView",app.performance_cycle_function_action(${companyId}::uuid,'add') as "canAdd",app.performance_cycle_function_action(${companyId}::uuid,'edit') as "canEdit"`);
+  return {companyId,canView:row?.canView??false,canAdd:row?.canAdd??false,canEdit:row?.canEdit??false};
+ })));
 }
 
 /** Seed scale if a cycle is created without one. Tenant-configurable per cycle thereafter. */
@@ -294,6 +308,7 @@ export async function createCycle(
   // HR elects which lifecycle stages run; default = all three. Normalize + reject empty / unknown.
   const stages = cycleStages(p.stages);
   return withTenant(ctx, async (tx) => {
+    await assertCycleFunctionTx(tx,p.companyId??null,'add');
     const [row] = await tx
       .insert(reviewCycle)
       .values({
@@ -400,6 +415,7 @@ async function eligibilityCandidates(
 export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
   return withTenant(ctx, async (tx) => {
     const cycle = await loadCycle(tx, p.cycleId);
+    await assertCycleFunctionTx(tx,cycle.companyId,'edit');
     if (!canAdminPerfCtx(ctx, cycle.companyId)) {
       throw new PerfError('Only an admin or performance & comp partner can open a review cycle');
     }
@@ -478,6 +494,8 @@ export async function previewEligibleCount(
     }
   }
   return withTenant(ctx, async (tx) => {
+    await assertCycleFunctionTx(tx,p.companyId??null,'view');
+    for(const companyId of rules?.companyIds??[])await assertCycleFunctionTx(tx,companyId,'view');
     const asOf = todayInKualaLumpur();
     const candidates = await eligibilityCandidates(tx, ctx.tenantId, p.companyId ?? null, asOf);
     const nativeEligible = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible).map(c=>c.employmentId);
@@ -494,6 +512,7 @@ export async function moveCycleToCalibration(ctx: SessionContext, p: { cycleId: 
 export async function releaseCycle(ctx: SessionContext, p: { cycleId: string }) {
   return withTenant(ctx, async (tx) => {
     const cycle = await loadCycle(tx, p.cycleId);
+    await assertCycleFunctionTx(tx,cycle.companyId,'edit');
     if (!canAdminPerfCtx(ctx, cycle.companyId)) {
       throw new PerfError('Only an admin or performance & comp partner can release a cycle');
     }
@@ -530,6 +549,7 @@ async function transitionCycle(
     if (!canAdminPerfCtx(ctx, cycle.companyId)) {
       throw new PerfError('Only an admin or performance & comp partner can change a cycle status');
     }
+    await assertCycleFunctionTx(tx,cycle.companyId,'edit');
     if (!from.includes(cycle.status)) {
       throw new PerfError(`Cannot move a ${cycle.status} cycle to ${to}`);
     }
@@ -1408,7 +1428,7 @@ export type CycleSummary = {
 /** Cycles for the management view, each with progress counts. RLS scopes to the tenant. */
 export function listCycles(ctx: SessionContext): Promise<CycleSummary[]> {
   return withTenant(ctx, async (tx) => {
-    const cycles = await tx.select().from(reviewCycle).orderBy(desc(reviewCycle.periodStart));
+    const cycles = await tx.select().from(reviewCycle).where(sql`app.performance_cycle_function_action(${reviewCycle.companyId},'view')`).orderBy(desc(reviewCycle.periodStart));
     if (cycles.length === 0) return [];
     const counts = await tx
       .select({
@@ -1561,6 +1581,9 @@ export function cycleDetail(ctx: SessionContext, cycleId: string) {
   return withTenant(ctx, async (tx) => {
     const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, cycleId)).limit(1);
     if (!cycle) return null;
+    const [course]=await tx.execute<{nativeAdmin:boolean}>(sql`select app.performance_cycle_native_admin(${cycle.companyId}::uuid) as "nativeAdmin"`);
+    const nativeAdmin=course?.nativeAdmin===true;
+    if(nativeAdmin)await assertCycleFunctionTx(tx,cycle.companyId,'view');
     const rows = await tx
       .select({
         reviewId: performanceReview.id,
@@ -1587,7 +1610,7 @@ export function cycleDetail(ctx: SessionContext, cycleId: string) {
           isNull(compensation.supersededAt),
         ),
       )
-      .where(eq(performanceReview.cycleId, cycleId))
+      .where(and(eq(performanceReview.cycleId, cycleId),nativeAdmin?undefined:sql`app.is_self_person(${employment.personId})`))
       .orderBy(person.fullName);
 
     const reviewerNames = await namesForEmployments(
@@ -1730,8 +1753,8 @@ export function reviewForViewer(ctx: SessionContext, reviewId: string, outerTx?:
       .where(eq(performanceReview.id, reviewId))
       .limit(1);
     if (!r) return null;
-    const [onehr]=await tx.execute<{configured:boolean}>(sql`select exists(select 1 from performance_onehr_cycle where cycle_id=${r.cycle.id}::uuid) as configured`);
-    if(onehr?.configured)return null;
+    const [framework]=await tx.execute<{value:'standard'|'onehr'|null}>(sql`select app.performance_review_framework(${r.review.id}::uuid) as value`);
+    if(framework?.value!=='standard')return null;
 
     // Resolve the reviewer's name + person (separate query — avoids a self-join on employment).
     let reviewerName: string | null = null;
@@ -2468,7 +2491,7 @@ export async function submitPeerFeedback(
 ): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
-    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the assigned 360 feedback form for this request.'); }
+    if (rq) await assertStandardFeedbackTx(tx,rq.id);
     if (!rq) throw new PerfError('Feedback request not found'); // RLS-invisible → not found
     if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
     await tx.insert(peerFeedback).values({
@@ -2495,7 +2518,7 @@ export async function submitPeerFeedback(
 export async function declinePeerFeedback(ctx: SessionContext, p: { requestId: string }): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
-    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the assigned 360 feedback form for this request.'); }
+    if (rq) await assertStandardFeedbackTx(tx,rq.id);
     if (!rq) throw new PerfError('Feedback request not found');
     if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
     await tx.update(peerFeedbackRequest).set({ status: 'declined' }).where(eq(peerFeedbackRequest.id, rq.id));
@@ -2522,8 +2545,7 @@ export function pendingStandardFeedbackTaskMetadata(ctx:SessionContext):Promise<
       .where(and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),
         sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${peerFeedbackRequest.peerEmploymentId}
           AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`,
-        sql`NOT EXISTS (SELECT 1 FROM public.performance_onehr_panel panel WHERE panel.request_id=${peerFeedbackRequest.id})`,
-        sql`NOT EXISTS (SELECT 1 FROM public.performance_review review JOIN public.performance_onehr_cycle cycle ON cycle.cycle_id=review.cycle_id WHERE review.id=${peerFeedbackRequest.reviewId})`))
+        sql`app.performance_feedback_framework(${peerFeedbackRequest.id})='standard'`))
       .orderBy(desc(peerFeedbackRequest.createdAt),peerFeedbackRequest.id);
     return rows.map(row=>({...row,kind:'feedback' as const,linkPath:`/me/performance#feedback-${row.id}`}));
   });

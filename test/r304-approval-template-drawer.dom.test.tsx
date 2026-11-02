@@ -41,6 +41,8 @@ import zh from '../messages/zh.json';
 
 import {
   ApprovalTemplateManager,
+  ApprovalAssignmentManager,
+  type AssignmentActions,
   type SaveTemplateResult,
   type TemplateManagerLabels,
   type TemplateRow,
@@ -180,9 +182,10 @@ class Boundary extends React.Component<{ children: React.ReactNode }, { err: str
   }
 }
 
-function managerNode(loc: Locale, save: SaveMock, templates: TemplateRow[] = TEMPLATES) {
+function managerNode(loc: Locale, save: SaveMock, templates: TemplateRow[] = TEMPLATES, access={add:true,edit:true,delete:true}) {
   return (
     <ApprovalTemplateManager
+      access={access}
       templates={templates}
       labels={labelsFor(loc)}
       employees={EMPLOYEES}
@@ -197,7 +200,7 @@ function managerNode(loc: Locale, save: SaveMock, templates: TemplateRow[] = TEM
   );
 }
 
-function mount(loc: Locale, save: SaveMock = vi.fn(), templates: TemplateRow[] = TEMPLATES) {
+function mount(loc: Locale, save: SaveMock = vi.fn(), templates: TemplateRow[] = TEMPLATES, access={add:true,edit:true,delete:true}) {
   const errors: string[] = [];
   const wrap = (node: React.ReactNode) => (
     <NextIntlClientProvider
@@ -208,8 +211,8 @@ function mount(loc: Locale, save: SaveMock = vi.fn(), templates: TemplateRow[] =
       <Boundary>{node}</Boundary>
     </NextIntlClientProvider>
   );
-  const view = render(wrap(managerNode(loc, save, templates)));
-  const rerender = (next: TemplateRow[]) => view.rerender(wrap(managerNode(loc, save, next)));
+  const view = render(wrap(managerNode(loc, save, templates, access)));
+  const rerender = (next: TemplateRow[]) => view.rerender(wrap(managerNode(loc, save, next, access)));
   return { view, errors, save, rerender };
 }
 
@@ -915,4 +918,51 @@ describe('r304 · the row actions are pinned as main shipped them', () => {
     }
     expect(LOCALES).toHaveLength(6);
   });
+});
+
+
+describe('exact template purpose controls',()=>{
+ it('retains template references with all mutation controls disabled for View only',()=>{
+  const save:SaveMock=vi.fn();mount('en',save,TEMPLATES,{add:false,edit:false,delete:false});
+  expect(screen.getByText(STANDARD.name,{selector:'span'})).toBeTruthy();
+  const buttons=screen.getAllByRole('button');expect(buttons.length).toBeGreaterThan(10);for(const button of buttons)expect(button.matches(':disabled')).toBe(true);
+  fireEvent.click(screen.getByRole('button',{name:la('en').addTemplate}));expect(screen.queryByRole('dialog')).toBeNull();expect(save).not.toHaveBeenCalled();
+ });
+ it.each(['add','edit','delete'] as const)('projects only %s to constructors, defaults and archive controls',course=>{
+  mount('en',vi.fn(),TEMPLATES,{add:course==='add',edit:course==='edit',delete:course==='delete'});
+  const labels=la('en');
+  for(const button of screen.getAllByRole('button',{name:labels.duplicateTemplate}))expect(button.matches(':disabled')).toBe(course!=='add');
+  for(const button of screen.getAllByRole('button',{name:labels.editTemplate}))expect(button.matches(':disabled')).toBe(course!=='edit');
+  expect(screen.getByRole('button',{name:labels.activateTemplate}).matches(':disabled')).toBe(course!=='edit');
+  for(const button of screen.getAllByRole('button',{name:labels.deactivateTemplate}))expect(button.matches(':disabled')).toBe(course!=='delete');
+  for(const button of screen.getAllByRole('button',{name:labels.deleteTemplate}))expect(button.matches(':disabled')).toBe(course!=='delete');
+ });
+});
+
+
+function mountAssignment(preview:AssignmentActions['preview'],assignableCompanies:readonly string[]=['co-fictional']){
+ return render(<NextIntlClientProvider locale="en" messages={en}><ApprovalAssignmentManager templates={TEMPLATES} assignments={[]} companies={[{id:'co-fictional',label:'Fictional company'}]} leaveTypes={[{id:'lt-fictional',label:'Fictional annual leave'}]} grades={[]} eligibilityRules={[]} assignableCompanies={assignableCompanies} deletableCompanies={[]} labels={labelsFor('en')} actions={{preview,assign:noop,unassign:noop}}/></NextIntlClientProvider>);
+}
+function enterAssignment(){
+ fireEvent.click(screen.getByRole('button',{name:la('en').assign}));
+ fireEvent.change(screen.getByRole('combobox'),{target:{value:STANDARD.id}});
+ fireEvent.click(screen.getByRole('checkbox',{name:'Fictional company'}));fireEvent.click(screen.getByRole('checkbox',{name:'Fictional annual leave'}));
+}
+describe('actual selected assignment course projection',()=>{
+ it('disables opening a mutation picker without an admitted company course',()=>{
+  const preview=vi.fn(async()=>({allowed:true,count:1}));mountAssignment(preview,[]);
+  const button=screen.getByRole('button',{name:la('en').assign});expect(button.matches(':disabled')).toBe(true);fireEvent.click(button);expect(screen.queryByRole('combobox')).toBeNull();expect(preview).not.toHaveBeenCalled();
+ });
+ it('requires the current server projection and immediately invalidates it when the selection changes',async()=>{
+  const preview=vi.fn(async()=>({allowed:true,count:1}));mountAssignment(preview);enterAssignment();
+  const submit=()=>document.querySelector<HTMLButtonElement>('button[type="submit"]')!;expect(submit().disabled).toBe(true);
+  await waitFor(()=>expect(submit().disabled).toBe(false));expect(preview).toHaveBeenCalledWith({templateId:STANDARD.id,companyIds:['co-fictional'],leaveTypeIds:['lt-fictional'],eligibilityRuleIds:[],minDays:null,maxDays:null});
+  fireEvent.click(screen.getByRole('checkbox',{name:'Fictional annual leave'}));expect(submit().disabled).toBe(true);
+ });
+ it('ignores a stale positive response after the human changes the selected source',async()=>{
+  let resolve!:(value:{allowed:boolean;count:number})=>void;
+  const preview=vi.fn(()=>new Promise<{allowed:boolean;count:number}>(done=>{resolve=done;}));mountAssignment(preview);enterAssignment();
+  await waitFor(()=>expect(preview).toHaveBeenCalledTimes(1));fireEvent.click(screen.getByRole('checkbox',{name:'Fictional annual leave'}));
+  await act(async()=>resolve({allowed:true,count:1}));expect(document.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+ });
 });

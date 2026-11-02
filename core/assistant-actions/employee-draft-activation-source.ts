@@ -40,11 +40,11 @@ export function supportedEmployeeDraftActivationData(value:unknown):value is Emp
 export type DraftSelection={draftId:string;companyId:string};
 export async function employeeDraftActivationActorTx(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();return fresh;}
 export async function withEmployeeDraftActivationIntervalTx<T>(tx:Tx,ctx:SessionContext,selection:DraftSelection,work:(fresh:SessionContext,source:DraftSelection)=>Promise<T>){
- const fresh=await employeeDraftActivationActorTx(tx,ctx);await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,fresh.tenantId);await assertWorkforceCompanyTx(tx,fresh,selection.companyId,'maintain');await lockLabelCriteriaTx(tx,fresh.tenantId);return work(fresh,selection);
+ const fresh=await employeeDraftActivationActorTx(tx,ctx);await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,fresh.tenantId);await assertWorkforceCompanyTx(tx,fresh,selection.companyId,'add');await lockLabelCriteriaTx(tx,fresh.tenantId);return work(fresh,selection);
 }
 type Draft={id:string;data:unknown;currentStep:number;companyId:string;reservedEmployeeCode:string|null;revision:string};
 async function source(tx:Tx,ctx:SessionContext,p:Human){
- await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
+ await assertWorkforceCompanyTx(tx,ctx,p.companyId,'add');
  const [draft]=await tx.execute<Draft>(sql`select d.id,d.data,d.current_step as "currentStep",d.company_id as "companyId",d.reserved_employee_code as "reservedEmployeeCode",d.xmin::text as revision from employee_draft d where d.id=${p.draftId}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.company_id=${p.companyId}::uuid for update`);
  if(!draft||!draft.reservedEmployeeCode||!supportedEmployeeDraftActivationData(draft.data))return fail();const data=draft.data;
  if(data.employment?.companyId!==p.companyId||data.profile?.employeeCode!==draft.reservedEmployeeCode||missingForCreation(data).length||missingToCreate(data).length)return fail();
@@ -71,7 +71,7 @@ export async function confirmEmployeeDraftActivationSourceTx(tx:Tx,ctx:SessionCo
  return reconcileEmployeeDraftActivationSourceTx(tx,ctx,{draftId:human.draftId,companyId:human.companyId,eventId:rows[0].eventId});
 }
 export async function reconcileEmployeeDraftActivationSourceTx(tx:Tx,ctx:SessionContext,reference:{draftId:string;companyId:string;eventId:string}){
- await assertWorkforceCompanyTx(tx,ctx,reference.companyId,'maintain');
+ await assertWorkforceCompanyTx(tx,ctx,reference.companyId,'add');
  const [row]=await tx.execute<{employmentId:string;personId:string;employeeCode:string}>(sql`select e.id as "employmentId",e.person_id as "personId",d.payload->>'reservedEmployeeCode' as "employeeCode" from domain_event d join employment e on e.id=d.subject_employment_id and e.tenant_id=d.tenant_id where d.id=${reference.eventId}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.aggregate_type='employee-draft' and d.aggregate_id=${reference.draftId}::uuid and d.event_type='employee-draft.completed' and d.actor_type='user' and d.actor_id=${ctx.userId}::uuid and e.company_id=${reference.companyId}::uuid and d.payload->>'employmentId'=e.id::text and d.payload->>'companyId'=e.company_id::text`);if(!row)return fail();
  return C.Receipt.parse({kind:'activated',draftId:reference.draftId,companyId:reference.companyId,eventId:reference.eventId,employmentId:row.employmentId,personId:row.personId,employeeCode:row.employeeCode,semantics:'employment_created_not_payroll_processed_or_access_granted'});
 }

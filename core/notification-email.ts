@@ -1,3 +1,4 @@
+import {settingsAccessTx} from './organisation-access';
 import { createHash } from 'node:crypto';
 /** Workflow email configuration. Policy and consent have separate owners and never imply SMTP readiness. */
 import { and, asc, eq, getTableColumns, isNotNull, sql } from 'drizzle-orm';
@@ -28,11 +29,13 @@ function categories(input: readonly string[]) {
 }
 export async function readNotificationEmailPolicy(ctx: SessionContext) {
   requireModule(ctx); if (!isAdmin(ctx)) throw new NotificationEmailSettingsError('forbidden');
-  return withTenant(ctx, tx => tx.select().from(notificationEmailPolicy).where(eq(notificationEmailPolicy.tenantId, ctx.tenantId)).orderBy(asc(notificationEmailPolicy.category)));
+  return withTenant(ctx,async tx=>{if(!await settingsAccessTx(tx,'view','workflowEmail'))throw new NotificationEmailSettingsError('forbidden');return tx.select().from(notificationEmailPolicy).where(eq(notificationEmailPolicy.tenantId,ctx.tenantId)).orderBy(asc(notificationEmailPolicy.category));});
 }
 export async function saveNotificationEmailPolicy(ctx: SessionContext, enabledCategories: readonly string[]) {
   requireAdmin(ctx); const selected = categories(enabledCategories);
   await withTenant(ctx, async tx => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    if(!await settingsAccessTx(tx,'edit','workflowEmail'))throw new NotificationEmailSettingsError('forbidden');
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`workflow-email-policy:${ctx.tenantId}`},0))`);
     const current = await tx.select().from(notificationEmailPolicy).where(eq(notificationEmailPolicy.tenantId, ctx.tenantId));
     const [watermark] = await tx.execute(sql`select app.notification_email_watermark() as sequence`) as unknown as {sequence:string}[];
@@ -130,14 +133,16 @@ export async function readOwnNotificationEmailPreferenceSourceTx(tx:Tx,ctx:Sessi
 export async function readNotificationEmailDeliveries(ctx:SessionContext) {
   requireModule(ctx); if (!isAdmin(ctx)) throw new NotificationEmailSettingsError('forbidden');
   // No addresses, employee names, frozen notification text or raw relay responses in this log.
-  return withTenant(ctx,tx=>tx.select({id:notificationDelivery.id,recipientCode:sql<string|null>`app.notification_email_recipient_code(${notificationDelivery.id})`,category:notificationDelivery.category,status:notificationDelivery.status,attempts:notificationDelivery.attempts,error:notificationDelivery.lastError,createdAt:notificationDelivery.createdAt,sentAt:notificationDelivery.sentAt})
+  return withTenant(ctx,async tx=>{if(!await settingsAccessTx(tx,'view','workflowEmail'))throw new NotificationEmailSettingsError('forbidden');return tx.select({id:notificationDelivery.id,recipientCode:sql<string|null>`app.notification_email_recipient_code(${notificationDelivery.id})`,category:notificationDelivery.category,status:notificationDelivery.status,attempts:notificationDelivery.attempts,error:notificationDelivery.lastError,createdAt:notificationDelivery.createdAt,sentAt:notificationDelivery.sentAt})
     .from(notificationDelivery).where(and(eq(notificationDelivery.tenantId,ctx.tenantId),eq(notificationDelivery.channel,'email')))
-    .orderBy(sql`${notificationDelivery.createdAt} desc`,sql`${notificationDelivery.id} desc`).limit(50));
+    .orderBy(sql`${notificationDelivery.createdAt} desc`,sql`${notificationDelivery.id} desc`).limit(50);});
 }
 export async function retryNotificationEmail(ctx:SessionContext,id:string,acknowledged:boolean) {
   requireAdmin(ctx);
   if (!acknowledged || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new NotificationEmailSettingsError('invalid');
   await withTenant(ctx,async tx=>{
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    if(!await settingsAccessTx(tx,'edit','workflowEmail'))throw new NotificationEmailSettingsError('forbidden');
     const rows=await tx.update(notificationDelivery).set({status:'pending',lastError:null,attempts:0,startedAt:null,leaseToken:null,leaseUntil:null,nextAttemptAt:sql`now()`,updatedAt:sql`now()`})
       .where(and(eq(notificationDelivery.id,id),eq(notificationDelivery.tenantId,ctx.tenantId),eq(notificationDelivery.channel,'email'),eq(notificationDelivery.status,'failed'))).returning({id:notificationDelivery.id});
     if (!rows.length) throw new NotificationEmailSettingsError('invalid');

@@ -11,7 +11,8 @@ import {
 import { listPositions, listCostCenters, listBusinessUnits } from '@/core/admin';
 import { resolveProbationMonths } from '@/core/org';
 import { getHiringDefaults } from '@/core/hiring-defaults';
-import { getEmployeeDraft } from '@/core/employee-draft';
+import { employeeDraftCreateCompanies, getEmployeeDraft } from '@/core/employee-draft';
+import { notFound } from 'next/navigation';
 // r393 (685d2380 step 2) — the Payroll Policy picker offers what the Personnel record's offers: the DRAFT
 // COMPANY'S active policies, read through the Payroll pack's facade, and only where Payroll is switched on.
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -68,7 +69,11 @@ export default async function CreateEmployeePage({
   // The draft first: it decides which of the two forms this route is, and therefore what has to be read.
   const draft = sp.draft ? await getEmployeeDraft(session, sp.draft) : null;
 
-  const [companies, idConfigs] = await Promise.all([listCompanies(session), listConfigs(session, scopeIds)]);
+  if(sp.draft&&!draft)notFound();
+  const [companies, idConfigs, createCompanies] = await Promise.all([
+    listCompanies(session),listConfigs(session, scopeIds),draft?Promise.resolve([]):employeeDraftCreateCompanies(session),
+  ]);
+  const createIds=new Set(createCompanies);
 
   // Item bd271009 — which Employee ID Auto Running Number Setup applies to each company, resolved ONCE
   // here from a single read rather than a query per company as the select is used. What crosses the
@@ -76,7 +81,7 @@ export default async function CreateEmployeePage({
   // client components, and a formatter or a translator closure passed here would throw at render and take
   // the whole page down — the r123 fault test/server-client-boundary.test.ts exists to catch.
   const employeeIdRules: Record<string, EmployeeIdRule> = {};
-  for (const c of companies) employeeIdRules[c.id] = resolveEmployeeIdRule(idConfigs, c.id);
+  for (const c of companies) if(createIds.has(c.id))employeeIdRules[c.id]=resolveEmployeeIdRule(idConfigs,c.id);
 
   if (!draft) {
     return (
@@ -92,7 +97,7 @@ export default async function CreateEmployeePage({
           </div>
         )}
         <CreateEmployeeForm
-          companies={companies.map((c) => ({ id: c.id, label: c.name }))}
+          companies={companies.filter(c=>createIds.has(c.id)).map((c) => ({ id: c.id, label: c.name }))}
           employeeIdRules={employeeIdRules}
         />
       </div>
@@ -201,8 +206,9 @@ export default async function CreateEmployeePage({
         key={draft.id}
         today={today}
         draftId={draft.id}
+        actions={draft.actions}
         reservedEmployeeCode={draft.reservedEmployeeCode}
-        initialData={withEmploymentDefaults(draft.data, { hiredOn: today, probationMonths })}
+        initialData={draft.actions.canEdit?withEmploymentDefaults(draft.data, { hiredOn: today, probationMonths }):draft.data}
         initialStep={draft.currentStep}
         initialTab={sp.tab}
         companies={companies.map((c) => ({ id: c.id, label: c.name }))}

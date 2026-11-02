@@ -44,7 +44,7 @@ export function parseInquiryQuery(sp: InquiryParams, kind: 'balances' | 'records
   if (q && q.length > 200) throw new InquiryQueryError('Search is too long');
   const format = one('format') ?? 'csv';
   if (!['csv', 'xlsx'].includes(format)) throw new InquiryQueryError('Invalid format');
-  return { emp, typeIds, departmentIds, statuses, asOf, from, to, dateMode, sort, dir, q, pq, format } as const;
+  return { kind, emp, typeIds, departmentIds, statuses, asOf, from, to, dateMode, sort, dir, q, pq, format } as const;
 }
 export type InquiryQuery = ReturnType<typeof parseInquiryQuery>;
 export function inquirySearchParams(sp: URLSearchParams): InquiryParams {

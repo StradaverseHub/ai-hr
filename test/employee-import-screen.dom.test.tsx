@@ -50,9 +50,9 @@ const wrap = (ui: ReactNode) =>
     </NextIntlClientProvider>,
   );
 
-const screenUnderTest = () =>
+const screenUnderTest = (canImport=true) =>
   wrap(
-    <EmployeeImport
+    <EmployeeImport canImport={canImport}
       companies={[{ id: 'c1', name: 'Acme Sdn Bhd' }]}
       defaultCompanyId="c1"
       reference={{
@@ -270,11 +270,11 @@ const basePreview: ImportPreview = {
  * identically-shaped disabled-case assertion two lines above it passed. Nothing about the screen
  * changed; three vitest workers were enough to lose the margin.
  */
-async function previewWith(preview: ImportPreview) {
+async function previewWith(preview: ImportPreview,canImport=true) {
   const userEvent = (await import('@testing-library/user-event')).default;
   const user = userEvent.setup();
   validateMock.mockResolvedValue(preview);
-  screenUnderTest();
+  screenUnderTest(canImport);
   await user.type(screen.getByPlaceholderText(/Paste CSV with a header row/), 'full_name\n');
   await user.click(screen.getByRole('button', { name: 'Validate' }));
   await screen.findByText(/Preview/);
@@ -350,4 +350,14 @@ describe('2983802f · the result names what happened to family and to superiors'
     expect(screen.getByText(/Reporting cycle detected/)).toBeInTheDocument();
     expect(screen.queryByText(/failed/)).toBeNull();
   }, 30_000);
+});
+
+it('keeps native template and preview reads available while a refused Add disables the actual commit',async()=>{
+ validateMock.mockClear();
+ commitMock.mockClear();
+ const user=await previewWith({...basePreview,fileErrors:[]},false);
+ expect(screen.getByRole('button',{name:'Download CSV template'})).toBeEnabled();
+ expect(validateMock).toHaveBeenCalledTimes(1);
+ const button=await screen.findByRole('button',{name:/Import 2 valid/});expect(button).toBeDisabled();
+ await user.click(button);expect(commitMock).not.toHaveBeenCalled();
 });

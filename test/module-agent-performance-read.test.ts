@@ -1,6 +1,6 @@
 /** Authored UNRUN: actual modern/standard canonical reads in the caller transaction; no model. */
 import {randomUUID} from 'node:crypto';
-import {and,eq} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
@@ -10,6 +10,7 @@ import {createModuleAgentReaders} from '../core/module-agent-readers';
 import {toolsFor} from '../core/assistant-tools';
 import {moduleHumanActionHandoffs} from '../lib/ai/module-human-handoffs';
 import * as perf from '../packs/performance/service';
+import * as standard from '../core/performance';
 import {defaultPolicy} from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -31,6 +32,27 @@ beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{
 const read=(ctx=self,limit=25)=>withTenant(ctx,tx=>perf.ownPerformanceWorkStatusesTx(tx,ctx,limit));
 const assertMinimal=(rows:Awaited<ReturnType<typeof read>>['rows'])=>{for(const row of rows)expect(Object.keys(row).sort()).toEqual(['framework','artifact','reviewId','planId','cycleName','periodEnd','status','released'].sort());};
 describe('current own Performance framework metadata',()=>{
+ it('classifies actual native framework identity independently of Setup View and refuses Standard fallback for OneHR',async()=>{
+  const [before]=await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id,reviewId));
+  const events=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,reviewId)).orderBy(schema.domainEvent.id);
+  const skipped=await hireEmployee(a,{person:{fullName:'Fictional native department-tree reader',primaryEmail:`fictional-framework-${randomUUID()}@example.test`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
+  const [lineManager]=await owner.db.select({id:schema.employment.id}).from(schema.employment).where(and(eq(schema.employment.tenantId,base.tenantId),eq(schema.employment.personId,manager.personId!)));await setReportingLine(a,{subordinateEmploymentId:lineManager.id,managerEmploymentId:skipped.employmentId,lineType:'administrative',validFrom:`${year-2}-01-01`});
+  const unassigned={...self,userId:await createAppUser(base.tenantId,skipped.personId,'manager'),personId:skipped.personId,roles:['manager']};
+  const [unassignedSource]=await withTenant(unassigned,tx=>tx.execute<{header:boolean;task:boolean}>(sql`select exists(select 1 from performance_review where id=${reviewId}::uuid) as header,app.onehr_review_task_view(${reviewId}::uuid,'self') or app.onehr_review_task_view(${reviewId}::uuid,'assigned') as task`));expect(unassignedSource).toEqual({header:true,task:false});expect(await perf.getOnehrReviewForPurpose(unassigned,reviewId,undefined)).toBeNull();
+  for(const ctx of [self,manager,unassigned]){
+   const [identity]=await withTenant(ctx,tx=>tx.execute<{setup:boolean;review:string;cycle:string;missing:string|null}>(sql`select app.onehr_setup_function_action(${base.companyId}::uuid,'view') as setup,app.performance_review_framework(${reviewId}::uuid) as review,app.performance_cycle_framework(${cycleId}::uuid) as cycle,app.performance_review_framework(${randomUUID()}::uuid) as missing`));expect(identity).toEqual({setup:false,review:'onehr',cycle:'onehr',missing:null});
+   expect(await standard.reviewForViewer(ctx,reviewId)).toBeNull();await expect(withTenant(ctx,tx=>perf.assertStandardCycleTx(tx,cycleId))).rejects.toThrow(/performance and talent review/);
+  }
+  await expect(standard.submitSelfReview(self,{reviewId,selfRating:4})).rejects.toThrow(/performance and talent review/);
+  await expect(standard.submitManagerReview(manager,{reviewId,managerRating:4,overallRating:4})).rejects.toThrow(/performance and talent review/);
+  expect(await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id,reviewId))).toEqual([before]);expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,reviewId)).orderBy(schema.domainEvent.id)).toEqual(events);
+  const {cycleId:standardCycle}=await standard.createCycle(a,{name:'Fictional actual Standard source',companyId:base.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});await standard.openCycle(a,{cycleId:standardCycle});
+  const [nativeStandard]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,standardCycle),eq(schema.performanceReview.employmentId,subject.employmentId)));expect(nativeStandard).toBeDefined();
+  expect((await standard.reviewForViewer(self,nativeStandard.id))?.id).toBe(nativeStandard.id);await standard.submitSelfReview(self,{reviewId:nativeStandard.id,selfRating:4});await standard.submitManagerReview(manager,{reviewId:nativeStandard.id,managerRating:4,overallRating:4});await standard.releaseCycle(a,{cycleId:standardCycle});
+  const choices=await withTenant(self,tx=>perf.ownPerformanceAcknowledgementChoicesTx(tx,self));expect(choices.items.some(item=>item.sourceId===nativeStandard.id&&item.action==='performance.review.acknowledge')).toBe(true);expect(choices.items.some(item=>item.sourceId===reviewId&&item.action==='performance.review.acknowledge')).toBe(false);
+  const statuses=(await read()).rows;expect(statuses.filter(row=>row.reviewId===reviewId)).toMatchObject([{framework:'onehr',artifact:'review'}]);expect(statuses.filter(row=>row.reviewId===nativeStandard.id)).toMatchObject([{framework:'standard',artifact:'review'}]);
+  await expect(withTenant(self,tx=>tx.execute(sql`select app.financial_performance_cycle_kind(${base.tenantId}::uuid,${cycleId}::uuid)`))).rejects.toMatchObject({cause:{code:'42501',message:'permission denied for function financial_performance_cycle_kind'}});
+ });
  it('reads real OneHR and standard reviews once each with explicit framework and no unreleased content',async()=>{
   const standard=await perf.createCycle(a,{name:'Fictional standard period',companyId:base.companyId,periodStart:`${year-1}-01-01`,periodEnd:`${year-1}-12-31`});await perf.openCycle(a,standard);
   const result=await read();expect(result.rows.filter(row=>row.reviewId===reviewId)).toEqual([{framework:'onehr',artifact:'review',reviewId,planId:null,cycleName:'Fictional OneHR year end',periodEnd:`${year}-12-31`,status:'open',released:null}]);expect(result.rows.some(row=>row.framework==='standard'&&row.cycleName==='Fictional standard period'&&row.released===false)).toBe(true);assertMinimal(result.rows);

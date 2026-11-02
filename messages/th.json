@@ -505,12 +505,13 @@
     "createLogin": "สร้างบัญชีเข้าสู่ระบบด้วยตนเอง",
     "inviteUser": "เชิญผู้ใช้",
     "users": "ผู้ใช้",
-    "securityPermissions": "ความปลอดภัยและสิทธิ์",
+    "securityPermissions": "บทบาท / กลุ่มผู้ใช้",
     "functionAccess": "การเข้าถึงฟังก์ชัน",
     "securityCenter": "ศูนย์ความปลอดภัย",
     "aiManagementInventory": "รายการ AI",
     "entra": "Microsoft Entra ID",
-    "passwordPolicy": "นโยบายรหัสผ่าน"
+    "passwordPolicy": "นโยบายรหัสผ่าน",
+    "dataPermissionAccess": "สิทธิ์เข้าถึงข้อมูล"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -3302,6 +3303,10 @@
     }
   },
   "leave": {
+    "accessFunctions": {
+      "ownApplication": "คำขอลาของตนเอง",
+      "onBehalfApplication": "ยื่นคำขอลาแทนพนักงาน"
+    },
     "myAbsenceTitle": "การลาของฉัน",
     "inquiryMovedToTracker": "รายละเอียดพนักงาน ยอดวันลาของพนักงาน และบันทึกการลาของพนักงาน เปิดจากตัวติดตามการลาของทีมแล้ว หน้านี้แสดงเฉพาะการลาของคุณเอง",
     "title": "การลา",
@@ -5266,6 +5271,7 @@
     "otPolicyPlanTotalsHelp": "ยอดรวมนี้แสดงคำขอแต่ละรายการ ช่วงเวลาที่อนุมัติซ้อนทับกันจะนับเพียงครั้งเดียวในการคำนวณค่าล่วงเวลา"
   },
   "approvals": {
+    "viewOnly": "ดูได้เท่านั้น",
     "title": "การอนุมัติ",
     "sortBy": "เรียงตาม",
     "sortLatest": "ล่าสุดก่อน",
@@ -11596,6 +11602,7 @@
       "breakMismatchNote": "ช่วงพักแสดงเพื่ออ้างอิงเท่านั้น การคำนวณชั่วโมงจะหัก {minutes} นาที (ยอดรวมเวลาพักที่บันทึกไว้)",
       "breakMismatchBadge": "ใช้ {minutes} นาที",
       "editShift": "แก้ไข",
+      "viewShift": "ดูรายละเอียดกะ",
       "duplicate": "ทำสำเนา",
       "archiveShift": "เก็บถาวร",
       "shiftName": "ชื่อกะ",
@@ -13883,6 +13890,18 @@
     }
   },
   "claims": {
+    "accessFunctions": {
+      "own": "คำขอเบิกของตนเอง",
+      "drafts": "แบบร่างคำขอเบิกของตนเอง",
+      "submit": "ส่งคำขอเบิกของตนเอง",
+      "receipts": "ใบเสร็จคำขอเบิกของตนเอง",
+      "related": "คำขอเบิกของพนักงานในความดูแล",
+      "assigned": "การอนุมัติคำขอเบิกที่ได้รับมอบหมาย",
+      "selfDecision": "ผู้ดูแลระบบสูงสุดอนุมัติคำขอเบิกของตนเอง",
+      "administration": "การจัดการคำขอเบิก",
+      "relatedReceipts": "ใบเสร็จของพนักงานในความดูแล",
+      "administrationReceipts": "ใบเสร็จสำหรับการจัดการคำขอเบิก"
+    },
     "title": "การเบิก",
     "subtitle": "ส่งการเบิกค่าใช้จ่ายหรือสวัสดิการและติดตามสถานะ",
     "newClaim": "การเบิกใหม่",
@@ -24460,6 +24479,7 @@
     "groupMode": "Group calibration method",
     "reviewers": "Assigned reviewers",
     "cohort": "Employees in this cohort",
+    "reviewAdministration": "การจัดการแบบประเมิน",
     "nativeWorkflow": "Performance and talent review",
     "feedbackSubmitted": "Your feedback has been submitted.",
     "overallRemark": "Overall feedback remark",
@@ -29708,7 +29728,7 @@
     }
   },
   "accessConfiguration": {
-    "title": "ความปลอดภัยและสิทธิ์",
+    "title": "บทบาท / กลุ่มผู้ใช้",
     "description": "จัดการสิทธิ์ของกลุ่มและบุคคล พร้อมดูตัวอย่างก่อนเปลี่ยนแปลง",
     "groups": "กลุ่มผู้ใช้",
     "groupName": "ชื่อกลุ่ม",
@@ -29781,7 +29801,56 @@
       "configure": "จัดการความปลอดภัยและสิทธิ์",
       "workforceView": "ดูข้อมูลพนักงาน",
       "workforceMaintain": "ดูแลข้อมูลพนักงาน",
-      "profileReview": "ตรวจสอบคำขอเปลี่ยนข้อมูลที่มีสิทธิ์"
+      "profileReview": "ตรวจสอบคำขอเปลี่ยนข้อมูลที่มีสิทธิ์",
+      "workforceAdd": "เพิ่มข้อมูลพนักงาน",
+      "workforceEdit": "แก้ไขข้อมูลพนักงาน",
+      "workforceDelete": "ลบข้อมูลพนักงาน",
+      "organisationView": "องค์กร · ดู",
+      "organisationAdd": "องค์กร · เพิ่ม",
+      "organisationEdit": "องค์กร · แก้ไข",
+      "organisationDelete": "องค์กร · ลบ",
+      "settingsView": "การตั้งค่า · ดู",
+      "settingsAdd": "การตั้งค่า · เพิ่ม",
+      "settingsEdit": "การตั้งค่า · แก้ไข",
+      "settingsDelete": "การตั้งค่า · ลบ",
+      "claimsView": "ดู · การเบิก",
+      "claimsConfigurationView": "ดู · การตั้งค่าการเบิก",
+      "claimsAdd": "เพิ่ม · การเบิก",
+      "claimsConfigurationAdd": "เพิ่ม · การตั้งค่าการเบิก",
+      "claimsEdit": "แก้ไข · การเบิก",
+      "claimsConfigurationEdit": "แก้ไข · การตั้งค่าการเบิก",
+      "claimsDelete": "ลบ · การเบิก",
+      "claimsConfigurationDelete": "ลบ · การตั้งค่าการเบิก",
+      "leaveView": "ดู · การลา",
+      "leaveConfigurationView": "ดู · การตั้งค่าการลา",
+      "leaveAdd": "เพิ่ม · การลา",
+      "leaveConfigurationAdd": "เพิ่ม · การตั้งค่าการลา",
+      "leaveEdit": "แก้ไข · การลา",
+      "leaveConfigurationEdit": "แก้ไข · การตั้งค่าการลา",
+      "leaveDelete": "ลบ · การลา",
+      "leaveConfigurationDelete": "ลบ · การตั้งค่าการลา",
+      "attendanceView": "ดู · การเข้างาน",
+      "attendanceConfigurationView": "ดู · การตั้งค่าการเข้างาน",
+      "attendanceAdd": "เพิ่ม · การเข้างาน",
+      "attendanceConfigurationAdd": "เพิ่ม · การตั้งค่าการเข้างาน",
+      "attendanceEdit": "แก้ไข · การเข้างาน",
+      "attendanceConfigurationEdit": "แก้ไข · การตั้งค่าการเข้างาน",
+      "attendanceDelete": "ลบ · การเข้างาน",
+      "attendanceConfigurationDelete": "ลบ · การตั้งค่าการเข้างาน",
+      "payrollView": "ดูบัญชีเงินเดือน",
+      "payrollAdd": "เพิ่มรายการบัญชีเงินเดือน",
+      "payrollEdit": "แก้ไขรายการบัญชีเงินเดือน",
+      "payrollDelete": "ลบรายการบัญชีเงินเดือน",
+      "performanceCompensationView": "ดูผลการปฏิบัติงานและค่าตอบแทน",
+      "performanceCompensationAdd": "เพิ่มรายการผลการปฏิบัติงานและค่าตอบแทน",
+      "performanceCompensationEdit": "แก้ไขรายการผลการปฏิบัติงานและค่าตอบแทน",
+      "performanceCompensationDelete": "ลบรายการผลการปฏิบัติงานและค่าตอบแทน",
+      "lettersView": "ดูจดหมาย",
+      "lettersAdd": "เพิ่มจดหมายและการตั้งค่า",
+      "lettersEdit": "แก้ไขจดหมายและการตั้งค่า",
+      "lettersDelete": "ลบหรือปิดใช้งานจดหมายและการตั้งค่า",
+      "lettersApprove": "อนุมัติจดหมายและแม่แบบ",
+      "lettersIssue": "ออกจดหมาย"
     },
     "workforceReadOnly": "คุณดูข้อมูลพนักงานนี้ได้ แต่สิทธิ์ด้านบุคลากรปัจจุบันไม่อนุญาตให้แก้ไข",
     "workforceCommandHint": "คุณเปลี่ยนรหัสพนักงานได้ ส่วนข้อมูลอื่นในหน้านี้ดูได้อย่างเดียว",
@@ -29810,7 +29879,30 @@
       "changed": "ข้อมูลพนักงานเปลี่ยนแปลงแล้ว โปรดเปิดใหม่ก่อนบันทึก",
       "denied": "สิทธิ์ของคุณเปลี่ยนแปลงแล้ว โปรดเปิดรายการนี้ใหม่เพื่อตรวจสอบสิทธิ์",
       "invalid": "กรอกรหัสพนักงานที่ยังไม่ถูกใช้ ด้วยตัวอักษร ตัวเลข หรือขีดกลาง ไม่เกิน 30 ตัว"
-    }
+    },
+    "matrixView": "ดู",
+    "matrixAdd": "เพิ่ม",
+    "matrixEdit": "แก้ไข",
+    "matrixDelete": "ลบ",
+    "matrixApprove": "อนุมัติ",
+    "matrixIssue": "ออกเอกสาร",
+    "matrixExecute": "ดำเนินการ",
+    "matrixWorkforce": "พนักงาน",
+    "matrixOther": "สิทธิ์อื่น",
+    "matrixPayroll": "เงินเดือน",
+    "matrixPerformanceCompensation": "ผลงานและค่าตอบแทน",
+    "matrixLetters": "จดหมาย",
+    "matrixOrganisation": "องค์กร",
+    "matrixSettings": "การตั้งค่า",
+    "nativePrerequisites": "แต่ละการดำเนินการยังตรวจสอบบทบาทงาน สิทธิ์ในบริษัท และขอบเขตข้อมูลที่มีอยู่ด้วย",
+    "workforceHirePrerequisite": "การรับพนักงานเข้าทำงานต้องมีสิทธิ์ HR สำหรับบริษัทที่เลือกด้วย",
+    "matrixPayrollConfiguration": "การตั้งค่าเงินเดือน",
+    "matrixClaims": "การเบิก",
+    "matrixClaimsConfiguration": "การตั้งค่าการเบิก",
+    "matrixLeave": "การลา",
+    "matrixLeaveConfiguration": "การตั้งค่าการลา",
+    "matrixAttendance": "การเข้างาน",
+    "matrixAttendanceConfiguration": "การตั้งค่าการเข้างาน"
   },
   "myPayslip": {
     "title": "สลิปเงินเดือนของฉัน",
@@ -32877,7 +32969,7 @@
     "invitationSent": "ส่งคำเชิญแล้ว",
     "legacyHelp": "เลือกหน้าสำหรับการตั้งค่าบัญชีนี้",
     "permissions": {
-      "title": "ความปลอดภัยและสิทธิ์",
+      "title": "บทบาท / กลุ่มผู้ใช้",
       "description": "กำหนดกฎการเข้าถึง กลุ่มที่ได้รับการป้องกัน และสิทธิ์"
     },
     "functions": {
@@ -32899,6 +32991,10 @@
     "passwordPolicy": {
       "title": "นโยบายรหัสผ่าน",
       "description": "กฎใหม่ใช้เมื่อสร้าง เปลี่ยน หรือรีเซ็ตรหัสผ่าน การเข้าใช้องค์กรภายนอกยังใช้นโยบายของผู้ให้บริการ"
+    },
+    "dataPermissions": {
+      "title": "สิทธิ์เข้าถึงข้อมูล",
+      "description": "เลือกข้อมูลพนักงานที่ผู้ดูแลเข้าถึงได้ สิทธิ์ฟังก์ชันและบริษัทเดิมยังคงมีผล การบริการตนเองและหน้าที่อนุมัติที่ได้รับมอบหมายใช้กฎของตนเอง"
     }
   },
   "payFormula": {
@@ -33755,5 +33851,63 @@
       "unlockAction": "ปลดล็อกบัญชี",
       "unlocked": "ปลดล็อกบัญชีแล้ว"
     }
+  },
+  "dataPermissions": {
+    "title": "สิทธิ์เข้าถึงข้อมูล",
+    "description": "เลือกข้อมูลพนักงานที่ผู้ดูแลเข้าถึงได้ สิทธิ์ฟังก์ชันและบริษัทเดิมยังคงมีผล การบริการตนเองและหน้าที่อนุมัติที่ได้รับมอบหมายใช้กฎของตนเอง",
+    "search": "ค้นหาการตั้งค่า",
+    "new": "การตั้งค่าใหม่",
+    "name": "ชื่อการตั้งค่า",
+    "enabled": "เปิดใช้การตั้งค่า",
+    "active": "ใช้งาน",
+    "inactive": "ไม่ใช้งาน",
+    "assigned": "ผู้ใช้ที่ได้รับมอบหมาย {count} คน",
+    "empty": "ยังไม่มีการตั้งค่า สิทธิ์บริษัทเดิมยังคงอยู่",
+    "legacyPreset": "ใช้บริษัทที่ได้รับอนุญาตเดิม",
+    "legacyHelp": "ค่าที่กำหนดไว้นี้ไม่เพิ่มเงื่อนไขพนักงานหรือสิทธิ์บริษัทและฟังก์ชัน",
+    "andOr": "ต่างฟิลด์ใช้ AND หลายค่าในฟิลด์เดียวใช้ OR ต้องมีอย่างน้อยหนึ่งเงื่อนไข",
+    "unavailableValue": "ค่าที่เคยเลือกไม่พร้อมใช้งาน ให้นำออกเพื่อเปลี่ยนเงื่อนไข",
+    "noValues": "ไม่มีค่าในสิทธิ์เข้าถึงปัจจุบัน",
+    "preview": "ดูตัวอย่างการตั้งค่า",
+    "retire": "ยุติการตั้งค่า",
+    "assignedHelp": "นำการมอบหมายทั้งหมดออกก่อนยุติการตั้งค่านี้",
+    "assignmentTitle": "การมอบหมายข้อมูลผู้ใช้",
+    "assignmentHelp": "ผู้ใช้แต่ละคนมีได้หนึ่งการตั้งค่า การไม่มอบหมายคงสิทธิ์บริษัทเดิม การตั้งค่าที่ไม่ใช้งานหรือไม่ถูกต้องไม่ให้สิทธิ์ข้อมูลพนักงานสำหรับผู้ดูแล",
+    "user": "ผู้ใช้",
+    "profile": "การตั้งค่าข้อมูล",
+    "legacyCompany": "สิทธิ์บริษัทเดิม (ไม่มอบหมาย)",
+    "previewAssignment": "ดูตัวอย่างการมอบหมาย",
+    "review": "ตรวจสอบการเปลี่ยนสิทธิ์",
+    "reviewCounts": "ผู้ใช้ที่ได้รับผลกระทบ {users} คน มีข้อมูลพนักงาน {records} รายการที่ตรงกับสิทธิ์ปัจจุบัน",
+    "reviewHelp": "ตรวจสอบกฎและการมอบหมายก่อนบันทึก สิทธิ์บริษัทและฟังก์ชันยังจำกัดผลลัพธ์ การเปลี่ยนสิทธิ์ ข้อมูลพนักงาน หรือการตั้งค่าจะทำให้ตัวอย่างนี้หมดอายุ",
+    "confirm": "ยืนยันและบันทึก",
+    "cancel": "ยกเลิก",
+    "saved": "บันทึกแล้ว ระบบตรวจสอบสิทธิ์ใหม่ทุกคำขอ",
+    "errors": {
+      "invalid": "ตรวจสอบการตั้งค่า ไม่สามารถยุติการตั้งค่าที่มีผู้ใช้ได้รับมอบหมาย",
+      "changed": "สิทธิ์หรือข้อมูลพนักงานเปลี่ยนแล้ว โหลดใหม่และดูตัวอย่างอีกครั้ง",
+      "forbidden": "คุณไม่สามารถให้สิทธิ์เกินอำนาจปัจจุบันได้",
+      "unavailable": "ไม่สามารถบันทึกการเปลี่ยนแปลง ลองอีกครั้ง"
+    },
+    "fields": {
+      "company": "บริษัท",
+      "businessUnit": "หน่วยธุรกิจ",
+      "division": "ฝ่าย",
+      "branch": "สาขา",
+      "department": "แผนก",
+      "section": "ส่วนงาน",
+      "team": "ทีม",
+      "position": "ตำแหน่ง",
+      "grade": "ระดับงาน",
+      "employmentType": "ประเภทการจ้างงาน",
+      "employmentStatus": "สถานะการจ้างงาน",
+      "costCentre": "ศูนย์ต้นทุน",
+      "nationality": "สัญชาติ",
+      "gender": "เพศ",
+      "maritalStatus": "สถานภาพสมรส",
+      "category": "กลุ่มพนักงาน",
+      "employeeId": "รหัสพนักงาน"
+    },
+    "reviewDifference": "ภายในข้อมูลที่คุณตรวจสอบได้: ก่อน {before} หลัง {after} เพิ่ม {gained} และลด {lost}"
   }
 }

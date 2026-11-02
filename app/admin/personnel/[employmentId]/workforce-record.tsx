@@ -75,7 +75,7 @@ export async function WorkforceScopedRecord({session, employmentId, scopeIds,fee
   </Card>}
   {profileSections.map(section=><Card key={section.key}>
    <SectionHeader title={section.title}/>
-   {editor?.sharedMaintain?<WorkforceValueForm employmentId={employmentId} kind="person" section={section.key} values={profile} editor={editor} root={root} access={access}/>:<dl className="grid gap-x-8 gap-y-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
+   {(editor?.actionCapabilities?.person.edit??editor?.sharedMaintain)?<WorkforceValueForm employmentId={employmentId} kind="person" section={section.key} values={profile} editor={editor} root={root} access={access}/>:<dl className="grid gap-x-8 gap-y-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
     {WORKFORCE_PROFILE_FIELDS.filter(field=>field.fieldId.startsWith(section.prefix)).map(({key,fieldId})=>{
      const field=personnelField(fieldId)!;
      const value=profile[key],choice=personnelFieldChoices(field).find(option=>option.value===value);
@@ -93,7 +93,9 @@ export async function WorkforceScopedRecord({session, employmentId, scopeIds,fee
   </Card>
   {editor&&(['qualification','emergency','dependent'] as const).map(kind=>{
    const rows=editor.registers.filter(row=>row.kind===kind);
-   const canMaintain=kind==='qualification'?editor.employmentMaintain:editor.sharedMaintain;
+   const caps=editor.actionCapabilities?.[kind==='qualification'?'employment':'person'];
+   const canMaintain=caps?(caps.edit||caps.delete):(kind==='qualification'?editor.employmentMaintain:editor.sharedMaintain);
+   const canAdd=caps?.add??canMaintain;
    const labelKind=kind==='dependent'?'family':kind;
    const title=kind==='qualification'?t('qualification.title'):access(kind==='dependent'?'workforceEdit.familyTitle':'workforceEdit.emergencyTitle');
    return <Card key={kind}><SectionHeader title={title}/>
@@ -108,7 +110,7 @@ export async function WorkforceScopedRecord({session, employmentId, scopeIds,fee
       })}
      </dl>}
     </details>)}
-    {canMaintain&&<details className="border-t p-4"><summary className="cursor-pointer text-sm font-medium">{t(`${labelKind}.add`)}</summary>
+    {canAdd&&<details className="border-t p-4"><summary className="cursor-pointer text-sm font-medium">{t(`${labelKind}.add`)}</summary>
      <WorkforceValueForm employmentId={employmentId} kind={kind} values={kind==='emergency'?{priority:'other'}:kind==='qualification'?{isHighest:false}:{isBeneficiary:false,isDeceased:false}} editor={editor} root={root} access={access}/>
     </details>}
    </Card>;

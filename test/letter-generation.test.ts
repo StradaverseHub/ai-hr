@@ -34,6 +34,25 @@ beforeEach(async()=>{
  await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',policy,enabled:true});
 });afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 describe('letter generation snapshots and complete-batch readiness',()=>{
+ it('keeps actual successful draft birth custody private and rejects reuse or an orphan draft birth',async()=>{
+  const made=await createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId,employmentIds:[employees[0]],customValues:custom([employees[0]]),operationKey:randomUUID()});
+  const [parent]=await withTenant(ctx,tx=>tx.select().from(s.letterGenerationBatch).where(eq(s.letterGenerationBatch.id,made.batchId)));
+  const [actual]=await withTenant(ctx,tx=>tx.select().from(s.letterRecord).where(eq(s.letterRecord.batchId,made.batchId)));
+  expect(actual.id).toBeTruthy();expect(actual.employmentId).toBe(employees[0]);
+  const [reused]=await withTenant(ctx,tx=>tx.execute<{allowed:boolean}>(sq`select app.letter_record_birth_read(to_jsonb(record)) as allowed from letter_record record where record.id=${actual.id}::uuid`));expect(reused.allowed).toBe(false);
+  await expect(withTenant(ctx,tx=>tx.execute(sq`select * from app.financial_letter_proposed_birth`))).rejects.toThrow();
+  const batchId=randomUUID(),letterId=randomUUID();let failure:unknown;
+  try{await withTenant(ctx,async tx=>{
+   await tx.insert(s.letterGenerationBatch).values({...parent,id:batchId,operationKey:randomUUID()});
+   await tx.insert(s.letterRecord).values({...actual,id:letterId,batchId,reference:'Fictional-BIRTH-'+letterId,currentRevisionId:null,state:'draft',stageIndex:0,lockVersion:1,submittedAt:null,approvedAt:null,issuedAt:null,voidedAt:null});
+  });}catch(error){failure=error;}
+  let error=failure,sqlState:string|undefined;const messages:string[]=[];
+  while(error instanceof Error){messages.push(error.message);const code=(error as Error&{code?:unknown}).code;if(typeof code==='string')sqlState=code;error=(error as Error&{cause?:unknown}).cause;}
+  expect(sqlState).toBe('42501');expect(messages.join(' | ')).toContain('Letter birth did not complete');
+  expect(await owner.db.select({id:s.letterRecord.id}).from(s.letterRecord).where(eq(s.letterRecord.id,letterId))).toEqual([]);
+  expect(await owner.db.select({id:s.letterGenerationBatch.id}).from(s.letterGenerationBatch).where(eq(s.letterGenerationBatch.id,batchId))).toEqual([]);
+ });
+
  it('queues one creation notice for a whole manual batch and preserves retry identity',async()=>{
   await setModule(b.tenantId,'notifications','active');ctx=await entitledCtx(b);const [existing]=await owner.db.select().from(s.letterPolicyVersion);await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...existing.policy,portalNotifications:true}});const input={companyId:b.companyId,templateVersionId,employmentIds:employees,customValues:custom(employees),operationKey:randomUUID()},made=await createLetterDraftBatch(ctx,input);expect(await createLetterDraftBatch(ctx,input)).toMatchObject({batchId:made.batchId,alreadyCreated:true});const jobs=await owner.db.select().from(s.letterJob).where(sq`${s.letterJob.payload}->>'purpose'='draftCreated'`);expect(jobs).toHaveLength(1);expect(jobs[0].payload).toEqual({purpose:'draftCreated',batchId:made.batchId,portal:true,email:false});
   const system={tenantId:b.tenantId,roles:[]};expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:1,failed:0});const notices=await listNotifications(ctx);expect(notices).toHaveLength(1);expect(notices[0]).toMatchObject({kind:'letter.created',severity:'info',linkPath:'/letters/generate/'+made.batchId});expect(JSON.stringify(notices)).not.toContain('Fictional subject');expect(await projectLetterNotificationsFromSweep(system,owner)).toMatchObject({created:0,failed:0});expect(await listNotifications(reviewer)).toHaveLength(0);
@@ -252,6 +271,7 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
   expect((await owner.db.select().from(s.letterJob).where(eq(s.letterJob.letterId,(await getLetterGenerationBatch(ctx,made.batchId))!.rows[1].record.id))).every(job=>job.status==='queued')).toBe(true);
  });
 
+ // 101 real audited handovers can exceed the default 30s on a shared hosted runner.
  it('pages retained decisions without using a truncated history to decide the current delegated actor',async()=>{
   const [previous]=await owner.db.select().from(s.letterPolicyVersion);
   await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...previous.policy,stages:[{key:'review',label:'Review',userIds:[reviewer.userId!],allowDelegation:true},...previous.policy.stages]}});
@@ -260,7 +280,7 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
   for(let index=0;index<101;index++){const actor=index%2===0?reviewer:delegate,target=index%2===0?delegate:reviewer;const result=await delegateLetterApproval(actor,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:lockVersion,delegateUserId:target.userId!,reason:'Recorded historical handover '+index});lockVersion=result.lockVersion;}
   const first=(await getStaffLetter(delegate,row.record.id))!;expect(first.decisions).toHaveLength(100);expect(first.canAct).toBe(true);expect(first.nextDecisionCursor).toBeTruthy();expect((await getStaffLetter(reviewer,row.record.id))!.canAct).toBe(false);
   const next=(await getStaffLetter(delegate,row.record.id,{decisionCursor:first.nextDecisionCursor!}))!;expect(next.decisions).toHaveLength(1);expect(next.decisions[0].comment).toBe('Recorded historical handover 100');expect(first.decisions.some(item=>item.id===next.decisions[0].id)).toBe(false);expect(next.nextDecisionCursor).toBeNull();expect(next.canAct).toBe(true);
- });
+ },75_000);
 
 
  it('refuses confidential delegation through both the owner and direct database writes when the target lacks financial access',async()=>{

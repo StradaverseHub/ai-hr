@@ -7,7 +7,7 @@ import {getSession} from '@/lib/session';
 import {currentProviderSession} from '@/lib/identity/provider';
 import {internalSelected} from '@/lib/internal-auth/config';
 import {sendInternalMail} from '@/lib/internal-auth/mail';
-import {listEmailDesigns,saveEmailDesign,emailDesignHistory,uploadEmailAsset} from '@/core/email-design/service';
+import {requireEmailDesignEdit,saveEmailDesign,emailDesignHistory,uploadEmailAsset} from '@/core/email-design/service';
 import {emailKind,emailLocale,emailDocument,type EmailDocument} from '@/lib/email-design/model';
 import {renderEmailDesign} from '@/lib/email-design/render';
 import {sampleEmailSystem} from '@/lib/email-design/catalogue';
@@ -24,7 +24,7 @@ export async function uploadEmailDesignAssetAction(form:FormData){
  const origin=internalConfig().origin;return origin+'/email-assets/'+token;
 }
 export async function sendEmailDesignTestAction(kind:string,locale:string,raw:unknown){
- const ctx=await getSession();await listEmailDesigns(ctx); // Live group-admin database admission.
+ const ctx=await getSession();await requireEmailDesignEdit(ctx);
  const identity=await currentProviderSession();
  if(!internalSelected()||!identity?.emailVerified||!identity.email||!identity.issuer)throw Error('A verified email address and configured mail connection are required.');
  const [principal]=await withTenant(ctx,tx=>tx.execute<{app_user_id:string;tenant_id:string}>(sql`select app_user_id,tenant_id from app.principal_by_identity(${identity.issuer},${identity.subject})`));

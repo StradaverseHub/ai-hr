@@ -1,4 +1,7 @@
 import { getTranslations } from 'next-intl/server';
+import {notFound} from 'next/navigation';
+import {settingsActionAccess} from '@/core/organisation-access';
+import {employeeHomeConfigurationCompanies} from '@/core/employee-home-configuration';
 import Link from 'next/link';
 import { scopedAdmin } from '@/lib/scope';
 import {
@@ -51,19 +54,22 @@ export default async function DashboardCardConfigPage({
 }) {
   // scopedAdmin also fences the RLS session to an admin — the guard the reverse-completeness test asserts.
   const { s } = await scopedAdmin();
+  const access=await settingsActionAccess(s,'dashboardCardConfig');
   const t = await getTranslations('dashboardCardConfig');
   const tm = await getTranslations('dashboardCardConfig.manage');
   const sp = await searchParams;
   const { error, edit, new: newParam } = sp;
 
   const section: Section = isSection(sp.section) ? sp.section : 'library';
+  if(section==='content'){if(!(await employeeHomeConfigurationCompanies(s)).length)notFound();}
+  else if(!access.view)notFound();
   const q = (sp.q ?? '').trim();
   const typeFilter = isCardType(sp.type) ? sp.type : '';
   const statusFilter = sp.status === 'active' || sp.status === 'inactive' ? sp.status : '';
 
-  const cards = await listCards(s);
+  const cards = section==='content'?[]:await listCards(s,true);
   const editing: DashboardCardRow | null = edit ? cards.find((c) => c.id === edit) ?? null : null;
-  const showForm = Boolean(editing || newParam);
+  const showForm = Boolean(editing ? access.edit : newParam && access.add);
 
   // Card Library filters (in-memory over the tenant's card master — the list is small and fully loaded).
   const ql = q.toLowerCase();
@@ -142,18 +148,18 @@ export default async function DashboardCardConfigPage({
 
       <div className="grid gap-6 lg:grid-cols-[200px_1fr]">
         <nav aria-label={tm('title')} className="space-y-1 lg:sticky lg:top-4 lg:self-start">
-          <Link href={`${PAGE}?section=library`} className={navLinkCls(section === 'library')}>
+          {access.view&&<Link href={`${PAGE}?section=library`} className={navLinkCls(section === 'library')}>
             {tm('navLibrary')}
-          </Link>
-          <Link href={`${PAGE}?section=templates`} className={navLinkCls(section === 'templates')}>
+          </Link>}
+          {access.view&&<Link href={`${PAGE}?section=templates`} className={navLinkCls(section === 'templates')}>
             {tm('navTemplates')}
-          </Link>
+          </Link>}
           <Link href={`${PAGE}?section=content`} className={navLinkCls(section === 'content')}>
             {tm('navContent')}
           </Link>
-          <Link href={`${PAGE}?section=preview`} className={navLinkCls(section === 'preview')}>
+          {access.view&&<Link href={`${PAGE}?section=preview`} className={navLinkCls(section === 'preview')}>
             {tm('navPreview')}
-          </Link>
+          </Link>}
         </nav>
 
         <div className="min-w-0 space-y-6">
@@ -162,9 +168,9 @@ export default async function DashboardCardConfigPage({
               <Card className="overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-2 pr-4">
                   <SectionHeader title={t('catalogTitle')} count={filteredCards.length} />
-                  <Link href={`${PAGE}?${listQs}&new=1`} className={btnPrimary}>
+                  {access.add&&<Link href={`${PAGE}?${listQs}&new=1`} className={btnPrimary}>
                     {t('createNew')}
-                  </Link>
+                  </Link>}
                 </div>
 
                 {/* Searchable / filterable Card Library (item c393827d). GET form so filters live in the URL. */}
@@ -270,13 +276,13 @@ export default async function DashboardCardConfigPage({
                           <td className="px-4 py-2.5 text-center tabular-nums">{c.displayOrder}</td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center justify-end gap-3">
-                              <Link
+                              {access.edit&&<Link
                                 href={`${PAGE}?${listQs}&edit=${c.id}`}
                                 className="text-xs font-medium text-primary hover:underline"
                               >
                                 {t('edit')}
-                              </Link>
-                              <form action={setStatusAction}>
+                              </Link>}
+                              {access.edit&&<form action={setStatusAction}>
                                 <input type="hidden" name="id" value={c.id} />
                                 <input
                                   type="hidden"
@@ -287,8 +293,8 @@ export default async function DashboardCardConfigPage({
                                 <button className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
                                   {c.status === 'active' ? t('deactivate') : t('activate')}
                                 </button>
-                              </form>
-                              <form action={deleteCardAction}>
+                              </form>}
+                              {access.delete&&<form action={deleteCardAction}>
                                 <input type="hidden" name="id" value={c.id} />
                                 {returnFields}
                                 <ConfirmSubmit
@@ -299,7 +305,7 @@ export default async function DashboardCardConfigPage({
                                 >
                                   {t('delete')}
                                 </ConfirmSubmit>
-                              </form>
+                              </form>}
                             </div>
                           </td>
                         </tr>
@@ -327,20 +333,22 @@ export default async function DashboardCardConfigPage({
                     {returnFields}
 
                     <label className="flex flex-col gap-1">
-                      <span className="text-sm font-medium">{t('fieldKey')}</span>
+                      <span id="dashboard-card-key-label" className="text-sm font-medium">{t('fieldKey')}</span>
                       {editing ? (
                         // card_key is immutable on edit — it binds the row to a concrete renderer.
-                        <input className={`${inputCls} font-mono`} value={editing.cardKey} readOnly disabled />
+                        <input aria-labelledby="dashboard-card-key-label" aria-describedby="dashboard-card-key-hint" className={`${inputCls} font-mono`} value={editing.cardKey} readOnly disabled />
                       ) : (
                         <input
                           name="cardKey"
+                          aria-labelledby="dashboard-card-key-label"
+                          aria-describedby="dashboard-card-key-hint"
                           defaultValue=""
                           required
                           placeholder="myCard"
                           className={`${inputCls} font-mono`}
                         />
                       )}
-                      <span className="text-xs text-muted-foreground">{t('fieldKeyHint')}</span>
+                      <span id="dashboard-card-key-hint" className="text-xs text-muted-foreground">{t('fieldKeyHint')}</span>
                     </label>
 
                     <label className="flex flex-col gap-1">

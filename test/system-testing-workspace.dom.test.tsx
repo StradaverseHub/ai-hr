@@ -20,9 +20,22 @@ const catalogues={en,ms,zh,ta,th,vi:viMessages};
 const id='47335504-b4ad-401b-8d10-59499482ee22';
 afterEach(cleanup); beforeEach(()=>vi.clearAllMocks());
 function wrap(node:React.ReactNode,locale:keyof typeof catalogues='en') {return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]}>{node}</NextIntlClientProvider>);}
-function editor() {return wrap(<TestingInstructionEditor initial={testingInstructionDraftFrom(null)} caseId={null} versionId={null} draftRevision={0} modules={[{code:'ess',name:'Fictional ESS'}]} screens={[{screenKey:'dashboard',label:'Fictional Home'}]}/>);}
+function editor() {return wrap(<TestingInstructionEditor canDraft canPublish initial={testingInstructionDraftFrom(null)} caseId={null} versionId={null} draftRevision={0} modules={[{code:'ess',name:'Fictional ESS'}]} screens={[{screenKey:'dashboard',label:'Fictional Home'}]}/>);}
 function payload() {return parseInstructionDraft(JSON.parse((document.querySelector('input[name="definition"]') as HTMLInputElement).value));}
 describe('versioned testing controls',()=>{
+  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s retains instruction text with all authoring controls closed by default',async locale=>{
+    wrap(<TestingInstructionEditor initial={testingInstructionDraftFrom(null)} caseId={id} versionId={id} draftRevision={1} modules={[{code:'ess',name:'Fictional ESS'}]} screens={[]}/>,locale);
+    const t=catalogues[locale].systemTestingWorkspace;
+    expect(screen.getByRole('button',{name:t.saveDraft})).toBeDisabled();expect(screen.getByRole('button',{name:t.savePublish})).toBeDisabled();
+    for(const field of document.querySelectorAll('textarea,select'))expect(field.matches(':disabled')).toBe(true);
+    fireEvent.submit(screen.getByRole('button',{name:t.saveDraft}).closest('form')!);
+    await screen.findByRole('alert');expect(actions.save).not.toHaveBeenCalled();
+  });
+  it('lets Add create a draft without enabling the subsequent publish operation',()=>{
+    wrap(<TestingInstructionEditor canDraft initial={testingInstructionDraftFrom(null)} caseId={null} versionId={null} draftRevision={0} modules={[{code:'ess',name:'Fictional ESS'}]} screens={[]}/>);
+    expect(screen.getByRole('button',{name:en.systemTestingWorkspace.saveDraft})).toBeEnabled();
+    expect(screen.getByRole('button',{name:en.systemTestingWorkspace.savePublish})).toBeDisabled();
+  });
   it('keeps action/expected pairs and stable step identity through actual add/reorder/remove controls',()=>{
     editor(); fireEvent.change(screen.getByLabelText(en.systemTestingWorkspace.action),{target:{value:'First action'}});fireEvent.change(screen.getByLabelText(en.systemTestingWorkspace.expected),{target:{value:'First expected'}});
     fireEvent.click(screen.getByRole('button',{name:en.systemTestingWorkspace.addStep}));

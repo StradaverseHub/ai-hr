@@ -10,10 +10,11 @@ import { customReport, customReportSchedule, companyLogo, roleAssignment, type C
 import { legacyEmployeeMasterSpec } from '../lib/employee-master-legacy';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { masterSpecFields, runEmployeeMasterProjection, validateEmployeeMasterDefinition, validateEmployeeMasterSpec, EmployeeMasterSpecError, MASTER_PREVIEW_ROWS, type EmployeeMasterSpec, type EmployeeMasterResult } from '../lib/employee-master-report';
-import { masterReportFieldsTx, MasterReportAccessError } from './employee-master-access';
+import { masterReportFieldsTx, masterReportActionAccessTx, MasterReportAccessError } from './employee-master-access';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import { employeeMasterSubjectsTx } from './employee-master-projection';
 
-export type MasterTemplate={id:string;name:string;description:string;ownerUserId:string|null;ownerName:string|null;shared:boolean;sharedRoleIds:string[];version:number;lastRunAt:string|null;scheduleEnabled:boolean;updatedAt:string;spec:EmployeeMasterSpec;canEdit:boolean};
+export type MasterTemplate={id:string;name:string;description:string;ownerUserId:string|null;ownerName:string|null;shared:boolean;sharedRoleIds:string[];version:number;lastRunAt:string|null;scheduleEnabled:boolean;updatedAt:string;spec:EmployeeMasterSpec;canEdit:boolean;canDelete?:boolean;canDuplicate?:boolean};
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const assertScope=(companies:string[],scope:readonly string[])=>{if(!companies.length||companies.some(id=>!scope.includes(id)))throw new MasterReportAccessError();};
 const templateSpec=(spec:EmployeeMasterSpec):CustomReportSpec=>({datasetId:'master',columns:spec.columns.map(column=>column.field),employeeMaster:spec});
@@ -38,12 +39,17 @@ export async function saveEmployeeMasterReport(ctx:SessionContext,scopeIds:reado
   if(!ctx.userId)throw new MasterReportAccessError();const name=input.name.trim(),description=input.description.trim();
   if(!name||name.length>150||description.length>1000)throw new Error('Enter a report name up to 150 characters and a description up to 1,000 characters.');
   return withTenant(ctx,async tx=>{
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     const {spec}=await checkedTx(tx,ctx,input.spec,scopeIds);
+    const action=await masterReportActionAccessTx(tx,ctx,spec.companyIds);
+    if(input.id?!action.canEdit:!action.canAdd)throw new MasterReportAccessError();
     const roles=await tx.selectDistinct({id:roleAssignment.role}).from(roleAssignment);
     const sharedRoleIds=[...new Set(input.sharedRoleIds)];if(sharedRoleIds.some(id=>!roles.some(role=>role.id===id)))throw new MasterReportAccessError();
     const values={name,description,spec:templateSpec(spec),shared:sharedRoleIds.length>0,sharedRoleIds,updatedAt:new Date()};
     let row:{id:string;version:number}|undefined;
-    if(input.id){const old=await visibleTx(tx,input.id);await editableTx(tx,ctx,old);if(old.version!==input.version)throw new Error('This report changed. Reopen it before saving.');
+    if(input.id){const old=await visibleTx(tx,input.id);await editableTx(tx,ctx,old);
+      const oldSpec=legacyEmployeeMasterSpec(old.spec,[...scopeIds],todayInKualaLumpur());
+      if(!(await masterReportActionAccessTx(tx,ctx,oldSpec.companyIds)).canEdit)throw new MasterReportAccessError();if(old.version!==input.version)throw new Error('This report changed. Reopen it before saving.');
       [row]=await tx.update(customReport).set(values).where(and(eq(customReport.id,old.id),eq(customReport.version,old.version))).returning({id:customReport.id,version:customReport.version});
     }else [row]=await tx.insert(customReport).values({...values,tenantId:ctx.tenantId,createdByUserId:ctx.userId,category:'master',datasetId:'master'}).returning({id:customReport.id,version:customReport.version});
     if(!row)throw new Error('This report changed. Reopen it before saving.');
@@ -58,7 +64,8 @@ async function templateTx(tx:Tx,ctx:SessionContext,scopeIds:readonly string[],id
   const [admin]=await tx.execute(sql`select app.is_admin() as admin`) as unknown as {admin:boolean}[];
   const names=await tx.execute(sql`select p.full_name as name from app_user u left join person p on p.id=u.person_id where u.id=${row.createdByUserId}::uuid`) as unknown as {name:string|null}[];
   const [schedule]=await tx.select({enabled:customReportSchedule.enabled}).from(customReportSchedule).where(eq(customReportSchedule.reportId,row.id)).limit(1);
-  return {id:row.id,name:row.name,description:row.description,ownerUserId:row.createdByUserId,ownerName:names[0]?.name??null,shared:row.shared,sharedRoleIds:row.sharedRoleIds,version:row.version,lastRunAt:row.lastRunAt?.toISOString()??null,scheduleEnabled:schedule?.enabled??false,updatedAt:row.updatedAt.toISOString(),spec,canEdit:row.createdByUserId===ctx.userId||!!admin?.admin};
+  const action=await masterReportActionAccessTx(tx,ctx,spec.companyIds);
+  return {id:row.id,name:row.name,description:row.description,ownerUserId:row.createdByUserId,ownerName:names[0]?.name??null,shared:row.shared,sharedRoleIds:row.sharedRoleIds,version:row.version,lastRunAt:row.lastRunAt?.toISOString()??null,scheduleEnabled:schedule?.enabled??false,updatedAt:row.updatedAt.toISOString(),spec,canEdit:(row.createdByUserId===ctx.userId||!!admin?.admin)&&action.canEdit,canDelete:(row.createdByUserId===ctx.userId||!!admin?.admin)&&action.canDelete,canDuplicate:action.canAdd};
 }
 /** Read the unchanged authorised definition so an expired condition can be repaired in the builder. */
 export async function getEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string):Promise<MasterTemplate>{return withTenant(ctx,tx=>templateTx(tx,ctx,scopeIds,id,'definition'));}
@@ -69,7 +76,7 @@ export async function listEmployeeMasterReports(ctx:SessionContext,scopeIds:read
   const reports:MasterTemplate[]=[];for(const id of ids){try{reports.push(await getEmployeeMasterReport(ctx,scopeIds,id));}catch(error){if(!(error instanceof MasterReportAccessError))throw error;}if(!input.all&&reports.length===5)break;}return reports;
 }
 export async function duplicateEmployeeMasterReport(ctx:SessionContext,scopeIds:readonly string[],id:string){const source=await getEmployeeMasterReport(ctx,scopeIds,id);return saveEmployeeMasterReport(ctx,scopeIds,{name:source.name+' (copy)',description:source.description,sharedRoleIds:[],spec:source.spec});}
-export async function deleteEmployeeMasterReport(ctx:SessionContext,id:string){return withTenant(ctx,async tx=>{const row=await visibleTx(tx,id);await editableTx(tx,ctx,row);await tx.delete(customReport).where(eq(customReport.id,id));await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'custom-report',aggregateId:id,eventType:'custom-report.deleted',actor:actorOf(ctx),payload:{datasetId:'master'}});});}
+export async function deleteEmployeeMasterReport(ctx:SessionContext,id:string){return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);const row=await visibleTx(tx,id);await editableTx(tx,ctx,row);const [action]=await tx.execute<{allowed:boolean}>(sql`select app.employee_master_definition_allowed(${JSON.stringify(row.spec)}::jsonb,'delete') as allowed`);if(action?.allowed!==true)throw new MasterReportAccessError();await tx.delete(customReport).where(eq(customReport.id,id));await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'custom-report',aggregateId:id,eventType:'custom-report.deleted',actor:actorOf(ctx),payload:{datasetId:'master'}});});}
 async function masterAccessStampTx(tx:Tx,reportId:string|null,companyIds:readonly string[]){
  const [row]=await tx.execute(sql`select app.employee_master_access_stamp(${reportId}::uuid,ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as stamp`) as unknown as {stamp:string}[];
  if(!row?.stamp||!/^[a-f0-9]{64}$/.test(row.stamp))throw new MasterReportAccessError();return row.stamp;

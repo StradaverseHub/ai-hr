@@ -1,3 +1,4 @@
+import {assertLeaveApprovalCompanyTx} from './leave-approval-action-access';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 /**
  * 6fadb036 (R17) — Approval Workflow Enhancement under Leave Config.
@@ -106,36 +107,8 @@ function cleanTemplate(p: ApprovalTemplateInput) {
   return { name, description, levels, stored: serializeApprovalLevels(levels) };
 }
 
-/** SQL predicate isolating a template ASSIGNMENT row: the org-chart dims stay wildcard, while the dims the
- *  Assignment Template screen exposes — leave type, the employee scope and the leave-duration condition —
- *  are matched EXACTLY (`is not distinct from`, so null matches null). With all of them left
- *  unset this is byte-for-byte the old fully-wildcard bucket, which is why pre-existing assignments still
- *  upsert onto their own row instead of forking a duplicate (leave_approval_policy_wildcard_uq guarantees
- *  at most one such row per company × leave type). A scope- or condition-scoped assignment gets its own
- *  row and is resolved by the normal ADR-0071 specificity ladder — no resolution change.
- *
- *  22de47c4 — the employee scope is (employment type, grade group), so the bucket has to key on those two
- *  dims. `grade_id is null` keeps LEGACY grade-scoped assignments (written before that item) out of every
- *  bucket: they are never silently upserted onto, so they stay visible in the assignments list until an
- *  administrator re-assigns them deliberately. The PICKER that supplies the pair changed in 6e9a126e
- *  release three (benefit scheme → entitlement eligibility rule); these two columns did not, which is why
- *  every assignment already saved kept routing untouched across that release. */
-function assignmentBucketFilter(
-  gradeGroupId: string | null,
-  employmentType: EmploymentType | null,
-  minDays: number | null,
-  maxDays: number | null,
-) {
-  return sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null
-    and grade_group_id is not distinct from ${gradeGroupId}::uuid
-    and employment_type is not distinct from ${employmentType}::employment_type
-    and min_days is not distinct from ${minDays}::int
-    and max_days is not distinct from ${maxDays}::int`;
-}
-
 /** List the tenant's templates (active first, then by name), each with its live assignment count. */
-export async function listApprovalTemplates(ctx: SessionContext): Promise<ApprovalTemplate[]> {
-  return withTenant(ctx, async (tx) => {
+async function listApprovalTemplatesTx(tx:Tx):Promise<ApprovalTemplate[]> {
     const rows = await tx
       .select({
         id: leaveApprovalTemplate.id,
@@ -160,7 +133,11 @@ export async function listApprovalTemplates(ctx: SessionContext): Promise<Approv
       active: r.active,
       assignedCount: Number(r.assignedCount ?? 0),
     }));
-  });
+}
+/** Native routing/catalogue reference course, independent of the maintenance screen's View. */
+export function listApprovalTemplates(ctx:SessionContext){return withTenant(ctx,listApprovalTemplatesTx);}
+export function listApprovalTemplatesForMaintenance(ctx:SessionContext){
+ return withTenant(ctx,async tx=>{await assertApprovalTemplateActionTx(tx,'view');return listApprovalTemplatesTx(tx);});
 }
 
 /** One assignment row for the assignments screen: which template covers which (company, leave-type).
@@ -197,7 +174,7 @@ export async function listTemplateAssignments(ctx: SessionContext): Promise<Temp
         maxDays: leaveApprovalPolicy.maxDays,
       })
       .from(leaveApprovalPolicy)
-      .where(and(eq(leaveApprovalPolicy.active, true), sql`${leaveApprovalPolicy.templateId} is not null`));
+      .where(and(eq(leaveApprovalPolicy.active, true), sql`${leaveApprovalPolicy.templateId} is not null`,sql`app.leave_approval_company_allowed('leaveApproval.assignments','view',${leaveApprovalPolicy.companyId})`));
     return rows.map((r) => ({
       ruleId: r.ruleId,
       templateId: r.templateId as string,
@@ -279,6 +256,7 @@ export async function listOrgScopedApprovalRules(ctx: SessionContext): Promise<O
       .where(
         and(
           eq(leaveApprovalPolicy.active, true),
+          sql`app.leave_approval_company_allowed('leaveApproval.assignments','view',${leaveApprovalPolicy.companyId})`,
           sql`(${leaveApprovalPolicy.businessUnitId} is not null
                or ${leaveApprovalPolicy.departmentId} is not null
                or ${leaveApprovalPolicy.positionId} is not null)`,
@@ -294,6 +272,7 @@ export async function createApprovalTemplate(ctx: SessionContext, p: ApprovalTem
   const c = cleanTemplate(p);
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertApprovalTemplateActionTx(tx,'add');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     let row: { id: string };
     try {
@@ -324,6 +303,7 @@ export async function updateApprovalTemplate(ctx: SessionContext, id: string, p:
   const c = cleanTemplate(p);
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertApprovalTemplateActionTx(tx,'edit');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({ levels: leaveApprovalTemplate.levels, name: leaveApprovalTemplate.name })
@@ -358,6 +338,7 @@ export async function duplicateApprovalTemplate(ctx: SessionContext, id: string)
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertApprovalTemplateActionTx(tx,'add');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx
       .select({
@@ -405,6 +386,7 @@ export async function setApprovalTemplateActive(ctx: SessionContext, id: string,
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertApprovalTemplateActionTx(tx,active?'edit':'delete');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     if (!active) {
       // Block deactivation while any ACTIVE rule references the template — admin must reassign first
@@ -438,6 +420,7 @@ export async function deleteApprovalTemplate(ctx: SessionContext, id: string) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertApprovalTemplateActionTx(tx,'delete');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Hard delete only when NO policy row (active OR archived) references it — the FK enforces this too,
     // but a pre-check gives a friendly error instead of a raw constraint failure.
@@ -467,6 +450,7 @@ export async function setTenantDefaultTemplate(ctx: SessionContext, id: string |
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertApprovalTemplateActionTx(tx,'edit');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Clear whoever currently holds the flag (there is at most one).
     await tx
@@ -680,18 +664,22 @@ export async function listEligibilityRuleScopes(ctx: SessionContext): Promise<El
  *  population" translates into "grade_group_id + employment_type of that population", and an employee
  *  inherits the template of the population they are in, by construction. See the block above for what now
  *  names that population, and for the rules that cannot be translated and are refused instead. */
-export async function assignApprovalTemplate(
-  ctx: SessionContext,
-  p: {
-    templateId: string;
-    companyIds: string[];
-    leaveTypeIds: string[];
-    eligibilityRuleIds?: string[];
-    minDays?: number | null;
-    maxDays?: number | null;
-  },
-) {
-  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+/** Native SQL bucket lookup (app.leave_approval_assignment_bucket), isolating a template ASSIGNMENT row: the org-chart dims stay wildcard, while the dims the
+ *  Assignment Template screen exposes — leave type, the employee scope and the leave-duration condition —
+ *  are matched EXACTLY (`is not distinct from`, so null matches null). With all of them left
+ *  unset this is byte-for-byte the old fully-wildcard bucket, which is why pre-existing assignments still
+ *  upsert onto their own row instead of forking a duplicate (leave_approval_policy_wildcard_uq guarantees
+ *  at most one such row per company × leave type). A scope- or condition-scoped assignment gets its own
+ *  row and is resolved by the normal ADR-0071 specificity ladder — no resolution change.
+ *
+ *  22de47c4 — the employee scope is (employment type, grade group), so the bucket has to key on those two
+ *  dims. `grade_id is null` keeps LEGACY grade-scoped assignments (written before that item) out of every
+ *  bucket: they are never silently upserted onto, so they stay visible in the assignments list until an
+ *  administrator re-assigns them deliberately. The PICKER that supplies the pair changed in 6e9a126e
+ *  release three (benefit scheme → entitlement eligibility rule); these two columns did not, which is why
+ *  every assignment already saved kept routing untouched across that release. */
+export type ApprovalTemplateAssignmentInput={templateId:string;companyIds:string[];leaveTypeIds:string[];eligibilityRuleIds?:string[];minDays?:number|null;maxDays?:number|null};
+async function prepareApprovalTemplateAssignmentTx(tx:Tx,p:ApprovalTemplateAssignmentInput){
   const companyIds = [...new Set(p.companyIds.filter(Boolean))];
   const leaveTypeIds = [...new Set(p.leaveTypeIds.filter(Boolean))];
   const eligibilityRuleIds = [...new Set((p.eligibilityRuleIds ?? []).filter(Boolean))];
@@ -703,9 +691,6 @@ export async function assignApprovalTemplate(
   if (minDays !== null && (!Number.isInteger(minDays) || minDays < 0)) throw new Error('Condition days must be a whole number of 0 or more');
   if (maxDays !== null && (!Number.isInteger(maxDays) || maxDays < 0)) throw new Error('Condition days must be a whole number of 0 or more');
   if (minDays !== null && maxDays !== null && minDays > maxDays) throw new Error('The condition range starts after it ends');
-  return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [tpl] = await tx
       .select({ id: leaveApprovalTemplate.id, active: leaveApprovalTemplate.active })
       .from(leaveApprovalTemplate)
@@ -746,21 +731,22 @@ export async function assignApprovalTemplate(
       return out;
     };
 
+ return {companyIds,leaveTypeIds,eligibilityRuleIds,minDays,maxDays,scopesFor};
+}
+export async function assignApprovalTemplate(ctx:SessionContext,p:ApprovalTemplateAssignmentInput){
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+ return withTenant(ctx,async tx=>{
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+  const {companyIds,leaveTypeIds,eligibilityRuleIds,minDays,maxDays,scopesFor}=await prepareApprovalTemplateAssignmentTx(tx,p);
     const ruleIds: string[] = [];
     for (const companyId of companyIds) {
       for (const leaveTypeId of leaveTypeIds) {
         for (const scope of scopesFor(companyId)) {
-          const [existing] = await tx
-            .select({ id: leaveApprovalPolicy.id, templateId: leaveApprovalPolicy.templateId })
-            .from(leaveApprovalPolicy)
-            .where(
-              and(
-                eq(leaveApprovalPolicy.companyId, companyId),
-                eq(leaveApprovalPolicy.leaveTypeId, leaveTypeId),
-                assignmentBucketFilter(scope.gradeGroupId, scope.employmentType, minDays, maxDays),
-              ),
-            )
-            .limit(1);
+          const [slot]=await tx.execute<{id:string|null;templateId:string|null;operation:'add'|'edit';allowed:boolean}>(sql`select id,template_id as "templateId",operation,allowed from app.leave_approval_assignment_slot(${companyId}::uuid,${leaveTypeId}::uuid,${scope.gradeGroupId}::uuid,${scope.employmentType},${minDays}::integer,${maxDays}::integer)`);
+          if(!slot?.allowed)throw new Error('Leave approval company action unavailable');
+          const existing=slot.id?{id:slot.id,templateId:slot.templateId}:null;
+          await assertLeaveApprovalCompanyTx(tx,'leaveApproval.assignments',existing?'edit':'add',companyId);
           let ruleId: string;
           let created: boolean;
           if (existing) {
@@ -833,6 +819,7 @@ export async function unassignApprovalTemplate(ctx: SessionContext, ruleId: stri
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertLeaveApprovalCompanyTx(tx,'leaveApproval.assignments','delete',companyId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .select({ templateId: leaveApprovalPolicy.templateId, leaveTypeId: leaveApprovalPolicy.leaveTypeId })
@@ -853,4 +840,28 @@ export async function unassignApprovalTemplate(ctx: SessionContext, ruleId: stri
     });
     return { id: ruleId };
   });
+}
+
+
+async function assertApprovalTemplateActionTx(tx:Tx,operation:'view'|'add'|'edit'|'delete'){
+ const [admission]=await tx.execute<{allowed:boolean}>(sql`select app.leave_approval_template_allowed(${operation}) as allowed`);
+ if(admission?.allowed!==true)throw new ApprovalTemplateRefusedError('Leave approval template action unavailable');
+}
+/** Read-only presentation of the exact native template course. */
+export function approvalTemplateActionAccess(ctx:SessionContext,operation:'view'|'add'|'edit'|'delete'){
+ return withTenant(ctx,async tx=>{const [row]=await tx.execute<{allowed:boolean}>(sql`select app.leave_approval_template_allowed(${operation}) as allowed`);return row?.allowed===true;});
+}
+
+
+/** Read-only projection of every actual selected logical slot; no write lock, intent or grant. */
+export async function previewApprovalTemplateAssignment(ctx:SessionContext,p:ApprovalTemplateAssignmentInput){
+ p=structuredClone(p);
+ return withTenant(ctx,async tx=>{
+  const prepared=await prepareApprovalTemplateAssignmentTx(tx,p);let count=0,allowed=true;
+  for(const companyId of prepared.companyIds)for(const leaveTypeId of prepared.leaveTypeIds)for(const scope of prepared.scopesFor(companyId)){
+   const [slot]=await tx.execute<{allowed:boolean}>(sql`select allowed from app.leave_approval_assignment_slot(${companyId}::uuid,${leaveTypeId}::uuid,${scope.gradeGroupId}::uuid,${scope.employmentType},${prepared.minDays}::integer,${prepared.maxDays}::integer)`);
+   count++;allowed=allowed&&slot?.allowed===true;
+  }
+  return {allowed:count>0&&allowed,count};
+ });
 }

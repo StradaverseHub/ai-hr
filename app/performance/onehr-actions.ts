@@ -153,7 +153,11 @@ export async function onehrReviewAction(f:FormData){
         else await perf.submitOnehrCompetencies(s,id,expected,Object.fromEntries(f.getAll('statementId').map(v=>[String(v),{answer:str(f,`answer.${v}`),remark:str(f,`remark.${v}`)}])),f.has('manager'),str(f,'overallRemark'),readCompetencySections(f));
         break;
       case 'profile':await perf.assignAssessmentProfile(s,id,expected,str(f,'profileId'));break;
-      case 'panel':await perf.assignOnehrPanel(s,id,expected,ids(f,'peerIds').map(employmentId=>({employmentId,relationship:str(f,`relationship.${employmentId}`)||'peer'})));break;
+      case 'panel':{
+        const purposes=f.getAll('purpose');if(purposes.length>1)throw Error('Choose one panel purpose.');
+        const purpose=z.enum(['assigned','administration']).parse(purposes[0]??'assigned');
+        await perf.assignOnehrPanel(s,id,expected,ids(f,'peerIds').map(employmentId=>({employmentId,relationship:str(f,`relationship.${employmentId}`)||'peer'})),purpose);break;
+      }
       case 'panel-state':await perf.changeAssessmentPanelState(s,id,expected,str(f,'requestId'),z.enum(['archive','restore','reset']).parse(str(f,'operation')),str(f,'reason'));break;
       case 'reassign':await perf.reassignOnehrReviewer(s,id,expected,str(f,'reviewerEmploymentId'));break;
       case 'freeze':await perf.freezeOnehrReview(s,id,expected);break;

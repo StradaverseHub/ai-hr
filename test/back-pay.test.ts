@@ -15,7 +15,9 @@
  * which is the detector's whole basis — no clock is mocked and no timestamp is written by hand.
  */
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import {withTenant,type Tx} from '../db/client';
+import {createIndividualTxn,updateIndividualTxn} from '../core/payroll-individual-txn';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -178,6 +180,30 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
   });
 
   // ───────────────────────── the difference, both directions ─────────────────────────
+
+  it('rejects agent markers at fixed-human effect ports without changing salary, processed runs, catalogue or audit',async()=>{
+    const {a,employmentId}=await hire(5000,'Actor boundary Ann'),march=await runAndClose('2026-03');
+    await setCompensation(a,{employmentId,basicSalary:6000,effectiveFrom:'2026-03-01'});
+    const {runId}=await calculateBackPay(a,{companyId:base.companyId,targetPayPeriod:'2026-04'});
+    const {batchId:processed}=await createBatch(a,{companyId:base.companyId,payPeriod:'2026-05'});await generatePayslips(a,{batchId:processed});
+    // A registered agent is an identity, with no switch-on or business authority added.
+    const [principal]=await owner.client`insert into app.ai_agent_principal(tenant_id) values(${base.tenantId}) on conflict(tenant_id) do update set tenant_id=excluded.tenant_id returning id`;
+    const agent={...a,userId:undefined,personId:undefined,roles:[],grants:[],agent:{principalId:principal.id as string,enablements:[]}};
+    const [actualAgent]=await withTenant(agent,tx=>tx.execute<{id:string}>(sql`select app.current_agent_principal() as id`));expect(actualAgent.id).toBe(principal.id);
+    const witness=async()=>({comp:await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,employmentId)).orderBy(schema.compensation.id),batches:await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.companyId,base.companyId)).orderBy(schema.payrollBatch.id),catalogue:await owner.db.select().from(schema.payComponent).where(eq(schema.payComponent.tenantId,base.tenantId)).orderBy(schema.payComponent.id),events:await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,base.tenantId)).orderBy(schema.domainEvent.sequence),closed:await payslipRow(employmentId,march)});
+    const before=await witness();
+    const change=async(tx:Tx)=>{const [comp]=await tx.select().from(schema.compensation).where(and(eq(schema.compensation.employmentId,employmentId),sql`${schema.compensation.validTo} is null`));await tx.update(schema.compensation).set({basicSalary:'6100'}).where(eq(schema.compensation.id,comp.id));};
+    await expect(withTenant(a,async tx=>{await change(tx);const marked=await tx.execute<{batch_id:string}>(sql`select * from app.financial_mark_source_payroll_stale(ARRAY[${employmentId}::uuid],'compensation','2026-01-01'::date)`);expect(marked.map(row=>row.batch_id)).toContain(processed);throw Error('Native source baseline rollback');})).rejects.toThrow('Native source baseline rollback');
+    expect(await witness()).toEqual(before);
+    const denied=async(run:()=>Promise<unknown>,message:string)=>{let code:string|undefined,text='';try{await run();}catch(error){let cause:unknown=error;while(cause&&typeof cause==='object'){const row=cause as {code?:string;message?:string;cause?:unknown};code=row.code??code;text+=' '+(row.message??'');cause=row.cause;}}expect(code).toBe('42501');expect(text).toContain(message);};
+    for(const marker of [principal.id as string,'invalid-agent-marker']){
+      await denied(()=>withTenant(a,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id',${marker},true)`);await tx.execute(sql`select app.backpay_component(${runId}::uuid,'earning')`);}), 'Back Pay actor unavailable');
+      await denied(()=>withTenant(a,async tx=>{await change(tx);await tx.execute(sql`select set_config('app.agent_principal_id',${marker},true)`);await tx.execute(sql`select * from app.financial_mark_source_payroll_stale(ARRAY[${employmentId}::uuid],'compensation','2026-01-01'::date)`);}), 'Payroll source actor unavailable');
+      expect(await witness()).toEqual(before);
+    }
+    await denied(()=>withTenant(agent,tx=>tx.execute(sql`select app.backpay_component(${runId}::uuid,'earning')`)),'Back Pay actor unavailable');
+    await approveAndPostBackPay(a,{runId});expect((await backPayRunDetail(a,runId))!.run.status).toBe('posted');expect(await payslipRow(employmentId,march)).toEqual(before.closed);
+  });
 
   it('a backdated RISE produces a positive basic line, and the closed payslip is byte-identical afterwards', async () => {
     const { a, employmentId } = await hire(5000);
@@ -431,6 +457,45 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
     expect(runs).toHaveLength(1);
     expect(runs[0].status).toBe('posted');
     expect(runs[0].total).toBeCloseTo(1000, 2);
+  });
+
+  it('first-use pay item port refuses orphan commands, unknown kinds and caller access to its private witness',async()=>{
+    const {a,employmentId}=await hire(5000);await runAndClose('2026-03');
+    await setCompensation(a,{employmentId,basicSalary:6000,effectiveFrom:'2026-03-01'});
+    const {runId}=await calculateBackPay(a,{companyId:base.companyId,targetPayPeriod:'2026-04'});
+    await expect(withTenant(a,tx=>tx.execute(sql`select app.backpay_component(${runId}::uuid,'earning')`))).rejects.toThrow();
+    await expect(withTenant(a,tx=>tx.execute(sql`select app.backpay_component(${runId}::uuid,'not-a-kind')`))).rejects.toThrow();
+    await expect(withTenant(a,tx=>tx.execute(sql`select app.backpay_component(${runId}::uuid,null)`))).rejects.toThrow();
+    await expect(withTenant(a,tx=>tx.execute(sql`select app.financial_backpay_catalog_approved(null,'{}'::jsonb)`))).rejects.toThrow();
+    await expect(withTenant(a,tx=>tx.execute(sql`select app.financial_backpay_subjects_allowed(${runId}::uuid)`))).rejects.toThrow();
+    const [unknown]=await withTenant(a,tx=>tx.execute<{allowed:boolean}>(sql`select app.financial_backpay_row_read(jsonb_build_object('id',${randomUUID()}::uuid,'tenant_id',${base.tenantId}::uuid,'company_id',${base.companyId}::uuid)) as allowed`));
+    expect(unknown.allowed).toBe(false);
+    expect(await owner.db.select().from(schema.payComponent).where(and(eq(schema.payComponent.tenantId,base.tenantId),eq(schema.payComponent.code,BACK_PAY_EARNING_CODE)))).toEqual([]);
+    expect((await approveAndPostBackPay(a,{runId})).postedCount).toBe(1);
+    const [component]=await owner.db.select().from(schema.payComponent).where(and(eq(schema.payComponent.tenantId,base.tenantId),eq(schema.payComponent.code,BACK_PAY_EARNING_CODE)));
+    expect(component).toMatchObject({includedInEpf:true,includedInSocsoEis:true,includedInPcb:true,includedInHrdfBase:true,isNonPayable:false,prorates:false,pcbRemunerationType:null,pcbExemptionCode:null,displayCategory:'allowance'});
+  });
+
+  it('Back Pay posting cannot adopt an existing manual transaction or rewrite its calculated source',async()=>{
+    const {a,employmentId}=await hire(5000);await runAndClose('2026-03');
+    await setCompensation(a,{employmentId,basicSalary:6000,effectiveFrom:'2026-03-01'});
+    const {runId}=await calculateBackPay(a,{companyId:base.companyId,targetPayPeriod:'2026-04'});
+    const {id}=await createIndividualTxn(a,{companyId:base.companyId,payPeriod:'2026-04',employmentId,kind:'overtime',txnDate:'2026-04-01',amount:1000});
+    await expect(withTenant(a,tx=>tx.execute(sql`update back_pay_line set posted_txn_id=${id}::uuid where run_id=${runId}::uuid`))).rejects.toThrow();
+    await expect(withTenant(a,tx=>tx.execute(sql`update back_pay_line set difference=9999 where run_id=${runId}::uuid`))).rejects.toThrow();
+    const detail=await backPayRunDetail(a,runId);expect(detail?.run.status).toBe('draft');
+    expect((await owner.db.select().from(schema.backPayLine).where(eq(schema.backPayLine.runId,runId))).every(line=>line.postedTxnId===null)).toBe(true);
+  });
+
+  it('cancelling a posted draft freezes the actual linked row after an authorized Individual edit',async()=>{
+    const {a,employmentId}=await hire(5000);await runAndClose('2026-03');
+    await setCompensation(a,{employmentId,basicSalary:6000,effectiveFrom:'2026-03-01'});
+    const {runId}=await calculateBackPay(a,{companyId:base.companyId,targetPayPeriod:'2026-04'});
+    await approveAndPostBackPay(a,{runId});
+    const [posted]=await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.employmentId,employmentId));
+    await updateIndividualTxn(a,{id:posted.id,amount:1001});
+    expect((await cancelBackPayRun(a,{runId})).removed).toBe(1);
+    expect(await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.id,posted.id))).toEqual([]);
   });
 
   it('cancel removes the postings while the target run is a draft, and is REFUSED once it is processed', async () => {

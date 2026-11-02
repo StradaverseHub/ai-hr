@@ -1,3 +1,4 @@
+import {z} from 'zod';
 import {establishRewardMembership} from './rewards-shared-policy-fixture';
 /**
  * ADR-0142 — the OneHR performance partner: performance administration WITHOUT compensation.
@@ -23,11 +24,11 @@ import { assignRole, createCompany, createDepartment, revokeRole } from '../core
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import * as perf from '../packs/performance/service';
-import { defaultPolicy } from '../packs/performance/onehr/model';
+import { defaultPolicy,policySchema } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import { createRewardUnit } from '../packs/rewards/service';
 import { canAdminOnehr, canManagePayroll, canManagePerfComp, isAdmin, isOnehrOnlyPerformanceAdmin } from '../lib/authz-model';
-import { closeAll, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
+import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 const year = Number(todayInKualaLumpur().slice(0, 4));
@@ -38,16 +39,18 @@ type Hired = { employmentId: string; personId: string };
  * Postgres message on the cause). Asserting on it is what keeps a refusal test from passing on an unrelated
  * error — a NOT NULL violation would satisfy a bare `rejects.toThrow()`.
  */
-async function refusal(p: Promise<unknown>): Promise<string> {
+async function refusal(p: Promise<unknown>,expectedSqlState?:string): Promise<string> {
   try {
     await p;
   } catch (e) {
     const parts: string[] = [];
-    let cur: unknown = e;
+    let cur: unknown = e,sqlState:string|undefined;
     while (cur instanceof Error) {
       parts.push(cur.message);
+      const code=(cur as Error&{code?:unknown}).code;if(typeof code==='string')sqlState=code;
       cur = (cur as { cause?: unknown }).cause;
     }
+    if(expectedSqlState)expect(sqlState).toBe(expectedSqlState);
     return parts.join(' | ');
   }
   throw new Error('expected the operation to be refused, but it succeeded');
@@ -110,7 +113,141 @@ describe('OneHR performance partner (ADR-0142)', () => {
   });
   afterAll(closeAll);
 
+  it('keeps OneHR setup native Edit separate from generic cycle creation and other-company policy recipients',async()=>{
+    const [source]=await withTenant(partner,tx=>tx.execute<{view:boolean;edit:boolean;add:boolean;generic:boolean}>(sql`select app.onehr_setup_function_action(${b.companyId}::uuid,'view') as view,app.onehr_setup_function_action(${b.companyId}::uuid,'edit') as edit,app.onehr_setup_function_action(${b.companyId}::uuid,'add') as add,app.performance_cycle_function_action(${b.companyId}::uuid,'edit') as generic`));
+    expect(source).toEqual({view:true,edit:true,add:false,generic:false});
+    const setup=await perf.getOnehrSetup(partner,onehrCycleId);expect(setup).not.toBeNull();expect(setup!.cycleId).toBe(onehrCycleId);expect(setup!.companyId).toBe(b.companyId);expect(setup!.canEdit).toBe(true);
+    expect(Object.keys(setup!).sort()).toEqual(['cycleId','companyId','revision','policy','canEdit'].sort());expect(await perf.getOnehrSetup(partner,otherCycleId)).toBeNull();
+    const [before]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,onehrCycleId));
+    await perf.updateAssessmentModules(partner,onehrCycleId,before.revision,{...policySchema.parse(before.policy).modules,pm:false});
+    const [changed]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,onehrCycleId));
+    expect(changed.revision).toBe(before.revision+1);expect(policySchema.parse(changed.policy).modules.pm).toBe(false);
+    const foreignPolicy=policySchema.parse({...policySchema.parse(changed.policy),profiles:[{id:randomUUID(),name:'Fictional other-company competency profile',companyId:coB,grade:'12',competencies:[]}]});
+    expect(await refusal(withTenant(partner,tx=>tx.update(schema.onehrCycle).set({policy:foreignPolicy,revision:changed.revision+1}).where(eq(schema.onehrCycle.cycleId,onehrCycleId))))).toMatch(/OneHR profile company unavailable|outside.*scope|profile company/i);
+    const [after]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,onehrCycleId));expect(after).toEqual(changed);
+  });
+
+  it('selects Administrative review independently of native assigned task authority',async()=>{
+    const [native]=await withTenant(partner,tx=>tx.execute<{admin:boolean;task:boolean}>(sql`select app.onehr_review_administration(${reviewId}::uuid) as admin,app.onehr_review_task_view(${reviewId}::uuid,'assigned') as task`));
+    expect(native).toEqual({admin:true,task:false});
+    const administration=await perf.getOnehrReviewForPurpose(partner,reviewId,'administration');expect(administration).not.toBeNull();expect(administration!.reviewId).toBe(reviewId);expect(administration!.admin).toBe(true);
+    expect(await perf.getOnehrReviewForPurpose(partner,reviewId,undefined)).toBeNull();
+    expect(await perf.getOnehrReviewForPurpose(partner,reviewId,['task','administration'])).toBeNull();
+    expect(await perf.getOnehrReviewForPurpose(partner,reviewId,'unknown')).toBeNull();
+    expect(await perf.getOnehrReviewForPurpose(partner,randomUUID(),'administration')).toBeNull();
+    const userId=await createAppUser(b.tenantId,manager.personId,'employee');
+    const actor={...a,userId,personId:manager.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+    expect((await perf.getOnehrReviewForPurpose(actor,reviewId,'task'))?.reviewId).toBe(reviewId);
+    expect(await perf.getOnehrReviewForPurpose(actor,reviewId,'administration')).toBeNull();
+    await assignRole(a,{appUserId:userId,role:'performance_partner',companyId:b.companyId});
+    const mixed={...actor,roles:['employee','performance_partner'],grants:[{role:'employee',companyId:null},{role:'performance_partner',companyId:b.companyId}]};
+    const assigned=await perf.getOnehrReviewForPurpose(mixed,reviewId,'task'),administrative=await perf.getOnehrReviewForPurpose(mixed,reviewId,'administration');
+    expect(assigned?.manager).toBe(true);expect(assigned?.admin).toBe(false);expect(administrative?.manager).toBe(true);expect(administrative?.admin).toBe(true);
+    const [grant]=await owner.db.select({id:schema.roleAssignment.id}).from(schema.roleAssignment).where(and(eq(schema.roleAssignment.appUserId,userId),eq(schema.roleAssignment.role,'performance_partner'),eq(schema.roleAssignment.companyId,b.companyId)));expect(grant).toBeDefined();
+    await revokeRole(a,{roleAssignmentId:grant.id});
+    expect(await perf.getOnehrReviewForPurpose(mixed,reviewId,'administration')).toBeNull();
+    // Refresh to the actual retained Employee course; revoked admin claims do not become an assignment.
+    expect((await perf.getOnehrReviewForPurpose(actor,reviewId,'task'))?.reviewId).toBe(reviewId);
+  });
+
+  it('matches the original JS whitespace, UTF-16 and word limits at finite SQL text boundaries',async()=>{
+    const samples=['','  ordinary text  ','\t\n\v\f\r text \u00a0\ufeff','a\u1680b\u2000c\u200ad\u2028e\u2029f\u202fg\u205fh\u3000i','😀','😀'.repeat(2000),'\ufeff\u00a0'+'😀'.repeat(2000)+'\u3000','word '.repeat(220),'word\u00a0'.repeat(221)];
+    const values=await owner.db.execute<{position:number;trimmed:string;units:number;words:number}>(sql`select source.position::integer as position,app.financial_onehr_js_trim(source.value) as trimmed,app.financial_onehr_utf16_length(source.value) as units,app.financial_onehr_js_words(source.value) as words from jsonb_array_elements_text(${JSON.stringify(samples)}::jsonb) with ordinality source(value,position)`);expect(values).toHaveLength(samples.length);
+    for(const value of values){const original=samples[value.position-1];expect(value.trimmed).toBe(original.trim());expect(value.units).toBe(original.length);expect(value.words).toBe(original.trim().split(/\s+/u).filter(Boolean).length);}
+    const [privateOnly]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_utf16_length(text)','EXECUTE') as allowed`);expect(privateOnly.allowed).toBe(false);
+  });
+
+  it('profile-fences administrative OneHR masters while preserving exact self and assigned review identity',async()=>{
+    const restrict=async(userId:string)=>{
+      const id=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'department',values:[b.deptB]}]};
+      await owner.client`insert into data_permission_profile(id,tenant_id,name) values(${id},${b.tenantId},${'Fictional OneHR department '+id})`;
+      await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by) values(${revision},${b.tenantId},${id},${JSON.stringify(rules)}::text::jsonb,${a.userId!})`;
+      await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
+      await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by) values(${b.tenantId},${userId},${id},${a.userId!})`;
+    };
+    await restrict(partner.userId!);
+    const [proof]=await withTenant(partner,tx=>tx.execute<{shown:boolean;hidden:boolean}>(sql`select app.data_permission_matches(${partnerPerson.employmentId}::uuid) as shown,app.data_permission_matches(${subject.employmentId}::uuid) as hidden`));expect(proof).toEqual({shown:true,hidden:false});
+    const [admin]=await withTenant(partner,tx=>tx.execute<{header:unknown;employmentIds:string[];assignmentIds:string[];labels:number}>(sql`select app.onehr_review_header(${reviewId}::uuid) as header,array(select id from app.onehr_employment_facts()) as "employmentIds",array(select employment_id from app.onehr_assignment_facts()) as "assignmentIds",(select count(*)::int from app.onehr_person_labels(array[${subject.employmentId}::uuid])) as labels`));
+    expect(admin.header).toBeNull();expect(admin.employmentIds).toContain(partnerPerson.employmentId);expect(admin.employmentIds).not.toContain(subject.employmentId);expect(admin.assignmentIds).not.toContain(subject.employmentId);expect(admin.labels).toBe(0);
+    const [adminCard]=await withTenant(partner,tx=>tx.execute<{card:unknown;input:unknown;decisions:unknown[];moderators:unknown[];career:boolean}>(sql`select app.onehr_result_card(${reviewId}::uuid) as card,app.onehr_assessment_inputs(${reviewId}::uuid) as input,app.onehr_decisions(${reviewId}::uuid) as decisions,app.onehr_moderator_choices(${reviewId}::uuid) as moderators,app.assessment_career_access(${subject.employmentId}::uuid) as career`));expect(adminCard).toEqual({card:null,input:null,decisions:[],moderators:[],career:false});
+    for(const [identity,self] of [[subject,true],[manager,false]] as const){
+      const userId=await createAppUser(b.tenantId,identity.personId,'employee');await restrict(userId);
+      const actor={...a,userId,personId:identity.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+      const [target]=await owner.db.execute<{manager:boolean;effective:boolean;foreign:boolean}>(sql`select app.financial_onehr_manager_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid) as manager,app.financial_onehr_effective_reviewer_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid) as effective,app.financial_onehr_manager_for(${randomUUID()}::uuid,${userId}::uuid,${reviewId}::uuid) as foreign`);expect(target).toEqual({manager:!self,effective:!self,foreign:false});
+      const [floor]=await owner.db.execute<{self:boolean;assigned:boolean}>(sql`select app.financial_function_legacy_allowed(${b.tenantId}::uuid,${userId}::uuid,'function.performance.onehr.selfReview.view',${b.companyId}::uuid) as self,app.financial_function_legacy_allowed(${b.tenantId}::uuid,${userId}::uuid,'function.performance.onehr.assignedReview.view',${b.companyId}::uuid) as assigned`);const own=await owner.db.select({id:schema.onehrReview.reviewId}).from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,onehrCycleId),eq(schema.onehrReview.employmentId,identity.employmentId)));expect(own).toHaveLength(1);expect(floor).toEqual({self:true,assigned:!self});
+      const [actual]=await withTenant(actor,tx=>tx.execute<{self:boolean;assigned:boolean}>(sql`select app.onehr_review_task_view(${reviewId}::uuid,'self') as self,app.onehr_review_task_view(${reviewId}::uuid,'assigned') as assigned`));expect(actual).toEqual({self,assigned:!self});
+      await expect(withTenant(actor,tx=>tx.execute(sql`select app.financial_onehr_manager_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid)`))).rejects.toThrow();
+      const [task]=await withTenant(actor,tx=>tx.execute<{header:{name:string;ownEmploymentIds:string[]}|null;self:boolean;master:boolean}>(sql`select app.onehr_review_header(${reviewId}::uuid) as header,app.onehr_self_employment(${subject.employmentId}::uuid) as self,exists(select 1 from employment where id=${subject.employmentId}::uuid) as master`));
+      expect(task.header).not.toBeNull();expect(task.header!.name).toBe('Partner subject');expect(task.self).toBe(self);expect(task.master).toBe(self);
+      const nativeTask=await withTenant(actor,tx=>tx.execute<{id:string}>(sql`select review_id as id from app.onehr_review_task_fields(${reviewId}::uuid)`));expect(nativeTask).toEqual([{id:reviewId}]);
+      const rawTask=await withTenant(actor,tx=>tx.select({id:schema.onehrReview.reviewId}).from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)));expect(rawTask).toEqual(self?[{id:reviewId}]:[]);
+      const view=await perf.getOnehrReview(actor,reviewId);expect(view).not.toBeNull();expect(view!.self).toBe(self);
+      if(self){
+        await perf.saveAssessmentCareerProfile(actor,reviewId,null,{aspiration:'Own career remains native',mobility:null,mobilityNote:'',targetProfileId:null});
+        const personal=await perf.getAssessmentPersonalRecord(actor,reviewId);expect(personal.currentId).toBe(reviewId);expect(personal.current).not.toBeNull();
+      }else{
+        await assignRole(a,{appUserId:userId,role:'performance_partner',companyId:b.companyId});
+        const mixed={...actor,roles:['employee','performance_partner'],grants:[{role:'employee',companyId:null},{role:'performance_partner',companyId:b.companyId}]};
+        expect(await perf.getOnehrReviewForPurpose(mixed,reviewId,'administration')).toBeNull();
+        expect((await perf.getOnehrReviewForPurpose(mixed,reviewId,'task'))?.reviewId).toBe(reviewId);
+        const [before]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));expect(before).toBeDefined();
+        const beforeRawEvents=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,reviewId)).orderBy(schema.domainEvent.id);
+        expect(await withTenant(mixed,tx=>tx.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId)))).toEqual([]);
+        // Native restrictive SELECT removes the target before a row-level write guard can execute.
+        expect(await withTenant(mixed,tx=>tx.update(schema.assessmentCareerProfile).set({career:{...(before.career as Record<string,unknown>),aspiration:'Borrowed admin rewrite'}}).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId)).returning())).toEqual([]);
+        expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([before]);
+        const [reviewBefore]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
+        expect(await withTenant(mixed,tx=>tx.update(schema.onehrReview).set({profileMatch:'Borrowed administrative profile match'}).where(eq(schema.onehrReview.reviewId,reviewId)).returning())).toEqual([]);
+        expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([reviewBefore]);
+        expect(await withTenant(mixed,tx=>tx.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)))).toEqual([]);
+        expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,reviewId)).orderBy(schema.domainEvent.id)).toEqual(beforeRawEvents);
+        await perf.commentAssessmentCareerProfile(mixed,reviewId,before.revision,'Native assigned manager career comment');
+        const [commented]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));
+        expect(commented).toEqual({...before,reviewId,managerComment:'Native assigned manager career comment',managerUserId:userId,managerCommentAt:expect.any(Date),updatedAt:expect.any(Date),revision:before.revision+1});
+        const comments=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented')));expect(comments).toHaveLength(1);expect(comments[0]).toMatchObject({actorType:'user',actorId:userId,payload:{}});
+        await expect(perf.commentAssessmentCareerProfile(partner,reviewId,commented.revision,'Borrowed administrative comment')).rejects.toThrow();
+        expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([commented]);
+        const unicode='\ufeff\u00a0'+'😀'.repeat(4000)+'\u3000';expect([...unicode.trim()]).toHaveLength(4000);expect(z.string().trim().max(4000).safeParse(unicode).success).toBe(true);
+        await perf.commentAssessmentCareerProfile(mixed,reviewId,commented.revision,unicode);const [unicodeStored]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));expect(unicodeStored.managerComment).toBe(unicode);expect(unicodeStored.revision).toBe(commented.revision+1);
+        const unicodeEvents=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented'))).orderBy(schema.domainEvent.id);expect(unicodeEvents).toHaveLength(2);
+        const oversized='😀'.repeat(4001);expect(z.string().trim().max(4000).safeParse(oversized).success).toBe(false);await expect(perf.commentAssessmentCareerProfile(mixed,reviewId,unicodeStored.revision,oversized)).rejects.toThrow();
+        await expect(withTenant(mixed,tx=>tx.execute(sql`select app.onehr_career_comment(${reviewId}::uuid,${unicodeStored.revision}::integer,${oversized}::text)`))).rejects.toMatchObject({cause:expect.objectContaining({code:'22023',message:expect.stringMatching(/Invalid career comment/)})});
+        expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([unicodeStored]);expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented'))).orderBy(schema.domainEvent.id)).toEqual(unicodeEvents);
+
+
+      }
+    }
+  });
+
+  it('binds dispatch task authority to the actual review and current active recipient',async()=>{
+    const userId=await createAppUser(b.tenantId,subject.personId,'employee');
+    const allowed=async(userId:string)=>{const [row]=await owner.db.execute<{ok:boolean}>(sql`select app.financial_onehr_target_task_view(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid) as ok`);return row.ok;};
+    expect(await allowed(userId)).toBe(true);
+    expect(await allowed(partner.userId!)).toBe(false);
+    await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,userId));
+    expect(await allowed(userId)).toBe(false);
+    const [privilege]=await owner.db.execute<{ok:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_target_task_view(uuid,uuid,uuid)','EXECUTE') as ok`);expect(privilege.ok).toBe(false);
+  });
+
   // ───────────────────────────── TS gates (UX mirror) ─────────────────────────────
+  it('narrowed Partner-A claims cannot borrow stored global Partner through retained global Employee',async()=>{
+    const global=await partnerCtx(null,null);
+    await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:global.userId!,role:'employee',companyId:null});
+    const [before]=await withTenant(global,tx=>tx.execute<{allowed:boolean}>(sql`select app.onehr_admin(${coB}::uuid) as allowed`));expect(before.allowed).toBe(true);
+    const narrowed={...global,roles:['performance_partner','employee'],grants:[{role:'performance_partner',companyId:b.companyId},{role:'employee',companyId:null}]};
+    const [scope]=await withTenant(narrowed,tx=>tx.execute<{own:boolean;other:boolean;group:boolean;companies:string[]}>(sql`select app.onehr_admin(${b.companyId}::uuid) as own,app.onehr_admin(${coB}::uuid) as other,app.onehr_admin(null) as "group",app.onehr_partner_company_ids() as companies`));
+    expect(scope.own).toBe(true);expect(scope.other).toBe(false);expect(scope.group).toBe(false);expect(scope.companies).toContain(b.companyId);expect(scope.companies).not.toContain(coB);
+  });
+
+  it('a current Partner course cannot borrow an unclaimed stored HR role to administer a generic compensation cycle',async()=>{
+    await owner.db.insert(schema.roleAssignment).values([{tenantId:b.tenantId,appUserId:a.userId!,role:'performance_partner',companyId:b.companyId},{tenantId:b.tenantId,appUserId:a.userId!,role:'employee',companyId:null}]);
+    const narrowed={...a,roles:['performance_partner','employee'],grants:[{role:'performance_partner',companyId:b.companyId},{role:'employee',companyId:null}]};
+    const [scope]=await withTenant(narrowed,tx=>tx.execute<{onehr:boolean;generic:boolean;perfcomp:boolean}>(sql`select app.onehr_cycle_admin(${onehrCycleId}::uuid) as onehr,app.onehr_cycle_admin(${genericCycleId}::uuid) as generic,app.can_admin_perfcomp_for(${b.companyId}::uuid) as perfcomp`));
+    expect(scope).toEqual({onehr:true,generic:false,perfcomp:false});
+    expect(await withTenant(narrowed,tx=>tx.select().from(schema.compensation).where(eq(schema.compensation.employmentId,subject.employmentId)))).toEqual([]);
+    const [full]=await withTenant(a,tx=>tx.execute<{allowed:boolean}>(sql`select app.onehr_cycle_admin(${genericCycleId}::uuid) as allowed`));expect(full.allowed).toBe(true);
+  });
+
   it('is a OneHR administrator only: never admin, perf-comp, payroll, nor scoped to another company', () => {
     expect(canAdminOnehr(partner, b.companyId)).toBe(true);
     expect(canAdminOnehr(partner, coB)).toBe(false);
@@ -158,7 +295,7 @@ describe('OneHR performance partner (ADR-0142)', () => {
     await perf.assignOnehrPanel(partner, reviewId, await revisionOf(reviewId), [
       { employmentId: manager.employmentId, relationship: 'line_manager' },
       { employmentId: peers[0].employmentId, relationship: 'peer' },
-    ]);
+    ],'administration');
     const panel = await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.reviewId, reviewId));
     expect(panel).toHaveLength(2);
     const requests = await owner.db.select().from(schema.peerFeedbackRequest).where(eq(schema.peerFeedbackRequest.reviewId, reviewId));
@@ -226,8 +363,8 @@ describe('OneHR performance partner (ADR-0142)', () => {
   it('cannot turn a generic draft cycle into a OneHR cycle', async () => {
     expect(await refusal(perf.configureOnehrCycle(partner, genericDraftId, null, defaultPolicy(framework)))).toMatch(/Cycle not found/);
     expect(
-      await refusal(withTenant(partner, (tx) => tx.insert(schema.onehrCycle).values({ cycleId: genericDraftId, tenantId: b.tenantId, policy: defaultPolicy(framework) }))),
-    ).toMatch(/row-level security/);
+      await refusal(withTenant(partner, (tx) => tx.insert(schema.onehrCycle).values({ cycleId: genericDraftId, tenantId: b.tenantId, policy: defaultPolicy(framework) })), '42501'),
+    ).toMatch(/OneHR setup action unavailable/);
     expect(await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId, genericDraftId))).toEqual([]);
   });
 
@@ -237,7 +374,7 @@ describe('OneHR performance partner (ADR-0142)', () => {
     // A generic cycle is not even lockable for this role.
     expect(await withTenant(partner, (tx) => tx.select().from(schema.reviewCycle).where(eq(schema.reviewCycle.id, genericCycleId)).for('update'))).toEqual([]);
     expect(
-      await refusal(withTenant(partner, (tx) => tx.update(schema.reviewCycle).set({ name: 'Renamed by partner' }).where(eq(schema.reviewCycle.id, onehrCycleId)))),
+      await refusal(withTenant(partner, (tx) => tx.update(schema.reviewCycle).set({ name: 'Renamed by partner' }).where(eq(schema.reviewCycle.id, onehrCycleId))), '42501'),
     ).toMatch(/a performance partner administers OneHR assessments but cannot change the review cycle/);
     const [cycle] = await owner.db.select().from(schema.reviewCycle).where(eq(schema.reviewCycle.id, onehrCycleId));
     expect(cycle.name).toBe('Partner OneHR cycle');
@@ -500,8 +637,10 @@ describe('OneHR performance partner (ADR-0142)', () => {
     // An HR administrator who also holds the partner grant: the projection is non-empty, and the readable
     // row still wins once (no duplicate from the projection arm).
     await owner.db.insert(schema.roleAssignment).values({ tenantId: b.tenantId, appUserId: a.userId!, companyId: b.companyId, role: 'performance_partner' });
-    expect((await rowsOf(a, sql`select * from app.onehr_employment_facts()`)).length).toBeGreaterThan(1);
-    await same(a);
+    expect(await rowsOf(a,sql`select * from app.onehr_employment_facts()`)).toEqual([]);
+    const both={...a,roles:['hr_admin','performance_partner'],grants:[{role:'hr_admin',companyId:null},{role:'performance_partner',companyId:b.companyId}]};
+    expect((await rowsOf(both,sql`select * from app.onehr_employment_facts()`)).length).toBeGreaterThan(1);
+    await same(both);
   });
 
   it('overrides participation in its company cycle, never for another company (VF-07, participation policy)', async () => {

@@ -1,6 +1,7 @@
+import {onehrWorkerEventReader,type OnehrWorkerAccess} from '../packs/performance/onehr/worker-source';
 import { randomUUID } from 'node:crypto';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext,type Tx } from '../db/client';
 import { notificationDelivery } from '../db/schema';
 import { isAdmin } from '../lib/authz-model';
 import { notificationEmailIpc } from '../lib/notification-email-ipc';
@@ -24,8 +25,9 @@ async function failUnstartedDelivery(ctx:SessionContext,id:string,leaseToken:str
   });
 }
 /** Short atomic leases permit multiple schedulers without duplicate sends. No traffic or tenant uses a fake entitlement snapshot. */
-export async function deliverNotificationEmails(ctx:SessionContext,transport:NotificationEmailTransport=notificationEmailIpc,options:{noticeSweep?:NoticeSweepAccess}={}) {
+export async function deliverNotificationEmails(ctx:SessionContext,transport:NotificationEmailTransport=notificationEmailIpc,options:{noticeSweep?:NoticeSweepAccess;onehrSweep?:OnehrWorkerAccess}={}) {
   const noticeReader=noticeSweepReader(ctx,options.noticeSweep),noticeEventReader=noticeSweepEventReader(ctx,options.noticeSweep);
+  const onehrReader=onehrWorkerEventReader(ctx,options.onehrSweep);
   if (!isAdmin(ctx)) throw new Error('Notification dispatcher required');
   const allCategories=isModuleEnabled(ctx,'notifications');
   if(!allCategories&&!(ctx.entitlements?.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId)))return {attempted:0,skipped:0,unavailable:false};
@@ -36,8 +38,10 @@ export async function deliverNotificationEmails(ctx:SessionContext,transport:Not
     if(job.category==='letters')continue; // Account-addressed Letters use their explicit maintenance delivery port.
     if(!allCategories&&job.kind!=='performance.reminder')continue;
     if(status?.ready&&job.kind==='performance.reminder'&&(!status.assessmentReminders||!status.assessmentReminderWords)){unavailable=true;continue;}
+    const onehr=job.kind==='performance.reminder'||job.kind==='performance.review-task';
+    if(onehr&&!ctx.userId&&!onehrReader){unavailable=true;continue;}
     const leaseToken=randomUUID();
-    const claimed=await withTenant(ctx,async tx=>{
+    const claim=async(tx:Tx)=>{
       if (!await notificationStillTargets(tx,job.source_event_id,job.kind,job.category,job.recipient_employment_id,noticeReader,noticeEventReader)) {
         await tx.update(notificationDelivery).set({status:'skipped',lastError:'notEligible',updatedAt:sql`now()`}).where(and(eq(notificationDelivery.id,job.id),eq(notificationDelivery.status,'pending'),isNull(notificationDelivery.startedAt),or(isNull(notificationDelivery.leaseUntil),sql`${notificationDelivery.leaseUntil}<now()`)));
         return 'skipped';
@@ -45,7 +49,8 @@ export async function deliverNotificationEmails(ctx:SessionContext,transport:Not
       const rows=await tx.update(notificationDelivery).set({leaseToken,leaseUntil:sql`now()+interval '60 seconds'`,updatedAt:sql`now()`})
         .where(and(eq(notificationDelivery.id,job.id),eq(notificationDelivery.status,'pending'),isNull(notificationDelivery.startedAt),or(isNull(notificationDelivery.leaseUntil),sql`${notificationDelivery.leaseUntil}<now()`))).returning({id:notificationDelivery.id});
       return rows.length?'claimed':'busy';
-    });
+    };
+    const claimed=onehr&&onehrReader?await onehrReader(job.source_event_id,claim):await withTenant(ctx,claim);
     if (claimed==='skipped') {skipped++;continue;}
     if (claimed!=='claimed') continue;
     if (!status?.ready) {

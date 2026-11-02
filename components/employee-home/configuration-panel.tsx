@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import {notFound} from 'next/navigation';
+import {organisationAccess} from '@/core/organisation-access';
 import {getLocale,getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
 import {Card,Button,inputCls} from '@/components/ui';
@@ -23,6 +24,7 @@ export async function HomeConfigurationPanel({session,selection}:{session:Sessio
  const beforeOrdinal=number(selection.before),historicalOrdinal=number(selection.version);
  const address=(extra:Record<string,string>={})=>PAGE+'?'+new URLSearchParams({section:'content',...(companyId?{homeCompanyId:companyId}:{}),homeRole:audienceRole,...extra});
  const current=companyId?await readEmployeeHomeConfigurationEditor(session,{companyId,audienceRole}):null;
+ const canEdit=companyId?await organisationAccess(session,'edit',companyId,'dashboardCardConfig.home'):false;
  const [history,historical]=companyId?await Promise.all([
   employeeHomeConfigurationHistory(session,{companyId,audienceRole,beforeOrdinal}),
   historicalOrdinal===undefined?Promise.resolve(null):readEmployeeHomeConfigurationVersion(session,{companyId,audienceRole,ordinal:historicalOrdinal}),
@@ -38,7 +40,7 @@ export async function HomeConfigurationPanel({session,selection}:{session:Sessio
     <Button type="submit" variant="outline" className="min-h-11">{t('show')}</Button>
    </form>}
   </Card>
-  {current&&!historical&&<Card className="space-y-5 p-5"><p className="text-sm text-muted-foreground">{current.ordinal===0?t('defaults'):t('version',{version:current.ordinal})}</p><HomeConfigurationEditor key={`${current.companyId}:${current.audienceRole}:${current.ordinal}`} initial={current}/></Card>}
+  {current&&!historical&&<Card className="space-y-5 p-5"><p className="text-sm text-muted-foreground">{current.ordinal===0?t('defaults'):t('version',{version:current.ordinal})}</p><HomeConfigurationEditor key={`${current.companyId}:${current.audienceRole}:${current.ordinal}:${canEdit}`} initial={current} canEdit={canEdit}/></Card>}
   {historical&&<Card className="space-y-4 p-5"><h3 className="font-semibold">{t('viewingVersion',{version:historical.ordinal})}</h3><p className="text-sm">{historical.reason}</p><p className="text-sm text-muted-foreground">{timestamp(historical.createdAt)}</p>
    <dl className="space-y-3 text-sm"><div><dt className="font-medium">{t('quickTitle')}</dt><dd>{historical.configuration.quickActions.length?historical.configuration.quickActions.map(key=>quick(key)).join(' · '):t('notConfigured')}</dd></div>
     <div><dt className="font-medium">{t('teamVisibility')}</dt><dd>{t(historical.configuration.teamVisibility)}</dd></div>

@@ -4,8 +4,8 @@
  *
  * Before 0620 the `onehr_panel_read` policy admitted the subject's line manager, so a manager could SELECT each
  * rater's identity, answers and remark directly, even below the anonymity minimum. The manager now reads panel
- * membership only through `app.onehr_manager_panel` and changes unsubmitted members only through
- * `app.onehr_manager_panel_member`; subjects, raters and scoped HR keep exactly their previous access.
+ * membership only through `app.onehr_manager_panel`; full assignment now uses the purpose-bound
+ * `app.onehr_panel_assign` owner. The former unsubmitted component writer is private.
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +13,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { setReportingLine } from '../core/org';
+import {assignRole} from '../core/admin';
 import * as perf from '../packs/performance/service';
 import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
@@ -37,7 +38,6 @@ describe('D-TM-01: a line manager cannot read raw 360 panel rows',()=>{
   const reproduction=(ctx:SessionContext)=>withTenant(ctx,tx=>tx.execute(sql`select pe.peer_name,p.answers,p.remark from performance_onehr_panel p join peer_feedback_request pe on pe.id=p.request_id where p.review_id=${reviewId}::uuid`));
   const membership=(ctx:SessionContext)=>withTenant(ctx,tx=>tx.execute<Record<string,unknown>>(sql`select * from app.onehr_manager_panel(${reviewId}::uuid) order by request_id`));
   const setMember=(ctx:SessionContext,requestId:string,archived:boolean,relationship:string|null=null)=>withTenant(ctx,tx=>tx.execute(sql`select app.onehr_manager_panel_member(${requestId}::uuid,${archived}::boolean,${relationship}::text)`));
-  const refused=(pattern:RegExp)=>({cause:expect.objectContaining({message:expect.stringMatching(pattern)})});
   const ownedRows=()=>owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.reviewId,reviewId));
   async function assignAll(){await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));}
   async function submit(i:number){
@@ -116,22 +116,27 @@ describe('D-TM-01: a line manager cannot read raw 360 panel rows',()=>{
     for(const ctx of [self,a,...peers.map(p=>p.ctx)])expect(await membership(ctx)).toEqual([]);
     const other=await seedBase();expect(await membership(adminCtx(other))).toEqual([]);
     const fns=await owner.db.execute<{name:string;definer:boolean;config:string[]|null;app:boolean;public:boolean}>(sql`select p.proname as name,p.prosecdef as definer,p.proconfig as config,has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app,exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) x where x.grantee=0 and x.privilege_type='EXECUTE') as public from pg_proc p where p.oid in ('app.onehr_manager_panel(uuid)'::regprocedure,'app.onehr_manager_panel_member(uuid,boolean,text)'::regprocedure) order by p.proname`);
-    expect([...fns].map(f=>({...f,config:f.config?.map(v=>v.replaceAll(' ',''))}))).toEqual(['onehr_manager_panel','onehr_manager_panel_member'].map(name=>({name,definer:true,config:['search_path=pg_catalog,public,pg_temp'],app:true,public:false})));
+    expect([...fns].map(f=>({...f,config:f.config?.map(v=>v.replaceAll(' ',''))}))).toEqual(['onehr_manager_panel','onehr_manager_panel_member'].map(name=>({name,definer:true,config:['search_path=pg_catalog,public,pg_temp'],app:name==='onehr_manager_panel',public:false})));
 
-    // The membership writer touches only unsubmitted members of the manager's own reviews.
-    const submitted=String(rows.find(r=>r.submitted_at!=null)!.request_id),pending=String(rows.find(r=>r.submitted_at==null)!.request_id);
-    await expect(setMember(mgr,submitted,true)).rejects.toMatchObject(refused(/not available to this manager/));
-    for(const ctx of [self,a,...peers.map(p=>p.ctx)])await expect(setMember(ctx,pending,true)).rejects.toMatchObject(refused(/not available to this manager/));
-    await setMember(mgr,pending,true,'matrix_manager');
-    let [stored]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,pending));
-    expect(stored.archivedAt).not.toBeNull();expect(stored.relationship).toBe('matrix_manager');expect(stored.answers).toBeNull();expect(stored.remark).toBe('');
-    await setMember(mgr,pending,false,'peer');
-    [stored]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,pending));
-    expect(stored.archivedAt).toBeNull();expect(stored.relationship).toBe('peer');
-    const [kept]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,submitted));
-    expect(kept.archivedAt).toBeNull();expect(kept.remark).toBe(REMARK(0));
+    // The old component writer is private; actual manager assignment remains
+    // covered below, including submitted preservation and remove/restore output.
+    const pending=String(rows.find(r=>r.submitted_at==null)!.request_id);
+    const before=await ownedRows();for(const ctx of [mgr,self,a,...peers.map(p=>p.ctx)])await expect(setMember(ctx,pending,true)).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:expect.stringMatching(/permission denied/)})});
+    expect(await ownedRows()).toEqual(before);
   });
 
+  it('selects assigned and administrative panel courses explicitly without borrowing a parallel HR seat',async()=>{
+    const [before]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));const one=[{employmentId:peers[0].employmentId,relationship:'peer'}];
+    await expect(perf.assignOnehrPanel(a,reviewId,before.revision,one)).rejects.toThrow(/not assigned to you/);
+    await expect(perf.assignOnehrPanel(mgr,reviewId,before.revision,one,'administration')).rejects.toThrow(/not assigned to you/);
+    await expect(withTenant(mgr,tx=>tx.execute(sql`select app.onehr_panel_assign(${reviewId}::uuid,${before.revision}::integer,${JSON.stringify(one)}::jsonb,'unknown')`))).rejects.toMatchObject({cause:expect.objectContaining({code:'22023',message:expect.stringMatching(/purpose/)})});
+    await assignRole(a,{appUserId:mgr.userId!,role:'hr_admin'});const mixed={...mgr,roles:['manager','hr_admin'],grants:[{role:'manager',companyId:null},{role:'hr_admin',companyId:null}]};
+    await expect(perf.assignOnehrPanel(mixed,reviewId,before.revision,one)).rejects.toThrow(/smaller than/);
+    expect(await ownedRows()).toEqual([]);expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([before]);
+    await perf.assignOnehrPanel(mixed,reviewId,before.revision,one,'administration');const rows=await ownedRows();expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({reviewId,peerEmploymentId:peers[0].employmentId,relationship:'peer',answers:null,remark:'',submittedAt:null});
+    const [after]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));expect(after).toEqual({...before,revision:before.revision+1});
+    const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.panel-assigned')));expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorType:'user',actorId:mgr.userId,payload:{count:1,removed:0,before:[],after:one}});
+  });
   it('keeps the manager review screen and panel assignment output unchanged',async()=>{
     await assignAll();await submit(0);await submit(1);
     const managerPeers=(await view(mgr)).peers,adminPeers=(await view(a)).peers;

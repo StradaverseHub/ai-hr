@@ -18,8 +18,18 @@ const config:AiConfigView={storable:true,envFallback:null,usingEnvFallback:false
 type EvaluationSuccess=Extract<Awaited<ReturnType<typeof evaluateProviderCandidateAction>>,{ok:true}>;
 const summaryFixture:EvaluationSuccess['summary']={calls:3,elapsedMs:1,usageReportedCalls:3,inputTokens:0,outputTokens:0,cachedInputTokens:0,accountChargeCredits:null};
 const t=messages.admin.ai;
-function show(value=config){return render(<NextIntlClientProvider locale="en" messages={messages}><AiConfigForm config={value}/></NextIntlClientProvider>);}
+function show(value=config){return render(<NextIntlClientProvider locale="en" messages={messages}><AiConfigForm config={value} actionControls={{add:true,edit:true,delete:true}}/></NextIntlClientProvider>);}
 describe('OpenRouter admin settings form',()=>{
+ it('defaults to read-only configuration and keeps an independent Remove available without Edit',()=>{
+  const value:AiConfigView={...config,providers:[{...config.providers[0],configured:true,candidateSaved:true,candidateId:'candidate',candidateVersion:'version',model:'fictional/model'}]};
+  render(<NextIntlClientProvider locale="en" messages={messages}><AiConfigForm config={value} actionControls={{add:false,edit:false,delete:true}}/></NextIntlClientProvider>);
+  expect(screen.getByLabelText(new RegExp('^'+t.model)).matches(':disabled')).toBe(true);
+  expect(screen.getByRole('button',{name:t.save}).matches(':disabled')).toBe(true);
+  expect(screen.getByRole('button',{name:t.evaluationRun}).matches(':disabled')).toBe(true);
+  expect(screen.getByRole('button',{name:t.remove}).matches(':disabled')).toBe(false);
+  expect(evaluateProviderCandidateAction).not.toHaveBeenCalled();expect(testConnectionAction).not.toHaveBeenCalled();
+ });
+
  it('requires labeled explicit model/routes and offers no direct activation bypass',()=>{
   const view=show(),save=screen.getByRole('button',{name:t.save}) as HTMLButtonElement;
   expect(save.disabled).toBe(true);expect(screen.queryByLabelText(t.makeActive)).toBeNull();

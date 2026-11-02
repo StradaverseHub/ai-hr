@@ -24,6 +24,8 @@ export async function masterReportFieldsTx(tx:Tx,ctx:SessionContext,companyIds:r
   for(const companyId of companyIds){
     const [scope]=await tx.execute(sql`select exists(select 1 from company where id=${companyId}::uuid and tenant_id=app.current_tenant_id()) as allowed`) as unknown as {allowed:boolean}[];
     if(!scope?.allowed)throw new MasterReportAccessError();
+    const [purpose]=await tx.execute<{allowed:boolean}>(sql`select app.function_action_allowed('employeeMasterReports','view',${companyId}::uuid) as allowed`);
+    if(purpose?.allowed!==true)throw new MasterReportAccessError();
     // The existing granular resolver accepts role names. Strip grants that do not cover THIS company
     // before passing them; a role in another company must not satisfy this company's report category.
     const rows=await tx.execute(sql`select role from unnest(app.current_roles()) as role where app.has_role_for(role,${companyId}::uuid)`) as unknown as {role:string}[];
@@ -41,3 +43,14 @@ export async function masterReportFieldsTx(tx:Tx,ctx:SessionContext,companyIds:r
   }));
 }
 export function masterReportCatalogue(ctx:SessionContext,companyIds:readonly string[]){return withTenant(ctx,tx=>masterReportFieldsTx(tx,ctx,companyIds));}
+
+/** Exact action flags for the caller-selected scope; ownership is a separate per-template ceiling. */
+export async function masterReportActionAccessTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[]){
+ await assertReportPrincipalTx(tx,ctx);
+ const flags={canAdd:false,canEdit:false,canDelete:false};
+ if(!companyIds.length)return flags;
+ const spec=JSON.stringify({employeeMaster:{companyIds:[...companyIds]}});
+ const [row]=await tx.execute<{canAdd:boolean;canEdit:boolean;canDelete:boolean}>(sql`select app.employee_master_definition_allowed(${spec}::jsonb,'add') as "canAdd",app.employee_master_definition_allowed(${spec}::jsonb,'edit') as "canEdit",app.employee_master_definition_allowed(${spec}::jsonb,'delete') as "canDelete"`);
+ return {canAdd:row?.canAdd===true,canEdit:row?.canEdit===true,canDelete:row?.canDelete===true};
+}
+export function masterReportActionAccess(ctx:SessionContext,companyIds:readonly string[]){return withTenant(ctx,tx=>masterReportActionAccessTx(tx,ctx,companyIds));}

@@ -89,6 +89,7 @@ const wrap = (data: EmployeeDraftData = freshDraft(), initialStep = 1, initialTa
   render(
     <NextIntlClientProvider locale="en" messages={messages}>
       <EmployeeWizard
+        actions={{canEdit:true,canDiscard:true,canActivate:true}}
         today="2026-09-10"
         draftId="draft-1"
         reservedEmployeeCode="ABC00100"

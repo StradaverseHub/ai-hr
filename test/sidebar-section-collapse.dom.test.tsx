@@ -3,6 +3,7 @@ import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import {enWithAiCentre as messages} from './helpers/ai-centre-messages';
+import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
 const route=vi.hoisted(()=>({pathname:'/',search:''}));
 vi.mock('next/navigation',()=>({usePathname:()=>route.pathname,useSearchParams:()=>new URLSearchParams(route.search),redirect:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
@@ -108,3 +109,12 @@ describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigati
   expect(screen.getByRole('link',{name:messages.nav.myTasks})).toHaveAttribute('href','/tasks');
  });
 });
+
+it('captures the relocated System Labels destination inside real People navigation',async()=>{
+ document.documentElement.setAttribute('data-ui-theme','atelier');route.pathname='/admin/settings/system-labels';
+ const view=render(<div className="app-shell flex min-h-screen">{ui()}<main className="min-w-0 flex-1 p-6"><h1>{messages.nav.systemLabels}</h1></main></div>);
+ fireEvent.click(screen.getByRole('button',{name:messages.nav.workspaceSwitch}));
+ const people=screen.getByRole('button',{name:messages.nav.modulePeople});if(people.getAttribute('aria-expanded')!=='true')fireEvent.click(people);
+ const panel=screen.getByRole('navigation',{name:messages.nav.modulePeople});expect(within(panel).getByRole('link',{name:messages.nav.systemLabels})).toHaveAttribute('href','/admin/settings/system-labels');
+ await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','people-configuration-navigation','Actual Sidebar with People open and fictional route context; no authenticated installed journey','atelier');
+},120000);

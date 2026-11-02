@@ -267,7 +267,7 @@ describe('9a65f808 · …and maintained on System Labels → Organisation, besid
     const { names, calls } = destructuredAwaitAll(systemLabelsCode, 'const [companies,');
     expect(names).toContain('gradeGroups');
     expect(calls).toHaveLength(names.length);
-    expect(calls[names.indexOf('gradeGroups')]).toContain('listGradeGroups(s)');
+    expect(calls[names.indexOf('gradeGroups')]).toContain('listGradeGroupsForMaintenance(s)');
     for (const action of ['createGradeGroupAction', 'updateGradeGroupAction', 'deleteGradeGroupAction']) {
       expect(systemLabelsCode, `${action} must be wired on the System Labels page`).toContain(action);
     }
@@ -278,7 +278,7 @@ describe('9a65f808 · …and maintained on System Labels → Organisation, besid
     // this page is not one of the pack's own routes. Importing the facade is the sanctioned path; the
     // alternative is an entry on an audited debt list documented to only ever shrink. Pinned here as well
     // as by the ratchet because the ratchet's message is about a list, not about this decision.
-    expect(systemLabelsSrc).toMatch(/^import \{ listGradeGroups \} from '@\/packs\/leave\/service';$/m);
+    expect(systemLabelsSrc).toMatch(/^import \{ listGradeGroupsForMaintenance \} from '@\/packs\/leave\/service';$/m);
     expect(systemLabelsSrc).not.toMatch(/^import .*core\/benefit-scheme'/m);
   });
 
@@ -325,7 +325,7 @@ describe('9a65f808 · …and maintained on System Labels → Organisation, besid
     // (that grid has to be able to show and restore an archived row). Inheriting that list would be the
     // silent data loss the two earlier screens avoided by accident of their own narrower read.
     expect(systemLabelsCode).toContain('listJobGrades(s, { includeArchived: true })');
-    expect(systemLabelsCode).toMatch(/grades\.filter\(\(g\) => g\.archivedAt == null\)\.map/);
+    expect(systemLabelsCode).toMatch(/groupGradeOptions\.filter\(\(g\) => g\.archivedAt == null\)\.map/);
   });
 });
 

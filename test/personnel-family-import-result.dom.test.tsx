@@ -20,7 +20,7 @@ async function apply(locale:Locale,preview:SectionImportPreview,text=familyCsv){
  mocks.read.mockResolvedValue({name:'records.csv',text,dependentsText:'',extraTexts:{}});mocks.validate.mockResolvedValue(preview);
  const result:SectionImportResult={section:preview.section,updated:preview.updateCount,skipped:0,failed:[],fileErrors:[],runId:null};mocks.commit.mockResolvedValue(result);
  const t=createTranslator({locale,messages:{people:{import:catalogs[locale].people.import}},namespace:'people.import'});
- render(<NextIntlClientProvider locale={locale} messages={catalogs[locale]}><SectionImport section={preview.section} reference={reference}/></NextIntlClientProvider>);
+ render(<NextIntlClientProvider locale={locale} messages={catalogs[locale]}><SectionImport canImport={true} section={preview.section} reference={reference}/></NextIntlClientProvider>);
  const file=document.querySelector('input[type="file"]');expect(file).not.toBeNull();fireEvent.change(file!,{target:{files:[new File([text],'records.csv',{type:'text/csv'})]}});
  const button=await screen.findByRole('button',{name:t('sectionImportButton',{count:preview.updateCount})});await waitFor(()=>expect(button).toBeEnabled());fireEvent.click(button);
  await waitFor(()=>expect(mocks.commit).toHaveBeenCalledTimes(1));expect(mocks.commit.mock.calls[0][0]).toBe(preview.section);expect(mocks.commit.mock.calls[0][1]).toBe(text);

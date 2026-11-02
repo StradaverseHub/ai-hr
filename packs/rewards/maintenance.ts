@@ -28,7 +28,8 @@ async function admin(tx: Tx, companyId: string) {
         throw new RewardMaintenanceError('scope');
 }
 async function adminUnit(tx: Tx, id: string, revision?: number, lock = false) {
-    const q = tx.select().from(rewardUnit).where(and(eq(rewardUnit.id, uuid.parse(id)), isNull(rewardUnit.deletedAt)));
+    // Access preparation consumes only identity, version and route metadata, never unit PAT/policy.
+    const q = tx.select({id:rewardUnit.id,companyId:rewardUnit.companyId,revision:rewardUnit.revision,status:rewardUnit.status,kind:rewardUnit.kind,offcycle:rewardUnit.offcycle}).from(rewardUnit).where(and(eq(rewardUnit.id, uuid.parse(id)), isNull(rewardUnit.deletedAt)));
     const [unit] = await (lock ? q.for('update') : q);
     if (!unit)
         throw new RewardMaintenanceError('missing');
@@ -74,7 +75,7 @@ async function accessState(tx: Tx, unitId: string, revision: number, lock: boole
     return { unit, current };
 }
 /** One change against a unit's membership as it stands (a batch passes its accumulating state). */
-async function applyAccess(tx: Tx, ctx: SessionContext, unit: typeof rewardUnit.$inferSelect, current: AccessRow[], input: RewardAccessChange) {
+async function applyAccess(tx: Tx, ctx: SessionContext, unit: Awaited<ReturnType<typeof adminUnit>>, current: AccessRow[], input: RewardAccessChange) {
     if (input.before && !current.some(m => pairKey(m) === pairKey(input.before!)))
         throw new RewardMaintenanceError('membership');
     const next = current.filter(m => !input.before || pairKey(m) !== pairKey(input.before));
@@ -302,7 +303,7 @@ export async function deleteRewardReview(ctx: SessionContext, unitId: string, re
     if (confirmation !== unitId)
         throw new RewardMaintenanceError('confirmation');
     return withRewardsTenant(ctx, async (tx) => {
-        const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId)).for('update');
+        const [unit] = await tx.select({id:rewardUnit.id,companyId:rewardUnit.companyId,cycleId:rewardUnit.cycleId,deletedAt:rewardUnit.deletedAt,revision:rewardUnit.revision}).from(rewardUnit).where(eq(rewardUnit.id, unitId)).for('update');
         if (!unit)
             throw new RewardMaintenanceError('missing');
         await admin(tx, unit.companyId);

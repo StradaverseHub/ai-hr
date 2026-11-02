@@ -1,3 +1,4 @@
+import {shiftActionAccess} from '@/core/roster';
 import { requireAdmin } from '@/lib/authz';
 import { listAttendanceRules } from '@/core/attendance-rule';
 import { ShiftForm } from '../shift-form';
@@ -10,6 +11,8 @@ import { ShiftForm } from '../shift-form';
 // shape /admin/holidays/groups/new + groups/[id] already ships.
 export default async function NewShiftPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const s = await requireAdmin();
+  const [canView,canWrite]=await Promise.all((['view','add'] as const).map(operation=>shiftActionAccess(s,operation)));
+  if(!canView)throw new Error('Shift view unavailable');
   const { error } = await searchParams;
   // Inactive rules are hidden on a NEW shift: there is no stored ruleId that could already point at one.
   // aec53564 — with ONE exception: the tenant's Standard rule, whatever its status. Blank means "Standard",
@@ -17,5 +20,5 @@ export default async function NewShiftPage({ searchParams }: { searchParams: Pro
   // this form resolves to before anything is picked, and since 07ebd04d it may state the working week that
   // decides whether the day row is editable. The screen must read the row the write will read.
   const ruleOptions = (await listAttendanceRules(s)).filter((r) => r.status === 'active' || r.isDefault);
-  return <ShiftForm shift={null} otWindows={[]} ruleOptions={ruleOptions} error={error} />;
+  return <ShiftForm canWrite={canWrite} shift={null} otWindows={[]} ruleOptions={ruleOptions} error={error} />;
 }

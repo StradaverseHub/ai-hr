@@ -14,7 +14,7 @@ import {
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
 // without a reason, and the declaration that names each proposed field the way both screens name it.
 
-import { listEmployeeDrafts } from '@/core/employee-draft';
+import { employeeDraftCreateCompanies, listEmployeeDrafts } from '@/core/employee-draft';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { getEmployeeListColumns } from '@/core/employee-list-prefs';
 import { Card, PageHeader } from '@/components/ui';
@@ -115,7 +115,9 @@ export default async function PeoplePage({
   const maintainIds=new Set(await workforceCompanies(session,'maintain'));
   const today = todayInKualaLumpur();
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
-  const canCreate=isAdmin&&maintainIds.size>0;
+  const canImport=isAdmin&&maintainIds.size>0;
+  const createIds=new Set(isAdmin?await employeeDraftCreateCompanies(session):[]);
+  const canCreate=createIds.size>0;
   const sp = await searchParams;
   const { error } = sp;
   const pq = parsePageQuery(sp);
@@ -177,7 +179,7 @@ export default async function PeoplePage({
   // catch. `sampleCode` is a PREVIEW of the next running number, not a reservation; the ID the employee
   // actually gets is issued inside the create transaction and the prompt's confirmation reports THAT.
   const employeeIdRules: Record<string, EmployeeIdRule> = {};
-  for (const c of companies) employeeIdRules[c.id] = resolveEmployeeIdRule(idConfigs, c.id);
+  for (const c of companies) if(createIds.has(c.id))employeeIdRules[c.id]=resolveEmployeeIdRule(idConfigs,c.id);
 
   // ── Draft rows (item 06f0cb8f, preserved) ─────────────────────────────────────────────────────────
   // Drafts are PINNED ABOVE the employees on every page, not merged into the sort and not paged. There
@@ -400,7 +402,7 @@ export default async function PeoplePage({
           <div className="flex flex-wrap items-center justify-end gap-3">
             {/* 579255c3 — the bare "40 employees" count that stood here is GONE. It said one number with
                 no context; the five cards below say all five, and the pager still prints "1–25 of 30". */}
-            {canCreate && (
+            {canImport && (
               <Link
                 href="/admin/personnel/import"
                 data-tour="people-import"
@@ -507,7 +509,7 @@ export default async function PeoplePage({
             {canCreate && (
               <CreateEmployeeDialog
                 triggerLabel={t('createNewEmployee')}
-                companies={companies.filter(c=>maintainIds.has(c.id)).map((c) => ({ id: c.id, label: c.name }))}
+                companies={companies.filter(c=>createIds.has(c.id)).map((c) => ({ id: c.id, label: c.name }))}
                 employeeIdRules={employeeIdRules}
               />
             )}

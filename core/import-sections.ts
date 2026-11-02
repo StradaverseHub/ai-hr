@@ -1,10 +1,10 @@
 import {createHash} from 'node:crypto';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
-import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
+import { getPeopleGeneralForAdmission, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
 import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
 import { pgSqlState } from '../lib/db-error';
 import { publicErrorMessage } from '../lib/public-error';
-import {assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
+import {assertWorkforceEmploymentTx,assertWorkforcePersonTx,assertWorkforceSectionImportCompanyTx} from './workforce-access';
 import {personnelOperationalValues,PERSONNEL_OPERATIONAL_FIELDS,type PersonnelOperationalPatch} from '../lib/personnel-operational-import';
 import {applyPersonnelOperationalValuesTx} from './personnel-import-operations';
 import {assertCardIdFree} from './attendance-card';
@@ -265,7 +265,7 @@ async function analyze(
     {present:presentSet,residencyCodes:new Set(records.filter(record=>['tax_residency','is_resident','tax_circumstance','tax_category','epf_citizenship'].some(column=>norm(record[column]))).map(record=>normalizeEmployeeCode(record[SECTION_KEY_COLUMN]))),focusCode:focusRowNum?normalizeEmployeeCode(norm(records[focusRowNum-1]?.[SECTION_KEY_COLUMN])):undefined},
   );
 
-  const { allowDuplicatedNric, allowDuplicatedEmail } = await (suppliedTx?readPeopleGeneralTx(suppliedTx):getPeopleGeneral(ctx));
+  const { allowDuplicatedNric, allowDuplicatedEmail } = await (suppliedTx?readPeopleGeneralTx(suppliedTx):getPeopleGeneralForAdmission(ctx));
   const seenCodes = new Set<string>();
   /**
    * IN-FILE COLLISIONS ON THE TWO IDENTIFIERS THAT MUST STAY UNIQUE PER PERSON.
@@ -446,7 +446,7 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
-      .where(and(eq(employment.tenantId,ctx.tenantId),codes.size?inArray(employment.employeeCode,[...codes]):sql`false`));
+      .where(and(eq(employment.tenantId,ctx.tenantId),sql`app.workforce_section_import_allowed(${employment.companyId},'view')`,codes.size?inArray(employment.employeeCode,[...codes]):sql`false`));
 
     const byCode = new Map<string, Subject>();
     const wanted: typeof rows = [];
@@ -970,6 +970,7 @@ export async function commitSectionImport(
       const binding=(value:ResolvedSectionRow)=>JSON.stringify({...value,result:undefined,subject:undefined});
       if(!(fresh.result.ok||afterOwnEarlierRow)||binding(fresh)!==binding(nominatedRow))throw new Error('Section import inputs changed; preview the original file again.');
       const row=fresh,s=fresh.subject;
+      await assertWorkforceSectionImportCompanyTx(tx,ctx,s.companyId);
       await assertWorkforceEmploymentTx(tx,ctx,s.employmentId,'maintain');
       await assertWorkforcePersonTx(tx,ctx,s.personId,'maintain');
       step = 'person';
@@ -1115,6 +1116,7 @@ export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{recor
  if(current.preview.fileErrors.length||!subject||subject.employmentId!==input.employmentId||subject.companyId!==input.companyId||row.result.errors.length)throw new Error('Personnel changed or access was removed. Validate this row again.');
  if(row.result.verdict==='skip')return false;
  if(!row.result.ok||sectionBinding(row)!==input.binding)throw new Error('Personnel changed after validation. Validate this row again.');
+ await assertWorkforceSectionImportCompanyTx(tx,ctx,subject.companyId);
  await assertWorkforceEmploymentTx(tx,ctx,subject.employmentId,'maintain');
  await assertWorkforcePersonTx(tx,ctx,subject.personId,'maintain');
  const [stored]=await tx.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,subject.personId)).for('update');

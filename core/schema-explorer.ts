@@ -1,3 +1,4 @@
+import {settingsAccessTx} from './organisation-access';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
 /**
@@ -210,6 +211,7 @@ export async function listSchemaTables(ctx: SessionContext, existingTx?: AiReadT
   assertExplorerAccess(ctx);
   const owners = ownershipIndex();
   return withCanonicalAiReadTx(ctx, existingTx, 'system_explorer', withTenant, async (tx) => {
+    if(!await settingsAccessTx(tx,'view','systemExplorer'))throw new NotAdminError();
     const rows = (await tx.execute(sql`
       select rel.relname as table_name
         from pg_class rel
@@ -243,6 +245,7 @@ export async function describeTableRelationships(
   if (SECRET_TABLES.has(table)) return null;
   const owners = ownershipIndex();
   return withTenant(ctx, async (tx) => {
+    if(!await settingsAccessTx(tx,'view','systemExplorer'))throw new NotAdminError();
     const exists = (await tx.execute(sql`
       select 1 as ok
         from pg_class rel

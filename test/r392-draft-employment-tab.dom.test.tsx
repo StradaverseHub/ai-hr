@@ -74,6 +74,7 @@ const wrap = (data: EmployeeDraftData, messages: Msgs = en, locale = 'en') =>
   render(
     <NextIntlClientProvider locale={locale} messages={messages}>
       <EmployeeWizard
+        actions={{canEdit:true,canDiscard:true,canActivate:true}}
         today={today}
         draftId="draft-1"
         reservedEmployeeCode="ABC00100"

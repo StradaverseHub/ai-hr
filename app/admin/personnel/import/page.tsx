@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { personnelReferenceOptions } from '@/lib/personnel-template-reference';
 import {personnelImportBrowserKey} from '@/lib/personnel-import-browser-key';
-import { getPeopleGeneral } from '@/core/people-general';
+import { getPeopleGeneralForAdmission } from '@/core/people-general';
+import {workforceImportAccess} from '@/core/workforce-access';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
@@ -17,6 +18,7 @@ import { ImportHistory } from './import-history';
 export default async function ImportPage() {
   const t = await getTranslations('people.import');
   const s = await requireAdmin();
+  const importAccess=await workforceImportAccess(s),importCompanyIds=new Set(importAccess.map(row=>row.id));
   // d8471481 — the Excel template's Reference sheet is generated from these LIVE catalogs, the same
   // ones core/import's analyze() validates a row against. Reading them here (rather than
   // hand-maintaining a second list) is what makes "the value in the template is a value the importer
@@ -33,7 +35,7 @@ export default async function ImportPage() {
     importRuns,
     nricPolicy,
   ] = await Promise.all([
-    listCompanies(s,{adminOnly:true}),
+    listCompanies(s,{adminOnly:true}).then(rows=>rows.filter(row=>importCompanyIds.has(row.id))),
     listDepartments(s),
     listPositions(s),
     listCostCenters(s),
@@ -41,7 +43,7 @@ export default async function ImportPage() {
     // cf43c909 — past runs. Read here (not inside the client island) so the history is server-rendered and
     // RLS-scoped; `commitImportAction` revalidates this path, so a finished import appears without a reload.
     listEmployeeImportRuns(s),
-    getPeopleGeneral(s),
+    getPeopleGeneralForAdmission(s),
   ]);
   // Company-specific guidance uses the same visibility owners as full-import validation.
   // The Company cell can override Target company; preview is authoritative in that case.
@@ -88,6 +90,9 @@ export default async function ImportPage() {
               full 49-column importer (unchanged, and the default) or one of the four narrow section
               importers; both read the same live catalogs below. */}
           <ImportWorkbench
+            canCreate={importAccess.some(row=>row.canCreate)}
+            canExecute={importAccess.some(row=>row.canExecute)}
+            createCompanyIds={importAccess.filter(row=>row.canCreate).map(row=>row.id)}
             key={personnelImportBrowserKey(s,companies.map(company=>company.id))}
             companies={companies.map((c) => ({ id: c.id, name: c.name }))}
             defaultCompanyId={defaultCompanyId}

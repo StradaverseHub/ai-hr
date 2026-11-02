@@ -1,5 +1,5 @@
 import {lockAccessConfigurationTx} from './access-configuration-lock';
-import {workforceEmploymentPredicate} from './workforce-access';
+import {workforceEmploymentPredicate,assertWorkforceRegisterImportTx} from './workforce-access';
 import {addQualification,updateQualification,addEmergencyContact,updateEmergencyContact} from './workforce-registers';
 import {and,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -29,7 +29,7 @@ async function loadSubjectsTx(tx:Tx,records:ImportRecord[],lock:boolean):Promise
     employeeCode:employment.employeeCode,employeeName:person.fullName,archivedAt:company.archivedAt,
     resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,terminatedOn:employment.terminatedOn,blacklistedAt:employment.blacklistedAt})
     .from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
-    .where(and(inArray(sql`upper(trim(${employment.employeeCode}))`,codes),sql`app.is_admin_for(${employment.companyId})`,workforceEmploymentPredicate(sql`${employment.id}`,'view'),workforceEmploymentPredicate(sql`${employment.id}`,'maintain')));
+    .where(and(inArray(sql`upper(trim(${employment.employeeCode}))`,codes),sql`app.is_admin_for(${employment.companyId})`,sql`app.workforce_section_import_allowed(${employment.companyId},'view')`,workforceEmploymentPredicate(sql`${employment.id}`,'view'),workforceEmploymentPredicate(sql`${employment.id}`,'maintain')));
   const rows=lock?await query.for('update'):await query;
   return rows.map(row=>({...row,employeeCode:normalizeEmployeeCode(row.employeeCode),valid:!row.archivedAt && !['resigned','blacklisted'].includes(deriveEmploymentStatus(row))}));
 }
@@ -37,7 +37,7 @@ async function loadSubjectsTx(tx:Tx,records:ImportRecord[],lock:boolean):Promise
 export async function analyzeRegisterImportTx(tx:Tx,kind:PersonnelRegisterKind,records:ImportRecord[],options?:{subjects:RegisterSubject[];newEmployees?:boolean}) {
   assertBounds(records);
   const subjects=options?.subjects??await loadSubjectsTx(tx,records,false);
-  const allowed=options?.newEmployees?new Set((await tx.select({id:company.id}).from(company).where(sql`app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.maintain') and ${company.archivedAt} is null`)).map(row=>row.id)):null;
+  const allowed=options?.newEmployees?new Set((await tx.select({id:company.id}).from(company).where(sql`app.workforce_full_import_allowed(${company.id},'add') and ${company.archivedAt} is null`)).map(row=>row.id)):null;
   const byCode=new Map<string,RegisterSubject|null>();
   for(const subject of subjects) {
     const key=normalizeEmployeeCode(subject.employeeCode);
@@ -109,6 +109,7 @@ export async function writeRegisterRowsTx(tx:Tx,ctx:SessionContext,kind:Personne
     if(!row.preview.ok || !row.subject)throw new Error('Register row was not validated.');
     const target=created?.get(row.preview.employeeCode)??row.subject;
     if(!target.employmentId || !target.personId)throw new Error('Register row has no created employee.');
+    await assertWorkforceRegisterImportTx(tx,ctx,target.employmentId);
     // The ID is checked again under the write transaction; archive/ownership races never retarget.
     if(row.recordId) {
       if(kind==='qualification') {

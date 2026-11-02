@@ -1,3 +1,4 @@
+import {withOnehrWorkerSource} from '../packs/performance/onehr/worker-source';
 /**
  * D-P1-22 X2 (ADR-0150, D5 as amended by APR-022): leader rights while a unit is left out, and the one-level-up
  * reviewer. Only competency review and Career Plan review move up (live); app.onehr_manager is NOT widened, it only
@@ -76,7 +77,7 @@ const GONE = /Assessment not found or access has been removed|Assessment not ass
 
 describe('the stored reviewer whose unit is out', () => {
   it('loses every manager right on the review', async () => {
-    await perf.assignOnehrPanel(f.a, rid.S, await revisionOf(rid.S), [{ employmentId: f.P.R.employmentId, relationship: 'peer' }]);
+    await perf.assignOnehrPanel(f.a, rid.S, await revisionOf(rid.S), [{ employmentId: f.P.R.employmentId, relationship: 'peer' }],'administration');
     const plan = await sharePlan();
     const panelRows = () => valueAs<number>(f.U.M0, sql`(select count(*)::int from app.onehr_manager_panel(${rid.S}::uuid))`);
     expect([await manager(f.U.M0, rid.S), await header(f.U.M0, rid.S) != null, await panelRows()], 'non-vacuous: the stored reviewer before the rule').toEqual([true, true, 1]);
@@ -85,7 +86,7 @@ describe('the stored reviewer whose unit is out', () => {
     expect(await header(f.U.M0, rid.S)).toBeNull();
     expect(await panelRows()).toBe(0);
     expect(await refusal(perf.confirmOnehrPerformance(f.U.M0, rid.S, await revisionOf(rid.S), 'ME', ''))).toMatch(GONE);
-    expect(await refusal(perf.assignOnehrPanel(f.U.M0, rid.S, await revisionOf(rid.S), [{ employmentId: f.P.C.employmentId, relationship: 'peer' }]))).toMatch(GONE);
+    expect(await refusal(perf.assignOnehrPanel(f.U.M0, rid.S, await revisionOf(rid.S), [{ employmentId: f.P.C.employmentId, relationship: 'peer' }]))).toBe('This action is not assigned to you.');
     await selfCompetencies();
     expect(await refusal(perf.submitOnehrCompetencies(f.U.M0, rid.S, await revisionOf(rid.S), competencyAnswers, true, ''))).toMatch(GONE);
     expect(await refusal(perf.reviewOnehrPlan(f.U.M0, plan.id, plan.revision, 'Comment', '', false))).toMatch(/Plan not found|not assigned to you/);
@@ -263,7 +264,7 @@ describe('moderation, calibration and administrators', () => {
 
   it('the reminder graph names the effective reviewer and drops a moderator whose unit is out', async () => {
     const dispatcher = { ...f.a, userId: undefined, personId: undefined };
-    const graph = async () => (await valueAs<{ reviews: { id: string; reviewerEmploymentId: string | null; moderatorIds: string[] }[] }>(dispatcher, sql`app.assessment_pending_work(${f.cycleId}::uuid)`)).reviews.find((r) => r.id === rid.S)!;
+    const graph = async () => {const [row]=await withOnehrWorkerSource(dispatcher,owner,{kind:'cycle',id:f.cycleId},tx=>tx.execute<{value:{reviews:{id:string;reviewerEmploymentId:string|null;moderatorIds:string[]}[]}}>(sql`select app.assessment_pending_work(${f.cycleId}::uuid) as value`));expect(row.value).not.toBeNull();const actual=row.value.reviews.find(r=>r.id===rid.S);expect(actual).toBeDefined();return actual!;};
     const before = await graph();
     expect(before.reviewerEmploymentId).toBe(f.P.M0.employmentId);
     expect(before.moderatorIds).toContain(f.P.M0.employmentId);

@@ -13,8 +13,10 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
+import {assignRole} from '../core/admin';
+import {demonstratedSkills,type CareerSkillEvidence} from '../packs/performance/onehr/career-model';
 import * as perf from '../packs/performance/service';
-import { defaultPolicy, type KPI } from '../packs/performance/onehr/model';
+import { defaultPolicy, competencySchema, type KPI } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import sourceGolden from './fixtures/onehr/source-golden.json';
 import { createRewardUnit, getRewardUnit, importOnehrRewardResults } from '../packs/rewards/service';
@@ -296,7 +298,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const opened=await perf.openCycle(a,{cycleId:next.cycleId});expect(opened.reviewsSpawned).toBe(preview.count);
     expect(await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,next.cycleId),eq(schema.performanceReview.employmentId,newcomer.employmentId)))).toHaveLength(0);
     const [target]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,next.cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));
-    await perf.assignOnehrPanel(a,target.id,1,[{employmentId:newcomer.employmentId,relationship:'peer'}]);
+    await perf.assignOnehrPanel(a,target.id,1,[{employmentId:newcomer.employmentId,relationship:'peer'}],'administration');
     const assignments=await perf.onehrAssignments(newcomerCtx);expect(assignments.reviews.some(r=>r.cycle==='Participation boundary')).toBe(false);expect(assignments.feedback.some(f=>f.subject==='Assessment subject')).toBe(true);
     let cycle=(await perf.getOnehrCycle(a,next.cycleId))!;
     const original=cycle.participants.find(p=>p.employmentId===newcomer.employmentId)!;expect(original).toMatchObject({takingPart:false,reason:'not_confirmed'});
@@ -635,15 +637,56 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     for(const row of rows)expect(Number(row.score)).toBeCloseTo(sourceGolden.scoring[row.id].expected,10);
     await expect(withTenant(a,tx=>tx.execute(sql`select app.assessment_kpi_score(1::numeric,'{}'::jsonb)`))).rejects.toThrow();
   });
+  it('keeps nominated panel feedback independent of Self, assigned reviewer and administrative courses',async()=>{
+    await perf.assignOnehrPanel(mgr,reviewId,(await view(mgr)).revision,peers.map(peer=>({employmentId:peer.employmentId,relationship:'peer'})));
+    const panels=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.reviewId,reviewId));expect(panels).toHaveLength(peers.length);
+    const panel=panels.find(item=>item.peerEmploymentId===peers[0].employmentId)!;const card=await perf.getOnehrFeedback(peers[0].ctx,panel.requestId);expect(card.statements.length).toBeGreaterThan(0);
+    const [floors]=await owner.db.execute<{nominee:boolean;administrator:boolean}>(sql`select app.financial_function_native(${b.tenantId}::uuid,${peers[0].ctx.userId}::uuid,'function.performance.onehr.panelFeedback.edit',${b.companyId}::uuid,false) as nominee,app.financial_function_native(${b.tenantId}::uuid,${a.userId}::uuid,'function.performance.onehr.panelFeedback.edit',${b.companyId}::uuid,false) as administrator`);expect(floors).toEqual({nominee:true,administrator:false});
+    for(const unrelated of [a,mgr,self]){await expect(perf.getOnehrFeedback(unrelated,panel.requestId)).rejects.toThrow(/not found/);await expect(perf.declineOnehrFeedback(unrelated,panel.requestId)).rejects.toThrow(/not found/);}
+    await expect(withTenant(peers[0].ctx,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_feedback_apply(${panel.requestId}::uuid,false,NULL::jsonb,NULL::text,NULL::jsonb)`);})).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:expect.stringMatching(/actor unavailable/)})});
+    expect(await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,panel.requestId))).toEqual([panel]);
+    for(const actor of [peers[0].ctx,a]){
+      const visible=await withTenant(actor,tx=>tx.select({id:schema.onehrPanel.requestId}).from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,panel.requestId)));expect(visible).toEqual([{id:panel.requestId}]);
+      await expect(withTenant(actor,tx=>tx.update(schema.onehrPanel).set({remark:'Raw private feedback override'}).where(eq(schema.onehrPanel.requestId,panel.requestId)))).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:expect.stringMatching(/Feedback source mutation unavailable/)})});
+    }
+    await expect(withTenant(a,tx=>tx.insert(schema.onehrPanel).values({tenantId:b.tenantId,requestId:panel.requestId,reviewId,subjectEmploymentId:subject.employmentId,peerEmploymentId:peers[0].employmentId,relationship:'peer',answers:{forged:'yes'}}))).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:expect.stringMatching(/Feedback source mutation unavailable/)})});
+    const captured={kind:'feedback' as const,answers:{[card.statements[0].id]:'no' as const},comments:{[card.statements[0].principle]:'A private assigned-principle observation.'},remark:'Private nominated draft.'};
+    const saved=await perf.saveAssessmentDraft(peers[0].ctx,reviewId,0,null,captured,panel.requestId);const [draft]=await owner.db.select().from(schema.assessmentDraft).where(and(eq(schema.assessmentDraft.contextId,panel.requestId),eq(schema.assessmentDraft.actorUserId,peers[0].ctx.userId!)));expect(draft).toMatchObject({kind:'feedback',reviewId,reviewRevision:0,revision:saved.revision,payload:captured});expect((await perf.getOnehrFeedback(peers[0].ctx,panel.requestId)).draft?.payload).toEqual(captured);
+    await expect(perf.saveAssessmentDraft(a,reviewId,0,null,captured,panel.requestId)).rejects.toThrow(/not found/);
+    await expect(withTenant(peers[0].ctx,tx=>tx.update(schema.assessmentDraft).set({revision:draft.revision+1,payload:{...captured,answers:{'unassigned-secret-statement':'yes'}}}).where(eq(schema.assessmentDraft.id,draft.id)))).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:expect.stringMatching(/assigned draft statements/)})});
+    expect(await owner.db.select().from(schema.assessmentDraft).where(eq(schema.assessmentDraft.id,draft.id))).toEqual([draft]);
+    const answers=Object.fromEntries(card.statements.map(statement=>[statement.id,'no']));await perf.submitOnehrFeedback(peers[0].ctx,panel.requestId,answers,'Native nominated response.');
+    const [submitted]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,panel.requestId));expect(submitted).toEqual({...panel,answers,remark:'Native nominated response.',submittedAt:submitted.submittedAt});expect(submitted.submittedAt).not.toBeNull();
+    const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,panel.requestId),eq(schema.domainEvent.eventType,'onehr.feedback-submitted')));expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorType:'user',actorId:peers[0].ctx.userId,payload:{}});
+    const [firstReceipt]=await owner.db.execute<{consumed:boolean;eventId:string}>(sql`select consumed,event_id as "eventId" from app.financial_onehr_feedback_effect where request_id=${panel.requestId}::uuid`);expect(firstReceipt).toEqual({consumed:true,eventId:events[0].id});
+    await expect(perf.submitOnehrFeedback(peers[0].ctx,panel.requestId,answers,'Duplicate')).rejects.toThrow(/already submitted/);
+    await expect(perf.saveAssessmentDraft(peers[0].ctx,reviewId,0,null,captured,panel.requestId)).rejects.toThrow(/already submitted/);
+    await expect(withTenant(peers[0].ctx,tx=>tx.insert(schema.assessmentDraft).values({tenantId:b.tenantId,reviewId,actorUserId:peers[0].ctx.userId!,kind:'feedback',contextId:panel.requestId,reviewRevision:0,payload:captured}))).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:expect.stringMatching(/draft purpose or phase unavailable/)})});
+    expect(await owner.db.select().from(schema.assessmentDraft).where(eq(schema.assessmentDraft.contextId,panel.requestId))).toEqual([]);
+    await expect(withTenant(peers[0].ctx,tx=>tx.update(schema.onehrPanel).set({submittedAt:null}).where(eq(schema.onehrPanel.requestId,panel.requestId)))).rejects.toMatchObject({cause:expect.objectContaining({code:'P0001',message:'Submitted feedback is immutable except scoped HR relationship, archive, restore or reset-to-draft'})});
+    expect(await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,panel.requestId))).toEqual([submitted]);
+    const second=panels.find(item=>item.peerEmploymentId===peers[1].employmentId)!;await perf.declineOnehrFeedback(peers[1].ctx,second.requestId);const [declined]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,second.requestId));expect(declined).toEqual({...second,archivedAt:declined.archivedAt});expect(declined.archivedAt).not.toBeNull();await expect(perf.getOnehrFeedback(peers[1].ctx,second.requestId)).rejects.toThrow(/not found/);
+    const third=panels.find(item=>item.peerEmploymentId===peers[2].employmentId)!;await withTenant(peers[2].ctx,async tx=>{await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`select app.onehr_feedback_apply(${third.requestId}::uuid,true,${JSON.stringify(answers)}::jsonb,'Early constraint flush','{}'::jsonb)`);});
+    const receipts=await owner.db.execute<{requestId:string;consumed:boolean;eventId:string;actor:string;eventType:string}>(sql`select effect.request_id as "requestId",effect.consumed,effect.event_id as "eventId",event.actor_id as actor,event.event_type as "eventType" from app.financial_onehr_feedback_effect effect join public.domain_event event on event.id=effect.event_id and event.tenant_id=effect.tenant_id where effect.request_id=${third.requestId}::uuid`);expect(receipts).toHaveLength(1);expect(receipts.every(item=>item.consumed&&item.eventId&&item.eventType==='onehr.feedback-submitted')).toBe(true);
+    const [privilege]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_panel_nomination(uuid,uuid,uuid,uuid)','EXECUTE') as allowed`);expect(privilege.allowed).toBe(false);
+  });
   it('preserves archived feedback, reopens submitted answers as a draft, and revokes changed reports',async()=>{
     await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);
     const [original]=await owner.db.select().from(schema.onehrPanel).where(and(eq(schema.onehrPanel.reviewId,reviewId),eq(schema.onehrPanel.peerEmploymentId,peers[0].employmentId)));
     const before=(await perf.getAssessmentRatingRecords(a,cycleId)).rows.find(r=>r.reviewId===reviewId)!;
+    const [sourceBefore]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
     await expect(perf.changeAssessmentPanelState(mgr,reviewId,(await view(mgr)).revision,original.requestId,'archive')).rejects.toThrow(/administrator/);
+    await expect(withTenant(a,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_panel_state(${reviewId}::uuid,${sourceBefore.revision}::integer,${original.requestId}::uuid,'archive','forged actor')`);})).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:expect.stringMatching(/actor unavailable/)})});
+    expect(await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,original.requestId))).toEqual([original]);
+    expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([sourceBefore]);
     await perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,original.requestId,'archive','Outside the intended assessment scope');
     expect((await view(self)).anonymousFeedback).toBeNull();expect((await view(self)).peers).toEqual([]);
     let [stored]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,original.requestId));
-    expect(stored.answers).toEqual(original.answers);expect(stored.submittedAt).toEqual(original.submittedAt);expect(stored.archivedAt).not.toBeNull();
+    expect(stored).toEqual({...original,archivedAt:stored.archivedAt,archiveReason:'Outside the intended assessment scope'});expect(stored.archivedAt).not.toBeNull();
+    const [archivedReview]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));expect(archivedReview).toEqual({...sourceBefore,revision:sourceBefore.revision+1});
+    const archiveEvents=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.panel-archive')));expect(archiveEvents).toHaveLength(1);expect(archiveEvents[0]).toMatchObject({actorType:'user',actorId:a.userId,payload:{requestId:original.requestId,reason:'Outside the intended assessment scope'}});
+    await perf.changeAssessmentPanelState(a,reviewId,archivedReview.revision,original.requestId,'archive','Idempotent request');expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([archivedReview]);
+    expect(await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.panel-archive')))).toHaveLength(1);
     expect((await perf.onehrAssignments(peers[0].ctx)).feedback.some(f=>f.id===original.requestId)).toBe(false);
     expect((await perf.getAssessmentRatingRecords(a,cycleId)).rows.find(r=>r.reviewId===reviewId)).toEqual(before); // A stored sign-off is not recomputed on a panel edit.
     await perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,original.requestId,'restore');
@@ -662,11 +705,26 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
     await expect(perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,original.requestId,'reset')).rejects.toThrow(/finalized/);
   });
+  it('reads career skill history through its selected native purpose without returning review narratives or historical identifiers',async()=>{
+    const {cycleId:skillsCycle}=await perf.createCycle(a,{name:'Native skill evidence',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});const policy=defaultPolicy(framework);policy.modules={pm:false,tm:true,idp:true,evidence:false};policy.profiles=[{id:randomUUID(),name:'Native analysis role',companyId:b.companyId,grade:'12',competencies:[{id:'ANALYSIS-2',principle:'Technical',text:'Demonstrate analysis',future:false,skillTitle:'Analysis',skillLevel:2}]}];await perf.configureOnehrCycle(a,skillsCycle,null,policy);await perf.openCycle(a,{cycleId:skillsCycle});
+    const [source]=await owner.db.select().from(schema.onehrReview).where(and(eq(schema.onehrReview.cycleId,skillsCycle),eq(schema.onehrReview.employmentId,subject.employmentId)));await perf.submitOnehrCompetencies(self,source.reviewId,source.revision,{'ANALYSIS-2':{answer:'no',remark:''}},false,'Native Own assessment reflection');const [submitted]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,source.reviewId));const privateRemark='Confidential assessor observation unrelated to career skill facts';await perf.submitOnehrCompetencies(mgr,source.reviewId,submitted.revision,{'ANALYSIS-2':{answer:'yes',remark:privateRemark}},true);
+    const [reviewed]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,source.reviewId));expect(competencySchema.array().parse(reviewed.competencies)[0].managerRemark).toBe(privateRemark);
+    type History={reviewId?:string;status:string;competencies:CareerSkillEvidence[]}[];const read=async(actor:SessionContext,purpose:'task'|'administration')=>{const [row]=await withTenant(actor,tx=>tx.execute<{value:History|null}>(sql`select ${purpose==='task'?sql`app.assessment_skill_history(${source.reviewId}::uuid)`:sql`app.onehr_administrative_skill_history(${source.reviewId}::uuid)`} as value`));return row.value;};
+    const own=await read(self,'task'),assigned=await read(mgr,'task'),administrative=await read(a,'administration');expect(own?.length).toBeGreaterThan(0);expect(assigned?.length).toBeGreaterThan(0);expect(administrative?.length).toBeGreaterThan(0);for(const history of [own!,assigned!,administrative!]){expect(demonstratedSkills(history)).toEqual({Analysis:2});expect(JSON.stringify(history)).not.toContain(privateRemark);for(const record of history)for(const skill of record.competencies)expect(Object.keys(skill).every(key=>['future','skillTitle','skillLevel','manager','self'].includes(key))).toBe(true);}
+    expect(own!.some(record=>record.reviewId===source.reviewId)).toBe(true);expect(assigned!.every(record=>!('reviewId' in record))).toBe(true);expect(administrative!.every(record=>!('reviewId' in record))).toBe(true);expect(await read(a,'task')).toBeNull();expect(await read(peers[0].ctx,'task')).toBeNull();
+    await assignRole(a,{appUserId:self.userId!,role:'hr_admin'});const mixed={...self,roles:['employee','hr_admin'],grants:[{role:'employee',companyId:null},{role:'hr_admin',companyId:null}]};expect(await read(mixed,'task')).toEqual(own);expect(await read(mixed,'administration')).toBeNull();
+    const [privilege]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_skill_history_native(uuid)','EXECUTE') or has_function_privilege('ai_hr_app','app.financial_onehr_skill_history_fields(jsonb,uuid)','EXECUTE') as allowed`);expect(privilege.allowed).toBe(false);
+  });
   it('preserves the opening company and grade after the native employment changes company',async()=>{
     const sessionId=await perf.createOnehrCalibration(a,cycleId,{name:'Original company cohort',companyId:b.companyId,tier:'bu',reviewerUserIds:[a.userId!],reviewIds:[reviewId],pbtAchievement:100,mode:'after'});
     const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Destination company'}).returning();
     // Entity transfer changes the existing employment company; it does not create a second employment.
     await owner.db.update(schema.employment).set({companyId:destination.id,gradeId:null}).where(eq(schema.employment.id,subject.employmentId));
+    const [floors]=await owner.db.execute<{selfOpening:boolean;selfDestination:boolean;assignedOpening:boolean;assignedDestination:boolean}>(sql`select
+      app.financial_function_native(${b.tenantId}::uuid,${self.userId}::uuid,'function.performance.onehr.selfReview.edit',${b.companyId}::uuid,false) as "selfOpening",
+      app.financial_function_native(${b.tenantId}::uuid,${self.userId}::uuid,'function.performance.onehr.selfReview.edit',${destination.id}::uuid,false) as "selfDestination",
+      app.financial_function_native(${b.tenantId}::uuid,${mgr.userId}::uuid,'function.performance.onehr.assignedReview.edit',${b.companyId}::uuid,false) as "assignedOpening",
+      app.financial_function_native(${b.tenantId}::uuid,${mgr.userId}::uuid,'function.performance.onehr.assignedReview.edit',${destination.id}::uuid,false) as "assignedDestination"`);expect(floors).toEqual({selfOpening:true,selfDestination:false,assignedOpening:true,assignedDestination:false});
     await complete();
     const c=await perf.getOnehrCalibration(a,sessionId);await perf.lockOnehrCalibration(a,sessionId,c.session.revision,'');
     await expect(withTenant(a,tx=>tx.update(schema.onehrReview).set({companyId:destination.id}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/snapshot is immutable/)})});
@@ -785,7 +843,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(items.some(i=>i.view==='mine'&&i.kind==='review')).toBe(true);
     const bg=await make('bg');items=await perf.performanceWorkspace(mgr);
     expect(items.filter(i=>i.id===bg)).toMatchObject([{module:'cal',axis:'both',stage:'talent_box'}]);expect(items.some(i=>i.view==='mine')).toBe(false);
-    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'}]);
+    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'}],'administration');
     const pending=(await perf.performanceWorkspace(mgr)).filter(i=>i.view==='mine');expect(pending).toHaveLength(1);expect(pending[0]).toMatchObject({kind:'feedback',state:'open'});
     const card=await perf.getOnehrFeedback(mgr,pending[0].id);await perf.submitOnehrFeedback(mgr,pending[0].id,Object.fromEntries(card.statements.map(s=>[s.id,'no'])),'');
     expect((await perf.performanceWorkspace(mgr)).some(i=>i.view==='mine')).toBe(false);

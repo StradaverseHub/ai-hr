@@ -19,10 +19,18 @@ const initial=()=>({version:1 as const,companyId:'e17dbd09-a9a1-448c-b609-fcd745
 beforeEach(()=>{vi.clearAllMocks();state.save.mockResolvedValue({error:'Fictional refusal'});});
 afterEach(cleanup);
 function mount(locale:keyof typeof catalogues='en'){
- return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]}><HomeConfigurationEditor initial={initial()}/></NextIntlClientProvider>);
+ return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]}><HomeConfigurationEditor canEdit initial={initial()}/></NextIntlClientProvider>);
 }
 const form=()=>screen.getByRole('button',{name:en.employeeHome.configuration.save}).closest('form')!;
 describe('Home configuration editing',()=>{
+ it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s retains readable templates but defaults editing and direct form submission closed',locale=>{
+  render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]}><HomeConfigurationEditor initial={initial()}/></NextIntlClientProvider>);
+  const words=catalogues[locale].employeeHome.configuration;
+  const save=screen.getByRole('button',{name:words.save});expect(save).toBeDisabled();
+  expect(screen.getByText(words.templatesTitle)).toBeVisible();
+  for(const field of document.querySelectorAll('textarea,select,input:not([type="hidden"])'))expect(field.matches(':disabled')).toBe(true);
+  fireEvent.submit(save.closest('form')!);expect(state.save).not.toHaveBeenCalled();expect(state.push).not.toHaveBeenCalled();
+ });
  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s labels every editable section and all language fields',locale=>{
   const result=mount(locale),words=catalogues[locale].employeeHome.configuration;
   expect(screen.getByRole('button',{name:words.save})).toBeEnabled();

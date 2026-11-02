@@ -14,6 +14,7 @@ import type {DraftActivateActionResult,DraftDeleteActionResult} from '@/lib/draf
 import { requireAdmin } from '@/lib/authz';
 import {
   saveAndCompleteEmployeeDraft,
+  completeEmployeeDraft,
   draftActivationValidation,
   createEmployeeDraftWithReservedCode,
   discardEmployeeDraft,
@@ -64,10 +65,10 @@ export async function saveDraftAction(
  * here can be overtaken by a concurrent hire and that is accepted, because the cost is the old behaviour
  * (a clear refusal at create) rather than a bad ID.
  */
-export async function checkEmployeeCodeAction(code: string): Promise<{ code: string; taken: boolean }> {
+export async function checkEmployeeCodeAction(code: string, companyId: string): Promise<{ code: string; taken: boolean }> {
   const s = await requireAdmin();
   const normalized = normalizeEmployeeCode(code);
-  return { code: normalized, taken: normalized === '' ? false : await isEmployeeCodeTaken(s, normalized) };
+  return { code: normalized, taken: normalized === '' ? false : await isEmployeeCodeTaken(s,normalized,{createCompanyId:companyId??''}) };
 }
 
 /** Unknown failures are private server diagnostics; the browser receives only a reportable reference. */
@@ -89,6 +90,19 @@ export async function discardDraftAction(id: string): Promise<DraftDeleteActionR
     refreshDraftRoutes();
     return {ok:true};
   } catch(error) { return draftFailure('delete',error); }
+}
+
+/** Activate the stored draft when the caller can hire but cannot edit draft fields. */
+export async function activateStoredDraftAction(id:string):Promise<DraftActivateActionResult> {
+  const session=await requireAdmin();
+  try {
+    const result=await completeEmployeeDraft(session,id);
+    refreshDraftRoutes();
+    return {ok:true,...result};
+  } catch(error) {
+    const validation=draftActivationValidation(error);
+    return validation ? {ok:false,kind:'validation',...validation} : draftFailure('activate',error);
+  }
 }
 
 /**

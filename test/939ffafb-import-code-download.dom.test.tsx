@@ -28,7 +28,7 @@ beforeEach(()=>{
 describe('actual full and update download handlers',()=>{
  it.each(Object.keys(locales) as (keyof typeof locales)[])('%s full download selects codes and retains allocation/related sheets',async locale=>{
   const messages=locales[locale],t=createTranslator({locale,messages,namespace:'people.import'});
-  render(<NextIntlClientProvider locale={locale} messages={messages}><EmployeeImport companies={[{id:'company',name:'Fictional company'}]} defaultCompanyId="company" reference={reference}/></NextIntlClientProvider>);
+  render(<NextIntlClientProvider locale={locale} messages={messages}><EmployeeImport canImport={true} companies={[{id:'company',name:'Fictional company'}]} defaultCompanyId="company" reference={reference}/></NextIntlClientProvider>);
   fireEvent.click(screen.getByRole('button',{name:t('downloadTemplateXlsx')}));await waitFor(()=>expect(mocks.build).toHaveBeenCalledOnce());
   const opts=mocks.build.mock.calls[0][2] as BuildXlsxOptions;
   expect(opts.validationLists?.find(list=>list.column===EMPLOYEE_XLSX_COLUMNS.indexOf('org_base'))?.values).toEqual(['001','002']);
@@ -41,7 +41,7 @@ describe('actual full and update download handlers',()=>{
  });
  it.each(['profile','family','qualification','emergency'] as const)('%s update handler uses codes while keeping readable Reference pairs',async section=>{
   const t=createTranslator({locale:'en',messages:en,namespace:'people.import'});
-  render(<NextIntlClientProvider locale="en" messages={en}><SectionImport section={section} reference={reference}/></NextIntlClientProvider>);
+  render(<NextIntlClientProvider locale="en" messages={en}><SectionImport canImport={true} section={section} reference={reference}/></NextIntlClientProvider>);
   const sectionLabel=t(section==='emergency'?'sectionEmergency':section==='qualification'?'sectionQualification':section==='family'?'sectionFamily':'sectionProfile');
   fireEvent.click(screen.getByRole('button',{name:t('sectionDownloadTemplate',{section:sectionLabel})}));await waitFor(()=>expect(mocks.build).toHaveBeenCalledOnce());
   const opts=mocks.build.mock.calls[0][2] as BuildXlsxOptions,columns=sectionTemplateColumns(section);

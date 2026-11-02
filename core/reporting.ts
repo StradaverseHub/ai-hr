@@ -34,6 +34,7 @@ import {
   employmentTaxSelectionMy,
   employmentPayComponent,
   payComponent,
+  payrollDocumentBatch,
   payrollBatch,
   payslip,
   performanceGoal,
@@ -1612,6 +1613,7 @@ async function lhdnYearSoFar(
   pay: Cp22aPdfData['pay'];
   deductions: Cp22aPdfData['deductions'];
 }> {
+  const payrollBatch=payrollDocumentBatch;
   const { year, throughPeriod } = p;
   // The last PROCESSED pay period inside [year-01, throughPeriod], for this employer.
   const lastPeriod = await withTenant(ctx, async (tx) => {

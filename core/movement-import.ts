@@ -1,5 +1,5 @@
 import {lockAccessConfigurationTx} from './access-configuration-lock';
-import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
+import {assertWorkforceCompanyTx,workforceEmploymentPredicate,assertWorkforceSectionImportCompanyTx,assertWorkforceSectionImportEmploymentTx} from './workforce-access';
 /** Bounded canonical Movement rehearsals and per-employee atomic application.
  * Preview intentionally writes only inside a transaction that ALWAYS rolls back. It never dispatches
  * notifications, opens a detached writer transaction, or holds a lock while the user reviews the result.
@@ -52,6 +52,7 @@ async function limits(tx:Tx){await tx.execute(sql`select set_config('lock_timeou
 async function assertCompany(tx:Tx,ctx:SessionContext,id:string){
  if(!UUID.test(id))throw new Error('company_not_available');
  await assertWorkforceCompanyTx(tx,ctx,id,'view');
+ const [purpose]=await tx.execute<{allowed:boolean}>(sql`select app.workforce_section_import_allowed(${id}::uuid,'view') as allowed`);if(purpose?.allowed!==true)throw new Error('company_not_available');
  await assertWorkforceCompanyTx(tx,ctx,id,'maintain');
  const [row]=await tx.select({id:company.id}).from(company).where(and(eq(company.tenantId,ctx.tenantId),eq(company.id,id),sql`app.is_admin_for(${company.id})`)).limit(1);
  if(!row)throw new Error('company_not_available');
@@ -60,7 +61,7 @@ async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<Move
  await assertCompany(tx,ctx,companyId);
  const types=(await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(importType);
  // ac6645ec — the destination of an Entity Transfer may be named by the same Company ID as the row's company.
- const companies=(await tx.select({value:company.id,label:company.legalName,code:company.companyLabel,registration:company.registrationNo}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.view') and app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1)).map(({code,registration,...row})=>({...row,codes:[code,registration].filter((v):v is string=>!!v?.trim())}));
+ const companies=(await tx.select({value:company.id,label:company.legalName,code:company.companyLabel,registration:company.registrationNo}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id}) and app.workforce_section_import_allowed(${company.id},'view') and app.access_workforce_company(${company.id},'workforce.view') and app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1)).map(({code,registration,...row})=>({...row,codes:[code,registration].filter((v):v is string=>!!v?.trim())}));
  const departments=await tx.select({value:department.id,label:department.label,code:department.name}).from(department).where(and(eq(department.tenantId,ctx.tenantId),isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',[companyId]))).orderBy(asc(department.name),asc(department.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  const positions=await tx.select({value:position.id,label:position.label,code:position.title}).from(position).where(and(eq(position.tenantId,ctx.tenantId),isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',[companyId]))).orderBy(asc(position.title),asc(position.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
  const units=await tx.select({value:businessUnit.id,label:businessUnit.label,code:businessUnit.code,name:businessUnit.name}).from(businessUnit).where(and(eq(businessUnit.tenantId,ctx.tenantId),isNull(businessUnit.archivedAt),visibleLabelIdsCondition(businessUnit,'business_unit',[companyId]))).orderBy(asc(businessUnit.name),asc(businessUnit.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
@@ -173,7 +174,7 @@ function groupsFor(records:MovementImportRecord[]){const groups=new Map<string,M
 type ImportCompany={id:string;name:string;label:string|null;registration:string|null};
 /** Companies the actor may import movements for: live, administered, Workforce view and maintain. */
 export async function movementImportCompaniesTx(tx:Tx,ctx:SessionContext):Promise<ImportCompany[]>{
- return tx.select({id:company.id,name:company.legalName,label:company.companyLabel,registration:company.registrationNo}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.view') and app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
+ return tx.select({id:company.id,name:company.legalName,label:company.companyLabel,registration:company.registrationNo}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id}) and app.workforce_section_import_allowed(${company.id},'view') and app.access_workforce_company(${company.id},'workforce.view') and app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
 }
 /** ac6645ec — Company ID per record, with the cost-allocation matcher (Company Code, registration number or
  * legal name; unknown, ambiguous and not-permitted companies refused). Returns copies; inputs stay intact. */
@@ -244,6 +245,7 @@ async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,i
  const adapted=policy?{input:resolved,warnings:policy.view.warnings??[],references:policy.references,baselineDate:policy.view.baselineDate}:await movementImportRulesTx(tx,ctx,record,resolved,before,behaviour??'');
  if(policy){await recheckMovementManagerEvidenceTx(tx,ctx,policy.references);if(behaviour==='blacklist'&&resolved.effectiveDate!==todayInKualaLumpur())throw new Error('preview_stale_revalidate');}
  const input=adapted.input;
+ if(!rehearsal){await assertWorkforceSectionImportCompanyTx(tx,ctx,before.companyId);if(input.companyId)await assertWorkforceSectionImportCompanyTx(tx,ctx,input.companyId);}
  const catalogBefore=prepared?.source??await catalogTx(tx,ctx,before.companyId);
  if(record.before&&Object.keys(record.before).length)checkBefore(record,before,readable(before,catalogBefore),catalogBefore);
  const catalogAfter=prepared?.catalog??(input.companyId&&input.companyId!==before.companyId?await catalogTx(tx,ctx,input.companyId):catalogBefore);
@@ -363,6 +365,7 @@ export async function previewMovementImport(ctx:SessionContext,p:{companyId?:str
   try{
    await withTenant(ctx,async tx=>{
     await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertWorkforceSectionImportCompanyTx(tx,ctx,companyId);
     const employeeDeadline=Math.min(deadline,Date.now()+MOVEMENT_IMPORT_LIMITS.employeeMs);await lockMovementImportReferenceAdmissionTx(tx,ctx.tenantId);await lockMovementTypeCatalogueTx(tx,ctx.tenantId);await assertCompany(tx,ctx,companyId);if(p.catalogueHash&&digest({version:2,types:(await catalogTx(tx,ctx,companyId)).types})!==p.catalogueHash)throw new Error('workbook_catalogue_changed');
     const subject=await subjectTx(tx,ctx,companyId,code);employee={...employee,employmentId:subject.id,name:subject.name,fingerprint:await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline)};
     const baseFingerprint=employee.fingerprint;const rows:MovementImportRow[]=[];const previous:RehearsedRow[]=[];const corrected:CorrectedRow[]=[];
@@ -421,7 +424,7 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId?:stri
     const corrections=employeeOrder(records).filter(isCorrection),corrected:CorrectedRow[]=[];
     if(corrections.length){
      await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-     for(const record of corrections){budget(employeeDeadline);corrected.push(await applyCorrectionTx(tx,ctx,record,subject.id,companyId,p.acknowledgeClosedPayroll===true));}
+     for(const record of corrections){budget(employeeDeadline);const changed=await applyCorrectionTx(tx,ctx,record,subject.id,companyId,p.acknowledgeClosedPayroll===true);for(const affected of [changed.original.companyId,changed.rawAfter.companyId])if(affected)await assertWorkforceSectionImportCompanyTx(tx,ctx,affected);corrected.push(changed);}
     }
     const settled=corrected.length?await fingerprintTx(tx,ctx,subject.id,companyId,inputHash,selection,records,employeeDeadline):fingerprint;
     const creates=records.filter(row=>!isCorrection(row));
@@ -459,6 +462,7 @@ export async function commitMovementImport(ctx:SessionContext,p:{companyId?:stri
     }
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'movement-import',aggregateId:result.batchId!,eventType:'movement-import.employee.applied',actor:actorOf(ctx),subjectEmploymentId:subject.id,payload:{companyId,eventCount:chosen.length,sourceRows:chosen.map(row=>({key:row.row,sheet:row.source?.sheet??'CSV',row:row.source?.row??row.row})),eventTypes:[...new Set(chosen.map(row=>row.cells.kind).filter(Boolean))],
      ...(corrected.length?{corrections:corrected.map(row=>({action:row.action,movementId:row.originalId,closedPayrollPeriods:row.closedPayrollPeriods})),closedPayrollAcknowledged:p.acknowledgeClosedPayroll===true}:{})}});
+    await assertWorkforceSectionImportEmploymentTx(tx,ctx,subject.id);
     return {...employee,employmentId:subject.id,name:subject.name,rows,fingerprint:combined};
    });
    result.imported+=chosen.length;

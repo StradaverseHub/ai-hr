@@ -12,6 +12,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
+import {assignRole} from '../core/admin';
 import { setCompensation } from '../core/comp';
 import * as perf from '../packs/performance/service';
 import { defaultPolicy, type KPI } from '../packs/performance/onehr/model';
@@ -70,7 +71,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Deliver outcomes',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}],true);
     await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Agreed');await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id,actual:100,note:'PRIVATE_RESULT_NOTE'}],'PRIVATE_REFLECTION');
     await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'no',remark:''},'skill-2':{answer:'no',remark:''}},false,'PRIVATE_COMPETENCY_WORDS');
-    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'},{employmentId:peers[0].employmentId,relationship:'peer'}]);
+    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'},{employmentId:peers[0].employmentId,relationship:'peer'}],'administration');
     const overview=await perf.getAssessmentOverview(a,cycleId),row=overview.overview!.rows[0];
     expect(row.cells.pm).toMatchObject({done:1,total:1,pct:100});expect(row.cells.competency).toMatchObject({done:1,total:6,pct:16});expect(row.cells.f360).toMatchObject({done:0,total:2,pct:0});expect(row.cells.idp).toMatchObject({done:0,total:6,pct:0});expect(row.cells.calibration).toMatchObject({done:0,total:1,pct:0});
     expect((await view()).managerPerformance).toBeNull();expect(JSON.stringify(overview)).not.toMatch(/PRIVATE_|salary|answers|managerRemark/);await expect(perf.getAssessmentOverview(self,cycleId)).rejects.toThrow();
@@ -112,7 +113,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.runAssessmentAdminAction(a,cycleId,{tool:'save_setting',args:{}})).rejects.toThrow();
   });
   it('Performance admin 360 reports count actual assessor assignments and preserve complete-group totals',async()=>{
-    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'},{employmentId:peers[0].employmentId,relationship:'peer'}]);
+    await perf.assignOnehrPanel(a,reviewId,(await view(a)).revision,[{employmentId:manager.employmentId,relationship:'line_manager'},{employmentId:peers[0].employmentId,relationship:'peer'}],'administration');
     const report=await perf.getAssessmentAdminReport(a,cycleId,{kind:'progress',module:'f360',groupBy:'company',status:'outstanding'});
     expect(report.rows).toHaveLength(1);expect(report.rows[0].slice(1)).toEqual([0,2,'0%']);
     const people=await perf.getAssessmentAdminReport(a,cycleId,{kind:'progress',module:'f360',groupBy:'person'});expect(people.rows).toHaveLength(2);
@@ -188,6 +189,19 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const own=await perf.getPerformanceGuideFacts(self,'last result');expect(JSON.stringify(own)).not.toMatch(/SECRET_SCORE|SECRET_REVIEWER_REMARK/);
     expect(own.some(f=>f.id.startsWith('record:'))).toBe(true);
     await expect(perf.getPerformanceGuideReport(self)).rejects.toThrow();
+  });
+  it('keeps raw frozen provenance closed while native guards and released manager bands remain available',async()=>{
+    await complete(true,'PRIVATE_FROZEN_PROVENANCE');const resultId=await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    const [stored]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.id,resultId));expect(JSON.stringify(stored.result)).toContain('PRIVATE_FROZEN_PROVENANCE');
+    expect(await withTenant(mgr,tx=>tx.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId)))).toEqual([]);
+    const [before]=await withTenant(mgr,tx=>tx.execute<{id:string;card:{result:Record<string,unknown>}|null}>(sql`select (select id from app.onehr_review_frozen(${reviewId}::uuid)) as id,app.onehr_task_result_card(${reviewId}::uuid) as card`));
+    expect(before.id).toBe(resultId);expect(before.card?.result.performance).toBeNull();expect(before.card?.result.potential).toBeNull();expect(JSON.stringify(before.card)).not.toContain('PRIVATE_FROZEN_PROVENANCE');expect(before.card?.result).not.toHaveProperty('provenance');
+    await perf.releaseOnehrResult(a,reviewId,'performance',true);
+    const [after]=await withTenant(mgr,tx=>tx.execute<{card:{result:{performance:string|null;potential:string|null}}}>(sql`select app.onehr_task_result_card(${reviewId}::uuid) as card`));
+    expect(after.card.result.performance).toBe((stored.result as {performance:string}).performance);expect(after.card.result.potential).toBeNull();
+    expect(await withTenant(mgr,tx=>tx.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId)))).toEqual([]);
+    await perf.releaseOnehrResult(a,reviewId,'performance',false);
+    const [revoked]=await withTenant(mgr,tx=>tx.execute<{card:{result:{performance:string|null}}}>(sql`select app.onehr_task_result_card(${reviewId}::uuid) as card`));expect(revoked.card.result.performance).toBeNull();
   });
   it('Performance guide separates a released current result from closed-cycle history',async()=>{
     await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);await perf.releaseOnehrResult(a,reviewId,'performance',true);
@@ -440,6 +454,38 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
     await expect(perf.saveAssessmentProfitAchievement(a,cycleId,{companyId:b.companyId,revision:2,achievementPct:100})).rejects.toThrow(/archived/);
   });
+  it('preserves native Self privacy when the same person has current Group HR and selects Administration',async()=>{
+    await complete();await perf.freezeOnehrReview(a,reviewId,(await view(a)).revision);
+    const [stored]=await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId));expect(stored).toBeDefined();expect((stored.result as Record<string,unknown>).performance).not.toBeNull();expect((stored.result as Record<string,unknown>).potential).not.toBeNull();expect(stored.performanceReleasedAt).toBeNull();expect(stored.potentialReleasedAt).toBeNull();
+    await assignRole(a,{appUserId:self.userId!,role:'hr_admin'});
+    const mixed={...self,roles:['employee','hr_admin'],grants:[{role:'employee',companyId:null},{role:'hr_admin',companyId:null}]};
+    const [source]=await withTenant(mixed,tx=>tx.execute<{native:boolean;control:boolean;self:boolean;administration:boolean}>(sql`select app.onehr_admin(${b.companyId}::uuid) as native,app.function_action_allowed('performance.onehr.reviewAdministration','view',${b.companyId}::uuid) as control,app.onehr_review_task_view(${reviewId}::uuid,'self') as self,app.onehr_review_administration(${reviewId}::uuid) as administration`));expect(source).toEqual({native:true,control:true,self:true,administration:false});
+    expect(await perf.getOnehrReviewForPurpose(mixed,reviewId,'administration')).toBeNull();expect(await perf.getOnehrAdministrativeReview(mixed,reviewId)).toBeNull();expect(await withTenant(mixed,tx=>tx.execute(sql`select review_id from app.onehr_review_administration_fields(${reviewId}::uuid)`))).toEqual([]);
+    const own=await perf.getOnehrReviewForPurpose(mixed,reviewId,'task');expect(own).not.toBeNull();expect(own).toMatchObject({self:true,admin:false,potential:null,peers:[],result:{performance:null,potential:null,talent:null}});
+    expect(await owner.db.select().from(schema.onehrResult).where(eq(schema.onehrResult.reviewId,reviewId))).toEqual([stored]);
+  });
+
+  it('writes assigned competency answers through the finite native course when raw review storage is profile-fenced',async()=>{
+    const answers={'skill-1':{answer:'no' as const,remark:''},'skill-2':{answer:'no' as const,remark:''}};
+    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,answers,false,'Own native competency reflection.',{Technical:'Employee section retained.'});
+    const [before]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));expect(before.competencyStatus).toBe('submitted');
+    const profile=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'department',values:[b.deptB]}]};
+    await owner.client`insert into data_permission_profile(id,tenant_id,name) values(${profile},${b.tenantId},${'Fictional competency reviewer '+profile})`;
+    await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by) values(${revision},${b.tenantId},${profile},${JSON.stringify(rules)}::text::jsonb,${a.userId!})`;
+    await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${profile}`;
+    await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by) values(${b.tenantId},${mgr.userId!},${profile},${a.userId!})`;
+    const [native]=await withTenant(mgr,tx=>tx.execute<{data:boolean;reviewer:boolean;view:boolean}>(sql`select app.data_permission_matches(${subject.employmentId}::uuid) as data,app.onehr_effective_reviewer(${reviewId}::uuid) as reviewer,app.onehr_review_task_view(${reviewId}::uuid,'assigned') as view`));expect(native).toEqual({data:false,reviewer:true,view:true});
+    expect(await withTenant(mgr,tx=>tx.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)))).toEqual([]);
+    for(const ctx of [self,a])await expect(perf.submitOnehrCompetencies(ctx,reviewId,before.revision,answers,true,'Borrowed administrative answer.')).rejects.toThrow();
+    await expect(withTenant(mgr,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_competencies_submit(${reviewId}::uuid,${before.revision}::integer,${JSON.stringify(answers)}::jsonb,true,'Borrowed agent answer.','{}'::jsonb)`);})).rejects.toMatchObject({cause:expect.objectContaining({code:'42501',message:expect.stringMatching(/OneHR competency actor unavailable/)})});
+    expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([before]);
+    await perf.submitOnehrCompetencies(mgr,reviewId,before.revision,answers,true,'Native assigned competency feedback.',{Technical:'Native manager section.'});
+    const [after]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
+    expect(after).toEqual({...before,competencyStatus:'reviewed',competencies:(before.competencies as Record<string,unknown>[]).map(c=>({...c,manager:'no',managerRemark:''})),competencyManagerRemark:'Native assigned competency feedback.',competencyManagerSections:{Technical:'Native manager section.'},revision:before.revision+1});
+    const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.competencies-reviewed')));expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorType:'user',actorId:mgr.userId,subjectEmploymentId:null,payload:{}});
+    expect(await withTenant(mgr,tx=>tx.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)))).toEqual([]);
+  });
+
   it('keeps competency category drafts private and submits each authors own remarks with the assessment',async()=>{
     const answers={'skill-1':{answer:'no' as const,remark:''},'skill-2':{answer:'no' as const,remark:''}};
     await perf.saveAssessmentDraft(self,reviewId,(await view(self)).revision,null,{kind:'competency_self',answers:{},remark:'',sections:{Technical:'Private employee category remark.'}});

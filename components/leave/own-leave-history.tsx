@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { leaveRequestDateBreakdown, myEmployment, myEmploymentIdsAll, listLeaveTypes, listLeaveRequestsPage, countLeaveRequestsByStatus, employeeCancelOffers, pendingCancellationProgress } from '@/core/read';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
-import { todayInKualaLumpur } from '@/packs/leave/service';
+import { todayInKualaLumpur,ownLeaveRequestActionAccess } from '@/packs/leave/service';
 import { myUpcomingLeave, ownLeaveApprovalTrails, ownLeaveCancellations, ownLeaveRejections } from '@/core/my-leave';
 import { type UpcomingLeaveRow } from '@/components/leave/upcoming-leave';
 import { LEAVE_HISTORY_TABS, applicationDateOutcomeRows, approvalProgress, approverKindLabelKey, approverLine, cancellationLines, isPartiallyApproved, ownLeaveWithdrawable, resolveHistoryTab, type HistoryLineDeps, type LeaveHistoryTab } from '@/lib/my-leave-history';
@@ -164,6 +164,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   // endDate >= from), which is exactly the reporter's three date cases and also catches leave spanning a
   // month boundary. Skipped entirely when nothing is filtered — then the two lists are the same list.
   const historyAll = await listLeaveRequestsPage(session, {
+    purpose: 'ownApplication',
     employmentIds: historyEmploymentIds,
     sort: 'start',
     dir: 'desc',
@@ -178,6 +179,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   // leaveRequestPageWhere with listLeaveRequestsPage), not one list read per tab — that was four
   // transactions on every visit. A tab with no rows is absent from the result and reads 0.
   const byStatus = await countLeaveRequestsByStatus(session, {
+    purpose: 'ownApplication',
     employmentIds: historyEmploymentIds,
     statuses: [...LEAVE_HISTORY_TABS],
     leaveTypeIds: hTypeIds.length > 0 ? hTypeIds : undefined,
@@ -187,6 +189,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   const tabCounts = Object.fromEntries(LEAVE_HISTORY_TABS.map((tab) => [tab, byStatus[tab] ?? 0])) as Record<LeaveHistoryTab, number>;
   const historyTab = resolveHistoryTab(sp.hTab, tabCounts);
   const historyShown = await listLeaveRequestsPage(session, {
+    purpose: 'ownApplication',
     employmentIds: historyEmploymentIds,
     statuses: [historyTab],
     leaveTypeIds: hTypeIds.length > 0 ? hTypeIds : undefined,
@@ -203,6 +206,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   // now produces exactly that order (sort 'start', dir 'desc'), so the JS re-sort that used to correct the
   // read's createdAt-desc default is gone rather than duplicated.
   const selfHistory = historyShown.rows;
+  const ownFunctionActions=await ownLeaveRequestActionAccess(session,selfHistory.map(row=>row.id));
 
   // Per-date outcome rows for the viewer's OWN recent requests (My Absence merge · a7cbd895): the same
   // 5-most-recent window the /me Leave tab resolved (R17 600be8ac ask #6), so the employee still sees the
@@ -211,7 +215,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   // RLS self-branch admits the subject to their rows.
   const dateBreakdownEntries: (readonly [string, Awaited<ReturnType<typeof leaveRequestDateBreakdown>>])[] =
     await Promise.all(
-      selfHistory.slice(0, 5).map(async (r) => [r.id, await leaveRequestDateBreakdown(session, r.id)] as const),
+      selfHistory.slice(0, 5).map(async (r) => [r.id, await leaveRequestDateBreakdown(session, r.id, 'ownApplication')] as const),
     );
   const requestDateBreakdowns = new Map(dateBreakdownEntries);
 
@@ -302,7 +306,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
     const actions =
       ownLeaveWithdrawable(r) ? (
         <>
-          <EditLeaveDialog
+          {ownFunctionActions[r.id]?.canEdit===true && <EditLeaveDialog
             leaveRequestId={r.id}
             // ad965821 — the eligible set UNION this request's OWN type. The narrowing has to reach the Edit
             // box too or "no indication they exist" would hold on the apply form and fail one click away;
@@ -332,8 +336,8 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
             }}
             submitAction={editLeaveAction}
             returnContext={returnContext}
-          />
-          <CancelLeaveDialog leaveRequestId={r.id} submitAction={cancelOwnLeaveAction} returnContext={returnContext} />
+          />}
+          {ownFunctionActions[r.id]?.canDelete===true && <CancelLeaveDialog leaveRequestId={r.id} submitAction={cancelOwnLeaveAction} returnContext={returnContext} />}
         </>
       ) : (cancelOffers.get(r.id) ?? null) !== null ? (
         // r301: no button at all when the leave type does not allow it (or the leave has unpaid days, or a

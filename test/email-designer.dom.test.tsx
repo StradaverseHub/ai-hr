@@ -3,6 +3,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
+import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 import {EmailDesigner} from '../app/admin/settings/email-templates/designer';
 import {sampleEmailSystem} from '../lib/email-design/catalogue';
 import {emailKinds,emailLocale,type EmailKind,type EmailLocale,type EmailDocument,defaultEmailDocument} from '../lib/email-design/model';
@@ -10,8 +11,20 @@ const actions=vi.hoisted(()=>({saveEmailDesignAction:vi.fn(async(..._args:unknow
 vi.mock('../app/admin/settings/email-templates/actions',()=>actions);
 afterEach(()=>{cleanup();vi.clearAllMocks();actions.loadEmailDesignHistoryAction.mockResolvedValue([]);});
 const sampleSystems=Object.fromEntries(emailKinds.map(kind=>[kind,Object.fromEntries(emailLocale.options.map(locale=>[locale,sampleEmailSystem(kind,locale)]))])) as Record<EmailKind,Record<EmailLocale,ReturnType<typeof sampleEmailSystem>>>;
-const setup=()=>render(<NextIntlClientProvider locale="en" messages={en}><EmailDesigner designs={[]} sampleSystems={sampleSystems}/></NextIntlClientProvider>);
+const setup=()=>render(<NextIntlClientProvider locale="en" messages={en}><EmailDesigner canEdit designs={[]} sampleSystems={sampleSystems}/></NextIntlClientProvider>);
 describe('email designer',()=>{
+ it.each(Object.entries({en,ms,zh,ta,th,vi:viMessages}))('keeps preview, language and history available with mutation controls closed in %s',async(locale,messages)=>{
+  actions.loadEmailDesignHistoryAction.mockResolvedValue([{revision:1,document:null,createdAt:'2026-10-29T00:00:00Z',createdBy:'Fictional admin'}]);
+  render(<NextIntlClientProvider locale={locale} messages={messages}><EmailDesigner designs={[]} sampleSystems={sampleSystems}/></NextIntlClientProvider>);
+  const t=messages.emailDesign;
+  for(const name of [t.save,t.sendTest,t.restoreDefault,t.blocksNames.text])expect(screen.getByRole('button',{name}).matches(':disabled')).toBe(true);
+  const subject=screen.getByRole<HTMLInputElement>('textbox',{name:t.subject});expect(subject.matches(':disabled')).toBe(true);
+  const before=subject.value;fireEvent.change(subject,{target:{value:'Forged local edit'}});expect(subject.value).toBe(before);
+  expect(screen.getByRole('combobox',{name:t.language}).matches(':disabled')).toBe(false);
+  expect(document.querySelector('iframe')!.srcdoc).toContain('SAMPLE');
+  fireEvent.click(screen.getByRole('button',{name:t.history}));expect((await screen.findByRole('button',{name:t.restoreVersion})).matches(':disabled')).toBe(true);
+  expect(actions.saveEmailDesignAction).not.toHaveBeenCalled();expect(actions.sendEmailDesignTestAction).not.toHaveBeenCalled();
+ });
  it('protects the AIHR block, shows the available details and previews in a sandbox',()=>{
   setup();fireEvent.click(screen.getByRole('button',{name:'2. AIHR block'}));expect(screen.getByText(en.emailDesign.protectedHelp)).toBeTruthy();
   expect(document.querySelector('iframe')!.getAttribute('sandbox')).toBe('');
@@ -28,7 +41,7 @@ describe('email designer',()=>{
  });
  it('changes language without copying customized wording into unedited languages',()=>{
   const custom={...defaultEmailDocument('invitation'),subject:'Saved subject'};
-  render(<NextIntlClientProvider locale="en" messages={en}><EmailDesigner designs={[{kind:'invitation',locale:'en',revision:1,document:custom,updatedAt:'2026-10-29T00:00:00Z',updatedBy:'Fictional admin'}]} sampleSystems={sampleSystems}/></NextIntlClientProvider>);
+  render(<NextIntlClientProvider locale="en" messages={en}><EmailDesigner canEdit designs={[{kind:'invitation',locale:'en',revision:1,document:custom,updatedAt:'2026-10-29T00:00:00Z',updatedBy:'Fictional admin'}]} sampleSystems={sampleSystems}/></NextIntlClientProvider>);
   expect(screen.getByDisplayValue('Saved subject')).toBeTruthy();
   fireEvent.change(screen.getByRole('combobox',{name:en.emailDesign.language}),{target:{value:'ms'}});
   expect(screen.queryByDisplayValue('Saved subject')).toBeNull();

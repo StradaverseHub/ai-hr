@@ -6,13 +6,13 @@ import messages from '../messages/en.json';
 import type { SessionContext } from '../db/client';
 import type { AttendanceRuleView } from '../core/attendance-rule';
 
-const { router } = vi.hoisted(() => ({ router: { push: vi.fn() } }));
+const { router,controlFlags } = vi.hoisted(() => ({ router: { push: vi.fn() },controlFlags:{duty:{view:true,edit:true},exception:{view:true,edit:true}} }));
 vi.mock('next/navigation', () => ({ useRouter: () => router, usePathname: () => '/admin/attendance/schedule/group/edit' }));
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages, namespace: namespace as never, onError: e => { throw e; } }) }));
 vi.mock('../core/attendance-rule', () => ({ countEmploymentsInRule: async () => 0 }));
-vi.mock('../core/schedule-group-controls', () => ({scheduleGroupControls:async()=>({label:null,dutyRosterControl:false,revisions:[]})}));
+vi.mock('../core/schedule-group-controls', () => ({scheduleControlActionAccess:async(_ctx:unknown,kind:'duty'|'exception',operation:'view'|'edit')=>controlFlags[kind][operation],scheduleGroupControls:async()=>({label:null,dutyRosterControl:false,revisions:[]})}));
 vi.mock('../core/roster', () => ({ listShiftsForTenant: async () => [] }));
-vi.mock('../packs/attendance/service', () => ({ getScheduleRotation: async () => ({ versions: [],memberships:[], revision: 'r1' }) }));
+vi.mock('../packs/attendance/service', () => ({ rotationActionAccess:async()=>true,getScheduleRotation: async () => ({ versions: [],memberships:[], revision: 'r1' }) }));
 vi.mock('../app/admin/attendance-policy/rule-actions', () => ({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
 vi.mock('../components/schedule-rotation-editor', () => ({ ScheduleRotationEditor: () => null }));
 vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn(),saveScheduleGroupControlAction:vi.fn() }));
@@ -25,7 +25,7 @@ import { AttendanceSettingsNavigation } from '../components/attendance-settings-
 import { AttendanceSettingsActionForm } from '../components/attendance-settings-action-form';
 import { saveScheduleGroupAttendanceAction, saveScheduleGroupOvertimeAction } from '../app/admin/attendance/schedule/actions';
 import { __resetUnsavedGuards, hasUnsavedChanges } from '../lib/unsaved-changes';
-afterEach(() => { cleanup(); __resetUnsavedGuards(); vi.restoreAllMocks(); router.push.mockReset(); vi.mocked(saveScheduleGroupAttendanceAction).mockReset();vi.mocked(saveScheduleGroupOvertimeAction).mockReset();vi.mocked(saveScheduleGroupGeneralAction).mockReset(); });
+afterEach(() => { for(const kind of ['duty','exception'] as const){controlFlags[kind].view=true;controlFlags[kind].edit=true;} cleanup(); __resetUnsavedGuards(); vi.restoreAllMocks(); router.push.mockReset(); vi.mocked(saveScheduleGroupAttendanceAction).mockReset();vi.mocked(saveScheduleGroupOvertimeAction).mockReset();vi.mocked(saveScheduleGroupGeneralAction).mockReset(); });
 
 // Resolve the real server tree and mount its three independent client action forms.
 // The action mock simulates Next’s RSC refresh followed by its handled redirect rejection.
@@ -227,4 +227,26 @@ describe('independent Schedule Group forms after a server refresh', () => {
     fireEvent.change(grace, { target: { value: '5' } });
     expect(hasUnsavedChanges()).toBe(false); // Only the submitted value was acknowledged.
   });
+});
+
+
+function findControlCard(node:ReactNode,title:string):ReactElement|undefined{
+ if(Array.isArray(node))return node.map(child=>findControlCard(child,title)).find(Boolean);
+ if(!isValidElement<{children?:ReactNode}>(node))return;
+ if(node.type===ScheduleGroupTabs)return (node.props as React.ComponentProps<typeof ScheduleGroupTabs>).tabs.map(tab=>findControlCard(tab.body,title)).find(Boolean);
+ const children=React.Children.toArray(node.props.children);
+ if(children.some(child=>isValidElement<{children?:ReactNode}>(child)&&child.type==='h3'&&child.props.children===title))return node;
+ return findControlCard(node.props.children,title);
+}
+it('keeps the actual Duty value read-only without borrowing sibling Exception Edit',async()=>{
+ controlFlags.duty.edit=false;
+ const tree=await resolveGeneral(await ScheduleGroupSections({s:{} as SessionContext,rule,rules:[rule],mode:'edit'}));
+ const duty=findControlCard(tree,messages.boardSchedule.duty),exception=findControlCard(tree,messages.boardSchedule.exception);expect(duty).toBeDefined();expect(exception).toBeDefined();
+ const {container}=render(<NextIntlClientProvider locale="en" messages={messages}>{duty}{exception}</NextIntlClientProvider>);
+ expect(container.querySelector('input[name="kind"][value="duty"]')).toBeNull();expect(container.querySelector('input[name="kind"][value="exception"]')).toBeTruthy();expect(screen.getByText(messages.boardSchedule.off)).toBeTruthy();
+});
+it('omits an unprojected Duty View while retaining the independent Exception course',async()=>{
+ controlFlags.duty.view=false;controlFlags.duty.edit=false;
+ const tree=await resolveGeneral(await ScheduleGroupSections({s:{} as SessionContext,rule,rules:[rule],mode:'edit'}));
+ expect(findControlCard(tree,messages.boardSchedule.duty)).toBeUndefined();expect(findControlCard(tree,messages.boardSchedule.exception)).toBeDefined();
 });

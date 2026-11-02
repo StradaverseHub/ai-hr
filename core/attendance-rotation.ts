@@ -1,3 +1,4 @@
+import {assertModuleFunctionTx} from './module-action-access';
 /** Schedule Group cycle owner. Immutable dated versions; raw attendance is never recalculated here. */
 import { createHash } from 'node:crypto';
 import { asc, eq, inArray, sql } from 'drizzle-orm';
@@ -70,9 +71,13 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
   // A new optional Attendance configuration write; shared tx readers stay available to core Leave.
   assertModuleGate(ctx,'attendance');
   return withTenant(ctx, async tx => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     const [authority] = await tx.execute(sql`select app.is_group_admin() as allowed`) as unknown as { allowed: boolean }[];
     if (!authority?.allowed) throw new Error('A group-wide HR administrator is required to change tenant-wide schedule rotations.');
+    await assertModuleFunctionTx(tx,'attendancePolicy.schedule','edit');
+    const [purpose]=await tx.execute<{allowed:boolean}>(sql`select app.attendance_rotation_allowed('edit') as allowed`);
+    if(purpose?.allowed!==true)throw new Error('Schedule rotation action unavailable');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [rule] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).for('update');
     if (!rule || rule.isDefault) throw new Error('Choose a non-Standard Schedule Group in this tenant.');
@@ -122,4 +127,10 @@ export async function assertRotationPoolWriteTx(tx: Tx, from: string | null | un
   const [saved] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation)
     .where(inArray(attendanceRotation.ruleId,ids)).limit(1);
   if (saved) throw new Error('Edit Shifts Allowed together with the dated rotation in its Schedule Group.');
+}
+
+
+/** Exact maintenance flags; runtime week/attendance readers retain native reference sources. */
+export function rotationActionAccess(ctx:SessionContext,operation:'view'|'edit'){
+ return withTenant(ctx,async tx=>{const [row]=await tx.execute<{allowed:boolean}>(sql`select app.attendance_rotation_allowed(${operation}) as allowed`);return row?.allowed===true;});
 }

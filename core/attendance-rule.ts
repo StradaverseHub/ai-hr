@@ -1,3 +1,4 @@
+import {assertModuleFunctionTx} from './module-action-access';
 /**
  * 88e94371 · "Lateness, Early Out & Overtime Settings" — named-rule library service.
  *
@@ -256,6 +257,7 @@ export function setRuleShifts(ctx:SessionContext,p:{ruleId:string;shiftIds:reado
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  return withTenant(ctx,async tx=>{
+    await assertModuleFunctionTx(tx,'attendancePolicy.schedule','edit');
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [rule]=await tx.select().from(attendanceRule).where(eq(attendanceRule.id,p.ruleId)).for('update');
@@ -307,51 +309,11 @@ export function getAttendanceRule(ctx: SessionContext, ruleId: string): Promise<
  */
 export function ensureStandardRule(ctx: SessionContext): Promise<{ id: string; created: boolean }> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
-    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-    const [existing] = await tx
-      .select({ id: attendanceRule.id })
-      .from(attendanceRule)
-      .where(eq(attendanceRule.isDefault, true))
-      .limit(1);
-    if (existing) return { id: existing.id, created: false };
-    const [pol] = await tx
-      .select({ lateAfter: attendancePolicy.lateAfter, workStart: attendancePolicy.workStart })
-      .from(attendancePolicy)
-      .orderBy(asc(attendancePolicy.createdAt))
-      .limit(1);
-    const lateGrace = pol ? Math.max(0, timeToMin(pol.lateAfter) - timeToMin(pol.workStart)) : 0;
-    const [row] = await tx
-      .insert(attendanceRule)
-      .values({
-        tenantId: ctx.tenantId,
-        name: 'Standard',
-        description: 'Default attendance calculation rule.',
-        isDefault: true,
-        status: 'active',
-        lateGracePeriodMinutes: lateGrace,
-      })
-      .onConflictDoNothing()
-      .returning({ id: attendanceRule.id });
-    // Lost the race (another request seeded it) — re-read.
-    if (!row) {
-      const [again] = await tx
-        .select({ id: attendanceRule.id })
-        .from(attendanceRule)
-        .where(eq(attendanceRule.isDefault, true))
-        .limit(1);
-      return { id: again!.id, created: false };
-    }
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'attendance-rule',
-      aggregateId: row.id,
-      eventType: 'attendance-rule.created',
-      actor: actorOf(ctx),
-      payload: { name: 'Standard', isDefault: true, seeded: true },
-    });
-    return { id: row.id, created: true };
+  return withTenant(ctx,async tx=>{
+   await tx.execute(sql`select app.access_workforce_write_lock()`);
+   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+   const [row]=await tx.execute<{value:{id:string;created:boolean}}>(sql`select app.attendance_standard_rule_ensure() as value`);
+   if(!row?.value?.id||typeof row.value.created!=='boolean')throw new Error('Schedule default unavailable');return row.value;
   });
 }
 
@@ -672,6 +634,7 @@ export function createAttendanceRule(ctx: SessionContext, p: AttendanceRuleInput
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const n = normalizeInput(p);
   return withTenant(ctx, async (tx) => {
+    await assertModuleFunctionTx(tx,'attendancePolicy.schedule','add');
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     let ruleId: string;
@@ -740,6 +703,7 @@ export function updateAttendanceRule(ctx: SessionContext, p: { ruleId: string } 
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async tx => {
+    await assertModuleFunctionTx(tx,'attendancePolicy.schedule','edit');
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     return updateAttendanceRuleTx(ctx,tx,p);
@@ -763,6 +727,7 @@ export function updateAttendanceRuleSection(ctx: SessionContext, p: AttendanceRu
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async tx => {
+    await assertModuleFunctionTx(tx,'attendancePolicy.schedule','edit');
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [rule] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1).for('update');
@@ -935,6 +900,7 @@ export function copyAttendanceRule(ctx: SessionContext, p: { ruleId: string }): 
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await assertModuleFunctionTx(tx,'attendancePolicy.schedule','add');
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).limit(1).for('update');
@@ -1066,6 +1032,7 @@ export function setAttendanceRuleStatus(
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const status = p.status === 'inactive' ? 'inactive' : 'active';
   return withTenant(ctx, async (tx) => {
+    await assertModuleFunctionTx(tx,'attendancePolicy.schedule',p.status==='inactive'?'delete':'edit');
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [rule] = await tx
@@ -1103,6 +1070,7 @@ export function deleteAttendanceRule(ctx: SessionContext, p: { ruleId: string })
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await assertModuleFunctionTx(tx,'attendancePolicy.schedule','delete');
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [rule] = await tx

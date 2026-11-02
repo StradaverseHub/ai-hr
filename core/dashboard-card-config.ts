@@ -1,3 +1,4 @@
+import {settingsAccessTx} from './organisation-access';
 /**
  * HR-Admin Dashboard Card Master (feedback 1586d2f5) — the tenant-scoped catalog of dashboard cards HR can
  * maintain. This is the MASTER + service ONLY; the employee dashboard customizer (feedback 578a2fcf) reads
@@ -321,8 +322,9 @@ export type DashboardCardRow = {
 };
 
 /** List every dashboard card in the tenant catalog, ordered by display order then name. */
-export async function listCards(ctx: SessionContext): Promise<DashboardCardRow[]> {
+export async function listCards(ctx: SessionContext,maintenance=false): Promise<DashboardCardRow[]> {
   return withTenant(ctx, async (tx) => {
+    if(maintenance&&!await settingsAccessTx(tx,'view','dashboardCardConfig'))throw new Error('Forbidden');
     const rows = await tx
       .select({
         id: dashboardCardConfig.id,
@@ -351,7 +353,7 @@ export async function listCards(ctx: SessionContext): Promise<DashboardCardRow[]
 }
 
 export async function getCard(ctx: SessionContext, id: string): Promise<DashboardCardRow | null> {
-  const rows = await listCards(ctx);
+  const rows = await listCards(ctx,true);
   return rows.find((r) => r.id === id) ?? null;
 }
 

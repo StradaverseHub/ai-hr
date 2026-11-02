@@ -17,11 +17,8 @@ import {assertMyTeamSubjectTx} from './my-team-scope';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import { scopeOf } from '../lib/delegation-scope';
 import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
-// 5206539f — the pure "does this caller hold this key" decision (defaults ∘ tenant overrides ∘ company
-// overrides). Taken from the lib/ leaf rather than from core/payroll.ts's resolvePayrollPermission, which
-// is the same decision wrapped in a query: importing it would pull the whole payroll kernel into every
-// leave request path for fifteen lines of SELECT.
-import { decidePayrollPermission } from '../lib/payroll-permissions';
+// Existing on-behalf permission uses the private native SQL fact shared by composer and source guards.
+// Subject visibility, data scope, lifecycle, consent and effects remain owned by requestLeave below.
 import {calendarWindowDates} from '../lib/calendar-window';
 import {
   approversOf,
@@ -238,9 +235,6 @@ import {
   leaveRequestAttachment,
   leaveRequestDate,
   leaveType,
-  // 5206539f — the (key, role) override rows behind `leave.apply_on_behalf`. Its table name says "payroll"
-  // for historical reasons only; see the note in lib/payroll-permissions.ts.
-  payrollPermissionGrant,
   person,
   reportingLine,
   rosterAssignment,
@@ -1726,6 +1720,8 @@ export function isLeaveEligible(
   return true;
 }
 
+async function leaveTaskBalanceTx(tx:Tx,requestId:string,typeId:string){const [row]=await tx.execute<{balance:string}>(sql`select app.leave_task_balance(${requestId}::uuid,${typeId}::uuid) as balance`);if(row?.balance===undefined||row.balance===null)throw Error('Leave task balance unavailable');return Number(row.balance);}
+
 export async function leaveBalance(tx: Tx, employmentId: string, leaveTypeId: string): Promise<number> {
   const [row] = await tx
     .select({ bal: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
@@ -2423,12 +2419,13 @@ async function enforceLeaveYearApplicationLimit(
   const limit = Number(lt.maxDaysPerLeaveYear);
   if (!Number.isFinite(limit) || limit <= 0) return;
 
-  const [emp] = await tx
+  let [emp] = await tx
     .select({ companyId: employment.companyId, hiredOn: employment.hiredOn })
     .from(employment)
     .where(eq(employment.id, p.employmentId))
     .limit(1);
-  if (!emp) return;
+  if(!emp&&p.excludeRequestId){const [task]=await tx.execute<{employment_id:string;company_id:string;hired_on:string}>(sql`select * from app.leave_task_subject(${p.excludeRequestId}::uuid)`);if(task?.employment_id===p.employmentId)emp={companyId:task.company_id,hiredOn:task.hired_on};}
+  if(!emp)throw new Error('Leave task subject unavailable');
   const [co] = await tx
     .select({ leaveCycle: company.leaveCycle })
     .from(company)
@@ -3287,29 +3284,9 @@ type LeaveOverrideAudit = {
  *
  * Read inside the caller's own tx: the grant table is tenant-readable under RLS.
  */
-async function resolveApplyOnBehalfTx(tx: Tx, ctx: SessionContext, companyId: string | null): Promise<boolean> {
-  const rows = await tx
-    .select({
-      role: payrollPermissionGrant.role,
-      allowed: payrollPermissionGrant.allowed,
-      companyId: payrollPermissionGrant.companyId,
-    })
-    .from(payrollPermissionGrant)
-    .where(
-      and(
-        eq(payrollPermissionGrant.tenantId, ctx.tenantId),
-        eq(payrollPermissionGrant.permissionKey, 'leave.apply_on_behalf'),
-        companyId
-          ? or(isNull(payrollPermissionGrant.companyId), eq(payrollPermissionGrant.companyId, companyId))
-          : isNull(payrollPermissionGrant.companyId),
-      ),
-    );
-  return decidePayrollPermission({
-    key: 'leave.apply_on_behalf',
-    // Delegated grants count exactly as directly-assigned roles do, mirroring core/payroll.ts's callerRolesOf.
-    callerRoles: [...(ctx.roles ?? []), ...(ctx.grants ?? []).map((g) => g.role)],
-    overrides: rows.map((r) => ({ role: r.role, allowed: r.allowed, companyScoped: r.companyId != null })),
-  });
+async function resolveApplyOnBehalfTx(tx: Tx, _ctx: SessionContext, companyId: string | null): Promise<boolean> {
+  const [row] = await tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_native(${companyId}::uuid) as allowed`);
+  return row?.allowed === true;
 }
 
 /**
@@ -3394,7 +3371,7 @@ export async function requestLeave(
 ): Promise<RequestLeaveResult> {
   p = { ...p,
     overrideConsent: Array.isArray(p.overrideConsent) ? p.overrideConsent.slice() : p.overrideConsent,
-    ...(p.document ? { document: { ...p.document } } : {}) };
+    ...(p.document ? { document: { ...p.document, content: Buffer.from(p.document.content) } } : {}) };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   if (reviewedOwnLeave) {
     if (!Array.isArray(reviewedOwnLeave.holidayWarnings)) throw new LeaveReviewedEffectError('unsupported');
@@ -3469,6 +3446,8 @@ export async function requestLeave(
     if (!isSelfSubject && !(subject && (await resolveApplyOnBehalfTx(tx, ctx, subject.companyId)))) {
       throw new LeaveOnBehalfNotAllowedError();
     }
+    if (isSelfSubject) await assertOwnLeaveApplicationActionTx(tx,p.employmentId,'add');
+    else {const [control]=await tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${p.employmentId}::uuid) as allowed`);if(control?.allowed!==true)throw new LeaveOnBehalfNotAllowedError();}
 
     await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
     const [currentSubject] = await readSubject();
@@ -5233,11 +5212,14 @@ export async function addLeaveAttachment(
   ctx: SessionContext,
   p: { leaveRequestId: string; fileName: string; mimeType: string; content: Buffer },
 ): Promise<{ id: string }> {
-  return withTenant(ctx, tx => addLeaveAttachmentTx(tx, ctx, p));
+  const document = { ...p, content: Buffer.from(p.content) };
+  const actor = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  return withTenant(actor, tx => addLeaveAttachmentTx(tx, actor, document));
 }
 
 async function addLeaveAttachmentTx(tx: Tx, ctx: SessionContext, p: { leaveRequestId: string; fileName: string; mimeType: string; content: Buffer }): Promise<{ id: string }> {
     if (p.content.byteLength === 0) throw new Error('Empty file');
+    await lockLeaveRequestDependenciesTx(tx,ctx,p.leaveRequestId);
     // Doc-config: join the type to read its mime/size rule. The /me flow already validated upstream (so
     // a bad file never created an orphan request); this is defence-in-depth for any other caller and
     // replaces the previously hard-coded 10 MB ceiling with the type's configured limit.
@@ -5668,7 +5650,7 @@ async function finalizeLeaveApproval(
   // COMMIT. Whole-request double-processing is separately prevented by the FOR UPDATE row lock the decide
   // entry points take on the leave_request row.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`leave-balance:${ctx.tenantId}:${req.employmentId}:${balanceTypeId}`}, 0))`);
-  const balance = await leaveBalance(tx, req.employmentId, balanceTypeId);
+  const balance = await leaveTaskBalanceTx(tx,req.id,balanceTypeId);
   // Allow Unpaid Leave (a7fab30b): only the covered part is a balance movement. The unpaid excess was
   // measured against the balance at submission and is settled through payroll, so debiting it here would
   // charge the employee twice — once in days, once in pay. NULL/absent ⇒ the full span, as before.
@@ -6145,7 +6127,7 @@ async function reviewedLeaveDecisionPreflightTx(tx: Tx, supplied: SessionContext
  if (p.decision === 'rejected' && !p.rejectReason?.trim() || p.decision === 'approved' && p.rejectReason !== null) throw new MissingRejectReasonError();
  const [type] = await tx.select({ id: leaveType.id, name: leaveType.name, balanceSourceTypeId: leaveType.balanceSourceTypeId }).from(leaveType).where(eq(leaveType.id, req.leaveTypeId)).limit(1);
  if (!type) throw new Error('Leave decision type unavailable');
- const balance = await leaveBalance(tx, req.employmentId, type.balanceSourceTypeId ?? req.leaveTypeId);
+ const balance = await leaveTaskBalanceTx(tx,req.id,type.balanceSourceTypeId??req.leaveTypeId);
  const versions = await tx.execute(sql`select q.xmin::text as request_version, t.xmin::text as type_version,
   (select jsonb_agg(jsonb_build_array(s.id,s.xmin::text) order by s.step_index,s.id) from public.leave_approval_step s where s.leave_request_id=q.id) as step_versions
   from public.leave_request q join public.leave_type t on t.id=q.leave_type_id where q.id=${req.id}::uuid`);
@@ -7629,6 +7611,8 @@ export async function adminCancelLeave(
       throw new LeaveCancellationNotAllowedError(`the leave is already ${req.status}`, 'already_final');
     }
     const previousStatus = req.status as 'pending' | 'approved';
+    const [access] = await tx.execute<{ allowed: boolean }>(sql`select app.leave_employee_record_cancel_allowed(${req.id}::uuid) as allowed`);
+    if (access?.allowed !== true) throw new LeaveCancellationNotAllowedError('leave record cancellation unavailable in this scope', 'admin_only');
 
     const [lt] = await tx
       // 3fb1a611: `role` too — leaveTypeIs resolves the role first (production's replacement type is coded `RL`).
@@ -7843,6 +7827,8 @@ export async function editLeaveRequestTx(
     if (!ctx.personId || ctx.personId !== subjectPersonId) {
       throw new LeaveEditNotAllowedError('only the employee who applied can edit their leave');
     }
+
+    await assertOwnLeaveApplicationActionTx(tx,req.employmentId,'edit');
 
     // Status gate: only a PENDING request is editable (expected_function 3.i — "available only for pending").
     if (req.status !== 'pending') throw new LeaveEditNotAllowedError(`the leave is already ${req.status}`);
@@ -8222,6 +8208,8 @@ export async function cancelOwnLeaveTx(
       throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave', 'not_yours');
     }
 
+    await assertOwnLeaveApplicationActionTx(tx,req.employmentId,'delete');
+
     // Status gate: PENDING only. An approved row is routed to the give-back flow at the action layer.
     // r301 (83511d3b): each refusal carries its reason, so the screen can say which.
     if (req.status !== 'pending') {
@@ -8234,56 +8222,9 @@ export async function cancelOwnLeaveTx(
       throw new LeaveCancellationNotAllowedError('grouped (emergency / split) leave cannot be cancelled here', 'grouped');
     }
 
-    const [lt] = await tx
-      .select({ code: leaveType.code, name: leaveType.name })
-      .from(leaveType)
-      .where(eq(leaveType.id, req.leaveTypeId))
-      .limit(1);
-
-    // Reverse the NET ledger debit (net 0 for pending ⇒ restoredDays 0; kept robust for defense-in-depth).
-    const [netRow] = await tx
-      .select({ net: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
-      .from(leaveLedger)
-      .where(eq(leaveLedger.sourceRequestId, req.id));
-    const net = Number(netRow?.net ?? 0);
-    let restoredDays = 0;
-    if (net < 0) {
-      restoredDays = round2(-net);
-      await tx.insert(leaveLedger).values({
-        tenantId: ctx.tenantId,
-        employmentId: req.employmentId,
-        // Balance Deduction Source (cdf9ca48): same ledger the approval debited (see the give-back path).
-        leaveTypeId: await resolveBalanceSourceTypeId(tx, req.leaveTypeId),
-        entryType: 'debit',
-        days: restoredDays.toFixed(2),
-        sourceRequestId: req.id,
-        effectiveOn: req.startDate,
-      });
-    }
-
-    await tx.update(leaveRequest).set({ status: 'cancelled' }).where(eq(leaveRequest.id, req.id));
-
-    // Substrate: distinct self-cancelled event (audit + notification key). Carries the display fields the
-    // approver/HR notification renderer needs (payload-only renderers).
-    const eventId = await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-request',
-      aggregateId: req.id,
-      eventType: 'leave-request.self-cancelled',
-      actor: actorOf(ctx),
-      subjectEmploymentId: req.employmentId,
-      payload: {
-        previousStatus: 'pending',
-        newStatus: 'cancelled',
-        restoredDays,
-        leaveTypeCode: lt?.code ?? null,
-        leaveTypeName: lt?.name ?? null,
-        startDate: req.startDate,
-        endDate: req.endDate,
-      },
-    }, { returnId: true });
-
-    return { previousStatus: 'pending', restoredDays, eventId };
+    const [effect] = await tx.execute<{ restoredDays: string | number; eventId: string }>(sql`select restored_days as "restoredDays", event_id as "eventId" from app.leave_own_withdraw(${req.id}::uuid)`);
+    if (!effect?.eventId) throw new LeaveCancellationNotAllowedError('own leave withdrawal unavailable', 'already_final');
+    return { previousStatus: 'pending', restoredDays: Number(effect.restoredDays), eventId: effect.eventId };
   }
 }
 
@@ -12344,5 +12285,40 @@ export function actionableLeaveCancellationIds(ctx:SessionContext,requestIds:rea
    }
   }
   return result.sort();
+ });
+}
+
+/** Refusal-only composition inside the existing native self command transaction. */
+async function assertOwnLeaveApplicationActionTx(tx:Tx,employmentId:string,operation:'add'|'edit'|'delete'){
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.leave_own_application_allowed(${employmentId}::uuid,${operation}) as allowed`);
+ if(row?.allowed!==true)throw new Error('Own Leave application action unavailable');
+}
+
+/** Refusal-only form projection over caller-supplied, already-native-visible target IDs.
+ * It returns no employee metadata, reserves nothing and takes no Access/write lock. */
+export function leaveApplicationAddAccess(ctx:SessionContext,employmentIds:readonly string[]):Promise<string[]>{
+ const ids=[...new Set(employmentIds)];if(!ids.length)return Promise.resolve([]);
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{id:string}>(sql`select selected.id from jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) selected(id) where app.leave_own_application_allowed(selected.id::uuid,'add') or app.leave_on_behalf_application_allowed(selected.id::uuid)`);
+  return rows.map(row=>row.id);
+ });
+}
+
+/** Function projections for already-native-visible request IDs; status/lifecycle eligibility stays
+ * with the existing history/calendar owner and is repeated by the mutation kernel. */
+export function ownLeaveRequestActionAccess(ctx:SessionContext,requestIds:readonly string[]):Promise<Record<string,{canEdit:boolean;canDelete:boolean}>>{
+ const ids=[...new Set(requestIds)];if(!ids.length)return Promise.resolve({});
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{id:string;canEdit:boolean;canDelete:boolean}>(sql`select request.id::text as id,app.leave_own_application_allowed(request.employment_id,'edit') as "canEdit",app.leave_own_application_allowed(request.employment_id,'delete') as "canDelete" from public.leave_request request join jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) selected(id) on request.id=selected.id::uuid where request.tenant_id=${ctx.tenantId}::uuid`);
+  return Object.fromEntries(rows.map(row=>[row.id,{canEdit:row.canEdit===true,canDelete:row.canDelete===true}]));
+ });
+}
+
+/** Read-only Delete flags for native-visible administrative records; does not confer a write. */
+export function leaveEmployeeRecordCancellationAccess(ctx:SessionContext,requestIds:readonly string[]):Promise<string[]> {
+ const ids=[...new Set(requestIds)];if(!ids.length)return Promise.resolve([]);
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{id:string}>(sql`select selected.id from jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) selected(id) where app.leave_employee_record_cancel_allowed(selected.id::uuid)`);
+  return rows.map(row=>row.id);
  });
 }

@@ -14,6 +14,7 @@ import { classifyNonCashBenefit, NonCashBenefitConfigurationError } from '../loc
  */
 import { and, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {payrollCatalogueAccessTx} from './financial-setup-access';
 import { actorOf, appendEvent } from '../db/events';
 import {
   attendance,
@@ -316,8 +317,9 @@ export function getEmploymentPayComponent(
   });
 }
 
-export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean; readyOnly?: boolean } = {}) {
+export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean; readyOnly?: boolean; maintenance?:boolean } = {}) {
   return withTenant(ctx, async (tx) => {
+    if(opts.maintenance&&!await payrollCatalogueAccessTx(tx,'view'))throw new Error('Forbidden');
     const rows = await tx.select().from(payComponent).where(eq(payComponent.tenantId, ctx.tenantId)).orderBy(payComponent.code);
     return rows.filter(r => (opts.includeArchived || r.archivedAt == null) && (!opts.readyOnly || r.pendingInputKind == null));
   });
@@ -763,36 +765,10 @@ async function catalogNodesTx(tx: Tx, tenantId: string): Promise<PayRuleCatalogN
  * place is the fail-safe outcome (the run keeps using the last order that was proven acyclic).
  */
 async function recordResolutionOrderTx(tx: Tx, tenantId: string): Promise<void> {
-  const rows = await tx
-    .select({
-      id: payComponent.id,
-      code: payComponent.code,
-      rule: payComponent.rule,
-      resolutionOrder: payComponent.resolutionOrder,
-      // 2da9937a — planResolutionOrder needs the kind to know which rows are fixed allowances, so that an
-      // item reading the `fixed_allowances` aggregate is RECORDED above them. resolvePayComponentSet
-      // re-derives that ordering anyway (a stored rank can be stale, and a one-off batch row has none), so
-      // omitting this would not pay a wrong figure — it would only persist a rank that misdescribes the
-      // graph, which is exactly the kind of quietly-wrong number this column exists to prevent.
-      kind: payComponent.kind,
-      archivedAt: payComponent.archivedAt,
-      // 711adcd2 — and the TICK BOX, for the identical reason `kind` is here: it is now the aggregate's
-      // membership test, so a rank planned without it would describe the pre-0456 graph. Omitting it would
-      // not pay a wrong figure (resolvePayComponentSet re-derives the ordering from the same predicate),
-      // but it would persist a resolution_order that misdescribes the graph the moment an operator
-      // un-ticks an item an overtime formula ranks against.
-      orpOvertime: payComponent.orpOvertime,
-    })
-    .from(payComponent)
-    .where(eq(payComponent.tenantId, tenantId));
-  const plan = planResolutionOrder(rows.map((r) => ({ code: r.code, rule: r.rule, kind: r.kind, archived: r.archivedAt != null, orpOvertime: r.orpOvertime })));
-  if (!plan.ok) return;
-  for (const r of rows) {
-    const next = plan.order.get(r.code.trim().toUpperCase()) ?? 0;
-    if (next !== r.resolutionOrder) {
-      await tx.update(payComponent).set({ resolutionOrder: next }).where(eq(payComponent.id, r.id));
-    }
-  }
+  // The finite storage owner derives the live graph itself; no caller-supplied rank or arbitrary
+  // retained-row Edit is admitted as a consequence of Add. Existing typed validation still owns
+  // input errors before the primary write. SQL repeats the graph/effect/audit admission at storage.
+  await tx.execute(sql`select app.financial_catalog_recompute_order() where app.current_tenant_id()=${tenantId}::uuid`);
 }
 
 /** Admin upsert of a single catalog component (by code). Validates the rule against the component's
@@ -893,7 +869,9 @@ async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponen
 async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponentInput,
   options: { createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean } = {}) {
     p=structuredClone(p);ctx=capturePayCatalogContext(ctx);options={...options};
+    if(!await payrollCatalogueAccessTx(tx,'view'))throw new Error('Forbidden');
     const {rule,label,existing,storedCode,description,pending}=await preparePayComponentWriteTx(tx,ctx,p,options);
+    if(!await payrollCatalogueAccessTx(tx,existing?'edit':'add'))throw new Error('Forbidden');
     let id: string;
     let changed: string[] = [];
     if (existing) {
@@ -955,6 +933,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
 export function archivePayComponent(ctx: SessionContext, p: { id: string; archived: boolean }) {
   p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
   return withTenant(ctx, async (tx) => {
+    if(!await payrollCatalogueAccessTx(tx,p.archived?'delete':'edit'))throw new Error('Forbidden');
     await lockPayComponentCatalogTx(tx,ctx);
     await tx.update(payComponent).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(payComponent.id, p.id));
     await appendEvent(tx, {
@@ -1660,6 +1639,7 @@ export function seedOvertimeMultipliers(
 export function deletePayComponent(ctx: SessionContext, id: string) {
   ctx=capturePayCatalogContext(ctx);
   return withTenant(ctx, async (tx) => {
+    if(!await payrollCatalogueAccessTx(tx,'delete'))throw new Error('Forbidden');
     await lockPayComponentCatalogTx(tx,ctx);
     const [rec] = await tx
       .select({ n: sql<number>`count(*)::int` })
@@ -2097,6 +2077,17 @@ export function setEmploymentPayComponent(
           throw new FixedTransactionMidMonthError(survivor.code, p.effectiveFrom, firstOfNextMonth(anchor));
         }
       }
+    }
+
+    // A native version replacement is Edit even though its immutable value is an INSERT.
+    // The database binds this intent to the exact source, proposed value and final audit.
+    if (p.replacesId) {
+      await tx.execute(sql`select app.financial_fixed_replacement_begin(${p.replacesId}::uuid, ${JSON.stringify({
+        employment_id: p.employmentId, component_id: p.componentId, amount: money(p.amount),
+        valid_from: p.effectiveFrom, valid_to: effectiveTo, currency,
+        prorate_override: p.prorateOverride ?? null, remarks: p.remarks ?? null, run_type: runType,
+        payroll_cycle_id: payrollCycleId,
+      })}::jsonb)`);
     }
 
     // PASS 2 — resolve each clash. Nothing below can throw.

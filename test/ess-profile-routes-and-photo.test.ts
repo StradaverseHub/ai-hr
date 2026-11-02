@@ -1,9 +1,9 @@
 /** Source-prepared integration journeys. Run only in an explicitly granted test/DB window. */
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {and,eq} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
-import type {SessionContext} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {readOwnProfileWorkspace,submitOwnProfileEdit} from '../core/profile-edit';
 import {readOwnProfileFacts} from '../core/profile-view';
@@ -21,7 +21,8 @@ const group=():SessionContext=>({...adminCtx(b),grants:[{role:'hr_admin',company
 async function worker(name:string,role:'employee'|'hr_admin'='employee'){
  const hired=await hireEmployee(group(),{person:{fullName:name,primaryEmail:`${randomUUID()}@example.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
  const userId=await createAppUser(b.tenantId,hired.personId,role);
- return {...hired,ctx:{...adminCtx(b),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:null}]} satisfies SessionContext};
+ const context:SessionContext & {userId:string;personId:string}={...adminCtx(b),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:null}]};
+ return {...hired,ctx:context};
 }
 function rule(subject:string,approver:string):ProfileRouteRule{return {id:randomUUID(),name:'Named HR fixture',approverEmploymentId:approver,employmentIds:[subject],criteria:{}};}
 async function proposed(ctx:SessionContext,employmentId:string,includePhone=false){
@@ -87,7 +88,8 @@ describe('bounded private maintenance picker',()=>{
   expect(second.rows).toHaveLength(3);expect(second.nextCursor).toBeNull();
   expect(new Set([...first.rows,...second.rows].map(row=>row.id)).size).toBe(53);
   expect(JSON.stringify({first,second})).not.toContain('NEVER IN PICKER');
-  expect(Object.keys(first.rows[0]).sort()).toEqual(['createdAt','employeeCode','id','name']);
+  expect(Object.keys(first.rows[0]).sort()).toEqual(['canEdit','createdAt','employeeCode','id','name']);
+  expect(first.rows.every(row=>row.canEdit===true)).toBe(true);
  });
 });
 describe('independent own photo and hidden payloads',()=>{
@@ -114,5 +116,36 @@ describe('independent own photo and hidden payloads',()=>{
   expect(JSON.stringify({workspace,facts})).not.toContain('PRIVATE PROFILE NAME');
   expect(workspace.baselines).not.toHaveProperty('profile.personal_details.fullname');expect(facts.header.name).toBe('');expect(facts.header.company).toBeNull();
   expect(facts.values).not.toHaveProperty('employment.organisation_assignment.companyname');
+ });
+});
+
+describe('maintenance source admission stays separate from assigned tasks',()=>{
+ it('does not turn a caller-set maintenance flag into assigned reroute authority',async()=>{
+  const employee=await worker('Fictional Source Subject'),hr=await worker('Fictional Assigned HR','hr_admin');
+  // createAppUser defaults HR to the genuine global recovery course. This negative actor is
+  // an actual company-scoped assignee, with its claimed grants matching the stored role.
+  await owner.db.update(roleAssignment).set({companyId:b.companyId}).where(and(eq(roleAssignment.appUserId,hr.ctx.userId),eq(roleAssignment.role,'hr_admin')));
+  hr.ctx.grants=[{role:'hr_admin',companyId:b.companyId}];
+  await saveProfileRoutingPolicy(group(),{expectedRevision:EMPTY_PROFILE_ROUTING.revision,enabled:true,rules:[rule(employee.employmentId,hr.employmentId)]});
+  const submitted=await submitOwnProfileEdit(employee.ctx,{employmentId:employee.employmentId,proposal:await proposed(employee.ctx,employee.employmentId)});
+  expect((await listProfileChangeRequests(hr.ctx,{status:'pending'})).map(row=>row.id)).toContain(submitted.requestId);
+  expect(await withTenant(hr.ctx,async tx=>{
+   await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true)`);
+   return tx.execute<{allowed:boolean}>(sql`select app.workforce_profile_maintenance_allowed(${employee.employmentId}::uuid,'view') as allowed`);
+  })).toEqual([{allowed:false}]);
+  const before=await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,submitted.requestId!));
+  let failure:unknown;
+  try{await withTenant(hr.ctx,async tx=>{
+   await tx.execute(sql`select set_config('app.profile_route_maintenance','on',true),set_config('app.owner','true',true)`);
+   await tx.transaction(async nested=>{
+    await nested.update(profileChangeRequest).set({routeHistory:[{forged:true}]}).where(eq(profileChangeRequest.id,submitted.requestId!));
+    await nested.update(profileChangeRequest).set({routeHistory:before[0].routeHistory}).where(eq(profileChangeRequest.id,submitted.requestId!));
+   });
+  });}catch(error){failure=error;}
+  const messages:string[]=[];for(let error=failure;error&&typeof error==='object';error=(error as {cause?:unknown}).cause)messages.push(String((error as {message?:unknown}).message));
+  expect(messages.join('\n')).toContain('Profile maintenance action unavailable');
+  expect(await owner.db.select().from(profileChangeRequest).where(eq(profileChangeRequest.id,submitted.requestId!))).toEqual(before);
+  await decideProfileChange(hr.ctx,{requestId:submitted.requestId!,decision:'approved'});
+  expect((await myProfileChangeRequests(employee.ctx)).find(row=>row.id===submitted.requestId)?.status).toBe('approved');
  });
 });

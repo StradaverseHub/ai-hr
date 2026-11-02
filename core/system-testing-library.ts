@@ -1,3 +1,4 @@
+import {requireTestingAdministrationTx} from './system-testing-access';
 /** Bounded administration readers and explicit retest requests for the same canonical case owner. */
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
@@ -19,6 +20,7 @@ export async function listTestingLibrary(ctx: SessionContext,p: TestingLibraryFi
   const page = p.page ?? 1;
   if (!Number.isInteger(page) || page<1 || page>20000 || (p.search?.length ?? 0)>240 || (p.moduleCode?.length ?? 0)>160 || (p.functionKey?.length??0)>160 || p.area && !TESTING_AREAS.some(v => v===p.area) || p.category && !TESTING_CATEGORIES.some(v => v===p.category) || p.priority && !TESTING_PRIORITIES.some(v => v===p.priority) || p.active && !['active','inactive','draft'].includes(p.active) || p.versionOrdinal!==undefined && (!Number.isInteger(p.versionOrdinal) || p.versionOrdinal<1)) throw new TestingRefusal('invalid');
   return withTenant(ctx,async tx => {
+    await requireTestingAdministrationTx(tx);
     const where = and(eq(testCase.tenantId,ctx.tenantId),
       p.search ? sql`position(lower(${p.search}) IN lower(${testCase.title}))>0` : undefined,
       p.moduleCode ? eq(testCase.moduleCode,p.moduleCode) : undefined,
@@ -39,6 +41,7 @@ export async function getTestingLibraryCase(ctx: SessionContext,caseId: string,p
   const assignmentPage=p.assignmentPage??1;
   if(!Number.isInteger(assignmentPage)||assignmentPage<1||assignmentPage>20000||[p.beforeVersionOrdinal,p.beforeLegacyRunNo].some(v=>v!==undefined&&(!Number.isInteger(v)||v<1)))throw new TestingRefusal('invalid');
   return withTenant(ctx,async tx => {
+    await requireTestingAdministrationTx(tx);
     const [row] = await tx.select({ c: testCase,v: testCaseVersion }).from(testCase).leftJoin(testCaseVersion,eq(testCaseVersion.id,testCase.currentVersionId)).where(and(eq(testCase.id,caseId),sql`octet_length(coalesce(${testCase.draftDefinition}::text,''))+octet_length(coalesce(${testCaseVersion.definition}::text,''))<=8388608`)).limit(1);
     if (!row) throw new TestingRefusal('not_found');
     const versions = await tx.select({ id: testCaseVersion.id,ordinal: testCaseVersion.ordinal,contentHash: testCaseVersion.contentHash,provenance: testCaseVersion.provenance,publishedAt: testCaseVersion.publishedAt,publishedByUserId: testCaseVersion.publishedByUserId }).from(testCaseVersion).where(and(eq(testCaseVersion.testCaseId,caseId),p.beforeVersionOrdinal===undefined?undefined:sql`${testCaseVersion.ordinal}<${p.beforeVersionOrdinal}`)).orderBy(desc(testCaseVersion.ordinal)).limit(201);
@@ -55,6 +58,7 @@ export async function getTestingLibraryCase(ctx: SessionContext,caseId: string,p
 export async function listTestingTesterOptions(ctx: SessionContext,p: { page?: number; forCaseId?:string } = {}) {
   admin(ctx); if(p.forCaseId)testingUuid.parse(p.forCaseId); const page=p.page??1; if (!Number.isInteger(page)||page<1||page>20000) throw new TestingRefusal('invalid');
   return withTenant(ctx,async tx => {
+    await requireTestingAdministrationTx(tx);
     const where = and(eq(appUser.tenantId,ctx.tenantId),sql`${appUser.archivedAt} IS NULL AND NOT app.login_blocked(${appUser.id})`);
     const [count] = await tx.select({ total: sql<number>`count(*)::integer` }).from(appUser).where(where);
     const rows = await tx.select({ userId: appUser.id,name: person.fullName,assignmentId:testAssignment.id }).from(appUser).leftJoin(person,eq(person.id,appUser.personId)).leftJoin(testAssignment,and(eq(testAssignment.testerUserId,appUser.id),p.forCaseId?eq(testAssignment.testCaseId,p.forCaseId):sql`false`)).where(where).orderBy(appUser.id).limit(TESTING_LIMITS.pageSize).offset((page-1)*TESTING_LIMITS.pageSize);
@@ -67,6 +71,8 @@ export async function requestTestingRetest(ctx: SessionContext,p: { assignmentId
   const actor=admin(ctx); testingUuid.parse(p.assignmentId); testingUuid.parse(p.expectedVersionId); testingUuid.parse(p.feedbackId);
   if (!Number.isInteger(p.expectedRevision)||p.expectedRevision<0) throw new TestingRefusal('invalid');
   return withTenant(ctx,async tx => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await requireTestingAdministrationTx(tx,'edit');
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`testing-library:${ctx.tenantId}`},0))`);
     const [found] = await tx.select().from(testAssignment).where(eq(testAssignment.id,p.assignmentId)); if (!found) throw new TestingRefusal('not_found');
     const [c] = await tx.select().from(testCase).where(eq(testCase.id,found.testCaseId)).for('update');

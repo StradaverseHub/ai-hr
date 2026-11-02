@@ -1007,3 +1007,696 @@ the then-installed ledger at integration.
 |762|1793330000329|0929_teras_review_services|0906|765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0|
 
 The SQL comments inside these files still name their original provisional numbers; the bodies are kept byte for byte.
+## Approved administrative data-profile owner — 2 November 2026 (provisional)
+
+Security worker reserves `0936_data_permission_profiles`, index758 on its own journal,
+when1793330000336, following its0935 allocation. SQL SHA256 `59a9a1de8fd9409479b2568b72e2bd8279e5babfd6b5ddfbe37b83dd84d7bc21`.
+Parent coordinated0937 / when1793330000337 / aggregate index759 to the independent read-bypass
+worker;0938 / when1793330000338 / aggregate index760 is reserved to Security for central scope.
+These are additive uninstalled source claims. Re-audit all refs/worktree journals and live watermark
+before release; no deployment or installation is authorized.
+
+## Approved board data scope reader bypasses — 2 November 2026 (coordinated source claim)
+
+The approved-board security owner reserved `0936_data_permission_profiles` at idx758 /
+when1793330000336 and its central row-policy successor0938 at idx760 /when1793330000338.
+The delegated reader/worker work reserves `0937_data_permission_reader_bypasses` at idx759 /
+when1793330000337, between those dependencies. Its isolated branch is
+`codex/approved-board-bypasses-20261102`; it must be integrated with0936 and0938 before hosted
+migration/behavior checks. This is unapplied source only, requires the normal aggregate migration
+and release evidence, and grants no deployment authority. Existing applied SQL is unchanged.
+
+## Administrative data-profile central enforcement — 2 November 2026 (provisional)
+
+Security worker appends `0938_data_permission_enforcement`, aggregate index760,
+when1793330000338, SQL SHA256 `9e5160d512251a320473c63659db518c73978acd81347400fedc5516009d730b`. Its owned source journal leaves
+index759 reserved for the independent0937 / when1793330000337 bypass-owner migration.
+The integration owner must merge0937 in chronological order and re-audit competing claims and live
+watermark before installation. This central row-scope prerequisite does not claim that the complete
+requested action-binding expansion has passed acceptance or is ready for release.
+
+## Workforce action split — 2 November 2026 (provisional source claim)
+
+Actions owner reserves `0939_workforce_action_permissions`, aggregate idx761 /
+when1793330000339, after0938. This additive source identity includes the typed operation
+owners, exact birth/source custody and retained independent workflow witnesses. It is
+unapplied source, requires aggregate hosted migration/behavior checks and re-audit before
+installation, and grants no deployment authority. The full module-binding item is not yet
+accepted solely by this Workforce checkpoint.
+
+## Bounded approval task sources — 2 November 2026 (provisional)
+
+Parent allocation audit reserved `0940_bounded_approval_task_sources`, aggregate idx762 /
+when1793330000340, after0939's independently owned action split. It preserves exact Profile
+and Leave task responsibility through request-bound projections and native effect witnesses,
+without a general Personnel read exception. Branch `codex/approved-board-task-projections-20261102`.
+Unapplied source only; re-audit live watermark and refs before coordinated release. No installation authority.
+
+## Financial and Letters action restrictions — 2 November 2026 (provisional)
+
+Security worker reserves `0941_financial_letter_actions`, aggregate index763,
+when1793330000341, SQL SHA256 `f8fe39429e0cb3751ceca070bfd1f0fccba5bd3f57d280e74cf47fedf2b9eba5`. This source checkpoint depends on
+0939 Workforce action helpers and0940 bounded Profile effect proofs. Parent owns0942
+Organisation/Settings and0945 Financial setup/history;0943/0944 are independently allocated.
+The code-owned publisher requires `app.financial_letter_bindings_complete()`; this checkpoint
+intentionally does not define that final closure prerequisite while kernel action bindings remain
+in progress. A parsed migration and legacy pass do not claim completed action coverage.
+Re-audit every ref/worktree journal and installation watermark before release; no deployment is
+authorized.
+
+## Organisation and shared configuration actions — 2 November 2026 (provisional)
+
+Parent BOARD owner reserves `0942_organisation_settings_actions`, aggregate idx764 /
+when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `a38fcfdb97cba6eef541331bda99484ab02a3ad0e15a40309de56ac12a3c5cd0`.
+This is unapplied implementation source. It retains native role/company floors, separates
+reference pickers from maintenance views, guards current/proposed organisation scopes, and
+binds employee-number allocation/release to private native effects. Hosted SQL/behavior and
+populated-upgrade evidence remain pending. Shared settings coverage is still being extended;
+no completed binding or installation claim follows this checkpoint. Recheck every source
+reservation and the actual post-Noveri installation ledger before release admission.
+
+## Lifecycle, Rewards and Notice action owners — 2 November 2026 (provisional source claim)
+
+The parent reserves `0944_lifecycle_rewards_notice_actions`, aggregate idx766 /
+when1793330000344, after the independently owned0941–0943 action families. Source base is
+`e28dfce56732c3dab31ae413aa9ca7bde9a8dde0`, with qualified0940 and shared0939 prerequisites
+merged normally into `codex/approved-board-lifecycle-actions-20261102`.
+
+The fresh source audit inspected3090 local/origin refs,325 unique committed journals and284
+actual worktree journals, finding no0944 filename/timestamp claim. One unrelated conflicted
+worktree journal was also checked textually for this identity. The live watermark was **not
+verified**: this reservation is unapplied and provisional, and must be refreshed against the
+ordered applied ledger and competing claims before admission. It grants no installation authority.
+
+## Financial setup/native import boundary — 2 November 2026 (provisional)
+
+BOARD parent reserves `0945_financial_setup_actions`, aggregate idx767 /when1793330000345.
+Source SHA256 `02219f6fecd6e4bd7eee39b3d0ec169bc37d4dde5891a8c143f661bd909e057d`. Reserved0943/idx765 and0944/idx766 are integrated in their reserved timestamp order; no existing entry
+is renumbered. This is an unapplied development checkpoint, not installed or accepted source.
+Its catalogue, history, tax, formula and loan guards still require hosted qualification,
+precise module/submenu facts, and TP1/CP38/statutory input qualification and binding closure.
+`financial_setup_bindings_complete()` deliberately remains absent. The genuine owner publisher
+must refuse the incomplete family. Preserve all native self/assigned and financial calculation
+courses; new authority cannot arise from posted roles or a context flag. Re-audit current refs,
+all source claims and the post-Noveri installation ledger before any release admission.
+
+## Leave/Attendance/Claims Action source continuation — 2 November 2026
+
+Reserved `0943_leave_attendance_claim_actions`, aggregate idx765 / when1793330000343, is journaled in its existing reserved position after0942 and before0944/0945; no existing entry was renumbered. Current source SHA256 `7b95a64208a79b545b982ad50e7b974b030afdb1b9b300df048e84d3acf3475d`. Source installs dormant family definitions, exact maintained Claim configuration submenu and native Leave Type, Grade Groups and Schedule library guards, finite canonical Standard initialization, actual-root-removal Delete effect witnesses, finite actual-self/admin cancellation and confirmed reimbursement ports, private exact OLD/NEW/audit effects, and a deferred Claim payment guard consuming only genuine941 Payroll receipts. Operational Claim submission/decision, remaining Leave/Attendance, all related UI and whole module source closure remain incomplete. No publication sentinel or installed-history claim exists. Hosted exact-source qualification is required; re-audit actual ordered installation ledger and all coordinated reservations before admission. The separately reserved nine-item0946 and refreshed post-Noveri/nine watermark must be reconciled before eventual integration without rewriting applied history.
+
+
+### Private canonical Draft → Onboarding source contract (unapplied)
+
+0939 now exposes private finite active admission/completion and discard intent/completion APIs to
+0944 only. The actual bound hire source carries the access authority stamp. Discard completion
+requires the exact native discard-port DELETE receipt, queued actual source mutation and same-TX
+native discard audit; preparing alone cannot commit. The INVOKER trigger observes the actual closed
+port role and only materializes OLD source data when the private native-sync intent exists. Metadata,
+regular Personnel writes and runtime proof minting gain no authority. This source requires hosted
+native activation/discard plus 0944 exact derived-case qualification before any completion claim.
+
+
+0944's SAVE consumer derives only the native source/sync metadata/history and private-field split
+from an actual same-TX canonical Draft save. Its private physical effect context repeats actor,
+authority stamp, current/proposed Draft data scope and the actual Onboarding audit. Repeated saves
+may reach the final actual image only through that Draft's recorded OLD→NEW chain. Combined
+activation/discard closes through the canonical completed source APIs; a discard intent alone is
+insufficient. The source port returns only whether it handled the save and the effect's identifiers.
+The shared private source owner also admits ACTIVE only through the exact canonical hire receipt
+and binds final completion to the same employment/person and consumed source. It calls the existing
+joiner/manager task-actor resolver; group tasks and completed tasks retain their native semantics.
+DISCARD derives only the native case cancellation, current-request withdrawal and history from the
+actual bound source; completion requires the canonical private intent and actual closed Draft DELETE
+plus audit. Stale Draft/case company namespaces still refuse pending reviewed reconciliation.
+Refresh/backfill, raw write closure and family publication remain unfinished. This source and its positive/rollback tests require genuine hosted qualification.
+
+### Profile-change queue maintenance (unapplied source)
+
+0939 registers the company-scoped `profileChanges.maintenance` View/Edit purpose separately from
+assigned Profile task decisions and configuration screens. Its real stored/current native floor is
+Group HR; each consumed source repeats current employee data/company scope and canonical controls.
+Both SQL maintenance-flag read arms and raw route-field OLD/NEW updates use that same helper.
+The native write-only exact privacy redaction remains an independent finite course. Hosted actual
+route, photo/field approvals, private task, privacy-erasure and maintenance regression checks remain
+required. No whole Workforce/submenu publication or installed-history claim follows from this source.
+
+
+### Frozen hosted repair: proposed Draft returning image and Grade Groups variable
+
+The original integrated 7c9 qualification preserved 95 native Draft INSERT RETURNING failures at
+the new stored-source SELECT policy, and 12 configuration failures from the Grade Groups local
+`group_id`/source-column ambiguity. The Draft policy now resolves actual stored data through fresh
+SPI first, with only a private full-image/hash native Add candidate for the before-insert WCO gap;
+successful actual birth and a deferred orphan check close that candidate. Unknown companies and
+preexisting IDs are refused. Current/proposed assigned data predicates and native read admission
+still apply. Grade Groups only renames the ambiguous local; no assertion or native check is removed.
+Hosted failed/affected recovery is required; the original successful evidence remains distinct.
+
+
+### Own Claim drafts and submission source (unapplied chapter)
+
+0943 registers independent own Draft View/Add/Edit/Delete and Submit View/Execute purposes below
+own Claim View. Actual current/prior draft images repeat exact own identity and same-purpose controls;
+ordinary own work does not inherit an administrative Department AND restriction. Native Draft Delete
+now uses a finite SQL port for the exact source, all its receipts and one native audit, with private
+completion checks; raw source deletion and filed-claim content mutation are refused. Source statement
+locks precede tuple ownership. Own web form and draft/history controls now consume the real purpose flags, with six-locale rendered
+Save/Submit checks authored. Nonself submission/decisions, independent receipt management and full
+native-default/package closure remain explicitly unfinished; no module completion sentinel exists.
+
+
+### Preserved current ESS proof lanes in the0939 action split
+
+The0939 administrative value guard now composes the actual installed0683 own direct-field proof
+and approval-aware immediate/primary-only branches, retaining0939 Add/Edit/Delete admission.
+The original88-pass configuration chunk exposed three regressions from replacing that newer native
+body with the older0579 body. Existing native approval-off positive and raw approval-on negative
+assertions remain unchanged. The new maintenance-negative fixture now stores and claims real
+company HR, since its previous global HR was legitimately admitted. The birth proof fixture narrows
+its actual actor ID before the strict SQL query. Hosted affected recovery remains required.
+
+
+### Own Claim migration rehearsal correction
+
+Frozen b816 run41484074688 preserved six real locale DOM passes. Its DB stage stopped before
+any tests because a SELECT policy cast the newly introduced `claim_status.draft` enum literal inside
+the migration transaction; the comparison now uses `status::text`, preserving exactly the same rule.
+The independent compiler completed with only the actor-ID fixture error corrected in03d510.
+No DB pass or whole-compiler pass is claimed for b816; failed/affected recovery remains required.
+
+### Finite Lifecycle exception sources (unapplied)
+
+The native exception owner defines four exact View/Execute cells for three commands: additions,
+shared removals, retained provision and administrative HR removals. The last requires Lifecycle View
+and Edit parents plus the actual HR/data course. Native own-author/group eligibility selects shared
+removal before permission resolution; denial of that shared purpose never falls through to HR.
+The native command owner derives routing specificity/fallback, shared approver reuse, requester
+approval and real V9 equipment assignment from current sources under the canonical owner locks.
+The exact chosen function/native branch is recorded in the permanent audit and private admission;
+a shared-branch audit cannot close an HR-branch effect. The native Case JSON size budget is retained.
+Bounded task reviews expose only the selected workflow and its actual eligible choices. No raw case
+or Personnel read is added. These sources require hosted native/DOM/whole-compiler qualification;
+supported-cell denial proofs still require genuine reviewed component publication. Full family
+publication and the remaining raw/native boundaries remain unfinished.
+
+### Independent Payroll Claim reservation reader
+
+The existing native Claim prefill now consumes941's finite four-field Payroll source, whose shared
+SQL owners decide actual batch membership and live reservation cutoff. The duplicated TypeScript
+cutoff/scope query was removed from that reader. Ordinary own Claim View grants no financial read
+exception. Native reserve/pay/unpay/requeue ports remain Security-owned prerequisites before whole
+Claim publication; the existing AFTER financial effect and deferred money/audit checks stay in place.
+
+
+### Exact native Auto-code source witness
+
+The0939 hire source may ignore a leftover explicit Auto-mode textbox value only when private942
+`organisation_employee_code_issued(company,code)` proves that exact code was successfully issued
+in this actor/tenant/company transaction. Reserved and manual source codes remain exact. Original
+wizard Manual→Auto positive coverage is retained; new native negative cases reject posted Auto
+without an issuer and reject using a real automatic issuance to replace manual or reserved codes.
+This source depends on root942 witness89bc7e9da and requires hosted failed/affected qualification.
+
+### Current permissions repair source identities (unapplied)
+
+- `0938_data_permission_enforcement.sql`: `cef45c7d9ee037e3b7ff1e5b2d3578eb35c3a96083ffd29e830119421cf52c73`.
+- `0939_workforce_action_permissions.sql`: `bc95e44385fa4adeef13539a74daf040027c20cf73eae52cd05d6558eff0f4c4`.
+- `0941_financial_letter_actions.sql`: `f71c10eaf3697341cfac8e511836d94d47454ae28f970bb757878898d46c6217`.
+- `0942_organisation_settings_actions.sql`: `1160474bb42ffdbeb6e24169940b34fdfbb5c028038172df590f18652bc79a03`.
+- `0943_leave_attendance_claim_actions.sql`: `40034752a2e0eaeaa0cbb2f9be9bb4394db823baf93112ebbcd52536a1a1a914`.
+- `0944_lifecycle_rewards_notice_actions.sql`: `83e63b174397aee1d87a7ca728f0da2a187b3b45dd01312c28b7e97dc61d4c38`.
+- `0945_financial_setup_actions.sql`: `fecc6a07a3d9798f76b9c6c2226c6387fdfac6cb561da944c2e2314ee9b4d67f`.
+
+Source identities only; frozen failures remain preserved. Admission requires post-Noveri/nine ledger reconciliation without rewriting applied bytes.
+
+### Employee ID maintenance projection (independent source)
+
+The setup page uses permission-filtered maintenance rows before counts and pagination, with exact
+company/global View and separate Add/Edit/Delete controls. Creation choices include only scopes with
+native Add and View; an existing read-only form does not enable status edits or saves, while an
+independent Delete remains available. The canonical hire wizard keeps its existing runtime numbering
+rule reader. Native scope and six-locale actual-page tests require hosted qualification; this does not
+complete Organisation/Settings publication.
+
+### Login editor and native idle-policy setting (independent source)
+
+The existing idle-policy command has its own View/Edit purpose, `loginPresentation.sessionPolicy`,
+with the actual group-administrator floor and Settings parents. The editor and raw configuration
+writer repeat that purpose; the native pre-login single-limit reader remains independent. Access
+serialization precedes its custom revision lock and upsert. Login presentation and idle-policy cards
+are read only for their own View purpose and receive separate Edit controls, defaulting closed.
+The existing native bounds, optimistic revision and audit remain unchanged. Native and locale DOM
+qualification is required; no broader Settings source-completion claim follows.
+
+### Repeat generated-code custody at source completion
+
+The remaining original2185 wizard failure came from the complete effect matcher independently
+comparing the ignored Auto textbox again at Draft deletion. Binding and consumption now share one
+private helper that requires exact full private hire source/current actor/transaction and the actual
+successful942 issued code. The matcher additionally requires that source's actual bound employment
+and unchanged original data. Manual/reserved values and every other materialized field still match;
+the three native negative custody cases and existing wizard positive assertion remain unchanged.
+The maintenance fixture's actual native context now has its declared SessionContext grant type,
+retaining concrete native user/person IDs without a cast or authority assertion suppression.
+
+### Native provider configuration custody (independent source)
+
+AI configuration now retains its actual group-administrator floor in stored/current function hooks.
+The native candidate reader repeats View; candidate save/edit/remove and protocol receipt writes
+consume their real configuration operations, including Edit before synthetic evaluation transport
+and again before its receipt. Statement locks precede both upsert targets. Configuration forms use
+server Add/Edit/Delete projections, preserve independent removal, and reset typed-key/evaluation
+state when those controls change. Existing native human consent, candidate/version proofs, budgets,
+provider protocol and activation gates are preserved. No provider request or activation is performed
+by this source preparation. Hosted native and DOM qualification is required; complete publication and
+all worker/receipt revocation coverage remain separate acceptance work.
+
+Provider evaluation additionally binds the existing canonical monotone access-authority stamp into
+its candidate snapshot fingerprint before each probe. A private native receipt seal checks that stamp
+again on actual consume/promote and immutable receipt facts; revoking and restoring a role cannot
+revive an old review. Older unsealed receipts require a fresh review. New actual synthetic-transport
+cases cover both between-probe revocation and direct native consume after restoration; no provider
+transport is executed during local preparation.
+
+### Own Claim receipt source chapter (unapplied, unqualified)
+
+0943 registers exact own Receipt View/Add with the current and pure own native floor. Actual file
+construction runs in a finite SQL port, binding bytes and metadata to the real current claim, actor,
+transaction, authority stamp, actual insert and completed receipt audit. Initial draft/save/submit
+files additionally consume one private slot from their actual same-transaction source mutation and
+require its native source audit at deferred completion. A caller-supplied purpose cannot mint that
+slot. Raw receipt writes/removal and mutate-restore attempts are refused; native draft deletion retains
+its separate exact closed source proof. Receipt presence for submitting an actual own Draft returns
+only a boolean under Submit authority. The web file control consumes Receipt View; authored native
+source and six-locale DOM checks require hosted qualification. Independent nonself receipt purposes,
+nonself submission/decisions, finite Payroll writers and full package closure remain unfinished.
+
+
+### Payroll Claim reservation completes finite read/write source composition
+
+The Claim prefill adapter now passes its exact finite-source IDs to941 `payroll_claim_apply` Reserve,
+checks returned claim/employment identities, and retains its native integer-cents input accumulation
+and per-claim queued audit in the same transaction. The private941 port completion still consumes
+actual Payroll input/audit custody; no ordinary Claim View, raw metadata exemption or proposed-only
+money witness is introduced. Security checkpoint b600c025b is merged normally as the prerequisite.
+Existing Payroll Claim scope/native positive and deferred incomplete-source negatives require hosted
+qualification together; no local test or compiler execution is claimed.
+
+
+### Claim source reference custody
+
+The real Claim source guard now repeats tenant ownership of employment and Claim Type plus the
+selected Item's tenant/parent at creation and reference changes, including raw app SQL. It preserves
+historical archived references for unchanged decision/financial effects. Authored negative cases use
+actual foreign-tenant catalogue and wrong-parent Item rows and assert source/audit rollback; hosted
+qualification remains required. This adds no native actor course or publication completion marker.
+
+### Frozen e3 settings recovery
+
+The whole compiler passed at e3b24107. The original settings reports retain 83 database and 51 DOM
+passes, 17 database and one DOM failure. Native import admission now reads only the two existing
+policy flags through its independent native reader; settings View still protects the editor. The
+configuration refusal retains its AiConfigError contract. The scope-choice DOM assertion targets the
+actual scope select independently of the separate status select. Fixed synthetic protocol tests use
+a test-only review fixture for precisely two fixed synthetic contracts and add a pending-review
+refusal before transport/admission; production approval records remain unchanged. The unmocked
+review gate verifies actual current/stale records and the pending formula contract, rather than
+assuming a changed source still carries an old approval. This source grants no production approval.
+
+### Workflow email and Entra maintenance controls (independent source)
+
+Both maintenance pages consume one canonical View/Add/Edit/Delete projection; unavailable operations
+remain false. Entra configuration, binding, retry and reconciliation controls are read-only without
+Edit. Workflow policy and failed-delivery history remain readable with View, while policy saves and
+retry controls require Edit. Their service reads/writes repeat the exact purpose; policy serialization
+joins Access before its custom lock. Independent account-recovery delivery and authenticated worker
+courses retain their own owners. New page checks require hosted qualification; generic worker/raw
+outbox closure remains separate work and no completion sentinel is added.
+
+### Entra maintenance command authority
+
+Every direct maintenance action now requests fresh Edit before private connector reads or outbound connection tests. Native configure, bind, retry and reconciliation join the existing Access-first lock owner; reconciliation preserves its original uncertain-create predicates and audit event while requiring exact Edit. Direct-action and native stale-principal rollback cases await hosted qualification; no directory call or activation was performed.
+
+### Email template View and Edit separation
+
+The actual editor receives fresh View/Edit independently and defaults mutation controls closed. Preview, language selection and immutable history remain available to readers. Test-to-self mail requires exact Edit before identity or SMTP work. The original native design/asset writers remain private behind Access-first, Edit-checked ports, preserving native validation, revisions and audit. Six-locale read-only controls, identity/transport refusal cases and native writer privacy await hosted qualification; no mail was sent.
+
+### Dashboard library and company Home configuration
+
+The library checks View before rows/counts and separates Add, Edit/status and Delete controls. The company/role Home editor has its own company-scoped View/Edit purpose, filtered company choices, Access-first saves and native INSERT policy; no Add/Delete operations are invented for immutable versions. The original active own-employment/assignment consumption branch is retained verbatim. Editors default read-only and refuse direct client submission when Edit is absent. Actual-page/six-locale controls and original native concurrency/history/tenant/own-read cases require hosted qualification.
+
+### Independent company Home and aggregate usage reads
+
+The Home content route checks its company View directly and does not read the separate card library. Tenant-wide anonymous usage has its own read-only View purpose with the original current group floor and fixed thirty-day aggregation; the original reader is private. Employee observation recording and active own-company configuration consumption retain their independent native owners. Source only, unqualified.
+
+### Frozen 88b5 / 55bd original qualification and parser recovery
+
+All five original focused batches completed and retain their failed workflow identities: finance41499128275, personnel41499140177, Rewards41499151961, settings41499162683 at88b5b085bae5c5fc201cdb7751e5438c4927b3d6, and OneHR41499340355 at55bd92fa1233b18b598414fd1299c1265008381d. Both requested whole compilers passed. Native suites did not run: migration0944 failed parsing an unparenthesized SQL CASE inside PL/pgSQL IF. The isolated recovery parenthesizes four CASE expressions without changing calculation oracles or assertions. New native qualification must run against its own frozen source. No provider approvals, applied SQL, live ledger or activation changed.
+
+### System Testing administrative and assigned courses
+
+Administrative library/team/catalogue reads now select fresh setup View before counts and source hydration. Authors receive separate draft/publish controls; Add-only creates drafts, while subsequent publication and existing instructions require Edit. Assignment creation, reactivation and unassignment retain their actual Add/Edit/Delete classifications. Read-only visits never preload the catalogue. Native execution/run/attachment reads preserve actual own tester branches and narrow only administrative reads. Retired legacy run creation remains unavailable through app SQL. The original own-assignment lock and run-number owners are private behind Access-first finite ports, with original native assigned eligibility retained. Real assigned saves, forged administrative reads/counter calls, private-port denials and six-locale read-only editor regressions await hosted qualification.
+
+### Frozen 5d51 original follow-up outcomes
+
+All six planned runs completed at5d51003e8368d4ffbc7358a142ddf2015860909b:41501771883/41501782418/41501796709/41501807777/41501818240/41501828775. Native migrations reached a second parser error in0944 at the local `leading` identifier. Pure/UI evidence retains Rewards25, settings15 and OneHR22 passes; UI57pass/7Dashboard async-fixture failures; whole compiler failed only the Dashboard fixture namespace type. Original logs/artifacts remain preserved. Recovery renames only that local identifier, qualifies three ambiguous normalizer aliases, and gives the dashboard permission fixture a typed namespace and synchronous Pager boundary; assertions remain strict. Rewards consumer and private mutation chapters remain held pending genuine native parity.
+
+### Actual wider Claim read/submit and assigned decision sources (unapplied chapter)
+
+0943 now separates `claims.related` View/Execute plus HR-only native Approve (canonical recursive manager/HOD plus administrative
+profile), administrative View/Execute/Approve (actual scoped HR plus profile), and `claims.assigned`
+View/Approve (real current direct manager or exact scoped delegation, no administrative parent).
+Source reads repeat actual subject/status and the native course; full newborn Claim lookup is not
+substituted for the actual row's RLS fields. Actual nonself submission and pending decision mutations
+seal complete queued images, actor/transaction and authority stamp; actual physical effects plus the
+native submitted/decision audit must complete before commit. Skipped/conflicting INSERT receipts fail.
+The assigned write policy permits only the decision state change, with immutable-content and final
+source guards, and its finite decision facts preserve a genuine task outside administrative scope.
+Approval rows/bulk controls and inbox actionability consume the same actual decision predicate.
+
+The native self-super exception has its own exact selfDecision View/Approve floor: actual self,
+live stored super_admin, current principal/claimed super role and data profile. Stored super grants
+remain global as required by schema; a narrowed current carrier does not become a fabricated scoped
+stored super grant. Ordinary employee self-approval remains refused. Native hierarchy, HOD, direct
+manager, scoped delegate, current/pure recipient, profile narrowing, self-super and raw mutation/audit
+negative fixtures are authored in `test/claim-native-nonself-actions.test.ts`; hosted qualification is
+required. No completion sentinel or fake binding is added, and nonself receipt constructors, remaining
+Leave/Attendance source courses and full module publication remain unfinished.
+
+
+The new Claim command receipt also captures a private monotone native-source epoch, separate from
+control defaults: actual graph, scope and Claim catalogue/policy mutations invalidate it, including
+same-transaction revoke/restore. Claim outcomes, receipts and audits never advance this epoch.
+Relevant native writers take Access before source tuples; command admission locks the real epoch
+row to refuse an already-pinned stale repeatable-read writer. Authored native fixtures contrast a
+restored manager relationship (refused, full rollback) with actual approval→reimbursement in one
+transaction (retained). No receipt is used as ongoing actor/default/delegation authority.
+
+
+### Native nonself receipt construction and task read (unapplied chapter)
+
+All runtime Claim receipt INSERTs now consume one finite actual stored-parent constructor, including
+nonself upload and logical submit initialization. Native admin/recursive/HOD file maintenance has
+its own exact View/Add and data scope; direct/delegated task View can read the actual task receipt
+without becoming upload authority. The old own-only public API remains own-only. Constructor slots
+still require a real same-transaction parent mutation and native source audit, byte/metadata equality,
+actual physical birth and completed upload audit; source class is private and derived from the real
+parent. Both own and nonself receipts now bind the private Claim native-source stamp, not a caller
+purpose alone. Existing own refusal messages/closed Draft Delete remain intact. The TS adapter no
+longer uses a raw nonself INSERT/audit path. Native actual byte/audit positives, unrelated read refusal,
+assigned read-without-upload and raw/posted-source negatives are authored; hosted qualification is
+required. Catalogue consumer/maintenance raw-read separation and genuine component publication
+remain unfinished, so this is not a complete supported Claim package.
+
+
+Claims completion remains live after an early `SET CONSTRAINTS ALL IMMEDIATE`: retained private
+command, receipt, closed Draft Delete and cancel/reimbursement proofs capture actual source stamps;
+Claims-only hooks requeue exact current-XID tenant contexts on real control/native epoch changes.
+No foreign proof rows or current/default grants are changed. A private physical byte/metadata birth
+is separate from receipt context validation, so a genuine same-transaction closed Draft Delete can
+still compose with its initial receipt. Authored genuine APP-session command/receipt/cancel/reimburse
+fixtures use the public canonical data-permission transition owner to assign and restore an existing
+actor after early validation, without elevating the session or adding fixture grants. Separate
+owner-held downgrade simulations cover native graph and own login restore; these are explicitly
+protocol simulations, not strict APP-login qualification. No supported binding is fabricated.
+All new cases still require hosted execution. Ordinary approval→reimbursement stays a positive native
+outcome chain.
+Finite status transitions now refuse filed-row hard deletion and lifecycle rewinds, while Submit
+cannot silently edit the Draft's static source fields; actual native repricing fields remain allowed.
+
+Claim Types now projects exact Add/Edit/Delete into its native type/item/designed-field controls.
+Limits and Mileage project the actual dated logical resource's Add or Edit course, including prior
+versions/tombstones, through a read-only API. Both projection and serialized insertion use the same
+private resource identity/history fact; reading neither reserves the key nor takes configuration
+write locks. A denied grid row remains visible as reference, cannot change local payload state, and
+is excluded from the submitted changes; Mileage retains its values in a disabled editor. Native
+writers still recheck their current exact controls and logical course. New database projection and
+rendered control cases are authored, not executed here; genuine supported component publication and
+all remaining native Leave/Attendance/Claim source closure are still required.
+
+### Leave Approval templates: independent native course (unapplied chapter)
+
+`leaveApproval.templates` has exact View/Add/Edit/Delete with no group-only Leave Types parent.
+Its real tenant-member reference View and ANY-HR constructor/edit/delete floor preserve the scoped
+company-HR route exception; current admission repeats actual stored roles/login and claimed native
+HR. Constructors, duplication, reactivation, default changes, archive/deletion and raw table writes
+consume the same exact course. Archive is Delete; reactivation/default changes are Edit. The template
+manager receives actual read-only Add/Edit/Delete projections, defaults missing projections to false,
+and refuses an unauthorized drawer/save path. Native routing references remain independent of the
+maintenance list's View. Native company-HR/member/raw-refusal and rendered course cases are authored
+but unrun. Company assignment/escalation controls and live Leave operations remain unfinished; this
+chapter does not complete or publish the Leave component.
+
+Leave Approval assignments and escalation have independent company View and native-admin operations.
+Assignment Add is a real new row; replacement/reactivation is Edit; unassignment/archive is Delete.
+Actual OLD and NEW company scopes, identity and tenant-owned template/type/organization references
+are repeated by the raw assignment guard; maintenance lists repeat exact View while runtime routing
+keeps its own reference source. The real escalation setter repeats exact company View/Edit. A private
+actual-OLD/NEW helper permits only the five native escalation columns and requires the full stored
+Company OLD plus current native company Edit; root owns its 0942 Company-guard composition. This helper
+is not app-executable and grants no general Company mutation. Native scope/reference/refusal cases
+are authored but unrun. Company assignment/escalation UI projections, root guard integration and
+live Leave command closure remain outstanding; no Leave completion claim or sentinel is added.
+
+Template and escalation maintenance reads have explicit facades over shared native reference query
+owners. The existing Leave Types approval readout and runtime reference consumers keep their native
+reference course, so a maintenance View denial never becomes a false fallback chain/policy. The main
+Approval screen projects Template View before rendering that maintenance section and filters each
+escalation section by exact company View; its editor receives exact Edit and defaults missing flags
+to disabled. The company escalation DOM controls and shared-reference facade checks are authored,
+not executed. Assignment picker/course preview and the remaining native command chapters are open.
+
+Assignment controls now project the actual selected logical slots. The native constructor and read-only
+projection share one private SQL bucket lookup (including archived-row reactivation, null-safe grade
+population/duration and exclusion of legacy org/grade scopes) and one native eligibility preparation
+owner. The authenticated read-only action mints no intent/reservation and does not take write admission;
+the constructor recomputes under existing Access/Leave locks and raw guards repeat actual controls.
+The picker opens only for companies with a native Add or Edit course, unassign uses exact company
+Delete, and submission stays disabled until a current positive projection covers all selected slots.
+Selection changes clear it; stale responses cannot enable another selection. Native read-only/actual
+Add→archive→Edit and rendered pending/stale response cases are authored, unrun. Full supported default,
+recipient and control-denial qualification still awaits genuine component closure/publication.
+
+Static native-source correction: 0319 makes ordinary Schedule Group and OT-row writes ANY-HR;
+0545 membership is ANY-HR too. The original ff17 core constructor/edit/copy adds a group-admin floor
+only for dated rotations (and copy carrying dated rotations). Remove the invented blanket group-only
+Attendance configuration/Schedule delegation floor; actual stored/current ordinary Schedule floors
+remain ANY-HR. Dated rotation's genuine group-only service/RLS floor is retained. Company-HR ordinary
+constructor/edit/copy and stored/current parity versus actual dated-rotation refusal/copy rollback
+cases are authored, not executed or relabeled as installed default/recipient evidence.
+
+### Shared Shift native function chapter (unapplied)
+
+`attendancePolicy.shifts` retains the actual 0197 ANY-HR tenant library and inherits canonical global
+Attendance configuration operations/View plus its own exact View. Actual create/copy, edit/pay settings,
+archive/delete and reactivation writers repeat the exact purpose; raw parent and OT-window guards
+repeat tenant/reference custody. New/copy window initialization is Add only over actual actor/XID
+parent birth; existing replacement is Edit; a cascading removal is Delete only over actual consumed
+parent removal. Shared routing/payroll/employee metadata getters retain independent native references;
+explicit maintenance facades use exact View without configuration write locks. Native list/new/edit
+screens project exact Add/Edit/Delete, with missing/denied flags disabling actual controls.
+
+A private actual Shift AFTER INSERT birth/full-source/stamp can admit only its original first group
+membership. Actual child before/after images complete it; pre-use parent mutation invalidates it.
+Additional, neighbor or changed memberships retain their Group owner. No posted flag, generic Group
+Edit grant or borrowed native-positive group default is introduced. Current-XID completed contexts
+are rechecked on actual control epoch changes after early constraint flush. APP native source/child
+window/copy and reference/refusal cases are authored; owner-held exact-predicate simulations are
+explicitly not strict APP-login qualification. Supported-deny/default/recipient tests still require
+genuine full component publication. Dated rotations, remaining settings/imports and operational
+Attendance/Leave/Claim closure remain open; this chapter adds no completion sentinel.
+
+Dated rotations now have exact `attendancePolicy.rotations` View/Edit under their actual Schedule
+parent, with stored/current/delegation native group-admin write floors. Actual save, raw immutable
+version INSERT and the editor repeat this distinct course; ordinary company-HR Group/Shift remains
+unchanged. A real new Group copy may initialize dated versions under actual Group Add plus the
+original stronger group-admin role, not a fabricated Rotation Edit grant. Standard remains excluded
+as in the native setter. The editor uses exact View/Edit and preserves the stored date in read-only
+mode; shared week/payroll routing keeps native references. Native role/parity/raw-refusal and DOM
+read-only cases are authored, unrun. This role/action guard does not certify the full direct-raw
+rotation temporal/payroll-effect constructor contract; remaining native transaction/source closure
+and genuine component publication are still required.
+
+Duty Roster and Exception switches now have separate exact View/Edit under actual Schedule View/Edit,
+with the original ANY-HR stored/current/delegation ceiling. Native setter, raw Duty-column changes
+and immutable Exception INSERT repeat their own control; plain Group Add/default initialization does
+not require unrelated switch Edit. Shared runtime/roster reference lookup stays independent. The Group
+screen uses separate View/Edit projections and retains the real current value without an editing
+form when only View is present. Native company-HR positives, actual immutable-version refusal,
+raw/stale non-admin negatives and rendered sibling/View separation are authored, unrun. Future
+supported-denial/default/recipient proof still needs genuine component completion/publication.
+
+Shared Clocking Sites now have exact View/Add/Edit/Delete under Attendance Configuration, with the
+original 0459/0517 stored/current group-admin write floor and scoped-HR maintenance View. The existing
+open-company reader owns row/name visibility; employee clock/history/reference readers remain separate.
+Native writers and parent/company-link row guards repeat the exact purpose. Actual AFTER INSERT full
+parent birth binds company initialization to Add; later link changes use Edit, while actual consumed
+parent removal uses Delete. No posted birth flag or broad employee read is granted. Private source
+refusals retain assigned-company/site in-use protection even when an administrative data profile hides
+employees from the UI count. The maintenance list/detail and direct form routes consume independent
+operation projections. Native source/floor and rendered projection cases are authored, unrun.
+Genuine supported-denial/default/recipient qualification, all native constructor business rules and
+cross-source assignment/config serialization remain qualification work; this is not module completion.
+
+The employee_clocking_location statement source now joins the exact canonical Access advisory fence
+through private audit_access_order_lock_for(current tenant), try-only before row locks. It adds no
+purpose, employee access, business/control epoch or new admission exception; the existing genuine
+storage-owner maintenance distinction is unchanged. Source/assignment config writes now share the
+same Access key. A native APP pre-held-data-lock contention/refusal and later uncontended-statement
+case is authored, unrun. This serialization is not raw assignment constructor completion.
+
+Operational Leave preparation now factors the existing leave.apply_on_behalf override algebra into
+one private SQL fact and an actual-principal boolean port consumed by the existing composer/service
+resolver. Company overrides replace the whole tenant set; same-role denial beats its allow; absent
+overrides retain only original HR/super defaults. Current claimed roles plus current delegated-role
+carrier are preserved and revalidated, and a foreign company fails closed. This fact grants no subject
+visibility, employee-data admission, decision, ledger or source mutation. Independent existing policy
+oracle parity/native/private-input cases are authored, unrun. Exact operational function registration
+and raw constructor/terminal closure are still subsequent work; this fact is not module completion.
+
+Own operational Leave application now has a separate native own-person/company View/Add/Edit/Delete
+course, without administrative parent or employee-profile borrowing. The actual requestLeave self Add,
+self-only pending edit and self-only pending withdrawal transactions repeat that purpose after their
+original native source checks. Source boolean and stored/current/recipient floor cases are authored,
+unrun. This is bounded command composition: shared raw Leave request/date/ledger/attachment and
+assigned/super decision readers, the apply UI and give-back cancellation are still separate unfinished
+owners; no raw/read/default/publication completion is claimed for this descriptor.
+
+Restricted-publisher Claim audit found the assigned pure helper and 0818 delegation coverage fact
+still borrowed ambient tenant. The assigned target helper now uses only explicit tenant/user/subject;
+a private parameterized exact 0818 coverage copy retains the real administrative-manager→delegate
+relationship, activity, task/module and organisation scope. Its source hash and single replacement
+anchor are checked at migration time; native drift refuses instead of silently changing behavior.
+The recursive-manager/HOD/company-tree owners and profile/login facts were inspected and already take
+explicit source IDs/tenant/date without caller GUCs, so they are reused unchanged. Owner NULL-tenant
+and foreign-caller-tenant probes, actual APP positive/negative admission, scoped delegation removal
+and private-port denial cases are authored, unrun. This establishes a qualification target, not a
+claim that a genuine supported package/default installation has passed.
+
+On-behalf Leave application has its own company View/Add purpose and employee-bearing native course.
+Its pure/current hooks preserve the original configurable role permission plus actual nonself native
+recursive-manager/HOD/admin visibility and administrative profile. A global/future floor additionally
+requires the real global native company role and tenant/future permission, repeating every current
+company override; an ANY-current-company witness cannot prove it. requestLeave repeats the exact
+on-behalf source purpose after its original permission/subject gate. It does not borrow approval or
+own application authority. Distinct own/on-behalf labels exist in all six locales. Actual custom-manager
+admission/revocation and owner NULL/foreign-tenant target cases are authored, unrun. Shared raw/effect,
+selected-target UI, reviewed/assigned decisions and publication closure remain unfinished.
+
+The actual /leave application composer now filters its already-native-visible candidate IDs through
+one read-only batched own-Add/on-behalf-Add projection, returning IDs only. No write/Access lock,
+reservation or employee metadata grant is added. The real RequestLeaveDialog requires canAdd=true;
+false/missing runtime projection renders no trigger/form and does not consume an auto-open link.
+Denied target options are absent while independently permitted own/nonself choices remain. Actual
+native target filtering and rendered denied/allowed dialog/field cases are authored, unrun. Home
+shortcuts, existing pending Edit/Delete affordances, separate give-back and assigned decision UI,
+shared raw/effect closure and genuine supported publication still require subsequent work.
+
+The raw pending Leave request INSERT now repeats actual source tenant/employment and the exact own
+or on-behalf Add course before row creation, closing the visible-manager-without-on-behalf-permission
+route. A real APP raw refusal case first proves the report is visible, then checks 42501 and no row.
+The guard deliberately does not relabel approved/cancelled split or historical import rows. This
+pending action admission is not a proof of submitted audit/date/document/ledger business effects;
+those finite source and terminal obligations, read courses and other raw operations remain open.
+
+Own pending Edit/withdraw UI now uses a read-only actual request-ID function projection, with no
+employee fields or new write/Access lock. The actual history RSC renders each dialog only when its
+operation is strictly true; the Tracker adds exact Delete IDs to its existing own/pending/plain/native
+eligibility predicate before the real self-withdraw control is emitted. Original approved give-back
+and other-person HR cancellation remain separate. Original client dialog APIs and the frozen r397
+historical fixture are preserved; no fabricated fixture flags are introduced. Actual own-versus-visible
+report/unknown request projections and real Tracker denied/allowed withdrawal confirmation cases are
+authored, unrun. Genuine supported per-operation denial and remaining raw/effect/read/native courses
+still require qualification and source closure.
+
+### Employee Master definition actions and schedule maintenance
+
+The Master report course now distinguishes View, Add, Edit and Delete, preserving the original
+report-category override algebra, actual company role scope, private ownership and explicit sharing.
+The real builder/list controls consume fresh action flags. Definition changes check both their stored
+and proposed companies, while the run recorder's last-run timestamp remains a View consequence.
+Raw Master definition reads and mutations repeat these predicates; schedule maintenance repeats Edit
+and the actual report ownership ceiling, including the original FK deletion cascade. A try-only Access
+statement fence precedes tuples; no caller role/GUC, execution grant or employee data bypass is added.
+Native company relocation and non-HR raw creation cases are authored and require hosted qualification.
+This checkpoint does not claim complete publication or qualify delivery workers by itself.
+
+Claim native authority epoch now includes actual reporting_line_scope mutations, including the
+absence-means-all/module/task effects consumed by 0818. The same source fence first tries canonical
+Access ordering and then retains the existing write-lock/revision fence; pre-held data cannot cause
+a blocking Access upgrade. No role/admission authority is changed. A real APP native scope writer
+positive and completed-decision→early-flush→scope revoke/restore rollback case is authored, unrun.
+The whole source row is restored before final validation, so the monotone epoch/requeue is material.
+
+### Existing-employee import purpose and native constructors
+
+The import function now separates new-employee Add from existing-employee Execute. Section and
+register reads repeat View, and actual writes repeat Execute plus unchanged record/field authority.
+Genuine new-employee register/allocation materialization uses the original same-transaction hire
+receipt and actual Add; a caller newEmployees flag is never write authority. The public bank point
+reader retains its original implementation behind a private OID and repeats import View.
+Movement and information corrections check actual before/proposed company purposes; allocation
+commit/revert retains exact current/historical company checks. The workbench offers the actual
+current company scopes and independent write flags while retaining template/preview reads.
+Native fixtures remain explicit UI projections, not storage grants. New code and affected original
+import suites require hosted qualification; remaining history/source courses and complete publication
+are not claimed by this checkpoint.
+Private native override projection helpers now share the exact whole-set tenant/company role algebra
+for Leave on-behalf and the six existing report.read categories (all retain original HR/super defaults).
+Unknown keys/foreign scopes fail closed. Actual/proposed recipient sets enumerate every relevant live
+user's complete roles; singleton enum-role changes additionally capture future recipients and gains
+caused by last-company-row removal. They are facts, not execution/admission ports, and remain private.
+A drift-refusing copy of canonical 0938 recipient profile subset semantics forces only administrative
+classification for potential new reach; it does not borrow Workforce View. Future company data scope
+reuses the existing 0941 data-only ceiling without any Letter execution authority. Actual stored-row
+projection/no-mutation, proposed manager gains, canonical profile assignment and private-port cases
+are authored, unrun. Source ACL admission/audit/recipient before-after/native-floor closure remains
+in progress; no raw permission write is newly authorized by these helpers.
+
+Report recipient projection additionally filters stored roles through actual company coverage (global
+roles only for NULL future scope), matching report.read native category ownership. Leave intentionally
+retains its original full-role collection. An actual Employee-global + HR-only-other-company fixture
+checks native Report before=false, projected Employee-allow gain, actual after=true, the contrasting
+Leave role truth, and NULL-future scoped-role exclusion. This corrects a review finding before Report
+source adoption; it grants no role, support flag or execution port and is authored/unrun.
+
+Frozen aad native failures are preserved. Causal source repairs keep the parameterized Claim target
+helpers private and expose only a fixed-current-principal SECDEF predicate to UPDATE RLS; ordinary
+and assigned native decisions must still complete their existing exact source/audit proof. Shared-site
+parent statement admission repeats the original group-admin floor before RLS no-row clipping. The
+immutable company child has no actual APP UPDATE writer (native setCompanies is INSERT/DELETE), so
+UPDATE is revoked explicitly instead of inventing a row lookup or weakening forgery assertions.
+The rotation fixture now uses the real native group constructor; scope changes use editDelegation's
+actual supersede/reinsert course instead of overlapping a new delegation. Four old source-shape
+assertions now require the stronger exact-purpose composition while retaining the same group/read
+business contracts. Four genuine future/global profile-transition qualification cases remain blocked
+until real publication; no grants/support or their assertions are changed. Repairs and one additional
+actual APP current-predicate/private-port/native-decision case are authored, unrun.
+
+### Draft author, administration and activation source purposes
+
+Draft storage now chooses the existing company-administration or actual author course before its
+configurable View and exact action, so a denied selected administrative purpose cannot retry as author.
+Both stored and proposed companies are checked on edits, with the existing same-transaction initial
+Add proof preserved. Activation remains the genuine hire source and consumes a draft through its
+original completed effect, independently of discard. The two courses have separate native defaults;
+the author relation cannot delegate company administration. Statement ordering joins the canonical
+try-only Access fence. Source and native author-transfer fixtures require hosted qualification; the
+wizard action projections and full publication remain separate work.
+
+## Permissions integration above accepted 0946 — 3 November 2026 (unapplied candidate)
+
+Accepted main a02845ba retains its complete journal and applied migration bodies. Only the ten permissions migrations are relocated; their SQL bytes match the source checkpoint. This is local integration, without installation.
+
+| Source tag | Integration tag | idx | when | SQL SHA256 |
+| --- | --- | ---: | ---: | --- |
+| 0936_data_permission_profiles | 0947_data_permission_profiles | 794 | 1793330000347 | 59a9a1de8fd9409479b2568b72e2bd8279e5babfd6b5ddfbe37b83dd84d7bc21 |
+| 0937_data_permission_reader_bypasses | 0948_data_permission_reader_bypasses | 795 | 1793330000348 | 2afbef5858f4541f3e0cacd876ae40d8575543e8c4f3ffdaba797919185d00b7 |
+| 0938_data_permission_enforcement | 0949_data_permission_enforcement | 796 | 1793330000349 | cef45c7d9ee037e3b7ff1e5b2d3578eb35c3a96083ffd29e830119421cf52c73 |
+| 0939_workforce_action_permissions | 0950_workforce_action_permissions | 797 | 1793330000350 | bc95e44385fa4adeef13539a74daf040027c20cf73eae52cd05d6558eff0f4c4 |
+| 0940_bounded_approval_task_sources | 0951_bounded_approval_task_sources | 798 | 1793330000351 | 2c2e90e81f38bba34706057012d8d948c347c6271564dc824e0a4ea13e8cee0d |
+| 0941_financial_letter_actions | 0952_financial_letter_actions | 799 | 1793330000352 | f71c10eaf3697341cfac8e511836d94d47454ae28f970bb757878898d46c6217 |
+| 0942_organisation_settings_actions | 0953_organisation_settings_actions | 800 | 1793330000353 | 1160474bb42ffdbeb6e24169940b34fdfbb5c028038172df590f18652bc79a03 |
+| 0943_leave_attendance_claim_actions | 0954_leave_attendance_claim_actions | 801 | 1793330000354 | 40034752a2e0eaeaa0cbb2f9be9bb4394db823baf93112ebbcd52536a1a1a914 |
+| 0944_lifecycle_rewards_notice_actions | 0955_lifecycle_rewards_notice_actions | 802 | 1793330000355 | 83e63b174397aee1d87a7ca728f0da2a187b3b45dd01312c28b7e97dc61d4c38 |
+| 0945_financial_setup_actions | 0956_financial_setup_actions | 803 | 1793330000356 | fecc6a07a3d9798f76b9c6c2226c6387fdfac6cb561da944c2e2314ee9b4d67f |

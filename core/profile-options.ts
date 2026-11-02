@@ -270,10 +270,10 @@ export function listProfileOptions(
 /** All categories in one round-trip (the admin CRUD page). Keyed by category. */
 export async function listAllProfileOptions(
   ctx: SessionContext,
-  opts: { activeOnly?: boolean } = {},
+  opts: { activeOnly?: boolean; maintenance?: boolean } = {},
 ): Promise<Record<ProfileOptionCategory, ProfileOptionRow[]>> {
   return withTenant(ctx, async (tx) => {
-    const where = opts.activeOnly ? eq(profileOption.isActive, true) : undefined;
+    const where = and(opts.activeOnly ? eq(profileOption.isActive, true) : undefined,opts.maintenance?sql`app.organisation_settings_function_allowed('systemLabels.profileOptions.'||${profileOption.category},'view',NULL)`:undefined);
     const rows = await tx
       .select()
       .from(profileOption)

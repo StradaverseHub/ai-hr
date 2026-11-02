@@ -35,6 +35,12 @@ describe('email design native ownership',()=>{
   await expect(withTenant(employee,tx=>tx.execute(sql`select app.email_design_delivery(${foreign.tenantId}::uuid,'invitation','en')`))).rejects.toThrow();
   expect(await withTenant(foreignAdmin,tx=>tx.execute(sql`select * from email_design where tenant_id=${b.tenantId}::uuid`))).toEqual([]);
  });
+ it('keeps both original native writers private behind the fresh Edit and Access-order ports',async()=>{
+  await expect(withTenant(admin,tx=>tx.execute(sql`select app.organisation_email_design_save_native('invitation','en',NULL,0)`))).rejects.toThrow();
+  await expect(withTenant(admin,tx=>tx.execute(sql`select app.organisation_email_asset_save_native('image/png',decode('00','hex'))`))).rejects.toThrow();
+  expect(await listEmailDesigns(admin)).toEqual([]);expect(await emailDesignHistory(admin,'invitation','en')).toEqual([]);
+  expect(await owner.db.select().from(schema.emailAsset)).toEqual([]);
+ });
  it('refuses a revoked grant even if the caller still carries an administrator snapshot',async()=>{
   const [user]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'fictional_email_admin_'+randomUUID()}).returning({id:schema.appUser.id});
   const [grant]=await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:null}).returning({id:schema.roleAssignment.id});

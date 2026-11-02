@@ -19,14 +19,17 @@
  * admin, link app_users to those people, and drive each case through the role under test.
  */
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq,sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { canApplyLeaveOnBehalf, requestLeave, LeaveOnBehalfNotAllowedError } from '../core/leave';
-import { listEmployees, reportingLinesFor } from '../core/read';
-import { PAYROLL_PERMISSION_DEFAULTS, PAYROLL_PERMISSION_KEYS } from '../lib/payroll-permissions';
-import type { SessionContext } from '../db/client';
+import { adminCancelLeave, canApplyLeaveOnBehalf, cancelOwnLeave, decideLeave, editLeaveRequest, leaveEmployeeRecordCancellationAccess, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess,ownLeaveRequestActionAccess } from '../core/leave';
+import { countLeaveRequestsByStatus, listEmployees, listLeaveRequestsPage, reportingLinesFor } from '../core/read';
+import { ownLeaveRejections } from '../core/my-leave';
+import { ownLeaveRequestsPage } from '../core/mobile-leave-history';
+import { pgSqlState } from '../lib/db-error';
+import { PAYROLL_PERMISSION_DEFAULTS, PAYROLL_PERMISSION_KEYS,decidePayrollPermission } from '../lib/payroll-permissions';
+import {withTenant,type SessionContext} from '../db/client';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -403,7 +406,10 @@ describe('the screen and the service read ONE permission (AGENTS rule 17)', () =
     expect(loader).toContain('.find((e) => e.employmentId === me.employmentId)?.companyId ?? null;');
     expect(page).toContain('canApplyOnBehalf,'); // destructured off the loader's result
     expect(loader, 'the reporting-lines read is back').not.toContain('reportingLinesFor');
-    expect(page).toContain('employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}');
+    // Exact Add projection further narrows the native permission's already-visible choices.
+    expect(page).toContain('employeeOptions={canApplyOnBehalf && requestLeaveEmployeeOptions.length ? requestLeaveEmployeeOptions : undefined}');
+    expect(page).toContain('nativeRequestLeaveEmployeeOptions.filter(row=>allowedApplicationIds.has(row.id))');
+    expect(page).toContain('canAdd={canAddLeaveApplication}');
     // THE ONE-EDIT-APART CASE. The old rule and the new one differ by a single expression, so the absence of
     // the old read is asserted as flatly as the presence of the new one — a page that asks BOTH questions
     // would satisfy every other assertion in this file.
@@ -455,4 +461,186 @@ describe('the screen and the service read ONE permission (AGENTS rule 17)', () =
     expect(body).toContain('const { s, employmentId } = await resolveMe();');
     expect(body, '/me started trusting a posted employment').not.toContain("formData.get('employmentId')");
   });
+});
+
+
+describe('one native on-behalf permission fact shared by the composer and raw source owners',()=>{
+ it('matches independent existing override algebra, including whole-set company replacement and role-specific denial',async()=>{
+  const ctx=adminCtx(b),roles=['hr_admin'];
+  const cases=[[],[{role:'hr_admin',allowed:false,companyScoped:false}],[{role:'hr_admin',allowed:true,companyScoped:false}],[{role:'hr_admin',allowed:true,companyScoped:false},{role:'manager',allowed:true,companyScoped:true}],[{role:'hr_admin',allowed:false,companyScoped:false},{role:'hr_admin',allowed:true,companyScoped:true}],[{role:'manager',allowed:true,companyScoped:true},{role:'hr_admin',allowed:false,companyScoped:true}]];
+  for(const overrides of cases){
+   await owner.db.delete(schema.payrollPermissionGrant).where(and(eq(schema.payrollPermissionGrant.tenantId,b.tenantId),eq(schema.payrollPermissionGrant.permissionKey,'leave.apply_on_behalf')));
+   for(const row of overrides)await grant({companyId:row.companyScoped?b.companyId:null,role:row.role,allowed:row.allowed});
+   const expected=decidePayrollPermission({key:'leave.apply_on_behalf',callerRoles:roles,overrides});
+   expect(await canApplyLeaveOnBehalf(ctx,b.companyId)).toBe(expected);
+   const [actual]=await withTenant(ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_native(${b.companyId}::uuid) as allowed`));expect(actual.allowed).toBe(expected);
+  }
+ });
+ it('refuses a foreign company and keeps role-list oracle input private',async()=>{
+  const ctx=adminCtx(b),foreign=await seedBase();
+  expect(await canApplyLeaveOnBehalf(ctx,foreign.companyId)).toBe(false);
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.leave_on_behalf_permission(${b.tenantId}::uuid,${b.companyId}::uuid,ARRAY['super_admin'])`))).rejects.toThrow();
+ });
+});
+
+
+describe('native own Leave application source composition',()=>{
+ it('binds own purpose to the actual linked person/company and refuses another visible report',async()=>{
+  const self=await hire('manager'),report=await hire('employee');await reportsTo(report.employmentId,self.employmentId);
+  const facts=await withTenant(self.ctx,tx=>tx.execute<{operation:string;own:boolean;other:boolean}>(sql`select operation,app.leave_own_application_allowed(${self.employmentId}::uuid,operation) as own,app.leave_own_application_allowed(${report.employmentId}::uuid,operation) as other from unnest(ARRAY['view','add','edit','delete']) operation`));
+  expect(facts).toEqual(['view','add','edit','delete'].map(operation=>({operation,own:true,other:false})));
+  const [floors]=await owner.withTenant(self.ctx,tx=>tx.execute<{stored:boolean;current:boolean;recipient:boolean}>(sql`select app.module_function_legacy_allowed(${b.tenantId}::uuid,${self.ctx.userId}::uuid,'function.leave.own.application.add',${b.companyId}::uuid) as stored,app.module_function_current_legacy_allowed(${b.tenantId}::uuid,${self.ctx.userId}::uuid,'function.leave.own.application.add',${b.companyId}::uuid) as "current",app.access_function_delegation_floor('function.leave.own.application.add',${b.companyId}::uuid) as recipient`));expect(floors).toEqual({stored:true,current:true,recipient:true});
+  expect(await withTenant(self.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_own_application_allowed(${self.employmentId}::uuid,'approve') as allowed`))).toEqual([{allowed:false}]);
+ });
+});
+
+it('keeps a real customer-granted manager on-behalf course and pure target floor independent of publisher tenant',async()=>{
+ const manager=await hire('manager'),subject=await hire('employee');await reportsTo(subject.employmentId,manager.employmentId);
+ const [absent]=await withTenant(manager.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(absent.allowed).toBe(false);
+ expect(await leaveApplicationAddAccess(manager.ctx,[manager.employmentId,subject.employmentId])).toEqual([manager.employmentId]);
+ await grant({role:'manager',allowed:true});
+ const [admitted]=await withTenant(manager.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(admitted.allowed).toBe(true);
+ expect((await leaveApplicationAddAccess(manager.ctx,[manager.employmentId,subject.employmentId,subject.employmentId])).sort()).toEqual([manager.employmentId,subject.employmentId].sort());
+ const foreign=await seedBase();
+ for(const ambient of ['',foreign.tenantId]){
+  const [floors]=await owner.db.transaction(async tx=>{await tx.execute(sql`select set_config('app.tenant_id',${ambient},true),set_config('app.user_id','',true),set_config('app.roles','',true),set_config('app.grants','[]',true)`);return tx.execute<{named:boolean;global:boolean;foreign:boolean}>(sql`select app.module_function_legacy_allowed(${b.tenantId}::uuid,${manager.ctx.userId}::uuid,'function.leave.onBehalf.application.add',${b.companyId}::uuid) as named,app.module_function_legacy_allowed(${b.tenantId}::uuid,${manager.ctx.userId}::uuid,'function.leave.onBehalf.application.add',null) as global,app.module_function_legacy_allowed(${foreign.tenantId}::uuid,${manager.ctx.userId}::uuid,'function.leave.onBehalf.application.add',${foreign.companyId}::uuid) as foreign`);});expect(floors).toEqual({named:true,global:false,foreign:false});
+ }
+ const stranger=await hire('employee');
+ const [notVisible]=await withTenant(stranger.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(notVisible.allowed).toBe(false);
+ await owner.db.update(schema.payrollPermissionGrant).set({allowed:false}).where(and(eq(schema.payrollPermissionGrant.tenantId,b.tenantId),eq(schema.payrollPermissionGrant.permissionKey,'leave.apply_on_behalf'),eq(schema.payrollPermissionGrant.role,'manager')));
+ const [revoked]=await withTenant(manager.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(revoked.allowed).toBe(false);
+});
+
+it('refuses a raw pending application by a visible-report manager without the native on-behalf permission',async()=>{
+ const manager=await hire('manager'),subject=await hire('employee');await reportsTo(subject.employmentId,manager.employmentId);const typeId=await leaveType();
+ const visible=await withTenant(manager.ctx,tx=>tx.select({id:schema.employment.id}).from(schema.employment).where(eq(schema.employment.id,subject.employmentId)));expect(visible).toEqual([{id:subject.employmentId}]);
+ let failure:unknown;try{await withTenant(manager.ctx,tx=>tx.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END,days:'2.00',status:'pending'}));}catch(error){failure=error;}
+ let denied=false;for(let cause=failure;cause&&typeof cause==='object';cause=(cause as {cause?:unknown}).cause)if((cause as {code?:string}).code==='42501'&&(cause as {message?:string}).message==='On-behalf Leave application unavailable')denied=true;
+ expect(denied).toBe(true);expect(await requestCount(subject.employmentId)).toBe(0);
+});
+
+
+it('projects own pending request controls without granting them for a visible report or an unknown source',async()=>{
+ const manager=await hire('manager'),subject=await hire('employee');await reportsTo(subject.employmentId,manager.employmentId);const typeId=await leaveType();
+ const own=await requestLeave(manager.ctx,{employmentId:manager.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const other=await requestLeave(adminCtx(b),{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const unknown=randomUUID(),flags=await ownLeaveRequestActionAccess(manager.ctx,[own.leaveRequestId,other.leaveRequestId,unknown]);
+ expect(flags[own.leaveRequestId]).toEqual({canEdit:true,canDelete:true});expect(flags[other.leaveRequestId]).toEqual({canEdit:false,canDelete:false});expect(flags[unknown]).toBeUndefined();
+ expect(await ownLeaveRequestActionAccess(manager.ctx,[])).toEqual({});
+});
+
+it('keeps the own history list, counts, mobile nomination and rejection reason on the actual own View source',async()=>{
+ const manager=await hire('manager'),subject=await hire('employee');await reportsTo(subject.employmentId,manager.employmentId);const typeId=await leaveType();
+ const make=(ctx:SessionContext,employmentId:string)=>requestLeave(ctx,{employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const own=await make(manager.ctx,manager.employmentId),other=await make(subject.ctx,subject.employmentId),ids=[own.leaveRequestId,other.leaveRequestId];
+ const [native,page,counts,mobile]=await Promise.all([
+  listLeaveRequestsPage(manager.ctx,{ids,limit:10,offset:0}),
+  listLeaveRequestsPage(manager.ctx,{purpose:'ownApplication',ids,limit:10,offset:0}),
+  countLeaveRequestsByStatus(manager.ctx,{purpose:'ownApplication',ids}),
+  ownLeaveRequestsPage(manager.ctx,subject.employmentId,{limit:10,cursor:null}),
+ ]);
+ expect(native.rows.map(row=>row.id).sort()).toEqual(ids.slice().sort());
+ expect({ids:page.rows.map(row=>row.id),total:page.total,counts}).toEqual({ids:[own.leaveRequestId],total:1,counts:{pending:1}});
+ expect(mobile).toMatchObject({items:[],counts:{pending:0,approved:0,rejected:0,cancelled:0}});
+ await decideLeave(adminCtx(b),{leaveRequestId:other.leaveRequestId,decision:'rejected',rejectReason:'Fictional report reason'});
+ await decideLeave(adminCtx(b),{leaveRequestId:own.leaveRequestId,decision:'rejected',rejectReason:'Fictional own reason'});
+ expect(await ownLeaveRejections(manager.ctx,ids)).toEqual(new Map([[own.leaveRequestId,{reason:'Fictional own reason',dates:[]}]]));
+});
+
+it('preserves native pending edits but rejects raw non-own edits, forged decision fields and physical deletion',async()=>{
+ const subject=await hire('employee'),typeId=await leaveType();
+ const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const setReason=(ctx:SessionContext)=>withTenant(ctx,tx=>tx.update(schema.leaveRequest).set({reason:'Fictional forged edit'}).where(eq(schema.leaveRequest.id,leaveRequestId)));
+ expect(await setReason(adminCtx(b)).then(()=>null,pgSqlState)).toBe('42501');
+ expect(await withTenant(subject.ctx,tx=>tx.update(schema.leaveRequest).set({decidedAt:new Date()}).where(eq(schema.leaveRequest.id,leaveRequestId))).then(()=>null,pgSqlState)).toBe('42501');
+ expect(await withTenant(subject.ctx,tx=>tx.delete(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId))).then(()=>null,pgSqlState)).toBe('42501');
+ const [untouched]=await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId));expect(untouched).toMatchObject({reason:null,status:'pending',decidedAt:null});
+ await expect(editLeaveRequest(subject.ctx,{leaveRequestId,leaveTypeId:typeId,startDate:START,endDate:END,reason:'Fictional native edit'})).resolves.toMatchObject({leaveRequestId});
+ const [changed]=await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId));expect(changed).toMatchObject({employmentId:subject.employmentId,reason:'Fictional native edit',status:'pending',decidedAt:null});
+ const [audit]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.edited')));
+ expect(audit).toMatchObject({actorId:subject.ctx.userId,subjectEmploymentId:subject.employmentId,payload:{after:{reason:'Fictional native edit'}}});
+});
+
+it('keeps administrative Employee Leave Records and Delete separate from a visible report’s manager course',async()=>{
+ const manager=await hire('manager'),subject=await hire('employee');await reportsTo(subject.employmentId,manager.employmentId);const typeId=await leaveType();
+ const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const list=(ctx:SessionContext,purpose?:'employeeRecords')=>listLeaveRequestsPage(ctx,{purpose,ids:[leaveRequestId],limit:10,offset:0});
+ expect((await list(manager.ctx)).rows.map(row=>row.id)).toEqual([leaveRequestId]);
+ expect(await list(manager.ctx,'employeeRecords')).toEqual({rows:[],total:0});
+ expect(await leaveEmployeeRecordCancellationAccess(manager.ctx,[leaveRequestId])).toEqual([]);
+ await expect(adminCancelLeave(manager.ctx,{leaveRequestId})).rejects.toMatchObject({refusal:'admin_only'});
+ const admin=adminCtx(b);
+ expect((await list(admin,'employeeRecords')).rows.map(row=>row.id)).toEqual([leaveRequestId]);
+ expect(await leaveEmployeeRecordCancellationAccess(admin,[leaveRequestId])).toEqual([leaveRequestId]);
+ await expect(adminCancelLeave(admin,{leaveRequestId})).resolves.toEqual({previousStatus:'pending',restoredDays:0});
+ expect(await leaveEmployeeRecordCancellationAccess(admin,[leaveRequestId])).toEqual([]);
+ const [audit]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.admin-cancelled')));
+ expect(audit).toMatchObject({actorId:b.adminUserId,subjectEmploymentId:subject.employmentId,payload:{previousStatus:'pending',newStatus:'cancelled'}});
+});
+
+it('withdraws only the actual own pending request through its native audit and exact defensive reversal',async()=>{
+ const subject=await hire('employee'),typeId=await leaveType();
+ const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ expect(await withTenant(subject.ctx,tx=>tx.update(schema.leaveRequest).set({status:'cancelled'}).where(eq(schema.leaveRequest.id,leaveRequestId))).then(()=>null,pgSqlState)).toBe('42501');
+ // A retained debit on a pending legacy request exercises the existing defensive reversal course.
+ await owner.db.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:typeId,entryType:'debit',days:'-1.25',sourceRequestId:leaveRequestId,effectiveOn:START});
+ await expect(withTenant(subject.ctx,async tx=>{
+  await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
+  return cancelOwnLeave(subject.ctx,{leaveRequestId},tx);
+ })).resolves.toEqual({previousStatus:'pending',restoredDays:1.25});
+ const ledger=await owner.db.select({days:schema.leaveLedger.days,type:schema.leaveLedger.leaveTypeId,effective:schema.leaveLedger.effectiveOn}).from(schema.leaveLedger).where(eq(schema.leaveLedger.sourceRequestId,leaveRequestId));
+ expect(ledger.sort((a,b)=>Number(a.days)-Number(b.days))).toEqual([{days:'-1.25',type:typeId,effective:START},{days:'1.25',type:typeId,effective:START}]);
+ const [audit]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.self-cancelled')));
+ expect(audit).toMatchObject({actorId:subject.ctx.userId,subjectEmploymentId:subject.employmentId,payload:{previousStatus:'pending',newStatus:'cancelled',restoredDays:1.25,startDate:START,endDate:END}});
+});
+it('requeues a completed own withdrawal if its actual request changes after an early flush',async()=>{
+ const subject=await hire('employee'),typeId=await leaveType();
+ const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ await expect(withTenant(subject.ctx,async tx=>{
+  await cancelOwnLeave(subject.ctx,{leaveRequestId},tx);
+  await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
+  await tx.execute(sql`SET CONSTRAINTS ALL DEFERRED`);
+  for(const reason of ['Fictional transient request rewrite',null]){
+   expect(await tx.update(schema.leaveRequest).set({reason}).where(eq(schema.leaveRequest.id,leaveRequestId)).returning({id:schema.leaveRequest.id})).toEqual([{id:leaveRequestId}]);
+  }
+ })).rejects.toThrow('Own Leave withdrawal effects or authority changed');
+ const [persisted]=await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId));expect(persisted).toMatchObject({status:'pending',reason:null});
+ expect(await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.self-cancelled')))).toEqual([]);
+});
+
+it('retains native Leave ledger entries and rejects physical app rewrites or a different request subject',async()=>{
+ const subject=await hire('employee'),other=await hire('employee'),typeId=await leaveType();
+ const {leaveRequestId}=await requestLeave(other.ctx,{employmentId:other.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const [entry]=await owner.db.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:typeId,entryType:'accrual',days:'2.00',effectiveOn:START}).returning();
+ expect(await withTenant(subject.ctx,tx=>tx.update(schema.leaveLedger).set({days:'100.00'}).where(eq(schema.leaveLedger.id,entry.id))).then(()=>null,pgSqlState)).toBe('42501');
+ expect(await withTenant(subject.ctx,tx=>tx.delete(schema.leaveLedger).where(eq(schema.leaveLedger.id,entry.id))).then(()=>null,pgSqlState)).toBe('42501');
+ expect(await withTenant(subject.ctx,tx=>tx.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:typeId,entryType:'debit',days:'1.00',sourceRequestId:leaveRequestId,effectiveOn:START})).then(()=>null,pgSqlState)).toBe('42501');
+ expect(await owner.db.select().from(schema.leaveLedger).where(eq(schema.leaveLedger.employmentId,subject.employmentId))).toEqual([entry]);
+});
+
+it('commits the captured supporting file with the real application and rolls back a refused file write',async()=>{
+ const subject=await hire('employee'),typeId=await leaveType();
+ const apply={employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END};
+ await expect(requestLeave(subject.ctx,{...apply,document:{fileName:'Invalid\0name.pdf',mimeType:'application/pdf',content:Buffer.from('Fictional PDF')}})).rejects.toThrow();
+ expect(await requestCount(subject.employmentId)).toBe(0);
+ expect(await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.subjectEmploymentId,subject.employmentId),eq(schema.domainEvent.aggregateType,'leave-request')))).toEqual([]);
+ const content=Buffer.from('Fictional original PDF');
+ const pending=requestLeave(subject.ctx,{...apply,document:{fileName:'fictional.pdf',mimeType:'application/pdf',content}});
+ content.fill(0);
+ const {leaveRequestId}=await pending;
+ const [attachment]=await owner.db.select().from(schema.leaveRequestAttachment).where(eq(schema.leaveRequestAttachment.leaveRequestId,leaveRequestId));
+ expect(attachment).toMatchObject({fileName:'fictional.pdf',employmentId:subject.employmentId,uploadedByUserId:subject.ctx.userId,content:Buffer.from('Fictional original PDF')});
+ const audit=await owner.db.select({event:schema.domainEvent.eventType}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,leaveRequestId));
+ expect(audit.map(row=>row.event).sort()).toEqual(['leave-request.document.attached','leave-request.submitted']);
+});
+
+it('binds stored Leave attachments to the actual request subject, human uploader and file size',async()=>{
+ const subject=await hire('employee'),other=await hire('employee'),typeId=await leaveType();
+ const apply=(who:Awaited<ReturnType<typeof hire>>)=>requestLeave(who.ctx,{employmentId:who.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ const own=await apply(subject),foreign=await apply(other),content=Buffer.from('Fictional supporting file');
+ const row={tenantId:b.tenantId,employmentId:subject.employmentId,leaveRequestId:own.leaveRequestId,content,fileName:'fictional.pdf',mimeType:'application/pdf',sizeBytes:content.length,uploadedByUserId:subject.ctx.userId};
+ for(const candidate of [{...row,leaveRequestId:foreign.leaveRequestId},{...row,sizeBytes:row.sizeBytes-1},{...row,uploadedByUserId:other.ctx.userId}]){
+  expect(await withTenant(subject.ctx,tx=>tx.insert(schema.leaveRequestAttachment).values(candidate)).then(()=>null,pgSqlState)).toBe('42501');
+ }
+ expect(await owner.db.select().from(schema.leaveRequestAttachment).where(eq(schema.leaveRequestAttachment.tenantId,b.tenantId))).toEqual([]);
 });

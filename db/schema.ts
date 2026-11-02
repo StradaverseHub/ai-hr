@@ -11357,6 +11357,7 @@ export const payrollLeaveException = pgTable('payroll_leave_exception', {
 export const accessCapability = pgTable('access_capability', {
   id: text('id').primaryKey(), scope: text('scope').notNull().$type<'tenant'|'company'>(),
   supported: boolean('supported').notNull().default(false),
+  prerequisites: jsonb('prerequisites').notNull().default(sql`'[]'::jsonb`).$type<string[]>(),
   bindings: jsonb('bindings').notNull().default(sql`'[]'::jsonb`).$type<{owner:string;operation:string}[]>(),
 });
 export const accessConfiguration = pgTable('access_configuration', {
@@ -11663,3 +11664,12 @@ export const payrollTaxBasisEvent=pgTable('payroll_tax_basis_event',{
 export const payrollTaxBasisRevision=pgTable('payroll_tax_basis_revision',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),payslipId:uuid('payslip_id').notNull().references(()=>payslip.id),period:text('period').notNull(),sourceHash:text('source_hash').notNull(),ordinal:integer('ordinal').notNull(),batchId:uuid('batch_id').notNull().references(()=>payrollTaxBasisBatch.id),basis:jsonb('basis').notNull().$type<import('../lib/payroll-tax-basis').TaxBasisValue>(),supersedes:uuid('supersedes').array().notNull().default(sql`'{}'::uuid[]`),createdAt:createdAt(),
 },t=>[uniqueIndex('payroll_tax_basis_revision_payslip_id_ordinal_key').on(t.payslipId,t.ordinal),uniqueIndex('payroll_tax_basis_revision_batch_id_payslip_id_key').on(t.batchId,t.payslipId)]);
+
+/** Bounded immutable run metadata for individual payslip/self readers; excludes aggregates/scope. */
+const payrollDocumentBatchView=pgView('payroll_document_batch').as(qb=>qb.select({
+ id:payrollBatch.id,tenantId:payrollBatch.tenantId,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,
+ runSeq:payrollBatch.runSeq,runType:payrollBatch.runType,payPeriod:payrollBatch.payPeriod,batchDate:payrollBatch.batchDate,
+ status:payrollBatch.status,closedAt:payrollBatch.closedAt,releasedAt:payrollBatch.releasedAt,payrollCycleId:payrollBatch.payrollCycleId,
+ historyImportAttemptId:payrollBatch.historyImportAttemptId,historyImportCycleName:payrollBatch.historyImportCycleName,needsRecalcAt:payrollBatch.needsRecalcAt,createdAt:payrollBatch.createdAt,
+}).from(payrollBatch));
+export const payrollDocumentBatch=new QueryBuilder().select().from(payrollDocumentBatchView).as('payroll_document_batch_context');

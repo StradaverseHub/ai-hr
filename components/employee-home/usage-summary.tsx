@@ -3,9 +3,10 @@ import type {SessionContext} from '@/db/client';
 import {isGroupAdmin} from '@/lib/authz-model';
 import {Card} from '@/components/ui';
 import {readHomeCardInteractions} from '@/core/employee-home-analytics';
+import {settingsAccess} from '@/core/organisation-access';
 /** Tenant-wide anonymous totals require current group authority at the SQL boundary as well. */
 export async function HomeUsageSummary({session}:{session:SessionContext}){
- if(!isGroupAdmin(session))return null;
+ if(!isGroupAdmin(session)||!await settingsAccess(session,'view','dashboardCardConfig.usage'))return null;
  const [t,names,locale]=await Promise.all([getTranslations('employeeHome.usage'),getTranslations('employeeHome.cardNames'),getLocale()]);
  const rows=await readHomeCardInteractions(session).catch(()=>null),number=new Intl.NumberFormat(locale);
  return <Card className="space-y-4 p-5"><h3 className="font-semibold">{t('title')}</h3>

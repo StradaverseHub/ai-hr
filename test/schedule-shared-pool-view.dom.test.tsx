@@ -13,12 +13,13 @@ import viMessages from '../messages/vi.json';
 const catalog=vi.hoisted(()=>({locale:'en',messages:{} as typeof en}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:catalog.locale,messages:catalog.messages,namespace:namespace as never,onError:error=>{throw error;}})}));
 vi.mock('../core/attendance-rule',()=>({countEmploymentsInRule:async()=>0}));
-vi.mock('../core/schedule-group-controls',()=>({scheduleGroupControls:async()=>({label:null,dutyRosterControl:false,revisions:[]})}));
+vi.mock('../core/schedule-group-controls',()=>({scheduleControlActionAccess:async()=>true,scheduleGroupControls:async()=>({label:null,dutyRosterControl:false,revisions:[]})}));
 vi.mock('../components/attendance-settings-navigation',()=>({AttendanceSettingsNavigation:()=>null}));
 vi.mock('../app/admin/attendance-policy/rule-actions',()=>({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
 vi.mock('../app/admin/attendance/schedule/actions',()=>({saveScheduleGroupAttendanceAction:vi.fn(),saveScheduleGroupOvertimeAction:vi.fn(),saveScheduleGroupControlAction:vi.fn()}));
 vi.mock('../components/schedule-rotation-editor',()=>({ScheduleRotationEditor:()=>null}));
 vi.mock('../packs/attendance/service',()=>({
+  rotationActionAccess:async()=>true,
   getScheduleRotation:async()=>({versions:[],revision:'pool-version',memberships:[{shiftId:'shared-one'},{shiftId:'shared-two'}]}),
   workingShiftSchedule:()=>({normalMinutes:480,shiftEnd:'18:00'}),
 }));

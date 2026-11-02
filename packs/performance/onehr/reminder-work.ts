@@ -5,7 +5,7 @@ import { assessmentReminderMailSchema,assessmentReminderTaskKeys,type Assessment
 export type ReminderWorkGraph={
  cycle:{id:string;companyId:string|null;name:string;periodEnd:string;policy:Pick<Policy,'kind'|'modules'|'windows'>};
  actors:{userId:string;personId:string;name:string;employmentIds:string[];cycleAdmin:boolean}[];
- reviews:{id:string;companyId:string;employmentId:string;personId:string;name:string;reviewerEmploymentId:string|null;moderatorIds:string[];frozen:boolean;facts:ReviewWorkFacts}[];
+ reviews:{id:string;companyId:string;employmentId:string;personId:string;name:string;reviewerEmploymentId:string|null;moderatorIds:string[];taskUserIds?:string[];frozen:boolean;facts:ReviewWorkFacts}[];
  panels:{id:string;employmentId:string;reviewId:string}[];
  sessions:{id:string;companyId:string|null;tier:Tier;reviewerUserIds:string[];adminUserIds:string[];lockedAt:unknown;performanceLockedAt:unknown;potentialLockedAt:unknown;entries:CalibrationWorkEntry[]}[];
 };
@@ -16,24 +16,25 @@ export type ReminderWorkRecipient={userId:string;personId:string;employmentIds:s
 /** One current work graph, one summary per login. The same phase/lock/window rules power the workspace.
  * Company entitlements are supplied explicitly, including for a group-wide cycle. No user impersonation.
  */
-export function assessmentReminderWork(graph:ReminderWorkGraph,enabledCompanies:ReadonlySet<string>,now=new Date()):ReminderWorkRecipient[]{
+export function assessmentReminderWork(graph:ReminderWorkGraph,enabledCompanies:ReadonlySet<string>,now=new Date(),onReviewTask?:(userId:string,reviewId:string)=>void):ReminderWorkRecipient[]{
  const {policy}=graph.cycle,byEmployment=new Map<string,typeof graph.actors>(),byUser=new Map(graph.actors.map(actor=>[actor.userId,actor]));
  const buckets=new Map<string,Map<TaskKey,TaskBucket>>(),reviews=new Map(graph.reviews.map(review=>[review.id,review]));
  for(const actor of graph.actors)for(const id of actor.employmentIds){const actors=byEmployment.get(id)??[];actors.push(actor);byEmployment.set(id,actors);}
  const bgOnly=new Set(graph.sessions.filter(session=>session.tier==='bg'&&(!session.companyId||enabledCompanies.has(session.companyId))).flatMap(session=>session.reviewerUserIds.filter(id=>!byUser.get(id)?.cycleAdmin)));
  function add(userId:string,key:TaskKey,id:string,cell:WindowCell|null,person?:{personId:string;name:string}){
-  if(cell&&!assessmentWorkWindowOpen(policy,cell,now))return;
+  if(cell&&!assessmentWorkWindowOpen(policy,cell,now))return false;
   const tasks=buckets.get(userId)??new Map<TaskKey,TaskBucket>();buckets.set(userId,tasks);
   const bucket=tasks.get(key)??{ids:new Set<string>(),closesAt:null,people:new Map<string,string>()};tasks.set(key,bucket);
   bucket.ids.add(id);const closesAt=cell?policy.windows[cell]?.closesAt??null:null;
   if(closesAt&&(!bucket.closesAt||Date.parse(closesAt)<Date.parse(bucket.closesAt)))bucket.closesAt=closesAt;
-  if(person)bucket.people.set(person.personId,person.name);
+  if(person)bucket.people.set(person.personId,person.name);return true;
  }
  for(const review of graph.reviews){
   if(!enabledCompanies.has(review.companyId))continue;
   const candidates=new Map<string,typeof graph.actors[number]>();
   for(const id of new Set([review.employmentId,review.reviewerEmploymentId,...review.moderatorIds].filter((id):id is string=>!!id)))for(const actor of byEmployment.get(id)??[])candidates.set(actor.userId,actor);
   for(const actor of candidates.values()){
+   if(review.taskUserIds&&!review.taskUserIds.includes(actor.userId))continue;
    const self=actor.personId===review.personId,manager=!self&&actor.employmentIds.includes(review.reviewerEmploymentId??''),assigned=actor.employmentIds.some(id=>review.moderatorIds.includes(id));
    if(self&&bgOnly.has(actor.userId)||!self&&!manager&&!assigned)continue;
    const parts=reviewWorkspaceParts(policy,review.facts,{self,manager,employmentIds:actor.employmentIds});
@@ -45,7 +46,7 @@ export function assessmentReminderWork(graph:ReminderWorkGraph,enabledCompanies:
      if(part.module==='pm'&&part.stage==='setting')continue;
      key=part.module==='pm'?part.stage==='checkin'?'own_checkin':'own_results':part.module==='tm'?'own_competency':'own_plan';
     }else key=part.module==='pm'?part.stage==='setting'?'team_setting':'team_results':part.module==='tm'?'team_competency':'team_plan';
-    add(actor.userId,key,review.id,part.cell,self?undefined:review);
+    if(add(actor.userId,key,review.id,part.cell,self?undefined:review))onReviewTask?.(actor.userId,review.id);
    }
   }
  }

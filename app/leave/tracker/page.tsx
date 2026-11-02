@@ -9,6 +9,7 @@ import {
   reportingLinesFor,
 } from '@/core/read';
 import { todayInKualaLumpur } from '@/core/leave';
+import {leaveEmployeeRecordCancellationAccess,ownLeaveRequestActionAccess} from '@/packs/leave/service';
 import { PageHeader } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
 import { requestLeaveCancellationAction, adminCancelLeaveAction, cancelOwnLeaveAction } from '@/app/leave/actions';
@@ -151,6 +152,13 @@ export default async function TeamLeaveTrackerPage({
   const showAbsViewSwitch = hasDirectReports;
   const effectiveAbsView = showAbsViewSwitch ? absView : 'my';
 
+  const requestIds=absences.flatMap(row=>row.leaves.map(leave=>leave.id));
+  const [ownFunctionActions,adminCancelAllowedRequestIds]=await Promise.all([
+    ownLeaveRequestActionAccess(s,requestIds),
+    admin ? leaveEmployeeRecordCancellationAccess(s,requestIds) : Promise.resolve([]),
+  ]);
+  const selfCancelAllowedRequestIds=Object.entries(ownFunctionActions).filter(([,flags])=>flags.canDelete).map(([id])=>id);
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader title={t('title')} description={t('description')} />
@@ -171,9 +179,11 @@ export default async function TeamLeaveTrackerPage({
         // surviving homes are Employee Leave Record and this grid for the managers who still see it.
         viewerIsAdmin={admin}
         adminCancelAction={adminCancelLeaveAction}
+        adminCancelAllowedRequestIds={adminCancelAllowedRequestIds}
         // Edit/cancel-by-status (item c9a19e34): the viewer self-withdraws their own PENDING leave directly
         // from the calendar; the SAME action the Leave page posts (re-asserts subject-only + pending).
         selfCancelAction={cancelOwnLeaveAction}
+        selfCancelAllowedRequestIds={selfCancelAllowedRequestIds}
         // 8cb7b089: pills awaiting this viewer's decision deep-link to /approvals. Scope note (recorded, not
         // accidental): the calendar's Team view is the viewer's own person + direct reports (teamPersonIds
         // above) while /approvals scopes by the viewer's decision reach — for a manager these line up

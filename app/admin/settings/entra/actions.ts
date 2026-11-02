@@ -8,7 +8,7 @@ import { connector, requireEntraAdmin, saveConnector } from '@/lib/entra/store';
 import { graphToken } from '@/lib/entra/graph';
 import { oidcConfiguration } from '@/lib/entra/login';
 import { entraConfigSchema } from '@/lib/entra/model';
-async function context(){const {s:ctx}=await scopedAdmin();await requireEntraAdmin(ctx);return ctx;}
+async function context(){const {s:ctx}=await scopedAdmin();await requireEntraAdmin(ctx,'edit');return ctx;}
 export async function saveEntra(form:FormData) {
   const ctx=await context();
   let failed=false;

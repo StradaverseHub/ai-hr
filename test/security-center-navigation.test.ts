@@ -14,9 +14,9 @@ describe('closed Security Center navigation',()=>{
   expect(securityDestinationAllowed('/admin/security-center/password-policy',{admin:true,configure:true,provision:true,passwordPolicy:true})).toBe(true);
  });
  it.each([
-  [{admin:true,configure:true,provision:true},6],
+  [{admin:true,configure:true,provision:true},7],
   [{admin:true,configure:false,provision:false},3],
-  [{admin:false,configure:true,provision:false},2],
+  [{admin:false,configure:true,provision:false},3],
   [{admin:false,configure:false,provision:false},0],
  ] as const)('publishes only permitted destinations %j', (access,count)=>{
   expect([SECURITY_CENTER,...SECURITY_PAGES.map(p=>p.href)].filter(href=>securityDestinationAllowed(href,access))).toHaveLength(count);

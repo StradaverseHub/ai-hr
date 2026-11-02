@@ -1,3 +1,4 @@
+import {assertModuleFunctionTx} from './module-action-access';
 import { liveArrangementsTx, pickArrangementOn } from './shift-arrangement-resolve';
 /** Canonical group controls. Exception revisions are immutable and forward dated. */
 import { and, asc, eq, gte, lte, inArray, sql } from 'drizzle-orm';
@@ -53,6 +54,9 @@ export function saveScheduleGroupControl(ctx:SessionContext,p:{ruleId:string;kin
  p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  if(!isAdmin(ctx))throw new Error('Only an HR administrator can change Schedule Group controls.');
  return withTenant(ctx,async tx=>{
+  await assertModuleFunctionTx(tx,'attendancePolicy.schedule','edit');
+  const [purpose]=await tx.execute<{allowed:boolean}>(sql`select app.attendance_schedule_control_allowed(${p.kind==='duty'?'attendancePolicy.dutyRoster':'attendancePolicy.exceptions'},'edit') as allowed`);
+  if(purpose?.allowed!==true)throw new Error('Schedule control action unavailable');
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
   const [rule]=await tx.select().from(attendanceRule).where(eq(attendanceRule.id,p.ruleId)).for('update');
@@ -105,4 +109,10 @@ export async function assertDutyRosterWriteTx(tx:Tx,ctx:SessionContext,changes:r
   const before=await tx.select().from(rosterAssignment).where(and(eq(rosterAssignment.employmentId,emp.id),inArray(rosterAssignment.shiftDate,dates))).orderBy(asc(rosterAssignment.shiftDate));
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:emp.id,eventType:'roster.manual-changes',subjectEmploymentId:emp.id,actor:actorOf(ctx),payload:{groupId:group?.id??null,changes:own.map(c=>({date:c.shiftDate,before:before.find(r=>r.shiftDate===c.shiftDate)??null,after:c.clear?null:{shiftId:c.shiftId??null,isRestDay:c.isRestDay??false,note:c.note??null}}))}});
  }
+}
+
+
+/** Read-only exact purpose flags; runtime roster/exception lookups retain their native source course. */
+export function scheduleControlActionAccess(ctx:SessionContext,kind:'duty'|'exception',operation:'view'|'edit'){
+ return withTenant(ctx,async tx=>{const [row]=await tx.execute<{allowed:boolean}>(sql`select app.attendance_schedule_control_allowed(${kind==='duty'?'attendancePolicy.dutyRoster':'attendancePolicy.exceptions'},${operation}) as allowed`);return row?.allowed===true;});
 }

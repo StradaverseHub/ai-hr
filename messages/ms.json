@@ -505,12 +505,13 @@
     "createLogin": "Cipta Log Masuk Secara Manual",
     "inviteUser": "Jemput Pengguna",
     "users": "Pengguna",
-    "securityPermissions": "Keselamatan & Kebenaran",
+    "securityPermissions": "Peranan / Kumpulan Pengguna",
     "functionAccess": "Akses Fungsi",
     "securityCenter": "Pusat Keselamatan",
     "aiManagementInventory": "Inventori AI",
     "entra": "Microsoft Entra ID",
-    "passwordPolicy": "Dasar Kata Laluan"
+    "passwordPolicy": "Dasar Kata Laluan",
+    "dataPermissionAccess": "Akses Kebenaran Data"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -3302,6 +3303,10 @@
     }
   },
   "leave": {
+    "accessFunctions": {
+      "ownApplication": "Permohonan cuti sendiri",
+      "onBehalfApplication": "Permohonan cuti bagi pihak pekerja"
+    },
     "myAbsenceTitle": "Cuti Saya",
     "inquiryMovedToTracker": "Butiran Pekerja, Baki Cuti Pekerja dan Rekod Cuti Pekerja kini dibuka dari Penjejak Cuti Pasukan; halaman ini menunjukkan cuti anda sendiri sahaja.",
     "title": "Cuti",
@@ -5266,6 +5271,7 @@
     "otPolicyPlanTotalsHelp": "Jumlah ini merujuk kepada setiap permohonan. Tempoh diluluskan yang bertindih dikira sekali sahaja dalam pengiraan kerja lebih masa."
   },
   "approvals": {
+    "viewOnly": "Lihat sahaja",
     "title": "Kelulusan",
     "sortBy": "Isih mengikut",
     "sortLatest": "Terkini dahulu",
@@ -11596,6 +11602,7 @@
       "breakMismatchNote": "Tempoh rehat dipaparkan sebagai rujukan; pengiraan jam menolak {minutes} min (jumlah rehat yang disimpan).",
       "breakMismatchBadge": "guna {minutes} min",
       "editShift": "Sunting",
+      "viewShift": "Lihat syif",
       "duplicate": "Buat salinan",
       "archiveShift": "Arkib",
       "shiftName": "Nama syif",
@@ -13883,6 +13890,18 @@
     }
   },
   "claims": {
+    "accessFunctions": {
+      "own": "Tuntutan sendiri",
+      "drafts": "Draf tuntutan sendiri",
+      "submit": "Hantar tuntutan sendiri",
+      "receipts": "Resit tuntutan sendiri",
+      "related": "Tuntutan kakitangan di bawah seliaan",
+      "assigned": "Kelulusan tuntutan yang ditugaskan",
+      "selfDecision": "Kelulusan tuntutan sendiri oleh pentadbir super",
+      "administration": "Pentadbiran tuntutan",
+      "relatedReceipts": "Resit kakitangan di bawah seliaan",
+      "administrationReceipts": "Resit pentadbiran tuntutan"
+    },
     "title": "Tuntutan",
     "subtitle": "Hantar tuntutan perbelanjaan atau manfaat dan jejak statusnya.",
     "newClaim": "Tuntutan baharu",
@@ -24460,6 +24479,7 @@
     "groupMode": "Group calibration method",
     "reviewers": "Assigned reviewers",
     "cohort": "Employees in this cohort",
+    "reviewAdministration": "Pentadbiran penilaian",
     "nativeWorkflow": "Performance and talent review",
     "feedbackSubmitted": "Your feedback has been submitted.",
     "overallRemark": "Overall feedback remark",
@@ -29708,7 +29728,7 @@
     }
   },
   "accessConfiguration": {
-    "title": "Keselamatan & kebenaran",
+    "title": "Peranan / Kumpulan Pengguna",
     "description": "Urus kebenaran kumpulan dan individu dengan pratonton sebelum setiap perubahan.",
     "groups": "Kumpulan pengguna",
     "groupName": "Nama kumpulan",
@@ -29781,7 +29801,56 @@
       "configure": "Urus keselamatan dan kebenaran",
       "workforceView": "Lihat rekod pekerja",
       "workforceMaintain": "Selenggara rekod pekerja",
-      "profileReview": "Semak perubahan profil yang layak"
+      "profileReview": "Semak perubahan profil yang layak",
+      "workforceAdd": "Tambah rekod tenaga kerja",
+      "workforceEdit": "Edit rekod tenaga kerja",
+      "workforceDelete": "Padam rekod tenaga kerja",
+      "organisationView": "Organisasi · Lihat",
+      "organisationAdd": "Organisasi · Tambah",
+      "organisationEdit": "Organisasi · Edit",
+      "organisationDelete": "Organisasi · Padam",
+      "settingsView": "Tetapan · Lihat",
+      "settingsAdd": "Tetapan · Tambah",
+      "settingsEdit": "Tetapan · Edit",
+      "settingsDelete": "Tetapan · Padam",
+      "claimsView": "Lihat · Tuntutan",
+      "claimsConfigurationView": "Lihat · Konfigurasi tuntutan",
+      "claimsAdd": "Tambah · Tuntutan",
+      "claimsConfigurationAdd": "Tambah · Konfigurasi tuntutan",
+      "claimsEdit": "Edit · Tuntutan",
+      "claimsConfigurationEdit": "Edit · Konfigurasi tuntutan",
+      "claimsDelete": "Padam · Tuntutan",
+      "claimsConfigurationDelete": "Padam · Konfigurasi tuntutan",
+      "leaveView": "Lihat · Cuti",
+      "leaveConfigurationView": "Lihat · Konfigurasi cuti",
+      "leaveAdd": "Tambah · Cuti",
+      "leaveConfigurationAdd": "Tambah · Konfigurasi cuti",
+      "leaveEdit": "Edit · Cuti",
+      "leaveConfigurationEdit": "Edit · Konfigurasi cuti",
+      "leaveDelete": "Padam · Cuti",
+      "leaveConfigurationDelete": "Padam · Konfigurasi cuti",
+      "attendanceView": "Lihat · Kehadiran",
+      "attendanceConfigurationView": "Lihat · Konfigurasi kehadiran",
+      "attendanceAdd": "Tambah · Kehadiran",
+      "attendanceConfigurationAdd": "Tambah · Konfigurasi kehadiran",
+      "attendanceEdit": "Edit · Kehadiran",
+      "attendanceConfigurationEdit": "Edit · Konfigurasi kehadiran",
+      "attendanceDelete": "Padam · Kehadiran",
+      "attendanceConfigurationDelete": "Padam · Konfigurasi kehadiran",
+      "payrollView": "Lihat gaji",
+      "payrollAdd": "Tambah rekod gaji",
+      "payrollEdit": "Ubah rekod gaji",
+      "payrollDelete": "Padam rekod gaji",
+      "performanceCompensationView": "Lihat prestasi dan pampasan",
+      "performanceCompensationAdd": "Tambah rekod prestasi dan pampasan",
+      "performanceCompensationEdit": "Ubah rekod prestasi dan pampasan",
+      "performanceCompensationDelete": "Padam rekod prestasi dan pampasan",
+      "lettersView": "Lihat surat",
+      "lettersAdd": "Tambah surat dan konfigurasi",
+      "lettersEdit": "Ubah surat dan konfigurasi",
+      "lettersDelete": "Padam atau nyahaktifkan surat dan konfigurasi",
+      "lettersApprove": "Luluskan surat dan templat",
+      "lettersIssue": "Keluarkan surat"
     },
     "workforceReadOnly": "Anda boleh melihat rekod pekerja ini. Kebenaran Tenaga Kerja semasa anda tidak membenarkan perubahan.",
     "workforceCommandHint": "Anda boleh menukar ID Pekerja. Maklumat lain pada halaman ini hanya boleh dilihat.",
@@ -29810,7 +29879,30 @@
       "changed": "Rekod pekerja telah berubah. Buka semula sebelum menyimpan.",
       "denied": "Kebenaran anda telah berubah. Buka semula rekod ini untuk menyemak akses anda.",
       "invalid": "Masukkan ID Pekerja yang belum digunakan dengan huruf, nombor atau sempang, maksimum 30 aksara."
-    }
+    },
+    "matrixView": "Lihat",
+    "matrixAdd": "Tambah",
+    "matrixEdit": "Edit",
+    "matrixDelete": "Padam",
+    "matrixApprove": "Luluskan",
+    "matrixIssue": "Keluarkan",
+    "matrixExecute": "Laksanakan",
+    "matrixWorkforce": "Tenaga kerja",
+    "matrixOther": "Kebenaran lain",
+    "matrixPayroll": "Gaji",
+    "matrixPerformanceCompensation": "Prestasi dan Pampasan",
+    "matrixLetters": "Surat",
+    "matrixOrganisation": "Organisasi",
+    "matrixSettings": "Tetapan",
+    "nativePrerequisites": "Setiap tindakan turut menyemak peranan perniagaan, kuasa syarikat dan skop data sedia ada.",
+    "workforceHirePrerequisite": "Pengambilan pekerja juga memerlukan kuasa HR untuk syarikat yang dipilih.",
+    "matrixPayrollConfiguration": "Konfigurasi gaji",
+    "matrixClaims": "Tuntutan",
+    "matrixClaimsConfiguration": "Konfigurasi tuntutan",
+    "matrixLeave": "Cuti",
+    "matrixLeaveConfiguration": "Konfigurasi cuti",
+    "matrixAttendance": "Kehadiran",
+    "matrixAttendanceConfiguration": "Konfigurasi kehadiran"
   },
   "myPayslip": {
     "title": "Slip Gaji Saya",
@@ -32877,7 +32969,7 @@
     "invitationSent": "Jemputan telah dihantar.",
     "legacyHelp": "Pilih halaman untuk persediaan akaun ini.",
     "permissions": {
-      "title": "Keselamatan & Kebenaran",
+      "title": "Peranan / Kumpulan Pengguna",
       "description": "Konfigurasi peraturan akses, kumpulan dilindungi dan kebenaran."
     },
     "functions": {
@@ -32899,6 +32991,10 @@
     "passwordPolicy": {
       "title": "Dasar Kata Laluan",
       "description": "Peraturan kerumitan baharu terpakai apabila kata laluan dicipta, ditukar atau ditetapkan semula. Log masuk organisasi luar mengekalkan dasar penyedia mereka."
+    },
+    "dataPermissions": {
+      "title": "Akses Kebenaran Data",
+      "description": "Pilih rekod pekerja yang boleh dicapai oleh pengguna pentadbiran. Kebenaran fungsi dan syarikat sedia ada masih terpakai. Layan diri serta tanggungjawab kelulusan kekal dengan peraturannya sendiri."
     }
   },
   "payFormula": {
@@ -33755,5 +33851,63 @@
       "unlockAction": "Buka kunci akaun",
       "unlocked": "Kunci akaun dibuka."
     }
+  },
+  "dataPermissions": {
+    "title": "Akses Kebenaran Data",
+    "description": "Pilih rekod pekerja yang boleh dicapai oleh pengguna pentadbiran. Kebenaran fungsi dan syarikat sedia ada masih terpakai. Layan diri serta tanggungjawab kelulusan kekal dengan peraturannya sendiri.",
+    "search": "Cari konfigurasi",
+    "new": "Konfigurasi baharu",
+    "name": "Nama konfigurasi",
+    "enabled": "Aktifkan konfigurasi",
+    "active": "Aktif",
+    "inactive": "Tidak aktif",
+    "assigned": "{count} pengguna ditetapkan",
+    "empty": "Belum ada konfigurasi. Akses syarikat sedia ada dikekalkan.",
+    "legacyPreset": "Gunakan syarikat yang telah dibenarkan",
+    "legacyHelp": "Pratetap ini tidak menambah syarat pekerja atau kuasa syarikat dan fungsi.",
+    "andOr": "Medan berbeza digabungkan dengan DAN. Nilai dalam medan yang sama digabungkan dengan ATAU. Sekurang-kurangnya satu syarat diperlukan.",
+    "unavailableValue": "Nilai terdahulu tidak tersedia; buangkannya untuk mengganti syarat.",
+    "noValues": "Tiada nilai dalam akses semasa anda.",
+    "preview": "Pratonton konfigurasi",
+    "retire": "Hentikan konfigurasi",
+    "assignedHelp": "Buang semua penetapan sebelum menghentikan konfigurasi ini.",
+    "assignmentTitle": "Penetapan data pengguna",
+    "assignmentHelp": "Satu konfigurasi bagi setiap pengguna. Tiada penetapan mengekalkan akses syarikat sedia ada. Konfigurasi tidak aktif atau tidak sah tidak memberi rekod pekerja pentadbiran.",
+    "user": "Pengguna",
+    "profile": "Konfigurasi data",
+    "legacyCompany": "Akses syarikat sedia ada (tiada penetapan)",
+    "previewAssignment": "Pratonton penetapan",
+    "review": "Semak perubahan akses",
+    "reviewCounts": "{users} pengguna terjejas. {records} rekod pekerja sepadan dalam akses semasa anda.",
+    "reviewHelp": "Semak syarat dan penetapan sebelum menyimpan. Kuasa syarikat dan fungsi tetap mengehadkan hasil. Perubahan akses, data pekerja atau konfigurasi membatalkan pratonton ini.",
+    "confirm": "Sahkan dan simpan",
+    "cancel": "Batal",
+    "saved": "Disimpan. Akses diperiksa semula pada setiap permintaan.",
+    "errors": {
+      "invalid": "Semak konfigurasi. Konfigurasi yang ditetapkan tidak boleh dihentikan.",
+      "changed": "Akses atau data pekerja berubah. Muat semula dan pratonton lagi.",
+      "forbidden": "Anda tidak boleh memberi akses melebihi kuasa semasa anda.",
+      "unavailable": "Perubahan tidak dapat disimpan. Cuba lagi."
+    },
+    "fields": {
+      "company": "Syarikat",
+      "businessUnit": "Unit Perniagaan",
+      "division": "Bahagian",
+      "branch": "Cawangan",
+      "department": "Jabatan",
+      "section": "Seksyen",
+      "team": "Pasukan",
+      "position": "Jawatan",
+      "grade": "Gred Jawatan",
+      "employmentType": "Jenis Pekerjaan",
+      "employmentStatus": "Status Pekerjaan",
+      "costCentre": "Pusat Kos",
+      "nationality": "Kewarganegaraan",
+      "gender": "Jantina",
+      "maritalStatus": "Status Perkahwinan",
+      "category": "Kategori Pekerja",
+      "employeeId": "ID Pekerja"
+    },
+    "reviewDifference": "Dalam rekod yang boleh anda lihat: {before} sebelum, {after} selepas; {gained} ditambah dan {lost} hilang."
   }
 }

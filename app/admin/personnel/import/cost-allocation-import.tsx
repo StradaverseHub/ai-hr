@@ -9,7 +9,7 @@ import {ALLOCATION_SHEET} from '@/lib/employment-cost-allocation';
 import {allocationWorkbookReferencesAction,confirmAllocationImportAction} from './cost-allocation-actions';
 type ConfirmResult=Extract<Awaited<ReturnType<typeof confirmAllocationImportAction>>,{ok:true}>['result'];
 /** c4055300 — one template for every company; Company Code resolved per row; every upload recorded in Import History. */
-export function CostAllocationImport({onCommitPendingChange}:{onCommitPendingChange?:(pending:boolean)=>void}){
+export function CostAllocationImport({onCommitPendingChange,canImport}:{canImport:boolean;onCommitPendingChange?:(pending:boolean)=>void}){
  const t=useTranslations('costAllocations');
  const[attempt,setAttempt]=useState<{attemptId:string;plan:CostAllocationImportPlan}|null>(null),[result,setResult]=useState<ConfirmResult|null>(null),[error,setError]=useState(''),[busy,start]=useTransition();
  const generation=useRef(0);const reset=()=>{generation.current++;setAttempt(null);setResult(null);setError('');};
@@ -32,7 +32,7 @@ export function CostAllocationImport({onCommitPendingChange}:{onCommitPendingCha
    setAttempt(body);
   }catch{if(g===generation.current)setError(t('uploadFailed'));}
  });};
- const confirm=()=>{if(!attempt)return;const{attemptId,plan}=attempt;onCommitPendingChange?.(true);start(async()=>{
+ const confirm=()=>{if(canImport!==true||!attempt)return;const{attemptId,plan}=attempt;onCommitPendingChange?.(true);start(async()=>{
   try{const r=await confirmAllocationImportAction(attemptId,plan.previewHash);if(r.ok){setResult(r.result);setAttempt(null);}else setError(r.error??t('saveFailed'));}
   catch{setError(t('saveFailed'));}finally{onCommitPendingChange?.(false);}
  });};
@@ -44,7 +44,7 @@ export function CostAllocationImport({onCommitPendingChange}:{onCommitPendingCha
   {plan&&<div className="space-y-3">
    {plan.issues.map((issue,i)=><p key={i} role="alert" className="text-sm text-destructive">{issue.reason}</p>)}
    {plan.groups.length>0&&<div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['companyCode','employeeId','effectiveDate','sourceRows','result'].map(k=><th key={k} className={thCls}>{t(k)}</th>)}</tr></thead><tbody>{plan.groups.map(g=><tr key={g.key} className="border-t align-top"><td className="px-3 py-3">{g.companyCode}{g.companyName&&<span className="block text-xs text-muted-foreground">{g.companyName}</span>}</td><td className="px-3 py-3">{g.employeeCode}</td><td className="px-3 py-3">{g.effectiveDate}</td><td className="px-3 py-3">{g.rowNums.join(', ')}<ul className="text-xs text-muted-foreground">{g.displayRows?.map((row,i)=><li key={i}>{row.code} · {row.percentage}%</li>)}</ul></td><td className="px-3 py-3">{g.errors.length?<ul>{g.errors.map((e,i)=><li key={i} className="text-destructive">{e}</li>)}</ul>:t(g.operation==='clear'?'clearHelp':'ready')}</td></tr>)}</tbody></table></div>}
-   <Button type="button" disabled={busy||!plan.counts.valid||plan.issues.length>0} onClick={confirm}>{t('saveImport',{count:plan.counts.valid})}</Button>
+   <Button type="button" disabled={canImport!==true||busy||!plan.counts.valid||plan.issues.length>0} onClick={confirm}>{t('saveImport',{count:plan.counts.valid})}</Button>
   </div>}
   {result&&<div role="status" className="space-y-2 text-sm"><p className="font-medium">{t('savedSummary',{succeeded:result.succeeded,failed:result.failed})}</p><ul className="space-y-1">{result.results.map(r=><li key={r.key}>{r.employeeCode} · {r.effectiveDate} · {r.saved?t('saved'):<span className="text-destructive">{r.errors.join('; ')}</span>}</li>)}</ul><Link href={'/admin/personnel/import/history/'+result.attemptId} className="text-primary underline">{t('viewHistoryEntry')}</Link></div>}
   {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}

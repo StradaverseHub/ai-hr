@@ -29,6 +29,7 @@ import {
  bankStatutoryColumnLabel,bankStatutoryStateFrom,childReliefTableFrom,isTaxColumn,parseBankStatutoryCell,
  type BankStatutoryItemState,type BankStatutoryState,
 } from '../lib/bank-statutory-import';
+import {assertWorkforceSectionImportCompanyTx,assertWorkforceSectionImportEmploymentTx} from './workforce-access';
 import {ImportHistoryError,type ImportRevertHandler} from './import-history';
 
 /** A refusal whose message is safe to show (names a column and a reason, never a stored value). */
@@ -249,6 +250,8 @@ export const bankStatutoryRevertHandler:ImportRevertHandler={
   let fields=0;
   for(const i of [...items].sort((a,b)=>b.ordinal-a.ordinal||b.createdAt.getTime()-a.createdAt.getTime())){
    const subject=await bankStatutorySubjectTx(tx,i.employmentId!);if(!subject)throw new ImportHistoryError('An employee in this import is no longer available.');
+   await assertWorkforceSectionImportCompanyTx(tx,ctx,i.companyId);
+   await assertWorkforceSectionImportEmploymentTx(tx,ctx,subject.employmentId);
    const before=itemState(i.before).fields;
    try{await applyBankStatutoryPatchTx(tx,ctx,subject,before);}
    catch(error){const message=bankStatutoryRefusal(error);if(message)throw new ImportHistoryError(`${i.label}: ${message}`);throw error;}

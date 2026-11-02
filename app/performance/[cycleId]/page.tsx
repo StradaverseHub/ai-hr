@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { isOnehrOnlyPerformanceAdmin, requireOnehrAdminAccess } from '@/lib/authz';
-import { calibrationView, cycleDetail } from '@/core/performance';
+import { calibrationView, cycleDetail, cycleFunctionAccess } from '@/core/performance';
 import { listBatches } from '@/core/payroll';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
@@ -56,6 +56,8 @@ export default async function CyclePage({
   const data = await cycleDetail(s, cycleId);
   if (!data) notFound();
   const { cycle, roster, distribution, budget } = data;
+  const [cycleAccess]=await cycleFunctionAccess(s,[cycle.companyId]);
+  const canEditCycle=cycleAccess?.canEdit??false;
   const calib = cycle.status === 'calibration' ? await calibrationView(s, cycleId) : null;
   const today = todayInKualaLumpur();
   const nextDay = new Date(Date.parse(`${cycle.periodEnd}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
@@ -85,13 +87,13 @@ export default async function CyclePage({
         actions={
           <div className="flex items-center gap-2">
             <StatusBadge status={cycle.status} />
-            {cycle.status === 'draft' && (
+            {canEditCycle && cycle.status === 'draft' && (
               <LifecycleButton action={openCycleAction} cycleId={cycle.id} label={t('openCycle')} />
             )}
-            {cycle.status === 'open' && (
+            {canEditCycle && cycle.status === 'open' && (
               <LifecycleButton action={calibrateAction} cycleId={cycle.id} label={t('moveToCalibration')} variant="secondary" />
             )}
-            {(cycle.status === 'open' || cycle.status === 'calibration') && !cycle.releasedAt && (
+            {canEditCycle && (cycle.status === 'open' || cycle.status === 'calibration') && !cycle.releasedAt && (
               <form action={releaseAction}>
                 <input type="hidden" name="cycleId" value={cycle.id} />
                 <ConfirmSubmit
@@ -105,7 +107,7 @@ export default async function CyclePage({
                 </ConfirmSubmit>
               </form>
             )}
-            {(cycle.status === 'open' || cycle.status === 'calibration') && (
+            {canEditCycle && (cycle.status === 'open' || cycle.status === 'calibration') && (
               <LifecycleButton action={closeAction} cycleId={cycle.id} label={t('close')} variant="outline" />
             )}
           </div>

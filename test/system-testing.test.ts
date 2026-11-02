@@ -247,7 +247,7 @@ describe('e6be5a3b — THE GATE: the service refuses, not the menu', () => {
       expect(r.rls_on, `${r.table_name} has RLS enabled`).toBe(true);
       for (const expr of [r.using_expr, r.check_expr].filter((value): value is string => value !== null)) {
         expect(expr, `${r.table_name}.${r.policy} is tenant-scoped`).toContain('current_tenant_id');
-        expect(expr, `${r.table_name}.${r.policy} has explicit authority`).toMatch(/is_admin|testing_owns_execution/);
+        expect(expr, `${r.table_name}.${r.policy} has explicit authority`).toMatch(/is_admin|testing_owns_execution|organisation_settings_function_allowed/);
       }
     }
   });

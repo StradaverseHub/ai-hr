@@ -14,6 +14,24 @@ function graph():ReminderWorkGraph{
 }
 const companies=new Set(['company']);
 describe('current per-login assessment reminder summary',()=>{
+ it('seals actual review sources without treating colleague feedback as a review View course',()=>{
+  const g=graph(),seen:string[]=[];g.reviews[0].taskUserIds=['manager'];
+  const recipients=assessmentReminderWork(g,companies,now,(userId,reviewId)=>seen.push(userId+':'+reviewId));
+  expect([...new Set(seen)]).toEqual(['manager:review']);expect(recipients.find(actor=>actor.userId==='manager')?.tasks.map(task=>task.key)).toContain('feedback');
+  seen.length=0;g.reviews[0].taskUserIds=[];
+  expect(assessmentReminderWork(g,companies,now,(userId,reviewId)=>seen.push(userId+':'+reviewId)).find(actor=>actor.userId==='manager')?.tasks.map(task=>task.key)).toEqual(['feedback']);expect(seen).toEqual([]);
+ });
+ it('applies exact review View per account without borrowing feedback or another review',()=>{
+  const g=graph();g.reviews[0].taskUserIds=['employee'];g.reviews[0].facts.planStatus=null;
+  const first=assessmentReminderWork(g,companies,now),manager=first.find(actor=>actor.userId==='manager')!;
+  expect(manager.tasks.map(task=>task.key)).toEqual(['feedback']);
+  expect(first.find(actor=>actor.userId==='employee')?.tasks.map(task=>task.key)).toEqual(['own_plan']);
+  g.reviews.push({...g.reviews[0],id:'second-review',taskUserIds:['manager'],facts:{...g.reviews[0].facts,planStatus:'shared'}});
+  expect(assessmentReminderWork(g,companies,now).find(actor=>actor.userId==='manager')?.tasks.map(task=>task.key)).toEqual(['feedback','team_results','team_competency','team_plan']);
+  g.reviews[1].taskUserIds=[];
+  expect(assessmentReminderWork(g,companies,now).find(actor=>actor.userId==='manager')?.tasks.map(task=>task.key)).toEqual(['feedback']);
+ });
+
  it('combines own, team and feedback tasks once per login across multiple employments',()=>{
   const g=graph();g.reviews.push({...g.reviews[0],id:'manager-review',employmentId:'manager-job',personId:'manager-person',name:'Manager',reviewerEmploymentId:'other-job',moderatorIds:['other-job'],facts:{...g.reviews[0].facts,resultsSubmitted:false,competencyStatus:'pending',planStatus:'closed'}});
   const recipients=assessmentReminderWork(g,companies,now),manager=recipients.find(r=>r.userId==='manager')!;
