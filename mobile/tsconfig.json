@@ -1,7 +1,12 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    "paths": {
+      "zod": [
+        "./node_modules/zod"
+      ]
+    }
   },
   "include": [
     "**/*.ts",
