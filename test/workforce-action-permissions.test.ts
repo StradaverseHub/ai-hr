@@ -42,6 +42,47 @@ describe('genuine Workforce operations',()=>{
   await expect(maintainWorkforceRecord(bounded,{employmentId:other.employmentId,kind:'qualification',rowId:null,operation:'add',patch:{qualification:'Denied outside company',isHighest:false},expectedVersion:null})).rejects.toThrow();
   await expect(hireEmployee(bounded,{person:{fullName:'No fake HR',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'})).rejects.toThrow();
  });
+ it('a full Employee-A carrier keeps an explicit bounded function grant in company B',async()=>{
+  const context=await ctx(),target=await hire();
+  const [a]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional legacy role company A'}).returning();
+  const [user]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'fixture_'+randomUUID()}).returning();
+  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'employee',companyId:a.id});
+  const groupId=randomUUID();for(const command of [{kind:'createGroup' as const,groupId,name:'Fictional explicit B role'},{kind:'replaceGroupGrants' as const,groupId,grants:[{capabilityId:'workforce.view',companyId:b.companyId},{capabilityId:'workforce.add',companyId:b.companyId}]},{kind:'setMembership' as const,groupId,userId:user.id,companyId:b.companyId,enabled:true}]){
+   const state=await withTenant(context,tx=>accessConfigurationStore.loadCurrent(tx,context));const edit={expectedRevision:state.snapshot.revision,command};const preview=await previewAccessConfiguration(context,edit,accessConfigurationStore);await saveAccessConfiguration(context,{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);
+  }
+  const bounded={...context,userId:user.id,roles:['employee'],grants:[{role:'employee',companyId:a.id}]};
+  expect((await maintainWorkforceRecord(bounded,{employmentId:target.employmentId,kind:'qualification',rowId:null,operation:'add',patch:{qualification:'Explicit company B qualification',isHighest:false},expectedVersion:null})).changed).toBe(true);
+  await expect(hireEmployee(bounded,{person:{fullName:'No borrowed HR',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'})).rejects.toThrow();
+ });
+ it('narrowed HR-A claims cannot borrow stored global HR function sources through a global Employee claim',async()=>{
+  const context=await ctx(),aTarget=await hire();
+  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:b.adminUserId,role:'employee',companyId:null});
+  const [other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional narrowed carrier company B'}).returning();const [department]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:other.id,name:'Fictional B department'}).returning();
+  const bTarget=await hireEmployee(context,{person:{fullName:'Fictional B staff',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:other.id,departmentId:department.id,employmentType:'full_time',hiredOn:'2026-01-01'});
+  const narrowed={...context,roles:['hr_admin','employee'],grants:[{role:'hr_admin',companyId:b.companyId},{role:'employee',companyId:null}]};
+  expect((await maintainWorkforceRecord(narrowed,{employmentId:aTarget.employmentId,kind:'qualification',rowId:null,operation:'add',patch:{qualification:'Permitted A qualification',isHighest:false},expectedVersion:null})).changed).toBe(true);
+  expect(await workforceEditor(narrowed,bTarget.employmentId)).toBeNull();
+  await expect(maintainWorkforceRecord(narrowed,{employmentId:bTarget.employmentId,kind:'qualification',rowId:null,operation:'add',patch:{qualification:'Denied B qualification',isHighest:false},expectedVersion:null})).rejects.toThrow();
+  await expect(withTenant(narrowed,tx=>tx.execute(sql`select app.access_configuration_delegation_preview(${JSON.stringify([{capabilityId:'workforce.add',companyId:other.id}])}::jsonb)`))).rejects.toThrow();
+ });
+ it('Add cannot update another author saved draft or forge its author while Edit is denied',async()=>{
+  const [author]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional other draft author',primaryEmail:randomUUID()+'@fixture.invalid'}).returning();
+  const data={profile:{fullName:'Fictional retained draft'},employment:{companyId:b.companyId}};
+  const [draft]=await owner.db.insert(s.employeeDraft).values({tenantId:b.tenantId,companyId:b.companyId,createdByPersonId:author.id,label:'Fictional retained draft',data,currentStep:1}).returning();
+  await deny('edit');
+  await expect(saveEmployeeDraft(await ctx(),{id:draft.id,data:{...data,profile:{fullName:'Denied edit'}},currentStep:2})).rejects.toThrow();
+  await expect(withTenant(await ctx(),tx=>tx.update(s.employeeDraft).set({data:{...data,profile:{fullName:'Denied SQL edit'}}}).where(eq(s.employeeDraft.id,draft.id)))).rejects.toThrow();
+  await expect(withTenant(await ctx(),tx=>tx.update(s.employeeDraft).set({createdByPersonId:null}).where(eq(s.employeeDraft.id,draft.id)))).rejects.toThrow();
+  expect((await owner.db.select().from(s.employeeDraft).where(eq(s.employeeDraft.id,draft.id)))[0].data).toEqual(data);
+ });
+ it('Add initializes only its actual same-transaction draft before the first save completes',async()=>{
+  const context=await ctx();await deny('edit');
+  const created=await withTenant(await ctx(),async tx=>{
+   const first=await saveEmployeeDraft(context,{data:{profile:{fullName:'Fictional initial draft'},employment:{companyId:b.companyId}},currentStep:1},tx);
+   await saveEmployeeDraft(context,{id:first.id,data:{profile:{fullName:'Fictional completed initial draft'},employment:{companyId:b.companyId}},currentStep:2},tx);return first;
+  });
+  await expect(saveEmployeeDraft(await ctx(),{id:created.id,data:{profile:{fullName:'Denied later draft edit'},employment:{companyId:b.companyId}},currentStep:3})).rejects.toThrow();
+ });
  it('an Edit holder cannot add via native or direct employment INSERT despite legacy maintain',async()=>{
   const existing=await hire();await deny('add');await expect(hire()).rejects.toThrow();
   await expect(withTenant(await ctx(),tx=>tx.insert(s.employment).values({tenantId:b.tenantId,personId:existing.personId,companyId:b.companyId,hiredOn:'2026-02-01',employeeCode:'ACT-NEW'}))).rejects.toThrow();

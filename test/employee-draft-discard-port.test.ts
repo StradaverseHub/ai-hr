@@ -72,6 +72,13 @@ it('captures only actual SQL-owned source/version metadata and refuses caller-su
  await assertRefusal(withTenant(ctx,tx=>command(tx,ctx,'prepare',randomUUID(),d.id,'0'.repeat(64))),'22023');expect(await snapshot()).toEqual(before);
  const id=await prepare(d.id),r=await status(id);expect(JSON.stringify(r.source)).not.toContain('PRIVATE source input');expect(r.stamp).toBeNull();expect(r.bodies).toBe(1);
 });
+it('accepts only the exact server-owned numeric cohort while retaining nested numeric refusal',async()=>{
+ const d=await plain();const [row]=await owner.db.select().from(s.employeeDraft).where(eq(s.employeeDraft.id,d.id));expect(row.data.creationDefaultsVersion).toBe(1);
+ await withTenant(ctx,tx=>source(tx,d.id));
+ for(const data of [{...row.data,creationDefaultsVersion:2},{...row.data,profile:{...row.data.profile,value:1}}]){
+  await owner.db.update(s.employeeDraft).set({data:data as never}).where(eq(s.employeeDraft.id,d.id));await assertRefusal(withTenant(ctx,tx=>source(tx,d.id)),'54000');
+ }
+});
 it.each(['numeric','compressed','oversize'] as const)('hands the %s private source off but ordinary native GUI deletion still succeeds',async mode=>{
  const d=await plain();const data=mode==='numeric'?{profile:{value:1e100}}:mode==='compressed'?{private:'PRIVATE'.repeat(10000)}:{private:Array.from({length:16000},()=>randomUUID()).join('')};
  await owner.db.update(s.employeeDraft).set({data:data as never}).where(eq(s.employeeDraft.id,d.id));
