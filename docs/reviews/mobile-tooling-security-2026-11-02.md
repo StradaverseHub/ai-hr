@@ -1,0 +1,21 @@
+# Development tooling security patch — 2 November 2026
+
+## Scope and evidence
+
+Base: `6ea88936539c361a17a6f802c5b1e7bcc4ce1e39` (current main when the isolated candidate was created); accepted staging remains PR209 `cf6949d92a6348f123fbf5e6cad25188609da65c`. This candidate is not installed. No application, authentication, permission, migration, native app or release-controller behavior is edited.
+
+The full root lock audit on the accepted security patch had 42 advisory records / 43 affected-package findings: one critical, 18 high, 20 moderate and four low. The production-only audit was clear. Installed staging metadata separately confirmed Vitest browser 4.1.8, JSDOM 30.0.1 and Vite 8.0.16 because staging installs development packages. Installed packages do not establish that a vulnerable development API is exposed.
+
+Vitest and its matching browser provider move together from 4.1.8 to 4.1.12. The upstream [browser permission advisory](https://github.com/vitest-dev/vitest/security/advisories/GHSA-p63j-vcc4-9vmv) documents filesystem access by clients able to reach Browser Mode; 4.1.10 fixes that issue. The later [manual mock-registration advisory](https://github.com/vitest-dev/vitest/security/advisories/GHSA-qxg6-89mg-rqv8) requires 4.1.12. No reachable staging exploit is claimed and no exploit attempt was made.
+
+Vite is now an explicit development peer at patched 8.1.6; the existing Vitest range supports Vite 8. Peer-only resolution otherwise retained vulnerable 8.0.16. This fixes the five Vite advisory records reported by the current audit without a Vite major upgrade or an override. Named transitive updates stay inside declared parent ranges: brace-expansion 1.1.21, js-yaml 4.3.2, undici 8.12.3; obsolete vulnerable PostCSS/nanoid duplicates are deduplicated to existing patched versions. Resolution also updates compatible Vitest transitives and the OpenAI optional ws peer to 8.22.1; review the complete lock diff. Direct production dependencies, Next 16.4.1, Node 22.23.3, ABI, heap, Playwright 1.62.1, JSDOM 30.0.1, Tailwind, Drizzle and ESLint remain unchanged.
+
+The resulting full audit has two advisory records / three affected-package findings, all moderate: esbuild 0.18.20 under Drizzle's old esm-loader/core-utils path, and minimatch 3.1.5 / 10.2.6 under ESLint and the Next ESLint import-parser path. Their parents do not admit the advisory's fixed major under the current ranges. They remain open; no forced update, override, major lint/migration-tool upgrade or suppression was used. The production-only audit still reports zero. Audit JSON is retained privately; this report does not imply future advisory clearance.
+
+## Binding and release restrictions
+
+Package/lock bytes are part of the governed provider closure. Generated provider digest is `959e412848685adb1777666f7f3866670b521080fc638db90e0e2644aa0bf412` over 1,158 files. Generated module digest before any future literal binding update is `cb3ecd3ee06a8f11fc76b7ffb570548cb3f2232133cf18dbec1aa1339b613866` over 456 files. Both freshness checks pass. Literal owner approval records are unchanged and stale for this new provider closure: dispatch fails closed until direct exact-source approval is obtained. No old consent, review, evaluation, promotion or receipt is retagged. The same two pending contracts remain blocked. An approved binding update would itself require regenerating the module manifest last.
+
+Hosted focused unit/DOM tests, whole TypeScript and the unchanged complete browser suite across Chromium, Firefox and WebKit are planned development evidence. Results must be attached to their actual candidate before claiming success. Dependency-wide release qualification and authorized queue admission remain separate. No local app test, compiler or build runs are authorized here, and none were run to prepare this patch.
+
+This patch does not clear mobile SDK findings, the independently deployed identity-email bundle, ingress trust/fairness, source-map exposure, common/breached-password checking, retention operations, authenticated native journeys or physical-device acceptance. No staging lease, live purge, production package, production deployment or store release is part of this candidate.
