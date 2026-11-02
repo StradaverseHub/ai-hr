@@ -11,7 +11,7 @@ import {reportLabels} from './labels';
 export const dynamic='force-dynamic';
 export default async function LetterReportsPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
  await requireModule('employees');const {s,scopeIds}=await scopedSession(),sp=await searchParams,t=await getTranslations('letters.reports'),labels=await reportLabels(),locale=await getLocale();
- const companies=(await letterCompanyAccess(s)).filter(company=>scopeIds.includes(company.id)&&company.read&&company.report);
+ const companies=(await letterCompanyAccess(s,'letterReports','view')).filter(company=>scopeIds.includes(company.id)&&company.read&&company.report);
  if(!companies.length)return <div className={pageWideCls}><PageHeader title={t('title')}/><Card className="p-5 text-sm">{t('noAccess')}</Card></div>;
  const params=new URLSearchParams();for(const [key,value]of Object.entries(sp))if(typeof value==='string')params.set(key,value);
  let error:string|null=null;let filter:ReturnType<typeof letterReportFilter>;try{filter=letterReportFilter(params);}catch{filter=letterReportFilter(new URLSearchParams());error=t('errors.invalid');}
