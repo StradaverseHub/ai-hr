@@ -9,7 +9,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   JOIN public.access_capability c ON c.id=p_capability
   WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL
    AND NOT app.login_blocked(u.id) AND s.initialized AND c.supported AND jsonb_array_length(c.bindings)>0
-   AND (c.id NOT IN ('workforce.add','workforce.edit','workforce.delete') OR (app.access_allowed_for_tenant(p_tenant,p_user,'workforce.view',p_company) AND NOT EXISTS(SELECT 1 FROM public.access_user_override legacy WHERE legacy.tenant_id=p_tenant AND legacy.user_id=p_user AND legacy.capability_id='workforce.maintain' AND legacy.effect='deny' AND legacy.retired_at IS NULL AND app.access_scope_covers(legacy.company_id,p_company,p_tenant))))
+   AND (c.id !~ '^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$' OR (app.access_allowed_for_tenant(p_tenant,p_user,split_part(c.id,'.',1)||'.view',p_company) AND NOT EXISTS(SELECT 1 FROM public.access_user_override legacy WHERE legacy.tenant_id=p_tenant AND legacy.user_id=p_user AND legacy.capability_id='workforce.maintain' AND c.id LIKE 'workforce.%' AND legacy.effect='deny' AND legacy.retired_at IS NULL AND app.access_scope_covers(legacy.company_id,p_company,p_tenant))))
    AND ((c.scope='tenant' AND p_company IS NULL) OR (c.scope='company' AND p_company IS NOT NULL))
    AND NOT EXISTS(SELECT 1 FROM public.access_user_override o
     WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.effect='deny' AND o.retired_at IS NULL
@@ -555,3 +555,334 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.access_workforce_employment_action_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER workforce_action_write BEFORE UPDATE OR DELETE ON employment FOR EACH ROW EXECUTE FUNCTION app.access_workforce_employment_action_guard();
+--> statement-breakpoint
+-- Native draft activation consumes a source. It is not the distinct discard/Delete operation.
+CREATE TABLE app.workforce_hire_source (
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,user_id uuid NOT NULL,
+ draft_id uuid NOT NULL,company_id uuid NOT NULL,source_hash text NOT NULL,source jsonb NOT NULL,
+ employment_id uuid,PRIMARY KEY(xact_id,tenant_id,user_id,draft_id),UNIQUE(xact_id,tenant_id,user_id,employment_id)
+);
+ALTER TABLE app.workforce_hire_source ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.workforce_hire_source FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_prepare_hire_source(p_draft uuid,p_company uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE d public.employee_draft;hash text;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.access_workforce_action_company(p_company,'add') THEN RAISE EXCEPTION 'Hire source unavailable' USING ERRCODE='42501';END IF;
+ SELECT * INTO d FROM public.employee_draft WHERE id=p_draft AND tenant_id=app.current_tenant_id() AND company_id=p_company FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Hire source unavailable' USING ERRCODE='42501';END IF;
+ hash:=encode(sha256(convert_to(to_jsonb(d)::text,'UTF8')),'hex');
+ IF EXISTS(SELECT 1 FROM app.workforce_hire_source s WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=d.tenant_id AND s.user_id=app.current_user_id() AND (s.draft_id<>d.id OR s.source_hash<>hash OR s.employment_id IS NOT NULL)) THEN RAISE EXCEPTION 'Hire source changed' USING ERRCODE='40001';END IF;
+ DELETE FROM app.workforce_hire_source WHERE tenant_id=d.tenant_id AND xact_id<>pg_current_xact_id();
+ INSERT INTO app.workforce_hire_source VALUES(pg_current_xact_id(),d.tenant_id,app.current_user_id(),d.id,p_company,hash,to_jsonb(d),NULL) ON CONFLICT DO NOTHING;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.access_workforce_prepare_hire_source(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.access_workforce_prepare_hire_source(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_bind_hire_source() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE p public.person;source record;expected_code text;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ SELECT * INTO p FROM public.person WHERE id=NEW.person_id AND tenant_id=NEW.tenant_id;
+ FOR source IN SELECT * FROM app.workforce_hire_source s WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=NEW.tenant_id AND s.user_id=app.current_user_id() AND s.company_id=NEW.company_id AND s.employment_id IS NULL FOR UPDATE LOOP
+  expected_code:=coalesce(nullif(source.source->>'reserved_employee_code',''),nullif(btrim(source.source#>>'{data,profile,employeeCode}'),''));
+  IF btrim(source.source#>>'{data,profile,fullName}') IS DISTINCT FROM btrim(p.full_name)
+   OR lower(btrim(source.source#>>'{data,profile,primaryEmail}')) IS DISTINCT FROM lower(btrim(p.primary_email))
+   OR source.source#>>'{data,employment,hiredOn}' IS DISTINCT FROM NEW.hired_on::text
+   OR expected_code IS NOT NULL AND upper(expected_code) IS DISTINCT FROM NEW.employee_code THEN
+   RAISE EXCEPTION 'Hire source differs from created employment' USING ERRCODE='40001';
+  END IF;
+  UPDATE app.workforce_hire_source SET employment_id=NEW.id WHERE xact_id=source.xact_id AND tenant_id=source.tenant_id AND user_id=source.user_id AND draft_id=source.draft_id;
+ END LOOP;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.access_workforce_bind_hire_source() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER workforce_hire_source_bind AFTER INSERT ON employment FOR EACH ROW EXECUTE FUNCTION app.access_workforce_bind_hire_source();
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_hire_source_supported(data jsonb) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE section record;entry record;allowed text[];
+BEGIN
+ IF jsonb_typeof(data)<>'object' THEN RETURN false;END IF;
+ FOR section IN SELECT * FROM jsonb_each(data) LOOP
+  IF section.key='creationDefaultsVersion' THEN IF section.value<>'1'::jsonb THEN RETURN false;END IF;CONTINUE;END IF;
+  IF section.key='family' THEN IF section.value<>'[]'::jsonb THEN RETURN false;END IF;CONTINUE;END IF;
+  IF jsonb_typeof(section.value)<>'object' THEN IF section.value NOT IN ('null'::jsonb,'""'::jsonb) THEN RETURN false;END IF;CONTINUE;END IF;
+  allowed:=CASE section.key WHEN 'profile' THEN ARRAY['fullName','primaryEmail','employeeCode','employeeIdMode','phone']
+   WHEN 'employment' THEN ARRAY['companyId','departmentId','employmentType','hiredOn']
+   WHEN 'payroll' THEN ARRAY['basicSalary','monthlyAllowance','payMode','paymentTerm','rateAmount','remarks']
+   WHEN 'statutory' THEN ARRAY['subjectToSkbbk'] ELSE ARRAY[]::text[] END;
+  FOR entry IN SELECT * FROM jsonb_each(section.value) LOOP
+   IF entry.value IN ('null'::jsonb,'""'::jsonb,'[]'::jsonb,'{}'::jsonb) THEN CONTINUE;END IF;
+   IF entry.key<>ALL(allowed) OR jsonb_typeof(entry.value)<>'string' THEN RETURN false;END IF;
+  END LOOP;
+ END LOOP;RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.access_workforce_hire_source_supported(jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_consumed_draft(p_source jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.workforce_hire_source s JOIN public.employment e ON e.id=s.employment_id AND e.tenant_id=s.tenant_id
+ JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=app.current_tenant_id() AND s.user_id=app.current_user_id()
+ AND s.draft_id=(p_source->>'id')::uuid AND s.source_hash=encode(sha256(convert_to(p_source::text,'UTF8')),'hex')
+ AND app.access_workforce_hire_source_supported(s.source->'data')
+ AND app.data_permission_employment_born(e.id) AND app.access_workforce_action_company(e.company_id,'add')
+ AND nullif(btrim(s.source#>>'{data,profile,phone}'),'') IS NOT DISTINCT FROM nullif(btrim(p.phone),'')
+ AND EXISTS(SELECT 1 FROM public.assignment a WHERE a.tenant_id=e.tenant_id AND a.employment_id=e.id
+  AND a.department_id::text=s.source#>>'{data,employment,departmentId}' AND a.superseded_at IS NULL
+  AND a.employment_type::text=coalesce(nullif(s.source#>>'{data,employment,employmentType}',''),'full_time'))
+ AND EXISTS(SELECT 1 FROM public.compensation c WHERE c.tenant_id=e.tenant_id AND c.employment_id=e.id AND c.valid_from=e.hired_on AND c.superseded_at IS NULL
+  AND c.basic_salary=coalesce(nullif(replace(s.source#>>'{data,payroll,basicSalary}',',',''),''),'0')::numeric
+  AND c.monthly_allowance=coalesce(nullif(replace(s.source#>>'{data,payroll,monthlyAllowance}',',',''),''),'0')::numeric
+  AND c.pay_mode::text=coalesce(nullif(s.source#>>'{data,payroll,payMode}',''),'monthly')
+  AND c.payment_term=coalesce(nullif(s.source#>>'{data,payroll,paymentTerm}',''),'monthly')
+  AND c.rate_amount IS NOT DISTINCT FROM nullif(replace(s.source#>>'{data,payroll,rateAmount}',',',''),'')::numeric
+  AND nullif(btrim(c.remarks),'') IS NOT DISTINCT FROM nullif(btrim(s.source#>>'{data,payroll,remarks}'),''))
+ AND (nullif(s.source#>>'{data,statutory,subjectToSkbbk}','') IS NULL OR EXISTS(SELECT 1 FROM public.employee_statutory_my m WHERE m.person_id=e.person_id AND m.tenant_id=e.tenant_id AND m.subject_to_skbbk=(s.source#>>'{data,statutory,subjectToSkbbk}'='yes'))));
+$$;
+REVOKE ALL ON FUNCTION app.access_workforce_consumed_draft(jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_draft_action(p_company uuid,p_action text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN p_company IS NOT NULL THEN app.access_workforce_action_company(p_company,p_action)
+ WHEN EXISTS(SELECT 1 FROM public.access_capability WHERE id='workforce.'||p_action AND supported)
+ THEN app.principal_snapshot_current() AND app.access_can_delegate('workforce.view',NULL) AND app.access_can_delegate('workforce.'||p_action,NULL)
+ ELSE app.access_workforce_unassigned('workforce.maintain') END;
+$$;
+REVOKE ALL ON FUNCTION app.access_workforce_draft_action(uuid,text) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_draft_action_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE company uuid;author uuid;action text;own boolean;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ company:=CASE WHEN TG_OP='DELETE' THEN OLD.company_id ELSE NEW.company_id END;
+ author:=CASE WHEN TG_OP='DELETE' THEN OLD.created_by_person_id ELSE NEW.created_by_person_id END;
+ action:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+ own:=app.access_profile_request_own(author) AND NOT EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.user_id=app.current_user_id() AND o.tenant_id=app.current_tenant_id() AND o.retired_at IS NULL AND o.effect='deny' AND o.capability_id IN ('workforce.'||action,'workforce.view','workforce.maintain') AND app.access_scope_covers(o.company_id,company,app.current_tenant_id()));
+ IF own OR app.access_workforce_draft_action(company,action) OR TG_OP='UPDATE' AND app.access_workforce_draft_action(company,'add') THEN
+  IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+ END IF;
+ IF TG_OP='DELETE' AND app.access_workforce_consumed_draft(to_jsonb(OLD)) THEN RETURN OLD;END IF;
+ RAISE EXCEPTION 'Draft action unavailable' USING ERRCODE='42501';
+END;
+$$;
+REVOKE ALL ON FUNCTION app.access_workforce_draft_action_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER workforce_action_write BEFORE INSERT OR UPDATE OR DELETE ON employee_draft FOR EACH ROW EXECUTE FUNCTION app.access_workforce_draft_action_guard();
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_can_delegate(p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.access_capability c
+  JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id()
+  WHERE c.id=p_capability AND (p_capability !~ '^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$' OR app.access_can_delegate(split_part(p_capability,'.',1)||'.view',p_company)) AND c.supported AND jsonb_array_length(c.bindings)>0
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND CASE WHEN c.scope='tenant' THEN p_company IS NULL AND app.access_allowed_for(u.id,c.id,NULL)
+    WHEN p_company IS NOT NULL THEN app.access_allowed_for(u.id,c.id,p_company)
+    ELSE EXISTS(SELECT 1 FROM public.access_configuration s WHERE s.tenant_id=u.tenant_id AND s.initialized)
+     AND (EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.company_id IS NULL AND o.effect='allow' AND o.retired_at IS NULL)
+      OR EXISTS(SELECT 1 FROM public.access_effective_membership m JOIN public.access_group g ON g.id=m.group_id AND g.tenant_id=m.tenant_id
+       JOIN public.access_group_grant a ON a.group_id=g.id AND a.tenant_id=g.tenant_id
+       WHERE m.tenant_id=u.tenant_id AND m.user_id=u.id AND m.company_id IS NULL
+        AND g.retired_at IS NULL AND a.capability_id=c.id AND a.company_id IS NULL AND a.retired_at IS NULL)) END
+   AND NOT EXISTS(SELECT 1 FROM public.access_user_override o
+    WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.effect='deny' AND o.retired_at IS NULL
+     AND (p_company IS NULL OR o.company_id IS NULL
+      OR app.access_scope_covers(o.company_id,p_company,u.tenant_id)
+      OR app.access_scope_covers(p_company,o.company_id,u.tenant_id)))
+ );
+$$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_editor(p_employment uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected public.employment%ROWTYPE;profile_revision text;profile_values jsonb;registers jsonb;
+BEGIN
+ SELECT * INTO selected FROM public.employment WHERE id=p_employment AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NOT app.access_workforce_projection_company(selected.company_id) OR NOT app.data_permission_matches(selected.id) THEN RETURN NULL; END IF;
+ SELECT p.xmin::text,app.access_workforce_record(selected.id)->'profile' INTO profile_revision,profile_values
+  FROM public.person p WHERE p.id=selected.person_id AND p.tenant_id=selected.tenant_id;
+ SELECT COALESCE(jsonb_agg(item ORDER BY item->>'kind',item->>'id'),'[]'::jsonb) INTO registers FROM (
+  SELECT jsonb_build_object('kind','qualification','id',q.id,'version',q.xmin::text,'values',jsonb_build_object(
+   'qualification',q.qualification,'description',q.description,'fromYm',q.from_ym,'toYm',q.to_ym,'institute',q.institute,
+   'major',q.major,'graduationDate',q.graduation_date,'result',q.result,'isHighest',q.is_highest)) item
+   FROM public.employee_qualification q WHERE q.tenant_id=selected.tenant_id AND q.employment_id=selected.id AND q.archived_at IS NULL
+  UNION ALL
+  SELECT jsonb_build_object('kind','emergency','id',c.id,'version',c.xmin::text,'values',jsonb_build_object(
+   'fullName',c.full_name,'relationship',c.relationship,'mobilePhone',c.mobile_phone,'homePhone',c.home_phone,'address',c.address,'priority',c.priority))
+   FROM public.person_emergency_contact c WHERE c.tenant_id=selected.tenant_id AND c.person_id=selected.person_id AND c.archived_at IS NULL
+  UNION ALL
+  SELECT jsonb_build_object('kind','dependent','id',d.id,'version',d.xmin::text,'values',jsonb_build_object(
+   'relationship',d.relationship,'fullName',d.full_name,'gender',d.gender,'dateOfBirth',d.date_of_birth,'phone',d.phone,
+   'icOrPassport',d.ic_or_passport,'passportNumber',d.passport_number,'residentialAddress',d.residential_address,
+   'marriageDate',d.marriage_date,'marriageStatus',d.marriage_status,'spouseWorking',d.spouse_working,
+   'isBeneficiary',d.is_beneficiary,'isDeceased',d.is_deceased,'isStudent',d.is_student,'schoolName',d.school_name,
+   'studyLevel',d.study_level,'studyCountry',d.study_country,'childReliefCategory',d.child_relief_category,
+   'childTaxRelief',d.child_tax_relief,'childReliefPercentage',d.child_relief_percentage))
+   FROM public.employee_dependent d WHERE d.tenant_id=selected.tenant_id AND d.person_id=selected.person_id AND d.archived_at IS NULL
+  LIMIT 501
+ ) rows;
+ IF jsonb_array_length(registers)>500 THEN RAISE EXCEPTION 'Workforce editor record limit' USING ERRCODE='54000'; END IF;
+ RETURN jsonb_build_object('profileVersion',profile_revision,'profile',profile_values,'sharedMaintain',app.access_workforce_command_person(selected.id),
+  'employmentMaintain',app.access_workforce_command_allowed(selected.id),'registers',registers,'actionCapabilities',jsonb_build_object('employment',jsonb_build_object('add',app.access_workforce_action_employment(selected.id,'add'),'edit',app.access_workforce_action_employment(selected.id,'edit'),'delete',app.access_workforce_action_employment(selected.id,'delete')),'person',jsonb_build_object('add',app.access_workforce_action_person(selected.person_id,'add'),'edit',app.access_workforce_action_person(selected.person_id,'edit'),'delete',app.access_workforce_action_person(selected.person_id,'delete'))));
+END; $$;
+
+--> statement-breakpoint
+ALTER TABLE app.access_privacy_value_intent DROP CONSTRAINT access_privacy_value_intent_kind_check;
+--> statement-breakpoint
+ALTER TABLE app.access_privacy_value_intent ADD CONSTRAINT access_privacy_value_intent_kind_check CHECK(kind IN ('person','dependent','emergency','statutory'));
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_privacy_erasure_begin(p_employment uuid,p_scope text,p_request_ref text,p_reason text) RETURNS timestamptz
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected public.employment%ROWTYPE;policy jsonb:=app.access_privacy_erasure_policy();at_time timestamptz:=statement_timestamp();
+ lifted boolean:=false;lift_date date;original jsonb;expected jsonb;patch jsonb:='{}'::jsonb;field jsonb;column_name text;
+ saved record;before_digest text;after_digest text;
+BEGIN
+ PERFORM app.access_profile_policy_write_lock();
+ IF p_scope IS NULL OR p_scope NOT IN ('contact','financial','identity','statutory-ids','all')
+  OR p_request_ref IS NULL OR btrim(p_request_ref)='' OR length(p_request_ref)>4000 OR p_reason IS NULL OR length(p_reason)>4000 THEN
+  RAISE EXCEPTION 'Privacy erasure input unavailable' USING ERRCODE='22023'; END IF;
+ IF app.current_user_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE OR app.is_admin() IS NOT TRUE THEN
+  RAISE EXCEPTION 'Privacy erasure principal unavailable' USING ERRCODE='42501'; END IF;
+ SELECT * INTO selected FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND OR app.can_admin_employment(selected.id) IS NOT TRUE THEN
+  RAISE EXCEPTION 'Privacy erasure subject unavailable' USING ERRCODE='42501'; END IF;
+ -- Same calendar-year rollover as Date.setUTCFullYear: 29-Feb rolls to 1-Mar in a non-leap year.
+ -- Both owners use this admission's one actual timestamp and the one declared retention duration.
+ IF selected.terminated_on IS NOT NULL THEN
+  lift_date:=make_date(extract(year FROM selected.terminated_on)::integer+(policy->>'retentionYears')::integer,
+   extract(month FROM selected.terminated_on)::integer,1)+(extract(day FROM selected.terminated_on)::integer-1);
+  lifted:=(lift_date::timestamp AT TIME ZONE 'UTC')<=at_time;
+ END IF;
+ IF EXISTS(SELECT 1 FROM app.access_privacy_value_intent i WHERE i.xact_id=pg_current_xact_id()
+  AND i.tenant_id=selected.tenant_id AND i.user_id=app.current_user_id() AND i.person_id=selected.person_id) THEN
+  RAISE EXCEPTION 'Privacy erasure already prepared' USING ERRCODE='40001'; END IF;
+ DELETE FROM app.access_privacy_value_intent WHERE tenant_id=selected.tenant_id AND xact_id<>pg_current_xact_id();
+ SELECT to_jsonb(p) INTO original FROM public.person p WHERE p.id=selected.person_id AND p.tenant_id=selected.tenant_id FOR UPDATE;
+ IF original IS NULL THEN RAISE EXCEPTION 'Privacy erasure subject unavailable' USING ERRCODE='42501'; END IF;
+ FOR field IN SELECT value FROM jsonb_array_elements(policy->'fields') LOOP
+  IF field->>'table'='person' AND (p_scope='all' OR field->'scopes' ? p_scope)
+   AND (NOT (field->>'statutoryLocked')::boolean OR lifted) THEN
+   column_name:=lower(regexp_replace(field->>'key','([A-Z])','_\1','g'));
+   IF NOT original ? column_name THEN RAISE EXCEPTION 'Privacy erasure field unavailable' USING ERRCODE='55000'; END IF;
+   patch:=patch||jsonb_build_object(column_name,NULL);
+  END IF;
+ END LOOP;
+ expected:=original||patch;
+ before_digest:=encode(sha256(convert_to((original-'updated_at')::text,'UTF8')),'hex');
+ after_digest:=encode(sha256(convert_to((expected-'updated_at')::text,'UTF8')),'hex');
+ IF before_digest<>after_digest THEN
+  INSERT INTO app.access_privacy_value_intent VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,selected.person_id,
+   'person',selected.person_id,before_digest,after_digest,p_scope,encode(sha256(convert_to(p_request_ref,'UTF8')),'hex'),encode(sha256(convert_to(p_reason,'UTF8')),'hex'),NULL);
+ END IF;
+ patch:='{}'::jsonb;
+ IF p_scope IN ('contact','all') THEN
+  FOR column_name IN SELECT jsonb_array_elements_text(policy->'dependentContact') LOOP
+   patch:=patch||jsonb_build_object(lower(regexp_replace(column_name,'([A-Z])','_\1','g')),NULL);
+  END LOOP;
+ END IF;
+ IF p_scope IN ('identity','all') THEN
+  FOR column_name IN SELECT jsonb_array_elements_text(policy->'dependentIdentity') LOOP
+   patch:=patch||jsonb_build_object(lower(regexp_replace(column_name,'([A-Z])','_\1','g')),NULL);
+  END LOOP;
+ END IF;
+ IF patch<>'{}'::jsonb THEN
+  FOR saved IN SELECT to_jsonb(d) AS value FROM public.employee_dependent d WHERE d.tenant_id=selected.tenant_id AND d.person_id=selected.person_id ORDER BY d.id FOR UPDATE LOOP
+   original:=saved.value;expected:=original||patch;
+   before_digest:=encode(sha256(convert_to((original-'updated_at')::text,'UTF8')),'hex');
+   after_digest:=encode(sha256(convert_to((expected-'updated_at')::text,'UTF8')),'hex');
+   IF before_digest<>after_digest THEN
+    INSERT INTO app.access_privacy_value_intent VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,selected.person_id,
+     'dependent',(original->>'id')::uuid,before_digest,after_digest,p_scope,encode(sha256(convert_to(p_request_ref,'UTF8')),'hex'),encode(sha256(convert_to(p_reason,'UTF8')),'hex'),NULL);
+   END IF;
+  END LOOP;
+ END IF;
+ IF p_scope IN ('contact','all') THEN
+  FOR saved IN SELECT to_jsonb(c) AS value FROM public.person_emergency_contact c WHERE c.tenant_id=selected.tenant_id AND c.person_id=selected.person_id ORDER BY c.id FOR UPDATE LOOP
+   original:=saved.value;
+   INSERT INTO app.access_privacy_value_intent VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,selected.person_id,
+    'emergency',(original->>'id')::uuid,encode(sha256(convert_to((original-'updated_at')::text,'UTF8')),'hex'),
+    encode(sha256(convert_to('{}','UTF8')),'hex'),p_scope,encode(sha256(convert_to(p_request_ref,'UTF8')),'hex'),encode(sha256(convert_to(p_reason,'UTF8')),'hex'),NULL);
+  END LOOP;
+ END IF;
+ patch:='{}'::jsonb;
+ IF lifted THEN
+  FOR field IN SELECT value FROM jsonb_array_elements(policy->'fields') LOOP
+   IF field->>'table'='statutory' AND (p_scope='all' OR field->'scopes' ? p_scope) THEN
+    column_name:=lower(regexp_replace(field->>'key','([A-Z])','_\1','g'));
+    patch:=patch||jsonb_build_object(column_name,NULL);
+   END IF;
+  END LOOP;
+ END IF;
+ IF patch<>'{}'::jsonb THEN
+  SELECT to_jsonb(m) INTO original FROM public.employee_statutory_my m WHERE m.tenant_id=selected.tenant_id AND m.person_id=selected.person_id FOR UPDATE;
+  IF original IS NOT NULL THEN
+   expected:=original||patch;
+   before_digest:=encode(sha256(convert_to((original-'updated_at')::text,'UTF8')),'hex');
+   after_digest:=encode(sha256(convert_to((expected-'updated_at')::text,'UTF8')),'hex');
+   IF before_digest<>after_digest THEN
+    INSERT INTO app.access_privacy_value_intent VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,selected.person_id,
+     'statutory',(original->>'id')::uuid,before_digest,after_digest,p_scope,encode(sha256(convert_to(p_request_ref,'UTF8')),'hex'),encode(sha256(convert_to(p_reason,'UTF8')),'hex'),NULL);
+   END IF;
+  END IF;
+ END IF;
+ RETURN at_time;
+END; $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_privacy_value_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE intent app.access_privacy_value_intent%ROWTYPE;actual jsonb;table_name text;
+BEGIN
+ SELECT * INTO intent FROM app.access_privacy_value_intent i WHERE i.xact_id=NEW.xact_id AND i.tenant_id=NEW.tenant_id
+  AND i.user_id=NEW.user_id AND i.kind=NEW.kind AND i.row_id=NEW.row_id;
+ IF NOT FOUND OR intent.event_id IS NULL OR intent.user_id IS DISTINCT FROM app.current_user_id()
+  OR intent.tenant_id IS DISTINCT FROM app.current_tenant_id() OR app.principal_snapshot_current() IS NOT TRUE OR app.is_admin() IS NOT TRUE
+  OR app.can_admin_employment(intent.employment_id) IS NOT TRUE THEN
+  RAISE EXCEPTION 'Privacy erasure incomplete' USING ERRCODE='42501'; END IF;
+ table_name:=CASE intent.kind WHEN 'person' THEN 'person' WHEN 'dependent' THEN 'employee_dependent' WHEN 'emergency' THEN 'person_emergency_contact' WHEN 'statutory' THEN 'employee_statutory_my' END;
+ EXECUTE format('SELECT to_jsonb(r) FROM public.%I r WHERE r.id=$1 AND r.tenant_id=$2',table_name) INTO actual USING intent.row_id,intent.tenant_id;
+ actual:=COALESCE(actual,'{}'::jsonb);
+ IF encode(sha256(convert_to((actual-'updated_at')::text,'UTF8')),'hex')<>intent.after_hash THEN
+  RAISE EXCEPTION 'Privacy erasure effects incomplete' USING ERRCODE='42501'; END IF;
+ RETURN NULL;
+END; $$;
+
+--> statement-breakpoint
+-- The shared statutory row has independent financial owners. This guard covers only
+-- Personnel identity/bank cells; partial clear is Edit, physical removal is Delete.
+CREATE FUNCTION app.access_workforce_statutory_action_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ target uuid:=COALESCE(NEW.person_id,OLD.person_id);delta jsonb;relevant boolean;operation text;
+BEGIN
+ IF app.acting_as_owner() THEN RETURN NULL; END IF;
+ SELECT coalesce(jsonb_object_agg(k.key,k.value),'{}'::jsonb) INTO delta FROM jsonb_each(after_row) k
+  WHERE k.key NOT IN ('id','tenant_id','person_id','created_at','updated_at') AND k.value IS DISTINCT FROM before_row->k.key;
+ SELECT EXISTS(SELECT 1 FROM unnest(ARRAY['ic_number','old_ic_number','passport_number','passport_issue_date','passport_expiry_date','passport_issuing_country_code','passport_issuing_country','passport_remark','bank_name','bank_account_no','enable_custom_holder_name','custom_holder_name','enable_custom_holder_id','custom_holder_id']) k
+  WHERE CASE WHEN TG_OP='DELETE' THEN before_row->k NOT IN ('null'::jsonb,'false'::jsonb)
+   WHEN TG_OP='INSERT' THEN after_row->k NOT IN ('null'::jsonb,'false'::jsonb)
+   ELSE after_row->k IS DISTINCT FROM before_row->k END) INTO relevant;
+ IF NOT relevant THEN RETURN NULL; END IF;
+ IF app.access_privacy_value_intent_allowed('statutory',before_row,after_row) THEN RETURN NULL; END IF;
+ -- Existing self-service admission is further checked by its exact deferred field witness.
+ IF TG_OP<>'DELETE' AND app.profile_direct_person(target) THEN RETURN NULL; END IF;
+ IF TG_OP<>'DELETE' AND to_regprocedure('app.profile_task_statutory_delta_approved(uuid,uuid,jsonb,boolean)') IS NOT NULL THEN
+  IF app.profile_task_statutory_delta_approved(target,NEW.id,delta,TG_OP='INSERT') THEN RETURN NULL; END IF;
+ END IF;
+ operation:=CASE WHEN TG_OP='DELETE' THEN 'delete' ELSE 'edit' END;
+ IF app.access_workforce_action_person(target,operation) OR (TG_OP<>'DELETE' AND app.access_workforce_initial_person(target)) THEN RETURN NULL; END IF;
+ RAISE EXCEPTION 'Workforce statutory action unavailable' USING ERRCODE='42501';
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_statutory_action_guard() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER access_workforce_statutory_action_guard AFTER INSERT OR UPDATE OR DELETE ON employee_statutory_my DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_workforce_statutory_action_guard();

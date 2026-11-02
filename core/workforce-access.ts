@@ -53,7 +53,7 @@ export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string
 export function workforceCommandAccess(ctx:SessionContext,employmentId:string){
  return withTenant(ctx,async tx=>{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
-  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_command_allowed(${employmentId}::uuid) as allowed`);
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_action_employment(${employmentId}::uuid,'edit') as allowed`);
   return row?.allowed===true;
  });
 }

@@ -42,6 +42,17 @@ function AccessConfigurationEditorDraft({snapshot,capabilities,users,companies,p
  const capabilityLabel=(id:string)=>capabilities.find(capability=>capability.id===id)?.label??t('unavailable');
  const foundUsers=users.filter(user=>user.id===userId||user.label.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
  const mutableCapabilities=capabilities.filter(capability=>capability.id!=='access.system_admin');
+ const actionDomains=Object.entries({workforce:'matrixWorkforce',payroll:'matrixPayroll',performance_compensation:'matrixPerformanceCompensation',letters:'matrixLetters',organisation:'matrixOrganisation',settings:'matrixSettings'}).filter(([domain])=>capabilities.some(capability=>capability.id===domain+'.view'));
+ const actionNames=['view','add','edit','delete'];
+ const otherGroupCapabilities=mutableCapabilities.filter(capability=>!actionDomains.some(([domain])=>actionNames.some(action=>capability.id===domain+'.'+action))&&!capability.id.startsWith('workforce.'));
+ function setActionGrant(domain:string,action:string,checked:boolean){
+  invalidate();setGrants(rows=>{
+   let next=rows.filter(row=>row.capabilityId!==domain+'.'+action||row.companyId!==scope);
+   if(action==='view'&&!checked)next=next.filter(row=>!['add','edit','delete'].some(operation=>row.capabilityId===domain+'.'+operation)||row.companyId!==scope);
+   if(checked){next.push({capabilityId:domain+'.'+action,companyId:scope});if(action!=='view'&&!next.some(row=>row.capabilityId===domain+'.view'&&row.companyId===scope))next.push({capabilityId:domain+'.view',companyId:scope});}
+   return next;
+  });
+ }
  const matchingMembers=snapshot.memberships.filter(row=>row.groupId===groupId&&row.userId===userId&&row.companyId===scope);
  const derivedMember=matchingMembers.some(row=>row.derived);
  const scopePicker=<Field label={t('companyScope')}><select className={inputCls} value={scope??''} disabled={disabled} onChange={event=>{invalidate();setScope(event.target.value||null);}}><option value="">{t('allCompanies')}</option>{companies.map(company=><option key={company.id} value={company.id}>{company.label}</option>)}</select></Field>;
@@ -92,7 +103,8 @@ function AccessConfigurationEditorDraft({snapshot,capabilities,users,companies,p
       <div className="grid gap-4 sm:grid-cols-2"><Field label={t('groupName')}><input className={inputCls} value={groupName} maxLength={100} disabled={group.systemAdministrator||disabled} onChange={event=>{invalidate();setGroupName(event.target.value);}}/></Field>{scopePicker}</div>
       <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={pending!==null||group.systemAdministrator||!groupName.trim()||groupName===group.name} onClick={()=>review({kind:'renameGroup',groupId:group.id,name:groupName.trim()})}>{t('reviewName')}</Button><Button type="button" variant="outline" disabled={pending!==null||group.systemAdministrator} onClick={()=>review({kind:'retireGroup',groupId:group.id})}>{t('reviewRetirement')}</Button></div>
       {group.systemAdministrator&&<p className="text-sm text-muted-foreground">{t('protectedHelp')}</p>}
-      <fieldset className="space-y-2"><legend className="mb-2 text-sm font-medium">{t('permissions')}</legend>{mutableCapabilities.map(capability=>{
+      <div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[30rem] text-sm"><caption className="sr-only">{t('permissions')}</caption><thead><tr className="border-b bg-muted/40"><th className="p-3 text-left font-medium">{t('permissions')}</th>{actionNames.map(action=><th key={action} className="p-3 text-center font-medium">{t('matrix'+action[0].toUpperCase()+action.slice(1))}</th>)}</tr></thead><tbody>{actionDomains.map(([domain,label])=><tr key={domain}><th className="p-3 text-left font-medium">{t(label)}<span className="mt-1 block text-xs font-normal text-muted-foreground">{companyLabel(scope)}</span></th>{actionNames.map(action=>{const id=domain+'.'+action,definition=capabilities.find(capability=>capability.id===id);return <td key={id} className="p-3 text-center"><input type="checkbox" aria-label={definition?.label??t('unavailable')} checked={grants.some(grant=>grant.capabilityId===id&&grant.companyId===scope)} disabled={!definition?.supported||group.systemAdministrator||disabled} onChange={event=>setActionGrant(domain,action,event.target.checked)} className="size-4"/>{!definition?.supported&&<span className="sr-only">{t('notSupported')}</span>}</td>;})}</tr>)}</tbody></table></div>
+      <fieldset className="space-y-2"><legend className="mb-2 text-sm font-medium">{t('permissions')}</legend>{otherGroupCapabilities.map(capability=>{
        const companyId=capability.scope==='tenant'?null:scope;
        const checked=grants.some(grant=>grant.capabilityId===capability.id&&grant.companyId===companyId);
        return <label key={capability.id} className="flex items-start gap-3 rounded-md border p-3 text-sm"><input type="checkbox" className="mt-0.5 size-4" checked={checked} disabled={!capability.supported||group.systemAdministrator||disabled} onChange={event=>{invalidate();setGrants(rows=>[...rows.filter(row=>row.capabilityId!==capability.id||row.companyId!==companyId),...(event.target.checked?[{capabilityId:capability.id,companyId}]:[])]);}}/><span>{capability.label}<span className="mt-1 block text-xs text-muted-foreground">{!capability.supported?t('notSupported'):capability.scope==='tenant'?t('tenantScope'):companyLabel(companyId)}</span></span></label>;

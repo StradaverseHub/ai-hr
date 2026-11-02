@@ -1056,7 +1056,7 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
     employeeCode: employeeCodeToIssue,
     // Without this the two-table uniqueness check would refuse the activation on the grounds that the ID
     // is taken — by the very draft being activated.
-    fromEmployeeDraftId: reservedCode ? id : undefined,
+    fromEmployeeDraftId: id,
     companyId,
     departmentId: str(e.departmentId)!,
     positionId: str(e.positionId),
