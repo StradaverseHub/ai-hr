@@ -21,6 +21,7 @@ vi.mock('../app/admin/users/data',()=>({loadUsersData:m.load,ROLES:['employee','
 vi.mock('../lib/internal-auth/config',()=>({internalSelected:()=>m.enabled}));
 vi.mock('../lib/identity/config',()=>({keycloakSelected:()=>false}));
 vi.mock('../app/admin/actions',()=>({inviteUserAction:vi.fn(),archiveUserAction:vi.fn(),assignRoleAction:vi.fn(),revokeRoleAction:vi.fn(),revokeInvitationAction:vi.fn(),setAssistantGrantAction:vi.fn()}));
+vi.mock('../app/admin/users/password-unlock-actions',()=>({unlockPasswordAccountAction:vi.fn()}));
 vi.mock('../app/admin/users/manual-actions',()=>({createManualAccountAction:vi.fn(),resumeManualAccountAction:vi.fn(),cancelManualAccountAction:vi.fn()}));
 import Hub from '../app/admin/security-center/page';
 import Directory from '../app/admin/users/page';
