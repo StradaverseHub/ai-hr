@@ -18,9 +18,11 @@ def cleanup_reader(child):
         os.killpg(child.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
+    except OSError as error:
+        raise CleanupUncertain() from error
     try:
         child.wait(timeout=5)
-    except subprocess.TimeoutExpired as error:
+    except (subprocess.TimeoutExpired, OSError) as error:
         raise CleanupUncertain() from error
 
 
