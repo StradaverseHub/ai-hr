@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
-import { listClockingLocations } from '@/packs/attendance/service';
+import { listClockingLocationsForMaintenance as listClockingLocations, clockingSiteActionAccess } from '@/packs/attendance/service';
 import { listLocations, listUnmappedBranches } from '@/core/location';
 import {
   Card,
@@ -71,6 +71,7 @@ export default async function ClockingLocationsPage({
   const sp = await searchParams;
   const one = (k: string) => (typeof sp[k] === 'string' ? (sp[k] as string) : '');
   const groupAdmin = isGroupAdmin(s);
+  const [canAdd, canEdit, canDelete] = await Promise.all((['add', 'edit', 'delete'] as const).map(op => clockingSiteActionAccess(s, op)));
 
   const companies = (await listCompanies(s, { adminOnly: true }))
     .map((c) => ({ id: c.id, name: c.companyLabel ?? c.name }))
@@ -88,9 +89,9 @@ export default async function ClockingLocationsPage({
   // (test/clocking-location-page.test.ts, test/work-location-organization-relocation.test.ts) cannot
   // satisfy synchronously — the same reason ClockingLocationForm stays a plain sync function.
   if (companyParam) {
-    return await CompanyView({ s, t, groupAdmin, companies, companyId: companyParam, one });
+    return await CompanyView({ s, t, groupAdmin, canAdd, canEdit, canDelete, companies, companyId: companyParam, one });
   }
-  return await CompanyList({ s, t, groupAdmin, companies, one });
+  return await CompanyList({ s, t, groupAdmin, canAdd, companies, one });
 }
 
 /** ────────────────────────────────── STEP 1 — THE COMPANY LIST ────────────────────────────────── */
@@ -99,12 +100,14 @@ async function CompanyList({
   s,
   t,
   groupAdmin,
+  canAdd,
   companies,
   one,
 }: {
   s: Awaited<ReturnType<typeof requireAdmin>>;
   t: (key: string, values?: Record<string, string | number>) => string;
   groupAdmin: boolean;
+  canAdd: boolean;
   companies: { id: string; name: string }[];
   one: (k: string) => string;
 }) {
@@ -165,7 +168,7 @@ async function CompanyList({
         title={t('pageTitle')}
         description={t('companyListDescription')}
         actions={
-          groupAdmin ? (
+          groupAdmin && canAdd ? (
             <Link href={CLOCKING_NEW_PAGE} className={btnPrimary}>
               {t('newClockingCta')}
             </Link>
@@ -278,6 +281,9 @@ async function CompanyView({
   s,
   t,
   groupAdmin,
+  canAdd,
+  canEdit,
+  canDelete,
   companies,
   companyId,
   one,
@@ -285,6 +291,9 @@ async function CompanyView({
   s: Awaited<ReturnType<typeof requireAdmin>>;
   t: (key: string, values?: Record<string, string | number>) => string;
   groupAdmin: boolean;
+  canAdd: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   companies: { id: string; name: string }[];
   companyId: string;
   one: (k: string) => string;
@@ -336,7 +345,7 @@ async function CompanyView({
         description={isOrphan ? undefined : t('companyViewDescription')}
         back={{ href: CLOCKING_LIST, label: t('backToAllCompanies') }}
         actions={
-          groupAdmin ? (
+          groupAdmin && canAdd ? (
             <Link href={`${CLOCKING_NEW_PAGE}${isOrphan ? '' : `?company=${companyId}`}`} className={btnPrimary}>
               {t('newClockingCta')}
             </Link>
@@ -421,21 +430,22 @@ async function CompanyView({
                         {groupAdmin && (
                           <>
                             <span className="text-muted-foreground">|</span>
-                            <Link href={editHref} className="text-primary hover:underline">
+                            {canEdit && <Link href={editHref} className="text-primary hover:underline">
                               {t('edit')}
-                            </Link>
+                            </Link>}
                             <span className="text-muted-foreground">|</span>
                             {cl.archivedAt ? (
                               <form action={restoreClockingLocationAction}>
                                 <input type="hidden" name="clockingLocationId" value={cl.id} />
                                 {!isOrphan && <input type="hidden" name="returnCompany" value={companyId} />}
-                                <button className="text-primary hover:underline">{t('activate')}</button>
+                                <button disabled={!canEdit} className="text-primary hover:underline disabled:opacity-50">{t('activate')}</button>
                               </form>
                             ) : (
                               <form action={archiveClockingLocationAction}>
                                 <input type="hidden" name="clockingLocationId" value={cl.id} />
                                 {!isOrphan && <input type="hidden" name="returnCompany" value={companyId} />}
                                 <ConfirmSubmit
+                                  disabled={!canDelete}
                                   title={t('deactivateConfirmTitle')}
                                   description={t('deactivateConfirmDescription', { name: cl.name, count: cl.assignedCount })}
                                   confirmLabel={t('deactivate')}

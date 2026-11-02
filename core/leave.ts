@@ -17,11 +17,8 @@ import {assertMyTeamSubjectTx} from './my-team-scope';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import { scopeOf } from '../lib/delegation-scope';
 import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
-// 5206539f — the pure "does this caller hold this key" decision (defaults ∘ tenant overrides ∘ company
-// overrides). Taken from the lib/ leaf rather than from core/payroll.ts's resolvePayrollPermission, which
-// is the same decision wrapped in a query: importing it would pull the whole payroll kernel into every
-// leave request path for fifteen lines of SELECT.
-import { decidePayrollPermission } from '../lib/payroll-permissions';
+// Existing on-behalf permission uses the private native SQL fact shared by composer and source guards.
+// Subject visibility, data scope, lifecycle, consent and effects remain owned by requestLeave below.
 import {calendarWindowDates} from '../lib/calendar-window';
 import {
   approversOf,
@@ -238,9 +235,6 @@ import {
   leaveRequestAttachment,
   leaveRequestDate,
   leaveType,
-  // 5206539f — the (key, role) override rows behind `leave.apply_on_behalf`. Its table name says "payroll"
-  // for historical reasons only; see the note in lib/payroll-permissions.ts.
-  payrollPermissionGrant,
   person,
   reportingLine,
   rosterAssignment,
@@ -3290,29 +3284,9 @@ type LeaveOverrideAudit = {
  *
  * Read inside the caller's own tx: the grant table is tenant-readable under RLS.
  */
-async function resolveApplyOnBehalfTx(tx: Tx, ctx: SessionContext, companyId: string | null): Promise<boolean> {
-  const rows = await tx
-    .select({
-      role: payrollPermissionGrant.role,
-      allowed: payrollPermissionGrant.allowed,
-      companyId: payrollPermissionGrant.companyId,
-    })
-    .from(payrollPermissionGrant)
-    .where(
-      and(
-        eq(payrollPermissionGrant.tenantId, ctx.tenantId),
-        eq(payrollPermissionGrant.permissionKey, 'leave.apply_on_behalf'),
-        companyId
-          ? or(isNull(payrollPermissionGrant.companyId), eq(payrollPermissionGrant.companyId, companyId))
-          : isNull(payrollPermissionGrant.companyId),
-      ),
-    );
-  return decidePayrollPermission({
-    key: 'leave.apply_on_behalf',
-    // Delegated grants count exactly as directly-assigned roles do, mirroring core/payroll.ts's callerRolesOf.
-    callerRoles: [...(ctx.roles ?? []), ...(ctx.grants ?? []).map((g) => g.role)],
-    overrides: rows.map((r) => ({ role: r.role, allowed: r.allowed, companyScoped: r.companyId != null })),
-  });
+async function resolveApplyOnBehalfTx(tx: Tx, _ctx: SessionContext, companyId: string | null): Promise<boolean> {
+  const [row] = await tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_native(${companyId}::uuid) as allowed`);
+  return row?.allowed === true;
 }
 
 /**
@@ -3472,6 +3446,8 @@ export async function requestLeave(
     if (!isSelfSubject && !(subject && (await resolveApplyOnBehalfTx(tx, ctx, subject.companyId)))) {
       throw new LeaveOnBehalfNotAllowedError();
     }
+    if (isSelfSubject) await assertOwnLeaveApplicationActionTx(tx,p.employmentId,'add');
+    else {const [control]=await tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${p.employmentId}::uuid) as allowed`);if(control?.allowed!==true)throw new LeaveOnBehalfNotAllowedError();}
 
     await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
     const [currentSubject] = await readSubject();
@@ -7847,6 +7823,8 @@ export async function editLeaveRequestTx(
       throw new LeaveEditNotAllowedError('only the employee who applied can edit their leave');
     }
 
+    await assertOwnLeaveApplicationActionTx(tx,req.employmentId,'edit');
+
     // Status gate: only a PENDING request is editable (expected_function 3.i — "available only for pending").
     if (req.status !== 'pending') throw new LeaveEditNotAllowedError(`the leave is already ${req.status}`);
 
@@ -8224,6 +8202,8 @@ export async function cancelOwnLeaveTx(
     if (!ctx.personId || ctx.personId !== subjectPersonId) {
       throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave', 'not_yours');
     }
+
+    await assertOwnLeaveApplicationActionTx(tx,req.employmentId,'delete');
 
     // Status gate: PENDING only. An approved row is routed to the give-back flow at the action layer.
     // r301 (83511d3b): each refusal carries its reason, so the screen can say which.
@@ -12343,5 +12323,21 @@ export function actionableLeaveCancellationIds(ctx:SessionContext,requestIds:rea
    }
   }
   return result.sort();
+ });
+}
+
+/** Refusal-only composition inside the existing native self command transaction. */
+async function assertOwnLeaveApplicationActionTx(tx:Tx,employmentId:string,operation:'add'|'edit'|'delete'){
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.leave_own_application_allowed(${employmentId}::uuid,${operation}) as allowed`);
+ if(row?.allowed!==true)throw new Error('Own Leave application action unavailable');
+}
+
+/** Refusal-only form projection over caller-supplied, already-native-visible target IDs.
+ * It returns no employee metadata, reserves nothing and takes no Access/write lock. */
+export function leaveApplicationAddAccess(ctx:SessionContext,employmentIds:readonly string[]):Promise<string[]>{
+ const ids=[...new Set(employmentIds)];if(!ids.length)return Promise.resolve([]);
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{id:string}>(sql`select selected.id from jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) selected(id) where app.leave_own_application_allowed(selected.id::uuid,'add') or app.leave_on_behalf_application_allowed(selected.id::uuid)`);
+  return rows.map(row=>row.id);
  });
 }

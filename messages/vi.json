@@ -3303,6 +3303,10 @@
     }
   },
   "leave": {
+    "accessFunctions": {
+      "ownApplication": "Đơn nghỉ phép của bản thân",
+      "onBehalfApplication": "Đăng ký nghỉ phép thay nhân viên"
+    },
     "myAbsenceTitle": "Nghỉ phép của tôi",
     "inquiryMovedToTracker": "Thông tin nhân viên, Số dư phép của nhân viên và Hồ sơ nghỉ phép của nhân viên nay mở từ Theo dõi nghỉ phép của nhóm; trang này chỉ hiển thị phép của bạn.",
     "title": "Nghỉ phép",

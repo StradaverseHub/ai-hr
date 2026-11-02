@@ -886,16 +886,27 @@ CREATE FUNCTION app.claim_admin_subject_for(t uuid,u uuid,subject uuid) RETURNS 
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=subject AND e.tenant_id=t AND app.module_action_legacy_allowed(t,u,'claims.view',e.company_id) AND app.data_permission_matches_for(u,t,e.id));
 $$;
+-- Restricted publisher target hooks cannot borrow its ambient tenant. Port ONLY the actual
+-- 0818 delegation coverage fact, keeping its exact activity/module/task/org-scope semantics.
+-- Applied source drift refuses migration instead of silently changing the native target ceiling.
+DO $port$ DECLARE source text;BEGIN
+ SELECT prosrc INTO source FROM pg_proc WHERE oid='app.delegation_line_covers(uuid,uuid,text,text)'::regprocedure;
+ IF source IS NULL OR md5(source)<>'fb19e7bd1c4cbc1363e6de3c579c64a6' OR (length(source)-length(replace(source,'app.current_tenant_id()','')))/length('app.current_tenant_id()')<>1 THEN
+  RAISE EXCEPTION 'Native delegation coverage source changed';
+ END IF;
+ EXECUTE 'CREATE FUNCTION app.claim_delegation_line_covers_for(p_tenant uuid,line_id uuid,subject_id uuid,wanted_module text,wanted_task text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS '||quote_literal(replace(source,'app.current_tenant_id()','p_tenant'));
+END $port$;
+REVOKE ALL ON FUNCTION app.claim_delegation_line_covers_for(uuid,uuid,uuid,text,text) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.claim_assigned_subject_for(t uuid,u uuid,subject uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT t=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user actor ON actor.tenant_id=e.tenant_id
+ SELECT EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user actor ON actor.tenant_id=e.tenant_id
  WHERE e.id=subject AND e.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(u) AND actor.person_id IS NOT NULL AND actor.person_id<>e.person_id
  AND (EXISTS(SELECT 1 FROM public.reporting_line line JOIN public.employment manager ON manager.id=line.manager_employment_id AND manager.tenant_id=line.tenant_id
   WHERE line.tenant_id=t AND line.subordinate_employment_id=e.id AND line.line_type='administrative' AND line.superseded_at IS NULL AND line.valid_from<=current_date AND (line.valid_to IS NULL OR line.valid_to>current_date) AND manager.person_id=actor.person_id)
  OR EXISTS(SELECT 1 FROM public.reporting_line adm JOIN public.reporting_line delegation ON delegation.subordinate_employment_id=adm.manager_employment_id AND delegation.tenant_id=adm.tenant_id
   JOIN public.employment delegate ON delegate.id=delegation.manager_employment_id AND delegate.tenant_id=delegation.tenant_id
   WHERE adm.tenant_id=t AND adm.subordinate_employment_id=e.id AND adm.line_type='administrative' AND adm.superseded_at IS NULL AND adm.valid_from<=current_date AND (adm.valid_to IS NULL OR adm.valid_to>current_date)
-  AND delegate.person_id=actor.person_id AND app.delegation_line_covers(delegation.id,e.id,'claims','claims.claim'))));
+  AND delegate.person_id=actor.person_id AND app.claim_delegation_line_covers_for(t,delegation.id,e.id,'claims','claims.claim'))));
 $$;
 REVOKE ALL ON FUNCTION app.claim_related_subject_for(uuid,uuid,uuid),app.claim_admin_subject_for(uuid,uuid,uuid),app.claim_assigned_subject_for(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -1422,14 +1433,246 @@ CREATE TRIGGER module_rotation_access BEFORE INSERT ON public.attendance_rotatio
 CREATE TRIGGER aaa_module_rotation_action BEFORE INSERT ON public.attendance_rotation FOR EACH ROW EXECUTE FUNCTION app.attendance_rotation_action_guard();
 
 --> statement-breakpoint
+-- Duty roster and exception switches are distinct native ANY-HR Group maintenance purposes.
+CREATE FUNCTION app.attendance_schedule_control_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap IN ('function.attendancePolicy.dutyRoster.view','function.attendancePolicy.dutyRoster.edit','function.attendancePolicy.exceptions.view','function.attendancePolicy.exceptions.edit','function.attendancePolicy.schedule.view','function.attendancePolicy.schedule.edit')
+ AND app.module_action_legacy_allowed(t,u,'attendance_configuration.'||split_part(cap,'.',4),co);
+$$;
+CREATE FUNCTION app.attendance_schedule_control_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.attendance_schedule_control_native_allowed(t,u,cap,co)
+ AND app.module_action_current_legacy_allowed(t,u,'attendance_configuration.'||split_part(cap,'.',4),co);
+$$;
+REVOKE ALL ON FUNCTION app.attendance_schedule_control_native_allowed(uuid,uuid,text,uuid),app.attendance_schedule_control_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE key text;operation text;BEGIN
+ FOREACH key IN ARRAY ARRAY['dutyRoster','exceptions'] LOOP
+  FOREACH operation IN ARRAY ARRAY['view','edit'] LOOP
+   PERFORM app.register_function_action('attendancePolicy.'||key,operation,'tenant','function.attendancePolicy.schedule.'||operation,'app.attendance_schedule_control_current_native_allowed',jsonb_build_object('moduleKey','attendance','labelKey',CASE key WHEN 'dutyRoster' THEN 'boardSchedule.duty' ELSE 'boardSchedule.exception' END,'kind','native_acl','course','administrative','screenKey','attendancePolicy','href','/admin/attendance/schedule','employeeBearing',false));
+  END LOOP;
+ END LOOP;
+END $$;
+CREATE FUNCTION app.attendance_schedule_control_allowed(p_key text,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_key IN ('attendancePolicy.dutyRoster','attendancePolicy.exceptions') AND p_operation IN ('view','edit')
+ AND app.attendance_schedule_control_current_native_allowed(app.current_tenant_id(),app.current_user_id(),'function.'||p_key||'.'||p_operation,NULL)
+ AND app.module_function_allowed('attendancePolicy.schedule','view',NULL) AND app.module_function_allowed('attendancePolicy.schedule',p_operation,NULL)
+ AND app.function_action_allowed(p_key,'view',NULL) AND app.function_action_allowed(p_key,p_operation,NULL);
+$$;
+REVOKE ALL ON FUNCTION app.attendance_schedule_control_allowed(text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.attendance_schedule_control_allowed(text,text) TO ai_hr_app;
+CREATE FUNCTION app.attendance_schedule_control_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE key text:=CASE TG_TABLE_NAME WHEN 'attendance_rule' THEN 'attendancePolicy.dutyRoster' ELSE 'attendancePolicy.exceptions' END;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF TG_TABLE_NAME='attendance_rule' THEN
+  IF TG_OP='INSERT' THEN IF NOT NEW.duty_roster_control THEN RETURN NEW;END IF;
+  ELSIF OLD.duty_roster_control IS NOT DISTINCT FROM NEW.duty_roster_control THEN RETURN NEW;END IF;
+ END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.attendance_schedule_control_allowed(key,'edit') THEN RAISE EXCEPTION 'Schedule control action unavailable' USING ERRCODE='42501';END IF;
+ IF TG_TABLE_NAME='attendance_exception_revision' THEN
+  IF NOT EXISTS(SELECT 1 FROM public.attendance_rule parent WHERE parent.id=NEW.rule_id AND parent.tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Schedule control subject unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.attendance_schedule_control_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_schedule_duty_action BEFORE INSERT OR UPDATE ON public.attendance_rule FOR EACH ROW EXECUTE FUNCTION app.attendance_schedule_control_guard();
+CREATE TRIGGER aaa_schedule_exception_action BEFORE INSERT ON public.attendance_exception_revision FOR EACH ROW EXECUTE FUNCTION app.attendance_schedule_control_guard();
+CREATE TRIGGER module_schedule_exception_access BEFORE INSERT ON public.attendance_exception_revision FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+
+--> statement-breakpoint
+-- One owner for the existing leave.apply_on_behalf role-override algebra. Company rows
+-- replace the entire tenant override set; role denial wins only against the same role.
+-- This fact adds no subject read, company/data ceiling, admission or ledger authority.
+CREATE FUNCTION app.leave_on_behalf_permission(p_tenant uuid,p_company uuid,p_roles text[]) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH applicable AS(SELECT g.role,g.allowed,g.company_id FROM public.payroll_permission_grant g WHERE g.tenant_id=p_tenant AND g.permission_key='leave.apply_on_behalf' AND (g.company_id IS NULL OR g.company_id=p_company)),
+ effective AS(SELECT role,allowed FROM applicable WHERE CASE WHEN EXISTS(SELECT 1 FROM applicable WHERE company_id IS NOT NULL) THEN company_id IS NOT NULL ELSE company_id IS NULL END)
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM effective) THEN coalesce(p_roles&&ARRAY['hr_admin','super_admin'],false)
+ ELSE EXISTS(SELECT 1 FROM effective allow_role WHERE allow_role.allowed AND allow_role.role=ANY(p_roles) AND NOT EXISTS(SELECT 1 FROM effective deny_role WHERE deny_role.role=allow_role.role AND NOT deny_role.allowed)) END;
+$$;
+REVOKE ALL ON FUNCTION app.leave_on_behalf_permission(uuid,uuid,text[]) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.leave_on_behalf_native(p_company uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND (p_company IS NULL OR EXISTS(SELECT 1 FROM public.company c WHERE c.id=p_company AND c.tenant_id=app.current_tenant_id()))
+ AND app.leave_on_behalf_permission(app.current_tenant_id(),p_company,ARRAY(SELECT DISTINCT role FROM(SELECT unnest(string_to_array(current_setting('app.roles',true),',')) role UNION SELECT g.role FROM app.current_grants() g) claimed));
+$$;
+REVOKE ALL ON FUNCTION app.leave_on_behalf_native(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_on_behalf_native(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Applying for another person retains the named native permission AND actual nonself
+-- employment visibility/data source. No HR-only replacement of customer-granted manager courses.
+CREATE FUNCTION app.leave_on_behalf_application_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE roles text[];company_id uuid;
+BEGIN
+ IF cap IS NULL OR cap NOT IN ('function.leave.onBehalf.application.view','function.leave.onBehalf.application.add') OR NOT EXISTS(SELECT 1 FROM public.app_user actor WHERE actor.id=u AND actor.tenant_id=t AND actor.archived_at IS NULL AND NOT app.login_blocked(u)) THEN RETURN false;END IF;
+ SELECT array_agg(DISTINCT role::text) INTO roles FROM public.role_assignment WHERE tenant_id=t AND app_user_id=u;
+ IF NOT app.leave_on_behalf_permission(t,co,roles) THEN RETURN false;END IF;
+ IF co IS NULL THEN
+  -- Global/future means a real native global company ceiling plus its future tenant permission.
+  IF NOT EXISTS(SELECT 1 FROM public.role_assignment assignment WHERE assignment.tenant_id=t AND assignment.app_user_id=u AND assignment.company_id IS NULL AND assignment.role::text IN ('hr_admin','super_admin')) THEN RETURN false;END IF;
+  FOR company_id IN SELECT company.id FROM public.company company WHERE company.tenant_id=t LOOP
+   IF NOT app.leave_on_behalf_permission(t,company_id,roles) THEN RETURN false;END IF;
+  END LOOP;RETURN true;
+ END IF;
+ RETURN EXISTS(SELECT 1 FROM public.employment subject JOIN public.app_user actor ON actor.tenant_id=subject.tenant_id AND actor.id=u WHERE subject.tenant_id=t AND subject.company_id=co AND actor.person_id IS DISTINCT FROM subject.person_id AND (app.claim_admin_subject_for(t,u,subject.id) OR app.claim_related_subject_for(t,u,subject.id)));
+END $$;
+CREATE FUNCTION app.leave_on_behalf_application_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.leave_on_behalf_application_native_allowed(t,u,cap,co) AND app.leave_on_behalf_native(co)
+ AND CASE WHEN co IS NULL THEN EXISTS(SELECT 1 FROM app.current_grants() claimed WHERE claimed.company_id IS NULL AND claimed.role IN ('hr_admin','super_admin')) ELSE EXISTS(SELECT 1 FROM public.employment subject WHERE subject.tenant_id=t AND subject.company_id=co AND NOT app.is_self_person(subject.person_id) AND app.can_see_employment(subject.id)) END;
+$$;
+REVOKE ALL ON FUNCTION app.leave_on_behalf_application_native_allowed(uuid,uuid,text,uuid),app.leave_on_behalf_application_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add'] LOOP
+  PERFORM app.register_function_action('leave.onBehalf.application',operation,'company',NULL,'app.leave_on_behalf_application_current_native_allowed','{"moduleKey":"leave","labelKey":"leave.accessFunctions.onBehalfApplication","kind":"native_acl","course":"administrative","screenKey":"leave","href":"/leave","employeeBearing":true}');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.leave_on_behalf_application_allowed(p_employment uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment subject WHERE subject.id=p_employment AND subject.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(subject.person_id) AND app.can_see_employment(subject.id) AND app.leave_on_behalf_native(subject.company_id) AND app.function_action_allowed('leave.onBehalf.application','view',subject.company_id) AND app.function_action_allowed('leave.onBehalf.application','add',subject.company_id));
+$$;
+REVOKE ALL ON FUNCTION app.leave_on_behalf_application_allowed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_on_behalf_application_allowed(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Actual own Leave application course stays independent of administrative employee scope.
+CREATE FUNCTION app.leave_own_application_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap IN ('function.leave.own.application.view','function.leave.own.application.add','function.leave.own.application.edit','function.leave.own.application.delete') AND co IS NOT NULL
+ AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.employment subject ON subject.tenant_id=actor.tenant_id AND subject.person_id=actor.person_id WHERE actor.id=u AND actor.tenant_id=t AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id) AND subject.company_id=co AND subject.voided_at IS NULL);
+$$;
+CREATE FUNCTION app.leave_own_application_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.leave_own_application_native_allowed(t,u,cap,co);
+$$;
+REVOKE ALL ON FUNCTION app.leave_own_application_native_allowed(uuid,uuid,text,uuid),app.leave_own_application_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+  PERFORM app.register_function_action('leave.own.application',operation,'company',NULL,'app.leave_own_application_current_native_allowed','{"moduleKey":"leave","labelKey":"leave.accessFunctions.ownApplication","kind":"native_acl","course":"own","screenKey":"leave","href":"/leave","employeeBearing":false}');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.leave_own_application_allowed(p_employment uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND p_operation IN ('view','add','edit','delete') AND EXISTS(SELECT 1 FROM public.employment subject WHERE subject.id=p_employment AND subject.tenant_id=app.current_tenant_id() AND subject.voided_at IS NULL AND app.is_self_person(subject.person_id) AND app.function_action_allowed('leave.own.application','view',subject.company_id) AND app.function_action_allowed('leave.own.application',p_operation,subject.company_id));
+$$;
+REVOKE ALL ON FUNCTION app.leave_own_application_allowed(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_own_application_allowed(uuid,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Shared Clocking Sites retain the original group-admin write ceiling and ANY-HR maintenance
+-- View; scoped maintenance rows remain bounded by the native open-company reader.
+CREATE FUNCTION app.clocking_site_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT co IS NULL AND cap IN ('function.attendancePolicy.clockingSites.view','function.attendancePolicy.clockingSites.add','function.attendancePolicy.clockingSites.edit','function.attendancePolicy.clockingSites.delete','attendance_configuration.view','attendance_configuration.add','attendance_configuration.edit','attendance_configuration.delete')
+ AND app.module_action_legacy_allowed(t,u,'attendance_configuration.'||regexp_replace(cap,'^.*[.]',''),NULL)
+ AND(regexp_replace(cap,'^.*[.]','')='view' OR EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND(r.role::text='super_admin' OR r.role::text='hr_admin' AND r.company_id IS NULL)));
+$$;
+CREATE FUNCTION app.clocking_site_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.clocking_site_native_allowed(t,u,cap,co)
+ AND app.module_action_current_legacy_allowed(t,u,'attendance_configuration.'||regexp_replace(cap,'^.*[.]',''),NULL)
+ AND(regexp_replace(cap,'^.*[.]','')='view' OR app.is_group_admin());
+$$;
+REVOKE ALL ON FUNCTION app.clocking_site_native_allowed(uuid,uuid,text,uuid),app.clocking_site_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+  PERFORM app.register_function_action('attendancePolicy.clockingSites',operation,'tenant','attendance_configuration.'||operation,'app.clocking_site_current_native_allowed','{"moduleKey":"attendance","labelKey":"nav.locations","kind":"submenu","course":"administrative","screenKey":"locations","href":"/admin/work-locations/clocking","employeeBearing":false}');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.clocking_site_allowed(p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.clocking_site_current_native_allowed(app.current_tenant_id(),app.current_user_id(),'function.attendancePolicy.clockingSites.'||p_operation,NULL)
+ AND app.module_action_allowed('attendance_configuration','view',NULL) AND app.module_action_allowed('attendance_configuration',p_operation,NULL)
+ AND app.function_action_allowed('attendancePolicy.clockingSites','view',NULL) AND app.function_action_allowed('attendancePolicy.clockingSites',p_operation,NULL);
+$$;
+REVOKE ALL ON FUNCTION app.clocking_site_allowed(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.clocking_site_allowed(text) TO ai_hr_app;
+CREATE TABLE app.clocking_site_source(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,site_id uuid NOT NULL,kind text NOT NULL CHECK(kind IN('birth','removed')),source jsonb NOT NULL,authority_stamp text NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,site_id,kind));
+REVOKE ALL ON app.clocking_site_source FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.clocking_site_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;image public.clocking_location%ROWTYPE;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_OP='DELETE' THEN image:=OLD;ELSE image:=NEW;END IF;
+ IF TG_OP='UPDATE' AND OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL THEN
+  operation:='delete';
+  IF to_jsonb(OLD)-ARRAY['archived_at','updated_at'] IS DISTINCT FROM to_jsonb(NEW)-ARRAY['archived_at','updated_at'] AND NOT app.clocking_site_allowed('edit') THEN RAISE EXCEPTION 'Clocking site Edit unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ IF image.tenant_id IS DISTINCT FROM app.current_tenant_id() OR TG_OP='UPDATE' AND ROW(OLD.id,OLD.tenant_id) IS DISTINCT FROM ROW(NEW.id,NEW.tenant_id) OR NOT app.clocking_site_allowed(operation)
+ OR image.location_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.location linked WHERE linked.id=image.location_id AND linked.tenant_id=image.tenant_id)
+ THEN RAISE EXCEPTION 'Clocking site action unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN
+  IF EXISTS(SELECT 1 FROM public.employee_clocking_location assignment WHERE assignment.tenant_id=OLD.tenant_id AND assignment.clocking_location_id=OLD.id) OR EXISTS(SELECT 1 FROM public.attendance punch WHERE punch.tenant_id=OLD.tenant_id AND (punch.check_in_clocking_location_id=OLD.id OR punch.check_out_clocking_location_id=OLD.id)) THEN RAISE EXCEPTION 'Clocking site is in use' USING ERRCODE='42501';END IF;
+  DELETE FROM app.clocking_site_source WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+  INSERT INTO app.clocking_site_source VALUES(pg_current_xact_id(),OLD.tenant_id,app.current_user_id(),OLD.id,'removed',to_jsonb(OLD),app.access_function_authority_stamp());RETURN OLD;
+ END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.clocking_site_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_clocking_site_access BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+CREATE TRIGGER module_clocking_site_action BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location FOR EACH ROW EXECUTE FUNCTION app.clocking_site_guard();
+CREATE FUNCTION app.clocking_site_born() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN
+  DELETE FROM app.clocking_site_source WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+  INSERT INTO app.clocking_site_source VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id,'birth',to_jsonb(NEW),app.access_function_authority_stamp());
+ END IF;RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.clocking_site_born() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_clocking_site_born AFTER INSERT ON public.clocking_location FOR EACH ROW EXECUTE FUNCTION app.clocking_site_born();
+CREATE FUNCTION app.clocking_site_company_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE image public.clocking_location_company%ROWTYPE;parent public.clocking_location%ROWTYPE;operation text:='edit';
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_OP='UPDATE' THEN RAISE EXCEPTION 'Clocking site company links are immutable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN image:=OLD;ELSE image:=NEW;END IF;
+ IF image.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.id=image.company_id AND c.tenant_id=image.tenant_id) THEN RAISE EXCEPTION 'Clocking site company unavailable' USING ERRCODE='42501';END IF;
+ SELECT * INTO parent FROM public.clocking_location site WHERE site.id=image.clocking_location_id AND site.tenant_id=image.tenant_id;
+ IF TG_OP='DELETE' AND parent.id IS NULL AND EXISTS(SELECT 1 FROM app.clocking_site_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=image.tenant_id AND proof.user_id=app.current_user_id() AND proof.site_id=image.clocking_location_id AND proof.kind='removed' AND proof.authority_stamp=app.access_function_authority_stamp()) THEN operation:='delete';
+ ELSIF parent.id IS NULL THEN RAISE EXCEPTION 'Clocking site parent unavailable' USING ERRCODE='42501';
+ ELSIF TG_OP='INSERT' AND EXISTS(SELECT 1 FROM app.clocking_site_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=image.tenant_id AND proof.user_id=app.current_user_id() AND proof.site_id=parent.id AND proof.kind='birth' AND proof.source=to_jsonb(parent) AND proof.authority_stamp=app.access_function_authority_stamp()) THEN operation:='add';END IF;
+ IF NOT app.clocking_site_allowed(operation) THEN RAISE EXCEPTION 'Clocking site company action unavailable' USING ERRCODE='42501';END IF;
+ -- The administrative data profile may hide employees from the caller's native UI count.
+ -- This source-only refusal never returns a hidden row/count and cannot authorize any employee write.
+ IF TG_OP='DELETE' AND parent.id IS NOT NULL AND EXISTS(SELECT 1 FROM public.employee_clocking_location assignment JOIN public.employment employment ON employment.id=assignment.employment_id AND employment.tenant_id=assignment.tenant_id WHERE assignment.tenant_id=image.tenant_id AND assignment.clocking_location_id=image.clocking_location_id AND employment.company_id=image.company_id) THEN RAISE EXCEPTION 'Clocking site company is in use' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.clocking_site_company_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_clocking_site_company_access BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location_company FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+CREATE TRIGGER module_clocking_site_company_action BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location_company FOR EACH ROW EXECUTE FUNCTION app.clocking_site_company_guard();
+-- Assignment source joins the same Access serialization before touching tuples. Try-only admission
+-- prevents an existing native data lock from becoming a blocking Access lock-order upgrade.
+-- This fence adds no role, employee visibility, purpose grant or control/business epoch mutation.
+CREATE FUNCTION app.clocking_assignment_access_fence() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN
+  PERFORM app.audit_access_order_lock_for(app.current_tenant_id());
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.clocking_assignment_access_fence() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_clocking_assignment_access BEFORE INSERT OR UPDATE OR DELETE ON public.employee_clocking_location FOR EACH STATEMENT EXECUTE FUNCTION app.clocking_assignment_access_fence();
+
+
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_native_allowed(t,u,cap,co)) OR app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
+ SELECT (cap LIKE 'function.leave.onBehalf.application.%' AND app.leave_on_behalf_application_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.leave.own.application.%' AND app.leave_own_application_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.clockingSites.%' AND app.clocking_site_native_allowed(t,u,cap,co)) OR (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_native_allowed(t,u,cap,co)) OR app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_current_native_allowed(t,u,cap,co)) OR app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
+ SELECT (cap LIKE 'function.leave.onBehalf.application.%' AND app.leave_on_behalf_application_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.leave.own.application.%' AND app.leave_own_application_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.clockingSites.%' AND app.clocking_site_current_native_allowed(t,u,cap,co)) OR (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_current_native_allowed(t,u,cap,co)) OR app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 

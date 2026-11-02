@@ -3303,6 +3303,10 @@
     }
   },
   "leave": {
+    "accessFunctions": {
+      "ownApplication": "本人请假申请",
+      "onBehalfApplication": "代员工申请休假"
+    },
     "myAbsenceTitle": "我的休假",
     "inquiryMovedToTracker": "员工资料、员工假期余额和员工假期记录现在从团队休假追踪进入；本页只显示你自己的假期。",
     "title": "休假",

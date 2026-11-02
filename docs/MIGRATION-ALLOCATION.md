@@ -1427,3 +1427,78 @@ mode; shared week/payroll routing keeps native references. Native role/parity/ra
 read-only cases are authored, unrun. This role/action guard does not certify the full direct-raw
 rotation temporal/payroll-effect constructor contract; remaining native transaction/source closure
 and genuine component publication are still required.
+
+Duty Roster and Exception switches now have separate exact View/Edit under actual Schedule View/Edit,
+with the original ANY-HR stored/current/delegation ceiling. Native setter, raw Duty-column changes
+and immutable Exception INSERT repeat their own control; plain Group Add/default initialization does
+not require unrelated switch Edit. Shared runtime/roster reference lookup stays independent. The Group
+screen uses separate View/Edit projections and retains the real current value without an editing
+form when only View is present. Native company-HR positives, actual immutable-version refusal,
+raw/stale non-admin negatives and rendered sibling/View separation are authored, unrun. Future
+supported-denial/default/recipient proof still needs genuine component completion/publication.
+
+Shared Clocking Sites now have exact View/Add/Edit/Delete under Attendance Configuration, with the
+original 0459/0517 stored/current group-admin write floor and scoped-HR maintenance View. The existing
+open-company reader owns row/name visibility; employee clock/history/reference readers remain separate.
+Native writers and parent/company-link row guards repeat the exact purpose. Actual AFTER INSERT full
+parent birth binds company initialization to Add; later link changes use Edit, while actual consumed
+parent removal uses Delete. No posted birth flag or broad employee read is granted. Private source
+refusals retain assigned-company/site in-use protection even when an administrative data profile hides
+employees from the UI count. The maintenance list/detail and direct form routes consume independent
+operation projections. Native source/floor and rendered projection cases are authored, unrun.
+Genuine supported-denial/default/recipient qualification, all native constructor business rules and
+cross-source assignment/config serialization remain qualification work; this is not module completion.
+
+The employee_clocking_location statement source now joins the exact canonical Access advisory fence
+through private audit_access_order_lock_for(current tenant), try-only before row locks. It adds no
+purpose, employee access, business/control epoch or new admission exception; the existing genuine
+storage-owner maintenance distinction is unchanged. Source/assignment config writes now share the
+same Access key. A native APP pre-held-data-lock contention/refusal and later uncontended-statement
+case is authored, unrun. This serialization is not raw assignment constructor completion.
+
+Operational Leave preparation now factors the existing leave.apply_on_behalf override algebra into
+one private SQL fact and an actual-principal boolean port consumed by the existing composer/service
+resolver. Company overrides replace the whole tenant set; same-role denial beats its allow; absent
+overrides retain only original HR/super defaults. Current claimed roles plus current delegated-role
+carrier are preserved and revalidated, and a foreign company fails closed. This fact grants no subject
+visibility, employee-data admission, decision, ledger or source mutation. Independent existing policy
+oracle parity/native/private-input cases are authored, unrun. Exact operational function registration
+and raw constructor/terminal closure are still subsequent work; this fact is not module completion.
+
+Own operational Leave application now has a separate native own-person/company View/Add/Edit/Delete
+course, without administrative parent or employee-profile borrowing. The actual requestLeave self Add,
+self-only pending edit and self-only pending withdrawal transactions repeat that purpose after their
+original native source checks. Source boolean and stored/current/recipient floor cases are authored,
+unrun. This is bounded command composition: shared raw Leave request/date/ledger/attachment and
+assigned/super decision readers, the apply UI and give-back cancellation are still separate unfinished
+owners; no raw/read/default/publication completion is claimed for this descriptor.
+
+Restricted-publisher Claim audit found the assigned pure helper and 0818 delegation coverage fact
+still borrowed ambient tenant. The assigned target helper now uses only explicit tenant/user/subject;
+a private parameterized exact 0818 coverage copy retains the real administrative-manager→delegate
+relationship, activity, task/module and organisation scope. Its source hash and single replacement
+anchor are checked at migration time; native drift refuses instead of silently changing behavior.
+The recursive-manager/HOD/company-tree owners and profile/login facts were inspected and already take
+explicit source IDs/tenant/date without caller GUCs, so they are reused unchanged. Owner NULL-tenant
+and foreign-caller-tenant probes, actual APP positive/negative admission, scoped delegation removal
+and private-port denial cases are authored, unrun. This establishes a qualification target, not a
+claim that a genuine supported package/default installation has passed.
+
+On-behalf Leave application has its own company View/Add purpose and employee-bearing native course.
+Its pure/current hooks preserve the original configurable role permission plus actual nonself native
+recursive-manager/HOD/admin visibility and administrative profile. A global/future floor additionally
+requires the real global native company role and tenant/future permission, repeating every current
+company override; an ANY-current-company witness cannot prove it. requestLeave repeats the exact
+on-behalf source purpose after its original permission/subject gate. It does not borrow approval or
+own application authority. Distinct own/on-behalf labels exist in all six locales. Actual custom-manager
+admission/revocation and owner NULL/foreign-tenant target cases are authored, unrun. Shared raw/effect,
+selected-target UI, reviewed/assigned decisions and publication closure remain unfinished.
+
+The actual /leave application composer now filters its already-native-visible candidate IDs through
+one read-only batched own-Add/on-behalf-Add projection, returning IDs only. No write/Access lock,
+reservation or employee metadata grant is added. The real RequestLeaveDialog requires canAdd=true;
+false/missing runtime projection renders no trigger/form and does not consume an auto-open link.
+Denied target options are absent while independently permitted own/nonself choices remain. Actual
+native target filtering and rendered denied/allowed dialog/field cases are authored, unrun. Home
+shortcuts, existing pending Edit/Delete affordances, separate give-back and assigned decision UI,
+shared raw/effect closure and genuine supported publication still require subsequent work.

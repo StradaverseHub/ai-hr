@@ -19,14 +19,14 @@
  * admin, link app_users to those people, and drive each case through the role under test.
  */
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq,sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { canApplyLeaveOnBehalf, requestLeave, LeaveOnBehalfNotAllowedError } from '../core/leave';
+import { canApplyLeaveOnBehalf, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess } from '../core/leave';
 import { listEmployees, reportingLinesFor } from '../core/read';
-import { PAYROLL_PERMISSION_DEFAULTS, PAYROLL_PERMISSION_KEYS } from '../lib/payroll-permissions';
-import type { SessionContext } from '../db/client';
+import { PAYROLL_PERMISSION_DEFAULTS, PAYROLL_PERMISSION_KEYS,decidePayrollPermission } from '../lib/payroll-permissions';
+import {withTenant,type SessionContext} from '../db/client';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -403,7 +403,10 @@ describe('the screen and the service read ONE permission (AGENTS rule 17)', () =
     expect(loader).toContain('.find((e) => e.employmentId === me.employmentId)?.companyId ?? null;');
     expect(page).toContain('canApplyOnBehalf,'); // destructured off the loader's result
     expect(loader, 'the reporting-lines read is back').not.toContain('reportingLinesFor');
-    expect(page).toContain('employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}');
+    // Exact Add projection further narrows the native permission's already-visible choices.
+    expect(page).toContain('employeeOptions={canApplyOnBehalf && requestLeaveEmployeeOptions.length ? requestLeaveEmployeeOptions : undefined}');
+    expect(page).toContain('nativeRequestLeaveEmployeeOptions.filter(row=>allowedApplicationIds.has(row.id))');
+    expect(page).toContain('canAdd={canAddLeaveApplication}');
     // THE ONE-EDIT-APART CASE. The old rule and the new one differ by a single expression, so the absence of
     // the old read is asserted as flatly as the presence of the new one — a page that asks BOTH questions
     // would satisfy every other assertion in this file.
@@ -455,4 +458,52 @@ describe('the screen and the service read ONE permission (AGENTS rule 17)', () =
     expect(body).toContain('const { s, employmentId } = await resolveMe();');
     expect(body, '/me started trusting a posted employment').not.toContain("formData.get('employmentId')");
   });
+});
+
+
+describe('one native on-behalf permission fact shared by the composer and raw source owners',()=>{
+ it('matches independent existing override algebra, including whole-set company replacement and role-specific denial',async()=>{
+  const ctx=adminCtx(b),roles=['hr_admin'];
+  const cases=[[],[{role:'hr_admin',allowed:false,companyScoped:false}],[{role:'hr_admin',allowed:true,companyScoped:false}],[{role:'hr_admin',allowed:true,companyScoped:false},{role:'manager',allowed:true,companyScoped:true}],[{role:'hr_admin',allowed:false,companyScoped:false},{role:'hr_admin',allowed:true,companyScoped:true}],[{role:'manager',allowed:true,companyScoped:true},{role:'hr_admin',allowed:false,companyScoped:true}]];
+  for(const overrides of cases){
+   await owner.db.delete(schema.payrollPermissionGrant).where(and(eq(schema.payrollPermissionGrant.tenantId,b.tenantId),eq(schema.payrollPermissionGrant.permissionKey,'leave.apply_on_behalf')));
+   for(const row of overrides)await grant({companyId:row.companyScoped?b.companyId:null,role:row.role,allowed:row.allowed});
+   const expected=decidePayrollPermission({key:'leave.apply_on_behalf',callerRoles:roles,overrides});
+   expect(await canApplyLeaveOnBehalf(ctx,b.companyId)).toBe(expected);
+   const [actual]=await withTenant(ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_native(${b.companyId}::uuid) as allowed`));expect(actual.allowed).toBe(expected);
+  }
+ });
+ it('refuses a foreign company and keeps role-list oracle input private',async()=>{
+  const ctx=adminCtx(b),foreign=await seedBase();
+  expect(await canApplyLeaveOnBehalf(ctx,foreign.companyId)).toBe(false);
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.leave_on_behalf_permission(${b.tenantId}::uuid,${b.companyId}::uuid,ARRAY['super_admin'])`))).rejects.toThrow();
+ });
+});
+
+
+describe('native own Leave application source composition',()=>{
+ it('binds own purpose to the actual linked person/company and refuses another visible report',async()=>{
+  const self=await hire('manager'),report=await hire('employee');await reportsTo(report.employmentId,self.employmentId);
+  const facts=await withTenant(self.ctx,tx=>tx.execute<{operation:string;own:boolean;other:boolean}>(sql`select operation,app.leave_own_application_allowed(${self.employmentId}::uuid,operation) as own,app.leave_own_application_allowed(${report.employmentId}::uuid,operation) as other from unnest(ARRAY['view','add','edit','delete']) operation`));
+  expect(facts).toEqual(['view','add','edit','delete'].map(operation=>({operation,own:true,other:false})));
+  const [floors]=await owner.withTenant(self.ctx,tx=>tx.execute<{stored:boolean;current:boolean;recipient:boolean}>(sql`select app.module_function_legacy_allowed(${b.tenantId}::uuid,${self.ctx.userId}::uuid,'function.leave.own.application.add',${b.companyId}::uuid) as stored,app.module_function_current_legacy_allowed(${b.tenantId}::uuid,${self.ctx.userId}::uuid,'function.leave.own.application.add',${b.companyId}::uuid) as "current",app.access_function_delegation_floor('function.leave.own.application.add',${b.companyId}::uuid) as recipient`));expect(floors).toEqual({stored:true,current:true,recipient:true});
+  expect(await withTenant(self.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_own_application_allowed(${self.employmentId}::uuid,'approve') as allowed`))).toEqual([{allowed:false}]);
+ });
+});
+
+it('keeps a real customer-granted manager on-behalf course and pure target floor independent of publisher tenant',async()=>{
+ const manager=await hire('manager'),subject=await hire('employee');await reportsTo(subject.employmentId,manager.employmentId);
+ const [absent]=await withTenant(manager.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(absent.allowed).toBe(false);
+ expect(await leaveApplicationAddAccess(manager.ctx,[manager.employmentId,subject.employmentId])).toEqual([manager.employmentId]);
+ await grant({role:'manager',allowed:true});
+ const [admitted]=await withTenant(manager.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(admitted.allowed).toBe(true);
+ expect((await leaveApplicationAddAccess(manager.ctx,[manager.employmentId,subject.employmentId,subject.employmentId])).sort()).toEqual([manager.employmentId,subject.employmentId].sort());
+ const foreign=await seedBase();
+ for(const ambient of ['',foreign.tenantId]){
+  const [floors]=await owner.db.transaction(async tx=>{await tx.execute(sql`select set_config('app.tenant_id',${ambient},true),set_config('app.user_id','',true),set_config('app.roles','',true),set_config('app.grants','[]',true)`);return tx.execute<{named:boolean;global:boolean;foreign:boolean}>(sql`select app.module_function_legacy_allowed(${b.tenantId}::uuid,${manager.ctx.userId}::uuid,'function.leave.onBehalf.application.add',${b.companyId}::uuid) as named,app.module_function_legacy_allowed(${b.tenantId}::uuid,${manager.ctx.userId}::uuid,'function.leave.onBehalf.application.add',null) as global,app.module_function_legacy_allowed(${foreign.tenantId}::uuid,${manager.ctx.userId}::uuid,'function.leave.onBehalf.application.add',${foreign.companyId}::uuid) as foreign`);});expect(floors).toEqual({named:true,global:false,foreign:false});
+ }
+ const stranger=await hire('employee');
+ const [notVisible]=await withTenant(stranger.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(notVisible.allowed).toBe(false);
+ await owner.db.update(schema.payrollPermissionGrant).set({allowed:false}).where(and(eq(schema.payrollPermissionGrant.tenantId,b.tenantId),eq(schema.payrollPermissionGrant.permissionKey,'leave.apply_on_behalf'),eq(schema.payrollPermissionGrant.role,'manager')));
+ const [revoked]=await withTenant(manager.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(revoked.allowed).toBe(false);
 });
