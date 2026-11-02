@@ -48,10 +48,24 @@ public final class OneHrSignInProbe extends UiAutomatorTestCase {
     getUiDevice().pressBack();
     System.out.println("ONEHR_PROBE {\"kind\":\"publicUsernameRestoration\",\"exactMatch\":true,\"passwordOrMfaRead\":false,\"signInSubmitted\":false}");
   }
+  public void testScopedReviewState() throws Exception {
+    setupBounded();
+    UiSelector scope=new UiSelector().packageName("ai.stradaverse.aihr.test");
+    UiObject username=new UiObject(scope.className("android.widget.EditText").description("Username"));
+    UiObject report=new UiObject(scope.className("android.widget.TextView").description("Review connection diagnostic"));
+    UiObject working=new UiObject(scope.text("Please wait…"));
+    org.json.JSONObject state=new org.json.JSONObject();
+    state.put("kind","scopedPublicReviewState");
+    boolean login=username.exists();state.put("usernameControlPresent",login);
+    if(login)state.put("usernameControlEnabled",username.isEnabled());
+    state.put("workingLabelPresent",working.exists());
+    state.put("reviewReportPresent",report.exists());
+    state.put("fieldValuesRead",false);
+    System.out.println("ONEHR_PROBE "+state.toString());
+  }
   public void testClientDiagnostic() throws Exception {
     setupBounded();
-    assertEquals("Wrong foreground app; do not act", "ai.stradaverse.aihr.test", getUiDevice().getCurrentPackageName());
-    UiObject report=new UiObject(new UiSelector().description("Review connection diagnostic").className("android.widget.TextView"));
+    UiObject report=new UiObject(new UiSelector().packageName("ai.stradaverse.aihr.test").description("Review connection diagnostic").className("android.widget.TextView"));
     assertTrue("Review diagnostic not available",report.exists());
     org.json.JSONObject input=new org.json.JSONObject(report.getText());
     assertEquals("ONEHR_CLIENT_PROBE",input.optString("marker"));
