@@ -19649,12 +19649,18 @@
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
+        "app.current_user_id",
         "app.is_admin_for",
+        "app.login_blocked",
+        "app.module_company_cleanup_begin",
+        "app.module_company_cleanup_finish",
+        "app.principal_snapshot_current",
         "app/admin/actions.ts:requireAdmin"
       ],
       "tables": [
         "company",
-        "domainEvent"
+        "domainEvent",
+        "new Set(grants.map(g=>g.role))"
       ],
       "boundaries": [
         "db/client.ts#withTenant",
@@ -26912,6 +26918,7 @@
         "app.current_tenant_id",
         "app.current_user_id",
         "app.is_admin",
+        "app.leave_on_behalf_grant_set",
         "app.login_blocked",
         "app.principal_snapshot_current",
         "app/admin/payroll-permissions/actions.ts:setPayrollPermissionGrant",
@@ -26943,11 +26950,15 @@
         "app.current_tenant_id",
         "app.current_user_id",
         "app.is_admin",
+        "app.leave_on_behalf_grant_delete",
         "app.login_blocked",
         "app.principal_snapshot_current",
         "app/admin/payroll-permissions/actions.ts:deletePayrollPermissionGrant",
         "core/payroll-permissions-admin.ts:tx\n      .delete(payrollPermissionGrant)\n      .where",
-        "core/payroll-permissions-admin.ts:tx\n      .delete(payrollPermissionGrant)\n      .where(eq(payrollPermissionGrant.id, p.id))\n      .returning"
+        "core/payroll-permissions-admin.ts:tx\n      .delete(payrollPermissionGrant)\n      .where(eq(payrollPermissionGrant.id, p.id))\n      .returning",
+        "core/payroll-permissions-admin.ts:tx.select({ permissionKey: payrollPermissionGrant.permissionKey })\n      .from",
+        "core/payroll-permissions-admin.ts:tx.select({ permissionKey: payrollPermissionGrant.permissionKey })\n      .from(payrollPermissionGrant).where",
+        "core/payroll-permissions-admin.ts:tx.select({ permissionKey: payrollPermissionGrant.permissionKey })\n      .from(payrollPermissionGrant).where(eq(payrollPermissionGrant.id, p.id)).for"
       ],
       "tables": [
         "domainEvent",
