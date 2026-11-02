@@ -1,11 +1,13 @@
 /** Private SQL calculator vs the independent native TypeScript oracle; no fabricated receipts. */
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
+import {createHash} from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
-import {defaultPolicy,emptyFacts,emptyRecommendation,policySchema,type RewardEntry} from '../packs/rewards/model';
-import {calculateOffcycle} from '../packs/rewards/offcycle';
-import {emptyGovernance,effectiveRewardPolicy,governanceBasis,seniorSourceFingerprint} from '../packs/rewards/governance-model';
+import {defaultPolicy,emptyFacts,emptyRecommendation,policySchema,factsSchema,recommendationSchema,transition,type RewardRole,type RewardStage,type RewardEntry} from '../packs/rewards/model';
+import {calculateOffcycle,offcycleRoute,offcycleTransition} from '../packs/rewards/offcycle';
+import {emptyGovernance,confirmedSeniorAwards,effectiveRewardPolicy,governanceBasis,seniorSourceFingerprint,seniorGrade} from '../packs/rewards/governance-model';
 import {calculateRewards,increase,ratio} from '../packs/rewards/engine';
+import {pgErrorChain} from '../lib/db-error';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 let ctx:SessionContext;
 beforeAll(async()=>{await migrateTestDb();await resetDb();const b=await seedBase();await setModule(b.tenantId,'rewards','active');ctx=await entitledCtx(b);});
@@ -139,4 +141,88 @@ it('uses proleptic Gregorian day differences and an input-independent numeric se
   const [row]=await owner.db.execute<{days:number}>(sql`select app.reward_calc_day(${b})-app.reward_calc_day(${a})as days`);expect(row.days).toBe((Date.parse(b+'T00:00:00Z')-Date.parse(a+'T00:00:00Z'))/86400000);
  }
  await owner.db.transaction(async tx=>{await tx.execute(sql`set local extra_float_digits=0`);const [row]=await tx.execute<{value:string}>(sql`select app.reward_calc_json_number(9007199254740991)as value`);expect(row.value).toBe('9007199254740991');});
+});
+
+it('preserves existing native decision digests across storage ordering without exposing source rows',async()=>{
+ const policy=defaultPolicy(2026),entries=[entry('00000000-0000-4000-8000-000000000002'),entry('00000000-0000-4000-8000-000000000001')];
+ const [stored]=await owner.db.execute<{policy:typeof policy;entries:RewardEntry[];details:{exceptionReason:string;bgOrigin:boolean}}>(sql`select ${JSON.stringify(policy)}::jsonb as policy,${JSON.stringify(entries)}::jsonb as entries,'{"exceptionReason":"Actual approved native exception","bgOrigin":false}'::jsonb as details`);
+ for(const kind of ['annual','adhoc','midyear']as const){const parentUnitId=kind==='annual'?null:'00000000-0000-4000-8000-000000000003',offcycle=kind==='annual'?null:stored.details;
+  const expected=createHash('sha256').update(JSON.stringify({policy:stored.policy,kind,parentUnitId,offcycle,entries:[...stored.entries].sort((a,b)=>a.id.localeCompare(b.id)).map(e=>({id:e.id,source:e.source,facts:e.facts,recommendation:e.recommendation}))})).digest('hex');
+  for(const order of [stored.entries,[...stored.entries].reverse()]){const [row]=await owner.db.execute<{digest:string}>(sql`select app.reward_calc_decision_digest(${JSON.stringify(stored.policy)}::jsonb,${kind},${parentUnitId}::uuid,${JSON.stringify(offcycle)}::jsonb,${JSON.stringify(order)}::jsonb)as digest`);expect(row.digest).toBe(expected);}
+ }
+});
+it('matches every selected native decision stage and seat, including consecutive route boundaries',async()=>{
+ const entryValue=entry('route'),roles:RewardRole[][]=[[],['bu'],['bg'],['gr'],['ctro'],['ec'],['bu','gr']];
+ for(const kind of ['annual','adhoc','midyear']as const)for(const details of [{exceptionReason:'',bgOrigin:false},{exceptionReason:'Actual separate budget exception',bgOrigin:true}]){
+  if(kind!=='adhoc'&&details.bgOrigin)continue;
+  const route=kind==='annual'?['bu','bg','gr','ctro','ec']as RewardRole[]:offcycleRoute(kind,details,[entryValue]);
+  for(const stage of ['draft','bg','gr','ctro','ec','approved','posted']as RewardStage[])for(const seat of roles)for(const action of ['submit','approve','return','reject','withdraw']as const){
+   let expected:string|undefined;try{if(kind==='annual'&&(action==='reject'||action==='withdraw'))throw new Error('Return an annual review to draft instead.');expected=kind==='annual'?transition(stage,seat,action as 'submit'|'approve'|'return'):offcycleTransition(stage,seat,action,route);}catch{}
+   const query=sql`select app.reward_calc_transition(${kind},${stage},array(select jsonb_array_elements_text(${JSON.stringify(seat)}::jsonb)),${action},${JSON.stringify(route)}::jsonb)as next`;
+   if(expected===undefined)await expect(owner.db.execute(query)).rejects.toThrow();else{const [row]=await owner.db.execute<{next:string}>(query);expect({kind,stage,seat,action,next:row.next}).toEqual({kind,stage,seat,action,next:expected});}
+  }
+ }
+});
+
+it('retains exact native Senior grade admission, including ECMAScript whitespace',async()=>{
+ for(const grade of ['21','JG21','jg 22',' JG\u00a023 ','20','24','21x','\uFEFF21','JG\u200323']){const [row]=await owner.db.execute<{allowed:boolean}>(sql`select app.reward_calc_senior_grade(${grade})as allowed`);expect(row.allowed).toBe(seniorGrade(grade));}
+});
+
+it('keeps the private payroll Senior override equal to the native post-purpose calculation without changing pools or flags',async()=>{
+ const policy=defaultPolicy(2026),ordinary=entry('post-ordinary'),senior=entry('post-senior');senior.facts.seniorPlan=true;senior.source.grade='21';
+ for(const leftOn of [undefined,'2025-01-01'])for(const amount of [499999,500000,678900]){
+  const current=structuredClone(senior);if(leftOn)current.source.leftOn=leftOn;const entries=[ordinary,current];
+  const award={newBasicCents:amount,bonusCents:123456,sourceFingerprint:seniorSourceFingerprint(current),confirmedBy:'native-independent-checker',proposedBy:'native-proposer',confirmedAt:'2026-01-01T00:00:00.000Z',approvalReference:'Offline approval',approvalDate:'2026-01-01',reason:'Actual independently confirmed offline award',evidence:[]};
+  const awards={[current.id]:award},controls={poolStatus:'final' as const,bonusPools:{standard:100000,h:50000}},base=calculateRewards(entries,policy,controls);
+  const expected=calculateRewards(entries,policy,{...controls,seniorAwards:confirmedSeniorAwards({...emptyGovernance(),awards},entries)});
+  const [row]=await owner.db.execute<{value:unknown}>(sql`select app.reward_calc_post_senior(${JSON.stringify(base)}::jsonb,${JSON.stringify(policy)}::jsonb,${JSON.stringify(awards)}::jsonb)as value`);expect(row.value).toEqual(expected);
+  for(const bad of [{},{[current.id]:{...award,confirmedBy:null}},{[current.id]:{...award,sourceFingerprint:'stale actual source'}}]){const refused=await owner.db.execute(sql`select app.reward_calc_post_senior(${JSON.stringify(base)}::jsonb,${JSON.stringify(policy)}::jsonb,${JSON.stringify(bad)}::jsonb)`).then(()=>false,error=>{expect(pgErrorChain(error)).toContainEqual(expect.objectContaining({code:'42501'}));return true;});expect(refused).toBe(true);}
+ }
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_calc_post_senior('{}','{}','{}')`))).rejects.toThrow();
+});
+
+it('preserves the native Number.toFixed money conversion after IEEE754 payroll bonus addition',async()=>{
+ const amounts=[0,0.0049,0.005,0.0149,0.015,0.025,0.105,1.005,1.015,2.675,1000000000.005,9999999999.99,Number.MIN_VALUE];
+ for(const value of amounts){const [row]=await owner.db.execute<{value:string}>(sql`select app.reward_calc_fixed_money(${String(value)}::double precision)as value`);expect({input:value,value:row.value}).toEqual({input:value,value:value.toFixed(2)});}
+ for(const before of [0,0.01,0.29,55.55,1000000000.01,9000000000.99])for(const awardCents of [0,1,29,123400,99999999]){
+  const actual=before+awardCents/100,[row]=await owner.db.execute<{value:string}>(sql`select app.reward_calc_fixed_money(${String(before)}::double precision+${awardCents}::double precision/100::double precision)as value`);expect({before,awardCents,value:row.value}).toEqual({before,awardCents,value:actual.toFixed(2)});
+ }
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_calc_fixed_money(1)`))).rejects.toThrow();
+ for(const invalid of ['NaN','Infinity','-Infinity','-1','1e21']){const refused=await owner.db.execute(sql`select app.reward_calc_fixed_money(${invalid}::double precision)`).then(()=>false,error=>{expect(pgErrorChain(error)).toContainEqual(expect.objectContaining({code:'22003'}));return true;});expect(refused).toBe(true);}
+});
+
+it('preserves native independent standard and H unused-pool funding for annual posting',async()=>{
+ const policy=defaultPolicy(2026),ordinary=entry('funding-standard'),h=entry('funding-h');h.source.grade='H';
+ for(const entries of [[],[ordinary],[h],[ordinary,h]]){
+  const calculation=calculateRewards(entries,policy),expected={standard:calculation.budgets.standard.pools.reduce((sum,pool,i)=>sum+Math.max(0,pool-calculation.budgets.standard.used[i]),0),h:calculation.budgets.h.pools.reduce((sum,pool,i)=>sum+Math.max(0,pool-calculation.budgets.h.used[i]),0)},[row]=await owner.db.execute<{value:unknown}>(sql`select app.reward_post_funding('annual','{"standard":123,"h":456}',${JSON.stringify(calculation)}::jsonb)as value`);expect(row.value).toEqual(expected);
+  const [retained]=await owner.db.execute<{value:unknown}>(sql`select app.reward_post_funding('adhoc','{"standard":123,"h":456}',${JSON.stringify(calculation)}::jsonb)as value`);expect(retained.value).toEqual({standard:123,h:456});
+ }
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_post_funding('annual','{}','{}')`))).rejects.toThrow();
+});
+
+it('preserves native input carry normalization for absent, negative and legacy NaN numeric fields',async()=>{
+ for(const value of [null,'NaN','-55.50','0','0.01','55.55','9999999999.99']){
+  const [row]=await owner.db.execute<{value:number}>(sql`select to_jsonb(app.reward_calc_input_carry(${value}::numeric))as value`);expect(row.value).toBe(Math.max(0,Number(value)||0));
+ }
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_calc_input_carry(1)`))).rejects.toThrow();
+});
+
+
+it('matches actual Zod code-point boundaries while preserving explicit UTF16 refinement minima',async()=>{
+ const check=async(kind:'recommendation'|'facts'|'policy',input:unknown,accepted:boolean)=>{
+  const schema=kind==='recommendation'?recommendationSchema:kind==='facts'?factsSchema:policySchema;
+  const parsed=schema.safeParse(input);expect(parsed.success).toBe(accepted);
+  const query=kind==='recommendation'?sql`select app.reward_calc_recommendation(${JSON.stringify(input)}::jsonb)as value`:kind==='facts'?sql`select app.reward_calc_facts(${JSON.stringify(input)}::jsonb)as value`:sql`select app.reward_calc_policy(${JSON.stringify(input)}::jsonb)as value`;
+  if(parsed.success){const [row]=await owner.db.execute<{value:unknown}>(query);expect(row.value).toEqual(parsed.data);}
+  else{const refused=await owner.db.execute(query).then(()=>false,error=>{expect(pgErrorChain(error)).toContainEqual(expect.objectContaining({code:'22023'}));return true;});expect(refused).toBe(true);}
+ };
+ for(const [field,limit]of [['promotionGrade',30],['reason',4000],['currentRoleSummary',8000],['proposedRoleSummary',8000]]as const)for(const extra of [0,1])await check('recommendation',{...emptyRecommendation(),[field]:'  '+'😀'.repeat(limit+extra)+'  '},extra===0);
+ for(const [field,limit]of [['caseReason',3000],['segment',80],['branch',100]]as const)for(const extra of [0,1])await check('facts',{...emptyFacts(),[field]:'  '+'😀'.repeat(limit+extra)+'  '},extra===0);
+ for(const [field,limit,value]of [['bonusMatrix',30,[0,0,0,0,0]],['ranges',30,[1,2,3]],['branchFactors',80,[0,0,0,0,0]],['branchRatings',100,'ME']]as const)for(const extra of [0,1])await check('policy',{...defaultPolicy(2026),[field]:{['😀'.repeat(limit+extra)]:value}},extra===0);
+ for(const [field,limit]of [['exemptReason',2000],['lumpReason',1000]]as const)for(const extra of [0,1])await check('policy',{...defaultPolicy(2026),[field]:'  '+'😀'.repeat(limit+extra)+'  '},extra===0);
+ for(const length of [9,10,1000,1001])await check('policy',{...defaultPolicy(2026),payWindowKeep:{actual:'  '+'😀'.repeat(length)+'  '}},length>=10&&length<=1000);
+ for(const length of [0,1,64,65])await check('policy',{...defaultPolicy(2026),payWindowKeep:{['😀'.repeat(length)]:'Actual approved retained eligibility'}},length>=1&&length<=64);
+ // This schema uses an explicit v.length refinement, unlike Zod's own min/max.
+ for(const length of [4,5])await check('policy',{...defaultPolicy(2026),exemptReason:'😀'.repeat(length)},length===5);
+ for(const length of [4,5,9,10]){const [row]=await owner.db.execute<{value:string}>(sql`select app.reward_calc_units(${'😀'.repeat(length)})::text as value`);expect(row.value).toBe(String(length*2));}
 });

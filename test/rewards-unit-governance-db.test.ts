@@ -1,3 +1,4 @@
+import {pgErrorChain} from '../lib/db-error';
 import {ensureAgentPrincipal,agentContext} from '../core/agent-principal';
 import {resolveEntitlementsTx} from '../core/entitlements';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
@@ -8,7 +9,7 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {updateJobGrade} from '../core/admin';
 import {dispatchNotificationsFromSweep} from '../core/notifications';
-import {getRewardUnit,createRewardUnit,getRewardUnitGovernance,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,previewRewardSeniorMembership,saveRewardSeniorMembership,saveRewardSeniorAward,saveRewardEntry,postRewardUnit,decideRewardUnit} from '../packs/rewards/service';
+import {getRewardUnit,createRewardUnit,getRewardUnitGovernance,saveRewardUnitInputs,confirmRewardGovernance,proposeRewardExemption,previewRewardSeniorMembership,saveRewardSeniorMembership,saveRewardSeniorAward,saveRewardEntry,postRewardUnit,decideRewardUnit,readRewardSeniorEvidence} from '../packs/rewards/service';
 import {configureRewardFixture,refreshRewardFixtureBudget,ensureRewardGovernanceFixtureSchema} from './rewards-governance-fixture';
 import {createBatch,setPayrollInput,rewardPayrollProvenance} from '../packs/payroll/service';
 import {emptyFacts} from '../packs/rewards/model';
@@ -68,6 +69,18 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
    expect(projected.budgets.standard).toEqual((await view()).budgets.standard);
   }
  });
+ it('differentially projects native governance without disclosing the private roster or borrowing audit actor-name access',async()=>{
+  await saveInputs();
+  await proposeRewardExemption(gr,unitId,(await view()).unit.revision,'Actual projection independent exemption');
+  await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'exemption');
+  for(const actor of [gr,checker,bu,ctro,payroll]){
+   const expected=await getRewardUnitGovernance(actor,unitId),[result]=await owner.withTenant(actor,tx=>tx.execute<{value:Record<string,unknown>&{history:Record<string,unknown>[];branches:string[]}}>(sql`select app.reward_governance_review(${unitId}::uuid)as value`));
+   const normalize=(value:typeof expected|typeof result.value)=>({...value,branches:[...value.branches].sort(),history:value.history.map(row=>{const {actorName:_name,...rest}=row;return {...rest,createdAt:row.createdAt instanceof Date?row.createdAt.toISOString():new Date(String(row.createdAt)).toISOString()};})});
+   expect(normalize(result.value)).toEqual(normalize(expected));
+   if(actor===gr)expect(result.value.history.length).toBeGreaterThan(0);else if(actor!==checker){expect(result.value.history).toEqual([]);expect(result.value).toMatchObject({inputs:null,selection:null,exemption:null,legacyInputs:null});}
+   await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_governance_review(${unitId}::uuid)`))).rejects.toThrow();
+  }
+ });
  it('refuses same-user confirmation and serializes competing stale saves with one winner',async()=>{
   const rev=(await view()).unit.revision;
   const attempts=await Promise.allSettled([saveRewardUnitInputs(gr,unitId,rev,inputs,'First concurrent budget update'),saveRewardUnitInputs(gr,unitId,rev,{...inputs,forecastCents:800000},'Second concurrent budget update')]);
@@ -91,6 +104,19 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   const restricted=await getRewardUnitGovernance(bu,unitId);expect(restricted.senior[0].award).toBeNull();expect(restricted.totals).toBeNull();
   const privateRows=await withTenant(payroll,tx=>tx.select().from(schema.rewardSeniorAward).where(eq(schema.rewardSeniorAward.unitId,unitId)));expect(privateRows).toEqual([]);
   await expect(withTenant(payroll,tx=>tx.execute(sql`select app.reward_senior_awards_for_post(${unitId}::uuid)`))).rejects.toMatchObject({cause:{code:'42501',message:expect.stringContaining('posting authority')}});
+ });
+ it('prepares an exact bounded Senior evidence reader with real native role and own-person exclusions',async()=>{
+  const initial=await view(),selection={employmentIds:[employeeId],adoptLegacy:false},preview=await previewRewardSeniorMembership(gr,unitId,initial.unit.revision,selection);
+  await saveRewardSeniorMembership(gr,unitId,initial.unit.revision,selection,preview.digest);await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'selection');
+  const current=await view();await saveRewardEntry(gr,unitId,current.unit.revision,entryId,current.rows[0].recommendation,{...current.rows[0].facts,reviewed:true});
+  const content='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=';
+  await saveRewardSeniorAward(gr,unitId,(await view()).unit.revision,{entryId,newBasicCents:550000,incrementBp:null,bonusCents:123400,approvalReference:'FICTIONAL-EVIDENCE',approvalDate:today,reason:'Fictional independently retained approval evidence',evidence:[{name:'fictional-decision.png',mime:'image/png',content}]});
+  const [file]=await owner.db.select({id:schema.rewardSeniorEvidence.id}).from(schema.rewardSeniorEvidence).where(eq(schema.rewardSeniorEvidence.unitId,unitId));
+  const expected=await readRewardSeniorEvidence(ctro,unitId,file.id),[bounded]=await owner.withTenant(ctro,tx=>tx.execute<{value:unknown}>(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)as value`));expect(bounded.value).toEqual(expected);expect(expected).toEqual({name:'fictional-decision.png',mime:'image/png',content});
+  await expect(withTenant(ctro,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow();await expect(owner.withTenant(bu,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`)).then(() => [], pgErrorChain)).resolves.toContainEqual(expect.objectContaining({code:'42501',message:'Senior plan evidence is restricted.'}));
+  const [employee]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employeeId)),ownUser=await createAppUser(b.tenantId,employee.personId,'employee'),own={...gr,userId:ownUser,personId:employee.personId,roles:['employee'],grants:undefined};
+  await setRewardMember(gr,unitId,(await view()).unit.revision,ownUser,'ctro');await expect(readRewardSeniorEvidence(own,unitId,file.id)).rejects.toThrow('Evidence is not available');await expect(owner.withTenant(own,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`)).then(() => [], pgErrorChain)).resolves.toContainEqual(expect.objectContaining({code:'42501',message:'Evidence is not available.'}));
+  await setRewardMember(gr,unitId,(await view()).unit.revision,ctro.userId!,'ctro',true);await expect(owner.withTenant(ctro,tx=>tx.execute(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${file.id}::uuid)`))).rejects.toThrow();
  });
  it('refuses Senior confirmation after the live grade code changes under the same grade UUID',async()=>{
   const v=await view(),selection={employmentIds:[employeeId],adoptLegacy:false},preview=await previewRewardSeniorMembership(gr,unitId,v.unit.revision,selection);
@@ -184,8 +210,14 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   expect(bounded.awards[entryId]).toMatchObject({newBasicCents:550000,bonusCents:123400});expect(JSON.stringify(bounded)).not.toMatch(/PAT|evidence|SIGNED-OFFLINE|approvalReference/);
   await setModule(b.tenantId,'payroll','active');const {batchId}=await createBatch(gr,{companyId:b.companyId,payPeriod:today.slice(0,7)});
   await setPayrollInput(gr,{batchId,employmentId:employeeId,overtimeAmount:123,bonusAmount:55,tp1Deduction:44,zakat:9});
+  // Payroll-only has no GR/CTRO/EC screen grant, but the PRIVATE post owner must use the
+  // real post-purpose reader rather than silently turning the approved Senior award into zero.
+  const privateSources=()=>owner.withTenant(postingActor,tx=>tx.execute<{value:{calculation:{rows:{id:string;newBasicCents:number;bonusCents:number}[]};postingAwards:Record<string,unknown>;sourcePlan:{entryId:string;newBasicCents:number;awardCents:number;rewardProvenance:unknown[]}[]}}>(sql`select app.reward_post_sources(${unitId}::uuid,${revision},${batchId}::uuid)as value`));
+  const [prepared]=await privateSources();expect(prepared.value.calculation.rows.find(row=>row.id===entryId)).toMatchObject({newBasicCents:550000,bonusCents:123400});expect(prepared.value.sourcePlan.find(row=>row.entryId===entryId)).toMatchObject({newBasicCents:550000,awardCents:123400,rewardProvenance:[{unitId,entryId,revision,plan:'Senior plan',confirmedBy:checker.userId,confirmedAt:expect.any(String),historicalOnly:true}]});expect(prepared.value.postingAwards).toEqual(bounded.awards);expect(JSON.stringify(prepared.value.postingAwards)).not.toMatch(/evidence|SIGNED-OFFLINE|approvalReference/);
+  const [beforePrivateEffects]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batchId));expect(beforePrivateEffects.bonusAmount).toBe('55.00');expect(beforePrivateEffects.rewardProvenance).toEqual([]);expect((await view()).unit.status).toBe('approved');
   const gradeId=(await view()).rows[0].source.gradeId!;
   await updateJobGrade(gr,{id:gradeId,name:'Changed fictional grade',code:'JG12'});
+  await expect(privateSources().then(() => [], pgErrorChain)).resolves.toContainEqual(expect.objectContaining({code:'42501',message:'The Senior employee grade changed after the snapshot. Return and refresh the review.'}));
   await expect(postRewardUnit(postingActor,unitId,revision,batchId)).rejects.toThrow(/grade changed/);
   const [unchanged]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batchId));expect(unchanged.bonusAmount).toBe('55.00');expect(unchanged.rewardProvenance).toEqual([]);
   const compensationBeforeRetry=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,employeeId));expect(compensationBeforeRetry.filter(row=>row.validTo===null&&row.supersededAt===null).map(row=>row.basicSalary)).toEqual(['5000.00']);
