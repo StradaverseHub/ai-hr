@@ -17,3 +17,11 @@ export const LIFECYCLE_REWARD_NOTICE_FUNCTION_OWNERS = {
  rewardsPolicy:{domain:'rewards',owners:['packs/rewards/service.ts'],independent:['actual-group-rewards-unit-workflow']},
  rewardsAccess:{domain:'rewards',owners:['packs/rewards/maintenance.ts','app.reward_access_request_create','app.reward_access_request_apply'],independent:[]},
 } as const;
+
+/** Notice authoring is an actual guarded source slice; other Lifecycle/Rewards bindings remain
+ * in progress and this descriptor list is not a complete family publication prerequisite. */
+import type {FunctionActionDescriptor} from './function-action-contract';
+export const NOTICE_AUTHOR_FUNCTIONS:readonly FunctionActionDescriptor[]=[
+ ...(['noticeBoard','noticeBoard.global'] as const).map(key=>({key,scope:key==='noticeBoard'?'company' as const:'tenant' as const,moduleKey:'notices',labelKey:'nav.noticeBoard',kind:key==='noticeBoard'?'screen' as const:'native_acl' as const,course:'administrative' as const,screenKey:'noticeBoard',href:'/admin/notice-board',employeeBearing:true,
+  actions:(['view','add','edit','delete'] as const).map(operation=>({operation,parentCapability:(key==='noticeBoard'?'notices.':'notices_global.')+operation,delegationFloorFunction:'app.lifecycle_reward_notice_delegation_allowed',bindings:[{owner:'app.notice_owner_action_allowed',operation},{owner:'app.notice_action_write_guard',operation:'actual-logical-operation'},{owner:'core/notice.ts',operation:'native-current-and-proposed-owner'}]}))})),
+];

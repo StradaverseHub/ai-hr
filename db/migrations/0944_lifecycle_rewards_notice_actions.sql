@@ -41,9 +41,9 @@ END $$;
 CREATE FUNCTION app.notice_owner_action_allowed(p_company uuid,p_action text)RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.principal_snapshot_current() AND CASE WHEN p_company IS NULL THEN app.is_group_admin()
-  AND app.lifecycle_reward_notice_action('notices_global',p_action,NULL)
-  AND NOT EXISTS(SELECT 1 FROM public.company c WHERE c.tenant_id=app.current_tenant_id() AND NOT app.lifecycle_reward_notice_action('notices',p_action,c.id))
- ELSE app.is_admin_for(p_company) AND app.lifecycle_reward_notice_action('notices',p_action,p_company)END;
+  AND app.lifecycle_reward_notice_action('notices_global',p_action,NULL) AND app.function_action_allowed('noticeBoard.global',p_action,NULL)
+  AND NOT EXISTS(SELECT 1 FROM public.company c WHERE c.tenant_id=app.current_tenant_id() AND (NOT app.lifecycle_reward_notice_action('notices',p_action,c.id) OR NOT app.function_action_allowed('noticeBoard',p_action,c.id)))
+ ELSE app.is_admin_for(p_company) AND app.lifecycle_reward_notice_action('notices',p_action,p_company) AND app.function_action_allowed('noticeBoard',p_action,p_company)END;
 $$;
 REVOKE ALL ON FUNCTION app.notice_owner_action_allowed(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.notice_owner_action_allowed(uuid,text) TO ai_hr_app;
@@ -577,3 +577,29 @@ BEGIN
   EXECUTE body;
  END LOOP;
 END $order$;
+
+--> statement-breakpoint
+CREATE FUNCTION app.notice_function_legacy_allowed(t uuid,u uuid,cap text,co uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id))
+ AND cap=ANY(ARRAY['function.noticeBoard.view','function.noticeBoard.add','function.noticeBoard.edit','function.noticeBoard.delete','function.noticeBoard.global.view','function.noticeBoard.global.add','function.noticeBoard.global.edit','function.noticeBoard.global.delete'])
+ AND (co IS NULL OR EXISTS(SELECT 1 FROM public.company c WHERE c.id=co AND c.tenant_id=t))
+ AND (cap NOT LIKE 'function.noticeBoard.global.%' OR co IS NULL)
+ AND EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN('hr_admin','super_admin')
+ AND CASE WHEN co IS NULL THEN r.company_id IS NULL ELSE app.access_scope_covers(r.company_id,co,t)END);
+$$;
+CREATE FUNCTION app.notice_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id()
+ AND app.notice_function_legacy_allowed(t,u,cap,co)
+ AND CASE WHEN cap LIKE 'function.noticeBoard.global.%' OR co IS NULL THEN app.is_group_admin() ELSE app.is_admin_for(co)END;
+$$;
+REVOKE ALL ON FUNCTION app.notice_function_legacy_allowed(uuid,uuid,text,uuid),app.notice_function_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete']LOOP
+  PERFORM app.register_function_action('noticeBoard',operation,'company','notices.'||operation,'app.lifecycle_reward_notice_delegation_allowed',
+   '{"moduleKey":"notices","labelKey":"nav.noticeBoard","kind":"screen","course":"administrative","screenKey":"noticeBoard","href":"/admin/notice-board","employeeBearing":true}'::jsonb);
+  PERFORM app.register_function_action('noticeBoard.global',operation,'tenant','notices_global.'||operation,'app.lifecycle_reward_notice_delegation_allowed',
+   '{"moduleKey":"notices","labelKey":"nav.noticeBoard","kind":"native_acl","course":"administrative","screenKey":"noticeBoard","href":"/admin/notice-board","employeeBearing":true}'::jsonb);
+ END LOOP;
+END $$;
