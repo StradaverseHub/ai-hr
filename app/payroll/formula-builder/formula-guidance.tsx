@@ -78,12 +78,15 @@ const shown=(value:FormulaValue)=>value.type==='boolean'?String(value.value):val
 export function FormulaSampleTest({text}:{text:string}){
  const t=useTranslations('payFormula'),busy=useRef(false);
  const [values,setValues]=useState<PayFormulaSampleValues>({}),[result,setResult]=useState<PayFormulaSampleResult|null>(null),[error,setError]=useState(''),[pending,setPending]=useState(false);
+ const [resultKey,setResultKey]=useState('');
+ const inputKey=JSON.stringify([text,values]);
  const fields=payFormulaSampleFields(text);
  const visible=PAY_FORMULA_SAMPLE_VARIABLES.filter(name=>['Basic','FixedAllowances','CalendarDays','Input'].includes(name)||new RegExp('\\{#'+name+'\\}','i').test(text));
  async function run(){
-  if(busy.current)return;busy.current=true;setPending(true);setError('');
-  try{const clean:PayFormulaSampleValues={fields:values.fields};for(const name of visible){const raw=values[name];if(raw!==undefined&&raw.trim()!=='')clean[name]=raw.replace(/,/g,'').trim();}
-   const response=await sampleFormulaAction({source:text,values:clean});if(!response.ok){setResult(null);setError(response.error);return;}setResult(response.value);}
+  if(busy.current)return;const requestKey=inputKey;busy.current=true;setPending(true);setError('');
+  try{const clean:PayFormulaSampleValues=fields.length?{fields:values.fields}:{};for(const name of visible){const raw=values[name];if(raw!==undefined&&raw.trim()!=='')clean[name]=raw.replace(/,/g,'').trim();}
+   const response=await sampleFormulaAction({source:text,values:clean});setResultKey(requestKey);if(!response.ok){setResult(null);setError(response.error);return;}setResult(response.value);}
+  catch{setResult(null);setResultKey(requestKey);setError(t('testArea.failed'));}
   finally{busy.current=false;setPending(false);}
  }
  const step=(s:PayFormulaSampleStep)=>{
@@ -97,18 +100,19 @@ export function FormulaSampleTest({text}:{text:string}){
    case 'return':return t('testArea.step.return',{value:shown(s.value)});
   }
  };
- const failure=result?.error;
+ const shownResult=resultKey===inputKey?result:null;
+ const failure=shownResult?.error;
  return <div className="space-y-4">
   <p className="text-sm text-muted-foreground">{t('testArea.sampleHelp')}</p>
   <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">{visible.map((name:PayFormulaSampleVariable)=><label key={name} className="text-sm">{t('testArea.fields.'+name)}<input className={formulaInput} inputMode="decimal" value={values[name]??''} onChange={event=>setValues({...values,[name]:event.target.value})}/></label>)}</fieldset>
   {fields.length>0&&<fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">{fields.map(field=><label key={field.key} className="text-sm">{t('generator.fields.'+field.field)}<input className={formulaInput} type={field.type==='date'?'date':'text'} maxLength={500} value={values.fields?.[field.key]??''} onChange={event=>setValues({...values,fields:{...values.fields,[field.key]:event.target.value}})}/></label>)}</fieldset>}
   <button type="button" className={formulaPrimary} disabled={pending||!text.trim()} onClick={run}>{pending?t('working'):t('testArea.run')}</button>
-  {error&&<p className="text-sm text-destructive">{error}</p>}
-  {result&&<div role="status" className="space-y-3">
-   <span className={'inline-block rounded-full px-3 py-1 text-sm '+(result.passed?'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200':'bg-destructive/10 text-destructive')}>{t(result.passed?'testArea.passed':'testArea.failed')}</span>
-   {result.payable!==null&&<div><p className="text-3xl font-semibold tabular-nums">{result.payable}</p><p className="text-xs text-muted-foreground">{t('testArea.payableHelp')}</p>{result.amount!==result.payable&&<p className="text-xs text-muted-foreground">{t('testArea.exact',{value:result.amount??''})}</p>}</div>}
+  {error&&resultKey===inputKey&&<p className="text-sm text-destructive">{error}</p>}
+  {shownResult&&<div role="status" className="space-y-3">
+   <span className={'inline-block rounded-full px-3 py-1 text-sm '+(shownResult.passed?'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200':'bg-destructive/10 text-destructive')}>{t(shownResult.passed?'testArea.passed':'testArea.failed')}</span>
+   {shownResult.payable!==null&&<div><p className="text-3xl font-semibold tabular-nums">{shownResult.payable}</p><p className="text-xs text-muted-foreground">{t('testArea.payableHelp')}</p>{shownResult.amount!==shownResult.payable&&<p className="text-xs text-muted-foreground">{t('testArea.exact',{value:shownResult.amount??''})}</p>}</div>}
    {failure&&<p className="text-sm text-destructive">{failure.code==='calculation'?failure.message:t('testArea.errors.'+failure.code,{variable:failure.variable?t('functions.'+failure.variable):'',line:failure.line??1,column:failure.column??1,message:failure.message})}</p>}
-   {result.steps.length>0&&<div><h4 className="text-sm font-medium">{t('testArea.stepsTitle')}</h4><ol className="mt-2 list-decimal space-y-1 ps-6 text-sm tabular-nums">{result.steps.map((s,index)=><li key={index}>{step(s)}</li>)}</ol>{result.stepsTruncated&&<p className="mt-1 text-xs text-muted-foreground">{t('testArea.truncated',{count:result.steps.length})}</p>}</div>}
+   {shownResult.steps.length>0&&<div><h4 className="text-sm font-medium">{t('testArea.stepsTitle')}</h4><ol className="mt-2 list-decimal space-y-1 ps-6 text-sm tabular-nums">{shownResult.steps.map((s,index)=><li key={index}>{step(s)}</li>)}</ol>{shownResult.stepsTruncated&&<p className="mt-1 text-xs text-muted-foreground">{t('testArea.truncated',{count:shownResult.steps.length})}</p>}</div>}
   </div>}
   <p className="text-xs text-muted-foreground">{t('testArea.note')}</p>
  </div>;
