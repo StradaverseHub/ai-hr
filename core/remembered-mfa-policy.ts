@@ -1,3 +1,4 @@
+import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
@@ -6,7 +7,8 @@ import { internalSelected } from '../lib/internal-auth/config';
 import { decryptRecord, encryptRecord } from '../lib/internal-auth/crypto';
 import { DEFAULT_REMEMBERED_MFA_POLICY, rememberedMfaPolicyKey, validateRememberedMfaPolicy, validateRememberedMfaState, type RememberedMfaPolicyState } from '../lib/remembered-mfa-policy';
 
-async function authorize(tx: Tx) {
+async function authorize(tx: Tx, tenantId: string) {
+  await lockAccessConfigurationTx(tx, tenantId);
   const [proof] = await tx.execute(sql`select app.principal_snapshot_current() AND app.is_group_admin() as allowed`) as unknown as { allowed: boolean }[];
   if (!proof?.allowed) throw new Error('forbidden');
 }
@@ -23,16 +25,16 @@ async function read(tx: Tx, tenantId: string): Promise<RememberedMfaPolicyState>
 }
 export async function readRememberedMfaPolicyEditor(ctx: SessionContext) {
   assertAdmin(ctx);
-  return withTenant(ctx, async tx => { await authorize(tx); return read(tx, ctx.tenantId); });
+  return withTenant(ctx, async tx => { await authorize(tx, ctx.tenantId); return read(tx, ctx.tenantId); });
 }
 export async function saveRememberedMfaPolicy(ctx: SessionContext, value: unknown, expectedRevision: number) {
   assertAdmin(ctx);
   const policy = validateRememberedMfaPolicy(value);
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new Error('invalid');
   return withTenant(ctx, async tx => {
+    await authorize(tx, ctx.tenantId);
     const key = rememberedMfaPolicyKey(ctx.tenantId);
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key},0))`);
-    await authorize(tx);
     const previous = await read(tx, ctx.tenantId);
     if (previous.revision !== expectedRevision) throw new Error('conflict');
     const revision = expectedRevision + 1;

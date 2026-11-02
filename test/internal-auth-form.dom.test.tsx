@@ -64,7 +64,7 @@ describe('embedded browser forms', () => {
   it('offers the exact enrollment account to the default authenticator without submitting MFA', async () => {
     const qr = await toDataURL(authenticatorSetupUri('JBSWY3DPEHPK3PXP', 'alpha:employee +test@example.invalid'), { width: 224, margin: 2, errorCorrectionLevel: 'M' });
     fetcher.mockResolvedValueOnce(Response.json({ step: 'enroll', challenge: 'e'.repeat(43), secret: 'JBSWY3DPEHPK3PXP', account: 'alpha:employee +test@example.invalid', qr }));
-    const rendered = view(), user = userEvent.setup();
+    const rendered = await view(), user = userEvent.setup();
     expect(screen.queryByRole('link', { name: en.internalAuth.openAuthenticator })).toBeNull();
     await user.type(screen.getByLabelText(en.internalAuth.username), 'employee');
     await user.type(screen.getByLabelText(en.internalAuth.password), 'Fictional private phrase');

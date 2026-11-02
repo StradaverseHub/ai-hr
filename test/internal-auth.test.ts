@@ -1,3 +1,4 @@
+import { pgSqlState } from '../lib/db-error';
 import { readRememberedMfaPolicyEditor, saveRememberedMfaPolicy } from '../core/remembered-mfa-policy';
 import { rememberedFactorValid } from '../lib/internal-auth/remembered-mfa';
 import {NEW_PASSWORD_REQUIREMENTS} from '../lib/password-policy';
@@ -556,6 +557,61 @@ it('refuses remembered-MFA policy edits from forged tenant context and revoked a
   expect(await readRecord(client, `remembered-mfa-policy:${base.tenantId}`)).toBeNull();
 });
 
+
+it('commits authorized remembered-MFA policy and audit together, and rolls policy back when real audit append fails', async () => {
+  const ctx = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] };
+  const credential = await credentialByLogin('alpha', 'owner');
+  await saveRememberedMfaPolicy(ctx, { rememberDays: 7 }, 0);
+  expect(await readRememberedMfaPolicyEditor(ctx)).toEqual({ policy: { rememberDays: 7 }, revision: 1 });
+  const before = await owner.client`select payload from domain_event where tenant_id=${base.tenantId}::uuid and event_type='remembered-mfa-policy.updated' order by id`;
+  expect(before).toHaveLength(1); expect(before[0].payload).toMatchObject({ rememberDays: 7, revision: 1 });
+  await owner.client.unsafe("CREATE FUNCTION app.test_remembered_mfa_audit_refusal() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='remembered-mfa-policy.updated' THEN RAISE EXCEPTION 'fictional remembered MFA audit refusal' USING ERRCODE='P0001'; END IF; RETURN NEW; END $$");
+  await owner.client.unsafe('CREATE TRIGGER test_remembered_mfa_audit_refusal BEFORE INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.test_remembered_mfa_audit_refusal()');
+  let failure: unknown;
+  try { await saveRememberedMfaPolicy(ctx, { rememberDays: 30 }, 1); } catch (error) { failure = error; }
+  finally {
+    await owner.client.unsafe('DROP TRIGGER test_remembered_mfa_audit_refusal ON domain_event');
+    await owner.client.unsafe('DROP FUNCTION app.test_remembered_mfa_audit_refusal()');
+  }
+  expect(pgSqlState(failure)).toBe('P0001');
+  expect(await readRememberedMfaPolicyEditor(ctx)).toEqual({ policy: { rememberDays: 7 }, revision: 1 });
+  expect(await credentialByLogin('alpha', 'owner')).toEqual(credential);
+  const after = await owner.client`select payload from domain_event where tenant_id=${base.tenantId}::uuid and event_type='remembered-mfa-policy.updated' order by id`;
+  expect(after).toEqual(before);
+});
+
+it('refuses remembered-MFA settings when actual administrator authority is revoked while waiting for Access', async () => {
+  const ctx = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] };
+  const credentialBefore = await credentialByLogin('alpha', 'owner');
+  let ready!: () => void, release!: () => void;
+  const started = new Promise<void>(yes => { ready = yes; });
+  const finish = new Promise<void>(yes => { release = yes; });
+  const holder = owner.client.begin(async tx => {
+    await tx`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + base.tenantId},0))`;
+    ready(); await finish;
+    await tx`delete from role_assignment where tenant_id=${base.tenantId}::uuid and app_user_id=${base.adminUserId}::uuid`;
+  });
+  await started;
+  const writing = saveRememberedMfaPolicy(ctx, { rememberDays: 7 }, 0);
+  void writing.catch(() => undefined);
+  try {
+    let waiting = false;
+    for (let n = 0; n < 100; n++) {
+      const [row] = await owner.client`select exists(select 1 from pg_locks where not granted and locktype='advisory'
+        and classid=((hashtextextended(${'access-configuration:' + base.tenantId},0)>>32)&4294967295)::oid
+        and objid=(hashtextextended(${'access-configuration:' + base.tenantId},0)&4294967295)::oid) as waiting`;
+      if (row.waiting) { waiting = true; break; }
+      await new Promise(yes => setTimeout(yes, 10));
+    }
+    expect(waiting, 'the policy writer must wait on the actual Access owner before its policy lock').toBe(true);
+    expect(await readRecord(client, `remembered-mfa-policy:${base.tenantId}`)).toBeNull();
+  } finally { release(); await holder; }
+  await expect(writing).rejects.toThrow('forbidden');
+  expect(await credentialByLogin('alpha', 'owner')).toEqual(credentialBefore);
+  expect(await readRecord(client, `remembered-mfa-policy:${base.tenantId}`)).toBeNull();
+  const events = await owner.client`select id from domain_event where tenant_id=${base.tenantId}::uuid and event_type='remembered-mfa-policy.updated'`;
+  expect(events).toHaveLength(0);
+});
 
 it.each([7, 90])('never remembers longer than the challenge offered when policy changes to %s days', async rememberDays => {
   await enroll();
