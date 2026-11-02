@@ -1271,3 +1271,100 @@ Administrative library/team/catalogue reads now select fresh setup View before c
 ### Frozen 5d51 original follow-up outcomes
 
 All six planned runs completed at5d51003e8368d4ffbc7358a142ddf2015860909b:41501771883/41501782418/41501796709/41501807777/41501818240/41501828775. Native migrations reached a second parser error in0944 at the local `leading` identifier. Pure/UI evidence retains Rewards25, settings15 and OneHR22 passes; UI57pass/7Dashboard async-fixture failures; whole compiler failed only the Dashboard fixture namespace type. Original logs/artifacts remain preserved. Recovery renames only that local identifier, qualifies three ambiguous normalizer aliases, and gives the dashboard permission fixture a typed namespace and synchronous Pager boundary; assertions remain strict. Rewards consumer and private mutation chapters remain held pending genuine native parity.
+
+### Actual wider Claim read/submit and assigned decision sources (unapplied chapter)
+
+0943 now separates `claims.related` View/Execute plus HR-only native Approve (canonical recursive manager/HOD plus administrative
+profile), administrative View/Execute/Approve (actual scoped HR plus profile), and `claims.assigned`
+View/Approve (real current direct manager or exact scoped delegation, no administrative parent).
+Source reads repeat actual subject/status and the native course; full newborn Claim lookup is not
+substituted for the actual row's RLS fields. Actual nonself submission and pending decision mutations
+seal complete queued images, actor/transaction and authority stamp; actual physical effects plus the
+native submitted/decision audit must complete before commit. Skipped/conflicting INSERT receipts fail.
+The assigned write policy permits only the decision state change, with immutable-content and final
+source guards, and its finite decision facts preserve a genuine task outside administrative scope.
+Approval rows/bulk controls and inbox actionability consume the same actual decision predicate.
+
+The native self-super exception has its own exact selfDecision View/Approve floor: actual self,
+live stored super_admin, current principal/claimed super role and data profile. Stored super grants
+remain global as required by schema; a narrowed current carrier does not become a fabricated scoped
+stored super grant. Ordinary employee self-approval remains refused. Native hierarchy, HOD, direct
+manager, scoped delegate, current/pure recipient, profile narrowing, self-super and raw mutation/audit
+negative fixtures are authored in `test/claim-native-nonself-actions.test.ts`; hosted qualification is
+required. No completion sentinel or fake binding is added, and nonself receipt constructors, remaining
+Leave/Attendance source courses and full module publication remain unfinished.
+
+
+The new Claim command receipt also captures a private monotone native-source epoch, separate from
+control defaults: actual graph, scope and Claim catalogue/policy mutations invalidate it, including
+same-transaction revoke/restore. Claim outcomes, receipts and audits never advance this epoch.
+Relevant native writers take Access before source tuples; command admission locks the real epoch
+row to refuse an already-pinned stale repeatable-read writer. Authored native fixtures contrast a
+restored manager relationship (refused, full rollback) with actual approval→reimbursement in one
+transaction (retained). No receipt is used as ongoing actor/default/delegation authority.
+
+
+### Native nonself receipt construction and task read (unapplied chapter)
+
+All runtime Claim receipt INSERTs now consume one finite actual stored-parent constructor, including
+nonself upload and logical submit initialization. Native admin/recursive/HOD file maintenance has
+its own exact View/Add and data scope; direct/delegated task View can read the actual task receipt
+without becoming upload authority. The old own-only public API remains own-only. Constructor slots
+still require a real same-transaction parent mutation and native source audit, byte/metadata equality,
+actual physical birth and completed upload audit; source class is private and derived from the real
+parent. Both own and nonself receipts now bind the private Claim native-source stamp, not a caller
+purpose alone. Existing own refusal messages/closed Draft Delete remain intact. The TS adapter no
+longer uses a raw nonself INSERT/audit path. Native actual byte/audit positives, unrelated read refusal,
+assigned read-without-upload and raw/posted-source negatives are authored; hosted qualification is
+required. Catalogue consumer/maintenance raw-read separation and genuine component publication
+remain unfinished, so this is not a complete supported Claim package.
+
+
+Claims completion remains live after an early `SET CONSTRAINTS ALL IMMEDIATE`: retained private
+command, receipt, closed Draft Delete and cancel/reimbursement proofs capture actual source stamps;
+Claims-only hooks requeue exact current-XID tenant contexts on real control/native epoch changes.
+No foreign proof rows or current/default grants are changed. A private physical byte/metadata birth
+is separate from receipt context validation, so a genuine same-transaction closed Draft Delete can
+still compose with its initial receipt. Authored genuine APP-session command/receipt/cancel/reimburse
+fixtures use the public canonical data-permission transition owner to assign and restore an existing
+actor after early validation, without elevating the session or adding fixture grants. Separate
+owner-held downgrade simulations cover native graph and own login restore; these are explicitly
+protocol simulations, not strict APP-login qualification. No supported binding is fabricated.
+All new cases still require hosted execution. Ordinary approval→reimbursement stays a positive native
+outcome chain.
+Finite status transitions now refuse filed-row hard deletion and lifecycle rewinds, while Submit
+cannot silently edit the Draft's static source fields; actual native repricing fields remain allowed.
+
+Claim Types now projects exact Add/Edit/Delete into its native type/item/designed-field controls.
+Limits and Mileage project the actual dated logical resource's Add or Edit course, including prior
+versions/tombstones, through a read-only API. Both projection and serialized insertion use the same
+private resource identity/history fact; reading neither reserves the key nor takes configuration
+write locks. A denied grid row remains visible as reference, cannot change local payload state, and
+is excluded from the submitted changes; Mileage retains its values in a disabled editor. Native
+writers still recheck their current exact controls and logical course. New database projection and
+rendered control cases are authored, not executed here; genuine supported component publication and
+all remaining native Leave/Attendance/Claim source closure are still required.
+
+### Leave Approval templates: independent native course (unapplied chapter)
+
+`leaveApproval.templates` has exact View/Add/Edit/Delete with no group-only Leave Types parent.
+Its real tenant-member reference View and ANY-HR constructor/edit/delete floor preserve the scoped
+company-HR route exception; current admission repeats actual stored roles/login and claimed native
+HR. Constructors, duplication, reactivation, default changes, archive/deletion and raw table writes
+consume the same exact course. Archive is Delete; reactivation/default changes are Edit. The template
+manager receives actual read-only Add/Edit/Delete projections, defaults missing projections to false,
+and refuses an unauthorized drawer/save path. Native routing references remain independent of the
+maintenance list's View. Native company-HR/member/raw-refusal and rendered course cases are authored
+but unrun. Company assignment/escalation controls and live Leave operations remain unfinished; this
+chapter does not complete or publish the Leave component.
+
+Leave Approval assignments and escalation have independent company View and native-admin operations.
+Assignment Add is a real new row; replacement/reactivation is Edit; unassignment/archive is Delete.
+Actual OLD and NEW company scopes, identity and tenant-owned template/type/organization references
+are repeated by the raw assignment guard; maintenance lists repeat exact View while runtime routing
+keeps its own reference source. The real escalation setter repeats exact company View/Edit. A private
+actual-OLD/NEW helper permits only the five native escalation columns and requires the full stored
+Company OLD plus current native company Edit; root owns its 0942 Company-guard composition. This helper
+is not app-executable and grants no general Company mutation. Native scope/reference/refusal cases
+are authored but unrun. Company assignment/escalation UI projections, root guard integration and
+live Leave command closure remain outstanding; no Leave completion claim or sentinel is added.

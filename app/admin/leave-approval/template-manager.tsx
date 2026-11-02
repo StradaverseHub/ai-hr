@@ -171,12 +171,14 @@ const nameOf = (opts: Option[], id: string | null) => (id ? (opts.find((o) => o.
  */
 export function ApprovalTemplateManager({
   templates,
+  access = {add:false,edit:false,delete:false},
   actions,
   labels,
   employees = [],
   endedEmploymentIds = [],
 }: {
   templates: TemplateRow[];
+  access: {add:boolean;edit:boolean;delete:boolean};
   actions: TemplateActions;
   labels: TemplateManagerLabels;
   /** r293 phase 3 — the population a named-approver level may point at, already scope-fenced. */
@@ -232,6 +234,7 @@ export function ApprovalTemplateManager({
     levels.map((l) => approversOf(l).map(approverText).join(` ${labels.orLabel} `)).join(' → ');
 
   function openDrawer(target: TemplateRow | 'new') {
+    if((target==='new'?access.add:access.edit)!==true)return;
     closing.current = false;
     drawerSettled.current = false;
     pendingFocus.current = null;
@@ -264,7 +267,7 @@ export function ApprovalTemplateManager({
 
   function save(fd: FormData) {
     // Closing or closed (a slide-out still has a form in it), or a save already on its way: nothing to post.
-    if (closing.current || inFlight.current) return;
+    if (closing.current || inFlight.current || (editing==='new'?access.add:access.edit)!==true) return;
     inFlight.current = true;
     setError(null);
     startSaving(async () => {
@@ -332,7 +335,7 @@ export function ApprovalTemplateManager({
           </div>
           {/* r304 — no longer hidden while a template is open: the drawer's overlay already keeps it out of
               reach, and a button that disappears and comes back moves the header under the pointer. */}
-          <Button type="button" variant="outline" size="sm" onClick={() => openDrawer('new')}>
+          <Button type="button" variant="outline" size="sm" disabled={access.add!==true} onClick={() => openDrawer('new')}>
             {labels.addTemplate}
           </Button>
         </div>
@@ -379,20 +382,21 @@ export function ApprovalTemplateManager({
                           type="button"
                           variant="outline"
                           size="sm"
+                          disabled={access.edit!==true}
                           onClick={() => openDrawer(tpl)}
                         >
                           {labels.editTemplate}
                         </Button>
                         <form action={actions.duplicateTemplate}>
                           <input type="hidden" name="templateId" value={tpl.id} />
-                          <Button type="submit" variant="ghost" size="sm">
+                          <Button disabled={access.add!==true} type="submit" variant="ghost" size="sm">
                             {labels.duplicateTemplate}
                           </Button>
                         </form>
                         {tpl.active && (
                           <form action={actions.setDefault}>
                             {!tpl.isTenantDefault && <input type="hidden" name="templateId" value={tpl.id} />}
-                            <Button type="submit" variant="ghost" size="sm">
+                            <Button disabled={access.edit!==true} type="submit" variant="ghost" size="sm">
                               {tpl.isTenantDefault ? labels.unsetTenantDefault : labels.setTenantDefault}
                             </Button>
                           </form>
@@ -400,13 +404,13 @@ export function ApprovalTemplateManager({
                         <form action={actions.setActive}>
                           <input type="hidden" name="templateId" value={tpl.id} />
                           <input type="hidden" name="active" value={tpl.active ? '0' : '1'} />
-                          <Button type="submit" variant="ghost" size="sm">
+                          <Button disabled={(tpl.active?access.delete:access.edit)!==true} type="submit" variant="ghost" size="sm">
                             {tpl.active ? labels.deactivateTemplate : labels.activateTemplate}
                           </Button>
                         </form>
                         <form action={actions.deleteTemplate}>
                           <input type="hidden" name="templateId" value={tpl.id} />
-                          <ConfirmSubmit
+                          <ConfirmSubmit disabled={access.delete!==true}
                             size="sm"
                             title={labels.deleteTemplate}
                             description={labels.deleteTemplateConfirm}
@@ -450,7 +454,7 @@ export function ApprovalTemplateManager({
               type="submit"
               form={TEMPLATE_FORM_ID}
               size="sm"
-              disabled={!formStatus.canSave || saving || editing === null}
+              disabled={!formStatus.canSave || saving || editing === null || (editing==='new'?access.add:access.edit)!==true}
             >
               {labels.save}
             </Button>

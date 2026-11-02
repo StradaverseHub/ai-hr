@@ -5267,6 +5267,7 @@
     "otPolicyPlanTotalsHelp": "These totals describe individual requests. Overlapping approved windows count once in calculated overtime."
   },
   "approvals": {
+    "viewOnly": "View only",
     "title": "Approvals",
     "sortBy": "Sort by",
     "sortLatest": "Latest first",
@@ -13884,6 +13885,18 @@
     }
   },
   "claims": {
+    "accessFunctions": {
+      "own": "Own claims",
+      "drafts": "Own claim drafts",
+      "submit": "Submit own claims",
+      "receipts": "Own claim receipts",
+      "related": "Claims for managed staff",
+      "assigned": "Assigned claim approvals",
+      "selfDecision": "Own claim approval by super administrator",
+      "administration": "Administrative claims",
+      "relatedReceipts": "Receipts for managed staff",
+      "administrationReceipts": "Administrative claim receipts"
+    },
     "title": "Claims",
     "subtitle": "Submit an expense or benefit claim and track its status.",
     "newClaim": "New claim",

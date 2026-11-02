@@ -1,3 +1,4 @@
+import {claimConfigurationWriteAccess} from '@/core/claims';
 import {assertModuleFunction} from '@/core/module-action-access';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
@@ -146,6 +147,9 @@ export default async function ClaimLimitsPage({
     `flex items-center justify-between gap-2 truncate rounded px-3 py-1.5 text-left text-sm transition-colors ${
       on ? 'bg-primary/10 font-medium text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
     }`;
+  const writable=await claimConfigurationWriteAccess(s,gridRows.map(row=>({kind:'claim_policy',claimTypeId:row.claimTypeId,gradeId:selectedGradeId,claimItemId:row.claimItemId})));
+  const writableRows=gridRows.filter((_,index)=>writable[index]===true).map(row=>row.key);
+
   const setMark = (
     <span className="shrink-0 rounded bg-muted px-1 text-[10px] uppercase tracking-wide text-muted-foreground">
       {t('gridGradeSet')}
@@ -186,6 +190,7 @@ export default async function ClaimLimitsPage({
           ) : (
             <ClaimLimitsGrid
               rows={gridRows}
+              writableRows={writableRows}
               gradeId={selectedGradeId}
               gradeLabel={selectedGrade ? selectedGrade.name : t('companyWide')}
               today={today}

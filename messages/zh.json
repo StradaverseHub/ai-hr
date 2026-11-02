@@ -5267,6 +5267,7 @@
     "otPolicyPlanTotalsHelp": "这些合计按每项申请统计。已批准的重叠时段在加班计算中只计一次。"
   },
   "approvals": {
+    "viewOnly": "仅查看",
     "title": "审批",
     "sortBy": "排序方式",
     "sortLatest": "最新优先",
@@ -13884,6 +13885,18 @@
     }
   },
   "claims": {
+    "accessFunctions": {
+      "own": "本人的报销",
+      "drafts": "本人的报销草稿",
+      "submit": "提交本人的报销",
+      "receipts": "本人的报销凭证",
+      "related": "所管理员工的报销",
+      "assigned": "分配的报销审批",
+      "selfDecision": "超级管理员审批本人的报销",
+      "administration": "报销管理",
+      "relatedReceipts": "所管理员工的报销凭证",
+      "administrationReceipts": "报销管理凭证"
+    },
     "title": "报销",
     "subtitle": "提交费用或福利报销，并跟踪其状态。",
     "newClaim": "新建报销",

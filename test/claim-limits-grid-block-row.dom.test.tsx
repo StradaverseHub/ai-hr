@@ -20,7 +20,7 @@
  * test/claims-config-layout.test.ts section D.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 
 import en from '../messages/en.json';
@@ -96,7 +96,7 @@ const ROWS: ClaimLimitGridRow[] = [
   },
 ];
 
-function renderGrid(messages: (typeof LOCALES)[number][1]) {
+function renderGrid(messages: (typeof LOCALES)[number][1], writableRows:readonly string[]=ROWS.map(row=>row.key)) {
   return render(
     <NextIntlClientProvider
       locale="en"
@@ -105,7 +105,7 @@ function renderGrid(messages: (typeof LOCALES)[number][1]) {
         throw err;
       }}
     >
-      <ClaimLimitsGrid rows={ROWS} gradeId="g1" gradeLabel="Grade 12" today="2026-08-13" mileageHref="/admin/claims/mileage" />
+      <ClaimLimitsGrid rows={ROWS} writableRows={writableRows} gradeId="g1" gradeLabel="Grade 12" today="2026-08-13" mileageHref="/admin/claims/mileage" />
     </NextIntlClientProvider>,
   );
 }
@@ -186,4 +186,25 @@ describe('e7eb5d83 rev 6 · the five controls are ONE row', () => {
       expect(el.disabled).toBe(true);
     }
   });
+});
+
+
+describe('exact dated-resource control projection',()=>{
+ it('retains all displayed source values with no writable projection and refuses synthetic change events',()=>{
+  const {container}=renderGrid(en,[]);
+  const controls=Array.from(container.querySelectorAll<HTMLInputElement|HTMLSelectElement>('input:not([type="hidden"]),select'));expect(controls.length).toBeGreaterThan(10);
+  for(const control of controls)expect(control.disabled).toBe(true);
+  const input=container.querySelector<HTMLInputElement>('tbody input[type="number"]')!;fireEvent.change(input,{target:{value:'999'}});
+  expect(container.querySelector<HTMLInputElement>('input[name="payload"]')?.value).toBe('[]');
+  expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+ });
+ it('edits and submits only the admitted logical row while retaining other grade rows as references',()=>{
+  const {container}=renderGrid(en,[ROWS[0].key]);
+  const dataRows=Array.from(container.querySelectorAll('tbody tr')).filter(row=>row.querySelector('input[type="checkbox"]'));expect(dataRows).toHaveLength(3);
+  const writable=dataRows[0].querySelector<HTMLInputElement>('input[type="number"]')!,denied=dataRows[1].querySelector<HTMLInputElement>('input[type="number"]')!;
+  expect(writable.disabled).toBe(false);expect(denied.disabled).toBe(true);
+  fireEvent.change(writable,{target:{value:'125'}});fireEvent.change(denied,{target:{value:'999'}});
+  const payload=JSON.parse(container.querySelector<HTMLInputElement>('input[name="payload"]')!.value);expect(payload).toHaveLength(1);expect(payload[0]).toMatchObject({claimTypeId:ROWS[0].claimTypeId,claimItemId:ROWS[0].claimItemId,perClaimCap:'125'});
+  expect(container.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(false);
+ });
 });

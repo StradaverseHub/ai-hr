@@ -230,6 +230,8 @@ BEGIN
  IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
  PERFORM app.access_workforce_write_lock();
  IF (r->>'tenant_id')::uuid IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current() OR (a IS NOT NULL AND b IS NOT NULL AND (a->>'tenant_id' IS DISTINCT FROM b->>'tenant_id' OR a->>'id' IS DISTINCT FROM b->>'id')) THEN RAISE EXCEPTION 'Configuration principal unavailable' USING ERRCODE='42501';END IF;
+ -- Separate native Leave escalation permission owns only these actual Company columns.
+ IF TG_TABLE_NAME='company' AND TG_OP='UPDATE' AND app.leave_approval_escalation_source_allowed(b,a) THEN RETURN NEW;END IF;
  IF TG_OP='UPDATE' AND b->>'archived_at' IS NULL AND a->>'archived_at' IS NOT NULL THEN op:='delete';END IF;
  IF TG_TABLE_NAME IN ('job_grade','profile_option','people_general_policy','dashboard_card_config','login_presentation','session_policy','tenant_setting','email_design','email_design_version','email_asset','notification_email_policy','ai_provider_config','entra_connector','test_case','test_case_version','test_assignment','test_catalogue_update') THEN
   IF TG_TABLE_NAME='test_case' AND TG_OP='UPDATE' AND app.settings_born('test_case',(a->>'id')::uuid) THEN op:='add';END IF;

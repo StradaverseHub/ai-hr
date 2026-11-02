@@ -1,3 +1,4 @@
+import {assertLeaveApprovalCompanyTx} from './leave-approval-action-access';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 /**
  * ADR-0039 2B-2 + ADR-0071 — the configurable leave approval chain, now a SCOPED RULE MATRIX. A
@@ -358,6 +359,7 @@ export async function getLeaveApprovalPolicy(
   companyId: string,
 ): Promise<{ levels: LeaveLevelKind[] }> {
   return withTenant(ctx, async (tx) => {
+    await assertLeaveApprovalCompanyTx(tx,'leaveApproval.assignments','view',companyId);
     const [pol] = await tx
       .select({ levels: leaveApprovalPolicy.levels })
       .from(leaveApprovalPolicy)
@@ -410,6 +412,7 @@ export async function setLeaveApprovalPolicy(
       .from(leaveApprovalPolicy)
       .where(and(eq(leaveApprovalPolicy.companyId, p.companyId), isNull(leaveApprovalPolicy.leaveTypeId), defaultRuleFilter()))
       .limit(1);
+    await assertLeaveApprovalCompanyTx(tx,'leaveApproval.assignments',existing?'edit':'add',p.companyId);
     let id: string;
     if (existing) {
       await tx
@@ -590,6 +593,7 @@ export async function createLeaveApprovalRule(ctx: SessionContext, p: LeaveAppro
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const c = cleanRuleInput(p);
   return withTenant(ctx, async (tx) => {
+    await assertLeaveApprovalCompanyTx(tx,'leaveApproval.assignments','add',p.companyId);
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertNoDuplicateRule(tx, p.companyId, c, null);
@@ -639,6 +643,7 @@ export async function updateLeaveApprovalRule(
   const c = cleanRuleInput(p);
   const reason = normalizeReason(opts?.reason);
   return withTenant(ctx, async (tx) => {
+    await assertLeaveApprovalCompanyTx(tx,'leaveApproval.assignments','edit',p.companyId);
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertNoDuplicateRule(tx, p.companyId, c, ruleId);
@@ -715,6 +720,7 @@ export async function updateLeaveApprovalRule(
 export async function archiveLeaveApprovalRule(ctx: SessionContext, ruleId: string, companyId: string) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
+    await assertLeaveApprovalCompanyTx(tx,'leaveApproval.assignments','delete',companyId);
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx
@@ -739,6 +745,7 @@ export async function listLeaveApprovalRules(
   companyId: string,
 ): Promise<LeaveApprovalRule[]> {
   return withTenant(ctx, async (tx) => {
+    await assertLeaveApprovalCompanyTx(tx,'leaveApproval.assignments','view',companyId);
     const rows = await tx
       .select({
         id: leaveApprovalPolicy.id,
@@ -808,6 +815,7 @@ export async function getLeaveEscalationPolicy(
   companyId: string,
 ): Promise<LeaveEscalationPolicy> {
   return withTenant(ctx, async (tx) => {
+    await assertLeaveApprovalCompanyTx(tx,'leaveApproval.escalation','view',companyId);
     const [co] = await tx
       .select({
         enabled: company.escalationEnabled,
@@ -866,6 +874,7 @@ export async function setLeaveEscalationPolicy(
   }
   const reason = normalizeReason(p.reason);
   return withTenant(ctx, async (tx) => {
+    await assertLeaveApprovalCompanyTx(tx,'leaveApproval.escalation','edit',p.companyId);
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx
