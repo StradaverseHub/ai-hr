@@ -1,33 +1,41 @@
-## Current result: Home correctness qualified; visibility prototype awaits policy reconciliation
+## Current result: security-compatible proposal measured; punch-audit repair in affected recovery
 
-Homef274 qualification41421768400 passes109 database and75 other checks across28
-files plus the whole compiler. Native setup2→1 and actual late archive/rebind refusal
-pass,but paired40-read timings are mixed (former322.35/314.63ms,current332.14/288.35ms).
-No500-user rerun is justified by that counter alone. Its source remains separate.
+**Not staging-ready;0/2 original500-user activity targets accepted.** The latest
+whole-system1s41416183769 and5s41416186817 remain FAIL under unchanged workloads,
+resources,SLOs and timeouts. No new broad load pair has been dispatched.
 
-Refined reversible visibility source234b848b3f103d312a0e04b3735f38096d1734d3 /
-[41424615209](https://github.com/StradaverseHub/ai-hr/actions/runs/41424615209)
-passes563 native comparisons over500 principals and24 hierarchy/HOD contexts.
-Ordinary100-read bursts are13.75/13.89ms versus restored22.67/22.29ms; manager/HOD/HR
-fallback timings are retained in the [review](system-performance-visibility-self-review-20261102.md).
-Original function attributes remain equal,then original definition is restored and
-private donor dropped. Earlier1db fixture-array failure and f3a7 corrected563-control
-pass remain preserved. This is component evidence,not a whole-system speed claim.
+Read-only review of the security owner's published300fc52f1556361de8b976092a9088f6b90b3c15
+preserves the complete new data-permission scope predicate. Test-only935b58547feb2c2fb5a7c6fe4250c19a3e397c2e /
+[41429150346](https://github.com/StradaverseHub/ai-hr/actions/runs/41429150346)
+passes563 controls over500 principals and24 hierarchy contexts without replacing the
+public function. Necessary-only ordinary-user specialization with the exact new
+predicate measures100-read bursts330.26/332.79ms versus owner4119.33/4113.66ms.
+These are component timings,not system capacity. An old unscoped donor is proven
+incompatible. Review-only patch56f8f238949f302537993cdb50462f89799fb55b53f90dc9ac5c0c4d25d3fdff
+awaits owner incorporation/frozen handoff; no foreign draft or overlapping migration
+is edited. The same reviewed visibility body/predicate remains in observedbc7e06b.
+Full new profile/write/birth semantics and actual public installation remain unqualified.
+See [security compatibility review](system-performance-security-compatibility-20261102.md).
 
-A fresh all-ref/WIP scan and read-only actual source inspection found direct overlap
-with the security owner's WIP0938_data_permission_enforcement: it rewrites both
-visibility functions with new data-permission restrictions. No foreign source is
-adopted or edited; no performance migration is allocated. Reconcile the measured
-principle with that owner's frozen final semantics and native denial cases before
-implementation. Never overlay the older function body onto those new restrictions.
-Both canonical refs now6ea889365; this is source freshness,not installed acceptance.
+Independent retained blocker and Node traces narrowed an Attendance punch-audit seam.
+Owned implementation3a26f9b865cfac8873bc16956060b097f4b8fdbc queues identical local
+events and flushes canonically before returning,with no cross-owner deferral.
+Frozen7306b2b1b8a747956835394d6a85b5a9cb8e1cfc /
+[41435188440](https://github.com/StradaverseHub/ai-hr/actions/runs/41435188440)
+passes the whole compiler and255/256 selected checks. The native batching diagnostic
+passes12 approvals,exact4-event order/payloads,12 real batchSQL calls/48 rows,
+two audit chains,and complete rollback including participant evidence when the final
+punch audit fails. The run remains FAIL: one old self-approval fixture uses mismatched
+user/person identity before reaching the changed owner. Test-only29f806a36 repairs
+the real fixture identity while retaining explicit mismatch and self-decision refusal.
+Affected recovery41436873302 passes all20 file checks; its compiler is still running.
+Isolated timing41436877396 is queued.
+The broader suite's timing is mixed; no whole-system speed claim follows. See the
+[independent contention review](system-performance-independent-contention-20261102.md).
 
-Both original feedback-only500 failures below remain terminal:1s timeout last331
-completed/169 active;5s463 completed/37 failed.0/2 activity targets accepted. All
-original workloads,resources,thresholds,timeouts and failure accounting remain.
-No blind load retry,release admission,queue entry,merge,literal binding update or
-deployment. Applied SQL is unchanged. Detailed exact-source evidence and integration
-boundary are in the review linked above and the private task checkpoint.
+Prior Home and old-model visibility component experiments remain separate. Both
+manifest checks pass; literal provider approval bindings are unchanged and provider
+egress blocked. No merge,release admission,queue entry,SQL allocation or deployment.
 
 ## Current result: feedback-only500 qualification fails; release admission remains held
 
