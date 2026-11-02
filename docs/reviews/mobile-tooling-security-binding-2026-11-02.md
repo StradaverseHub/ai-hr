@@ -1,0 +1,11 @@
+# PR211 exact dependency binding approval
+
+On 2 November 2026 at approximately09:05UTC the repository owner answered “Approve exact binding refresh” to this chat's concrete question covering reviewed PR211 candidate `61441b51a00c7e05f88276b3d4f16b8d4c117149` and exact provider digest `959e412848685adb1777666f7f3866670b521080fc638db90e0e2644aa0bf412`.
+
+This is an actual new owner binding decision for the reviewed Vitest4.1.12, Vite8.1.6 and coherent dependency patch. It authorizes refreshing the same24 approved sourceDigest fields and affected GitHub Actions checks. The original reviewer/evidence/reviewedAt fields retain their historical contract-approval identity. The two pending contracts remain pending and byte-identical. This is not new specialist certification, added provider payload permission, promotion, production authorization or a release witness. Old consents, evaluations, promotions, receipts and jobs retain their original source identities.
+
+Original focused41416611233 remains FAILED:245 cases passed and9 actual provider-analysis assertions failed because the new digest lacked approval. Whole TypeScript passed. All-browser41416615910 passed34 original files and503 cases per engine, with exact case inventory matching accepted cf694. Every planned check completed before this binding update or a repair retry. Those original source/controller/run identities are retained, not relabelled. Recovery checks on the resulting commit must establish their own identity; broader release qualification remains separate.
+
+The provider transform closure still must hash exactly to the approved959e4128 digest over1,158 files. Updating literal approvals changes the module closure, so regenerate its manifest last and check both. Any later different provider digest requires its own binding disposition; this decision does not preapprove one. No staging lease, feature activation, worker maintenance, production or store publication is performed here.
+
+After the approved literal update, module digest is `f3c964088d353ef59a102ed86293d00227c7a36e26810f22540ab3b689067cf8` over456 files. Static before/after comparison confirms exactly24 sourceDigest changes, all other approval bytes unchanged and both pending records unchanged. Both canonical freshness checks pass.

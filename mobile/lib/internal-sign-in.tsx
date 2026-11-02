@@ -1,7 +1,8 @@
+import { authenticatorSetupUri } from '../../lib/authenticator-setup';
 import { signInWithMicrosoft } from './entra-auth';
 import { useRef, useState } from 'react';
 import { fetch as nativeFetch } from 'expo/fetch';
-import { Image, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Image, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { beginSignIn, assertAuthGeneration, completeInternalSignIn } from './auth';
@@ -76,7 +77,19 @@ export function InternalSignIn() {
         {state === 'password' && <><Text style={styles.body}>{copy.passwordHelp}</Text><Text>{copy.confirmation}</Text><TextInput accessibilityLabel={copy.confirmation} secureTextEntry autoCapitalize="none" autoCorrect={false} maxLength={128} value={confirmation} onChangeText={setConfirmation} style={styles.input} editable={!busy}/></>}
       </>}
       {state === 'enroll' && <>
-        <Text style={styles.body}>{copy.enrollHelp}</Text>{step?.qr && <Image accessibilityLabel={copy.qrAlt} source={{ uri: step.qr }} style={styles.qr}/>}
+        <Text style={styles.body}>{copy.enrollHelp}</Text>
+        {step?.secret && <>
+          <Text style={styles.body}>{copy.samePhoneHelp}</Text>
+          <Button title={copy.openAuthenticator} kind="quiet" disabled={busy} onPress={() => {
+            if (pending.current || !step.secret) return;
+            setError('');
+            const generation = owner.current;
+            void Linking.openURL(authenticatorSetupUri(step.secret, step.account)).catch(() => {
+              if (owner.current === generation) setError('authenticatorUnavailable');
+            });
+          }}/>
+        </>}
+        {step?.qr && <Image accessibilityLabel={copy.qrAlt} source={{ uri: step.qr }} style={styles.qr}/>}
         <Text>{copy.manualKey}</Text><Text selectable style={styles.key}>{step?.secret}</Text>
       </>}
       {(state === 'enroll' || state === 'mfa') && <><Text>{state === 'enroll' ? copy.code : copy.codeOrRecovery}</Text><TextInput accessibilityLabel={state === 'enroll' ? copy.code : copy.codeOrRecovery} autoCapitalize="characters" autoCorrect={false} autoComplete="one-time-code" maxLength={64} value={code} onChangeText={setCode} style={styles.input} editable={!busy}/></>}
