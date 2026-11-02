@@ -948,8 +948,15 @@ BEGIN
  IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
  row_value:=CASE WHEN TG_OP='DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;t:=(row_value->>'tenant_id')::uuid;
  target_user:=CASE TG_TABLE_NAME WHEN 'app_user' THEN (row_value->>'id')::uuid WHEN 'role_assignment' THEN (row_value->>'app_user_id')::uuid ELSE (row_value->>'user_id')::uuid END;
+ -- This constraint owns protected recovery enrollment, not ordinary employee
+ -- provisioning. Resolve protection from the actual row tenant even when the
+ -- native leased provisioning command has no interactive tenant context. A
+ -- protected target still requires the tenant-bound recovery course below.
+ IF NOT EXISTS(SELECT 1 FROM public.access_effective_membership m
+  JOIN public.access_group g ON g.id=m.group_id AND g.tenant_id=m.tenant_id
+  WHERE m.user_id=target_user AND m.tenant_id=t AND g.system_administrator AND g.retired_at IS NULL) THEN RETURN NULL;END IF;
  IF t IS DISTINCT FROM app.current_tenant_id() THEN RAISE EXCEPTION 'Data recovery principal unavailable' USING ERRCODE='42501';END IF;
- IF app.data_permission_protected(target_user) AND EXISTS(SELECT 1 FROM public.user_data_permission_assignment a
+ IF EXISTS(SELECT 1 FROM public.user_data_permission_assignment a
   LEFT JOIN public.data_permission_profile p ON p.id=a.profile_id AND p.tenant_id=a.tenant_id
   LEFT JOIN public.data_permission_revision r ON r.id=p.active_revision_id AND r.profile_id=p.id AND r.tenant_id=p.tenant_id
   WHERE a.user_id=target_user AND a.tenant_id=t AND (p.id IS NULL OR NOT p.enabled OR p.retired_at IS NOT NULL
