@@ -28,7 +28,7 @@ it.each(['add','edit','delete'] as const)('enables only the projected %s course 
  const expected={add:2,edit:6,delete:5};
  const enabled=Array.from(document.querySelectorAll<HTMLFieldSetElement>('fieldset')).filter(fieldset=>!fieldset.disabled);expect(enabled).toHaveLength(expected[course]);
  const labels={add:[en.admin.claims.newItem,en.admin.claims.addField],edit:[en.admin.claims.save,en.admin.claims.moveUp,en.admin.claims.moveDown],delete:[en.admin.claims.archive,en.admin.claims.delete,en.admin.claims.removeField]};
- for(const purpose of ['add','edit','delete'] as const)for(const label of labels[purpose])for(const button of screen.getAllByRole('button',{name:label,exact:true}))expect(button.matches(':disabled')).toBe(purpose!==course);
+ for(const purpose of ['add','edit','delete'] as const)for(const label of labels[purpose])for(const button of screen.getAllByRole('button',{name:label}))expect(button.matches(':disabled')).toBe(purpose!==course);
  // Each enabled form has a real native control, rather than an empty wrapper passing by coincidence.
  for(const fieldset of enabled){expect(fieldset.querySelector('form')).toBeTruthy();expect(fieldset.querySelector('button')?.matches(':disabled')).toBe(false);}
  for(const fieldset of Array.from(document.querySelectorAll<HTMLFieldSetElement>('fieldset')).filter(fieldset=>fieldset.disabled))for(const button of fieldset.querySelectorAll('button'))expect(button.matches(':disabled')).toBe(true);

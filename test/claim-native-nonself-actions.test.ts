@@ -81,7 +81,7 @@ it('refuses raw administrative decisions without native audit, restored content,
 
 it('uses the actual scoped delegation relationship for a nonself decision without granting submission',async()=>{
  await actor('stand-in report',b.deptB,stranger.employmentId);
- await setReportingLine(admin,{subordinateEmploymentId:middle.employmentId,managerEmploymentId:stranger.employmentId,lineType:'delegate',validFrom:'2026-01-01',scopes:[{module:'claims',taskType:'claims.claim'}],orgScope:{companyId:b.companyId,departmentId:b.deptA}});
+ await setReportingLine(admin,{subordinateEmploymentId:middle.employmentId,managerEmploymentId:stranger.employmentId,lineType:'delegate',validFrom:'2026-01-01',scopes:[{module:'claims',taskType:'claims.claim'}],orgScope:{companyId:b.companyId,businessUnitId:null,departmentId:b.deptA}});
  const pending=await submitClaim(admin,submission());await assignOtherDepartment(stranger.userId);
  expect((await listPendingClaims(stranger.ctx)).find(row=>row.id===pending.id)?.canDecide).toBe(true);
  await expect(submitClaim(stranger.ctx,submission())).rejects.toThrow('Nonself claim submission unavailable');

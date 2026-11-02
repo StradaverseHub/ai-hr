@@ -931,11 +931,11 @@ describe('exact template purpose controls',()=>{
  it.each(['add','edit','delete'] as const)('projects only %s to constructors, defaults and archive controls',course=>{
   mount('en',vi.fn(),TEMPLATES,{add:course==='add',edit:course==='edit',delete:course==='delete'});
   const labels=la('en');
-  for(const button of screen.getAllByRole('button',{name:labels.duplicateTemplate,exact:true}))expect(button.matches(':disabled')).toBe(course!=='add');
-  for(const button of screen.getAllByRole('button',{name:labels.editTemplate,exact:true}))expect(button.matches(':disabled')).toBe(course!=='edit');
-  expect(screen.getByRole('button',{name:labels.activateTemplate,exact:true}).matches(':disabled')).toBe(course!=='edit');
-  for(const button of screen.getAllByRole('button',{name:labels.deactivateTemplate,exact:true}))expect(button.matches(':disabled')).toBe(course!=='delete');
-  for(const button of screen.getAllByRole('button',{name:labels.deleteTemplate,exact:true}))expect(button.matches(':disabled')).toBe(course!=='delete');
+  for(const button of screen.getAllByRole('button',{name:labels.duplicateTemplate}))expect(button.matches(':disabled')).toBe(course!=='add');
+  for(const button of screen.getAllByRole('button',{name:labels.editTemplate}))expect(button.matches(':disabled')).toBe(course!=='edit');
+  expect(screen.getByRole('button',{name:labels.activateTemplate}).matches(':disabled')).toBe(course!=='edit');
+  for(const button of screen.getAllByRole('button',{name:labels.deactivateTemplate}))expect(button.matches(':disabled')).toBe(course!=='delete');
+  for(const button of screen.getAllByRole('button',{name:labels.deleteTemplate}))expect(button.matches(':disabled')).toBe(course!=='delete');
  });
 });
 
@@ -944,14 +944,14 @@ function mountAssignment(preview:AssignmentActions['preview'],assignableCompanie
  return render(<NextIntlClientProvider locale="en" messages={en}><ApprovalAssignmentManager templates={TEMPLATES} assignments={[]} companies={[{id:'co-fictional',label:'Fictional company'}]} leaveTypes={[{id:'lt-fictional',label:'Fictional annual leave'}]} grades={[]} eligibilityRules={[]} assignableCompanies={assignableCompanies} deletableCompanies={[]} labels={labelsFor('en')} actions={{preview,assign:noop,unassign:noop}}/></NextIntlClientProvider>);
 }
 function enterAssignment(){
- fireEvent.click(screen.getByRole('button',{name:la('en').assign,exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:la('en').assign}));
  fireEvent.change(screen.getByRole('combobox'),{target:{value:STANDARD.id}});
  fireEvent.click(screen.getByRole('checkbox',{name:'Fictional company'}));fireEvent.click(screen.getByRole('checkbox',{name:'Fictional annual leave'}));
 }
 describe('actual selected assignment course projection',()=>{
  it('disables opening a mutation picker without an admitted company course',()=>{
   const preview=vi.fn(async()=>({allowed:true,count:1}));mountAssignment(preview,[]);
-  const button=screen.getByRole('button',{name:la('en').assign,exact:true});expect(button.matches(':disabled')).toBe(true);fireEvent.click(button);expect(screen.queryByRole('combobox')).toBeNull();expect(preview).not.toHaveBeenCalled();
+  const button=screen.getByRole('button',{name:la('en').assign});expect(button.matches(':disabled')).toBe(true);fireEvent.click(button);expect(screen.queryByRole('combobox')).toBeNull();expect(preview).not.toHaveBeenCalled();
  });
  it('requires the current server projection and immediately invalidates it when the selection changes',async()=>{
   const preview=vi.fn(async()=>({allowed:true,count:1}));mountAssignment(preview);enterAssignment();
