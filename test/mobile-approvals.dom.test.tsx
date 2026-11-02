@@ -89,6 +89,16 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
 afterEach(cleanup);
 
 describe('approvals list', () => {
+  it('summarizes the extended replacement-leave contract without falling through to attendance or enabling native decisions', () => {
+    const f = fixture();
+    const task = v2tasks.ReplacementTaskDetailV2.parse({
+      kind:'replacementLeave',id:ID,subject:{name:'Fixture employee',code:null},createdAt:'2026-10-28T01:00:00.000Z',reasonRequiredToReject:true,
+      unit:'day',totalDays:1,totalHours:0,submittedOn:'2026-11-02',employeeReason:null,dates:[],expected:{status:'pending'},
+    });
+    expect(f.taskLine(task)).toBe('task_replacementLeave');
+    expect(f.decidesNatively({kind:'replacementLeave',nativeDecision:true})).toBe(false);
+    expect(() => f.taskPath('replacementLeave',ID)).toThrow();
+  });
   it('a native kind opens its detail; a read-only kind shows an Open on web chip that opens the company origin', async () => {
     const f = fixture();
     f.apiGetPage.mockResolvedValueOnce({ items: [
