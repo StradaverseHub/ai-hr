@@ -1,7 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireModule} from '@/lib/authz';
-import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute} from '@/packs/probation/service';
+import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute,saveProbationLetterTemplate,previewProbationLetter,prepareProbationLetter,actOnProbationLetter,releaseProbationLetter} from '@/packs/probation/service';
 async function execute<T>(work:()=>Promise<T>){
  try{const result=await work();revalidatePath('/lifecycle/probation','layout');return{ok:true as const,result};}
  catch(error){return{ok:false as const,code:error instanceof Error&&error.name==='ProbationError'?'review':'unavailable',detail:error instanceof Error&&error.name==='ProbationError'?error.message:undefined};}
@@ -16,3 +16,13 @@ export async function bootstrapPreparer(input:Parameters<typeof bootstrapProbati
 export async function assignAccess(input:Parameters<typeof assignProbationAccess>[1]){return execute(async()=>assignProbationAccess(await requireModule('lifecycle'),input));}
 export async function replaceSigner(input:Parameters<typeof replaceProbationSigner>[1]){return execute(async()=>replaceProbationSigner(await requireModule('lifecycle'),input));}
 export async function overrideRoute(input:Parameters<typeof overrideProbationRoute>[1]){return execute(async()=>overrideProbationRoute(await requireModule('lifecycle'),input));}
+
+export async function saveLetterTemplate(input:Parameters<typeof saveProbationLetterTemplate>[1]){return execute(async()=>saveProbationLetterTemplate(await requireModule('lifecycle'),input));}
+
+export async function previewLetter(input:Parameters<typeof previewProbationLetter>[1]){return execute(async()=>previewProbationLetter(await requireModule('lifecycle'),input));}
+
+export async function prepareLetter(input:Parameters<typeof prepareProbationLetter>[1]){return execute(async()=>prepareProbationLetter(await requireModule('lifecycle'),input));}
+
+export async function signLetter(input:Parameters<typeof actOnProbationLetter>[1]){return execute(async()=>actOnProbationLetter(await requireModule('lifecycle'),input));}
+
+export async function releaseLetter(input:Parameters<typeof releaseProbationLetter>[1]){return execute(async()=>releaseProbationLetter(await requireModule('lifecycle'),input));}
