@@ -15,7 +15,7 @@ describe('complete password policy form',()=>{
   expect((screen.getByLabelText(en.passwordPolicy.full.forceFirstChange) as HTMLInputElement).checked).toBe(true);
   expect(screen.getByRole('button',{name:en.passwordPolicy.save})).toBeTruthy();
   await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en','security-password-policy');
- });
+ },30_000);
  it('only permits automatic unlock after account lockout and retains optional numeric values',()=>{
   show();const auto=screen.getByLabelText(en.passwordPolicy.full.autoUnlock) as HTMLInputElement;
   expect(auto.disabled).toBe(true);fireEvent.click(screen.getByLabelText(en.passwordPolicy.full.lockoutEnabled));
