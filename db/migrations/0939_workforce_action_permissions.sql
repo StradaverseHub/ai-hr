@@ -324,6 +324,7 @@ BEGIN
    RAISE EXCEPTION 'Marital status cause is reserved for its leave owner' USING ERRCODE='42501'; END IF;
  END IF;
  IF direct_allowed OR marriage_allowed THEN RETURN NULL; END IF;
+ IF app.profile_direct_value_matches(kind,subject_person,subject_employment,row_id,delta,TG_OP='INSERT',relationship_changed) THEN RETURN NULL;END IF;
  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Profile register removal unavailable' USING ERRCODE='42501'; END IF;
  IF TG_OP='UPDATE' AND delta='{}'::jsonb AND after_row->'updated_at' IS NOT DISTINCT FROM before_row->'updated_at' THEN RETURN NULL; END IF;
  -- Immediate contact changes are a separate own-person course. No name, compliance value, new
@@ -335,7 +336,7 @@ BEGIN
   IF kind='person' AND TG_OP='UPDATE' THEN
    FOR b IN SELECT * FROM jsonb_each(delta) LOOP
     IF NOT EXISTS(SELECT 1 FROM app.access_profile_value_bindings() f WHERE f.owner='person' AND f.column_name=b.key AND f.immediate
-     AND app.access_profile_value_editable(f.field_id)) THEN own_contact:=false;EXIT;END IF;
+     AND app.access_profile_value_editable(f.field_id) AND NOT app.profile_field_requires_approval(f.field_id)) THEN own_contact:=false;EXIT;END IF;
    END LOOP;
    IF own_contact THEN RETURN NULL; END IF;
   ELSIF kind='emergency' AND TG_OP='UPDATE' AND before_row->>'priority'='primary' AND before_row->'archived_at'='null'::jsonb THEN
@@ -344,9 +345,9 @@ BEGIN
    FOR b IN SELECT * FROM jsonb_each(delta) LOOP
     IF b.key='archived_at' AND b.value<>'null'::jsonb THEN
      IF EXISTS(SELECT 1 FROM app.access_profile_value_bindings() f WHERE f.owner='emergency' AND f.primary_key IS NOT NULL
-      AND NOT app.access_profile_value_editable(f.field_id,true)) THEN own_contact:=false;EXIT;END IF;
+      AND (NOT app.access_profile_value_editable(f.field_id,true) OR app.profile_legacy_primary_requires_approval(f.field_id))) THEN own_contact:=false;EXIT;END IF;
     ELSIF NOT EXISTS(SELECT 1 FROM app.access_profile_value_bindings() f WHERE f.owner='emergency' AND f.column_name=b.key
-     AND app.access_profile_value_editable(f.field_id,true)) THEN own_contact:=false;EXIT;END IF;
+     AND app.access_profile_value_editable(f.field_id,true) AND NOT app.profile_legacy_primary_requires_approval(f.field_id)) THEN own_contact:=false;EXIT;END IF;
    END LOOP;
    IF own_contact THEN RETURN NULL; END IF;
   END IF;

@@ -1754,11 +1754,26 @@ export type EmployeeClaimType = {
 
 /** A navigation capability, not a budget check. Mirrors the form's active-type catalogue without
  * loading reimbursement amounts, grade rates, receipts or balances. Submission still owns policy. */
+export type OwnClaimActionAccess={view:boolean;draftView:boolean;draftAdd:boolean;draftEdit:boolean;draftDelete:boolean;submitView:boolean;submit:boolean;cancel:boolean};
+/** Purpose flags are read-only and repeat the real current own-employment source. */
+export function ownClaimActionAccess(ctx:SessionContext,employmentId:string):Promise<OwnClaimActionAccess>{
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.execute<OwnClaimActionAccess>(sql`select app.claim_own_source_allowed(${employmentId}::uuid,'claims.own','view') as view,
+   app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.drafts','view') as "draftView",app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.drafts','add') as "draftAdd",
+   app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.drafts','edit') as "draftEdit",app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.drafts','delete') as "draftDelete",
+   app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.submit','view') as "submitView",app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.submit','execute') as submit,
+   app.claim_own_source_allowed(${employmentId}::uuid,'claims.own','delete') as cancel`);
+  return row??{view:false,draftView:false,draftAdd:false,draftEdit:false,draftDelete:false,submitView:false,submit:false,cancel:false};
+ });
+}
+
 export function ownClaimFormAvailable(ctx:SessionContext,employmentId:string):Promise<boolean>{
  return withTenant(ctx,async tx=>{
   if(!ctx.userId||!ctx.personId)throw new ClaimError('The own claim context is unavailable');
   const own=await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true});
   if(!own.some(row=>row.employmentId===employmentId))throw new ClaimError('The own claim context is unavailable');
+  const [admission]=await tx.execute<{allowed:boolean}>(sql`select app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.submit','view') or app.claim_own_source_allowed(${employmentId}::uuid,'claims.own.drafts','view') as allowed`);
+  if(!admission?.allowed)return false;
   const [row]=await tx.select({id:claimType.id}).from(claimType).where(isNull(claimType.archivedAt)).orderBy(claimType.id).limit(1);
   return Boolean(row);
  });
@@ -1775,6 +1790,8 @@ export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: s
   // the server will actually use, pending reservations included, or the screen and the refusal disagree.
   const usedStatuses: ClaimStatus[] = [...RESERVING_STATUSES];
   return withTenant(ctx, async (tx) => {
+    const [admission]=await tx.execute<{allowed:boolean}>(sql`select not app.claim_subject_is_own(${employmentId}::uuid) or app.claim_own_source_allowed(${employmentId}::uuid,'claims.own','view') as allowed`);
+    if(!admission?.allowed)throw new ClaimError('Own claim view unavailable');
     const [emp] = await tx.select({ gradeId: employment.gradeId }).from(employment).where(eq(employment.id, employmentId)).limit(1);
     const gradeId = emp?.gradeId ?? null;
     const types = await tx.select().from(claimType).where(isNull(claimType.archivedAt)).orderBy(claimType.code);
@@ -2989,29 +3006,14 @@ export async function deleteClaimDraft(
   /** M11: the mobile command receipt's transaction (withClaimsTx). Web callers pass none. */
   existingTx?: Tx,
 ): Promise<void> {
-  await withClaimsTx(ctx, existingTx, async (tx) => {
-    const [claim] = await tx
-      .select({ id: claimRequest.id, status: claimRequest.status, employmentId: claimRequest.employmentId })
-      .from(claimRequest)
-      .where(eq(claimRequest.id, claimRequestId))
-      .limit(1)
-      .for('update');
-    if (!claim) throw new ClaimError('Claim not found');
+  await withClaimsTx(ctx,existingTx,async tx=>{
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    const [claim]=await tx.select({id:claimRequest.id,status:claimRequest.status,employmentId:claimRequest.employmentId}).from(claimRequest).where(eq(claimRequest.id,claimRequestId)).limit(1).for('update');
+    if(!claim)throw new ClaimError('Claim not found');
     if(expectedEmploymentId!==undefined&&claim.employmentId!==expectedEmploymentId)throw new ClaimError('Draft does not belong to the selected employment');
-    if (claim.status !== 'draft') throw new ClaimError('Only a draft claim can be deleted');
-    await assertDraftOwner(tx, ctx, claim.employmentId);
-    await tx.delete(claimAttachment).where(eq(claimAttachment.claimRequestId, claim.id));
-    await tx.delete(claimRequest).where(eq(claimRequest.id, claim.id));
-    // Appended AFTER the delete and deliberately outside the aggregate's own row: the event is the only
-    // remaining record that the draft existed.
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'claim-request',
-      aggregateId: claim.id,
-      eventType: 'claim-request.draft-deleted',
-      actor: actorOf(ctx),
-      subjectEmploymentId: claim.employmentId,
-    });
+    if(claim.status!=='draft')throw new ClaimError('Only a draft claim can be deleted');
+    await assertDraftOwner(tx,ctx,claim.employmentId);
+    await tx.execute(sql`select app.claim_draft_delete_native(${claimRequestId}::uuid,${expectedEmploymentId??null}::uuid)`);
   });
 }
 

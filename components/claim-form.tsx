@@ -89,6 +89,8 @@ export function ClaimForm({
   todayUtc,
   draft,
   employmentId,
+  allowSave=true,
+  allowSubmit=true,
 }: {
   types: ClaimFormType[];
   submitAction: Action;
@@ -96,6 +98,8 @@ export function ClaimForm({
   /** Present ⇒ the form is EDITING this draft: Save updates it in place, Submit files that same row. */
   draft?: ClaimDraftPrefill;
   employmentId?:string;
+  allowSave?:boolean;
+  allowSubmit?:boolean;
 }) {
   const t = useTranslations('claims');
   const [typeId, setTypeId] = useState(draft?.claimTypeId ?? types[0]?.id ?? '');
@@ -346,10 +350,10 @@ export function ClaimForm({
       {/* Two submitters on one form. The draft button carries name/value so the server action can tell
           which was pressed; the primary button carries none, so `intent` is absent on a real submit. */}
       <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-        <Button type="submit" disabled={isPending}>
+        <Button type="submit" disabled={isPending||!allowSubmit}>
           {isPending ? t('submitting') : draft ? t('submitDraft') : t('submit')}
         </Button>
-        <Button type="submit" name="intent" value="draft" variant="secondary" disabled={isPending}>
+        <Button type="submit" name="intent" value="draft" variant="secondary" disabled={isPending||!allowSave}>
           {draft ? t('updateDraft') : t('saveDraft')}
         </Button>
         <span className="text-xs text-muted-foreground">{t('draftHint')}</span>
