@@ -4,7 +4,7 @@
  *  1. switch: refuses unless a test enables it, or the tenant's Noveri conversation switch issued a single-use
  *     permit for this tenant and login (./permit.ts; only core/teras-wiring imports this module);
  *  2. pre-read gate (lib/product-context/request-gate.ts gateTurn) on the person's own words, with the spec's
- *     sensitive topics: a workplace-harms request ends here with the spec's fixed refusal, a crisis turn with the
+ *     sensitive topics: a workplace-harms or rule-override request ends here with the spec's fixed refusal, a crisis turn with the
  *     spec's fixed safe message and the contact route, and every other sensitive topic with the contact route,
  *     all without a model call;
  *  3. offer: the caller's candidate tools (./tools.ts), filtered by the gate, the spec's offer policy and the
@@ -106,7 +106,7 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  if(options.enabled===HARNESS_TEST_ONLY?!testProcess():!consumeHarnessPermit(options.enabled,options.ctx.tenantId,options.ctx.userId))throw new HarnessDisabled();
  const clock=options.clock??(()=>new Date()),started=clock(),startedMs=Date.now(),{ctx,model}=options;
  const callerKey=authorityKey(ctx),gate=gateTurn(options.question,{sensitive:S.sensitive.topics}),admin=isAdmin(ctx);
- const reason=gate.privateReads?null:gate.reason,refused=reason==='workplace_harm',crisis=reason==='sensitive_crisis',routed=isSensitiveReason(reason);
+ const reason=gate.privateReads?null:gate.reason,refused=reason==='workplace_harm'||reason==='instruction_override',crisis=reason==='sensitive_crisis',routed=isSensitiveReason(reason);
  // Crisis turns never reach the model (run 41307457954: the provider answered every one with a bare refusal), and
  // since spec v6 no sensitive-topic turn does: the person's words about health, harassment, a grievance or a
  // threat of dismissal are not sent to a provider at all.
@@ -158,7 +158,7 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
 
  // Workplace-harms rule (principle 8) and sensitive topics: decided from the wording alone, before any model call.
  // A routed turn other than crisis is answered by the contact route alone (below).
- if(refused){reply=S.sensitive.workplaceHarmReply;mode='refuse';}
+ if(refused){reply=reason==='instruction_override'?S.sensitive.instructionOverrideReply:S.sensitive.workplaceHarmReply;mode='refuse';}
  else if(crisis)reply=S.sensitive.crisisReply;
  else if(routed)reply='';
  else for(;;){
@@ -229,7 +229,7 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  const shownReply=routed?[restoration.reply,routeReply()].filter(Boolean).join('\n\n'):restoration.reply;
  // The two transcripts part here: the person sees shownReply; a later model call may only see modelTurn.
  const modelTurn:readonly ModelHistoryMessage[]=Object.freeze([
-  Object.freeze({role:'user' as const,content:routed?S.history.routedQuestion:refused?S.history.refusedQuestion:question,side:'model' as const}),
+  Object.freeze({role:'user' as const,content:routed?S.history.routedQuestion:reason==='instruction_override'?S.history.overrideQuestion:refused?S.history.refusedQuestion:question,side:'model' as const}),
   Object.freeze({role:'assistant' as const,content:fallback||fixed?shownReply:modelSide(shown,ledger),side:'model' as const})]);
  const personTurn=Object.freeze([Object.freeze({role:'user' as const,content:options.question}),Object.freeze({role:'assistant' as const,content:shownReply})]);
  const finished=clock();
