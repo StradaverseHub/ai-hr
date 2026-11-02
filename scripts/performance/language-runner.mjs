@@ -1,5 +1,6 @@
 /** Development-only production renderer and durable job-owned PostgreSQL. No target credentials. */
 import assert from 'node:assert/strict';
+import {admitBuildHeap} from '../../.github/ci/build-heap.mjs';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {mkdirSync,writeFileSync,readFileSync,readdirSync,openSync,closeSync,copyFileSync} from 'node:fs';
@@ -94,7 +95,10 @@ const apps=[],appFds=[];let proxy,upstream,dbStarted=false;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
 try{
  for(const port of ports)await assertPortFree(port);await assertPortFree(3443);
- const buildEnv={...env,NODE_ENV:'production',NODE_OPTIONS:'--max-old-space-size=6144'};
+ // Use the existing exact 8192-MiB hosted-build admission; runtime stays 4096 MiB.
+ const admission=admitBuildHeap({...env,AIHR_CI_BUILD_HEAP_MB:'8192'},readFileSync('/proc/meminfo','utf8'));
+ report.buildHeapAdmission=admission;
+ const buildEnv={...env,NODE_ENV:'production',NODE_OPTIONS:admission.nodeOptions,AIHR_CI_BUILD_HEAP_PROFILE:admission.profile,AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB:String(admission.memTotalKiB)};
  for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])buildEnv[key]='postgres://nobody:nothing@127.0.0.1:1/no_database';
  await run('postgres','bash',['.github/ci/postgres.sh','reset']);dbStarted=true;
  await run('migrate','pnpm',['db:migrate']);
@@ -102,7 +106,7 @@ try{
  await run('catalogs',process.execPath,['--import','tsx','scripts/seed-catalogs.ts']);
  await run('fixture',process.execPath,['--import','tsx','scripts/performance/language-fixture.mjs'],{...env,NODE_ENV:'development',TEST_DATABASE_URL:env.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:env.MIGRATION_DATABASE_URL},600000);
  // Refuse invalid database/role/fixture setup before paying for the production build.
- await run('build','pnpm',['build'],buildEnv);
+ await run('build',process.execPath,['.github/ci/build-heap.mjs','measure',join(out,'build-memory'),'--','pnpm','build'],buildEnv);
  report.buildId=readFileSync('.next/BUILD_ID','utf8').trim();
 
  await run('certificate','openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(privateDir,'key.pem'),'-out',join(privateDir,'cert.pem'),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost']);
