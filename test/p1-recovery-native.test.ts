@@ -3,7 +3,7 @@ import {afterAll,beforeEach,expect,it,vi} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {hireEmployee} from '../core/org';
 import {createClaimType,saveClaimDraft,submitDraftClaims} from '../packs/claims/service';
-import {assignRosterRow,createShift} from '../packs/attendance/service';
+import {assignRosterRow,createShift} from '../core/roster';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {publicErrorMessage} from '../lib/public-error';
 import {isDatabaseError} from '../lib/db-error';

@@ -20,3 +20,13 @@ describe('fixture target and exact-owned data admission',()=>{
   expect(()=>assertOwnedFixtureRows(original,[])).toThrow();
  });
 });
+
+// The actual entrypoints must reject the target before a database query, not only expose a pure guard.
+it.each(['scripts/dev-fixture-onehr.ts','scripts/dev-fixture-pooled-leave.ts'])('%s refuses an unowned target before fixture work',async script=>{
+ const {spawnSync}=await import('node:child_process');
+ const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('WORKOS_')));
+ const closed='postgres://nobody:nothing@127.0.0.1:1/not_a_fixture';
+ const result=spawnSync(process.execPath,['--import','tsx',script],{encoding:'utf8',timeout:15000,env:{...env,NODE_ENV:'test',MIGRATION_DATABASE_URL:closed,DATABASE_URL:closed}});
+ expect(result.error).toBeUndefined();expect(result.status).toBe(1);expect(result.stdout+result.stderr).toContain('disposable fixture target');
+ expect(result.stdout+result.stderr).not.toMatch(/ECONNREFUSED|insert into|delete from|update tenant_module/i);
+});
