@@ -1,5 +1,5 @@
 -- BK48: any-company history visibility is not custody of a whole multi-company file.
--- Keep safe metadata and per-company item policies; private source/plan material is read
+-- Keep safe metadata through fixed views and per-company item policies; whole rows are read
 -- only by a current principal authorized for EVERY company. No historical rows change.
 CREATE FUNCTION app.import_attempt_private(wanted uuid) RETURNS SETOF public.import_attempt
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -23,10 +23,29 @@ $$;
 REVOKE ALL ON FUNCTION app.import_attempt_history_plan(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.import_attempt_history_plan(uuid) TO ai_hr_app;
 --> statement-breakpoint
-REVOKE SELECT ON public.import_attempt FROM PUBLIC,ai_hr_app;
-REVOKE SELECT(source_content,plan) ON public.import_attempt FROM PUBLIC,ai_hr_app;
-GRANT SELECT(id,tenant_id,kind,created_by,operation_key,source_name,mime_type,source_hash,company_ids,created_at)
- ON public.import_attempt TO ai_hr_app;
+-- Tuple-local proof also admits INSERT RETURNING: a STABLE table-reading helper cannot
+-- see its own new row in that command. Empty/unreadable attempts remain creator-only.
+CREATE POLICY import_attempt_whole_file_read ON public.import_attempt AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+  AND CASE WHEN cardinality(company_ids)=0 THEN created_by=app.current_user_id()
+   ELSE NOT EXISTS(SELECT 1 FROM unnest(company_ids) c WHERE NOT app.import_company_access(kind,c,'view')) END);
+-- The immutable archived worker reads the whole physical row. Its privilege is safe ONLY
+-- together with the restrictive full-custody row policy above, never by a grant alone.
+REVOKE SELECT ON public.import_attempt FROM PUBLIC;
+REVOKE SELECT(source_content,plan) ON public.import_attempt FROM PUBLIC;
+GRANT SELECT ON public.import_attempt TO ai_hr_app;
+--> statement-breakpoint
+-- Definer view: do not set security_invoker. The owner reads the physical relation, while
+-- this fixed fresh-principal/any-company guard and safe projection own partial metadata.
+CREATE VIEW app.import_attempt_history WITH (security_barrier=true) AS
+ SELECT a.id,a.tenant_id,a.kind,a.created_by,a.operation_key,a.source_name,a.mime_type,
+  a.source_hash,a.company_ids,app.import_attempt_history_plan(a.id) AS plan,a.created_at
+ FROM public.import_attempt a
+ WHERE a.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+  AND app.import_attempt_access(a.id,'view',false)
+  AND app.information_import_history_access(a.id);
+REVOKE ALL ON app.import_attempt_history FROM PUBLIC;
+GRANT SELECT ON app.import_attempt_history TO ai_hr_app;
 
 --> statement-breakpoint
 -- Failed reverts retain private item labels/blockers; successful reverts retain free-text
@@ -51,9 +70,23 @@ $$;
 REVOKE ALL ON FUNCTION app.import_attempt_event_body(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.import_attempt_event_body(uuid) TO ai_hr_app;
 --> statement-breakpoint
-REVOKE SELECT ON public.import_attempt_event FROM PUBLIC,ai_hr_app;
-REVOKE SELECT(reason,detail) ON public.import_attempt_event FROM PUBLIC,ai_hr_app;
-GRANT SELECT(id,tenant_id,attempt_id,kind,actor_id,created_at) ON public.import_attempt_event TO ai_hr_app;
+CREATE POLICY import_attempt_event_whole_file_read ON public.import_attempt_event AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+  AND app.import_attempt_access(attempt_id,'view',true));
+REVOKE SELECT ON public.import_attempt_event FROM PUBLIC;
+REVOKE SELECT(reason,detail) ON public.import_attempt_event FROM PUBLIC;
+GRANT SELECT ON public.import_attempt_event TO ai_hr_app;
+--> statement-breakpoint
+CREATE VIEW app.import_attempt_event_history WITH (security_barrier=true) AS
+ SELECT e.id,e.tenant_id,e.attempt_id,e.kind,e.actor_id,e.created_at,
+  app.import_attempt_event_body(e.id)->>'reason' AS reason,
+  app.import_attempt_event_body(e.id)->'detail' AS detail
+ FROM public.import_attempt_event e
+ WHERE e.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+  AND app.import_attempt_access(e.attempt_id,'view',false)
+  AND app.information_import_history_access(e.attempt_id);
+REVOKE ALL ON app.import_attempt_event_history FROM PUBLIC;
+GRANT SELECT ON app.import_attempt_event_history TO ai_hr_app;
 --> statement-breakpoint
 -- Central audit selects full payloads. It must use whole-file custody, not coarse admin
 -- status or any-company history visibility. Scoped metadata remains in import history.
