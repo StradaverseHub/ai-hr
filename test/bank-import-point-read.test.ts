@@ -9,6 +9,9 @@ import {createBankImportJob,uploadBankImportChunk,bankImportCommand,getBankImpor
 import {processBankImportJob} from '../core/bank-import-worker';
 import {parseCsvRecords} from '../lib/csv';
 import {pgErrorChain,pgSqlState} from '../lib/db-error';
+import {accessConfigurationStore} from '../core/access-configuration-store';
+import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
+import {publishWorkforceForDataFixture} from './helpers/workforce-publication-fixture';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 const HINT='app.bank_import_point_read';
@@ -17,6 +20,7 @@ const policyRows=async()=>[...await owner.client`select policyname,permissive,ro
 const functionRow=async()=>[...await owner.client`select pg_get_functiondef(p.oid) as definition,p.proowner,p.proacl,p.proconfig from pg_proc p where p.oid='app.visible_employment_ids()'::regprocedure`];
 let b:Base,ctx:SessionContext,target:{id:string;personId:string},baseline:Awaited<ReturnType<typeof policyRows>>=[],definition:Awaited<ReturnType<typeof functionRow>>=[];
 let poolTouched=false;
+const publicationCleanups:(()=>Promise<void>)[]=[];
 
 // Reserve the entire private test-process pool, rather than querying an arbitrary
 // connection and pretending that it proves the writer connection was restored.
@@ -93,7 +97,7 @@ describe('Bank point-read hint remains an optimization with current write permis
     await owner.client.unsafe('DROP SCHEMA IF EXISTS ci_bank_point_read CASCADE');
     expect(await policyRows()).toEqual(baseline);expect(await functionRow()).toEqual(definition);
    }
-  }finally{if(poolTouched)await poolHint('');}
+  }finally{if(poolTouched)await poolHint('');for(const clean of publicationCleanups.splice(0).reverse())await clean();}
  });
  afterAll(closeAll);
  it('preserves denied writes, explicit WITH CHECK and void/foreign fences even for forged hints',async()=>{
@@ -123,6 +127,23 @@ describe('Bank point-read hint remains an optimization with current write permis
     expect(await scoped(ctx,tx=>tx.update(schema.employment).set({employeeCode:'POINT001'}).where(eq(schema.employment.id,target.id)).returning({id:schema.employment.id}))).toEqual([{id:target.id}]);
    }
   expect(await owner.client`select to_jsonb(e) as value from employment e order by id`).toEqual(baselineRows);
+ });
+
+ it('keeps the optimized lookup identical to the bounded reader across a retained company denial',async()=>{
+  await publishWorkforceForDataFixture(ctx,publicationCleanups);
+  const [secondary]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional retained secondary company'}).returning();
+  await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId:target.personId,companyId:secondary.id,employeeCode:'POINT-RELATED',hiredOn:'2026-01-05'});
+  const codes=JSON.stringify(['POINT001','POINT002']);
+  const optimized=(actor:SessionContext)=>withTenant(actor,tx=>tx.execute(sql`select * from app.bank_import_subjects(${codes}::jsonb) order by employee_code`));
+  const original=(actor:SessionContext)=>owner.withTenant(actor,tx=>tx.execute(sql`select * from app.workforce_bank_import_subjects_native(${codes}::jsonb) order by employee_code`));
+  expect(await optimized(ctx)).toEqual(await original(ctx));expect(await optimized(ctx)).toHaveLength(2);
+  const current=await withTenant(ctx,tx=>accessConfigurationStore.loadCurrent(tx,ctx));
+  const request={expectedRevision:current.snapshot.revision,command:{kind:'setOverride' as const,userId:b.adminUserId,capabilityId:'workforce.view',companyId:secondary.id,effect:'deny' as const}};
+  const preview=await previewAccessConfiguration(ctx,request,accessConfigurationStore);
+  await saveAccessConfiguration(ctx,{...request,previewFingerprint:preview.fingerprint},accessConfigurationStore);
+  const actual=await optimized(ctx);expect(actual).toEqual(await original(ctx));expect(actual).toHaveLength(1);
+  expect(actual[0]).toMatchObject({employee_code:'POINT002'});
+  await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.workforce_bank_import_subjects_native(${codes}::jsonb)`))).rejects.toThrow();
  });
 
  it('runs the canonical native writer with the marker and restores the SAME backend after commit',async()=>{

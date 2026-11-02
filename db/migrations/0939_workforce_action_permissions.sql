@@ -2331,24 +2331,65 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.workforce_section_import_allowed(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.workforce_section_import_allowed(uuid,text) TO ai_hr_app;
--- Keep the original native point reader and its Data-aware Workforce projection
--- intact behind one private OID. The public import reader adds only its own View
--- course; it cannot be used as an alternate read after that function is denied.
+-- The profiled course retains the exact native reader. With no profile, evaluate
+-- the same company and shared-person denial predicates once per real company.
 ALTER FUNCTION app.bank_import_subjects(jsonb) RENAME TO workforce_bank_import_subjects_native;
 REVOKE ALL ON FUNCTION app.workforce_bank_import_subjects_native(jsonb) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.bank_import_subjects(p_codes jsonb)
 RETURNS TABLE(employment_id uuid,person_id uuid,company_id uuid,employee_code text,hired_on date,
  card_id text,attendance_photo_setting text,payment_method text,full_name text,primary_email text,phone text,country text,statutory jsonb)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- WITH native AS MATERIALIZED (
-   SELECT * FROM app.workforce_bank_import_subjects_native(p_codes)
- ), permitted AS MATERIALIZED (
-   SELECT companies.company_id
-   FROM (SELECT DISTINCT native.company_id FROM native) companies
-   WHERE app.workforce_section_import_allowed(companies.company_id,'view')
- )
- SELECT native.* FROM native JOIN permitted USING (company_id);
-$$;
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE tenant uuid:=app.current_tenant_id();actor uuid:=app.current_user_id();
+BEGIN
+ IF jsonb_typeof(p_codes) IS DISTINCT FROM 'array' OR jsonb_array_length(p_codes)>1000 OR NOT app.principal_snapshot_current() THEN
+  RAISE EXCEPTION 'Import subject lookup refused' USING ERRCODE='42501';
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.user_data_permission_assignment assignment WHERE assignment.tenant_id=tenant AND assignment.user_id=actor) THEN
+  RETURN QUERY
+   WITH native AS MATERIALIZED (SELECT * FROM app.workforce_bank_import_subjects_native(p_codes)),
+   permitted AS MATERIALIZED (
+    SELECT companies.company_id FROM (SELECT DISTINCT native.company_id FROM native) companies
+    WHERE app.workforce_section_import_allowed(companies.company_id,'view')
+   )
+   SELECT native.* FROM native JOIN permitted ON permitted.company_id=native.company_id;
+  RETURN;
+ END IF;
+ -- The verified login has no assigned profile. The canonical data match in
+ -- this case is existence of the exact active employment and person, proved
+ -- here before consulting either administrative scope.
+ RETURN QUERY
+  WITH subjects AS MATERIALIZED (
+   SELECT e.id,e.person_id,e.company_id,e.employee_code,e.hired_on,e.card_id,e.attendance_photo_setting::text,e.payment_method::text,
+    p.full_name,p.primary_email,p.phone
+   FROM public.employment e JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+   WHERE e.tenant_id=tenant AND e.voided_at IS NULL AND p.voided_at IS NULL
+    AND e.employee_code=ANY(ARRAY(SELECT jsonb_array_elements_text(p_codes)))
+  ), admitted_company AS MATERIALIZED (
+   SELECT company.id,company.country FROM (SELECT DISTINCT subject.company_id FROM subjects subject) nominated
+   JOIN public.company company ON company.tenant_id=tenant AND company.id=nominated.company_id
+   WHERE app.is_admin_for(company.id) AND app.access_workforce_company(company.id,'workforce.view')
+    AND app.workforce_section_import_allowed(company.id,'view')
+  ), related AS MATERIALIZED (
+   SELECT DISTINCT retained.person_id,retained.company_id FROM (SELECT DISTINCT subject.person_id FROM subjects subject) selected_person
+   JOIN public.employment retained ON retained.tenant_id=tenant AND retained.person_id=selected_person.person_id
+  ), denied_company AS MATERIALIZED (
+   SELECT DISTINCT nominated.company_id FROM (SELECT DISTINCT related.company_id FROM related) nominated
+   WHERE NOT app.access_workforce_not_denied(nominated.company_id,'workforce.view')
+  ), blocked_person AS MATERIALIZED (
+   SELECT DISTINCT related.person_id FROM related JOIN denied_company ON denied_company.company_id=related.company_id
+  )
+  SELECT subject.id,subject.person_id,subject.company_id,subject.employee_code,subject.hired_on,
+   subject.card_id,subject.attendance_photo_setting,subject.payment_method,subject.full_name,subject.primary_email,subject.phone,
+   company.country,CASE WHEN statutory_row.id IS NULL THEN NULL ELSE to_jsonb(statutory_row)||jsonb_build_object(
+    'epf_employee_rate',statutory_row.epf_employee_rate::text,'epf_employer_rate',statutory_row.epf_employer_rate::text,
+    'epf_employee_amount',statutory_row.epf_employee_amount::text,'epf_employer_amount',statutory_row.epf_employer_amount::text,
+    'tp3_net_remuneration',statutory_row.tp3_net_remuneration::text,'tp3_epf_claimed',statutory_row.tp3_epf_claimed::text,
+    'tp3_pcb_paid',statutory_row.tp3_pcb_paid::text,'tp3_zakat_paid',statutory_row.tp3_zakat_paid::text,'tp3_lp',statutory_row.tp3_lp::text,
+    'zakat_percent',statutory_row.zakat_percent::text,'zakat_fixed',statutory_row.zakat_fixed::text) END
+  FROM subjects subject JOIN admitted_company company ON company.id=subject.company_id
+  LEFT JOIN public.employee_statutory_my statutory_row ON statutory_row.tenant_id=tenant AND statutory_row.person_id=subject.person_id
+  WHERE NOT EXISTS(SELECT 1 FROM blocked_person blocked WHERE blocked.person_id=subject.person_id);
+END $$;
 REVOKE ALL ON FUNCTION app.bank_import_subjects(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.bank_import_subjects(jsonb) TO ai_hr_app;
 
