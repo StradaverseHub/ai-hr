@@ -90,9 +90,11 @@ fixture; installed privileges, RLS ownership and the final private API are not i
 The private experiment uses published7cfcebef22e7b2acfcd7a7ea86de35a5059ef1bd, before
 an unrelated incomplete financial migration. Its complete0936, projection section,
 read-snapshot wrapper and Access lock owner match published605baf23. The latter fails
-migration and compiler prerequisites below. Latest read-only local owner observation
-is cleaneaab8f346c5991005b196c77af0e4d5029ad2ea9, but remote still resolves605b.
-Its complete0936 and projection section remain identical; other contracts differ.
+migration and compiler prerequisites below. The historical local owner observation
+at this review was cleaneaab8f346c5991005b196c77af0e4d5029ad2ea9. That local
+observation is not a current published dependency or handoff. A fresh fetch on
+3 November still resolves remote605b; see the current-main review. The historically
+compared complete0936/projection section matched; other contracts differed.
 No foreign WIP/source is copied or independently edited, and no handoff is inferred.
 
 |Absent from published605b|Local introduction, not a cherry-pick instruction|

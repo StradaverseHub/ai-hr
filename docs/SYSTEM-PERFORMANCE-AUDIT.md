@@ -1,3 +1,16 @@
+## Current-main Personnel candidate: focused checks and whole compiler pass
+
+A minimal five-file candidate `3eab8c7b8` on fresh main `dfbcf85b1` passes all123
+checks across ten affected files in41488356642. Native controls prove projection3→1;
+exact rows/order/totals/facets and tenant boundaries remain unchanged. Current-main's
+exclusive Access barrier and eager chooser remain. The matched512-record component
+mean177.83→74.67ms has a slow first pair and is not full-page or500-user acceptance.
+The fresh whole compiler passes. This separate branch does not incorporate the private
+native optimization or transfer the diverged umbrella source. Published security605b
+still lacks three required contracts; unpublished local owner work is not adopted.
+See [current-main review](reviews/system-performance-personnel-current-main-20261103.md).
+No deployment or release admission; original500 acceptance remains0/2.
+
 ## Current result: Personnel read qualified; whole-system500-user target remains unmet
 
 The Personnel page now reuses one existing authorized Workforce projection for its
