@@ -598,6 +598,17 @@ describe('Lifecycle module', () => {
       expect((await getCase(agent, 'onboarding', fresh.number)).steps.some((s) => s.key === 'seat')).toBe(false);
     });
 
+    it('allocates distinct maximum-length generated keys in all three configuration owners', async () => {
+      const label='a'.repeat(40);
+      await saveStepDefs(admin,'onboarding',[{label,phase:ONBOARDING_STEPS[0]!.phase},{label,phase:ONBOARDING_STEPS[0]!.phase}]);
+      await saveProvisionDefs(admin,'requisition',null,[{name:label},{name:label}]);
+      await saveCustomFields(admin,'onboarding',[{label},{label}]);
+      const steps=(await owner.db.select().from(schema.lcStepDef).where(eq(schema.lcStepDef.label,label))).map(r=>r.stepKey);
+      const provisions=(await owner.db.select().from(schema.itProvisionDef).where(eq(schema.itProvisionDef.name,label))).map(r=>r.itemKey);
+      const fields=(await owner.db.select().from(schema.lcCustomField).where(eq(schema.lcCustomField.label,label))).map(r=>r.fieldKey);
+      for(const keys of [steps,provisions,fields])expect(keys.sort()).toEqual([label,'a'.repeat(38)+'_2'].sort());
+    });
+
     it('custom fields: validated, company-scoped, capped at 40, staff-only values', async () => {
       await rejects(saveCustomFields(manager, 'onboarding', [{ label: 'X' }]), /administrator/);
       await saveCustomFields(admin, 'onboarding', [
