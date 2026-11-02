@@ -1,3 +1,4 @@
+import {assertModuleFunctionTx} from './module-action-access';
 /** Schedule Group cycle owner. Immutable dated versions; raw attendance is never recalculated here. */
 import { createHash } from 'node:crypto';
 import { asc, eq, inArray, sql } from 'drizzle-orm';
@@ -70,6 +71,7 @@ export async function saveScheduleRotation(ctx: SessionContext, p: {
   // A new optional Attendance configuration write; shared tx readers stay available to core Leave.
   assertModuleGate(ctx,'attendance');
   return withTenant(ctx, async tx => {
+    await assertModuleFunctionTx(tx,'attendancePolicy.schedule','edit');
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     const [authority] = await tx.execute(sql`select app.is_group_admin() as allowed`) as unknown as { allowed: boolean }[];
     if (!authority?.allowed) throw new Error('A group-wide HR administrator is required to change tenant-wide schedule rotations.');

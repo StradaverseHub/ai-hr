@@ -12,8 +12,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   WHERE u.tenant_id=p_tenant AND u.id=p_user AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
    AND CASE WHEN split_part(p_capability,'.',1) LIKE '%_configuration' THEN
     p_company IS NULL AND r.role::text IN ('hr_admin','super_admin')
-   ELSE p_company IS NOT NULL AND r.role::text=ANY(CASE WHEN split_part(p_capability,'.',1)='attendance' THEN ARRAY['hr_admin','super_admin','payroll_partner'] ELSE ARRAY['hr_admin','super_admin'] END)
-    AND app.access_scope_covers(r.company_id,p_company,p_tenant) END);
+   ELSE r.role::text=ANY(CASE WHEN split_part(p_capability,'.',1)='attendance' THEN ARRAY['hr_admin','super_admin','payroll_partner'] ELSE ARRAY['hr_admin','super_admin'] END)
+    AND CASE WHEN p_company IS NULL THEN r.company_id IS NULL ELSE app.access_scope_covers(r.company_id,p_company,p_tenant) END END);
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.module_action_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
@@ -30,6 +30,23 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.module_action_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.module_action_current_native_default(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
+ AND app.module_action_legacy_allowed(t,u,cap,co)
+ AND CASE WHEN co IS NULL AND cap ~ '^(claims|leave|attendance)\.' THEN EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.company_id IS NULL AND g.role=ANY(CASE WHEN cap LIKE 'attendance.%' THEN ARRAY['hr_admin','super_admin','payroll_partner'] ELSE ARRAY['hr_admin','super_admin'] END))
+  ELSE app.module_action_current_legacy_allowed(t,u,cap,co) END;
+$$;
+REVOKE ALL ON FUNCTION app.module_action_current_native_default(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.module_action_delegation_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.module_action_current_native_default(t,u,cap,co)
+ AND (cap !~ '^(leave_configuration|attendance_configuration)\.(add|edit|delete)$' OR app.is_group_admin())
+ AND (cap !~ '^attendance\.(add|edit|delete)$' OR CASE WHEN co IS NULL THEN app.is_group_admin() ELSE app.is_admin_for(co) END);
+$$;
+REVOKE ALL ON FUNCTION app.module_action_delegation_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.module_action_allowed(p_domain text,p_operation text,p_company uuid DEFAULT NULL) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -172,7 +189,7 @@ CREATE CONSTRAINT TRIGGER claim_configuration_range_close AFTER UPDATE ON claim_
 CREATE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap
-  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types')
+  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','attendancePolicy.schedule')
   AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 --> statement-breakpoint
@@ -181,8 +198,8 @@ REVOKE ALL ON FUNCTION app.module_function_legacy_allowed(uuid,uuid,text,uuid) F
 CREATE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap
-  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types')
-  AND app.module_action_current_legacy_allowed(t,u,a.parent_capability,co));
+  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','attendancePolicy.schedule')
+  AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.module_function_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
@@ -202,7 +219,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT coalesce((SELECT app.module_action_allowed(split_part(a.parent_capability,'.',1),split_part(a.parent_capability,'.',2),p_company)
   AND app.function_action_allowed(p_key,p_operation,p_company)
   FROM app.access_function_action a WHERE a.function_key=p_key AND a.operation=p_operation
-   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types')),false);
+   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','attendancePolicy.schedule')),false);
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.module_function_allowed(text,text,uuid) FROM PUBLIC;
@@ -236,10 +253,10 @@ REVOKE ALL ON FUNCTION app.claim_own_native_allowed(uuid,uuid,text,uuid),app.cla
 DO $$ BEGIN
  PERFORM app.register_function_action('claims.own','view','company',NULL,'app.claim_own_current_native_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"own","employeeBearing":false}'::jsonb);
  PERFORM app.register_function_action('claims.own','delete','company',NULL,'app.claim_own_current_native_allowed','{}'::jsonb);
- PERFORM app.register_function_action('claims.administration','view','company','claims.view','app.module_action_current_legacy_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"administrative","employeeBearing":true}'::jsonb);
- PERFORM app.register_function_action('claims.administration','delete','company','claims.delete','app.module_action_current_legacy_allowed','{}'::jsonb);
- PERFORM app.register_function_action('claimsConfig.reimbursements','view','company','claims.view','app.module_action_current_legacy_allowed','{"moduleKey":"claims","labelKey":"admin.claimsTabs.reimbursements","kind":"submenu","course":"administrative","screenKey":"claimsConfig","href":"/admin/claims/reimbursements","employeeBearing":true}'::jsonb);
- PERFORM app.register_function_action('claimsConfig.reimbursements','execute','company','claims.edit','app.module_action_current_legacy_allowed','{}'::jsonb);
+ PERFORM app.register_function_action('claims.administration','view','company','claims.view','app.module_action_delegation_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"administrative","employeeBearing":true}'::jsonb);
+ PERFORM app.register_function_action('claims.administration','delete','company','claims.delete','app.module_action_delegation_allowed','{}'::jsonb);
+ PERFORM app.register_function_action('claimsConfig.reimbursements','view','company','claims.view','app.module_action_delegation_allowed','{"moduleKey":"claims","labelKey":"admin.claimsTabs.reimbursements","kind":"submenu","course":"administrative","screenKey":"claimsConfig","href":"/admin/claims/reimbursements","employeeBearing":true}'::jsonb);
+ PERFORM app.register_function_action('claimsConfig.reimbursements','execute','company','claims.edit','app.module_action_delegation_allowed','{}'::jsonb);
 END $$;
 --> statement-breakpoint
 CREATE FUNCTION app.claim_cancel_native(p_claim uuid,p_expected_employment uuid DEFAULT NULL) RETURNS TABLE(event_id uuid,employment_id uuid)
@@ -346,6 +363,10 @@ BEGIN
  IF coalesce(new_row->>'tenant_id',old_row->>'tenant_id') IS DISTINCT FROM app.current_tenant_id()::text
   OR TG_OP='UPDATE' AND (old_row->>'id' IS DISTINCT FROM new_row->>'id' OR old_row->>'tenant_id' IS DISTINCT FROM new_row->>'tenant_id') THEN RAISE EXCEPTION 'Module catalogue identity unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='UPDATE' AND old_row->>'archived_at' IS NULL AND new_row->>'archived_at' IS NOT NULL THEN operation:='delete';END IF;
+ -- Only a possible exact reference removal may wait for its actual deleted-source proof.
+ IF TG_TABLE_NAME='leave_type' AND TG_OP='UPDATE' AND old_row->>'balance_source_type_id' IS NOT NULL AND new_row->>'balance_source_type_id' IS NULL
+  AND (old_row-ARRAY['balance_source_type_id','updated_at']) IS NOT DISTINCT FROM (new_row-ARRAY['balance_source_type_id','updated_at'])
+  AND app.module_action_allowed('leave_configuration','delete',NULL) AND app.function_action_allowed('leaveConfig.types','delete',NULL) THEN RETURN NEW;END IF;
  IF NOT app.module_action_allowed(TG_ARGV[0],operation,NULL) OR NOT app.function_action_allowed(TG_ARGV[1],operation,NULL) THEN RAISE EXCEPTION 'Module catalogue action unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
 END; $$;
@@ -368,6 +389,159 @@ END; $$;
 REVOKE ALL ON FUNCTION app.module_configuration_write_lock() FROM PUBLIC,ai_hr_app;
 DO $$ DECLARE relation_name text;BEGIN
  FOREACH relation_name IN ARRAY ARRAY['claim_type','claim_item','claim_policy','claim_mileage_rate','claim_form_field','leave_type'] LOOP
+  EXECUTE format('CREATE TRIGGER module_configuration_write_lock BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock()',relation_name);
+ END LOOP;
+END $$;
+
+--> statement-breakpoint
+-- The native Schedule page lazily establishes its canonical Standard. This exact initializer is
+-- independent of manual Add; it accepts no row/threshold values and cannot edit an existing rule.
+CREATE TABLE app.module_standard_rule_effect(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,rule_id uuid NOT NULL,row_hash text NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,rule_id));
+REVOKE ALL ON app.module_standard_rule_effect FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.attendance_standard_rule_ensure() RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected_id uuid;source_policy public.attendance_policy%ROWTYPE;grace integer:=0;observed jsonb;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.module_action_allowed('attendance_configuration','view',NULL) OR NOT app.function_action_allowed('attendancePolicy.schedule','view',NULL) THEN RAISE EXCEPTION 'Schedule default unavailable' USING ERRCODE='42501';END IF;
+ IF current_setting('transaction_isolation')<>'read committed' OR current_setting('transaction_read_only')<>'off' OR NOT pg_try_advisory_xact_lock(hashtextextended('leave-dependency-configuration:'||app.current_tenant_id()::text,0)) THEN RAISE EXCEPTION 'Schedule source unavailable' USING ERRCODE='55P03';END IF;
+ SELECT r.id INTO selected_id FROM public.attendance_rule r WHERE r.tenant_id=app.current_tenant_id() AND r.is_default;
+ IF FOUND THEN RETURN jsonb_build_object('id',selected_id,'created',false);END IF;
+ SELECT p.* INTO source_policy FROM public.attendance_policy p WHERE p.tenant_id=app.current_tenant_id() ORDER BY p.created_at,p.id LIMIT 1;
+ IF FOUND THEN grace:=greatest(0,(extract(hour FROM source_policy.late_after)::integer*60+extract(minute FROM source_policy.late_after)::integer)-(extract(hour FROM source_policy.work_start)::integer*60+extract(minute FROM source_policy.work_start)::integer));END IF;
+ INSERT INTO public.attendance_rule(tenant_id,name,description,is_default,status,late_grace_period_minutes)
+ VALUES(app.current_tenant_id(),'Standard','Default attendance calculation rule.',true,'active',grace)
+ ON CONFLICT DO NOTHING RETURNING id,to_jsonb(attendance_rule) INTO selected_id,observed;
+ IF selected_id IS NULL THEN
+  SELECT r.id INTO selected_id FROM public.attendance_rule r WHERE r.tenant_id=app.current_tenant_id() AND r.is_default;
+  IF selected_id IS NULL THEN RAISE EXCEPTION 'Schedule default unavailable' USING ERRCODE='42501';END IF;
+  RETURN jsonb_build_object('id',selected_id,'created',false);
+ END IF;
+ DELETE FROM app.module_standard_rule_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.module_standard_rule_effect VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),selected_id,encode(sha256(convert_to(observed::text,'UTF8')),'hex'));
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+ VALUES(app.current_tenant_id(),'attendance-rule',selected_id,'attendance-rule.created','user',app.current_user_id(),'{"name":"Standard","isDefault":true,"seeded":true}'::jsonb);
+ RETURN jsonb_build_object('id',selected_id,'created',true);
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.attendance_standard_rule_ensure() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.attendance_standard_rule_ensure() TO ai_hr_app;
+--> statement-breakpoint
+CREATE TABLE app.module_attendance_rule_birth(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,rule_id uuid NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,rule_id));
+REVOKE ALL ON app.module_attendance_rule_birth FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.module_attendance_rule_birth_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ DELETE FROM app.module_attendance_rule_birth WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.module_attendance_rule_birth VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id);RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.module_attendance_rule_birth_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_attendance_rule_birth AFTER INSERT ON public.attendance_rule FOR EACH ROW EXECUTE FUNCTION app.module_attendance_rule_birth_record();
+--> statement-breakpoint
+CREATE FUNCTION app.module_attendance_rule_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+ parent_id uuid;old_parent uuid;actual_tenant uuid:=coalesce((after_row->>'tenant_id')::uuid,(before_row->>'tenant_id')::uuid);
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF actual_tenant IS DISTINCT FROM app.current_tenant_id() OR TG_OP='UPDATE' AND (before_row->>'tenant_id' IS DISTINCT FROM after_row->>'tenant_id' OR before_row->>'id' IS DISTINCT FROM after_row->>'id') THEN RAISE EXCEPTION 'Schedule identity unavailable' USING ERRCODE='42501';END IF;
+ IF TG_TABLE_NAME='attendance_rule' THEN
+  IF TG_OP<>'DELETE' AND NEW.company_id IS NOT NULL THEN RAISE EXCEPTION 'Schedule library is tenant-owned' USING ERRCODE='42501';END IF;
+  IF TG_OP='INSERT' AND EXISTS(SELECT 1 FROM app.module_standard_rule_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.rule_id=NEW.id AND proof.row_hash=encode(sha256(convert_to(after_row::text,'UTF8')),'hex'))
+   AND app.module_action_allowed('attendance_configuration','view',NULL) AND app.function_action_allowed('attendancePolicy.schedule','view',NULL) THEN RETURN NULL;END IF;
+  IF TG_OP='INSERT' AND NEW.is_default OR TG_OP='UPDATE' AND NEW.is_default IS DISTINCT FROM OLD.is_default THEN RAISE EXCEPTION 'Standard Schedule source unavailable' USING ERRCODE='42501';END IF;
+  IF TG_OP='UPDATE' AND OLD.status::text='active' AND NEW.status::text='inactive' THEN operation:='delete';END IF;
+ ELSE
+  parent_id:=coalesce((after_row->>'rule_id')::uuid,(before_row->>'rule_id')::uuid);
+  old_parent:=(before_row->>'rule_id')::uuid;
+  -- Physical OT-band replacement is one Edit of an existing Schedule, not Delete+Add. Initial
+  -- bands are Add only when their parent was actually inserted by this actor in this transaction.
+  operation:=CASE WHEN TG_OP='DELETE' AND EXISTS(SELECT 1 FROM app.module_configuration_removed source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=actual_tenant AND source.user_id=app.current_user_id() AND source.kind='attendance_rule' AND source.row_id=parent_id)
+   AND NOT EXISTS(SELECT 1 FROM public.attendance_rule parent WHERE parent.tenant_id=actual_tenant AND parent.id=parent_id) THEN 'delete'
+   WHEN EXISTS(SELECT 1 FROM app.module_attendance_rule_birth born WHERE born.xact_id=pg_current_xact_id() AND born.tenant_id=actual_tenant AND born.user_id=app.current_user_id() AND born.rule_id=parent_id) THEN 'add' ELSE 'edit' END;
+  IF old_parent IS NOT NULL AND old_parent IS DISTINCT FROM parent_id THEN RAISE EXCEPTION 'Schedule band cannot be reassigned' USING ERRCODE='42501';END IF;
+ END IF;
+ IF NOT app.module_action_allowed('attendance_configuration',operation,NULL) OR NOT app.function_action_allowed('attendancePolicy.schedule',operation,NULL) THEN RAISE EXCEPTION 'Schedule action unavailable' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.module_attendance_rule_guard() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER module_attendance_rule_guard AFTER INSERT OR UPDATE OR DELETE ON public.attendance_rule DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.module_attendance_rule_guard();
+CREATE CONSTRAINT TRIGGER module_attendance_rule_guard AFTER INSERT OR UPDATE OR DELETE ON public.attendance_rule_ot_row DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.module_attendance_rule_guard();
+CREATE TRIGGER module_configuration_write_lock BEFORE INSERT OR UPDATE OR DELETE ON public.attendance_rule FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+CREATE TRIGGER module_configuration_write_lock BEFORE INSERT OR UPDATE OR DELETE ON public.attendance_rule_ot_row FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+--> statement-breakpoint
+CREATE FUNCTION app.module_schedule_delegation_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.module_action_current_legacy_allowed(t,u,cap,co) AND (cap NOT IN ('attendance_configuration.add','attendance_configuration.edit') OR app.is_group_admin());
+$$;
+REVOKE ALL ON FUNCTION app.module_schedule_delegation_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+  PERFORM app.register_function_action('attendancePolicy.schedule',operation,'tenant','attendance_configuration.'||operation,'app.module_schedule_delegation_allowed','{"moduleKey":"attendance","labelKey":"nav.workSchedule","kind":"submenu","course":"administrative","screenKey":"attendancePolicy","href":"/admin/attendance/schedule","employeeBearing":false}'::jsonb);
+ END LOOP;
+END $$;
+
+--> statement-breakpoint
+-- Exact physical root removal witnesses let canonical Delete clean its own references/bands without
+-- granting arbitrary Edit. Every queued derived mutation must still match its finite source shape.
+CREATE TABLE app.module_configuration_removed(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,kind text NOT NULL,row_id uuid NOT NULL,source jsonb NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,kind,row_id));
+REVOKE ALL ON app.module_configuration_removed FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.module_configuration_removed_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ DELETE FROM app.module_configuration_removed WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.module_configuration_removed VALUES(pg_current_xact_id(),OLD.tenant_id,app.current_user_id(),TG_TABLE_NAME,OLD.id,to_jsonb(OLD));RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.module_configuration_removed_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_configuration_removed AFTER DELETE ON public.leave_type FOR EACH ROW EXECUTE FUNCTION app.module_configuration_removed_record();
+CREATE TRIGGER module_configuration_removed AFTER DELETE ON public.attendance_rule FOR EACH ROW EXECUTE FUNCTION app.module_configuration_removed_record();
+--> statement-breakpoint
+CREATE FUNCTION app.module_attendance_delete_floor() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN OLD;END IF;
+ IF NOT app.module_action_allowed('attendance_configuration','delete',NULL) OR NOT app.function_action_allowed('attendancePolicy.schedule','delete',NULL)
+  OR OLD.is_default OR EXISTS(SELECT 1 FROM public.attendance_rule_shift m WHERE m.tenant_id=OLD.tenant_id AND m.rule_id=OLD.id)
+  OR EXISTS(SELECT 1 FROM public.shift s WHERE s.tenant_id=OLD.tenant_id AND s.rule_id=OLD.id)
+  OR EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=OLD.tenant_id AND e.attendance_rule_id=OLD.id)
+  OR EXISTS(SELECT 1 FROM public.attendance_rotation r WHERE r.tenant_id=OLD.tenant_id AND r.rule_id=OLD.id)
+  OR EXISTS(SELECT 1 FROM public.attendance_exception_revision r WHERE r.tenant_id=OLD.tenant_id AND r.rule_id=OLD.id) THEN RAISE EXCEPTION 'Schedule deletion source unavailable' USING ERRCODE='42501';END IF;
+ RETURN OLD;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.module_attendance_delete_floor() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_attendance_delete_floor BEFORE DELETE ON public.attendance_rule FOR EACH ROW EXECUTE FUNCTION app.module_attendance_delete_floor();
+--> statement-breakpoint
+CREATE FUNCTION app.module_leave_type_reference_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() OR app.module_action_allowed('leave_configuration','edit',NULL) AND app.function_action_allowed('leaveConfig.types','edit',NULL) THEN RETURN NULL;END IF;
+ IF OLD.balance_source_type_id IS NOT NULL AND NEW.balance_source_type_id IS NULL AND (to_jsonb(OLD)-ARRAY['balance_source_type_id','updated_at']) IS NOT DISTINCT FROM (to_jsonb(NEW)-ARRAY['balance_source_type_id','updated_at'])
+ AND app.module_action_allowed('leave_configuration','delete',NULL) AND app.function_action_allowed('leaveConfig.types','delete',NULL)
+ AND EXISTS(SELECT 1 FROM app.module_configuration_removed source WHERE source.xact_id=pg_current_xact_id() AND source.tenant_id=OLD.tenant_id AND source.user_id=app.current_user_id() AND source.kind='leave_type' AND source.row_id=OLD.balance_source_type_id)
+ AND NOT EXISTS(SELECT 1 FROM public.leave_type parent WHERE parent.tenant_id=OLD.tenant_id AND parent.id=OLD.balance_source_type_id) THEN RETURN NULL;END IF;
+ RAISE EXCEPTION 'Leave type reference deletion source unavailable' USING ERRCODE='42501';
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.module_leave_type_reference_guard() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER module_leave_type_reference_guard AFTER UPDATE ON public.leave_type DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.module_leave_type_reference_guard();
+
+--> statement-breakpoint
+DO $$ DECLARE relation_name text;BEGIN
+ FOREACH relation_name IN ARRAY ARRAY['attendance_rule_shift','attendance_rotation','attendance_exception_revision'] LOOP
+  EXECUTE format('CREATE CONSTRAINT TRIGGER module_attendance_rule_guard AFTER INSERT OR UPDATE OR DELETE ON public.%I DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.module_attendance_rule_guard()',relation_name);
   EXECUTE format('CREATE TRIGGER module_configuration_write_lock BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock()',relation_name);
  END LOOP;
 END $$;

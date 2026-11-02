@@ -1,3 +1,4 @@
+import {assertModuleFunction} from '@/core/module-action-access';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -51,6 +52,7 @@ export default async function EditScheduleGroupPage({
   searchParams: Promise<{ error?: string; section?: string; typedWeek?: string; saveAck?: string }>;
 }) {
   const s = await requireAdmin();
+  await assertModuleFunction(s,'attendancePolicy.schedule','edit');
   const t = await getTranslations('admin.scheduleConfig');
   const { ruleId } = await params;
   const sp = await searchParams;
