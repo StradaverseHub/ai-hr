@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic} from '../lib/payroll-basic';
+import {eligibleWorkingDays,payrollIncrementBasic,payrollLegacyCombinedIncrementBasic,payrollRateBasic} from '../lib/payroll-basic';
 import {payrollProrationRatio,payrollProrationFactor} from '../lib/payroll-proration';
 it('counts the paid entity segment and excludes holidays across a leap-day month',()=>{
  expect(eligibleWorkingDays('2024-02','2024-02-26','2024-02-29',new Set(['2024-02-28']))).toBe(3);
@@ -35,4 +35,10 @@ it('includes every in-month salary interval rather than only the first and last'
  // Three ten-day intervals: 1000 + 1100 + 1300; independent of row ordering.
  expect(payrollIncrementBasic(rows,'2026-04-01','2026-04-30',30)).toBe(3400);
  expect(payrollIncrementBasic([...rows].reverse(),'2026-04-01','2026-04-30',30)).toBe(3400);
+});
+
+it('retains the explicitly deferred combined-case arithmetic independently of the repaired calendar owner',()=>{
+ const rows=[{basic:5000,validFrom:'2026-01-01',validTo:'2026-04-01'},{basic:3300,validFrom:'2026-04-01',validTo:'2026-04-16'},{basic:3600,validFrom:'2026-04-16',validTo:null}];
+ expect(payrollLegacyCombinedIncrementBasic(rows,'2026-04-01','2026-04-30',30)).toBe(4300);
+ expect(payrollIncrementBasic(rows,'2026-04-01','2026-04-30',30)).toBe(3450);
 });

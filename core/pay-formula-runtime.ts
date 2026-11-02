@@ -16,7 +16,7 @@ import {employment,companyPayrollConfig} from '../db/schema';
 import {eq} from 'drizzle-orm';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {holidayDatesFor} from './holidays';
-import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic,payrollRoundAmount} from '../lib/payroll-basic';
+import {eligibleWorkingDays,payrollIncrementBasic,payrollLegacyCombinedIncrementBasic,payrollRateBasic,payrollRoundAmount} from '../lib/payroll-basic';
 import {isModuleEnabled,settingEnabled} from './entitlements';
 import {payrollProrationRatio} from '../lib/payroll-proration';
 
@@ -187,11 +187,16 @@ export async function simulatePayFormulaTx(tx:Tx,ctx:SessionContext,formula:Acti
  const components:ResolvablePayComponent[]=[...recurring,...batchRows].map(r=>({...r,formulaInput:r.amount,amount:Number(r.amount)}));
  const ledger=settingEnabled(ctx,'payroll.individual_txn_pay_enabled')?await readPayrollIndividualLedgerTx(tx,{employmentIds:[context.employmentId],batchId:batch?.id,unattached:{companyId:context.companyId,payPeriod:context.period,payrollCycleId:batch?batch.payrollCycleId:context.cycleId,runType:batch?.runType??cycle.runType}}):[];
  for(const row of ledger)if(['earning','deduction'].includes(row.kind)&&row.compCode){const builder=row.compRule?.kind==='formula_builder';components.push({code:row.compCode,kind:row.compKind,amount:payrollRoundAmount(Number(row.amount)),formulaInput:row.amount,rule:builder?row.compRule:null,prorates:row.compProrates??false,prorateOverride:null,rounding:row.compRounding,oneOff:true,orpOvertime:false,orpUnpaidLeave:false,nonPayable:row.compNonPayable??false,resolutionOrder:builder?row.compResolutionOrder:0});}
+ // The deferred combinations deliberately preserve their old test-source clipping and blend.
+ const calendarIncrement=dates.hiredOn<start && (!dates.terminatedOn || dates.terminatedOn>end) &&
+   (segments.get(context.employmentId)?.length??0)<=1 && mine.from===start && mine.to===end &&
+   settings?.divisor!=='custom_days' && !usesWorkingDayProration(settings) &&
+   window.start===start && window.end===end;
  let paidBasic=payrollRateBasic(Number(salary.basic),legacyFactor),basicEvidence:unknown={salary,salaryDate};
  if(salary.payMode==='daily'){if(salary.rateAmount===null)throw unavailable('daily rate');const holidays=await holidayDatesFor(tx,{employmentId:context.employmentId,startDate:start,endDate:end}),days=eligibleWorkingDays(context.period,hired,terminated,holidays);paidBasic=payrollRateBasic(Number(salary.rateAmount),days);basicEvidence={salary,salaryDate,days,holidays:[...holidays].sort()};}
  else if(salary.payMode==='hourly'){if(salary.rateAmount===null)throw unavailable('hourly rate');paidBasic=payrollRateBasic(Number(salary.rateAmount),hours);basicEvidence={salary,salaryDate,hours};}
  else if(salary.payMode==='custom_period')throw unavailable('custom period pay');
- else if(cfg?.salaryIncrementProration){const rows=await tx.execute<{id:string;basic:string;validFrom:string;validTo:string|null}>(sql`select id,basic_salary as basic,valid_from::text as "validFrom",valid_to::text as "validTo" from compensation where employment_id=${context.employmentId}::uuid and valid_from<=${end}::date and (valid_to is null or valid_to>${start}::date) and superseded_at is null order by valid_from,id`),increment=payrollIncrementBasic(rows.map(r=>({...r,basic:Number(r.basic)})),start,end,dim);if(increment!==undefined){paidBasic=increment;basicEvidence={rows,salaryDate};}}
+ else if(cfg?.salaryIncrementProration){const rows=await tx.execute<{id:string;basic:string;validFrom:string;validTo:string|null}>(sql`select id,basic_salary as basic,valid_from::text as "validFrom",valid_to::text as "validTo" from compensation where employment_id=${context.employmentId}::uuid and valid_from<=${end}::date and (valid_to is null or valid_to>=${start}::date) and superseded_at is null order by valid_from,id`),increment=(calendarIncrement?payrollIncrementBasic:payrollLegacyCombinedIncrementBasic)(rows.map(r=>({...r,basic:Number(r.basic)})),start,end,dim);if(increment!==undefined){paidBasic=increment;basicEvidence={rows,salaryDate};}}
  const selectedCatalog=await tx.execute<ResolvablePayComponent>(sql`select code,kind,rule,prorates,rounding_method as rounding,resolution_order as "resolutionOrder" from pay_component where upper(trim(code))=${itemKey(context.currentCode)} and tenant_id=${ctx.tenantId}::uuid and archived_at is null`);if(selectedCatalog.length!==1||itemKey(selectedCatalog[0].code)==='BASIC')throw unavailable('selected Pay Item');const catalog=selectedCatalog[0];
  if(Number(context.input)<0||Number(context.input)>1e8)throw unavailable('current input amount');
  const selected={...catalog,amount:Number(context.input),formulaInput:normalizeFormulaDecimal(context.input),rule:{kind:'formula_builder' as const,formulaId:formula.formulaId,dependencies:formula.dependencies},resolutionOrder:100000};

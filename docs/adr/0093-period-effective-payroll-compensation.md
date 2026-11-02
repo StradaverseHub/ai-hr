@@ -33,3 +33,19 @@ New saved-basis arrears must remain correct with an already-visible future salar
 ## Consequences
 
 Entering a future salary no longer changes earlier payroll inputs. Whole-record selection prevents mixed salary/structure provenance. New slips explain which salary revision supplied their baseline; legacy history remains truthful about its earlier contract. Existing unsupported arrears cases stay under review. No live personnel/payroll audit, payroll certification, automatic historical correction, formula redesign, TOIL valuation change or global change to current-record administrative displays is authorized by this decision.
+
+## Audit R15 scope clarification (owner decision, 2026-11-02)
+
+Repair the salary-increment interval calculation only for an existing employee's complete month
+under the effective default calendar basis, without an in-month exit or employer split. Include
+all effective half-open compensation intervals; a row ending at month start contributes nothing.
+Explicitly configured calendar defaults remain this ordinary case.
+
+Preserve the existing combined-case calculation for hire, exit, employer transfer, custom salary
+cutoff, custom divisor and working-day basis pending a separate policy review. The named
+`payrollLegacyCombinedIncrementBasic` owner retains the previous first/latest calendar arithmetic
+and its existing source population for these cases. This is a compatibility decision, not a
+certification that the deferred arithmetic is financially correct. Do not introduce payable-day
+weighting or silently normalize formula-preview tenure/cutoff behavior in this repair. Native
+payroll and formula-preview compatibility controls must distinguish these retained outputs from
+the approved complete-calendar repair. Daily and hourly pay remain under their existing owners.

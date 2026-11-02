@@ -24,6 +24,20 @@ export function payrollIncrementBasic(
   }
   return round2(total / dim);
 }
+/** Owner-deferred combined cases retain their existing first/latest calendar blend.
+ * Do not replace this with payable-day weighting without the separate proration policy decision.
+ */
+export function payrollLegacyCombinedIncrementBasic(
+  rows: readonly {basic:number;validFrom:string;validTo:string|null}[],
+  periodStart:string, periodEnd:string, dim:number,
+):number|undefined {
+  if(rows.length<2)return undefined;
+  const ordered=[...rows].sort((a,b)=>a.validFrom.localeCompare(b.validFrom));
+  const old=ordered[0],latest=ordered[ordered.length-1];
+  if(latest.validFrom<=periodStart||latest.validFrom>periodEnd)return undefined;
+  const before=Math.max(0,Number(latest.validFrom.slice(8,10))-1),after=dim-before;
+  return round2((old.basic*before+latest.basic*after)/dim);
+}
 export function eligibleWorkingDays(
   payPeriod: string,
   hiredOn: string,
