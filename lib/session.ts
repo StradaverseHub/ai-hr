@@ -1,3 +1,4 @@
+import { profileDatabaseTransaction } from '../db/transaction-profile';
 import { internalSelected } from './internal-auth/config';
 import { keycloakSelected } from './identity/config';
 import { cache } from 'react';
@@ -180,9 +181,11 @@ function logThrottled(key: string, message: string, detail?: unknown): void {
 
 export async function withEntitlements(session: SessionContext): Promise<SessionContext> {
   try {
-    const snapshot = await client.begin((tx) =>
-      resolveEntitlementsInTenantTx((q, params) => tx.unsafe(q, params as never[]), session.tenantId),
-    );
+    const snapshot = await profileDatabaseTransaction('entitlements', (entered, left) => client.begin(async (tx) => {
+      entered();
+      try { return await resolveEntitlementsInTenantTx((q, params) => tx.unsafe(q, params as never[]), session.tenantId); }
+      finally { left(); }
+    }));
     // THE SILENT FAILURE, WHICH IS THE ONE ROUND 1 ACTUALLY SHIPPED (round 3's finding). The catch below
     // covers the loud path — an exception. The dangerous state is the query SUCCEEDING and returning no
     // tenant row: `toSnapshot` records TENANT_STATUS_UNRESOLVED, every billable module closes, and until

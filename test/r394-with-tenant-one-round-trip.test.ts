@@ -57,7 +57,7 @@ describe('r394 · withTenant session context in one round trip', () => {
   it('withTenant issues exactly ONE set_config statement for the four values', () => {
     const src = fs.readFileSync(path.join(process.cwd(), 'db/client.ts'), 'utf8');
     const start = src.indexOf('async function withTenant');
-    const end = src.indexOf('return fn(tx);', start);
+    const end = src.indexOf('return await fn(tx);', start);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start + 500);
     const body = src.slice(start, end);

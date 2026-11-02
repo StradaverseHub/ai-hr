@@ -1,3 +1,4 @@
+import { profileDatabaseTransaction } from './transaction-profile';
 import {applicationPoolMax} from '../lib/db-pool-size';
 /**
  * Database client + the RLS session wrapper (ADR-0002 / ADR-0004).
@@ -196,7 +197,9 @@ export function createDb(connectionString: string, options?: { max?: number }) {
     // Backward-compat: a context with only `roles` becomes group-wide grants (companyId null).
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
-    return db.transaction(async (tx) => {
+    return profileDatabaseTransaction('tenant', (entered, left) => db.transaction(async (tx) => {
+      entered();
+      try {
       // This existing cache only moves to true. Once armed, every arming decision
       // must stay on, so its SET LOCAL can share the session setup round trip.
       // Unknown tenants retain the original decision after setup: another transaction
@@ -275,8 +278,9 @@ export function createDb(connectionString: string, options?: { max?: number }) {
         // are SELECTs, which do not close the window for SET TRANSACTION.
         await tx.execute(sql`SET TRANSACTION READ ONLY`);
       }
-      return fn(tx);
-    }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined);
+      return await fn(tx);
+      } finally { left(); }
+    }, options?.readOnlySnapshot ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined));
   }
 
   return { db, client, withTenant };

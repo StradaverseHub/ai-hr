@@ -24,9 +24,15 @@ const env={...process.env,AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUIT
 for(const key of Object.keys(env))if(key.startsWith('WORKOS_')||key==='SHARE_PASSWORD'||key==='DEV_USER_ID')delete env[key];
 env.SHARE_PASSWORD='';env.DEV_USER_ID='';
 const workers=Number(process.env.PERF_APP_WORKERS||'1');assert([1,2].includes(workers));
+// Diagnostic-only envelope probes; SQL, policies, application/workload behavior and budgets unchanged.
+const applicationReference='07f07749fc3c9ea74c7769c032812723a4c74961';
+const diagnosticPaths=new Set(['db/client.ts','db/transaction-profile.ts','lib/session.ts','scripts/performance/system-runner.mjs','scripts/performance/transaction-profile-preload.mjs','scripts/performance/transaction-timing-collector.mjs','test/performance-transaction-timing.test.ts','test/performance-transaction-timing-native.test.ts','test/r394-with-tenant-one-round-trip.test.ts']);
+const changedPaths=git('diff','--name-only',applicationReference,'HEAD').split('\n').filter(Boolean);
+assert(changedPaths.every(path=>path.startsWith('docs/')||diagnosticPaths.has(path)),'Unexpected non-diagnostic source change');
+
 const ports=Array.from({length:workers},(_,index)=>3174+index),poolPerWorker=10/workers,heapPerWorker=4096/workers;
 const report={kind:'ISOLATED_HTTP_BROWSER_DEVELOPMENT_ONLY',releaseEligible:false,sha,controller:process.env.AIHR_CI_CONTROL_HEAD,
- run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,topology:{workers,poolPerWorker,totalApplicationPool:10,heapMiBPerWorker:heapPerWorker,totalHeapMiB:4096,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host:{cpus:os.availableParallelism(),memoryBytes:os.totalmem()},phases:[],exitCode:1};
+ run:process.env.GITHUB_RUN_ID,runtime:{node:process.version,productionObservedNode:'v24.22.1'},productionEquivalent:false,applicationReference,diagnostic:'transaction-admission-callback-settlement',topology:{workers,poolPerWorker,totalApplicationPool:10,heapMiBPerWorker:heapPerWorker,totalHeapMiB:4096,upstreamKeepAlive:false,proxyUpstreamMaxSockets:4000},proxyErrors:[],host:{cpus:os.availableParallelism(),memoryBytes:os.totalmem()},phases:[],exitCode:1};
 const save=()=>writeFileSync(join(out,'runner.json'),JSON.stringify(report,null,2));
 save();
 async function assertPortFree(port){const server=net.createServer();await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve);});await new Promise(resolve=>server.close(resolve));}
@@ -107,7 +113,7 @@ try{
  mkdirSync(join(out,'cpu'),{recursive:true});
  for(const [index,port]of ports.entries()){
   const fd=openSync(join(privateDir,'server-'+index+'.log'),'w',0o600);appFds.push(fd);
-  apps.push(spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'--import',resolve('scripts/performance/profile-exit.mjs'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...env,NODE_ENV:'production',AIHR_DB_POOL_MAX:String(poolPerWorker),NODE_OPTIONS:'--max-old-space-size='+heapPerWorker},stdio:['ignore',fd,fd]}));
+  apps.push(spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'--import',resolve('scripts/performance/transaction-profile-preload.mjs'),'--import',resolve('scripts/performance/profile-exit.mjs'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...env,NODE_ENV:'production',PERF_TRANSACTION_PROFILE_FILE:join(out,'transaction-timings-'+index+'.json'),AIHR_DB_POOL_MAX:String(poolPerWorker),NODE_OPTIONS:'--max-old-space-size='+heapPerWorker},stdio:['ignore',fd,fd]}));
  }
  // Avoid replaying a mutation onto a backend socket that closed during an idle interval.
  // Fresh loopback connections also avoid unsafe automatic retries after an ambiguous write.
