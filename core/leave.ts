@@ -3053,6 +3053,9 @@ async function insertLeaveRequest(
       allowanceEligible: v.allowanceEligible ?? null,
     })
     .returning({ id: leaveRequest.id });
+  // Resolve and materialize the native approval chain before acquiring the tenant audit lock.
+  // These rows and the submitted event still commit/roll back in this same transaction.
+  await generateApprovalSteps(tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId, v.days);
   const submittedEventId = await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
@@ -3150,9 +3153,6 @@ async function insertLeaveRequest(
     },
   }, { returnId: includeSubmittedEventId });
   if (includeSubmittedEventId && !submittedEventId) throw new Error('leave.submitted_reference_missing');
-  // 2B-1/2B-2/ADR-0071: if the company runs a multi-step chain, generate the instance approval steps,
-  // resolving the scoped rule matrix against this request's day count (fractional for hourly/partial).
-  await generateApprovalSteps(tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId, v.days);
   return { id: row.id, ...(submittedEventId ? { submittedEventId } : {}) };
 }
 
