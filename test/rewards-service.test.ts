@@ -464,6 +464,8 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
   });
   it('privately performs one actual native decision with its exact actor, physical effects and audit under a savepoint',async()=>{
     const before=await view(),why='Actual private native decision reviewed';
+    const [registered]=await owner.db.execute<{capability_id:string;parent_capability:string|null;delegation_floor_function:string|null}>(sql`select capability_id,parent_capability,delegation_floor_function from app.access_function_action where function_key='rewards.decisions.submit'and operation='execute'`);
+    expect(registered).toEqual({capability_id:'function.rewards.decisions.submit.execute',parent_capability:null,delegation_floor_function:'app.rewards_function_legacy_allowed'});
     await expect(withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_decision_native(${unitId}::uuid,${before.unit.revision},'submit',${why},false)`))).rejects.toThrow();
     await owner.withTenant(actors.bu!,async tx=>{
       await tx.execute(sql`savepoint actual_reward_decision`);
