@@ -1108,6 +1108,7 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
     for (const ev of rows) {
       const entry = REGISTRY[ev.eventType];
       if (!entry) continue;
+      if(await legacyProbationNotificationIsObsolete(tx,ev.eventType,ev.aggregateId))continue;
       if(ev.eventType==='reward-access.suspended'){
         const [account]=await tx.execute<{created:number}>(sql`select app.reward_access_project_account_suspension(${ev.id}::uuid) as created`);
         created+=account.created;
@@ -1160,6 +1161,8 @@ async function projectNotificationsTx(tx:Tx,ctx:SessionContext,allCategories:boo
 }
 
 /** Reauthorize queued mail with the same live recipient graph that created the in-app projection. */
+async function legacyProbationNotificationIsObsolete(tx:Tx,eventType:string,reviewId:string):Promise<boolean>{if(!eventType.startsWith('employment-review.'))return false;const[row]=await tx.execute<{owned:boolean}>(sql`select app.probation_legacy_review_owned(${reviewId}::uuid) as owned`);return row?.owned===true;}
+
 export async function notificationStillTargets(tx: Tx, eventId: string, kind: string, category: string, recipient: string,noticeReader?:NoticeRecipientReader,noticeEventReader?:NoticeEventReader): Promise<boolean> {
   if (!notificationEmailCategory.safeParse(category).success) return false;
   const [visible] = await tx.select({id:domainEvent.id,aggregateId:domainEvent.aggregateId,eventType:domainEvent.eventType,subjectEmploymentId:domainEvent.subjectEmploymentId,payload:domainEvent.payload})
@@ -1171,6 +1174,7 @@ export async function notificationStillTargets(tx: Tx, eventId: string, kind: st
     if(!ev)throw Error('Notice source event is unavailable; retain the queued delivery for investigation.');
   }
   if (!ev) return false;
+  if(await legacyProbationNotificationIsObsolete(tx,ev.eventType,ev.aggregateId))return false;
   const entry = REGISTRY[ev.eventType];
   if (!entry) return false;
   const ref: EventRef = {id:eventId,aggregateId:ev.aggregateId,subjectEmploymentId:ev.subjectEmploymentId};

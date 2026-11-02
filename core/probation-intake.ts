@@ -1,0 +1,21 @@
+import {sql} from 'drizzle-orm';
+import {z} from 'zod';
+import type {SessionContext} from '../db/client';
+import {withScopedLifecycleTenant} from './module-gate';
+import {assertModuleEnabled} from './entitlements';
+import {ProbationError,type ProbationPersonnel} from './probation';
+import type {ProbationIntakeDisposition} from '../lib/probation-intake-model';
+export type ProbationIntakeCandidate={source:ProbationPersonnel;classification:'excluded'|'held'|'ready'|'already_admitted';issues:string[];canReview:boolean;holders:{role:string;name:string;userId:string}[];sourceDigest:string;disposition:ProbationIntakeDisposition|null;evidence:{id:string;name:string;reason:string;createdAt:string}[]};
+export type ProbationIntakeWorkspace={candidates:ProbationIntakeCandidate[];truncated:boolean;excludedCount:number};
+const id=z.uuid();
+export function probationIntakeWorkspace(ctx:SessionContext,companyId:string):Promise<ProbationIntakeWorkspace>{return withScopedLifecycleTenant(ctx,async tx=>{assertModuleEnabled(ctx,'lifecycle',id.parse(companyId));const[row]=await tx.execute<{data:ProbationIntakeWorkspace}>(sql`select app.probation_intake_workspace(${companyId}::uuid) as data`);return row.data;});}
+export function saveProbationIntakeDisposition(ctx:SessionContext,input:{employmentId:string;revision:number;sourceDigest:string;kind:'exclude'|'unfinished';reason:string;validatedUnknown:boolean;exclusionFlags:ProbationIntakeDisposition['exclusionFlags'];parts:ProbationIntakeDisposition['parts'];extensionCount?:number}){return withScopedLifecycleTenant(ctx,async tx=>{
+ const{employmentId,revision,sourceDigest,...data}=input;id.parse(employmentId);z.number().int().nonnegative().parse(revision);z.string().regex(/^[a-f0-9]{64}$/).parse(sourceDigest);
+ const[row]=await tx.execute<{id:string}>(sql`select app.probation_intake_save(${employmentId}::uuid,${revision},${sourceDigest},${JSON.stringify(data)}::jsonb) as id`);return row.id;
+});}
+export function uploadProbationCutoverEvidence(ctx:SessionContext,input:{employmentId:string;name:string;content:Buffer;reason:string}){return withScopedLifecycleTenant(ctx,async tx=>{
+ id.parse(input.employmentId);if(input.content.length>10*1024*1024)throw new ProbationError('invalid','Use an offline PDF up to 10 MiB.');
+ try{const{PDFDocument}=await import('pdf-lib');const document=await PDFDocument.load(input.content);if(document.getPageCount()<1||document.getPageCount()>200)throw new Error('pages');}catch{throw new ProbationError('invalid','Upload the original readable offline PDF, with one to 200 pages.');}
+ const[row]=await tx.execute<{id:string}>(sql`select app.probation_intake_upload(${input.employmentId}::uuid,${input.name},${input.content},${input.reason}) as id`);return row.id;
+});}
+export function readProbationCutoverEvidence(ctx:SessionContext,input:{employmentId:string;evidenceId:string}):Promise<{name:string;content:Buffer}>{return withScopedLifecycleTenant(ctx,async tx=>{const[row]=await tx.execute<{name:string;content:Buffer}>(sql`select * from app.probation_intake_evidence_read(${id.parse(input.employmentId)}::uuid,${id.parse(input.evidenceId)}::uuid)`);if(!row)throw new ProbationError('forbidden','The original scoped offline PDF is unavailable.');return row;});}
