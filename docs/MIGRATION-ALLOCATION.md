@@ -1135,7 +1135,7 @@ This source depends on root942 witness89bc7e9da and requires hosted failed/affec
 - `0941_financial_letter_actions.sql`: `0bc82b27e44eead6785d5d5bc44a0e977f9ff46544188402654feb54d0f71b16`.
 - `0942_organisation_settings_actions.sql`: `1160474bb42ffdbeb6e24169940b34fdfbb5c028038172df590f18652bc79a03`.
 - `0943_leave_attendance_claim_actions.sql`: `c8bb5098b96dfe424e28565e871e610281db57ec704ff2ce7f7534b9c256ffe0`.
-- `0944_lifecycle_rewards_notice_actions.sql`: `06324a06a2236b058a211afc9be3c4972e011fbe3b73597bd15375db9fbc2463`.
+- `0944_lifecycle_rewards_notice_actions.sql`: `73b32e40d3b302fc4270753cdcf59456626132f3984ba167f08ec8acdc03126d`.
 - `0945_financial_setup_actions.sql`: `77ef0067c30e55a48ab591938b3a5e892ba60161036f4b23c678ed280ea5f340`.
 
 Source identities only; frozen failures remain preserved. Admission requires post-Noveri/nine ledger reconciliation without rewriting applied bytes.
