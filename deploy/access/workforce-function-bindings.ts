@@ -14,3 +14,17 @@ export const WORKFORCE_FUNCTIONS:readonly FunctionActionDescriptor[]=[{
 },{key:'profileChanges.maintenance',scope:'company',moduleKey:'workforce',labelKey:'nav.profileChanges',kind:'native_acl',course:'administrative',screenKey:'profileChanges',href:'/admin/personnel/profile-changes',employeeBearing:true,
  actions:(['view','edit'] as const).map(operation=>({operation,parentCapability:'workforce.'+operation,delegationFloorFunction:'app.profile_changes_maintenance_delegation',bindings:[{owner:'app.workforce_profile_maintenance_allowed',operation:'exact-native-maintenance-source-'+operation},{owner:operation==='view'?'app.profile_request_reader':'app.profile_changes_maintenance_write_guard',operation:'actual-maintenance-'+operation},{owner:'core/profile-routing.ts',operation:operation==='view'?'bounded-reroute-candidates':'native-reasoned-reroute'}]})),
 }];
+
+/** The own author course never supplies company administration or hire activation. */
+export const WORKFORCE_DRAFT_FUNCTIONS:readonly FunctionActionDescriptor[]=[{
+ key:'workforceDrafts',scope:'company',moduleKey:'workforce',labelKey:'people.wizard.title',kind:'submenu',course:'administrative',screenKey:'personnelAdmin',href:'/admin/personnel/new',employeeBearing:true,
+ actions:(['view','add','edit','delete','execute']as const).map(operation=>({operation,parentCapability:'workforce.'+(operation==='execute'?'add':operation),delegationFloorFunction:'app.workforce_draft_admin_delegation',bindings:[
+  {owner:operation==='view'?'app.workforce_draft_view_current':operation==='execute'?'app.access_workforce_prepare_hire_source':'app.workforce_draft_purpose_guard',operation:'actual-draft-'+operation},
+  {owner:'core/employee-draft.ts',operation:'native-reservation-draft-save-discard-and-completed-hire'},
+ ]})),
+},{key:'workforceDrafts.author',scope:'tenant',moduleKey:'workforce',labelKey:'people.wizard.continueTitle',kind:'native_acl',course:'own',screenKey:'personnelAdmin',href:'/admin/personnel/new',employeeBearing:false,
+ actions:(['view','add','edit','delete']as const).map(operation=>({operation,parentCapability:null,delegationFloorFunction:'app.workforce_draft_author_current_legacy_allowed',bindings:[
+  {owner:operation==='view'?'app.workforce_draft_view_current':'app.workforce_draft_purpose_guard',operation:'actual-current-author-'+operation},
+  {owner:'app.access_workforce_draft',operation:'original-author-or-native-administrative-course'},
+ ]})),
+}];

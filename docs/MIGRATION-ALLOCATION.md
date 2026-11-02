@@ -1583,3 +1583,14 @@ assertions now require the stronger exact-purpose composition while retaining th
 business contracts. Four genuine future/global profile-transition qualification cases remain blocked
 until real publication; no grants/support or their assertions are changed. Repairs and one additional
 actual APP current-predicate/private-port/native-decision case are authored, unrun.
+
+### Draft author, administration and activation source purposes
+
+Draft storage now chooses the existing company-administration or actual author course before its
+configurable View and exact action, so a denied selected administrative purpose cannot retry as author.
+Both stored and proposed companies are checked on edits, with the existing same-transaction initial
+Add proof preserved. Activation remains the genuine hire source and consumes a draft through its
+original completed effect, independently of discard. The two courses have separate native defaults;
+the author relation cannot delegate company administration. Statement ordering joins the canonical
+try-only Access fence. Source and native author-transfer fixtures require hosted qualification; the
+wizard action projections and full publication remain separate work.

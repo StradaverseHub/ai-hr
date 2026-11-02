@@ -751,7 +751,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE d public.employee_draft;hash text;
 BEGIN
  PERFORM app.access_workforce_write_lock();
- IF NOT app.access_workforce_action_company(p_company,'add') THEN RAISE EXCEPTION 'Hire source unavailable' USING ERRCODE='42501';END IF;
+ IF NOT app.access_workforce_action_company(p_company,'add') OR NOT app.function_action_allowed('workforceDrafts','execute',p_company) THEN RAISE EXCEPTION 'Hire source unavailable' USING ERRCODE='42501';END IF;
  SELECT * INTO d FROM public.employee_draft WHERE id=p_draft AND tenant_id=app.current_tenant_id() AND company_id=p_company FOR UPDATE;
  IF NOT FOUND OR NOT app.data_permission_draft_matches(d.tenant_id,app.current_user_id(),to_jsonb(d)) THEN RAISE EXCEPTION 'Hire source unavailable' USING ERRCODE='42501';END IF;
  hash:=encode(sha256(convert_to(to_jsonb(d)::text,'UTF8')),'hex');
@@ -945,7 +945,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=app.current_tenant_id() AND s.user_id=app.current_user_id()
  AND s.draft_id=(p_source->>'id')::uuid AND s.source_hash=encode(sha256(convert_to(p_source::text,'UTF8')),'hex')
  AND app.access_workforce_hire_effects_match(s.source->'data',e.id)
- AND app.data_permission_employment_born(e.id) AND app.access_workforce_action_company(e.company_id,'add')
+ AND app.data_permission_employment_born(e.id) AND app.access_workforce_action_company(e.company_id,'add') AND app.function_action_allowed('workforceDrafts','execute',e.company_id)
  AND nullif(btrim(s.source#>>'{data,profile,phone}'),'') IS NOT DISTINCT FROM nullif(btrim(p.phone),'')
  AND EXISTS(SELECT 1 FROM public.assignment a WHERE a.tenant_id=e.tenant_id AND a.employment_id=e.id
   AND a.department_id::text=s.source#>>'{data,employment,departmentId}' AND a.superseded_at IS NULL
@@ -1625,7 +1625,7 @@ REVOKE ALL ON FUNCTION app.profile_changes_maintenance_native(uuid,uuid,text,uui
 --> statement-breakpoint
 CREATE FUNCTION app.workforce_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT ((cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$' OR cap ~ '^function\.workforceImports\.(view|add|execute)$')
+ SELECT ((cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$' OR cap ~ '^function\.workforceImports\.(view|add|execute)$' OR cap ~ '^function\.workforceDrafts\.(view|add|edit|delete|execute)$')
  AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.role_assignment r ON r.tenant_id=actor.tenant_id AND r.app_user_id=actor.id
   WHERE actor.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
    AND r.role::text IN ('hr_admin','super_admin') AND CASE WHEN co IS NULL THEN r.company_id IS NULL ELSE app.access_scope_covers(r.company_id,co,t) END)) OR app.profile_changes_maintenance_native(t,u,cap,co);
@@ -2284,14 +2284,14 @@ END $$;
 REVOKE ALL ON FUNCTION app.employee_master_definition_guard() FROM PUBLIC,ai_hr_app;
 -- Acquire Access in a try-only statement fence before any report tuple, including
 -- callers which arrive with a native data lock already held. This is no grant.
-CREATE FUNCTION app.employee_master_write_fence() RETURNS trigger
+CREATE FUNCTION app.workforce_write_order_fence() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF NOT app.access_workforce_storage_owner() THEN PERFORM app.audit_access_order_lock_for(app.current_tenant_id());END IF;
  RETURN NULL;
 END $$;
-REVOKE ALL ON FUNCTION app.employee_master_write_fence() FROM PUBLIC,ai_hr_app;
-CREATE TRIGGER aaa_employee_master_access BEFORE INSERT OR UPDATE OR DELETE ON public.custom_report FOR EACH STATEMENT EXECUTE FUNCTION app.employee_master_write_fence();
+REVOKE ALL ON FUNCTION app.workforce_write_order_fence() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_employee_master_access BEFORE INSERT OR UPDATE OR DELETE ON public.custom_report FOR EACH STATEMENT EXECUTE FUNCTION app.workforce_write_order_fence();
 CREATE TRIGGER employee_master_definition_action BEFORE INSERT OR UPDATE OR DELETE ON public.custom_report FOR EACH ROW EXECUTE FUNCTION app.employee_master_definition_guard();
 
 --> statement-breakpoint
@@ -2314,7 +2314,7 @@ BEGIN
  IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
 END $$;
 REVOKE ALL ON FUNCTION app.employee_master_schedule_guard() FROM PUBLIC,ai_hr_app;
-CREATE TRIGGER aaa_employee_master_schedule_access BEFORE INSERT OR UPDATE OR DELETE ON public.custom_report_schedule FOR EACH STATEMENT EXECUTE FUNCTION app.employee_master_write_fence();
+CREATE TRIGGER aaa_employee_master_schedule_access BEFORE INSERT OR UPDATE OR DELETE ON public.custom_report_schedule FOR EACH STATEMENT EXECUTE FUNCTION app.workforce_write_order_fence();
 CREATE TRIGGER employee_master_schedule_action BEFORE INSERT OR UPDATE OR DELETE ON public.custom_report_schedule FOR EACH ROW EXECUTE FUNCTION app.employee_master_schedule_guard();
 
 --> statement-breakpoint
@@ -2344,3 +2344,95 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.bank_import_subjects(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.bank_import_subjects(jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Drafts distinguish the actual administrative company course from native author
+-- custody. An author cannot lend their private row relation to a company grant.
+CREATE FUNCTION app.workforce_draft_admin_delegation(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
+ AND cap IN ('workforce.view','workforce.add','workforce.edit','workforce.delete')
+ AND CASE WHEN co IS NULL THEN EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.company_id IS NULL AND g.role IN ('hr_admin','super_admin'))
+  ELSE app.is_admin_for(co) END;
+$$;
+CREATE FUNCTION app.workforce_draft_author_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT co IS NULL AND cap IN ('function.workforceDrafts.author.view','function.workforceDrafts.author.add','function.workforceDrafts.author.edit','function.workforceDrafts.author.delete')
+ AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.person author ON author.id=actor.person_id AND author.tenant_id=actor.tenant_id
+  WHERE actor.id=u AND actor.tenant_id=t AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id));
+$$;
+CREATE FUNCTION app.workforce_draft_author_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
+ AND app.access_profile_request_own(app.current_person_id()) AND app.workforce_draft_author_legacy_allowed(t,u,cap,co);
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_admin_delegation(uuid,uuid,text,uuid),app.workforce_draft_author_legacy_allowed(uuid,uuid,text,uuid),app.workforce_draft_author_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete','execute'] LOOP
+  PERFORM app.register_function_action('workforceDrafts',operation,'company','workforce.'||CASE WHEN operation='execute' THEN 'add' ELSE operation END,'app.workforce_draft_admin_delegation',
+   '{"moduleKey":"workforce","labelKey":"people.wizard.title","kind":"submenu","course":"administrative","screenKey":"personnelAdmin","href":"/admin/personnel/new","employeeBearing":true}'::jsonb);
+ END LOOP;
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+  PERFORM app.register_function_action('workforceDrafts.author',operation,'tenant',NULL,'app.workforce_draft_author_current_legacy_allowed',
+   '{"moduleKey":"workforce","labelKey":"people.wizard.continueTitle","kind":"native_acl","course":"own","screenKey":"personnelAdmin","href":"/admin/personnel/new","employeeBearing":false}'::jsonb);
+ END LOOP;
+END $$;
+CREATE FUNCTION app.workforce_draft_purpose_allowed(p_company uuid,p_author uuid,p_operation text) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE administrative boolean;
+BEGIN
+ IF p_operation NOT IN ('view','add','edit','delete') OR NOT app.principal_snapshot_current() THEN RETURN false;END IF;
+ IF p_company IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.company company WHERE company.id=p_company AND company.tenant_id=app.current_tenant_id()) THEN RETURN false;END IF;
+ IF p_operation<>'view' AND app.workforce_draft_purpose_allowed(p_company,p_author,'view') IS NOT TRUE THEN RETURN false;END IF;
+ administrative:=CASE WHEN p_operation='view' THEN CASE WHEN p_company IS NULL THEN app.access_workforce_unassigned('workforce.view') ELSE app.access_workforce_company(p_company,'workforce.view') END
+  ELSE app.access_workforce_draft_action(p_company,p_operation) END;
+ -- Select the native course before its configurable action. A denied selected
+ -- administrative action does not retry through an author fallback.
+ IF administrative THEN
+  IF p_company IS NULL THEN RETURN app.function_global_action_allowed('workforceDrafts','view') AND app.function_global_action_allowed('workforceDrafts',p_operation);END IF;
+  RETURN app.function_action_allowed('workforceDrafts','view',p_company) AND app.function_action_allowed('workforceDrafts',p_operation,p_company);
+ END IF;
+ RETURN app.access_profile_request_own(p_author) AND EXISTS(SELECT 1 FROM public.person author WHERE author.id=p_author AND author.tenant_id=app.current_tenant_id())
+ AND app.function_action_allowed('workforceDrafts.author','view',NULL)
+ AND app.function_action_allowed('workforceDrafts.author',p_operation,NULL);
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_purpose_allowed(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.workforce_draft_view_current(p_company uuid,p_author uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.workforce_draft_purpose_allowed(p_company,p_author,'view');
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_view_current(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.workforce_draft_view_current(uuid,uuid) TO ai_hr_app;
+CREATE POLICY workforce_draft_function_read ON public.employee_draft AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(app.workforce_draft_view_current(company_id,created_by_person_id));
+CREATE OR REPLACE FUNCTION app.access_workforce_draft_delete_allowed(p_draft uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employee_draft d WHERE d.id=p_draft AND d.tenant_id=app.current_tenant_id()
+  AND app.workforce_draft_purpose_allowed(d.company_id,d.created_by_person_id,'delete')
+  AND (app.access_workforce_draft_action(d.company_id,'delete') OR (app.access_profile_request_own(d.created_by_person_id)
+   AND NOT EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.user_id=app.current_user_id() AND o.tenant_id=d.tenant_id AND o.retired_at IS NULL AND o.effect='deny' AND o.capability_id IN ('workforce.delete','workforce.view','workforce.maintain') AND app.access_scope_covers(o.company_id,d.company_id,d.tenant_id)))));
+$$;
+CREATE FUNCTION app.workforce_draft_purpose_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE operation text;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_OP='DELETE' THEN
+  -- Activation is the exact existing completed hire effect, not discard authority.
+  IF app.access_workforce_consumed_draft(to_jsonb(OLD)) OR app.access_workforce_draft_delete_allowed(OLD.id) THEN RETURN OLD;END IF;
+  RAISE EXCEPTION 'Draft function action unavailable' USING ERRCODE='42501';
+ END IF;
+ operation:='add';
+ IF TG_OP='UPDATE' THEN
+  operation:='edit';
+  IF EXISTS(SELECT 1 FROM app.workforce_draft_birth b WHERE b.xact_id=pg_current_xact_id() AND b.tenant_id=OLD.tenant_id AND b.user_id=app.current_user_id() AND b.draft_id=OLD.id)
+   AND app.access_workforce_draft_action(OLD.company_id,'add') AND app.access_workforce_draft_action(NEW.company_id,'add') THEN operation:='add';END IF;
+  IF app.workforce_draft_purpose_allowed(OLD.company_id,OLD.created_by_person_id,operation) IS NOT TRUE THEN RAISE EXCEPTION 'Draft function action unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ IF app.workforce_draft_purpose_allowed(NEW.company_id,NEW.created_by_person_id,operation) IS NOT TRUE THEN RAISE EXCEPTION 'Draft function action unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_purpose_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_workforce_draft_access BEFORE INSERT OR UPDATE OR DELETE ON public.employee_draft FOR EACH STATEMENT EXECUTE FUNCTION app.workforce_write_order_fence();
+CREATE TRIGGER aaa_workforce_draft_purpose BEFORE INSERT OR UPDATE OR DELETE ON public.employee_draft FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_purpose_guard();
