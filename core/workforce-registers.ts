@@ -22,14 +22,14 @@ async function existingSubject(tx: Tx, kind: Register, id: string) {
   const [row] = await tx.select({id: personEmergencyContact.personId}).from(personEmergencyContact).where(eq(personEmergencyContact.id, id)).limit(1);
   return row?.id;
 }
-async function maintain<T>(ctx: SessionContext, kind: Register, target: {id: string; existing: boolean}, write: (tx: Tx) => Promise<T>, outerTx?: Tx) {
+async function maintain<T>(ctx: SessionContext, kind: Register, target: {id: string; existing: boolean;operation?:'add'|'edit'|'delete'}, write: (tx: Tx) => Promise<T>, outerTx?: Tx) {
   const run = async (tx: Tx) => {
     await lockAccessConfigurationTx(tx, ctx.tenantId);
     // A record id from a form/import never selects a different subject from the stored relationship.
     const subject = target.existing ? await existingSubject(tx, kind, target.id) : target.id;
     if (!subject) throw new WorkforceAccessError();
-    if (kind === 'qualification') await assertWorkforceEmploymentTx(tx, ctx, subject, 'maintain');
-    else await assertWorkforcePersonTx(tx, ctx, subject, 'maintain');
+    if (kind === 'qualification') await assertWorkforceEmploymentTx(tx, ctx, subject, target.operation??(target.existing?'edit':'add'));
+    else await assertWorkforcePersonTx(tx, ctx, subject, target.operation??(target.existing?'edit':'add'));
     return write(tx);
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
@@ -42,7 +42,7 @@ export function updateDependent(ctx: SessionContext, p: Parameters<typeof family
   return maintain(ctx, 'dependent', {id: p.id, existing: true}, tx => family.updateDependent(ctx, p, tx), outerTx);
 }
 export function archiveDependent(ctx: SessionContext, p: Parameters<typeof family.archiveDependent>[1], outerTx?: Tx) {
-  return maintain(ctx, 'dependent', {id: p.id, existing: true}, tx => family.archiveDependent(ctx, p, tx), outerTx);
+  return maintain(ctx, 'dependent', {id: p.id, existing: true,operation:'delete'}, tx => family.archiveDependent(ctx, p, tx), outerTx);
 }
 export function addQualification(ctx: SessionContext, p: Parameters<typeof qualifications.addQualification>[1], outerTx?: Tx) {
   return maintain(ctx, 'qualification', {id: p.employmentId, existing: false}, tx => qualifications.addQualification(ctx, p, tx), outerTx);
@@ -51,7 +51,7 @@ export function updateQualification(ctx: SessionContext, p: Parameters<typeof qu
   return maintain(ctx, 'qualification', {id: p.id, existing: true}, tx => qualifications.updateQualification(ctx, p, tx), outerTx);
 }
 export function archiveQualification(ctx: SessionContext, p: Parameters<typeof qualifications.archiveQualification>[1], outerTx?: Tx) {
-  return maintain(ctx, 'qualification', {id: p.id, existing: true}, tx => qualifications.archiveQualification(ctx, p, tx), outerTx);
+  return maintain(ctx, 'qualification', {id: p.id, existing: true,operation:'delete'}, tx => qualifications.archiveQualification(ctx, p, tx), outerTx);
 }
 export function addEmergencyContact(ctx: SessionContext, p: Parameters<typeof contacts.addEmergencyContact>[1], outerTx?: Tx) {
   return maintain(ctx, 'emergency', {id: p.personId, existing: false}, tx => contacts.addEmergencyContact(ctx, p, tx), outerTx);
@@ -60,5 +60,5 @@ export function updateEmergencyContact(ctx: SessionContext, p: Parameters<typeof
   return maintain(ctx, 'emergency', {id: p.id, existing: true}, tx => contacts.updateEmergencyContact(ctx, p, tx), outerTx);
 }
 export function archiveEmergencyContact(ctx: SessionContext, p: Parameters<typeof contacts.archiveEmergencyContact>[1], outerTx?: Tx) {
-  return maintain(ctx, 'emergency', {id: p.id, existing: true}, tx => contacts.archiveEmergencyContact(ctx, p, tx), outerTx);
+  return maintain(ctx, 'emergency', {id: p.id, existing: true,operation:'delete'}, tx => contacts.archiveEmergencyContact(ctx, p, tx), outerTx);
 }

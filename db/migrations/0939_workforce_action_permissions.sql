@@ -1,0 +1,557 @@
+-- Genuine Workforce action operations. Definitions are dormant until restricted owner publication v2.
+INSERT INTO access_capability(id,scope,supported,bindings) VALUES
+ ('workforce.add','company',false,'[]'),('workforce.edit','company',false,'[]'),('workforce.delete','company',false,'[]');
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_allowed_for_tenant(p_tenant uuid,p_user uuid,p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(
+  SELECT 1 FROM public.app_user u JOIN public.access_configuration s ON s.tenant_id=u.tenant_id
+  JOIN public.access_capability c ON c.id=p_capability
+  WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL
+   AND NOT app.login_blocked(u.id) AND s.initialized AND c.supported AND jsonb_array_length(c.bindings)>0
+   AND (c.id NOT IN ('workforce.add','workforce.edit','workforce.delete') OR (app.access_allowed_for_tenant(p_tenant,p_user,'workforce.view',p_company) AND NOT EXISTS(SELECT 1 FROM public.access_user_override legacy WHERE legacy.tenant_id=p_tenant AND legacy.user_id=p_user AND legacy.capability_id='workforce.maintain' AND legacy.effect='deny' AND legacy.retired_at IS NULL AND app.access_scope_covers(legacy.company_id,p_company,p_tenant))))
+   AND ((c.scope='tenant' AND p_company IS NULL) OR (c.scope='company' AND p_company IS NOT NULL))
+   AND NOT EXISTS(SELECT 1 FROM public.access_user_override o
+    WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.effect='deny' AND o.retired_at IS NULL
+     AND app.access_scope_covers(o.company_id,p_company,u.tenant_id))
+   AND (
+    EXISTS(SELECT 1 FROM public.access_user_override o
+     WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.effect='allow' AND o.retired_at IS NULL
+      AND app.access_scope_covers(o.company_id,p_company,u.tenant_id))
+    OR EXISTS(SELECT 1 FROM public.access_effective_membership m
+     JOIN public.access_group g ON g.id=m.group_id AND g.tenant_id=m.tenant_id
+     JOIN public.access_group_grant a ON a.group_id=g.id AND a.tenant_id=g.tenant_id
+     WHERE m.tenant_id=u.tenant_id AND m.user_id=u.id AND g.retired_at IS NULL
+      AND a.capability_id=c.id AND a.retired_at IS NULL
+      AND app.access_scope_covers(m.company_id,p_company,u.tenant_id)
+      AND app.access_scope_covers(a.company_id,p_company,u.tenant_id))
+   )
+ );
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_legacy_command_company(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.access_workforce_owner_company(p_company) OR (
+  app.access_workforce_projection_company(p_company) AND app.principal_snapshot_current() AND EXISTS(
+   SELECT 1 FROM public.company co JOIN public.app_user u ON u.tenant_id=co.tenant_id
+   JOIN public.access_capability c ON c.id='workforce.maintain'
+   WHERE co.id=p_company AND co.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id()
+    AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+    AND CASE WHEN c.supported THEN app.access_allowed_for(u.id,c.id,co.id)
+     ELSE app.access_workforce_company(co.id,c.id) END));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_workforce_legacy_command_company(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.access_workforce_action_company(p_company uuid,p_action text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_action IN ('add','edit','delete') AND (app.access_workforce_owner_company(p_company) OR
+ CASE WHEN EXISTS(SELECT 1 FROM public.access_capability c WHERE c.id='workforce.'||p_action AND c.supported)
+ THEN app.principal_snapshot_current() AND app.access_workforce_projection_company(p_company)
+  AND app.access_allowed_for(app.current_user_id(),'workforce.'||p_action,p_company)
+ ELSE app.access_workforce_legacy_command_company(p_company) END);
+$$;
+REVOKE ALL ON FUNCTION app.access_workforce_action_company(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.access_workforce_action_company(uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_action_employment(p_employment uuid,p_action text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id()
+ AND app.access_workforce_action_company(e.company_id,p_action) AND (app.data_permission_matches(e.id) OR app.data_permission_employment_born(e.id)));
+$$;
+REVOKE ALL ON FUNCTION app.access_workforce_action_employment(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.access_workforce_action_employment(uuid,text) TO ai_hr_app;
+CREATE FUNCTION app.access_workforce_action_person(p_person uuid,p_action text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=app.current_tenant_id())
+ AND NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=app.current_tenant_id()
+ AND (NOT app.access_workforce_action_company(e.company_id,p_action) OR NOT (app.data_permission_matches(e.id) OR app.data_permission_employment_born(e.id))));
+$$;
+REVOKE ALL ON FUNCTION app.access_workforce_action_person(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.access_workforce_action_person(uuid,text) TO ai_hr_app;
+CREATE OR REPLACE FUNCTION app.access_workforce_command_company(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.access_workforce_action_company(p_company,'add') OR app.access_workforce_action_company(p_company,'edit') OR app.access_workforce_action_company(p_company,'delete');
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_company(p_company uuid,p_capability text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN p_capability IN ('workforce.add','workforce.edit','workforce.delete') THEN app.access_workforce_action_company(p_company,split_part(p_capability,'.',2)) ELSE p_capability IN ('workforce.view','workforce.maintain') AND (app.access_workforce_owner_company(p_company)
+  OR app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.company co JOIN public.app_user u ON u.tenant_id=co.tenant_id
+   JOIN public.role_assignment r ON r.tenant_id=u.tenant_id AND r.app_user_id=u.id
+   JOIN public.access_capability c ON c.id=p_capability
+   WHERE co.id=p_company AND co.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id()
+    AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+    AND r.role::text IN ('hr_admin','super_admin') AND app.has_role_for(r.role::text,co.id)
+    AND app.access_scope_covers(r.company_id,co.id,co.tenant_id)
+    AND (NOT c.supported OR app.access_allowed_for(u.id,c.id,co.id)))) END;
+$$;
+--> statement-breakpoint
+-- Initial writes are Add only for an exact current-transaction birth from the data owner.
+CREATE OR REPLACE FUNCTION app.access_workforce_person(p_person uuid,p_capability text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN p_capability IN ('workforce.add','workforce.edit','workforce.delete') THEN app.access_workforce_action_person(p_person,split_part(p_capability,'.',2)) ELSE (EXISTS(SELECT 1 FROM public.person p JOIN public.employment e ON e.person_id=p.id AND e.tenant_id=p.tenant_id
+  WHERE p.id=p_person AND p.tenant_id=app.current_tenant_id() AND app.access_workforce_employment(e.id,p_capability))
+  OR EXISTS(SELECT 1 FROM public.person p WHERE p.id=p_person AND p.tenant_id=app.current_tenant_id()
+   AND NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p.id AND e.tenant_id=p.tenant_id)
+   AND app.access_workforce_unassigned(p_capability)))
+  -- Keep the existing any-administered-employment person owner. Changing that one shared fact
+  -- nevertheless cannot cross an explicit denial on another retained employment's company.
+  AND ((app.current_user_id() IS NULL AND app.access_workforce_storage_owner())
+   OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=app.current_tenant_id()
+    AND (NOT app.access_workforce_not_denied(e.company_id,p_capability) OR p_capability='workforce.maintain' AND (NOT app.data_permission_matches(e.id) OR EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.user_id=app.current_user_id() AND a.tenant_id=e.tenant_id) AND NOT app.access_workforce_company(e.company_id,p_capability))))) END;
+$$;
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_initial_person(p_person uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=app.current_tenant_id() AND e.person_id=p_person)
+ AND NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=app.current_tenant_id() AND e.person_id=p_person
+ AND (NOT app.data_permission_employment_born(e.id) OR NOT app.access_workforce_action_company(e.company_id,'add') OR NOT (app.data_permission_matches(e.id) OR app.data_permission_employment_born(e.id))));
+$$;
+REVOKE ALL ON FUNCTION app.access_workforce_initial_person(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.access_workforce_initial_person(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_profile_value_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb;after_row jsonb;delta jsonb;subject_person uuid;subject_employment uuid;row_id uuid;kind text;direct_allowed boolean;action text;
+ b record;own_contact boolean:=true;relationship_changed boolean:=false;marriage_allowed boolean:=false;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL; END IF;
+ IF NOT app.principal_snapshot_current() OR NOT EXISTS(SELECT 1 FROM app.access_profile_value_actor a
+  WHERE a.xact_id=pg_current_xact_id() AND a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id()) THEN
+  RAISE EXCEPTION 'Profile write principal unavailable' USING ERRCODE='42501'; END IF;
+ before_row:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ after_row:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ row_id:=COALESCE(after_row->>'id',before_row->>'id')::uuid;
+ IF COALESCE(after_row->>'tenant_id',before_row->>'tenant_id')::uuid IS DISTINCT FROM app.current_tenant_id() THEN
+  RAISE EXCEPTION 'Profile subject unavailable' USING ERRCODE='42501'; END IF;
+ action:=CASE WHEN TG_OP='DELETE' OR TG_OP='UPDATE' AND after_row->>'archived_at' IS NOT NULL AND before_row->>'archived_at' IS NULL THEN 'delete' WHEN TG_OP='INSERT' THEN 'add' ELSE 'edit' END;
+ IF TG_TABLE_NAME='person' THEN
+  subject_person:=row_id;kind:='person';direct_allowed:=app.access_workforce_action_person(subject_person,action) OR app.access_workforce_initial_person(subject_person);
+  -- Only normal-profile/compliance columns belong to this guard. Privacy erasure has an exact,
+  -- separately prepared null/delete witness below; it is never a general value-write exception.
+  SELECT COALESCE(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(after_row) d
+   WHERE d.value IS DISTINCT FROM before_row->d.key AND (d.key IN (SELECT column_name FROM app.access_profile_value_bindings() WHERE owner IN ('person','compliance'))
+    OR d.key IN ('address','address_line1','address_line2','address_line3','postcode','city','state','country','marital_status_source_request_id'));
+ ELSE
+  kind:=CASE TG_TABLE_NAME WHEN 'employee_dependent' THEN 'dependent' WHEN 'employee_qualification' THEN 'qualification' WHEN 'person_emergency_contact' THEN 'emergency' END;
+  IF kind='qualification' THEN
+   subject_employment:=COALESCE(after_row->>'employment_id',before_row->>'employment_id')::uuid;
+   SELECT person_id INTO subject_person FROM public.employment WHERE id=subject_employment AND tenant_id=app.current_tenant_id();
+   direct_allowed:=app.access_workforce_action_employment(subject_employment,action);
+  ELSE
+   subject_person:=COALESCE(after_row->>'person_id',before_row->>'person_id')::uuid;
+   direct_allowed:=app.access_workforce_action_person(subject_person,action) OR app.access_workforce_initial_person(subject_person);
+  END IF;
+  SELECT COALESCE(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(after_row) d
+   WHERE d.key NOT IN ('id','tenant_id','person_id','employment_id','created_at','updated_at') AND d.value IS DISTINCT FROM before_row->d.key;
+  relationship_changed:=TG_OP='UPDATE' AND after_row->'relationship' IS DISTINCT FROM before_row->'relationship';
+ END IF;
+ IF app.access_workforce_value_intent_allowed(kind,before_row,after_row,true) THEN RETURN NULL; END IF;
+ IF app.access_privacy_value_intent_allowed(kind,before_row,after_row) THEN RETURN NULL; END IF;
+ IF kind='person' AND TG_OP='UPDATE' THEN
+  marriage_allowed:=app.access_profile_marriage_delta(before_row,after_row,delta);
+  IF delta ? 'marital_status_source_request_id' AND after_row->'marital_status_source_request_id'<>'null'::jsonb AND NOT marriage_allowed THEN
+   RAISE EXCEPTION 'Marital status cause is reserved for its leave owner' USING ERRCODE='42501'; END IF;
+ END IF;
+ IF direct_allowed OR marriage_allowed THEN RETURN NULL; END IF;
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Profile register removal unavailable' USING ERRCODE='42501'; END IF;
+ IF TG_OP='UPDATE' AND delta='{}'::jsonb AND after_row->'updated_at' IS NOT DISTINCT FROM before_row->'updated_at' THEN RETURN NULL; END IF;
+ -- Immediate contact changes are a separate own-person course. No name, compliance value, new
+ -- register row or general Personnel grant can inherit it. Real current employment remains required.
+ IF app.access_profile_request_own(subject_person) AND EXISTS(SELECT 1 FROM public.employment e
+  WHERE e.person_id=subject_person AND e.tenant_id=app.current_tenant_id() AND e.blacklisted_at IS NULL
+   AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+   AND (LEAST(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR LEAST(e.resignation_date,e.last_working_date,e.terminated_on)>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)) THEN
+  IF kind='person' AND TG_OP='UPDATE' THEN
+   FOR b IN SELECT * FROM jsonb_each(delta) LOOP
+    IF NOT EXISTS(SELECT 1 FROM app.access_profile_value_bindings() f WHERE f.owner='person' AND f.column_name=b.key AND f.immediate
+     AND app.access_profile_value_editable(f.field_id)) THEN own_contact:=false;EXIT;END IF;
+   END LOOP;
+   IF own_contact THEN RETURN NULL; END IF;
+  ELSIF kind='emergency' AND TG_OP='UPDATE' AND before_row->>'priority'='primary' AND before_row->'archived_at'='null'::jsonb THEN
+   own_contact:=NOT EXISTS(SELECT 1 FROM public.person_emergency_contact e WHERE e.tenant_id=app.current_tenant_id()
+    AND e.person_id=subject_person AND e.id<>row_id AND e.priority='primary' AND e.archived_at IS NULL);
+   FOR b IN SELECT * FROM jsonb_each(delta) LOOP
+    IF b.key='archived_at' AND b.value<>'null'::jsonb THEN
+     IF EXISTS(SELECT 1 FROM app.access_profile_value_bindings() f WHERE f.owner='emergency' AND f.primary_key IS NOT NULL
+      AND NOT app.access_profile_value_editable(f.field_id,true)) THEN own_contact:=false;EXIT;END IF;
+    ELSIF NOT EXISTS(SELECT 1 FROM app.access_profile_value_bindings() f WHERE f.owner='emergency' AND f.column_name=b.key
+     AND app.access_profile_value_editable(f.field_id,true)) THEN own_contact:=false;EXIT;END IF;
+   END LOOP;
+   IF own_contact THEN RETURN NULL; END IF;
+  END IF;
+ END IF;
+ IF TG_OP='INSERT' AND kind='person' THEN RAISE EXCEPTION 'Profile creation unavailable' USING ERRCODE='42501'; END IF;
+ IF app.access_profile_value_approved(kind,subject_person,subject_employment,row_id,delta,TG_OP='INSERT',relationship_changed) THEN RETURN NULL; END IF;
+ RAISE EXCEPTION 'Profile value write unavailable' USING ERRCODE='42501';
+END; $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_maintain_record(p_employment uuid,p_kind text,p_row uuid,p_operation text,p_patch jsonb,p_expected text) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected public.employment%ROWTYPE;before_row jsonb;after_row jsonb;normalized jsonb:='{}'::jsonb;
+ version text;target_id uuid;table_name text;subject_column text;subject_id uuid;event_name text;aggregate_name text;
+ assignments text;insert_columns text;insert_values text;field_names jsonb;pair record;binding record;value jsonb;
+ previous record;previous_after jsonb;written_event_id uuid;instant timestamptz:=now();changed boolean;effect_id uuid;relationship text;
+BEGIN
+ IF p_kind IS NULL OR p_operation IS NULL OR p_kind NOT IN ('person','qualification','emergency','dependent') OR p_operation NOT IN ('add','update','archive')
+  OR jsonb_typeof(p_patch) IS DISTINCT FROM 'object' OR octet_length(p_patch::text)>128000 THEN
+  RAISE EXCEPTION 'Workforce input invalid' USING ERRCODE='22023'; END IF;
+ IF (SELECT count(*) FROM jsonb_object_keys(p_patch))>40 OR p_kind='person' AND (p_operation<>'update' OR p_row IS NOT NULL)
+  OR p_kind<>'person' AND ((p_operation='add') IS DISTINCT FROM (p_row IS NULL)) THEN
+  RAISE EXCEPTION 'Workforce input invalid' USING ERRCODE='22023'; END IF;
+ PERFORM app.access_profile_policy_write_lock();
+ SELECT * INTO selected FROM public.employment WHERE id=p_employment AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND OR app.current_user_id() IS NULL OR NOT app.data_permission_matches(selected.id) OR NOT app.access_workforce_action_company(selected.company_id,CASE p_operation WHEN 'add' THEN 'add' WHEN 'archive' THEN 'delete' ELSE 'edit' END)
+  OR p_kind<>'qualification' AND NOT app.access_workforce_action_person(selected.person_id,CASE p_operation WHEN 'add' THEN 'add' WHEN 'archive' THEN 'delete' ELSE 'edit' END) THEN
+  RAISE EXCEPTION 'Workforce command unavailable' USING ERRCODE='42501'; END IF;
+ table_name:=CASE p_kind WHEN 'person' THEN 'person' WHEN 'qualification' THEN 'employee_qualification' WHEN 'dependent' THEN 'employee_dependent' ELSE 'person_emergency_contact' END;
+ subject_column:=CASE WHEN p_kind='qualification' THEN 'employment_id' ELSE 'person_id' END;
+ subject_id:=CASE WHEN p_kind='qualification' THEN selected.id ELSE selected.person_id END;
+ aggregate_name:=CASE p_kind WHEN 'person' THEN 'person' WHEN 'qualification' THEN 'employee-qualification' WHEN 'dependent' THEN 'employee-dependent' ELSE 'person-emergency-contact' END;
+ event_name:=CASE p_kind WHEN 'person' THEN 'person.updated' WHEN 'qualification' THEN 'qualification.' WHEN 'dependent' THEN 'dependent.' ELSE 'emergency-contact.' END;
+ IF p_kind<>'person' THEN event_name:=event_name||CASE p_operation WHEN 'add' THEN 'added' WHEN 'update' THEN 'updated' ELSE 'archived' END; END IF;
+ IF p_kind='person' THEN
+  SELECT to_jsonb(p),p.xmin::text INTO before_row,version FROM public.person p WHERE p.id=selected.person_id AND p.tenant_id=selected.tenant_id FOR UPDATE;
+  target_id:=selected.person_id;
+ ELSE
+  -- Same order as the canonical register writers: former Highest/Primary before the target row.
+  IF p_kind='qualification' THEN
+   PERFORM 1 FROM public.employee_qualification WHERE tenant_id=selected.tenant_id AND employment_id=selected.id AND archived_at IS NULL AND is_highest ORDER BY id FOR UPDATE;
+  ELSE
+   PERFORM 1 FROM public.person WHERE id=selected.person_id AND tenant_id=selected.tenant_id FOR UPDATE;
+   PERFORM 1 FROM public.person_emergency_contact WHERE tenant_id=selected.tenant_id AND person_id=selected.person_id AND archived_at IS NULL AND priority='primary' ORDER BY id FOR UPDATE;
+  END IF;
+  target_id:=COALESCE(p_row,gen_random_uuid());
+  IF p_operation='add' THEN before_row:='{}'::jsonb;
+  ELSE
+   EXECUTE format('SELECT to_jsonb(r),r.xmin::text FROM public.%I r WHERE r.id=$1 AND r.tenant_id=$2 AND r.%I=$3 AND r.archived_at IS NULL FOR UPDATE',table_name,subject_column)
+    INTO before_row,version USING target_id,selected.tenant_id,subject_id;
+  END IF;
+ END IF;
+ IF before_row IS NULL OR p_operation<>'add' AND (p_expected IS NULL OR version IS DISTINCT FROM p_expected) THEN
+  RAISE EXCEPTION 'Workforce record changed' USING ERRCODE='40001'; END IF;
+ IF p_operation='add' AND p_expected IS NOT NULL THEN RAISE EXCEPTION 'Workforce input invalid' USING ERRCODE='22023'; END IF;
+ IF p_operation='archive' THEN
+  IF p_patch<>'{}'::jsonb THEN RAISE EXCEPTION 'Workforce archive input invalid' USING ERRCODE='22023'; END IF;
+  normalized:=jsonb_build_object('archived_at',instant,'updated_at',instant);
+ ELSE
+  relationship:=COALESCE(NULLIF(app.access_profile_value_normalized(p_patch->'relationship')#>>'{}',''),before_row->>'relationship');
+  FOR pair IN SELECT * FROM jsonb_each(p_patch) LOOP
+   SELECT * INTO binding FROM app.access_profile_value_bindings() b WHERE b.field_name=pair.key
+    AND CASE WHEN p_kind='person' THEN b.owner IN ('person','compliance') ELSE b.owner=p_kind END
+    AND b.field_name=ANY(app.access_workforce_command_fields(p_kind));
+   IF NOT FOUND THEN RAISE EXCEPTION 'Workforce field unavailable' USING ERRCODE='22023'; END IF;
+   IF p_kind='dependent' AND ((relationship IS DISTINCT FROM 'spouse' AND pair.key IN ('marriageDate','marriageStatus','spouseWorking')) OR
+     (relationship IS DISTINCT FROM 'child' AND pair.key IN ('isStudent','schoolName','studyLevel','studyCountry','childReliefCategory','childTaxRelief','childReliefPercentage'))) THEN CONTINUE; END IF;
+   value:=app.access_profile_value_normalized(pair.value);
+   -- An unchanged, already-retained relationship on any live contact keeps the existing legacy
+   -- tolerance. The public caller cannot supply a fake legacy value to the catalog owner.
+   IF NOT (p_kind='emergency' AND pair.key='relationship' AND EXISTS(SELECT 1 FROM public.person_emergency_contact c
+     WHERE c.person_id=selected.person_id AND c.tenant_id=selected.tenant_id AND c.archived_at IS NULL AND to_jsonb(c.relationship)=value))
+    AND NOT app.access_workforce_value_shape(p_kind,pair.key,value,before_row->binding.column_name) THEN
+    RAISE EXCEPTION 'Workforce field invalid' USING ERRCODE='22023'; END IF;
+   normalized:=normalized||jsonb_build_object(binding.column_name,value);
+  END LOOP;
+  IF p_operation='add' THEN
+   normalized:=CASE WHEN p_kind='qualification' THEN jsonb_build_object('is_highest',false) WHEN p_kind='dependent' THEN jsonb_build_object('is_beneficiary',false,'is_deceased',false) ELSE jsonb_build_object('priority','other') END||normalized;
+   IF COALESCE(normalized->>'qualification',normalized->>'full_name','')='' THEN RAISE EXCEPTION 'Workforce name required' USING ERRCODE='22023'; END IF;
+  END IF;
+  IF p_kind='dependent' THEN
+   IF relationship IS NULL THEN RAISE EXCEPTION 'Family relationship required' USING ERRCODE='22023'; END IF;
+   IF p_operation='add' OR relationship IS DISTINCT FROM before_row->>'relationship' THEN
+    IF relationship<>'spouse' THEN normalized:=normalized||jsonb_build_object('marriage_date',NULL,'marriage_status',NULL,'spouse_working',NULL,'company_name',NULL,'employer_address',NULL); END IF;
+    IF relationship<>'child' THEN normalized:=normalized||jsonb_build_object('is_student',NULL,'school_name',NULL,'study_level',NULL,'study_country',NULL,'child_relief_category',NULL,'child_tax_relief',NULL,'child_relief_percentage',NULL); END IF;
+   END IF;
+  END IF;
+  IF p_kind='qualification' THEN
+   after_row:=before_row||normalized;
+   IF after_row->>'from_ym'>after_row->>'to_ym' OR left(after_row->>'graduation_date',7)<after_row->>'from_ym' THEN
+    RAISE EXCEPTION 'Qualification date order invalid' USING ERRCODE='22023'; END IF;
+  END IF;
+  IF p_kind='person' AND normalized ? 'marital_status' THEN normalized:=normalized||jsonb_build_object('marital_status_source_request_id',NULL); END IF;
+  IF p_operation<>'add' AND NOT EXISTS(SELECT 1 FROM jsonb_each(normalized) d WHERE d.value IS DISTINCT FROM before_row->d.key) THEN
+   -- Existing Family saves refresh age-dependent facts even when the edited row itself is unchanged.
+   IF p_kind='dependent' THEN PERFORM app.my_sync_family_child_relief(selected.person_id); END IF;
+   -- Generic Family notice is independent of private tax mode or other-company payroll state.
+   RETURN jsonb_build_object('id',target_id,'changed',false,'hrReviewNotice',p_kind='dependent'); END IF;
+  IF p_kind<>'person' THEN normalized:=normalized||jsonb_build_object('updated_at',instant); END IF;
+ END IF;
+ -- Transfer exactly one Primary/Highest using the same finite fields as the existing canonical owner.
+ -- Every affected row has its own exact private before/after witness, tied to the one main event.
+ IF p_kind='qualification' AND normalized->'is_highest'='true'::jsonb OR p_kind='emergency' AND normalized->>'priority'='primary' THEN
+  FOR previous IN EXECUTE format('SELECT to_jsonb(r) value FROM public.%I r WHERE r.tenant_id=$1 AND r.%I=$2 AND r.id<>$3 AND r.archived_at IS NULL AND %s ORDER BY r.id FOR UPDATE',
+   table_name,subject_column,CASE WHEN p_kind='qualification' THEN 'r.is_highest' ELSE 'r.priority=''primary''' END) USING selected.tenant_id,subject_id,target_id
+  LOOP
+   previous_after:=previous.value||jsonb_build_object(CASE WHEN p_kind='qualification' THEN 'is_highest' ELSE 'priority' END,
+    CASE WHEN p_kind='qualification' THEN 'false'::jsonb ELSE '"secondary"'::jsonb END,'updated_at',instant);
+   INSERT INTO app.access_workforce_value_intent(xact_id,tenant_id,user_id,employment_id,kind,row_id,before_hash,after_hash,audit_root,event_type)
+    VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,p_kind,(previous.value->>'id')::uuid,
+     encode(sha256(convert_to(previous.value::text,'UTF8')),'hex'),encode(sha256(convert_to(previous_after::text,'UTF8')),'hex'),target_id,event_name);
+   EXECUTE format('UPDATE public.%I SET %s,updated_at=$1 WHERE id=$2 AND tenant_id=$3',table_name,
+    CASE WHEN p_kind='qualification' THEN 'is_highest=false' ELSE 'priority=''secondary''' END)
+    USING instant,(previous.value->>'id')::uuid,selected.tenant_id;
+   effect_id:=(previous.value->>'id')::uuid;
+  END LOOP;
+ END IF;
+ IF p_operation='add' THEN
+  normalized:=normalized||jsonb_build_object('id',target_id,'tenant_id',selected.tenant_id,subject_column,subject_id);
+  SELECT string_agg(format('%I',key),',' ORDER BY key),string_agg(format('v.%I',key),',' ORDER BY key)
+   INTO insert_columns,insert_values FROM jsonb_object_keys(normalized) key;
+  EXECUTE format('INSERT INTO public.%I(%s) SELECT %s FROM jsonb_populate_record(NULL::public.%I,$1) v RETURNING to_jsonb(%I.*)',table_name,insert_columns,insert_values,table_name,table_name)
+   INTO after_row USING normalized;
+ ELSE
+  after_row:=before_row||normalized;
+  INSERT INTO app.access_workforce_value_intent(xact_id,tenant_id,user_id,employment_id,kind,row_id,before_hash,after_hash,audit_root,event_type)
+   VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,p_kind,target_id,
+    encode(sha256(convert_to(before_row::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex'),target_id,event_name);
+  SELECT string_agg(format('%I=v.%I',key,key),',' ORDER BY key) INTO assignments FROM jsonb_object_keys(normalized) key;
+  EXECUTE format('UPDATE public.%I r SET %s FROM jsonb_populate_record(NULL::public.%I,$1) v WHERE r.id=$2 AND r.tenant_id=$3 RETURNING to_jsonb(r.*)',table_name,assignments,table_name)
+   INTO after_row USING normalized,target_id,selected.tenant_id;
+ END IF;
+ IF p_operation='add' THEN
+  INSERT INTO app.access_workforce_value_intent(xact_id,tenant_id,user_id,employment_id,kind,row_id,before_hash,after_hash,audit_root,event_type)
+   VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,p_kind,target_id,
+    encode(sha256(convert_to(before_row::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex'),target_id,event_name);
+ END IF;
+ SELECT COALESCE(jsonb_agg(key ORDER BY key),'[]'::jsonb) INTO field_names FROM jsonb_object_keys(p_patch) key;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+  VALUES(selected.tenant_id,aggregate_name,target_id,event_name,'user',app.current_user_id(),selected.id,
+   jsonb_build_object('fields',field_names,'via','workforce-maintenance','transferFromId',effect_id)) RETURNING id INTO written_event_id;
+ UPDATE app.access_workforce_value_intent SET event_id=written_event_id
+  WHERE xact_id=pg_current_xact_id() AND tenant_id=selected.tenant_id AND user_id=app.current_user_id() AND audit_root=target_id AND event_type=event_name;
+ IF p_kind='dependent' THEN PERFORM app.my_sync_family_child_relief(selected.person_id); END IF;
+ RETURN jsonb_build_object('id',target_id,'changed',true,'hrReviewNotice',p_kind='dependent');
+END; $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_set_employee_code(p_employment uuid,p_code text,p_expected jsonb DEFAULT NULL) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id(); subject public.employment%ROWTYPE; claimant text;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO subject FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=t FOR UPDATE;
+ IF NOT FOUND OR NOT app.access_workforce_action_company(subject.company_id,'edit') OR NOT app.data_permission_matches(subject.id) THEN
+  RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+ END IF;
+ -- The public SQL command accepts canonical identifiers only; the shared TS format owner normalizes
+ -- ordinary forms. No arbitrary column, person id, company or actor is accepted by this seam.
+ IF p_code IS NULL OR p_code !~ '^[A-Z0-9-]{1,30}$' THEN RAISE EXCEPTION 'Employee ID invalid' USING ERRCODE='23514'; END IF;
+ IF p_expected IS NOT NULL AND (jsonb_typeof(p_expected) NOT IN ('string','null')
+  OR p_expected IS DISTINCT FROM coalesce(to_jsonb(subject.employee_code),'null'::jsonb)) THEN
+  RAISE EXCEPTION 'Employee record changed' USING ERRCODE='40001';
+ END IF;
+ IF subject.employee_code=p_code THEN RETURN false; END IF;
+ claimant:=app.employee_code_claim(t,p_code,p_employment,NULL);
+ IF claimant IS NOT NULL THEN
+  RAISE EXCEPTION '%','employee_code_claim_'||claimant USING ERRCODE='23505',CONSTRAINT='employee_code_claim_'||claimant;
+ END IF;
+ UPDATE public.employment SET employee_code=p_code WHERE id=p_employment AND tenant_id=t;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(t,'employment',p_employment,'employment.employee-code.set',
+  CASE WHEN app.current_user_id() IS NULL THEN 'system'::public.actor_type ELSE 'user'::public.actor_type END,app.current_user_id(),p_employment,
+  jsonb_build_object('before',jsonb_build_object('employeeCode',subject.employee_code),'after',jsonb_build_object('employeeCode',p_code)));
+ RETURN true;
+END;
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_hire_insert() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()
+  OR NOT app.access_workforce_action_company(NEW.company_id,'add')
+  OR (EXISTS(SELECT 1 FROM public.employment e WHERE e.tenant_id=NEW.tenant_id AND e.person_id=NEW.person_id)
+   AND NOT app.access_workforce_action_person(NEW.person_id,'add')) THEN
+  RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+ END IF;
+ RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_document_write() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE action text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+BEGIN
+ IF NOT app.access_workforce_storage_owner() THEN
+  IF TG_OP='UPDATE' THEN
+   IF NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+    OR NEW.employment_id IS DISTINCT FROM OLD.employment_id THEN
+    RAISE EXCEPTION 'Document subject cannot be reassigned' USING ERRCODE='42501';
+   END IF;
+  END IF;
+  IF TG_OP<>'INSERT' THEN
+   IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id()
+    OR NOT app.access_workforce_action_employment(OLD.employment_id,action) THEN
+    RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+   END IF;
+  END IF;
+  IF TG_OP<>'DELETE' THEN
+   IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()
+    OR NOT app.access_workforce_action_employment(NEW.employment_id,action) THEN
+    RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+   END IF;
+  END IF;
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+END;
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_structure_write() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb;after_row jsonb;subject uuid;proof app.access_termination_intent%ROWTYPE;action text:=CASE TG_OP WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN
+  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+ END IF;
+ IF NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Structural principal unavailable' USING ERRCODE='42501'; END IF;
+ before_row:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;
+ after_row:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;
+ IF before_row=after_row THEN RETURN NEW; END IF;
+ IF (before_row IS NOT NULL AND before_row->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text)
+  OR (after_row IS NOT NULL AND after_row->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text) THEN
+  RAISE EXCEPTION 'Workforce structure unavailable' USING ERRCODE='42501'; END IF;
+ IF TG_OP='UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+  OR before_row->'created_at' IS DISTINCT FROM after_row->'created_at'
+  OR before_row->'employment_id' IS DISTINCT FROM after_row->'employment_id'
+  OR before_row->'subordinate_employment_id' IS DISTINCT FROM after_row->'subordinate_employment_id') THEN
+  RAISE EXCEPTION 'Structural identity cannot be reassigned' USING ERRCODE='42501'; END IF;
+ IF TG_TABLE_NAME='reporting_line' AND (before_row IS NULL OR before_row->>'line_type'='delegate')
+  AND (after_row IS NULL OR after_row->>'line_type'='delegate') THEN
+  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+ END IF;
+ subject:=COALESCE((before_row->>'employment_id')::uuid,(before_row->>'subordinate_employment_id')::uuid,
+  (after_row->>'employment_id')::uuid,(after_row->>'subordinate_employment_id')::uuid);
+ IF TG_OP='INSERT' AND TG_TABLE_NAME='assignment' AND app.data_permission_employment_born(subject) THEN action:='add';END IF;
+ IF (before_row IS NULL OR app.access_workforce_action_employment(subject,action))
+  AND (after_row IS NULL OR app.access_workforce_action_employment(COALESCE((after_row->>'employment_id')::uuid,(after_row->>'subordinate_employment_id')::uuid),action))
+  AND (TG_TABLE_NAME<>'assignment' OR
+   (before_row->>'company_id' IS NULL OR app.access_workforce_action_company((before_row->>'company_id')::uuid,action))
+   AND (after_row->>'company_id' IS NULL OR app.access_workforce_action_company((after_row->>'company_id')::uuid,action))) THEN
+  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+ END IF;
+ -- The exception can only close an unchanged open/current range involving the terminated subject.
+ IF TG_OP='UPDATE' AND before_row->>'valid_to' IS NULL AND before_row->>'superseded_at' IS NULL
+  AND (before_row-'valid_to')=(after_row-'valid_to') THEN
+  SELECT * INTO proof FROM app.access_termination_intent p WHERE p.xact_id=pg_current_xact_id()
+   AND p.tenant_id=app.current_tenant_id() AND p.user_id=app.current_user_id()
+   AND p.termination_on::text=after_row->>'valid_to' AND (
+    (TG_TABLE_NAME='assignment' AND p.employment_id=(before_row->>'employment_id')::uuid)
+    OR (TG_TABLE_NAME='reporting_line' AND before_row->>'line_type'='administrative'
+     AND p.employment_id IN ((before_row->>'subordinate_employment_id')::uuid,(before_row->>'manager_employment_id')::uuid)));
+  IF FOUND THEN RETURN NEW; END IF;
+ END IF;
+ RAISE EXCEPTION 'Workforce structure maintenance unavailable' USING ERRCODE='42501';
+END; $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_lifecycle_update() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE delta jsonb;proof app.access_termination_intent%ROWTYPE;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
+ SELECT COALESCE(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(to_jsonb(NEW)) d
+  WHERE d.key IN ('id','tenant_id','person_id','company_id','hired_on','join_date','resignation_date','last_working_date',
+   'terminated_on','termination_type','termination_reason','termination_reason_code','termination_notice_days','blacklisted_at','blacklist_reason')
+   AND d.value IS DISTINCT FROM to_jsonb(OLD)->d.key;
+ IF delta='{}'::jsonb THEN RETURN NEW; END IF;
+ IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+  OR NEW.id IS DISTINCT FROM OLD.id OR NEW.person_id IS DISTINCT FROM OLD.person_id THEN
+  RAISE EXCEPTION 'Employment identity cannot be reassigned' USING ERRCODE='42501'; END IF;
+ IF app.access_workforce_action_company(OLD.company_id,'edit') AND app.access_workforce_action_company(NEW.company_id,'edit') THEN RETURN NEW; END IF;
+ SELECT * INTO proof FROM app.access_termination_intent WHERE xact_id=pg_current_xact_id()
+  AND tenant_id=OLD.tenant_id AND user_id=app.current_user_id() AND employment_id=OLD.id;
+ IF NOT FOUND OR NOT to_jsonb(NEW) @> proof.expected_patch OR EXISTS(
+  SELECT 1 FROM jsonb_each(delta) d WHERE NOT proof.expected_patch ? d.key OR d.value IS DISTINCT FROM proof.expected_patch->d.key) THEN
+  RAISE EXCEPTION 'Workforce lifecycle maintenance unavailable' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END; $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_service_info_update() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM jsonb_each(to_jsonb(NEW)) d WHERE d.key=ANY(app.access_workforce_service_info_columns()) AND d.value IS DISTINCT FROM to_jsonb(OLD)->d.key)
+  OR app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
+ IF OLD.id IS DISTINCT FROM NEW.id OR OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
+  OR NOT app.access_workforce_action_company(OLD.company_id,'edit') OR NOT app.access_workforce_action_company(NEW.company_id,'edit') THEN
+  RAISE EXCEPTION 'Workforce service information maintenance unavailable' USING ERRCODE='42501'; END IF;
+ RETURN NEW;
+END; $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_workforce_master_update() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.employee_code IS NOT DISTINCT FROM OLD.employee_code
+  AND NEW.is_test_record IS NOT DISTINCT FROM OLD.is_test_record THEN RETURN NEW; END IF;
+ -- Check the connection and SET ROLE owner, never current_user (this definer's owner). An explicit
+ -- owner repair/restore retains its authority; ai_hr_app cannot acquire it by calling a definer.
+ IF app.access_workforce_storage_owner() THEN RETURN NEW; END IF;
+ IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id THEN
+  RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+ END IF;
+ IF NEW.employee_code IS DISTINCT FROM OLD.employee_code AND
+  (NOT app.access_workforce_command_company(OLD.company_id) OR NOT app.access_workforce_command_company(NEW.company_id)) THEN
+  RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+ END IF;
+ IF NEW.is_test_record IS DISTINCT FROM OLD.is_test_record AND
+  (NOT app.access_workforce_action_company(OLD.company_id,'edit') OR NOT app.access_workforce_action_company(NEW.company_id,'edit')) THEN
+  RAISE EXCEPTION 'Workforce maintenance unavailable' USING ERRCODE='42501';
+ END IF;
+ RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.access_install_defaults(t uuid,u uuid) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE root_group uuid; hr_group uuid;
+BEGIN
+ PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
+ IF EXISTS(SELECT 1 FROM public.access_configuration s WHERE s.tenant_id=t AND s.initialized) THEN RETURN false; END IF;
+ -- Bootstrap is based on real role rows and current login availability, never GUC role text.
+ IF NOT EXISTS(SELECT 1 FROM public.app_user a JOIN public.role_assignment r ON r.app_user_id=a.id AND r.tenant_id=a.tenant_id
+  WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id) AND app.access_recovery_available(a.id)
+   AND (r.role::text='super_admin' OR (r.role::text='hr_admin' AND r.company_id IS NULL))) THEN
+  RETURN false;
+ END IF;
+ INSERT INTO public.access_configuration(tenant_id) VALUES(t) ON CONFLICT(tenant_id) DO NOTHING;
+ INSERT INTO public.access_group(tenant_id,name,legacy_key,system_administrator) VALUES
+  (t,'System Administrators','system_administrator',true),(t,'HR Administrators','hr_admin',false),
+  (t,'Managers','manager',false),(t,'Employees','employee',false),
+  (t,'Payroll Partners','payroll_partner',false),(t,'Performance and Compensation Partners','performance_comp_partner',false);
+ SELECT id INTO root_group FROM public.access_group WHERE tenant_id=t AND legacy_key='system_administrator';
+ SELECT id INTO hr_group FROM public.access_group WHERE tenant_id=t AND legacy_key='hr_admin';
+ INSERT INTO public.access_group_grant(tenant_id,group_id,capability_id)
+  SELECT t,root_group,c.id FROM public.access_capability c;
+ INSERT INTO public.access_group_grant(tenant_id,group_id,capability_id)
+  SELECT t,hr_group,c.id FROM public.access_capability c WHERE c.id IN ('workforce.view','workforce.maintain','workforce.add','workforce.edit','workforce.delete','profile.review');
+ -- Role-derived memberships are a live view. Existing organizational-manager authority is not copied
+ -- into a manager role or a new permission row; its actual owner remains the reporting graph.
+ UPDATE public.access_configuration SET initialized=true,revision=gen_random_uuid(),updated_at=now() WHERE tenant_id=t;
+ PERFORM app.access_assert_administrator_for(t);
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+ VALUES(t,'access-configuration',t,'access-configuration.initialized','user',u,'{"defaultsCreated":true,"legacyRolesChanged":false}'::jsonb);
+ RETURN true;
+END;
+$$;
+--> statement-breakpoint
+--> statement-breakpoint
+CREATE FUNCTION app.access_workforce_employment_action_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE action text;delta jsonb;proof app.access_termination_intent%ROWTYPE;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ action:=CASE WHEN TG_OP='DELETE' OR NEW.voided_at IS NOT NULL AND OLD.voided_at IS NULL THEN 'delete' ELSE 'edit' END;
+ IF TG_OP='UPDATE' AND to_jsonb(NEW)=to_jsonb(OLD) THEN RETURN NEW;END IF;
+ IF TG_OP='UPDATE' AND app.data_permission_employment_born(OLD.id) THEN action:='add';END IF;
+ IF app.access_workforce_action_employment(OLD.id,action) AND (TG_OP='DELETE' OR app.access_workforce_action_company(NEW.company_id,action)) THEN
+  IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+ END IF;
+ -- Separately authorized termination consequences remain exact, never a general edit fallback.
+ IF TG_OP='UPDATE' THEN
+  SELECT coalesce(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(to_jsonb(NEW))d WHERE d.value IS DISTINCT FROM to_jsonb(OLD)->d.key;
+  SELECT * INTO proof FROM app.access_termination_intent WHERE xact_id=pg_current_xact_id() AND tenant_id=OLD.tenant_id AND user_id=app.current_user_id() AND employment_id=OLD.id;
+  IF FOUND AND to_jsonb(NEW) @> proof.expected_patch AND NOT EXISTS(SELECT 1 FROM jsonb_each(delta)d WHERE NOT proof.expected_patch ? d.key OR d.value IS DISTINCT FROM proof.expected_patch->d.key) THEN RETURN NEW;END IF;
+ END IF;
+ RAISE EXCEPTION 'Workforce action unavailable' USING ERRCODE='42501';
+END;
+$$;
+REVOKE ALL ON FUNCTION app.access_workforce_employment_action_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER workforce_action_write BEFORE UPDATE OR DELETE ON employment FOR EACH ROW EXECUTE FUNCTION app.access_workforce_employment_action_guard();

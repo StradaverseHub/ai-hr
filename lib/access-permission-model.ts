@@ -28,6 +28,12 @@ export function resolveAccessCapability(snapshot:AccessSnapshot,catalog:readonly
  const definition=catalog.find(item=>item.id===capabilityId);
  if(!definition?.supported||!definition.bindings.length)return {allowed:false,reason:'unsupported',sources:[]};
  if(snapshot.tenantId!==target.tenantId||snapshot.tenantId!==evidence.tenantId||!snapshot.users.some(user=>user.id===userId&&user.active)||definition.scope==='company'&&target.companyId===null||definition.scope==='tenant'&&target.companyId!==null)return {allowed:false,reason:'unavailable',sources:[]};
+ if(['workforce.add','workforce.edit','workforce.delete'].includes(capabilityId)){
+  const view=resolveAccessCapability(snapshot,catalog,userId,'workforce.view',target,evidence);
+  if(!view.allowed)return view;
+  const legacy=resolveAccessCapability(snapshot,catalog,userId,'workforce.maintain',target,evidence);
+  if(legacy.reason==='denied')return legacy;
+ }
  const memberships=snapshot.memberships.filter(row=>row.userId===userId);
  const sources:AccessSource[]=[];
  for(const group of snapshot.groups){

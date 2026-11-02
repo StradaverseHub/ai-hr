@@ -560,7 +560,7 @@ export async function createEmployeeDraftWithReservedCode(
 
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
-    await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
+    await assertWorkforceCompanyTx(tx,ctx,companyId,'add');
     let code: string;
     let configId: string | null = null;
     let number: number | null = null;

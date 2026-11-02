@@ -160,7 +160,7 @@ export async function addEmployeeDocument(
   const title = cleanTitle(p.title);
   assertValidEmployeeDocument(p.mimeType, p.content);
   return withTenant(ctx, async (tx) => {
-    await assertWorkforceEmploymentTx(tx, ctx, p.employmentId, 'maintain');
+    await assertWorkforceEmploymentTx(tx, ctx, p.employmentId, 'add');
     const [row] = await tx
       .insert(employeeDocument)
       .values({
@@ -283,7 +283,7 @@ export async function deleteEmployeeDocument(ctx: SessionContext, p: { documentI
       .where(eq(employeeDocument.id, p.documentId))
       .limit(1);
     if (!existing) throw new EmployeeDocumentError('Document not found (or not visible).');
-    await assertWorkforceEmploymentTx(tx, ctx, existing.employmentId, 'maintain');
+    await assertWorkforceEmploymentTx(tx, ctx, existing.employmentId, 'delete');
     await tx.delete(employeeDocument).where(eq(employeeDocument.id, p.documentId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,

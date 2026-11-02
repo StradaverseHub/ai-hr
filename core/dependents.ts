@@ -1007,7 +1007,7 @@ export async function archiveDependent(
     if (!existing || existing.archivedAt != null) {
       throw new DependentValidationError('Dependent record not found.');
     }
-    await assertWorkforcePersonTx(tx,ctx,existing.personId,'maintain');
+    await assertWorkforcePersonTx(tx,ctx,existing.personId,'delete');
     await tx
       .update(employeeDependent)
       .set({ archivedAt: new Date(), updatedAt: new Date() })

@@ -4523,6 +4523,13 @@
       "when": 1793330000338,
       "tag": "0938_data_permission_enforcement",
       "breakpoints": true
+    },
+    {
+      "idx": 761,
+      "version": "7",
+      "when": 1793330000339,
+      "tag": "0939_workforce_action_permissions",
+      "breakpoints": true
     }
   ]
 }
