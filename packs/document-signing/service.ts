@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
-import {recordSigningAction,replacePendingSigner,reviseSigningDocument,validateSigningRoute,SigningError,type SigningDocument,type SigningGuardrails,type SigningRoute} from '../../lib/document-signing-model';
+import {recordAcknowledgementDecline,recordSigningAction,replacePendingSigner,reviseSigningDocument,validateSigningRoute,SigningError,type SigningDocument,type SigningGuardrails,type SigningRoute} from '../../lib/document-signing-model';
 export type {SigningDocument,SigningGuardrails,SigningRoute} from '../../lib/document-signing-model';
 type StoredDocument={id:string;employment_id:string;company_id:string;subject_id:string;revision:number;data:SigningDocument;guardrails:SigningGuardrails};
 
@@ -39,6 +39,15 @@ export async function reviseSigningDocumentTx(tx:Tx,ctx:SessionContext,input:{id
 export async function replaceDocumentSignerTx(tx:Tx,ctx:SessionContext,input:{id:string;stepId:string;holderId:string;reason:string;kind:'delegation'|'holder_changed'|'missing_holder'}):Promise<SigningDocument>{
   const row=await load(tx,ctx,input.id),next=replacePendingSigner(row.data,row.guardrails,input);
   await store(tx,row,next,'reroute',input.reason);return next;
+}
+export async function declineDocumentAcknowledgementTx(tx:Tx,ctx:SessionContext,input:{id:string;stepId:string;reason:string}):Promise<SigningDocument>{
+  if(!ctx.userId)throw new SigningError('forbidden','Sign in before confirming an acknowledgement refusal.');
+  const row=await load(tx,ctx,input.id);
+  const [actor]=await tx.execute<{name:string}>(sql`select p.full_name as name from app_user u join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=${ctx.userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)`);
+  if(!actor)throw new SigningError('forbidden','The verified confirmer is unavailable.');
+  const next=recordAcknowledgementDecline(row.data,{...input,id:randomUUID(),actorId:ctx.userId,actorName:actor.name,at:new Date().toISOString()});
+  const [result]=await tx.execute<{document:SigningDocument}>(sql`select app.document_signing_act(${row.id}::uuid,${JSON.stringify(next.actions.at(-1))}::jsonb) as document`);
+  return result.document;
 }
 async function store(tx:Tx,row:StoredDocument,next:SigningDocument,operation:'revise'|'reroute',reason:string):Promise<void>{
   await tx.execute(sql`select app.document_signing_store(${row.id}::uuid,${row.employment_id}::uuid,${row.company_id}::uuid,${row.subject_id}::uuid,${JSON.stringify(next)}::jsonb,${JSON.stringify(row.guardrails)}::jsonb,${row.revision},${operation},${reason})`);

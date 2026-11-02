@@ -22,7 +22,7 @@ DECLARE allowed boolean;
 BEGIN
  IF app.current_tenant_id() IS NULL OR app.current_user_id() IS NULL OR app.login_blocked(app.current_user_id())
  OR NOT EXISTS(SELECT 1 FROM app_user WHERE id=app.current_user_id() AND tenant_id=app.current_tenant_id() AND archived_at IS NULL) THEN RETURN false; END IF;
- IF p_type<>'probation' OR p_operation NOT IN ('create','read','sign','revise','reroute') OR to_regprocedure('app.probation_signing_access(uuid,text)') IS NULL THEN RETURN false; END IF;
+ IF p_type<>'probation' OR p_operation NOT IN ('create','read','sign','decline','revise','reroute') OR to_regprocedure('app.probation_signing_access(uuid,text)') IS NULL THEN RETURN false; END IF;
  EXECUTE 'SELECT app.probation_signing_access($1,$2)' INTO allowed USING p_subject,p_operation;
  RETURN coalesce(allowed,false);
 END $$;
@@ -53,11 +53,16 @@ BEGIN
 END $$;
 CREATE FUNCTION app.document_signing_store(p_id uuid,p_employment uuid,p_company uuid,p_subject uuid,p_data jsonb,p_rules jsonb,p_expected integer,p_operation text,p_reason text) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE old document_signing_document;new_revision integer;
+DECLARE old document_signing_document;new_revision integer;expected_rules jsonb;route_allowed boolean;
 BEGIN
  IF p_operation NOT IN ('create','revise','reroute') OR NOT app.document_signing_subject_access('probation',p_subject,p_operation) THEN RAISE EXCEPTION 'Signing operation not permitted'; END IF;
  IF NOT EXISTS(SELECT 1 FROM employment WHERE id=p_employment AND tenant_id=app.current_tenant_id() AND company_id=p_company) THEN RAISE EXCEPTION 'Invalid signing subject'; END IF;
  IF p_data->>'tenantId' IS DISTINCT FROM app.current_tenant_id()::text OR p_data->>'companyId' IS DISTINCT FROM p_company::text OR p_data->>'subjectId' IS DISTINCT FROM p_subject::text OR p_data->>'subjectType' IS DISTINCT FROM 'probation' THEN RAISE EXCEPTION 'Signing subject mismatch'; END IF;
+ IF to_regprocedure('app.probation_signing_guardrails(uuid)') IS NULL OR to_regprocedure('app.probation_signing_route_allowed(uuid,jsonb)') IS NULL THEN RAISE EXCEPTION 'Signing subject adapter is unavailable'; END IF;
+ EXECUTE 'SELECT app.probation_signing_guardrails($1)' INTO expected_rules USING p_subject;
+ EXECUTE 'SELECT app.probation_signing_route_allowed($1,$2)' INTO route_allowed USING p_subject,p_data->'route';
+ IF expected_rules IS NULL OR expected_rules<>p_rules OR NOT coalesce(route_allowed,false) THEN RAISE EXCEPTION 'Signing subject policy or current route changed'; END IF;
+ IF coalesce(p_data->>'contentHash','') !~ '^[a-f0-9]{64}$' OR jsonb_typeof(p_data->'contentRevision') IS DISTINCT FROM 'number' THEN RAISE EXCEPTION 'Invalid content fingerprint or revision'; END IF;
  PERFORM app.document_signing_validate(p_data,p_rules);
  SELECT * INTO old FROM document_signing_document WHERE id=p_id AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF p_operation='create' THEN
@@ -72,7 +77,7 @@ BEGIN
   ELSE
    IF p_data->>'contentRevision'<>old.data->>'contentRevision' OR p_data->>'contentHash'<>old.data->>'contentHash' THEN RAISE EXCEPTION 'Rerouting cannot change signed content'; END IF;
    IF EXISTS(SELECT 1 FROM jsonb_array_elements(old.data->'route'->'steps') s WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p_data->'route'->'steps') n WHERE (n-'holderId'-'representedId')=(s-'holderId'-'representedId'))) OR jsonb_array_length(p_data->'route'->'steps')<>jsonb_array_length(old.data->'route'->'steps') THEN RAISE EXCEPTION 'Rerouting cannot remove or change required steps'; END IF;
-   IF EXISTS(SELECT 1 FROM jsonb_array_elements(old.data->'actions') a WHERE a->>'action'='signed' AND a->>'contentRevision'=old.data->>'contentRevision' AND a->>'contentHash'=old.data->>'contentHash' AND EXISTS(SELECT 1 FROM jsonb_array_elements(old.data->'route'->'steps') s JOIN jsonb_array_elements(p_data->'route'->'steps') n ON s->>'id'=n->>'id' WHERE s->>'id'=a->>'stepId' AND s<>n)) THEN RAISE EXCEPTION 'Completed signatures cannot be reassigned'; END IF;
+   IF EXISTS(SELECT 1 FROM jsonb_array_elements(old.data->'actions') a WHERE a->>'action' IN ('signed','declined') AND a->>'contentRevision'=old.data->>'contentRevision' AND a->>'contentHash'=old.data->>'contentHash' AND EXISTS(SELECT 1 FROM jsonb_array_elements(old.data->'route'->'steps') s JOIN jsonb_array_elements(p_data->'route'->'steps') n ON s->>'id'=n->>'id' WHERE s->>'id'=a->>'stepId' AND s<>n)) THEN RAISE EXCEPTION 'Completed signatures cannot be reassigned'; END IF;
   END IF;
   new_revision:=old.revision+1;
   UPDATE document_signing_document SET data=p_data,revision=new_revision,updated_at=now() WHERE id=old.id;
@@ -86,24 +91,26 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE d document_signing_document;step jsonb;prior jsonb;stage integer;v_action jsonb;v_name text;new_data jsonb;
 BEGIN
  SELECT * INTO d FROM document_signing_document WHERE id=p_id AND tenant_id=app.current_tenant_id() FOR UPDATE;
- IF NOT FOUND OR NOT app.document_signing_subject_access(d.subject_type,d.subject_id,'sign') THEN RAISE EXCEPTION 'Signing action not permitted'; END IF;
+ IF NOT FOUND OR NOT app.document_signing_subject_access(d.subject_type,d.subject_id,CASE WHEN p_action->>'action'='declined' THEN 'decline' ELSE 'sign' END) THEN RAISE EXCEPTION 'Signing action not permitted'; END IF;
  IF p_action->>'actorId' IS DISTINCT FROM app.current_user_id()::text OR p_action->>'contentHash' IS DISTINCT FROM d.data->>'contentHash' OR p_action->>'contentRevision' IS DISTINCT FROM d.data->>'contentRevision' THEN RAISE EXCEPTION 'Signer or document revision changed'; END IF;
  SELECT a INTO prior FROM jsonb_array_elements(d.data->'actions') a WHERE a->>'id'=p_action->>'id';
  IF prior IS NOT NULL THEN
   IF (prior-'at'-'actorName')=(p_action-'at'-'actorName') THEN RETURN d.data; END IF;
   RAISE EXCEPTION 'Signing action reference already used';
  END IF;
- SELECT min((s->>'stage')::integer) INTO stage FROM jsonb_array_elements(d.data->'route'->'steps') s WHERE s->>'required'='true' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'actions') a WHERE a->>'stepId'=s->>'id' AND a->>'action'='signed' AND a->>'contentRevision'=d.data->>'contentRevision' AND a->>'contentHash'=d.data->>'contentHash');
+ SELECT min((s->>'stage')::integer) INTO stage FROM jsonb_array_elements(d.data->'route'->'steps') s WHERE s->>'required'='true' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'actions') a WHERE a->>'stepId'=s->>'id' AND a->>'action' IN ('signed','declined') AND a->>'contentRevision'=d.data->>'contentRevision' AND a->>'contentHash'=d.data->>'contentHash');
  SELECT s INTO step FROM jsonb_array_elements(d.data->'route'->'steps') s WHERE s->>'id'=p_action->>'stepId' AND (s->>'stage')::integer=stage;
- IF step IS NULL OR step->>'holderId' IS DISTINCT FROM app.current_user_id()::text OR p_action->>'role' IS DISTINCT FROM step->>'role' OR p_action->>'representedId' IS DISTINCT FROM coalesce(step->>'representedId',step->>'holderId') THEN RAISE EXCEPTION 'Only the assigned pending signer may act'; END IF;
- IF EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'actions') a WHERE a->>'stepId'=step->>'id' AND a->>'action'='signed' AND a->>'contentRevision'=d.data->>'contentRevision' AND a->>'contentHash'=d.data->>'contentHash') THEN RAISE EXCEPTION 'Signature already recorded'; END IF;
- IF p_action->>'action'='returned' THEN
+ IF step IS NULL OR (p_action->>'action'<>'declined' AND step->>'holderId' IS DISTINCT FROM app.current_user_id()::text) OR p_action->>'role' IS DISTINCT FROM step->>'role' OR p_action->>'representedId' IS DISTINCT FROM coalesce(step->>'representedId',step->>'holderId') THEN RAISE EXCEPTION 'Only the assigned pending signer may act'; END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'actions') a WHERE a->>'stepId'=step->>'id' AND a->>'action' IN ('signed','declined') AND a->>'contentRevision'=d.data->>'contentRevision' AND a->>'contentHash'=d.data->>'contentHash') THEN RAISE EXCEPTION 'Signature already recorded'; END IF;
+ IF p_action->>'action'='declined' THEN
+  IF step->>'kind'<>'acknowledge' OR step->>'holderId'=app.current_user_id()::text OR btrim(coalesce(p_action->>'comment',''))='' OR p_action->'signature' IS DISTINCT FROM 'null'::jsonb THEN RAISE EXCEPTION 'An independent recorded refusal confirmation is required'; END IF;
+ ELSIF p_action->>'action'='returned' THEN
   IF btrim(coalesce(p_action->>'comment',''))='' OR p_action->'signature'<>'null'::jsonb THEN RAISE EXCEPTION 'A return reason is required'; END IF;
  ELSIF p_action->>'action'='signed' THEN
   IF p_action->'signature'->>'consent' IS DISTINCT FROM 'true' OR p_action->'signature'->>'method' NOT IN ('typed','drawn') OR length(btrim(coalesce(p_action->'signature'->>'value','')))=0 OR length(p_action->'signature'->>'value')>500000 THEN RAISE EXCEPTION 'A valid signature and consent are required'; END IF;
   IF p_action->'signature'->>'method'='typed' AND (length(p_action->'signature'->>'value')>200 OR p_action->'signature'->>'value' ~ '[[:cntrl:]]') THEN RAISE EXCEPTION 'Invalid typed signature'; END IF;
   IF p_action->'signature'->>'method'='drawn' AND p_action->'signature'->>'value' !~ '^data:image/png;base64,[A-Za-z0-9+/]+={0,2}$' THEN RAISE EXCEPTION 'Invalid drawn signature'; END IF;
-  IF step->>'kind'='approve' AND d.guardrails->>'independentApprovalFromRole' IS NOT NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'actions') a WHERE a->>'role'=d.guardrails->>'independentApprovalFromRole' AND a->>'action'='signed' AND a->>'actorId'=app.current_user_id()::text AND a->>'contentRevision'=d.data->>'contentRevision' AND a->>'contentHash'=d.data->>'contentHash') THEN RAISE EXCEPTION 'A distinct approving person is required'; END IF;
+  IF step->>'kind'='approve' AND d.guardrails->>'independentApprovalFromRole' IS NOT NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'actions') a WHERE a->>'role'=d.guardrails->>'independentApprovalFromRole' AND a->>'action'='signed' AND a->>'actorId'=app.current_user_id()::text AND a->>'contentRevision'=d.data->>'contentRevision' AND a->>'contentHash'=d.data->>'contentHash') AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'route'->'steps') other_step WHERE other_step->>'kind'='approve' AND other_step->>'required'='true' AND other_step->>'holderId'<>app.current_user_id()::text) THEN RAISE EXCEPTION 'A distinct approving person is required'; END IF;
  ELSE RAISE EXCEPTION 'Invalid signing action'; END IF;
  SELECT p.full_name INTO v_name FROM app_user u JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id();
  IF v_name IS NULL THEN RAISE EXCEPTION 'Verified signer name is missing'; END IF;
@@ -111,7 +118,7 @@ BEGIN
  new_data:=jsonb_set(d.data,'{actions}',(d.data->'actions')||jsonb_build_array(v_action));
  UPDATE document_signing_document SET data=new_data,revision=revision+1,updated_at=now() WHERE id=d.id;
  INSERT INTO document_signing_revision(document_id,tenant_id,revision,data,actor_user_id,reason) VALUES(d.id,d.tenant_id,d.revision+1,new_data,app.current_user_id(),'Recorded signing action');
- INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(d.tenant_id,'document-signing',d.id,CASE p_action->>'action' WHEN 'signed' THEN 'document-signing.signed' ELSE 'document-signing.returned' END,'user',app.current_user_id(),d.employment_id,jsonb_build_object('documentId',d.id,'revision',d.revision+1,'stepId',step->>'id'));
+ INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(d.tenant_id,'document-signing',d.id,CASE p_action->>'action' WHEN 'signed' THEN 'document-signing.signed' WHEN 'declined' THEN 'document-signing.acknowledgement-declined' ELSE 'document-signing.returned' END,'user',app.current_user_id(),d.employment_id,jsonb_build_object('documentId',d.id,'revision',d.revision+1,'stepId',step->>'id'));
  RETURN new_data;
 END $$;
 REVOKE ALL ON FUNCTION app.document_signing_subject_access(text,uuid,text),app.document_signing_validate(jsonb,jsonb),app.document_signing_store(uuid,uuid,uuid,uuid,jsonb,jsonb,integer,text,text),app.document_signing_act(uuid,jsonb) FROM PUBLIC;
