@@ -41,10 +41,60 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.financial_setup_catalog_function(text,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.financial_setup_catalog_function(text,text) TO ai_hr_app;
+-- Native history ACL is distinct from catalogue maintenance and independent payroll reading.
+CREATE FUNCTION app.financial_history_native(t uuid,u uuid,kind text,co uuid,live boolean) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE admitted boolean;selected uuid;
+BEGIN
+ IF kind IS NULL OR live IS NULL OR kind NOT IN ('view','import','revert') THEN RETURN false;END IF;
+ IF (CASE WHEN live THEN app.financial_letter_current_legacy_allowed(t,u,'payroll.view',co)
+  ELSE app.financial_letter_legacy_allowed(t,u,'payroll.view',co) END) IS NOT TRUE THEN RETURN false;END IF;
+ IF kind='view' THEN RETURN true;END IF;
+ WITH configured AS(SELECT role,allowed,company_id FROM public.payroll_permission_grant WHERE tenant_id=t AND permission_key='payroll.history.'||kind AND (company_id=co OR company_id IS NULL)),
+ effective AS(SELECT role,allowed FROM configured WHERE company_id=co OR company_id IS NULL AND NOT EXISTS(SELECT 1 FROM configured WHERE company_id=co)),
+ candidates AS(SELECT DISTINCT r.role::text AS role FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u
+  AND (co IS NULL AND r.company_id IS NULL OR co IS NOT NULL AND app.access_scope_covers(r.company_id,co,t))
+  AND (NOT live OR EXISTS(SELECT 1 FROM app.current_grants() claimed WHERE claimed.role=r.role::text AND (co IS NULL AND claimed.company_id IS NULL OR co IS NOT NULL AND app.access_scope_covers(claimed.company_id,co,t)))))
+ SELECT CASE WHEN EXISTS(SELECT 1 FROM effective) THEN EXISTS(SELECT 1 FROM candidates c JOIN effective a ON a.role::text=c.role AND a.allowed WHERE NOT EXISTS(SELECT 1 FROM effective denied WHERE denied.role::text=c.role AND NOT denied.allowed))
+ ELSE EXISTS(SELECT 1 FROM candidates WHERE role IN ('hr_admin','super_admin')) END INTO admitted;
+ IF admitted IS NOT TRUE THEN RETURN false;END IF;
+ -- NULL is a future/global course: the tenant ACL and every existing company must both admit it.
+ IF co IS NULL THEN
+  FOR selected IN SELECT id FROM public.company WHERE tenant_id=t AND archived_at IS NULL LOOP
+   IF NOT app.financial_history_native(t,u,kind,selected,live) THEN RETURN false;END IF;
+  END LOOP;
+ END IF;
+ RETURN true;
+END;$$;
+REVOKE ALL ON FUNCTION app.financial_history_native(uuid,uuid,text,uuid,boolean) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_history_delegation_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap IN ('payroll.view','payroll.add','payroll.edit','payroll.delete') AND app.financial_history_native(t,u,
+ CASE substring(cap from '[^.]+$') WHEN 'view' THEN 'view' WHEN 'delete' THEN 'revert' ELSE 'import' END,co,true);
+$$;
+REVOKE ALL ON FUNCTION app.financial_history_delegation_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('payroll.historyImport',operation,'company','payroll.'||operation,'app.financial_history_delegation_allowed',
+ '{"moduleKey":"payroll","labelKey":"payroll.historyImport.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/history-import","employeeBearing":true}'::jsonb)
+FROM unnest(ARRAY['view','add','edit','delete']) operation;
+CREATE FUNCTION app.financial_history_function_action(co uuid,operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT operation IN ('view','add','edit','delete') AND app.financial_history_native(app.current_tenant_id(),app.current_user_id(),
+  CASE operation WHEN 'view' THEN 'view' WHEN 'delete' THEN 'revert' ELSE 'import' END,co,true)
+ AND CASE WHEN co IS NULL THEN app.financial_letter_capability_allowed_current('payroll.'||operation,NULL)
+  AND app.financial_letter_capability_allowed_current('function.payroll.historyImport.view',NULL)
+  AND app.financial_letter_capability_allowed_current('function.payroll.historyImport.'||operation,NULL)
+ ELSE app.access_financial_action_company('payroll',co,operation)
+  AND app.function_action_allowed('payroll.historyImport','view',co) AND app.function_action_allowed('payroll.historyImport',operation,co) END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_history_function_action(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.financial_history_function_action(uuid,text) TO ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.financial_setup_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('payComponents.catalogue','payComponents.formulaBuilder')
-  AND app.financial_setup_legacy_allowed(t,u,a.parent_capability,co));
+  AND app.financial_setup_legacy_allowed(t,u,a.parent_capability,co))
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key='payroll.historyImport'
+  AND app.financial_history_native(t,u,CASE a.operation WHEN 'view' THEN 'view' WHEN 'delete' THEN 'revert' ELSE 'import' END,co,false));
 $$;
 REVOKE ALL ON FUNCTION app.financial_setup_function_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.financial_setup_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
@@ -55,7 +105,9 @@ $$;
 CREATE FUNCTION app.financial_setup_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('payComponents.catalogue','payComponents.formulaBuilder')
-  AND app.financial_setup_current_legacy_allowed(t,u,a.parent_capability,co));
+  AND app.financial_setup_current_legacy_allowed(t,u,a.parent_capability,co))
+ OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key='payroll.historyImport'
+  AND app.financial_history_native(t,u,CASE a.operation WHEN 'view' THEN 'view' WHEN 'delete' THEN 'revert' ELSE 'import' END,co,true));
 $$;
 REVOKE ALL ON FUNCTION app.financial_setup_current_legacy_allowed(uuid,uuid,text,uuid),app.financial_setup_function_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -253,11 +305,7 @@ REVOKE ALL ON FUNCTION app.financial_loan_schedule_approved(jsonb,jsonb) FROM PU
 --> statement-breakpoint
 CREATE FUNCTION app.financial_history_permission(p_company uuid,p_kind text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- WITH configured AS(SELECT role,allowed,company_id FROM public.payroll_permission_grant WHERE tenant_id=app.current_tenant_id() AND permission_key='payroll.history.'||p_kind AND (company_id=p_company OR company_id IS NULL)),
- effective AS(SELECT role,allowed FROM configured WHERE company_id=p_company OR company_id IS NULL AND NOT EXISTS(SELECT 1 FROM configured WHERE company_id=p_company))
- SELECT p_kind IN ('import','revert') AND app.principal_snapshot_current() AND app.can_admin_payroll_for(p_company)
- AND CASE WHEN EXISTS(SELECT 1 FROM effective) THEN EXISTS(SELECT 1 FROM effective a WHERE a.allowed AND app.has_role_for(a.role,p_company) AND NOT EXISTS(SELECT 1 FROM effective d WHERE d.role=a.role AND NOT d.allowed))
- ELSE app.has_role_for('hr_admin',p_company) OR app.has_role_for('super_admin',p_company) END;
+ SELECT p_kind IN ('import','revert') AND app.financial_history_native(app.current_tenant_id(),app.current_user_id(),p_kind,p_company,true);
 $$;
 REVOKE ALL ON FUNCTION app.financial_history_permission(uuid,text) FROM PUBLIC,ai_hr_app;
 CREATE TABLE app.financial_history_intent(
@@ -284,7 +332,7 @@ BEGIN
   IF jsonb_array_length(source.plan->'rows') NOT BETWEEN 1 AND 10000 THEN RAISE EXCEPTION 'History unchanged source unavailable' USING ERRCODE='42501';END IF;
   FOR planned IN SELECT value FROM jsonb_array_elements(source.plan->'rows') LOOP
    co:=(planned->>'companyId')::uuid;subject:=(planned->>'employmentId')::uuid;
-   IF planned->>'operation' IS DISTINCT FROM 'unchanged' OR NOT app.financial_history_permission(co,'import') OR NOT app.access_financial_action_company('payroll',co,'view') OR NOT app.data_permission_matches(subject) THEN RAISE EXCEPTION 'History unchanged subject unavailable' USING ERRCODE='42501';END IF;
+   IF planned->>'operation' IS DISTINCT FROM 'unchanged' OR NOT app.financial_history_permission(co,'import') OR NOT app.financial_history_function_action(co,'view') OR NOT app.data_permission_matches(subject) THEN RAISE EXCEPTION 'History unchanged subject unavailable' USING ERRCODE='42501';END IF;
    IF NOT EXISTS(SELECT 1 FROM public.payroll_history_import_record r JOIN public.payroll_history_import_revision v ON v.record_id=r.id AND v.tenant_id=r.tenant_id JOIN public.payroll_history_import_snapshot s ON s.record_id=r.id AND s.tenant_id=r.tenant_id AND s.id=v.snapshot_id
     WHERE r.tenant_id=source.tenant_id AND r.id=(planned->>'recordId')::uuid AND r.company_id=co AND r.employment_id=subject AND r.period=planned->>'period' AND r.cycle_id=(planned->>'cycleId')::uuid
      AND v.id=(planned->>'expectedRevisionId')::uuid AND s.id=(planned->>'expectedSnapshotId')::uuid AND s.value_hash=planned->>'valueHash' AND s."values"=planned->'values'
@@ -306,7 +354,7 @@ BEGIN
   co:=(k->>'companyId')::uuid;subject:=(k->>'employmentId')::uuid;op:=CASE WHEN planned->>'operation'='create' THEN 'add' ELSE 'edit' END;
   IF co IS NULL OR subject IS NULL OR k->>'cycleId' IS NULL OR coalesce(k->>'period','') !~ '^[0-9]{4}-(0[1-9]|1[0-2])$' THEN RAISE EXCEPTION 'History key unavailable' USING ERRCODE='22023';END IF;
   starts:=(k->>'period'||'-01')::date;ends:=(starts+interval '1 month'-interval '1 day')::date;
-  IF NOT app.financial_history_permission(co,'import') OR NOT app.access_financial_action_company('payroll',co,op) OR NOT app.data_permission_matches(subject)
+  IF NOT app.financial_history_permission(co,'import') OR NOT app.financial_history_function_action(co,op) OR NOT app.data_permission_matches(subject)
    OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=subject AND e.tenant_id=source.tenant_id AND e.voided_at IS NULL AND (e.company_id=co OR EXISTS(SELECT 1 FROM public.assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.company_id=co AND a.superseded_at IS NULL AND a.valid_from<=ends AND (a.valid_to IS NULL OR a.valid_to>starts)))) THEN RAISE EXCEPTION 'History subject action unavailable' USING ERRCODE='42501';END IF;
   INSERT INTO app.financial_history_intent VALUES(pg_current_xact_id(),source.tenant_id,app.current_user_id(),source.id,co,subject,k->>'period',(k->>'cycleId')::uuid,op,planned);
  END LOOP;
@@ -320,7 +368,7 @@ DECLARE r jsonb:=coalesce(p_after,p_before);batch public.payroll_batch%ROWTYPE;p
 BEGIN
  IF p_after IS NULL OR p_table NOT IN ('pay_period','payroll_batch','payslip') OR r->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.principal_snapshot_current() THEN RETURN false;END IF;
  IF p_table='pay_period' THEN
-  IF NOT EXISTS(SELECT 1 FROM app.financial_history_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=app.current_tenant_id() AND i.user_id=app.current_user_id() AND i.company_id=(r->>'company_id')::uuid AND i.period=r->>'period' AND i.operation IN ('add','edit') AND app.access_financial_action_company('payroll',i.company_id,i.operation) AND app.data_permission_matches(i.employment_id)) THEN RETURN false;END IF;
+  IF NOT EXISTS(SELECT 1 FROM app.financial_history_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=app.current_tenant_id() AND i.user_id=app.current_user_id() AND i.company_id=(r->>'company_id')::uuid AND i.period=r->>'period' AND i.operation IN ('add','edit') AND app.financial_history_function_action(i.company_id,i.operation) AND app.data_permission_matches(i.employment_id)) THEN RETURN false;END IF;
   IF p_before IS NULL THEN RETURN p_after->>'status'='open';END IF;
   RETURN (p_after-'status')=(p_before-'status') AND p_after->>'status'='closed'
    AND NOT EXISTS(SELECT 1 FROM public.payroll_batch b WHERE b.tenant_id=app.current_tenant_id() AND b.pay_period_id=(r->>'id')::uuid AND NOT app.financial_batch_subjects_allowed(b.id));
@@ -384,21 +432,32 @@ CREATE CONSTRAINT TRIGGER financial_history_noop_completed AFTER INSERT ON app.f
 -- subjects refuse the complete retained packet; unknown source-only rows remain the uploader's own.
 CREATE FUNCTION app.financial_history_plan_visible(p_plan jsonb,p_creator uuid) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE item jsonb;subject text;
+DECLARE item jsonb;subject text;company text;
 BEGIN
- IF NOT app.principal_snapshot_current() OR jsonb_typeof(p_plan->'rows') IS DISTINCT FROM 'array' OR jsonb_array_length(p_plan->'rows')>10000 THEN RETURN false;END IF;
+ IF NOT app.principal_snapshot_current() OR NOT EXISTS(SELECT 1 FROM public.company co WHERE co.tenant_id=app.current_tenant_id() AND app.financial_history_function_action(co.id,'view')) OR jsonb_typeof(p_plan->'rows') IS DISTINCT FROM 'array' OR jsonb_array_length(p_plan->'rows')>10000 THEN RETURN false;END IF;
  FOR item IN SELECT value FROM jsonb_array_elements(p_plan->'rows') LOOP
-  subject:=item->>'employmentId';
+  subject:=item->>'employmentId';company:=item->>'companyId';
+  IF company IS NOT NULL AND (company !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' OR NOT app.financial_history_function_action(company::uuid,'view')) THEN RETURN false;END IF;
   IF subject IS NULL OR subject='' THEN IF p_creator IS DISTINCT FROM app.current_user_id() THEN RETURN false;END IF;
   ELSIF subject !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' OR NOT app.data_permission_matches(subject::uuid) THEN RETURN false;END IF;
  END LOOP;RETURN true;
 END;$$;
 REVOKE ALL ON FUNCTION app.financial_history_plan_visible(jsonb,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.financial_history_plan_visible(jsonb,uuid) TO ai_hr_app;
+-- All attempt consumers (including actor labels and event RLS) share the actual packet ceiling.
+CREATE OR REPLACE FUNCTION app.payroll_history_attempt_access(subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.payroll_history_import_attempt a
+ WHERE a.id=subject AND a.tenant_id=app.current_tenant_id() AND(a.created_by=app.current_user_id() OR cardinality(a.company_ids)>0)
+ AND app.financial_history_plan_visible(a.plan,a.created_by)
+ AND NOT EXISTS(SELECT 1 FROM unnest(a.company_ids) selected(company_id) WHERE NOT app.financial_history_function_action(selected.company_id,'view'))
+ AND(cardinality(a.company_ids)>0 OR EXISTS(SELECT 1 FROM public.company co WHERE co.tenant_id=a.tenant_id AND app.financial_history_function_action(co.id,'view'))));
+$$;
+--> statement-breakpoint
 CREATE POLICY financial_history_packet_read ON public.payroll_history_import_attempt AS RESTRICTIVE FOR SELECT TO ai_hr_app
  USING(app.financial_history_plan_visible(plan,created_by));
 CREATE POLICY financial_history_subject_read ON public.payroll_history_import_record AS RESTRICTIVE FOR SELECT TO ai_hr_app
- USING(app.data_permission_matches(employment_id));
+ USING(app.data_permission_matches(employment_id) AND app.financial_history_function_action(company_id,'view'));
 --> statement-breakpoint
 CREATE FUNCTION app.financial_tax_preview_visible(p_preview jsonb) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -472,7 +531,7 @@ BEGIN
  DELETE FROM app.financial_history_intent WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
  FOR item IN SELECT value FROM jsonb_array_elements(event.changes) LOOP
   SELECT * INTO r FROM public.payroll_history_import_record WHERE id=(item->>'recordId')::uuid AND tenant_id=source.tenant_id FOR UPDATE;
-  IF NOT FOUND OR NOT app.financial_history_permission(r.company_id,'revert') OR NOT app.access_financial_action_company('payroll',r.company_id,'delete') OR NOT app.data_permission_matches(r.employment_id) THEN RAISE EXCEPTION 'History revert subject unavailable' USING ERRCODE='42501';END IF;
+  IF NOT FOUND OR NOT app.financial_history_permission(r.company_id,'revert') OR NOT app.financial_history_function_action(r.company_id,'delete') OR NOT app.data_permission_matches(r.employment_id) THEN RAISE EXCEPTION 'History revert subject unavailable' USING ERRCODE='42501';END IF;
   SELECT * INTO current_revision FROM public.payroll_history_import_revision WHERE record_id=r.id AND tenant_id=r.tenant_id ORDER BY ordinal DESC LIMIT 1;
   IF NOT FOUND OR current_revision.id::text IS DISTINCT FROM item->>'revisionId' THEN RAISE EXCEPTION 'History revision changed' USING ERRCODE='40001';END IF;
   prior:=NULL;
@@ -494,7 +553,7 @@ BEGIN
  PERFORM app.access_workforce_write_lock();
  IF TG_OP<>'INSERT' OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'History write unavailable' USING ERRCODE='42501';END IF;
  IF TG_TABLE_NAME='payroll_history_import_attempt' THEN
-  IF (r->>'created_by')::uuid IS DISTINCT FROM app.current_user_id() OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(r->'company_ids') selected(id) WHERE NOT app.financial_history_permission(selected.id::uuid,'import') OR NOT app.access_financial_action_company('payroll',selected.id::uuid,'view')) THEN RAISE EXCEPTION 'History upload unavailable' USING ERRCODE='42501';END IF;
+  IF (r->>'created_by')::uuid IS DISTINCT FROM app.current_user_id() OR NOT EXISTS(SELECT 1 FROM public.company co WHERE co.tenant_id=app.current_tenant_id() AND app.financial_history_function_action(co.id,'view')) OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(r->'company_ids') selected(id) WHERE NOT app.financial_history_permission(selected.id::uuid,'import') OR NOT app.financial_history_function_action(selected.id::uuid,'view')) THEN RAISE EXCEPTION 'History upload unavailable' USING ERRCODE='42501';END IF;
   RETURN NULL;
  END IF;
  IF TG_TABLE_NAME='payroll_history_import_event' THEN
@@ -509,7 +568,7 @@ BEGIN
  ELSE SELECT * INTO target FROM public.payroll_history_import_record WHERE id=(r->>'record_id')::uuid AND tenant_id=NEW.tenant_id;END IF;
  IF target.id IS NULL THEN RAISE EXCEPTION 'History record unavailable' USING ERRCODE='42501';END IF;
  SELECT * INTO proof FROM app.financial_history_intent i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=target.tenant_id AND i.user_id=app.current_user_id() AND i.company_id=target.company_id AND i.employment_id=target.employment_id AND i.period=target.period AND i.cycle_id=target.cycle_id;
- IF NOT FOUND OR NOT app.access_financial_action_company('payroll',target.company_id,proof.operation) OR NOT app.data_permission_matches(target.employment_id) OR NOT app.financial_history_permission(target.company_id,CASE WHEN proof.operation='delete' THEN 'revert' ELSE 'import' END) THEN RAISE EXCEPTION 'History logical action unavailable' USING ERRCODE='42501';END IF;
+ IF NOT FOUND OR NOT app.financial_history_function_action(target.company_id,proof.operation) OR NOT app.data_permission_matches(target.employment_id) OR NOT app.financial_history_permission(target.company_id,CASE WHEN proof.operation='delete' THEN 'revert' ELSE 'import' END) THEN RAISE EXCEPTION 'History logical action unavailable' USING ERRCODE='42501';END IF;
  IF TG_TABLE_NAME='payroll_history_import_revision' AND (r->>'attempt_id')::uuid IS DISTINCT FROM proof.attempt_id THEN RAISE EXCEPTION 'History attempt mismatch' USING ERRCODE='42501';END IF;
  IF proof.operation='delete' THEN
   IF TG_TABLE_NAME<>'payroll_history_import_revision' OR r->>'kind'<>'revert' OR (r->>'previous_revision_id') IS DISTINCT FROM (proof.planned->>'expectedRevisionId') OR (r->>'snapshot_id') IS DISTINCT FROM (proof.planned->>'restoreSnapshotId') THEN RAISE EXCEPTION 'History revert effect mismatch' USING ERRCODE='42501';END IF;
