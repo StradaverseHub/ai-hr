@@ -346,6 +346,20 @@ describe('backup-db.sh — safe to run repeatedly and beside a deploy', () => {
     expect(fs.readdirSync(staging).filter(name=>/\.(dump|manifest)$/.test(name))).toHaveLength(2);
   },120_000);
 
+  it('retains its owned lock and recovery files when the reader reports uncertain process cleanup',()=>{
+    const bin=path.join(TMP,'uncertain-bin'),stage=path.join(TMP,'uncertain-stage'),store=path.join(TMP,'uncertain-store');
+    fs.mkdirSync(bin);fs.mkdirSync(store);
+    const python=spawnSync('which',['python3'],{encoding:'utf8'}).stdout.trim();
+    fs.writeFileSync(path.join(bin,'python3'),`#!/bin/sh\ncase "$1" in */backup-readback.py) exit 78;; *) exec '${python}' "$@";; esac\n`,{mode:0o700});
+    const result=backup({PATH:bin+path.delimiter+(process.env.PATH??''),BACKUP_DEST:store,BACKUP_ALLOW_LOCAL_DEST:'1',BACKUP_STAGING:stage});
+    expect(result.status,result.out).toBe(8);expect(result.out).toContain('stage=reader-cleanup-uncertain');
+    expect(fs.existsSync(path.join(stage,'.lock/pid'))).toBe(true);
+    expect(fs.readdirSync(stage).filter(name=>/\.(dump|manifest)$/.test(name))).toHaveLength(2);
+    // This double created no reader descendants. Remove only the exact retained private work directory.
+    const work=/work directory retained at ([^\n\s]+)/.exec(result.out)?.[1];expect(work).toBeTruthy();
+    expect(path.basename(work!)).toMatch(/^ai-hr-backup-work\./);fs.rmSync(work!,{recursive:true});
+  },120_000);
+
   it('REFUSES rather than overwriting a dump that already carries this second\'s name', () => {
     const staging = path.join(TMP, 'clash');
     fs.mkdirSync(staging, { recursive: true, mode: 0o700 });

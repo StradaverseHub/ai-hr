@@ -9,6 +9,21 @@ import sys
 import time
 
 
+class CleanupUncertain(Exception):
+    pass
+
+
+def cleanup_reader(child):
+    try:
+        os.killpg(child.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    try:
+        child.wait(timeout=5)
+    except subprocess.TimeoutExpired as error:
+        raise CleanupUncertain() from error
+
+
 def main(args):
     if len(args) < 6 or args[4] != '--':
         raise ValueError('invalid readback arguments')
@@ -53,17 +68,18 @@ def main(args):
     finally:
         # A reader may fork a descendant that outlives its stdout/leader. Terminate only this owned group.
         try:
-            os.killpg(child.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        child.wait()
-        if child.stdout:
-            child.stdout.close()
+            cleanup_reader(child)
+        finally:
+            if child.stdout:
+                child.stdout.close()
 
 
 if __name__ == '__main__':
     try:
         main(sys.argv[1:])
+    except CleanupUncertain:
+        print('Reader cleanup is uncertain; retain the owned lock and all recovery files.', file=sys.stderr)
+        sys.exit(78)
     except (OSError, ValueError, subprocess.SubprocessError):
         print('Destination readback failed: no retention or local deletion is permitted.', file=sys.stderr)
         sys.exit(1)

@@ -114,6 +114,12 @@ finish() {
   local rc="${1:-$?}"
   [ "$FINISHED" = "1" ] && return
   FINISHED=1
+  if [ "${READER_CLEANUP_UNCERTAIN:-0}" = "1" ]; then
+    RESULT=FAIL
+    STAGE=reader-cleanup-uncertain
+    MESSAGE="$MESSAGE; reader cleanup uncertain, owned lock and work directory retained at $WORK"
+    [ "$rc" = "0" ] && rc=8
+  fi
   if [ "$LOCK_HELD" = "1" ]; then
     if ! python3 "$ROOT/scripts/backup-lock.py" release "$LOCK_DIR" "$LOCK_TOKEN" "$$"; then
       RESULT=FAIL
@@ -278,7 +284,7 @@ MANIFEST="$STAGING/$MANIFEST_NAME"
 STAGE=dump
 say "1/5  dumping and measuring in one snapshot"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/ai-hr-backup-work.XXXXXX")" || die 6 dump 'cannot create a work directory'
-cleanup_work() { rm -rf "$WORK"; }
+cleanup_work() { [ "${READER_CLEANUP_UNCERTAIN:-0}" = "1" ] || rm -rf "$WORK"; }
 trap 'rc=$?; cleanup_work; finish "$rc"' EXIT
 
 DUMP_RC="$WORK/dump.rc"; PROBE_RC="$WORK/probe.rc"
@@ -416,6 +422,12 @@ readback_one() {
       python3 "$ROOT/scripts/backup-readback.py" "$bytes" "$digest" "$target" "${BACKUP_READBACK_TIMEOUT:-300}" -- \
         ssh $SSH_OPTS "$DEST_HOST" "cat '$DEST_PATH/$name'" ;;
   esac
+  local reader_rc=$?
+  if [ "$reader_rc" = "78" ]; then
+    READER_CLEANUP_UNCERTAIN=1
+    LOCK_HELD=0 # Keep the acquired lock; process absence was not confirmed.
+  fi
+  return "$reader_rc"
 }
 readback_one "$DUMP" "$DUMP_NAME" "$DUMP_BYTES" "$DUMP_SHA" \
   || die 8 verify-arrival "Independent readback of $DUMP_NAME failed. Nothing was pruned; staged recovery files are retained. Custom destinations require BACKUP_READ_CMD."
