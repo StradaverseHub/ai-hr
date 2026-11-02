@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const mobileRequire = createRequire(new URL('../mobile/package.json', import.meta.url));
 const { compileModsAsync, AndroidConfig, XML } = mobileRequire('expo/config-plugins');
-const secureStore = mobileRequire('expo-secure-store/app.plugin.js');
+const secureStore = mobileRequire('expo-secure-store/app.plugin.js').default;
 const backup = mobileRequire('./build-config/with-private-android-backup.cjs');
 const appConfig = JSON.parse(readFileSync(new URL('../mobile/app.json', import.meta.url), 'utf8')).expo;
 const directories: string[] = [];
