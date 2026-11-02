@@ -4,7 +4,7 @@ import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
-import {hireEmployee,setReportingLine} from '../core/org';
+import {hireEmployee,setReportingLine,editDelegation} from '../core/org';
 import {createClaimType,submitClaim,decideClaim,listClaimsForEmployment,listPendingClaims,actionablePendingClaimIds,submitClaimWithAttachment,addClaimAttachment,getClaimAttachment,saveClaimDraft,deleteClaimDraft} from '../core/claims';
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand,type DataPermissionState,type DataPermissionPreview} from '../core/data-permissions';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -287,7 +287,7 @@ for(const course of ['receipt','cancel','reimburse'] as const)it(`requeues genui
 it('resolves pure publisher targets without ambient tenant/claims and preserves actual APP native admission',async()=>{
  const pending=await submitClaim(admin,submission());
  await actor('pure stand-in report',b.deptB,stranger.employmentId);
- await setReportingLine(admin,{subordinateEmploymentId:middle.employmentId,managerEmploymentId:stranger.employmentId,lineType:'delegate',validFrom:'2026-01-01',scopes:[{module:'claims',taskType:'claims.claim'}],orgScope:{companyId:b.companyId,businessUnitId:null,departmentId:b.deptA}});
+ const delegation=await setReportingLine(admin,{subordinateEmploymentId:middle.employmentId,managerEmploymentId:stranger.employmentId,lineType:'delegate',validFrom:'2026-01-01',scopes:[{module:'claims',taskType:'claims.claim'}],orgScope:{companyId:b.companyId,businessUnitId:null,departmentId:b.deptA}});
  const foreign=await seedBase();
  // These are actual owner publisher probes, deliberately carrying no target tenant or user claims.
  // They are not owner-held SET ROLE simulations of APP admission; actual APP probes are separate below.
@@ -305,7 +305,7 @@ it('resolves pure publisher targets without ambient tenant/claims and preserves 
  }
  expect((await listPendingClaims(stranger.ctx)).find(row=>row.id===pending.id)?.canDecide).toBe(true);
  // An actual native scope change must change the pure target despite the same foreign caller tenant.
- await setReportingLine(admin,{subordinateEmploymentId:middle.employmentId,managerEmploymentId:stranger.employmentId,lineType:'delegate',validFrom:'2026-01-01',scopes:[{module:'leave',taskType:'leave.application'}],orgScope:{companyId:b.companyId,businessUnitId:null,departmentId:b.deptA}});
+ await editDelegation(admin,{reportingLineId:delegation.reportingLineId,managerEmploymentId:stranger.employmentId,validFrom:'2026-01-01',validTo:null,scopes:[{module:'leave',taskType:'leave.application'}],orgScope:{companyId:b.companyId,businessUnitId:null,departmentId:b.deptA}});
  expect(await probe('')).toEqual({...expected,delegated:false});expect(await probe(foreign.tenantId)).toEqual({...expected,delegated:false});
  const [native]=await withTenant(stranger.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.claim_decision_allowed(${leaf.employmentId}::uuid) as allowed`));expect(native.allowed).toBe(false);
  await expect(withTenant(stranger.ctx,tx=>tx.execute(sql`select app.claim_delegation_line_covers_for(${b.tenantId}::uuid,${randomUUID()}::uuid,${leaf.employmentId}::uuid,'claims','claims.claim')`))).rejects.toThrow();
@@ -328,4 +328,12 @@ it('requeues completed Claim proof after an actual APP scoped-delegation revoke 
   expect(await tx.select().from(s.reportingLineScope).where(eq(s.reportingLineScope.id,scope.id))).toEqual(before);
  }),'Claim command effects incomplete');
  expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id)))[0].status).toBe('pending');expect(await owner.db.select().from(s.reportingLineScope).where(eq(s.reportingLineScope.id,scope.id))).toEqual(before);
+});
+
+it('keeps pure target/default helpers private while the fixed current-principal RLS predicate admits only its own native subject course',async()=>{
+ const pending=await submitClaim(admin,submission());
+ const [direct]=await withTenant(middle.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.claim_assigned_current(${leaf.employmentId}::uuid) as allowed`));expect(direct.allowed).toBe(true);
+ const [outside]=await withTenant(stranger.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.claim_assigned_current(${leaf.employmentId}::uuid) as allowed`));expect(outside.allowed).toBe(false);
+ await expect(withTenant(stranger.ctx,tx=>tx.execute(sql`select app.claim_assigned_subject_for(${b.tenantId}::uuid,${middle.userId}::uuid,${leaf.employmentId}::uuid)`))).rejects.toThrow();
+ await decideClaim(middle.ctx,{claimRequestId:pending.id,decision:'approve',deciderEmploymentId:middle.employmentId});expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id)))[0].status).toBe('approved');
 });

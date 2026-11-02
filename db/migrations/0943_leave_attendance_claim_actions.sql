@@ -1135,8 +1135,16 @@ REVOKE ALL ON FUNCTION app.claim_command_born() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER claim_command_born AFTER INSERT OR UPDATE ON public.claim_request FOR EACH ROW EXECUTE FUNCTION app.claim_command_born();
 --> statement-breakpoint
 -- Only the exact whole-Claim decision gets an assigned write course; no arbitrary field editor.
-CREATE POLICY claim_assigned_command ON public.claim_request FOR UPDATE TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND status::text='pending' AND app.claim_assigned_subject_for(tenant_id,app.current_user_id(),employment_id) AND app.claim_decision_allowed(employment_id))
- WITH CHECK(tenant_id=app.current_tenant_id() AND status::text IN ('approved','rejected') AND app.claim_assigned_subject_for(tenant_id,app.current_user_id(),employment_id) AND app.claim_decision_allowed(employment_id));
+-- RLS callers receive only the fixed current-principal predicate. Parameterized target/default
+-- helpers stay private; they cannot be called as arbitrary-user RPCs by the application role.
+CREATE FUNCTION app.claim_assigned_current(p_subject uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.claim_assigned_subject_for(app.current_tenant_id(),app.current_user_id(),p_subject) AND app.claim_decision_allowed(p_subject);
+$$;
+REVOKE ALL ON FUNCTION app.claim_assigned_current(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_assigned_current(uuid) TO ai_hr_app;
+CREATE POLICY claim_assigned_command ON public.claim_request FOR UPDATE TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND status::text='pending' AND app.claim_assigned_current(employment_id))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND status::text IN ('approved','rejected') AND app.claim_assigned_current(employment_id));
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.claim_own_receipt_read_allowed(p_claim uuid,p_subject uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -1692,7 +1700,18 @@ BEGIN
  END IF;RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.clocking_site_guard() FROM PUBLIC,ai_hr_app;
-CREATE TRIGGER module_clocking_site_access BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+-- Every actual shared-site parent write has the same original group-admin floor, even if
+-- UPDATE RLS would otherwise clip all rows before the exact row-purpose guard can run.
+CREATE FUNCTION app.clocking_site_write_admission() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ PERFORM app.audit_access_order_lock_for(app.current_tenant_id());
+ IF app.principal_snapshot_current() IS NOT TRUE OR app.is_group_admin() IS NOT TRUE THEN RAISE EXCEPTION 'Clocking site native write unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app.access_workforce_write_lock();RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.clocking_site_write_admission() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_clocking_site_access BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location FOR EACH STATEMENT EXECUTE FUNCTION app.clocking_site_write_admission();
 CREATE TRIGGER module_clocking_site_action BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location FOR EACH ROW EXECUTE FUNCTION app.clocking_site_guard();
 CREATE FUNCTION app.clocking_site_born() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -1726,6 +1745,9 @@ END $$;
 REVOKE ALL ON FUNCTION app.clocking_site_company_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER module_clocking_site_company_access BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location_company FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
 CREATE TRIGGER module_clocking_site_company_action BEFORE INSERT OR UPDATE OR DELETE ON public.clocking_location_company FOR EACH ROW EXECUTE FUNCTION app.clocking_site_company_guard();
+-- Actual company-link writers use INSERT/DELETE only. Default public-table grants must not
+-- expose a silent RLS-filtered UPDATE course for this immutable child. Owner backfills retain rights.
+REVOKE UPDATE ON public.clocking_location_company FROM ai_hr_app;
 -- Assignment source joins the same Access serialization before touching tuples. Try-only admission
 -- prevents an existing native data lock from becoming a blocking Access lock-order upgrade.
 -- This fence adds no role, employee visibility, purpose grant or control/business epoch mutation.

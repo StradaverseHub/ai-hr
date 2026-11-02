@@ -1420,3 +1420,16 @@ retains its original full-role collection. An actual Employee-global + HR-only-o
 checks native Report before=false, projected Employee-allow gain, actual after=true, the contrasting
 Leave role truth, and NULL-future scoped-role exclusion. This corrects a review finding before Report
 source adoption; it grants no role, support flag or execution port and is authored/unrun.
+
+Frozen aad native failures are preserved. Causal source repairs keep the parameterized Claim target
+helpers private and expose only a fixed-current-principal SECDEF predicate to UPDATE RLS; ordinary
+and assigned native decisions must still complete their existing exact source/audit proof. Shared-site
+parent statement admission repeats the original group-admin floor before RLS no-row clipping. The
+immutable company child has no actual APP UPDATE writer (native setCompanies is INSERT/DELETE), so
+UPDATE is revoked explicitly instead of inventing a row lookup or weakening forgery assertions.
+The rotation fixture now uses the real native group constructor; scope changes use editDelegation's
+actual supersede/reinsert course instead of overlapping a new delegation. Four old source-shape
+assertions now require the stronger exact-purpose composition while retaining the same group/read
+business contracts. Four genuine future/global profile-transition qualification cases remain blocked
+until real publication; no grants/support or their assertions are changed. Repairs and one additional
+actual APP current-predicate/private-port/native-decision case are authored, unrun.

@@ -209,7 +209,7 @@ describe('r428 (83c0d3c8 contest) — STEP 1: the company list, its search, and 
   });
 
   it('the New button is a group admin’s, at the top', () => {
-    expect(list, 'the New button is a group admin’s').toMatch(/groupAdmin \? \(\s*<Link href=\{CLOCKING_NEW_PAGE\} className=\{btnPrimary\}>/);
+    expect(list, 'the New button is a group admin’s').toMatch(/groupAdmin && canAdd \? \(\s*<Link href=\{CLOCKING_NEW_PAGE\} className=\{btnPrimary\}>/);
   });
 
   it('no form on this screen posts a clocking or work-location write', () => {
@@ -374,7 +374,7 @@ describe('r423 — the form: the reporter’s order, Companies and Status, Back,
     expect(editPage).toContain('cancelHref={listHref}');
     expect(newPage).toContain('const groupAdmin = isGroupAdmin(s);');
     expect(newPage).toContain("t('sharedManagedByGroupAdmin')");
-    expect(editPage, 'a non-group-admin is sent to the read-only View').toContain('if (!isGroupAdmin(s)) redirect(clockingViewPage(site.id));');
+    expect(editPage, 'a non-group-admin is sent to the read-only View').toContain('if (!isGroupAdmin(s) || !(await clockingSiteActionAccess(s, 'edit'))) redirect(clockingViewPage(site.id));');
     expect(newPage, 'the r338 "add a point under this work location" entry is gone').not.toContain('addPoint');
   });
 
