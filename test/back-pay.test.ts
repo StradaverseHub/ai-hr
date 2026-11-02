@@ -179,6 +179,23 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
 
   // ───────────────────────── the difference, both directions ─────────────────────────
 
+  it('BK53 prices a paid month once when two later-entered revisions contribute to its current history', async () => {
+    const { a, employmentId } = await hire(3000);
+    const batchId = await runAndClose('2026-03');
+    const before = await payslipRow(employmentId, batchId);
+    await setCompensation(a, { employmentId, basicSalary: 3100, effectiveFrom: '2026-02-01' });
+    await setCompensation(a, { employmentId, basicSalary: 3300, effectiveFrom: '2026-03-01' });
+    const { runId, total } = await calculateBackPay(a, { companyId: base.companyId, targetPayPeriod: '2026-04' });
+    expect(total).toBe(300);
+    const detail = await backPayRunDetail(a, runId);
+    expect(detail!.perEmployee[0].total).toBe(300);
+    await approveAndPostBackPay(a, { runId });
+    const rows = await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.employmentId, employmentId));
+    expect(rows.filter(row => row.kind === 'earning').map(row => Number(row.amount))).toEqual([300]);
+    expect(await payslipRow(employmentId, batchId)).toEqual(before);
+    expect(await detectArrears(a, { companyId: base.companyId })).toHaveLength(0);
+  });
+
   it('a backdated RISE produces a positive basic line, and the closed payslip is byte-identical afterwards', async () => {
     const { a, employmentId } = await hire(5000);
     const marchBatch = await runAndClose('2026-03');

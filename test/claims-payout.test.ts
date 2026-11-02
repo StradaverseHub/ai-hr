@@ -24,7 +24,7 @@
  * those rows, so the legacy path is exercised exactly as before and every assertion below is unchanged.
  * `claims` and `payroll` are both seeded active, so nothing else in this flow closes.
  */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
@@ -144,6 +144,51 @@ describe('ADR-0021 — claim payout', () => {
     expect(paid.status).toBe('paid');
     expect(paid.paidAt).not.toBeNull();
     expect(await eventTypesFor(base.tenantId, id)).toContain('claim-request.paid');
+  });
+
+  it('BK32 reserves one taxable source once across competing draft batches', async () => {
+    const a = await entitledCtx(base);
+    const e = await hire(a, base, 'Concurrent');
+    const { id: typeId } = await createClaimType(a, { code: 'RACE', name: 'Race fixture', defaultTaxable: true, requiresReceipt: false });
+    const { id } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: typeId, amount: 100, incurredOn: recent() });
+    await decideClaim(a, { claimRequestId: id, decision: 'approve' });
+    const first = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    const second = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' });
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let ready!: (pid: number) => void;
+    const locked = new Promise<number>(resolve => { ready = resolve; });
+    const holder = owner.db.transaction(async tx => {
+      await tx.execute(sql`select id from claim_request where id=${id}::uuid for update`);
+      const [self] = await tx.execute<{pid:number}>(sql`select pg_backend_pid() as pid`);
+      ready(self.pid);
+      await held;
+    });
+    const pid = await locked;
+    const operations = [prefillClaimsForBatch(a, { batchId: first.batchId }), prefillClaimsForBatch(a, { batchId: second.batchId })];
+    // Observe both requests in the held lock's direct/transitive wait chain, not a timing guess.
+    try {
+      const deadline = Date.now() + 4000;
+      let waiting = 0;
+      do {
+        const [state] = await owner.db.execute<{n:number}>(sql`
+          with recursive blocked(pid) as (
+            select ${pid}::integer union
+            select a.pid from pg_stat_activity a join blocked b on b.pid=any(pg_blocking_pids(a.pid))
+          ) select (count(*)-1)::integer as n from blocked`);
+        waiting = state.n;
+        if (waiting >= 2) break;
+        await new Promise(resolve => setTimeout(resolve, 10));
+      } while (Date.now() < deadline);
+      expect(waiting, 'both owned prefill calls reached the held source interval').toBeGreaterThanOrEqual(2);
+    } finally {
+      release();
+      await holder;
+      await Promise.all(operations);
+    }
+    expect((await claimAllowanceInput(first.batchId) ?? 0) + (await claimAllowanceInput(second.batchId) ?? 0)).toBe(100);
+    const events = await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId, id));
+    expect(events.filter(event => event.eventType === 'claim-request.queued-for-payroll')).toHaveLength(1);
   });
 
   it('prefill is idempotent and ignores non-taxable claims', async () => {
