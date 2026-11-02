@@ -3607,3 +3607,43 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_scorecard(jsonb,jsonb,uuid,boolean) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.onehr_plan_goal_review(wanted_review uuid,wanted_plan uuid,expected_revision integer,wanted_goal uuid,patch jsonb) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE review public.performance_onehr_review%ROWTYPE;plan public.performance_onehr_plan%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;previous jsonb;next_goal jsonb;next_goals jsonb;editor_name text;stamp text:=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR plan actor unavailable' USING ERRCODE='42501';END IF;
+ IF jsonb_typeof(patch) IS DISTINCT FROM 'object' OR patch-ARRAY['area','dueOn','onJob','fromOthers','formalLearning','managerComment']<>'{}'::jsonb
+ OR NOT (patch ?& ARRAY['area','dueOn','onJob','fromOthers','formalLearning','managerComment'])
+ OR EXISTS(SELECT 1 FROM jsonb_each(patch) field WHERE jsonb_typeof(field.value) IS DISTINCT FROM 'string' OR char_length(field.value#>>'{}')>(CASE WHEN field.key='area' THEN 300 WHEN field.key='dueOn' THEN 10 ELSE 4000 END))
+ OR btrim(patch->>'area')='' OR (patch->>'dueOn'<>'' AND patch->>'dueOn' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') THEN RAISE EXCEPTION 'Invalid development goal fields' USING ERRCODE='22023';END IF;
+ IF patch->>'dueOn'<>'' THEN PERFORM (patch->>'dueOn')::date;END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ SELECT * INTO plan FROM public.performance_onehr_plan actual WHERE actual.id=wanted_plan AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF review.review_id IS NULL OR plan.id IS NULL OR review.employment_id IS DISTINCT FROM plan.employment_id
+ OR plan.plan_year IS DISTINCT FROM extract(year from cycle.period_end)::integer+CASE WHEN policy->>'kind'='year_end' THEN 1 ELSE 0 END
+ OR app.onehr_self_employment(review.employment_id) OR NOT (app.onehr_effective_reviewer(wanted_review) OR app.onehr_moderator(wanted_review))
+ OR NOT app.onehr_review_task_view(wanted_review,'assigned') OR NOT app.function_action_allowed('performance.onehr.assignedReview','edit',review.company_id)
+ THEN RAISE EXCEPTION 'Only the assigned KPI reviewer may edit a shared development goal.' USING ERRCODE='42501';END IF;
+ IF NOT app.assessment_review_participates(wanted_review) OR policy->'modules'->>'idp' IS DISTINCT FROM 'true' OR cycle.status NOT IN ('open','calibration') THEN RAISE EXCEPTION 'Development review is not open.' USING ERRCODE='42501';END IF;
+ IF policy->'windows'->'idp_review'->>'opensAt' IS NOT NULL AND now()<(policy->'windows'->'idp_review'->>'opensAt')::timestamptz
+ OR policy->'windows'->'idp_review'->>'closesAt' IS NOT NULL AND now()>=(policy->'windows'->'idp_review'->>'closesAt')::timestamptz THEN RAISE EXCEPTION 'This step is closed' USING ERRCODE='42501';END IF;
+ IF plan.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF plan.status<>'shared' THEN RAISE EXCEPTION 'Only shared, open development plans can be edited.' USING ERRCODE='42501';END IF;
+ SELECT goal INTO previous FROM jsonb_array_elements(plan.goals) WITH ORDINALITY source(goal,position) WHERE goal->>'id'=wanted_goal::text ORDER BY position LIMIT 1;
+ IF previous IS NULL THEN RAISE EXCEPTION 'Goal not found.' USING ERRCODE='42501';END IF;
+ SELECT person.full_name INTO editor_name FROM public.app_user account JOIN public.person person ON person.id=account.person_id AND person.tenant_id=account.tenant_id WHERE account.id=app.current_user_id() AND account.tenant_id=review.tenant_id;
+ next_goal:=previous||patch||jsonb_build_object('editedByName',coalesce(editor_name,''),'editedAt',stamp);
+ SELECT jsonb_agg(CASE WHEN goal->>'id'=wanted_goal::text THEN next_goal ELSE goal END ORDER BY position) INTO next_goals FROM jsonb_array_elements(plan.goals) WITH ORDINALITY source(goal,position);
+ UPDATE public.performance_onehr_plan actual SET goals=next_goals,revision=plan.revision+1 WHERE actual.id=wanted_plan AND actual.tenant_id=review.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(review.tenant_id,'onehr',wanted_plan,'onehr.development-goal-reviewed','user',app.current_user_id(),plan.employment_id,jsonb_build_object('reviewId',wanted_review,'goalId',wanted_goal,'previous',previous,'next',next_goal));
+ RETURN plan.revision+1;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_plan_goal_review(uuid,uuid,integer,uuid,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_plan_goal_review(uuid,uuid,integer,uuid,jsonb) TO ai_hr_app;

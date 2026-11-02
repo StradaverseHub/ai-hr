@@ -177,6 +177,14 @@ describe('Career Plan reviewer scope (TASK-030, migration 0640)', () => {
     await expect(withTenant(mgr,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);return tx.execute(sql`select app.onehr_plan_review(${sharedPlanId}::uuid,${changed.revision}::integer,${changed.managerComment}::text,'Agent plan mutation'::text,false,${reviewId}::uuid,null::date,false)`);})).rejects.toThrow(/OneHR plan actor unavailable/);
     expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,sharedPlanId))).toEqual([changed]);
     expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,sharedPlanId),eq(schema.domainEvent.eventType,'onehr.plan-reviewed')))).toEqual([{id:event.id}]);
+    const currentGoals=changed.goals as {id:string;dueOn:string;[key:string]:unknown}[],target=currentGoals[0];expect(target).toBeDefined();
+    const patch={area:'Native assigned coaching goal',dueOn:target.dueOn,onJob:'Practise the agreed responsibility.',fromOthers:'Review with the native assigned reviewer.',formalLearning:'Complete the agreed course.',managerComment:'Observed progress.'};
+    await perf.editAssessmentDevelopmentGoal(mgr,reviewId,sharedPlanId,changed.revision,target.id,patch);
+    const [goalChanged]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,sharedPlanId));const nextGoals=goalChanged.goals as typeof currentGoals;const [editor]=await owner.db.select({name:schema.person.fullName}).from(schema.person).where(eq(schema.person.id,manager.personId));
+    expect(nextGoals[0]).toEqual({...target,...patch,editedByName:editor.name,editedAt:expect.any(String)});expect(nextGoals.slice(1)).toEqual(currentGoals.slice(1));expect(goalChanged).toEqual({...changed,goals:nextGoals,revision:changed.revision+1});
+    const goalEvents=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,sharedPlanId),eq(schema.domainEvent.eventType,'onehr.development-goal-reviewed')));expect(goalEvents).toHaveLength(1);expect(goalEvents[0]).toMatchObject({actorType:'user',actorId:mgr.userId,subjectEmploymentId:subject.employmentId,payload:{reviewId,goalId:target.id,previous:target,next:nextGoals[0]}});
+    for(const ctx of [self,skipCtx,hodCtx,partner])await expect(perf.editAssessmentDevelopmentGoal(ctx,reviewId,sharedPlanId,goalChanged.revision,target.id,{...patch,area:'Borrowed admin goal'})).rejects.toThrow();
+    expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,sharedPlanId))).toEqual([goalChanged]);
   });
 
   it('a department-tree non-reviewer reads nothing of a shared plan (TASK-030 acceptance)', async () => {
