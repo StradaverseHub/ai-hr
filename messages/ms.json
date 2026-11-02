@@ -29785,7 +29785,15 @@
       "profileReview": "Semak perubahan profil yang layak",
       "workforceAdd": "Tambah rekod tenaga kerja",
       "workforceEdit": "Edit rekod tenaga kerja",
-      "workforceDelete": "Padam rekod tenaga kerja"
+      "workforceDelete": "Padam rekod tenaga kerja",
+      "organisationView": "Organisasi · Lihat",
+      "organisationAdd": "Organisasi · Tambah",
+      "organisationEdit": "Organisasi · Edit",
+      "organisationDelete": "Organisasi · Padam",
+      "settingsView": "Tetapan · Lihat",
+      "settingsAdd": "Tetapan · Tambah",
+      "settingsEdit": "Tetapan · Edit",
+      "settingsDelete": "Tetapan · Padam"
     },
     "workforceReadOnly": "Anda boleh melihat rekod pekerja ini. Kebenaran Tenaga Kerja semasa anda tidak membenarkan perubahan.",
     "workforceCommandHint": "Anda boleh menukar ID Pekerja. Maklumat lain pada halaman ini hanya boleh dilihat.",

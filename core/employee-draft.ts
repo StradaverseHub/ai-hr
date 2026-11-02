@@ -690,6 +690,7 @@ export async function discardEmployeeDraft(
       .from(employeeDraft)
       .where(eq(employeeDraft.id, id))
       .limit(1);
+    await tx.execute(sql`select app.organisation_prepare_draft_number_release(${id}::uuid)`);
     await onboardingSyncDraftTx(ctx,tx,id,'discard');
     let deleted: { id: string }[];
     try {

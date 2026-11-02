@@ -620,7 +620,9 @@ export function CompanyPanel({
   activeCycleNames = [],
   initialTab,
   actions,
+  organisationPermissions={edit:true,delete:true},
 }: {
+  organisationPermissions?:{edit:boolean;delete:boolean};
   company: PanelCompany;
   companies: { id: string; name: string }[];
   /**
@@ -856,6 +858,7 @@ export function CompanyPanel({
             (3c2f55d7 rev 2). Storage, the PNG/JPG rule and the 2 MB limit are untouched. */}
         <div className="space-y-2.5 rounded-lg border border-border bg-card p-3">
           <SubHeader>{t('logoSection')}</SubHeader>
+          <fieldset disabled={!organisationPermissions.edit} className="min-w-0">
           <CompanyLogoEdit
             companyId={c.id}
             name={c.name}
@@ -876,6 +879,7 @@ export function CompanyPanel({
             setAction={actions.setCompanyLogo}
             removeAction={actions.removeCompanyLogo}
           />
+          </fieldset>
         </div>
 
         {/* 65b22c00 — ONE "Save Changes" for the General tab's field-edit cards. TabSaveScope wraps
@@ -898,6 +902,7 @@ export function CompanyPanel({
             now has a consolidated Save of its own, so the card is consolidated there, on the tab it
             belongs to. Finding 1 of the audit has the original argument; the statutory pane below records
             how it was settled. */}
+        <fieldset disabled={!organisationPermissions.edit} className="min-w-0 space-y-4">
         <TabSaveScope
           tabKey="general"
           identity={{ companyId: c.id }}
@@ -1094,6 +1099,7 @@ export function CompanyPanel({
           </Field>
         </form>
         </TabSaveScope>
+        </fieldset>
 
         {/* Archive / delete — bucket (b), BELOW and OUTSIDE the scope. A single Save implies a single
             Discard, and a Discard that appeared to undo a deleted company would be a control lying about
@@ -1110,6 +1116,7 @@ export function CompanyPanel({
             <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-card p-3">
               {c.archivedAt ? (
                 <form action={actions.archiveCompany}>
+                  <fieldset disabled={!organisationPermissions.edit}>
                   <input type="hidden" name="id" value={c.id} />
                   <input type="hidden" name="archived" value="false" />
                   {/* 65b22c00 — archiveCompanyAction is bound BOTH here and on every row of the company
@@ -1122,9 +1129,11 @@ export function CompanyPanel({
                   <Button type="submit" size="sm" variant="ghost">
                     {t('unarchive')}
                   </Button>
+                  </fieldset>
                 </form>
               ) : (
                 <form action={actions.archiveCompany} className="flex flex-wrap items-center gap-1.5">
+                  <fieldset disabled={!organisationPermissions.delete} className="flex flex-wrap items-center gap-1.5">
                   <input type="hidden" name="id" value={c.id} />
                   <input type="hidden" name="archived" value="true" />
                   <input type="hidden" name="returnTo" value="company" />
@@ -1145,9 +1154,10 @@ export function CompanyPanel({
                       {t('deleteCompany')}
                     </ConfirmSubmit>
                   ) : null}
+                </fieldset>
                 </form>
               )}
-              {!c.archivedAt && c.canDelete && !c.deleteBlockedBy ? (
+              {!c.archivedAt && c.canDelete && organisationPermissions.delete && !c.deleteBlockedBy ? (
                 <form action={actions.deleteCompany}>
                   <input type="hidden" name="id" value={c.id} />
                   <ConfirmSubmit
