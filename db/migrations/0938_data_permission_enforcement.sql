@@ -1184,3 +1184,26 @@ DO $audit_order$ DECLARE source text;anchor text:=E'BEGIN\n IF p_try THEN';BEGIN
   RAISE EXCEPTION 'Audit head owner ordering anchor changed';END IF;
  EXECUTE replace(source,anchor,E'BEGIN\n PERFORM app.audit_access_order_lock_for(p_tenant);\n IF p_try THEN');
 END $audit_order$;
+
+--> statement-breakpoint
+-- Legacy full-import summaries contain unstructured row names/email/errors and
+-- may span several companies: company_id is only the selected screen target.
+-- They cannot prove per-employment coverage for a newly assigned narrow profile.
+-- Preserve the native unassigned course; an assigned profile needs explicit
+-- whole-company rules and the original tenant-wide administrative ceiling.
+CREATE FUNCTION app.data_permission_unstructured_history_read() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.current_user_id() IS NOT NULL AND
+ CASE WHEN EXISTS(SELECT 1 FROM public.user_data_permission_assignment a
+  WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id()) THEN
+  app.is_group_admin() AND EXISTS(SELECT 1 FROM public.user_data_permission_assignment a
+   JOIN public.data_permission_profile p ON p.id=a.profile_id AND p.tenant_id=a.tenant_id
+   JOIN public.data_permission_revision r ON r.id=p.active_revision_id AND r.profile_id=p.id AND r.tenant_id=p.tenant_id
+   WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id()
+    AND p.enabled AND p.retired_at IS NULL AND app.data_permission_rules_valid(r.rules) AND r.rules->>'legacyCompany'='true')
+ ELSE true END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_unstructured_history_read() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.data_permission_unstructured_history_read() TO ai_hr_app;
+CREATE POLICY data_permission_unstructured_history_read ON public.employee_import_run AS RESTRICTIVE FOR SELECT TO ai_hr_app
+ USING(tenant_id=app.current_tenant_id() AND app.data_permission_unstructured_history_read());
