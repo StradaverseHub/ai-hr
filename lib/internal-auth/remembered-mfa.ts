@@ -23,12 +23,15 @@ export async function rememberedFactorValid(tx: AuthSql, c: Credential, native: 
     Number.isSafeInteger(proof.expiresAt) && now < proof.expiresAt && now < proof.verifiedAt + state.policy.rememberDays * 86_400_000;
 }
 /** Only call immediately after real TOTP verification, inside the locked credential transaction. */
-export async function rememberVerifiedFactor(tx: AuthSql, c: Credential, native: boolean) {
+export async function rememberVerifiedFactor(tx: AuthSql, c: Credential, native: boolean, offeredDays: number) {
   const state = await readRememberedMfaPolicy(tx, c.tenantId);
-  if (!state.policy.rememberDays) return {};
-  const token = opaque(), verifiedAt = Date.now(), expiresAt = verifiedAt + state.policy.rememberDays * 86_400_000;
+  if (!Number.isSafeInteger(offeredDays) || offeredDays <= 0) return {};
+  const days = Math.min(state.policy.rememberDays, offeredDays);
+  if (!days) return {};
+  // A policy increase during the challenge cannot exceed the visitor's displayed consent.
+  const token = opaque(), verifiedAt = Date.now(), expiresAt = verifiedAt + days * 86_400_000;
   await writeRecord(tx, `remembered-mfa:${digest(token)}`, {
     subject: c.subject, tenantId: c.tenantId, version: c.version, native, verifiedAt, expiresAt, policyRevision: state.revision,
   } satisfies RememberedDevice, c.subject, expiresAt);
-  return { remembered_device_token: token, remembered_device_expires_in: state.policy.rememberDays * 86400 };
+  return { remembered_device_token: token, remembered_device_expires_in: days * 86400 };
 }

@@ -186,7 +186,7 @@ export async function verifyMfa(raw: string, code: string, native = false, remem
     const session = await makeSession(tx, c, ch.native, codes);
     // Recovery codes and forced-password/reset flows never mint a remembered-factor proof.
     if (rememberDevice && factor.step !== undefined) {
-      const remembered = await rememberVerifiedFactor(tx, c, ch.native);
+      const remembered = await rememberVerifiedFactor(tx, c, ch.native, ch.rememberDays ?? 0);
       if (remembered.remembered_device_token) await audit(tx, c, 'app-user.mfa-device-remembered');
       return { ...session, ...remembered };
     }

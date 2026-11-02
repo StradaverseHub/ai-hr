@@ -494,3 +494,14 @@ it('refuses remembered-MFA policy edits from forged tenant context and revoked a
   await expect(readRememberedMfaPolicyEditor(ctx)).rejects.toThrow();
   expect(await readRecord(client, `remembered-mfa-policy:${base.tenantId}`)).toBeNull();
 });
+
+
+it.each([7, 90])('never remembers longer than the challenge offered when policy changes to %s days', async rememberDays => {
+  await enroll();
+  const login = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: false });
+  expect(login).toMatchObject({ step: 'mfa', rememberDays: 30 });
+  await saveRememberedMfaPolicy({ ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] }, { rememberDays }, 0);
+  const c = (await credentialByLogin('alpha', 'owner'))!;
+  const signedIn = completed(await verifyMfa(challenge(login), await nextCode(c), false, true));
+  expect(signedIn.remembered_device_expires_in).toBe(Math.min(30, rememberDays) * 86400);
+});
