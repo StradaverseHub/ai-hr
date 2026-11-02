@@ -1,0 +1,60 @@
+name: mobile-sdk58-security-evaluation
+run-name: Disposable SDK58 security evaluation · e57335aed
+on:
+  push:
+    branches: [codex/mobile-sdk58-eval-20261103]
+    paths: [.github/workflows/mobile-sdk58-security-evaluation.yml]
+permissions:
+  contents: read
+jobs:
+  evaluate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: e57335aed02610c1d34fbcfadfb3b23c28921eab
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Install frozen SDK57 baseline
+        run: |
+          test "$(git -C source rev-parse HEAD)" = e57335aed02610c1d34fbcfadfb3b23c28921eab
+          npm ci --prefix source/mobile --no-audit --no-fund
+      - name: Evaluate stable SDK58 alignment through the official Expo installer
+        working-directory: source/mobile
+        run: npm exec --offline -- expo install expo@58.0.22 --fix
+      - name: Check aligned SDK packages and widget entry
+        working-directory: source/mobile
+        run: |
+          npm exec --offline -- expo install --check
+          npm run eas-build-post-install
+      - name: Capture audit without hiding its advisory exit code
+        if: always()
+        working-directory: source/mobile
+        run: |
+          mkdir -p "$RUNNER_TEMP/sdk58-evaluation"
+          set +e
+          npm audit --package-lock-only --omit=dev --ignore-scripts --json > "$RUNNER_TEMP/sdk58-evaluation/audit.json"
+          result=$?
+          set -e
+          printf '%s\n' "$result" > "$RUNNER_TEMP/sdk58-evaluation/audit-exit.txt"
+          cp package.json package-lock.json "$RUNNER_TEMP/sdk58-evaluation/"
+      - name: Strict native typecheck on the disposable upgrade
+        run: npm --prefix source/mobile run typecheck
+      - name: Export both platform production bundles on the disposable upgrade
+        working-directory: source/mobile
+        run: npm exec --offline -- expo export --platform ios --platform android --max-workers 2 --output-dir "$RUNNER_TEMP/sdk58-evaluation-bundles"
+      - name: Retain public package metadata only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: onehr-sdk58-evaluation-e57335aed
+          path: ${{ runner.temp }}/sdk58-evaluation/
+          retention-days: 1
+          if-no-files-found: error
