@@ -61,6 +61,10 @@ attempt denominators. Missing, skipped, interrupted or unavailable evidence is n
 
 ## Verification and documentation
 
+For paid model evaluation, use the [commissioning guide](AI-EVALUATION-COMMISSIONING.md)
+for spending ownership, private prerequisites, frozen case plans and independent evidence.
+Ordinary no-model carrier checks do not measure model quality.
+
 Use [hosted focused checks](ALPHA-STAGING-ACTIONS.md) for development and current
 [CI policy](CI-STAGING-VERIFICATION-POLICY.md) for release evidence. Preserve original failures;
 classify product, contract, fixture, oracle and environment causes before changing expectations.

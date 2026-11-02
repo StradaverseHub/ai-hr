@@ -20,7 +20,8 @@ key and a matching verifier establish receipt authenticity, not provider capabil
 2. On the actual staging installation, use the approved private target identity. The owner connection
    must be the actual database **and** verifier-table owner. The migrated private verifier table must
    exist with RLS, primary key, the 32-byte secret constraint and no application secret/table grants;
-   the receipt reconciler and supported `public.hmac`/`public.digest` must exist. Missing prerequisites
+   the receipt reconciler, `app._ai_spend_hmac_sha256(bytea,bytea)` and built-in
+   `pg_catalog.sha256(bytea)` must exist, as checked by the current operator implementation. Missing prerequisites
    refuse; the tool never installs an extension, migration, table or grants.
 3. Through the secret manager, expose the owner DSN only as `AI_SPEND_OWNER_DATABASE_URL` to this
    standalone process. Never pass it on the command line, echo it, enable shell tracing, include it in
