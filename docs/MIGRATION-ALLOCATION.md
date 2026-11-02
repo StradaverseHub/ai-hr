@@ -1401,3 +1401,15 @@ Access ordering and then retains the existing write-lock/revision fence; pre-hel
 a blocking Access upgrade. No role/admission authority is changed. A real APP native scope writer
 positive and completed-decision→early-flush→scope revoke/restore rollback case is authored, unrun.
 The whole source row is restored before final validation, so the monotone epoch/requeue is material.
+
+Private native override projection helpers now share the exact whole-set tenant/company role algebra
+for Leave on-behalf and the six existing report.read categories (all retain original HR/super defaults).
+Unknown keys/foreign scopes fail closed. Actual/proposed recipient sets enumerate every relevant live
+user's complete roles; singleton enum-role changes additionally capture future recipients and gains
+caused by last-company-row removal. They are facts, not execution/admission ports, and remain private.
+A drift-refusing copy of canonical 0938 recipient profile subset semantics forces only administrative
+classification for potential new reach; it does not borrow Workforce View. Future company data scope
+reuses the existing 0941 data-only ceiling without any Letter execution authority. Actual stored-row
+projection/no-mutation, proposed manager gains, canonical profile assignment and private-port cases
+are authored, unrun. Source ACL admission/audit/recipient before-after/native-floor closure remains
+in progress; no raw permission write is newly authorized by these helpers.
