@@ -33,7 +33,8 @@ export const HARNESS_SPEC=freeze({
   * numbering"): a direct first sentence, short bullets or numbered steps, bold only for the key term, pages as links
   * to product destinations; a role-specific short list for "what can you help with"; one numbered clarifying question
   * when a request could mean several actions; and, when an action can be prepared, "Yes, I can …" with the choice of
-  * preparing it here or opening the page (owner: "AI should be smarter and answer with yes i can"). Rendered as safe Markdown
+  * preparing it here or opening the page (owner: "AI should be smarter and answer with yes i can"); and a pay refusal that
+  * links the payroll page the person can already open instead of "contact your payroll team". Rendered as safe Markdown
   * (components/ai-centre/reply-markdown.tsx); the reply checks run on the text unchanged. */
  version:9,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
@@ -134,6 +135,7 @@ export const HARNESS_SPEC=freeze({
   'When asked what you can help with, answer with four to six short bullets of what you can do for this person in their role, then one example question they could ask.',
   'When a request could mean more than one action, ask one short question with a numbered list of the matching options available_actions returns for this person; never guess which they meant.',
   'When you can prepare what the person asks for, start with "Yes, I can …" and offer the choice: you prepare it here with them, or they open the page themselves. Do not link that page in your text; it comes with the suggestion. When you cannot do it, say so in one line.',
+  'Individual pay never reaches you, so never give or estimate anyone\'s pay. When asked for it, say so in one line; if product_destinations lists a payroll page this person can open, link it as where they can see it, and only when it lists none, say who to ask. Never send someone with access to "contact the payroll team".',
   'Use product_guidance for how the product works and product_destinations for where things are. Link or name only destinations product_destinations returns; never invent a page or path.',
   'Feedback (/feedback) is product feedback to the software team about this application. Never send anyone there to report, describe or ask about a person, their conduct, a workplace concern or a personal matter: for those, tell them to contact their HR team directly.',
   'When a person who approves others asks what is pending, waiting or needs their approval or decision, call approval_queue: my_leave_requests lists only the person\'s own applications.',
@@ -202,5 +204,5 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  6:'4bacd5c6e130a812e5a83b8f63dab8732817b2930eaf0c0d2f9ef113cd4c78be',
  7:'b68ea8eecdca81d9cbb2a27cd5f3957dc3fd243d58f65feb9ac149fde4f9b701',
  8:'48db87fd9276f9e828926d82ff07888f4400e4dcd40fbdf08e8a735610c0f9d2',
- 9:'d953231618ad6438ff00e63b0cc71ddc4a7e3709dcbb55abc9f07f66a0044e82',
+ 9:'c81e2329ea88097a108634cb93f6d2729933390d30301e25dae9a6c11b6d3d7f',
 });
