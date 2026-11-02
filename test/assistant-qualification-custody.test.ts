@@ -31,7 +31,9 @@ async function login(who:Subject,role:'employee'|'manager'|'hr_admin'|'super_adm
 }
 async function prepare(who:SessionContext=hr,target:Subject=subject,kind=ACTION,subjectId=target.employmentId,companyId=b.companyId){
  const id=randomUUID();
- const [row]=await withTenant(who,tx=>tx.execute<{review:Review}>(sql`select app.assistant_assigned_review_prepare(${kind},${id}::uuid,${who.personId??null}::uuid,${target.employmentId}::uuid,${companyId}::uuid,${target.personId}::uuid,${subjectId}::uuid,${'a'.repeat(64)},${REVIEWED},${'0123456789abcdef'},${'fictional-wrapped-key'},${'fictional-ciphertext'}) as review`));
+ const [row]=await withTenant(who,tx=>tx.execute<{review:Review}>(kind===ACTION
+  ?sql`select app.assistant_qualification_prepare(${id}::uuid,${who.personId??null}::uuid,${target.employmentId}::uuid,${companyId}::uuid,${target.personId}::uuid,${subjectId}::uuid,${'b'.repeat(64)},${'a'.repeat(64)},${REVIEWED},${'0123456789abcdef'},${'fictional-wrapped-key'},${'fictional-ciphertext'}) as review`
+  :sql`select app.assistant_assigned_review_prepare(${kind},${id}::uuid,${who.personId??null}::uuid,${target.employmentId}::uuid,${companyId}::uuid,${target.personId}::uuid,${subjectId}::uuid,${'a'.repeat(64)},${REVIEWED},${'0123456789abcdef'},${'fictional-wrapped-key'},${'fictional-ciphertext'}) as review`));
  expect(row.review.metadata).toMatchObject({actionId:id,state:'awaiting_confirmation'});return id;
 }
 async function complete(tx:Tx,who:SessionContext,id:string,eventId:string,kind=ACTION,digest=REVIEWED){
@@ -169,6 +171,26 @@ describe('Qualification native source and encrypted review lifecycle',()=>{
   expect(await qualificationMaintenanceReviews.reopen(hr,r.actionId)).toEqual(first);
   expect(await qualificationMaintenanceReviews.confirm(hr,command)).toEqual(first);
   expect(await effects()).toEqual({rows:before.rows+(operation==='add'?1:0),events:before.events+1});
+ });
+
+ it('requires the protected prepare and refuses mismatched command, employment, and login before effect',async()=>{
+  const r=(await qualificationMaintenanceReviews.prepare(hr,human())).review;
+  const before=await effects();
+  const arm=(who:SessionContext,id:string,employmentId:string,digest:string)=>withTenant(who,tx=>tx.execute(sql`select app.assistant_qualification_arm(${id}::uuid,${employmentId}::uuid,${digest})`));
+  const [proof]=await owner.db.execute<{command_digest:string;armed_xact:string|null}>(sql`select command_digest,armed_xact from app.assistant_qualification_binding where review_id=${r.actionId}::uuid`);
+  expect(proof.command_digest).toMatch(/^[a-f0-9]{64}$/);expect(proof.armed_xact).toBeNull();
+  const differentLogin=await login(hrPerson,'hr_admin');
+  await expect(arm(hr,r.actionId,subject.employmentId,'0'.repeat(64))).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(arm(hr,r.actionId,other.employmentId,proof.command_digest)).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(arm(differentLogin,r.actionId,subject.employmentId,proof.command_digest)).rejects.toMatchObject({cause:{code:'42501'}});
+  await expect(withTenant(hr,tx=>tx.execute(sql`select app.assistant_assigned_review_prepare(${ACTION},${randomUUID()}::uuid,${hr.personId}::uuid,${subject.employmentId}::uuid,${b.companyId}::uuid,${subject.personId}::uuid,${subject.employmentId}::uuid,${'a'.repeat(64)},${REVIEWED},${'0123456789abcdef'},'fictional-wrapped-key','fictional-ciphertext')`))).rejects.toMatchObject({cause:{code:'42501',message:'Qualification protected prepare required'}});
+  expect(await effects()).toEqual(before);
+  const completed=await qualificationMaintenanceReviews.confirm(hr,{actionId:r.actionId,reviewedDigest:r.reviewedDigest});
+  expect(completed.kind).toBe('completed');
+  const [armed]=await owner.db.execute<{armed:boolean}>(sql`select binding.armed_xact::xid=event.xmin as armed
+   from app.assistant_qualification_binding binding join app.assistant_own_leave_review review on review.id=binding.review_id
+   join public.domain_event event on event.id=review.receipt_event_id where review.id=${r.actionId}::uuid`);
+  expect(armed).toEqual({armed:true});
  });
 
  it('refuses a different reviewed digest and stale edited source, preserving pending custody without extra effects',async()=>{
