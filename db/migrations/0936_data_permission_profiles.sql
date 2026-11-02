@@ -179,9 +179,9 @@ REVOKE ALL ON FUNCTION app.data_permission_fingerprint() FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.data_permission_inspect(rules jsonb) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.data_permission_delegate(rules) AND NOT EXISTS(
-  SELECT 1 FROM jsonb_array_elements(rules->'predicates')rule CROSS JOIN LATERAL jsonb_array_elements_text(rule->'values')value
-  WHERE rule->>'field'='employeeId' AND NOT EXISTS(SELECT 1 FROM public.employment e
-   WHERE e.tenant_id=app.current_tenant_id() AND e.employee_code=value
+  SELECT 1 FROM jsonb_array_elements(rules->'predicates')ruleset(rule) CROSS JOIN LATERAL jsonb_array_elements_text(ruleset.rule->'values')choices(candidate)
+  WHERE ruleset.rule->>'field'='employeeId' AND NOT EXISTS(SELECT 1 FROM public.employment e
+   WHERE e.tenant_id=app.current_tenant_id() AND e.employee_code=choices.candidate
     AND app.access_workforce_employment(e.id,'workforce.view') AND app.data_permission_matches(e.id)));
 $$;
 REVOKE ALL ON FUNCTION app.data_permission_inspect(jsonb) FROM PUBLIC,ai_hr_app;
