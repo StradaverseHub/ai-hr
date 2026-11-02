@@ -31,7 +31,7 @@ export function FormulaHelpPanel({tab,onTab,library,canUseTemplate}:{tab:Formula
   <div {...pane('examples')}>
    <p className="text-sm text-muted-foreground">{t('help.examplesIntro')}</p>
    <ul className="space-y-3">{PAY_FORMULA_TEMPLATE_KEYS.map(key=>{const open=preview===key;return <li key={key} className={'rounded-lg border p-3 '+(open?'border-primary':'border-border')}>
-    <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 flex-1"><h3 className="font-medium">{t('templates.'+key+'.name')}</h3><p className="text-sm text-muted-foreground">{t('templates.'+key+'.summary')}</p></div>
+    <div className="flex flex-col items-start justify-between gap-3 sm:flex-row"><div className="min-w-0 flex-1"><h3 className="font-medium">{t('templates.'+key+'.name')}</h3><p className="text-sm text-muted-foreground">{t('templates.'+key+'.summary')}</p></div>
      <div className="flex flex-wrap gap-2"><button type="button" className={formulaButton} aria-expanded={open} aria-controls={'formula-template-'+key} onClick={()=>setPreview(open?null:key)}>{t(open?'help.hidePreview':'help.preview')}<span className="sr-only"> · {t('templates.'+key+'.name')}</span></button>
       {canUseTemplate&&<Link className={formulaPrimary} href={'/payroll/formula-builder/new?template='+key}>{t('help.useTemplate')}<span className="sr-only"> · {t('templates.'+key+'.name')}</span></Link>}</div></div>
     {open&&<div id={'formula-template-'+key} className="mt-3 space-y-2"><pre className="overflow-x-auto whitespace-pre rounded-lg bg-muted p-3 font-mono text-xs leading-5">{templateSource(key)}</pre><p className="text-sm">{t('templates.'+key+'.explanation')}</p></div>}
