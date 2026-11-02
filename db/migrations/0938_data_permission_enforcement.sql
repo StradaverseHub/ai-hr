@@ -330,7 +330,7 @@ CREATE POLICY data_permission_subject_read ON toil_accrual AS RESTRICTIVE FOR SE
 CREATE POLICY data_permission_subject_read ON replacement_leave_request AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(employment_id IS NULL OR app.data_permission_record_read(employment_id));
 CREATE POLICY data_permission_subject_read ON notice_recipient AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(employment_id IS NULL OR app.data_permission_record_read(employment_id));
 CREATE POLICY data_permission_subject_read ON notice_acknowledgement AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(employment_id IS NULL OR app.data_permission_record_read(employment_id));
-CREATE POLICY data_permission_subject_read ON profile_change_request AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.data_permission_record_read(employment_id) OR app.profile_route_reader(employment_id,route_approver_user_id,route_approver_employment_id,status::text));
+CREATE POLICY data_permission_subject_read ON profile_change_request AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.data_permission_record_read(employment_id) OR app.profile_request_reader(id));
 CREATE POLICY data_permission_subject_read ON resignation_request AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(employment_id IS NULL OR app.data_permission_record_read(employment_id));
 CREATE POLICY data_permission_subject_read ON resignation_request_attachment AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(employment_id IS NULL OR app.data_permission_record_read(employment_id));
 CREATE POLICY data_permission_subject_read ON employment_review AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(employment_id IS NULL OR app.data_permission_record_read(employment_id));
@@ -802,3 +802,139 @@ CREATE TRIGGER data_permission_birth_finish AFTER INSERT ON person FOR EACH ROW 
 CREATE TRIGGER data_permission_birth_finish AFTER INSERT ON employment FOR EACH ROW EXECUTE FUNCTION app.data_permission_birth_finish();
 CREATE TRIGGER data_permission_birth_cleanup AFTER INSERT ON person FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_birth_finish();
 CREATE TRIGGER data_permission_birth_cleanup AFTER INSERT ON employment FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_birth_finish();
+--> statement-breakpoint
+-- An exact stored approval responsibility is distinct from general administrative data access.
+-- No legacy/unrouted request or caller-provided assignee identity can create this exception.
+CREATE FUNCTION app.data_permission_profile_responsibility(p_request uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE q public.profile_change_request;candidate jsonb;approver uuid;
+BEGIN
+ SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id)
+  OR NOT app.access_profile_review_permitted(q.employment_id) THEN RETURN false;END IF;
+ IF q.route_context->'version'='3'::jsonb THEN
+  IF q.route_context->>'decisionMode' IS DISTINCT FROM 'any' OR jsonb_typeof(q.route_context->'approvers') IS DISTINCT FROM 'array'
+   OR jsonb_array_length(q.route_context->'approvers') NOT BETWEEN 1 AND 32 THEN RETURN false;END IF;
+  FOR candidate IN SELECT value FROM jsonb_array_elements(q.route_context->'approvers') LOOP
+   IF candidate->>'userId'=app.current_user_id()::text THEN approver:=(candidate->>'employmentId')::uuid;EXIT;END IF;
+  END LOOP;
+ ELSE
+  IF q.route_id IS NULL OR q.route_approver_user_id IS DISTINCT FROM app.current_user_id() THEN RETURN false;END IF;
+  approver:=q.route_approver_employment_id;
+ END IF;
+ IF approver IS NULL THEN RETURN false;END IF;
+ RETURN EXISTS(SELECT 1 FROM public.employment a JOIN public.app_user u ON u.person_id=a.person_id AND u.tenant_id=a.tenant_id
+  JOIN public.employment subject ON subject.id=q.employment_id AND subject.tenant_id=a.tenant_id
+  WHERE a.id=approver AND a.tenant_id=q.tenant_id AND u.id=app.current_user_id() AND a.person_id<>subject.person_id
+   AND app.is_admin_for(subject.company_id) AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND a.blacklisted_at IS NULL
+   AND a.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+   AND (least(a.resignation_date,a.last_working_date,a.terminated_on) IS NULL OR least(a.resignation_date,a.last_working_date,a.terminated_on)>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+   AND (NOT EXISTS(SELECT 1 FROM public.tenant_setting t WHERE t.tenant_id=q.tenant_id AND t.key='ess.profile_change_approver' AND t.value='"group_admin"'::jsonb) OR app.is_group_admin())
+   AND (SELECT count(*) FROM public.app_user other WHERE other.tenant_id=a.tenant_id AND other.person_id=a.person_id AND other.archived_at IS NULL AND NOT app.login_blocked(other.id))=1);
+EXCEPTION WHEN invalid_text_representation THEN RETURN false;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_profile_responsibility(uuid) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- app.profile_request_assignee; prior owner 0683_profile_field_approvals
+CREATE OR REPLACE FUNCTION app.profile_request_assignee(p_request uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE q public.profile_change_request;principal jsonb;
+BEGIN
+ SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id) OR (NOT app.can_admin_employment(q.employment_id) AND NOT app.data_permission_profile_responsibility(q.id))
+  OR NOT app.access_profile_review_permitted(q.employment_id) THEN RETURN false;END IF;
+ IF q.route_context->'version'='3'::jsonb THEN
+  IF q.route_context->>'decisionMode' IS DISTINCT FROM 'any' OR jsonb_typeof(q.route_context->'approvers') IS DISTINCT FROM 'array'
+   OR jsonb_array_length(q.route_context->'approvers') NOT BETWEEN 1 AND 32 THEN RETURN false;END IF;
+  FOR principal IN SELECT a FROM jsonb_array_elements(q.route_context->'approvers') a LOOP
+   IF principal->>'userId'=app.current_user_id()::text AND EXISTS(SELECT 1 FROM app.profile_route_principal((principal->>'employmentId')::uuid,q.employment_id) p WHERE p.user_id=app.current_user_id()) THEN RETURN true;END IF;
+  END LOOP;
+  RETURN false;
+ END IF;
+ IF q.route_id IS NULL AND EXISTS(SELECT 1 FROM app.profile_legacy_unassigned_request l WHERE l.request_id=q.id) THEN RETURN true;END IF;
+ RETURN app.profile_route_reader(q.employment_id,q.route_approver_user_id,q.route_approver_employment_id,q.status::text);
+EXCEPTION WHEN invalid_text_representation THEN RETURN false;
+END;$$;
+--> statement-breakpoint
+
+--> statement-breakpoint
+-- app.access_profile_value_begin; prior owner 0683_profile_field_approvals
+CREATE OR REPLACE FUNCTION app.access_profile_value_begin(p_request uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE q public.profile_change_request%ROWTYPE;r jsonb;route_enabled boolean;route_digest text;proposal_digest text;prepared boolean;actor uuid;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN; END IF;
+ PERFORM app.access_profile_policy_write_lock();
+ IF app.principal_snapshot_current() IS NOT TRUE OR app.current_user_id() IS NULL THEN
+  RAISE EXCEPTION 'Profile decision principal unavailable' USING ERRCODE='42501'; END IF;
+ SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND OR q.status<>'pending' OR q.proposed->'v'='3'::jsonb
+  OR app.access_profile_review_permitted(q.employment_id) IS NOT TRUE OR (app.can_admin_employment(q.employment_id) IS NOT TRUE AND NOT app.data_permission_profile_responsibility(q.id))
+  OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=q.employment_id AND e.tenant_id=q.tenant_id AND e.person_id=q.person_id) THEN
+  RAISE EXCEPTION 'Profile decision write unavailable' USING ERRCODE='42501'; END IF;
+ SELECT value INTO r FROM public.tenant_setting WHERE tenant_id=q.tenant_id AND key='ess.profile_change_routing';
+ IF r IS NOT NULL AND r<>'null'::jsonb AND (jsonb_typeof(r) IS DISTINCT FROM 'object' OR r->'version' NOT IN ('1'::jsonb,'2'::jsonb,'3'::jsonb)
+  OR r->'version' IS NULL OR jsonb_typeof(r->'enabled') IS DISTINCT FROM 'boolean') THEN
+  RAISE EXCEPTION 'Profile decision route unavailable' USING ERRCODE='42501'; END IF;
+ route_enabled:=COALESCE(r->'enabled'='true'::jsonb,false);
+ proposal_digest:=encode(sha256(convert_to(q.proposed::text,'UTF8')),'hex');
+ route_digest:=encode(sha256(convert_to(jsonb_build_array(q.route_id,q.route_revision,q.route_approver_user_id,q.route_approver_employment_id,q.route_context)::text,'UTF8')),'hex');
+ SELECT EXISTS(SELECT 1 FROM app.access_profile_value_approval p WHERE p.xact_id=pg_current_xact_id() AND p.request_id=q.id
+  AND p.tenant_id=q.tenant_id AND p.user_id=app.current_user_id() AND p.proposal_hash=proposal_digest AND p.route_hash=route_digest) INTO prepared;
+ IF q.route_id IS NOT NULL THEN
+  IF (q.route_context->'version'='3'::jsonb AND NOT app.profile_request_assignee(q.id)) OR
+   (q.route_context->'version' IS DISTINCT FROM '3'::jsonb AND (q.route_approver_user_id IS DISTINCT FROM app.current_user_id()
+   OR NOT EXISTS(SELECT 1 FROM app.profile_route_principal(q.route_approver_employment_id,q.employment_id) p WHERE p.user_id=app.current_user_id()))) THEN
+   RAISE EXCEPTION 'Profile decision route changed' USING ERRCODE='42501'; END IF;
+  -- The first preparation locks and validates the BEFORE snapshot. Revalidating after applying a
+  -- requested nationality/gender change would incorrectly invalidate its own authorized decision.
+  IF NOT prepared AND (q.route_context->>'fingerprint' IS DISTINCT FROM app.access_profile_route_fingerprint(q.employment_id)) THEN
+   RAISE EXCEPTION 'Profile decision subject changed' USING ERRCODE='42501'; END IF;
+ ELSIF (route_enabled AND NOT EXISTS(SELECT 1 FROM app.profile_legacy_unassigned_request l WHERE l.request_id=q.id)) OR q.route_approver_user_id IS NOT NULL OR q.route_approver_employment_id IS NOT NULL THEN
+  RAISE EXCEPTION 'Profile decision route changed' USING ERRCODE='42501';
+ END IF;
+ IF EXISTS(SELECT 1 FROM public.tenant_setting WHERE tenant_id=q.tenant_id AND key='ess.profile_change_approver' AND value='"group_admin"'::jsonb)
+  AND app.is_group_admin() IS NOT TRUE THEN RAISE EXCEPTION 'Profile decision group scope required' USING ERRCODE='42501'; END IF;
+ INSERT INTO app.access_profile_value_actor VALUES(pg_current_xact_id(),q.tenant_id,app.current_user_id()) ON CONFLICT DO NOTHING;
+ SELECT user_id INTO actor FROM app.access_profile_value_actor WHERE xact_id=pg_current_xact_id() AND tenant_id=q.tenant_id;
+ IF actor IS DISTINCT FROM app.current_user_id() THEN RAISE EXCEPTION 'Profile write principal changed' USING ERRCODE='42501'; END IF;
+ INSERT INTO app.access_profile_value_approval(xact_id,tenant_id,request_id,user_id,proposal_hash,route_hash)
+  VALUES(pg_current_xact_id(),q.tenant_id,q.id,app.current_user_id(),proposal_digest,route_digest) ON CONFLICT DO NOTHING;
+ IF NOT EXISTS(SELECT 1 FROM app.access_profile_value_approval p WHERE p.xact_id=pg_current_xact_id() AND p.request_id=q.id
+  AND p.tenant_id=q.tenant_id AND p.user_id=app.current_user_id() AND p.proposal_hash=proposal_digest AND p.route_hash=route_digest) THEN
+  RAISE EXCEPTION 'Profile decision preparation changed' USING ERRCODE='42501'; END IF;
+END; $$;
+--> statement-breakpoint
+
+--> statement-breakpoint
+-- app.profile_route_principal; prior owner 0579_configurable_access
+CREATE OR REPLACE FUNCTION app.profile_route_principal(p_approver uuid,p_subject uuid)
+RETURNS TABLE(user_id uuid,employment_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT u.id,a.id FROM employment a JOIN app_user u ON u.person_id=a.person_id AND u.tenant_id=a.tenant_id
+ JOIN employment s ON s.id=p_subject AND s.tenant_id=a.tenant_id
+ WHERE a.id=p_approver AND a.tenant_id=app.current_tenant_id() AND a.person_id<>s.person_id
+ AND (app.is_self_person(s.person_id) OR app.can_admin_employment(s.id) OR u.id=app.current_user_id() AND EXISTS(SELECT 1 FROM public.profile_change_request q WHERE q.employment_id=s.id AND q.tenant_id=s.tenant_id AND app.data_permission_profile_responsibility(q.id)))
+ AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND a.blacklisted_at IS NULL
+ AND a.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+ AND (LEAST(a.resignation_date,a.last_working_date,a.terminated_on) IS NULL OR LEAST(a.resignation_date,a.last_working_date,a.terminated_on)>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+ AND EXISTS(SELECT 1 FROM role_assignment r WHERE r.tenant_id=a.tenant_id AND r.app_user_id=u.id AND r.role IN ('hr_admin','super_admin')
+  AND (r.company_id IS NULL OR r.company_id=s.company_id OR app.is_company_descendant(s.company_id,r.company_id)))
+ AND (NOT EXISTS(SELECT 1 FROM tenant_setting t WHERE t.tenant_id=a.tenant_id AND t.key='ess.profile_change_approver' AND t.value='"group_admin"'::jsonb) OR EXISTS(SELECT 1 FROM role_assignment g WHERE g.tenant_id=a.tenant_id AND g.app_user_id=u.id AND (g.role='super_admin' OR g.role='hr_admin' AND g.company_id IS NULL)))
+ AND app.access_profile_review_for_user(u.id,s.id)
+ AND (SELECT count(*) FROM app_user other WHERE other.tenant_id=a.tenant_id AND other.person_id=a.person_id AND other.archived_at IS NULL AND NOT app.login_blocked(other.id))=1;
+$$;
+--> statement-breakpoint
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.profile_route_reader(p_subject uuid,p_assigned_user uuid,p_assigned_employment uuid,p_status text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT (app.can_admin_employment(p_subject) AND (
+  (p_assigned_user IS NOT NULL AND p_assigned_user=app.current_user_id() AND NOT app.login_blocked(p_assigned_user)
+    AND EXISTS(SELECT 1 FROM app.profile_route_principal(p_assigned_employment,p_subject) p WHERE p.user_id=p_assigned_user))
+  OR (p_assigned_user IS NULL AND (p_status<>'pending' OR NOT EXISTS(SELECT 1 FROM tenant_setting t WHERE t.tenant_id=app.current_tenant_id() AND t.key='ess.profile_change_routing') OR EXISTS(SELECT 1 FROM tenant_setting t WHERE t.tenant_id=app.current_tenant_id() AND t.key='ess.profile_change_routing' AND t.value->>'version' IN ('1','2') AND t.value->'enabled'='false'::jsonb)))
+  OR (app.is_group_admin() AND current_setting('app.profile_route_maintenance',true)='on')
+ )) OR (p_assigned_user=app.current_user_id() AND EXISTS(SELECT 1 FROM public.profile_change_request q
+ WHERE q.employment_id=p_subject AND q.tenant_id=app.current_tenant_id() AND q.route_approver_user_id=p_assigned_user
+ AND q.route_approver_employment_id=p_assigned_employment AND q.status::text=p_status AND app.data_permission_profile_responsibility(q.id))); $$;
