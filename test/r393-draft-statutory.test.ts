@@ -316,8 +316,15 @@ describe('§5 Subject to SKBBK, Employer bears tax contribution and the income t
     expect(a.subjectToSkbbk).toBe(false);
     expect(a.employerBearsTax).toBe(false);
     const c = await statutoryOf((await activate(minimal({ epfNumber: '1' }))).employmentId);
-    expect(c.subjectToSkbbk, 'absent ⇒ default false').toBe(false);
+    expect(c.subjectToSkbbk, 'new applicable draft persists the creation default').toBe(true);
     expect(c.employerBearsTax, 'absent ⇒ default false').toBe(false);
+  });
+
+  it('activates a historical draft without applying new creation defaults',async()=>{
+    const ctx=adminCtx(b),data=minimal({epfNumber:'1'}),{id}=await saveEmployeeDraft(ctx,{data,currentStep:3});
+    await owner.db.update(schema.employeeDraft).set({data}).where(eq(schema.employeeDraft.id,id));
+    const {employmentId}=await completeEmployeeDraft(ctx,id);
+    expect((await statutoryOf(employmentId)).subjectToSkbbk).toBe(false);
   });
 
   it('taxResidency non_resident: hire selection, is_resident and tax_residency all non-resident', async () => {
