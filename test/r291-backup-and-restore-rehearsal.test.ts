@@ -198,11 +198,7 @@ afterAll(async () => {
   try {
     await admin.unsafe(`DROP DATABASE IF EXISTS "${SRC_DB}" WITH (FORCE)`);
     await admin.unsafe(`DROP DATABASE IF EXISTS "${SCRATCH_DB}" WITH (FORCE)`);
-    // Including the truncated-name one the connectivity test leaves behind.
-    const strays = await admin.unsafe(
-      "SELECT datname FROM pg_database WHERE datname LIKE 'ai_hr_r291_rehearsal_truncated%'",
-    );
-    for (const { datname } of strays) await admin.unsafe(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`);
+    // No prefix scan: other invocations may own similarly named databases.
   } finally {
     await admin.end();
   }
@@ -317,6 +313,22 @@ describe('backup-db.sh — safe to run repeatedly and beside a deploy', () => {
     expect(r.out).toContain('424242');
     expect(fs.readdirSync(staging).filter((f) => f.endsWith('.dump'))).toEqual([]);
   });
+
+  it('releases its own nonempty lock after a failed dump so a later invocation can enter', () => {
+    const staging=path.join(TMP,'repeat-stage');
+    const first=backup({BACKUP_DEST:path.join(TMP,'repeat-dest'),BACKUP_ALLOW_LOCAL_DEST:'1',BACKUP_STAGING:staging,PG_BIN:'/no-such-client'});
+    expect(first.status).toBe(5);expect(fs.existsSync(path.join(staging,'.lock'))).toBe(false);
+    const second=backup({BACKUP_DEST:path.join(TMP,'repeat-dest'),BACKUP_ALLOW_LOCAL_DEST:'1',BACKUP_STAGING:staging,BACKUP_KEEP_LOCAL:'1'});
+    expect(second.status,second.out).toBe(0);expect(fs.existsSync(path.join(staging,'.lock'))).toBe(false);
+  },120_000);
+
+  it('refuses unverified custom shipping without pruning or discarding recoverable staged bytes',()=>{
+    const staging=path.join(TMP,'unverified-stage'),marker=path.join(TMP,'unverified-prune');
+    const r=backup({BACKUP_DEST:'fixture://unverified',BACKUP_STAGING:staging,BACKUP_SHIP_CMD:'true',BACKUP_PRUNE_CMD:`touch '${marker}'`});
+    expect(r.status,r.out).toBe(8);expect(fs.existsSync(marker)).toBe(false);
+    expect(fs.readdirSync(staging).filter(name=>name.endsWith('.dump'))).toHaveLength(1);
+    expect(fs.readdirSync(staging).filter(name=>name.endsWith('.manifest'))).toHaveLength(1);
+  },120_000);
 
   it('REFUSES rather than overwriting a dump that already carries this second\'s name', () => {
     const staging = path.join(TMP, 'clash');
