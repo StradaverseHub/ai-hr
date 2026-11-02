@@ -316,7 +316,7 @@ describe('f9afd1ce / r423 — the screens', () => {
     const newPage = read('app/admin/work-locations/clocking/new/page.tsx');
     expect(newPage).toContain('const groupAdmin = isGroupAdmin(s);');
     expect(newPage).toContain("t('sharedManagedByGroupAdmin')");
-    expect(read('app/admin/work-locations/clocking/[id]/edit/page.tsx')).toContain('if (!isGroupAdmin(s) || !(await clockingSiteActionAccess(s, 'edit'))) redirect(clockingViewPage(site.id));');
+    expect(read('app/admin/work-locations/clocking/[id]/edit/page.tsx')).toContain("if (!isGroupAdmin(s) || !(await clockingSiteActionAccess(s, 'edit'))) redirect(clockingViewPage(site.id));");
   });
 
   it('the create action posts the companies allowed (companyIds), never an owner companyId', () => {

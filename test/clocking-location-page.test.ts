@@ -374,7 +374,7 @@ describe('r423 — the form: the reporter’s order, Companies and Status, Back,
     expect(editPage).toContain('cancelHref={listHref}');
     expect(newPage).toContain('const groupAdmin = isGroupAdmin(s);');
     expect(newPage).toContain("t('sharedManagedByGroupAdmin')");
-    expect(editPage, 'a non-group-admin is sent to the read-only View').toContain('if (!isGroupAdmin(s) || !(await clockingSiteActionAccess(s, 'edit'))) redirect(clockingViewPage(site.id));');
+    expect(editPage, 'a non-group-admin is sent to the read-only View').toContain("if (!isGroupAdmin(s) || !(await clockingSiteActionAccess(s, 'edit'))) redirect(clockingViewPage(site.id));");
     expect(newPage, 'the r338 "add a point under this work location" entry is gone').not.toContain('addPoint');
   });
 
