@@ -885,7 +885,7 @@ BEGIN
  IF inserted IS NULL THEN RETURN NULL;END IF;
  -- A transaction below the global snapshot xmin has no live/deferred consumer. Do
  -- this once per transaction, retaining every in-flight actor's exact receipts.
- FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody','financial_letter_proposed_birth','financial_claim_port_effect','financial_onehr_worker_source','financial_onehr_source_context','financial_onehr_feedback_effect','financial_onehr_plan_effect','financial_onehr_task_email_source'] LOOP
+ FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody','financial_letter_proposed_birth','financial_claim_port_effect','financial_onehr_worker_source','financial_onehr_source_context','financial_onehr_feedback_effect','financial_onehr_plan_effect','financial_onehr_task_email_source','financial_onehr_career_effect'] LOOP
   EXECUTE format('DELETE FROM app.%I WHERE transaction_id<$1',table_name) USING oldest;
  END LOOP;
  DELETE FROM app.financial_receipt_epoch WHERE transaction_id<oldest;
@@ -3744,7 +3744,7 @@ REVOKE ALL ON FUNCTION app.financial_onehr_ieee(text,double precision,double pre
 --> statement-breakpoint
 CREATE FUNCTION app.onehr_career_comment(wanted_review uuid,expected_revision integer,comment text) RETURNS integer
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;profile public.performance_assessment_career_profile%ROWTYPE;next_revision integer;
+DECLARE review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;profile public.performance_assessment_career_profile%ROWTYPE;next_revision integer;effect_id uuid;completed_event_id uuid;next_profile jsonb;comment_at timestamptz;updated_at timestamptz;
 BEGIN
  IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR career actor unavailable' USING ERRCODE='42501';END IF;
  IF comment IS NULL OR char_length(app.financial_onehr_js_trim(comment))>4000 THEN RAISE EXCEPTION 'Invalid career comment' USING ERRCODE='22023';END IF;
@@ -3761,16 +3761,24 @@ BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('career:'||review.employment_id::text,0));
  SELECT * INTO profile FROM public.performance_assessment_career_profile actual WHERE actual.employment_id=review.employment_id AND actual.tenant_id=review.tenant_id FOR UPDATE;
  IF profile.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'The career profile changed. Reload before commenting.' USING ERRCODE='40001';END IF;
- next_revision:=coalesce(profile.revision,0)+1;
+ next_revision:=coalesce(profile.revision,0)+1;comment_at:=clock_timestamp();updated_at:=clock_timestamp();
  IF profile.employment_id IS NULL THEN
-  INSERT INTO public.performance_assessment_career_profile(tenant_id,employment_id,review_id,career,manager_comment,manager_user_id,manager_comment_at,revision,updated_at)
-  VALUES(review.tenant_id,review.employment_id,wanted_review,jsonb_build_object('aspiration','','mobility',NULL,'mobilityNote','','targetProfileId',NULL,'selfProfileId',NULL),comment,app.current_user_id(),clock_timestamp(),next_revision,clock_timestamp());
+  next_profile:=jsonb_build_object('tenant_id',review.tenant_id,'employment_id',review.employment_id,'review_id',wanted_review,
+  'career',jsonb_build_object('aspiration','','mobility',NULL,'mobilityNote','','targetProfileId',NULL,'selfProfileId',NULL),'manager_comment',comment,'manager_user_id',app.current_user_id(),'manager_comment_at',comment_at,'revision',next_revision,'updated_at',updated_at);
+ ELSE next_profile:=to_jsonb(profile)||jsonb_build_object('review_id',wanted_review,'manager_comment',comment,'manager_user_id',app.current_user_id(),'manager_comment_at',comment_at,'revision',next_revision,'updated_at',updated_at);END IF;
+ INSERT INTO app.financial_onehr_career_effect(transaction_id,tenant_id,user_id,employment_id,before_row,after_row)
+ VALUES(pg_current_xact_id(),review.tenant_id,app.current_user_id(),review.employment_id,CASE WHEN profile.employment_id IS NULL THEN NULL ELSE to_jsonb(profile) END,next_profile) RETURNING id INTO effect_id;
+ IF profile.employment_id IS NULL THEN
+  INSERT INTO public.performance_assessment_career_profile SELECT * FROM jsonb_populate_record(NULL::public.performance_assessment_career_profile,next_profile);
  ELSE
-  UPDATE public.performance_assessment_career_profile actual SET review_id=wanted_review,manager_comment=comment,manager_user_id=app.current_user_id(),manager_comment_at=clock_timestamp(),revision=next_revision,updated_at=clock_timestamp()
+  UPDATE public.performance_assessment_career_profile actual SET review_id=wanted_review,manager_comment=comment,manager_user_id=app.current_user_id(),manager_comment_at=comment_at,revision=next_revision,updated_at=updated_at
   WHERE actual.employment_id=review.employment_id AND actual.tenant_id=review.tenant_id;
  END IF;
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
- VALUES(review.tenant_id,'onehr',wanted_review,'onehr.career-profile-commented','user',app.current_user_id(),'{}'::jsonb);
+ VALUES(review.tenant_id,'onehr',wanted_review,'onehr.career-profile-commented','user',app.current_user_id(),'{}'::jsonb) RETURNING id INTO completed_event_id;
+ UPDATE app.financial_onehr_career_effect effect SET event_id=completed_event_id WHERE effect.id=effect_id AND effect.transaction_id=pg_current_xact_id() AND effect.consumed;
+ IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM public.performance_assessment_career_profile actual WHERE actual.employment_id=review.employment_id AND actual.tenant_id=review.tenant_id AND to_jsonb(actual)=next_profile)
+ OR NOT EXISTS(SELECT 1 FROM public.domain_event event WHERE event.id=completed_event_id AND event.tenant_id=review.tenant_id AND event.aggregate_id=wanted_review AND event.aggregate_type='onehr' AND event.event_type='onehr.career-profile-commented' AND event.actor_type='user' AND event.actor_id=app.current_user_id() AND event.payload='{}'::jsonb AND app.financial_audit_written(event.id)) THEN RAISE EXCEPTION 'Career review did not complete' USING ERRCODE='42501';END IF;
  RETURN next_revision;
 END;
 $$;
@@ -4781,3 +4789,33 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_review_task_email_enqueue(uuid,bigint) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_review_task_email_enqueue(uuid,bigint) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Career author's JSON and the assigned reviewer's captured feedback are distinct
+-- native courses. Only the finite comment constructor may change reviewer metadata.
+CREATE TABLE app.financial_onehr_career_effect(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,employment_id uuid NOT NULL,
+ before_row jsonb,after_row jsonb NOT NULL,consumed boolean NOT NULL DEFAULT false,event_id uuid REFERENCES public.domain_event(id)
+);
+ALTER TABLE app.financial_onehr_career_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_onehr_career_effect FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_onehr_career_effect FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+CREATE FUNCTION app.financial_onehr_career_comment_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE effect_id uuid;controlled boolean;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF TG_OP='INSERT' THEN controlled:=NEW.manager_comment<>'' OR NEW.manager_user_id IS NOT NULL OR NEW.manager_comment_at IS NOT NULL;
+ ELSE controlled:=NEW.manager_comment IS DISTINCT FROM OLD.manager_comment OR NEW.manager_user_id IS DISTINCT FROM OLD.manager_user_id OR NEW.manager_comment_at IS DISTINCT FROM OLD.manager_comment_at;END IF;
+ IF NOT controlled THEN RETURN NEW;END IF;
+ IF NOT app.financial_human_principal_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() THEN RAISE EXCEPTION 'Career review source unavailable' USING ERRCODE='42501';END IF;
+ UPDATE app.financial_onehr_career_effect effect SET consumed=true
+ WHERE effect.transaction_id=pg_current_xact_id() AND effect.tenant_id=NEW.tenant_id AND effect.user_id=app.current_user_id() AND effect.employment_id=NEW.employment_id AND NOT effect.consumed
+ AND effect.before_row IS NOT DISTINCT FROM (CASE WHEN TG_OP='UPDATE' THEN to_jsonb(OLD) ELSE NULL END) AND effect.after_row=to_jsonb(NEW)
+ RETURNING effect.id INTO effect_id;
+ IF effect_id IS NULL THEN RAISE EXCEPTION 'Career review source unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_career_comment_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER z_financial_onehr_career_review_guard BEFORE INSERT OR UPDATE ON public.performance_assessment_career_profile FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_career_comment_guard();
