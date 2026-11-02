@@ -1378,7 +1378,7 @@ BEGIN
     'grants',COALESCE((SELECT jsonb_agg(jsonb_build_object('capabilityId',a.capability_id,'companyId',a.company_id) ORDER BY a.capability_id,a.company_id NULLS FIRST) FROM public.access_group_grant a WHERE a.tenant_id=t AND a.group_id=g.id AND a.retired_at IS NULL),'[]'::jsonb)) ORDER BY g.id) FROM public.access_group g WHERE g.tenant_id=t),'[]'::jsonb),
    'memberships',COALESCE((SELECT jsonb_agg(jsonb_build_object('userId',m.user_id,'groupId',m.group_id,'companyId',m.company_id,'derived',m.derived) ORDER BY m.user_id,m.group_id,m.company_id NULLS FIRST,m.derived) FROM public.access_effective_membership m WHERE m.tenant_id=t),'[]'::jsonb),
    'overrides',COALESCE((SELECT jsonb_agg(jsonb_build_object('userId',o.user_id,'capabilityId',o.capability_id,'companyId',o.company_id,'effect',o.effect) ORDER BY o.user_id,o.capability_id,o.company_id NULLS FIRST) FROM public.access_user_override o WHERE o.tenant_id=t AND o.retired_at IS NULL),'[]'::jsonb)),
-  'nativeDefaults',COALESCE((SELECT jsonb_agg(jsonb_build_object('userId',u.id,'capabilityId',c.id,'companyId',scope.id) ORDER BY u.id,c.id,scope.id NULLS FIRST) FROM public.app_user u CROSS JOIN public.access_capability c CROSS JOIN LATERAL (SELECT NULL::uuid id WHERE c.scope='tenant' UNION ALL SELECT co.id FROM public.company co WHERE co.tenant_id=t AND c.scope='company') scope WHERE u.tenant_id=t AND app.access_native_default_allowed(t,u.id,c.id,scope.id)),'[]'::jsonb),
+  'nativeDefaults',COALESCE((SELECT jsonb_agg(jsonb_build_object('userId',u.id,'capabilityId',c.id,'companyId',scope.id) ORDER BY u.id,c.id,scope.id NULLS FIRST) FROM public.app_user u CROSS JOIN public.access_capability c CROSS JOIN LATERAL (SELECT NULL::uuid id WHERE c.scope='tenant' OR c.scope='company' AND app.access_native_default_allowed(t,u.id,c.id,NULL) UNION ALL SELECT co.id FROM public.company co WHERE co.tenant_id=t AND c.scope='company' AND NOT app.access_native_default_allowed(t,u.id,c.id,NULL)) scope WHERE u.tenant_id=t AND app.access_native_default_allowed(t,u.id,c.id,scope.id)),'[]'::jsonb),
   'catalog',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id,'scope',c.scope,'supported',c.supported,'bindings',c.bindings,'prerequisites',c.prerequisites,'presentation',(SELECT d.metadata||jsonb_build_object('key',d.function_key) FROM app.access_function_action a JOIN app.access_function_definition d USING(function_key) WHERE a.capability_id=c.id)) ORDER BY c.id) FROM public.access_capability c),'[]'::jsonb),
   'companyIds',COALESCE((SELECT jsonb_agg(c.id ORDER BY c.id) FROM public.company c WHERE c.tenant_id=t),'[]'::jsonb),
   'coverage',COALESCE((SELECT jsonb_agg(jsonb_build_object('ancestor',a.id,'company',c.id) ORDER BY a.id,c.id) FROM public.company a JOIN public.company c ON a.tenant_id=c.tenant_id WHERE a.tenant_id=t AND a.id<>c.id AND app.is_company_descendant(c.id,a.id)),'[]'::jsonb),
@@ -1572,6 +1572,7 @@ BEGIN
   RAISE EXCEPTION 'Preview rollback' USING ERRCODE='P0499';
  EXCEPTION WHEN SQLSTATE 'P0499' THEN NULL;
  END;
+ IF NOT accepted THEN RAISE EXCEPTION 'access preview refused' USING ERRCODE='42501'; END IF;
 END; $$;
 REVOKE ALL ON FUNCTION app.access_configuration_transition_preview(uuid,text,jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.access_configuration_transition_preview(uuid,text,jsonb) TO ai_hr_app;
