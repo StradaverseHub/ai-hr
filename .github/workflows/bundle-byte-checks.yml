@@ -1,8 +1,8 @@
-name: Bundle byte checks
-run-name: Bundle byte checks · ${{ github.sha }}
+name: Lossless map bundle checks
+run-name: Lossless map bundle checks · ${{ github.sha }}
 on:
   push:
-    branches: [codex/audit-bundle-reduction-20261102]
+    branches: [codex/audit-map-bundle-20261102]
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -33,6 +33,7 @@ jobs:
           python3 .github/ci/build-bundle.test.py
           python3 .github/ci/build-transport-extract.test.py
           python3 .github/ci/build-activate.test.py
+          python3 .github/ci/build-map-bundle.test.py
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
       - run: node --test .github/ci/build-artifact.test.mjs .github/ci/build-transport.test.mjs
@@ -45,7 +46,7 @@ jobs:
         with: {path: candidate, persist-credentials: false}
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: 5ffb75186cfeed7c569fc6eeaa3230fa2e560a29
+          ref: 193c50e84ebe5671223f4eb57d9624ace3e024a0
           path: source
           persist-credentials: false
       - uses: ./candidate/.github/actions/setup-alpha
@@ -72,16 +73,16 @@ jobs:
             runId:41405151781,controllerBranch:'main',producerStartedAt:build.startedAt,producerCompletedAt:build.completedAt});
           writeFileSync(process.env.RUNNER_TEMP+'/authenticated-input.json',JSON.stringify(result));
           JS
-      - name: Compare frozen bytes and restore with the unchanged receiver
+      - name: Reconstruct frozen bytes and compare debugging behavior
         run: |
-          mkdir -m 700 "$RUNNER_TEMP/bundle-comparison"
+          mkdir -m 700 "$RUNNER_TEMP/map-bundle-comparison"
           chmod 700 source
-          python3 candidate/.github/ci/build-bundle-compare.py source candidate "$RUNNER_TEMP/original-build" "$RUNNER_TEMP/bundle-comparison"
-          cp "$RUNNER_TEMP/authenticated-input.json" "$RUNNER_TEMP/bundle-comparison/"
+          python3 candidate/.github/ci/build-map-bundle-compare.py source candidate "$RUNNER_TEMP/original-build" "$RUNNER_TEMP/map-bundle-comparison"
+          cp "$RUNNER_TEMP/authenticated-input.json" "$RUNNER_TEMP/map-bundle-comparison/"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: bundle-comparison-not-release
-          path: '${{ runner.temp }}/bundle-comparison/*.json'
+          name: map-bundle-comparison-not-release
+          path: '${{ runner.temp }}/map-bundle-comparison/*.json'
           if-no-files-found: warn
           retention-days: 30
