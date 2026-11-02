@@ -139,6 +139,8 @@ describe('OneHR performance partner (ADR-0142)', () => {
     for(const [identity,self] of [[subject,true],[manager,false]] as const){
       const userId=await createAppUser(b.tenantId,identity.personId,'employee');await restrict(userId);
       const actor={...a,userId,personId:identity.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+      const [target]=await owner.db.execute<{manager:boolean;effective:boolean;foreign:boolean}>(sql`select app.financial_onehr_manager_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid) as manager,app.financial_onehr_effective_reviewer_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid) as effective,app.financial_onehr_manager_for(${randomUUID()}::uuid,${userId}::uuid,${reviewId}::uuid) as foreign`);expect(target).toEqual({manager:!self,effective:!self,foreign:false});
+      await expect(withTenant(actor,tx=>tx.execute(sql`select app.financial_onehr_manager_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid)`))).rejects.toThrow();
       const [task]=await withTenant(actor,tx=>tx.execute<{header:{name:string;ownEmploymentIds:string[]}|null;self:boolean;master:boolean}>(sql`select app.onehr_review_header(${reviewId}::uuid) as header,app.onehr_self_employment(${subject.employmentId}::uuid) as self,exists(select 1 from employment where id=${subject.employmentId}::uuid) as master`));
       expect(task.header).not.toBeNull();expect(task.header!.name).toBe('Partner subject');expect(task.self).toBe(self);expect(task.master).toBe(false);
       const view=await perf.getOnehrReview(actor,reviewId);expect(view).not.toBeNull();expect(view!.self).toBe(self);

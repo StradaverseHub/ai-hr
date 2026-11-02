@@ -2026,3 +2026,99 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT e.id,p.id,p.full_name,p.preferred_name,e.employee_code FROM public.employment e JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
  WHERE e.id=ANY(employment_ids) AND e.tenant_id=app.current_tenant_id() AND app.onehr_admin(e.company_id) AND app.data_permission_matches(e.id);
 $$;
+
+--> statement-breakpoint
+-- Native unit/assignment facts have one tenant-parameterized owner. Current native
+-- wrappers preserve their exact source; target-user floors never impersonate a caller.
+CREATE FUNCTION app.financial_onehr_unit_placement(target_tenant uuid,wanted_employment uuid) RETURNS TABLE(company_id uuid,department_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce(cur.company_id,e.company_id),cur.department_id
+ FROM employment e LEFT JOIN LATERAL (
+  SELECT a.company_id,a.department_id FROM assignment a
+  WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL
+   AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+   AND (a.valid_to IS NULL OR a.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+  ORDER BY a.valid_from DESC,a.id LIMIT 1) cur ON true
+ WHERE e.id=wanted_employment AND e.tenant_id=target_tenant
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_unit_placement(uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.assessment_unit_placement(wanted_employment uuid) RETURNS TABLE(company_id uuid,department_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT * FROM app.financial_onehr_unit_placement(app.current_tenant_id(),wanted_employment); $$;
+CREATE FUNCTION app.financial_onehr_unit_excluded(target_tenant uuid,wanted_cycle uuid, wanted_employment uuid, extra_company uuid, extra_department uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce((
+  SELECT CASE
+   WHEN c.status='closed' THEN EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion_pin p
+    WHERE p.tenant_id=c.tenant_id AND p.cycle_id=c.id AND p.employment_id=wanted_employment)
+   WHEN extra_company IS NULL AND NOT EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion x
+    WHERE x.tenant_id=c.tenant_id AND x.cycle_id=c.id AND x.ended_at IS NULL) THEN false
+   ELSE EXISTS(SELECT 1 FROM app.financial_onehr_unit_placement(target_tenant,wanted_employment) pl
+    WHERE EXISTS(SELECT 1 FROM performance_assessment_unit_exclusion x
+      WHERE x.tenant_id=c.tenant_id AND x.cycle_id=c.id AND x.ended_at IS NULL
+       AND x.company_id=pl.company_id AND (x.department_id IS NULL OR x.department_id=pl.department_id))
+     OR extra_company IS NOT NULL AND extra_company=pl.company_id AND (extra_department IS NULL OR extra_department=pl.department_id))
+  END
+  FROM review_cycle c WHERE c.id=wanted_cycle AND c.tenant_id=target_tenant),false)
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_unit_excluded(uuid,uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.assessment_unit_excluded_as(wanted_cycle uuid, wanted_employment uuid, extra_company uuid, extra_department uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_unit_excluded(app.current_tenant_id(),wanted_cycle,wanted_employment,extra_company,extra_department); $$;
+CREATE FUNCTION app.financial_onehr_unit_step_up(target_tenant uuid,wanted_cycle uuid, wanted_from uuid, stop_person uuid, extra_company uuid, extra_department uuid) RETURNS uuid
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE today date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date; cur uuid:=wanted_from; nxt employment;
+BEGIN
+ FOR depth IN 1..6 LOOP
+  nxt:=NULL;
+  SELECT m.* INTO nxt FROM reporting_line l JOIN employment m ON m.id=l.manager_employment_id AND m.tenant_id=l.tenant_id
+   WHERE l.tenant_id=target_tenant AND l.subordinate_employment_id=cur AND l.line_type='administrative' AND l.superseded_at IS NULL
+    AND l.valid_from<=today AND (l.valid_to IS NULL OR l.valid_to>today)
+   ORDER BY l.valid_from DESC,l.id LIMIT 1;
+  IF nxt.id IS NULL OR nxt.terminated_on IS NOT NULL AND nxt.terminated_on<=today OR nxt.person_id IS NOT DISTINCT FROM stop_person THEN RETURN NULL; END IF;
+  IF NOT app.financial_onehr_unit_excluded(target_tenant,wanted_cycle,nxt.id,extra_company,extra_department) THEN RETURN nxt.id; END IF;
+  cur:=nxt.id;
+ END LOOP;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.financial_onehr_unit_step_up(uuid,uuid,uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_unit_step_up(wanted_cycle uuid, wanted_from uuid, stop_person uuid, extra_company uuid, extra_department uuid) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_unit_step_up(app.current_tenant_id(),wanted_cycle,wanted_from,stop_person,extra_company,extra_department); $$;
+CREATE FUNCTION app.financial_onehr_effective_reviewer_of(target_tenant uuid,wanted_review uuid, extra_company uuid, extra_department uuid) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN m.id IS NULL OR m.terminated_on IS NOT NULL AND m.terminated_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date THEN NULL
+  WHEN NOT app.financial_onehr_unit_excluded(target_tenant,r.cycle_id,m.id,extra_company,extra_department) THEN m.id
+  ELSE app.financial_onehr_unit_step_up(target_tenant,r.cycle_id,m.id,s.person_id,extra_company,extra_department) END
+ FROM performance_review r JOIN employment s ON s.id=r.employment_id AND s.tenant_id=r.tenant_id
+ LEFT JOIN employment m ON m.id=r.reviewer_employment_id AND m.tenant_id=r.tenant_id
+ WHERE r.id=wanted_review AND r.tenant_id=target_tenant
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_effective_reviewer_of(uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_effective_reviewer_of_as(wanted_review uuid, extra_company uuid, extra_department uuid) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_effective_reviewer_of(app.current_tenant_id(),wanted_review,extra_company,extra_department); $$;
+CREATE FUNCTION app.financial_onehr_manager_for(target_tenant uuid,target_user uuid,wanted_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_review r JOIN employment e ON e.id=r.reviewer_employment_id AND e.tenant_id=r.tenant_id JOIN employment s ON s.id=r.employment_id AND s.tenant_id=r.tenant_id JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id WHERE r.id=wanted_review AND r.tenant_id=target_tenant AND u.id=target_user AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND e.person_id<>s.person_id AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND NOT app.financial_onehr_unit_excluded(target_tenant,r.cycle_id,e.id,NULL,NULL))
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_manager_for(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_manager(wanted_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_manager_for(app.current_tenant_id(),app.current_user_id(),wanted_review); $$;
+CREATE FUNCTION app.financial_onehr_effective_reviewer_for(target_tenant uuid,target_user uuid,wanted_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_review r
+  JOIN employment s ON s.id=r.employment_id AND s.tenant_id=r.tenant_id
+  JOIN employment m ON m.id=app.financial_onehr_effective_reviewer_of(target_tenant,r.id,NULL,NULL) AND m.tenant_id=r.tenant_id
+  JOIN app_user u ON u.person_id=m.person_id AND u.tenant_id=m.tenant_id
+  WHERE r.id=wanted_review AND r.tenant_id=target_tenant AND u.id=target_user
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND m.person_id<>s.person_id
+   AND (m.terminated_on IS NULL OR m.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date))
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_effective_reviewer_for(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_effective_reviewer(wanted_review uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_effective_reviewer_for(app.current_tenant_id(),app.current_user_id(),wanted_review); $$;
+CREATE FUNCTION app.financial_onehr_moderator_for(target_tenant uuid,target_user uuid,wanted_review uuid,wanted_kpi uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM performance_onehr_review r JOIN performance_review pr ON pr.id=r.review_id JOIN employment sub ON sub.id=r.employment_id JOIN app_user u ON u.id=target_user AND u.tenant_id=r.tenant_id CROSS JOIN LATERAL jsonb_array_elements(r.kpis) k CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_array_length(coalesce(k->'approvalChain','[]'::jsonb))>0 THEN k->'approvalChain' ELSE jsonb_build_array(jsonb_build_object('employmentId',k->>'moderatorEmploymentId','at',NULL)) END) WITH ORDINALITY step(v,idx) JOIN employment m ON m.id=(step.v->>'employmentId')::uuid AND m.tenant_id=r.tenant_id AND m.person_id=u.person_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=target_tenant AND (wanted_kpi IS NULL OR k->>'id'=wanted_kpi::text AND coalesce((k->>'locked')::boolean,false)=false AND step.v->>'at' IS NULL AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(k->'approvalChain','[]'::jsonb)) WITH ORDINALITY earlier(v,idx) WHERE earlier.idx<step.idx AND earlier.v->>'at' IS NULL)) AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND sub.person_id<>m.person_id AND NOT app.financial_onehr_unit_excluded(target_tenant,r.cycle_id,m.id,NULL,NULL) AND (m.terminated_on IS NULL OR m.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND (k->>'moderatorSource'='matrix' OR m.id=pr.reviewer_employment_id OR EXISTS(SELECT 1 FROM reporting_line l WHERE l.subordinate_employment_id=sub.id AND l.manager_employment_id=m.id AND l.line_type IN ('functional','project','dotted') AND l.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (l.valid_to IS NULL OR l.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND l.superseded_at IS NULL)))
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_moderator_for(uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_moderator(wanted_review uuid,wanted_kpi uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_onehr_moderator_for(app.current_tenant_id(),app.current_user_id(),wanted_review,wanted_kpi); $$;
