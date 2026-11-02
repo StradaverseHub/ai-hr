@@ -542,7 +542,7 @@ describe('Formula evidence retains a company independently of its current employ
       await setPayFormulaActive(ctx,{...saved,testId:tested.id,active:true});
       await owner.db.update(schema.employment).set({companyId:target}).where(eq(schema.employment.id,employee.employmentId));
       await owner.db.update(schema.assignment).set({companyId:target,departmentId:department.id}).where(eq(schema.assignment.employmentId,employee.employmentId));
-      const component=await upsertPayComponent(ctx,{code:'RETENTION_FORMULA_VALUE',name:'Fictional retained calculation allowance',label:'Fictional retained calculation allowance',
+      const component=await upsertPayComponent(ctx,{code:'RETENTION_VALUE',name:'Fictional retained calculation allowance',label:'Fictional retained calculation allowance',
         kind:'allowance',includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,
         rule:{kind:'formula_builder',formulaId:'RETAINED_COMPANY',dependencies:[]}});
       await setEmploymentPayComponent(ctx,{employmentId:employee.employmentId,componentId:component.id,amount:1,effectiveFrom:'2026-05-01'});
@@ -603,7 +603,7 @@ describe('Formula evidence retains a company independently of its current employ
       }
       const receipt=await getFormulaEvaluation(ctx,evaluationId!);expect(receipt).not.toBeNull();
       expect(receipt).toMatchObject({id:evaluationId,formulaId:'RETAINED_COMPANY',revisionId:saved.revisionId,
-        companyId:target,employmentId:employee.employmentId,componentCode:'RETENTION_FORMULA_VALUE',period:'2026-05',amount:'1',
+        companyId:target,employmentId:employee.employmentId,componentCode:'RETENTION_VALUE',period:'2026-05',amount:'1',
         payload:{explanations:tested.explanations,reads:expect.any(Array),sources:expect.any(Array)}});
       expect(receipt!.payload.explanations).toContain(privateValue);
       expect(receipt!.contentHash).toMatch(/^[a-f0-9]{64}$/);
