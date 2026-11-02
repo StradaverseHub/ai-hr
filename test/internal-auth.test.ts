@@ -253,7 +253,7 @@ describe('first-party authentication with real private storage and existing HR b
     expect(await getMobileSession({authorization:`Bearer ${signedIn.access_token}`})).toMatchObject({userId:id,tenantId:base.tenantId,personId:employee.personId,roles:['employee']});
   });
   it('applies configured eight-character manual credentials and prospective force-change off',async()=>{
-    const ctx=adminCtx(base);
+    const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
     await savePasswordPolicy(ctx,{enabled:false,interval:90,unit:'days',requirements:{...NEW_PASSWORD_REQUIREMENTS,forceFirstChange:false}},0);
     const id=await createManualAccount(ctx,{id:randomUUID(),personId:null,fullName:'Configured credential',username:'short.user',email:'short@example.test',role:'employee',companyId:null,password:'Short!42',ownershipAttested:true});
     expect(id).toBeTruthy();const credential=(await credentialByLogin('alpha','short.user'))!;
