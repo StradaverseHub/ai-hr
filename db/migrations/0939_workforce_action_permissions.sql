@@ -1744,7 +1744,14 @@ BEGIN
  IF TG_TABLE_NAME='tenant' THEN
   INSERT INTO app.access_control_epoch(tenant_id) SELECT id FROM new_rows ON CONFLICT DO NOTHING;RETURN NULL;
  END IF;
+ -- The legacy native-writer fence advances revision/updated_at for employment/company changes
+ -- without editing a control. Keep that physical serialization and editor-staleness fence intact;
+ -- only initialization changes the configuration row's semantic authority contents.
+ IF TG_TABLE_NAME='access_configuration' AND TG_OP='UPDATE' THEN
+  query:='SELECT DISTINCT coalesce(n.tenant_id,o.tenant_id) FROM new_rows n FULL JOIN old_rows o USING(tenant_id) WHERE n.tenant_id IS NULL OR o.tenant_id IS NULL OR n.initialized IS DISTINCT FROM o.initialized';
+ ELSE
  query:=CASE TG_OP WHEN 'INSERT' THEN 'SELECT DISTINCT tenant_id FROM new_rows' WHEN 'DELETE' THEN 'SELECT DISTINCT tenant_id FROM old_rows' ELSE 'SELECT tenant_id FROM old_rows UNION SELECT tenant_id FROM new_rows' END;
+ END IF;
  FOR affected IN EXECUTE query LOOP
   INSERT INTO app.access_control_epoch AS current_epoch(tenant_id,epoch) SELECT affected,1 WHERE EXISTS(SELECT 1 FROM public.tenant t WHERE t.id=affected)
   ON CONFLICT(tenant_id) DO UPDATE SET epoch=current_epoch.epoch+1;
@@ -1775,7 +1782,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT CASE WHEN app.principal_snapshot_current() THEN encode(sha256(convert_to(jsonb_build_object(
   'tenant',epoch.tenant_id,'user',app.current_user_id(),'epoch',epoch.epoch,'date',current_date,
   'claimedRoles',current_setting('app.roles',true),'claimedGrants',(SELECT coalesce(jsonb_agg(jsonb_build_array(g.role,g.company_id) ORDER BY g.role,g.company_id),'[]'::jsonb) FROM app.current_grants() g),
-  'configuration',(SELECT jsonb_build_array(configuration.revision,configuration.initialized) FROM public.access_configuration configuration WHERE configuration.tenant_id=epoch.tenant_id)
+  'configuration',(SELECT jsonb_build_array(configuration.initialized) FROM public.access_configuration configuration WHERE configuration.tenant_id=epoch.tenant_id)
  )::text,'UTF8')),'hex') ELSE NULL END FROM app.access_control_epoch epoch WHERE epoch.tenant_id=app.current_tenant_id();
 $$;
 REVOKE ALL ON FUNCTION app.access_function_authority_stamp() FROM PUBLIC,ai_hr_app;
