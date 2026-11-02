@@ -22,7 +22,7 @@ beforeEach(async()=>{
  const [company]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Other audit scope'}).returning();
  const [user]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:`user_${randomUUID()}`,personId:null}).returning();
  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'hr_admin',companyId:company.id});
- scoped={tenantId:b.tenantId,userId:user.id,grants:[{role:'hr_admin',companyId:company.id}]};id=randomUUID();
+ scoped={tenantId:b.tenantId,userId:user.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:company.id}]};id=randomUUID();
  await withTenant(a,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'payslip',aggregateId:id,eventType:'payroll.anomaly.resolved',actor:actorOf(a),subjectEmploymentId:subject.employmentId,payload:{resolution:'accepted',note}}));
 });
 async function exported(ctx:SessionContext,format:string){
@@ -42,6 +42,8 @@ it('scoped HTML contains no other-company anomaly working note while authorized 
  expect(renderToStaticMarkup(await AuditTable({rows:await auditEvents(scoped,{aggregateId:id}),nowMs:Date.now()}))).not.toContain(note);
 });
 it.each(['csv','xlsx','pdf'])('actual %s export protects private notes and retains authorized evidence',async format=>{
- expect(await exported(adminCtx(b),format)).toContain(note);
- expect(await exported(scoped,format)).not.toContain(note);
+ // PDF intentionally truncates long cell values; its actual record prefix pins row absence.
+ const sentinel=format==='pdf'?id.slice(0,8):note;
+ expect(await exported(adminCtx(b),format)).toContain(sentinel);
+ expect(await exported(scoped,format)).not.toContain(sentinel);
 });
