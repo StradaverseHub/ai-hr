@@ -67,6 +67,12 @@ async function journey(ctx: SessionContext, family: Family, kind: string, id: st
   const reply = await read(ctx, family, kind, id);
   expect(reply.outcome).toBe('found');
   const f = nativeApiJourney({ family, kind, id, reply, loseFirstReply: true, decide: async body => {
+    // Knowing the real ID, form fields and request UUID must not grant command access,
+    // even on the retry after the assigned actor has committed a receipt.
+    caller = outsider.ctx;
+    const denied = await routes[family].write.POST(new Request(`https://hr.test/api/mobile/v2/${family}/${kind}/${id}/decision`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
+    expect(denied.status).toBe(200);
+    expect(await denied.json()).toMatchObject({ outcome: 'refused', code: 'not_assigned' });
     caller = ctx;
     const r = await routes[family].write.POST(new Request(`https://hr.test/api/mobile/v2/${family}/${kind}/${id}/decision`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
     expect(r.status).toBe(200); return r.json();
