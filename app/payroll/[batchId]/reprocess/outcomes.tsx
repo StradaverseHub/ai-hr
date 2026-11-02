@@ -104,7 +104,7 @@ export async function ReprocessOutcomePanel({ outcomes, history, slips, run, cur
   return <Card className="overflow-hidden">
     <SectionHeader title={t('reprocessOutcomeTitle')} count={outcomes.length} />
     <p className="px-4 pb-3 text-sm">{t('reprocessOutcomeSummary', {
-      selected, succeeded: counts.reprocessed, skipped: counts.skipped, failed: counts.validation_failed,
+      selected, succeeded: counts.reprocessed, skipped: counts.skipped, failed: counts.validation_failed+(stopped&&stoppedEmployee?1:0),
     })}</p>
     {counts.excluded + counts.not_eligible > 0 && <p className="-mt-2 px-4 pb-3 text-sm">{t('reprocessOutcomeExclusionSummary', {
       excluded: counts.excluded, notEligible: counts.not_eligible,

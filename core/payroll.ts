@@ -4952,6 +4952,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // Display evidence only: a reused recurring assessment retains its recorded cap.
     const earlierExemptionLimits = new Map<string, Map<string, number | null>>();
     const retainedOneOffExemptions = new Map<string, {code:string;annualLimit:number|null;item:string;amount:number}[]>();
+    const postNumericOptions=['epfWageExcluded','epfAdditionalExcluded','socsoWageExcluded','socsoWageExtra','epfWageDeduction','socsoWageDeduction','pcbWageDeduction'] as const;
+    type PostInputs={wages:number;additional:number;overtime:number;lp:number;zakat:number;options:Record<string,number>};
+    const postEarlierByEmp=new Map<string,{inputs:PostInputs;paid:Record<string,number>}>();
     const earlierRunByEmp = new Map<string, { additional: number; overtime: number }>();
     const earlierTaxBasisByEmp = new Map<string,{additionalDelta:number;normal:number|undefined;paidPcb:number;paidBonus:number;corrected:boolean}>();
     const earlierNonCashByEmp = new Map<string,{ownedEntries:NonCashEntry[];regularEntries:NonCashEntry[]|null;ownedEaEntries:NonCashEaEntry[];regularEaEntries:NonCashEaEntry[]|null;legacyRegular:boolean}>();
@@ -4963,7 +4966,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       if(!saved){cur.complete=false;continue;}
       cur.bik=round2(cur.bik+saved.owned.bik);cur.vola=round2(cur.vola+saved.owned.vola);
     }
-    if (isAdditionalRun || restatesMonth) {
+    if (isAdditionalRun || restatesMonth || postEmploymentIds.size>0) {
       const earlier = await tx
         .select({
           id: payslip.id,
@@ -4983,6 +4986,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           r.statutory = correction.statutory;
           const refs = taxBasisCorrectionsByEmp.get(r.employmentId) ?? [];
           refs.push(correction.correction); taxBasisCorrectionsByEmp.set(r.employmentId, refs);
+        }
+        if(postEmploymentIds.has(r.employmentId)){
+          const saved=(r.statutory as {postEmploymentPayment?:{statutoryInputs?:PostInputs}}|null)?.postEmploymentPayment?.statutoryInputs;
+          if(correction||!saved||!saved.options||[saved.wages,saved.additional,saved.overtime,saved.lp,saved.zakat,...postNumericOptions.map(k=>saved.options[k])].some(n=>typeof n!=='number'||!Number.isFinite(n)||n<0))throw new PayrollTaxBasisError('Earlier outstanding-payment payroll must be reviewed and reprocessed before this cycle.');
+          const current=postEarlierByEmp.get(r.employmentId)??{inputs:{wages:0,additional:0,overtime:0,lp:0,zakat:0,options:Object.fromEntries(postNumericOptions.map(k=>[k,0]))},paid:{}};
+          for(const key of ['wages','additional','overtime','lp','zakat'] as const)current.inputs[key]=round2(current.inputs[key]+saved[key]);
+          for(const key of postNumericOptions)current.inputs.options[key]=round2(current.inputs.options[key]+saved.options[key]);
+          for(const key of DELTA_KEYS)current.paid[key]=round2((current.paid[key]??0)+Number((r.statutory as Record<string,unknown>)[key]??0));
+          postEarlierByEmp.set(r.employmentId,current);
         }
         const cur = earlierRunByEmp.get(r.employmentId) ?? { additional: 0, overtime: 0 };
         cur.additional = round2(cur.additional + Number(r.bonus));
@@ -5195,7 +5207,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       recurringByEmp.delete(id);batchCompByEmp.delete(id);carryForwardByEmp.delete(id);
       overtimeByEmp.delete(id);bonusByEmp.delete(id);claimAllowanceByEmp.delete(id);loanByEmp.delete(id);
       unpaidByEmp.delete(id);absentByEmp.delete(id);unpaidTimeOffByEmp.delete(id);
-      incrementBasicByEmp.delete(id);dailyPayByEmp.delete(id);hourlyPayByEmp.delete(id);
+      incrementBasicByEmp.delete(id);dailyPayByEmp.delete(id);
     }
     // ── f1564110 Phase 3 — individual (one-off) transaction consumption (amends ADR-0056) ──
     // GATED by INDIVIDUAL_TXN_PAY_ENABLED (default OFF ⇒ the ledger stays record-only and every payslip is
@@ -5395,7 +5407,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // never divide). custom_period has NO calculation and is blocked at pre-flight (preProcessChecksTx), so
     // it never reaches this loop through a generated run.
     const hourlyPayByEmp = new Map<string, { rate: number; hours: number; basic: number }>();
-    for (const e of hourlyModeEmps) {
+    for (const e of hourlyModeEmps.filter(e=>!postEmploymentIds.has(e.employmentId))) {
       const rate = Number(e.rateAmount);
       const hours = hoursByEmp.get(e.employmentId) ?? 0;
       hourlyPayByEmp.set(e.employmentId, { rate, hours, basic: payrollRateBasic(rate,hours) });
@@ -6692,7 +6704,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const tp1Keyed = round2(tp1ByEmp.get(e.employmentId) ?? 0);
       const tp1IsOverride = tp1SourceByEmp.get(e.employmentId) !== 'tp1_self' && tp1Keyed > 0;
       const tp1Feed = tp1FeedByEmp.get(e.employmentId);
-      const tp1 = tp1IsOverride ? tp1Keyed : isAdditionalRun ? 0 : round2(tp1Feed?.feed ?? 0);
+      const tp1 = tp1IsOverride ? tp1Keyed : isAdditionalRun || postEmployment&&postEarlierByEmp.has(e.employmentId) ? 0 : round2(tp1Feed?.feed ?? 0);
       const lp = round2(tp1 + (isAdditionalRun ? 0 : en.lpDeclared));
       const zakat = round2(zakatByEmp.get(e.employmentId) ?? 0);
       const age = ageAt(e.dateOfBirth);
@@ -6722,7 +6734,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // 1.2.3 CP38 — the month's LHDN instalment. Charged on the REGULAR run only: like basic/OT/unpaid/hrdf,
       // an additional (off-cycle/bonus/adjustment) run carries cp38 = 0 (a re-issue re-runs the regular batch,
       // not an adjustment run). So a regular + bonus run in one month charges exactly one instalment.
-      const cp38 = isAdditionalRun ? 0 : round2(cp38ByEmp.get(e.employmentId)?.amount ?? 0);
+      const cp38 = isAdditionalRun || postEmployment&&postEarlierByEmp.has(e.employmentId) ? 0 : round2(cp38ByEmp.get(e.employmentId)?.amount ?? 0);
       // Statutory contribution. Regular run: computed directly as today (byte-identical). Additional run
       // (Wave 2C): the INCREMENT of the cumulative month — re-run with/without this run's additional
       // remuneration and take the delta, so the normal wage's SOCSO/EPF (already charged by the regular
@@ -6872,7 +6884,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       let effectiveZakat =
         zakat > 0
           ? zakat
-          : !isAdditionalRun && e.zakatActive && e.zakatMethod === 'fixed'
+          : !isAdditionalRun && !(postEmployment&&postEarlierByEmp.has(e.employmentId)) && e.zakatActive && e.zakatMethod === 'fixed'
             ? round2(Number(e.zakatFixed ?? 0))
             : 0;
       // `zakatCurrent` defaults to the resolved figure, but the percent_of_pcb probe passes 0 to read the
@@ -6890,7 +6902,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // which IS the payslip's zakat line (stamped as `st.zakat`) and the figure the EA reports.
       // Kept out of the additional-run path for the same reason the fixed election is: a regular + bonus
       // pair must apply the month's rebate ONCE, and the regular run is the one that carries it.
-      const tp1Rebate = isAdditionalRun ? 0 : round2(tp1RebateByEmp.get(e.employmentId) ?? 0);
+      const tp1Rebate = isAdditionalRun || postEmployment&&postEarlierByEmp.has(e.employmentId) ? 0 : round2(tp1RebateByEmp.get(e.employmentId) ?? 0);
       let zakatOffsetTotal = round2(effectiveZakat + tp1Rebate);
       const earlierTaxBasis=earlierTaxBasisByEmp.get(e.employmentId);
       const computeMonth = (additional: number, ot: number, zakatCurrent = zakatOffsetTotal, bases = stOpts, includesEarlier = true) =>
@@ -6907,7 +6919,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // redirected amount keeps overtime's statutory character (SOCSO/EIS/PCB, EPF-exempt). The DISPLAYED
       // overtime line stays the capped figure; the excess shows under the chosen pay item. Convert=0 ⇒ otStat===overtime.
       const otStat = round2(overtime + otConvertAmount);
-      if (zakat <= 0 && !isAdditionalRun && e.zakatActive && e.zakatMethod === 'percent_of_pcb') {
+      if (zakat <= 0 && !isAdditionalRun && !(postEmployment&&postEarlierByEmp.has(e.employmentId)) && e.zakatActive && e.zakatMethod === 'percent_of_pcb') {
         const probe = computeMonth(bonus, otStat, 0, stOpts, false);
         effectiveZakat = round2(Number(e.zakatPercent ?? 0) * (probe.pcbNormalPreZakat ?? 0));
         // The probe re-resolves the payslip's zakat, so the offset total has to be re-derived from it or
@@ -6966,7 +6978,14 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
        * drifts silently on a money path. Called once with `stOpts`, which reproduces the previous
        * expression call for call and argument for argument.
        */
+      const postOwnInputs:PostInputs={wages:wagesExOt,additional:bonus,overtime:otStat,lp,zakat:zakatOffsetTotal,options:Object.fromEntries(postNumericOptions.map(key=>[key,stOpts[key]]))};
       const coreFor = (bases: typeof stOpts) => {
+        if(postEmployment){
+          const prior=postEarlierByEmp.get(e.employmentId);
+          if(!prior)return computeMonth(bonus,otStat,undefined,bases);
+          const options={...bases};for(const key of postNumericOptions)options[key]=round2(options[key]+prior.inputs.options[key]);
+          return deltaStat(pack.payroll.statutory(round2(wagesExOt+prior.inputs.wages),taxProfile,round2(bonus+prior.inputs.additional),round2(otStat+prior.inputs.overtime),{month:pMonth,acc:accByEmp.get(e.employmentId),lpCurrent:round2(lp+prior.inputs.lp),zakatCurrent:round2(zakatOffsetTotal+prior.inputs.zakat)},options,rules),prior.paid);
+        }
         // The baseline option bag for either delta: THIS run's additional-stream carve-outs are dropped,
         // because the baseline means "the month WITHOUT this run's additional remuneration" and a carve-out
         // describing money this run is paying must not sit on that side (017d9c25). The wage-side carve-outs
@@ -7034,8 +7053,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // A restating regular run was charged on the CUMULATIVE month exactly as an additional run is, so
       // the disclosed bases follow the same figures — or `bases` would stop being what the contribution
       // was actually charged on, which is the one property item 0253dc7c's screen relies on.
-      const statAdditional = isAdditionalRun || restatesMonth ? round2(earlierRun.additional + bonus) : bonus;
-      const statOvertime = isAdditionalRun
+      const statAdditional = !postEmployment&&(isAdditionalRun || restatesMonth) ? round2(earlierRun.additional + bonus) : bonus;
+      const statOvertime = postEmployment ? otStat : isAdditionalRun
         ? earlierRun.overtime
         : restatesMonth
           ? round2(earlierRun.overtime + otStat)
@@ -7094,7 +7113,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         ...stCore,
         pcbNonCash:nonCashSnapshot,
         bases: statBases,
-        ...(postEmployment?{postEmploymentPayment:{version:1,endedOn:e.terminatedOn,payPeriod:batch.payPeriod,payrollCycleId:batch.payrollCycleId,sourceTxnIds:postEmploymentSourcesByEmp.get(e.employmentId)??[]}}:{}),
+        ...(postEmployment?{postEmploymentPayment:{version:1,statutoryInputs:postOwnInputs,endedOn:e.terminatedOn,payPeriod:batch.payPeriod,payrollCycleId:batch.payrollCycleId,sourceTxnIds:postEmploymentSourcesByEmp.get(e.employmentId)??[]}}:{}),
         // Exact opening actually applied to this run, retained for later explicit tax-basis replay.
         // This is captured from the source profile before own-employer exemption consumption.
         taxBasisOpeningExemptionYear: pYear,
@@ -8104,7 +8123,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // 49e7e0a2 — these employees' figures now match their transactions again, so the recalculation mark
       // is cleared FOR THEM ONLY. A reprocess that covers some of the waiting employees leaves the rest
       // marked, which is the whole point: Close stays refused until every stale employee is dealt with.
-      await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId),postEmploymentIds:[...postEmploymentIds],postEmploymentTxnIds:[...postEmploymentTxnIds] });
+      await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: emps.map((e) => e.employmentId) });
       // 0db616f3 — these employees' payslips have just been rewritten from the current ledger, so every
       // one-off row of theirs on this run is now IN a payslip. Marking it here (and not only on the full
       // generation) is what covers the fbcf706d ADDED employment: its first payslip on this run is being

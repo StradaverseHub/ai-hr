@@ -119,11 +119,11 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
    const exempt=money(row.basis.exempt);if(exempt===null)fail('The country pack did not return exact exemption evidence.');
    const old=await tx.execute<{id:string;basis:unknown}>(sql`select id,basis from payroll_tax_basis_revision where company_id=${selection.companyId}::uuid and employment_id=${who.id}::uuid and period=${source.period} and (payslip_id=${source.id}::uuid or payslip_id in (select previous.id from payroll_history_import_snapshot previous join payroll_history_import_snapshot current on current.record_id=previous.record_id where current.id=${source.id}::uuid)) order by id`);
    const items=row.basis.items.map((item,index)=>{const saved=prior?.items[index];return {...item,previousTreatment:saved?.code===item.code&&saved.amount===item.amount?saved.latestTreatment:item.previousTreatment};});
-   const basis={...validatedTaxBasis(row.basis),items,supersedes:old.map(r=>r.id),settingsHash,appliedSettings:settings.filter(setting=>row.basis.items.some(item=>item.code===setting.code)),rulesEvidence:rulesEvidence[row.period]};
+   const basis:TaxBasisValue={...validatedTaxBasis(row.basis),items,supersedes:old.map(r=>r.id),settingsHash,appliedSettings:settings.filter(setting=>row.basis.items.some(item=>item.code===setting.code)),rulesEvidence:rulesEvidence[row.period]};
    ytdTaxable=round(ytdTaxable+basis.pcb);ytdExempt=round(ytdExempt+exempt);
    const beforeNormal=prior?.normal??(object(st.pcbNonCash)?money(st.pcbNonCash.cashNormal):null);
    const beforeAdditional=prior?.additional??money(source.bonus);
-   const payrollInputsChanged=beforeTaxable===null||round(basis.pcb-beforeTaxable)!==0
+   const payrollInputsChanged=round(basis.pcb-(beforeTaxable??Number(source.gross)))!==0
     ||beforeNormal!==null&&round(Number(basis.normal)-Number(beforeNormal))!==0
     ||beforeAdditional!==null&&round(Number(basis.additional)-Number(beforeAdditional))!==0
     ||hash(prior?.exemptionUsed??(object(st.exemptionUsed)?st.exemptionUsed:{}))!==hash(basis.exemptionUsed)

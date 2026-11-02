@@ -50,11 +50,11 @@ export function taxBasisReplacementMatches(source:TaxBasisSource,rootHash:string
  }
  return hashTaxBasisSource(source)===expected;
 }
-export type TaxBasisReplacementPreparation={sources:TaxBasisSource[];corrections:{id:string;payslipId:string;sourceHash:string}[]};
+export type TaxBasisReplacementPreparation={sources:TaxBasisSource[];corrections:{id:string;payslipId:string;sourceHash:string;basis:TaxBasisValue}[]};
 /** Validate current sources before a native reprocess changes anything, including its own corrected slip. */
 export async function prepareTaxBasisReplacementTx(tx:Tx,ctx:SessionContext,ids:string[]):Promise<TaxBasisReplacementPreparation>{
  const sources=await taxBasisSourceRowsTx(tx,ids);await readEffectiveTaxBasesTx(tx,ctx,ids);
- const corrections=ids.length?await tx.execute<{id:string;payslipId:string;sourceHash:string}>(sql`select distinct on(payslip_id) id,payslip_id as "payslipId",source_hash as "sourceHash" from payroll_tax_basis_revision where tenant_id=${ctx.tenantId}::uuid and payslip_id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by payslip_id,ordinal desc`):[];
+ const corrections=ids.length?await tx.execute<{id:string;payslipId:string;sourceHash:string;basis:TaxBasisValue}>(sql`select distinct on(payslip_id) id,payslip_id as "payslipId",source_hash as "sourceHash",basis from payroll_tax_basis_revision where tenant_id=${ctx.tenantId}::uuid and payslip_id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by payslip_id,ordinal desc`):[];
  return{sources,corrections};
 }
 export async function recordTaxBasisReplacementTx(tx:Tx,ctx:SessionContext,prepared:TaxBasisReplacementPreparation,historyByEmployment:Record<string,string>){
@@ -62,6 +62,15 @@ export async function recordTaxBasisReplacementTx(tx:Tx,ctx:SessionContext,prepa
  for(const correction of prepared.corrections){
   const before=prepared.sources.find(s=>s.id===correction.payslipId),next=after.find(s=>s.id===correction.payslipId);
   if(!before||!next||!historyByEmployment[next.employmentId])throw new PayrollTaxBasisError('The corrected payroll replacement is incomplete.');
+  // Correction custody covers the reviewed cash source only. A new earning or changed input
+  // requires a fresh reviewed correction; it cannot inherit the previous source's annual allocation.
+  const cash=(row:TaxBasisSource)=>{
+   const st=row.source.statutory;if(!object(st)||!Array.isArray(st.componentLines))throw new PayrollTaxBasisError('Saved payroll changed after an income-tax correction. Review and recalculate the affected employee before continuing.');
+   return {basic:row.source.basic_salary,gross:row.source.gross_pay,deductions:row.source.other_deductions,
+    lines:st.componentLines.map(line=>{if(!object(line)||typeof line.code!=='string'||typeof line.amount!=='number')throw new PayrollTaxBasisError('Saved payroll cash evidence is unavailable.');return{code:line.code,amount:line.amount};}).sort((a,b)=>a.code.localeCompare(b.code)||a.amount-b.amount)};
+  };
+  const basis=validatedTaxBasis(correction.basis),stat=next.source.statutory;
+  if(canonical(cash(before))!==canonical(cash(next))||!object(stat)||!object(stat.bases)||stat.bases.pcb!==basis.pcb||canonical(stat.exemptionUsed??{})!==canonical(basis.exemptionUsed)||Number(stat.lp??0)!==Number(basis.lp??0))throw new PayrollTaxBasisError('Saved payroll changed after an income-tax correction. Review and recalculate the affected employee before continuing.');
   await tx.execute(sql`insert into payroll_tax_basis_replacement(tenant_id,company_id,employment_id,payslip_id,correction_id,history_id,before_hash,after_hash,before_source,after_source,created_by)
    values(${ctx.tenantId}::uuid,${next.companyId}::uuid,${next.employmentId}::uuid,${next.id}::uuid,${correction.id}::uuid,${historyByEmployment[next.employmentId]}::uuid,${hashTaxBasisSource(before)},${hashTaxBasisSource(next)},${JSON.stringify(before)}::jsonb,${JSON.stringify(next)}::jsonb,${ctx.userId??null}::uuid)`);
  }

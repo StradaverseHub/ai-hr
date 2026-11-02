@@ -277,7 +277,7 @@ export default async function ReprocessPage({
           is what the operator came back for; the selection stays below so a second correction does not
           need a second navigation. */}
       {thisJob?.status === 'failed' && <ErrorBanner message={t(reprocessStoppedMessageKey(thisJob.stopCode))} />}
-      {thisJob && outcomes !== null && (outcomes.length >= 0) && (
+      {thisJob && outcomes !== null && (
         <ReprocessOutcomePanel outcomes={outcomes} history={disclosure} slips={slips} run={batch}
           currency={currency} batchId={batchId} from={listFrom} jobId={thisJob.id}
           stoppedEmployee={readStoppedEmployee(thisJob.result,thisJob.employmentIds)}

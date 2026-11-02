@@ -194,14 +194,17 @@ export function Wizard({
     setSelected(new Set());
     setFiltersTouched(false);
     setEmployees([]);
-  }, [companyKey, payPeriod, isResume]);
+  }, [companyKey, payPeriod, cycleId, isResume]);
 
   useEffect(() => {
     if (companyIds.length === 0 || !/^\d{4}-\d{2}$/.test(payPeriod)) return;
+    let current=true;
     setLoadingEmployees(true);
     fetchPayrollRunEmployees(companyIds,payPeriod,cycleId||undefined)
-      .then(setEmployees)
-      .finally(() => setLoadingEmployees(false));
+      .then(rows=>{if(current)setEmployees(rows);})
+      .catch(()=>{if(current)setEmployees([]);})
+      .finally(() => {if(current)setLoadingEmployees(false);});
+    return ()=>{current=false;};
     // eslint-disable-next-line react-hooks/exhaustive-deps -- companyKey is the stable dependency for the set
   }, [companyKey,payPeriod,cycleId]);
 

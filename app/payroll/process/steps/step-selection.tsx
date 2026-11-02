@@ -34,6 +34,7 @@ export type PayrollRunEmployeeRow = {
   hiredOn: string;
   terminatedOn: string | null;
   hasCurrentCompensation: boolean;
+  outstandingOnly?: boolean;
   /** 7076f8af — the employee's assigned Payroll Policy name; null for most employments today. */
   payrollPolicyName: string | null;
 };

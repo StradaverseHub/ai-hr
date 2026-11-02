@@ -8,20 +8,20 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {createBatch,generatePayslips,reprocessSelectedEmployees,getReprocessJob,PayrollReprocessStoppedError} from '../core/payroll';
-import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation} from '../core/payroll-tax-basis';
+import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation,getTaxBasisBatch} from '../core/payroll-tax-basis';
 import {readEffectiveTaxBasesTx} from '../core/payroll-tax-basis-read';
 import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,employmentId:string,travelId:string,batchId:string;
 const slip=async()=> (await owner.db.select().from(S.payslip).where(eq(S.payslip.batchId,batchId)))[0];
-async function correct(){const p=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:[employmentId]});expect(p.blockedCount).toBe(0);expect(p.eligibleCount).toBe(1);return confirmTaxBasisRecalculation(ctx,{previewId:p.previewId,previewHash:p.previewHash});}
+async function correct(){const p=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:[employmentId]});expect(p.blockedCount).toBe(0);expect(p.eligibleCount).toBe(1);const result=await confirmTaxBasisRecalculation(ctx,{previewId:p.previewId,previewHash:p.previewHash});const batch=await getTaxBasisBatch(ctx,result.id);expect(batch?.employees.map(e=>({status:e.status,reason:e.reason}))).toEqual([{status:'completed',reason:null}]);return result;}
 beforeEach(async()=>{
  await resetDb();b=await seedBase();await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'typed_pay_components','active');await setModule(b.tenantId,'multi_cycle_payroll','active');ctx=await entitledCtx(b);
  const subject=await hireEmployee(ctx,{person:{fullName:'Fictional corrected employee',primaryEmail:'corrected-source@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01'});employmentId=subject.employmentId;
  await setCompensation(ctx,{employmentId,basicSalary:5000,effectiveFrom:'2025-01-01'});await setStatutoryProfileMY(ctx,{personId:subject.personId,icNumber:'850202025555',taxCategory:1,numChildren:0});
- const [item]=await owner.db.insert(S.payComponent).values({tenantId:b.tenantId,code:'TRV',name:'Fictional travel',kind:'allowance',displayCategory:'allowance',includedInPcb:false,includedInEpf:false,includedInSocsoEis:false,pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TAXABLE'}).returning();travelId=item.id;
+ const [item]=await owner.db.insert(S.payComponent).values({tenantId:b.tenantId,code:'TRV',name:'Fictional travel',kind:'allowance',displayCategory:'allowance',includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,pcbRemunerationType:'normal',pcbExemptionCode:'PCB_NON-TAXABLE'}).returning();travelId=item.id;
  batchId=(await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-01'})).batchId;
  await setPayrollBatchComponent(ctx,{batchId,employmentId,componentId:travelId,amount:500});await generatePayslips(ctx,{batchId});
- await owner.db.update(S.payComponent).set({includedInPcb:true}).where(eq(S.payComponent.id,travelId));
+ await owner.db.update(S.payComponent).set({pcbExemptionCode:'PCB_TAXABLE'}).where(eq(S.payComponent.id,travelId));
 });
 afterAll(closeAll);
 describe('corrected native payslip replacement custody',()=>{
@@ -41,7 +41,7 @@ describe('corrected native payslip replacement custody',()=>{
  });
  it('does not replay a completed old job after a distinct fresh tax correction',async()=>{
   await correct();const key=randomUUID();const first=await reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employmentId],idempotencyKey:key});
-  await owner.db.update(S.payComponent).set({includedInPcb:false}).where(eq(S.payComponent.id,travelId));await correct();
+  await owner.db.update(S.payComponent).set({pcbExemptionCode:'PCB_NON-TAXABLE'}).where(eq(S.payComponent.id,travelId));await correct();
   const next=await reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employmentId],idempotencyKey:key});expect(next.jobId).not.toBe(first.jobId);expect((await slip()).version).toBe(3);expect(((await slip()).statutory as {bases:{pcb:number}}).bases.pcb).toBe(5000);
  });
  it('keeps unrelated source mutations blocked and names the failed employee without inventing success',async()=>{
@@ -49,6 +49,10 @@ describe('corrected native payslip replacement custody',()=>{
   const error=await reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()}).catch(e=>e);expect(error).toBeInstanceOf(PayrollReprocessStoppedError);expect(error.code).toBe('TAX_BASIS_SOURCE_CHANGED');
   const job=await getReprocessJob(ctx,error.jobId);expect(job?.status).toBe('failed');expect(job?.stopCode).toBe('TAX_BASIS_SOURCE_CHANGED');expect(job?.result).toMatchObject({outcomes:[],stoppedEmployee:{employmentId,name:'Fictional corrected employee'}});
   expect((await slip()).version).toBe(1);expect(await owner.db.execute(sql`select id from payroll_tax_basis_replacement`)).toHaveLength(0);
+ });
+ it('refuses consuming an old correction when newly keyed cash changed its reviewed source',async()=>{
+  await correct();await setPayrollBatchComponent(ctx,{batchId,employmentId,componentId:travelId,amount:650});
+  await expect(reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()})).rejects.toBeInstanceOf(PayrollReprocessStoppedError);expect((await slip()).version).toBe(1);expect(await owner.db.execute(sql`select id from payroll_tax_basis_replacement`)).toHaveLength(0);
  });
  it('makes lineage immutable, tenant-bound and impossible to invent without a real replacement history',async()=>{
   await correct();await reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()});

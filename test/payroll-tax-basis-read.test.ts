@@ -10,24 +10,24 @@ async function correction(n:number){const source=fixture(n);return{id:`correctio
 describe('exact effective tax basis reads',()=>{
  it('reads each corrected cycle separately and the combined month without treating an unrequested valid cycle as stale',async()=>{
   const one=fixture(1),two=fixture(2),a=await correction(1),b=await correction(2);
-  const readOne=await readEffectiveTaxBasesTx(txRows([[one],[a,b],[two]]),ctx,[one.id]);
+  const readOne=await readEffectiveTaxBasesTx(txRows([[one],[a,b],[],[two]]),ctx,[one.id]);
   expect([...readOne.keys()]).toEqual([one.id]);expect(readOne.get(one.id)?.statutory).toMatchObject({pcb:10,epfEmployee:550,bases:{pcb:5500,epf:5000}});
-  const readTwo=await readEffectiveTaxBasesTx(txRows([[two],[a,b],[one]]),ctx,[two.id]);expect([...readTwo.keys()]).toEqual([two.id]);
-  const combined=await readEffectiveTaxBasesTx(txRows([[one,two],[a,b]]),ctx,[one.id,two.id]);expect([...combined.keys()]).toEqual([one.id,two.id]);
+  const readTwo=await readEffectiveTaxBasesTx(txRows([[two],[a,b],[],[one]]),ctx,[two.id]);expect([...readTwo.keys()]).toEqual([two.id]);
+  const combined=await readEffectiveTaxBasesTx(txRows([[one,two],[a,b],[]]),ctx,[one.id,two.id]);expect([...combined.keys()]).toEqual([one.id,two.id]);
   expect(one.source.statutory.bases.pcb).toBe(5000);
  });
  it('refuses an orphaned correction when an import replacement hides the old snapshot',async()=>{
   const current=fixture(2),orphan=await correction(1);
-  await expect(readEffectiveTaxBasesTx(txRows([[current],[orphan],[]]),ctx,[current.id])).rejects.toThrow(/Saved payroll changed/);
+  await expect(readEffectiveTaxBasesTx(txRows([[current],[orphan],[],[]]),ctx,[current.id])).rejects.toThrow(/Saved payroll changed/);
  });
  it('refuses changed source revision provenance even with unchanged payroll money',async()=>{
   const source=fixture(1),saved=await correction(1);source.importRevision='later-revert';
-  await expect(readEffectiveTaxBasesTx(txRows([[source],[saved]]),ctx,[source.id])).rejects.toThrow(/Saved payroll changed/);
+  await expect(readEffectiveTaxBasesTx(txRows([[source],[saved],[]]),ctx,[source.id])).rejects.toThrow(/Saved payroll changed/);
  });
  it('keeps explicit stale-lineage supersession effective after another same-source correction',async()=>{
   const source=fixture(2),old=await correction(1),fresh=await correction(2);
   const prior={...fresh,id:'prior-correction',basis:{...basis,supersedes:[old.id]}};
-  const result=await readEffectiveTaxBasesTx(txRows([[source],[old,fresh,prior],[]]),ctx,[source.id]);
+  const result=await readEffectiveTaxBasesTx(txRows([[source],[old,fresh,prior],[],[]]),ctx,[source.id]);
   expect(result.get(source.id)?.correction.id).toBe(fresh.id);
  });
  it('rejects malformed corrections and unreconciled remuneration totals',()=>{

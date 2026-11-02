@@ -8,15 +8,13 @@ import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {createBatch,createAdditionalRun,generatePayslips,preProcessAdvisory,batchScopeHeadcount,reprocessSelectedEmployees,removeEmployeePayroll} from '../core/payroll';
 import {seedPayrollCycleCatalog,listPayrollCycles} from '../core/payroll-cycle';
-import {createIndividualTxn} from '../core/payroll-individual-txn';
+import {createIndividualTxn,createIndividualTxnsBulk} from '../core/payroll-individual-txn';
 import {setEmploymentPayComponent} from '../core/pay-components';
 import {listEmployeesForPayrollRun} from '../core/read';
 import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 let b:Base,ctx:SessionContext,employmentId:string,personId:string,reimbursement:string,monthly:string;
 async function outstanding(cycleId=monthly){
- const overtime=await createIndividualTxn(ctx,{companyId:b.companyId,payPeriod:'2026-11',intendedCycleId:cycleId,employmentId,kind:'overtime',txnDate:'2026-10-10',amount:300});
- const expense=await createIndividualTxn(ctx,{companyId:b.companyId,payPeriod:'2026-11',intendedCycleId:cycleId,employmentId,kind:'earning',componentId:reimbursement,txnDate:'2026-10-12',amount:180});
- return[overtime.id,expense.id];
+ return(await createIndividualTxnsBulk(ctx,{companyId:b.companyId,payPeriod:'2026-11',intendedCycleId:cycleId,employmentIds:[employmentId],rows:[{kind:'overtime',txnDate:'2026-10-10',amount:300},{kind:'earning',componentId:reimbursement,txnDate:'2026-10-12',amount:180}]})).ids;
 }
 async function result(batchId:string){return(await owner.db.select().from(S.payslip).where(eq(S.payslip.batchId,batchId)))[0];}
 beforeEach(async()=>{
@@ -46,13 +44,19 @@ describe('source-owned outstanding payments after resignation',()=>{
   await outstanding(off.id);expect(await listEmployeesForPayrollRun(ctx,b.companyId,'2026-11',other.id)).toHaveLength(0);expect(await listEmployeesForPayrollRun(ctx,b.companyId,'2026-11',monthly)).toHaveLength(0);
   const run=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:'2026-11',runType:'off_cycle',payrollCycleId:off.id});await generatePayslips(ctx,{batchId:run.batchId});expect(Number((await result(run.batchId)).grossPay)).toBe(480);expect(Number((await result(run.batchId)).basicSalary)).toBe(0);
  });
+ it('charges cumulative monthly contributions once across distinct outstanding-payment cycles',async()=>{
+  await outstanding();const first=await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-11',payrollCycleId:monthly});await generatePayslips(ctx,{batchId:first.batchId});const original=await result(first.batchId);
+  const off=(await listPayrollCycles(ctx,b.companyId)).find(c=>c.runType==='off_cycle')!;await outstanding(off.id);const second=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:'2026-11',runType:'off_cycle',payrollCycleId:off.id});await generatePayslips(ctx,{batchId:second.batchId});const later=await result(second.batchId);
+  expect(Number(original.grossPay)+Number(later.grossPay)).toBe(960);expect(Number((original.statutory as {socsoEmployee:number}).socsoEmployee)+Number((later.statutory as {socsoEmployee:number}).socsoEmployee)).toBe(2.75);expect(await result(first.batchId)).toEqual(original);
+  const net=later.netPay;await reprocessSelectedEmployees(ctx,{batchId:second.batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()});expect((await result(second.batchId)).netPay).toBe(net);expect((await owner.db.select().from(S.payrollIndividualTxn)).filter(t=>t.consumedBatchId===second.batchId)).toHaveLength(2);
+ });
  it('fails closed on missing historical pay provenance and rolls back attachment and consumption',async()=>{
   const sources=await outstanding();await owner.db.update(S.compensation).set({validFrom:'2026-11-01'}).where(eq(S.compensation.employmentId,employmentId));
   const run=await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-11',payrollCycleId:monthly});expect((await preProcessAdvisory(ctx,run.batchId)).missingCompensation.map(e=>e.employmentId)).toEqual([employmentId]);await expect(generatePayslips(ctx,{batchId:run.batchId})).rejects.toThrow();
   expect(await result(run.batchId)).toBeUndefined();expect((await owner.db.select().from(S.payrollIndividualTxn)).every(t=>t.batchId===null&&t.consumedBatchId===null)).toBe(true);
  });
  it('does not expose another tenant or treat a record-only or later-period item as payment eligibility',async()=>{
-  await createIndividualTxn(ctx,{companyId:b.companyId,payPeriod:'2026-12',intendedCycleId:monthly,employmentId,kind:'overtime',txnDate:'2026-10-10',amount:100});
+  await createIndividualTxn(ctx,{companyId:b.companyId,payPeriod:'2026-12',employmentId,kind:'overtime',txnDate:'2026-10-10',amount:100});
   expect(await listEmployeesForPayrollRun(ctx,b.companyId,'2026-11',monthly)).toHaveLength(0);
   expect(await listEmployeesForPayrollRun({...ctx,tenantId:randomUUID()},b.companyId,'2026-12',monthly)).toHaveLength(0);
  });
