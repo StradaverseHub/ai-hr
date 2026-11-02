@@ -46,7 +46,9 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** Step 5 recommendations, digest, agent registry and existing worker inputs (./entities-recommend.ts). */
  |'leave_decision_recommendation'|'daily_digest'|'agent_worker'|'payroll_anomaly'|'readiness_gap'|'pending_approval'|'followup_item'
  /** The harness's suggest_action result, including the pending leave requests an approver chooses between. */
- |'suggested_action';
+ |'suggested_action'
+ /** AI Centre issue 13b: governed pay averages for callers with payroll access (./entities-metrics.ts). */
+ |'pay_aggregate';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;

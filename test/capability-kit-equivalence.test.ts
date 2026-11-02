@@ -51,14 +51,14 @@ describe('the kit regenerates explain_attendance_day',()=>{
 });
 
 describe('every kit registry entry equals its hand-declared capability',()=>{
- it('covers the four step 4 capabilities',()=>{
+ it('covers the four step 4 capabilities and the pay averages',()=>{
   expect(KIT_CAPABILITIES.map(row=>row.read.name).sort()).toEqual(TERAS_READS.map(read=>read.name).sort());
  });
  for(const capability of KIT_CAPABILITIES)it(capability.read.name,()=>{
   expect(capability.toolSpec).toEqual(terasToolSpecs().find(spec=>spec.name===capability.read.name));
   expect(capability.registryRow).toEqual(terasCapabilityRegistry().find(row=>row.name===capability.read.name));
   const offered=TERAS_CAPABILITIES.find(row=>row.name===capability.read.name)!;
-  expect([capability.binding.module,capability.binding.admin]).toEqual([offered.module,offered.admin]);
+  expect([capability.binding.module,capability.binding.admin,capability.binding.access]).toEqual([offered.module,offered.admin,offered.access]);
   expect(capability.declaration.entity.owners).toContain(capability.binding.owner);
  });
 });
@@ -71,6 +71,8 @@ describe('the kit refuses an unsafe declaration',()=>{
   expect(refused({entity:{...attendanceEntity,page:'/not/a/page'}})).toBe('page_not_linkable');
   expect(refused({entity:{...attendanceEntity,rls:'visible_employments'}})).toBe('own_audience_wider_scope');
   expect(refused({permission:{module:'attendance',admin:true}})).toBe('admin_permission_audience_mismatch');
+  // Payroll access is an elevated offer too: never for an own-scope entity (issue 13b).
+  expect(refused({permission:{module:'attendance',admin:false,access:'payroll'}})).toBe('admin_permission_audience_mismatch');
   expect(refused({permission:{module:'leave',admin:false}})).toBe('module_mismatch');
   expect(refused({input:[{name:'employee_id',identifier:false,schema:{type:'string'}}]})).toBe('subject_input_not_a_handle');
   expect(refused({name:'Bad Name'})).toBe('name');
