@@ -1,4 +1,5 @@
-import {contractDateAuthorityTx,withAcceptedContractRecordIntentTx} from './contract-record-authority';
+import {tryLockPayrollHistoryReadTx} from './payroll-history-lock';
+import {contractDateAuthorityTx,withAcceptedContractRecordIntentTx,withContractMaternityRecordIntentTx} from './contract-record-authority';
 import {setCompensation} from './comp';
 import {setEmploymentPayComponent,endEmploymentPayComponent} from './pay-components';
 import { hasExitDateAuthorityTx } from './exit-date-authority';
@@ -3665,7 +3666,9 @@ export async function setDesignatedPaymaster(
 
 /** Actual canonical owners apply only the protected accepted intent, under the real owner session. */
 export async function applyAcceptedContractRecordsTx(tx:Tx,ctx:SessionContext,caseId:string):Promise<Record<string,unknown>>{
+ ctx={...ctx,roles:[],grants:[]};
  await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  return withAcceptedContractRecordIntentTx(tx,caseId,async intent=>{
   if(intent.done)return intent.receipt??{};
@@ -3688,4 +3691,9 @@ export async function applyAcceptedContractRecordsTx(tx:Tx,ctx:SessionContext,ca
   await setEmploymentInfo(ctx,{employmentId:intent.employmentId,contractStartDate:intent.startOn,contractEndDate:intent.endOn},tx);
   const [row]=await tx.execute<{receipt:Record<string,unknown>}>(sql`select app.contract_finish_records(${caseId}::uuid) as receipt`);if(!row)throw Error('Canonical contract receipt unavailable.');return row.receipt;
  });
+}
+
+export async function applyContractMaternityEndTx(tx:Tx,ctx:SessionContext,caseId:string){
+ ctx={...ctx,roles:[],grants:[]};await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ return withContractMaternityRecordIntentTx(tx,caseId,async intent=>{await lockLeaveDependenciesTx(tx,ctx.tenantId,[intent.employmentId]);await setEmploymentInfo(ctx,{employmentId:intent.employmentId,contractEndDate:intent.endOn},tx);const [r]=await tx.execute<{data:Record<string,unknown>}>(sql`select app.contract_finish_maternity_records(${caseId}::uuid) as data`);return r.data;});
 }
