@@ -122,7 +122,15 @@ beforeEach(async()=>{
  await requestLeave(await freshSession(employeeId),{employmentId:subjectB,leaveTypeId:b.annualLeaveTypeId,startDate:day,endDate:day,durationType:'full_day',reason:'Fictional history fixture'});
  await owner.db.insert(schema.aiProviderConfig).values({tenantId:b.tenantId,provider:'openrouter',model:'fictional/history-model',apiKeyCiphertext:encryptSecret('fictional-no-network-key',b.tenantId),keyLast4:'-key',isActive:true,
   providerOptions:{version:1,routing:{allowedProviders:['azure'],allowFallbacks:false,sort:'latency'}}});
- await setWorkerSwitch(await entitledCtx(b),{workerId:'conversation',enabled:true});
+ // The seed's separate real group administrator controls the worker; entitledCtx alone
+ // resolves modules but intentionally carries no grants for isGroupAdmin's native mirror.
+ const controller=await freshSession(b.adminUserId);
+ expect(controller.userId).not.toBe(viewerId);
+ expect(controller.grants).toContainEqual({role:'hr_admin',companyId:null});
+ const [controlProof]=await withTenant(controller,tx=>tx.execute<{current:boolean;group_admin:boolean}>(
+  sql`select app.principal_snapshot_current() as current,app.is_group_admin() as group_admin`));
+ expect(controlProof).toEqual({current:true,group_admin:true});
+ await setWorkerSwitch(controller,{workerId:'conversation',enabled:true});
  expect(await nativeAway(viewer)).toContain(B_NAME);
  scriptedAdapter();
 });
