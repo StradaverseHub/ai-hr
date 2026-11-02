@@ -85,8 +85,18 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
   const sourceJournal=JSON.parse(sourceJournalBytes.toString()) as {entries:Entry[];[key:string]:unknown};
   // The tax/movement release (1 Nov 2026) appends 0873/0874, then the Rewards read-policy fix 0875 and 1058ced1's EPF 0876, after the parity tail; frozen here, not derived.
   const releaseTail=[{idx:751,when:1793330000273,tag:'0873_movement_exit_payroll_preservation'},{idx:752,when:1793330000274,tag:'0874_payroll_tax_basis_corrections'},{idx:753,when:1793330000275,tag:'0875_reward_access_request_read_role'},{idx:754,when:1793330000276,tag:'0876_epf_manual_percentage_zero'},{idx:755,when:1793330000298,tag:'0898_session_idle_timeout'},{idx:756,when:1793330000299,tag:'0899_entra_workforce'}];
-  expect(PARITY_SOURCE_TAIL).toHaveLength(53);expect(sourceJournal.entries.length).toBe(583+PARITY_SOURCE_TAIL.length+releaseTail.length);
-  exact(sourceJournal.entries.slice(583+PARITY_SOURCE_TAIL.length).map(({idx,when,tag})=>({idx,when,tag})),releaseTail,'The tax/movement release tail follows the parity tail');
+  const ratifiedLength=583+PARITY_SOURCE_TAIL.length+releaseTail.length;
+  expect(PARITY_SOURCE_TAIL).toHaveLength(53);expect(sourceJournal.entries.length).toBeGreaterThanOrEqual(ratifiedLength);
+  exact(sourceJournal.entries.slice(583+PARITY_SOURCE_TAIL.length,ratifiedLength).map(({idx,when,tag})=>({idx,when,tag})),releaseTail,'The immutable tax/movement release prefix follows the parity tail');
+  // Later migrations do not change this historical 580→581 proof. Validate their append
+  // identities separately; populated current-source upgrade tests execute the complete chain.
+  const seenTags=new Set(sourceJournal.entries.slice(0,ratifiedLength).map(entry=>entry.tag));
+  for(let i=ratifiedLength;i<sourceJournal.entries.length;i++){
+   const prior=sourceJournal.entries[i-1],entry=sourceJournal.entries[i];
+   expect(entry.idx).toBeGreaterThan(prior.idx);expect(entry.when).toBeGreaterThan(prior.when);
+   expect(entry.tag).toMatch(/^\d{4}_[a-z0-9_]+$/);expect(seenTags.has(entry.tag)).toBe(false);seenTags.add(entry.tag);
+   expect(readFileSync('db/migrations/'+entry.tag+'.sql').length).toBeGreaterThan(0);
+  }
   expect(sha(readFileSync('db/migrations/0873_movement_exit_payroll_preservation.sql'))).toBe('39b6020262382d7c68dab60135837b6fc8b132f6b94afecd3892ba87cdbad440');
   expect(sha(readFileSync('db/migrations/0874_payroll_tax_basis_corrections.sql'))).toBe('9177fcd20fa1706ccc8077f50083270b9f03acb126b729e6af725082ed5d5745');
   expect(sha(readFileSync('db/migrations/0875_reward_access_request_read_role.sql'))).toBe('06190afbe171fffa7baa1c27b6fc6417499c50f1e8a7ec9a702a536e5acb41a1');
