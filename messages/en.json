@@ -34417,6 +34417,7 @@
     "defaultSubject": "Contract staff task",
     "defaultBody": "Open Contract Management to review your assigned task.",
     "recipient": {
+      "employee": "Employee",
       "manager": "Line manager",
       "pbp": "Assigned PBP",
       "ceo": "BU / BG CEO",
@@ -34677,7 +34678,7 @@
     "previewSource": "Review Personnel source",
     "verifiedSource": "Current verified source",
     "sourceEnded": "This employment has ended. Review its Personnel source before continuing.",
-    "retirementNote": "The first post-retirement shortcut needs actual retirement approval and completed health evidence, captured by PBP and independently verified by People Ops. Without proof, use the normal approval flow.",
+    "retirementNote": "Record the prior approval first. This case waits for the completed health check and independent People Ops verification. Use the normal process when prior approval cannot be established.",
     "readEvidence": "Load retirement evidence",
     "verifiedRetirement": "Verified retirement custody",
     "normalFlow": "Use normal decision and approval flow",
@@ -34755,6 +34756,17 @@
       "signatureEscalationDays": "Signature escalation (days before)",
       "minimumTermMonths": "Minimum renewal term (months)",
       "dailyHour": "Daily sync hour (MYT)"
-    }
+    },
+    "awaitingHealth": "Awaiting completed health check",
+    "optionalHealth": "Attach the health check later",
+    "attachHealth": "Attach completed health check",
+    "attachHealthHelp": "Choose the completed health-check PDF from the P-file. It must be a separate document from the prior approval.",
+    "awaitingEvidenceVerification": "Awaiting independent People Ops verification",
+    "withdrawEvidence": "Withdraw unverified evidence",
+    "withdrawEvidenceReason": "Reason for withdrawing the evidence",
+    "chooseVerifiedEvidence": "Select verified retirement evidence",
+    "retirementEvidencePending": "Review the recorded retirement evidence before opening this case.",
+    "acceptancePaused": "Signing is paused for this workflow. You can still decline the offer.",
+    "employeeIdentityUnavailable": "The employee’s linked login is unavailable or cannot be confirmed. Assigned People Ops must work with the Access owner to resolve it. The issued PDF is preserved."
   }
 }

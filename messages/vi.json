@@ -34417,6 +34417,7 @@
     "defaultSubject": "Công việc nhân sự hợp đồng",
     "defaultBody": "Mở Quản lý hợp đồng để xem công việc được giao.",
     "recipient": {
+      "employee": "Nhân viên",
       "manager": "Quản lý trực tiếp",
       "pbp": "PBP được phân công",
       "ceo": "CEO đơn vị / nhóm kinh doanh",
@@ -34677,7 +34678,7 @@
     "previewSource": "Xem nguồn dữ liệu nhân sự",
     "verifiedSource": "Nguồn hiện tại đã xác minh",
     "sourceEnded": "Quan hệ lao động này đã kết thúc. Xem nguồn nhân sự trước khi tiếp tục.",
-    "retirementNote": "Lối rút gọn cho hợp đồng đầu sau nghỉ hưu cần phê duyệt nghỉ hưu thực tế và bằng chứng khám sức khỏe hoàn tất, do PBP ghi nhận và People Ops xác minh độc lập. Nếu chưa có bằng chứng, dùng quy trình phê duyệt thông thường.",
+    "retirementNote": "Ghi nhận phê duyệt trước đó trước. Hồ sơ này chờ kết quả kiểm tra sức khỏe đã hoàn tất và xác minh độc lập của People Ops. Dùng quy trình thông thường nếu không thể xác lập phê duyệt trước đó.",
     "readEvidence": "Tải bằng chứng nghỉ hưu",
     "verifiedRetirement": "Chứng cứ nghỉ hưu đã được xác minh",
     "normalFlow": "Dùng quy trình quyết định và phê duyệt thông thường",
@@ -34755,6 +34756,17 @@
       "signatureEscalationDays": "Chuyển cấp ký (số ngày trước)",
       "minimumTermMonths": "Thời hạn gia hạn tối thiểu (tháng)",
       "dailyHour": "Giờ đồng bộ hằng ngày (MYT)"
-    }
+    },
+    "awaitingHealth": "Đang chờ kết quả kiểm tra sức khỏe đã hoàn tất",
+    "optionalHealth": "Đính kèm kết quả kiểm tra sức khỏe sau",
+    "attachHealth": "Đính kèm kết quả kiểm tra sức khỏe đã hoàn tất",
+    "attachHealthHelp": "Chọn PDF kiểm tra sức khỏe đã hoàn tất trong hồ sơ nhân sự. Đây phải là tài liệu riêng với phê duyệt trước đó.",
+    "awaitingEvidenceVerification": "Đang chờ People Ops xác minh độc lập",
+    "withdrawEvidence": "Rút bằng chứng chưa xác minh",
+    "withdrawEvidenceReason": "Lý do rút bằng chứng",
+    "chooseVerifiedEvidence": "Chọn bằng chứng nghỉ hưu đã xác minh",
+    "retirementEvidencePending": "Xem xét bằng chứng nghỉ hưu đã ghi nhận trước khi mở hồ sơ này.",
+    "acceptancePaused": "Quy trình này đang tạm dừng việc ký. Bạn vẫn có thể từ chối đề nghị.",
+    "employeeIdentityUnavailable": "Tài khoản đăng nhập đã liên kết của nhân viên không khả dụng hoặc không thể xác nhận. Bộ phận Vận hành Nhân sự được giao xử lý cần làm việc với người phụ trách quyền truy cập. PDF đã phát hành vẫn được giữ lại."
   }
 }

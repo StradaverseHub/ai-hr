@@ -43,7 +43,22 @@ async function liveModule(initial=false,fixedEnd?:string,legacyForeign=false,hou
  // A historical external row can carry units the canonical application setter refuses.
  if(legacyForeign)await owner.db.update(S.employmentPayComponent).set({currency:'USD'}).where(and(eq(S.employmentPayComponent.employmentId,subject.employmentId),eq(S.employmentPayComponent.componentId,component.id)));
  const source=await C.previewContractIntake(gbs,subject.employmentId);if(legacyForeign||hourly)return {manager,chief,pbp,gbs,rewards,subject,component,caseId:'',renewalId,source,supportingDocuments:null};let retirementApprovalId:string|null=null,healthCheckId:string|null=null,supportingDocuments:{approvalId:string;healthId:string}|null=null;
- if(initial){const approval=await addEmployeeDocument(admin,{employmentId:subject.employmentId,title:'Reviewed retirement contract approval',fileName:'approval.pdf',mimeType:'application/pdf',content:await supportingPdf('Fictional retirement contract terms independently approved')}),health=await addEmployeeDocument(admin,{employmentId:subject.employmentId,title:'Completed health check',fileName:'health.pdf',mimeType:'application/pdf',content:await supportingPdf('Fictional completed health check reviewed for current contract')});const custody=await C.captureContractRetirementEvidence(pbp,{employmentId:subject.employmentId,retirementCaseId:retirementId!,approvalDocumentId:approval.id,healthDocumentId:health.id,sourceRevision:source.sourceRevision,reason:'Actual retirement approval and completed health evidence checked'});const proof=await C.verifyContractRetirementEvidence(gbs,{custodyId:custody.id,reason:'Independent verification of prior retirement and approved current terms'});retirementApprovalId=proof.approvalEventId;healthCheckId=proof.healthEventId;supportingDocuments={approvalId:approval.id,healthId:health.id};}
+ if(initial){
+  const approval=await addEmployeeDocument(admin,{employmentId:subject.employmentId,title:'Reviewed retirement contract approval',fileName:'approval.pdf',mimeType:'application/pdf',content:await supportingPdf('Fictional retirement contract terms independently approved')});
+  const custody=await C.captureContractRetirementEvidence(pbp,{employmentId:subject.employmentId,retirementCaseId:retirementId!,approvalDocumentId:approval.id,healthDocumentId:null,sourceRevision:source.sourceRevision,reason:'Actual signed retirement approval checked; health check has not arrived'});
+  expect((await C.previewContractIntake(gbs,subject.employmentId)).retirementHealthPending).toBe(true);
+  const ordinary=()=>C.intakeContract(gbs,{employmentId:subject.employmentId,kind:'project',sourceRevision:source.sourceRevision});
+  await expect(ordinary()).rejects.toMatchObject({cause:{code:'23514'}});
+  await expect(C.verifyContractRetirementEvidence(gbs,{custodyId:custody.id,reason:'The current evidence requires independent verification'})).rejects.toMatchObject({cause:{code:'23514'}});
+  const health=await addEmployeeDocument(admin,{employmentId:subject.employmentId,title:'Completed health check',fileName:'health.pdf',mimeType:'application/pdf',content:await supportingPdf('Fictional completed health check reviewed for current contract')});
+  await C.attachContractRetirementHealth(pbp,{custodyId:custody.id,healthDocumentId:health.id,reason:'Original capturing PBP checked the separate completed health PDF'});
+  expect((await C.previewContractIntake(gbs,subject.employmentId)).retirementHealthPending).toBe(true);
+  await expect(ordinary()).rejects.toMatchObject({cause:{code:'23514'}});
+  const proof=await C.verifyContractRetirementEvidence(gbs,{custodyId:custody.id,reason:'Independent verification of prior retirement and approved current terms'});
+  expect(await C.previewContractIntake(gbs,subject.employmentId)).toMatchObject({retirementHealthPending:false,retirementProofRequired:true});
+  await expect(ordinary()).rejects.toMatchObject({cause:{code:'23514'}});
+  retirementApprovalId=proof.approvalEventId;healthCheckId=proof.healthEventId;supportingDocuments={approvalId:approval.id,healthId:health.id};
+ }
  const {id:caseId}=await C.intakeContract(gbs,{employmentId:subject.employmentId,kind:initial?'post_retirement':'project',sourceRevision:source.sourceRevision,retirementApprovalId,healthCheckId});return {manager,chief,pbp,gbs,rewards,subject,component,caseId,renewalId,source,supportingDocuments};
 }
 type Fixture=Awaited<ReturnType<typeof liveModule>>;
