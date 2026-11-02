@@ -67,3 +67,23 @@ In this order, on the candidate head:
    above, the route and actual time of the fresh approval, and that the approval covers this closure only.
 4. **`lib/ai/module-agent-source-manifest.ts`**, generated LAST.
 5. Both `--check` commands, then the checks listed above.
+
+## Binding and results (after the owner's approval at ea248739, recorded 2026-11-02T12:07:19Z)
+- **Binding commit:** `d19d897c9609869eb92aa3834f41129e10aaaa75`. Provider `ac138e6c84a4f7b5929959e95ae3592fbe25c90e95c2291c4125804aa27fd330` (1255);
+  module-agent generated last `c140847e07c0b0aaca0028ace69c09985182ebd466742acac77deb4213eff9a3` (457). Both `--check` commands pass
+  in the checkout and on an isolated copy of the committed source.
+- **41442314053** (62 files, typecheck, 6144 build): typecheck PASS; 62 of 62 test files pass (19 of 19, plus 43 of 43), including
+  `provider-data-review-gate`; linux-build at 6144 FAILED, `JavaScript heap out of memory` at 12:19:38Z. Recorded; not retried.
+- **41442351901** (13-file PR 210 set): SUCCESS, 13 of 13.
+- **41443910187** (production-path ceiling, dispatched only after 41442314053's selected tests passed): SUCCESS. Artifact
+  13142509149, sha256 `e169bac57888385bff311d662cb0f8e3a8de138ca81b67722b2ea0ddd7d59a46`: productionReviewed true, path production,
+  270 rows, 909 calls, 0 errors, 0 sensitive errors, 0 findings, no negative-gate breaches, 0 fallback and 0 blank replies.
+  `neg-injection`: refused on every pass with the fixed reply, mode refuse, 0 provider calls, no reads; scored understood and complete
+  3 of 3. Remaining check entries are first attempts corrected by the retry (pa-transfer, pa-payroll-close: one off-registry link
+  each); no delivered reply failed a check.
+- **41444397455** (exact-source 8192 build from controller ff17d9fc, the owner's conditional setting after the final 6144 build
+  failed): SUCCESS. Telemetry artifact 13143371858, sha256 `036939ae9637106e1c0c66fd7221c5c9289e969b26da0d64ef3616429647a5cc`:
+  source d19d897c9, heap profile hosted-linux-16g-8192, memTotal 16,367,524 KiB, peak RSS 7,719,344 KiB, minimum MemAvailable
+  5,654,844 KiB, verdict within (warn 10,485,760 / fail 12,582,912 KiB), exit 0.
+- Not covered here: the full exact-aggregate release qualification, staging installation, acceptance and alignment, which the
+  parent runs as sole release operator; adoption of the 8192 controller into main/alpha; native review of the Thai and Tamil patterns.
