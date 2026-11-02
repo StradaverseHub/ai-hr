@@ -1239,7 +1239,8 @@ BEGIN
   RETURN operation IN ('view','edit') AND p_company IS NOT NULL AND EXISTS(SELECT 1 FROM public.performance_review review
    JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
    JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
-   WHERE review.tenant_id=p_tenant AND subject.company_id=p_company
+   JOIN public.performance_onehr_review assessment ON assessment.review_id=review.id AND assessment.tenant_id=review.tenant_id
+   WHERE review.tenant_id=p_tenant AND assessment.company_id=p_company
    AND app.financial_onehr_review_course_for(p_tenant,p_user,review.id)=CASE function_key WHEN 'performance.onehr.selfReview' THEN 'self' ELSE 'assigned' END);
  END IF;
  IF function_key='myLetters' THEN
@@ -2198,10 +2199,10 @@ SELECT app.register_function_action(key,'view','company',NULL,'app.financial_del
 FROM (VALUES('performance.onehr.selfReview','onehr.nativeWorkflow','own'),('performance.onehr.assignedReview','onehr.assignments','assigned')) definition(key,label,course);
 CREATE FUNCTION app.onehr_review_task_view(wanted_review uuid,wanted_course text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.financial_human_principal_current() AND wanted_course IN ('self','assigned') AND EXISTS(SELECT 1 FROM public.performance_review review JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ SELECT app.financial_human_principal_current() AND wanted_course IN ('self','assigned') AND EXISTS(SELECT 1 FROM public.performance_review review JOIN public.performance_onehr_review assessment ON assessment.review_id=review.id AND assessment.tenant_id=review.tenant_id
  WHERE review.id=wanted_review AND review.tenant_id=app.current_tenant_id()
  AND app.financial_onehr_review_course_for(review.tenant_id,app.current_user_id(),review.id)=wanted_course
- AND app.function_action_allowed(CASE wanted_course WHEN 'self' THEN 'performance.onehr.selfReview' ELSE 'performance.onehr.assignedReview' END,'view',subject.company_id));
+ AND app.function_action_allowed(CASE wanted_course WHEN 'self' THEN 'performance.onehr.selfReview' ELSE 'performance.onehr.assignedReview' END,'view',assessment.company_id));
 $$;
 REVOKE ALL ON FUNCTION app.onehr_review_task_view(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_review_task_view(uuid,text) TO ai_hr_app;
@@ -2710,8 +2711,8 @@ GRANT EXECUTE ON FUNCTION app.onehr_reminder_dispatch_update(uuid,jsonb,text,jso
 -- Notification eligibility belongs to each actual recipient, never to the dispatcher.
 CREATE FUNCTION app.financial_onehr_target_task_view(t uuid,u uuid,r uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT coalesce((SELECT c.supported=false OR app.access_allowed_for_tenant(t,u,c.id,subject.company_id)
- FROM public.performance_review review JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ SELECT coalesce((SELECT c.supported=false OR app.access_allowed_for_tenant(t,u,c.id,assessment.company_id)
+ FROM public.performance_review review JOIN public.performance_onehr_review assessment ON assessment.review_id=review.id AND assessment.tenant_id=review.tenant_id
  CROSS JOIN LATERAL (SELECT app.financial_onehr_review_course_for(t,u,review.id) AS course) native
  JOIN app.access_function_action action ON action.function_key=CASE native.course WHEN 'self' THEN 'performance.onehr.selfReview' WHEN 'assigned' THEN 'performance.onehr.assignedReview' END AND action.operation='view'
  JOIN public.access_capability c ON c.id=action.capability_id

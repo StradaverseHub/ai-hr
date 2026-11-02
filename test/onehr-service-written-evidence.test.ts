@@ -708,6 +708,11 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Destination company'}).returning();
     // Entity transfer changes the existing employment company; it does not create a second employment.
     await owner.db.update(schema.employment).set({companyId:destination.id,gradeId:null}).where(eq(schema.employment.id,subject.employmentId));
+    const [floors]=await owner.db.execute<{selfOpening:boolean;selfDestination:boolean;assignedOpening:boolean;assignedDestination:boolean}>(sql`select
+      app.financial_function_native(${b.tenantId}::uuid,${self.userId}::uuid,'function.performance.onehr.selfReview.edit',${b.companyId}::uuid,false) as "selfOpening",
+      app.financial_function_native(${b.tenantId}::uuid,${self.userId}::uuid,'function.performance.onehr.selfReview.edit',${destination.id}::uuid,false) as "selfDestination",
+      app.financial_function_native(${b.tenantId}::uuid,${mgr.userId}::uuid,'function.performance.onehr.assignedReview.edit',${b.companyId}::uuid,false) as "assignedOpening",
+      app.financial_function_native(${b.tenantId}::uuid,${mgr.userId}::uuid,'function.performance.onehr.assignedReview.edit',${destination.id}::uuid,false) as "assignedDestination"`);expect(floors).toEqual({selfOpening:true,selfDestination:false,assignedOpening:true,assignedDestination:false});
     await complete();
     const c=await perf.getOnehrCalibration(a,sessionId);await perf.lockOnehrCalibration(a,sessionId,c.session.revision,'');
     await expect(withTenant(a,tx=>tx.update(schema.onehrReview).set({companyId:destination.id}).where(eq(schema.onehrReview.reviewId,reviewId)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/snapshot is immutable/)})});
