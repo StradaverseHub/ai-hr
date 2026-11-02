@@ -25,3 +25,8 @@ export const NOTICE_AUTHOR_FUNCTIONS:readonly FunctionActionDescriptor[]=[
  ...(['noticeBoard','noticeBoard.global'] as const).map(key=>({key,scope:key==='noticeBoard'?'company' as const:'tenant' as const,moduleKey:'notices',labelKey:'nav.noticeBoard',kind:key==='noticeBoard'?'screen' as const:'native_acl' as const,course:'administrative' as const,screenKey:'noticeBoard',href:'/admin/notice-board',employeeBearing:true,
   actions:(['view','add','edit','delete'] as const).map(operation=>({operation,parentCapability:(key==='noticeBoard'?'notices.':'notices_global.')+operation,delegationFloorFunction:'app.lifecycle_reward_notice_delegation_allowed',bindings:[{owner:'app.notice_owner_action_allowed',operation},{owner:'app.notice_action_write_guard',operation:'actual-logical-operation'},{owner:'core/notice.ts',operation:'native-current-and-proposed-owner'}]}))})),
 ];
+
+export const LIFECYCLE_TASK_FUNCTIONS:readonly FunctionActionDescriptor[]=[
+ {key:'lifecycle.shared.tasks',scope:'company',moduleKey:'lifecycle',labelKey:'nav.myTasks',kind:'native_acl',course:'assigned',href:'/tasks',employeeBearing:false,
+ actions:(['view','execute'] as const).map(operation=>({operation,parentCapability:null,delegationFloorFunction:'app.lifecycle_task_function_legacy_allowed',bindings:[{owner:'app.onboarding_assigned_task_rows',operation:'finite-actual-assignment-read'},{owner:'app.lc_v9_work',operation:'finite-actual-assignment-read'},{owner:'app.lifecycle_native_effect_begin',operation:'same-purpose-admission'},{owner:'app.lifecycle_native_effect_approved',operation:'same-purpose-final-proof'},{owner:'app.lifecycle_native_effect_cleanup',operation:'same-purpose-final-audit'}]}))},
+];
