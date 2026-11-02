@@ -5,6 +5,8 @@ import { NextIntlClientProvider } from 'next-intl';
 import { PasswordPolicyForm } from '../app/admin/settings/login/password-policy-form';
 import { DEFAULT_PASSWORD_POLICY } from '../lib/password-policy';
 import en from '../messages/en.json';
+import {pickClientMessages} from '../lib/client-message-tree';
+import scopes from '../i18n/client-message-scopes.json';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
@@ -17,6 +19,12 @@ function wrap(locale = 'en', messages = en) {
   return render(<NextIntlClientProvider locale={locale} messages={messages} onError={error => { throw error; }}><PasswordPolicyForm policy={DEFAULT_PASSWORD_POLICY} revision={0}/></NextIntlClientProvider>);
 }
 describe('password security settings', () => {
+  it('renders through the actual bounded shared/admin message catalogs', () => {
+    const messages=pickClientMessages(en,[...scopes.shared.prefixes,...scopes.segments.admin.prefixes]);
+    render(<NextIntlClientProvider locale="en" messages={messages} onError={error=>{throw error;}}><PasswordPolicyForm policy={DEFAULT_PASSWORD_POLICY} revision={0}/></NextIntlClientProvider>);
+    expect(screen.getByRole('heading',{name:en.passwordPolicy.title})).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:en.passwordPolicy.save})).toBeEnabled();
+  });
   it.each(Object.entries({ en, ms, zh, ta, th, vi: vietnamese }))('renders accessible policy fields in %s', (locale, messages) => {
     wrap(locale, messages);
     expect(screen.getByRole('heading', { name: messages.passwordPolicy.title })).toBeInTheDocument();

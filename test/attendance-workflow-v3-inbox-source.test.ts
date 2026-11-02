@@ -13,13 +13,13 @@ describe('ordinary v3/v4 admission and exact assignment keep unrelated detail lo
     it('discovers real assignments without a role promotion and preserves Attendance-only detail loading', () => {
         const admission=section('const [rewardReviews,assignedAttendance,assignedTasks]=',"const t = await getTranslations('approvals');");
         expect(admission).toContain('await Promise.all([');
-        expect(admission).toContain('!focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn,performance:false,rewards:false},{noticeAcknowledgements:false}):Promise.resolve([])');
+        expect(admission).toContain("!focus&&!admin&&!manager?pendingTaskSummary(s,scopeIds,{attendance:attendanceOn,claims:claimsOn,performance:false,rewards:false}).then(summary=>summary.items.filter(task=>task.kind!=='noticeAcknowledgement')):Promise.resolve([])");
         expect(admission).toContain("assignedTasks.every(task=>task.kind==='attendance')");
         const loaders=section('const [leave, leaveCancellations, replacementRequests, loadedCorrections','const corrections = attendanceOnly');
         expect(loaders).toContain("attendanceOnly||!include('leave') ? Promise.resolve([]) : listLeaveRequests");
         expect(loaders).toContain("attendanceOnly||!include('leaveCancellation') ? Promise.resolve([]) : listPendingLeaveCancellations");
         expect(loaders).toContain("attendanceOnly||!include('replacementLeave') ? Promise.resolve([]) : listPendingReplacementLeaveRequests");
-        expect(loaders).toContain("claimsOn && !attendanceOnly&&include('claim') ? listPendingClaims");
+        expect(loaders).toContain("claimsOn && !attendanceOnly&&include('claim') ? (focus?listPendingClaims");
         expect(page).toContain('const own=!focus&&!attendanceOnly&&s.personId?await myOwnEmploymentSubjects');
     });
     it('proves exact assignment before any focus bypass and keeps the ordinary narrow v3/v4 presentation', () => {

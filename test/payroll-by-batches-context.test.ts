@@ -1,3 +1,4 @@
+import {payrollPublicationState} from '../lib/payroll-publication';
 /**
  * Build #10 — By-Batches screen pay-period filter. `listBatches` gains an OPTIONAL third positional
  * `payPeriod` arg that is AND-ed onto the existing tenant + companyIds guard, so it can only NARROW
@@ -11,7 +12,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import { createBatch, listBatches } from '../core/payroll';
+import { createBatch, listBatches, payrollBatchListCounts } from '../core/payroll';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -78,6 +79,22 @@ afterAll(async () => {
 });
 
 describe('Build #10 — listBatches optional pay-period filter', () => {
+  it('counts the all-time list and unpublished runs without loading every batch', async () => {
+    const a = adminCtx(b);
+    const draft = await createBatch(a, {companyId: b.companyId, payPeriod: '2026-01'});
+    const processed = await createBatch(a, {companyId: b.companyId, payPeriod: '2025-12'});
+    const closed = await createBatch(a, {companyId: b.companyId, payPeriod: '2026-02'});
+    await owner.db.update(schema.payrollBatch).set({status: 'processed'}).where(eq(schema.payrollBatch.id, processed.batchId));
+    await owner.db.update(schema.payrollBatch).set({status: 'closed', releasedAt: new Date('2099-01-01')}).where(eq(schema.payrollBatch.id, closed.batchId));
+    const rows = await listBatches(a, [b.companyId]);
+    expect(rows.map(row => row.id)).toContain(draft.batchId);
+    expect(await payrollBatchListCounts(a, [b.companyId])).toEqual({total: rows.length,
+      unpublished: rows.filter(row => payrollPublicationState(row) === 'unpublished').length});
+    expect(await payrollBatchListCounts(a, [b.companyId])).toEqual({total: 3, unpublished: 1});
+    const other = await seedBase();
+    expect(await payrollBatchListCounts(adminCtx(other))).toEqual({total: 0, unpublished: 0});
+  });
+
   it('returns only the requested period when a payPeriod is passed', async () => {
     const a = adminCtx(b);
     const may = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-05' });

@@ -12,6 +12,14 @@ describe('Employee Home deterministic presentation',()=>{
   expect(()=>validateHomeTemplate({...value,extra:true})).toThrow();
   expect(()=>validateHomeTemplate({...value,get text(){throw Error('getter must not execute');}})).toThrow('template');
  });
+ it('renders truthful task counts beyond ten thousand without changing anniversary bounds',()=>{
+  const pending=template('tasksPending','Waiting: {count}');
+  for(const count of [10001,20000,1000000,Number.MAX_SAFE_INTEGER])expect(renderHomeTemplate(pending,'en',{count})).toBe('Waiting: '+new Intl.NumberFormat('en').format(count));
+  for(const count of [-1,1.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1])expect(()=>renderHomeTemplate(pending,'en',{count})).toThrow();
+  const anniversary=template('greetingAnniversary','{name}: {years}');
+  expect(renderHomeTemplate(anniversary,'en',{name:'Fictional colleague',years:200})).toBe('Fictional colleague: 200');
+  expect(()=>renderHomeTemplate(anniversary,'en',{name:'Fictional colleague',years:201})).toThrow();
+ });
  it('substitutes only approved fields once and preserves values as literal text',()=>{
   expect(renderHomeTemplate(template('greetingMorning','Good morning, {name}'),'en',{name:'{count} <A&B>'})).toBe('Good morning, {count} <A&B>');
   expect(renderHomeTemplate(template('tasksPending','Waiting: {count}'),'en',{count:1234})).toBe('Waiting: 1,234');

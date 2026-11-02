@@ -48,6 +48,7 @@ import {
   type ClockingImportLineResult,
 } from '../db/schema';
 import { withAttendanceTenant as withTenant } from './module-gate';
+import { withDataCommand } from './data-command';
 import { lockAttendanceLeaveDependenciesTx, addImportedPunchesBatchTx, assignPunchBusinessDays, punchOrderKey } from './attendance';
 // ADR-0080 D9 — payroll is consumed through its pack facade, never core/payroll directly.
 import {
@@ -825,7 +826,11 @@ export async function commitClockingImport(
   let mappingForFailure: { id: string | null; name: string; snapshot: Record<string, unknown> } | null = null;
   let totalForFailure = 0;
   try {
-    return await withTenant(ctx, async (tx) => {
+    // Database-only root: unrelated imports share authority; native subject, policy and
+    // financial locks remain inside. A configuration demand rolls back before one full replay.
+    return await withDataCommand(ctx, async (tx) => {
+      mappingForFailure = null;
+      totalForFailure = 0;
       await lockAttendanceLeaveDependenciesTx(tx,ctx,[]);
       const mapping = await resolveMapping(tx, p.mappingId);
       mappingForFailure = mapping;
@@ -955,7 +960,7 @@ export async function commitClockingImport(
         daysUpdated: changed.length,
         failureReason: null,
       };
-    });
+    }, withTenant);
   } catch (e) {
     if (e instanceof ClockingImportError) throw e;
     const reason = String((e as Error)?.message ?? e).slice(0, 500) || 'Unknown error';

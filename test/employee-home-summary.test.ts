@@ -25,6 +25,11 @@ beforeEach(()=>{
  state.payroll.mockResolvedValue({payslips:[],nextPayment:null});state.types.mockResolvedValue([]);state.claims.mockResolvedValue(false);state.profile.mockResolvedValue({editable:new Set()});
 });
 describe('Own Home deterministic summary and current action capability',()=>{
+ it('renders the complete owner count for a queue exceeding ten thousand',async()=>{
+  state.tasks.mockResolvedValue({total:20000,overdue:0});const result=await read();
+  expect(validateEmployeeHomeSummary(result,'own')).toEqual(result);
+  expect(result.items[0]).toMatchObject({key:'tasks',message:'Tasks waiting for you: 20,000.'});expect(result.calm).toBeNull();
+ });
  it('only renders a calm sentence after all actual owners succeed, with honest disabled actions',async()=>{
   const result=await read();expect(validateEmployeeHomeSummary(result,'own')).toEqual(result);expect(result.items).toEqual([]);expect(result.calm).toBe('Nothing needs your attention today.');
   expect(result.quickActions).toEqual([{key:'leave',reason:'notConfigured'},{key:'claim',reason:'notConfigured'},{key:'payslip',reason:'noPayslip'},{key:'profile',reason:'detailsLocked'}]);

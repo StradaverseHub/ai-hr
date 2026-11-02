@@ -769,6 +769,7 @@
       "childReliefReview": "Child relief review"
     },
     "switcher": {
+      "loadFailed": "Employee search could not be loaded. Try again.",
       "ariaLabel": "Search employee",
       "placeholder": "Search employee ID or name…",
       "resultsLabel": "Employee search results",
@@ -5337,7 +5338,8 @@
     "submitDecisions": "Submit",
     "employeeRemark": "Employee remark",
     "closeDialog": "Close",
-    "bulkSelectAll": "Select all",
+    "bulkSelectAll": "Select all on this page",
+    "bulkPageScopeHint": "Selections apply only to records displayed on this page.",
     "bulkSelectRow": "Select request",
     "bulkSelected": "Selected: {count, plural, one {# request} other {# requests}}",
     "bulkClear": "Clear",

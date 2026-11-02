@@ -13,7 +13,8 @@
  *   2. the policies 0515 rewrote are exactly the fixture's 57 (test/fixtures/r395-policy-quals.json,
  *      generated from pg_policies before and after 0515), each with the fixture's post-0515 USING text and
  *      its WITH CHECK text UNCHANGED from before 0515, except the explicitly pinned 0540 assessment-file, 0560 own-Profile and 0561 user-only Feedback extensions,
- *      the 0676 import-void narrowing (ADR-0157), and the 0691 authorized Bank point-read arm.
+ *      the 0676 import-void narrowing (ADR-0157), the 0691 authorized Bank point-read arm,
+ *      and 0896's hashable representation of the same regular Claims visibility set.
  *   3. the migration file's ALTER POLICY statements name exactly those 57 and set no WITH CHECK.
  *   4. the set form really is planned as an InitPlan (the `(SELECT …)` wrapper is load-bearing).
  */
@@ -33,6 +34,9 @@ const assessmentAttachment = {
  qual: '((tenant_id = app.current_tenant_id()) AND ((employment_id = ANY (( SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[])) OR app.can_admin_perfcomp_employment(employment_id) OR COALESCE(app.assessment_file_read(review_id, evidence_id, id, uploaded_by_user_id, removed_at), false)))',
  withCheck: '((tenant_id = app.current_tenant_id()) AND ((employment_id = ANY (( SELECT app.visible_employment_ids() AS visible_employment_ids)::uuid[])) OR app.can_admin_perfcomp_employment(employment_id) OR COALESCE(app.assessment_file_write(review_id, evidence_id, uploaded_by_user_id), false)))',
 };
+// Pin the reviewed current predicate independently; retain 0515's immutable historical fixture
+// and every policy's original WITH CHECK. Delegated Claims policies remain separately unchanged.
+const regularClaimMembershipQual='((tenant_id = app.current_tenant_id()) AND (employment_id IN ( SELECT unnest(app.visible_employment_ids()) AS unnest)))';
 
 // 0676 (ADR-0157) deliberately hides a voided employment/person from every ordinary read. It may only NARROW
 // visibility: the live USING must be exactly `(voided_at IS NULL) AND (<0515 USING>)`, WITH CHECK unchanged.
@@ -105,7 +109,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
         const r = live.get(historicalKey);
         expect(r, `${historicalKey} exists`).toBeTruthy();
         const attachment=p.table==='performance_attachment'&&p.policy==='performance_attachment_rls';
-        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='employment.employment_rls'?bankEmploymentQual:importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
+        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='claim_request.claim_request_rls'?regularClaimMembershipQual:historicalKey==='employment.employment_rls'?bankEmploymentQual:importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
         expect(r!.qual, `${historicalKey} USING`).toBe(expectedQual);
         expect(r!.with_check ?? null, `${historicalKey} WITH CHECK`).toBe(attachment?assessmentAttachment.withCheck:p.withCheck);
       }

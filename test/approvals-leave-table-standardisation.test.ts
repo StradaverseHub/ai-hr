@@ -20,7 +20,7 @@
  *
  * The behavioural half is guarded too: this round was presentation only, so the decide path (which action,
  * which decision values, the required reject reason, the per-date modal for multi-date requests) must be
- * exactly what it was, and /approvals must stay unpaginated (r75 — paging a bulk-decision surface makes
+ * exactly what it was. The1November owner decision now permits page-scoped Claims selection; historically r75 excluded paging because it made
  * "approve all" mean "approve all on this page").
  */
 import { readFileSync, readdirSync } from 'node:fs';
@@ -365,11 +365,15 @@ describe('33bf1a2d — approval behaviour is unchanged (presentation only)', () 
     expect(approvals).toContain('const leaveBulkActionable');
   });
 
-  it('/approvals is still NOT paginated (r75 deliberately excluded it)', () => {
-    expect(approvals, 'paging a bulk-decision surface makes "approve all" mean "this page"').not.toContain(
-      '@/components/pager',
-    );
-    expect(approvals).not.toContain('parsePageQuery');
+  it('pages Claims with explicit current-page bulk-selection scope (owner decision1November)', () => {
+    expect(approvals).toContain('listPendingClaimsPage');
+    expect(approvals).toContain("paramNames={{page:'claimsPage',size:'claimsSize'}}");
+    expect(approvals).toContain("t('bulkPageScopeHint')");
+    const messages=JSON.parse(read('messages/en.json'));
+    expect(messages.approvals.bulkSelectAll).toBe('Select all on this page');
+    expect(messages.approvals.bulkPageScopeHint).toContain('only');
+    // Row IDs still come only from the displayed, actionable Claims slice; native commands recheck each.
+    expect(approvals).toContain("sortedClaims.filter((c) => !mine(c.personId))");
   });
 });
 

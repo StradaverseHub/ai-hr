@@ -18,7 +18,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { earnedCycleStart } from './leave';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import {requireExclusiveDataConfigurationTx, lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import {
   appUser,
@@ -329,6 +329,8 @@ async function ensureReplacementLeaveType(tx: Tx, tenantId: string): Promise<str
   const find = () => findReplacementLeaveTypeIdTx(tx, tenantId);
   const existing = await find();
   if (existing) return existing;
+  // Catalogue creation is configuration: never upgrade a shared ordinary command in place.
+  requireExclusiveDataConfigurationTx(tx);
   const [created] = await tx
     .insert(leaveType)
     // ADR-0077 slice 5 — `country` is left to the column default ON PURPOSE, and this is a known seam.

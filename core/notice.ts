@@ -31,7 +31,7 @@ import { and, asc, desc, eq, inArray, isNull, isNotNull, lte, gte, sql } from 'd
 
 import { withTenant, type SessionContext,type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { company,employment, notice, noticeRecipient,noticeRevision,noticeAcknowledgement,noticeAttachment } from '../db/schema';
+import { appUser,company,employment, notice, noticeRecipient,noticeRevision,noticeAcknowledgement,noticeAttachment } from '../db/schema';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {
   isUnrestrictedOrgCriteria,
@@ -695,10 +695,18 @@ export function employeeNoticeBoard(ctx:SessionContext,employmentId:string,optio
  */
 export function pendingNoticeAcknowledgementTasks(ctx:SessionContext){
  const today=todayInKualaLumpur();
- return withTenant(ctx,tx=>tx.select({noticeId:notice.id,employmentId:noticeRecipient.employmentId,
+ return withTenant(ctx,async tx=>{
+  // Resolve only the actual native principal's employments. The following read retains RLS and
+  // its complete live self-recipient/acknowledgement predicates; these IDs are a query prefilter.
+  const own=await tx.select({id:employment.id}).from(employment)
+   .innerJoin(appUser,eq(appUser.personId,employment.personId))
+   .where(and(eq(employment.tenantId,ctx.tenantId),eq(appUser.tenantId,employment.tenantId),
+    sql`${appUser.id}=app.current_user_id()`,sql`app.principal_snapshot_current()`,sql`app.is_self_person(${employment.personId})`));
+  if(!own.length)return [];
+  return tx.select({noticeId:notice.id,employmentId:noticeRecipient.employmentId,
   title:notice.title,contentVersion:notice.contentVersion,sourceUpdatedAt:notice.updatedAt})
   .from(noticeRecipient).innerJoin(notice,eq(notice.id,noticeRecipient.noticeId))
-  .where(and(eq(noticeRecipient.tenantId,notice.tenantId),eq(notice.tenantId,ctx.tenantId),
+  .where(and(inArray(noticeRecipient.employmentId,own.map(row=>row.id)),eq(noticeRecipient.tenantId,notice.tenantId),eq(notice.tenantId,ctx.tenantId),
    sql`app.principal_snapshot_current()`,isNotNull(notice.publishedAt),isNull(notice.archivedAt),
    lte(notice.startOn,today),gte(notice.endOn,today),eq(notice.requiresAcknowledgement,true),
    sql`EXISTS(SELECT 1 FROM public.employment self_employment
@@ -706,7 +714,8 @@ export function pendingNoticeAcknowledgementTasks(ctx:SessionContext){
      AND app.is_self_person(self_employment.person_id))`,
    sql`NOT EXISTS(SELECT 1 FROM public.notice_acknowledgement a
     WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version)`))
-  .orderBy(desc(notice.updatedAt),asc(notice.id),asc(noticeRecipient.employmentId)));
+  .orderBy(desc(notice.updatedAt),asc(notice.id),asc(noticeRecipient.employmentId));
+ });
 }
 
 /**

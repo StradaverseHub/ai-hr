@@ -1,0 +1,198 @@
+## Measured transaction admission bottleneck; speed target unmet
+
+Qualified diagnostic a2b1857b7 preserves the07f application behavior apart from explicit numeric envelope probes. Both frozen500-user timing runs finish **FAIL**, with complete user accounting, one worker, totalpool10/heap4GiB, standard four-CPU host, approximately2GiB PostgreSQL and original workload/targets:
+
+|Activity|Completed/failed|Read/write p95|Browsers|HTTP stage|
+|---|---|---|---|---|
+|1s [41379939475](https://github.com/StradaverseHub/ai-hr/actions/runs/41379939475)|385/115|65.81s/83.53s|4/6|567.24s; within600s|
+|5s [41379939355](https://github.com/StradaverseHub/ai-hr/actions/runs/41379939355)|452/48|61.24s/85.19s|6/6|602.49s; parent timed out despite complete accounting|
+
+Both retain three loaded Home-card failures and two valid tenant audit chains with no interior unchained rows. Five-second evidence retains one native Personnel draft-delete55P03 failure. Every profiled transaction gauge is zero at final shutdown. The diagnostic is not an optimization or release witness; **0/2 activity targets accepted; no deployment**.
+
+Interior10s trace bins show119,333/122,927 tenant transaction entries: admission means2760.08ms/2613.77ms versus callback means26.99ms/27.35ms and settlement means2.08ms/2.03ms. Peak queued tenant attempts are2291/1968 behind the unchanged10 connections. Entitlement admission averages2431.92ms/2434.94ms versus callbacks7.57ms/7.41ms. Admission includes BEGIN and bounds exact pool wait; callback spans include SQL, locks, JavaScript and network, not pure database service time. Bins count phase completions and exclude edge windows; they are not request-matched cohorts. Nested statement times overlap and must not be summed as CPU. These traces establish transaction-admission pressure. The root shell's repeated independent transactions are a concrete repair seam.
+
+The native probe qualification [41378937766](https://github.com/StradaverseHub/ai-hr/actions/runs/41378937766) passes49 database and5 additional checks plus the whole compiler. Native bell accounting [41383476833](https://github.com/StradaverseHub/ai-hr/actions/runs/41383476833) now exercises the unchanged five-recipient-read pattern before repair. The proposed ordinary-read composition will share one explicitly owned transaction while retaining the existing query predicates and limits. Its AI-specific supplied-Tx path is deliberately unsuitable: that path adds AI authority/configuration checks and must retain its current contract. No new migration or resource/timeout increase is proposed.
+
+## Earlier read/write scheduling rejected; timing source qualification
+
+Frozen diagnostic f3348610f keeps application/workload07f07749f byte-identical and separates GET/HEAD from POST across two workers under unchanged total pool10/heap4GiB, standard four-CPU host, approximately2GiB PostgreSQL and original workload/timeouts. Both runs finish **FAIL**, with complete500-user accounting:
+
+|Activity|Completed/failed|Read/write p95|Browsers|HTTP stage|
+|---|---|---|---|---|
+|1s [41375426108](https://github.com/StradaverseHub/ai-hr/actions/runs/41375426108)|223/277|82.09s/31.05s|0/6|590.35s; within600s|
+|5s [41375429457](https://github.com/StradaverseHub/ai-hr/actions/runs/41375429457)|489/11|71.46s/69.77s|5/6|596.87s; within600s|
+
+Every recorded user failure is an abort. Both retain three loaded Home-card failures, valid audit chains for both tenants and no interior unchained entries. Closed diagnostics record no heap exhaustion or native public-error/Draft failure blocks; absence of a captured native error does not negate HTTP failure. Actual routing counts prove GET/POST lane separation. Reads regress versus the same-app round-robin control, and severe aborts change completed work. Lower write p95 is not accepted system improvement. Reject method separation for deployment; retain the one-worker baseline. All eight latest planned load runs have finished; **0/2 targets accepted; no deployment**.
+
+Existing traces measure database CPU/ready/lock samples and statement times but not application pool admission directly. Isolated diagnostic a2b1857b7 adds numeric transaction admission/callback/settlement envelopes to withTenant and entitlement resolution. [41378937766](https://github.com/StradaverseHub/ai-hr/actions/runs/41378937766) passes49 database and5 additional checks plus the whole compiler, including the actual one-connection admission barrier, failure identity/no-retry behavior, session setup, native command/audit and Payroll controls. Frozen one-worker timing runs [1s41379939475](https://github.com/StradaverseHub/ai-hr/actions/runs/41379939475)/[5s41379939355](https://github.com/StradaverseHub/ai-hr/actions/runs/41379939355) retain totalpool10/heap4GiB and the original full workload. Both now finish FAIL, as recorded above; no acceptance. This is instrumentation, not a fix or acceptance result. Admission includes BEGIN, callbacks include SQL/network/JavaScript, and settlement includes COMMIT/ROLLBACK; none alone is pure database service time. No SQL, identities or business data are collected. This probe is not merged into the performance application draft.
+
+## Leave audit interval — native controls and compiler pass; load pending
+
+Test-onlyffabe0757/[41365050701](https://github.com/StradaverseHub/ai-hr/actions/runs/41365050701) isolates another tenant-wide interval through actual employee Leave requests and a native pre-approval-step gate. Both requests eventually persist with two approval steps each, and the armed audit chain validates; only the assertion that B commits before A releases fails. The existing submitted-event append takes the audit lock before approval routing and step insertion.
+
+Source07f07749f moves only generateApprovalSteps before that append, within the same transaction. It changes no event payload, audit-event order, hash-chain implementation, dependency/permission guard or financial owner. Native concurrency now overlaps at that gate. A final submitted-event SQL failure leaves no request, approval row or submitted event; the armed chain remains valid. Source metadata is refreshed without changing canonical owner approval bindings or enabling provider egress.
+
+[41365406351](https://github.com/StradaverseHub/ai-hr/actions/runs/41365406351) passes202 database and40 additional checks. [41365536209](https://github.com/StradaverseHub/ai-hr/actions/runs/41365536209) passes106 more database checks through Emergency Leave, reviewed own-leave effects, source participation and negative-balance gates. These24 files include routing, attachments, partial decisions, cancellation chains and chain integrity; the fresh whole compiler also passes. Combined-source500-user verification is [1s41365830387](https://github.com/StradaverseHub/ai-hr/actions/runs/41365830387)/[5s41365832879](https://github.com/StradaverseHub/ai-hr/actions/runs/41365832879), with original limits/workload. Both earlier3c runs remain frozen and fail (complete1s412/88, p9562.48s/84.08s;5s incomplete272/0/228 at its unchanged parent limit). Both combined07f runs also fail their original600s parent, with last1s441 completed/2 failed/57 active and5s262/0/238. No final p95/browser/audit acceptance follows. Two1s Personnel draft-delete55P03 records remain failures. Same-budget two-worker experiments41366258087/41366260955 also FAIL: complete1s417/83 at read/write p9565.36s/86.01s and5s406/94 at57.75s/87.93s. Browsers finish4/6 and5/6; both tenant audit chains validate in each. Their82/90 aborts and1/4 native draft-delete refusals remain failures. They retain totalpool10/heap4GiB; no accepted speed benefit follows, so the one-worker baseline remains selected. All six planned new load workflows finish;0/2 targets accepted; no deployment.
+
+## Clocking import authority — native controls and compiler pass; load pending
+
+The real import service on test-only5f5f6073d reproduces an independent tenant lock interval in41363690098. A native pre-run-insert advisory gate pauses import A before its run/audit append. Both distinct-employment imports eventually persist two punches each, but B cannot commit before A releases; the exact overlap assertion fails. Original1523/41363470321 was a mapping-ID fixture error and is not bottleneck evidence. Both failures are preserved.
+
+Candidate3c15767e0 opts only the outer database-only USER import into existing ordinary-command ownership, passing the original Attendance module-gated transaction owner. SYSTEM/agent behavior, fresh carrier checks, actual per-employment exclusion, canonical policy epoch, financial parents and RLS remain with their original owners. Only a precise configuration demand can roll back the entire transaction before one exclusive replay; busy, SQL and business failures never automatically retry. Attempt-local failure metadata resets before each callback, and a failed-run log remains outside the complete transaction boundary.
+
+Frozen focused qualification41364156884 covers12 files and the whole compiler, including real import overlap, same-subject refusal, native account revocation and a labeled injected configuration demand after real batch writes with late SQL rollback. All212 database and23 additional checks PASS, including all five new import controls; the fresh whole compiler also PASSes. Both frozen500-user reruns are active: [1s41364525515](https://github.com/StradaverseHub/ai-hr/actions/runs/41364525515), [5s41364527963](https://github.com/StradaverseHub/ai-hr/actions/runs/41364527963), application/controller3c15767e0. Workload, resource caps and all timeouts are unchanged; no speedup or acceptance is claimed yet. The still-unstarted queued41363975011 was cancelled only to move the identical candidate to a frozen alias; no full gate or500-user run was cancelled. Original baseline compiler passes; its workflow retains the expected overlap failure. Source metadata is refreshed without changing canonical provider approvals; combined source remains unapproved and egress blocked. No deployment is authorized.
+
+## Completed d91 whole-system pair — targets still unmet
+
+Frozen application/controller `d91ce204deae2f8ff77ae8f28987944c218430ce` completes both unchanged-resource workloads within their original600s HTTP parent budgets. Both FAIL; **0/2 targets accepted; no deployment**.
+
+|Activity|Completed/failed users|Read/write p95|Browsers|HTTP stage|
+|---|---|---|---|---|
+|1s [41359936082](https://github.com/StradaverseHub/ai-hr/actions/runs/41359936082)|390/110; zero active|64.80s/85.03s|5/6|575.82s; no parent timeout|
+|5s [41359938197](https://github.com/StradaverseHub/ai-hr/actions/runs/41359938197)|484/16; zero active|58.57s/87.92s|6/6|598.28s; no parent timeout|
+
+All126 recorded journey errors are aborts; both audit chains validate in each run. Three loaded Home-card failures remain in each. The five-second p95 change versus e200 is only0.30% read/0.03% write, establishing no meaningful latency improvement. The earlier one-second result is incomplete and cannot support a final percentage comparison. Original receipts remain preserved. The standard four-CPU runner, one app worker, pool10, heap4GiB, approximately2GiB durable PostgreSQL, two million retained Claims/Attendance rows,500 HTTP identities,30 routes, six workflows and six browser contexts are unchanged. This does not establish production-equivalent capacity or500 browsers.
+
+Native overtime root samples fall, but audit and Access locks persist. Actual clocking imports still hold exclusive tenant authority across batch processing; a native concurrency reproduction is the next qualification step. Sampled database visibility also precedes HTTP completion by tens of seconds, so removing one lock cannot alone establish page speed. No resource or timeout increase is proposed.
+
+Native qualification on5f52 passes432 checks and the whole compiler, retaining two original bounded-catalog failures. Exact d91 recovery41358961945 passes40 affected checks and a fresh whole compiler. Canonical642 applied SQL bytes remain exact. The combined AI source remains unapproved and provider egress blocked.
+
+# Ordinary-command lock review — 2 November 2026
+
+Development candidate only. No protected-branch integration, installation or deployment.
+
+## Current Entra reconciliation and overtime query candidate
+
+Released50ea24717 is independently reconciled against642 applied ledger rows at watermark299 after verified handback; no applied SQL changes. All sixteen unapplied performance bodies move byte-identically above newer peer reservations, to0907–0922. New0923 replaces only the repeated formula-candidate SELECT with a STABLE SECURITY INVOKER helper; native table RLS, ordered selection, optional dated company and raw case-sensitive target text remain active. Full migration/source identities are in the allocation record and frozen tail fixture. No performance installation or release admission is authorized.
+
+Reversible [41357080889](https://github.com/StradaverseHub/ai-hr/actions/runs/41357080889) on diagnostic d0e9f9e21 measures populated500-reader5.95s/2.55s/5.91s before/native/restored and empty5.57s/2.28s/5.40s. Positive targets, foreign tenants, live foreign identities and exact target spelling match the original query. Raw metadata reads retain their original scope under forged-role/archive contexts while the separate native principal check denies those contexts. The initial624b run's incorrect stronger raw-metadata assertion fails and is preserved, not relabeled. No production driver setting changes and no whole-system speedup claim follow. The concrete aggregate's native/compiler/populated and subsequent500-user results are pending. Earlier e200 failures below remain original.
+
+## Current Notice and financial draft qualification
+
+Frozen runtime/controller `e200750381eb93f438d6fecb5e6ba1206579d2b8` includes the canonical29393c2a5 password baseline, bounded Notice membership and the native incoming-payslip parent protocol. Both unchanged-resource500-user reruns FAIL: [1s41353805538](https://github.com/StradaverseHub/ai-hr/actions/runs/41353805538), [5s41353808057](https://github.com/StradaverseHub/ai-hr/actions/runs/41353808057). **0/2 targets accepted; no deployment.** Earlier failed runs remain below with their original identities.
+
+The reversible Notice experiment [41349751244](https://github.com/StradaverseHub/ai-hr/actions/runs/41349751244) reduces one populated500-principal reader burst from46.50s to1.31s; restoring the original gives45.08s. Empty reads remain approximately flat. This is a reader experiment, not a whole-system speed claim. Unapplied0903 retains native principal/tenant/publication/window checks and restricts its new privileged membership primitive to the current user's own recipients. Native controls cover colleague/foreign denial, live archive changes, acknowledgement versions, same-connection identity changes and malformed principals. All three populated-tail upgrades pass [41350834957](https://github.com/StradaverseHub/ai-hr/actions/runs/41350834957).
+
+Unapplied0904 permits concurrent Attendance guards on relevant draft Payroll parents while preserving exclusive processed/closed ownership. A private payslip trigger locks only the incoming parent before membership changes. Real first-payslip insertion and status changes still exclude Attendance; two status-change waiters reacquire the stronger lock and return correct coverage. An advisory-barrier alternative produces a native40P01 cycle in its negative control and is rejected. The promoted parent-row protocol passes that same raw insert-plus-status scenario, incoming membership moves, actual distinct Attendance inserts and foreign-tenant/correction denials. No surfaced SQL/business retry, timeout increase or financial-authority relaxation is introduced.
+
+The frozen source passes233 database and13 additional cases across19 distinct selected files: [41353064627](https://github.com/StradaverseHub/ai-hr/actions/runs/41353064627), [41353132051](https://github.com/StradaverseHub/ai-hr/actions/runs/41353132051). The first workflow's compiler fails solely on an untyped array in the new test. Test-only source `76bde6531e17d77eb2e7d0444c616c5ffc1b4530` adds the array annotation; its eight affected native checks and fresh whole compiler pass [41353940893](https://github.com/StradaverseHub/ai-hr/actions/runs/41353940893). Runtime, SQL, controller and load budgets are identical to e200. Neither original failures nor load source identities are relabeled.
+
+These completed workflows retain one worker, total pool10, heap4GiB, the approximately2GiB durable PostgreSQL cap, a standard four-CPU public runner, two million retained Claims/Attendance rows,500 HTTP identities,30 routes, six mixed workflows and six hydrated browser contexts. They do not establish production-equivalent capacity,500 concurrent browsers or millions of rows in every table. Later Entra installation/source and the actual ledger require fresh reconciliation and allocation of every owned unapplied migration before release admission. The current combined AI source binding remains unapproved and provider access remains blocked.
+
+### Frozen e200 whole-system outcome
+
+|Activity|Accounting|Final read/write p95|Other outcome|
+|---|---|---|---|
+|1s|Incomplete: last snapshot206 completed,0 failed,294 active;631 iterations at485.03s|Unavailable|Original600s HTTP parent kills the child at610.16s; browser/audit completion unavailable; three loaded Home-card failures|
+|5s|Complete:437 completed/63 failed;448 iterations over443.54s|58.75s/87.94s|5/6 browser journeys; three loaded Home-card failures; both audit chains valid; parent609.05s exceeds original600s limit|
+
+The five-second failures are59 aborted journeys and four Personnel draft-delete lock timeouts (native55P03), with no captured deadlock or permission-denied error. Its audit chains check2217/2165 records with no interior unchained entries; no browser runtime errors are recorded. A browser journey closes before completing. The one-second empty failure list is a partial snapshot, not proof of zero failures for all500 users.
+
+The comparable previous da336 five-second run reads/writes at58.63s/85.46s, so this source does not improve final whole-system p95 (approximately0.2%/2.9% worse). The unchanged workload manifest, activity assumptions, application topology and runtime are checked from original receipts. The newer password baseline and public-runner variation prevent attributing the complete delta solely to0903/0904. No final one-second speedup percentage is valid. This comparison concerns development candidates, not installed staging.
+
+Both traces still show tenant Access shared/exclusive and audit-chain waits. Overtime assignment discovery is the most frequently sampled blocking-session query (24/23 root samples at1s/5s), which identifies a profiling lead rather than proving every holder is exclusive. Diagnostic source3b713f5dd/run41356048102 now measures that actual reader with target-only prepared-plan reuse. No runtime driver change or permission shortcut is promoted. Original artifacts are preserved in `/private/tmp/aihr-draft-parent-one-e200-attempt1` and `/private/tmp/aihr-draft-parent-five-e200-attempt1`.
+
+## Reproduced defect
+
+Hosted run 41331746162, source 07951dae7, executes two real employee Leave submissions. A fixture-only native BEFORE INSERT gate pauses the first before its request or audit append. Both requests persist successfully, but the second cannot commit while the first is paused. The exact overlap assertion fails. This isolates the tenant Access lock independently of the audit-chain append lock.
+
+The previous complete 500-user runs on 32c2332fb failed at both activity levels: read p95 65.87s/62.70s and write p95 88.16s/88.18s. Native wait samples show hundreds of Access-exclusive holders/waiters during ordinary Attendance/Leave processing. These are development HTTP tests, not installed-system acceptance or production-equivalent capacity.
+
+## Candidate ownership model
+
+Only opted-in outer USER commands share Access authority in an actual READ COMMITTED READ WRITE transaction. They repeat the existing native current-carrier proof after ownership, including after an exclusive replay. This ownership state is per transaction, not a permission cache. Original RLS, scope checks, workflow authority and per-employment dependency locks remain active.
+
+The audited roots are ordinary Leave submission/edit and decision/cancellation owners; Attendance check-in/out, correction submission/decision and own pending correction cancellation. Existing transactions, SYSTEM and agent owners retain the original exclusive interval. Configuration, Personnel identity, grants, reporting and other Access writers retain their existing native exclusive locks. A configuration writer therefore still conflicts with every shared command.
+
+Attendance shares Leave configuration while owning affected employments. Creating a missing replacement-leave catalogue is a configuration change. A precise internal sentinel rolls back the entire shared attempt before one replay under the original exclusive Access/configuration path. External effects cannot participate. SQL failures, busy dependency refusals, deadlocks and business validation errors are not automatically retried. Existing transactions never partially replay. No PostgreSQL timeout or resource budget is raised; no native migration changes.
+
+The read-only Access helper remains reserved for fully read-only transactions. Ordinary commands use a separate explicit interface. Uppercase UUID aliases normalize to the same native advisory key.
+
+## Verification status
+
+The original native red result is preserved under `/private/tmp/aihr-data-command-red-0795-attempt1` ([41331746162](https://github.com/StradaverseHub/ai-hr/actions/runs/41331746162)).
+
+Initial qualification on 79cf59bf9 failed only in a new rollback fixture missing person.primary_email (186 native checks passed; the compiler reported the same fixture error). Expanded 1fab controls passed126 database and60 additional checks except the same fixture. Those failures remain recorded rather than relabeled.
+
+Corrected frozen source172f78860778c9f2a1a342902672f82f5a3459bb passed205 database and20 additional checks and the whole-repository compiler ([41332635520](https://github.com/StradaverseHub/ai-hr/actions/runs/41332635520)). Native controls cover concurrent real creates/edits, same-employment refusal, native account revocation, complete rollback before one exclusive replay, actual read-only refusal and canonical PostgreSQL UUID lock aliases.
+
+Two further real clock-out controls passed in the complete47-case Plan OT suite on test-only source d987990d7 ([41333481368](https://github.com/StradaverseHub/ai-hr/actions/runs/41333481368)); its application files are identical to172f. Success creates one replacement catalogue, one credit, two punches and one clock-out event. A deliberately injected late SQL failure is observed in PostgreSQL and leaves no new catalogue, credit or clock-out. Only that passing test commit is integrated; separate failing Payroll diagnostic files are excluded.
+
+### Both 500-user reruns failed
+
+Both immutable aliases use source/controller172f, one worker, total pool10/heap4GiB, durable PostgreSQL with the original approximately2GiB cap, a standard four-CPU host, 500 identities, two million retained Claims/Attendance rows and a five-minute hold. These remain development tests, not production-equivalent acceptance. The previous comparator is32c, not installed staging.
+
+| Activity | Previous32c | Current172f | Outcome |
+| --- | --- | --- | --- |
+|1s|234 completed/266 failed; read p9565.87s, write p9588.16s|386 completed/114 failed; read p9567.76s, write p9587.25s;438.04s traffic elapsed|Complete accounting; target FAIL; loaded browsers1/6; both audit chains valid |
+|5s|184 completed/316 failed; read p9562.70s, write p9588.18s|Original600s HTTP parent budget exceeded; last traffic snapshot475.01s:131 completed,2 failed,367 active,538 iterations|Incomplete accounting; target FAIL; no final p95/browser/audit acceptance |
+
+Exact runs: [1s41332662698](https://github.com/StradaverseHub/ai-hr/actions/runs/41332662698), [5s41332665509](https://github.com/StradaverseHub/ai-hr/actions/runs/41332665509). Artifacts: `/private/tmp/aihr-data-command-one-172f-attempt1` and `/private/tmp/aihr-data-command-five-172f-attempt1`. No timeout, SLO or budget was relaxed. Partial five-second snapshots cannot establish an overall speedup percentage. At1s there are fewer failed users and more completed workflows, but p95 latency remains unacceptable.
+
+The traces show fewer Access-exclusive wait samples, but repeated native visibility checks, Attendance-to-Payroll row protection and audit-chain waits remain. The actual0602 attendance_payroll_protection_rows function locks ALL matching batches, including drafts, before returning processed/closed coverage. Any optimization must preserve that complete membership and ordered FOR UPDATE ownership. A separate native Payroll/Leave write-overlap probe remains red; an actual employee Home identity reader already overlaps Payroll, ruling out a direct Access lock in that reader. No Payroll authority relaxation is promoted on these observations.
+
+## Additional physical no-op write fix
+
+Source4431661b7 conditionally removes an overtime marker only when that JSON key exists. An empty refresh previously performed a physical Attendance UPDATE and fired row/source/financial triggers without changing the stored value. The native regression41336682983 failed precisely on that write while its stale-key cleanup control passed. Corrected run41336968478 passes155 database and8 additional checks plus the whole compiler, including source/financial ownership, workflows, real clock-out replay and actual cleanup. Existing markers still follow every original row guard. No migration or permission predicate changes. This source has not yet repeated the full500-user workloads; the172f results above retain their original source identity.
+
+The subsequent reversible Attendance-to-Payroll candidate-set rewrite passed exact native lock/scope oracles but showed no useful gain (3.87ms original,3.83ms candidate,3.59ms restored). It is rejected and excluded from the application. A separate visibility experiment remains diagnostic only.
+
+## Date-bounded Attendance Payroll locks — qualified source; targets unmet
+
+Native red source c69e64973, run41339198062, reproduces a second lock defect through the actual restricted transaction and guard. A draft six months before today blocks an unrelated employee's current Attendance command. Both commands remain valid after release, and the same-period exclusion control passes. This is a physical batch-row wait, independent of audit appends.
+
+The full-load fixture includes June/July2026 historical Payroll, current-month processing drafts and November Attendance. All sampled backends executing its financial protection helper are waiting on transaction/tuple locks. Excluding unrelated historical months does not remove contention on relevant current-month drafts; their protection must remain intact. The rejected candidate-set rewrite retained the original row-lock set.
+
+Unapplied0900 adds two guarded native overloads. The public overload repeats the exact existing correction-authority check; its private owner retains current/former-company and effective-payslip membership, stable exclusive FOR UPDATE ordering, and draft protection before the first payslip. For actual Attendance dates it excludes only canonical pay periods outside the date-month through the month after the last date. The canonical cutoff owner still determines exact coverage. Tests compare its calendar, anchor1–28 and frequency/type overrides over leap/year boundaries against that conservative bound. Malformed legacy period strings and unusual/empty native date arguments retain conservative protection.
+
+Only lockPayrollForAttendanceChange passes its already validated dates. Undated schedule/calendar functions, own-removal guard and raw canonical-source trigger protection are unchanged. Native donor bodies and every non-signature function attribute are pinned; original unary functions remain unchanged. No applied SQL bytes, tenant boundaries, authority caches, timeouts or resource budgets change.
+
+Candidate529923a8f passes75 native and one cutoff-bound check (41339533476); its whole compiler fails only on missing element types in the new batches/employees test arrays. Test-expanded9ca1056b3 passes132/133 native and nine other checks in41339652437, including all three populated upgrades. The sole new authority assertion incorrectly matched the query wrapper instead of its native cause; PostgreSQL independently records the expected correction-authority refusal. Test-only repair82cf0ec69 adds explicit array element types and exact nested native denial matching. Its four affected native cases and fresh whole compiler PASS in41340838746. Runtime, SQL and manifest bytes remain identical to9ca. Across these development receipts,187 distinct native checks in12 files and nine other checks in two files have successful observations after the focused repair; original failed workflow conclusions remain unchanged. This is development recovery, not an authenticated release witness.
+
+Both immutable500-user reruns use9ca and FAIL:
+
+|Activity|Run|Observed outcome|
+|---|---|---|
+|1s|[41339834763](https://github.com/StradaverseHub/ai-hr/actions/runs/41339834763)|Original600s parent budget exceeded. Last480.02s traffic snapshot:295 completed,1 failed,204 active;732 iterations. Accounting, final p95, browser and audit acceptance incomplete.|
+|5s|[41339843517](https://github.com/StradaverseHub/ai-hr/actions/runs/41339843517)|Traffic accounting complete:495 completed/5 failed,539 iterations in443.69s. Final aggregate read p9557.16s/write87.15s. Six browser journeys completed, zero runtime errors, but three loaded Home-card failures. Both audit chains valid. Original600s parent budget also exceeded; no target acceptance.|
+
+Four five-second failures are native Personnel draft-delete busy refusals; one journey aborts. One Attendance POST is observed at the original90s request limit. One-second incomplete progress must not be compared as a final latency improvement. The prior172f five-second run also lacks final accounting, so it cannot supply a valid final before/after percentage. Resources, budgets and SLOs are unchanged;0/2 activity levels accepted. Artifacts are retained under `/private/tmp/aihr-period-one-9ca1-attempt1` and `/private/tmp/aihr-period-five-9ca1-attempt1`.
+
+Relevant batch-row contention persists:24/18 sampled protection-helper backends respectively wait on native tuple/transaction locks. The complete five-second SQL snapshot reports221.31s of planning and zero JIT compilation time. PostgreSQL consumes973.56 CPU seconds and the app384.68 over443.79s; host IO wait is0.44s and PostgreSQL has no CPU throttling. These counters overlap and cannot be added to host totals. Next hypotheses must preserve financial exclusion, rather than weakening draft or first-payslip protection.
+
+## Additional hierarchy plan reuse — qualified; full-load targets failed
+
+Reversible source3d1107e4b, run41343026304, passes all500 independent visibility sets, eight raw RLS sets, malformed contexts, known hierarchy boundaries and same-connection live grants/parent edits. It restores both native helpers and preserves every attribute except the expected language/body. For43,712 ancestry calls per phase, planning is976.59ms original,4.49ms descendant-only and974.16ms restored. Manager/HOD/company-HR native visibility micro medians are0.296/0.387/1.264ms before,0.189/0.164/0.801ms with descendant reuse and0.295/0.386/1.267ms restored. Ordinary/group readers show little benefit; the direct repeated ancestry loop is slightly slower. The whole500-principal burst has no consistent improvement against the restored control. No whole-system claim follows from these measurements.
+
+Only descendant plan reuse is selected for guarded0902 qualification. The is_admin_for wrapper remains SQL and unchanged: its small composite gain did not justify direct-call regressions. The new append retains the entire canonical ancestry expression and all non-language attributes; no permission result or financial lock is cached or weakened. Frozenab6b73c65 passes160 database and21 additional checks across19 selected files, all three populated upgrades and the whole compiler in [41344434698](https://github.com/StradaverseHub/ai-hr/actions/runs/41344434698). This qualifies native semantics and integration, not the500-user speed target.
+
+## Changed canonical baseline
+
+Fresh main/alpha438bfae3d add21 migration-free runner-controls/maintenance commits. Owned mergea6a58ede2 integrates that source and preserves all640 canonical SQL bytes and journal entries. The earlier wording about canonical authentication migrations was incorrect:0898/0899 are pending foreign reservations. The installed ledger is still exactly640 rows at watermark276. Existing13 owned append positions remain above it; future admission must refresh and reallocate only if a later canonical/live tail overtakes them. The frozen9ca load receipts remain original development evidence, not results for the newer aggregate. No lease or release ticket is claimed.
+
+## AI source approval boundary
+
+The merged source retains canonical main’s already approved5bd1ea76 bindings byte-for-byte; its newly generated privacy digest429b6adc and agent digestf7089c7c truthfully describe the combined source. They do not match the approved canonical fingerprint, so provider egress stays blocked. No merged-source approval is invented.
+
+These core files are in the transitive privacy source closure. Any generated source digest change is source metadata only and does not renew the 24 literal source-bound approvals. Existing purposes, data contracts and two pending approvals must remain unchanged. No provider request or source-binding refresh is authorized by this review. Native non-AI performance tests can proceed without enabling provider access.
+
+## Canonical merge catalog recovery and current frozen pair
+
+The runner-controls merge introduced two namespaces absent from the bounded client catalog inventory. Original inventory run41344809893 fails onab6b; actual bounded OperatorShell render onaa59ea0be independently fails MISSING_MESSAGE scheduledActions in41344989858. Both original failures are preserved. The existing AST generator produces the same two-entry inventory change on both sources: shared scheduledActions and admin runnerControl. Source da336d00074122c7d44bab7c4f9d30889effd4ec includes exactly that output, with no full-catalog fallback or changed translation dictionaries. Its23 checks across five files and whole compiler pass [41345580191](https://github.com/StradaverseHub/ai-hr/actions/runs/41345580191).
+
+Both500-user workloads now run on immutable da336 application/controller aliases: [1s41346050530](https://github.com/StradaverseHub/ai-hr/actions/runs/41346050530) and [5s41346066075](https://github.com/StradaverseHub/ai-hr/actions/runs/41346066075). They retain one worker, pool10, heap4GiB, durable approximately2GiB PostgreSQL, standard four-CPU host, two million retained rows,500 identities,30 routes, six mixed workflows, six hydrated browser contexts and original request/parent limits. Both terminal workflows FAIL. Both traffic accounts are complete, but the five-second parent exceeds its unchanged600s budget after final child accounting. No deployment is authorized.
+
+|Activity|Completed/failed|Final read/write p95|Browsers|Other outcome|
+|---|---|---|---|---|
+|1s|426/74;434 iterations over425.96s|66.03s/86.87s|5/6; Approvals navigation timeout|Three loaded Home-card failures; both audit chains valid;585.64s child finishes within original parent budget|
+|5s|499/1;536 iterations over450.93s|58.63s/85.46s|5/6; Claims draft navigation timeout|Three loaded Home-card failures; both audit chains valid;606.24s parent exceeds original budget|
+
+The one-second failures are one native Personnel draft-delete busy refusal and73 aborted journeys; the five-second failure is one native Personnel draft-delete busy refusal. Both native audit chains have no interior gaps:2013/2166 checked at1s and2647/2164 at5s. No browser runtime errors were recorded, but incomplete browser journeys and visible Home-card failures still fail acceptance. The target remains0/2. Prior9ca1s is incomplete, so no final percentage comparison is valid. At5s, read p95 is slightly worse than9ca and write p95 slightly lower; this does not establish a meaningful whole-system speedup. The canonical merge also changes the application baseline, so do not attribute the entire delta solely to0902.
+
+Resources are unchanged. PostgreSQL consumes961.24/947.63 CPU seconds and the app362.72/394.87 across426.07/451.02s; component counters overlap host totals. Relevant Payroll draft FOR UPDATE protection still accounts for118.95/119.66s aggregated wait execution across211/265 calls. Access shared/exclusive waiter samples and audit waits persist. The most frequent sampled Access blockers execute Overtime pattern-assignment discovery (29/20 samples), plus actual Payroll protection, Attendance writes and audit appends. These are sampled blocker relationships, not a proof that every holder is exclusive or the query alone owns tenant serialization. No financial lock mode is weakened.
+
+Artifacts are preserved under /private/tmp/aihr-hierarchy-one-da336-attempt1 and /private/tmp/aihr-hierarchy-five-da336-attempt1, with original failure logs and private lock trace summaries.
+
+Separate diagnostic-only source6416844ece passes reversible bounded parameterized SELECT controls in [41347434436](https://github.com/StradaverseHub/ai-hr/actions/runs/41347434436):500 independent principals, two tenants, empty/populated real Notice owner reads, same-connection identity changes, live archive/unarchive and malformed tenant refusal. Four templates were seen against the128 limit. Empty500-read bursts take601.80ms original,210.47ms prepared and622.56ms restored. Populated bursts take21551.46ms,20936.22ms and20419.85ms: no consistent gain against the restored control. Reject the general driver change on this evidence; no production preparation adapter is promoted. Nested SQL statistics overlap and must not be summed as host CPU.
+
+The populated case instead invokes the Notice parent-administration helper approximately260,454 times across525 observed reader/control calls. Diagnostic-only source70eb7ae28, [41348030951](https://github.com/StradaverseHub/ai-hr/actions/runs/41348030951), compares an uncorrelated native self-employment membership subquery against the original correlated EXISTS while retaining actual Notice RLS and all identity/revocation controls. It passes all controls but is rejected for lack of gain: populated500-read bursts32.91s original,32.94s candidate,29.86s restored; empty0.713/0.680/0.684s. No Notice runtime query rewrite is promoted. It remains separate from the full-load source.

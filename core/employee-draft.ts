@@ -662,6 +662,10 @@ export async function discardEmployeeDraft(
   if (capture && !outerTx) throw new Error('Draft discard result requires an enclosing transaction.');
   const run = async (tx: Tx): Promise<void | EmployeeDraftDiscardResult> => {
     await boundNativeOutcomeTransactionTx(tx);
+    // Onboarding takes audit-chain; the native delete port later joins Access. Take the
+    // existing exclusive barrier first, matching create/save and avoiding Access <-> audit cycles.
+    // The port still repeats its physical generation/authority checks before deleting anything.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .select({
         reservedEmployeeCode: employeeDraft.reservedEmployeeCode,

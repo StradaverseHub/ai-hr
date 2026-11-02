@@ -76,7 +76,7 @@ const FINGERPRINT_TABLE = '_test_template_fingerprint';
  * whose column did not exist. It surfaced as `column "statutory_tier" does not exist` from seedBase —
  * indistinguishable from a schema bug, and it survived a rerun, which is the part that wastes the hour.
  */
-export const FINGERPRINT_EXTRA_FILES = ['db/migrations/meta/_journal.json', 'packs/catalog.ts',DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT] as const;
+export const FINGERPRINT_EXTRA_FILES = ['db/migrations/meta/_journal.json', 'packs/catalog.ts','scripts/lib/performance-role-fixture.ts',DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT] as const;
 
 /**
  * A hash of everything that determines the template's SHAPE: the migration files, the migration JOURNAL,

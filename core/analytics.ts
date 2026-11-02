@@ -315,6 +315,35 @@ export type MasterDataRow = {
   currency?: string;
 };
 
+/** Count the same visible master-data rows without transferring a full export to the page. */
+export function masterDataCount(
+  ctx: SessionContext,
+  scopeIds: string[] | undefined,
+  opts: { includeTerminated?: boolean; filter?: ReportFilter } = {},
+): Promise<number> {
+  return withTenant(ctx, async tx => {
+    const [row] = await tx.select({n: count()}).from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(compensation, and(eq(compensation.employmentId, employment.id),
+        isNull(compensation.validTo), isNull(compensation.supersededAt)))
+      .where(masterDataWhere(scopeIds, opts));
+    return Number(row?.n ?? 0);
+  });
+}
+
+function masterDataWhere(scopeIds: string[] | undefined, opts: {includeTerminated?: boolean; filter?: ReportFilter}) {
+  return and(
+    opts.includeTerminated ? undefined : isNull(employment.terminatedOn),
+    opts.filter?.departmentId ? eq(assignment.departmentId, opts.filter.departmentId) : undefined,
+    qWhere(opts.filter),
+    scopeWhere(scopeIds),
+  );
+}
+
 /** Employee master-data roster. Compensation columns are included ONLY when the caller is an admin
  *  AND asks for them (Wave 1 #5). `includeComp` for a non-admin is silently ignored.
  *  The optional `filter` (ADR-0047) narrows by department (on the CURRENT assignment) and free-text `q`.
@@ -360,14 +389,7 @@ export function masterDataExport(
           isNull(compensation.supersededAt),
         ),
       )
-      .where(
-        and(
-          opts.includeTerminated ? undefined : isNull(employment.terminatedOn),
-          opts.filter?.departmentId ? eq(assignment.departmentId, opts.filter.departmentId) : undefined,
-          qWhere(opts.filter),
-          scopeWhere(scopeIds),
-        ),
-      )
+      .where(masterDataWhere(scopeIds, opts))
       .orderBy(person.fullName);
     return rows.map((r) => {
       const base: MasterDataRow = {

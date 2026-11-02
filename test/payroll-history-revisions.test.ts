@@ -147,9 +147,10 @@ describe('immutable payroll history correction and recovery',()=>{
  it('removes retired history from own EA eligibility and attendance protection owner reads',async()=>{
   const userId=await createAppUser(b.tenantId,employeePersonId,'employee'),own={...ctx,userId,personId:employeePersonId,roles:['employee'],grants:undefined};
   const protection=()=>withTenant(ctx,tx=>tx.execute(sql`select * from app.attendance_payroll_protection(${employeeId}::uuid)`));
-  const first=await upload();await confirm(first);expect(await myEaSources(own)).toMatchObject([{employmentId:employeeId,year:String(year),available:true}]);expect(await protection()).toHaveLength(1);
+  const boundedProtection=()=>withTenant(ctx,tx=>tx.execute(sql`select * from app.attendance_payroll_protection(${employeeId}::uuid,ARRAY[${period+'-15'}::date])`));
+  const first=await upload();await confirm(first);expect(await myEaSources(own)).toMatchObject([{employmentId:employeeId,year:String(year),available:true}]);expect(await protection()).toHaveLength(1);expect(await boundedProtection()).toHaveLength(1);
   const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId);await revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash);
-  expect(await myEaSources(own)).toEqual([]);expect(await protection()).toHaveLength(0);
+  expect(await myEaSources(own)).toEqual([]);expect(await protection()).toHaveLength(0);expect(await boundedProtection()).toHaveLength(0);
  });
  it('binds immutable snapshot evidence to actual payroll money and its validated attempt',async()=>{
   const first=await upload();await confirm(first);

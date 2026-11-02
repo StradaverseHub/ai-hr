@@ -769,6 +769,7 @@
       "childReliefReview": "子女税务减免检视"
     },
     "switcher": {
+      "loadFailed": "无法加载员工搜索，请重试。",
       "ariaLabel": "搜索员工",
       "placeholder": "搜索员工编号或姓名…",
       "resultsLabel": "员工搜索结果",
@@ -5337,7 +5338,8 @@
     "submitDecisions": "提交",
     "employeeRemark": "员工备注",
     "closeDialog": "关闭",
-    "bulkSelectAll": "全选",
+    "bulkSelectAll": "选择本页全部",
+    "bulkPageScopeHint": "仅选择本页显示的记录。",
     "bulkSelectRow": "选择申请",
     "bulkSelected": "已选择：{count, plural, other {# 项申请}}",
     "bulkClear": "清除",

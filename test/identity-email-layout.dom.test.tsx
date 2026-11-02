@@ -1,10 +1,11 @@
+import messages from '../messages/en.json';
 import React, {isValidElement} from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notifications:vi.fn(),unread:vi.fn()}));
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
 vi.mock('next/headers',()=>({headers:async()=>new Headers({'x-pathname':m.pathname}),cookies:async()=>({get:()=>undefined})}));
-vi.mock('next-intl/server',()=>({getLocale:async()=>'en'}));
+vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getMessages:async()=>messages}));
 vi.mock('../lib/session',()=>({getSession:m.session}));
 vi.mock('../lib/identity/email-settings',()=>({canConfigureIdentityEmail:m.operator}));
 vi.mock('../lib/viewer',()=>({viewerIdentity:async()=>({name:'Fixture',employeeCode:null,employed:false})}));
@@ -22,7 +23,10 @@ vi.mock('../core/assistant-grant',()=>({mayUseAssistant:async()=>({allowed:false
 // This shell test controls those boundaries; their actual permission algebra is covered by DB cases.
 vi.mock('../core/access-configuration-editor',()=>({canConfigureAccess:async()=>false}));
 vi.mock('../core/workforce-access',()=>({workforceViewScope:async()=>({canOpen:false,companyIds:[]})}));
-vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks}));
+vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSummary:async(...args:unknown[])=>{
+ const items=await m.tasks(...args);
+ return {items,total:items.length,approvalCount:items.filter((row:{linkPath:string})=>row.linkPath.split(/[?#]/,1)[0]==='/approvals').length};
+}}));
 vi.mock('../core/notifications',()=>({dispatchNotifications:async()=>{},listNotifications:m.notifications,unreadNotificationCount:m.unread}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:m.module,isModuleEnabledOrFalse:m.module,settingEnabledOrDefault:m.feedback}));
 vi.mock('../components/command-bar',()=>({CommandBar:()=>null}));

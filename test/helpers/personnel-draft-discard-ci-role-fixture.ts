@@ -1,3 +1,4 @@
+import {performanceRoleFixtureProfile} from '../../scripts/lib/performance-role-fixture';
 /** Disposable hosted role fixture. No import-time execution or live provisioning.
  * Validated before every template reuse/migration; included in FINGERPRINT_EXTRA_FILES.
  * This emulates operator provisioning only in the canonical disposable focused job. */
@@ -35,10 +36,10 @@ export function assertDisposableDraftDiscardFixture(adminUrl:string,full?:FullCi
   if(adminUrl!==observed.admin||!sameFullCiRoleBinding(full,observed.binding))throw Error('Full CI role owner binding changed.');
   return;
  }
- const env=process.env;
+ const env=process.env,performance=performanceRoleFixtureProfile(process.env);
  if(env.GITHUB_ACTIONS!=='true'||env.CI!=='true'||env.RUNNER_ENVIRONMENT!=='github-hosted'||env.RUNNER_OS!=='Linux'||platform()!=='linux'
   ||env.GITHUB_REPOSITORY!=='StradaverseHub/ai-hr'||env.GITHUB_EVENT_NAME!=='workflow_dispatch'||env.GITHUB_WORKFLOW!=='alpha-focused-checks'
-  ||env.GITHUB_JOB!=='selected-tests'||!numeric(env.GITHUB_RUN_ID)||!numeric(env.GITHUB_RUN_ATTEMPT)
+  ||(!performance&&env.GITHUB_JOB!=='selected-tests')||!numeric(env.GITHUB_RUN_ID)||!numeric(env.GITHUB_RUN_ATTEMPT)
   ||env.TEST_DB_NAMESPACE!=='aifocus'||env.AIHR_FOCUSED_SUITE_CAPACITY!=='true'||!sha(env.AIHR_CI_HEAD)||!sha(env.AIHR_CI_CONTROL_HEAD)
   ||!env.GITHUB_WORKFLOW_REF?.startsWith('StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/heads/'))refuse();
  if(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()!==env.AIHR_CI_HEAD)refuse();
@@ -46,7 +47,7 @@ export function assertDisposableDraftDiscardFixture(adminUrl:string,full?:FullCi
   if(!raw)return refuse();let url:URL;try{url=new URL(raw);}catch{return refuse();}
   if(!['postgres:','postgresql:'].includes(url.protocol)||url.hostname!=='127.0.0.1'||url.port!=='5433'
    ||url.username!==user||url.password!==''||url.search!==''||url.hash!=='')refuse();
-  if(admin?url.pathname!=='/postgres':!isDraftDiscardFixtureDatabasePath(url.pathname))refuse();
+  if(admin?url.pathname!=='/postgres':performance?.system?url.pathname!=='/ai_hr_system_perf':!isDraftDiscardFixtureDatabasePath(url.pathname))refuse();
   return url;
  };
  const admin=check(adminUrl,'postgres',true),migration=check(env.TEST_MIGRATION_DATABASE_URL,'postgres');
@@ -54,7 +55,7 @@ export function assertDisposableDraftDiscardFixture(adminUrl:string,full?:FullCi
  if(admin.href!==migration.href)refuse();
  const evidence=env.AIHR_FOCUSED_EVIDENCE_DIR,temp=env.RUNNER_TEMP;
  if(!evidence||!temp||!isAbsolute(evidence)||!isAbsolute(temp))return refuse();
- if(realpathSync(evidence)!==join(realpathSync(temp),'aihr-focused'))refuse();
+ if(realpathSync(evidence)!==join(realpathSync(temp),performance?.evidence??'aihr-focused'))refuse();
  if(resolve(evidence)!==realpathSync(evidence))refuse();
 }
 export async function readDraftDiscardRoleCatalog(sql:DraftDiscardCatalogSql):Promise<RoleCatalog>{

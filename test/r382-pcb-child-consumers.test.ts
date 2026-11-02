@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import {eq} from 'drizzle-orm';
 import React from 'react';
 import { randomUUID } from 'node:crypto';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -16,7 +17,7 @@ import { saveStatutoryRulesetMY } from '../localization/my/statutory-config';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { payslipForReview } from '../core/payroll-view';
 import { withTenant } from '../db/client';
-import { statutoryRuleset } from '../db/schema';
+import { statutoryRuleset,payslip } from '../db/schema';
 import { PcbDetailView } from '../app/payroll/pcb-detail/pcb-detail-view';
 import { pcbDetailPdfResponse } from '../app/payroll/pcb-detail/shared';
 import { extractedText } from './helpers/pcb-pdf-text';
@@ -131,7 +132,7 @@ describe('r382 country owner Personnel and rendered slip consumers', () => {
     await setCompensation(adminCtx(fixture), { employmentId: e.employmentId, basicSalary: 14000, effectiveFrom: '2026-01-01' });
     const { batchId } = await createBatch(adminCtx(fixture), { payPeriod: '2026-07', paymentDate: '2026-07-31', companyId: fixture.companyId });
     await generatePayslips(adminCtx(fixture), { batchId });
-    const saved = await owner.db.query.payslip.findFirst({ where: (s, { eq }) => eq(s.batchId, batchId) }); expect(saved).toBeTruthy();
+    const [saved] = await owner.db.select().from(payslip).where(eq(payslip.batchId,batchId)).limit(1); expect(saved).toBeTruthy();
     const ctx = adminCtx(fixture); state.auth = { s: ctx, scopeIds: [fixture.companyId] };
     const row = await payslipForReview(ctx, { companyIds: [fixture.companyId], payslipId: saved!.id }); expect(row).toBeTruthy();
     const x = explainPcb(row!.statutory, null); if (x.kind !== 'mtd') throw Error('Expected processed resident trace');

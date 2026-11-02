@@ -25,6 +25,7 @@ vi.mock('@/lib/module-layout', () => ({
   },
 }));
 vi.mock('next-intl/server', () => ({
+  getMessages:async()=>en,
   getTranslations: async (ns: string) => (key: string) => (en as unknown as Record<string, Record<string, string>>)[ns][key],
 }));
 let search = '';

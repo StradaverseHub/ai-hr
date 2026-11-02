@@ -769,6 +769,7 @@
       "childReliefReview": "Rà soát giảm trừ cho con"
     },
     "switcher": {
+      "loadFailed": "Không thể tải tìm kiếm nhân viên. Vui lòng thử lại.",
       "ariaLabel": "Tìm nhân viên",
       "placeholder": "Tìm mã nhân viên hoặc tên…",
       "resultsLabel": "Kết quả tìm nhân viên",
@@ -5337,7 +5338,8 @@
     "submitDecisions": "Gửi",
     "employeeRemark": "Ghi chú của nhân viên",
     "closeDialog": "Đóng",
-    "bulkSelectAll": "Chọn tất cả",
+    "bulkSelectAll": "Chọn tất cả trên trang này",
+    "bulkPageScopeHint": "Lựa chọn chỉ áp dụng cho các bản ghi hiển thị trên trang này.",
     "bulkSelectRow": "Chọn yêu cầu",
     "bulkSelected": "Đã chọn: {count, plural, other {# yêu cầu}}",
     "bulkClear": "Xóa",

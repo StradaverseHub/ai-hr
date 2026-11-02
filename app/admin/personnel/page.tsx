@@ -8,7 +8,6 @@ import {
   countEmployeesByStatus,
   listCompanies,
   listDepartments,
-  listWorkforcePickOptions,
   listEmployeesPage,
 } from '@/core/read';
 // r260 stage two (9583deac) — the shared approve/reject control whose Reject cannot be submitted
@@ -131,7 +130,6 @@ export default async function PeoplePage({
     companies,
     departments,
     allDrafts,
-    allEmployees,
     savedColumns,
     idConfigs,
   ] = await Promise.all([
@@ -151,12 +149,6 @@ export default async function PeoplePage({
     // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees above do. They used to
     // be read with no scope at all, so choosing one company still listed every company's drafts.
     isAdmin ? listEmployeeDrafts(session, draftListScope(scopeIds, allowedCount)) : Promise.resolve([]),
-    // c002b3c3 — the switcher needs the WHOLE reachable set, not the page being displayed: searching for
-    // someone on page 7 of the list is the entire point. `listEmployees` is the same scoped read the
-    // profile route already uses for its own pickers, narrowed here by the active company context
-    // (`scopeIds`) so the box searches exactly what this screen is showing. It can only ever be NARROWER
-    // than RLS — the profile route re-resolves whatever is picked and 404s on anything out of scope.
-    listWorkforcePickOptions(session, scopeIds),
     // 579255c3 — this reader's own columns and their order. Per user (app_user.list_preferences through
     // the own-row seam), so one person's arrangement never changes what anybody else sees.
     getEmployeeListColumns(session),
@@ -453,15 +445,7 @@ export default async function PeoplePage({
                 filter's `q` box and does not narrow this table: it JUMPS to a profile. Both controls
                 are here because they answer different questions — "show me these people" and "take me
                 to this person" — and the second one previously had no answer at all. */}
-            <EmployeeSwitcher
-              employees={allEmployees.map((e) => ({
-                employmentId: e.employmentId,
-                name: e.name,
-                employeeCode: e.employeeCode,
-                company: e.company,
-                department: e.department,
-              }))}
-            />
+            <EmployeeSwitcher remote />
             <FilterPanel
               action="/admin/personnel"
               fields={filterFields}
