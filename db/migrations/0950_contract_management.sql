@@ -369,7 +369,7 @@ CREATE FUNCTION app.contract_effect_authorised(wanted_case uuid) RETURNS boolean
  AND (app.contract_case_access(c.id) OR session_user='ai_hr_owner' OR EXISTS(SELECT 1 FROM pg_roles p WHERE p.rolname=session_user AND p.rolsuper)));
 $$;
 CREATE FUNCTION app.contract_apply_records(wanted_case uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE c public.contract_case;cfg public.contract_configuration;term public.contract_term;source jsonb;decision jsonb;cur public.compensation;fixed public.employment_pay_component;component public.pay_component;next_comp uuid;next_fixed uuid;next_term uuid;next_case uuid;next_data jsonb;next_source jsonb;next_number text;n bigint;from_day date;new_end date;data jsonb;receipt_value jsonb;error_message text;executor uuid;batch public.payroll_batch;changed_pay boolean;event_id uuid:=gen_random_uuid();
+DECLARE c public.contract_case;cfg public.contract_configuration;term public.contract_term;source jsonb;decision jsonb;cur public.compensation;fixed public.employment_pay_component;component public.pay_component;next_comp uuid;next_fixed uuid;next_term uuid;next_case uuid;next_data jsonb;next_source jsonb;next_number text;n bigint;from_day date;new_end date;data jsonb;receipt_value jsonb;error_message text;executor uuid;batch public.payroll_batch;changed_pay boolean;employment_before jsonb;employment_after jsonb;event_id uuid:=gen_random_uuid();
 BEGIN
  PERFORM app.access_workforce_write_lock();SELECT * INTO c FROM public.contract_case WHERE id=wanted_case AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF c.id IS NULL OR NOT app.contract_effect_authorised(c.id) THEN RAISE EXCEPTION 'accepted contract effect authority unavailable' USING ERRCODE='42501'; END IF;
@@ -403,6 +403,9 @@ BEGIN
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(c.tenant_id,'employment-pay-component',coalesce(next_fixed,fixed.id),'employment-pay-component.set','user',executor,c.employment_id,jsonb_build_object('employmentId',c.employment_id,'componentId',component.id,'effectiveFrom',from_day,'contractCaseId',c.id,'triggeredBy',app.current_user_id()));
  END IF;
  -- Canonical employment date owner: only the accepted dates are written; no status reinstatement or exit change.
+ SELECT to_jsonb(e) INTO employment_before FROM public.employment e WHERE e.id=c.employment_id AND e.tenant_id=c.tenant_id;
+ employment_after:=employment_before||jsonb_build_object('contract_start_date',from_day,'contract_end_date',new_end);
+ INSERT INTO public.contract_service_info_intent(tenant_id,case_id,employment_id,transaction_id,actor_user_id,effect_principal_id,kind,source_revision,old_hash,new_hash,new_start,new_end,reason) VALUES(c.tenant_id,c.id,c.employment_id,txid_current(),app.current_user_id(),executor,'accepted',app.contract_source(c.employment_id)->>'sourceRevision',encode(sha256(convert_to(employment_before::text,'UTF8')),'hex'),encode(sha256(convert_to(employment_after::text,'UTF8')),'hex'),from_day,new_end,'Apply exact accepted contract terms');
  UPDATE public.employment SET contract_start_date=from_day,contract_end_date=new_end WHERE id=c.employment_id AND tenant_id=c.tenant_id;
  INSERT INTO public.domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(event_id,c.tenant_id,'employment',c.employment_id,'employment.updated','user',executor,c.employment_id,jsonb_build_object('fields',jsonb_build_array('contractStartDate','contractEndDate'),'contractCaseId',c.id,'triggeredBy',app.current_user_id()));
  IF changed_pay THEN
@@ -589,7 +592,7 @@ BEGIN
  SELECT min(d) INTO due_days FROM unnest(ARRAY[(v.definition->'trigger'->>'days')::integer,(c.data->'settings'->>'reminderDays')::integer,(c.data->'settings'->>'decisionDueDays')::integer,(c.data->'settings'->>'escalationDays')::integer]) d WHERE today>=(c.data->'term'->>'endOn')::date-d;
  IF due_days IS NULL THEN RETURN 0; END IF;
  IF c.data->>'state'='upcoming' THEN PERFORM app.contract_commit_case(c.id,c.data||jsonb_build_object('state','decision_pending'),'expiry.alert-due');SELECT * INTO c FROM public.contract_case WHERE id=c.id; END IF;
- occurrence:=p_event||':'||due_days;
+ occurrence:=p_event||':'||due_days||':'||(c.data->'term'->>'sourceRevision');
  ELSIF p_event='decisionSubmitted' THEN IF c.data->'decision'->>'confirmedAt' IS NULL OR c.workflow_id IS DISTINCT FROM w.id THEN RETURN 0; END IF;occurrence:=p_event||':'||(c.data->'decision'->>'revision')||':'||(c.data->>'state');
  ELSIF p_event='approvalRejected' THEN IF c.data->>'state'<>'decision_pending' OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(c.data->'approvals') a WHERE a->>'state'='rejected') THEN RETURN 0; END IF;occurrence:=p_event||':'||(c.data->'decision'->>'revision');
  ELSIF p_event='signatureDeclined' THEN IF c.data->>'state'<>'ending' OR c.data->'document'->>'declinedAt' IS NULL THEN RETURN 0; END IF;occurrence:=p_event||':'||(c.data->'decision'->>'revision');
@@ -730,3 +733,39 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.contract_case_choices(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.contract_case_choices(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Transaction-local write proof is stored in protected data, never in a caller-controlled GUC.
+CREATE TABLE contract_service_info_intent(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),tenant_id uuid NOT NULL REFERENCES tenant(id),case_id uuid NOT NULL REFERENCES contract_case(id),employment_id uuid NOT NULL REFERENCES employment(id),transaction_id bigint NOT NULL,actor_user_id uuid REFERENCES app_user(id),effect_principal_id uuid NOT NULL REFERENCES app_user(id),kind text NOT NULL CHECK(kind IN('accepted','maternity_end')),source_revision text NOT NULL,old_hash text NOT NULL,new_hash text NOT NULL,new_start date NOT NULL,new_end date NOT NULL,reason text NOT NULL,created_at timestamptz NOT NULL DEFAULT now());
+ALTER TABLE contract_service_info_intent ENABLE ROW LEVEL SECURITY;
+ALTER TABLE contract_service_info_intent FORCE ROW LEVEL SECURITY;
+CREATE POLICY contract_service_info_intent_owner ON contract_service_info_intent FOR ALL USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
+REVOKE ALL ON contract_service_info_intent FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.contract_service_info_intent_allowed(p_old jsonb,p_new jsonb) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_old->>'tenant_id'=app.current_tenant_id()::text AND p_new->>'tenant_id'=p_old->>'tenant_id' AND p_old->>'id'=p_new->>'id'
+ AND NOT EXISTS(SELECT 1 FROM jsonb_each(p_new) d WHERE d.value IS DISTINCT FROM p_old->d.key AND d.key NOT IN('contract_start_date','contract_end_date'))
+ AND EXISTS(SELECT 1 FROM public.contract_service_info_intent i JOIN public.contract_case c ON c.id=i.case_id AND c.tenant_id=i.tenant_id JOIN public.contract_configuration cfg ON cfg.company_id=c.company_id AND cfg.tenant_id=c.tenant_id WHERE i.tenant_id=app.current_tenant_id() AND i.transaction_id=txid_current() AND i.employment_id=(p_old->>'id')::uuid AND i.actor_user_id IS NOT DISTINCT FROM app.current_user_id() AND i.old_hash=encode(sha256(convert_to(p_old::text,'UTF8')),'hex') AND i.new_hash=encode(sha256(convert_to(p_new::text,'UTF8')),'hex') AND i.new_start=(p_new->>'contract_start_date')::date AND i.new_end=(p_new->>'contract_end_date')::date AND i.effect_principal_id=cfg.effect_principal_id AND app.contract_effect_authorised(c.id) AND i.source_revision=app.contract_source(c.employment_id)->>'sourceRevision' AND (
+ i.kind='accepted' AND c.data->>'state'='records_pending' AND c.data->'document'->>'acceptedAt' IS NOT NULL AND c.data->'decision'->>'kind'='renew' AND i.new_start=(c.data->'decision'->>'startOn')::date AND i.new_end=(c.data->'decision'->>'endOn')::date AND EXISTS(SELECT 1 FROM public.contract_document d WHERE d.id=(c.data->'document'->>'id')::uuid AND d.case_id=c.id AND d.tenant_id=c.tenant_id AND d.content_hash=c.data->'document'->>'hash' AND d.decision_revision=(c.data->'decision'->>'revision')::integer AND d.signature->>'action'='accept')
+ OR i.kind='maternity_end' AND c.data->'term'->>'kind'='maternity_cover' AND c.data->>'state' IN('upcoming','decision_pending','in_approval','e_acceptance') AND c.data->'document'->>'acceptedAt' IS NULL AND i.new_start=(p_old->>'contract_start_date')::date AND length(btrim(i.reason))>=10 AND NOT app.contract_subject_user(c.employment_id,app.current_user_id()) AND (app.contract_case_pbp(c.id) OR app.contract_has_role(c.company_id,NULL,'gbs')))); $$;
+REVOKE ALL ON FUNCTION app.contract_service_info_intent_allowed(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.contract_amend_maternity_end(wanted_case uuid,expected_revision integer,new_end date,p_reason text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE c public.contract_case;cfg public.contract_configuration;source jsonb;before_row jsonb;after_row jsonb;data jsonb;event_id uuid:=gen_random_uuid();
+BEGIN
+ PERFORM app.access_workforce_write_lock();SELECT * INTO c FROM public.contract_case WHERE id=wanted_case AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF c.id IS NULL OR NOT app.contract_effect_authorised(c.id) OR NOT(app.contract_case_pbp(c.id) OR app.contract_has_role(c.company_id,NULL,'gbs')) OR app.contract_subject_user(c.employment_id,app.current_user_id()) THEN RAISE EXCEPTION 'an independent assigned PBP or GBS owner is required for maternity end-date correction' USING ERRCODE='42501'; END IF;
+ SELECT * INTO cfg FROM public.contract_configuration WHERE company_id=c.company_id AND tenant_id=c.tenant_id FOR SHARE;
+ SELECT to_jsonb(e) INTO before_row FROM public.employment e WHERE e.id=c.employment_id AND e.tenant_id=c.tenant_id FOR UPDATE;
+ source:=app.contract_source(c.employment_id);
+ IF c.revision<>expected_revision OR c.data->'term'->>'kind'<>'maternity_cover' OR c.data->>'state' NOT IN('upcoming','decision_pending','in_approval','e_acceptance') OR c.data->'document'->>'acceptedAt' IS NOT NULL OR c.data->>'sourceRetirementApprovalId' IS NOT NULL OR new_end IS NULL OR new_end<(source->>'startOn')::date OR new_end=(source->>'endOn')::date OR length(btrim(coalesce(p_reason,''))) NOT BETWEEN 10 AND 5000 OR source->>'sourceRevision' IS DISTINCT FROM c.data->'term'->>'sourceRevision' OR NOT coalesce((source->>'eligible')::boolean,false) OR coalesce((source->>'ended')::boolean,false) THEN RAISE EXCEPTION 'review the current unaccepted maternity-cover source and a reasoned valid new end date' USING ERRCODE='40001'; END IF;
+ after_row:=before_row||jsonb_build_object('contract_end_date',new_end);
+ INSERT INTO public.contract_service_info_intent(tenant_id,case_id,employment_id,transaction_id,actor_user_id,effect_principal_id,kind,source_revision,old_hash,new_hash,new_start,new_end,reason) VALUES(c.tenant_id,c.id,c.employment_id,txid_current(),app.current_user_id(),cfg.effect_principal_id,'maternity_end',source->>'sourceRevision',encode(sha256(convert_to(before_row::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex'),(source->>'startOn')::date,new_end,p_reason);
+ UPDATE public.employment SET contract_end_date=new_end WHERE id=c.employment_id AND tenant_id=c.tenant_id;
+ INSERT INTO public.domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(event_id,c.tenant_id,'employment',c.employment_id,'employment.updated','user',app.current_user_id(),c.employment_id,jsonb_build_object('fields',jsonb_build_array('contractEndDate'),'contractCaseId',c.id,'effectPrincipalId',cfg.effect_principal_id,'reason',p_reason));
+ source:=app.contract_source(c.employment_id);
+ UPDATE public.contract_term SET end_on=new_end,source_revision=source->>'sourceRevision' WHERE id=c.term_id AND tenant_id=c.tenant_id;
+ UPDATE public.contract_document SET superseded_at=now() WHERE case_id=c.id AND tenant_id=c.tenant_id AND superseded_at IS NULL;
+ UPDATE public.contract_case SET source_conflict=NULL,last_synced_at=now(),workflow_id=NULL,workflow_version=NULL WHERE id=c.id;
+ data:=c.data||jsonb_build_object('state','decision_pending','term',c.data->'term'||jsonb_build_object('endOn',new_end,'sourceRevision',source->>'sourceRevision'),'decisionHistory',c.data->'decisionHistory'||CASE WHEN c.data->'decision'='null'::jsonb THEN '[]'::jsonb ELSE jsonb_build_array(c.data->'decision') END,'decision',NULL,'approvals','[]'::jsonb,'document',NULL);
+ RETURN app.contract_commit_case(c.id,data,'maternity.end-amended',jsonb_build_object('previousEndOn',c.data->'term'->>'endOn','endOn',new_end,'reason',p_reason,'employmentEventId',event_id));
+END $$;
+REVOKE ALL ON FUNCTION app.contract_amend_maternity_end(uuid,integer,date,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.contract_amend_maternity_end(uuid,integer,date,text) TO ai_hr_app;
