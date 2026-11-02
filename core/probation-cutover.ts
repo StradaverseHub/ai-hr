@@ -1,3 +1,4 @@
+import {validateProbationOfflinePdf} from '../lib/probation-offline-pdf';
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
@@ -126,6 +127,15 @@ export async function activatePreparedProbationCutover(ctx:SessionContext,connec
   if(!batch.data.planComplete||batch.data.holds.length||!batch.data.environment.configuredOrigin||input.installationReceipt.origin!==batch.data.environment.configuredOrigin||input.installationReceipt.reference.trim().length<3)throw new ProbationError('invalid','Resolve every held source and verify the configured installation before cutover.');assertModuleEnabled(ctx,'lifecycle',batch.companyId);
   const current=await buildProbationCutoverTx(tx,ctx,batch.companyId);const material=(plan:ProbationCutoverPlan)=>({companyId:plan.companyId,activationOn:plan.activationOn,mode:plan.mode,reactivation:plan.reactivation,suppressedExistingCount:plan.suppressedExistingCount,historicalExcludedCount:plan.historicalExcludedCount,environment:plan.environment,holds:plan.holds,planComplete:plan.planComplete,exportTruncated:plan.exportTruncated,sourceSnapshot:plan.sourceSnapshot,imports:plan.imports,wouldFire:plan.wouldFire,excludedPast:plan.excludedPast,eventDriven:plan.eventDriven});
   const[same]=await tx.execute<{ok:boolean}>(sql`select ${JSON.stringify(material(current))}::jsonb is not distinct from ${JSON.stringify(material(batch.data))}::jsonb as ok`);if(!same.ok)throw new ProbationError('conflict','The canonical cohort, working calendars, message plan or installation changed after approval. Prepare and approve a fresh export.');
+  for(const imported of current.imports){
+   const originals=new Set(imported.record.parts.flatMap(part=>part.offlinePdfId?[part.offlinePdfId]:[]));
+   for(const evidenceId of originals){
+    const [evidence]=await tx.execute<{content:Buffer}>(sql`select content from probation_intake_evidence
+     where id=${evidenceId}::uuid and tenant_id=${ctx.tenantId}::uuid and company_id=${batch.companyId}::uuid and employment_id=${imported.employmentId}::uuid`);
+    if(!evidence)throw new ProbationError('invalid','A reviewed original PDF is no longer available.');
+    await validateProbationOfflinePdf(evidence.content);
+   }
+  }
   await tx.execute(sql`select app.probation_activate_cutover(${input.id}::uuid,${current.activationOn}::date)`);
   for(const preserved of current.reactivation){
    if(preserved.status==='withdrawal')await tx.execute(sql`select app.probation_withdraw(${preserved.id}::uuid,'Canonical Personnel exit reviewed in the approved probation restart batch')`);

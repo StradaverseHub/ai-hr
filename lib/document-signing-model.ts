@@ -4,6 +4,7 @@ import {validV9SignatureValue} from './lifecycle-v9-signature';
 export type SigningStep = {
   id: string; role: string; kind: 'sign' | 'acknowledge' | 'approve'; stage: number;
   holderId: string | null; holderPersonId?: string; representedId?: string; required: boolean;
+  coveredStepIds?: string[]; coveredByStepId?: string;
 };
 export type SigningRoute = {version: number; steps: SigningStep[]};
 export type SigningGuardrails = {requiredRoles: string[]; independentApprovalFromRole?: string};
@@ -11,6 +12,7 @@ export type SigningAction = {
   id: string; stepId: string; contentRevision: number; contentHash: string;
   actorId: string; actorPersonId: string; actorName: string; representedId: string; role: string;
   at: string; action: 'signed' | 'returned' | 'declined'; comment: string;
+  coveredStepIds?: string[];
   signature: {method: 'typed' | 'drawn'; value: string; consent: true} | null;
 };
 export type SigningDocument = {
@@ -28,6 +30,15 @@ export function validateSigningRoute(route: SigningRoute, rules: SigningGuardrai
     if (!step.id || ids.has(step.id) || !step.role || !Number.isSafeInteger(step.stage) || step.stage < 0 || !['sign','acknowledge','approve'].includes(step.kind)) invalid('Every signing step needs a unique identity, role and stage.');
     ids.add(step.id);
   }
+  for(const step of route.steps){
+    const covered=step.coveredStepIds??[];
+    if(covered.length>1||covered.length&&step.coveredByStepId)invalid('One approval can cover one adjacent approval role.');
+    if(step.coveredByStepId&&!route.steps.some(owner=>owner.id===step.coveredByStepId&&owner.coveredStepIds?.includes(step.id)))invalid('A covered role must name its actual signing step.');
+    for(const id of covered){
+      const target=route.steps.find(candidate=>candidate.id===id);
+      if(!target||target.coveredByStepId!==step.id||!step.required||!target.required||step.kind!=='approve'||target.kind!=='approve'||step.role===target.role||!step.holderId||step.holderId!==target.holderId||!step.holderPersonId||step.holderPersonId!==target.holderPersonId||step.stage>=target.stage||route.steps.some(candidate=>candidate.required&&candidate.id!==step.id&&candidate.id!==target.id&&candidate.stage>=step.stage&&candidate.stage<=target.stage))invalid('A combined action requires adjacent approval roles held by the same verified person.');
+    }
+  }
   for (const role of rules.requiredRoles) if (!route.steps.some(s=>s.role===role&&s.required)) invalid('The required '+role+' signing step cannot be removed.');
   if (rules.independentApprovalFromRole) {
     const owner=route.steps.find(s=>s.role===rules.independentApprovalFromRole&&s.required);
@@ -36,16 +47,22 @@ export function validateSigningRoute(route: SigningRoute, rules: SigningGuardrai
     if (owner.holderId && independent.every(s=>s.holderId!==null&&(s.holderId===owner.holderId||Boolean(owner.holderPersonId)&&s.holderPersonId===owner.holderPersonId))) invalid('The approving person must be different from the submitting manager.');
   }
 }
-/** Missing holders block; they never silently turn a required step into a skipped step. */
+function actionFulfilsStep(action:SigningAction,step:SigningStep,document:SigningDocument):boolean{
+  if(action.contentRevision!==document.contentRevision||action.contentHash!==document.contentHash)return false;
+  if(action.action==='declined')return action.stepId===step.id&&step.kind==='acknowledge';
+  return action.action==='signed'&&(action.stepId===step.id||action.coveredStepIds?.includes(step.id)===true);
+}
+/** Missing holders block; one real approval can fulfil its explicitly covered adjacent role. */
 export function pendingSigningSteps(document: SigningDocument): SigningStep[] {
-  const signed=new Set(document.actions.filter(a=>a.contentRevision===document.contentRevision&&a.contentHash===document.contentHash&&(a.action==='signed'||a.action==='declined'&&document.route.steps.some(s=>s.id===a.stepId&&s.kind==='acknowledge'))).map(a=>a.stepId));
-  const remaining=document.route.steps.filter(s=>s.required&&!signed.has(s.id));
-  const stage=Math.min(...remaining.map(s=>s.stage));
-  return remaining.filter(s=>s.stage===stage);
+  if(document.actions.some(action=>action.action==='returned'&&action.contentRevision===document.contentRevision&&action.contentHash===document.contentHash))return [];
+  const remaining=document.route.steps.filter(step=>step.required&&!document.actions.some(action=>actionFulfilsStep(action,step,document)));
+  const stage=Math.min(...remaining.map(step=>step.stage));
+  return remaining.filter(step=>step.stage===stage&&!step.coveredByStepId);
 }
 export function signingComplete(document: SigningDocument, rules: SigningGuardrails): boolean {
   validateSigningRoute(document.route,rules);
-  if (pendingSigningSteps(document).length) return false;
+  if(document.route.steps.some(step=>step.required&&!document.actions.some(action=>actionFulfilsStep(action,step,document))))return false;
+  if(document.actions.some(action=>action.action==='returned'&&action.contentRevision===document.contentRevision&&action.contentHash===document.contentHash))return false;
   if (rules.independentApprovalFromRole) {
     const current=document.actions.filter(a=>a.action==='signed'&&a.contentRevision===document.contentRevision&&a.contentHash===document.contentHash);
     const manager=current.find(a=>a.role===rules.independentApprovalFromRole);
@@ -69,7 +86,7 @@ export function recordSigningAction(document: SigningDocument, rules: SigningGua
   if (!input.actorPersonId || !input.actorName.trim() || !Number.isFinite(Date.parse(input.at))) invalid('The verified signer and action time are required.');
   if (input.action==='returned'&&!input.comment?.trim()) invalid('Explain why the review is being returned.');
   if (input.action==='signed'&&(!input.consent||!input.method||!validV9SignatureValue(input.method,input.value??''))) invalid('Enter your signature and confirm consent.');
-  const action: SigningAction={id:input.id,stepId:step.id,contentRevision:input.revision,contentHash:input.hash,actorId:input.actorId,actorPersonId:input.actorPersonId,actorName:input.actorName,representedId:step.representedId??step.holderId,role:step.role,at:input.at,action:input.action,comment:input.comment?.trim()??'',signature:input.action==='signed'?{method:input.method!,value:input.value!,consent:true}:null};
+  const action: SigningAction={id:input.id,stepId:step.id,contentRevision:input.revision,contentHash:input.hash,actorId:input.actorId,actorPersonId:input.actorPersonId,actorName:input.actorName,representedId:step.representedId??step.holderId,role:step.role,at:input.at,action:input.action,comment:input.comment?.trim()??'',...(input.action==='signed'&&step.coveredStepIds?.length?{coveredStepIds:[...step.coveredStepIds]}:{}),signature:input.action==='signed'?{method:input.method!,value:input.value!,consent:true}:null};
   const next={...document,actions:[...document.actions,action]};
   if (rules.independentApprovalFromRole&&step.kind==='approve') {
     const manager=next.actions.find(a=>a.action==='signed'&&a.role===rules.independentApprovalFromRole&&a.contentRevision===input.revision&&a.contentHash===input.hash);
@@ -93,7 +110,7 @@ export function reviseSigningDocument(document: SigningDocument, hash: string, r
 export function replacePendingSigner(document: SigningDocument, rules: SigningGuardrails, input: {stepId:string;holderId:string;holderPersonId?:string;reason:string;kind:'delegation'|'holder_changed'|'missing_holder'}): SigningDocument {
   if (!input.holderId||!input.reason.trim()||!['delegation','holder_changed','missing_holder'].includes(input.kind)) invalid('A replacement holder and recorded reason are required.');
   const step=document.route.steps.find(s=>s.id===input.stepId);
-  if (!step||document.actions.some(a=>a.stepId===step.id&&a.contentRevision===document.contentRevision&&a.contentHash===document.contentHash&&a.action==='signed')) throw new SigningError('conflict','Completed signatures cannot be reassigned.');
+  if (!step||document.actions.some(action=>actionFulfilsStep(action,step,document))) throw new SigningError('conflict','Completed signatures cannot be reassigned.');
   const next={...document,route:{...document.route,steps:document.route.steps.map(s=>s.id===step.id?{...s,holderId:input.holderId,holderPersonId:input.holderPersonId,representedId:input.kind==='delegation'?(s.representedId??s.holderId??undefined):undefined}:s)}};
   validateSigningRoute(next.route,rules);
   return next;

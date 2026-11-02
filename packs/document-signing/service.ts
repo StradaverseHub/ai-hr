@@ -69,3 +69,10 @@ async function hydrateRoute(tx:Tx,ctx:SessionContext,route:SigningRoute):Promise
   }
   return {...route,steps};
 }
+
+
+/** Adopt the exact native Probation route in one revision, preserving completed signatures. */
+export async function refreshCanonicalProbationSigningRouteTx(tx:Tx,id:string):Promise<SigningDocument>{
+ const [row]=await tx.execute<{data:SigningDocument}>(sql`select app.document_signing_refresh_probation(${id}::uuid) as data`);
+ return row.data;
+}
