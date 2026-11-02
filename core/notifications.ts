@@ -1,3 +1,4 @@
+import {contractNotificationRecipientsTx} from '../packs/contracts/service';
 import {currentFollowupTargetsTx} from './automatic-followups';
 import type { Tx as AiReadTx } from '../db/client';
 import { withCanonicalAiReadTx } from './ai-read-transaction';
@@ -330,6 +331,11 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     kind:'employee-home.greeting',category:null,recipients:async()=>[],
     render:(_payload,ev)=>({severity:'info',title:'employeeHome.greetingNotification.title',
       body:'employeeHome.greetingNotification.body',linkPath:`/me/greetings/${ev.aggregateId}`}),
+  },
+  'contract.notification-due': {
+    kind:'contract.notification-due',category:'review',
+    recipients:(tx,ev)=>contractNotificationRecipientsTx(tx,ev.aggregateId),
+    render:()=>({severity:'action',title:'Contract staff task',body:'Open Contract Management to review your assigned task.',linkPath:'/lifecycle/contracts'}),
   },
   'onboarding.digest': {
     kind:'onboarding.digest',category:'onboarding',

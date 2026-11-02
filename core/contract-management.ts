@@ -97,3 +97,52 @@ export async function captureContractRetirementEvidence(ctx:SessionContext,raw:u
 export async function verifyContractRetirementEvidence(ctx:SessionContext,raw:unknown){const p=z.object({custodyId:uuid,reason:z.string().trim().min(20).max(5000)}).strict().parse(raw);return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{proof:{approvalEventId:string;healthEventId:string}}>(sql`select app.contract_verify_retirement(${p.custodyId}::uuid,${p.reason}) as proof`);return r.proof;});}
 export async function contractRetirementEvidence(ctx:SessionContext){return withLifecycleTenant(ctx,tx=>tx.execute<{id:string;companyId:string;employmentId:string;capturedBy:string;verifiedBy:string|null;sourceRevision:string;approvalEventId:string|null;healthEventId:string|null}>(sql`select id,company_id as "companyId",employment_id as "employmentId",captured_by as "capturedBy",verified_by as "verifiedBy",source_revision as "sourceRevision",approval_event_id as "approvalEventId",health_event_id as "healthEventId" from contract_retirement_custody order by captured_at desc limit 500`));}
 export async function contractRetirementChoices(ctx:SessionContext,employmentId:string){uuid.parse(employmentId);return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{choices:{source:ContractSource;retirements:{id:string;number:string;state:string}[];documents:{id:string;title:string;fileName:string;createdAt:string}[]}}>(sql`select app.contract_retirement_choices(${employmentId}::uuid) as choices`);return r.choices;});}
+
+export async function contractNotificationRecipientsTx(tx:Tx,messageId:string):Promise<string[]>{if(!uuid.safeParse(messageId).success)return [];const rows=await tx.execute<{employment_id:string}>(sql`select * from app.contract_notification_recipients(${messageId}::uuid)`);return rows.map(r=>r.employment_id);}
+export async function contractNotificationContentTx(tx:Tx,messageId:string,employmentId:string):Promise<{subject:string;body:string;linkPath:string}|null>{if(!uuid.safeParse(messageId).success||!uuid.safeParse(employmentId).success)return null;const [r]=await tx.execute<{content:{subject:string;body:string;linkPath:string}|null}>(sql`select app.contract_notification_content(${messageId}::uuid,${employmentId}::uuid) as content`);return r?.content??null;}
+
+/** One atomic canonical construction plus source receipt; retries never create another exit. */
+export async function contractOffboardingTx(tx:Tx,ctx:SessionContext,caseId:string,manualReason?:string){
+ const [r]=await tx.execute<{intent:{employmentId:string;type:'Contract end'|'Retirement';noticeDate:string;lastDay:string;manualHandoff:boolean;offboardingCaseId?:string}}>(sql`select app.contract_offboarding_intent(${uuid.parse(caseId)}::uuid) as intent`);const intent=r.intent;
+ if(intent.offboardingCaseId)return intent;
+ if(intent.manualHandoff){if(!manualReason)return {manualHandoff:true,pending:true};const [done]=await tx.execute<{data:ContractCase}>(sql`select app.contract_complete_handoff(${caseId}::uuid,NULL,${manualReason}) as data`);return done.data;}
+ const {v9CreateOffboardingTx}=await import('../packs/lifecycle/service');
+ const offboardingId=await v9CreateOffboardingTx(tx,ctx,{employmentId:intent.employmentId,type:intent.type,noticeDate:intent.noticeDate,lastDay:intent.lastDay},{kind:'contract',caseId});
+ const [done]=await tx.execute<{data:ContractCase}>(sql`select app.contract_complete_handoff(${caseId}::uuid,${offboardingId}::uuid,NULL) as data`);return done.data;
+}
+export async function handoffContract(ctx:SessionContext,raw:unknown){const p=z.object({caseId:uuid,manualReason:z.string().trim().min(10).max(5000).optional()}).strict().parse(raw);return withLifecycleTenant(ctx,tx=>contractOffboardingTx(tx,ctx,p.caseId,p.manualReason));}
+export async function runContractWorkflow(ctx:SessionContext,raw:unknown){const p=z.object({caseId:uuid,workflowId:uuid,event:z.enum(['beforeContractEnd','decisionSubmitted','approvalRejected','signatureDeclined']),eventKey:z.string().max(200).optional()}).strict().parse(raw);return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{processed:number}>(sql`select app.contract_run_workflow(${p.caseId}::uuid,${p.workflowId}::uuid,${p.event}) as processed`);return r;});}
+export async function reconcileContractSource(ctx:SessionContext,raw:unknown){const p=z.object({caseId:uuid,revision,reason:z.string().trim().min(10).max(5000)}).strict().parse(raw);return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{data:ContractCase}>(sql`select app.contract_reconcile_source(${p.caseId}::uuid,${p.revision},${p.reason}) as data`);return r.data;});}
+export async function verifyContractRecords(ctx:SessionContext,raw:unknown){const p=z.object({caseId:uuid,reason:z.string().trim().min(10).max(5000)}).strict().parse(raw);return withLifecycleTenant(ctx,tx=>tx.execute(sql`select app.contract_verify_records(${p.caseId}::uuid,${p.reason})`));}
+
+/** Existing maintenance transport supplies a genuine owner connection. No fabricated login or roles. */
+export async function sweepContractManagement(ctx:SessionContext,connection:import('./notice-projection').NotificationSweepConnection,now:Date=new Date()):Promise<{processed:number;failed:number}>{
+ if(ctx.userId||!Number.isFinite(now.getTime()))throw new ContractManagementError('forbidden','Contract maintenance requires a tenant-bound owner connection.');
+ const {assertNotificationSweepConnection}=await import('./notice-projection'),{isModuleEnabled}=await import('./entitlements');let processed=0,failed=0;
+ const companies=await connection.withTenant(ctx,async tx=>{await assertNotificationSweepConnection(tx);return tx.execute<{company_id:string}>(sql`select company_id from contract_configuration where tenant_id=${ctx.tenantId}::uuid and app.contract_runtime(company_id) order by company_id`);});
+ for(const company of companies){
+  if(!isModuleEnabled(ctx,'lifecycle',company.company_id))continue;
+  const cases=await connection.withTenant(ctx,async tx=>{await assertNotificationSweepConnection(tx);return tx.execute<{id:string}>(sql`select id from contract_case where tenant_id=${ctx.tenantId}::uuid and company_id=${company.company_id}::uuid and data->>'state'<>'cancelled' order by id limit 1000`);});
+  for(const item of cases){try{
+   await connection.withTenant(ctx,async tx=>{
+    await assertNotificationSweepConnection(tx);
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    const [row]=await tx.execute<{data:ContractCase;source_conflict:string|null;company_id:string}>(sql`select data,source_conflict,company_id from contract_case where id=${item.id}::uuid and tenant_id=${ctx.tenantId}::uuid for update skip locked`);if(!row)return;
+    const [admission]=await tx.execute<{ok:boolean;source:ContractSource}>(sql`select app.contract_effect_authorised(${item.id}::uuid) as ok,app.contract_source((select employment_id from contract_case where id=${item.id}::uuid)) as source`);if(!admission?.ok)return;
+    if(!['renewed','handed_off'].includes(row.data.state)&&admission.source?.sourceRevision!==row.data.term.sourceRevision){
+     await tx.execute(sql`update contract_case set source_conflict='Personnel source changed; assigned PBP or GBS must reconcile the case.',last_synced_at=now() where id=${item.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);return;
+    }
+    await tx.execute(sql`update contract_case set last_synced_at=now() where id=${item.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+    if(row.data.state==='records_pending')await applyAcceptedContractRecordsTx(tx,ctx,item.id);
+    if(row.data.state==='ending'){
+     const [released]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from contract_document where case_id=${item.id}::uuid and released_at is not null and superseded_at is null) as ok`);
+     if(released?.ok)await contractOffboardingTx(tx,ctx,item.id);
+    }
+    const workflows=await tx.execute<{id:string;event:string}>(sql`select w.id,v.definition->'trigger'->>'event' as event from contract_workflow w join contract_workflow_version v on v.workflow_id=w.id and v.version=w.published_version and v.tenant_id=w.tenant_id where w.tenant_id=${ctx.tenantId}::uuid and w.company_id=${row.company_id}::uuid and w.enabled and w.published_version is not null order by w.id`);
+    for(const workflow of workflows)await tx.execute(sql`select app.contract_run_workflow(${item.id}::uuid,${workflow.id}::uuid,${workflow.event})`);
+    processed++;
+   });
+  }catch(error){failed++;await connection.withTenant(ctx,async tx=>{await assertNotificationSweepConnection(tx);await tx.execute(sql`update contract_effect set status='failed',error=${error instanceof Error?error.message.slice(0,2000):'Contract maintenance failed.'},attempts=attempts+1 where tenant_id=${ctx.tenantId}::uuid and case_id=${item.id}::uuid and status<>'done'`);});}}
+ }
+ return {processed,failed};
+}

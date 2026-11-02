@@ -38,3 +38,5 @@ export const v9PreviewUpdatedEmail: Service['v9PreviewUpdatedEmail'] = async (..
 export const v9OwnItem: Service['v9OwnItem'] = async (...args) => (await load()).v9OwnItem(...args);
 
 export const v9PreviewWorkflow: Service['v9PreviewWorkflow'] = async (...args) => (await load()).v9PreviewWorkflow(...args);
+
+export const v9CreateOffboardingTx: Service['v9CreateOffboardingTx'] = async (...args) => (await load()).v9CreateOffboardingTx(...args);
