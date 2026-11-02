@@ -33635,5 +33635,15 @@
     "legacy": "Onboarding & offboarding",
     "probation": "Probation",
     "contract_staff": "Contract Management"
+  },
+  "workflowEditor": {
+    "required": "Required",
+    "close": "Close workflow",
+    "view": "Workflow view",
+    "steps": "Steps",
+    "history": "Run history",
+    "when": "When",
+    "onlyIf": "Only if",
+    "then": "Then"
   }
 }

@@ -33635,5 +33635,15 @@
     "legacy": "入职与离职",
     "probation": "试用期",
     "contract_staff": "合同管理"
+  },
+  "workflowEditor": {
+    "required": "必需",
+    "close": "关闭工作流",
+    "view": "工作流视图",
+    "steps": "步骤",
+    "history": "运行历史",
+    "when": "何时",
+    "onlyIf": "仅当",
+    "then": "然后"
   }
 }

@@ -33635,5 +33635,15 @@
     "legacy": "Tiếp nhận & nghỉ việc",
     "probation": "Thử việc",
     "contract_staff": "Quản lý hợp đồng"
+  },
+  "workflowEditor": {
+    "required": "Bắt buộc",
+    "close": "Đóng quy trình",
+    "view": "Chế độ xem quy trình",
+    "steps": "Các bước",
+    "history": "Lịch sử chạy",
+    "when": "Khi nào",
+    "onlyIf": "Chỉ khi",
+    "then": "Sau đó"
   }
 }

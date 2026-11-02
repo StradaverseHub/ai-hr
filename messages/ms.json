@@ -33635,5 +33635,15 @@
     "legacy": "Kemasukan & pemberhentian",
     "probation": "Percubaan",
     "contract_staff": "Pengurusan Kontrak"
+  },
+  "workflowEditor": {
+    "required": "Diperlukan",
+    "close": "Tutup aliran kerja",
+    "view": "Paparan aliran kerja",
+    "steps": "Langkah",
+    "history": "Sejarah pelaksanaan",
+    "when": "Bila",
+    "onlyIf": "Hanya jika",
+    "then": "Kemudian"
   }
 }
