@@ -38,6 +38,8 @@ import { type SessionContext } from '../db/client';
 import { hireEmployee, updatePerson } from '../core/org';
 import {
   getStatutoryProfileMY,
+  initializeHiredStatutoryMY,
+  setStatutoryProfileMY,
   setIcProfileMY,
   setPassportProfileMY,
   PassportRequiredError,
@@ -289,6 +291,18 @@ describe('Identity sections — service + action behaviour (55865c32, unchanged 
     const res = await setIcProfileMY(a, { personId: e.personId, icNumber: '   ' });
     expect(res.id).toBeNull();
     expect(await getStatutoryProfileMY(a, e.personId)).toBeNull();
+  });
+
+  it('initializes new SKBBK elections without changing existing or explicit No choices', async () => {
+    const a=adminCtx(base),e=await hireWithNationality(a,'New SKBBK','Singaporean');
+    await initializeHiredStatutoryMY(a,{personId:e.personId,icNumber:null});
+    expect((await getStatutoryProfileMY(a,e.personId))?.subjectToSkbbk).toBe(true);
+    await setStatutoryProfileMY(a,{personId:e.personId,icNumber:null,subjectToSkbbk:false});
+    await initializeHiredStatutoryMY(a,{personId:e.personId,icNumber:null});
+    expect((await getStatutoryProfileMY(a,e.personId))?.subjectToSkbbk).toBe(false);
+    const second=await hireWithNationality(a,'Explicit No','Singaporean');
+    await initializeHiredStatutoryMY(a,{personId:second.personId,icNumber:null,subjectToSkbbk:false});
+    expect((await getStatutoryProfileMY(a,second.personId))?.subjectToSkbbk).toBe(false);
   });
 
   it('(nonmy-3) requires a foreign passport number, preserves omissions and validates supplied optional values', async () => {

@@ -471,6 +471,7 @@ export async function setStatutoryProfileMY(ctx:SessionContext,p:StatutoryInput,
 
 /** New hire initializer: preserve an existing person's election; only a genuinely new profile defaults on. */
 export async function initializeHiredStatutoryMY(ctx:SessionContext,p:StatutoryInput,outerTx?:Tx){
+ ctx=captureStatutoryContext(ctx);p=structuredClone(p);
  const run=async(tx:Tx)=>{await statutoryWriteIntervalMYTx(tx,ctx);const current=await getStatutoryProfileMYTx(tx,ctx,p.personId,{forUpdate:true});return setStatutoryProfileMY(ctx,{...p,subjectToSkbbk:p.subjectToSkbbk??current?.subjectToSkbbk??true},tx);};
  return outerTx?run(outerTx):withTenant(ctx,run);
 }
@@ -1076,10 +1077,7 @@ export async function setIcProfileMY(
   return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
-/** Item e3ce0d4d — an identity save was missing a mandatory passport field (number / issue / expiry). The
- *  trio is required for non-Malaysian employees, and required TOGETHER whenever any passport detail is
- *  entered (item 55865c32 — a partially-filled passport can never be saved); remark + issuing country are
- *  optional. Distinct message. */
+/** Country-owned passport completeness or supplied-format refusal. */
 export class PassportRequiredError extends Error {
   constructor() {
     super('A passport number is required for a non-Malaysian employee. Check any supplied passport dates and country code.');
