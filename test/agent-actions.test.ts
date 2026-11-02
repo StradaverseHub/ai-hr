@@ -27,7 +27,7 @@ import {lockStatutorySourceTx} from '../core/statutory-source-lock';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY, setBankProfileMY } from '../localization/my/statutory';
-import { resolveAnomalyVerdict } from '../core/payroll-anomaly';
+import { resolveAnomalyVerdict, openBlockingVerdicts } from '../core/payroll-anomaly';
 import { proposalRates } from '../core/agent-proposal';
 import {
   AGENT_ACTION_TYPES,
@@ -98,7 +98,7 @@ describe('ADR-0083 §2.5 — the action layer', () => {
       sourceEventIds: [],
       suggestedAction: 'anomaly.action.missingBankProfile',
     } as never);
-    return { employmentId: e.employmentId, personId: e.personId, verdictId: v!.id };
+    return { employmentId: e.employmentId, personId: e.personId, verdictId: v!.id, batchId };
   }
 
   /** A batch to hang verdicts from. The action layer never reads it; the FK requires it. */
@@ -130,6 +130,16 @@ describe('ADR-0083 §2.5 — the action layer', () => {
     expect(await executeAction(adminCtx(base),{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]})).toEqual({closed:0,stale:1});
     const [stored]=await owner.db.select().from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.id,f.verdictId));
     expect(stored.resolvedAt).toBeNull();
+    expect(await withTenant(adminCtx(base),tx=>openBlockingVerdicts(tx,f.batchId))).toContainEqual({employmentId:f.employmentId,verdictId:f.verdictId});
+  });
+
+  it('closes a whole verdict only when both supported causes are fixed and removes its actual block',async()=>{
+    const f=await flagged({withBank:true});
+    await owner.db.insert(schema.payrollAnomalyFinding).values({tenantId:base.tenantId,verdictId:f.verdictId,detectorId:'missing-tax-profile',severity:'block',facts:{},sourceEventIds:[],suggestedAction:'review'} as never);
+    expect(await withTenant(adminCtx(base),tx=>openBlockingVerdicts(tx,f.batchId))).toHaveLength(1);
+    expect(await executeAction(adminCtx(base),{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]})).toEqual({closed:1,stale:0});
+    expect(await withTenant(adminCtx(base),tx=>openBlockingVerdicts(tx,f.batchId))).toEqual([]);
+    expect(await executeAction(adminCtx(base),{typeId:'close_fixed_upstream',verdictIds:[f.verdictId]})).toEqual({closed:0,stale:1});
   });
 
   it('proposes nothing while the cause is still broken', async () => {
