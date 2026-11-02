@@ -3141,3 +3141,61 @@ BEGIN
  RETURN app.reward_post_native(p_unit,p_revision,p_batch);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_decision_command(uuid,integer,text,text,boolean),app.reward_post_command(uuid,integer,uuid)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Native governance review projection. The private monetary/source roster never crosses this
+-- boundary. Audit actor names remain an INVOKER person-reader concern, not a definer disclosure.
+CREATE FUNCTION app.reward_governance_history_visible(p_state jsonb,p_entries uuid[],p_employments uuid[])RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result jsonb:=p_state;selected jsonb;awards jsonb;
+BEGIN
+ IF p_state IS NULL OR p_state='null'::jsonb THEN RETURN NULL;END IF;
+ IF jsonb_typeof(p_state)<>'object'THEN RAISE EXCEPTION 'Invalid Reward governance history' USING ERRCODE='22023';END IF;
+ IF p_state->'selection'IS NOT NULL AND p_state->'selection'<>'null'::jsonb THEN
+  SELECT coalesce(jsonb_agg(value ORDER BY n),'[]'::jsonb)INTO selected FROM jsonb_array_elements(p_state->'selection'->'employmentIds')WITH ORDINALITY ids(value,n)WHERE value#>>'{}'=ANY(ARRAY(SELECT id::text FROM unnest(p_employments)id));
+  result:=jsonb_set(result,'{selection,employmentIds}',selected);
+ ELSE result:=result||jsonb_build_object('selection',NULL);END IF;
+ SELECT coalesce(jsonb_object_agg(key,value),'{}'::jsonb)INTO awards FROM jsonb_each(coalesce(nullif(p_state->'awards','null'::jsonb),'{}'::jsonb))WHERE key=ANY(ARRAY(SELECT id::text FROM unnest(p_entries)id));
+ RETURN result||jsonb_build_object('awards',awards);
+END $$;
+CREATE FUNCTION app.reward_governance_review(p_unit uuid)RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;actor public.app_user;roles text[];is_gr boolean;can_amounts boolean;state jsonb;public_state jsonb;calculation jsonb;entries jsonb;route_funding jsonb;senior jsonb:='[]';history jsonb:='[]';branches jsonb:='[]';visible_ids uuid[]:='{}';visible_employments uuid[]:='{}';item record;award jsonb;senior_count integer:=0;increment_total double precision:=0;bonus_total double precision:=0;effective_multiplier jsonb;
+BEGIN
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
+ SELECT u.* INTO actor FROM public.app_user u WHERE u.id=app.current_user_id()AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
+ SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL;
+ roles:=ARRAY(SELECT app.reward_roles(p_unit));
+ IF actor.id IS NULL OR unit.id IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;
+ IF cardinality(roles)=0 THEN RAISE EXCEPTION 'Ask an administrator to assign your Reward Desk role for this unit.' USING ERRCODE='42501';END IF;
+ IF app.function_action_allowed('rewards.review','view',unit.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Reward review function unavailable' USING ERRCODE='42501';END IF;
+ IF NOT app.reward_calc_source_identity_current(unit.id,unit.tenant_id)THEN RAISE EXCEPTION 'Reward recipient source unavailable' USING ERRCODE='42501';END IF;
+ is_gr:='gr'=ANY(roles);can_amounts:=roles&&ARRAY['gr','ctro','ec'];
+ IF is_gr THEN SELECT g.state INTO state FROM public.reward_governance g WHERE g.unit_id=unit.id AND g.tenant_id=unit.tenant_id;END IF;
+ SELECT g.snapshot INTO public_state FROM public.reward_governance_public g WHERE g.unit_id=unit.id AND g.tenant_id=unit.tenant_id;
+ IF unit.kind='annual'THEN calculation:=app.reward_calc_annual_unit(unit.id,unit.revision);ELSE
+  SELECT coalesce(jsonb_agg(jsonb_build_object('id',e.id,'source',e.source,'facts',e.facts,'recommendation',e.recommendation)ORDER BY e.id),'[]'::jsonb)INTO entries FROM public.reward_entry e WHERE e.unit_id=unit.id AND e.tenant_id=unit.tenant_id;
+  route_funding:=app.reward_funding(unit.id,false);calculation:=app.reward_calc_offcycle(entries,unit.kind,unit.offcycle,route_funding);
+ END IF;
+ FOR item IN SELECT e.id,e.employment_id,e.source,e.facts FROM public.reward_entry e JOIN public.employment actual ON actual.id=e.employment_id AND actual.tenant_id=e.tenant_id
+ WHERE e.unit_id=unit.id AND e.tenant_id=unit.tenant_id AND actual.person_id IS DISTINCT FROM actor.person_id AND app.reward_calc_entry_visible(jsonb_build_object('source',e.source,'facts',e.facts),roles,actor.person_id)ORDER BY e.id LOOP
+  visible_ids:=array_append(visible_ids,item.id);visible_employments:=array_append(visible_employments,item.employment_id);
+  IF NOT app.reward_calc_senior(unit.policy,jsonb_build_object('source',item.source,'facts',item.facts))THEN CONTINUE;END IF;
+  award:=NULL;IF can_amounts THEN SELECT a.award INTO award FROM public.reward_senior_award a WHERE a.unit_id=unit.id AND a.tenant_id=unit.tenant_id AND a.entry_id=item.id;END IF;
+  senior:=senior||jsonb_build_array(jsonb_build_object('entryId',item.id,'employmentId',item.employment_id,'name',item.source->'name','employeeCode',item.source->'employeeCode','grade',item.source->'grade','basicCents',CASE WHEN can_amounts THEN item.source->'basicCents'ELSE NULL END,'award',CASE WHEN can_amounts THEN award ELSE NULL END,'awaiting',coalesce(award->>'confirmedBy','')=''));
+  senior_count:=senior_count+1;
+  IF can_amounts AND coalesce(award->>'confirmedBy','')<>''THEN
+   increment_total:=increment_total+greatest(0::double precision,(award->>'newBasicCents')::double precision-(item.source->>'basicCents')::double precision);bonus_total:=bonus_total+(award->>'bonusCents')::double precision;
+  END IF;
+ END LOOP;
+ IF is_gr THEN
+  SELECT coalesce(jsonb_agg(branch ORDER BY branch COLLATE"C"),'[]'::jsonb)INTO branches FROM(SELECT DISTINCT e.facts->>'branch'AS branch FROM public.reward_entry e WHERE e.unit_id=unit.id AND e.tenant_id=unit.tenant_id AND coalesce(e.facts->>'branch','')<>'')b;
+  SELECT coalesce(jsonb_agg(jsonb_build_object('id',h.id,'kind',h.kind,'reason',h.reason,'actorId',h.actor_id,'createdAt',h.created_at,'before',app.reward_governance_history_visible(h.before_state,visible_ids,visible_employments),'after',app.reward_governance_history_visible(h.after_state,visible_ids,visible_employments))ORDER BY h.created_at DESC,h.id DESC),'[]'::jsonb)INTO history FROM public.reward_governance_history h WHERE h.unit_id=unit.id AND h.tenant_id=unit.tenant_id;
+ END IF;
+ effective_multiplier:=CASE WHEN unit.policy->>'bonusStructure'='branch'THEN'10000'::jsonb ELSE unit.policy->'multiplierBp'END;
+ RETURN jsonb_build_object('unitId',unit.id,'revision',unit.revision,'canEdit',is_gr AND unit.status='draft'AND unit.kind='annual','isGr',is_gr,'canAmounts',can_amounts,'managed',public_state IS NOT NULL,'available',true,
+ 'legacyInputs',CASE WHEN is_gr THEN jsonb_build_object('forecastCents',NULL,'actualCents',unit.policy->'patActual','targetCents',unit.policy->'patTarget','targetMonthsBp',unit.policy->'targetMonthsBp','multiplierBp',effective_multiplier,'branchRatings',unit.policy->'branchRatings')ELSE NULL END,
+ 'poolStatus',coalesce(public_state->>'status','legacy'),'inputs',CASE WHEN is_gr THEN state->'inputs'ELSE NULL END,'selection',CASE WHEN is_gr THEN state->'selection'ELSE NULL END,'exemption',CASE WHEN is_gr THEN state->'exemption'ELSE NULL END,'previousPools',public_state->'previousPools',
+ 'pools',jsonb_build_object('standard',calculation->'budgets'->'standard'->'bonusPoolCents','h',calculation->'budgets'->'h'->'bonusPoolCents'),'branches',branches,'senior',senior,'totals',CASE WHEN can_amounts THEN jsonb_build_object('count',senior_count,'incrementCents',increment_total,'bonusCents',bonus_total)ELSE NULL END,'history',history);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_governance_history_visible(jsonb,uuid[],uuid[]),app.reward_governance_review(uuid)FROM PUBLIC,ai_hr_app;

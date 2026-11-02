@@ -68,6 +68,18 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
    expect(projected.budgets.standard).toEqual((await view()).budgets.standard);
   }
  });
+ it('differentially projects native governance without disclosing the private roster or borrowing audit actor-name access',async()=>{
+  await saveInputs();
+  await proposeRewardExemption(gr,unitId,(await view()).unit.revision,'Actual projection independent exemption');
+  await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'exemption');
+  for(const actor of [gr,checker,bu,ctro,payroll]){
+   const expected=await getRewardUnitGovernance(actor,unitId),[result]=await owner.withTenant(actor,tx=>tx.execute<{value:Record<string,unknown>&{history:Record<string,unknown>[];branches:string[]}}>(sql`select app.reward_governance_review(${unitId}::uuid)as value`));
+   const normalize=(value:typeof expected|typeof result.value)=>({...value,branches:[...value.branches].sort(),history:value.history.map(row=>{const {actorName:_name,...rest}=row;return {...rest,createdAt:new Date(String(row.createdAt)).toISOString()};})});
+   expect(normalize(result.value)).toEqual(normalize(expected));
+   if(actor===gr)expect(result.value.history.length).toBeGreaterThan(0);else if(actor!==checker){expect(result.value.history).toEqual([]);expect(result.value).toMatchObject({inputs:null,selection:null,exemption:null,legacyInputs:null});}
+   await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_governance_review(${unitId}::uuid)`))).rejects.toThrow();
+  }
+ });
  it('refuses same-user confirmation and serializes competing stale saves with one winner',async()=>{
   const rev=(await view()).unit.revision;
   const attempts=await Promise.allSettled([saveRewardUnitInputs(gr,unitId,rev,inputs,'First concurrent budget update'),saveRewardUnitInputs(gr,unitId,rev,{...inputs,forecastCents:800000},'Second concurrent budget update')]);
