@@ -147,11 +147,7 @@ export async function proposeActions(ctx: SessionContext): Promise<ActionProposa
         detectorId: schema.payrollAnomalyFinding.detectorId,
         name: schema.person.fullName,
         paymentMethod: schema.employment.paymentMethod,
-        ic: schema.employeeStatutoryMy.icNumber,
-        passport: schema.employeeStatutoryMy.passportNumber,
         taxNumber: schema.employeeStatutoryMy.taxNumber,
-        epfNumber: schema.employeeStatutoryMy.epfNumber,
-        socsoNumber: schema.employeeStatutoryMy.socsoNumber,
         bankAccountNo: schema.employeeStatutoryMy.bankAccountNo,
       })
       .from(schema.payrollAnomalyVerdict)
@@ -177,7 +173,7 @@ export async function proposeActions(ctx: SessionContext): Promise<ActionProposa
     const out:ProposedSubject[]=[];
     for(const group of grouped.values()) {
       const first=group[0]!;
-      if(!allFixedUpstreamFindingsClear(group.map(r=>r.detectorId),gapsForRecord({...first,hasComp:true})))continue;
+      if(!allFixedUpstreamFindingsClear(group.map(r=>r.detectorId),gapsForRecord({ic:null,passport:null,epfNumber:null,socsoNumber:null,...first,hasComp:true})))continue;
       out.push({verdictId:first.verdictId,employmentId:first.employmentId,name:first.name,detectorId:first.detectorId,cause:CAUSE_OF[first.detectorId]!});
     }
     return out;

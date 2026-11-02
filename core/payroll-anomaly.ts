@@ -830,7 +830,7 @@ async function resolveAnomalyVerdictOwned(
       // Join the actual shared-person source interval, then pin this employment and profile.
       const [subject]=await tx.select({personId:schema.employment.personId,paymentMethod:schema.employment.paymentMethod}).from(schema.employment).where(eq(schema.employment.id,row.employmentId)).for('share',{noWait:true});
       if(!subject)throw new Error('Payroll anomaly unavailable.');
-      const [profile]=await tx.select({ic:schema.employeeStatutoryMy.icNumber,passport:schema.employeeStatutoryMy.passportNumber,taxNumber:schema.employeeStatutoryMy.taxNumber,epfNumber:schema.employeeStatutoryMy.epfNumber,socsoNumber:schema.employeeStatutoryMy.socsoNumber,bankAccountNo:schema.employeeStatutoryMy.bankAccountNo}).from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,subject.personId)).for('share',{noWait:true});
+      const [profile]=await tx.select({taxNumber:schema.employeeStatutoryMy.taxNumber,bankAccountNo:schema.employeeStatutoryMy.bankAccountNo}).from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,subject.personId)).for('share',{noWait:true});
       const findings=await tx.select({detectorId:schema.payrollAnomalyFinding.detectorId}).from(schema.payrollAnomalyFinding).where(eq(schema.payrollAnomalyFinding.verdictId,row.id)).for('share');
       const gaps=gapsForRecord({ic:null,passport:null,taxNumber:null,epfNumber:null,socsoNumber:null,bankAccountNo:null,...profile,paymentMethod:subject.paymentMethod,hasComp:true});
       if(!allFixedUpstreamFindingsClear(findings.map(f=>f.detectorId),gaps))throw new Error('Anomaly causes are not all fixed.');
