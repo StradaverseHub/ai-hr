@@ -16,6 +16,7 @@ const SAFE_ENV: Record<string, string> = {
   DATABASE_URL: 'postgresql://app:fixture@127.0.0.1:1/preflight',
   SHARE_PASSWORD: 'fixture-holding-gate-password',
   AI_CONFIG_SECRET: 'fixture-encryption-password',
+  TERAS_PROPOSAL_SECRET: 'fixture-proposal-signing-secret-0123456789',
   AUDIT_HASH_CHAIN_ENABLED: 'true',
   WORKOS_API_KEY: 'sk_customer_fixture',
   WORKOS_CLIENT_ID: 'client_customer_fixture',
@@ -137,7 +138,7 @@ describe('customer deploy refuses unsafe configuration before any install or dat
   it.each([undefined, '', 'false', 'TRUE', '1'])('refuses AUDIT_HASH_CHAIN_ENABLED=%s', (value) => {
     refused(runDeploy({ AUDIT_HASH_CHAIN_ENABLED: value }), 'AUDIT_HASH_CHAIN_ENABLED');
   });
-  it.each(['WORKOS_API_KEY', 'WORKOS_CLIENT_ID', 'WORKOS_COOKIE_PASSWORD', 'NEXT_PUBLIC_WORKOS_REDIRECT_URI', 'AI_CONFIG_SECRET'])('refuses absent %s', (key) => {
+  it.each(['WORKOS_API_KEY', 'WORKOS_CLIENT_ID', 'WORKOS_COOKIE_PASSWORD', 'NEXT_PUBLIC_WORKOS_REDIRECT_URI', 'AI_CONFIG_SECRET', 'TERAS_PROPOSAL_SECRET'])('refuses absent %s', (key) => {
     refused(runDeploy({ [key]: undefined }), key);
   });
   it.each([
@@ -159,7 +160,7 @@ describe('customer deploy refuses unsafe configuration before any install or dat
   it.each(['user=postgres', 'database=another_database', 'role=ai_hr_owner', 'options=-c%20role%3Dai_hr_owner'])('refuses PostgreSQL query override %s', (query) => {
     refused(runDeploy({ DATABASE_URL: `${SAFE_ENV.DATABASE_URL}?${query}` }), 'query parameters');
   });
-  it.each(['WORKOS_API_KEY', 'WORKOS_CLIENT_ID', 'WORKOS_COOKIE_PASSWORD', 'SHARE_PASSWORD', 'AI_CONFIG_SECRET'])('refuses placeholder %s without printing the secret', (key) => {
+  it.each(['WORKOS_API_KEY', 'WORKOS_CLIENT_ID', 'WORKOS_COOKIE_PASSWORD', 'SHARE_PASSWORD', 'AI_CONFIG_SECRET', 'TERAS_PROPOSAL_SECRET'])('refuses placeholder %s without printing the secret', (key) => {
     const value = 'CHANGE_ME_this-is-sensitive-and-must-not-be-logged';
     const result = runDeploy({ [key]: value });
     refused(result, key);

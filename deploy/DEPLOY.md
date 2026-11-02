@@ -112,6 +112,7 @@ Fill in:
 - `DATABASE_URL` → `postgresql://ai_hr_app:<APP_PW>@localhost:5432/ai_hr`
 - `MIGRATION_DATABASE_URL` → `postgresql://ai_hr_owner:<OWNER_PW>@localhost:5432/ai_hr`
 - `AI_CONFIG_SECRET` → `openssl rand -base64 32` (keep it stable — changing it breaks stored AI keys)
+- `TERAS_PROPOSAL_SECRET` → `openssl rand -base64 48` (at least 32 characters; keep it stable — it signs Noveri leave cards and conversation continuations, and without it every Noveri turn fails)
 - `SHARE_PASSWORD` → a strong throwaway password (you'll give this to the consultant)
 - `PORT` → leave as-is
 - `ALLOW_DEMO_SESSION`, `DEV_TENANT_ID`, `DEV_USER_ID` → leave as-is **on the gated demo box only.**

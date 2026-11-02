@@ -40,6 +40,9 @@ export function customerEnvironmentErrors(env = process.env, cwd = process.cwd()
   }
   if (env.NODE_TLS_REJECT_UNAUTHORIZED === '0') errors.push('NODE_TLS_REJECT_UNAUTHORIZED must not disable certificate verification.');
   required('AI_CONFIG_SECRET', 16);
+  // Signs Noveri leave cards and conversation continuations (core/proposals/proposal.ts, core/teras-wiring/history.ts);
+  // without it every Noveri turn fails after the harness answers.
+  required('TERAS_PROPOSAL_SECRET', 32);
   if (env.AUTH_PROVIDER === 'workos') {
     required('WORKOS_API_KEY');
     required('WORKOS_CLIENT_ID');
