@@ -280,7 +280,7 @@ $$;
 --> statement-breakpoint
 CREATE FUNCTION app.data_permission_record_read(p_employment uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND current_setting('transaction_isolation')='read committed' AND (NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id())
+ SELECT app.principal_snapshot_current() AND (NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=app.current_tenant_id() AND a.user_id=app.current_user_id())
  OR app.data_permission_row_born('employment',p_employment,true)
  OR EXISTS(SELECT 1 FROM public.employment e
  WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() AND e.voided_at IS NULL
@@ -291,7 +291,7 @@ GRANT EXECUTE ON FUNCTION app.data_permission_record_read(uuid) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.data_permission_person_read(p_person uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND current_setting('transaction_isolation')='read committed' AND (app.is_self_person(p_person) OR app.data_permission_row_born('person',p_person,true)
+ SELECT app.principal_snapshot_current() AND (app.is_self_person(p_person) OR app.data_permission_row_born('person',p_person,true)
  OR EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=app.current_tenant_id() AND app.data_permission_record_read(e.id))
  OR NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.user_id=app.current_user_id() AND a.tenant_id=app.current_tenant_id()));
 $$;
@@ -810,7 +810,7 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_te
 DECLARE q public.profile_change_request;candidate jsonb;approver uuid;
 BEGIN
  SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id();
- IF NOT FOUND OR current_setting('transaction_isolation')<>'read committed' OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id)
+ IF NOT FOUND OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id)
   OR NOT app.access_profile_review_permitted(q.employment_id) THEN RETURN false;END IF;
  IF q.route_context->'version'='3'::jsonb THEN
   IF q.route_context->>'decisionMode' IS DISTINCT FROM 'any' OR jsonb_typeof(q.route_context->'approvers') IS DISTINCT FROM 'array'
@@ -843,7 +843,7 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_te
 DECLARE q public.profile_change_request;principal jsonb;
 BEGIN
  SELECT * INTO q FROM public.profile_change_request WHERE id=p_request AND tenant_id=app.current_tenant_id();
- IF NOT FOUND OR current_setting('transaction_isolation')<>'read committed' OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id) OR (NOT app.can_admin_employment(q.employment_id) AND NOT app.data_permission_profile_responsibility(q.id))
+ IF NOT FOUND OR NOT app.principal_snapshot_current() OR app.is_self_person(q.person_id) OR (NOT app.can_admin_employment(q.employment_id) AND NOT app.data_permission_profile_responsibility(q.id))
   OR NOT app.access_profile_review_permitted(q.employment_id) THEN RETURN false;END IF;
  IF q.route_context->'version'='3'::jsonb THEN
   IF q.route_context->>'decisionMode' IS DISTINCT FROM 'any' OR jsonb_typeof(q.route_context->'approvers') IS DISTINCT FROM 'array'
@@ -962,3 +962,130 @@ REVOKE ALL ON FUNCTION app.data_permission_protected_assignment_guard() FROM PUB
 CREATE CONSTRAINT TRIGGER data_permission_recovery_assignment AFTER INSERT OR UPDATE ON role_assignment DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.data_permission_protected_assignment_guard();
 CREATE CONSTRAINT TRIGGER data_permission_recovery_assignment AFTER INSERT OR UPDATE ON access_membership DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.data_permission_protected_assignment_guard();
 CREATE CONSTRAINT TRIGGER data_permission_recovery_assignment AFTER UPDATE ON app_user DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.data_permission_protected_assignment_guard();
+--> statement-breakpoint
+-- Native RR report/ESS readers keep consistent source snapshots. A cheap committed generation
+-- fence around that snapshot detects authority changes before any result is returned to its caller.
+CREATE TABLE app.data_permission_read_generation (
+ tenant_id uuid PRIMARY KEY REFERENCES public.tenant(id) ON DELETE CASCADE,generation bigint NOT NULL DEFAULT 1
+);
+ALTER TABLE app.data_permission_read_generation ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.data_permission_read_generation FROM PUBLIC,ai_hr_app;
+INSERT INTO app.data_permission_read_generation(tenant_id) SELECT id FROM public.tenant;
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_read_generation_bump() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid;query text;columns text[]:=string_to_array(coalesce(TG_ARGV[0],''),',');
+BEGIN
+ IF TG_TABLE_NAME='access_capability' THEN UPDATE app.data_permission_read_generation SET generation=generation+1;RETURN NULL;END IF;
+ IF TG_TABLE_NAME='tenant' THEN
+  IF TG_OP='INSERT' THEN INSERT INTO app.data_permission_read_generation(tenant_id) SELECT id FROM new_rows ON CONFLICT DO NOTHING;
+  ELSIF TG_OP='UPDATE' THEN UPDATE app.data_permission_read_generation g SET generation=g.generation+1 WHERE g.tenant_id IN(SELECT id FROM new_rows);END IF;
+  RETURN NULL;
+ END IF;
+ IF TG_OP='UPDATE' AND cardinality(columns)>0 THEN
+  query:='SELECT DISTINCT n.tenant_id FROM new_rows n JOIN old_rows o USING(id) WHERE EXISTS(SELECT 1 FROM unnest($1::text[]) column_name WHERE to_jsonb(n)->column_name IS DISTINCT FROM to_jsonb(o)->column_name)';
+ ELSE query:='SELECT DISTINCT tenant_id FROM '||CASE WHEN TG_OP='DELETE' THEN 'old_rows' ELSE 'new_rows' END;END IF;
+ FOR t IN EXECUTE query USING columns LOOP
+  INSERT INTO app.data_permission_read_generation SELECT t,1 WHERE EXISTS(SELECT 1 FROM public.tenant tenant_row WHERE tenant_row.id=t) ON CONFLICT(tenant_id) DO UPDATE SET generation=app.data_permission_read_generation.generation+1;
+ END LOOP;RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_read_generation_bump() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_read_stamp() RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.principal_snapshot_current() OR app.current_agent_principal() IS NOT NULL THEN
+  encode(sha256(convert_to(jsonb_build_array(g.tenant_id,g.generation,app.current_user_id(),app.current_agent_principal(),current_date)::text,'UTF8')),'hex') ELSE NULL END
+ FROM app.data_permission_read_generation g WHERE g.tenant_id=app.current_tenant_id();
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_read_stamp() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.data_permission_read_stamp() TO ai_hr_app;
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON person REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('nationality,gender,marital_status');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON person REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('nationality,gender,marital_status');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON person REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('nationality,gender,marital_status');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON employment REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('person_id,company_id,grade_id,org_division,org_branch,org_section,org_team,employment_category,employee_code,hired_on,join_date,blacklisted_at,resignation_date,last_working_date,terminated_on,final_confirmation_date,confirmation_date,probation_end_date,provisional_end_on,voided_at');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON employment REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('person_id,company_id,grade_id,org_division,org_branch,org_section,org_team,employment_category,employee_code,hired_on,join_date,blacklisted_at,resignation_date,last_working_date,terminated_on,final_confirmation_date,confirmation_date,probation_end_date,provisional_end_on,voided_at');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON employment REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('person_id,company_id,grade_id,org_division,org_branch,org_section,org_team,employment_category,employee_code,hired_on,join_date,blacklisted_at,resignation_date,last_working_date,terminated_on,final_confirmation_date,confirmation_date,probation_end_date,provisional_end_on,voided_at');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON assignment REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('employment_id,company_id,business_unit_id,department_id,position_id,cost_center_id,employment_type,valid_from,valid_to,superseded_at');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON assignment REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('employment_id,company_id,business_unit_id,department_id,position_id,cost_center_id,employment_type,valid_from,valid_to,superseded_at');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON assignment REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('employment_id,company_id,business_unit_id,department_id,position_id,cost_center_id,employment_type,valid_from,valid_to,superseded_at');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON company REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('parent_company_id,archived_at');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON company REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('parent_company_id,archived_at');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON company REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('parent_company_id,archived_at');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON app_user REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('person_id,archived_at');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON app_user REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('person_id,archived_at');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON app_user REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('person_id,archived_at');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON tenant REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON tenant REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON role_assignment REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON role_assignment REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON role_assignment REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON access_configuration REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON access_configuration REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON access_configuration REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON access_group REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON access_group REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON access_group REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON access_group_grant REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON access_group_grant REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON access_group_grant REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON access_membership REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON access_membership REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON access_membership REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON access_user_override REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON access_user_override REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON access_user_override REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON access_capability REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON access_capability REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON access_capability REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON data_permission_profile REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON data_permission_profile REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON data_permission_profile REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON data_permission_revision REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON data_permission_revision REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON data_permission_revision REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON user_data_permission_assignment REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON user_data_permission_assignment REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON user_data_permission_assignment REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON reporting_line REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON reporting_line REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON reporting_line REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON department REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON department REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('company_id,parent_department_id,business_unit_id,head_employment_id,is_global,archived_at');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON department REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON business_unit REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON business_unit REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('company_id,head_employment_id,is_global,archived_at');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON business_unit REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON tenant_module REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON tenant_module REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON tenant_module REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON tenant_setting REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON tenant_setting REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON tenant_setting REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON letter_capability_grant REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON letter_capability_grant REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON letter_capability_grant REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_insert AFTER INSERT ON payroll_permission_grant REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_update AFTER UPDATE ON payroll_permission_grant REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_read_generation_delete AFTER DELETE ON payroll_permission_grant REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_identity_generation_bump() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid;query text;
+BEGIN
+ IF TG_TABLE_NAME='app_external_identity' THEN
+  query:='SELECT DISTINCT u.tenant_id FROM public.app_user u JOIN '||CASE WHEN TG_OP='DELETE' THEN 'old_rows' ELSE 'new_rows' END||' binding ON binding.app_user_id=u.id';
+  IF TG_OP='UPDATE' THEN query:=query||' UNION SELECT DISTINCT u.tenant_id FROM public.app_user u JOIN old_rows binding ON binding.app_user_id=u.id';END IF;
+ ELSE
+  query:='SELECT DISTINCT u.tenant_id FROM public.app_user u JOIN public.app_external_identity binding ON binding.app_user_id=u.id JOIN '||CASE WHEN TG_OP='DELETE' THEN 'old_rows' ELSE 'new_rows' END||' credential ON credential.owner_id::text=binding.subject WHERE credential.record_key LIKE ''credential:%''';
+ END IF;
+ FOR t IN EXECUTE query LOOP UPDATE app.data_permission_read_generation SET generation=generation+1 WHERE tenant_id=t;END LOOP;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_identity_generation_bump() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER data_permission_identity_generation_insert AFTER INSERT ON app_external_identity REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();
+CREATE TRIGGER data_permission_identity_generation_update AFTER UPDATE ON app_external_identity REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();
+CREATE TRIGGER data_permission_identity_generation_delete AFTER DELETE ON app_external_identity REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();
+CREATE TRIGGER data_permission_credential_generation_update AFTER UPDATE ON app_internal_auth_record REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();
+CREATE TRIGGER data_permission_credential_generation_delete AFTER DELETE ON app_internal_auth_record REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_identity_generation_bump();

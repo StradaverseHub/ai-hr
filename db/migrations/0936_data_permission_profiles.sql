@@ -94,7 +94,7 @@ CREATE FUNCTION app.data_permission_matches_for(p_user uuid,p_tenant uuid,p_empl
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE p public.data_permission_profile; rules jsonb; subject jsonb;
 BEGIN
- IF current_setting('transaction_isolation')<>'read committed' OR NOT EXISTS(SELECT 1 FROM public.app_user u
+ IF NOT EXISTS(SELECT 1 FROM public.app_user u
   WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RETURN false;END IF;
  subject:=app.data_permission_subject_for(p_tenant,p_employment,p_date);
  IF subject IS NULL THEN RETURN false;END IF;
