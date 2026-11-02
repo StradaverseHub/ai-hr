@@ -889,6 +889,12 @@ END $$;
 REVOKE ALL ON FUNCTION app.private_workflow_mail(uuid,uuid,text,boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.private_workflow_mail(uuid,uuid,text,boolean) TO ai_hr_app;
 
+CREATE FUNCTION identity_email.private_workflow_mail(p_delivery uuid,p_token uuid,p_issuer text) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.private_workflow_mail(p_delivery,p_token,p_issuer,true);
+$$;
+REVOKE ALL ON FUNCTION identity_email.private_workflow_mail(uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='aihr_identity_email') THEN GRANT EXECUTE ON FUNCTION identity_email.private_workflow_mail(uuid,uuid,text) TO aihr_identity_email;END IF;END $$;
+
 ALTER TABLE probation_occurrence ADD COLUMN workflow_id uuid REFERENCES probation_builder_definition(id),ADD COLUMN workflow_step_id text;
 CREATE FUNCTION app.probation_workflow_run(p_case uuid,p_part uuid,p_workflow uuid,p_expected integer,p_reason text) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
