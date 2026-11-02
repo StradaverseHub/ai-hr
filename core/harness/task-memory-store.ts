@@ -14,9 +14,23 @@ import {and,eq,gt,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {terasTaskMemory} from '../../db/teras-schema';
 import {TASK_MEMORY_VERSION,type TaskMemory,type TaskMemoryStore} from './memory';
+import {HARNESS_SPEC} from './spec';
 
 /** Task memory not updated within this interval is expired (migration 0906 erases it; the store never reads it). */
 export const TASK_MEMORY_RETENTION='1 day';
+
+/** Review L4 (seen in run 41363906691): two overlapping turns of one conversation (a double submit) each saved a
+ * whole memory and the later save silently overwrote the earlier. A save now succeeds only over the turn count it
+ * was built from; when another turn saved first, this turn is folded into the latest memory and saved again. */
+export function foldTurnInto(latest:TaskMemory,mine:TaskMemory):TaskMemory{
+ const {maxCompletedReads,maxOpenProposals}=HARNESS_SPEC.memory,turns=latest.turns+1;
+ const seen=new Set(latest.completedReads.map(row=>row.tool+'\n'+row.turn));
+ const reads=[...latest.completedReads,...mine.completedReads.filter(row=>!seen.has(row.tool+'\n'+row.turn)).map(row=>({tool:row.tool,turn:turns}))].slice(-maxCompletedReads);
+ const ids=new Set(latest.openProposals.map(row=>row.body.id));
+ const proposals=[...mine.openProposals.filter(row=>!ids.has(row.body.id)),...latest.openProposals].slice(0,maxOpenProposals);
+ return{...latest,goal:latest.goal??mine.goal,pendingQuestion:mine.pendingQuestion,completedReads:reads,openProposals:proposals,turns,
+  updatedAt:mine.updatedAt>latest.updatedAt?mine.updatedAt:latest.updatedAt};
+}
 
 export class TaskMemoryRefused extends Error{constructor(){super('Task memory belongs to another caller.');this.name='TaskMemoryRefused';}}
 
@@ -42,9 +56,27 @@ export class PostgresTaskMemoryStore implements TaskMemoryStore{
  }
  async save(memory:TaskMemory):Promise<void>{
   this.own(memory.tenantId,memory.userId);
-  const value=JSON.parse(JSON.stringify(memory)) as TaskMemory;
-  await withTenant(this.ctx,tx=>tx.insert(terasTaskMemory).values({tenantId:memory.tenantId,appUserId:memory.userId,conversationId:memory.conversationId,memory:value as unknown as Record<string,unknown>})
-   .onConflictDoUpdate({target:[terasTaskMemory.tenantId,terasTaskMemory.appUserId,terasTaskMemory.conversationId],set:{memory:value as unknown as Record<string,unknown>,updatedAt:sql`now()`}}));
+  let next=memory;
+  for(let attempt=0;attempt<5;attempt++){
+   const value=JSON.parse(JSON.stringify(next)) as TaskMemory,stored=value as unknown as Record<string,unknown>,base=next.turns-1;
+   const key=and(eq(terasTaskMemory.tenantId,next.tenantId),eq(terasTaskMemory.appUserId,next.userId),eq(terasTaskMemory.conversationId,next.conversationId));
+   const written=await withTenant(this.ctx,async tx=>{
+    // First turn: insert only. Later turns: replace only the memory this one was built from (same turn count), or an
+    // expired or unreadable row (which load treats as absent, so this turn was built from nothing).
+    const inserted=await tx.insert(terasTaskMemory).values({tenantId:next.tenantId,appUserId:next.userId,conversationId:next.conversationId,memory:stored})
+     .onConflictDoNothing().returning({id:terasTaskMemory.conversationId});
+    if(inserted.length)return true;
+    const updated=await tx.update(terasTaskMemory).set({memory:stored,updatedAt:sql`now()`})
+     .where(and(key,sql`((${terasTaskMemory.memory}->>'turns')::int = ${base} OR ${terasTaskMemory.updatedAt} <= now()-${TASK_MEMORY_RETENTION}::interval OR (${terasTaskMemory.memory}->>'version') IS DISTINCT FROM ${String(TASK_MEMORY_VERSION)})`))
+     .returning({id:terasTaskMemory.conversationId});
+    return updated.length>0;
+   });
+   if(written)return;
+   const latest=await this.load(next.tenantId,next.userId,next.conversationId);
+   if(!latest)continue;
+   next=foldTurnInto(latest,memory);
+  }
+  throw Error('Task memory could not be saved after concurrent turns.');
  }
  async delete(tenantId:string,userId:string,conversationId:string):Promise<void>{
   this.own(tenantId,userId);

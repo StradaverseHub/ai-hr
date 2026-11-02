@@ -76,7 +76,7 @@ describe('task memory under overlapping turns (database store)',()=>{
   const userId=await createAppUser(b.tenantId,hired.personId,'employee');
   me={...await entitledCtx(b,['employee']),userId,personId:hired.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} as SessionContext;
  });
- it('REVIEW pass: two overlapping turns in one conversation both count in task memory (runner.ts:119/223, task-memory-store.ts:36-41)',async()=>{
+ it('fixed L4: two overlapping turns in one conversation both count in task memory (runner.ts:119/223, task-memory-store.ts:36-41)',async()=>{
   const store=new PostgresTaskMemoryStore(me),conversationId='overlap-'+randomUUID();
   const turn=(question:string)=>{const {provider}=fakeTools();
    return runTurn({enabled:HARNESS_TEST_ONLY,ctx:me,conversationId,question,scope:{companyId:b.companyId,locale:'en'},
