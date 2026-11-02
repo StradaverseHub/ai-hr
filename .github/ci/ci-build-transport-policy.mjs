@@ -1,6 +1,7 @@
 /** Explicit CI-byte transport qualification only. Never a release or DB admission. */
 import {isDeepStrictEqual} from 'node:util';
 import {assertBuildRuntime,assertBuildCapacityProfile,BUILD_CAPACITY_PROFILE} from './build-production.mjs';
+import {BUILD_BUNDLE_FORMAT,trustedBundleHelpers,validateBundleHelpers,assertSourceBundleCapability} from './build-bundle-protocol.mjs';
 export const CI_TRANSPORT_WORKFLOW='.github/workflows/ci-build-transport-qualification.yml';
 const REPO='StradaverseHub/ai-hr',PRODUCER_WORKFLOW='.github/workflows/alpha-staging.yml';
 const SHA=/^[a-f0-9]{40}$/,DIGEST=/^[a-f0-9]{64}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -65,9 +66,9 @@ export function validateCiTransportMetadata({run,jobs,artifact,artifacts},e,{now
   &&artifact.size_in_bytes<=BUILD_CAPACITY_PROFILE.zipMaxBytes,'actual CI artifact identity/digest/bound');
  return producer;
 }
-export function validateCiTransportProvenance(p,e,runtime,localRunner,producerJob){
+export function validateCiTransportProvenance(p,e,runtime,localRunner,producerJob,capability){
  assertCiTransportInvocation(e);assertBuildRuntime(runtime,e);assertBuildCapacityProfile(p?.capacityProfile);
- ok(p?.format===2&&p.kind==='ci-system-testing-build-candidate'&&p.releaseAuthorized===false&&p.source===e.AIHR_CI_HEAD
+ ok(p?.format===BUILD_BUNDLE_FORMAT&&p.kind==='ci-system-testing-build-candidate'&&p.releaseAuthorized===false&&p.source===e.AIHR_CI_HEAD
   &&p.controller===e.AIHR_BUILD_PRODUCER_CONTROL_HEAD&&p.runId===Number(e.AIHR_BUILD_PRODUCER_RUN_ID)&&p.runAttempt===1
   &&p.repository===REPO&&p.repositoryId===1333414856&&p.workflowRef===REPO+'/'+PRODUCER_WORKFLOW+'@refs/heads/'+e.AIHR_BUILD_PRODUCER_BRANCH
   &&p.producerEvent===(e.AIHR_BUILD_PRODUCER_BRANCH==='alpha'?'push':'workflow_dispatch')&&p.producerRef==='refs/heads/'+e.AIHR_BUILD_PRODUCER_BRANCH
@@ -83,5 +84,14 @@ export function validateCiTransportProvenance(p,e,runtime,localRunner,producerJo
   &&absolute(origin.sourcePath)&&origin.sourcePath===p.buildSourcePath&&DIGEST.test(origin.bootSha256??'')
   &&absolute(localRunner?.sourcePath)&&localRunner.name===e.RUNNER_NAME&&DIGEST.test(localRunner.bootSha256??'')
   &&origin.name!==localRunner.name&&origin.sourcePath!==localRunner.sourcePath&&origin.bootSha256!==localRunner.bootSha256,'real fresh VM and relocation identities');
+ // The packet never chooses its own trusted helpers. The authenticated producer
+ // controller commit is the authority; both actual checkouts must support it.
+ ok(typeof capability?.controllerRoot==='string'&&typeof capability.sourceRoot==='string',
+  'independent controller/source capability roots required');
+ const helpers=trustedBundleHelpers(capability.controllerRoot,e.AIHR_BUILD_PRODUCER_CONTROL_HEAD);
+ validateBundleHelpers(p.bundleHelpers);
+ ok(isDeepStrictEqual(p.bundleHelpers,helpers),'producer helper hashes differ from authenticated controller Git');
+ assertSourceBundleCapability(capability.controllerRoot,helpers,e.AIHR_CI_CONTROL_HEAD);
+ assertSourceBundleCapability(capability.sourceRoot,helpers,e.AIHR_CI_HEAD);
  return true;
 }

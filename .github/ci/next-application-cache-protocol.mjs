@@ -1,16 +1,17 @@
 /** Optional application compiler input; never build/test/deployment authority. */
 import assert from 'node:assert/strict';
 import {assertCiCandidateBuildInvocation} from './build-production.mjs';
+import {BUILD_BUNDLE_HELPER_PATHS} from './build-bundle-protocol.mjs';
 import {NEXT_STATE_MEMBERS,validateNextContext,validateNextState,hash} from './next-build-cache-policy.mjs';
 export const NEXT_APPLICATION_STATE='next-application-state-v1';
 export const NEXT_APPLICATION_FAILURE='next-application-build-failure';
 export const NEXT_APPLICATION_MEMBERS=NEXT_STATE_MEMBERS;
 export const NEXT_APPLICATION_SEED=Object.freeze({kind:'seed',runId:40251838329,controller:'62704177c4045a187d6a787e5ab13e39599b8410',source:'62704177c4045a187d6a787e5ab13e39599b8410',artifactId:12621207674,digest:'sha256:2c6d5c29ee248d9b2832f0e3eaddd21358d32baba2bab63d923c34ae80a410d0',stateSha256:'a4089facf276e6ca95af79cbc85a746de7232aea4fc06887fa06af1780ab9372'});
-export const NEXT_APPLICATION_CODE=['.github/ci/cache-artifact-discovery.mjs',
+export const NEXT_APPLICATION_CODE=[...new Set(['.github/ci/cache-artifact-discovery.mjs',
  '.github/ci/next-application-cache.mjs','.github/ci/next-application-cache-protocol.mjs','.github/ci/next-build-cache.mjs','.github/ci/next-build-cache-policy.mjs',
  '.github/ci/build-production.mjs','.github/ci/build-bundle.py','.github/ci/runner-capacity.mjs','.github/ci/prepare-runner.sh',
- '.github/ci/extract-artifact.py','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml'
-];
+ '.github/ci/extract-artifact.py','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml',
+ ...Object.values(BUILD_BUNDLE_HELPER_PATHS)])];
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const id=v=>Number.isSafeInteger(v)&&v>0;
 export function assertManagedNextInvocation(e,event={}){

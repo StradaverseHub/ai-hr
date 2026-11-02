@@ -1,4 +1,42 @@
-# Canonical CI build packet — current version16 source contract
+# Canonical CI build packet
+
+## Current source contract — policy v18 / map transport format3
+
+Canonical CI/release builds use the lossless map producer. Manifest, build provenance,
+authenticated packet and installation grant/build descriptor all require format3;
+prepared System Testing observations remain format1. Capacity profile3 and its existing
+archive/ZIP/expanded-byte bounds are unchanged. Node22.23.3 / Next16.4.1 and the6144
+build heap remain the current tuple; no unrelated upstream heap or application batch
+is adopted by this protocol change.
+
+`build-bundle-protocol.mjs` fixes seven controller-owned helper paths: regular parser,
+map receiver, installer, grant validator, packet inspector, policy and protocol.
+Their SHA256 values come from authenticated immutable controller Git objects. Source
+Git capability and raw files must match before compilation and before installation;
+remote receivers recheck raw owned, non-writable-by-other-principals files without
+requiring Git. The canonical local inspector always derives expected hashes from
+controller Git. The separate granted remote inspector only reads a validated,
+immutable operator grant and does not create new release evidence.
+
+Post-activation and post-cleanup arrival verify the complete logical format3 inventory,
+including reconstructed maps and native aliases, against retained original metadata.
+Only the existing literal, safe runtime cache directory is exempted. Old installed
+format2 baselines remain opaque retained rollback identities. New v18 admission never
+converts v17 evidence or accepts a mixed2/3 packet/grant/helper pair. Component results
+keep their original sources and failed-area recovery remains the owner's policy.
+
+Legacy diagnostic builds stay explicitly purpose-bound to format2 and the regular
+producer/reader. They remain non-release evidence. Frozen format2 historical packet
+comparisons use their original inspector; there is no automatic2-or3 admission fallback.
+The artifact namespace `production-build-v1` and five member names remain stable;
+the versioned content inside is3 for canonical CI/release builds.
+
+This source contract does not grant protected-branch integration, staging installation,
+release acceptance or deployment. Qualification must retain exact source/controller,
+API-authenticated producer/consumer/artifact identities and actual receiver results.
+
+The dated version16/17 sections below retain historical rationale and observations;
+this current v18 contract supersedes their format2 admission direction only.
 
 Status: prepared in the isolated performance review branch. Pure/private integrity and typed-helper probes have run; this revised normal workflow has not run a complete release gate, promoted an artifact, or established a new release baseline. Main/live deployment stays disabled.
 

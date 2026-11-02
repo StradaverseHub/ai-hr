@@ -48,6 +48,10 @@ test('managed publishers bind actual complete controller Git blobs, not self-rep
  assert.throws(()=>verifyNextPublisherTree({...tree,tree:tree.tree.slice(1)},expected));
  assert.throws(()=>verifyNextPublisherTree({...tree,tree:[...tree.tree,tree.tree[0]]},expected));
  assert.throws(()=>verifyNextPublisherTree(tree,{...expected,[NEXT_APPLICATION_CODE[0]]:source}));
+ for(const helper of ['.github/ci/build-map-bundle.py','.github/ci/build-bundle-protocol.mjs','.github/ci/staging-build-install.mjs']){
+  assert(helper in expected,'Publisher must bind the new producer and receiver closure');
+  assert.throws(()=>verifyNextPublisherTree({...tree,tree:tree.tree.map(row=>row.path===helper?{...row,sha:source}:row)},expected));
+ }
 });
 test('state packet binds actual canonical compiler log/exit/source/context/age/cleanup and never supplies PASS',()=>{
  const f=applicationStateFixture(),check=files=>inspectNextStatePacket({...f,files,currentContext:f.context});

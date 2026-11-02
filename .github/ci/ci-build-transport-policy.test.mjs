@@ -1,23 +1,48 @@
-/** Pure hostile metadata controls only. No API, build, DB, process or deployment. */
-import test from 'node:test';
+/** Hostile metadata and real temporary Git identities; no API, build, DB or deployment. */
+import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {copyFileSync,mkdirSync,mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join,dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
 import {assertCiTransportInvocation,validateCiTransportRefs,validateCiTransportConsumerRun,validateCiTransportMetadata as metadataAtTime,validateCiTransportProvenance as provenanceWithJob,CI_TRANSPORT_WORKFLOW} from './ci-build-transport-policy.mjs';
 import {STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE} from './build-production.mjs';
+import {BUILD_BUNDLE_FORMAT,BUILD_BUNDLE_HELPER_PATHS,trustedBundleHelpers} from './build-bundle-protocol.mjs';
+// Three real immutable commits retain the same supported helper bytes. Their
+// provenance stays distinct without accepting packet-authored trust fixtures.
+const capabilityRoot=mkdtempSync(join(tmpdir(),'aihr-ci-transport-git-'));
+after(()=>rmSync(capabilityRoot,{recursive:true,force:true}));
+const repositoryRoot=fileURLToPath(new URL('../../',import.meta.url));
+const fixtureGit=args=>execFileSync('git',['-c','user.name=Transport fixture','-c','user.email=transport@example.invalid',
+ '-c','commit.gpgsign=false','-c','core.hooksPath=/dev/null',...args],{cwd:capabilityRoot,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+fixtureGit(['init','--quiet']);
+for(const path of Object.values(BUILD_BUNDLE_HELPER_PATHS)){
+ mkdirSync(dirname(join(capabilityRoot,path)),{recursive:true});
+ copyFileSync(join(repositoryRoot,path),join(capabilityRoot,path));
+}
+function commitIdentity(role){
+ writeFileSync(join(capabilityRoot,'fixture-identity'),role+'\n');
+ fixtureGit(['add','.']);fixtureGit(['commit','--quiet','-m',role]);
+ return fixtureGit(['rev-parse','HEAD']);
+}
 const now=Date.parse('2026-10-31T00:04:00Z');
 const validateCiTransportMetadata=(value,e,options={})=>metadataAtTime(value,e,{now,...options});
-const source='a'.repeat(40),origin='b'.repeat(40),control='c'.repeat(40),digest='d'.repeat(64);
+const origin=commitIdentity('producer'),source=commitIdentity('source'),control=commitIdentity('consumer'),digest='d'.repeat(64);
+const bundleHelpers=trustedBundleHelpers(capabilityRoot,origin);
 const env={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux',RUNNER_ARCH:'X64',ImageOS:'ubuntu24',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ATTEMPT:'1',GITHUB_JOB:'build-consumer',GITHUB_RUN_ID:'999',GITHUB_SHA:control,GITHUB_WORKFLOW_SHA:control,GITHUB_REF_NAME:'codex/consumer-frozen',GITHUB_REF:'refs/heads/codex/consumer-frozen',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/'+CI_TRANSPORT_WORKFLOW+'@refs/heads/codex/consumer-frozen',RUNNER_NAME:'consumer fixture',AIHR_CI_BUILD_TRANSPORT:'consumer',AIHR_CI_HEAD:source,AIHR_CI_CONTROL_HEAD:control,AIHR_BUILD_PRODUCER_CONTROL_HEAD:origin,AIHR_BUILD_SOURCE_BRANCH:'codex/source-frozen',AIHR_BUILD_PRODUCER_BRANCH:'codex/producer-frozen',AIHR_BUILD_PRODUCER_RUN_ID:'123',AIHR_BUILD_ARTIFACT_ID:'456',AIHR_BUILD_ARTIFACT_DIGEST:digest,...Object.fromEntries(['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'].map(k=>[k,'postgres://nobody:nothing@127.0.0.1:1/no_database']))};
 const repository={id:1333414856,full_name:'StradaverseHub/ai-hr'};
 const run={id:123,workflow_id:395777276,run_attempt:1,event:'workflow_dispatch',head_sha:origin,path:'.github/workflows/alpha-staging.yml',head_branch:'codex/producer-frozen',repository,head_repository:repository,run_started_at:'2026-10-31T00:00:00Z'};
 const job={id:124365556166,runner_id:100000001,runner_name:'producer fixture',head_branch:'codex/producer-frozen',name:'build',run_id:123,run_attempt:1,head_sha:origin,status:'completed',conclusion:'success',started_at:'2026-10-31T00:00:05Z',completed_at:'2026-10-31T00:03:00Z'};
 const artifact={id:456,name:'production-build-v1',expired:false,workflow_run:{id:123,head_sha:origin,repository_id:1333414856,head_repository_id:1333414856,head_branch:'codex/producer-frozen'},created_at:'2026-10-31T00:02:59Z',expires_at:'2026-11-02T00:02:58Z',digest:'sha256:'+digest,size_in_bytes:1234};
 const metadata={run,jobs:[job],artifact,artifacts:[artifact]};
-const validateCiTransportProvenance=(value,e,runtime,localRunner,actualProducerJob=job)=>provenanceWithJob(value,e,runtime,localRunner,actualProducerJob);
+const validateCiTransportProvenance=(value,e,runtime,localRunner,actualProducerJob=job,capability={controllerRoot:capabilityRoot,sourceRoot:capabilityRoot})=>provenanceWithJob(value,e,runtime,localRunner,actualProducerJob,capability);
 const ref=(name,sha)=>({ref:'refs/heads/'+name,object:{type:'commit',sha}});
 const refs={source:ref(env.AIHR_BUILD_SOURCE_BRANCH,source),producer:ref(env.AIHR_BUILD_PRODUCER_BRANCH,origin),consumer:ref(env.GITHUB_REF_NAME,control)};
 const consumerRun={id:999,run_attempt:1,event:'workflow_dispatch',head_sha:control,path:CI_TRANSPORT_WORKFLOW,head_branch:env.GITHUB_REF_NAME,repository,head_repository:repository};
 const producerRunner={name:'producer fixture',sourcePath:'/producer/source',bootSha256:'e'.repeat(64)},consumer={name:env.RUNNER_NAME,sourcePath:'/consumer/recipient',bootSha256:'f'.repeat(64)};
-const p={format:2,capacityProfile:{...BUILD_CAPACITY_PROFILE},kind:'ci-system-testing-build-candidate',releaseAuthorized:false,source,controller:origin,runId:123,runAttempt:1,repository:repository.full_name,repositoryId:repository.id,workflowRef:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/codex/producer-frozen',runtime:{...STAGING_BUILD_RUNTIME},buildRecordId:'00000000-0000-4000-8000-000000000001',nextBuildId:'fixture',archiveBytes:123,producerRunner,producerEvent:'workflow_dispatch',producerRef:'refs/heads/codex/producer-frozen',buildSourcePath:producerRunner.sourcePath,...Object.fromEntries(['lockSha256','packageSha256','preparedSha256','successfulObservationSha256','manifestSha256','archiveSha256'].map(k=>[k,digest]))};
+const p={format:BUILD_BUNDLE_FORMAT,bundleHelpers,capacityProfile:{...BUILD_CAPACITY_PROFILE},kind:'ci-system-testing-build-candidate',releaseAuthorized:false,source,controller:origin,runId:123,runAttempt:1,repository:repository.full_name,repositoryId:repository.id,workflowRef:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/codex/producer-frozen',runtime:{...STAGING_BUILD_RUNTIME},buildRecordId:'00000000-0000-4000-8000-000000000001',nextBuildId:'fixture',archiveBytes:123,producerRunner,producerEvent:'workflow_dispatch',producerRef:'refs/heads/codex/producer-frozen',buildSourcePath:producerRunner.sourcePath,...Object.fromEntries(['lockSha256','packageSha256','preparedSha256','successfulObservationSha256','manifestSha256','archiveSha256'].map(k=>[k,digest]))};
 test('explicit owned CI consumer supports distinct actual source, original controller and current controller',()=>{
  assert.equal(assertCiTransportInvocation(env),true);assert.equal(validateCiTransportRefs(refs,env),true);
  assert.equal(validateCiTransportConsumerRun(consumerRun,env),true);assert.equal(validateCiTransportMetadata(metadata,env),job);
@@ -45,7 +70,7 @@ test('artifact selector, complete unique inventory, API digest and actual ZIP ca
  const boundary={...artifact,size_in_bytes:BUILD_CAPACITY_PROFILE.zipMaxBytes};assert.equal(validateCiTransportMetadata({...metadata,artifact:boundary,artifacts:[boundary]},env),job);
 });
 test('current CI provenance cannot relabel diagnostics, incomplete old packets, different source or old capacity',()=>{
- for(const [key,value]of Object.entries({kind:'diagnostic-system-testing-build-not-release',releaseAuthorized:true,source:origin,controller:control,runId:999,runAttempt:2,workflowRef:env.GITHUB_WORKFLOW_REF,runtime:{...STAGING_BUILD_RUNTIME,node:'20.20.2'},buildRecordId:'not-uuid',nextBuildId:'../bad',archiveBytes:BUILD_CAPACITY_PROFILE.archiveMaxBytes+1,preparedSha256:'bad',producerEvent:'push',producerRef:'refs/heads/alpha',producerRunner:undefined,diagnosticRunner:producerRunner,diagnosticDurations:{},buildSourcePath:'/another/path',capacityProfile:{...BUILD_CAPACITY_PROFILE,profileVersion:1}}))assert.throws(()=>validateCiTransportProvenance({...p,[key]:value},env,{...STAGING_BUILD_RUNTIME},consumer),undefined,key);
+ for(const [key,value]of Object.entries({format:2,bundleHelpers:undefined,kind:'diagnostic-system-testing-build-not-release',releaseAuthorized:true,source:origin,controller:control,runId:999,runAttempt:2,workflowRef:env.GITHUB_WORKFLOW_REF,runtime:{...STAGING_BUILD_RUNTIME,node:'20.20.2'},buildRecordId:'not-uuid',nextBuildId:'../bad',archiveBytes:BUILD_CAPACITY_PROFILE.archiveMaxBytes+1,preparedSha256:'bad',producerEvent:'push',producerRef:'refs/heads/alpha',producerRunner:undefined,diagnosticRunner:producerRunner,diagnosticDurations:{},buildSourcePath:'/another/path',capacityProfile:{...BUILD_CAPACITY_PROFILE,profileVersion:1}}))assert.throws(()=>validateCiTransportProvenance({...p,[key]:value},env,{...STAGING_BUILD_RUNTIME},consumer),undefined,key);
 });
 test('actual different VM name, boot and source path are each mandatory; unsafe origin paths refuse',()=>{
  for(const changed of [{...producerRunner,name:consumer.name},{...producerRunner,bootSha256:consumer.bootSha256},{...producerRunner,sourcePath:consumer.sourcePath},{...producerRunner,sourcePath:'/a/../b'},{...producerRunner,sourcePath:'/a\nb'},{...producerRunner,bootSha256:'bad'},{...producerRunner,extra:true}])assert.throws(()=>validateCiTransportProvenance({...p,producerRunner:changed,buildSourcePath:changed.sourcePath},env,{...STAGING_BUILD_RUNTIME},consumer));
@@ -108,4 +133,51 @@ test('packet producer runner name must equal the authenticated successful build 
  assert.throws(()=>validateCiTransportProvenance(forged,env,{...STAGING_BUILD_RUNTIME},consumer,job));
  for(const actualProducerJob of [null,{}, {...job,runner_name:undefined},{...job,runner_name:'another actual runner'}])
   assert.throws(()=>validateCiTransportProvenance(p,env,{...STAGING_BUILD_RUNTIME},consumer,actualProducerJob));
+});
+
+test('current CI protocol requires independent Git roots and the exact seven producer helpers',()=>{
+ assert.equal(validateCiTransportProvenance(p,env,{...STAGING_BUILD_RUNTIME},consumer),true);
+ assert.throws(()=>provenanceWithJob(p,env,{...STAGING_BUILD_RUNTIME},consumer,job));
+ for(const helpers of [undefined,{}, {...bundleHelpers,extra:digest},
+  Object.fromEntries(Object.entries(bundleHelpers).filter(([key])=>key!=='regular')),
+  {...bundleHelpers,maps:'0'.repeat(64)}, {...bundleHelpers,protocol:bundleHelpers.regular}])
+  assert.throws(()=>validateCiTransportProvenance({...p,bundleHelpers:helpers},env,{...STAGING_BUILD_RUNTIME},consumer));
+ assert.throws(()=>validateCiTransportProvenance(p,env,{...STAGING_BUILD_RUNTIME},consumer,job,
+  {controllerRoot:join(capabilityRoot,'missing-controller'),sourceRoot:capabilityRoot}));
+ assert.throws(()=>validateCiTransportProvenance(p,env,{...STAGING_BUILD_RUNTIME},consumer,job,
+  {controllerRoot:capabilityRoot,sourceRoot:join(capabilityRoot,'missing-source')}));
+ // A syntactically valid but unavailable producer controller cannot select trust
+ // from the packet, even after its surrounding provenance is rebound.
+ const missing='0'.repeat(40);
+ assert.throws(()=>validateCiTransportProvenance({...p,controller:missing},
+  {...env,AIHR_BUILD_PRODUCER_CONTROL_HEAD:missing},{...STAGING_BUILD_RUNTIME},consumer));
+});
+
+test('raw helper or imported companion tampering cannot be authorized by rebinding packet hashes',()=>{
+ const rebound='f'.repeat(64);
+ for(const [key,path]of Object.entries(BUILD_BUNDLE_HELPER_PATHS)){
+  const file=join(capabilityRoot,path),original=readFileSync(file);
+  const changed=Buffer.concat([original,Buffer.from('\n# synthetic changed helper bytes\n')]);
+  try{
+   writeFileSync(file,changed);
+   // Unmodified Git objects and descriptor hashes catch dirty files, including
+   // the regular parser imported by the map receiver and its protocol companion.
+   assert.throws(()=>validateCiTransportProvenance(p,env,{...STAGING_BUILD_RUNTIME},consumer),undefined,key);
+   const forged={...p,archiveSha256:rebound,manifestSha256:rebound,preparedSha256:rebound,
+    bundleHelpers:{...bundleHelpers,[key]:createHash('sha256').update(changed).digest('hex')}};
+   const packet=join(capabilityRoot,'rebound-provenance.json');writeFileSync(packet,JSON.stringify(forged));
+   assert.throws(()=>validateCiTransportProvenance(JSON.parse(readFileSync(packet)),env,
+    {...STAGING_BUILD_RUNTIME},consumer),undefined,'Packet rebound cannot replace trusted controller '+key);
+  }finally{writeFileSync(file,original);}
+ }
+ assert.equal(validateCiTransportProvenance(p,env,{...STAGING_BUILD_RUNTIME},consumer),true);
+});
+
+test('source capability is derived from the named commit, not just matching current helper bytes',()=>{
+ const unknown='1'.repeat(40);
+ assert.throws(()=>validateCiTransportProvenance({...p,source:unknown},
+  {...env,AIHR_CI_HEAD:unknown},{...STAGING_BUILD_RUNTIME},consumer));
+ assert.throws(()=>validateCiTransportProvenance(p,
+  {...env,AIHR_CI_CONTROL_HEAD:unknown,GITHUB_SHA:unknown,GITHUB_WORKFLOW_SHA:unknown},
+  {...STAGING_BUILD_RUNTIME},consumer));
 });

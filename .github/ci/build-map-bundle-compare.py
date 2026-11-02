@@ -261,7 +261,7 @@ def compare(runtime, candidate, packet, output):
               'debugElapsedSeconds': time.monotonic() - debug_started,
               'maximumResidentSetKiB': resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
               'allLogicalPathsBytesModesDirectoriesAliasesUnchanged': True,
-              'oldAndCandidateCanonicalAdmissionRejectFormat3': True, 'activationExercised': False,
+              'regularFormat2ReadersRejectMapFormat3': True, 'activationExercised': False,
               'activeServiceVerified': False, 'releaseAuthorized': False}
     save(output / 'comparison.json', result)
     print(json.dumps(result, allow_nan=False))

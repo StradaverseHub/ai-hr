@@ -1,9 +1,12 @@
 import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateTransportMetadata,validateTransportProvenance,compareCjkRasters,assertTransportConsumerInvocation} from './build-transport.mjs';
+import {validateTransportMetadata,validateTransportProvenance,validateTransportManifest,compareCjkRasters,assertTransportConsumerInvocation} from './build-transport.mjs';
 import {STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE} from './build-production.mjs';
+import {BUILD_BUNDLE_FORMAT,BUILD_BUNDLE_KIND} from './build-bundle-protocol.mjs';
 const sha='a'.repeat(40),digest='b'.repeat(64);
+const fixtureDigest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const env={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ID:'123',GITHUB_RUN_ATTEMPT:'1',AIHR_CI_HEAD:sha,AIHR_CI_CONTROL_HEAD:sha,GITHUB_SHA:sha,AIHR_BUILD_DIAGNOSTIC:'transport-producer',RUNNER_NAME:'consumer',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025',AIHR_BUILD_ARTIFACT_ID:'456',AIHR_BUILD_ARTIFACT_DIGEST:digest};
 const run={id:123,run_attempt:1,event:'workflow_dispatch',head_sha:sha,path:'.github/workflows/alpha-staging-diagnostics.yml',head_branch:'codex/test-suite-efficiency-review-20261025',repository:{id:1333414856,full_name:'StradaverseHub/ai-hr'}};
 const job={name:'build-transport-producer',run_id:123,run_attempt:1,head_sha:sha,status:'completed',conclusion:'success',started_at:'2026-10-26T00:00:00Z',completed_at:'2026-10-26T00:03:00Z'};
@@ -60,4 +63,32 @@ test('diagnostic transport keeps the unchanged outer ZIP bound and strict curren
   {...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,archiveMaxBytes:268435456}},{...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,zipMaxBytes:293601281}},
   {...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,extra:true}},{...p,archiveBytes:285212673}])
   assert.throws(()=>validateTransportProvenance(changed,env,{...STAGING_BUILD_RUNTIME},consumer));
+});
+
+test('legacy diagnostic provenance remains format 2 and cannot carry a current CI helper descriptor',()=>{
+ assert.equal(validateTransportProvenance(p,env,{...STAGING_BUILD_RUNTIME},consumer),true);
+ for(const changed of [{...p,format:BUILD_BUNDLE_FORMAT},{...p,bundleHelpers:{}},
+  {...p,format:BUILD_BUNDLE_FORMAT,kind:'ci-system-testing-build-candidate'}])
+  assert.throws(()=>validateTransportProvenance(changed,env,{...STAGING_BUILD_RUNTIME},consumer));
+});
+
+test('CI map and historical diagnostic manifests have explicit mutually exclusive protocol admission',()=>{
+ const regular={format:2,kind:'next-build-byte-bundle',capacityProfile:{...BUILD_CAPACITY_PROFILE},
+  platform:'linux',nextBuildId:p.nextBuildId,archiveBytes:p.archiveBytes,archiveSha256:p.archiveSha256};
+ const maps={...regular,format:BUILD_BUNDLE_FORMAT,kind:BUILD_BUNDLE_KIND,mapCopies:[]};
+ const current={...p,format:BUILD_BUNDLE_FORMAT,kind:'ci-system-testing-build-candidate'};
+ assert.equal(validateTransportManifest(regular,p,'diagnostic'),true);
+ assert.equal(validateTransportManifest(maps,current,'ci'),true);
+ for(const [manifest,provenance,mode]of [[regular,p,'ci'],[maps,current,'diagnostic'],[maps,p,'ci'],
+  [{...maps,format:2},current,'ci'],[{...maps,kind:regular.kind},current,'ci'],
+  [{...regular,kind:BUILD_BUNDLE_KIND},p,'diagnostic'],[{...regular,mapCopies:[]},p,'diagnostic'],
+  [{...maps,mapCopies:undefined},current,'ci'],[maps,current,'unknown']])
+  assert.throws(()=>validateTransportManifest(manifest,provenance,mode));
+ // Rebinding a manifest hash does not make a mixed-format packet current.
+ const oldBytes=Buffer.from(JSON.stringify(regular));
+ const rebound={...current,manifestSha256:fixtureDigest(oldBytes)};
+ assert.throws(()=>validateTransportManifest(JSON.parse(oldBytes),rebound,'ci'));
+ for(const change of [{nextBuildId:'another'}, {archiveBytes:regular.archiveBytes+1},
+  {archiveSha256:'0'.repeat(64)}, {capacityProfile:{...BUILD_CAPACITY_PROFILE,profileVersion:2}}])
+  assert.throws(()=>validateTransportManifest({...maps,...change},current,'ci'));
 });

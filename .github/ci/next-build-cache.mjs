@@ -9,6 +9,7 @@ import {randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {NEXT_STATE_NAME,NEXT_STATE_MEMBERS,NEXT_RECOVERY_MEMBERS,hash,assertNextCacheInvocation,parseNextCacheOrigin,validateNextOrigin,validateNextContext,validateNextState,assertNextAncestry} from './next-build-cache-policy.mjs';
 import {measuredCommand} from './diagnostics/compiler-incremental.mjs';
+import {BUILD_BUNDLE_HELPER_PATHS} from './build-bundle-protocol.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const save=(p,v)=>writeFileSync(p,JSON.stringify(v,null,2)+'\n',{flag:'wx',mode:0o600});
 const git=(root,...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',timeout:10000,maxBuffer:4*1024**2}).trim();
@@ -17,7 +18,7 @@ function regular(p,max=32*1024**2){const s=lstatSync(p);assert(s.isFile()&&!s.is
 function owned(p){const s=lstatSync(p);assert(s.isDirectory()&&!s.isSymbolicLink()&&realpathSync(p)===p&&s.uid===process.getuid());return s;}
 function unchanged(source,e){assert(git(source,'rev-parse','HEAD')===e.AIHR_CI_HEAD&&git(ROOT,'rev-parse','HEAD')===e.AIHR_CI_CONTROL_HEAD
  &&git(source,'status','--porcelain','--untracked-files=all')===''&&git(ROOT,'status','--porcelain','--untracked-files=all')==='','Exact clean application source/controller required');}
-const CODE=['.github/ci/next-state-recovery.mjs','.github/ci/next-build-cache.mjs','.github/ci/next-build-cache-policy.mjs','.github/ci/next-app-typecheck-probe.mjs','.github/ci/build-production.mjs','.github/ci/build-bundle.py','.github/ci/runner-capacity.mjs','.github/ci/prepare-runner.sh','.github/ci/extract-artifact.py','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging-diagnostics.yml'];
+const CODE=[...new Set(['.github/ci/next-state-recovery.mjs','.github/ci/next-build-cache.mjs','.github/ci/next-build-cache-policy.mjs','.github/ci/next-app-typecheck-probe.mjs','.github/ci/build-production.mjs','.github/ci/build-bundle.py','.github/ci/runner-capacity.mjs','.github/ci/prepare-runner.sh','.github/ci/extract-artifact.py','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging-diagnostics.yml',...Object.values(BUILD_BUNDLE_HELPER_PATHS)])];
 function context(source){
  const root=JSON.parse(regular(join(source,'tsconfig.json'))),build=JSON.parse(regular(join(source,'tsconfig.build.json')));
  assert(root.compilerOptions?.incremental===true&&root.extends===undefined&&root.references===undefined&&build.extends==='./tsconfig.json'&&build.references===undefined,'Reviewed exact application config chain required');

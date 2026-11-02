@@ -1,6 +1,6 @@
 # Lossless source-map transport
 
-**Status:** Proposed for isolated qualification; canonical release admission unchanged
+**Status:** Source adoption into canonical protocol3 / policy v18; deployment authority unchanged
 **Date:** 2026-11-02
 **Deciders:** Repository owner and release-controller maintainers
 
@@ -33,7 +33,7 @@ publishing their supported aliases.
 
 The internal temporary format2 inventory view is only for reusing the existing
 full-directory verifier. It is not a transport packet, admission adapter or receipt.
-Canonical production inspectors, provenance and installation grants stay format2-only.
+During initial isolated qualification, canonical production inspectors, provenance and installation grants stayed format2-only. The source adoption amendment below supersedes that admission rule.
 No release-controller activation, service restart or deployment follows from this ADR.
 
 ## Alternatives and trade-offs
@@ -58,6 +58,18 @@ refusals and corruption/expansion/link/ownership/interruption negatives. Exercis
 atomic activation and rollback only in disposable Linux fixtures. Record exact
 producer, receiver, input and toolchain identities with measured size and time.
 
-A later controller-adoption decision must bind the new manifest/provenance and
-capability throughout authenticated transport, installation, recovery and release
-verification. Until then the diagnostic remains outside canonical release admission.
+## Canonical source adoption amendment
+
+Canonical CI/release builds now use format3 under policy v18, with a fixed seven-file
+controller helper closure bound in provenance, packet and grant descriptors. Controller
+Git bytes and candidate Git/raw capability must match before building or installation.
+Remote grants have a separately named raw-only inspection path for installations
+without Git; local canonical admission never accepts caller-selected helper hashes.
+Active and post-cleanup verification retain the full original logical inventory and
+existing cache exception, runtime, ledger, source and cleanup fences.
+
+Legacy diagnostics remain explicitly format2 and cannot become canonical packets.
+Original format2 component evidence is retained at its own identity. No source
+adoption step deploys or grants acceptance of an installation. Full release admission
+and guarded installation still require their existing authenticated evidence and
+separate owner authority.

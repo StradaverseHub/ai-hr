@@ -1,5 +1,17 @@
 # Staging CI build installation
 
+## Current source receiver contract
+
+The canonical receiver uses format3/policy v18 and the fixed controller-derived
+helper closure described in the [canonical protocol](CI-CANONICAL-BUILD-PROTOCOL.md).
+It checks raw helper bytes before execution, supports a Git-free granted readback,
+and verifies the complete logical map inventory after activation and cleanup.
+The existing safe runtime-cache exception, opaque retained baseline, original build
+identity, lease, runtime/ledger/source/health and owned cleanup fences remain.
+Historical version notes below retain their observations; they do not grant format2
+packet readmission or establish installation of the new receiver. No deployment is
+authorized by this document.
+
 Status: implemented in the isolated review branch, with private hosted component evidence and a successful read-only configuration probe. No CI artifact has been installed on staging. The complete normal CI/controller adoption, real recipient application/native/ISR validation, coordinated release and an under600second submission-to-arrival measurement remain unfinished.
 
 This protocol applies only to alpha/staging at the private aihr-staging alias and /opt/ai-hr. It does not enable main/live deployment. The coordinating release owner must hold the staging window; use the [shared staging queue and lease](STAGING-RELEASE-QUEUE.md) once its guarded client/server rollout is commissioned. Older installed sources do not enforce this lease; verify adoption rather than assuming the source change is live.

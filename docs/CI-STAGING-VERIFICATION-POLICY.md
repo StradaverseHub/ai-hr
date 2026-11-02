@@ -1,5 +1,17 @@
 # CI staging verification policy
 
+## Current source policy v18
+
+New canonical packets and installation grants require format3 with the fixed trusted
+controller helper closure. Capacity profile3 and existing limits are unchanged.
+Prepared build observations remain format1. Local Git admission and remote granted
+readback are distinct; mixed formats, stale policy witnesses and mismatched helpers
+refuse. See the [canonical protocol](CI-CANONICAL-BUILD-PROTOCOL.md) for the single
+owner of packet/helper version rules. Historical v16/v17 notes below are retained
+and do not authorize their format2 admission under v18. The owner recovery decision
+below still governs retained successful component evidence and failed-area reruns.
+No source-policy update is installation or deployment authorization.
+
 ## Owner recovery decision — 30 October 2026
 
 The owner reaffirmed failed-area-only recovery in the Board chat: after the complete frozen run finishes, rerun failed areas and repair-invalidated checks, retaining valid successful evidence. Do not dispatch a new whole gate as the default response to one failure. This decision supersedes the older blanket fresh-whole-run language below for recovery after that completed gate. A broader run must be justified by actual invalidation or a new owner instruction.

@@ -14,6 +14,7 @@ import {verifyRecoveredCi,revalidateRecoveredCi} from './focused-recovery.mjs';
 import {verifyRepairedCi,revalidateRepairedCi} from './repair-recovery.mjs';
 import {requireReviewedRepairController} from './repair-recovery-policy.mjs';
 import {probeStagingProfile} from './staging-preflight.mjs';
+import {assertSourceBundleCapability} from './build-bundle-protocol.mjs';
 import {readLease,guardCommand,guardedRsync,leasePhase,redactLeaseError} from '../../scripts/staging/lease.mjs';
 export {STAGING,bindStaging};
 export function followStagingDeployment(official,ssh,observation={}){
@@ -46,6 +47,7 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  const recovering=recoveryRunIds.length>0;
  if(repair&&recovering)throw Error('Choose one explicitly versioned recovery route');
  const evidence=repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds}):await verifyCi({candidatePath,runId,baseline});
+ assertSourceBundleCapability(candidatePath,evidence.build.bundleHelpers,evidence.sha);
  const save=(name,data)=>writeFileSync(join(evidence.evidenceDirectory,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
  save('operator-preflight.json',{...evidence,target:STAGING,baselineLedger,profilePreflight,execute,packetTransport});
  if(!execute)return evidence;
