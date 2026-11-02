@@ -69,7 +69,7 @@ import { AiCentreInbox, InboxCountBadge } from './centre/inbox';
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; recommend?: string; e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
+  searchParams: Promise<{ view?: string; recommend?: string; e?: string; chat?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
@@ -149,9 +149,13 @@ export default async function AssistantPage({
   const scopeReset=assistantConversationScopeDigest(s,conversationScope);
   const savedChats=await listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null);
   const selectedChat=sp.e?await loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):null;
-  const initialTurns=selectedChat?.turns.map(exchange=>({id:exchange.id,question:exchange.question,
+  // AI Centre issue 18: the floating panel's "Open in AI Centre" opens its stored chat here (?chat=<id>) and, while the
+  // Noveri conversation switch admits this caller, the next question continues that same chat.
+  const storedChat=sp.chat&&!sp.e?await import('./launcher-actions').then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null):null;
+  const initialTurns=selectedChat?selectedChat.turns.map(exchange=>({id:exchange.id,question:exchange.question,
     clarificationRequired:exchange.grounded?.conversation?.plan.mode==='clarify'&&exchange.grounded?.conversation?.clarificationAllowed!==false,
-    answer:<ExchangeReply exchange={exchange} ctx={s}/>}));
+    answer:<ExchangeReply exchange={exchange} ctx={s}/>})):storedChat?.turns;
+  const storedResume=storedChat?.conversationToken?{exchangeId:'teras-chat-'+storedChat.chatId,conversationToken:storedChat.conversationToken}:undefined;
   const selectedJob=sp.job===undefined||sp.governed!==undefined?null:await loadCanonicalModuleJob(s,{module:sp.job});
   // Shortcuts are offered only where the target's own authorization rules admit this session.
   const actionEntries=await allowedModuleActionEntries(s,workspace.jobModules);
@@ -167,9 +171,9 @@ export default async function AssistantPage({
         <section className="min-w-0 space-y-3 lg:order-2">
           <PageHeader title={aiCentreName((await getTranslations('aiCentre'))('genericName'))} />
           <OwnClearStatus status={sp.ownClear}/>
-          <ErrorBanner message={errorMessage??(sp.e&&!selectedChat?t('workspace.conversation.unavailable'):undefined)} />
-          <WorkspaceConversation key={scopeReset+':'+(sp.e??'')+':'+(sp.chatReset??'')} fullHeight resetKey={(sp.chatReset??'')+':'+scopeReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
-            initialTurns={initialTurns} historyReadOnly={Boolean(sp.e&&!selectedChat?.resume)} initialResume={selectedChat?.resume??undefined} historyTailId={sp.e} olderCursor={selectedChat?.olderCursor??undefined}/>
+          <ErrorBanner message={errorMessage??((sp.e&&!selectedChat)||(sp.chat&&!sp.e&&!storedChat)?t('workspace.conversation.unavailable'):undefined)} />
+          <WorkspaceConversation key={scopeReset+':'+(sp.e??'')+':'+(sp.chat&&!sp.e?'chat-'+sp.chat:'')+':'+(sp.chatReset??'')} fullHeight resetKey={(sp.chatReset??'')+':'+scopeReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
+            initialTurns={initialTurns} historyReadOnly={Boolean((sp.e&&!selectedChat?.resume)||(storedChat&&!storedResume))} initialResume={selectedChat?.resume??storedResume} historyTailId={sp.e} olderCursor={selectedChat?.olderCursor??undefined}/>
 
         </section>
         <aside aria-label={t('workspace.chat.tools')} className="min-w-0 space-y-1 border-t border-border lg:order-1 lg:border-r lg:border-t-0 lg:pr-5">

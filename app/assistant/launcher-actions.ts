@@ -17,9 +17,11 @@ import { ExchangeReply } from '@/components/assistant/exchange-reply';
 import { getLocale } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import type { ConversationRoute } from '@/core/teras-wiring/switch';
+import type { ConversationTurn } from '@/core/teras-wiring/turn';
 
 export type LauncherReply =
-  | { ok: true; exchangeId: string; answer: ReactNode; conversationToken?:string; clarificationRequired?:true }
+  /** chatId (AI Centre issue 18): the stored chat a harness turn was written to, which Ask reopens (/assistant?chat=). */
+  | { ok: true; exchangeId: string; answer: ReactNode; conversationToken?:string; clarificationRequired?:true; chatId?:string }
   | { ok: false; message: string };
 
 /** The floating Assistant's one command. The same askAssistant path as the Assistant page: grant, module,
@@ -69,7 +71,10 @@ async function askThroughHarness(session:SessionContext,route:Extract<Conversati
   if(input.clarification)throw new ConversationTurnError('continuation_invalid');
   const companyId=(JSON.parse(input.conversationScope) as unknown[]).find((id):id is string=>typeof id==='string')??'';
   const turn=await runConversationTurn(session,route,{question:input.question,companyId,locale:await getLocale(),...(input.continuation===undefined?{}:{continuation:input.continuation})});
-  return {ok:true,exchangeId:'teras-'+turn.turnId,answer:await ConversationReply({turn,links:await replyLinksFor(session,turn.suggestion?.reviewRoute)}),conversationToken:turn.continuation};
+  const answer=await ConversationReply({turn,links:await replyLinksFor(session,turn.suggestion?.reviewRoute)});
+  // Stored only once the reply could be shown, so a reopened chat holds no turn the person never saw.
+  const chatId=await storeTurn(session,{question:input.question,conversationScope:input.conversationScope,companyId,turn});
+  return {ok:true,exchangeId:'teras-'+turn.turnId,answer,conversationToken:turn.continuation,...(chatId?{chatId}:{})};
  }catch(error){
   const code=error instanceof ConversationTurnError?error.code:'provider_error';
   // A failure the turn did not classify (staging, 2 November 2026: a missing TERAS_PROPOSAL_SECRET made every reply
@@ -80,6 +85,45 @@ async function askThroughHarness(session:SessionContext,route:Extract<Conversati
 }
 const unclassifiedFailure=(error:unknown)=>{const code=(error as {code?:unknown}|null)?.code;
  return {name:error instanceof Error?error.name:typeof error,code:typeof code==='string'&&/^[A-Z0-9_]{1,40}$/.test(code)?code:null,supportId:randomUUID()};};
+
+/** AI Centre issue 8: the answered turn joins the caller's stored chat, keyed by the conversation it ran under, so the
+ * panel and Ask continue one chat. A routed or refused turn (a sensitive topic, a crisis, a workplace-harms request)
+ * stores no words, only that it happened. Storage never changes the reply: when it is unavailable the person still
+ * gets the answer, without a chat to reopen, and the failure is logged by kind only. */
+async function storeTurn(session:SessionContext,input:{question:string;conversationScope:string;companyId:string;turn:ConversationTurn}):Promise<string|null>{
+ const turn=input.turn;
+ try{
+  const {recordChatTurn}=await import('@/core/teras-chats');
+  return await recordChatTurn(session,{conversationId:turn.trace.conversationId,conversationScope:input.conversationScope,companyId:input.companyId,
+   question:input.question,reply:turn.reply,modelRows:turn.modelTurn.map(row=>({role:row.role,content:row.content})),withheld:turn.sensitive||turn.refused});
+ }catch(error){console.error('[noveri conversation turn] chat not stored',unclassifiedFailure(error));return null;}
+}
+
+export type StoredChatReply=
+ | {ok:true;chatId:string;turns:readonly {id:string;question:string;answer:ReactNode}[];conversationToken?:string}
+ | {ok:false;message:string};
+/** Reopens one of the caller's stored chats for Ask (/assistant?chat=<id>), the panel's "Open in AI Centre". The caller,
+ * their Assistant access and the scope the chat started under are re-checked by the owner (core/teras-chats.ts). The
+ * chat continues only while the tenant's Noveri conversation switch admits this caller: then its stored model-side rows
+ * become a fresh signed continuation (core/teras-wiring/history.ts) and the next question goes on in the same chat;
+ * otherwise it opens read-only. A withheld turn has no words to show and is left out. */
+export async function openStoredChatAction(input:{chatId:unknown}):Promise<StoredChatReply>{
+ const t=await getTranslations('assistant');
+ try{
+  const session=await getBrowserCommandSession(),conversationScope=await assistantBrowserConversationScope(session);
+  const [{reopenOwnChat},{ReplyMarkdown}]=await Promise.all([import('@/core/teras-chats'),import('@/components/ai-centre/reply-markdown')]);
+  const chat=await reopenOwnChat(session,input.chatId,conversationScope);
+  const route:ConversationRoute=await import('@/core/teras-wiring/switch').then(owner=>owner.conversationRoute(session)).catch(():ConversationRoute=>({route:'closed'}));
+  let conversationToken:string|undefined;
+  if(route.route==='harness'){
+   const {issueConversationContinuation}=await import('@/core/teras-wiring/history');
+   try{conversationToken=issueConversationContinuation(session,chat.chatId,chat.history.map(row=>({role:row.role,content:row.content,side:'model' as const})));}catch{conversationToken=undefined;}
+  }
+  const links=await replyLinksFor(session);
+  const turns=chat.turns.flatMap(turn=>turn.withheld?[]:[{id:`teras-chat-${chat.chatId}-${turn.seq}`,question:turn.question,answer:ReplyMarkdown({text:turn.reply,links})}]);
+  return {ok:true,chatId:chat.chatId,turns,...(conversationToken?{conversationToken}:{})};
+ }catch{return {ok:false,message:t('workspace.conversation.unavailable')};}
+}
 
 /** Home chat has no posted page context. It uses exactly the same command and authoritative replay. */
 export async function askFromWorkspaceAction(input: {question:unknown;previousExchangeId?:unknown;previousConversationToken?:unknown;clarificationExchangeId?:unknown}):Promise<LauncherReply>{
