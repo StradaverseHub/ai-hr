@@ -332,6 +332,20 @@ describe('backup-db.sh — safe to run repeatedly and beside a deploy', () => {
     expect(fs.readdirSync(staging).filter(name=>name.endsWith('.manifest'))).toHaveLength(1);
   },120_000);
 
+  it.each(['dump','manifest'])('rejects same-length corrupted destination %s before pruning and retains local recovery bytes',extension=>{
+    const store=path.join(TMP,`corrupt-${extension}-store`),staging=path.join(TMP,`corrupt-${extension}-stage`),marker=path.join(TMP,`corrupt-${extension}-pruned`);
+    fs.mkdirSync(store,{mode:0o700});
+    const mutate='const fs=require("node:fs");const p=process.argv[1];const b=fs.readFileSync(p);b[0]^=1;fs.writeFileSync(p,b)';
+    const result=backup({BACKUP_DEST:'fixture://corrupt',BACKUP_STAGING:staging,
+      BACKUP_SHIP_CMD:`cp "$1" '${store}/'; case "$1" in *.${extension}) node -e '${mutate}' '${store}/'"$(basename "$1")";; esac`,
+      BACKUP_READ_CMD:`cat '${store}/'"$2"`,BACKUP_PRUNE_CMD:`touch '${marker}'`});
+    expect(result.status,result.out).toBe(8);expect(fs.existsSync(marker)).toBe(false);
+    const local=fs.readdirSync(staging).find(name=>name.endsWith('.'+extension))!;
+    expect(fs.readFileSync(path.join(store,local)).length).toBe(fs.readFileSync(path.join(staging,local)).length);
+    expect(fs.readFileSync(path.join(store,local))).not.toEqual(fs.readFileSync(path.join(staging,local)));
+    expect(fs.readdirSync(staging).filter(name=>/\.(dump|manifest)$/.test(name))).toHaveLength(2);
+  },120_000);
+
   it('REFUSES rather than overwriting a dump that already carries this second\'s name', () => {
     const staging = path.join(TMP, 'clash');
     fs.mkdirSync(staging, { recursive: true, mode: 0o700 });
