@@ -1,5 +1,5 @@
 name: mobile-android-client-probe
-run-name: Bounded Android sign-in diagnostic · 9b2957c0d
+run-name: Bounded Android sign-in diagnostic · 0ec19e970
 on:
   push:
     branches: [codex/mobile-signin-client-probe-20261102]
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      EXPECTED_SOURCE: 9b2957c0da769a9322fd89e1301d944d523453e1
+      EXPECTED_SOURCE: 0ec19e9706cb16a7d6139d71be45e2fa570512b9
       CI: '1'
       EXPO_NO_TELEMETRY: '1'
       EXPO_PUBLIC_RUNTIME_CONNECTIONS: '1'
@@ -35,7 +35,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: 9b2957c0da769a9322fd89e1301d944d523453e1
+          ref: 0ec19e9706cb16a7d6139d71be45e2fa570512b9
           path: source
           persist-credentials: false
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
@@ -58,7 +58,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: onehr-android-client-probe-9b2957c0d
+          name: onehr-android-client-probe-0ec19e970
           path: ${{ runner.temp }}/onehr-android-client-probe/
           if-no-files-found: warn
           retention-days: 1
