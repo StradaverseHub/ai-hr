@@ -726,3 +726,19 @@ This amends; the sections above are unchanged and remain binding.
 These decisions grant no deployment and prove no implementation, gate result or installation.
 
 WP8 preserves the narrower observations from focused run 40944662433: the delegated leave offer/native decision admitted the stand-in while review preparation refused a private employment projection; the separate delegated-approvals follow-up replaces that projection with its existing request-bound subject owner after unchanged authority and locks. Its new candidate must prove full delegate parity. The native MY statutory setter also admitted another-company HR while the reviewed source required company Workforce/Payroll scope and all sensitive field categories. That Assistant refusal remains deliberately narrower; the actual native split-card write interval is probed separately. Payroll page discoverability (`requireAdmin`/`scopedAdmin`) is recorded separately from the authenticated action/service admission and its granular close permission. No page guard by itself grants authority to change a service permission.
+
+
+## Evaluation resumption — 2 November 2026
+
+The codebase audit found that retaining passing arms while replacing completed wrong answers could
+report eventual success as reliability. The owner authorized the Phase 0 and P1 repair plan. For a
+fixed source, candidate, provider and case/arm binding, the current bounded evaluation now measures
+one immutable completed trial. Both valid right and valid wrong answers are retained. Resumption
+schedules genuinely unrun arms only; a transport interruption without a scored answer remains
+separate under the existing admission and spend bounds. Additional statistical samples require an
+explicit equal-arm trial schedule and complete accounting; they must not overwrite failed trials.
+
+Existing sealed history remains unchanged. Regenerate the source manifest so prior-source candidate
+or promotion evidence cannot be presented as current. Deterministic CI failed-area recovery remains
+under repository policy and is distinct from stochastic quality sampling. This repair establishes
+accounting correctness, not actual-model robustness, native-effect acceptance or deployment permission.

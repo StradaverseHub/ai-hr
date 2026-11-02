@@ -36,7 +36,7 @@ function sessionFixture(opts: { authenticate?: () => Promise<{ success: boolean 
   const capture = { preventScreenCaptureAsync: vi.fn(async (_tag?: string) => { if (opts.preventFails) throw new Error('no window'); }), enableAppSwitcherProtectionAsync: vi.fn(async () => undefined) };
   let appState: ((v: string) => void) | null = null;
   let currentSession: ReturnType<ReturnType<typeof createSessionState>['getSnapshot']> & { setEmploymentId: (id: string | null) => void };
-  const me = { data: { employments: (opts.ownEmployments ?? []).map(employmentId => ({ employmentId })) }, loading: false, error: null };
+  const me: { data: { employments: { employmentId: string }[] } | null; loading: boolean; error: Error | null } = { data: { employments: (opts.ownEmployments ?? []).map(employmentId => ({ employmentId })) }, loading: false, error: null };
   const output = { exports: {} as any };
   const code = transpileModule(readFileSync('mobile/lib/session.tsx', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText;
   runInNewContext(code, { exports: output.exports, module: output, require: (id: string) => {
@@ -67,6 +67,21 @@ describe('app lock on return to the foreground', () => {
     await waitFor(() => expect(f.session().employmentId).toBe('own-first'));
     await act(async () => f.session().setEmploymentId('own-second'));
     expect(f.session().employmentId).toBe('own-second');
+  });
+  it('never replaces a manual choice with a delayed default response', async () => {
+    const f = sessionFixture(); f.me.data = null; f.me.loading = true;
+    const view = render(<f.View />);
+    await screen.findByText('Private screen');
+    await act(async () => f.session().setEmploymentId('manual-own'));
+    f.me.data = { employments: [{ employmentId: 'default-own' }] }; f.me.loading = false;
+    view.rerender(<f.View />);
+    expect(f.session().employmentId).toBe('manual-own');
+  });
+  it('keeps screens available without adopting stale identity when the default read fails', async () => {
+    const f = sessionFixture({ ownEmployments: ['stale-own'] }); f.me.error = new Error('offline');
+    render(<f.View />);
+    await screen.findByText('Private screen');
+    expect(f.session().employmentId).toBeNull();
   });
   it('keeps a login with no own employment unselected', async () => {
     const f = sessionFixture({ ownEmployments: [] });
