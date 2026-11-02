@@ -1,0 +1,17 @@
+{
+  "title": "Tần suất mã xác thực",
+  "description": "Ghi nhớ thiết bị cá nhân sau khi nhập đúng mã xác thực. Mật khẩu và giới hạn phiên thông thường vẫn áp dụng.",
+  "days": "Yêu cầu mã lại sau (ngày)",
+  "help": "Chọn 1–90 ngày; đặt 0 để yêu cầu mã mỗi lần đăng nhập. Ví dụ: 7 hoặc 30 ngày.",
+  "effect": "Thay đổi cài đặt này sẽ yêu cầu mọi thiết bị đã ghi nhớ xác thực lại vào lần đăng nhập tiếp theo.",
+  "rememberWeb": "Ghi nhớ trình duyệt này trong {days} ngày",
+  "rememberNative": "Ghi nhớ điện thoại này trong {days} ngày",
+  "personalOnly": "Chỉ chọn trên thiết bị bạn kiểm soát. Đặt lại mật khẩu và thay đổi bảo mật yêu cầu xác thực lại.",
+  "save": "Lưu",
+  "saving": "Đang lưu…",
+  "saved": "Đã lưu.",
+  "invalid": "Nhập số nguyên từ 0 đến 90.",
+  "conflict": "Cài đặt đã thay đổi. Tải lại và thử lại.",
+  "forbidden": "Chỉ quản trị viên nhóm mới có thể thay đổi cài đặt này.",
+  "unavailable": "Không thể lưu. Hãy thử lại."
+}

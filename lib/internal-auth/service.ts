@@ -1,3 +1,4 @@
+import { readRememberedMfaPolicy, rememberedFactorValid, rememberVerifiedFactor } from './remembered-mfa';
 import { passwordChangeRequired, replacePassword } from './password-policy';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { generateSecret, verify } from 'otplib';
@@ -13,13 +14,13 @@ export { assertActiveCredential } from './credential';
 export type { Credential } from './credential';
 
 type Challenge = { subject: string; version: string; phase: 'password' | 'enroll' | 'mfa'; attempts: number; native: boolean; expiresAt: number;
-  secret?: string; mfaPassed?: boolean; invitation?: string };
+  secret?: string; mfaPassed?: boolean; invitation?: string; rememberDays?: number };
 /** lastActivity (web only, ADR-0171): the last reported user activity; absent on sessions created before idle sign-out. */
 type Session = { subject: string; version: string; family: string; native: boolean; absoluteExpiry: number; lastActivity?: number };
 type Refresh = Session & { used: boolean };
 export type Organization = { code: string; tenantId: string; name: string };
-export type AuthReply = { step: 'password' | 'enroll' | 'mfa'; challenge: string; secret?: string; account?: string } |
-  { step: 'complete'; access_token: string; refresh_token?: string; expires_in: number; recoveryCodes?: string[] } |
+export type AuthReply = { step: 'password' | 'enroll' | 'mfa'; challenge: string; secret?: string; account?: string; rememberDays?: number } |
+  { step: 'complete'; access_token: string; refresh_token?: string; expires_in: number; recoveryCodes?: string[]; remembered_device_token?: string; remembered_device_expires_in?: number } |
   { step: 'activated'; organization: string; recoveryCodes?: string[] };
 const SESSION_LIFE = 8 * 3600_000, ACCESS_LIFE = 15 * 60_000, CHALLENGE_LIFE = 10 * 60_000;
 const credentialKey = (subject: string) => `credential:${subject}`;
@@ -61,9 +62,9 @@ async function makeSession(tx: AuthSql, c: Credential, native: boolean, recovery
     ...(recoveryCodes ? { recoveryCodes } : {}) };
 }
 function reply(raw: string, c: Credential, challenge: Challenge): AuthReply {
-  return { step: challenge.phase, challenge: raw, ...(challenge.phase === 'enroll' ? { secret: challenge.secret, account: `${c.organization}:${c.username}` } : {}) };
+  return { step: challenge.phase, challenge: raw, ...(challenge.phase !== 'password' && challenge.rememberDays ? { rememberDays: challenge.rememberDays } : {}), ...(challenge.phase === 'enroll' ? { secret: challenge.secret, account: `${c.organization}:${c.username}` } : {}) };
 }
-export async function startLogin(input: { organization: string; username: string; password: string; native: boolean; sourceBudgeted?: boolean }): Promise<AuthReply> {
+export async function startLogin(input: { organization: string; username: string; password: string; native: boolean; sourceBudgeted?: boolean; rememberedDevice?: string }): Promise<AuthReply> {
   const org = canonicalOrg(input.organization), username = canonicalUsername(input.username);
   if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(org) || !/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username)) throw new InternalAuthError('invalidLogin');
   // Retain the legacy safety ceiling until a reviewed ingress supplies source admission.
@@ -82,9 +83,14 @@ export async function startLogin(input: { organization: string; username: string
     if (!current?.enabled || current.version !== c.version || current.password !== c.password) throw new InternalAuthError('invalidLogin');
     const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [current.issuer, current.subject]);
     if (!principal[0] || principal[0].tenant_id !== current.tenantId) throw new InternalAuthError('invalidLogin');
+    if (current.totpSecret && !await passwordChangeRequired(tx, current) && await rememberedFactorValid(tx, current, input.native, input.rememberedDevice)) {
+      await audit(tx, current, 'app-user.mfa-remembered');
+      return makeSession(tx, current, input.native);
+    }
+    const rememberDays = (await readRememberedMfaPolicy(tx, current.tenantId)).policy.rememberDays;
     const raw = opaque();
     const phase = current.totpSecret ? 'mfa' : await passwordChangeRequired(tx, current) ? 'password' : 'enroll';
-    const challenge: Challenge = { subject: c.subject, version: c.version, phase, attempts: 0, native: input.native, expiresAt: Date.now() + CHALLENGE_LIFE,
+    const challenge: Challenge = { subject: c.subject, version: c.version, phase, attempts: 0, native: input.native, rememberDays, expiresAt: Date.now() + CHALLENGE_LIFE,
       ...(phase === 'enroll' ? { secret: generateSecret() } : {}) };
     await writeRecord(tx, `challenge:${digest(raw)}`, challenge, c.subject, challenge.expiresAt);
     return reply(raw, current, challenge);
@@ -139,7 +145,7 @@ function consumeFactor(c: Credential, factor: { step?: number; recovery?: number
   if (factor.step !== undefined) c.lastStep = factor.step;
   if (factor.recovery !== undefined) c.recoveryHashes.splice(factor.recovery, 1);
 }
-export async function verifyMfa(raw: string, code: string, native = false): Promise<AuthReply> {
+export async function verifyMfa(raw: string, code: string, native = false, rememberDevice = false): Promise<AuthReply> {
   const initial = validOpaque(raw) ? await readRecord<Challenge>(client, `challenge:${digest(raw)}`) : null;
   if (initial) await takeRate(`mfa:${initial.subject}`, 15);
   return withChallenge(raw, native, async (tx, c, ch, key) => {
@@ -177,7 +183,14 @@ export async function verifyMfa(raw: string, code: string, native = false): Prom
       await assertActiveCredential(tx, c);
       return { step: 'activated', organization: c.organization, recoveryCodes: codes };
     }
-    return makeSession(tx, c, ch.native, codes);
+    const session = await makeSession(tx, c, ch.native, codes);
+    // Recovery codes and forced-password/reset flows never mint a remembered-factor proof.
+    if (rememberDevice && factor.step !== undefined) {
+      const remembered = await rememberVerifiedFactor(tx, c, ch.native);
+      if (remembered.remembered_device_token) await audit(tx, c, 'app-user.mfa-device-remembered');
+      return { ...session, ...remembered };
+    }
+    return session;
   });
 }
 /** Web sessions also end after the organization's idle limit (ADR-0171); that check revokes and audits them. */

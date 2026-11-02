@@ -3,7 +3,7 @@ import { assertAuthGeneration } from './auth';
 import { fetch as nativeFetch } from 'expo/fetch';
 import { readBoundedBody } from '../../lib/bounded-body';
 export type InternalReply = { step: 'password' | 'enroll' | 'mfa' | 'complete'; challenge?: string; secret?: string; qr?: string; account?: string;
-  access_token?: string; refresh_token?: string; expires_in?: number; recoveryCodes?: string[] };
+  access_token?: string; refresh_token?: string; expires_in?: number; recoveryCodes?: string[]; rememberDays?: number; remembered_device_token?: string; remembered_device_expires_in?: number };
 export class InternalSignInError extends Error {
   constructor(public code: string) { super(code); }
 }
@@ -30,6 +30,8 @@ export async function internalAuthRequest(operation: 'login' | 'password' | 'mfa
         !Number.isFinite(result.expires_in) || result.expires_in <= 0 || result.expires_in > 3600)) ||
       (result.step === 'enroll' && (typeof result.secret !== 'string' || !/^[A-Z2-7]{16,64}$/.test(result.secret) ||
         typeof result.qr !== 'string' || !result.qr.startsWith('data:image/png;base64,'))) ||
+      (result.rememberDays !== undefined && (!Number.isSafeInteger(result.rememberDays) || result.rememberDays < 0 || result.rememberDays > 90)) ||
+      ((result.remembered_device_token !== undefined || result.remembered_device_expires_in !== undefined) && (result.step !== 'complete' || typeof result.remembered_device_token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(result.remembered_device_token) || !Number.isSafeInteger(result.remembered_device_expires_in) || result.remembered_device_expires_in <= 0 || result.remembered_device_expires_in > 90 * 86400)) ||
       (result.recoveryCodes !== undefined && (!Array.isArray(result.recoveryCodes) || result.recoveryCodes.length !== 8 ||
         !result.recoveryCodes.every((code: unknown) => typeof code === 'string' && /^[A-F0-9-]{32,40}$/.test(code))))) throw new InternalSignInError('unavailable');
     return result;

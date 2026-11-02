@@ -60,3 +60,12 @@ describe('native embedded credential transport',()=>{
     expect(f.fetcher.mock.calls[0][1]?.signal?.aborted).toBe(true);
   });
 });
+
+
+it('refuses malformed remembered-factor metadata while accepting bounded complete proofs', async () => {
+  const good={step:'complete',access_token:'aihr_'+'a'.repeat(43),refresh_token:'aihr_refresh_'+'b'.repeat(43),expires_in:900,remembered_device_token:'r'.repeat(43),remembered_device_expires_in:604800};
+  for(const bad of [{...good,remembered_device_expires_in:99999999},{...good,remembered_device_token:'bad'},{...good,step:'mfa',challenge:'c'.repeat(43)},{step:'mfa',challenge:'c'.repeat(43),rememberDays:-1}]){
+    const f=fixture();f.fetcher.mockResolvedValueOnce(Response.json(bad));await expect(f.send()).rejects.toMatchObject({code:'unavailable'});
+  }
+  const f=fixture();f.fetcher.mockResolvedValueOnce(Response.json(good));await expect(f.send()).resolves.toEqual(good);
+});

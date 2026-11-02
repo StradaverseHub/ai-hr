@@ -1,3 +1,5 @@
+import { readRememberedMfaPolicyEditor } from '@/core/remembered-mfa-policy';
+import { RememberedMfaForm } from './remembered-mfa-form';
 import { readPasswordPolicy } from '@/core/password-policy';
 import { PasswordPolicyForm } from './password-policy-form';
 import { getTranslations } from 'next-intl/server';
@@ -18,10 +20,12 @@ export default async function LoginPresentationPage() {
     getTranslations('loginPresentation'), readLoginPresentationEditor(s), loginPresentationTenantId(), readSessionPolicyEditor(s),
   ]);
   const tIdle = await getTranslations('sessionTimeout');
+  const rememberedMfa = internalSelected() ? await readRememberedMfaPolicyEditor(s) : null;
   const passwordPolicy = internalSelected() ? await readPasswordPolicy(s) : null;
   return <div className="mx-auto max-w-3xl space-y-6">
     <PageHeader title={t('settingsTitle')} description={t('settingsDescription')}/>
     <p className="text-sm leading-relaxed text-muted-foreground">{t(publishedTenant === s.tenantId ? 'activeOrganization' : 'otherOrganization')}</p>
+    {rememberedMfa && <Card className="p-6"><RememberedMfaForm {...rememberedMfa}/></Card>}
     {passwordPolicy && <Card className="p-6"><PasswordPolicyForm {...passwordPolicy}/></Card>}
     <Card className="p-6"><LoginPresentationForm presentation={view.presentation} revision={view.revision}/></Card>
     <Card className="p-6">

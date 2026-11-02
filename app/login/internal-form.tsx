@@ -3,19 +3,21 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import Image from 'next/image';
 import { authenticatorSetupUri } from '@/lib/authenticator-setup';
 import { useRouter } from 'next/navigation';
+import { rememberedMfaCopy } from '@/lib/remembered-mfa-copy';
 import { activationLoginHref } from '@/lib/internal-auth/login-navigation';
 import { Eye, EyeOff } from 'lucide-react';
 import { LoginShell } from './login-shell';
 import type { LoginPresentation } from '@/lib/login-presentation';
 import { useTranslations,useLocale } from 'next-intl';
 
-type Reply = { step: string; organization?: string; challenge?: string; secret?: string; qr?: string; account?: string; recoveryCodes?: string[]; error?: string };
+type Reply = { step: string; organization?: string; challenge?: string; secret?: string; qr?: string; account?: string; recoveryCodes?: string[]; rememberDays?: number; error?: string };
 export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation, entraError = false, idleSignedOut = false }: {
   presentation?: LoginPresentation; entraError?:boolean; idleSignedOut?:boolean; organization?: string; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
 }) {
   const t = useTranslations('internalAuth'),locale=useLocale();
   const [microsoftOrganization,setMicrosoftOrganization]=useState(organization);
   const router = useRouter();
+  const rememberedCopy = rememberedMfaCopy(locale);
   const copy = useTranslations('loginPresentation');
   const passwordId = useId();
   const [showPassword, setShowPassword] = useState(false);
@@ -107,6 +109,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
           <p className="text-xs font-medium text-muted-foreground">{t('manualKey')}</p><code className="block break-all rounded-lg bg-muted p-3 text-sm">{state.secret}</code>
         </div>}
         {['enroll','mfa','reset'].includes(state.step) && <label className="block space-y-1.5"><span className="text-sm font-medium">{t(state.step === 'enroll' ? 'code' : 'codeOrRecovery')}</span><input className={field} name="code" required={state.step !== 'reset'} maxLength={64} autoComplete="one-time-code" autoCapitalize="characters" spellCheck={false}/>{state.step === 'reset' && <span className="block text-xs text-muted-foreground">{t('resetMfaHelp')}</span>}</label>}
+        {['enroll', 'mfa'].includes(state.step) && !!state.rememberDays && <div className="space-y-2"><label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" name="rememberDevice" aria-describedby="remembered-device-help"/>{rememberedCopy.rememberWeb.replace('{days}', String(state.rememberDays))}</label><p id="remembered-device-help" className="text-xs leading-relaxed text-muted-foreground">{rememberedCopy.personalOnly}</p></div>}
         {state.step === 'accept' && <p className="text-sm leading-relaxed">{t('acceptHelp')}</p>}
         <button type="submit" disabled={busy} className={button}>{busy ? t('working') : t(state.step === 'login' ? 'signIn' : state.step === 'recovery' ? 'sendLink' : state.step === 'reset' ? 'resetSubmit' : 'continue')}</button>
         {state.step === 'login' && <a href="/reset-password" className="block text-sm font-medium underline">{t('forgot')}</a>}

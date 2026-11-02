@@ -1,0 +1,17 @@
+{
+  "title": "Authenticator code frequency",
+  "description": "Remember personal devices after a successful authenticator code. Passwords and normal session limits still apply.",
+  "days": "Ask for a code again after (days)",
+  "help": "Choose 1–90 days; use 0 to require a code at every sign-in. For example, 7 days or 30 days.",
+  "effect": "Changing this setting asks every remembered device to verify again at its next sign-in.",
+  "rememberWeb": "Remember this browser for {days} days",
+  "rememberNative": "Remember this phone for {days} days",
+  "personalOnly": "Only choose this on a device you control. Password resets and security changes require verification again.",
+  "save": "Save",
+  "saving": "Saving…",
+  "saved": "Saved.",
+  "invalid": "Enter a whole number from 0 to 90.",
+  "conflict": "This setting changed. Reload and try again.",
+  "forbidden": "Only a group administrator can change this setting.",
+  "unavailable": "Unable to save. Try again."
+}

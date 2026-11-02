@@ -1,0 +1,17 @@
+{
+  "title": "Kekerapan kod pengesah",
+  "description": "Ingat peranti peribadi selepas kod pengesah berjaya. Kata laluan dan had sesi biasa masih terpakai.",
+  "days": "Minta kod semula selepas (hari)",
+  "help": "Pilih 1–90 hari; gunakan 0 untuk meminta kod pada setiap log masuk. Contohnya, 7 atau 30 hari.",
+  "effect": "Perubahan tetapan ini memerlukan semua peranti yang diingati mengesahkan semula pada log masuk seterusnya.",
+  "rememberWeb": "Ingat pelayar ini selama {days} hari",
+  "rememberNative": "Ingat telefon ini selama {days} hari",
+  "personalOnly": "Pilih hanya pada peranti milik anda. Tetapan semula kata laluan dan perubahan keselamatan memerlukan pengesahan semula.",
+  "save": "Simpan",
+  "saving": "Menyimpan…",
+  "saved": "Disimpan.",
+  "invalid": "Masukkan nombor bulat dari 0 hingga 90.",
+  "conflict": "Tetapan ini telah berubah. Muat semula dan cuba lagi.",
+  "forbidden": "Hanya pentadbir kumpulan boleh mengubah tetapan ini.",
+  "unavailable": "Tidak dapat menyimpan. Cuba lagi."
+}
