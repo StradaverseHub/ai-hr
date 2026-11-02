@@ -1233,6 +1233,26 @@ export type NotificationRow = {
 /** D5 (mobile M10) keyset position: the row's exact `created_at` as UTC text with microseconds (`cursorAt`
  *  from listNotificationsPage — a JS Date drops the microseconds and would skip or repeat rows) and its id. */
 export type NotificationCursor = { at: string; id: string };
+export type NotificationBellState = {
+  unread: number;
+  taskUnread: number;
+  items: NotificationRow[];
+  taskItems: NotificationRow[];
+  history: NotificationRow[];
+};
+
+/** The shell's existing five recipient reads, kept behind one owned composition boundary. */
+export async function notificationBellState(ctx: SessionContext, opts: { letterCompanyIds?: string[] } = {}): Promise<NotificationBellState> {
+  const [unread, taskUnread, items, taskItems, history] = await Promise.all([
+    unreadNotificationCount(ctx, undefined, { ...opts, action: false }),
+    unreadNotificationCount(ctx, undefined, { ...opts, action: true }),
+    listNotifications(ctx, undefined, { ...opts, limit: 12, read: false, action: false }),
+    listNotifications(ctx, undefined, { ...opts, limit: 12, read: false, action: true }),
+    listNotifications(ctx, undefined, { ...opts, limit: 12, read: true }),
+  ]);
+  return { unread, taskUnread, items, taskItems, history };
+}
+
 type NotificationFilter = { read?: boolean; action?: boolean; after?: NotificationCursor | null; ids?: readonly string[]; letterCompanyIds?: string[] };
 const notificationColumns = {
   id: notification.id, kind: notification.kind, title: notification.title, body: notification.body, linkPath: notification.linkPath,
