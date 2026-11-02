@@ -2,12 +2,42 @@
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {sql} from 'drizzle-orm';
+import {and,inArray,sql,type SQL} from 'drizzle-orm';
+import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import * as s from '../db/schema';
 import * as readers from '../core/read';
 import {withTenant,type Tx} from '../db/client';
-import {matchEmployees} from '../lib/employee-search';
+import {matchEmployees,foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../lib/employee-search';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+
+// Frozen c27c bounded-query reference, specialized to its only filter: nonempty company IDs.
+// Keep the original Drizzle expressions/ranking/lock; private test code, no production API.
+const workforceListValue=<T>(key:string):SQL<T>=>sql<T>`workforce_row.value ->> ${key}`;
+const workforceListUuid=(key:string)=>sql<string>`(${workforceListValue(key)})::uuid`;
+function workforcePickerColumns(){return {
+ employmentId:workforceListUuid('employmentId'),name:workforceListValue<string>('name'),
+ employeeCode:workforceListValue<string|null>('employeeCode'),companyId:workforceListUuid('companyId'),
+ company:workforceListValue<string>('company'),department:workforceListValue<string|null>('department'),
+ terminatedOn:workforceListValue<string|null>('terminatedOn'),
+};}
+async function unmaterializedReference(ctx:ReturnType<typeof adminCtx>,tx:Tx,companyIds:string[],query:string){
+  if(query.length>200)throw new RangeError('Invalid employee search');
+  const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query);
+  if(!raw||!companyIds.length)return [];
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const columns=workforcePickerColumns(),name=sql`lower(${columns.name})`,code=sql`lower(coalesce(${columns.employeeCode},''))`;
+  const compact=sql`regexp_replace(${code}, '[[:space:]._-]', '', 'g')`;
+  const rank=sql<number>`case
+    when ${folded} <> '' and ${compact} <> '' and ${compact} = ${folded} then 0
+    when ${folded} <> '' and ${compact} <> '' and left(${compact},length(${folded})) = ${folded} then 1
+    when left(${name},length(${raw})) = ${raw} then 2
+    when position(${raw} in ${code}) > 0 or (${folded} <> '' and position(${folded} in ${compact}) > 0) then 3
+    when position(${raw} in ${name}) > 0 then 4 else 5 end`;
+  const source=sql`app.access_workforce_picker_rows(null,null::date,null::date) as workforce_row(value)`;
+  return tx.select(columns).from(source).where(and(inArray(columns.companyId,companyIds),sql`${rank} < 5`))
+    .orderBy(rank,columns.name,columns.employmentId).limit(EMPLOYEE_SEARCH_RESULT_CAP);
+}
+
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('keeps the exact authorized search matches with bounded response at retained volume',async()=>{
  await resetDb();const b=await seedBase(),foreign=await seedBase();
@@ -49,5 +79,13 @@ it('keeps the exact authorized search matches with bounded response at retained 
   if(round%2===0){await eager();await bounded();}else{await bounded();await eager();}
   pairs.push({round,eagerMs,boundedMs});
  }
- Object.assign(report,{pairedTimings:pairs,boundedRows:8,boundedBytes,exactRankedMatches:true,emptyForeignScopeRefused:true});save();
+ const boundedPlanPairs=[];
+ for(let round=0;round<4;round++){
+  let referenceMs=0,normalizedMs=0;
+  const reference=async()=>{const t=performance.now();const rows=await withTenant(ctx,tx=>unmaterializedReference(ctx,tx,[b.companyId],'MAIN0000'));referenceMs=performance.now()-t;expect(rows.map(fields)).toEqual(matchEmployees(legacy,'MAIN0000',8).map(fields));};
+  const normalized=async()=>{const t=performance.now();const rows=await read('MAIN0000');normalizedMs=performance.now()-t;expect(rows.map(fields)).toEqual(matchEmployees(legacy,'MAIN0000',8).map(fields));};
+  if(round%2===0){await reference();await normalized();}else{await normalized();await reference();}
+  boundedPlanPairs.push({round,order:round%2===0?'reference-normalized':'normalized-reference',referenceMs,normalizedMs});
+ }
+ Object.assign(report,{pairedTimings:pairs,boundedPlanPairs,boundedReferenceSource:'c27ce14f69aea76576f198e5bcc50666136551e6_equivalentNonemptyCompanyOnlyFilter',boundedRows:8,boundedBytes,exactRankedMatches:true,emptyForeignScopeRefused:true});save();
 },240000);
