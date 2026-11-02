@@ -1,3 +1,4 @@
+import {saveTaxSelectionMY} from '../localization/my/tax-selection';
 /**
  * f00bd1eb — "company deletion with usage validation and proper authorization".
  *
@@ -542,6 +543,7 @@ describe('Formula evidence retains a company independently of its current employ
       await setPayFormulaActive(ctx,{...saved,testId:tested.id,active:true});
       await owner.db.update(schema.employment).set({companyId:target}).where(eq(schema.employment.id,employee.employmentId));
       await owner.db.update(schema.assignment).set({companyId:target,departmentId:department.id}).where(eq(schema.assignment.employmentId,employee.employmentId));
+      await saveTaxSelectionMY(ctx,{employmentId:employee.employmentId,expectedCompanyId:target,scheme:'resident'});
       const component=await upsertPayComponent(ctx,{code:'RETENTION_VALUE',name:'Fictional retained calculation allowance',label:'Fictional retained calculation allowance',
         kind:'allowance',includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,
         rule:{kind:'formula_builder',formulaId:'RETAINED_COMPANY',dependencies:[]}});

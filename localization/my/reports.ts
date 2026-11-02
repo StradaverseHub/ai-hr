@@ -535,12 +535,23 @@ async function loadBatchRows(
     // The monthly statutory return is ONE filing for the month, so aggregate across ALL runs of the
     // period. Runs store delta figures, so summing per employee yields the exact monthly total — with a
     // single run this is byte-identical to before. (Mirrors loadYearRows, scoped to one month.)
-    const monthBatches = await tx
+    const ordinaryBatches = tx
       .select({ id: payrollBatch.id, status: payrollBatch.status, runSeq: payrollBatch.runSeq })
       .from(payrollBatch)
       .where(
         and(eq(payrollBatch.companyId, params.companyId), eq(payrollBatch.payPeriod, params.periodKey)),
       );
+    // A retained payslip can still belong to the filing company after the employee has moved.
+    // Add only run identities that the existing retained report source actually supplies.
+    const retainedBatches = tx
+      .select({ id: payrollDocumentBatch.id, status: payrollDocumentBatch.status, runSeq: payrollDocumentBatch.runSeq })
+      .from(payrollDocumentBatch)
+      .where(and(
+        eq(payrollDocumentBatch.companyId, params.companyId),
+        eq(payrollDocumentBatch.payPeriod, params.periodKey),
+        sql`exists (select 1 from app.information_report_records('payslip', ${params.companyId}::uuid, ${params.periodKey}) as retained(data) where (retained.data->>'batch_id')::uuid=${payrollDocumentBatch.id})`,
+      ));
+    const monthBatches = await ordinaryBatches.union(retainedBatches);
     if (monthBatches.length === 0) return { hasBatch: false, rows: [] };
     // r409 — the runs the caller ticked, or the whole month (`undefined`, and every caller but CP39).
     const selection = opts.honourRunSeqs ? runSelectionSet(params.runSeqs) : undefined;

@@ -36,7 +36,7 @@ import {
   companyStatutoryMy,
   employeeStatutoryMy,
   employment,
-  payrollBatch,
+  payrollDocumentBatch,
   payslip,
   person,
 } from '../../db/schema';
@@ -147,14 +147,14 @@ export async function pcb2iiStatement(
     // THE YEAR'S PAYSLIPS FOR THIS EMPLOYMENT, at this employer. `like('YYYY-%')` is the same filter
     // `loadYearRows` uses; the batch's pay period is what the dating rule below consumes.
     const slips = await tx
-      .select({ payPeriod: payrollBatch.payPeriod, statutory: payslip.statutory })
+      .select({ payPeriod: payrollDocumentBatch.payPeriod, statutory: payslip.statutory })
       .from(informationReportRelation('payslip',p.companyId,p.year))
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(payrollDocumentBatch, eq(payrollDocumentBatch.id, payslip.batchId))
       .where(
         and(
           eq(payslip.employmentId, p.employmentId),
-          eq(payrollBatch.companyId, employerId),
-          like(payrollBatch.payPeriod, `${p.year}-%`),
+          eq(payrollDocumentBatch.companyId, employerId),
+          like(payrollDocumentBatch.payPeriod, `${p.year}-%`),
         ),
       );
 

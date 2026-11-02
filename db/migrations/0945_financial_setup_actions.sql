@@ -940,6 +940,88 @@ $$;
 REVOKE ALL ON FUNCTION app.import_attempt_revert_current(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.import_attempt_revert_current(uuid) TO ai_hr_app;
 
+-- Only the admitted whole-attempt writer may carry the exact void into the
+-- native storage guards. No application caller can mint this private receipt.
+CREATE TABLE app.import_employment_void_effect (
+ transaction_id xid8 NOT NULL, tenant_id uuid NOT NULL, actor_id uuid NOT NULL,
+ employment_id uuid NOT NULL, person_id uuid NOT NULL, attempt_id uuid NOT NULL,
+ reason text NOT NULL, employee_code text, ic_digest bytea,
+ PRIMARY KEY(transaction_id,tenant_id,employment_id)
+);
+ALTER TABLE app.import_employment_void_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.import_employment_void_effect FROM PUBLIC,ai_hr_app;
+
+CREATE FUNCTION app.import_employment_void_matches(p_old public.employment,p_new public.employment) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT (p_old).voided_at IS NULL AND (p_old).tenant_id=app.current_tenant_id() AND (p_new).employee_code IS NULL AND (p_new).voided_at=now()
+  AND (p_new).voided_by=app.current_user_id() AND (p_new).voided_employee_code IS NOT DISTINCT FROM (p_old).employee_code
+  AND (to_jsonb(p_new)-ARRAY['voided_at','voided_by','void_reason','voided_import_attempt_id','voided_employee_code','employee_code']) =
+      (to_jsonb(p_old)-ARRAY['voided_at','voided_by','void_reason','voided_import_attempt_id','voided_employee_code','employee_code'])
+  AND EXISTS(SELECT 1 FROM app.import_employment_void_effect receipt WHERE receipt.transaction_id=pg_current_xact_id()
+   AND receipt.tenant_id=(p_old).tenant_id AND receipt.actor_id=(p_new).voided_by AND receipt.employment_id=(p_old).id
+   AND receipt.person_id=(p_old).person_id AND receipt.attempt_id=(p_new).voided_import_attempt_id
+   AND receipt.reason=(p_new).void_reason AND receipt.employee_code IS NOT DISTINCT FROM (p_old).employee_code);
+$$;
+REVOKE ALL ON FUNCTION app.import_employment_void_matches(public.employment,public.employment) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.employment_void_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF (NEW.voided_at,NEW.voided_by,NEW.void_reason,NEW.voided_import_attempt_id,NEW.voided_employee_code)
+  IS NOT DISTINCT FROM (OLD.voided_at,OLD.voided_by,OLD.void_reason,OLD.voided_import_attempt_id,OLD.voided_employee_code) THEN RETURN NEW;END IF;
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF OLD.voided_at IS NOT NULL THEN RAISE EXCEPTION 'employment_void_final' USING ERRCODE='42501';END IF;
+ IF app.import_employment_void_matches(OLD,NEW) THEN RETURN NEW;END IF;
+ RAISE EXCEPTION 'employment_void_forbidden' USING ERRCODE='42501';
+END $$;
+
+CREATE OR REPLACE FUNCTION app.person_void_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF (NEW.voided_at,NEW.voided_ic_number) IS NOT DISTINCT FROM (OLD.voided_at,OLD.voided_ic_number) THEN RETURN NEW;END IF;
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF OLD.voided_at IS NULL AND NEW.voided_at=now() AND OLD.tenant_id=app.current_tenant_id()
+  AND (to_jsonb(NEW)-ARRAY['voided_at','voided_ic_number'])=(to_jsonb(OLD)-ARRAY['voided_at','voided_ic_number'])
+  AND NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.person_id=OLD.id)
+  AND EXISTS(SELECT 1 FROM app.import_employment_void_effect receipt WHERE receipt.transaction_id=pg_current_xact_id()
+   AND receipt.tenant_id=OLD.tenant_id AND receipt.actor_id=app.current_user_id()
+   AND receipt.person_id=OLD.id AND receipt.ic_digest IS NOT DISTINCT FROM sha256(convert_to(NEW.voided_ic_number,'UTF8'))) THEN RETURN NEW;END IF;
+ RAISE EXCEPTION 'person_void_forbidden' USING ERRCODE='42501';
+END $$;
+
+CREATE FUNCTION app.import_void_statutory_matches(p_old public.employee_statutory_my,p_new public.employee_statutory_my) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT (p_old).ic_number IS NOT NULL AND (p_new).ic_number IS NULL
+ AND (to_jsonb(p_new)-'ic_number')=(to_jsonb(p_old)-'ic_number')
+ AND EXISTS(SELECT 1 FROM app.import_employment_void_effect receipt
+  JOIN public.person p ON p.id=receipt.person_id AND p.tenant_id=receipt.tenant_id
+  WHERE receipt.transaction_id=pg_current_xact_id() AND receipt.tenant_id=app.current_tenant_id()
+   AND receipt.tenant_id=(p_old).tenant_id AND receipt.actor_id=app.current_user_id() AND receipt.person_id=(p_old).person_id
+   AND receipt.ic_digest=sha256(convert_to((p_old).ic_number,'UTF8')) AND p.voided_at=now()
+   AND p.voided_ic_number IS NOT DISTINCT FROM (p_old).ic_number);
+$$;
+REVOKE ALL ON FUNCTION app.import_void_statutory_matches(public.employee_statutory_my,public.employee_statutory_my) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE definition text;needle text;replacement text;signature text;BEGIN
+ FOR signature,needle,replacement IN VALUES
+ ('app.access_workforce_employment_action_guard()', ' -- Separately authorized termination consequences',
+  ' IF TG_OP=''UPDATE'' AND app.import_employment_void_matches(OLD,NEW) THEN RETURN NEW;END IF;'||chr(10)||' -- Separately authorized termination consequences'),
+ ('app.access_workforce_statutory_action_guard()', ' IF NOT relevant THEN RETURN NULL; END IF;',
+  ' IF NOT relevant THEN RETURN NULL; END IF;'||chr(10)||' IF TG_OP=''UPDATE'' AND app.import_void_statutory_matches(OLD,NEW) THEN RETURN NULL; END IF;'),
+ ('app.financial_receipts_prune()', $needle$'financial_onehr_career_effect'$needle$, $replacement$'financial_onehr_career_effect','import_employment_void_effect'$replacement$)
+ LOOP
+  definition:=pg_get_functiondef(signature::regprocedure);
+  IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'Import void owner binding changed: %',signature;END IF;
+  EXECUTE replace(definition,needle,replacement);
+ END LOOP;
+END $$;
+CREATE TRIGGER import_employment_void_receipt_epoch BEFORE INSERT ON app.import_employment_void_effect
+FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+
+DO $$ DECLARE definition text;needle text:=$needle$app.access_workforce_employment(x,'workforce.maintain')$needle$;BEGIN
+ definition:=pg_get_functiondef('app.employment_void_blockers(uuid[])'::regprocedure);
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'Import void blocker source binding changed';END IF;
+ EXECUTE replace(definition,needle,$replacement$app.access_workforce_action_employment(x,'delete')$replacement$);
+END $$;
+
 -- Preserve the original void owner and its full blocker checks. Its public
 -- admission cannot nominate a subset or reuse a non-employee import attempt.
 ALTER FUNCTION app.employment_void(uuid[],uuid,text) RENAME TO workforce_import_employment_void_native;
@@ -964,7 +1046,16 @@ BEGIN
  IF cardinality(actual_ids)=0 OR actual_ids IS DISTINCT FROM requested_ids THEN
   RAISE EXCEPTION 'employment_void_unavailable' USING ERRCODE='42501';
  END IF;
+ -- Lock the actual pre-effect rows in the same order before capturing their exact values.
+ PERFORM 1 FROM public.employment e WHERE e.tenant_id=app.current_tenant_id() AND e.id=ANY(actual_ids) ORDER BY e.id FOR UPDATE;
+ IF EXISTS(SELECT 1 FROM unnest(actual_ids) id WHERE app.access_workforce_action_employment(id,'delete') IS NOT TRUE)
+  OR app.import_attempt_revert_current(p_attempt) IS NOT TRUE THEN RAISE EXCEPTION 'employment_void_unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO app.import_employment_void_effect
+ SELECT pg_current_xact_id(),e.tenant_id,app.current_user_id(),e.id,e.person_id,p_attempt,p_reason,e.employee_code,sha256(convert_to(s.ic_number,'UTF8'))
+ FROM public.employment e LEFT JOIN public.employee_statutory_my s ON s.person_id=e.person_id AND s.tenant_id=e.tenant_id
+ WHERE e.tenant_id=app.current_tenant_id() AND e.id=ANY(actual_ids);
  RETURN QUERY SELECT native.employment_id,native.employee_code FROM app.workforce_import_employment_void_native(actual_ids,p_attempt,p_reason) native;
+
 END $$;
 REVOKE ALL ON FUNCTION app.employment_void(uuid[],uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.employment_void(uuid[],uuid,text) TO ai_hr_app;

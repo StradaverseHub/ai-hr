@@ -81,6 +81,8 @@ describe('0db97f14 · the Bank & Statutory template carries every editable tab s
 describe('0db97f14 · the merged writer',()=>{
  it('a partial file changes only its own cell and leaves every other statutory field untouched',async()=>{
   const e=await seedEmployee(1,'BS001');
+  // Make this a real change regardless of the current pack's new-employee default.
+  await owner.db.update(s.employeeStatutoryMy).set({subjectToSkbbk:false}).where(eq(s.employeeStatutoryMy.personId,e.personId));
   const before=await statutoryRow(e.personId);
   const records=recs('employee_code,subject_to_skbbk',['BS001,Yes']);
   expect((await validateSectionImport(a,{section:'bank_statutory',records})).rows[0]).toMatchObject({verdict:'update',ok:true,changes:['subject_to_skbbk']});

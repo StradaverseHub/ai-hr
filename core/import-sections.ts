@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
-import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
+import { getPeopleGeneralForAdmission, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
 import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
 import { pgSqlState } from '../lib/db-error';
 import { publicErrorMessage } from '../lib/public-error';
@@ -265,7 +265,7 @@ async function analyze(
     {present:presentSet,residencyCodes:new Set(records.filter(record=>['tax_residency','is_resident','tax_circumstance','tax_category','epf_citizenship'].some(column=>norm(record[column]))).map(record=>normalizeEmployeeCode(record[SECTION_KEY_COLUMN]))),focusCode:focusRowNum?normalizeEmployeeCode(norm(records[focusRowNum-1]?.[SECTION_KEY_COLUMN])):undefined},
   );
 
-  const { allowDuplicatedNric, allowDuplicatedEmail } = await (suppliedTx?readPeopleGeneralTx(suppliedTx):getPeopleGeneral(ctx));
+  const { allowDuplicatedNric, allowDuplicatedEmail } = await (suppliedTx?readPeopleGeneralTx(suppliedTx):getPeopleGeneralForAdmission(ctx));
   const seenCodes = new Set<string>();
   /**
    * IN-FILE COLLISIONS ON THE TWO IDENTIFIERS THAT MUST STAY UNIQUE PER PERSON.
