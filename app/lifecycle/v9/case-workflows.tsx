@@ -1,4 +1,5 @@
 'use client';
+import {CaseSection} from '@/components/lifecycle-v9/case-layout';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { DocumentBody } from '@/components/lifecycle-v9/document-body';
@@ -10,7 +11,7 @@ import type { LifecycleV9Command } from '@/packs/lifecycle/service';
 export function CaseWorkflows({ c,config,busy,command,onOpenWorkflow }: { c:Case;config:Config;busy:boolean;command:(command:LifecycleV9Command)=>Promise<{ok:boolean;error?:string}>;onOpenWorkflow?:(id:string)=>void }) {
   const [selected,select]=useState<string|null>(null),[email,selectEmail]=useState<{id:string;editing:boolean}|null>(null);
   const today=todayInKualaLumpur(),workflows=config.workflows.filter(workflow=>workflow.module===c.module&&(workflow.status==='published'&&workflowMatches(c,workflow,today)||c.runs.some(run=>run.workflowId===workflow.id)));
-  return <section className="v9-panel v9-stack" aria-label="Workflows for this person"><h2>Workflows</h2>
+  return <CaseSection className="v9-stack" aria-label="Workflows for this person"><h2>Workflows</h2>
     {!workflows.length&&<p className="v9-muted">No live workflows match this case.</p>}
     <ul className="v9-list">{workflows.map(workflow=>{
       const repeating=workflow.trigger.repeat&&dateTrigger(workflow.trigger.event)&&!afterTrigger(workflow.trigger.event);
@@ -21,7 +22,7 @@ export function CaseWorkflows({ c,config,busy,command,onOpenWorkflow }: { c:Case
       <button type="button" className="v9-button" disabled={busy||c.state!=='submitted'||!live||done||!workflowMatches(c,workflow,today)} onClick={()=>command({type:waiting?'retryWorkflow':'startWorkflow',workflowId:workflow.id})}>{waiting?'Continue':'Start now'} {workflow.name}</button></div></li>;
     })}</ul>{selected&&<WorkflowPreview caseId={c.id} workflowId={selected} close={()=>select(null)}/>}
     {email&&<EmailDialog key={`${c.id}:${email.id}:${email.editing}:${c.revision}`} c={c} config={config} emailId={email.id} initialEditing={email.editing} busy={busy} command={command} close={()=>selectEmail(null)}/>}
-  </section>;
+  </CaseSection>;
 }
 
 function WorkflowPreview({caseId,workflowId,close}:{caseId:string;workflowId:string;close:()=>void}) {
