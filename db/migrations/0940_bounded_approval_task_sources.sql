@@ -707,3 +707,21 @@ CREATE FUNCTION app.leave_task_cleanup()RETURNS trigger LANGUAGE plpgsql SECURIT
 BEGIN DELETE FROM app.leave_task_effect WHERE xact_id=pg_current_xact_id() AND tenant_id=NEW.tenant_id AND user_id=NEW.actor_id AND request_id=NEW.aggregate_id;RETURN NULL;END $$;
 REVOKE ALL ON FUNCTION app.leave_task_cleanup() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER bounded_leave_task_cleanup AFTER INSERT ON domain_event DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.aggregate_type='leave-request' AND NEW.event_type IN ('leave-request.approved','leave-request.rejected'))EXECUTE FUNCTION app.leave_task_cleanup();
+--> statement-breakpoint
+-- Native payroll follow-up executes before the final approval event. This proof is private and
+-- provisional: the owning deferred receipt still requires that actual final event before commit.
+CREATE FUNCTION app.leave_task_effect_pending(p_request uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM app.leave_task_effect e JOIN public.leave_request q ON q.id=e.request_id AND q.tenant_id=e.tenant_id JOIN public.leave_ledger l ON l.id=e.ledger_id AND l.tenant_id=e.tenant_id
+ WHERE e.xact_id=pg_current_xact_id() AND e.tenant_id=app.current_tenant_id() AND e.user_id=app.current_user_id() AND e.request_id=p_request AND e.decision='approved' AND q.status='approved' AND to_jsonb(l)=e.ledger_row);
+$$;
+REVOKE ALL ON FUNCTION app.leave_task_effect_pending(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+DO $$ DECLARE definition text;needle text:='app.can_see_employment(lr.employment_id) OR app.can_decide_via_delegation(lr.employment_id)'; BEGIN
+ definition:=pg_get_functiondef('app.leave_payroll_coverage(uuid[])'::regprocedure);
+ IF position(needle IN definition)=0 THEN RAISE EXCEPTION 'Leave payroll coverage owner changed';END IF;
+ definition:=replace(definition,needle,needle||' OR app.workflow_task_reader(''leave.application'',lr.id)');EXECUTE definition;
+ definition:=pg_get_functiondef('app.record_leave_payroll_effect(uuid,uuid,text,jsonb,text)'::regprocedure);
+ IF position(needle IN definition)=0 THEN RAISE EXCEPTION 'Leave payroll effect owner changed';END IF;
+ definition:=replace(definition,needle,needle||' OR (action=''approval'' AND app.leave_task_effect_pending(lr.id))');EXECUTE definition;
+END $$;

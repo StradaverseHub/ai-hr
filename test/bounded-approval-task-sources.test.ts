@@ -13,7 +13,7 @@ import {addQualification} from '../core/qualifications';
 import {addDependent} from '../core/dependents';
 import {setTenantSetting} from '../core/tenant-settings';
 import {setOwnPersonPhoto,getPersonPhoto} from '../core/person-photo';
-import {decideLeave} from '../core/leave';
+import {decideLeave,LeaveYearApplicationLimitExceededError} from '../core/leave';
 import {listLeaveRequests} from '../core/read';
 import {essVisibleFields} from '../lib/personnel-ess-contract';
 import {editableProfileRoute,EMPTY_PROFILE_ROUTING,type ProfileRouteRule} from '../lib/profile-routing-policy';
@@ -60,7 +60,7 @@ it('uses the actual request balance for a manager decision while keeping the raw
  const unrelated=await employee('LEAVE-NO-TASK');await setReportingLine(root,{subordinateEmploymentId:unrelated.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2024-01-01'});expect(await withTenant(manager.ctx,tx=>tx.execute(sql`select * from app.delegated_approval_subject(${unrelated.employmentId}::uuid,'leave','leave.application')`))).toEqual([]);
  const [balance]=await withTenant(manager.ctx,tx=>tx.execute<{value:string}>(sql`select app.leave_task_balance(${request.id}::uuid,${b.annualLeaveTypeId}::uuid) as value`));expect(Number(balance.value)).toBe(10);
  await expect(withTenant(manager.ctx,tx=>tx.insert(s.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,entryType:'debit',days:'-1.00',sourceRequestId:request.id,effectiveOn:date}))).rejects.toThrow();
- await owner.db.update(s.leaveType).set({maxDaysPerLeaveYear:'0.50'}).where(eq(s.leaveType.id,b.annualLeaveTypeId));await expect(decideLeave(manager.ctx,{leaveRequestId:request.id,decision:'approved',deciderEmploymentId:manager.employmentId})).rejects.toThrow();await owner.db.update(s.leaveType).set({maxDaysPerLeaveYear:null}).where(eq(s.leaveType.id,b.annualLeaveTypeId));
+ await owner.db.update(s.leaveType).set({maxDaysPerLeaveYear:'0.50'}).where(eq(s.leaveType.id,b.annualLeaveTypeId));await expect(decideLeave(manager.ctx,{leaveRequestId:request.id,decision:'approved',deciderEmploymentId:manager.employmentId})).rejects.toBeInstanceOf(LeaveYearApplicationLimitExceededError);await owner.db.update(s.leaveType).set({maxDaysPerLeaveYear:null}).where(eq(s.leaveType.id,b.annualLeaveTypeId));
  await decideLeave(manager.ctx,{leaveRequestId:request.id,decision:'approved',deciderEmploymentId:manager.employmentId});const [after]=await owner.client`select sum(days)::text as value from leave_ledger where employment_id=${subject.employmentId} and leave_type_id=${b.annualLeaveTypeId}`;expect(Number(after.value)).toBe(9);await noRaw(manager.ctx,subject);
 });
 
