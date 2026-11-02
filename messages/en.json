@@ -33629,5 +33629,21 @@
       "forbidden": "You do not have permission to change this policy.",
       "unavailable": "Password settings are unavailable. Try again."
     }
+  },
+  "workflowModules": {
+    "label": "Workflow module",
+    "legacy": "Onboarding & offboarding",
+    "probation": "Probation",
+    "contract_staff": "Contract Management"
+  },
+  "workflowEditor": {
+    "required": "Required",
+    "close": "Close workflow",
+    "view": "Workflow view",
+    "steps": "Steps",
+    "history": "Run history",
+    "when": "When",
+    "onlyIf": "Only if",
+    "then": "Then"
   }
 }

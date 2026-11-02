@@ -33629,5 +33629,21 @@
       "forbidden": "Anda tiada kebenaran untuk mengubah dasar ini.",
       "unavailable": "Tetapan kata laluan tidak tersedia. Cuba lagi."
     }
+  },
+  "workflowModules": {
+    "label": "Modul aliran kerja",
+    "legacy": "Kemasukan & pemberhentian",
+    "probation": "Percubaan",
+    "contract_staff": "Pengurusan Kontrak"
+  },
+  "workflowEditor": {
+    "required": "Diperlukan",
+    "close": "Tutup aliran kerja",
+    "view": "Paparan aliran kerja",
+    "steps": "Langkah",
+    "history": "Sejarah pelaksanaan",
+    "when": "Bila",
+    "onlyIf": "Hanya jika",
+    "then": "Kemudian"
   }
 }
