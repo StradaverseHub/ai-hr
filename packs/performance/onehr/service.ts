@@ -1139,7 +1139,7 @@ async function ownOnehrPlanAcknowledgementSourceTx(tx:Tx,ctx:SessionContext,plan
  uuid.parse(planId);assertModuleEnabled(ctx,'performance');
  const query=tx.select({planId:onehrPlan.id,reviewId:onehrPlan.reviewId,employmentId:onehrPlan.employmentId,planYear:onehrPlan.planYear,
   status:onehrPlan.status,planRevision:onehrPlan.revision,acknowledgedAt:onehrPlan.acknowledgedAt,conversationHeldOn:onehrPlan.conversationHeldOn,planVersion:sql<string>`${onehrPlan}.xmin::text`})
-  .from(onehrPlan).where(and(eq(onehrPlan.id,planId),eq(onehrPlan.tenantId,ctx.tenantId),
+  .from(onehrPlan).where(and(eq(onehrPlan.id,planId),eq(onehrPlan.tenantId,ctx.tenantId),sql`app.onehr_plan_acknowledgement_action(${onehrPlan.id},'view')`,
    // Reviewed own-only selection must exclude a visible subordinate BEFORE taking its row lock.
    // The canonical isSelf check below still adjudicates; this predicate only narrows lock admission.
    noWait?sql<boolean>`exists(select 1 from employment e join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id
@@ -1154,17 +1154,11 @@ export type ReviewedOnehrPlanAcknowledgement={employmentId:string;planVersion:st
  * carries safe revision/time metadata and own subject, enabling exact terminal reconciliation. */
 export async function acknowledgeOnehrPlanTx(tx:Tx,ctx:SessionContext,planId:string,expected:number,reviewed?:ReviewedOnehrPlanAcknowledgement){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};const id=planId,expectedRevision=expected,checked=reviewed?{...reviewed}:undefined;
+ uuid.parse(id);z.number().int().parse(expectedRevision);assertModuleEnabled(ctx,'performance');
  await lockAccessConfigurationTx(tx,ctx.tenantId);
- const plan=await ownOnehrPlanAcknowledgementSourceTx(tx,ctx,id,Boolean(checked));revision(plan.planRevision,expectedRevision);
- if(checked&&(checked.employmentId!==plan.employmentId||checked.planVersion!==plan.planVersion||plan.acknowledgedAt!==null))throw Error('This record changed. Reload before saving.');
- if(plan.status!=='closed')throw Error('A recorded career conversation is required.');
- const acknowledgedAt=new Date(),planRevision=plan.planRevision+1;
- await tx.update(onehrPlan).set({acknowledgedAt,revision:planRevision}).where(eq(onehrPlan.id,id));
- let eventId:string|null=null;
- if(checked)eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onehr',aggregateId:id,eventType:'onehr.plan-acknowledged',actor:actorOf(ctx),subjectEmploymentId:plan.employmentId,
-  payload:{version:1,planRevision,acknowledgedAt:acknowledgedAt.toISOString()}},{returnId:true});
- else await audit(tx,ctx,id,'plan-acknowledged');
- return {planId:id,employmentId:plan.employmentId,reviewId:plan.reviewId,planRevision,acknowledgedAt,eventId};
+ const [source]=await tx.execute<{value:{planId:string;employmentId:string;reviewId:string;planRevision:number;acknowledgedAt:string;eventId:string|null}}>(sql`select app.onehr_plan_acknowledge(${id}::uuid,${expectedRevision}::integer,${Boolean(checked)}::boolean,${checked?.employmentId??null}::uuid,${checked?.planVersion??null}::text) as value`);
+ if(!source?.value)throw Error('Plan acknowledgement unavailable.');
+ return {...source.value,acknowledgedAt:new Date(source.value.acknowledgedAt)};
 }
 export async function acknowledgeOnehrPlan(ctx:SessionContext,planId:string,expected:number):Promise<void> {
  const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))},id=planId,expectedRevision=expected;uuid.parse(id);

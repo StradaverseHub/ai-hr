@@ -1229,6 +1229,9 @@ BEGIN
    AND app.access_scope_covers(stored.company_id,p_company,p_tenant))
    AND (NOT p_current OR app.performance_current_native_roles(p_company,ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner']));
  END IF;
+ IF function_key='performance.onehr.planAcknowledgement' THEN
+  RETURN p_company IS NULL AND operation IN ('view','edit') AND app.financial_onehr_plan_acknowledgement_native(p_tenant,p_user,NULL,operation);
+ END IF;
  IF function_key='performance.onehr.panelFeedback' THEN
   RETURN operation IN ('view','edit') AND p_company IS NOT NULL AND app.financial_onehr_panel_nomination(p_tenant,p_user,NULL,p_company);
  END IF;
@@ -4413,7 +4416,7 @@ GRANT EXECUTE ON FUNCTION app.onehr_kpi_checkin(uuid,integer,uuid,text,text) TO 
 --> statement-breakpoint
 CREATE TABLE app.financial_onehr_plan_effect(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,plan_id uuid NOT NULL,
- operation text NOT NULL CHECK(operation='reopen'),before_row jsonb NOT NULL,after_row jsonb NOT NULL,consumed boolean NOT NULL DEFAULT false,event_id uuid REFERENCES public.domain_event(id)
+ operation text NOT NULL CHECK(operation IN ('reopen','acknowledge')),before_row jsonb NOT NULL,after_row jsonb NOT NULL,consumed boolean NOT NULL DEFAULT false,event_id uuid REFERENCES public.domain_event(id)
 );
 ALTER TABLE app.financial_onehr_plan_effect ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.financial_onehr_plan_effect FROM PUBLIC,ai_hr_app;
@@ -4458,3 +4461,71 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_plan_reopen_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER z_financial_onehr_plan_reopen_guard BEFORE UPDATE ON public.performance_onehr_plan FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_plan_reopen_guard();
+
+--> statement-breakpoint
+-- A recorded Own conversation acknowledgement has a different native lifecycle
+-- from review-task editing: no active cycle, new window or Administrative data course.
+CREATE FUNCTION app.financial_onehr_plan_acknowledgement_native(t uuid,u uuid,wanted_plan uuid,operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT operation IN ('view','edit') AND EXISTS(SELECT 1 FROM public.performance_onehr_plan plan
+ JOIN public.employment employment ON employment.id=plan.employment_id AND employment.tenant_id=plan.tenant_id
+ JOIN public.app_user account ON account.person_id=employment.person_id AND account.tenant_id=employment.tenant_id
+ WHERE plan.tenant_id=t AND (wanted_plan IS NULL OR plan.id=wanted_plan) AND account.id=u AND account.archived_at IS NULL AND NOT app.login_blocked(account.id)
+ AND (operation='view' OR plan.status='closed'));
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_plan_acknowledgement_native(uuid,uuid,uuid,text) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('performance.onehr.planAcknowledgement',operation,'tenant',NULL,'app.financial_delegate_onehr_review',jsonb_build_object(
+ 'moduleKey','performance_compensation','labelKey','onehr.acknowledge','kind','native_acl','course','own','href','/me/performance','employeeBearing',false)) FROM unnest(ARRAY['view','edit']) operation;
+CREATE FUNCTION app.onehr_plan_acknowledgement_action(wanted_plan uuid,operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_human_principal_current() AND app.financial_onehr_plan_acknowledgement_native(app.current_tenant_id(),app.current_user_id(),wanted_plan,operation)
+ AND app.function_action_allowed('performance.onehr.planAcknowledgement','view',NULL) AND (operation='view' OR operation='edit' AND app.function_action_allowed('performance.onehr.planAcknowledgement','edit',NULL));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_plan_acknowledgement_action(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_plan_acknowledgement_action(uuid,text) TO ai_hr_app;
+CREATE FUNCTION app.onehr_plan_acknowledge(wanted_plan uuid,expected_revision integer,reviewed boolean,reviewed_employment uuid,reviewed_version text) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE plan public.performance_onehr_plan%ROWTYPE;actual_version text;effect_id uuid;completed_event_id uuid;next_plan jsonb;effect_at timestamptz;stamp text;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR acknowledgement actor unavailable' USING ERRCODE='42501';END IF;
+ IF reviewed IS NULL THEN RAISE EXCEPTION 'Invalid acknowledgement metadata' USING ERRCODE='22023';END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.onehr_plan_acknowledgement_action(wanted_plan,'view') THEN RAISE EXCEPTION 'Plan not found.' USING ERRCODE='42501';END IF;
+ IF reviewed THEN SELECT * INTO plan FROM public.performance_onehr_plan actual WHERE actual.id=wanted_plan AND actual.tenant_id=app.current_tenant_id() FOR UPDATE NOWAIT;
+ ELSE SELECT * INTO plan FROM public.performance_onehr_plan actual WHERE actual.id=wanted_plan AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;END IF;
+ IF plan.id IS NULL OR NOT app.onehr_self_employment(plan.employment_id) THEN RAISE EXCEPTION 'Plan not found.' USING ERRCODE='42501';END IF;
+ IF plan.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ SELECT actual.xmin::text INTO actual_version FROM public.performance_onehr_plan actual WHERE actual.id=plan.id AND actual.tenant_id=plan.tenant_id;
+ IF reviewed AND (reviewed_employment IS DISTINCT FROM plan.employment_id OR reviewed_version IS DISTINCT FROM actual_version OR plan.acknowledged_at IS NOT NULL) THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF plan.status<>'closed' THEN RAISE EXCEPTION 'A recorded career conversation is required.' USING ERRCODE='42501';END IF;
+ IF NOT app.onehr_plan_acknowledgement_action(wanted_plan,'edit') THEN RAISE EXCEPTION 'Own acknowledgement action unavailable' USING ERRCODE='42501';END IF;
+ effect_at:=date_trunc('milliseconds',clock_timestamp());stamp:=to_char(effect_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+ next_plan:=to_jsonb(plan)||jsonb_build_object('acknowledged_at',effect_at,'revision',plan.revision+1);
+ INSERT INTO app.financial_onehr_plan_effect(transaction_id,tenant_id,user_id,plan_id,operation,before_row,after_row) VALUES(pg_current_xact_id(),plan.tenant_id,app.current_user_id(),plan.id,'acknowledge',to_jsonb(plan),next_plan) RETURNING id INTO effect_id;
+ UPDATE public.performance_onehr_plan actual SET acknowledged_at=effect_at,revision=plan.revision+1 WHERE actual.id=plan.id AND actual.tenant_id=plan.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(plan.tenant_id,'onehr',plan.id,'onehr.plan-acknowledged','user',app.current_user_id(),CASE WHEN reviewed THEN plan.employment_id END,
+ CASE WHEN reviewed THEN jsonb_build_object('version',1,'planRevision',plan.revision+1,'acknowledgedAt',stamp) ELSE '{}'::jsonb END) RETURNING id INTO completed_event_id;
+ UPDATE app.financial_onehr_plan_effect effect SET event_id=completed_event_id WHERE effect.id=effect_id AND effect.transaction_id=pg_current_xact_id() AND effect.consumed;
+ IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM public.performance_onehr_plan actual WHERE actual.id=plan.id AND actual.tenant_id=plan.tenant_id AND to_jsonb(actual)=next_plan) THEN RAISE EXCEPTION 'Plan acknowledgement did not complete' USING ERRCODE='42501';END IF;
+ RETURN jsonb_build_object('planId',plan.id,'employmentId',plan.employment_id,'reviewId',plan.review_id,'planRevision',plan.revision+1,'acknowledgedAt',stamp,'eventId',CASE WHEN reviewed THEN completed_event_id END);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_plan_acknowledge(uuid,integer,boolean,uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_plan_acknowledge(uuid,integer,boolean,uuid,text) TO ai_hr_app;
+CREATE FUNCTION app.financial_onehr_plan_acknowledgement_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE receipt uuid;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF TG_OP='INSERT' THEN IF NEW.acknowledged_at IS NOT NULL THEN RAISE EXCEPTION 'Own acknowledgement source unavailable' USING ERRCODE='42501';END IF;RETURN NEW;END IF;
+ UPDATE app.financial_onehr_plan_effect effect SET consumed=true WHERE effect.id=(SELECT candidate.id FROM app.financial_onehr_plan_effect candidate
+ WHERE candidate.transaction_id=pg_current_xact_id() AND candidate.tenant_id=NEW.tenant_id AND candidate.user_id=app.current_user_id() AND candidate.plan_id=NEW.id AND candidate.operation='acknowledge' AND NOT candidate.consumed
+ AND candidate.before_row=to_jsonb(OLD) AND candidate.after_row=to_jsonb(NEW) LIMIT 1) RETURNING id INTO receipt;
+ IF receipt IS NOT NULL THEN IF NOT app.financial_human_principal_current() THEN RAISE EXCEPTION 'Own acknowledgement principal unavailable' USING ERRCODE='42501';END IF;RETURN NEW;END IF;
+ IF NEW.acknowledged_at IS NOT NULL AND NEW.acknowledged_at IS DISTINCT FROM OLD.acknowledged_at THEN RAISE EXCEPTION 'Own acknowledgement source unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_plan_acknowledgement_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER z_financial_onehr_plan_acknowledgement_guard BEFORE INSERT OR UPDATE ON public.performance_onehr_plan FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_plan_acknowledgement_guard();

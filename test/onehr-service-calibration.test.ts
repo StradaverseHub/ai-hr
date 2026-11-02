@@ -510,11 +510,18 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await perf.reviewOnehrPlan(mgr,plan.id,plan.revision,'Agreed','Discussed development and mobility',true);
     await perf.updateOnehrGoalProgress(self,plan.id,(await view()).plans[0].revision,goalId,'in_progress');
     await expect(perf.saveOnehrPlan(self,reviewId,(await view()).plans[0].revision,{career:{aspiration:'Changed',mobility:'stay',mobilityNote:'',targetProfileId:null},goals:[]})).rejects.toThrow(/locked/);
-    await perf.acknowledgeOnehrPlan(self,plan.id,(await view()).plans[0].revision);expect((await view()).plans[0].acknowledgedAt).not.toBeNull();
+    const [beforeAck]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));
+    for(const actor of [self,a])await expect(withTenant(actor,tx=>tx.update(schema.onehrPlan).set({acknowledgedAt:new Date(),revision:beforeAck.revision+1}).where(eq(schema.onehrPlan.id,plan.id)))).rejects.toThrow(/Own acknowledgement source unavailable/);
+    const [adminAck]=await withTenant(a,tx=>tx.execute<{allowed:boolean}>(sql`select app.onehr_plan_acknowledgement_action(${plan.id}::uuid,'edit') as allowed`));expect(adminAck.allowed).toBe(false);
+    await expect(withTenant(self,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_plan_acknowledge(${plan.id}::uuid,${beforeAck.revision}::integer,false,NULL::uuid,NULL::text)`);})).rejects.toThrow(/actor unavailable/);
+    expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id))).toEqual([beforeAck]);
+    expect(await perf.acknowledgeOnehrPlan(self,plan.id,(await view()).plans[0].revision)).toBeUndefined();expect((await view()).plans[0].acknowledgedAt).not.toBeNull();
+    const [afterAck]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id));expect(afterAck).toEqual({...beforeAck,acknowledgedAt:afterAck.acknowledgedAt,revision:beforeAck.revision+1});const ordinaryAck=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,plan.id),eq(schema.domainEvent.eventType,'onehr.plan-acknowledged')));expect(ordinaryAck).toHaveLength(1);expect(ordinaryAck[0]).toMatchObject({actorType:'user',actorId:self.userId,subjectEmploymentId:null,payload:{}});
     await owner.db.update(schema.reviewCycle).set({status:'closed'}).where(eq(schema.reviewCycle.id,cycleId));
     await expect(perf.saveOnehrPlan(self,reviewId,(await view(self)).plans[0].revision,input)).rejects.toThrow(/read-only/);
     await expect(perf.reviewOnehrPlan(mgr,plan.id,(await view()).plans[0].revision,'Rewrite','Another conversation',true)).rejects.toThrow(/read-only/);
     await expect(perf.updateOnehrGoalProgress(self,plan.id,(await view()).plans[0].revision,goalId,'done')).rejects.toThrow(/active assessment/);
+    const repeated=await withTenant(self,async tx=>{await tx.execute(sql`set constraints all immediate`);return perf.acknowledgeOnehrPlanTx(tx,self,plan.id,afterAck.revision);});expect(repeated).toMatchObject({planId:plan.id,employmentId:subject.employmentId,planRevision:afterAck.revision+1,eventId:null});expect(repeated.acknowledgedAt).toBeInstanceOf(Date);expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,plan.id))).toEqual([{...afterAck,acknowledgedAt:repeated.acknowledgedAt,revision:afterAck.revision+1}]);
   });
   it('allows an early manager career comment, audited HR correction, and explicit HR plan reopening',async()=>{
     await perf.commentAssessmentCareerProfile(mgr,reviewId,null,'Discuss possible learning assignments.');
