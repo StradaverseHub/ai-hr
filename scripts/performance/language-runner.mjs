@@ -1,5 +1,6 @@
 /** Development-only production renderer and durable job-owned PostgreSQL. No target credentials. */
 import assert from 'node:assert/strict';
+import {observeLanguageWaits} from './language-waits.mjs';
 import {admitBuildHeap} from '../../.github/ci/build-heap.mjs';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
@@ -91,7 +92,7 @@ function summarizeNativeFailures(){
  }
  writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'Exact public-error reference/SQLSTATE metadata plus bounded native Draft marker blocks; Draft block errors may overlap; raw logs and SQL excluded',failures},null,2));
 }
-const apps=[],appFds=[];let proxy,upstream,dbStarted=false;
+const apps=[],appFds=[];let proxy,upstream,dbStarted=false,stopWaitObserver;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
 try{
  for(const port of ports)await assertPortFree(port);await assertPortFree(3443);
@@ -132,10 +133,13 @@ try{
   let ready=false;for(let i=0;i<120;i++){try{const response=await fetch('http://127.0.0.1:'+port+'/login');if(response.status===200){ready=true;break;}}catch{}await pause(500);}
   assert(ready,'production worker did not become ready');
  }
+ report.waitDiagnosticOnly=true;report.latencyAcceptanceEligible=false;
+ stopWaitObserver=await observeLanguageWaits(env,out);
  await run('language-browser',process.execPath,['--import','tsx','scripts/performance/language-browser.mjs'],{...env,PERF_APP_PIDS:apps.map(app=>app.pid).join(','),PERF_PROXY_PID:String(process.pid),PERF_POSTGRES_CONTAINER:container,PERF_APP_WORKERS:String(workers),PERF_CLOCK_TICKS:execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}).trim(),NODE_OPTIONS:'--max-old-space-size=2048'},600000);
  report.exitCode=0;
 }catch(error){report.error=String(error.message).slice(0,350);console.error('[system-perf] '+report.error);}
 finally{
+ if(stopWaitObserver)await stopWaitObserver().catch(()=>{report.waitObserverCleanupFailed=true;});
  if(proxy)await new Promise(resolve=>{proxy.close(resolve);proxy.closeAllConnections();});
  if(upstream)upstream.destroy();
  report.profileShutdown=await Promise.all(apps.map(async(app,worker)=>{

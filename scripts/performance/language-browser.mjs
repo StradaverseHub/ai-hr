@@ -12,7 +12,8 @@ const locales=['zh','ms','ta','th','vi','en'];
 const english=JSON.parse(readFileSync('messages/en.json','utf8'));
 const expected=Object.fromEntries(Object.keys(names).map(locale=>{const messages=JSON.parse(readFileSync('messages/'+locale+'.json','utf8'));return [locale,messages.people?.list?.adminTitle||english.people.list.adminTitle];}));
 for(const [locale,heading] of Object.entries(expected))assert(typeof heading==='string'&&heading.trim().length>0,'missing independent Personnel heading for '+locale);
-const report={kind:'LANGUAGE_SWITCH_HTTP_BROWSER_NOT_500_ACCEPTANCE',releaseEligible:false,sha:process.env.AIHR_CI_HEAD,resources:'one appworker, applicationpool10, heap4GiB, standard runner, original PostgreSQLprofile2',fixture:'500 fictional accounts,100kClaims,90kAttendance; single active browser; native sessions',navigationTargetMs:1000,samples,errors,actions,complete:false};
+const navigationRequests=[];
+const report={waitDiagnosticOnly:true,latencyAcceptanceEligible:false,navigationRequests,kind:'LANGUAGE_SWITCH_HTTP_BROWSER_NOT_500_ACCEPTANCE',releaseEligible:false,sha:process.env.AIHR_CI_HEAD,resources:'one appworker, applicationpool10, heap4GiB, standard runner, original PostgreSQLprofile2',fixture:'500 fictional accounts,100kClaims,90kAttendance; single active browser; native sessions',navigationTargetMs:1000,samples,errors,actions,complete:false};
 const save=()=>writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'language-switch.json'),JSON.stringify(report,null,2));save();
 let lastPage;
 const browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||'/usr/bin/google-chrome',args:['--no-sandbox']});
@@ -21,6 +22,9 @@ try{
  const context=await browser.newContext({ignoreHTTPSErrors:true});
  await context.addCookies([{name:'__Host-aihr_internal',value:actor.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'},{name:'NEXT_LOCALE',value:'en',url:base,secure:true,sameSite:'Lax'}]);
  const page=await context.newPage();lastPage=page;page.setDefaultTimeout(90000);
+ page.on('request',request=>{if(request.isNavigationRequest()){navigationRequests.push({event:'start',path:new URL(request.url()).pathname,at:new Date().toISOString()});save();}});
+ page.on('response',response=>{if(response.request().isNavigationRequest()){navigationRequests.push({event:'headers',path:new URL(response.url()).pathname,status:response.status(),timing:response.request().timing(),at:new Date().toISOString()});save();}});
+ page.on('requestfailed',request=>{if(request.isNavigationRequest()){navigationRequests.push({event:'failed',path:new URL(request.url()).pathname,error:request.failure()?.errorText,at:new Date().toISOString()});save();}});
  page.on('pageerror',error=>{errors.push(String(error.message).slice(0,250));save();});
  page.on('response',response=>{const request=response.request();if(request.method()!=='POST')return;const timing=request.timing();actions.push({path:new URL(response.url()).pathname,status:response.status(),ttfbMs:timing.responseStart>=0?timing.responseStart-timing.requestStart:null});save();});
  const response=await page.goto(base+'/admin/personnel',{waitUntil:'networkidle',timeout:90000});assert.equal(response.status(),200);assert(!page.url().includes('/login'));
@@ -56,4 +60,4 @@ try{
  // A page-speed miss stays visible; this isolated single-reader test is never500-user acceptance.
  assert(report.withinNavigationTarget,'language change exceeds the unchanged1s navigation goal');
  await context.close();
-}catch(error){report.error=String(error.message).slice(0,350);if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(process.env.PERF_EVIDENCE_DIR,'language-failure.png')}).catch(()=>{});throw error;}finally{save();await browser.close();}
+}catch(error){report.error=String(error.message).slice(0,350);if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(process.env.PERF_EVIDENCE_DIR,'language-failure.png'),timeout:10000}).catch(()=>{});throw error;}finally{save();await browser.close();}
