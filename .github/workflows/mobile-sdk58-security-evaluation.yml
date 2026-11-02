@@ -28,7 +28,7 @@ jobs:
           npm ci --prefix source/mobile --no-audit --no-fund
       - name: Evaluate stable SDK58 alignment through the official Expo installer
         working-directory: source/mobile
-        run: npm exec --offline -- expo install expo@58.0.22 --fix
+        run: ./node_modules/.bin/expo install expo@58.0.22 --fix
       - name: Check aligned SDK packages and widget entry
         working-directory: source/mobile
         run: |
