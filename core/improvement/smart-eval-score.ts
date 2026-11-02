@@ -178,9 +178,10 @@ export function scoreTurn(turn:SmartEvalTurn,obs:SmartEvalObservation,verdict:Ju
 /** The judge. Fixed for every run so scores compare: same model, rubric, reasoning effort and seed. Not a contestant
  * (a judge tends to favour its own answers), and on the same approved upstream as the contestants. Changing anything
  * here starts a new judge version; scores of different versions are never compared. */
-export const JUDGE=Object.freeze({version:1,model:'openai/gpt-5.6-sol',reasoningEffort:'low',seed:7,maxTokens:1500,
+export const JUDGE=Object.freeze({version:2,model:'openai/gpt-5.6-sol',reasoningEffort:'low',seed:7,maxTokens:1500,
  system:'You grade replies from the AI Centre assistant inside an HR application used by companies in Malaysia. All people and records are fictional test data. '+
-  'Grade the reply the person saw, and the card shown with it, against the rubric and the reviewer\'s notes. Be strict and consistent. Do not reward length. Return only the JSON object.',
+  'Grade the reply the person saw, and the card shown with it, against the rubric and the reviewer\'s notes. The test data lists the facts that matter; a detail the assistant\'s tools returned that '+
+  'the test data does not mention is not invented unless it contradicts the test data or the notes. Be strict and consistent. Do not reward length. Return only the JSON object.',
  rubric:[
   'correctness: facts, dates and figures match the test data and the reviewer\'s notes; nothing is invented (figures, pages, policies, capabilities); what it says it can or cannot do is true. 5 all correct; 3 partly correct or vague; 1 wrong or invented.',
   'usefulness: it moves the person forward on what they actually wanted. 5 nothing else is needed; 3 helpful, but the person must work out the rest; 1 no real help (generic, deflects, or refuses something it should help with).',

@@ -163,10 +163,13 @@ async function fixtures(){
   'The group "Acme Group" has two companies: Acme Sdn Bhd and Fictional Sister Sdn Bhd.',
   'Aina Fictional (employee, Acme Sdn Bhd): Annual Leave 17.25 days available; Medical Leave 11.5 days available. The company hides the brought-forward and forfeited lines of Medical Leave from employees, so the assistant receives that row flagged withheld; the available figure is real. Unpaid Leave exists with no entitlement. No manager is recorded for her.',
   `Ravi Fictional (manager) has two direct reports, Siti Fictional and Wei Fictional. Siti has one pending one-day Annual Leave request for ${leaveDate}. Wei has no requests. No expense claims are waiting for Ravi.`,
-  `Fictional New Admin (HR administrator, Acme Sdn Bhd) has one direct report, Nur Fictional, with one pending one-day Annual Leave request for ${leaveDate}.`,
-  'Acme Sdn Bhd payroll: the August 2026 run is closed; the September 2026 run is open (payslips generated, not closed); there is no later run.',
+  `Fictional New Admin (HR administrator, Acme Sdn Bhd) has one direct report, Nur Fictional, with one pending one-day Annual Leave request for ${leaveDate}. As Acme's HR administrator, both pending requests (Nur's and Siti's) wait for their decision.`,
+  'Who-is-away results list everyone the asking person may see, not only direct reports: for Ravi they include Nur Fictional (same department). Listing her is correct, not a leak.',
+  'Acme Sdn Bhd payroll: the August 2026 run is closed; the September 2026 run is open (payslips generated, not closed); there is no later run. The only payslips belong to one other fictional employee; Aina has none.',
+  'Setup readiness reads the real fixture: most employees have no compensation, bank or statutory details, and no payroll cycle, schedule or policy is set. The gaps and counts it reports come from the system and are true.',
+  'The AI conversation is switched on for the whole group by a group administrator on AI administration\'s Features and agents page (/control-tower/agents/features), after the AI provider is set up (/control-tower/agents/provider); each person also needs Assistant access. Those pages may still be titled "AI Control Tower".',
   `Public holidays: "Fictional Holiday 9" on ${holiday9}; "Fictional Holiday 40" on ${holiday40}.`,
-  'In chat the assistant cannot read or import a file, show any individual\'s pay or a pay average, or count headcount; identity, bank, tax, EPF and SOCSO numbers are removed before it sees them. '+
+  'In chat the assistant cannot read or import a file, show any individual\'s pay or a pay average, or count headcount (it has no headcount read); identity, bank, tax, EPF and SOCSO numbers are removed before it sees them. '+
    'It can suggest an action as a card that opens the page where the person completes and confirms it, and for a few actions (cancelling or changing leave, overtime requests, claim cancellation, some approval decisions) it can prepare the card. It never submits anything itself.',
  ];
  return{personas,identifiers,facts};
@@ -215,7 +218,7 @@ describe('AI Centre scored evaluation on fictional data',()=>{
       const obs:SmartEvalObservation={reply,mode:result.mode,fallback:trace.outcome.fallback,budgetExhausted:trace.budgets.exhausted,suggestion:result.suggestion?.action??null,proposals,
        inventedLinks:inventedLinks(reply),firstAttemptCheckFailures:(trace.checks.find(row=>row.attempt===1)?.results??[]).filter(check=>!check.ok).map(check=>check.check),
        overclaim:overclaim(reply),identifierKinds:[...identifiersIn(reply)],leakedIds:identifiers.filter(id=>reply.includes(id)).length,fixedReply:fixedReplyOf(reply)};
-      pending.push({row:{...head,reply,mode:result.mode,fallback:obs.fallback,budgetExhausted:obs.budgetExhausted,suggestion:obs.suggestion,proposals,reads:[...result.reads],
+      pending.push({row:{...head,reply,mode:result.mode,gate:trace.gate.privateReads?'open':trace.gate.reason??'open',fallback:obs.fallback,budgetExhausted:obs.budgetExhausted,suggestion:obs.suggestion,proposals,reads:[...result.reads],
        steps:trace.budgets.steps,usd:trace.budgets.spendUsd,inputTokens:trace.budgets.inputTokens,outputTokens:trace.budgets.outputTokens,wallMs,
        truncated:trace.retries.filter(row=>row.reason==='truncated'||row.reason==='blank').length,firstAttemptCheckFailures:obs.firstAttemptCheckFailures,fixedReply:obs.fixedReply},
        obs,earlier:[...earlier],item,card:cardText(result.suggestion,proposals)});

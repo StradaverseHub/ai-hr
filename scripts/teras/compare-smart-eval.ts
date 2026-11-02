@@ -21,7 +21,9 @@ const DIMS:readonly Dimension[]=['correctness','usefulness','doing','clarity','s
 const FACTORS:readonly SmartEvalFactor[]=['facts','capability','doing','privacy_wording','brevity','language','safety'];
 /** One answer as the evaluation writes it. */
 export type SmartEvalRow=Readonly<{pass:number;conversation:string;turn:string;role:SmartEvalRole;locale:SmartEvalLocale;kind:SmartEvalKind;factor:SmartEvalFactor;
- source:'reconstructed'|'journey'|'owner';issues?:readonly string[];question:string;reply:string;error?:string;mode:string|null;fallback:boolean;budgetExhausted:string|null;
+ source:'reconstructed'|'journey'|'owner';issues?:readonly string[];question:string;reply:string;error?:string;mode:string|null;
+ /** The pre-read gate: 'open', or why private reads were closed for the turn (a named other person, a sensitive topic …). */
+ gate?:string;fallback:boolean;budgetExhausted:string|null;
  suggestion:string|null;proposals:readonly string[];reads:readonly string[];steps:number;usd:number;inputTokens:number;outputTokens:number;wallMs:number;truncated:number;
  firstAttemptCheckFailures:readonly string[];fixedReply:string|null;verdict:JudgeVerdict|null;judgeUsd:number;judgeError?:string;score:TurnScore}>;
 export type SmartEvalOutput=Readonly<{kind:'teras.smart-eval';version:1;model:string;allowedProviders:readonly string[];path:string;
@@ -134,7 +136,7 @@ export function renderSmartComparison(report:ComparisonReport,outputs:readonly S
    lines.push('',`### ${id} (${first.role}, ${first.locale}, ${first.source}${first.issues?.length?' issue '+first.issues.join('/'):''})`,'',`> ${clip(first.question,300)}`,'');
    for(const row of models){const answer=outputs.filter(output=>output.model===row.model).flatMap(output=>output.rows).find(item=>item.turn===id);
     if(!answer)continue;
-    lines.push(`- **${row.model}** (overall ${cell(pct(answer.score.overall))}${answer.suggestion?', card '+answer.suggestion:''}${answer.score.findings.length?', '+answer.score.findings.map(finding=>finding.check).join('/'):''}): ${answer.error?'ERROR '+answer.error:clip(answer.reply,600)}${answer.verdict?.reason?' — judge: '+clip(answer.verdict.reason,200):''}`);}
+    lines.push(`- **${row.model}** (overall ${cell(pct(answer.score.overall))}${answer.suggestion?', card '+answer.suggestion:''}${answer.gate&&answer.gate!=='open'?', gate '+answer.gate:''}${answer.score.findings.length?', '+answer.score.findings.map(finding=>finding.check).join('/'):''}): ${answer.error?'ERROR '+answer.error:clip(answer.reply,600)}${answer.verdict?.reason?' — judge: '+clip(answer.verdict.reason,200):''}`);}
   }}
  return lines.join('\n')+'\n';
 }
