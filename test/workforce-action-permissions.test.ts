@@ -93,6 +93,39 @@ describe('genuine Workforce operations',()=>{
   await expect(withTenant(await ctx(),tx=>tx.update(s.employment).set({orgBranch:'Denied branch'}).where(eq(s.employment.id,employee.employmentId)))).rejects.toThrow();
   await expect(withTenant(await ctx(),tx=>tx.update(s.person).set({fullName:'Denied name'}).where(eq(s.person.id,employee.personId)))).rejects.toThrow();
  });
+ it('raw app statutory and photo writes cannot borrow the SECURITY DEFINER storage owner',async()=>{
+  const employee=await hire(),context=await ctx(),original=Buffer.from('fictional original photo');
+  await owner.db.insert(s.employeeStatutoryMy).values({tenantId:b.tenantId,personId:employee.personId,bankName:'Original bank',bankAccountNo:'12345678'}).onConflictDoNothing();
+  await owner.db.update(s.employeeStatutoryMy).set({bankName:'Original bank',bankAccountNo:'12345678'}).where(eq(s.employeeStatutoryMy.personId,employee.personId));
+  const [photo]=await owner.db.insert(s.personPhoto).values({tenantId:b.tenantId,personId:employee.personId,content:original,fileName:'original.png',mimeType:'image/png',sizeBytes:original.length}).returning();
+  const beforeAudit=await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`;
+  await deny('edit','delete');
+  const refusal=async(promise:Promise<unknown>,expected:string)=>{
+   let caught:unknown;try{await promise;}catch(error){caught=error;}
+   let found=false;for(let error=caught;error&&typeof error==='object';error=(error as {cause?:unknown}).cause){
+    if((error as {code?:string}).code==='42501'&&(error as {message?:string}).message===expected)found=true;
+   }expect(found).toBe(true);
+  };
+  // Both queued OLD/NEW mutations must be checked even after the row is restored. The nested
+  // savepoint and forged owner GUC must not change the actual runtime caller's storage identity.
+  await refusal(withTenant(context,async tx=>{
+   await tx.execute(sql`select set_config('app.owner','true',true)`);
+   await tx.transaction(async nested=>{
+    await nested.update(s.employeeStatutoryMy).set({bankName:'Denied temporary bank'}).where(eq(s.employeeStatutoryMy.personId,employee.personId));
+    await nested.update(s.employeeStatutoryMy).set({bankName:'Original bank'}).where(eq(s.employeeStatutoryMy.personId,employee.personId));
+   });
+  }),'Workforce statutory action unavailable');
+  await refusal(withTenant(context,async tx=>{
+   await tx.transaction(async nested=>{
+    await nested.update(s.personPhoto).set({content:Buffer.from('denied bytes')}).where(eq(s.personPhoto.id,photo.id));
+    await nested.update(s.personPhoto).set({content:original}).where(eq(s.personPhoto.id,photo.id));
+   });
+  }),'Workforce photo action unavailable');
+  const [statutory]=await owner.db.select().from(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,employee.personId));
+  expect(statutory.bankName).toBe('Original bank');
+  expect((await owner.db.select().from(s.personPhoto).where(eq(s.personPhoto.id,photo.id)))[0].content).toEqual(original);
+  expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(beforeAudit);
+ });
  it('Delete denial also prevents soft archiving a register and direct hard removal',async()=>{
   const employee=await hire();await deny('delete');
   const [document]=await owner.db.insert(s.employeeDocument).values({tenantId:b.tenantId,employmentId:employee.employmentId,title:'Fictional retained document',fileName:'fictional.txt',mimeType:'text/plain',content:Buffer.from('fictional'),sizeBytes:9,uploadedByUserId:null}).returning();

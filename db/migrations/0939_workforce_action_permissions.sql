@@ -1205,7 +1205,7 @@ DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_json
  after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
  target uuid:=COALESCE(NEW.person_id,OLD.person_id);delta jsonb;relevant boolean;operation text;
 BEGIN
- IF app.acting_as_owner() THEN RETURN NULL; END IF;
+ IF app.access_workforce_storage_owner() THEN RETURN NULL; END IF;
  SELECT coalesce(jsonb_object_agg(k.key,k.value),'{}'::jsonb) INTO delta FROM jsonb_each(after_row) k
   WHERE k.key NOT IN ('id','tenant_id','person_id','created_at','updated_at') AND k.value IS DISTINCT FROM before_row->k.key;
  SELECT EXISTS(SELECT 1 FROM unnest(ARRAY['ic_number','old_ic_number','passport_number','passport_issue_date','passport_expiry_date','passport_issuing_country_code','passport_issuing_country','passport_remark','bank_name','bank_account_no','enable_custom_holder_name','custom_holder_name','enable_custom_holder_id','custom_holder_id']) k
@@ -1235,7 +1235,7 @@ DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_json
  after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
  subject uuid:=COALESCE(NEW.person_id,OLD.person_id);operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
 BEGIN
- IF app.acting_as_owner() OR app.access_privacy_value_intent_allowed('photo',before_row,after_row) THEN RETURN NULL; END IF;
+ IF app.access_workforce_storage_owner() OR app.access_privacy_value_intent_allowed('photo',before_row,after_row) THEN RETURN NULL; END IF;
  IF TG_OP<>'DELETE' AND to_regprocedure('app.profile_task_photo_approved(uuid)') IS NOT NULL THEN
   IF app.profile_task_photo_approved(subject) THEN RETURN NULL; END IF;
  END IF;
