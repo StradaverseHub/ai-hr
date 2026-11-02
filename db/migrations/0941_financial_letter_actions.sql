@@ -2456,7 +2456,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
  JOIN public.review_cycle cycle ON cycle.id=review.cycle_id AND cycle.tenant_id=review.tenant_id
  WHERE review.cycle_id=p_cycle AND review.tenant_id=app.current_tenant_id() AND cycle.status IN ('open','calibration')
- AND (app.assessment_dispatcher_scope() OR app.onehr_cycle_admin(cycle.id) AND app.onehr_admin(subject.company_id)) AND app.assessment_review_participates(review.id);
+ AND (app.assessment_dispatcher_scope() OR app.onehr_cycle_admin(cycle.id) AND app.onehr_admin(subject.company_id) AND app.data_permission_matches(subject.id)) AND app.assessment_review_participates(review.id);
 $$;
 REVOKE ALL ON FUNCTION app.onehr_review_task_recipient_access(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_review_task_recipient_access(uuid,uuid) TO ai_hr_app;

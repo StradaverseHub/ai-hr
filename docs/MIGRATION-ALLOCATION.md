@@ -966,7 +966,7 @@ Unapplied source only; re-audit live watermark and refs before coordinated relea
 ## Financial and Letters action restrictions — 2 November 2026 (provisional)
 
 Security worker reserves `0941_financial_letter_actions`, aggregate index763,
-when1793330000341, SQL SHA256 `fb2bd7850b87830fcc4f4c2654e45bb4b4e27479d05721820493bd038357bdea`. This source checkpoint depends on
+when1793330000341, SQL SHA256 `5800c03b65e2977f079cfad4c4b933bacd3a1dd1f05ab7f3147063dd51c18f81`. This source checkpoint depends on
 0939 Workforce action helpers and0940 bounded Profile effect proofs. Parent owns0942
 Organisation/Settings and0945 Financial setup/history;0943/0944 are independently allocated.
 The code-owned publisher requires `app.financial_letter_bindings_complete()`; this checkpoint
