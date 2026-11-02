@@ -13,7 +13,7 @@ export const PROBATION_CRITERIA=[
 ] as const;
 export type CriterionId=typeof PROBATION_CRITERIA[number]['id'];
 export type Rating={rating:number|null;evidence:string};
-export type Assessment=Record<CriterionId,Rating>;
+export type Assessment=Record<string,Rating>;
 export type ProbationPartType=1|2|3;
 export type ProbationOutcome='confirm'|'extend'|'not_confirm'|'other';
 export type MidpointStatus='satisfactory'|'development'|'at_risk';
@@ -97,13 +97,13 @@ export function newProbationPart(id:string,type:ProbationPartType,cycle:number,d
   validDay(dueOn);
   return{id,type,cycle,revision:1,state:'not_issued',dueOn,issueOn:addDaysIso(dueOn,-lead),reviewOn:'',conductedBy:null,kpis:[],support:{coaching:'',access:'',checkins:'',other:''},employee:blankProbationAssessment(),manager:blankProbationAssessment(),employeeComments:'',strengths:'',development:'',managerComments:'',outcome:null,midpointStatus:null,justification:'',extensionMonths:null,staffSubmittedAt:null,managerSubmittedAt:null,acknowledgedAt:null,kpiException:null,employeeWaitException:null,offlinePdfId:null};
 }
-export function createProbationCase(input:{id:string;employmentId:string;companyId:string;sourceKey:string;startOn:string;endOn:string|null;months:number|null;grade:string;explicitNoProbation:boolean;config:ProbationConfig;nextId:()=>string;isWorking:(day:string)=>boolean}):ProbationCase|null{
+export function createProbationCase(input:{id:string;employmentId:string;companyId:string;sourceKey:string;startOn:string;endOn:string|null;months:number|null;grade:string;explicitNoProbation:boolean;unknownLength?:boolean;config:ProbationConfig;nextId:()=>string;isWorking:(day:string)=>boolean}):ProbationCase|null{
   validateProbationConfig(input.config);validDay(input.startOn);
   if(input.explicitNoProbation||!input.config.eligibleGrades.includes(input.grade)&&!(input.grade==='H'&&input.config.gradeHEnabled))return null;
   const months=input.months??(input.grade==='H'?3:input.config.defaultMonths);
   if(!Number.isSafeInteger(months)||months<1||months>120)reject('Confirm the employee probation period.');
   const end=input.endOn??addDaysIso(addProbationMonths(input.startOn,months),-1);validDay(end);if(end<input.startOn)reject('The probation end cannot precede the start date.');
-  const plan=input.config.plans.find(p=>p.months===months);
+  const plan=input.unknownLength?undefined:input.config.plans.find(p=>p.months===months);
   const kpiDue=advanceProbationWorkingDays(input.startOn,input.config.kpiDueWorkingDays,input.isWorking);
   const p1=newProbationPart(input.nextId(),1,0,kpiDue,0);p1.issueOn=advanceProbationWorkingDays(input.startOn,1,input.isWorking);
   const parts=[p1];
