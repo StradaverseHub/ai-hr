@@ -562,7 +562,7 @@ GRANT EXECUTE ON FUNCTION app.email_asset_save(text,bytea) TO ai_hr_app;
 -- consumption remains the original active own-company/assignment course below.
 DO $$ DECLARE operation text;BEGIN
  FOREACH operation IN ARRAY ARRAY['view','edit'] LOOP
-  PERFORM app.register_function_action('dashboardCardConfig.home',operation,'company','organisation.'||operation,'app.organisation_settings_delegation_allowed','{"moduleKey":"organisation","labelKey":"nav.dashboardCardConfig","kind":"submenu","course":"administrative","employeeBearing":false}');
+  PERFORM app.register_function_action('dashboardCardConfig.home',operation,'company','organisation.'||operation,'app.organisation_settings_delegation_allowed','{"moduleKey":"organisation","labelKey":"nav.dashboardCardConfig","kind":"submenu","course":"administrative","employeeBearing":false,"screenKey":"dashboardCardConfig","href":"/admin/settings/dashboard?section=content"}');
  END LOOP;
 END $$;
 CREATE FUNCTION app.organisation_home_configuration_action(co uuid,operation text) RETURNS boolean
@@ -595,7 +595,7 @@ ALTER POLICY employee_home_configuration_insert ON public.employee_home_configur
 --> statement-breakpoint
 -- Tenant aggregate analytics retain their native group floor and exact bounded
 -- thirty-day projection; individual observations never require setup authority.
-SELECT app.register_function_action('dashboardCardConfig.usage','view','tenant','settings.view','app.organisation_settings_delegation_allowed','{"moduleKey":"settings","labelKey":"employeeHome.usage.title","kind":"submenu","course":"administrative","employeeBearing":false}');
+SELECT app.register_function_action('dashboardCardConfig.usage','view','tenant','settings.view','app.organisation_settings_delegation_allowed','{"moduleKey":"settings","labelKey":"employeeHome.usage.title","kind":"submenu","course":"administrative","employeeBearing":false,"screenKey":"dashboardCardConfig","href":"/admin/settings/dashboard?section=content"}');
 ALTER FUNCTION app.home_card_interactions_summary() RENAME TO organisation_home_interactions_native;
 REVOKE ALL ON FUNCTION app.organisation_home_interactions_native() FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.home_card_interactions_summary() RETURNS TABLE(card text,action text,interactions text)
