@@ -1,6 +1,7 @@
 import {afterEach,describe,it,expect,vi} from 'vitest';
 import {NextRequest} from 'next/server';
-const mocks=vi.hoisted(()=>({start:vi.fn(),native:vi.fn(),exchange:vi.fn(),rate:vi.fn(),audit:vi.fn()}));
+const mocks=vi.hoisted(()=>({start:vi.fn(),native:vi.fn(),exchange:vi.fn(),rate:vi.fn(),audit:vi.fn(),options:vi.fn()}));
+vi.mock('../lib/entra/login-options-server',()=>({microsoftLoginEnabled:mocks.options}));
 vi.mock('../db/client',()=>({client:{unsafe:mocks.audit}}));
 vi.mock('../lib/internal-auth/config',()=>({internalConfig:()=>({origin:'https://hr.test'}),internalSelected:()=>true,internalReady:()=>true,INTERNAL_SESSION_COOKIE:'__Host-aihr_internal'}));
 vi.mock('../lib/internal-auth/service',()=>({takeRate:mocks.rate}));
@@ -9,6 +10,11 @@ import {GET,POST} from '../app/login/entra/[operation]/route';
 afterEach(()=>{vi.clearAllMocks();vi.unstubAllEnvs();});
 const get=(operation='start')=>GET(new NextRequest('https://hr.test/login/entra/'+operation+'?organization=acme'),{params:Promise.resolve({operation})});
 describe('Entra HTTP admission and origin boundary',()=>{
+ it.each([true,false])('returns only the public sign-in flag, uncached, when enabled=%s',async enabled=>{
+  mocks.options.mockResolvedValueOnce(enabled);const response=await get('options');
+  expect(response.status).toBe(200);expect(await response.json()).toEqual({microsoft:enabled});
+  expect(response.headers.get('cache-control')).toBe('no-store');expect(mocks.options).toHaveBeenCalledWith('acme');expect(mocks.start).not.toHaveBeenCalled();
+ });
  it('bounds outstanding discovery requests and releases all admitted slots',async()=>{
   const pending:Array<(value:{url:string;handle:string})=>void>=[];
   mocks.start.mockImplementation(()=>new Promise(resolve=>pending.push(resolve)));mocks.rate.mockResolvedValue(undefined);

@@ -1,3 +1,4 @@
+import { microsoftLoginEnabled } from '@/lib/entra/login-options-server';
 import { randomUUID } from 'node:crypto';
 import { client } from '@/db/client';
 import { NextRequest, NextResponse } from 'next/server';
@@ -19,6 +20,7 @@ export async function GET(req:NextRequest,{params}:{params:Promise<{operation:st
   try {
     release=admit();const source=trustedRequestSource(req);if(source)releaseSource=admitSource(source);
     await takeRate(`entra-get:${source||'global'}`,120,60_000);
+    if(operation==='options')return NextResponse.json({microsoft:await microsoftLoginEnabled(req.nextUrl.searchParams.get('organization')||'')},{headers});
     if(operation==='start'){
       const result=await startEntraLogin(req.nextUrl.searchParams.get('organization')||'',req.nextUrl.searchParams.get('returnTo')||'/',req.nextUrl.searchParams.get('ticket')||undefined);
       const response=NextResponse.redirect(result.url,303);for(const [k,v]of Object.entries(headers))response.headers.set(k,v);

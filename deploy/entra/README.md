@@ -137,3 +137,12 @@ The merged candidate preserves0898 before0899 and requires its own complete gate
 PR #193 remains separate: local credential version changes revoke Microsoft HR sessions, while
 Microsoft owns its own credential-expiry/MFA policy. Integration against any changed release baseline
 must revalidate these auth boundaries and both migration identities.
+
+## Sign-in option visibility
+
+The **Enable Microsoft sign-in** organization setting controls the Microsoft option on both web
+and mobile. Account provisioning remains independent. Login screens show the option only after
+the current HR server confirms the entered or selected organization has sign-in enabled; loading,
+unknown organizations, unconfigured connectors and lookup failures leave it hidden. The public
+lookup returns only this boolean, without credentials or directory configuration. Screens refresh
+on foreground/focus and periodically; every actual login still enforces the live server setting.
