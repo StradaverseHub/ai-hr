@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { runSignInClientProbe } from './signin-client-probe';
 import { fetch as nativeFetch } from 'expo/fetch';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
@@ -29,6 +30,13 @@ export function InternalSignIn() {
   const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [confirmation, setConfirmation] = useState(''), [code, setCode] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   const pending = useRef(false), owner = useRef<number | null>(null);
+  const probeStarted = useRef(false);
+  const [probeResult, setProbeResult] = useState('');
+  useEffect(() => {
+    if (process.env.EXPO_PUBLIC_SIGNIN_CLIENT_PROBE !== '1' || !company || probeStarted.current) return;
+    probeStarted.current = true; pending.current = true; setBusy(true);
+    void runSignInClientProbe(company).then(setProbeResult).finally(() => { pending.current = false; setBusy(false); });
+  }, [company]);
   async function finish(result: InternalReply) {
     if (owner.current === null || !result.access_token || !result.refresh_token) return;
     assertAuthGeneration(owner.current);
@@ -67,6 +75,7 @@ export function InternalSignIn() {
         </Pressable>
       </View>
       <View style={{ flex: 1, minHeight: 120 }}/>
+      {!!probeResult && <Text accessibilityLabel="Review connection diagnostic" style={styles.body}>{probeResult}</Text>}
       <Text accessibilityRole="header" style={styles.entryTitle}>{copy.loginTitle}</Text>
       <View style={styles.pass}>
         {workplaceOrganization ? <Text style={styles.body}>{copy.organization}: {workplaceOrganization}</Text> : <View style={styles.passField}>
