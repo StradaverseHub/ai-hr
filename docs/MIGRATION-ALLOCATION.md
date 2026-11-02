@@ -1117,3 +1117,15 @@ SQL owners decide actual batch membership and live reservation cutoff. The dupli
 cutoff/scope query was removed from that reader. Ordinary own Claim View grants no financial read
 exception. Native reserve/pay/unpay/requeue ports remain Security-owned prerequisites before whole
 Claim publication; the existing AFTER financial effect and deferred money/audit checks stay in place.
+
+### Current permissions repair source identities (unapplied)
+
+- `0938_data_permission_enforcement.sql`: `d41b686eec213708abc9b174762c3c9f37d7f9aba31e057854108b321b66805a`.
+- `0939_workforce_action_permissions.sql`: `c9e5f412f9b21935fdc774b59687afa583d81c9e2e869072aa0a68517c42e7e0`.
+- `0941_financial_letter_actions.sql`: `485fb3ff0f977a943c736e6b5d181bcc4bbe52dc5f8148d668f5128bdacb9f7a`.
+- `0942_organisation_settings_actions.sql`: `0c268b9a28c6512ead695c577e235dde77438d54e77721d1d669d13caf0eac00`.
+- `0943_leave_attendance_claim_actions.sql`: `7b95a64208a79b545b982ad50e7b974b030afdb1b9b300df048e84d3acf3475d`.
+- `0944_lifecycle_rewards_notice_actions.sql`: `3ef5430b333e3c3287f9217172809aaf39aa8efbfa5aa15df1dcef3eb41b3ddf`.
+- `0945_financial_setup_actions.sql`: `77ef0067c30e55a48ab591938b3a5e892ba60161036f4b23c678ed280ea5f340`.
+
+These are source identities only. Original frozen failures and earlier source hashes remain historical evidence; no applied SQL is rewritten and admission still requires post-Noveri/nine ledger reconciliation.
