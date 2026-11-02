@@ -1,8 +1,8 @@
 name: mobile-android-backup-review
-run-name: Android backup artifact review · c3b72a116
+run-name: Android functional review fixes · 89baa2a15
 on:
   push:
-    branches: [codex/mobile-android-review-controller-20261102]
+    branches: [codex/mobile-functional-review-controller-20261102]
     paths:
       - .github/workflows/mobile-android-backup-review.yml
       - .github/ci/native-android-backup-review.sh
@@ -10,7 +10,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: mobile-android-backup-review
+  group: mobile-android-functional-review
   cancel-in-progress: false
 jobs:
   review-apk:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      EXPECTED_SOURCE: c3b72a11630f3b82254c41286150ccb0312c842e
+      EXPECTED_SOURCE: 89baa2a15f6673ffa96bd947f72005e7815c8e1a
       CI: '1'
       EXPO_NO_TELEMETRY: '1'
       EXPO_PUBLIC_RUNTIME_CONNECTIONS: '1'
@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: c3b72a11630f3b82254c41286150ccb0312c842e
+          ref: 89baa2a15f6673ffa96bd947f72005e7815c8e1a
           path: source
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
@@ -46,7 +46,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: onehr-android-backup-review-c3b72a116
+          name: onehr-android-backup-review-89baa2a15
           path: ${{ runner.temp }}/onehr-android-backup-review/
           if-no-files-found: warn
           retention-days: 1
