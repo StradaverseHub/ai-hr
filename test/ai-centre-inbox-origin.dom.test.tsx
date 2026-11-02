@@ -1,5 +1,6 @@
 /** Inbox › Review › back (staging acceptance, 3 November 2026): the Review link carries an allow-listed origin, never
  * a return URL, and the shell offers the way back only for that origin. Fictional; no session. */
+import type {ReactNode} from 'react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
@@ -8,7 +9,7 @@ import {AI_INBOX_HREF,cameFromInbox,withInboxOrigin} from '../lib/ai-centre/inbo
 
 const query=vi.hoisted(()=>({value:''}));
 vi.mock('next/navigation',()=>({useSearchParams:()=>new URLSearchParams(query.value),usePathname:()=>'/approvals'}));
-vi.mock('next/link',()=>({default:({children,...props}:{children:React.ReactNode;href:string})=><a {...props}>{children}</a>}));
+vi.mock('next/link',()=>({default:({children,...props}:{children:ReactNode;href:string})=><a {...props}>{children}</a>}));
 const {BackToInbox}=await import('../components/ai-centre/back-to-inbox');
 afterEach(()=>{cleanup();query.value='';});
 
