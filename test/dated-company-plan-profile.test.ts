@@ -38,10 +38,10 @@ it('profiles original / cached query plan / restored with live caller RLS and an
  type Point={employmentId:string;date:string};
  const oracle=async(tx:Tx,points:unknown)=>{
   const serialized=JSON.stringify(points);
-  const donor=()=>tx.execute(sql`select employment_id::text as "employmentId",on_date::text as date,company_id::text as "companyId",reason from (${sql.raw(pieces[0])}${serialized}::jsonb${sql.raw(pieces[1])}) original order by employment_id,on_date`);
-  const current=()=>tx.execute(sql`select employment_id::text as "employmentId",on_date::text as date,company_id::text as "companyId",reason from app.proven_company_date_points(${serialized}::jsonb) order by employment_id,on_date`);
-  const settle=async(run:()=>Promise<unknown>)=>{
-   try{return {rows:await tx.transaction(async()=>run())};}
+  const donor=(inner:Tx)=>inner.execute(sql`select employment_id::text as "employmentId",on_date::text as date,company_id::text as "companyId",reason from (${sql.raw(pieces[0])}${serialized}::jsonb${sql.raw(pieces[1])}) original order by employment_id,on_date`);
+  const current=(inner:Tx)=>inner.execute(sql`select employment_id::text as "employmentId",on_date::text as date,company_id::text as "companyId",reason from app.proven_company_date_points(${serialized}::jsonb) order by employment_id,on_date`);
+  const settle=async(run:(inner:Tx)=>PromiseLike<unknown>)=>{
+   try{return {rows:await tx.transaction(async inner=>await run(inner))};}
    catch(error){let value:unknown=error;for(let i=0;i<5&&value&&typeof value==='object';i++){if('code'in value)return {sqlState:String(value.code)};value='cause'in value?value.cause:undefined;}throw error;}
   };
   expect(await settle(current)).toEqual(await settle(donor));profile.controls++;
