@@ -24,6 +24,8 @@ export async function masterReportFieldsTx(tx:Tx,ctx:SessionContext,companyIds:r
   for(const companyId of companyIds){
     const [scope]=await tx.execute(sql`select exists(select 1 from company where id=${companyId}::uuid and tenant_id=app.current_tenant_id()) as allowed`) as unknown as {allowed:boolean}[];
     if(!scope?.allowed)throw new MasterReportAccessError();
+    const [purpose]=await tx.execute<{allowed:boolean}>(sql`select app.function_action_allowed('employeeMasterReports','view',${companyId}::uuid) as allowed`);
+    if(purpose?.allowed!==true)throw new MasterReportAccessError();
     // The existing granular resolver accepts role names. Strip grants that do not cover THIS company
     // before passing them; a role in another company must not satisfy this company's report category.
     const rows=await tx.execute(sql`select role from unnest(app.current_roles()) as role where app.has_role_for(role,${companyId}::uuid)`) as unknown as {role:string}[];

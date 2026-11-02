@@ -2172,3 +2172,50 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.workforce_full_import_allowed(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.workforce_full_import_allowed(uuid,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Employee Master retains its existing report.read.personnel category owner.
+-- Mirror that exact whole-set company-over-tenant override rule for pure target
+-- defaults; this is not a new configurable permissions algebra or data reader.
+CREATE FUNCTION app.employee_master_personnel_permission(t uuid,co uuid,roles text[]) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH candidates AS(SELECT permission.role::text,permission.allowed,permission.company_id
+  FROM public.payroll_permission_grant permission WHERE permission.tenant_id=t AND permission.permission_key='report.read.personnel'
+   AND(permission.company_id IS NULL OR permission.company_id=co)),
+ chosen AS(SELECT * FROM candidates WHERE CASE WHEN EXISTS(SELECT 1 FROM candidates WHERE company_id=co)THEN company_id=co ELSE company_id IS NULL END)
+ SELECT EXISTS(SELECT 1 FROM public.tenant tenant WHERE tenant.id=t)
+ AND(co IS NULL OR EXISTS(SELECT 1 FROM public.company company WHERE company.id=co AND company.tenant_id=t))
+ AND CASE WHEN EXISTS(SELECT 1 FROM chosen)THEN EXISTS(SELECT 1 FROM unnest(roles) actual_role
+   WHERE EXISTS(SELECT 1 FROM chosen WHERE role=actual_role AND allowed)AND NOT EXISTS(SELECT 1 FROM chosen WHERE role=actual_role AND NOT allowed))
+  ELSE roles&&ARRAY['hr_admin','super_admin']::text[] END;
+$$;
+CREATE FUNCTION app.employee_master_target_roles(t uuid,u uuid,co uuid) RETURNS text[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT ARRAY(SELECT DISTINCT assignment.role::text FROM public.role_assignment assignment
+  WHERE assignment.tenant_id=t AND assignment.app_user_id=u AND CASE WHEN co IS NULL THEN assignment.company_id IS NULL ELSE app.access_scope_covers(assignment.company_id,co,t)END);
+$$;
+REVOKE ALL ON FUNCTION app.employee_master_personnel_permission(uuid,uuid,text[]),app.employee_master_target_roles(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.employee_master_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap='function.employeeMasterReports.view'
+ AND EXISTS(SELECT 1 FROM public.app_user actor WHERE actor.id=u AND actor.tenant_id=t AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id))
+ AND app.employee_master_personnel_permission(t,co,app.employee_master_target_roles(t,u,co))
+ AND(co IS NOT NULL OR NOT EXISTS(SELECT 1 FROM public.company company WHERE company.tenant_id=t
+  AND NOT app.employee_master_personnel_permission(t,company.id,app.employee_master_target_roles(t,u,company.id))));
+$$;
+CREATE FUNCTION app.employee_master_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap='function.employeeMasterReports.view'AND t=app.current_tenant_id()AND u=app.current_user_id()AND app.principal_snapshot_current()
+ AND app.employee_master_personnel_permission(t,co,ARRAY(SELECT role FROM unnest(app.current_roles()) role WHERE app.has_role_for(role,co)))
+ AND(co IS NOT NULL OR NOT EXISTS(SELECT 1 FROM public.company company WHERE company.tenant_id=t
+  AND NOT app.employee_master_personnel_permission(t,company.id,ARRAY(SELECT role FROM unnest(app.current_roles()) role WHERE app.has_role_for(role,company.id)))));
+$$;
+REVOKE ALL ON FUNCTION app.employee_master_function_legacy_allowed(uuid,uuid,text,uuid),app.employee_master_function_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('employeeMasterReports','view','company',NULL,'app.employee_master_function_current_legacy_allowed',
+ '{"moduleKey":"workforce","labelKey":"employeeMasterReports.title","kind":"screen","course":"administrative","screenKey":"employeeMasterReports","href":"/reports/employee-master","employeeBearing":true}'::jsonb);
+-- Sharing, source-company and selected-column changes must invalidate a result
+-- read before the native repeatable-read publication fence completes. Incidental
+-- last_run_at/version counters alone do not change authority.
+CREATE TRIGGER data_permission_report_read_generation_insert AFTER INSERT ON custom_report REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
+CREATE TRIGGER data_permission_report_read_generation_update AFTER UPDATE ON custom_report REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('created_by_user_id,shared,shared_role_ids,spec');
+CREATE TRIGGER data_permission_report_read_generation_delete AFTER DELETE ON custom_report REFERENCING OLD TABLE AS old_rows FOR EACH STATEMENT EXECUTE FUNCTION app.data_permission_read_generation_bump('');
