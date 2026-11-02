@@ -180,3 +180,27 @@ BEGIN
 END;$$;
 REVOKE ALL ON FUNCTION app.organisation_prepare_draft_number_release(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.organisation_prepare_draft_number_release(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Extend the exact0941 delegation owner; retain all its financial/letter and View ceilings.
+CREATE OR REPLACE FUNCTION app.access_can_delegate(p_capability text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.access_capability c
+  JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id()
+  WHERE c.id=p_capability AND (p_capability !~ '^(organisation|settings)\.' OR app.organisation_settings_delegation_allowed(u.tenant_id,u.id,p_capability,p_company)) AND (p_capability !~ '^(payroll|performance_compensation|letters)\.' OR app.financial_letter_delegation_allowed(u.tenant_id,u.id,p_capability,p_company)) AND (p_capability !~ '^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$' OR app.access_can_delegate(split_part(p_capability,'.',1)||'.view',p_company)) AND c.supported AND jsonb_array_length(c.bindings)>0
+   AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND CASE WHEN c.scope='tenant' THEN p_company IS NULL AND app.access_allowed_for(u.id,c.id,NULL)
+    WHEN p_company IS NOT NULL THEN app.access_allowed_for(u.id,c.id,p_company)
+    ELSE EXISTS(SELECT 1 FROM public.access_configuration s WHERE s.tenant_id=u.tenant_id AND s.initialized)
+     AND (EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.company_id IS NULL AND o.effect='allow' AND o.retired_at IS NULL)
+      OR EXISTS(SELECT 1 FROM public.access_effective_membership m JOIN public.access_group g ON g.id=m.group_id AND g.tenant_id=m.tenant_id
+       JOIN public.access_group_grant a ON a.group_id=g.id AND a.tenant_id=g.tenant_id
+       WHERE m.tenant_id=u.tenant_id AND m.user_id=u.id AND m.company_id IS NULL
+        AND g.retired_at IS NULL AND a.capability_id=c.id AND a.company_id IS NULL AND a.retired_at IS NULL)) END
+   AND NOT EXISTS(SELECT 1 FROM public.access_user_override o
+    WHERE o.tenant_id=u.tenant_id AND o.user_id=u.id AND o.capability_id=c.id AND o.effect='deny' AND o.retired_at IS NULL
+     AND (p_company IS NULL OR o.company_id IS NULL
+      OR app.access_scope_covers(o.company_id,p_company,u.tenant_id)
+      OR app.access_scope_covers(p_company,o.company_id,u.tenant_id)))
+ );
+$$;

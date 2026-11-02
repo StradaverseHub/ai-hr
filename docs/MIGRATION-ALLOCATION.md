@@ -974,3 +974,14 @@ intentionally does not define that final closure prerequisite while kernel actio
 in progress. A parsed migration and legacy pass do not claim completed action coverage.
 Re-audit every ref/worktree journal and installation watermark before release; no deployment is
 authorized.
+
+## Organisation and shared configuration actions — 2 November 2026 (provisional)
+
+Parent BOARD owner reserves `0942_organisation_settings_actions`, aggregate idx764 /
+when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `017a68a79915268499521bfb1c9a73d1eebf00b67d13624cc44e94d433c69340`.
+This is unapplied implementation source. It retains native role/company floors, separates
+reference pickers from maintenance views, guards current/proposed organisation scopes, and
+binds employee-number allocation/release to private native effects. Hosted SQL/behavior and
+populated-upgrade evidence remain pending. Shared settings coverage is still being extended;
+no completed binding or installation claim follows this checkpoint. Recheck every source
+reservation and the actual post-Noveri installation ledger before release admission.
