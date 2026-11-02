@@ -1,3 +1,4 @@
+import {isCarrierPrincipalCurrentTx} from './carrier-principal';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 /**
  * Leave services. Balance is the signed sum of the append-only leave_ledger
@@ -7594,8 +7595,8 @@ async function applyLeaveCancellationApprovalTx(
  * not the employee) plus the display fields the employee notification needs.
  *
  * Deliberately NOT `assertCanDecide` (which admits managers) — immediate on-behalf cancellation is HR-only.
- * A manager keeps the existing decide paths. Company scope is free: the row is loaded under RLS, so a
- * company-scoped hr_admin can't see (⇒ can't cancel) another company's request.
+ * A manager keeps the existing decide paths. Company HR scope is checked independently of read visibility: a mixed-role manager can see
+ * a subordinate without holding this immediate HR power in that company.
  */
 export async function adminCancelLeave(
   ctx: SessionContext,
@@ -7613,6 +7614,9 @@ export async function adminCancelLeave(
     // cancellation on it), so an HR cancellation and an employee's automatic one cannot both act on a stale row.
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1).for('update');
     if (!req) throw new Error('leave request not found (or not visible)');
+
+    const [scope]=await tx.select({allowed:sql<boolean>`app.is_admin_for(${employment.companyId})`}).from(employment).where(eq(employment.id,req.employmentId));
+    if(!(await isCarrierPrincipalCurrentTx(tx,ctx))||scope?.allowed!==true)throw new LeaveCancellationNotAllowedError('only an HR administrator for this company can cancel leave','admin_only');
 
     // Self-ban: an HR admin's own leave goes through the normal employee flow, not this on-behalf power
     // (mirrors assertCanDecide's self-approval ban). super_admin keeps the sole-admin escape hatch.
