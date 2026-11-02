@@ -127,7 +127,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'functionAccess',href:'/admin/users/function-access',labelKey:'securityCenter.functions.title',guard:'requireAdmin',routes:['/admin/users/function-access']},
   {screenKey:'createLogin',href:'/admin/users/create',labelKey:'securityCenter.create.title',guard:'requireGroupAdministration',routes:['/admin/users/create'],hasScopeNote:true},
   {screenKey:'inviteUser',href:'/admin/users/invite',labelKey:'securityCenter.invite.title',guard:'requireGroupAdministration',routes:['/admin/users/invite'],hasScopeNote:true},
-  {screenKey:'accessConfiguration',href:'/admin/users/access',labelKey:'accessConfiguration.title',guard:'requireAccessConfiguration',routes:['/admin/users/access'],hasScopeNote:true},
+  {screenKey:'accessConfiguration',href:'/admin/security-center/roles',labelKey:'accessConfiguration.title',guard:'requireAccessConfiguration',routes:['/admin/users/access','/admin/security-center/roles','/admin/security-center/data-permissions'],hasScopeNote:true},
   {screenKey:'myTasks',href:'/tasks',labelKey:'nav.myTasks',guard:'scopedSession',routes:['/tasks'],hasScopeNote:true},
   {screenKey:'employeeMasterReports',href:'/reports/employee-master',labelKey:'employeeMasterReports.title',guard:'scopedSession',routes:['/reports/employee-master','/reports/employee-master/[id]']},
   {screenKey:'performanceHome',href:'/performance/home',labelKey:'nav.performanceTalent',guard:'scopedSession',routes:['/performance/home'],hasScopeNote:true},

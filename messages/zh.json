@@ -505,12 +505,13 @@
     "createLogin": "手动创建登录账户",
     "inviteUser": "邀请用户",
     "users": "用户",
-    "securityPermissions": "安全与权限",
+    "securityPermissions": "角色／用户组",
     "functionAccess": "功能访问",
     "securityCenter": "安全中心",
     "aiManagementInventory": "AI 清单",
     "entra": "Microsoft Entra ID",
-    "passwordPolicy": "密码策略"
+    "passwordPolicy": "密码策略",
+    "dataPermissionAccess": "数据权限访问"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -29656,7 +29657,7 @@
     }
   },
   "accessConfiguration": {
-    "title": "安全与权限",
+    "title": "角色／用户组",
     "description": "管理群组和个人权限，每次更改前先预览。",
     "groups": "用户群组",
     "groupName": "群组名称",
@@ -29729,7 +29730,10 @@
       "configure": "管理安全与权限",
       "workforceView": "查看员工资料",
       "workforceMaintain": "维护员工资料",
-      "profileReview": "审核符合条件的资料更改"
+      "profileReview": "审核符合条件的资料更改",
+      "workforceAdd": "添加员工记录",
+      "workforceEdit": "编辑员工记录",
+      "workforceDelete": "删除员工记录"
     },
     "workforceReadOnly": "您可以查看此员工记录。您当前的人事权限不允许修改。",
     "workforceCommandHint": "您可以修改员工编号。此页的其他资料仅供查看。",
@@ -29758,7 +29762,13 @@
       "changed": "员工记录已更改，请重新打开后再保存。",
       "denied": "您的权限已更改，请重新打开此记录以检查访问权限。",
       "invalid": "请输入未被占用的员工编号，可使用字母、数字或连字符，最多30个字符。"
-    }
+    },
+    "matrixView": "查看",
+    "matrixAdd": "添加",
+    "matrixEdit": "编辑",
+    "matrixDelete": "删除",
+    "matrixWorkforce": "员工",
+    "matrixOther": "其他权限"
   },
   "myPayslip": {
     "title": "我的工资单",
@@ -32825,7 +32835,7 @@
     "invitationSent": "邀请已发送。",
     "legacyHelp": "请选择此账户设置的页面。",
     "permissions": {
-      "title": "安全与权限",
+      "title": "角色／用户组",
       "description": "配置访问规则、受保护群组和权限。"
     },
     "functions": {
@@ -32847,6 +32857,10 @@
     "passwordPolicy": {
       "title": "密码策略",
       "description": "创建、更改或重置密码时应用新的复杂度规则。外部组织登录仍采用其提供商的密码策略。"
+    },
+    "dataPermissions": {
+      "title": "数据权限访问",
+      "description": "选择管理用户可访问的员工记录。功能权限及现有公司权限仍然适用。员工自助服务与已分配的审批职责保留各自的规则。"
     }
   },
   "payFormula": {
@@ -33663,5 +33677,63 @@
       "unlockAction": "解锁账户",
       "unlocked": "账户已解锁。"
     }
+  },
+  "dataPermissions": {
+    "title": "数据权限访问",
+    "description": "选择管理用户可访问的员工记录。功能权限及现有公司权限仍然适用。员工自助服务与已分配的审批职责保留各自的规则。",
+    "search": "搜索配置",
+    "new": "新建配置",
+    "name": "配置名称",
+    "enabled": "启用配置",
+    "active": "有效",
+    "inactive": "停用",
+    "assigned": "已分配 {count} 位用户",
+    "empty": "尚无配置。现有公司访问权限保持不变。",
+    "legacyPreset": "使用现有授权公司范围",
+    "legacyHelp": "此明确预设不添加员工条件，也不会增加公司或功能权限。",
+    "andOr": "不同字段之间使用“且”。同一字段的多个值使用“或”。至少需要一个条件。",
+    "unavailableValue": "之前选择的值已不可用；请移除后替换条件。",
+    "noValues": "当前访问范围内没有可用值。",
+    "preview": "预览配置",
+    "retire": "停用配置",
+    "assignedHelp": "停用前请移除所有用户分配。",
+    "assignmentTitle": "用户数据分配",
+    "assignmentHelp": "每位用户使用一个配置。未分配时保留现有公司权限。已分配但停用或无效的配置不授予任何管理员工记录。",
+    "user": "用户",
+    "profile": "数据配置",
+    "legacyCompany": "现有公司权限（未分配）",
+    "previewAssignment": "预览分配",
+    "review": "审核访问变更",
+    "reviewCounts": "影响 {users} 位用户。在当前访问范围内有 {records} 条员工记录符合条件。",
+    "reviewHelp": "保存前请审核规则与分配。公司和功能权限仍限制所有结果。权限、员工数据或配置变更将使预览失效。",
+    "confirm": "确认并保存",
+    "cancel": "取消",
+    "saved": "已保存。每次请求都会重新检查访问权限。",
+    "errors": {
+      "invalid": "请检查配置。已分配的配置不能停用。",
+      "changed": "访问权限或员工数据已变更。请重新加载并预览。",
+      "forbidden": "您不能授予超出自身权限的访问范围。",
+      "unavailable": "无法保存变更。请重试。"
+    },
+    "fields": {
+      "company": "公司",
+      "businessUnit": "业务单位",
+      "division": "事业部",
+      "branch": "分支机构",
+      "department": "部门",
+      "section": "科室",
+      "team": "团队",
+      "position": "职位",
+      "grade": "职级",
+      "employmentType": "雇佣类型",
+      "employmentStatus": "雇佣状态",
+      "costCentre": "成本中心",
+      "nationality": "国籍",
+      "gender": "性别",
+      "maritalStatus": "婚姻状况",
+      "category": "员工类别",
+      "employeeId": "员工编号"
+    },
+    "reviewDifference": "在您可查看的记录范围内：变更前 {before} 条，变更后 {after} 条；增加 {gained} 条，减少 {lost} 条。"
   }
 }

@@ -7,7 +7,7 @@ export type DataPermissionCommand=
  |{kind:'retire';profileId:string}
  |{kind:'assign';userId:string;profileId:string|null};
 export type DataPermissionState={revision:string;profiles:{id:string;name:string;revision:string;enabled:boolean;editable:boolean;rules:DataPermissionRules|null;assignedCount:number}[];assignments:{userId:string;profileId:string}[];options:{field:DataPermissionField;value:string;label:string}[]};
-export type DataPermissionPreview={fingerprint:string;affectedUsers:number;matchingRecords:number};
+export type DataPermissionPreview={fingerprint:string;affectedUsers:number;matchingRecords:number;beforeRecords:number;afterRecords:number;gainedRecords:number;lostRecords:number};
 function canonicalCommand(value:DataPermissionCommand):DataPermissionCommand{
  if(value.kind==='create'||value.kind==='edit')return {...value,name:value.name.trim(),rules:canonicalDataPermissionRules(value.rules)};
  return value;

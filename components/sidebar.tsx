@@ -576,7 +576,7 @@ const GROUPS: Group[] = [
       REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
       {href:SECURITY_CENTER,labelKey:'securityCenter',icon:ShieldCheck,exactHref:true},
-      ...SECURITY_PAGES.map(page=>({href:page.href,labelKey:page.navKey,icon:ShieldCheck,exactHref:true})),
+      ...SECURITY_PAGES.map(page=>({href:page.href,labelKey:page.navKey,icon:ShieldCheck,exactHref:true,...(page.key==='permissions'?{ownedSubpaths:['/admin/users/access']}:{} )})),
     ],
   },
 ];

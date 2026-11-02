@@ -505,12 +505,13 @@
     "createLogin": "Cipta Log Masuk Secara Manual",
     "inviteUser": "Jemput Pengguna",
     "users": "Pengguna",
-    "securityPermissions": "Keselamatan & Kebenaran",
+    "securityPermissions": "Peranan / Kumpulan Pengguna",
     "functionAccess": "Akses Fungsi",
     "securityCenter": "Pusat Keselamatan",
     "aiManagementInventory": "Inventori AI",
     "entra": "Microsoft Entra ID",
-    "passwordPolicy": "Dasar Kata Laluan"
+    "passwordPolicy": "Dasar Kata Laluan",
+    "dataPermissionAccess": "Akses Kebenaran Data"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -29656,7 +29657,7 @@
     }
   },
   "accessConfiguration": {
-    "title": "Keselamatan & kebenaran",
+    "title": "Peranan / Kumpulan Pengguna",
     "description": "Urus kebenaran kumpulan dan individu dengan pratonton sebelum setiap perubahan.",
     "groups": "Kumpulan pengguna",
     "groupName": "Nama kumpulan",
@@ -29729,7 +29730,10 @@
       "configure": "Urus keselamatan dan kebenaran",
       "workforceView": "Lihat rekod pekerja",
       "workforceMaintain": "Selenggara rekod pekerja",
-      "profileReview": "Semak perubahan profil yang layak"
+      "profileReview": "Semak perubahan profil yang layak",
+      "workforceAdd": "Tambah rekod tenaga kerja",
+      "workforceEdit": "Edit rekod tenaga kerja",
+      "workforceDelete": "Padam rekod tenaga kerja"
     },
     "workforceReadOnly": "Anda boleh melihat rekod pekerja ini. Kebenaran Tenaga Kerja semasa anda tidak membenarkan perubahan.",
     "workforceCommandHint": "Anda boleh menukar ID Pekerja. Maklumat lain pada halaman ini hanya boleh dilihat.",
@@ -29758,7 +29762,13 @@
       "changed": "Rekod pekerja telah berubah. Buka semula sebelum menyimpan.",
       "denied": "Kebenaran anda telah berubah. Buka semula rekod ini untuk menyemak akses anda.",
       "invalid": "Masukkan ID Pekerja yang belum digunakan dengan huruf, nombor atau sempang, maksimum 30 aksara."
-    }
+    },
+    "matrixView": "Lihat",
+    "matrixAdd": "Tambah",
+    "matrixEdit": "Edit",
+    "matrixDelete": "Padam",
+    "matrixWorkforce": "Tenaga kerja",
+    "matrixOther": "Kebenaran lain"
   },
   "myPayslip": {
     "title": "Slip Gaji Saya",
@@ -32825,7 +32835,7 @@
     "invitationSent": "Jemputan telah dihantar.",
     "legacyHelp": "Pilih halaman untuk persediaan akaun ini.",
     "permissions": {
-      "title": "Keselamatan & Kebenaran",
+      "title": "Peranan / Kumpulan Pengguna",
       "description": "Konfigurasi peraturan akses, kumpulan dilindungi dan kebenaran."
     },
     "functions": {
@@ -32847,6 +32857,10 @@
     "passwordPolicy": {
       "title": "Dasar Kata Laluan",
       "description": "Peraturan kerumitan baharu terpakai apabila kata laluan dicipta, ditukar atau ditetapkan semula. Log masuk organisasi luar mengekalkan dasar penyedia mereka."
+    },
+    "dataPermissions": {
+      "title": "Akses Kebenaran Data",
+      "description": "Pilih rekod pekerja yang boleh dicapai oleh pengguna pentadbiran. Kebenaran fungsi dan syarikat sedia ada masih terpakai. Layan diri serta tanggungjawab kelulusan kekal dengan peraturannya sendiri."
     }
   },
   "payFormula": {
@@ -33663,5 +33677,63 @@
       "unlockAction": "Buka kunci akaun",
       "unlocked": "Kunci akaun dibuka."
     }
+  },
+  "dataPermissions": {
+    "title": "Akses Kebenaran Data",
+    "description": "Pilih rekod pekerja yang boleh dicapai oleh pengguna pentadbiran. Kebenaran fungsi dan syarikat sedia ada masih terpakai. Layan diri serta tanggungjawab kelulusan kekal dengan peraturannya sendiri.",
+    "search": "Cari konfigurasi",
+    "new": "Konfigurasi baharu",
+    "name": "Nama konfigurasi",
+    "enabled": "Aktifkan konfigurasi",
+    "active": "Aktif",
+    "inactive": "Tidak aktif",
+    "assigned": "{count} pengguna ditetapkan",
+    "empty": "Belum ada konfigurasi. Akses syarikat sedia ada dikekalkan.",
+    "legacyPreset": "Gunakan syarikat yang telah dibenarkan",
+    "legacyHelp": "Pratetap ini tidak menambah syarat pekerja atau kuasa syarikat dan fungsi.",
+    "andOr": "Medan berbeza digabungkan dengan DAN. Nilai dalam medan yang sama digabungkan dengan ATAU. Sekurang-kurangnya satu syarat diperlukan.",
+    "unavailableValue": "Nilai terdahulu tidak tersedia; buangkannya untuk mengganti syarat.",
+    "noValues": "Tiada nilai dalam akses semasa anda.",
+    "preview": "Pratonton konfigurasi",
+    "retire": "Hentikan konfigurasi",
+    "assignedHelp": "Buang semua penetapan sebelum menghentikan konfigurasi ini.",
+    "assignmentTitle": "Penetapan data pengguna",
+    "assignmentHelp": "Satu konfigurasi bagi setiap pengguna. Tiada penetapan mengekalkan akses syarikat sedia ada. Konfigurasi tidak aktif atau tidak sah tidak memberi rekod pekerja pentadbiran.",
+    "user": "Pengguna",
+    "profile": "Konfigurasi data",
+    "legacyCompany": "Akses syarikat sedia ada (tiada penetapan)",
+    "previewAssignment": "Pratonton penetapan",
+    "review": "Semak perubahan akses",
+    "reviewCounts": "{users} pengguna terjejas. {records} rekod pekerja sepadan dalam akses semasa anda.",
+    "reviewHelp": "Semak syarat dan penetapan sebelum menyimpan. Kuasa syarikat dan fungsi tetap mengehadkan hasil. Perubahan akses, data pekerja atau konfigurasi membatalkan pratonton ini.",
+    "confirm": "Sahkan dan simpan",
+    "cancel": "Batal",
+    "saved": "Disimpan. Akses diperiksa semula pada setiap permintaan.",
+    "errors": {
+      "invalid": "Semak konfigurasi. Konfigurasi yang ditetapkan tidak boleh dihentikan.",
+      "changed": "Akses atau data pekerja berubah. Muat semula dan pratonton lagi.",
+      "forbidden": "Anda tidak boleh memberi akses melebihi kuasa semasa anda.",
+      "unavailable": "Perubahan tidak dapat disimpan. Cuba lagi."
+    },
+    "fields": {
+      "company": "Syarikat",
+      "businessUnit": "Unit Perniagaan",
+      "division": "Bahagian",
+      "branch": "Cawangan",
+      "department": "Jabatan",
+      "section": "Seksyen",
+      "team": "Pasukan",
+      "position": "Jawatan",
+      "grade": "Gred Jawatan",
+      "employmentType": "Jenis Pekerjaan",
+      "employmentStatus": "Status Pekerjaan",
+      "costCentre": "Pusat Kos",
+      "nationality": "Kewarganegaraan",
+      "gender": "Jantina",
+      "maritalStatus": "Status Perkahwinan",
+      "category": "Kategori Pekerja",
+      "employeeId": "ID Pekerja"
+    },
+    "reviewDifference": "Dalam rekod yang boleh anda lihat: {before} sebelum, {after} selepas; {gained} ditambah dan {lost} hilang."
   }
 }

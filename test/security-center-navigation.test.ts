@@ -10,9 +10,9 @@ import th from '../messages/th.json';
 const person='11111111-2222-3333-4444-555555555555';
 describe('closed Security Center navigation',()=>{
  it.each([
-  [{admin:true,configure:true,provision:true},6],
+  [{admin:true,configure:true,provision:true},7],
   [{admin:true,configure:false,provision:false},3],
-  [{admin:false,configure:true,provision:false},2],
+  [{admin:false,configure:true,provision:false},3],
   [{admin:false,configure:false,provision:false},0],
  ] as const)('publishes only permitted destinations %j', (access,count)=>{
   expect([SECURITY_CENTER,...SECURITY_PAGES.map(p=>p.href)].filter(href=>securityDestinationAllowed(href,access))).toHaveLength(count);
