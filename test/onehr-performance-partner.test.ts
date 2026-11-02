@@ -1,3 +1,4 @@
+import {z} from 'zod';
 import {establishRewardMembership} from './rewards-shared-policy-fixture';
 /**
  * ADR-0142 — the OneHR performance partner: performance administration WITHOUT compensation.
@@ -190,22 +191,26 @@ describe('OneHR performance partner (ADR-0142)', () => {
         expect(await perf.getOnehrReviewForPurpose(mixed,reviewId,'administration')).toBeNull();
         expect((await perf.getOnehrReviewForPurpose(mixed,reviewId,'task'))?.reviewId).toBe(reviewId);
         const [before]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));expect(before).toBeDefined();
-        expect(await refusal(withTenant(mixed,tx=>tx.update(schema.assessmentCareerProfile).set({career:{...(before.career as Record<string,unknown>),aspiration:'Borrowed admin rewrite'}}).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))),'42501')).toContain('Career administrative data unavailable');
+        const beforeRawEvents=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,reviewId)).orderBy(schema.domainEvent.id);
+        expect(await withTenant(mixed,tx=>tx.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId)))).toEqual([]);
+        // Native restrictive SELECT removes the target before a row-level write guard can execute.
+        expect(await withTenant(mixed,tx=>tx.update(schema.assessmentCareerProfile).set({career:{...(before.career as Record<string,unknown>),aspiration:'Borrowed admin rewrite'}}).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId)).returning())).toEqual([]);
         expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([before]);
         const [reviewBefore]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
-        expect(await refusal(withTenant(mixed,tx=>tx.update(schema.onehrReview).set({profileMatch:'Borrowed administrative profile match'}).where(eq(schema.onehrReview.reviewId,reviewId))),'42501')).toContain('OneHR administrative data unavailable');
+        expect(await withTenant(mixed,tx=>tx.update(schema.onehrReview).set({profileMatch:'Borrowed administrative profile match'}).where(eq(schema.onehrReview.reviewId,reviewId)).returning())).toEqual([]);
         expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([reviewBefore]);
         expect(await withTenant(mixed,tx=>tx.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)))).toEqual([]);
+        expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,reviewId)).orderBy(schema.domainEvent.id)).toEqual(beforeRawEvents);
         await perf.commentAssessmentCareerProfile(mixed,reviewId,before.revision,'Native assigned manager career comment');
         const [commented]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));
         expect(commented).toEqual({...before,reviewId,managerComment:'Native assigned manager career comment',managerUserId:userId,managerCommentAt:expect.any(Date),updatedAt:expect.any(Date),revision:before.revision+1});
         const comments=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented')));expect(comments).toHaveLength(1);expect(comments[0]).toMatchObject({actorType:'user',actorId:userId,payload:{}});
         await expect(perf.commentAssessmentCareerProfile(partner,reviewId,commented.revision,'Borrowed administrative comment')).rejects.toThrow();
         expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([commented]);
-        const unicode='\ufeff\u00a0'+'😀'.repeat(2000)+'\u3000';expect(unicode.trim().length).toBe(4000);
+        const unicode='\ufeff\u00a0'+'😀'.repeat(4000)+'\u3000';expect([...unicode.trim()]).toHaveLength(4000);expect(z.string().trim().max(4000).safeParse(unicode).success).toBe(true);
         await perf.commentAssessmentCareerProfile(mixed,reviewId,commented.revision,unicode);const [unicodeStored]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));expect(unicodeStored.managerComment).toBe(unicode);expect(unicodeStored.revision).toBe(commented.revision+1);
         const unicodeEvents=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented'))).orderBy(schema.domainEvent.id);expect(unicodeEvents).toHaveLength(2);
-        const oversized='😀'.repeat(2001);await expect(perf.commentAssessmentCareerProfile(mixed,reviewId,unicodeStored.revision,oversized)).rejects.toThrow();
+        const oversized='😀'.repeat(4001);expect(z.string().trim().max(4000).safeParse(oversized).success).toBe(false);await expect(perf.commentAssessmentCareerProfile(mixed,reviewId,unicodeStored.revision,oversized)).rejects.toThrow();
         await expect(withTenant(mixed,tx=>tx.execute(sql`select app.onehr_career_comment(${reviewId}::uuid,${unicodeStored.revision}::integer,${oversized}::text)`))).rejects.toMatchObject({cause:expect.objectContaining({code:'22023',message:expect.stringMatching(/Invalid career comment/)})});
         expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([unicodeStored]);expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.career-profile-commented'))).orderBy(schema.domainEvent.id)).toEqual(unicodeEvents);
 
