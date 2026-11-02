@@ -508,7 +508,8 @@
     "securityPermissions": "安全与权限",
     "functionAccess": "功能访问",
     "securityCenter": "安全中心",
-    "aiManagementInventory": "AI 清单"
+    "aiManagementInventory": "AI 清单",
+    "entra": "Microsoft Entra ID"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -11214,7 +11215,8 @@
         "importHistory": "当您对导入中至少一家公司拥有人员查看权限时会列出该导入，并且只显示您可查看公司的员工。下载原始文件需要对其中每家公司拥有查看权限；撤销需要对其中每家公司拥有人员维护权限。",
         "securityCenter": "管理员或具有访问配置权限的人员可以使用。",
         "createLogin": "仅限集团级管理员。手动设置还需要受支持的登录提供商和已验证的管理员会话。",
-        "inviteUser": "仅限集团级管理员。"
+        "inviteUser": "仅限集团级管理员。",
+        "entra": "仅限集团管理员。配置本组织的 Microsoft 登录和员工帐户预配。关联现有身份需要明确确认。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -26876,7 +26878,10 @@
     "switchAccountSubmit": "退出并打开邀请",
     "workplaceLoginHelp": "已选择您的工作单位。请输入用户名和密码。",
     "signingInTitle": "正在登录…",
-    "signingInHelp": "正在进入 AIHR。"
+    "signingInHelp": "正在进入 AIHR。",
+    "idleSignedOut": "由于一段时间未操作，您已被退出登录。请重新登录以继续。",
+    "microsoft": "使用 Microsoft 继续",
+    "microsoftError": "Microsoft 登录未能完成。请检查组织和关联帐户，然后重试。"
   },
   "aiManagement": {
     "title": "AI 管理",
@@ -33379,6 +33384,85 @@
     "noticeReferences": "所得税更正参考编号",
     "noticeView": "查看所得税更正"
   },
+  "entra": {
+    "title": "Microsoft Entra ID",
+    "description": "Microsoft sign-in and workforce account provisioning for cloud and hybrid Active Directory.",
+    "manageUsers": "Manage HR user accounts",
+    "connection": "Directory connection",
+    "organization": "Organization code",
+    "directoryTenantId": "Microsoft tenant ID",
+    "clientId": "Sign-in application client ID",
+    "provisioningClientId": "Provisioning application client ID",
+    "servicePrincipalId": "Provisioning service principal ID",
+    "jobId": "Provisioning job ID",
+    "domain": "Verified account domain",
+    "mode": "Directory mode",
+    "cloud": "Cloud Entra ID",
+    "hybrid": "On-premises AD with Entra sync",
+    "clientSecret": "Sign-in application secret",
+    "provisioningSecret": "Provisioning application secret",
+    "secretHelp": "Leave saved secrets blank to retain them. Secrets are encrypted and never displayed.",
+    "enabled": "Enable Microsoft sign-in",
+    "provisioningEnabled": "Automatically provision committed employee records",
+    "matching": "IT has configured externalId as the sole immutable matching key, mapped externalId into the configured target source-ID attribute, and mapped only userName, displayName and active. Existing accounts are linked explicitly.",
+    "hybridHelp": "Hybrid mode requires a customer-managed Microsoft provisioning agent and AD-to-Entra sync. Accounts use a stable HR-generated username; IT controls target OU and attribute mappings.",
+    "save": "Save connection",
+    "test": "Test discovery and provisioning credentials",
+    "tested": "The selected checks succeeded. Discovery does not test a sign-in secret; token acquisition does not prove upload consent, directory mappings, AD agent health or employee sign-in.",
+    "saved": "Settings saved.",
+    "linked": "Microsoft identity linked to the existing HR account.",
+    "error": "The operation failed. Check your permissions, identifiers, configuration revision and Microsoft connection, then retry.",
+    "linkTitle": "Link an existing HR user",
+    "linkHelp": "Select the exact HR account and Microsoft object ID after IT verifies ownership. No HR roles are changed. For hybrid accounts, wait for AD-to-Entra sync first.",
+    "personId": "Person ID",
+    "userId": "HR user ID",
+    "objectId": "Microsoft object ID",
+    "linkConfirm": "I verified that this Microsoft tenant/object belongs to this exact HR user.",
+    "link": "Link Microsoft identity",
+    "queue": "Employee provisioning",
+    "empty": "No employees are queued. Enable provisioning and create an employee, or save the connection to queue existing employees.",
+    "status": "Status",
+    "attempts": "Attempts",
+    "action": "Action",
+    "retry": "Retry",
+    "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
+    "states": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "submitted": "Submitted",
+      "awaiting-sync": "Awaiting Entra sync",
+      "ready": "Directory provisioned",
+      "disabled": "Directory disabled",
+      "failed": "Needs attention",
+      "uncertain": "Outcome uncertain",
+      "awaiting-link": "Link existing HR account",
+      "rejected": "Rejected by provisioning service"
+    },
+    "sourceAnchorAttribute": "Immutable source-ID target attribute",
+    "reconcile": "Check reconciled directory object",
+    "reconcileConfirm": "IT has reconciled the uncertain upload in Microsoft. Check the exact source-marked object without resending creation.",
+    "selectUser": "Choose an existing HR user"
+  },
+  "sessionTimeout": {
+    "warningTitle": "您还在吗？",
+    "warningBody": "为保障安全，由于长时间未操作，您将在 {seconds} 秒后被退出登录。",
+    "staySignedIn": "保持登录",
+    "signOutNow": "立即退出",
+    "settingsTitle": "自动退出登录",
+    "settingsDescription": "用户在网页应用中未操作达到此时长后将被退出登录。退出前会先显示一分钟的提醒。",
+    "minutesLabel": "未操作多少分钟后退出",
+    "minutesHelp": "可选择 {min} 至 {max} 分钟，默认为 15 分钟。无论如何，会话仍会在登录 8 小时后结束。",
+    "save": "保存自动退出设置",
+    "saving": "正在保存…",
+    "notEnforced": "此安装未使用内置登录，因此该时限暂未生效。",
+    "result": {
+      "saved": "自动退出设置已保存。",
+      "invalid": "请输入允许范围内的整数分钟数。",
+      "conflict": "其他人已修改此设置。请重新加载页面后再试。",
+      "forbidden": "只有集团管理员可以修改自动退出设置。",
+      "unavailable": "无法保存自动退出设置，请重试。"
+    }
+  },
   "runnerControl": {
     "title": "Runner controls",
     "description": "Check activation, execution health and schedules for this installation. Activation and a successful last run are separate facts.",
@@ -33524,7 +33608,7 @@
   },
   "passwordPolicy": {
     "title": "密码安全",
-    "description": "要求本组织用户定期更改密码。",
+    "description": "设置 HR 密码的定期更改。在 Entra 中管理 Microsoft 密码和条件访问。",
     "enabled": "要求定期更改密码",
     "interval": "更改间隔",
     "unit": "单位",

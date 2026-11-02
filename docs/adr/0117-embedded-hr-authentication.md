@@ -58,6 +58,22 @@ A binding stores a confirmed connection-version snapshot under the actual tenant
 
 The private lifecycle sender chooses the frozen message profile in its actual tenant, reads only a confirmed snapshot or applied default, and rechecks its revision before committing SMTP start. The durable private proof records the actual sender address/profile and relay revision without secrets. Neither a template nor the browser posts credentials or an arbitrary From address. This is a candidate implementation amendment; testing, merge, installation and staging acceptance remain separate, and it grants no production deployment authority.
 
+
+## Optional Entra federation and workforce provisioning — 2 November 2026
+
+The owner requested Microsoft Entra login on web/mobile and HR-driven provisioning to both cloud
+Entra and on-premises AD from launch. Implement this as an optional capability alongside embedded
+HR authentication. HR still owns users, permissions, session revocation and effective employment
+eligibility. Microsoft owns its credentials and configured MFA/Conditional Access. No email-based
+adoption, Microsoft-group-to-HR-role inference or activation of the compatibility providers is allowed.
+
+An explicitly administrator-enabled provisioning policy may create baseline employee logins for
+newly provisioned people after exact immutable directory verification; it cannot adopt an existing HR
+login or grant administrative access. Existing logins require explicit ownership-verified linking.
+See the [Entra candidate decision and scope](entra-workforce-integration-proposal.md) and
+[IT setup](../../deploy/entra/README.md). Source implementation and hosted checks are separate from
+real tenant/AD acceptance and installation. No deployment authority is added by this amendment.
+
 ## Configurable password expiry and reuse prevention — 2 November 2026
 
 The owner requested recurring password changes with a configurable number of days or months and

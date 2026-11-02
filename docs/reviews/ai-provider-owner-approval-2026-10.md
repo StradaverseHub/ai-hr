@@ -337,6 +337,81 @@ acceptance. Fresh exact-source hosted qualification remains required. Any furthe
 requires another exact review.
 
 
+## Technical source binding — 2 November 2026, configurable idle sign-out (ADR-0171)
+
+Branch `claude/idle-session-timeout` (configurable idle sign-out for the web app) moves the provider closure
+from 1141 files / `c9c5944d9756718e34b08826b1773339ea7430687209992efd5ab84c2aea177d` to 1143 files /
+`c44387b32760d03ddbd0f52251733e6393246255817f91470f44b2a179de5664`.
+
+Closure membership grows by two policy sources reached through `db/schema.ts` and the embedded sign-in
+service: `lib/session-policy.ts` (bounds and defaults) and `lib/session-policy-server.ts` (reads only the
+idle limit through `app.session_idle_timeout_minutes`). Changed covered files: `db/schema.ts`,
+`lib/internal-auth/service.ts`, the two new files above and the six `messages/*.json` dictionaries.
+
+- No `lib/ai/*` serializer, descriptor, transport, prompt, spend control or approval-validation file
+  changed.
+- Dictionaries: 16 new leaves per locale under `sessionTimeout.*` plus `internalAuth.idleSignedOut`; no
+  `assistant.*`, `onehr.*` or `aiManagement.*` leaf changed.
+- `db/schema.ts` only adds the `session_policy` table (tenant, idle minutes 5–480, revision, timestamp).
+- `lib/internal-auth/service.ts` records last reported activity on web sessions, revokes and audits a session
+  idle past its organization's limit, and adds `touchSession`; it reads no employee or HR data.
+
+No new protected purpose, raw-data variant, contract, model money calculation or autonomous sensitive
+effect is admitted. The SAME 24 approved records receive only this sourceDigest; every original human
+status, reviewer, evidence anchor and timestamp is preserved, and both pending blocks remain
+byte-identical. `lib/ai/module-agent-source-manifest.ts` is regenerated mechanically to
+`670c4af684ef5bbf240c93e9f7930925618941fbb71bb09e7cf013cb4c712979` (no approval binds it).
+
+The release owner (human) approved this technical re-binding in the implementation session on 2 November
+2026 ("Yes, approve rebind") after reviewing the changed-file list above. This is a technical disposition
+within existing scope, not a new privacy approval, certification, runtime PASS or staging acceptance. Fresh
+exact-source hosted qualification remains required. Any further covered-byte change requires another exact
+review.
+
+## Technical source review — 2 November 2026, PR #194 with shared idle policy
+
+The PR review and required security/data gate include an exact technical source review of the
+combined Entra and PR #196 idle-policy candidate. The closure is 1148 files at
+`7c2e2c31164fcbfc2f5d5c95cb566b52d62c0735f64d698e5f2e19eaab9b05f5`.
+Compared with newly installed staging baseline `438bfae3d9f5b71f54f7fc258959e91249c4f597`, covered changes are `db/schema.ts`,
+`lib/ai/agent-capability-inventory.ts`, `lib/entra/{model,sessions,store}.ts`,
+`lib/internal-auth/{service,web-session}.ts`, `lib/permissions.ts`, `lib/session.ts`,
+`lib/session-policy{,-server}.ts` and the six locale dictionaries.
+
+The added sources hold directory configuration, explicit identity bindings and session validation;
+credentials remain in the existing encrypted internal-auth store. The provider serializers,
+transports, prompts, spend controls and approval validation are unchanged. New administration and
+login actions are classified as access/authentication handoffs, not agent effects. Dictionary changes
+are Entra setup/login and session-timeout copy. The schema adds only the shared tenant idle policy;
+Entra operational tables are private SQL interfaces, not new AI provider payloads. No protected
+purpose, raw-data variant, contract or autonomous sensitive effect is added.
+
+This agent technical review rebinds only `sourceDigest` on the same 24 approved records within the
+requested review/fix/gate scope. Original human reviewers, dates, statuses and evidence anchors are
+preserved; the two pending records remain identical and blocked. It does not assert a new human
+privacy approval, live tenant acceptance or release PASS. The generated module manifest is
+`2fd3bef631acf8e7cd6e7d7bb1d15b4e5dc1d0c15c8cf690b8603ecdde74b73b`.
+Further covered source changes require exact review again.
+
+## Exact technical re-review — PR #194 integration repairs
+
+The post-gate source review covers closure 1148 /
+`45853c97aad334596470becb7e16d4d35562fe5f0ff7457ccdae365436a43d22`.
+Against frozen candidate `c6cd46f1cb6715371f27942e5bae51d228b1840d`, the only changed
+provider-covered files are the six locale dictionaries. The existing employee Microsoft login label
+and refusal text move from `entra` into canonical `internalAuth`; their localized values are
+unchanged. `admin.users.scope.entra` now explains the existing group-administrator restriction.
+No `assistant`, `onehr` or `aiManagement` subtree changes. Native copy is regenerated from the
+canonical authentication vocabulary, including the existing idle-sign-out message.
+
+The shared activity helper and shell contract from PR #196 `90346adf0` are integrated with Entra as
+an enforcing recorder. These add no AI provider payload, access purpose, contract or autonomous
+sensitive effect. Serializers, transports, prompts, spend controls and approval validation remain
+unchanged. This agent technical review changes only `sourceDigest` on the same 24 approved records;
+original human provenance and both pending blocks remain unchanged. It asserts neither new human
+privacy approval nor runtime acceptance. The regenerated module source manifest is
+`1be15b76da3e43106bfe07af40929cdb321666ee7844038d8c060487b41b79fa`.
+
 ## Technical source binding — 2 November 2026, recurring password policy
 
 For the password-policy staging release, the owner explicitly approved the exact rebind
@@ -402,3 +477,32 @@ statuses, reviewer identities, evidence anchors and human review timestamps rema
 pending records remain byte-identical. This is a source binding refresh within existing scope, not
 privacy-specialist certification, fresh runtime PASS, staging acceptance or production authority.
 Further covered source changes require another exact review.
+
+## Exact technical review — accepted PASSWORD CHANGE baseline plus Entra
+
+The aggregate adopts accepted main/alpha `29393c2a50242f76b1f454a8b08073aa90524688`
+and the reviewed Entra/idle source. Its provider closure is 1150 files /
+`2d0f111f921ed5673c59b1a4c52818f1dc31217cee449c486d9b964dfbacaca1`.
+Compared with that accepted baseline, covered changes remain `db/schema.ts`, the capability inventory,
+`lib/entra/{model,sessions,store}.ts`, `lib/internal-auth/{service,web-session}.ts`,
+`lib/permissions.ts`, `lib/session.ts`, the two session-policy helpers and six locale dictionaries.
+The accepted password-policy implementation is preserved; Entra and web idle checks are additive.
+
+Serializers, provider transports, prompts, spend controls, contract definitions and approval validation
+are unchanged. `assistant`, `onehr` and `aiManagement` dictionary subtrees exactly match the accepted
+baseline. New auth actions remain access/authentication handoffs. No raw disclosure, protected purpose,
+contract, model calculation or sensitive autonomous effect is added by the merge.
+
+This is an exact agent technical source review within the existing 24 approved finite-contract purposes,
+not a new human privacy approval or installation acceptance. Only their `sourceDigest` changes;
+original human statuses, reviewers, dates and evidence anchors match the accepted baseline, and the two
+pending blocks remain identical. Generated hashes alone do not establish approval. The module source
+manifest is `55de2b0118d5fc10dd5371cf0b12d80f94376ffff3944f4d1ff30ebdc11252e6`.
+
+
+The final UI scope clarification changes only `passwordPolicy.description` in each locale: recurring
+HR password changes are configured here; Microsoft passwords and Conditional Access are managed in
+Entra. This exact follow-up review adds no payload, contract, permission or human approval event.
+The final 1150-file digest is `adbd370dd31e429d8090b935c4dbaa730a840d50506aa4443b70269205ca1055`; the same 24 record digests
+are rebound with all other fields and both pending blocks unchanged. The regenerated module digest
+is `2e96d752dfe314bf33eb449ab842a2b39577a67a4e07e5cc9645f122b3181274`.

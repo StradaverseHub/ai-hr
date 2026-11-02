@@ -508,7 +508,8 @@
     "securityPermissions": "Bảo mật và quyền",
     "functionAccess": "Truy cập chức năng",
     "securityCenter": "Trung tâm bảo mật",
-    "aiManagementInventory": "Danh mục AI"
+    "aiManagementInventory": "Danh mục AI",
+    "entra": "Microsoft Entra ID"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -11214,7 +11215,8 @@
         "importHistory": "Liệt kê lần nhập khi bạn có quyền xem Nhân sự cho ít nhất một công ty trong đó, và chỉ hiển thị nhân viên của các công ty bạn được xem. Tệp gốc cần quyền xem mọi công ty trong tệp; Hoàn tác cần quyền duy trì Nhân sự cho mọi công ty trong tệp.",
         "securityCenter": "Dành cho quản trị viên hoặc người có quyền cấu hình truy cập.",
         "createLogin": "Chỉ dành cho quản trị viên toàn nhóm. Thiết lập thủ công cũng yêu cầu nhà cung cấp đăng nhập được hỗ trợ và phiên quản trị viên đã xác minh.",
-        "inviteUser": "Chỉ dành cho quản trị viên toàn nhóm."
+        "inviteUser": "Chỉ dành cho quản trị viên toàn nhóm.",
+        "entra": "Chỉ quản trị viên cấp tập đoàn. Cấu hình đăng nhập Microsoft và cấp tài khoản nhân viên cho tổ chức của mình. Liên kết danh tính hiện có cần được xác nhận rõ ràng."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -26876,7 +26878,10 @@
     "switchAccountSubmit": "Đăng xuất và mở lời mời",
     "workplaceLoginHelp": "Nơi làm việc đã được chọn. Nhập tên người dùng và mật khẩu.",
     "signingInTitle": "Đang đăng nhập…",
-    "signingInHelp": "Đang đưa bạn đến AIHR."
+    "signingInHelp": "Đang đưa bạn đến AIHR.",
+    "idleSignedOut": "Bạn đã bị đăng xuất sau một thời gian không hoạt động. Hãy đăng nhập lại để tiếp tục.",
+    "microsoft": "Tiếp tục với Microsoft",
+    "microsoftError": "Không thể hoàn tất đăng nhập Microsoft. Hãy kiểm tra tổ chức và tài khoản đã liên kết, rồi thử lại."
   },
   "aiManagement": {
     "title": "Quản lý AI",
@@ -33379,6 +33384,85 @@
     "noticeReferences": "Mã tham chiếu điều chỉnh thuế thu nhập",
     "noticeView": "Xem điều chỉnh thuế thu nhập"
   },
+  "entra": {
+    "title": "Microsoft Entra ID",
+    "description": "Microsoft sign-in and workforce account provisioning for cloud and hybrid Active Directory.",
+    "manageUsers": "Manage HR user accounts",
+    "connection": "Directory connection",
+    "organization": "Organization code",
+    "directoryTenantId": "Microsoft tenant ID",
+    "clientId": "Sign-in application client ID",
+    "provisioningClientId": "Provisioning application client ID",
+    "servicePrincipalId": "Provisioning service principal ID",
+    "jobId": "Provisioning job ID",
+    "domain": "Verified account domain",
+    "mode": "Directory mode",
+    "cloud": "Cloud Entra ID",
+    "hybrid": "On-premises AD with Entra sync",
+    "clientSecret": "Sign-in application secret",
+    "provisioningSecret": "Provisioning application secret",
+    "secretHelp": "Leave saved secrets blank to retain them. Secrets are encrypted and never displayed.",
+    "enabled": "Enable Microsoft sign-in",
+    "provisioningEnabled": "Automatically provision committed employee records",
+    "matching": "IT has configured externalId as the sole immutable matching key, mapped externalId into the configured target source-ID attribute, and mapped only userName, displayName and active. Existing accounts are linked explicitly.",
+    "hybridHelp": "Hybrid mode requires a customer-managed Microsoft provisioning agent and AD-to-Entra sync. Accounts use a stable HR-generated username; IT controls target OU and attribute mappings.",
+    "save": "Save connection",
+    "test": "Test discovery and provisioning credentials",
+    "tested": "The selected checks succeeded. Discovery does not test a sign-in secret; token acquisition does not prove upload consent, directory mappings, AD agent health or employee sign-in.",
+    "saved": "Settings saved.",
+    "linked": "Microsoft identity linked to the existing HR account.",
+    "error": "The operation failed. Check your permissions, identifiers, configuration revision and Microsoft connection, then retry.",
+    "linkTitle": "Link an existing HR user",
+    "linkHelp": "Select the exact HR account and Microsoft object ID after IT verifies ownership. No HR roles are changed. For hybrid accounts, wait for AD-to-Entra sync first.",
+    "personId": "Person ID",
+    "userId": "HR user ID",
+    "objectId": "Microsoft object ID",
+    "linkConfirm": "I verified that this Microsoft tenant/object belongs to this exact HR user.",
+    "link": "Link Microsoft identity",
+    "queue": "Employee provisioning",
+    "empty": "No employees are queued. Enable provisioning and create an employee, or save the connection to queue existing employees.",
+    "status": "Status",
+    "attempts": "Attempts",
+    "action": "Action",
+    "retry": "Retry",
+    "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
+    "states": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "submitted": "Submitted",
+      "awaiting-sync": "Awaiting Entra sync",
+      "ready": "Directory provisioned",
+      "disabled": "Directory disabled",
+      "failed": "Needs attention",
+      "uncertain": "Outcome uncertain",
+      "awaiting-link": "Link existing HR account",
+      "rejected": "Rejected by provisioning service"
+    },
+    "sourceAnchorAttribute": "Immutable source-ID target attribute",
+    "reconcile": "Check reconciled directory object",
+    "reconcileConfirm": "IT has reconciled the uncertain upload in Microsoft. Check the exact source-marked object without resending creation.",
+    "selectUser": "Choose an existing HR user"
+  },
+  "sessionTimeout": {
+    "warningTitle": "Bạn vẫn còn ở đó chứ?",
+    "warningBody": "Vì lý do bảo mật, bạn sẽ bị đăng xuất sau {seconds} giây do không hoạt động.",
+    "staySignedIn": "Tiếp tục đăng nhập",
+    "signOutNow": "Đăng xuất ngay",
+    "settingsTitle": "Tự động đăng xuất",
+    "settingsDescription": "Đăng xuất người dùng khỏi ứng dụng web khi họ không hoạt động trong khoảng thời gian này. Họ sẽ thấy cảnh báo trước một phút.",
+    "minutesLabel": "Đăng xuất sau (số phút không hoạt động)",
+    "minutesHelp": "Chọn từ {min} đến {max} phút. Mặc định là 15 phút. Phiên vẫn kết thúc 8 giờ sau khi đăng nhập.",
+    "save": "Lưu cài đặt tự động đăng xuất",
+    "saving": "Đang lưu…",
+    "notEnforced": "Bản cài đặt này không dùng đăng nhập tích hợp nên giới hạn này chưa được áp dụng.",
+    "result": {
+      "saved": "Đã lưu cài đặt tự động đăng xuất.",
+      "invalid": "Nhập số phút nguyên trong phạm vi cho phép.",
+      "conflict": "Người khác đã thay đổi cài đặt này. Hãy tải lại trang và thử lại.",
+      "forbidden": "Chỉ quản trị viên nhóm mới có thể thay đổi cài đặt tự động đăng xuất.",
+      "unavailable": "Không thể lưu cài đặt tự động đăng xuất. Hãy thử lại."
+    }
+  },
   "runnerControl": {
     "title": "Runner controls",
     "description": "Check activation, execution health and schedules for this installation. Activation and a successful last run are separate facts.",
@@ -33524,7 +33608,7 @@
   },
   "passwordPolicy": {
     "title": "Bảo mật mật khẩu",
-    "description": "Yêu cầu người dùng trong tổ chức đổi mật khẩu định kỳ.",
+    "description": "Thiết lập đổi mật khẩu HR định kỳ. Quản lý mật khẩu Microsoft và Truy nhập có điều kiện trong Entra.",
     "enabled": "Yêu cầu đổi mật khẩu định kỳ",
     "interval": "Đổi sau mỗi",
     "unit": "Đơn vị",

@@ -508,7 +508,8 @@
     "securityPermissions": "பாதுகாப்பு மற்றும் அனுமதிகள்",
     "functionAccess": "செயல்பாட்டு அணுகல்",
     "securityCenter": "பாதுகாப்பு மையம்",
-    "aiManagementInventory": "AI பட்டியல்"
+    "aiManagementInventory": "AI பட்டியல்",
+    "entra": "Microsoft Entra ID"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",
@@ -11214,7 +11215,8 @@
         "importHistory": "அதன் நிறுவனங்களில் குறைந்தது ஒன்றுக்கு பணியாளர் பார்வை அனுமதி இருந்தால் இறக்குமதி பட்டியலிடப்படும்; நீங்கள் பார்க்கக்கூடிய நிறுவனங்களின் ஊழியர்கள் மட்டுமே காட்டப்படுவர். மூலக் கோப்புக்கு அதிலுள்ள ஒவ்வொரு நிறுவனத்திற்கும் பார்வை அனுமதி தேவை; மீட்டமைத்தலுக்கு ஒவ்வொரு நிறுவனத்திற்கும் பணியாளர் பராமரிப்பு அனுமதி தேவை.",
         "securityCenter": "நிர்வாகிகள் அல்லது அணுகலை அமைக்கும் அனுமதி உள்ளவர்களுக்குக் கிடைக்கும்.",
         "createLogin": "குழு முழுவதற்குமான நிர்வாகிகளுக்கு மட்டும். கைமுறை அமைப்பிற்கு ஆதரிக்கப்படும் உள்நுழைவு வழங்குநரும் சரிபார்க்கப்பட்ட நிர்வாகி அமர்வும் தேவை.",
-        "inviteUser": "குழு முழுவதற்குமான நிர்வாகிகளுக்கு மட்டும்."
+        "inviteUser": "குழு முழுவதற்குமான நிர்வாகிகளுக்கு மட்டும்.",
+        "entra": "குழு நிர்வாகிகள் மட்டும். தங்கள் நிறுவனத்திற்கான Microsoft உள்நுழைவையும் பணியாளர் கணக்கு உருவாக்கத்தையும் அமைக்கலாம். ஏற்கனவே உள்ள அடையாளங்களை இணைக்க வெளிப்படையான உறுதிப்படுத்தல் தேவை."
       },
       "scopedTo": "{company} மற்றும் அதன் துணை நிறுவனங்களுக்கு வரையறுக்கப்பட்டது",
       "screen": {
@@ -26876,7 +26878,10 @@
     "switchAccountSubmit": "வெளியேறி அழைப்பைத் திறக்கவும்",
     "workplaceLoginHelp": "உங்கள் பணியிடம் தேர்ந்தெடுக்கப்பட்டது. பயனர்பெயர் மற்றும் கடவுச்சொல்லை உள்ளிடவும்.",
     "signingInTitle": "உள்நுழைகிறது…",
-    "signingInHelp": "AIHR-க்கு அழைத்துச் செல்கிறது."
+    "signingInHelp": "AIHR-க்கு அழைத்துச் செல்கிறது.",
+    "idleSignedOut": "சிறிது நேரம் செயலற்று இருந்ததால் நீங்கள் வெளியேற்றப்பட்டீர்கள். தொடர மீண்டும் உள்நுழையவும்.",
+    "microsoft": "Microsoft மூலம் தொடரவும்",
+    "microsoftError": "Microsoft உள்நுழைவு நிறைவடையவில்லை. உங்கள் நிறுவனத்தையும் இணைக்கப்பட்ட கணக்கையும் சரிபார்த்து மீண்டும் முயலவும்."
   },
   "aiManagement": {
     "title": "AI நிர்வாகம்",
@@ -33379,6 +33384,85 @@
     "noticeReferences": "வருமான வரித் திருத்தக் குறிப்புகள்",
     "noticeView": "வருமான வரித் திருத்தத்தைக் காண்க"
   },
+  "entra": {
+    "title": "Microsoft Entra ID",
+    "description": "Microsoft sign-in and workforce account provisioning for cloud and hybrid Active Directory.",
+    "manageUsers": "Manage HR user accounts",
+    "connection": "Directory connection",
+    "organization": "Organization code",
+    "directoryTenantId": "Microsoft tenant ID",
+    "clientId": "Sign-in application client ID",
+    "provisioningClientId": "Provisioning application client ID",
+    "servicePrincipalId": "Provisioning service principal ID",
+    "jobId": "Provisioning job ID",
+    "domain": "Verified account domain",
+    "mode": "Directory mode",
+    "cloud": "Cloud Entra ID",
+    "hybrid": "On-premises AD with Entra sync",
+    "clientSecret": "Sign-in application secret",
+    "provisioningSecret": "Provisioning application secret",
+    "secretHelp": "Leave saved secrets blank to retain them. Secrets are encrypted and never displayed.",
+    "enabled": "Enable Microsoft sign-in",
+    "provisioningEnabled": "Automatically provision committed employee records",
+    "matching": "IT has configured externalId as the sole immutable matching key, mapped externalId into the configured target source-ID attribute, and mapped only userName, displayName and active. Existing accounts are linked explicitly.",
+    "hybridHelp": "Hybrid mode requires a customer-managed Microsoft provisioning agent and AD-to-Entra sync. Accounts use a stable HR-generated username; IT controls target OU and attribute mappings.",
+    "save": "Save connection",
+    "test": "Test discovery and provisioning credentials",
+    "tested": "The selected checks succeeded. Discovery does not test a sign-in secret; token acquisition does not prove upload consent, directory mappings, AD agent health or employee sign-in.",
+    "saved": "Settings saved.",
+    "linked": "Microsoft identity linked to the existing HR account.",
+    "error": "The operation failed. Check your permissions, identifiers, configuration revision and Microsoft connection, then retry.",
+    "linkTitle": "Link an existing HR user",
+    "linkHelp": "Select the exact HR account and Microsoft object ID after IT verifies ownership. No HR roles are changed. For hybrid accounts, wait for AD-to-Entra sync first.",
+    "personId": "Person ID",
+    "userId": "HR user ID",
+    "objectId": "Microsoft object ID",
+    "linkConfirm": "I verified that this Microsoft tenant/object belongs to this exact HR user.",
+    "link": "Link Microsoft identity",
+    "queue": "Employee provisioning",
+    "empty": "No employees are queued. Enable provisioning and create an employee, or save the connection to queue existing employees.",
+    "status": "Status",
+    "attempts": "Attempts",
+    "action": "Action",
+    "retry": "Retry",
+    "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
+    "states": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "submitted": "Submitted",
+      "awaiting-sync": "Awaiting Entra sync",
+      "ready": "Directory provisioned",
+      "disabled": "Directory disabled",
+      "failed": "Needs attention",
+      "uncertain": "Outcome uncertain",
+      "awaiting-link": "Link existing HR account",
+      "rejected": "Rejected by provisioning service"
+    },
+    "sourceAnchorAttribute": "Immutable source-ID target attribute",
+    "reconcile": "Check reconciled directory object",
+    "reconcileConfirm": "IT has reconciled the uncertain upload in Microsoft. Check the exact source-marked object without resending creation.",
+    "selectUser": "Choose an existing HR user"
+  },
+  "sessionTimeout": {
+    "warningTitle": "நீங்கள் இன்னும் இருக்கிறீர்களா?",
+    "warningBody": "உங்கள் பாதுகாப்பிற்காக, செயலற்ற நிலையின் காரணமாக {seconds} விநாடிகளில் நீங்கள் வெளியேற்றப்படுவீர்கள்.",
+    "staySignedIn": "உள்நுழைந்தே இருக்கவும்",
+    "signOutNow": "இப்போது வெளியேறு",
+    "settingsTitle": "தானியங்கி வெளியேற்றம்",
+    "settingsDescription": "இந்த அளவு நேரம் செயலற்று இருக்கும் பயனர்களை வலை பயன்பாட்டிலிருந்து வெளியேற்றும். முதலில் ஒரு நிமிட எச்சரிக்கை காட்டப்படும்.",
+    "minutesLabel": "வெளியேற்ற வேண்டிய நேரம் (செயலற்ற நிமிடங்கள்)",
+    "minutesHelp": "{min} முதல் {max} நிமிடங்கள் வரை தேர்வு செய்யவும். இயல்புநிலை 15 நிமிடங்கள். உள்நுழைந்த 8 மணி நேரத்திற்குப் பிறகு அமர்வு எப்படியும் முடியும்.",
+    "save": "தானியங்கி வெளியேற்றத்தைச் சேமி",
+    "saving": "சேமிக்கப்படுகிறது…",
+    "notEnforced": "இந்த நிறுவல் உள்ளமைந்த உள்நுழைவைப் பயன்படுத்தாததால், இந்த வரம்பு இன்னும் செயல்படுத்தப்படவில்லை.",
+    "result": {
+      "saved": "தானியங்கி வெளியேற்றம் சேமிக்கப்பட்டது.",
+      "invalid": "அனுமதிக்கப்பட்ட வரம்பிற்குள் முழு எண்ணிக்கையிலான நிமிடங்களை உள்ளிடவும்.",
+      "conflict": "வேறொருவர் இந்த அமைப்பை மாற்றியுள்ளார். பக்கத்தை மீண்டும் ஏற்றி முயற்சிக்கவும்.",
+      "forbidden": "குழு நிர்வாகி மட்டுமே தானியங்கி வெளியேற்றத்தை மாற்ற முடியும்.",
+      "unavailable": "தானியங்கி வெளியேற்றத்தைச் சேமிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்."
+    }
+  },
   "runnerControl": {
     "title": "Runner controls",
     "description": "Check activation, execution health and schedules for this installation. Activation and a successful last run are separate facts.",
@@ -33524,7 +33608,7 @@
   },
   "passwordPolicy": {
     "title": "கடவுச்சொல் பாதுகாப்பு",
-    "description": "இந்த நிறுவனத்தின் பயனர்கள் குறிப்பிட்ட இடைவெளியில் கடவுச்சொல்லை மாற்ற வேண்டும்.",
+    "description": "HR கடவுச்சொற்களை அவ்வப்போது மாற்றுவதை அமைக்கவும். Microsoft கடவுச்சொற்களையும் நிபந்தனை அணுகலையும் Entra-வில் நிர்வகிக்கவும்.",
     "enabled": "காலமுறை கடவுச்சொல் மாற்றத்தைக் கட்டாயமாக்கு",
     "interval": "மாற்றும் இடைவெளி",
     "unit": "அலகு",

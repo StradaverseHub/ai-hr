@@ -391,6 +391,7 @@ const SYSTEM_SETTINGS_NODE: CollapsibleGroupItem = {
     // collision with UserRoundPlus (Hiring Defaults).
     { href: '/admin/settings/profile-requests', labelKey: 'profileRequestSettings', icon: UserRoundCog, adminOnly: true },
     // Admins can inspect SMTP setup; only an enrolled installation identity can change it.
+    { href: '/admin/settings/entra', labelKey: 'entra', icon: Settings2, adminOnly: true, loginPresentationOnly: true },
     { href: '/admin/settings/login', labelKey: 'loginPresentation', icon: Settings2, adminOnly: true, loginPresentationOnly: true },
     { href: '/admin/settings/email', labelKey: 'identityEmail', icon: Mail, identityEmailOnly: true },
     { href: '/admin/settings/email-templates', labelKey: 'emailTemplates', icon: Mail, adminOnly: true },

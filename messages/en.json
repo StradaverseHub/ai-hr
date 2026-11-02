@@ -508,7 +508,8 @@
     "securityPermissions": "Security & Permissions",
     "functionAccess": "Function Access",
     "securityCenter": "Security Center",
-    "aiManagementInventory": "AI inventory"
+    "aiManagementInventory": "AI inventory",
+    "entra": "Microsoft Entra ID"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -11214,7 +11215,8 @@
         "importHistory": "Lists an import when you have Workforce view for at least one of its companies, and shows only the employees of companies you can view. The original file needs view for every company in it; Revert needs Workforce maintain for every company in it.",
         "securityCenter": "Available to administrators or people with permission to configure access.",
         "createLogin": "Group-wide administrators only. Manual setup also requires a supported login provider and a verified administrator session.",
-        "inviteUser": "Group-wide administrators only."
+        "inviteUser": "Group-wide administrators only.",
+        "entra": "Group administrators only. Configure Microsoft sign-in and employee provisioning for their own organization. Linking existing identities requires explicit confirmation."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -26876,7 +26878,10 @@
     "switchAccountSubmit": "Sign out and open invitation",
     "workplaceLoginHelp": "Your workplace is selected. Enter your username and password.",
     "signingInTitle": "Signing you in…",
-    "signingInHelp": "Taking you to AIHR."
+    "signingInHelp": "Taking you to AIHR.",
+    "idleSignedOut": "You were signed out after a period of inactivity. Sign in again to continue.",
+    "microsoft": "Continue with Microsoft",
+    "microsoftError": "Microsoft sign-in could not complete. Check your organization and linked account, then try again."
   },
   "aiManagement": {
     "title": "AI management",
@@ -33379,6 +33384,85 @@
     "noticeReferences": "Income-tax correction references",
     "noticeView": "View income-tax correction"
   },
+  "entra": {
+    "title": "Microsoft Entra ID",
+    "description": "Microsoft sign-in and workforce account provisioning for cloud and hybrid Active Directory.",
+    "manageUsers": "Manage HR user accounts",
+    "connection": "Directory connection",
+    "organization": "Organization code",
+    "directoryTenantId": "Microsoft tenant ID",
+    "clientId": "Sign-in application client ID",
+    "provisioningClientId": "Provisioning application client ID",
+    "servicePrincipalId": "Provisioning service principal ID",
+    "jobId": "Provisioning job ID",
+    "domain": "Verified account domain",
+    "mode": "Directory mode",
+    "cloud": "Cloud Entra ID",
+    "hybrid": "On-premises AD with Entra sync",
+    "clientSecret": "Sign-in application secret",
+    "provisioningSecret": "Provisioning application secret",
+    "secretHelp": "Leave saved secrets blank to retain them. Secrets are encrypted and never displayed.",
+    "enabled": "Enable Microsoft sign-in",
+    "provisioningEnabled": "Automatically provision committed employee records",
+    "matching": "IT has configured externalId as the sole immutable matching key, mapped externalId into the configured target source-ID attribute, and mapped only userName, displayName and active. Existing accounts are linked explicitly.",
+    "hybridHelp": "Hybrid mode requires a customer-managed Microsoft provisioning agent and AD-to-Entra sync. Accounts use a stable HR-generated username; IT controls target OU and attribute mappings.",
+    "save": "Save connection",
+    "test": "Test discovery and provisioning credentials",
+    "tested": "The selected checks succeeded. Discovery does not test a sign-in secret; token acquisition does not prove upload consent, directory mappings, AD agent health or employee sign-in.",
+    "saved": "Settings saved.",
+    "linked": "Microsoft identity linked to the existing HR account.",
+    "error": "The operation failed. Check your permissions, identifiers, configuration revision and Microsoft connection, then retry.",
+    "linkTitle": "Link an existing HR user",
+    "linkHelp": "Select the exact HR account and Microsoft object ID after IT verifies ownership. No HR roles are changed. For hybrid accounts, wait for AD-to-Entra sync first.",
+    "personId": "Person ID",
+    "userId": "HR user ID",
+    "objectId": "Microsoft object ID",
+    "linkConfirm": "I verified that this Microsoft tenant/object belongs to this exact HR user.",
+    "link": "Link Microsoft identity",
+    "queue": "Employee provisioning",
+    "empty": "No employees are queued. Enable provisioning and create an employee, or save the connection to queue existing employees.",
+    "status": "Status",
+    "attempts": "Attempts",
+    "action": "Action",
+    "retry": "Retry",
+    "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
+    "states": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "submitted": "Submitted",
+      "awaiting-sync": "Awaiting Entra sync",
+      "ready": "Directory provisioned",
+      "disabled": "Directory disabled",
+      "failed": "Needs attention",
+      "uncertain": "Outcome uncertain",
+      "awaiting-link": "Link existing HR account",
+      "rejected": "Rejected by provisioning service"
+    },
+    "sourceAnchorAttribute": "Immutable source-ID target attribute",
+    "reconcile": "Check reconciled directory object",
+    "reconcileConfirm": "IT has reconciled the uncertain upload in Microsoft. Check the exact source-marked object without resending creation.",
+    "selectUser": "Choose an existing HR user"
+  },
+  "sessionTimeout": {
+    "warningTitle": "Are you still there?",
+    "warningBody": "For your security, you will be signed out in {seconds} seconds because of inactivity.",
+    "staySignedIn": "Stay signed in",
+    "signOutNow": "Sign out now",
+    "settingsTitle": "Automatic sign-out",
+    "settingsDescription": "Sign people out of the web app when they have been inactive for this long. They see a one-minute warning first.",
+    "minutesLabel": "Sign out after (minutes of inactivity)",
+    "minutesHelp": "Choose between {min} and {max} minutes. The default is 15 minutes. Sessions still end 8 hours after sign-in.",
+    "save": "Save automatic sign-out",
+    "saving": "Saving…",
+    "notEnforced": "This installation does not use the built-in sign-in, so this limit is not applied yet.",
+    "result": {
+      "saved": "Automatic sign-out saved.",
+      "invalid": "Enter a whole number of minutes within the allowed range.",
+      "conflict": "Someone else changed this setting. Reload the page and try again.",
+      "forbidden": "Only a group administrator can change automatic sign-out.",
+      "unavailable": "Automatic sign-out could not be saved. Try again."
+    }
+  },
   "runnerControl": {
     "title": "Runner controls",
     "description": "Check activation, execution health and schedules for this installation. Activation and a successful last run are separate facts.",
@@ -33524,7 +33608,7 @@
   },
   "passwordPolicy": {
     "title": "Password security",
-    "description": "Require users in this organization to change their password at a recurring interval.",
+    "description": "Configure recurring changes for HR passwords. Manage Microsoft passwords and Conditional Access in Entra.",
     "enabled": "Require recurring password changes",
     "interval": "Change every",
     "unit": "Unit",

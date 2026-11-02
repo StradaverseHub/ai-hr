@@ -325,7 +325,7 @@ export async function getMobileSession(
   const header = opts.authorization !== undefined ? opts.authorization : (await headers()).get('authorization');
   if (internalSelected()) {
     const token = /^Bearer (aihr_[A-Za-z0-9_-]{43})$/i.exec(header || '')?.[1];
-    const identity = await (await import('./internal-auth/service')).readSession(token, true);
+    const identity = await (await import('./internal-auth/service')).readSession(token, true) || await (await import('./entra/sessions')).readEntraSession(token,true);
     if (!identity) throw new AuthRequiredError('A valid mobile session is required.');
     const lookup = () => client<SubjectPrincipalRow[]>`select * from app.principal_by_identity(${identity.issuer},${identity.subject})`;
     return withEntitlements(await resolveWorkosPrincipal(lookup, identity.subject));

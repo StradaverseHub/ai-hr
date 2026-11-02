@@ -508,7 +508,8 @@
     "securityPermissions": "Keselamatan & Kebenaran",
     "functionAccess": "Akses Fungsi",
     "securityCenter": "Pusat Keselamatan",
-    "aiManagementInventory": "Inventori AI"
+    "aiManagementInventory": "Inventori AI",
+    "entra": "Microsoft Entra ID"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -11214,7 +11215,8 @@
         "importHistory": "Menyenaraikan import apabila anda mempunyai kebenaran lihat Tenaga Kerja bagi sekurang-kurangnya satu syarikatnya, dan hanya memaparkan pekerja syarikat yang boleh anda lihat. Fail asal memerlukan kebenaran lihat bagi setiap syarikat di dalamnya; Kembalikan memerlukan kebenaran penyelenggaraan Tenaga Kerja bagi setiap syarikat di dalamnya.",
         "securityCenter": "Tersedia kepada pentadbir atau individu dengan kebenaran mengkonfigurasi akses.",
         "createLogin": "Pentadbir seluruh kumpulan sahaja. Persediaan manual juga memerlukan penyedia log masuk yang disokong dan sesi pentadbir yang disahkan.",
-        "inviteUser": "Pentadbir seluruh kumpulan sahaja."
+        "inviteUser": "Pentadbir seluruh kumpulan sahaja.",
+        "entra": "Pentadbir kumpulan sahaja. Konfigurasikan log masuk Microsoft dan penyediaan akaun pekerja untuk organisasi sendiri. Pautan identiti sedia ada memerlukan pengesahan jelas."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -26876,7 +26878,10 @@
     "switchAccountSubmit": "Log keluar dan buka jemputan",
     "workplaceLoginHelp": "Tempat kerja anda telah dipilih. Masukkan nama pengguna dan kata laluan.",
     "signingInTitle": "Mendaftar masuk…",
-    "signingInHelp": "Membawa anda ke AIHR."
+    "signingInHelp": "Membawa anda ke AIHR.",
+    "idleSignedOut": "Anda telah dilog keluar selepas tempoh tidak aktif. Log masuk semula untuk meneruskan.",
+    "microsoft": "Teruskan dengan Microsoft",
+    "microsoftError": "Log masuk Microsoft tidak dapat diselesaikan. Semak organisasi dan akaun yang dipautkan, kemudian cuba lagi."
   },
   "aiManagement": {
     "title": "Pengurusan AI",
@@ -33379,6 +33384,85 @@
     "noticeReferences": "Rujukan pembetulan cukai pendapatan",
     "noticeView": "Lihat pembetulan cukai pendapatan"
   },
+  "entra": {
+    "title": "Microsoft Entra ID",
+    "description": "Microsoft sign-in and workforce account provisioning for cloud and hybrid Active Directory.",
+    "manageUsers": "Manage HR user accounts",
+    "connection": "Directory connection",
+    "organization": "Organization code",
+    "directoryTenantId": "Microsoft tenant ID",
+    "clientId": "Sign-in application client ID",
+    "provisioningClientId": "Provisioning application client ID",
+    "servicePrincipalId": "Provisioning service principal ID",
+    "jobId": "Provisioning job ID",
+    "domain": "Verified account domain",
+    "mode": "Directory mode",
+    "cloud": "Cloud Entra ID",
+    "hybrid": "On-premises AD with Entra sync",
+    "clientSecret": "Sign-in application secret",
+    "provisioningSecret": "Provisioning application secret",
+    "secretHelp": "Leave saved secrets blank to retain them. Secrets are encrypted and never displayed.",
+    "enabled": "Enable Microsoft sign-in",
+    "provisioningEnabled": "Automatically provision committed employee records",
+    "matching": "IT has configured externalId as the sole immutable matching key, mapped externalId into the configured target source-ID attribute, and mapped only userName, displayName and active. Existing accounts are linked explicitly.",
+    "hybridHelp": "Hybrid mode requires a customer-managed Microsoft provisioning agent and AD-to-Entra sync. Accounts use a stable HR-generated username; IT controls target OU and attribute mappings.",
+    "save": "Save connection",
+    "test": "Test discovery and provisioning credentials",
+    "tested": "The selected checks succeeded. Discovery does not test a sign-in secret; token acquisition does not prove upload consent, directory mappings, AD agent health or employee sign-in.",
+    "saved": "Settings saved.",
+    "linked": "Microsoft identity linked to the existing HR account.",
+    "error": "The operation failed. Check your permissions, identifiers, configuration revision and Microsoft connection, then retry.",
+    "linkTitle": "Link an existing HR user",
+    "linkHelp": "Select the exact HR account and Microsoft object ID after IT verifies ownership. No HR roles are changed. For hybrid accounts, wait for AD-to-Entra sync first.",
+    "personId": "Person ID",
+    "userId": "HR user ID",
+    "objectId": "Microsoft object ID",
+    "linkConfirm": "I verified that this Microsoft tenant/object belongs to this exact HR user.",
+    "link": "Link Microsoft identity",
+    "queue": "Employee provisioning",
+    "empty": "No employees are queued. Enable provisioning and create an employee, or save the connection to queue existing employees.",
+    "status": "Status",
+    "attempts": "Attempts",
+    "action": "Action",
+    "retry": "Retry",
+    "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
+    "states": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "submitted": "Submitted",
+      "awaiting-sync": "Awaiting Entra sync",
+      "ready": "Directory provisioned",
+      "disabled": "Directory disabled",
+      "failed": "Needs attention",
+      "uncertain": "Outcome uncertain",
+      "awaiting-link": "Link existing HR account",
+      "rejected": "Rejected by provisioning service"
+    },
+    "sourceAnchorAttribute": "Immutable source-ID target attribute",
+    "reconcile": "Check reconciled directory object",
+    "reconcileConfirm": "IT has reconciled the uncertain upload in Microsoft. Check the exact source-marked object without resending creation.",
+    "selectUser": "Choose an existing HR user"
+  },
+  "sessionTimeout": {
+    "warningTitle": "Adakah anda masih di sana?",
+    "warningBody": "Untuk keselamatan anda, anda akan dilog keluar dalam {seconds} saat kerana tidak aktif.",
+    "staySignedIn": "Kekal log masuk",
+    "signOutNow": "Log keluar sekarang",
+    "settingsTitle": "Log keluar automatik",
+    "settingsDescription": "Log keluar pengguna daripada aplikasi web apabila mereka tidak aktif selama tempoh ini. Mereka akan melihat amaran satu minit terlebih dahulu.",
+    "minutesLabel": "Log keluar selepas (minit tidak aktif)",
+    "minutesHelp": "Pilih antara {min} hingga {max} minit. Lalai ialah 15 minit. Sesi tetap tamat 8 jam selepas log masuk.",
+    "save": "Simpan log keluar automatik",
+    "saving": "Menyimpan…",
+    "notEnforced": "Pemasangan ini tidak menggunakan log masuk terbina dalam, jadi had ini belum digunakan.",
+    "result": {
+      "saved": "Log keluar automatik disimpan.",
+      "invalid": "Masukkan bilangan minit dalam julat yang dibenarkan.",
+      "conflict": "Orang lain telah mengubah tetapan ini. Muat semula halaman dan cuba lagi.",
+      "forbidden": "Hanya pentadbir kumpulan boleh mengubah log keluar automatik.",
+      "unavailable": "Log keluar automatik tidak dapat disimpan. Cuba lagi."
+    }
+  },
   "runnerControl": {
     "title": "Runner controls",
     "description": "Check activation, execution health and schedules for this installation. Activation and a successful last run are separate facts.",
@@ -33524,7 +33608,7 @@
   },
   "passwordPolicy": {
     "title": "Keselamatan kata laluan",
-    "description": "Wajibkan pengguna organisasi ini menukar kata laluan secara berkala.",
+    "description": "Tetapkan pertukaran berkala untuk kata laluan HR. Urus kata laluan Microsoft dan Akses Bersyarat dalam Entra.",
     "enabled": "Wajibkan penukaran kata laluan berkala",
     "interval": "Tukar setiap",
     "unit": "Unit",
