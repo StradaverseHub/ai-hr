@@ -6,7 +6,7 @@ import en from '../messages/en.json';import ms from '../messages/ms.json';import
 import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
 const f=vi.hoisted(()=>({locale:'en' as keyof typeof catalogues,view:true,add:false,edit:false,delete:false,list:vi.fn(),companies:vi.fn()}));
-vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:f.locale,messages:catalogues[f.locale],namespace})}));
+vi.mock('next-intl/server',()=>({getTranslations:async(namespace:'dashboardCardConfig'|'dashboardCardConfig.manage')=>createTranslator({locale:f.locale,messages:catalogues[f.locale],namespace})}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw Error('NOT_FOUND');}}));
 vi.mock('next/link',()=>({default:({children,...props}:React.ComponentProps<'a'>)=><a {...props}>{children}</a>}));
 vi.mock('@/lib/scope',()=>({scopedAdmin:async()=>({s:{tenantId:'fictional',userId:'fictional-admin'}})}));
@@ -15,6 +15,9 @@ vi.mock('@/core/dashboard-card-config',()=>({listCards:f.list,DASHBOARD_CARD_AUD
 vi.mock('@/components/employee-home/configuration-panel',()=>({HomeConfigurationPanel:()=> <p>Fictional company Home configuration</p>}));
 vi.mock('@/core/employee-home-configuration',()=>({employeeHomeConfigurationCompanies:f.companies}));
 vi.mock('@/components/ui/confirm-submit',()=>({ConfirmSubmit:({children}:React.PropsWithChildren)=><button type="submit">{children}</button>}));
+// Pager is an independent async server component; this fixture renders the
+// actual permission-controlled library body, filters, counts and row actions.
+vi.mock('@/components/pager',()=>({Pager:()=>null}));
 vi.mock('@/app/admin/settings/dashboard/actions',()=>({createCardAction:vi.fn(),updateCardAction:vi.fn(),setStatusAction:vi.fn(),deleteCardAction:vi.fn()}));
 import Page from '../app/admin/settings/dashboard/page';
 const row={id:'fictional-card',cardKey:'fixtureCard',name:'Fictional card',description:'Fictional bounded library row',cardType:'information',status:'active',employeeSelectable:true,defaultDisplay:true,mandatory:false,displayOrder:1,href:null,audience:['employee'],updatedAt:new Date('2026-01-01T00:00:00Z')};
