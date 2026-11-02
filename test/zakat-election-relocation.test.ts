@@ -116,6 +116,39 @@ describe('Zakat election relocation — Payroll > Transaction Entry > Zakat owns
     expect(row?.employerBearsSkbbk).toBe(true);
   });
 
+  it.each([true, false])('preserves employer-funded EPF (%s) and every unrelated stored field', async (employerBearsEpf) => {
+    const a = adminCtx(base);
+    const e = await hire(a, 'Zakat Epf Funding');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, {
+      personId: e.personId, icNumber: '900101015005', employerBearsEpf,
+      epfMode: 'manual_amount', epfEmployeeAmount: 440, epfEmployerAmount: 520,
+      epfManualReason: 'Standing employee election', bankName: 'Maybank', bankAccountNo: '1234567890',
+      tp3Year: 2026, tp3ZakatPaid: 125.25,
+    });
+    const before = await getStatutoryProfileMY(a, e.personId);
+    expect(before?.employerBearsEpf).toBe(employerBearsEpf);
+    const fd = electionForm(e, { zakatActive: 'on', zakatState: 'Johor', zakatMethod: 'fixed', zakatFixed: '100' });
+    await expect(saveZakatElectionAction(fd)).rejects.toThrow('NEXT_REDIRECT');
+    expect(LAST_REDIRECT).toContain('toast=saved');
+    const after = await getStatutoryProfileMY(a, e.personId);
+    expect(after).not.toBeNull();
+    const changed = new Set(['updatedAt', 'zakatActive', 'zakatState', 'zakatMethod', 'zakatPercent', 'zakatFixed', 'zakatEffectiveFrom', 'zakatEffectiveTo']);
+    const unrelated = (row: NonNullable<typeof before>) => Object.fromEntries(Object.entries(row).filter(([key]) => !changed.has(key)));
+    expect(unrelated(after!)).toEqual(unrelated(before!));
+    expect(Number(after?.zakatFixed)).toBe(100);
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId });
+    const [slip] = await withTenant(a, tx => tx.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId)));
+    expect(slip).toBeDefined();
+    const statutory = slip.statutory as { epfEmployee: number; epfEmployer: number; employerBears?: { epf: boolean }; employerBorne?: { epf: number } };
+    expect(statutory.epfEmployee).toBe(440);
+    expect(statutory.epfEmployer).toBe(520);
+    expect(statutory.employerBears?.epf ?? false).toBe(employerBearsEpf);
+    expect(statutory.employerBorne?.epf ?? 0).toBe(employerBearsEpf ? 440 : 0);
+  });
+
   it('(a)+(b) saveZakatElectionAction persists the election via the existing setter, fires the existing statutory.my.updated event, and preserves every non-zakat statutory field', async () => {
     const a = adminCtx(base);
     const e = await hire(a, 'Zakat Reloc');
