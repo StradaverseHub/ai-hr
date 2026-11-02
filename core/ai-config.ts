@@ -102,7 +102,7 @@ export type AiConfigView = {
 export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    if(!await settingsAccessTx(tx,'view','aiConfig'))throw new Error('Forbidden');
+    if(!await settingsAccessTx(tx,'view','aiConfig'))throw new AiConfigError('Only a current administrator can view AI configuration.');
     await assertConfigurationAdminTx(tx,ctx);
     // Explicit column list — the ciphertext is not even granted to the app role, but be unambiguous.
     const rows = await tx

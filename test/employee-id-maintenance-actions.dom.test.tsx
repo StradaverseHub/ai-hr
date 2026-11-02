@@ -1,5 +1,5 @@
 /** Render the actual setup page with server policy projections; backend authority has native DB coverage. */
-import {cleanup,render,screen} from '@testing-library/react';
+import {cleanup,render,screen,within} from '@testing-library/react';
 import {createTranslator,NextIntlClientProvider} from 'next-intl';
 import {afterEach,it,expect,vi} from 'vitest';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';
@@ -36,7 +36,7 @@ it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('retains indepen
 });
 it('offers only native-permitted company scopes when Add is available independently of Edit',async()=>{
  state.add=true;const t=await show({new:'1'});
- const choices=screen.getAllByRole('option');expect(choices.map(option=>option.textContent)).toEqual(['Company A']);
+ const choices=within(screen.getByRole('combobox',{name:new RegExp('^'+t.fieldScope)})).getAllByRole('option');expect(choices.map(option=>option.textContent)).toEqual(['Company A']);
  expect(screen.getByRole('button',{name:t.save}).matches(':disabled')).toBe(false);
  expect(screen.queryByRole('link',{name:t.edit})).toBeNull();
 });

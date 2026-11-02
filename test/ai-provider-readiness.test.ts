@@ -1,4 +1,4 @@
-/** Authored UNRUN. Actual app-role custody/governance transactions; ONLY provider transport mocked.
+/** Authored UNRUN. Actual app-role custody/governance transactions; fixed synthetic review and provider transport fixtures.
  * Requires the coordinated provider-readiness draft in the test migration journal first.
  */
 import {pgSqlState} from '../lib/db-error';
@@ -15,12 +15,26 @@ import { governedAiConfig } from '../core/ai-governance';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { syntheticConsentFor, syntheticProviderTransport, evaluateSyntheticCandidate, activateSyntheticCandidate } from './provider-evaluation-fixture';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+// This fixture admits only the fixed synthetic protocol contracts, never a production disclosure.
+// The unmocked review-gate suite separately checks current literal approvals and stale-source refusal.
+const reviewFixture=vi.hoisted(()=>({approved:true}));
+vi.mock('../lib/ai/provider-data-reviews',async original=>{
+ const actual=await original<typeof import('../lib/ai/provider-data-reviews')>();
+ const {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST}=await import('../lib/ai/provider-data-source-manifest');
+ return {...actual,assertProviderDataContractReviewed:(contract:string,digest:string)=>{
+  if(contract==='synthetic_protocol_echo_v1'||contract==='synthetic_protocol_tools_v1'){
+   if(reviewFixture.approved&&digest===PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)return;
+   throw Error('Synthetic protocol review is pending');
+  }
+  return actual.assertProviderDataContractReviewed(contract,digest);
+ }};
+});
 let base: Base;
 beforeAll(migrateTestDb);
 beforeEach(async () => {
   vi.stubEnv('AI_CONFIG_SECRET', 'fictional-provider-readiness-test-passphrase');
   for (const key of ['ANTHROPIC_API_KEY','OPENAI_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY']) vi.stubEnv(key,'');
-  await resetDb(); base = await seedBase();
+  await resetDb(); base = await seedBase();reviewFixture.approved=true;
 });
 afterAll(async () => { await closeAll(); vi.unstubAllEnvs(); });
 const options = (route = 'approved-a') => readOpenRouterOptions({ version: 1, routing: { allowedProviders: [route], allowFallbacks: false, sort: 'latency' } });
@@ -37,6 +51,12 @@ async function evaluateWithSyntheticSpend(...args:Parameters<typeof evaluateProv
 
 
 describe('explicit candidate evaluation and activation', () => {
+  it('refuses pending synthetic review before transport, model admission and readiness storage',async()=>{
+    await candidate();const mock=syntheticProviderTransport();reviewFixture.approved=false;
+    try{await expect(evaluateWithSyntheticSpend(adminCtx(base),await syntheticConsentFor(adminCtx(base)))).rejects.toThrow();expect(mock.draft).not.toHaveBeenCalled();expect(mock.conversation).not.toHaveBeenCalled();expect(await runs()).toEqual([]);expect(await receipts()).toEqual([]);expect(await config()).toBeNull();}
+    finally{mock.restore();}
+  });
+
   it('rejects revoke-and-restore between real synthetic probes before the next admission',async()=>{
     await candidate();const ctx=adminCtx(base),mock=syntheticProviderTransport(),original=mock.draft.getMockImplementation()!;
     mock.draft.mockImplementationOnce(async(cfg,args)=>{

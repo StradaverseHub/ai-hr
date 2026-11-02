@@ -17,6 +17,8 @@ export async function readPeopleGeneralTx(tx: Tx): Promise<PeopleGeneralPolicy> 
   const [row] = await tx.execute<{ allow_duplicated_nric: boolean; allow_duplicated_email: boolean; revision: string | null }>(sql`select * from app.people_general_read()`);
   return { allowDuplicatedNric: row?.allow_duplicated_nric === true, allowDuplicatedEmail: row?.allow_duplicated_email === true, revision: row?.revision ?? null };
 }
+/** Native admission consumers need the two policy flags independently of the settings editor. */
+export function getPeopleGeneralForAdmission(ctx:SessionContext){return withTenant(ctx,async tx=>{const policy=await readPeopleGeneralTx(tx);return {allowDuplicatedNric:policy.allowDuplicatedNric,allowDuplicatedEmail:policy.allowDuplicatedEmail};});}
 export function getPeopleGeneral(ctx: SessionContext) {
   return withTenant(ctx,async tx=>{if(!await settingsAccessTx(tx,'view','peopleGeneral'))throw new PeopleGeneralError('forbidden');return readPeopleGeneralTx(tx);});
 }

@@ -1,6 +1,6 @@
 import {readEmployeeImportEvaluationTx,claimEmployeeImportEvaluationTx,completeEmployeeImportEvaluationTx} from './personnel-import-evaluation';
 import type {EmployeeImportEvaluationBinding,EmployeeImportEvaluationReceipt} from '../lib/personnel-import-evaluation';
-import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
+import { getPeopleGeneralForAdmission, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
 import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
 import {previewCostAllocationImportTx,writeNewEmployeeCostAllocationsTx} from './cost-allocation-import';
 import type {AllocationImportRecords,AllocationImportPreview} from '../lib/cost-allocation-import';
@@ -380,7 +380,7 @@ async function analyze(
   // built with the DEFAULT company's pack — the same pack that produced every stored IC in a
   // single-jurisdiction tenant. `normalizeIC` is digit-stripping in every pack today, so this stays
   // correct across a mixed file; if a pack ever normalises differently, this is where to revisit.
-  const { allowDuplicatedNric, allowDuplicatedEmail } = await (outerTx?readPeopleGeneralTx(outerTx):getPeopleGeneral(ctx));
+  const { allowDuplicatedNric, allowDuplicatedEmail } = await (outerTx?readPeopleGeneralTx(outerTx):getPeopleGeneralForAdmission(ctx));
   let normPack = contexts.get(companyId)?.pack ?? [...contexts.values()][0]?.pack;
   const {
     existingEmails,
