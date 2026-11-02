@@ -1,8 +1,8 @@
-import en from '../messages/remembered-mfa/en.json';
-import ms from '../messages/remembered-mfa/ms.json';
-import zh from '../messages/remembered-mfa/zh.json';
-import ta from '../messages/remembered-mfa/ta.json';
-import th from '../messages/remembered-mfa/th.json';
-import vi from '../messages/remembered-mfa/vi.json';
+import en from './remembered-mfa-copy/en.json';
+import ms from './remembered-mfa-copy/ms.json';
+import zh from './remembered-mfa-copy/zh.json';
+import ta from './remembered-mfa-copy/ta.json';
+import th from './remembered-mfa-copy/th.json';
+import vi from './remembered-mfa-copy/vi.json';
 const copy = { en, ms, zh, ta, th, vi };
 export function rememberedMfaCopy(locale: string) { return copy[locale as keyof typeof copy] ?? en; }
