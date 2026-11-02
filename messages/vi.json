@@ -34120,7 +34120,10 @@
       "extension": "Chọn thời gian gia hạn được phép trong giới hạn.",
       "override_justification": "Giải thích vì sao kết quả đề xuất khác gợi ý từ điểm số.",
       "kpis": "Hoàn tất trách nhiệm KPI, mục tiêu và ngày.",
-      "support": "Hoàn tất kế hoạch hỗ trợ."
+      "support": "Hoàn tất kế hoạch hỗ trợ.",
+      "employee_comments": "Lưu nhận xét bắt buộc của nhân viên trước khi xác nhận bản đánh giá này.",
+      "unrated": "Chọn mức đánh giá.",
+      "evidence": "Ghi nhận bằng chứng hỗ trợ bắt buộc."
     },
     "scope": {
       "savedGroup": "Nhóm kinh doanh đã cấu hình",
@@ -34163,7 +34166,15 @@
       "request": "Yêu cầu điều chỉnh ngày do nghỉ dài hạn",
       "applied": "Đã áp dụng qua Nhân sự",
       "pending": "Đang chờ GBS áp dụng",
-      "apply": "Áp dụng điều chỉnh ngày trong Nhân sự"
+      "apply": "Áp dụng điều chỉnh ngày trong Nhân sự",
+      "approve": "Phê duyệt thay đổi ngày để xử lý",
+      "states": {
+        "awaiting_gbs": "Đang chờ GBS phê duyệt",
+        "queued": "Đã phê duyệt · đang chờ cập nhật Hồ sơ nhân sự",
+        "applied": "Đã áp dụng vào Hồ sơ nhân sự",
+        "failed": "Việc cập nhật Hồ sơ nhân sự cần xem xét"
+      },
+      "failedHelp": "Không thể áp dụng thay đổi đã được phê duyệt. Xem xét Hồ sơ nhân sự hiện tại trước khi thử lại."
     },
     "signers": {
       "title": "Phân công ký",

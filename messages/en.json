@@ -34120,7 +34120,10 @@
       "extension": "Choose an allowed extension within the limit.",
       "override_justification": "Explain why the proposed outcome differs from the score suggestion.",
       "kpis": "Complete the KPI accountabilities, targets and dates.",
-      "support": "Complete the planned support."
+      "support": "Complete the planned support.",
+      "employee_comments": "Save the required employee comments before acknowledging this review.",
+      "unrated": "Choose a rating.",
+      "evidence": "Record the required supporting evidence."
     },
     "scope": {
       "savedGroup": "Configured business group",
@@ -34163,7 +34166,15 @@
       "request": "Request long-leave date adjustment",
       "applied": "Applied through Personnel",
       "pending": "Awaiting GBS application",
-      "apply": "Apply Personnel date adjustment"
+      "apply": "Apply Personnel date adjustment",
+      "approve": "Approve date change for processing",
+      "states": {
+        "awaiting_gbs": "Awaiting GBS approval",
+        "queued": "Approved · awaiting Personnel update",
+        "applied": "Applied to Personnel",
+        "failed": "Personnel update needs review"
+      },
+      "failedHelp": "The approved change could not be applied. Review the current Personnel record before retrying."
     },
     "signers": {
       "title": "Signing assignments",

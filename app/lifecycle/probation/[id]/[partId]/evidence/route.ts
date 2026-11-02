@@ -9,7 +9,7 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string;p
  const ctx=await requireScopedLifecycleModule();if(!isSameOriginBrowserRequest(request))return Response.json({ok:false},{status:403,headers});
  const {id,partId}=await params,type=request.headers.get('content-type');if(!type?.startsWith('multipart/form-data;'))return Response.json({ok:false},{status:400,headers});
  try{
-  const bytes=await readBoundedBody(request,MAX+65536,20000,request.signal),form=await new Response(bytes,{headers:{'content-type':type}}).formData();
+  const bytes=await readBoundedBody(request,MAX+65536,20000,request.signal),form=await new Response(new Uint8Array(bytes).buffer,{headers:{'content-type':type}}).formData();
   const file=form.get('file'),revision=Number(form.get('revision')),reason=form.get('reason');
   if(!(file instanceof File)||file.size<1||file.size>MAX||!Number.isSafeInteger(revision)||revision<1||typeof reason!=='string'||!reason.trim()||reason.length>5000)return Response.json({ok:false},{status:400,headers});
   const result=await uploadProbationEvidence(ctx,{caseId:id,partId,revision,name:file.name,content:Buffer.from(await file.arrayBuffer()),reason});

@@ -34120,7 +34120,10 @@
       "extension": "Pilih lanjutan yang dibenarkan dalam had.",
       "override_justification": "Jelaskan sebab hasil dicadangkan berbeza daripada cadangan skor.",
       "kpis": "Lengkapkan tanggungjawab, sasaran dan tarikh KPI.",
-      "support": "Lengkapkan sokongan yang dirancang."
+      "support": "Lengkapkan sokongan yang dirancang.",
+      "employee_comments": "Simpan ulasan pekerja yang diwajibkan sebelum mengakui semakan ini.",
+      "unrated": "Pilih penilaian.",
+      "evidence": "Rekodkan bukti sokongan yang diwajibkan."
     },
     "scope": {
       "savedGroup": "Kumpulan perniagaan dikonfigurasikan",
@@ -34163,7 +34166,15 @@
       "request": "Minta pelarasan tarikh untuk cuti panjang",
       "applied": "Dilaksanakan melalui Personel",
       "pending": "Menunggu pelaksanaan GBS",
-      "apply": "Laksanakan pelarasan tarikh Personel"
+      "apply": "Laksanakan pelarasan tarikh Personel",
+      "approve": "Luluskan perubahan tarikh untuk diproses",
+      "states": {
+        "awaiting_gbs": "Menunggu kelulusan GBS",
+        "queued": "Diluluskan · menunggu kemas kini Rekod Kakitangan",
+        "applied": "Digunakan pada Rekod Kakitangan",
+        "failed": "Kemas kini Rekod Kakitangan perlu disemak"
+      },
+      "failedHelp": "Perubahan yang diluluskan tidak dapat digunakan. Semak Rekod Kakitangan semasa sebelum mencuba semula."
     },
     "signers": {
       "title": "Penugasan tandatangan",

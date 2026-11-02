@@ -16,3 +16,13 @@ it('keeps new operational and preparation destinations hidden when their owner a
  render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin={true} enabledModules={['lifecycle']} defaultCollapsed={false}/></NextIntlClientProvider>);
  expect(screen.queryByRole('link',{name:messages.nav.probationConfirmation})).not.toBeInTheDocument();expect(screen.queryByRole('link',{name:messages.nav.contractManagement})).not.toBeInTheDocument();expect(screen.queryByRole('link',{name:messages.nav.probationSettings})).not.toBeInTheDocument();
 });
+it('shows scoped intake preparation without enabling runtime cases or unrelated configuration',()=>{
+ render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin={false} probationAccess={{page:false,configure:false,intake:true}} enabledModules={[]} defaultCollapsed={false}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:messages.nav.modulePeople}));fireEvent.click(screen.getByRole('button',{name:messages.nav.probationConfirmation}));
+ expect(screen.getByRole('link',{name:messages.nav.probationIntake})).toHaveAttribute('href','/lifecycle/probation/intake');expect(screen.queryByRole('link',{name:messages.nav.probationConfirmation})).not.toBeInTheDocument();expect(screen.queryByRole('link',{name:messages.nav.probationSettings})).not.toBeInTheDocument();
+});
+it('does not advertise Contract intake through configuration authority alone',()=>{
+ render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin={false} contractStaffAccess={{page:false,configure:true,intake:false}} enabledModules={[]} defaultCollapsed={false}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:messages.nav.modulePeople}));fireEvent.click(screen.getByRole('button',{name:messages.nav.contractManagement}));
+ expect(screen.getByRole('link',{name:messages.nav.contractSettings})).toBeInTheDocument();expect(screen.queryByRole('link',{name:messages.nav.contractIntake})).not.toBeInTheDocument();
+});

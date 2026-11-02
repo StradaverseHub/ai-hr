@@ -34120,7 +34120,10 @@
       "extension": "请选择限额内允许的延长期。",
       "override_justification": "请说明拟议结果与评分建议不同的原因。",
       "kpis": "请完成KPI职责、目标和日期。",
-      "support": "请完成计划支持内容。"
+      "support": "请完成计划支持内容。",
+      "employee_comments": "确认此评估前，请先保存必需的员工意见。",
+      "unrated": "请选择评分。",
+      "evidence": "请记录所需的佐证材料。"
     },
     "scope": {
       "savedGroup": "已配置业务组",
@@ -34163,7 +34166,15 @@
       "request": "申请长期休假日期调整",
       "applied": "已通过人事模块执行",
       "pending": "等待 GBS 执行",
-      "apply": "执行人事日期调整"
+      "apply": "执行人事日期调整",
+      "approve": "批准日期更改并送交处理",
+      "states": {
+        "awaiting_gbs": "等待 GBS 批准",
+        "queued": "已批准 · 等待更新人事资料",
+        "applied": "已更新至人事资料",
+        "failed": "人事资料更新需要审核"
+      },
+      "failedHelp": "已批准的更改未能应用。请先审核当前人事资料，再重试。"
     },
     "signers": {
       "title": "签署分配",

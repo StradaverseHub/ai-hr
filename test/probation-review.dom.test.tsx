@@ -58,4 +58,9 @@ describe('probation reviewer interactions',()=>{
   const{view,part}=fixture();view.roles=['hod'];part.canEditEmployee=false;part.selfVisible=false;part.allowedCommands=[];show(view,part);
   expect(screen.queryByRole('button',{name:'Save draft'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Sign and submit'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Unlock the selected owner\'s fields'})).not.toBeInTheDocument();
  });
+ it('requires a saved employee comment when the pinned evaluation form requires one',()=>{
+  const{view,part}=fixture();view.form={...view.form,employeeCommentsRequired:true};part.canEditSelfAssessment=false;part.canEditEmployeeComments=true;part.staffSubmittedAt='2026-12-01T01:00:00Z';part.managerSubmittedAt='2026-12-02T01:00:00Z';part.allowedCommands=['acknowledge'];part.state='pending_ack';
+  const hash='a'.repeat(64);part.signing={id:'signing',document:{tenantId:'tenant',companyId:view.record.companyId,subjectId:part.id,subjectType:'probation',contentRevision:1,contentHash:hash,route:part.route,actions:[{id:'manager-signed',stepId:part.route.steps.find(s=>s.role==='lm')!.id,contentRevision:1,contentHash:hash,actorId:manager,actorPersonId:'manager-person',actorName:'Fictional Manager',representedId:manager,role:'lm',at:'2026-12-02T01:00:00Z',action:'signed',comment:'',signature:{method:'typed',value:'Fictional Manager',consent:true}}]}};
+  show(view,part);expect(screen.getByText('Save the required employee comments before acknowledging this review.')).toBeInTheDocument();expect(screen.getByRole('button',{name:'Sign and submit'})).toBeDisabled();expect(mocks.act).not.toHaveBeenCalled();
+ });
 });
