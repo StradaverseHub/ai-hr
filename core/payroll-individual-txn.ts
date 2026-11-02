@@ -23,7 +23,7 @@
  * Substrate discipline: every write appends a DomainEvent. Payloads are redaction-safe (reference ids + kind,
  * no cleartext amounts — ADR-0030 Layer-0 precedent, mirroring setEmploymentPayComponent).
  */
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertPayComponentReady } from '../lib/pay-component-contract';
@@ -473,6 +473,7 @@ async function resolveTxnTarget(
   if (p.batchId) {
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
     const { payPeriod, companyId, scope, status, runType, payrollCycleId } = await loadWritableBatch(tx, p.batchId);
+    await assertIndividualActionTx(tx,companyId,'add');
     return { batchId: p.batchId, companyId, payPeriod, scope, status, runType, payrollCycleId };
   }
   if (!p.companyId || !p.payPeriod) throw new MissingTxnTargetError();
@@ -481,6 +482,7 @@ async function resolveTxnTarget(
   const [co] = await tx.select({ id: company.id }).from(company).where(eq(company.id, p.companyId)).limit(1);
   if (!co) throw new MissingTxnTargetError();
   await lockNativePayrollPeriodsTx(tx,ctx,[{companyId:p.companyId,payPeriod:p.payPeriod}]);
+  await assertIndividualActionTx(tx,p.companyId,'add');
   return {
     batchId: null,
     companyId: p.companyId,
@@ -598,7 +600,7 @@ export function listIndividualTxns(ctx: SessionContext, p: { batchId: string }):
       .from(payrollIndividualTxn)
       .innerJoin(employment, eq(employment.id, payrollIndividualTxn.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payrollIndividualTxn.batchId, p.batchId))
+      .where(and(eq(payrollIndividualTxn.batchId, p.batchId),individualViewPredicate()))
       .orderBy(asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.id)),
   );
 }
@@ -669,7 +671,7 @@ export function getIndividualTxn(ctx: SessionContext, p: { id: string }): Promis
       })
       .from(payrollIndividualTxn)
       .leftJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
-      .where(eq(payrollIndividualTxn.id, p.id))
+      .where(and(eq(payrollIndividualTxn.id, p.id),individualViewPredicate()))
       .limit(1);
     if (!row) return null;
     const { batchStatus, ...rest } = row;
@@ -1391,6 +1393,7 @@ export function updateIndividualTxn(
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
     const existing=await lockIndividualTxnForWrite(tx,ctx,p.id);
+    await assertIndividualActionTx(tx,existing.companyId!,'edit');
     // Attached ⇒ the owning batch must still be writable — draft or processed, never closed (the batch's
     // payPeriod is authoritative). Unattached ⇒ no batch gate. Both preserve the processing month
     // independently of the effective work date.
@@ -1496,6 +1499,7 @@ export function deleteIndividualTxn(ctx: SessionContext, p: { id: string }): Pro
 /** Same removal controls, usable by atomic import-batch reversal. */
 export async function deleteIndividualTxnTx(tx: Tx, ctx: SessionContext, p: {id: string}): Promise<{id: string}> {
     const existing=await lockIndividualTxnForWrite(tx,ctx,p.id);
+    await assertIndividualActionTx(tx,existing.companyId!,'delete');
     // Unattached ⇒ no batch gate. Attached ⇒ draft or processed; a CLOSED run still refuses.
     const batch = existing.batchId != null ? await loadWritableBatch(tx, existing.batchId) : null;
     await tx.delete(payrollIndividualTxn).where(eq(payrollIndividualTxn.id, p.id));
@@ -1560,6 +1564,7 @@ export function listUnattachedIndividualTxns(
       .where(
         and(
           isNull(payrollIndividualTxn.batchId),
+          individualViewPredicate(),
           p.companyId ? eq(payrollIndividualTxn.companyId, p.companyId) : undefined,
           p.payPeriod ? eq(payrollIndividualTxn.payPeriod, p.payPeriod) : undefined,
         ),
@@ -1567,4 +1572,10 @@ export function listUnattachedIndividualTxns(
       .orderBy(desc(payrollIndividualTxn.payPeriod), asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.id))
       .then((rows) => rows as UnattachedTxnRow[]),
   );
+}
+
+function individualViewPredicate(){return sql`app.function_action_allowed('payroll.individualTransactions','view',${payrollIndividualTxn.companyId})`;}
+async function assertIndividualActionTx(tx:Tx,companyId:string,operation:'add'|'edit'|'delete'){
+ const [permission]=await tx.execute<{allowed:boolean}>(sql`select app.function_action_allowed('payroll.individualTransactions',${operation},${companyId}::uuid) AND app.access_financial_action_company('payroll',${companyId}::uuid,${operation}) as allowed`);
+ if(!permission?.allowed)throw new PayrollPermissionDeniedError(`function.payroll.individualTransactions.${operation}`);
 }

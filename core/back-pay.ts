@@ -703,6 +703,7 @@ export function calculateBackPay(
 ): Promise<{ runId: string; lineCount: number; total: number }> {
   if (!isBackPayPeriod(p.targetPayPeriod)) throw new Error('back-pay-invalid-period');
   return withTenant(ctx, async (tx) => {
+    await assertBackPayActionTx(tx,p.companyId,'add');
     const candidates = await detectArrearsTx(tx, { companyId: p.companyId });
     const wanted = p.compensationIds && p.compensationIds.length > 0 ? new Set(p.compensationIds) : null;
     const selected = wanted ? candidates.filter((c) => wanted.has(c.compensationId)) : candidates;
@@ -999,6 +1000,7 @@ export function listBackPayRuns(ctx: SessionContext, p: { companyIds: string[] }
 export function verifyBackPayRun(ctx: SessionContext, p: { runId: string }): Promise<{ runId: string }> {
   return withTenant(ctx, async (tx) => {
     const run = await loadRunTx(tx, p.runId);
+    await assertBackPayActionTx(tx,run.companyId,'edit');
     if (run.status !== 'draft') throw new BackPayStatusError(run.status, 'draft');
     await tx.update(backPayRun).set({ status: 'verified', updatedAt: new Date() }).where(eq(backPayRun.id, run.id));
     await appendEvent(tx, {
@@ -1041,6 +1043,7 @@ export function approveAndPostBackPay(
   return withTenant(ctx, async (tx) => {
     await lockPayComponentCatalogTx(tx,ctx);
     const run = await loadRunTx(tx, p.runId);
+    await assertBackPayActionTx(tx,run.companyId,'execute');
     if (run.status !== 'draft' && run.status !== 'verified') throw new BackPayStatusError(run.status, 'verified');
 
     const [target] = await tx
@@ -1139,6 +1142,7 @@ export function approveAndPostBackPay(
 export function cancelBackPayRun(ctx: SessionContext, p: { runId: string }): Promise<{ runId: string; removed: number }> {
   return withTenant(ctx, async (tx) => {
     const run = await loadRunTx(tx, p.runId);
+    await assertBackPayActionTx(tx,run.companyId,'delete');
     if (run.status === 'cancelled') throw new BackPayStatusError(run.status, 'draft|verified|posted');
 
     let removed = 0;
@@ -1243,4 +1247,9 @@ async function ensureBackPayComponentTx(tx: Tx, ctx: SessionContext, kind: 'earn
     payload: { code, reason: 'back-pay-first-use' },
   });
   return row.id;
+}
+
+async function assertBackPayActionTx(tx:Tx,companyId:string,operation:'view'|'add'|'edit'|'delete'|'execute'){
+ const [permission]=await tx.execute<{allowed:boolean}>(sql`select app.access_backpay_action(${companyId}::uuid,${operation}) as allowed`);
+ if(!permission?.allowed)throw new Error('Back Pay action unavailable');
 }

@@ -966,7 +966,7 @@ Unapplied source only; re-audit live watermark and refs before coordinated relea
 ## Financial and Letters action restrictions — 2 November 2026 (provisional)
 
 Security worker reserves `0941_financial_letter_actions`, aggregate index763,
-when1793330000341, SQL SHA256 `bcd2cf16a305427c6b721133d58b0fa996eb12a1e79d46ac332384a816581c94`. This source checkpoint depends on
+when1793330000341, SQL SHA256 `e85b73bd9a75ccd07190c8047483f60eb3860759762d47bf762dd69924c4feb9`. This source checkpoint depends on
 0939 Workforce action helpers and0940 bounded Profile effect proofs. Parent owns0942
 Organisation/Settings and0945 Financial setup/history;0943/0944 are independently allocated.
 The code-owned publisher requires `app.financial_letter_bindings_complete()`; this checkpoint
@@ -978,7 +978,7 @@ authorized.
 ## Organisation and shared configuration actions — 2 November 2026 (provisional)
 
 Parent BOARD owner reserves `0942_organisation_settings_actions`, aggregate idx764 /
-when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `6fd3aa99be497c6660792e7f7aa7d02e30b1ac95d1fcdc9a43cb1077ba75a5d1`.
+when1793330000342, after the coordinated0939/0940/0941 owners. SQL SHA256 `6402b69e2cef8f0d80d9d9961b1d50f0c7634e84361c876802ef43c338c6cfa8`.
 This is unapplied implementation source. It retains native role/company floors, separates
 reference pickers from maintenance views, guards current/proposed organisation scopes, and
 binds employee-number allocation/release to private native effects. Hosted SQL/behavior and
@@ -1002,8 +1002,7 @@ ordered applied ledger and competing claims before admission. It grants no insta
 ## Financial setup/native import boundary — 2 November 2026 (provisional)
 
 BOARD parent reserves `0945_financial_setup_actions`, aggregate idx767 /when1793330000345.
-Source SHA256 `11f14fccf4292453dbbcd779578e3ee6bfab244d7ea640b117c069d166f9814f`. Reserved0943/idx765 and0944/idx766 remain with
-parallel owners and must be inserted in timestamp order during integration; no existing entry
+Source SHA256 `52294ef70514fe276284d854d0bddfdb950967d0c5615385bd9adf6a45211e73`. Reserved0943/idx765 and0944/idx766 are integrated in their reserved timestamp order; no existing entry
 is renumbered. This is an unapplied development checkpoint, not installed or accepted source.
 Its catalogue, history, tax, formula and loan guards still require hosted qualification,
 precise module/submenu facts, and TP1/CP38/statutory input qualification and binding closure.
@@ -1014,4 +1013,4 @@ all source claims and the post-Noveri installation ledger before any release adm
 
 ## Leave/Attendance/Claims Action source continuation — 2 November 2026
 
-Reserved `0943_leave_attendance_claim_actions`, aggregate idx765 / when1793330000343, is now journaled in its existing reserved position after0942 and before0945;0944 remains reserved for Personnel. Source SHA256 `7c07ce3f4ffd45f6af593193825bb0a03a52c14e7d0cdb2333eab11e63ccb369`. Current source installs dormant family definitions and native guarded Claim configuration writers only; operational Claim/Leave/Attendance and exact submenu closure remain incomplete. No publication sentinel or installed-history claim exists. This inclusion makes existing native Claim configuration imports executable for hosted development qualification. Re-audit actual ordered installation ledger and all coordinated reservations before admission.
+Reserved `0943_leave_attendance_claim_actions`, aggregate idx765 / when1793330000343, is now journaled in its existing reserved position after0942 and before the integrated0944 Personnel source. Source SHA256 `7c07ce3f4ffd45f6af593193825bb0a03a52c14e7d0cdb2333eab11e63ccb369`. Current source installs dormant family definitions and native guarded Claim configuration writers only; operational Claim/Leave/Attendance and exact submenu closure remain incomplete. No publication sentinel or installed-history claim exists. This inclusion makes existing native Claim configuration imports executable for hosted development qualification. Re-audit actual ordered installation ledger and all coordinated reservations before admission.

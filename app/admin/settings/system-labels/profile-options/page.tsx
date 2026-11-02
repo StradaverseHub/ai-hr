@@ -22,8 +22,8 @@ import { saveProfileOptionsAction, seedProfileOptionsAction, removeProfileOption
 // unchanged (same table, same core mutations) — only the maintenance surface moved.
 export default async function ProfileOptionsPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const s = await requireAdmin();
-  if(!await settingsAccess(s,'view'))notFound();
-  const actionControls={add:await settingsAccess(s,'add'),edit:await settingsAccess(s,'edit'),delete:await settingsAccess(s,'delete')};
+  if(!await settingsAccess(s,'view','systemLabels.profileOptions'))notFound();
+  const actionControls={add:await settingsAccess(s,'add','systemLabels.profileOptions'),edit:await settingsAccess(s,'edit','systemLabels.profileOptions'),delete:await settingsAccess(s,'delete','systemLabels.profileOptions')};
   const t = await getTranslations('admin.profileOptions');
   const { error } = await searchParams;
   const all = await listAllProfileOptions(s, { activeOnly: false });

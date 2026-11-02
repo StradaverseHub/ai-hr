@@ -51,8 +51,11 @@ export default async function SystemLabelsPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const s=await requireAdmin();
-  const canViewSettings=await settingsAccess(s,'view');
-  const settingsControls={add:await settingsAccess(s,'add'),edit:await settingsAccess(s,'edit'),delete:await settingsAccess(s,'delete')};
+  const canViewGrades=await settingsAccess(s,'view','systemLabels.jobGrade');
+  const canViewOptions=await settingsAccess(s,'view','systemLabels.profileOptions');
+  const settingsControls=async(key:string)=>({add:await settingsAccess(s,'add',key),edit:await settingsAccess(s,'edit',key),delete:await settingsAccess(s,'delete',key)});
+  const gradeControls=await settingsControls('systemLabels.jobGrade');
+  const optionControls=await settingsControls('systemLabels.profileOptions');
   const { error } = await searchParams;
   const t = await getTranslations('admin.systemLabels');
   // c9986927 — the relocated organisation categories keep their own existing i18n namespace; only their
@@ -77,10 +80,10 @@ export default async function SystemLabelsPage({
       // b1b81a08 — Grades moved here from Leave Config. Archived rows load too so the grid can show and
       // restore them. NOTE: grades are TENANT-WIDE, so they must NOT pass through company Criteria —
       // job_grade has no company_id to narrow on.
-      canViewSettings?listJobGrades(s, { includeArchived: true }):[],
+      canViewGrades?listJobGrades(s, { includeArchived: true }):[],
       // c9986927 — Division / Branch / Region / Line / Section / Team / Base / Category are maintained
       // here now. Like grades they are TENANT-WIDE, so they must NOT pass through company Criteria.
-      canViewSettings?listAllProfileOptions(s, { activeOnly: false }):({} as Partial<Awaited<ReturnType<typeof listAllProfileOptions>>>),
+      canViewOptions?listAllProfileOptions(s, { activeOnly: false }):({} as Partial<Awaited<ReturnType<typeof listAllProfileOptions>>>),
       // 9a65f808 — grade groups, maintained here now for the same reason grades are: they are the
       // tenant's grade vocabulary, TENANT-WIDE (a group carries no company), and they must NOT pass
       // through company Criteria. Archived groups arrive too — the editor badges them and the editor is
@@ -166,10 +169,10 @@ export default async function SystemLabelsPage({
   // b1b81a08 — the Grades body. Rows go in exactly as core/read.ts returns them (id, code, name, rank,
   // archivedAt, inUse); there is no mapper and no synthetic companyId / isGlobal / assignedCompanyIds,
   // because job_grade genuinely has none of those.
-  const companyActionControls=Object.fromEntries(await Promise.all(companies.map(async co=>[co.id,{add:await organisationAccess(s,'add',co.id),edit:await organisationAccess(s,'edit',co.id),delete:await organisationAccess(s,'delete',co.id)}])));
+  const kindActionControls=Object.fromEntries(await Promise.all((['department','position','cost_center','business_unit'] as const).map(async kind=>[kind,Object.fromEntries(await Promise.all(companies.map(async co=>[co.id,{add:await organisationAccess(s,'add',co.id,'systemLabels.'+kind),edit:await organisationAccess(s,'edit',co.id,'systemLabels.'+kind),delete:await organisationAccess(s,'delete',co.id,'systemLabels.'+kind)}])))])));
   const gradesSlot = (
     <GradeLabelsGrid
-      actionControls={settingsControls}
+      actionControls={gradeControls}
       data={grades}
       // r224 — `restore` is the third action: it takes the offer the save returns when a typed code turns
       // out to belong to an archived grade, bringing that grade back in place instead of duplicating it.
@@ -228,7 +231,7 @@ export default async function SystemLabelsPage({
     count: (profileOptions[c] ?? []).filter((r) => r.isActive).length,
     body: (
       <ProfileOptionsGrid
-        actionControls={settingsControls}
+        actionControls={optionControls}
         key={c}
         hideRail
         categories={[c]}
@@ -260,7 +263,7 @@ export default async function SystemLabelsPage({
         data={data}
         companies={gridCompanies}
         writableCompanyIds={companies.map((c) => c.id)}
-        companyActionControls={companyActionControls}
+        kindActionControls={kindActionControls}
         headByCompany={headByCompany}
         isGroupAdmin={isGroupAdmin(s)}
         actions={actions}

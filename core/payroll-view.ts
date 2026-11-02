@@ -460,6 +460,7 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
     .where(
       and(
         inArray(payrollIndividualTxn.companyId, p.companyIds),
+        sql`app.function_action_allowed('payroll.individualTransactions','view',${payrollIndividualTxn.companyId})`,
         periodFilter(p.year, p.month, payrollIndividualTxn.payPeriod),
         p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
         kind ? eq(payrollIndividualTxn.kind, kind) : undefined,
@@ -529,6 +530,7 @@ export function listIndividualTxnCreators(
           eq(domainEvent.aggregateType, INDIVIDUAL_TXN_AGGREGATE),
           eq(domainEvent.eventType, INDIVIDUAL_TXN_CREATED),
           inArray(payrollBatch.companyId, p.companyIds),
+          sql`app.function_action_allowed('payroll.individualTransactions','view',${payrollIndividualTxn.companyId})`,
         ),
       )
       .orderBy(asc(creatorPerson.fullName));

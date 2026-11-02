@@ -12,7 +12,7 @@ CREATE FUNCTION app.financial_audit_record() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF NOT app.acting_as_owner() AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() AND NEW.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
- AND (NEW.event_type LIKE 'payroll-batch.%' OR NEW.event_type LIKE 'loan.%' OR NEW.event_type LIKE 'claim-request.%' OR NEW.event_type LIKE 'letter.%' OR NEW.event_type LIKE 'employment-pay-component.%' OR NEW.event_type='employee.tax.updated') THEN
+ AND (NEW.event_type LIKE 'payroll-batch.%' OR NEW.event_type LIKE 'payroll.individual-txn.%' OR NEW.event_type LIKE 'back-pay.%' OR NEW.event_type LIKE 'loan.%' OR NEW.event_type LIKE 'claim-request.%' OR NEW.event_type LIKE 'letter.%' OR NEW.event_type LIKE 'employment-pay-component.%' OR NEW.event_type='employee.tax.updated') THEN
   INSERT INTO app.financial_audit_effect VALUES(pg_current_xact_id(),NEW.tenant_id,NEW.actor_id,NEW.id) ON CONFLICT DO NOTHING;
  END IF;RETURN NEW;
 END;
@@ -454,7 +454,7 @@ DECLARE batch public.payroll_batch;starts date;ends date;
 BEGIN
  PERFORM app.access_workforce_write_lock();
  SELECT * INTO batch FROM public.payroll_batch b WHERE b.id=p_batch AND b.tenant_id=app.current_tenant_id() FOR UPDATE;
- IF batch.id IS NULL OR p_operation NOT IN ('edit','delete') OR NOT app.access_financial_action_company('payroll',batch.company_id,p_operation) OR NOT app.financial_batch_subjects_allowed(batch.id) THEN RAISE EXCEPTION 'Payroll action unavailable' USING ERRCODE='42501';END IF;
+ IF batch.id IS NULL OR p_operation NOT IN ('edit','delete') OR NOT app.access_financial_action_company('payroll',batch.company_id,p_operation) OR NOT app.function_action_allowed('payroll.process',p_operation,batch.company_id) OR NOT app.financial_batch_subjects_allowed(batch.id) THEN RAISE EXCEPTION 'Payroll action unavailable' USING ERRCODE='42501';END IF;
  starts:=(batch.pay_period||'-01')::date;ends:=(starts+interval '1 month'-interval '1 day')::date;
  -- Actual process membership mirrors employedByCompanyDuring + resolveBatchScopeFilter.
  -- Querying as the private owner prevents RLS from silently shrinking a requested payroll.
@@ -477,7 +477,7 @@ GRANT EXECUTE ON FUNCTION app.access_payroll_batch_begin(uuid,text,uuid[]) TO ai
 CREATE FUNCTION app.financial_batch_intent_allowed(p_batch uuid,p_operation text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.financial_batch_intent proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.batch_id=p_batch AND proof.operation=p_operation
- AND app.access_financial_action_company('payroll',proof.company_id,proof.operation));
+ AND app.access_financial_action_company('payroll',proof.company_id,proof.operation) AND app.function_action_allowed('payroll.process',proof.operation,proof.company_id));
 $$;
 REVOKE ALL ON FUNCTION app.financial_batch_intent_allowed(uuid,text) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -647,8 +647,19 @@ BEGIN
  IF TG_TABLE_NAME='payslip' THEN operation:=CASE WHEN TG_OP='DELETE' THEN 'delete' ELSE 'edit' END;END IF;
  IF TG_TABLE_NAME='payroll_batch' AND (NOT app.financial_payroll_scope_allowed(context.company_id,data->'scope',operation,data->>'pay_period') OR TG_OP='UPDATE' AND NOT app.financial_payroll_scope_allowed(coalesce(context.old_company_id,context.company_id),before_row->'scope',operation,before_row->>'pay_period')) THEN RAISE EXCEPTION 'Payroll scope unavailable' USING ERRCODE='42501';END IF;
  IF TG_TABLE_NAME='payroll_batch' AND TG_OP='INSERT' AND (data->>'status'<>'draft' OR (data->>'employee_count')::integer<>0 OR data->>'totals' IS NOT NULL OR data->>'closed_at' IS NOT NULL OR data->>'released_at' IS NOT NULL OR data->>'needs_recalc_at' IS NOT NULL OR data->>'recalc_employment_ids' IS NOT NULL) THEN RAISE EXCEPTION 'New payroll runs must start as empty drafts' USING ERRCODE='42501';END IF;
+ -- A Process operation never lends the independently configurable Statutory Adjustment cell.
+ -- Teardown/reprocess consequences are admitted below from their exact batch intent.
+ IF TG_TABLE_NAME='payroll_statutory_adjustment' THEN
+  IF app.function_action_allowed('payroll.statutoryAdjustments',operation,context.company_id)
+   AND app.access_financial_action_employment('payroll',context.employment_id,operation) THEN RETURN NULL;END IF;
+  IF TG_OP='DELETE' AND app.financial_batch_intent_allowed(context.batch_id,'delete')
+   AND NOT EXISTS(SELECT 1 FROM public.payslip p WHERE p.tenant_id=app.current_tenant_id() AND p.batch_id=context.batch_id AND p.employment_id=context.employment_id)
+   AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.tenant_id=app.current_tenant_id() AND audit.aggregate_id=context.batch_id AND audit.actor_id=app.current_user_id() AND audit.event_type IN ('payroll-batch.deleted','payroll-batch.employee-payroll-removed') AND app.financial_audit_written(audit.id)) THEN RETURN NULL;END IF;
+  RAISE EXCEPTION 'Statutory adjustment action unavailable' USING ERRCODE='42501';
+ END IF;
  -- Direct logical action on this row remains sufficient; target scope is always checked.
- IF app.access_financial_action_company('payroll',context.company_id,operation)
+ IF app.function_action_allowed('payroll.process',operation,context.company_id)
+ AND app.access_financial_action_company('payroll',context.company_id,operation)
  AND (context.old_company_id IS NULL OR app.access_financial_action_company('payroll',context.old_company_id,operation))
  AND (context.employment_id IS NULL OR app.access_financial_action_employment('payroll',context.employment_id,operation)) THEN
   IF TG_TABLE_NAME='payroll_batch' AND TG_OP='UPDATE' THEN PERFORM app.access_payroll_batch_begin((data->>'id')::uuid,'edit');END IF;
@@ -828,7 +839,7 @@ BEGIN
  IF inserted IS NULL THEN RETURN NULL;END IF;
  -- A transaction below the global snapshot xmin has no live/deferred consumer. Do
  -- this once per transaction, retaining every in-flight actor's exact receipts.
- FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement'] LOOP
+ FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting'] LOOP
   EXECUTE format('DELETE FROM app.%I WHERE transaction_id<$1',table_name) USING oldest;
  END LOOP;
  DELETE FROM app.financial_receipt_epoch WHERE transaction_id<oldest;
@@ -1062,6 +1073,7 @@ CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_claim_effe
 CREATE FUNCTION app.access_fixed_payroll_action(p_employment uuid,p_operation text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() AND app.is_admin_for(e.company_id)
+ AND app.function_action_allowed('payroll.fixedTransactions',p_operation,e.company_id)
  AND (app.access_financial_action_employment('payroll',e.id,p_operation)
   OR p_operation='add' AND app.data_permission_employment_born(e.id) AND app.access_workforce_action_employment(e.id,'add')));
 $$;
@@ -1105,7 +1117,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND (source.superseded_at IS NOT NULL AND replacement.valid_from<=source.valid_from OR source.superseded_at IS NULL AND source.valid_to=replacement.valid_from-1)
  AND (p_before='{}'::jsonb AND p_after=to_jsonb(replacement)
   OR p_before->>'id'=source.id::text AND proof.source_hash=encode(sha256(convert_to(p_before::text,'UTF8')),'hex') AND p_after=to_jsonb(source)
-   AND p_before-ARRAY['valid_to','superseded_at'] IS NOT DISTINCT FROM p_after-ARRAY['valid_to','superseded_at'])));
+   AND p_before-ARRAY['valid_to','superseded_at'] IS NOT DISTINCT FROM p_after-ARRAY['valid_to','superseded_at']));
 $$;
 REVOKE ALL ON FUNCTION app.financial_fixed_replacement_allowed(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.financial_fixed_birth() RETURNS trigger
@@ -1149,6 +1161,7 @@ DECLARE function_key text:=regexp_replace(substr(p_capability,10),'\.[^.]+$','')
 BEGIN
  IF p_capability NOT LIKE 'function.%' THEN RETURN false;END IF;
  CASE function_key
+ WHEN 'payroll.backPay' THEN family:='payroll';
  WHEN 'payroll.process' THEN family:='payroll';
  WHEN 'payroll.fixedTransactions' THEN family:='payroll';
  WHEN 'payroll.individualTransactions' THEN family:='payroll';
@@ -1161,10 +1174,11 @@ BEGIN
  WHEN 'letterSettings' THEN native:='settings';
  ELSE RETURN false;END CASE;
  IF family IS NOT NULL THEN
+  IF function_key='payroll.backPay' AND operation='execute' THEN operation:='edit';END IF;
   IF operation NOT IN ('view','add','edit','delete') THEN RETURN false;END IF;
-  IF function_key='payroll.fixedTransactions' AND NOT EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=p_tenant AND r.app_user_id=p_user AND r.role::text IN ('hr_admin','super_admin') AND (p_company IS NULL AND r.company_id IS NULL OR p_company IS NOT NULL AND app.access_scope_covers(r.company_id,p_company,p_tenant))) THEN RETURN false;END IF;
+  IF function_key IN ('payroll.fixedTransactions','payroll.backPay') AND NOT EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=p_tenant AND r.app_user_id=p_user AND r.role::text IN ('hr_admin','super_admin') AND (p_company IS NULL AND r.company_id IS NULL OR p_company IS NOT NULL AND app.access_scope_covers(r.company_id,p_company,p_tenant))) THEN RETURN false;END IF;
   RETURN CASE WHEN p_current THEN app.financial_letter_current_legacy_allowed(p_tenant,p_user,family||'.'||operation,p_company)
-   AND (function_key<>'payroll.fixedTransactions' OR EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('hr_admin','super_admin') AND (p_company IS NULL AND g.company_id IS NULL OR p_company IS NOT NULL AND app.access_scope_covers(g.company_id,p_company,p_tenant))))
+   AND (function_key NOT IN ('payroll.fixedTransactions','payroll.backPay') OR EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('hr_admin','super_admin') AND (p_company IS NULL AND g.company_id IS NULL OR p_company IS NOT NULL AND app.access_scope_covers(g.company_id,p_company,p_tenant))))
    ELSE app.financial_letter_legacy_allowed(p_tenant,p_user,family||'.'||operation,p_company) END;
  END IF;
  IF p_company IS NULL THEN
@@ -1190,55 +1204,251 @@ SELECT app.register_function_action('payroll.process','view','company','payroll.
 SELECT app.register_function_action('payroll.process','add','company','payroll.add','app.financial_delegate_payroll_process','{"moduleKey":"payroll","labelKey":"nav.payrollProcess","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll","employeeBearing":true}'::jsonb);
 SELECT app.register_function_action('payroll.process','edit','company','payroll.edit','app.financial_delegate_payroll_process','{"moduleKey":"payroll","labelKey":"nav.payrollProcess","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll","employeeBearing":true}'::jsonb);
 SELECT app.register_function_action('payroll.process','delete','company','payroll.delete','app.financial_delegate_payroll_process','{"moduleKey":"payroll","labelKey":"nav.payrollProcess","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll","employeeBearing":true}'::jsonb);
-CREATE FUNCTION app.financial_delegate_payroll_fixedTransactions(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.payroll.fixedTransactions.'||substring(cap from '[^.]+$'),co,true); $$;
-REVOKE ALL ON FUNCTION app.financial_delegate_payroll_fixedTransactions(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
-SELECT app.register_function_action('payroll.fixedTransactions','view','company','payroll.view','app.financial_delegate_payroll_fixedTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.fixed.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/fixed","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('payroll.fixedTransactions','add','company','payroll.add','app.financial_delegate_payroll_fixedTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.fixed.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/fixed","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('payroll.fixedTransactions','edit','company','payroll.edit','app.financial_delegate_payroll_fixedTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.fixed.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/fixed","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('payroll.fixedTransactions','delete','company','payroll.delete','app.financial_delegate_payroll_fixedTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.fixed.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/fixed","employeeBearing":true}'::jsonb);
-CREATE FUNCTION app.financial_delegate_payroll_individualTransactions(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.payroll.individualTransactions.'||substring(cap from '[^.]+$'),co,true); $$;
-REVOKE ALL ON FUNCTION app.financial_delegate_payroll_individualTransactions(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
-SELECT app.register_function_action('payroll.individualTransactions','view','company','payroll.view','app.financial_delegate_payroll_individualTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.individual.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/individual","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('payroll.individualTransactions','add','company','payroll.add','app.financial_delegate_payroll_individualTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.individual.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/individual","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('payroll.individualTransactions','edit','company','payroll.edit','app.financial_delegate_payroll_individualTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.individual.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/individual","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('payroll.individualTransactions','delete','company','payroll.delete','app.financial_delegate_payroll_individualTransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.individual.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/individual","employeeBearing":true}'::jsonb);
-CREATE FUNCTION app.financial_delegate_payroll_statutoryAdjustments(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.payroll.statutoryAdjustments.'||substring(cap from '[^.]+$'),co,true); $$;
-REVOKE ALL ON FUNCTION app.financial_delegate_payroll_statutoryAdjustments(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
-SELECT app.register_function_action('payroll.statutoryAdjustments','view','company','payroll.view','app.financial_delegate_payroll_statutoryAdjustments','{"moduleKey":"payroll","labelKey":"payroll.statutoryAdjustment.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/statutory-adjustment","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('payroll.statutoryAdjustments','add','company','payroll.add','app.financial_delegate_payroll_statutoryAdjustments','{"moduleKey":"payroll","labelKey":"payroll.statutoryAdjustment.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/statutory-adjustment","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('payroll.statutoryAdjustments','edit','company','payroll.edit','app.financial_delegate_payroll_statutoryAdjustments','{"moduleKey":"payroll","labelKey":"payroll.statutoryAdjustment.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/statutory-adjustment","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('payroll.statutoryAdjustments','delete','company','payroll.delete','app.financial_delegate_payroll_statutoryAdjustments','{"moduleKey":"payroll","labelKey":"payroll.statutoryAdjustment.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/statutory-adjustment","employeeBearing":true}'::jsonb);
-CREATE FUNCTION app.financial_delegate_letterFields(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterFields.'||substring(cap from '[^.]+$'),co,true); $$;
-REVOKE ALL ON FUNCTION app.financial_delegate_letterFields(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
-SELECT app.register_function_action('letterFields','view','company','letters.view','app.financial_delegate_letterFields','{"moduleKey":"letters","labelKey":"nav.letterFields","kind":"submenu","course":"administrative","screenKey":"letterFields","href":"/letters/fields","employeeBearing":false}'::jsonb);
-SELECT app.register_function_action('letterFields','add','company','letters.add','app.financial_delegate_letterFields','{"moduleKey":"letters","labelKey":"nav.letterFields","kind":"submenu","course":"administrative","screenKey":"letterFields","href":"/letters/fields","employeeBearing":false}'::jsonb);
-SELECT app.register_function_action('letterFields','edit','company','letters.edit','app.financial_delegate_letterFields','{"moduleKey":"letters","labelKey":"nav.letterFields","kind":"submenu","course":"administrative","screenKey":"letterFields","href":"/letters/fields","employeeBearing":false}'::jsonb);
-SELECT app.register_function_action('letterFields','delete','company','letters.delete','app.financial_delegate_letterFields','{"moduleKey":"letters","labelKey":"nav.letterFields","kind":"submenu","course":"administrative","screenKey":"letterFields","href":"/letters/fields","employeeBearing":false}'::jsonb);
-CREATE FUNCTION app.financial_delegate_letterTemplates(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterTemplates.'||substring(cap from '[^.]+$'),co,true); $$;
-REVOKE ALL ON FUNCTION app.financial_delegate_letterTemplates(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
-SELECT app.register_function_action('letterTemplates','view','company','letters.view','app.financial_delegate_letterTemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
-SELECT app.register_function_action('letterTemplates','add','company','letters.add','app.financial_delegate_letterTemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
-SELECT app.register_function_action('letterTemplates','edit','company','letters.edit','app.financial_delegate_letterTemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
-SELECT app.register_function_action('letterTemplates','delete','company','letters.delete','app.financial_delegate_letterTemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
-SELECT app.register_function_action('letterTemplates','approve','company','letters.approve','app.financial_delegate_letterTemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
-CREATE FUNCTION app.financial_delegate_letterGenerate(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterGenerate.'||substring(cap from '[^.]+$'),co,true); $$;
-REVOKE ALL ON FUNCTION app.financial_delegate_letterGenerate(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
-SELECT app.register_function_action('letterGenerate','view','company','letters.view','app.financial_delegate_letterGenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('letterGenerate','add','company','letters.add','app.financial_delegate_letterGenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('letterGenerate','edit','company','letters.edit','app.financial_delegate_letterGenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('letterGenerate','delete','company','letters.delete','app.financial_delegate_letterGenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
-CREATE FUNCTION app.financial_delegate_letterApproval(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterApproval.'||substring(cap from '[^.]+$'),co,true); $$;
-REVOKE ALL ON FUNCTION app.financial_delegate_letterApproval(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
-SELECT app.register_function_action('letterApproval','view','company','letters.view','app.financial_delegate_letterApproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"administrative","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('letterApproval','approve','company','letters.approve','app.financial_delegate_letterApproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"administrative","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":true}'::jsonb);
-CREATE FUNCTION app.financial_delegate_letterRegister(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterRegister.'||substring(cap from '[^.]+$'),co,true); $$;
-REVOKE ALL ON FUNCTION app.financial_delegate_letterRegister(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
-SELECT app.register_function_action('letterRegister','view','company','letters.view','app.financial_delegate_letterRegister','{"moduleKey":"letters","labelKey":"nav.letterRegister","kind":"submenu","course":"administrative","screenKey":"letterRegister","href":"/letters/register","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('letterRegister','issue','company','letters.issue','app.financial_delegate_letterRegister','{"moduleKey":"letters","labelKey":"nav.letterRegister","kind":"submenu","course":"administrative","screenKey":"letterRegister","href":"/letters/register","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('letterRegister','delete','company','letters.delete','app.financial_delegate_letterRegister','{"moduleKey":"letters","labelKey":"nav.letterRegister","kind":"submenu","course":"administrative","screenKey":"letterRegister","href":"/letters/register","employeeBearing":true}'::jsonb);
-CREATE FUNCTION app.financial_delegate_letterSettings(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterSettings.'||substring(cap from '[^.]+$'),co,true); $$;
-REVOKE ALL ON FUNCTION app.financial_delegate_letterSettings(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
-SELECT app.register_function_action('letterSettings','view','company','letters.view','app.financial_delegate_letterSettings','{"moduleKey":"letters","labelKey":"nav.letterSettings","kind":"submenu","course":"administrative","screenKey":"letterSettings","href":"/letters/settings","employeeBearing":false}'::jsonb);
-SELECT app.register_function_action('letterSettings','add','company','letters.add','app.financial_delegate_letterSettings','{"moduleKey":"letters","labelKey":"nav.letterSettings","kind":"submenu","course":"administrative","screenKey":"letterSettings","href":"/letters/settings","employeeBearing":false}'::jsonb);
-SELECT app.register_function_action('letterSettings','edit','company','letters.edit','app.financial_delegate_letterSettings','{"moduleKey":"letters","labelKey":"nav.letterSettings","kind":"submenu","course":"administrative","screenKey":"letterSettings","href":"/letters/settings","employeeBearing":false}'::jsonb);
-SELECT app.register_function_action('letterSettings','delete','company','letters.delete','app.financial_delegate_letterSettings','{"moduleKey":"letters","labelKey":"nav.letterSettings","kind":"submenu","course":"administrative","screenKey":"letterSettings","href":"/letters/settings","employeeBearing":false}'::jsonb);
+CREATE FUNCTION app.financial_delegate_payroll_fixedtransactions(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.payroll.fixedTransactions.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_payroll_fixedtransactions(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('payroll.fixedTransactions','view','company','payroll.view','app.financial_delegate_payroll_fixedtransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.fixed.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/fixed","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.fixedTransactions','add','company','payroll.add','app.financial_delegate_payroll_fixedtransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.fixed.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/fixed","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.fixedTransactions','edit','company','payroll.edit','app.financial_delegate_payroll_fixedtransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.fixed.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/fixed","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.fixedTransactions','delete','company','payroll.delete','app.financial_delegate_payroll_fixedtransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.fixed.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/fixed","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_payroll_individualtransactions(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.payroll.individualTransactions.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_payroll_individualtransactions(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('payroll.individualTransactions','view','company','payroll.view','app.financial_delegate_payroll_individualtransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.individual.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/individual","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.individualTransactions','add','company','payroll.add','app.financial_delegate_payroll_individualtransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.individual.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/individual","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.individualTransactions','edit','company','payroll.edit','app.financial_delegate_payroll_individualtransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.individual.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/individual","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.individualTransactions','delete','company','payroll.delete','app.financial_delegate_payroll_individualtransactions','{"moduleKey":"payroll","labelKey":"payroll.transactions.individual.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/transactions/individual","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_payroll_statutoryadjustments(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.payroll.statutoryAdjustments.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_payroll_statutoryadjustments(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('payroll.statutoryAdjustments','view','company','payroll.view','app.financial_delegate_payroll_statutoryadjustments','{"moduleKey":"payroll","labelKey":"payroll.statutoryAdjustment.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/statutory-adjustment","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.statutoryAdjustments','add','company','payroll.add','app.financial_delegate_payroll_statutoryadjustments','{"moduleKey":"payroll","labelKey":"payroll.statutoryAdjustment.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/statutory-adjustment","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.statutoryAdjustments','edit','company','payroll.edit','app.financial_delegate_payroll_statutoryadjustments','{"moduleKey":"payroll","labelKey":"payroll.statutoryAdjustment.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/statutory-adjustment","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('payroll.statutoryAdjustments','delete','company','payroll.delete','app.financial_delegate_payroll_statutoryadjustments','{"moduleKey":"payroll","labelKey":"payroll.statutoryAdjustment.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/statutory-adjustment","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_letterfields(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterFields.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_letterfields(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterFields','view','company','letters.view','app.financial_delegate_letterfields','{"moduleKey":"letters","labelKey":"nav.letterFields","kind":"submenu","course":"administrative","screenKey":"letterFields","href":"/letters/fields","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterFields','add','company','letters.add','app.financial_delegate_letterfields','{"moduleKey":"letters","labelKey":"nav.letterFields","kind":"submenu","course":"administrative","screenKey":"letterFields","href":"/letters/fields","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterFields','edit','company','letters.edit','app.financial_delegate_letterfields','{"moduleKey":"letters","labelKey":"nav.letterFields","kind":"submenu","course":"administrative","screenKey":"letterFields","href":"/letters/fields","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterFields','delete','company','letters.delete','app.financial_delegate_letterfields','{"moduleKey":"letters","labelKey":"nav.letterFields","kind":"submenu","course":"administrative","screenKey":"letterFields","href":"/letters/fields","employeeBearing":false}'::jsonb);
+CREATE FUNCTION app.financial_delegate_lettertemplates(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterTemplates.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_lettertemplates(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterTemplates','view','company','letters.view','app.financial_delegate_lettertemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterTemplates','add','company','letters.add','app.financial_delegate_lettertemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterTemplates','edit','company','letters.edit','app.financial_delegate_lettertemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterTemplates','delete','company','letters.delete','app.financial_delegate_lettertemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterTemplates','approve','company','letters.approve','app.financial_delegate_lettertemplates','{"moduleKey":"letters","labelKey":"nav.letterTemplates","kind":"submenu","course":"administrative","screenKey":"letterTemplates","href":"/letters/templates","employeeBearing":false}'::jsonb);
+CREATE FUNCTION app.financial_delegate_lettergenerate(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterGenerate.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_lettergenerate(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterGenerate','view','company','letters.view','app.financial_delegate_lettergenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterGenerate','add','company','letters.add','app.financial_delegate_lettergenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterGenerate','edit','company','letters.edit','app.financial_delegate_lettergenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterGenerate','delete','company','letters.delete','app.financial_delegate_lettergenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_letterapproval(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterApproval.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_letterapproval(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterApproval','view','company','letters.view','app.financial_delegate_letterapproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"administrative","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterApproval','approve','company','letters.approve','app.financial_delegate_letterapproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"administrative","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_letterregister(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterRegister.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_letterregister(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterRegister','view','company','letters.view','app.financial_delegate_letterregister','{"moduleKey":"letters","labelKey":"nav.letterRegister","kind":"submenu","course":"administrative","screenKey":"letterRegister","href":"/letters/register","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterRegister','issue','company','letters.issue','app.financial_delegate_letterregister','{"moduleKey":"letters","labelKey":"nav.letterRegister","kind":"submenu","course":"administrative","screenKey":"letterRegister","href":"/letters/register","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterRegister','delete','company','letters.delete','app.financial_delegate_letterregister','{"moduleKey":"letters","labelKey":"nav.letterRegister","kind":"submenu","course":"administrative","screenKey":"letterRegister","href":"/letters/register","employeeBearing":true}'::jsonb);
+CREATE FUNCTION app.financial_delegate_lettersettings(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterSettings.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_lettersettings(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterSettings','view','company','letters.view','app.financial_delegate_lettersettings','{"moduleKey":"letters","labelKey":"nav.letterSettings","kind":"submenu","course":"administrative","screenKey":"letterSettings","href":"/letters/settings","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterSettings','add','company','letters.add','app.financial_delegate_lettersettings','{"moduleKey":"letters","labelKey":"nav.letterSettings","kind":"submenu","course":"administrative","screenKey":"letterSettings","href":"/letters/settings","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterSettings','edit','company','letters.edit','app.financial_delegate_lettersettings','{"moduleKey":"letters","labelKey":"nav.letterSettings","kind":"submenu","course":"administrative","screenKey":"letterSettings","href":"/letters/settings","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterSettings','delete','company','letters.delete','app.financial_delegate_lettersettings','{"moduleKey":"letters","labelKey":"nav.letterSettings","kind":"submenu","course":"administrative","screenKey":"letterSettings","href":"/letters/settings","employeeBearing":false}'::jsonb);
+
+--> statement-breakpoint
+-- Every one-off physical change has its own immutable source image. Native Process may move only
+-- attachment/consumption bookkeeping; it cannot edit the ledger's money, dates, intent or provenance.
+CREATE TABLE app.financial_individual_effect(
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,row_id uuid NOT NULL,
+ before_hash text NOT NULL,after_hash text NOT NULL,before_row jsonb NOT NULL,after_row jsonb NOT NULL,
+ company_id uuid NOT NULL,old_company_id uuid,employment_id uuid NOT NULL,batch_id uuid,
+ mode text,operation text,PRIMARY KEY(transaction_id,tenant_id,user_id,row_id,before_hash,after_hash)
+);
+ALTER TABLE app.financial_individual_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_individual_effect FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_individual_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE b jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ a jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ d jsonb:=CASE WHEN TG_OP='DELETE' THEN b ELSE a END;co uuid;old_co uuid;batch uuid;mode text;operation text;
+ run public.payroll_batch;
+BEGIN
+ IF app.acting_as_owner() THEN RETURN NULL;END IF;
+ IF NOT app.principal_snapshot_current() OR d->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RAISE EXCEPTION 'Individual transaction action unavailable' USING ERRCODE='42501';END IF;
+ co:=(d->>'company_id')::uuid;old_co:=(b->>'company_id')::uuid;
+ IF co IS NULL THEN SELECT company_id INTO co FROM public.payroll_batch WHERE id=(d->>'batch_id')::uuid AND tenant_id=app.current_tenant_id();END IF;
+ IF old_co IS NULL AND b->>'batch_id' IS NOT NULL THEN SELECT company_id INTO old_co FROM public.payroll_batch WHERE id=(b->>'batch_id')::uuid AND tenant_id=app.current_tenant_id();END IF;
+ IF co IS NULL THEN RAISE EXCEPTION 'Individual transaction company unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='UPDATE' THEN
+  IF OLD.batch_id IS NULL AND NEW.batch_id IS NOT NULL AND a-'batch_id' IS NOT DISTINCT FROM b-'batch_id' THEN mode:='attach';batch:=NEW.batch_id;
+  ELSIF OLD.consumed_batch_id IS NULL AND NEW.consumed_batch_id IS NOT NULL AND NEW.consumed_at IS NOT NULL AND NEW.batch_id=NEW.consumed_batch_id
+   AND a-ARRAY['consumed_batch_id','consumed_at'] IS NOT DISTINCT FROM b-ARRAY['consumed_batch_id','consumed_at'] THEN mode:='consume';batch:=NEW.consumed_batch_id;
+  ELSIF OLD.consumed_batch_id IS NOT NULL AND NEW.consumed_batch_id IS NULL AND NEW.consumed_at IS NULL
+   AND a-ARRAY['consumed_batch_id','consumed_at'] IS NOT DISTINCT FROM b-ARRAY['consumed_batch_id','consumed_at'] THEN mode:='release';batch:=OLD.consumed_batch_id;
+  ELSIF OLD.batch_id IS NOT NULL AND NEW.batch_id IS NULL AND NEW.consumed_batch_id IS NULL AND NEW.consumed_at IS NULL
+   AND a-ARRAY['batch_id','company_id','pay_period'] IS NOT DISTINCT FROM b-ARRAY['batch_id','company_id','pay_period'] THEN mode:='detach';batch:=OLD.batch_id;
+  END IF;
+  IF mode IS NOT NULL THEN
+   SELECT * INTO run FROM public.payroll_batch WHERE id=batch AND tenant_id=app.current_tenant_id();
+   operation:=CASE WHEN mode IN ('release','detach') AND app.financial_batch_intent_allowed(batch,'delete') THEN 'delete' ELSE 'edit' END;
+   IF run.id IS NULL OR NOT app.financial_batch_intent_allowed(batch,operation)
+    OR NOT app.access_financial_action_employment('payroll',NEW.employment_id,operation) THEN mode:=NULL;
+   ELSIF mode IN ('attach','detach') AND (NEW.company_id IS DISTINCT FROM run.company_id OR NEW.pay_period IS DISTINCT FROM run.pay_period) THEN mode:=NULL;
+   ELSIF mode='attach' AND NOT (run.run_type='regular' AND (NEW.intended_cycle_id IS NULL OR EXISTS(SELECT 1 FROM public.payroll_cycle c WHERE c.tenant_id=run.tenant_id AND c.company_id=run.company_id AND c.id=NEW.intended_cycle_id AND c.run_type='regular')) OR run.run_type<>'regular' AND run.payroll_cycle_id IS NOT NULL AND NEW.intended_cycle_id=run.payroll_cycle_id) THEN mode:=NULL;
+   END IF;
+  END IF;
+ END IF;
+ INSERT INTO app.financial_individual_effect VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),(d->>'id')::uuid,
+  encode(sha256(convert_to(b::text,'UTF8')),'hex'),encode(sha256(convert_to(a::text,'UTF8')),'hex'),b,a,co,old_co,(d->>'employment_id')::uuid,batch,mode,operation) ON CONFLICT DO NOTHING;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_individual_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_individual_effect AFTER INSERT OR UPDATE OR DELETE ON payroll_individual_txn FOR EACH ROW EXECUTE FUNCTION app.financial_individual_record();
+--> statement-breakpoint
+CREATE FUNCTION app.access_individual_payroll_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE b jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ a jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ d jsonb:=CASE WHEN TG_OP='DELETE' THEN b ELSE a END;proof app.financial_individual_effect;operation text;
+BEGIN
+ IF app.acting_as_owner() THEN RETURN NULL;END IF;
+ SELECT * INTO proof FROM app.financial_individual_effect e WHERE e.transaction_id=pg_current_xact_id() AND e.tenant_id=app.current_tenant_id() AND e.user_id=app.current_user_id() AND e.row_id=(d->>'id')::uuid
+ AND e.before_hash=encode(sha256(convert_to(b::text,'UTF8')),'hex') AND e.after_hash=encode(sha256(convert_to(a::text,'UTF8')),'hex');
+ IF proof.row_id IS NULL OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Individual transaction source unavailable' USING ERRCODE='42501';END IF;
+ IF app.financial_backpay_posting_approved(b,a) THEN RETURN NULL;END IF;
+ operation:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+ -- Genuine entry/import edits require their own View and action, not Process authority.
+ IF app.function_action_allowed('payroll.individualTransactions',operation,proof.company_id)
+ AND app.access_financial_action_employment('payroll',proof.employment_id,operation)
+ AND (proof.old_company_id IS NULL OR app.function_action_allowed('payroll.individualTransactions',operation,proof.old_company_id) AND app.access_financial_action_company('payroll',proof.old_company_id,operation))
+ AND (d->>'batch_id' IS NULL OR EXISTS(SELECT 1 FROM public.payroll_batch run WHERE run.id=(d->>'batch_id')::uuid AND run.tenant_id=proof.tenant_id AND run.status IN ('draft','processed') AND run.company_id=proof.company_id))
+ AND (TG_OP<>'INSERT' OR a->>'consumed_batch_id' IS NULL AND a->>'consumed_at' IS NULL)
+ AND (TG_OP<>'UPDATE' OR a-ARRAY['kind','component_id','txn_date','amount','quantity','unit','notes','intended_cycle_id','updated_at'] IS NOT DISTINCT FROM b-ARRAY['kind','component_id','txn_date','amount','quantity','unit','notes','intended_cycle_id','updated_at']) THEN RETURN NULL;END IF;
+ IF proof.mode IS NOT NULL AND app.financial_batch_intent_allowed(proof.batch_id,proof.operation)
+ AND app.access_financial_action_employment('payroll',proof.employment_id,proof.operation) THEN
+  IF proof.mode='consume' AND EXISTS(SELECT 1 FROM public.payslip p WHERE p.tenant_id=proof.tenant_id AND p.batch_id=proof.batch_id AND p.employment_id=proof.employment_id AND app.financial_kernel_row_written('payslip',to_jsonb(p),true))
+   AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.tenant_id=proof.tenant_id AND audit.aggregate_id=proof.batch_id AND audit.aggregate_type='payroll-batch' AND audit.actor_id=proof.user_id AND audit.event_type IN ('payroll-batch.processed','payroll-batch.selective-reprocessed') AND app.financial_audit_written(audit.id)) THEN RETURN NULL;END IF;
+  IF proof.mode='attach' AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.tenant_id=proof.tenant_id AND audit.aggregate_id=proof.row_id AND audit.aggregate_type='payroll-individual-txn' AND audit.actor_id=proof.user_id AND audit.subject_employment_id=proof.employment_id AND audit.event_type='payroll.individual-txn.attached' AND audit.payload->>'batchId'=proof.batch_id::text AND app.financial_audit_written(audit.id))
+   AND EXISTS(SELECT 1 FROM public.payroll_batch run JOIN public.domain_event audit ON audit.tenant_id=run.tenant_id AND audit.aggregate_id=run.id AND audit.aggregate_type='payroll-batch' AND audit.actor_id=proof.user_id AND audit.event_type IN ('payroll-batch.processed','payroll-batch.selective-reprocessed') AND app.financial_audit_written(audit.id) WHERE run.id=proof.batch_id AND run.tenant_id=proof.tenant_id AND run.status='processed') THEN RETURN NULL;END IF;
+  IF proof.mode IN ('release','detach') AND NOT EXISTS(SELECT 1 FROM public.payslip p WHERE p.tenant_id=proof.tenant_id AND p.batch_id=proof.batch_id AND p.employment_id=proof.employment_id)
+   AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.tenant_id=proof.tenant_id AND audit.aggregate_id=proof.batch_id AND audit.aggregate_type='payroll-batch' AND audit.actor_id=proof.user_id AND audit.event_type IN ('payroll-batch.reset','payroll-batch.deleted','payroll-batch.employee-payroll-removed') AND app.financial_audit_written(audit.id))
+   AND (proof.mode<>'detach' OR EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.tenant_id=proof.tenant_id AND audit.aggregate_id=proof.row_id AND audit.aggregate_type='payroll-individual-txn' AND audit.actor_id=proof.user_id AND audit.event_type='payroll.individual-txn.detached' AND audit.payload->>'batchId'=proof.batch_id::text AND app.financial_audit_written(audit.id))) THEN RETURN NULL;END IF;
+ END IF;
+ RAISE EXCEPTION 'Individual transaction action unavailable' USING ERRCODE='42501';
+END;
+$$;
+REVOKE ALL ON FUNCTION app.access_individual_payroll_guard() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER financial_individual_action AFTER INSERT OR UPDATE OR DELETE ON payroll_individual_txn DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_individual_payroll_guard();
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_individual_effect FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+
+--> statement-breakpoint
+CREATE FUNCTION app.access_backpay_action(p_company uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','add','edit','delete','execute') AND app.is_admin_for(p_company)
+ AND app.access_financial_action_company('payroll',p_company,CASE WHEN p_operation='execute' THEN 'edit' ELSE p_operation END)
+ AND app.function_action_allowed('payroll.backPay',p_operation,p_company);
+$$;
+REVOKE ALL ON FUNCTION app.access_backpay_action(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.access_backpay_action(uuid,text) TO ai_hr_app;
+CREATE TABLE app.financial_backpay_posting(
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,run_id uuid NOT NULL,row_id uuid NOT NULL,
+ employment_id uuid NOT NULL,affected_period text NOT NULL,amount numeric(12,2) NOT NULL,mode text NOT NULL,source_hash text NOT NULL,
+ PRIMARY KEY(transaction_id,tenant_id,user_id,run_id,row_id,mode)
+);
+ALTER TABLE app.financial_backpay_posting ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_backpay_posting FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.access_backpay_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE a jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ b jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ d jsonb:=CASE WHEN TG_OP='DELETE' THEN b ELSE a END;run public.back_pay_run;operation text;total numeric;period text;txn uuid;source jsonb;
+BEGIN
+ IF app.acting_as_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF d->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.principal_snapshot_current() OR TG_OP='DELETE' THEN RAISE EXCEPTION 'Back Pay action unavailable' USING ERRCODE='42501';END IF;
+ IF TG_TABLE_NAME='back_pay_run' THEN
+  operation:=CASE WHEN TG_OP='INSERT' THEN 'add' WHEN NEW.status='cancelled' AND OLD.status<>'cancelled' THEN 'delete' WHEN NEW.status='posted' AND OLD.status IN ('draft','verified') THEN 'execute' ELSE 'edit' END;
+  IF NOT app.access_backpay_action(NEW.company_id,operation) THEN RAISE EXCEPTION 'Back Pay action unavailable' USING ERRCODE='42501';END IF;
+  IF TG_OP='INSERT' THEN
+   IF NEW.status<>'draft' OR NEW.created_by_user_id IS DISTINCT FROM app.current_user_id() OR NEW.approved_by_user_id IS NOT NULL OR NEW.approved_at IS NOT NULL OR NEW.posted_at IS NOT NULL OR NEW.cancelled_by_user_id IS NOT NULL OR NEW.cancelled_at IS NOT NULL THEN RAISE EXCEPTION 'Back Pay must start as an owned draft' USING ERRCODE='42501';END IF;
+  ELSE
+   IF a-ARRAY['status','approved_by_user_id','approved_at','posted_at','cancelled_by_user_id','cancelled_at','updated_at'] IS DISTINCT FROM b-ARRAY['status','approved_by_user_id','approved_at','posted_at','cancelled_by_user_id','cancelled_at','updated_at']
+    OR NOT (operation='execute' AND NEW.approved_by_user_id=app.current_user_id() AND NEW.approved_at IS NOT NULL AND NEW.posted_at IS NOT NULL AND a-ARRAY['status','approved_by_user_id','approved_at','posted_at','updated_at'] IS NOT DISTINCT FROM b-ARRAY['status','approved_by_user_id','approved_at','posted_at','updated_at']
+     OR operation='delete' AND OLD.status IN ('draft','verified','posted') AND NEW.cancelled_by_user_id=app.current_user_id() AND NEW.cancelled_at IS NOT NULL AND a-ARRAY['status','cancelled_by_user_id','cancelled_at','updated_at'] IS NOT DISTINCT FROM b-ARRAY['status','cancelled_by_user_id','cancelled_at','updated_at']
+     OR operation='edit' AND OLD.status='draft' AND NEW.status='verified' AND a-ARRAY['status','updated_at'] IS NOT DISTINCT FROM b-ARRAY['status','updated_at']) THEN RAISE EXCEPTION 'Back Pay transition unavailable' USING ERRCODE='42501';END IF;
+  END IF;
+ ELSE
+  SELECT * INTO run FROM public.back_pay_run WHERE id=NEW.run_id AND tenant_id=app.current_tenant_id() FOR UPDATE;
+  IF run.id IS NULL OR NOT app.data_permission_matches(NEW.employment_id) OR NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=NEW.employment_id AND e.tenant_id=run.tenant_id AND app.is_admin_for(e.company_id) AND app.access_financial_action_employment('payroll',e.id,CASE WHEN TG_OP='INSERT' THEN 'add' ELSE 'edit' END)) THEN RAISE EXCEPTION 'Back Pay subject unavailable' USING ERRCODE='42501';END IF;
+  IF TG_OP='INSERT' THEN
+   IF run.status<>'draft' OR NEW.posted_txn_id IS NOT NULL OR NOT app.access_backpay_action(run.company_id,'add') OR app.financial_letter_born('back_pay_run',run.id) IS DISTINCT FROM 'add' THEN RAISE EXCEPTION 'Back Pay calculation source unavailable' USING ERRCODE='42501';END IF;
+  ELSE
+   IF a-'posted_txn_id' IS DISTINCT FROM b-'posted_txn_id' OR NEW.posted_txn_id IS NOT DISTINCT FROM OLD.posted_txn_id THEN RAISE EXCEPTION 'Back Pay source evidence is immutable' USING ERRCODE='42501';END IF;
+   operation:=CASE WHEN NEW.posted_txn_id IS NULL THEN 'delete' ELSE 'execute' END;
+   IF NOT app.access_backpay_action(run.company_id,operation) OR operation='execute' AND (run.status NOT IN ('draft','verified') OR OLD.posted_txn_id IS NOT NULL) OR operation='delete' AND run.status<>'posted' THEN RAISE EXCEPTION 'Back Pay posting transition unavailable' USING ERRCODE='42501';END IF;
+   txn:=coalesce(NEW.posted_txn_id,OLD.posted_txn_id);
+   -- Freeze the complete net before cancellation clears any source links. Each source row stays
+   -- immutable; a posted transaction cannot later be substituted for a different employee/period.
+   SELECT round(sum(l.difference),2),min(l.affected_period) INTO total,period FROM public.back_pay_line l WHERE l.tenant_id=run.tenant_id AND l.run_id=run.id AND l.employment_id=NEW.employment_id AND l.affected_period=NEW.affected_period AND NOT l.needs_review;
+   SELECT to_jsonb(t) INTO source FROM public.payroll_individual_txn t WHERE t.id=txn AND t.tenant_id=run.tenant_id AND t.employment_id=NEW.employment_id AND t.company_id=run.company_id AND t.pay_period=run.target_pay_period AND t.consumed_batch_id IS NULL;
+   IF source IS NULL OR operation='execute' AND NOT EXISTS(SELECT 1 FROM app.financial_individual_effect e WHERE e.transaction_id=pg_current_xact_id() AND e.tenant_id=run.tenant_id AND e.user_id=app.current_user_id() AND e.row_id=txn AND e.before_row='{}'::jsonb AND e.after_hash=encode(sha256(convert_to(source::text,'UTF8')),'hex')) THEN RAISE EXCEPTION 'Back Pay posting source unavailable' USING ERRCODE='42501';END IF;
+   IF total IS NULL OR abs(total)<0.01 OR NEW.needs_review THEN RAISE EXCEPTION 'Back Pay net unavailable' USING ERRCODE='42501';END IF;
+   INSERT INTO app.financial_backpay_posting VALUES(pg_current_xact_id(),run.tenant_id,app.current_user_id(),run.id,txn,NEW.employment_id,period,total,operation,encode(sha256(convert_to(source::text,'UTF8')),'hex')) ON CONFLICT DO NOTHING;
+  END IF;
+ END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.access_backpay_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_backpay_action BEFORE INSERT OR UPDATE OR DELETE ON back_pay_run FOR EACH ROW EXECUTE FUNCTION app.access_backpay_guard();
+CREATE TRIGGER financial_backpay_action BEFORE INSERT OR UPDATE OR DELETE ON back_pay_line FOR EACH ROW EXECUTE FUNCTION app.access_backpay_guard();
+CREATE TRIGGER financial_backpay_birth AFTER INSERT ON back_pay_run FOR EACH ROW EXECUTE FUNCTION app.financial_letter_record_birth();
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_backpay_posting FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+--> statement-breakpoint
+CREATE FUNCTION app.financial_backpay_posting_approved(p_before jsonb,p_after jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.financial_backpay_posting proof JOIN public.back_pay_run run ON run.id=proof.run_id AND run.tenant_id=proof.tenant_id
+ LEFT JOIN public.pay_component component ON component.id=(coalesce(p_after->>'component_id',p_before->>'component_id'))::uuid AND component.tenant_id=run.tenant_id
+ WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+ AND proof.row_id=coalesce(p_after->>'id',p_before->>'id')::uuid
+ AND app.access_backpay_action(run.company_id,proof.mode) AND app.data_permission_matches(proof.employment_id)
+ AND (proof.mode='execute' AND p_before='{}'::jsonb AND run.status='posted' AND run.approved_by_user_id=proof.user_id AND EXISTS(SELECT 1 FROM public.back_pay_line l WHERE l.tenant_id=proof.tenant_id AND l.run_id=proof.run_id AND l.posted_txn_id=proof.row_id AND l.employment_id=proof.employment_id AND l.affected_period=proof.affected_period)
+  OR proof.mode='delete' AND p_after='{}'::jsonb AND run.status='cancelled' AND run.cancelled_by_user_id=proof.user_id AND NOT EXISTS(SELECT 1 FROM public.back_pay_line l WHERE l.tenant_id=proof.tenant_id AND l.posted_txn_id=proof.row_id))
+ AND proof.source_hash=encode(sha256(convert_to(coalesce(nullif(p_after,'{}'::jsonb),p_before)::text,'UTF8')),'hex')
+ AND (proof.mode='delete' OR (
+ coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'company_id'=run.company_id::text
+ AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'pay_period'=run.target_pay_period
+ AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'employment_id'=proof.employment_id::text
+ AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'kind'=CASE WHEN proof.amount>=0 THEN 'earning' ELSE 'deduction' END
+ AND (coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'amount')::numeric=abs(proof.amount)
+ AND component.code=CASE WHEN proof.amount>=0 THEN 'BACKPAY' ELSE 'BACKPAY_RECOVERY' END
+ AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'txn_date'=run.target_pay_period||'-01'
+ AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'notes'='Back pay '||proof.affected_period||' (run '||left(run.id::text,8)||')'
+ AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'consumed_batch_id' IS NULL
+ AND coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'consumed_at' IS NULL
+ AND (coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'batch_id' IS NULL OR EXISTS(SELECT 1 FROM public.payroll_batch batch WHERE batch.tenant_id=run.tenant_id AND batch.id=(coalesce(nullif(p_after,'{}'::jsonb),p_before)->>'batch_id')::uuid AND batch.company_id=run.company_id AND batch.pay_period=run.target_pay_period AND batch.run_type='regular' AND batch.status='draft'))
+ ))
+ AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.tenant_id=proof.tenant_id AND audit.aggregate_id=run.id AND audit.aggregate_type='back-pay-run' AND audit.actor_id=proof.user_id AND audit.event_type=CASE WHEN proof.mode='execute' THEN 'back-pay.posted' ELSE 'back-pay.cancelled' END AND app.financial_audit_written(audit.id)));
+$$;
+REVOKE ALL ON FUNCTION app.financial_backpay_posting_approved(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.financial_delegate_payroll_backpay(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.payroll.backPay.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_payroll_backpay(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('payroll.backPay',operation,'company','payroll.'||CASE WHEN operation='execute' THEN 'edit' ELSE operation END,'app.financial_delegate_payroll_backpay','{"moduleKey":"payroll","labelKey":"payroll.backPay.title","kind":"submenu","course":"administrative","screenKey":"payroll","href":"/payroll/back-pay","employeeBearing":true}'::jsonb)
+FROM unnest(ARRAY['view','add','edit','delete','execute']) operation;
+
+--> statement-breakpoint
+CREATE FUNCTION app.financial_backpay_scope_allowed(p_run uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.back_pay_run run WHERE run.id=p_run AND run.tenant_id=app.current_tenant_id()
+ AND app.access_backpay_action(run.company_id,'view')
+ AND NOT EXISTS(SELECT 1 FROM public.back_pay_line line WHERE line.run_id=run.id AND line.tenant_id=run.tenant_id AND NOT app.data_permission_matches(line.employment_id)));
+$$;
+REVOKE ALL ON FUNCTION app.financial_backpay_scope_allowed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.financial_backpay_scope_allowed(uuid) TO ai_hr_app;
+CREATE POLICY financial_backpay_read ON back_pay_run AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.financial_backpay_scope_allowed(id));
+CREATE POLICY financial_backpay_read ON back_pay_line AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.financial_backpay_scope_allowed(run_id) AND app.data_permission_matches(employment_id));
