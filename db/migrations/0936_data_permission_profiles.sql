@@ -120,6 +120,7 @@ GRANT EXECUTE ON FUNCTION app.data_permission_matches(uuid,date) TO ai_hr_app;
 CREATE FUNCTION app.data_permission_admin_lock() RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
+ IF current_setting('transaction_isolation')<>'read committed' THEN RAISE EXCEPTION 'changed' USING ERRCODE='40001';END IF;
  IF app.current_tenant_id() IS NULL THEN RAISE EXCEPTION 'forbidden' USING ERRCODE='42501';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0));
  IF NOT app.principal_snapshot_current() OR NOT app.access_capability_allowed('access.configure',NULL) THEN RAISE EXCEPTION 'forbidden' USING ERRCODE='42501';END IF;
@@ -162,6 +163,11 @@ REVOKE ALL ON FUNCTION app.data_permission_delegate(jsonb) FROM PUBLIC,ai_hr_app
 CREATE FUNCTION app.data_permission_fingerprint() RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT encode(sha256(convert_to(jsonb_build_object('access',app.access_scope_fingerprint(),
+ 'configuration',(SELECT coalesce(jsonb_agg(to_jsonb(c) ORDER BY c.tenant_id),'[]'::jsonb) FROM public.access_configuration c WHERE c.tenant_id=app.current_tenant_id()),
+ 'groups',(SELECT coalesce(jsonb_agg(to_jsonb(g) ORDER BY g.id),'[]'::jsonb) FROM public.access_group g WHERE g.tenant_id=app.current_tenant_id()),
+ 'grants',(SELECT coalesce(jsonb_agg(to_jsonb(g) ORDER BY g.id),'[]'::jsonb) FROM public.access_group_grant g WHERE g.tenant_id=app.current_tenant_id()),
+ 'memberships',(SELECT coalesce(jsonb_agg(to_jsonb(m) ORDER BY m.id),'[]'::jsonb) FROM public.access_membership m WHERE m.tenant_id=app.current_tenant_id()),
+ 'overrides',(SELECT coalesce(jsonb_agg(to_jsonb(o) ORDER BY o.id),'[]'::jsonb) FROM public.access_user_override o WHERE o.tenant_id=app.current_tenant_id()),
  'profiles',(SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY p.id),'[]'::jsonb) FROM public.data_permission_profile p WHERE p.tenant_id=app.current_tenant_id()),
  'revisions',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY r.id),'[]'::jsonb) FROM public.data_permission_revision r WHERE r.tenant_id=app.current_tenant_id()),
  'assignments',(SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY a.user_id),'[]'::jsonb) FROM public.user_data_permission_assignment a WHERE a.tenant_id=app.current_tenant_id()),
@@ -215,6 +221,37 @@ $$;
 REVOKE ALL ON FUNCTION app.data_permission_state() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.data_permission_state() TO ai_hr_app;
 --> statement-breakpoint
+CREATE FUNCTION app.data_permission_target_ceiling(p_user uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE scope uuid;held jsonb;
+BEGIN
+ -- Existing function and company authority of the edited account must fit the actor's ceiling too.
+ FOR scope IN SELECT r.company_id FROM public.role_assignment r WHERE r.app_user_id=p_user AND r.tenant_id=app.current_tenant_id()
+  AND r.role::text IN ('hr_admin','super_admin','payroll_partner','performance_comp_partner')
+ UNION SELECT CASE WHEN g.company_id IS NULL THEN m.company_id WHEN m.company_id IS NULL THEN g.company_id
+   WHEN app.access_scope_covers(g.company_id,m.company_id,m.tenant_id) THEN m.company_id ELSE g.company_id END
+ FROM public.access_effective_membership m JOIN public.access_group_grant g ON g.group_id=m.group_id AND g.tenant_id=m.tenant_id AND g.retired_at IS NULL
+ WHERE m.user_id=p_user AND m.tenant_id=app.current_tenant_id() AND g.capability_id IN ('workforce.view','workforce.maintain')
+ UNION SELECT o.company_id FROM public.access_user_override o WHERE o.user_id=p_user AND o.tenant_id=app.current_tenant_id()
+  AND o.effect='allow' AND o.retired_at IS NULL AND o.capability_id IN ('workforce.view','workforce.maintain') LOOP
+  IF NOT app.access_can_delegate('workforce.view',scope) THEN RETURN false;END IF;
+ END LOOP;
+ SELECT r.rules INTO held FROM public.user_data_permission_assignment a JOIN public.data_permission_profile p ON p.id=a.profile_id AND p.tenant_id=a.tenant_id
+  JOIN public.data_permission_revision r ON r.id=p.active_revision_id AND r.profile_id=p.id AND r.tenant_id=p.tenant_id
+  WHERE a.user_id=p_user AND a.tenant_id=app.current_tenant_id() AND p.enabled AND p.retired_at IS NULL;
+ IF FOUND THEN RETURN app.data_permission_delegate(held);END IF;
+ RETURN NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.user_id=p_user AND a.tenant_id=app.current_tenant_id());
+END;
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_target_ceiling(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.data_permission_protected(p_user uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.access_effective_membership m JOIN public.access_group g ON g.id=m.group_id AND g.tenant_id=m.tenant_id
+ WHERE m.user_id=p_user AND m.tenant_id=app.current_tenant_id() AND g.system_administrator AND g.retired_at IS NULL);
+$$;
+REVOKE ALL ON FUNCTION app.data_permission_protected(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.data_permission_transition(command jsonb,expected_revision text,commit_change boolean DEFAULT false,expected_preview text DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();p public.data_permission_profile;
@@ -228,14 +265,18 @@ BEGIN
    OR command->>'name'<>btrim(command->>'name') OR command->>'name' ~ '[[:cntrl:]]'
    OR jsonb_typeof(command->'enabled')<>'boolean' OR NOT app.data_permission_rules_valid(command->'rules') THEN RAISE EXCEPTION 'invalid' USING ERRCODE='23514';END IF;
   pid:=(command->>'profileId')::uuid;rules:=command->'rules';
+  IF pid IS NULL THEN RAISE EXCEPTION 'invalid' USING ERRCODE='23514';END IF;
   IF NOT app.data_permission_delegate(rules) THEN RAISE EXCEPTION 'ceiling' USING ERRCODE='42501';END IF;
   SELECT * INTO p FROM public.data_permission_profile WHERE tenant_id=t AND id=pid AND retired_at IS NULL FOR UPDATE;
   IF kind='edit' AND NOT app.data_permission_delegate((SELECT r.rules FROM public.data_permission_revision r WHERE r.id=p.active_revision_id AND r.profile_id=p.id AND r.tenant_id=t)) THEN RAISE EXCEPTION 'ceiling' USING ERRCODE='42501';END IF;
   IF kind='create' AND p.id IS NOT NULL OR kind='edit' AND p.id IS NULL THEN RAISE EXCEPTION 'invalid' USING ERRCODE='23514';END IF;
+  IF kind='edit' AND EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.profile_id=pid AND a.tenant_id=t
+    AND (NOT app.data_permission_target_ceiling(a.user_id) OR app.data_permission_protected(a.user_id) AND (NOT (command->>'enabled')::boolean OR NOT (rules->>'legacyCompany')::boolean))) THEN RAISE EXCEPTION 'ceiling' USING ERRCODE='42501';END IF;
   IF kind='create' AND (SELECT count(*) FROM public.data_permission_profile WHERE tenant_id=t AND retired_at IS NULL)>=256 THEN RAISE EXCEPTION 'invalid' USING ERRCODE='23514';END IF;
  ELSIF kind='retire' THEN
   IF NOT app.access_command_keys(command,ARRAY['kind','profileId']) THEN RAISE EXCEPTION 'invalid' USING ERRCODE='23514';END IF;
   pid:=(command->>'profileId')::uuid;
+  IF pid IS NULL THEN RAISE EXCEPTION 'invalid' USING ERRCODE='23514';END IF;
   SELECT * INTO p FROM public.data_permission_profile WHERE tenant_id=t AND id=pid AND retired_at IS NULL FOR UPDATE;
   IF p.id IS NULL THEN RAISE EXCEPTION 'invalid' USING ERRCODE='23514';END IF;
   IF NOT app.data_permission_delegate((SELECT r.rules FROM public.data_permission_revision r WHERE r.id=p.active_revision_id AND r.profile_id=p.id AND r.tenant_id=t)) THEN RAISE EXCEPTION 'ceiling' USING ERRCODE='42501';END IF;
@@ -250,7 +291,8 @@ BEGIN
    IF p.id IS NULL THEN RAISE EXCEPTION 'invalid' USING ERRCODE='23514';END IF;
    SELECT r.rules INTO rules FROM public.data_permission_revision r WHERE r.id=p.active_revision_id AND r.profile_id=p.id AND r.tenant_id=t;
   END IF;
-  IF NOT app.data_permission_delegate(rules) THEN RAISE EXCEPTION 'ceiling' USING ERRCODE='42501';END IF;
+  IF NOT app.data_permission_delegate(rules) OR NOT app.data_permission_target_ceiling(uid)
+   OR pid IS NOT NULL AND app.data_permission_protected(uid) AND NOT (rules->>'legacyCompany')::boolean THEN RAISE EXCEPTION 'ceiling' USING ERRCODE='42501';END IF;
  ELSE RAISE EXCEPTION 'invalid' USING ERRCODE='23514';END IF;
  fingerprint:=encode(sha256(convert_to(expected_revision||':'||u::text||':'||command::text,'UTF8')),'hex');
  SELECT count(*) INTO affected FROM public.user_data_permission_assignment a WHERE a.tenant_id=t AND a.profile_id=pid;

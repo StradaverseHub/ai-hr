@@ -4516,6 +4516,13 @@
       "when": 1793330000337,
       "tag": "0937_data_permission_reader_bypasses",
       "breakpoints": true
+    },
+    {
+      "idx": 760,
+      "version": "7",
+      "when": 1793330000338,
+      "tag": "0938_data_permission_enforcement",
+      "breakpoints": true
     }
   ]
 }
