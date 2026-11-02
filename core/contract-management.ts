@@ -20,7 +20,7 @@ const unavailable=():never=>{throw new ContractManagementError('forbidden','This
 export type ContractConfiguration=ContractSettings&{ownersConfirmed:boolean;allowanceComponentId:string;dailyHour:number};
 export type ContractSource=ContractDocumentFacts&{employmentId:string;companyId:string;personId:string;startOn:string;endOn:string;salaryCents:string|null;allowanceCents:string|null;allowanceComponentId:string|null;sourceRevision:string;ended:boolean;businessGroupId?:string};
 export type ContractDocumentMetadata={id:string;type:ContractDocumentType;templateId:string;templateVersion:number;decisionRevision:number;hash:string;issuedAt:string|null;releasedAt:string|null;supersededAt:string|null;accepted:boolean;employeeDocumentId:string|null};
-export type ContractCaseChoices={routes:{id:string;name:string;version:number;approvals:ContractCase['approvals'];blockedReason:string|null}[];approvalStepIds:string[];holders:{id:string;name:string}[]};
+export type ContractCaseChoices={routes:{id:string;name:string;version:number;approvals:ContractCase['approvals'];blockedReason:string|null}[];approvalStepIds:string[];holders:{id:string;name:string}[];currentWorkflow:{id:string;name:string;version:number}|null};
 export type ContractCaseView={record:ContractCase;source:ContractSource;sourceConflict:string|null;manager:boolean;pbp:boolean;gbs:boolean;employee:boolean;configure:boolean;choices:ContractCaseChoices;documents:ContractDocumentMetadata[];activity:{id:string;action:string;actor:string|null;at:string;detail:Record<string,unknown>}[];effects:{kind:string;status:string;error:string|null;receipt:Record<string,unknown>|null}[]};
 export type ContractWorkflowRow={id:string;companyId:string;revision:number;draft:ContractWorkflow;publishedVersion:number|null;enabled:boolean;required:boolean};
 export type ContractTemplateRow={id:string;companyId:string;type:ContractDocumentType;revision:number;draft:LetterDocument;liveVersion:number|null;submittedAt:string|null;signatoryName:string|null;signatoryTitle:string|null;canApprove:boolean};
@@ -37,7 +37,7 @@ async function caseTx(tx:Tx,id:string,lock=false):Promise<ContractCaseView>{
  const effects=await tx.execute<ContractCaseView['effects'][number]>(sql`select kind,status,error,receipt from contract_effect where case_id=${id}::uuid order by kind`);
  const [choiceRow]=await tx.execute<{choices:ContractCaseChoices}>(sql`select app.contract_case_choices(${id}::uuid) as choices`);
  const employeeOnly=row.employee&&!row.pbp&&!row.gbs&&!row.manager;
- const issued=documents.filter(d=>d.issuedAt&&!d.supersededAt),visibleRecord=employeeOnly?employeeCaseRecord(row.data,issued.length>0):row.data;
+ const issued=documents.filter(d=>(d.issuedAt||d.releasedAt)&&!d.supersededAt),visibleRecord=employeeOnly?employeeCaseRecord(row.data,issued.some(d=>d.id===row.data.document?.id&&d.hash===row.data.document?.hash&&d.decisionRevision===row.data.decision?.revision)):row.data;
  return {record:visibleRecord,source:row.source,sourceConflict:row.source_conflict,manager:row.manager,pbp:row.pbp,gbs:row.gbs,employee:row.employee,configure:row.configure,choices:choiceRow.choices,documents:employeeOnly?issued:documents,activity:employeeOnly?[]:activity,effects:effects.map(e=>({...e,error:e.error?'This contract action needs review. People Ops must check the current records and retry.':null,receipt:employeeOnly?null:e.receipt}))};
 }
 export async function contractCase(ctx:SessionContext,id:string){return withLifecycleTenant(ctx,tx=>caseTx(tx,id));}
@@ -83,15 +83,10 @@ async function generateDocumentTx(tx:Tx,ctx:SessionContext,caseId:string,expecte
  const [r]=await tx.execute<{value:{case:ContractCase;documentId:string}}>(sql`select app.contract_store_document(${caseId}::uuid,${expected},${t.id}::uuid,${t.version},${type},${rendered.pdf},${JSON.stringify(rendered.values)}::jsonb,${JSON.stringify(override??t.document)}::jsonb) as value`);return r.value;
 }
 export async function generateContractDocument(ctx:SessionContext,raw:unknown){const p=z.object({caseId:uuid,revision,type:z.enum(['renewal','end','declined','retirement']),caseEdits:z.unknown().optional()}).strict().parse(raw);return withLifecycleTenant(ctx,tx=>generateDocumentTx(tx,ctx,p.caseId,p.revision,p.type,p.caseEdits===undefined?undefined:validateContractTemplate(p.caseEdits)));}
-export async function contractDocument(ctx:SessionContext,caseId:string,documentId:string){uuid.parse(caseId);uuid.parse(documentId);return withLifecycleTenant(ctx,async tx=>{const view=await caseTx(tx,caseId),[row]=await tx.execute<{content:Buffer;signed_content:Buffer|null;content_hash:string;signature:unknown;issued_at:string|null}>(sql`select content,signed_content,content_hash,signature,issued_at::text from contract_document where id=${documentId}::uuid and case_id=${caseId}::uuid`);if(!row||view.employee&&!view.pbp&&!view.gbs&&!view.manager&&!row.issued_at)unavailable();return {bytes:row.signed_content??row.content,hash:row.content_hash,signature:row.signature,name:`${view.record.number}.pdf`};});}
+export async function contractDocument(ctx:SessionContext,caseId:string,documentId:string){uuid.parse(caseId);uuid.parse(documentId);return withLifecycleTenant(ctx,async tx=>{const view=await caseTx(tx,caseId),[row]=await tx.execute<{content:Buffer;signed_content:Buffer|null;content_hash:string;signature:unknown;issued_at:string|null;released_at:string|null}>(sql`select content,signed_content,content_hash,signature,issued_at::text,released_at::text from contract_document where id=${documentId}::uuid and case_id=${caseId}::uuid`);if(!row||view.employee&&!view.pbp&&!view.gbs&&!view.manager&&!row.issued_at&&!row.released_at)unavailable();return {bytes:row.signed_content??row.content,hash:row.content_hash,signature:row.signature,name:`${view.record.number}.pdf`};});}
 export async function acceptContract(ctx:SessionContext,raw:unknown){const p=z.object({caseId:uuid,revision,documentId:uuid,hash:z.string().regex(/^[a-f0-9]{64}$/),action:z.enum(['accept','decline']),reason:z.string().trim().max(5000),signature:z.object({method:z.enum(['typed','drawn']),value:z.string(),consent:z.literal(true)}).strict().nullable()}).strict().parse(raw);if(p.action==='accept'&&(!p.signature||!validV9SignatureValue(p.signature.method,p.signature.value)))throw new ContractManagementError('invalid','Provide your signature and consent.');
  const accepted=await withLifecycleTenant(ctx,async tx=>{const view=await caseTx(tx,p.caseId);if(!view.employee)unavailable();const [doc]=await tx.execute<{content:Buffer;content_hash:string}>(sql`select content,content_hash from contract_document where id=${p.documentId}::uuid and case_id=${p.caseId}::uuid`);if(!doc||doc.content_hash!==p.hash)throw new ContractManagementError('conflict','Review the current issued document.');
- let signed=Buffer.alloc(0);if(p.action==='accept'){
-  const pdf=await PDFDocument.load(doc.content),at=new Date().toISOString(),lines=[`Issued document SHA256: ${p.hash}`,`Verified login: ${ctx.userId}`,`Employee: ${view.source.name}`,'The employee accepted this exact issued contract with explicit consent.',`Signature method: ${p.signature!.method}`];
-  const evidence=await renderLetterPdf({document:{version:1,language:'en',blocks:lines.map(text=>({type:'paragraph' as const,content:[{type:'text' as const,text}]}))},reference:view.record.number,title:'Employee acceptance evidence',signature:{name:p.signature!.method==='typed'?p.signature!.value:view.source.name,caption:'Authenticated employee acceptance',timestamp:at,stamp:p.signature!.method==='drawn'?Buffer.from(p.signature!.value.split(',')[1],'base64'):undefined}}),appendix=await PDFDocument.load(evidence.bytes);
-  for(const page of await pdf.copyPages(appendix,appendix.getPageIndices()))pdf.addPage(page);signed=Buffer.from(await pdf.save());
- }
- const [r]=await tx.execute<{data:ContractCase}>(sql`select app.contract_accept_document(${p.caseId}::uuid,${p.revision},${p.documentId}::uuid,${p.hash},${p.action},${p.reason},${JSON.stringify(p.signature)}::jsonb,${signed}) as data`);
+ const [r]=await tx.execute<{data:ContractCase}>(sql`select app.contract_accept_document(${p.caseId}::uuid,${p.revision},${p.documentId}::uuid,${p.hash},${p.action},${p.reason},${JSON.stringify(p.signature)}::jsonb,NULL) as data`);
  return employeeCaseRecord(r.data,true);
  });
  // Acceptance is durable before a separate canonical effect transaction. A busy dependency
@@ -124,12 +119,21 @@ export async function contractOffboardingTx(tx:Tx,ctx:SessionContext,caseId:stri
  const offboardingId=await v9CreateOffboardingTx(tx,ctx,{employmentId:intent.employmentId,type:intent.type,noticeDate:intent.noticeDate,lastDay:intent.lastDay},{kind:'contract',caseId});
  const [done]=await tx.execute<{data:ContractCase}>(sql`select app.contract_complete_handoff(${caseId}::uuid,${offboardingId}::uuid,NULL) as data`);return done.data;
 }
-export async function handoffContract(ctx:SessionContext,raw:unknown){const p=z.object({caseId:uuid,manualReason:z.string().trim().min(10).max(5000).optional()}).strict().parse(raw);return withLifecycleTenant(ctx,tx=>contractOffboardingTx(tx,ctx,p.caseId,p.manualReason));}
+export async function handoffContract(ctx:SessionContext,raw:unknown){const p=z.object({caseId:uuid,manualReason:z.string().trim().min(10).max(5000).optional()}).strict().parse(raw);return withLifecycleTenant(ctx,async tx=>{if(p.manualReason){const [r]=await tx.execute<{data:ContractCase}>(sql`select app.contract_complete_handoff(${p.caseId}::uuid,NULL,${p.manualReason}) as data`);return r.data;}const [r]=await tx.execute<{result:{pending:boolean;queued:boolean}}>(sql`select app.contract_request_handoff_retry(${p.caseId}::uuid) as result`);return r.result;});}
 export async function runContractWorkflow(ctx:SessionContext,raw:unknown){const p=z.object({caseId:uuid,workflowId:uuid,event:z.enum(['beforeContractEnd','decisionSubmitted','approvalRejected','signatureDeclined']),eventKey:z.string().max(200).optional()}).strict().parse(raw);return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{processed:number}>(sql`select app.contract_run_workflow(${p.caseId}::uuid,${p.workflowId}::uuid,${p.event}) as processed`);return r;});}
 export async function reconcileContractSource(ctx:SessionContext,raw:unknown){const p=z.object({caseId:uuid,revision,reason:z.string().trim().min(10).max(5000)}).strict().parse(raw);return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{data:ContractCase}>(sql`select app.contract_reconcile_source(${p.caseId}::uuid,${p.revision},${p.reason}) as data`);return r.data;});}
 export async function verifyContractRecords(ctx:SessionContext,raw:unknown){const p=z.object({caseId:uuid,reason:z.string().trim().min(10).max(5000)}).strict().parse(raw);return withLifecycleTenant(ctx,tx=>tx.execute(sql`select app.contract_verify_records(${p.caseId}::uuid,${p.reason})`));}
 
 /** Existing maintenance transport supplies a genuine owner connection. No fabricated login or roles. */
+async function sealAcceptedContractCopyTx(tx:Tx,documentId:string){
+ const [doc]=await tx.execute<{content:Buffer;content_hash:string;signature:{method:'typed'|'drawn';value:string;userId:string;at:string;name:string};number:string}>(sql`select d.content,d.content_hash,d.signature,c.number from contract_document d join contract_case c on c.id=d.case_id and c.tenant_id=d.tenant_id where d.id=${documentId}::uuid and d.signature->>'action'='accept' and d.signed_content is null for update of d`);
+ if(!doc)return;
+ const signature=doc.signature,pdf=await PDFDocument.load(doc.content);
+ const lines=[`Issued document SHA256: ${doc.content_hash}`,`Verified login: ${signature.userId}`,`Employee: ${signature.name}`,'The employee accepted this exact issued contract with explicit consent.',`Signature method: ${signature.method}`];
+ const evidence=await renderLetterPdf({document:{version:1,language:'en',blocks:lines.map(text=>({type:'paragraph' as const,content:[{type:'text' as const,text}]}))},reference:doc.number,title:'Employee acceptance evidence',signature:{name:signature.method==='typed'?signature.value:signature.name,caption:'Authenticated employee acceptance',timestamp:signature.at,stamp:signature.method==='drawn'?Buffer.from(signature.value.split(',')[1],'base64'):undefined}}),appendix=await PDFDocument.load(evidence.bytes);
+ for(const page of await pdf.copyPages(appendix,appendix.getPageIndices()))pdf.addPage(page);
+ const bytes=Buffer.from(await pdf.save());await tx.execute(sql`select app.contract_seal_signed_copy(${documentId}::uuid,${doc.content_hash},${bytes})`);
+}
 export async function sweepContractManagement(ctx:SessionContext,connection:import('./notice-projection').NotificationSweepConnection,now:Date=new Date()):Promise<{processed:number;failed:number}>{
  if(ctx.userId||!Number.isFinite(now.getTime()))throw new ContractManagementError('forbidden','Contract maintenance requires a tenant-bound owner connection.');
  const {assertNotificationSweepConnection}=await import('./notice-projection'),{isModuleEnabled}=await import('./entitlements');let processed=0,failed=0;
@@ -138,6 +142,7 @@ export async function sweepContractManagement(ctx:SessionContext,connection:impo
   if(!isModuleEnabled(ctx,'lifecycle',company.company_id))continue;
   const cases=await connection.withTenant(ctx,async tx=>{await assertNotificationSweepConnection(tx);return tx.execute<{id:string}>(sql`select id from contract_case where tenant_id=${ctx.tenantId}::uuid and company_id=${company.company_id}::uuid and data->>'state'<>'cancelled' order by last_synced_at,id limit 1000`);});
   for(const item of cases){try{
+   await connection.withTenant(ctx,async tx=>{await assertNotificationSweepConnection(tx);await tx.execute(sql`select app.access_workforce_write_lock()`);const [admission]=await tx.execute<{ok:boolean}>(sql`select app.contract_effect_authorised(${item.id}::uuid) as ok`);if(!admission?.ok)return;const sealed=await tx.execute<{id:string}>(sql`select d.id from contract_document d join contract_case c on c.id=d.case_id and c.tenant_id=d.tenant_id where d.case_id=${item.id}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.employee_document_id is null and d.superseded_at is null and (d.released_at is not null or d.signature->>'action'='accept') and c.data->>'state' in('records_pending','ending') order by d.id`);for(const doc of sealed){await sealAcceptedContractCopyTx(tx,doc.id);await fileAcceptedContractDocumentTx(tx,ctx,doc.id);}});
    await connection.withTenant(ctx,async tx=>{
     await assertNotificationSweepConnection(tx);
     await tx.execute(sql`select app.access_workforce_write_lock()`);
@@ -147,10 +152,6 @@ export async function sweepContractManagement(ctx:SessionContext,connection:impo
      await tx.execute(sql`update contract_case set source_conflict='Personnel source changed; assigned PBP or GBS must reconcile the case.',last_synced_at=now() where id=${item.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);return;
     }
     await tx.execute(sql`update contract_case set last_synced_at=now() where id=${item.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
-    if(row.data.state==='records_pending'||row.data.state==='ending'){
-     const sealed=await tx.execute<{id:string}>(sql`select id from contract_document where case_id=${item.id}::uuid and tenant_id=${ctx.tenantId}::uuid and employee_document_id is null and superseded_at is null and (released_at is not null or signature->>'action'='accept') order by id`);
-     for(const document of sealed)await fileAcceptedContractDocumentTx(tx,ctx,document.id);
-    }
     if(row.data.state==='records_pending')await applyAcceptedContractRecordsTx(tx,ctx,item.id);
     if(row.data.state==='ending'){
      const [released]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from contract_document where case_id=${item.id}::uuid and released_at is not null and superseded_at is null) as ok`);
@@ -161,7 +162,7 @@ export async function sweepContractManagement(ctx:SessionContext,connection:impo
     await tx.execute(sql`select app.contract_run_reminders(${item.id}::uuid)`);
     processed++;
    });
-  }catch(error){failed++;await connection.withTenant(ctx,async tx=>{await assertNotificationSweepConnection(tx);await tx.execute(sql`insert into contract_effect_diagnostic(tenant_id,case_id,message) values(${ctx.tenantId}::uuid,${item.id}::uuid,${error instanceof Error?error.message.slice(0,20000):'Contract maintenance failed.'})`);await tx.execute(sql`update contract_effect set status='failed',error='This contract action needs review. People Ops must check the current records and retry.',attempts=attempts+1 where tenant_id=${ctx.tenantId}::uuid and case_id=${item.id}::uuid and status<>'done'`);});}}
+  }catch(error){failed++;await connection.withTenant(ctx,async tx=>{await assertNotificationSweepConnection(tx);await tx.execute(sql`insert into contract_effect_diagnostic(tenant_id,case_id,message) values(${ctx.tenantId}::uuid,${item.id}::uuid,${error instanceof Error?error.message.slice(0,20000):'Contract maintenance failed.'})`);await tx.execute(sql`update contract_effect set status='failed',error='This contract action needs review. People Ops must check the current records and retry.',attempts=attempts+1 where tenant_id=${ctx.tenantId}::uuid and case_id=${item.id}::uuid and kind in('filing','records','offboarding') and status<>'done'`);});}}
  }
  return {processed,failed};
 }
@@ -175,11 +176,10 @@ export async function refreshContractApprovers(ctx:SessionContext,raw:unknown){c
 
 export async function amendContractEnd(ctx:SessionContext,raw:unknown){const p=z.object({caseId:uuid,revision,endOn:z.iso.date(),reason:z.string().trim().min(10).max(5000)}).strict().parse(raw);return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{data:ContractCase}>(sql`select app.contract_amend_maternity_end(${p.caseId}::uuid,${p.revision},${p.endOn}::date,${p.reason}) as data`);return r.data;});}
 
-export type ContractInboxItem={caseId:string;number:string;name:string;endOn:string;kind:'decision'|'confirmation'|'approval'|'acceptance'|'letter'|'handoff'|'records'|'verification';href:string};
+export type ContractInboxItem={caseId:string;number:string;name:string;endOn:string;kind:'decision'|'confirmation'|'approval'|'acceptance'|'letter'|'handoff'|'records'|'verification'|'expiry';href:string};
 export async function contractInbox(ctx:SessionContext):Promise<{count:number;items:ContractInboxItem[]}>{
- return withLifecycleTenant(ctx,async tx=>{const rows=await tx.execute<{id:string;number:string;data:ContractCase;name:string;manager:boolean;pbp:boolean;gbs:boolean;employee:boolean;approval:boolean;verify:boolean;letter:boolean}>(sql`select * from app.contract_inbox_projection()`);
- const items:ContractInboxItem[]=[];for(const r of rows){let kind:ContractInboxItem['kind']|null=null;if(r.employee&&r.data.state==='e_acceptance')kind='acceptance';else if(r.approval)kind='approval';else if(r.pbp&&r.data.state==='decision_pending')kind=r.data.decision?'confirmation':'decision';else if(r.manager&&r.data.state==='decision_pending'&&(!r.data.decision||r.data.approvals.some(a=>a.state==='rejected')))kind='decision';else if(r.gbs&&r.data.state==='ending')kind=r.letter?'letter':'handoff';else if(r.gbs&&r.data.state==='records_pending')kind='records';else if(r.gbs&&r.data.state==='renewed'&&r.verify)kind='verification';if(kind)items.push({caseId:r.id,number:r.number,name:r.name,endOn:r.data.term.endOn,kind,href:'/lifecycle/contracts/'+r.id});}return {count:items.length,items};
- });
+ const {isModuleEnabledOrFalse}=await import('./entitlements');if(!isModuleEnabledOrFalse(ctx,'lifecycle')&&!(ctx.entitlements?.scopedModules.lifecycle??[]).some(id=>isModuleEnabledOrFalse(ctx,'lifecycle',id)))return {count:0,items:[]};
+ return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{inbox:{count:number;items:ContractInboxItem[]}}>(sql`select app.contract_inbox_projection() as inbox`);return r?.inbox??{count:0,items:[]};});
 }
 
 /** Root navigation admission only: no Personnel, company or case arrays are materialised. */
