@@ -16,7 +16,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
-import {withTenant} from '../db/client';
+import {withTenant,type Tx} from '../db/client';
 import {createIndividualTxn,updateIndividualTxn} from '../core/payroll-individual-txn';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -180,6 +180,30 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
   });
 
   // ───────────────────────── the difference, both directions ─────────────────────────
+
+  it('rejects agent markers at fixed-human effect ports without changing salary, processed runs, catalogue or audit',async()=>{
+    const {a,employmentId}=await hire(5000,'Actor boundary Ann'),march=await runAndClose('2026-03');
+    await setCompensation(a,{employmentId,basicSalary:6000,effectiveFrom:'2026-03-01'});
+    const {runId}=await calculateBackPay(a,{companyId:base.companyId,targetPayPeriod:'2026-04'});
+    const {batchId:processed}=await createBatch(a,{companyId:base.companyId,payPeriod:'2026-05'});await generatePayslips(a,{batchId:processed});
+    // A registered agent is an identity, with no switch-on or business authority added.
+    const [principal]=await owner.client`insert into app.ai_agent_principal(tenant_id) values(${base.tenantId}) on conflict(tenant_id) do update set tenant_id=excluded.tenant_id returning id`;
+    const agent={...a,userId:undefined,personId:undefined,roles:[],grants:[],agent:{principalId:principal.id as string,enablements:[]}};
+    const [actualAgent]=await withTenant(agent,tx=>tx.execute<{id:string}>(sql`select app.current_agent_principal() as id`));expect(actualAgent.id).toBe(principal.id);
+    const witness=async()=>({comp:await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,employmentId)).orderBy(schema.compensation.id),batches:await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.companyId,base.companyId)).orderBy(schema.payrollBatch.id),catalogue:await owner.db.select().from(schema.payComponent).where(eq(schema.payComponent.tenantId,base.tenantId)).orderBy(schema.payComponent.id),events:await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.tenantId,base.tenantId)).orderBy(schema.domainEvent.sequence),closed:await payslipRow(employmentId,march)});
+    const before=await witness();
+    const change=async(tx:Tx)=>{const [comp]=await tx.select().from(schema.compensation).where(and(eq(schema.compensation.employmentId,employmentId),sql`${schema.compensation.validTo} is null`));await tx.update(schema.compensation).set({basicSalary:'6100'}).where(eq(schema.compensation.id,comp.id));};
+    await expect(withTenant(a,async tx=>{await change(tx);const marked=await tx.execute<{batch_id:string}>(sql`select * from app.financial_mark_source_payroll_stale(ARRAY[${employmentId}::uuid],'compensation','2026-01-01'::date)`);expect(marked.map(row=>row.batch_id)).toContain(processed);throw Error('Native source baseline rollback');})).rejects.toThrow('Native source baseline rollback');
+    expect(await witness()).toEqual(before);
+    const denied=async(run:()=>Promise<unknown>,message:string)=>{let code:string|undefined,text='';try{await run();}catch(error){let cause:unknown=error;while(cause&&typeof cause==='object'){const row=cause as {code?:string;message?:string;cause?:unknown};code=row.code??code;text+=' '+(row.message??'');cause=row.cause;}}expect(code).toBe('42501');expect(text).toContain(message);};
+    for(const marker of [principal.id as string,'invalid-agent-marker']){
+      await denied(()=>withTenant(a,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id',${marker},true)`);await tx.execute(sql`select app.backpay_component(${runId}::uuid,'earning')`);}), 'Back Pay actor unavailable');
+      await denied(()=>withTenant(a,async tx=>{await change(tx);await tx.execute(sql`select set_config('app.agent_principal_id',${marker},true)`);await tx.execute(sql`select * from app.financial_mark_source_payroll_stale(ARRAY[${employmentId}::uuid],'compensation','2026-01-01'::date)`);}), 'Payroll source actor unavailable');
+      expect(await witness()).toEqual(before);
+    }
+    await denied(()=>withTenant(agent,tx=>tx.execute(sql`select app.backpay_component(${runId}::uuid,'earning')`)),'Back Pay actor unavailable');
+    await approveAndPostBackPay(a,{runId});expect((await backPayRunDetail(a,runId))!.run.status).toBe('posted');expect(await payslipRow(employmentId,march)).toEqual(before.closed);
+  });
 
   it('a backdated RISE produces a positive basic line, and the closed payslip is byte-identical afterwards', async () => {
     const { a, employmentId } = await hire(5000);
