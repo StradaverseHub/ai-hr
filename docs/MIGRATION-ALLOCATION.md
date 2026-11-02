@@ -930,7 +930,7 @@ before release; no deployment or installation is authorized.
 ## Administrative data-profile central enforcement — 2 November 2026 (provisional)
 
 Security worker appends `0938_data_permission_enforcement`, aggregate index760,
-when1793330000338, SQL SHA256 `11013445c30fbfb8a30244989801370d3095a00bdcf5964ead3c43ec200eeb32`. Its owned source journal leaves
+when1793330000338, SQL SHA256 `54dd227a693b7d02a6f37f38e2edb8efedd87ae8381b384718a41594c5b8358c`. Its owned source journal leaves
 index759 reserved for the independent0937 / when1793330000337 bypass-owner migration.
 The integration owner must merge0937 in chronological order and re-audit competing claims and live
 watermark before installation. This central row-scope prerequisite does not claim that the complete
@@ -939,7 +939,7 @@ requested action-binding expansion has passed acceptance or is ready for release
 ## Financial and Letters action restrictions — 2 November 2026 (provisional)
 
 Security worker reserves `0941_financial_letter_actions`, aggregate index763,
-when1793330000341, SQL SHA256 `22f31fc660d771383ab50c6ecd12d18c6dde6aa31d13f5e04739eefec2f44a5e`. This source checkpoint depends on
+when1793330000341, SQL SHA256 `e62cb99f0e79928d3b2dc4a0d4b0346976dcf6785fac782e96d03250d35ba452`. This source checkpoint depends on
 0939 Workforce action helpers and0940 bounded Profile effect proofs. Parent owns0942
 Organisation/Settings and0945 Financial setup/history;0943/0944 are independently allocated.
 The code-owned publisher requires `app.financial_letter_bindings_complete()`; this checkpoint

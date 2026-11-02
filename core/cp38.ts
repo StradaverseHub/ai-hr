@@ -18,7 +18,7 @@ import { and, desc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizz
 import { type SessionContext, type Tx } from '../db/client';
 import { withPayrollHistoryTenant as withTenant } from './payroll-history-lock';
 import { actorOf, appendEvent } from '../db/events';
-import { employeeCp38, payrollBatch, payslip } from '../db/schema';
+import { employeeCp38, payrollDocumentBatch, payrollBatch, payslip } from '../db/schema';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 
@@ -319,6 +319,7 @@ export async function cp38ForPeriod(
 ): Promise<Map<string, { amount: number; cp38Ref: string }>> {
   const out = new Map<string, { amount: number; cp38Ref: string }>();
   if (empIds.length === 0) return out;
+  const payrollBatch=payrollDocumentBatch;
   const rows = await cp38RowsForPeriod(tx, empIds, periodKey);
   // First row per employment wins (latest valid_from) — overlap is impossible, so this is deterministic.
   for (const r of rows) {

@@ -179,10 +179,13 @@ BEGIN
   IF native='approve' THEN operation:='approve';END IF;
  WHEN 'letter_policy_version' THEN
   native:='settings';IF (row_data->>'ordinal')::integer>1 THEN operation:='edit';END IF;
+  IF TG_OP='INSERT' AND NOT (row_data->>'enabled')::boolean AND EXISTS(SELECT 1 FROM public.letter_policy_version v WHERE v.tenant_id=app.current_tenant_id() AND v.company_id=co AND v.category=row_data->>'category' AND v.ordinal=(row_data->>'ordinal')::integer-1 AND v.enabled) THEN operation:='delete';END IF;
  WHEN 'letter_merge_field_version' THEN
   native:='template';IF (row_data->>'ordinal')::integer>1 THEN operation:='edit';END IF;
+  IF TG_OP='INSERT' AND NOT (row_data->>'active')::boolean AND EXISTS(SELECT 1 FROM public.letter_merge_field_version v WHERE v.tenant_id=app.current_tenant_id() AND v.company_id=co AND v.key=row_data->>'key' AND v.ordinal=(row_data->>'ordinal')::integer-1 AND v.active) THEN operation:='delete';END IF;
  WHEN 'letter_automation_rule_version' THEN
   native:='settings';IF (row_data->>'ordinal')::integer>1 THEN operation:='edit';END IF;
+  IF TG_OP='INSERT' AND NOT (row_data->>'enabled')::boolean AND EXISTS(SELECT 1 FROM public.letter_automation_rule_version v WHERE v.tenant_id=app.current_tenant_id() AND v.company_id=co AND v.template_id=(row_data->>'template_id')::uuid AND v.trigger=row_data->>'trigger' AND v.ordinal=(row_data->>'ordinal')::integer-1 AND v.enabled) THEN operation:='delete';END IF;
   IF TG_OP='INSERT' AND (row_data->>'enabled')::boolean AND NOT app.access_letter_action(co,'generate','add') THEN RAISE EXCEPTION 'Letter automatic generation action unavailable' USING ERRCODE='42501';END IF;
  WHEN 'letter_template' THEN
   native:='template';IF TG_OP='UPDATE' AND (row_data->>'deactivated')::boolean AND NOT (old_data->>'deactivated')::boolean THEN operation:='delete';END IF;
@@ -410,7 +413,7 @@ CREATE OR REPLACE FUNCTION app.access_can_delegate(p_capability text,p_company u
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.access_capability c
   JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id()
-  WHERE c.id=p_capability AND (p_capability !~ '^(payroll|performance_compensation|letters)\.' OR app.financial_letter_delegation_allowed(u.tenant_id,u.id,p_capability,p_company)) AND (p_capability !~ '^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$' OR app.access_can_delegate(split_part(p_capability,'.',1)||'.view',p_company)) AND c.supported AND jsonb_array_length(c.bindings)>0
+  WHERE c.id=p_capability AND (p_capability !~ '^(payroll|performance_compensation|letters)\.' OR app.financial_letter_delegation_allowed(u.tenant_id,u.id,p_capability,p_company)) AND (p_capability !~ '^(payroll|performance_compensation)\.' OR app.access_financial_action_company(split_part(p_capability,'.',1),p_company,split_part(p_capability,'.',2))) AND (p_capability !~ '^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$' OR app.access_can_delegate(split_part(p_capability,'.',1)||'.view',p_company)) AND c.supported AND jsonb_array_length(c.bindings)>0
    AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
    AND CASE WHEN c.scope='tenant' THEN p_company IS NULL AND app.access_allowed_for(u.id,c.id,NULL)
     WHEN p_company IS NOT NULL THEN app.access_allowed_for(u.id,c.id,p_company)
@@ -452,3 +455,318 @@ INSERT INTO app.access_default_capability_grant(legacy_key,capability_id) VALUES
  ('hr_admin','letters.delete'),
  ('hr_admin','letters.approve'),
  ('hr_admin','letters.issue') ON CONFLICT DO NOTHING;
+--> statement-breakpoint
+CREATE TABLE app.letter_operation_effect (
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,letter_id uuid NOT NULL,company_id uuid NOT NULL,native_capability text NOT NULL,operation text NOT NULL,
+ PRIMARY KEY(transaction_id,tenant_id,user_id,letter_id,native_capability,operation)
+);
+ALTER TABLE app.letter_operation_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.letter_operation_effect FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.letter_operation_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE operation text:='edit';native text:='generate';
+BEGIN
+ IF app.current_user_id() IS NULL THEN RETURN NEW;END IF;
+ IF TG_OP='INSERT' THEN operation:='add';
+ ELSIF NEW.state IN ('withdrawn','void') AND NEW.state IS DISTINCT FROM OLD.state THEN operation:='delete';IF NEW.state='void' THEN native:='issue';END IF;
+ ELSIF NEW.state='issued' AND OLD.state='approved' THEN operation:='issue';native:='issue';
+ ELSIF OLD.state='submitted' AND NEW.state IN ('submitted','approved','returned','rejected') THEN operation:='approve';native:='approve';
+ ELSIF NEW.legal_hold IS DISTINCT FROM OLD.legal_hold OR NEW.retain_until IS DISTINCT FROM OLD.retain_until THEN native:='settings';
+ ELSIF OLD.current_revision_id IS NULL AND app.financial_letter_born('letter_record',NEW.id)='add' THEN operation:='add';END IF;
+ INSERT INTO app.letter_operation_effect VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),NEW.id,NEW.company_id,native,operation) ON CONFLICT DO NOTHING;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.letter_operation_record() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER letter_operation_effect AFTER INSERT OR UPDATE ON letter_record FOR EACH ROW EXECUTE FUNCTION app.letter_operation_record();
+--> statement-breakpoint
+CREATE FUNCTION app.access_letter_job_action_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE data jsonb:=to_jsonb(NEW);
+BEGIN
+ IF app.current_user_id() IS NULL AND app.letter_notification_storage_owner() THEN RETURN NULL;END IF;
+ IF NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR TG_OP='DELETE' OR NEW.letter_id IS NULL THEN RAISE EXCEPTION 'Letter delivery consequence unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='UPDATE' AND (NEW.status<>'cancelled' OR NEW.lease_token IS NOT NULL OR NEW.lease_until IS NOT NULL
+  OR data-ARRAY['status','lease_token','lease_until','last_error'] IS DISTINCT FROM to_jsonb(OLD)-ARRAY['status','lease_token','lease_until','last_error']) THEN RAISE EXCEPTION 'Letter cancellation consequence unavailable' USING ERRCODE='42501';END IF;
+ IF NOT EXISTS(SELECT 1 FROM app.letter_operation_effect proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.letter_id=NEW.letter_id AND proof.company_id=NEW.company_id
+  AND app.access_letter_action(proof.company_id,proof.native_capability,proof.operation)
+  AND (TG_OP<>'UPDATE' OR proof.operation IN ('delete','approve'))
+  AND (TG_OP='UPDATE' OR EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.id=NEW.source_event_id AND audit.tenant_id=NEW.tenant_id AND audit.aggregate_id=NEW.letter_id AND audit.aggregate_type='letter' AND audit.actor_id=app.current_user_id() AND audit.xmin::text=pg_current_xact_id()::text
+   AND (proof.operation='edit' AND audit.event_type='letter.submitted' OR proof.operation='approve' AND audit.event_type IN ('letter.approval.approve','letter.approval.reject','letter.approval.return','letter.approval.delegated') OR proof.operation='issue' AND audit.event_type='letter.issued'))))
+ THEN RAISE EXCEPTION 'Letter delivery consequence unavailable' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.access_letter_job_action_guard() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER financial_letter_job_action AFTER INSERT OR UPDATE OR DELETE ON letter_job DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_letter_job_action_guard();
+--> statement-breakpoint
+CREATE FUNCTION app.access_letter_counter_action_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_user_id() IS NULL AND app.letter_notification_storage_owner() AND app.letter_automation_insert_allowed('letter_counter',to_jsonb(NEW)||jsonb_build_object('next_value',1)) THEN RETURN NEW;END IF;
+ IF NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT EXISTS(SELECT 1 FROM public.company c WHERE c.tenant_id=NEW.tenant_id AND app.access_letter_action(c.id,'generate','add')) THEN RAISE EXCEPTION 'Letter reference allocation unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.access_letter_counter_action_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_letter_counter_action BEFORE INSERT OR UPDATE ON letter_counter FOR EACH ROW EXECUTE FUNCTION app.access_letter_counter_action_guard();
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.letter_automation_owner_eligible_at(wanted_tenant uuid,subject uuid,co uuid,confidential boolean) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.letter_creator_eligible_at(wanted_tenant,subject,co,confidential)
+ AND app.access_letter_action_for_user(wanted_tenant,subject,co,'generate','add')
+ AND EXISTS(SELECT 1 FROM public.role_assignment r JOIN public.access_capability c ON c.id='workforce.view'
+  WHERE r.tenant_id=wanted_tenant AND r.app_user_id=subject AND r.role::text IN ('hr_admin','super_admin') AND app.access_scope_covers(r.company_id,co,wanted_tenant)
+  AND (NOT c.supported OR app.access_allowed_for_tenant(wanted_tenant,subject,c.id,co)));
+$$;
+--> statement-breakpoint
+CREATE TABLE app.financial_kernel_context (
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,table_name text NOT NULL,before_hash text NOT NULL,after_hash text NOT NULL,
+ company_id uuid,old_company_id uuid,employment_id uuid,batch_id uuid,
+ PRIMARY KEY(transaction_id,tenant_id,user_id,table_name,before_hash,after_hash)
+);
+ALTER TABLE app.financial_kernel_context ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_kernel_context FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_kernel_context_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ data jsonb:=CASE WHEN TG_OP='DELETE' THEN before_row ELSE after_row END;co uuid;old_co uuid;batch uuid;
+BEGIN
+ IF app.acting_as_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;END IF;
+ IF data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Financial context unavailable' USING ERRCODE='42501';END IF;
+ co:=(data->>'company_id')::uuid;old_co:=(before_row->>'company_id')::uuid;
+ batch:=CASE WHEN TG_TABLE_NAME='payroll_batch' THEN (data->>'id')::uuid ELSE (data->>'batch_id')::uuid END;
+ IF co IS NULL AND batch IS NOT NULL THEN SELECT b.company_id INTO co FROM public.payroll_batch b WHERE b.id=batch AND b.tenant_id=app.current_tenant_id();END IF;
+ IF co IS NULL THEN RAISE EXCEPTION 'Financial parent unavailable' USING ERRCODE='42501';END IF;
+ INSERT INTO app.financial_kernel_context VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),TG_TABLE_NAME,
+ encode(sha256(convert_to(before_row::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex'),co,old_co,(data->>'employment_id')::uuid,batch) ON CONFLICT DO NOTHING;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_kernel_context_record() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.access_payroll_kernel_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ data jsonb:=CASE WHEN TG_OP='DELETE' THEN before_row ELSE after_row END;context app.financial_kernel_context;operation text;
+BEGIN
+ IF app.acting_as_owner() THEN RETURN NULL;END IF;
+ SELECT * INTO context FROM app.financial_kernel_context proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.table_name=TG_TABLE_NAME
+ AND proof.before_hash=encode(sha256(convert_to(before_row::text,'UTF8')),'hex') AND proof.after_hash=encode(sha256(convert_to(after_row::text,'UTF8')),'hex');
+ IF context.company_id IS NULL THEN RAISE EXCEPTION 'Financial consequence unavailable' USING ERRCODE='42501';END IF;
+ IF to_regprocedure('app.financial_history_kernel_approved(text,jsonb,jsonb)') IS NOT NULL THEN
+  IF app.financial_history_kernel_approved(TG_TABLE_NAME,before_row,after_row) THEN RETURN NULL;END IF;
+ END IF;
+ IF TG_TABLE_NAME='payroll_batch' AND TG_OP='UPDATE' THEN
+  IF EXISTS(SELECT 1 FROM app.financial_stale_effect proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.batch_id=(data->>'id')::uuid
+   AND proof.before_hash=encode(sha256(convert_to(before_row::text,'UTF8')),'hex') AND proof.after_hash=encode(sha256(convert_to(after_row::text,'UTF8')),'hex')) THEN RETURN NULL;END IF;
+  IF to_regprocedure('app.leave_task_payroll_approved(uuid,jsonb,jsonb)') IS NOT NULL THEN
+   IF app.leave_task_payroll_approved((data->>'id')::uuid,before_row,after_row) THEN RETURN NULL;END IF;
+  END IF;
+ END IF;
+ operation:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+ IF TG_TABLE_NAME IN ('payroll_input','payroll_status_history','payroll_employee_result_history','payroll_reprocess_job','payroll_step_up_challenge') THEN operation:='edit';END IF;
+ IF TG_TABLE_NAME='payslip' THEN operation:=CASE WHEN TG_OP='DELETE' THEN 'delete' ELSE 'edit' END;END IF;
+ IF TG_TABLE_NAME='payroll_batch' AND (NOT app.financial_payroll_scope_allowed(context.company_id,data->'scope',operation,data->>'pay_period') OR TG_OP='UPDATE' AND NOT app.financial_payroll_scope_allowed(coalesce(context.old_company_id,context.company_id),before_row->'scope',operation,before_row->>'pay_period')) THEN RAISE EXCEPTION 'Payroll scope unavailable' USING ERRCODE='42501';END IF;
+ IF TG_TABLE_NAME='payroll_batch' AND TG_OP='INSERT' AND (data->>'status'<>'draft' OR (data->>'employee_count')::integer<>0 OR data->>'totals' IS NOT NULL OR data->>'closed_at' IS NOT NULL OR data->>'released_at' IS NOT NULL OR data->>'needs_recalc_at' IS NOT NULL OR data->>'recalc_employment_ids' IS NOT NULL) THEN RAISE EXCEPTION 'New payroll runs must start as empty drafts' USING ERRCODE='42501';END IF;
+ -- Direct logical action on this row remains sufficient; target scope is always checked.
+ IF app.access_financial_action_company('payroll',context.company_id,operation)
+ AND (context.old_company_id IS NULL OR app.access_financial_action_company('payroll',context.old_company_id,operation))
+ AND (context.employment_id IS NULL OR app.access_financial_action_employment('payroll',context.employment_id,operation)) THEN
+  IF TG_TABLE_NAME='payroll_batch' AND TG_OP='UPDATE' THEN PERFORM app.access_payroll_batch_begin((data->>'id')::uuid,'edit');END IF;
+  RETURN NULL;
+ END IF;
+ -- Batch teardown consumes only an actual native Delete intent bound to this same root.
+ IF TG_OP='DELETE' AND app.financial_batch_intent_allowed(context.batch_id,'delete')
+ AND (context.employment_id IS NULL OR app.access_financial_action_employment('payroll',context.employment_id,'delete')) THEN RETURN NULL;END IF;
+ -- Process results are derived Edit materializations. Deleting a slip under Edit must
+ -- replace that employee's materialization or finish the canonical whole-run reset.
+ IF TG_TABLE_NAME='payslip' AND TG_OP='DELETE' AND app.financial_batch_intent_allowed(context.batch_id,'edit') AND app.access_financial_action_employment('payroll',context.employment_id,'edit')
+ AND (EXISTS(SELECT 1 FROM public.payslip p WHERE p.tenant_id=app.current_tenant_id() AND p.batch_id=context.batch_id AND p.employment_id=context.employment_id)
+  OR EXISTS(SELECT 1 FROM public.payroll_batch b JOIN public.domain_event audit ON audit.aggregate_id=b.id AND audit.tenant_id=b.tenant_id AND audit.event_type='payroll-batch.reset' AND audit.actor_id=app.current_user_id() AND audit.xmin::text=pg_current_xact_id()::text WHERE b.id=context.batch_id AND b.tenant_id=app.current_tenant_id() AND b.status='draft')) THEN RETURN NULL;END IF;
+ RAISE EXCEPTION 'Payroll action unavailable' USING ERRCODE='42501';
+END;
+$$;
+REVOKE ALL ON FUNCTION app.access_payroll_kernel_guard() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+DO $$ DECLARE table_name text;BEGIN
+ FOREACH table_name IN ARRAY ARRAY['payroll_batch','pay_period','payslip','payroll_input','payroll_batch_component','payroll_statutory_adjustment','payroll_status_history','payroll_employee_result_history','payroll_reprocess_job','payroll_step_up_challenge'] LOOP
+  EXECUTE format('CREATE TRIGGER financial_kernel_context AFTER INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app.financial_kernel_context_record()',table_name);
+  EXECUTE format('CREATE CONSTRAINT TRIGGER financial_kernel_action AFTER INSERT OR UPDATE OR DELETE ON public.%I DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_payroll_kernel_guard()',table_name);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.financial_payroll_scope_allowed(p_company uuid,p_scope jsonb,p_operation text,p_period text) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE field text;
+BEGIN
+ IF p_scope IS NULL OR p_scope='null'::jsonb THEN RETURN true;END IF;
+ IF jsonb_typeof(p_scope)<>'object' OR EXISTS(SELECT 1 FROM jsonb_object_keys(p_scope)keys(key) WHERE keys.key NOT IN ('employmentIds','departmentIds')) THEN RETURN false;END IF;
+ FOREACH field IN ARRAY ARRAY['employmentIds','departmentIds'] LOOP
+  IF p_scope?field AND (jsonb_typeof(p_scope->field)<>'array' OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_scope->field)choice WHERE jsonb_typeof(choice)<>'string' OR (choice#>>'{}') !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')) THEN RETURN false;END IF;
+ END LOOP;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(p_scope->'employmentIds','[]'))choice(id)
+  WHERE NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=choice.id::uuid AND e.tenant_id=app.current_tenant_id() AND app.access_financial_action_employment('payroll',e.id,p_operation)
+   AND (e.company_id=p_company OR EXISTS(SELECT 1 FROM public.assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id AND a.superseded_at IS NULL AND a.company_id=p_company AND a.valid_from<=((p_period||'-01')::date+interval '1 month'-interval '1 day')::date AND (a.valid_to IS NULL OR a.valid_to>(p_period||'-01')::date)))))
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(p_scope->'departmentIds','[]'))choice(id)
+  WHERE NOT EXISTS(SELECT 1 FROM public.department d WHERE d.id=choice.id::uuid AND d.tenant_id=app.current_tenant_id() AND d.company_id=p_company)) THEN RETURN false;END IF;
+ RETURN true;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_payroll_scope_allowed(uuid,jsonb,text,text) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- An actual source mutation can mark its paid materializations stale without granting
+-- the source editor Payroll Edit or exposing another employee's payroll totals.
+CREATE TABLE app.financial_source_change (
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,employment_id uuid NOT NULL,category text NOT NULL,effective_from date,
+ PRIMARY KEY(transaction_id,tenant_id,user_id,employment_id,category)
+);
+CREATE TABLE app.financial_stale_effect (
+ transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,batch_id uuid NOT NULL,before_hash text NOT NULL,after_hash text NOT NULL,
+ PRIMARY KEY(transaction_id,tenant_id,user_id,batch_id,before_hash,after_hash)
+);
+ALTER TABLE app.financial_source_change ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.financial_stale_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_source_change,app.financial_stale_effect FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_source_change_record() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+ data jsonb:=CASE WHEN TG_OP='DELETE' THEN before_row ELSE after_row END;source_category text;categories text[];subject uuid;person uuid;starts date;
+BEGIN
+ IF app.acting_as_owner() OR app.current_user_id() IS NULL OR before_row-ARRAY['created_at','updated_at','recorded_at'] IS NOT DISTINCT FROM after_row-ARRAY['created_at','updated_at','recorded_at'] THEN RETURN NULL;END IF;
+ IF data->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text THEN RAISE EXCEPTION 'Source mutation tenant changed' USING ERRCODE='42501';END IF;
+ CASE TG_TABLE_NAME
+ WHEN 'compensation' THEN source_category:='compensation';subject:=(data->>'employment_id')::uuid;starts:=least((before_row->>'valid_from')::date,(after_row->>'valid_from')::date);
+ WHEN 'employment_pay_component' THEN source_category:='compensation';subject:=(data->>'employment_id')::uuid;starts:=least((before_row->>'valid_from')::date,(after_row->>'valid_from')::date);
+ WHEN 'employee_statutory_my' THEN source_category:='statutory';person:=(data->>'person_id')::uuid;
+ WHEN 'person' THEN
+  IF NOT EXISTS(SELECT 1 FROM unnest(ARRAY['full_name','date_of_birth','gender','nationality','marital_status'])field(name) WHERE before_row->field.name IS DISTINCT FROM after_row->field.name) THEN RETURN NULL;END IF;
+  source_category:='statutory';person:=(data->>'id')::uuid;
+ WHEN 'employment' THEN
+  IF NOT EXISTS(SELECT 1 FROM unnest(ARRAY['company_id','hired_on','terminated_on','resignation_date','last_working_date','employment_type','grade_id'])field(name) WHERE before_row->field.name IS DISTINCT FROM after_row->field.name) THEN RETURN NULL;END IF;
+  source_category:=CASE WHEN before_row->>'company_id' IS DISTINCT FROM after_row->>'company_id' THEN 'transfer' WHEN before_row->>'hired_on' IS DISTINCT FROM after_row->>'hired_on' THEN 'hire_date' ELSE 'termination' END;
+  subject:=(data->>'id')::uuid;starts:=least((before_row->>'hired_on')::date,(after_row->>'hired_on')::date);
+  categories:=ARRAY[]::text[];
+  IF before_row->>'company_id' IS DISTINCT FROM after_row->>'company_id' OR before_row->>'employment_type' IS DISTINCT FROM after_row->>'employment_type' OR before_row->>'grade_id' IS DISTINCT FROM after_row->>'grade_id' THEN categories:=array_append(categories,'transfer');END IF;
+  IF before_row->>'hired_on' IS DISTINCT FROM after_row->>'hired_on' THEN categories:=array_append(categories,'hire_date');END IF;
+  IF EXISTS(SELECT 1 FROM unnest(ARRAY['terminated_on','resignation_date','last_working_date'])field(name) WHERE before_row->field.name IS DISTINCT FROM after_row->field.name) THEN categories:=array_append(categories,'termination');END IF;
+ WHEN 'assignment' THEN source_category:='transfer';subject:=(data->>'employment_id')::uuid;starts:=least((before_row->>'valid_from')::date,(after_row->>'valid_from')::date);
+ ELSE RAISE EXCEPTION 'Unbound payroll source mutation';
+ END CASE;
+ IF categories IS NULL THEN categories:=ARRAY[source_category];END IF;
+ INSERT INTO app.financial_source_change(transaction_id,tenant_id,user_id,employment_id,category,effective_from)
+ SELECT pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),e.id,class.value,starts FROM public.employment e CROSS JOIN unnest(categories)class(value)
+ WHERE e.tenant_id=app.current_tenant_id() AND (e.id=subject OR e.person_id=person)
+ ON CONFLICT(transaction_id,tenant_id,user_id,employment_id,category) DO UPDATE SET effective_from=CASE WHEN app.financial_source_change.effective_from IS NULL OR excluded.effective_from IS NULL THEN NULL ELSE least(app.financial_source_change.effective_from,excluded.effective_from) END;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_source_change_record() FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE table_name text;BEGIN
+ FOREACH table_name IN ARRAY ARRAY['compensation','employment_pay_component','employee_statutory_my','person','employment','assignment'] LOOP
+  EXECUTE format('CREATE TRIGGER financial_source_change AFTER INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app.financial_source_change_record()',table_name);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.financial_mark_source_payroll_stale(p_employments uuid[],p_category text,p_from date DEFAULT NULL) RETURNS TABLE(batch_id uuid,employment_ids uuid[])
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE batch public.payroll_batch;before_row jsonb;after_row jsonb;targets uuid[];combined jsonb;starts date;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.principal_snapshot_current() OR p_category NOT IN ('compensation','statutory','transfer','hire_date','termination') OR p_employments IS NULL OR cardinality(p_employments)=0 THEN RAISE EXCEPTION 'Payroll source consequence unavailable' USING ERRCODE='42501';END IF;
+ IF NOT EXISTS(SELECT 1 FROM app.financial_source_change proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.employment_id=ANY(p_employments) AND proof.category=p_category) THEN RETURN;END IF;
+ IF EXISTS(SELECT 1 FROM unnest(p_employments)target(id) WHERE NOT EXISTS(SELECT 1 FROM app.financial_source_change proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.employment_id=target.id AND proof.category=p_category))
+ THEN RAISE EXCEPTION 'Payroll source consequence unavailable' USING ERRCODE='42501';END IF;
+ FOR batch IN SELECT b.* FROM public.payroll_batch b WHERE b.tenant_id=app.current_tenant_id() AND b.status='processed' AND (p_from IS NULL OR ((b.pay_period||'-01')::date+interval '1 month'-interval '1 day')::date>=p_from)
+ AND EXISTS(SELECT 1 FROM public.payslip p JOIN app.financial_source_change proof ON proof.employment_id=p.employment_id AND proof.tenant_id=p.tenant_id AND proof.transaction_id=pg_current_xact_id() AND proof.user_id=app.current_user_id() AND proof.category=p_category
+  WHERE p.batch_id=b.id AND p.tenant_id=b.tenant_id AND p.employment_id=ANY(p_employments) AND (proof.effective_from IS NULL OR ((b.pay_period||'-01')::date+interval '1 month'-interval '1 day')::date>=proof.effective_from)) ORDER BY b.id FOR UPDATE LOOP
+  SELECT array_agg(DISTINCT p.employment_id ORDER BY p.employment_id) INTO targets FROM public.payslip p JOIN app.financial_source_change proof ON proof.employment_id=p.employment_id AND proof.tenant_id=p.tenant_id AND proof.transaction_id=pg_current_xact_id() AND proof.user_id=app.current_user_id() AND proof.category=p_category
+  WHERE p.batch_id=batch.id AND p.tenant_id=batch.tenant_id AND p.employment_id=ANY(p_employments) AND (proof.effective_from IS NULL OR ((batch.pay_period||'-01')::date+interval '1 month'-interval '1 day')::date>=proof.effective_from);
+  SELECT jsonb_agg(value ORDER BY value) INTO combined FROM(SELECT DISTINCT value FROM jsonb_array_elements_text(coalesce(batch.recalc_employment_ids,'[]'))existing(value) UNION SELECT target::text FROM unnest(targets)target)selected;
+  before_row:=to_jsonb(batch);
+  UPDATE public.payroll_batch b SET needs_recalc_at=coalesce(b.needs_recalc_at,now()),recalc_employment_ids=combined WHERE b.id=batch.id AND b.tenant_id=batch.tenant_id RETURNING to_jsonb(b) INTO after_row;
+  INSERT INTO app.financial_stale_effect VALUES(pg_current_xact_id(),batch.tenant_id,app.current_user_id(),batch.id,encode(sha256(convert_to(before_row::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex')) ON CONFLICT DO NOTHING;
+  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(batch.tenant_id,'payroll-batch',batch.id,'payroll-batch.recalc-required','user',app.current_user_id(),jsonb_build_object('employmentIds',combined,'addedEmploymentIds',to_jsonb(targets),'changeCategory',p_category));
+  -- Return only administrative metadata the actual actor could already read.
+  IF app.can_admin_payroll_for(batch.company_id) AND app.financial_batch_subjects_allowed(batch.id) THEN batch_id:=batch.id;employment_ids:=targets;RETURN NEXT;END IF;
+ END LOOP;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_mark_source_payroll_stale(uuid[],text,date) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.financial_mark_source_payroll_stale(uuid[],text,date) TO ai_hr_app;
+--> statement-breakpoint
+-- A document reader needs run identity/release metadata, never another employee's totals,
+-- population or selection. Keep that bounded projection separate from administrative aggregates.
+CREATE VIEW public.payroll_document_batch WITH(security_barrier=true) AS
+ SELECT b.id,b.tenant_id,b.company_id,b.pay_period_id,b.run_seq,b.run_type,b.pay_period,b.batch_date,b.status,b.closed_at,b.released_at,b.payroll_cycle_id,b.history_import_attempt_id,b.history_import_cycle_name,b.needs_recalc_at,b.created_at
+ FROM public.payroll_batch b WHERE b.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+ AND EXISTS(SELECT 1 FROM public.payslip p JOIN public.employment e ON e.id=p.employment_id AND e.tenant_id=p.tenant_id
+  WHERE p.batch_id=b.id AND p.tenant_id=b.tenant_id AND (app.can_admin_payroll_employment(e.id) OR app.is_self_person(e.person_id)));
+REVOKE ALL ON public.payroll_document_batch FROM PUBLIC,ai_hr_app;
+GRANT SELECT ON public.payroll_document_batch TO ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.financial_batch_subjects_allowed(p_batch uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ -- INSERT RETURNING checks the proposed new root before a STABLE self-query can see it.
+ -- The independent typed Add guard checks its posted scope before transaction commit.
+ SELECT NOT EXISTS(SELECT 1 FROM public.payroll_batch b WHERE b.id=p_batch)
+ OR EXISTS(SELECT 1 FROM public.payroll_batch b WHERE b.id=p_batch AND b.tenant_id=app.current_tenant_id()
+ AND NOT EXISTS(SELECT 1 FROM (
+  SELECT p.employment_id FROM public.payslip p WHERE p.batch_id=b.id AND p.tenant_id=b.tenant_id
+  UNION SELECT i.employment_id FROM public.payroll_input i WHERE i.batch_id=b.id AND i.tenant_id=b.tenant_id
+  UNION SELECT c.employment_id FROM public.payroll_batch_component c WHERE c.batch_id=b.id AND c.tenant_id=b.tenant_id
+  UNION SELECT t.employment_id FROM public.payroll_individual_txn t WHERE (t.batch_id=b.id OR t.consumed_batch_id=b.id) AND t.tenant_id=b.tenant_id
+  UNION SELECT picked.value::uuid FROM jsonb_array_elements_text(coalesce(b.scope->'employmentIds','[]'))picked(value)
+ )subject WHERE subject.employment_id IS NULL OR NOT app.can_admin_payroll_employment(subject.employment_id)));
+$$;
+CREATE POLICY financial_batch_subject_read ON payroll_batch AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.can_admin_payroll_for(company_id) AND app.financial_batch_subjects_allowed(id));
+--> statement-breakpoint
+DO $$ DECLARE definition text;needle text:='''batch'',to_jsonb(b)';replacement text;BEGIN
+ definition:=pg_get_functiondef('app.information_payslip_document(uuid)'::regprocedure);
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'Retained payslip document binding changed';END IF;
+ replacement:=$body$'batch',jsonb_build_object('id',b.id,'tenant_id',b.tenant_id,'company_id',b.company_id,'pay_period_id',b.pay_period_id,'run_seq',b.run_seq,'run_type',b.run_type,'pay_period',b.pay_period,'batch_date',b.batch_date,'status',b.status,'closed_at',b.closed_at,'released_at',b.released_at,'payroll_cycle_id',b.payroll_cycle_id,'history_import_attempt_id',b.history_import_attempt_id,'history_import_cycle_name',b.history_import_cycle_name,'created_at',b.created_at)$body$;
+ EXECUTE replace(definition,needle,replacement);
+END $$;
+--> statement-breakpoint
+CREATE TABLE app.financial_receipt_epoch(transaction_id xid8 PRIMARY KEY);
+ALTER TABLE app.financial_receipt_epoch ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_receipt_epoch FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_receipts_prune() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE inserted xid8;oldest xid8:=pg_snapshot_xmin(pg_current_snapshot());table_name text;
+BEGIN
+ INSERT INTO app.financial_receipt_epoch VALUES(pg_current_xact_id()) ON CONFLICT DO NOTHING RETURNING transaction_id INTO inserted;
+ IF inserted IS NULL THEN RETURN NULL;END IF;
+ -- A transaction below the global snapshot xmin has no live/deferred consumer. Do
+ -- this once per transaction, retaining every in-flight actor's exact receipts.
+ FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect'] LOOP
+  EXECUTE format('DELETE FROM app.%I WHERE transaction_id<$1',table_name) USING oldest;
+ END LOOP;
+ DELETE FROM app.financial_receipt_epoch WHERE transaction_id<oldest;
+ RETURN NULL;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_receipts_prune() FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE table_name text;BEGIN
+ FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect'] LOOP
+  EXECUTE format('CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.%I FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune()',table_name);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+-- Preserve the original finite Leave follow-up course for visible/delegated requests.
+-- The additional hidden whole-request branch remains bound to0940's final task proof.
+DO $$ DECLARE definition text;needle text:='recalc_employment_ids=CASE WHEN added THEN coalesce(recalc_employment_ids,''[]''::jsonb)||jsonb_build_array(lr.employment_id::text) ELSE recalc_employment_ids END WHERE id=b.id;';addition text;BEGIN
+ definition:=pg_get_functiondef('app.record_leave_payroll_effect(uuid,uuid,text,jsonb,text)'::regprocedure);
+ IF (length(definition)-length(replace(definition,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'Native Leave payroll effect binding changed';END IF;
+ addition:=$body$
+ IF (app.can_see_employment(lr.employment_id) OR app.can_decide_via_delegation(lr.employment_id)) AND NOT app.leave_task_effect_pending(lr.id) THEN
+  INSERT INTO app.financial_stale_effect(transaction_id,tenant_id,user_id,batch_id,before_hash,after_hash)
+  SELECT pg_current_xact_id(),lr.tenant_id,app.current_user_id(),b.id,encode(sha256(convert_to(to_jsonb(b)::text,'UTF8')),'hex'),encode(sha256(convert_to(to_jsonb(actual)::text,'UTF8')),'hex')
+  FROM public.payroll_batch actual WHERE actual.id=b.id AND actual.tenant_id=b.tenant_id ON CONFLICT DO NOTHING;
+ END IF;
+$body$;
+ EXECUTE replace(definition,needle,needle||addition);
+END $$;
