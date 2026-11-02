@@ -1,7 +1,7 @@
 import {afterEach, expect, it, vi} from 'vitest';
 import {cleanup, fireEvent, render, screen, within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
-import messages from '../messages/en.json';
+import {enWithAiCentre as messages} from './helpers/ai-centre-messages';
 import {UiThemeProvider} from '../components/ui-theme-context';
 import type {UiTheme} from '../lib/ui-theme';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';

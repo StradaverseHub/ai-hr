@@ -1,0 +1,542 @@
+{
+  "nav": {
+    "aiCentre": "Pusat AI",
+    "aiCentreAdmin": "Pentadbiran pusat AI",
+    "aiCentreWorkers": "Ejen",
+    "aiCentreSetup": "Persediaan",
+    "aiCentreSpend": "Perbelanjaan dan penyedia",
+    "sectionAiManagement": "Pentadbiran pusat AI"
+  },
+  "aiCentre": {
+    "genericName": "Pusat AI",
+    "tabsLabel": "Bahagian {name}",
+    "subnavLabel": "Dalam bahagian ini",
+    "tabs": {
+      "ask": "Tanya",
+      "inbox": "Peti masuk",
+      "jobs": "Tugas diwakilkan",
+      "workers": "Ejen",
+      "setup": "Persediaan",
+      "spend": "Perbelanjaan dan penyedia",
+      "how": "Cara ia berfungsi"
+    },
+    "inboxCount": "{count, plural, one {# item menunggu} other {# item menunggu}}",
+    "subnav": {
+      "workers": "Semua ejen",
+      "inventory": "Inventori dan audit",
+      "overview": "Gambaran keseluruhan",
+      "assistant": "Pembantu",
+      "allowances": "Peruntukan",
+      "spending": "Perbelanjaan",
+      "provider": "Penyedia",
+      "runs": "Larian terkini"
+    },
+    "titles": {
+      "workers": "Ejen",
+      "setup": "Persediaan",
+      "spend": "Perbelanjaan dan penyedia"
+    },
+    "descriptions": {
+      "workers": "Setiap ejen automatik, dikumpulkan mengikut tugasnya, dengan suisnya dan perkara terakhir yang dilakukannya.",
+      "setup": "Sama ada AI boleh berjalan untuk syarikat anda, dan cara pembantu ditawarkan.",
+      "spend": "Peruntukan, perbelanjaan, penyedia model dan panggilan model terkini."
+    },
+    "inbox": {
+      "title": "Peti masuk",
+      "description": "Semua perkara yang menunggu anda, dalam satu senarai. Setiap item membuka halaman tempat anda membuat keputusan. Tiada apa yang diselesaikan daripada senarai ini.",
+      "filterLabel": "Tunjuk",
+      "filters": {
+        "all": "Semua",
+        "decide": "Perlu keputusan anda",
+        "findings": "Untuk makluman anda"
+      },
+      "groups": {
+        "decide": "Perlu keputusan anda",
+        "decideHelp": "Buat keputusan pada halaman yang dibuka oleh setiap item.",
+        "prepared": "Disediakan untuk anda",
+        "preparedHelp": "Permohonan yang disediakan oleh pembantu menunggu di halaman semakannya sehingga anda mengesahkannya. Buka sembang tersimpan dalam Tanya untuk kembali kepadanya.",
+        "findings": "Untuk makluman anda",
+        "findingsHelp": "Penemuan yang dibangkitkan oleh semakan sistem sendiri untuk syarikat anda."
+      },
+      "empty": "Tiada apa yang menunggu anda.",
+      "emptyHelp": "Apabila kelulusan atau penemuan memerlukan anda, ia akan muncul di sini.",
+      "unavailable": "Sesetengah item tidak dapat dimuatkan buat masa ini. Halaman masing-masing masih berfungsi.",
+      "summary": "Menunggu anda",
+      "decisions": "Keputusan",
+      "findingsCount": "Penemuan",
+      "oldest": "Paling lama",
+      "daysOld": "{count, plural, =0 {Hari ini} one {# hari} other {# hari}}",
+      "openPrepared": "Buka Tanya",
+      "jobsTitle": "Tugas diwakilkan",
+      "jobsNone": "Tiada apa yang diwakilkan. Itu tetapan lalai.",
+      "jobsLink": "Urus tugas diwakilkan",
+      "items": {
+        "fromApprovals": "Daripada kelulusan anda",
+        "review": "Semak",
+        "open": "Buka",
+        "exceptionsTitle": "{count, plural, one {# pengecualian gaji masih terbuka} other {# pengecualian gaji masih terbuka}}",
+        "exceptionsBlocking": "{count, plural, =0 {Tiada yang menyekat gaji} one {# menyekat gaji} other {# menyekat gaji}}",
+        "exceptionsSource": "Pemantau · Semakan anomali gaji",
+        "exceptionsCta": "Buka pengecualian",
+        "proposalsTitle": "{count, plural, one {# tindakan dicadangkan menunggu kelulusan anda} other {# tindakan dicadangkan menunggu kelulusan anda}}",
+        "proposalsSource": "Penyusun · Tindakan dicadangkan",
+        "proposalsCta": "Semak cadangan",
+        "readinessTitle": "{count, plural, one {# rekod pekerja memerlukan data} other {# rekod pekerja memerlukan data}}",
+        "readinessSource": "Pemantau · Kesediaan rekod",
+        "readinessCta": "Buka kesediaan rekod"
+      }
+    },
+    "card": {
+      "howPrepared": "Cara ini disediakan",
+      "authority": "Kuasa",
+      "read": "Apa yang dibaca",
+      "model": "Peranan model AI",
+      "decision": "Keputusan anda",
+      "notYet": "Belum lagi",
+      "awaiting": "Menunggu pengesahan anda",
+      "approvalAuthority": "Anda pelulus yang ditetapkan",
+      "approvalRead": "Permohonan, dibaca oleh modulnya sendiri sebagai anda",
+      "noModel": "Tiada. Item ini datang daripada modul itu sendiri.",
+      "findingAuthority": "Suis syarikat anda untuk semakan ini",
+      "findingRead": "Rekod dalam skop pentadbiran anda",
+      "findingModel": "Tiada untuk penemuan ini. Huraian dalam bahasa mudah, jika dihidupkan, ditunjukkan pada halamannya."
+    },
+    "jobs": {
+      "title": "Tugas diwakilkan",
+      "description": "Tugas yang anda serahkan kepada ejen AI, dalam lingkungan kuasa anda sendiri, sehingga anda menghentikannya.",
+      "leadStrong": "Tiada apa yang diwakilkan melainkan anda memilihnya.",
+      "lead": "Tugas diwakilkan membenarkan ejen AI melakukan satu tugas bernama untuk anda, dalam lingkungan perkara yang sudah boleh anda lakukan, sehingga tarikh tamatnya. Anda boleh menghentikannya pada bila-bila masa, begitu juga pentadbir anda.",
+      "none": "Anda tiada tugas diwakilkan.",
+      "noneHelp": "Tugas diwakilkan belum tersedia untuk syarikat anda. Apabila syarikat anda membenarkan sesuatu jenis tugas, anda boleh mewakilkannya di sini.",
+      "neverTitle": "Tidak boleh diwakilkan",
+      "neverHelp": "Perkara ini sentiasa memerlukan seseorang, walau apa pun tetapannya.",
+      "never": {
+        "pay": "Jumlah gaji",
+        "payroll": "Menutup atau memproses semula gaji",
+        "employment": "Mengambil, mengesahkan atau menamatkan pekerjaan",
+        "access": "Akses dan kebenaran",
+        "irreversible": "Apa-apa yang tidak boleh dibatalkan",
+        "own": "Memutuskan permohonan anda sendiri"
+      },
+      "approvalCover": "Mencari siapa yang menggantikan kelulusan anda semasa anda tiada? Itu perwakilan kelulusan, tetapan yang berasingan.",
+      "approvalCoverLink": "Buka perwakilan kelulusan"
+    },
+    "workers": {
+      "families": {
+        "watcher": "Pemantau",
+        "watcherHelp": "Mengesan masalah dan membangkitkan penemuan.",
+        "chaser": "Pengejar",
+        "chaserHelp": "Menghantar peringatan yang boleh dihantar oleh seseorang.",
+        "preparer": "Penyusun",
+        "preparerHelp": "Menyediakan dan mendraf. Mereka tidak menyelesaikan apa-apa.",
+        "decider": "Pemutus",
+        "deciderHelp": "Menyelesaikan tindakan dalam syarat tertentu, di bawah tugas diwakilkan.",
+        "explainer": "Penerang",
+        "explainerHelp": "Menerangkan hasil daripada pengiraan sistem sendiri.",
+        "platform": "Pembantu dan platform",
+        "platformHelp": "Pembantu itu sendiri dan alat yang diurus oleh pasukan platform."
+      },
+      "runs": "Berjalan",
+      "effect": "Kesan",
+      "triggers": {
+        "payrollRun": "Setiap larian gaji",
+        "nightly": "Setiap malam",
+        "onChange": "Apabila rekod berubah",
+        "onSubmit": "Apabila tuntutan dihantar",
+        "scheduled": "Mengikut jadual",
+        "onRequest": "Atas permintaan",
+        "onFinding": "Apabila ada penemuan",
+        "afterCheck": "Selepas setiap semakan"
+      },
+      "effects": {
+        "findings": "Membangkitkan penemuan",
+        "flag": "Menanda untuk semakan",
+        "remindTemplate": "Menghantar peringatan daripada templat, tanpa model AI",
+        "remind": "Menghantar peringatan",
+        "prepare": "Menyediakan untuk diluluskan oleh seseorang",
+        "draft": "Mendraf untuk disemak oleh seseorang",
+        "suggest": "Mencadangkan untuk disemak oleh seseorang",
+        "explain": "Menerangkan dalam bahasa mudah",
+        "analyse": "Menunjukkan corak mengikut julat",
+        "answer": "Menjawab soalan sebagai orang itu",
+        "decide": "Menyelesaikan sendiri"
+      },
+      "builtInTitle": "Semakan dan keputusan terbina dalam",
+      "builtInHelp": "Ini berjalan daripada peraturan sistem sendiri. Keadaannya dibaca daripada sistem, bukan diisytiharkan.",
+      "on": "Hidup",
+      "off": "Mati",
+      "byDesign": "Dimatikan mengikut reka bentuk",
+      "deciderNone": "Tiada pemutus boleh berjalan. Keputusan autonomi dimatikan mengikut reka bentuk, dan tugas keputusan memerlukan semakan undang-undang dan bukti penerimaan terlebih dahulu.",
+      "systemJobsTitle": "Tugas sistem berjadual",
+      "systemJobsHelp": "Peraturan perniagaan semalaman, bukan AI: tambahan dan luput cuti, semakan percubaan dan kontrak, rekod penggunaan dan seumpamanya. Ia berjalan mengikut jadual pelayan dan tidak boleh ditukar di sini.",
+      "systemJobsLink": "Buka tugas berjadual",
+      "stopAllTitle": "Menjeda ejen",
+      "stopAllHelp": "Setiap ejen mempunyai suisnya sendiri di bawah. Ejen bermula dalam keadaan mati, dan ejen yang dijeda berhenti pada larian seterusnya."
+    },
+    "how": {
+      "title": "Cara ia berfungsi",
+      "description": "Cara AI dibina, apa yang boleh dilakukannya, dan siapa yang memutuskan.",
+      "chaptersLabel": "Bab",
+      "chapters": {
+        "request": "Ikuti satu permohonan",
+        "jobs": "Tugas diwakilkan",
+        "families": "Lima jenis ejen",
+        "never": "Perkara yang tidak pernah dilakukannya"
+      },
+      "previous": "Sebelumnya",
+      "next": "Seterusnya",
+      "play": "Main",
+      "pause": "Jeda",
+      "stepOf": "Langkah {n} daripada {total}",
+      "stepsLabel": "Langkah",
+      "mapLabel": "Lapisan AI: antara muka, harnes agentik, konteks dan pengetahuan, keupayaan HR dan sistem rekod HR, di atas asas kepercayaan dan tadbir urus.",
+      "layers": {
+        "interfaces": "Antara muka",
+        "interfacesHelp": "Sembang, sembang terapung, Peti masuk, halaman semakan",
+        "harness": "Harnes agentik",
+        "harnessHelp": "Menjalankan setiap giliran dalam had. Model bekerja di dalamnya.",
+        "model": "Model",
+        "modelHelp": "hanya mencadangkan, tidak pernah memutuskan",
+        "context": "Konteks dan pengetahuan",
+        "contextHelp": "Panduan, halaman, kesediaan persediaan, peranan anda",
+        "capabilities": "Keupayaan HR",
+        "capabilitiesHelp": "Bacaan, penerang, penyusun dan ejen",
+        "record": "Sistem rekod HR",
+        "recordHelp": "Cuti, gaji, pekerja, tuntutan. Satu-satunya tempat angka dan kebenaran diputuskan.",
+        "foundation": "Asas: kepercayaan dan tadbir urus",
+        "guard": "Pengawal",
+        "jobs": "Tugas diwakilkan",
+        "outcome": "Rekod hasil",
+        "audit": "Audit dan penilaian"
+      },
+      "legend": {
+        "rules": "Peraturan dan pengiraan",
+        "model": "Model AI",
+        "person": "Seseorang memutuskan"
+      },
+      "steps": {
+        "s0": "Gambaran keseluruhan",
+        "s0Body": "Lima lapisan berada di atas satu asas. Setiap soalan, kad dan tugas latar belakang melalui laluan yang sama, jadi ada satu tempat untuk dilindungi dan satu tempat untuk diaudit.",
+        "s1": "Anda bertanya",
+        "s1Body": "Aina bertanya kepada sembang terapung tentang cutinya sendiri.",
+        "s1Quote": "“Bolehkah saya bercuti pada hari Jumaat?”",
+        "s2": "Pengawal menyemak dahulu",
+        "s2Body": "Sebelum mana-mana model melihat soalan itu, kod menyemaknya.",
+        "s2c1": "AI dihidupkan untuk syarikat ini",
+        "s2c2": "Dalam peruntukan hari ini",
+        "s2c3": "Bukan topik sensitif",
+        "s2c4": "Hanya tentang rekod Aina sendiri",
+        "s2c5": "Tiada arahan tersembunyi dalam teks",
+        "s3": "Harnes menjalankan giliran",
+        "s3Body": "Model menerima soalan itu dan hanya alat yang boleh digunakan oleh Aina. Setiap panggilan alat disemak semula sebagai Aina.",
+        "s3c1": "Ditawarkan: baki cutinya, dibaca sebagai Aina",
+        "s3c2": "Ditawarkan: menyediakan permohonan cuti",
+        "s3c3": "Tidak ditawarkan: rekod orang lain",
+        "s3c4": "Tidak ditawarkan: apa-apa yang menyelesaikan perubahan",
+        "s4": "Konteks mengisi kekosongan",
+        "s4Body": "Ia tahu panduan cuti, halaman yang betul dan peranan Aina. Peranan ialah konteks, bukan kebenaran.",
+        "s5": "Satu keupayaan menyediakan",
+        "s5Body": "Penyusun cuti meminta perkhidmatan cuti menyemak permohonan itu. Belum ada apa yang berubah, dan model tidak mengira sebarang angka.",
+        "s6": "Sistem rekod memutuskan",
+        "s6Body": "Perkhidmatan cuti menyemak permohonan itu berdasarkan versi peraturan semasa syarikat. Hanya di sini hari dan wang dikira.",
+        "s6c1": "Baki mencukupi untuk permohonan",
+        "s6c2": "Tidak bertindih dengan cuti lain",
+        "s6c3": "Bukan cuti umum",
+        "s7": "Rekod hasil ditulis",
+        "s7Body": "Siapa yang bertanya, apa yang dibaca, peraturan mana yang berjalan dan model mana yang menyusun jawapan disimpan bersama jejak audit. Permohonan menunggu di halaman semakannya.",
+        "s8": "Anda mengesahkan",
+        "s8Body": "Aina membuka halaman semakan dan mengesahkan. Pengesahannya, bukan AI, yang menghantar permohonan cuti.",
+        "s8Mark": "Disahkan oleh Aina"
+      },
+      "jobs": {
+        "k1": "Syarikat membenarkan satu tugas",
+        "k1Body": "Pentadbir memilih tugas mana yang boleh diwakilkan, dengan had. Secara lalai, tiada.",
+        "k2": "Seseorang mewakilkannya",
+        "k2Body": "Dalam lingkungan kuasanya sendiri, untuk tempoh tertentu, dengan had dan pilihan pemberitahuan.",
+        "k3": "Ejen bertindak untuknya",
+        "k3Body": "Untuknya, bukan sebagai dirinya: setiap rekod menamakan siapa yang mewakilkan dan ejen mana yang bertindak. Kuasa disemak semula pada setiap larian.",
+        "conditions": "Syarat ialah kod, bukan model",
+        "conditionsBody": "Semakan baki, pertindihan, liputan dan jumlah dijalankan oleh sistem rekod. Apa-apa yang luar biasa dikembalikan kepada orang itu sebagai perlu disemak."
+      },
+      "families": {
+        "intro": "Setiap ejen tergolong dalam satu jenis dan mematuhi satu kontrak: pencetus, skop bacaan yang diisytiharkan, kesan yang diisytiharkan, kuasa yang digunakannya, rekod hasil bagi setiap larian, dan suis yang bermula dalam keadaan mati.",
+        "watcherRole": "AI: susunan kata sahaja",
+        "chaserRole": "AI: susunan kata sahaja",
+        "preparerRole": "AI: merancang dan mendraf",
+        "deciderRole": "AI: tiada peranan dalam keputusan",
+        "explainerRole": "AI: menghuraikan fakta sistem"
+      },
+      "never": {
+        "n1": "Meneka tentang orang",
+        "n1Body": "Tiada penilaian tentang sikap, prestasi atau siapa yang mungkin meletak jawatan.",
+        "n2": "Mengira wang atau hari",
+        "n2Body": "Angka datang daripada perkhidmatan gaji dan cuti, bukan daripada model.",
+        "n3": "Bertindak tanpa tugas diwakilkan",
+        "n3Body": "Secara lalai, tiada apa yang diwakilkan.",
+        "n4": "Mewakilkan gaji, pekerjaan atau akses",
+        "n4Body": "Perkara ini sentiasa memerlukan seseorang.",
+        "n5": "Membuat pertanyaan pangkalan data sesuka hati",
+        "n5Body": "Hanya alat yang diisytiharkan, setiap satu disemak berdasarkan kebenaran anda.",
+        "n6": "Menghantar nombor pengenalan kepada penyedia",
+        "n6Body": "Nombor IC, pasport, bank dan cukai tidak pernah keluar."
+      },
+      "adminLink": "Lihat apa yang dihidupkan untuk syarikat anda",
+      "walkthroughLink": "Ikuti satu permohonan melalui AI, langkah demi langkah",
+      "figureCaption": "Pandangan terurai · seperti mekanisme jam tangan",
+      "parts": {
+        "interfaces": "muka jam · sembang · peti masuk · halaman semakan",
+        "harness": "eskapmen · satu langkah pada satu masa",
+        "model": "roda imbangan · tidak memutuskan apa-apa",
+        "context": "gelang kalendar · panduan · halaman · peranan anda",
+        "capabilities": "rangkaian gear · bacaan · penerang · penyusun",
+        "record": "pegas utama · cuti · gaji · pekerja",
+        "foundation": "bekas jam · pengawal · rekod hasil · audit",
+        "guard": "mahkota · disemak sebelum apa-apa bergerak",
+        "outcome": "ukiran penutup belakang · siapa · apa · bila"
+      },
+      "titleNamed": "Cara {name} berfungsi",
+      "taglineNamed": "{osName}: sistem pengendalian AI untuk HR, dibina di sekitar pekerja dan peraturan anda."
+    },
+    "launcher": {
+      "inbox": "Peti masuk anda",
+      "inboxCount": "{count, plural, one {# menunggu} other {# menunggu}}",
+      "earlier": "Sebelum ini, di halaman {area}",
+      "continue": "Teruskan dalam {name}",
+      "open": "Tanya {name}"
+    },
+    "review": {
+      "back": "Kembali ke Peti masuk",
+      "navLabel": "Kembali",
+      "note": "Tiada apa yang berubah sehingga anda mengesahkan di halaman ini, dan modul menyemak semuanya semula apabila anda berbuat demikian."
+    },
+    "registry": {
+      "title": "Daftar ejen",
+      "help": "Setiap ejen berdaftar dengan jenisnya, apa yang memulakannya, kuasa yang digunakannya, suisnya dan cara orang memberi respons kepadanya. Kadar hanya ditunjukkan apabila cukup kes telah diputuskan.",
+      "columns": {
+        "worker": "Ejen",
+        "runsUnder": "Berjalan di bawah",
+        "switch": "Suis",
+        "lastRun": "Larian terakhir",
+        "response": "Cara orang memberi respons"
+      },
+      "details": "Butiran",
+      "detailTitle": "{name}: larian terkini",
+      "recentRuns": "Larian terkini",
+      "noRuns": "Belum ada larian direkodkan.",
+      "trigger": {
+        "schedule": "Mengikut jadual",
+        "event": "Apabila ada peristiwa",
+        "request": "Atas permintaan"
+      },
+      "effect": {
+        "none": "Menerangkan sahaja",
+        "notify": "Menghantar notis",
+        "prepare": "Menyediakan untuk seseorang",
+        "complete_under_mandate": "Menyelesaikan di bawah tugas diwakilkan"
+      },
+      "authority": {
+        "requester": "Orang yang meminta",
+        "agent_principal": "Suis syarikat, sebagai prinsipal ejen",
+        "mandate": "Tugas diwakilkan seseorang"
+      },
+      "mandates": "{active} daripada {total} tugas diwakilkan aktif",
+      "on": "Hidup",
+      "off": "Mati",
+      "stopped": "Dihentikan oleh suis henti syarikat",
+      "unattributed": "Hidup, tetapi tidak dikaitkan dengan pentadbir, jadi ia tidak berjalan",
+      "stopPending": "Belum dapat menyemak suis henti syarikat",
+      "turnOn": "Hidupkan",
+      "turnOff": "Matikan",
+      "switchOwner": {
+        "tenant_setting": "Tukar pada suis ciri",
+        "ai_provider": "Tukar pada suis ciri",
+        "job_type": "Belum tersedia: versi ini tiada skrin untuk menghidupkan tugas diwakilkan",
+        "worker_control": "Ditukar di sini, untuk setiap syarikat dalam kumpulan"
+      },
+      "never": "Tidak pernah",
+      "accepted": "{rate} diterima",
+      "reversed": "{rate} diterbalikkan",
+      "decided": "{count, plural, one {# diputuskan} other {# diputuskan}}",
+      "notMeasured": "Belum diukur ({count} diputuskan)",
+      "mandateList": "Tugas diwakilkan",
+      "mandateState": {
+        "active": "Aktif",
+        "revoked": "Dibatalkan",
+        "expired": "Luput",
+        "not_started": "Belum bermula"
+      },
+      "revokedBy": {
+        "grantor": "dibatalkan oleh orang itu",
+        "administrator": "dibatalkan oleh pentadbir",
+        "manager": "dibatalkan oleh pengurus mereka"
+      },
+      "validUntil": "Sah hingga {date}",
+      "mandateGrantors": "Setiap tugas diwakilkan bertindak bagi pihak orang yang memberikannya, tidak pernah sebagai orang itu.",
+      "closeDetail": "Tutup butiran",
+      "outcome": {
+        "answered": "Dijawab",
+        "suggested": "Dicadangkan",
+        "prepared": "Disediakan",
+        "done": "Selesai",
+        "fallback": "Diserahkan kembali kepada seseorang",
+        "refused": "Ditolak",
+        "stopped": "Dihentikan"
+      },
+      "involvement": {
+        "none": "Tiada orang terlibat",
+        "reviewed": "Seseorang menyemak",
+        "decided": "Seseorang memutuskan"
+      },
+      "decision": {
+        "accepted": "Diterima",
+        "rejected": "Tidak diikuti"
+      },
+      "summaryTitle": "Rekod hasil",
+      "summaryHelp": "{count, plural, one {# rekod hasil} other {# rekod hasil}} setakat ini, mengikut jenis ejen.",
+      "refused": {
+        "not_administrator": "Hanya pentadbir kumpulan boleh menukar suis ini.",
+        "not_switchable_here": "Suis ejen ini terletak di tempat lain.",
+        "invalid": "Perubahan itu tidak difahami.",
+        "failed": "Suis tidak dapat ditukar buat masa ini."
+      },
+      "workers": {
+        "payroll_anomaly_narrator": "Penghurai anomali gaji",
+        "claims_triage": "Triage input tuntutan",
+        "readiness_nudges": "Peringatan kesediaan",
+        "approval_chasers": "Pengejar kelulusan",
+        "review_chasers": "Pengejar semakan pekerjaan",
+        "clock_reminders": "Peringatan rekod masuk tiada",
+        "document_reminders": "Peringatan tamat tempoh pasport",
+        "lifecycle_chasers": "Pengejar langkah kitar hayat",
+        "approver_recommendation": "Cadangan untuk pelulus",
+        "explainers": "Penerang",
+        "team_absence_weekly_summary": "Ringkasan mingguan ketidakhadiran pasukan",
+        "daily_digest": "Ringkasan harian",
+        "conversation": "Perbualan sembang langsung"
+      },
+      "switchInvalid": "Suis itu tidak boleh ditukar di sini.",
+      "switchRefused": "Hanya pentadbir kumpulan boleh menukar suis ini.",
+      "switchModuleOff": "Modul bagi ejen ini tidak didayakan.",
+      "conversationAttest": "Akaun pembekal langsung yang aktif (Anthropic, OpenAI atau Google) tidak menyimpan data dan tidak melatih model. Tidak diperlukan untuk OpenRouter.",
+      "switchAttestation": "Pengesahan ini hanya terpakai semasa pembekal langsung (Anthropic, OpenAI atau Google) aktif."
+    },
+    "recommendation": {
+      "show": "Tunjukkan cadangan",
+      "loading": "Menyemak…",
+      "verdict": {
+        "recommend_approve": "Disyorkan lulus: setiap semakan berjaya",
+        "needs_review": "Perlu semakan anda"
+      },
+      "check": {
+        "balance_covers": "Baki cuti tidak mencukupi untuk hari yang dimohon",
+        "own_overlap": "Bertindih dengan cuti lain pemohon",
+        "team_coverage": "Liputan pasukan pada tarikh ini",
+        "policy_limits": "Peraturan dokumen atau tarikh bagi jenis cuti ini"
+      },
+      "blocking": "Peraturan cuti akan menolak permohonan ini dalam keadaan sekarang.",
+      "version": {
+        "leave_type": "Peraturan jenis cuti, versi {version}",
+        "approval_chain": "Rantaian kelulusan, versi {version}"
+      },
+      "youDecide": "Ini nasihat sahaja. Anda membuat keputusan pada halaman permohonan itu sendiri.",
+      "unavailable": {
+        "switched_off": "Cadangan dimatikan untuk syarikat anda.",
+        "stopped": "Cadangan dijeda oleh suis henti syarikat.",
+        "not_registered": "Cadangan tidak tersedia.",
+        "no_login": "Cadangan memerlukan log masuk anda sendiri.",
+        "not_assigned": "Permohonan ini tidak ditugaskan kepada anda.",
+        "not_pending": "Permohonan ini tidak lagi menunggu keputusan.",
+        "failed": "Cadangan tidak dapat dimuatkan buat masa ini."
+      }
+    },
+    "digest": {
+      "title": "Hari anda",
+      "approvals": "Menunggu keputusan anda",
+      "setup": "Jurang persediaan",
+      "setupDetail": "{blocked} menyekat · {attention} perlu perhatian",
+      "deadlines": "Tarikh akhir berkanun",
+      "deadlinesDetail": "{overdue} lewat · {dueSoon} hampir tiba tarikh akhir",
+      "lastPrepared": "Tugas ringkasan harian anda kali terakhir menyediakan ini pada {when}."
+    },
+    "conversation": {
+      "routed": "Dihantar kepada pasukan HR anda: topik ini tidak dikendalikan oleh pembantu.",
+      "routedCrisis": "Jika anda dalam bahaya, hubungi perkhidmatan kecemasan sekarang.",
+      "days": "{count, plural, other {# hari}}",
+      "review": "Semak",
+      "open": "Buka",
+      "expires": "Tamat {time}",
+      "howPrepared": "Cara ini disediakan",
+      "preparedBy": "Disediakan oleh",
+      "preparedByValue": "Pembantu, daripada semakan sistem sendiri, sebagai anda",
+      "confirmOn": "Disahkan di",
+      "confirmOnValue": "Halaman semakan. Tiada yang berubah sehingga anda mengesahkannya di sana.",
+      "suggestionMeta": "Lengkapkan dan sahkan di halamannya",
+      "readAs": "Dibaca: {reads}, sebagai anda.",
+      "howAnswers": "Cara jawapan dibuat",
+      "whyLabel": "Tanya mengapa",
+      "why": {
+        "leave": "Mengapa kelayakan cuti saya sebanyak ini?",
+        "leavePrompt": "Mengapa kelayakan cuti saya sebanyak ini hari?",
+        "payslip": "Mengapa potongan berkanun ini diambil?",
+        "payslipPrompt": "Mengapa potongan berkanun ini diambil daripada gaji saya?"
+      },
+      "actions": {
+        "fallback": "Perubahan sedia untuk semakan anda",
+        "leave_apply": "Permohonan cuti sedia untuk disemak",
+        "leave_cancel": "Pembatalan cuti sedia untuk disemak",
+        "approvals_leave_decide": "Keputusan cuti sedia untuk disemak"
+      },
+      "checks": {
+        "actor_current": "Akses anda masih sah",
+        "ai_controls_unpaused": "Kawalan AI membenarkannya",
+        "assigned_step_current": "Langkah kelulusan diserahkan kepada anda",
+        "deduction_and_balance": "Baki mencukupi",
+        "leave_type_eligible": "Jenis cuti dibenarkan",
+        "own_approved_cancellable": "Masih boleh dibatalkan",
+        "own_pending_request": "Permohonan masih menunggu",
+        "review_contract": "Halaman semakan sedia"
+      },
+      "outcomes": {
+        "withdrawn_now": "Ditarik balik serta-merta",
+        "give_back_requested": "Meminta tarikh dipulangkan",
+        "rejection_if_confirmed": "Ditolak jika anda sahkan",
+        "step_decision_if_confirmed": "Langkah anda direkodkan",
+        "approval_if_native_checks_pass": "Diluluskan jika semakan masih lulus",
+        "submitted_not_approved": "Dihantar untuk kelulusan, belum diluluskan"
+      },
+      "reads": {
+        "my_leave_balances": "baki cuti anda",
+        "my_leave_requests": "permohonan cuti anda",
+        "my_reporting_line": "talian pelaporan anda",
+        "my_payslip_summary": "slip gaji anda",
+        "my_pay_change": "perubahan gaji anda",
+        "my_claim_statuses": "tuntutan anda",
+        "my_module_work": "item kerja anda",
+        "upcoming_holidays": "cuti umum",
+        "team_leave_summary": "cuti pasukan",
+        "who_is_away": "siapa yang bercuti",
+        "approval_queue": "kelulusan anda",
+        "product_guidance": "panduan produk",
+        "product_destinations": "halaman produk",
+        "available_actions": "tindakan tersedia",
+        "setup_readiness": "status persediaan",
+        "company_setup": "persediaan syarikat",
+        "explain_leave_entitlement": "pengiraan kelayakan",
+        "explain_payslip_statutory": "pengiraan berkanun",
+        "explain_attendance_day": "pengiraan kehadiran",
+        "setup_copilot": "langkah persediaan"
+      },
+      "errors": {
+        "invalid_question": "Sila tanya soalan sehingga 2,000 aksara.",
+        "continuation_invalid": "Perbualan ini tidak boleh diteruskan. Mulakan sembang baharu.",
+        "not_configured": "Tiada pembekal AI disediakan untuk syarikat anda. Tanya pentadbir anda.",
+        "provider_not_compliant": "Pembekal AI syarikat anda tidak disediakan untuk tanpa simpanan data dan tanpa latihan, jadi pembantu tidak dapat menjawab. Tanya pentadbir anda.",
+        "budget_daily": "Anda telah mencapai had soalan hari ini. Cuba lagi esok.",
+        "budget_monthly": "Syarikat anda telah mencapai had AI bulan ini.",
+        "ai_control": "AI dijeda atau dihadkan untuk anda atau syarikat anda sekarang.",
+        "protected_input": "Soalan ini tidak dapat dihantar dengan selamat. Cuba tanya dengan cara lain.",
+        "provider_error": "Pembantu tidak dapat menjawab sekarang. Sila cuba lagi."
+      }
+    }
+  }
+}

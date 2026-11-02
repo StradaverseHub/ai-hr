@@ -8,7 +8,7 @@
  *   - only an admin or the subject's *active administrative* manager may decide.
  * Every decision is still evented with the real actor.
  */
-import { and, eq, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { employment, reportingLine } from '../db/schema';
 import {AssignedWorkPrincipalUnavailableError} from '../lib/assigned-work';
@@ -29,6 +29,22 @@ export function isApprovalDecisionRefusal(error:unknown,label:string):boolean{
   `You cannot decide your own ${label}`,
   `Only an admin or the administrative manager can decide this ${label}`,
  ].includes(error.message);
+}
+
+/** Whole-stack review H4: the subject lookup assertCanDecide makes, for many employments in one statement. Each
+ * per-row statement pays the employment RLS policy setup again (about 165 ms at 2000 employments). */
+export async function subjectPersonIdsTx(tx:Tx,employmentIds:readonly string[]):Promise<ReadonlyMap<string,string>>{
+ if(!employmentIds.length)return new Map();
+ const rows=await tx.select({id:employment.id,personId:employment.personId}).from(employment).where(inArray(employment.id,[...employmentIds]));
+ return new Map(rows.map(row=>[row.id,row.personId]));
+}
+/** assertCanDecide's first two rules for a subject whose person is already known: 'refused' for self-approval
+ * (not a super_admin), 'allowed' for an admin role, and null when the remaining rules (administrative manager,
+ * delegation) must run through assertCanDecide itself. Same rules, same order; it decides nothing else. */
+export function decideByRoleForKnownSubject(ctx:SessionContext,subjectPersonId:string|undefined):'allowed'|'refused'|null{
+ const roles=ctx.roles??[],isSuperAdmin=roles.includes('super_admin'),isAdminRole=isSuperAdmin||roles.includes('hr_admin');
+ if(ctx.personId!=null&&subjectPersonId===ctx.personId&&!isSuperAdmin)return 'refused';
+ return isAdminRole&&subjectPersonId!==undefined?'allowed':null;
 }
 
 export async function assertCanDecide(

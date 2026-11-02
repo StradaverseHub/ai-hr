@@ -14,7 +14,7 @@ const coreCallers:Record<string,string>={'core/assistant.ts':'hr_assistant','cor
 // owner, handed only to the two synthetic harnesses, which admit every call under that same feature) and the
 // personnel import header assistant (resolveActiveAiConfig through its FEATURE constant). Every entry names
 // registered features and must show each listed seam; an unregistered caller still fails above.
-const governedCallers:Record<string,{features:readonly string[];seams:readonly RegExp[];issuedBy?:string;issuerImport?:string}>={
+const governedCallers:Record<string,{features:readonly string[];seams:readonly RegExp[];issuedBy?:string;issuerImport?:string;issuerSeams?:readonly RegExp[]}>={
  // Shared closed analysis entrypoint: config feature stays server-issued; projection and native replay bind exact bytes.
  'core/ai-payroll-comparison-analysis.ts':{features:['payroll_explanation'],seams:[/resolveActiveAiConfig\(tx,ctx,'payroll_explanation'\)/,/executePayrollComparisonTx\(tx,current,/,/generatePrivateAiAnalysis\(configuration,/]},
  'core/ai-domain-analysis.ts':{features:['report_insight'],seams:[/resolveActiveAiConfig\(tx,await authorizeSourceTx\(tx,ctx,selected\),'report_insight'\)/,/generatePrivateAiTaskAnalysis\(configuration,'aggregate_snapshot_analysis_v1',/,/await authorizeSourceTx\(tx,current,selected\)/,/return domainAnalysisProjection\(selected.domain,source\)/]},
@@ -28,6 +28,12 @@ const governedCallers:Record<string,{features:readonly string[];seams:readonly R
  // Dormant WP14 helper remains source-scanned; no mounted acceptance/activation authority is restored.
  'core/ai-provider-baseline.ts':{features:['provider_evaluation'],seams:[/governedAiConfig\(ctx,\s*snapshot,\s*'provider_evaluation'\)/,/bindStrictAiSpendRoot\(governedAiConfig/]},
  'core/personnel-import-assistance.ts':{features:['personnel_import_mapping'],seams:[/const FEATURE\s*=\s*'personnel_import_mapping'/,/resolveActiveAiConfig\(tx,\s*ctx,\s*FEATURE\)/]},
+ // Noveri conversation turns (ADR-0169 §5.1): the turn owner resolves the hr_assistant configuration, binds it to the
+ // Assistant question root and hands it only to the gateway model client, which prepares every call under the reviewed
+ // teras_harness_turn_v1 contract before the shared converse gateway. issuerSeams replaces the governedAiConfig default.
+ 'core/teras-wiring/model-client.ts':{features:['hr_assistant'],issuedBy:'core/teras-wiring/turn.ts',issuerImport:"from './model-client'",
+  seams:[/preparePrivateAiTask\(observed,TERAS_HARNESS_CONTRACT,/,/if\(prepared\.operation!=='conversation'\)throw/,/converse\(prepared\.configuration,prepared\.args\)/],
+  issuerSeams:[/const cfg=await resolveActiveAiConfig\(tx,ctx,'hr_assistant'\)/,/bindAiSpendTaskTx\(tx,ctx,cfg,\{kind:'assistant_question'\}\)/,/model:gatewayModelClient\(admitted\.configuration,totals\)/]},
 };
 // Shared Performance provider seam: it resolves no configuration of its own and admits every call under the
 // calling Performance feature. Its call sites ARE provider call sites, so each is held to the same rule as a
@@ -154,7 +160,8 @@ function assertWorkloadOwner(file:string,src:string){
    for(const feature of governed.features)expect(AI_FEATURES.some(f=>f.id===feature),`${file}:${feature}`).toBe(true);
    for(const seam of governed.seams)expect(src,`${file} ${seam}`).toMatch(seam);
    if(governed.issuedBy){const issuer=read(governed.issuedBy);expect(issuer,`${governed.issuedBy} issues ${file}`).toContain(governed.issuerImport??`from './${file.slice('core/'.length,-'.ts'.length)}'`);
-    for(const feature of governed.features)expect(issuer).toMatch(new RegExp(`governedAiConfig\\([^()]*'${feature}'\\)`));}
+    if(governed.issuerSeams)for(const seam of governed.issuerSeams)expect(issuer,`${governed.issuedBy} ${seam}`).toMatch(seam);
+    else for(const feature of governed.features)expect(issuer).toMatch(new RegExp(`governedAiConfig\\([^()]*'${feature}'\\)`));}
   }else{expect(coreCallers[file],`${file} needs a registered capability`).toBeTruthy();expect(src,`${file} resolves ${coreCallers[file]}`).toMatch(new RegExp(`resolveActiveAiConfig\\(tx,\\s*ctx,\\s*'${coreCallers[file]}'\\)`));}
   return {kind:'core',count:calls.length};
  }

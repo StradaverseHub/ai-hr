@@ -560,7 +560,9 @@ describe('D9 · Leave Balance Health — the pure derivation, both arms', () => 
   it('the loader decides the flag from the module AND the role, and the sentence exists in six locales', () => {
     const loader = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     expect(loader).toContain("const leaveCreditLive = isModuleEnabledOrFalse(s, 'toil');");
-    expect(loader).toContain("daysFromLeaveCreditOnly: leaveCreditLive && leaveTypeIs(x, 'replacement'),");
+    // The field itself is set by the one health projection the loader and the Assistant's readiness share.
+    expect(loader).toContain('...healthLeaveType(x, leaveCreditLive),');
+    expect(read('core/leave-config-health-input.ts')).toContain("daysFromLeaveCreditOnly:leaveCreditLive&&leaveTypeIs(x,'replacement'),");
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const v = JSON.parse(read(`messages/${loc}.json`)).admin.entitlementTemplates.healthReplacementLeaveHasEntitlementTable;
       expect(typeof v === 'string' && v.includes('{tables}'), loc).toBe(true);

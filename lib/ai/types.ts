@@ -190,6 +190,10 @@ export type ConverseArgs = {
    *  Assistant uses one value for every caller); it must NEVER be a tenant id, user id, email or any other
    *  identifier. */
   cacheKey?: string;
+  /** Opt-in, set only by the Teras harness policy (lib/ai/teras-harness-policy.ts): the caller executes several tool
+   *  calls from one response itself, sequentially in order and under its own caps. Without it the OpenRouter transport
+   *  keeps refusing a multi-call response (bfdbcc95). Nothing about it is sent to a provider. */
+  allowMultipleToolCalls?: true;
 };
 
 export type ConverseResult = {

@@ -4,6 +4,7 @@ import Link from './intent-link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
+import { AI_PRODUCT_NAME } from '@/lib/ai-centre/brand';
 import { useIsMonolith, useUiTheme } from './ui-theme-context';
 import {
   ArrowLeftRight,
@@ -28,7 +29,6 @@ import {
   MessageSquareText,
   Megaphone,
   Network,
-  Layers,
   PanelLeftClose,
   PanelLeftOpen,
   Receipt,
@@ -299,22 +299,18 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
 // Overview is exact so it is not also current on the other sections. Spending opens only where a spend
 // policy exists; elsewhere its page returns to the Overview.
 const AI_MANAGEMENT_NODE: CollapsibleGroupItem = {
+  // AI centre (docs/design/ai-centre/PLAN.md): the nine AI management pages are grouped as the centre's
+  // three administrator tabs. Every page keeps its address and requireAdmin guard; each row owns the
+  // sections its tab groups, and the centre's own tab bar links them.
   collapsible: true,
-  labelKey: 'aiManagement',
+  labelKey: 'aiCentreAdmin',
   icon: Sparkles,
   activeMatch: 'children',
-  defaultHref: '/control-tower/agents',
+  defaultHref: '/control-tower/agents/features',
   children: [
-    // WP12 (R8): the one AI inventory comes first.
-    { href: '/control-tower/agents/inventory', labelKey: 'aiManagementInventory', icon: Layers, adminOnly: true },
-    { href: '/control-tower/agents', labelKey: 'aiManagementOverview', icon: Gauge, adminOnly: true, exactHref: true },
-    { href: '/control-tower/agents/provider', labelKey: 'aiManagementProvider', icon: Settings2, adminOnly: true },
-    { href: '/control-tower/agents/assistant', labelKey: 'aiManagementAssistant', icon: MessageSquareText, adminOnly: true },
-    { href: '/control-tower/agents/features', labelKey: 'aiManagementFeatures', icon: ListChecks, adminOnly: true },
-    { href: '/control-tower/agents/allowances', labelKey: 'aiManagementAllowances', icon: Users, adminOnly: true },
-    { href: '/control-tower/agents/spending', labelKey: 'aiManagementSpending', icon: Wallet, adminOnly: true },
-    { href: '/control-tower/agents/orchestrator', labelKey: 'aiManagementOrchestrator', icon: Network, adminOnly: true },
-    { href: '/control-tower/agents/runs', labelKey: 'aiManagementRuns', icon: ScrollText, adminOnly: true },
+    { href: '/control-tower/agents/features', labelKey: 'aiCentreWorkers', icon: ListChecks, adminOnly: true, ownedSubpaths: ['/control-tower/agents/inventory'] },
+    { href: '/control-tower/agents', labelKey: 'aiCentreSetup', icon: Gauge, adminOnly: true, exactHref: true, ownedSubpaths: ['/control-tower/agents/assistant'] },
+    { href: '/control-tower/agents/allowances', labelKey: 'aiCentreSpend', icon: Wallet, adminOnly: true, ownedSubpaths: ['/control-tower/agents/spending', '/control-tower/agents/provider', '/control-tower/agents/runs'] },
   ],
 };
 const REPORTS_NODE: CollapsibleGroupItem = {
@@ -449,7 +445,8 @@ const GROUPS: Group[] = [
       // one from documents and one from the employee's own records. Module-gated via MODULE_OF_HREF
       // above; a user without a grant sees the row and is told who to ask, which is a better dead end
       // than a row that vanishes with no explanation.
-      { href: '/assistant', labelKey: 'assistant', icon: Sparkles },
+      // AI centre: Ask, Inbox, Delegated jobs and How it works are views of /assistant (one row, same gate).
+      { href: '/assistant', labelKey: 'aiCentre', icon: Sparkles },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
       // ca2f2fef: standalone design-preview of the future mobile app (visible to all roles).
       { href: '/mobile-preview', labelKey: 'mobilePreview', icon: Smartphone },
@@ -697,7 +694,11 @@ export function Sidebar({
   // rendered (see node_modules/next/dist/docs — the boundary is only mandatory on static pages).
   const searchParams = useSearchParams();
   const search = searchParams.toString();
-  const t = useTranslations('nav');
+  const tNav = useTranslations('nav');
+  // AI centre: its row shows the configured product name (lib/ai-centre/brand.ts), never translated;
+  // every other row reads its own nav label.
+  const t = Object.assign(((key: string, values?: Record<string, string | number>) =>
+    key === 'aiCentre' && AI_PRODUCT_NAME ? AI_PRODUCT_NAME : tNav(key as never, values as never)) as typeof tNav, tNav);
   const tWorkspace = useTranslations('onehr.workspace');
   // `common`, NOT `nav`: the brand name lives at common.appName. Reading it off `t` would resolve
   // nav.appName, which does not exist — and a MISSING_MESSAGE passes tsc, the suite and `next build`

@@ -5,25 +5,35 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
-## Nine-item BOARD split: draft cohort custody — 2 November 2026 (provisional)
+## Nine-item BOARD split: post-Noveri refresh — 3 November 2026 (unapplied)
 
-The user requested the unfinished permissions item continue separately while the other nine
-implementations prepare for release. Fresh read-only audit of1858 heads,329 journal blobs and295
-registered worktrees observed maximum filename0945,idx792 and timestamp1793330000345; retained at
-`/private/tmp/aihr-nine-allocation-audit-20261102.json`. This source reserves
-`0946_draft_creation_cohort_custody`,idx793/when1793330000346, SQL SHA256
-`cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390`.
-It changes only the exact restricted0859 function's root-literal1 numeric exception, preserving
-applied0859 bytes, child ownership, ACL, RLS settings, compression/size checks and all other numeric
-refusals. New SKBBK drafts require this compatibility repair even without the permission overhaul.
-Password unlock0935 retains its existing reservation and SQL bytes.
+The nine-item candidate preserves the complete648-entry journal from aligned main/alpha
+`dfbcf85b1f03e6e3266df6244694079a98e17dc9`, including all0924–0929 applied SQL bytes.
+An independent read-only live comparison matched all ordered timestamps/hashes through
+1793330000329; the restricted0859 source function still has its original prosrc SHA256
+`c3a2744b7924ff9e4313c579dc9d831c5101a5d2b265dcad380cbab63b645ca9`, restricted child owner,
+SECURITY DEFINER and no child schema CREATE. Full ledger/custody evidence is retained privately.
 
-This is not an installed migration or staging admission. Noveri's full handback still precedes BOARD.
-Before release, refresh the actual live ordered ledger/watermark and source claims. The separately
-continued0936–0945 permissions reservations remain unapplied and must be relocated above the actual
-post-nine accepted journal tail before their later release; their0939 cohort upgrade must reuse or
-recognize this compatible source instead of requiring the obsolete0859 function body. Preserve every
-then-applied prefix and SQL byte. The permissions continuation owner was explicitly notified.
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+|0935_password_account_unlock|763|1793330000335|3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa|
+|0946_draft_creation_cohort_custody|793|1793330000346|cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390|
+
+0935's old provisional idx757 is superseded by763 because Noveri's applied prefix now ends at762.
+Its filename, timestamp and SQL bytes remain unchanged.0946 retains its prior reservation and
+strictly increasing index gap; the existing validator permits gaps. A fresh read-only audit of1910
+heads,331journal blobs and325worktrees found maximum filename946/idx793/when1793330000346 and no
+parse errors. This is source coordination, not installation or lease admission.
+
+0946 changes only the exact0859 restricted function's root-literal1 numeric exception, preserving
+applied0859 bytes, OID, child ownership, ACL, function configuration, SECURITY DEFINER, compression,
+size and all other numeric refusals. It is independently necessary for genuinely new SKBBK drafts.
+
+The unfinished permissions0936–0945 remain excluded and unapplied. Their later owning release must
+relocate entries above the then-installed accepted journal tail, and recognize/reuse0946's compatible
+function body instead of requiring the obsolete0859 prosrc. Preserve every then-applied prefix and
+SQL byte. The continuation owner has the original reservation handoff. Both LOGIN items and System
+Optimization remain outside this nine-item scope. Recheck source claims and live ledger at admission.
 
 ## Idle sign-out policy — 2 November 2026 (provisional source claim)
 
@@ -906,6 +916,43 @@ Rewards. Timestamp and SQL bytes are unchanged. The SQL only replaces 0682's CHE
 (0–1 instead of 0.01–1, both rates still NOT NULL), so every existing row satisfies it and no data
 script is needed. No table, grant or RLS change. Grants no installation or acceptance.
 
+## ADR-0170 step 5a (Teras outcome record and work-job mandates) — 1 November 2026 (provisional source claim)
+
+Branch `claude/teras-step5a-outcome-mandates` (cut from `claude/teras-step1-harness` a87dc418, journal ending
+`0874_payroll_tax_basis_corrections` idx752 / when1793330000274). A scan of every local and origin ref plus
+registered worktree journals found the highest claim at `0887_attendance_task_candidate_access`
+(when1793330000287, performance work) and no Teras sibling migration; this claim starts above it with a
+small gap. Development source only: no installation priority, no deployment. The idx values below are this
+branch's own journal positions and must be re-frozen above the then-installed ledger at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|753|1793330000290|0890_teras_outcome_record_mandates|f60531e8dcc633857fc5bb18f7cf886a75b1767374956e30a2b49d6a962627c4|
+|754|1793330000291|0891_teras_rule_version_labels|2d779ba3d268fcc68a1cf2e2d1ffde50e72ade996daa02ff4ec4e345203d531b|
+
+Existing populated-upgrade tests pin their own tails (`test/payroll-tax-basis-upgrade.test.ts` and peers) and
+will need the integrator's usual tail update when these entries land.
+
+## ADR-0170 step 5 (Teras recommendations, digest and agent registry) — 1 November 2026 (provisional source claim)
+
+Branch `claude/teras-step5-recommend-digest-registry` (cut from `claude/teras-integration` a2a39018, journal
+ending `0891_teras_rule_version_labels` idx754 / when1793330000291). A scan of every origin ref found the highest
+claim at `0892_attendance_legacy_candidate_gate` (`codex/performance-attendance-candidate-profile-20261101`);
+0893–0894 are left for the parallel step 5c. Development source only: no installation priority, no deployment.
+The idx is this branch's own journal position and must be re-frozen above the then-installed ledger at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|755|1793330000295|0895_teras_worker_registry|60108e148ce2f7c0c178d4a678217a565c2f2d0f1b6988752ffc61f1f1d3c259|
+
+## AI centre step 5 UI integration — 2 November 2026 (development source only)
+
+Branch `claude/ai-centre-step5-ui-20261102` (cut from `claude/teras-privacy-fixes` da4743404, normal merge of
+`claude/ai-centre-revamp-20261101`, which carries main through `0876_epf_manual_percentage_zero`). The journal
+union orders the Teras claims above main's 0875/0876 by timestamp: 0890 idx755, 0891 idx756, 0895 idx757
+(timestamps …290/…291/…295 and SQL bytes unchanged). No migration is added by the UI work. Re-freeze above
+the then-installed ledger at integration; this grants no installation.
+
 ## Entra workforce connector — 2 November 2026 (provisional)
 
 `codex/entra-integration-design-20261102` appends `0899_entra_workforce` at
@@ -937,3 +984,26 @@ This helper preserves revoked raw identity access and checks current tenant/grou
 authority under the canonical access lock. Recheck all claims, aggregate journal and live watermark
 before integration/installation; adjust the unapplied index on aggregation. This is source allocation,
 with no deployment or installation authorization.
+
+## Teras re-allocation above the Entra watermark — 2 November 2026 (provisional source claim)
+
+Branch `claude/teras-review-fixes`, after the normal merge of released main 50ea2471 (642 journal entries; the live
+ledger reported by the Entra hand-back has 642 applied rows, watermark when1793330000299, with 0898
+`0f7204555b6aad9819a43e9a00b04530593e1d137afa7941603ac02e8ecc8729` and 0899
+`c70afe9dac5c37ebd471230df02f9d824184affc5db50ab7d8c6163c0adf842b` verified byte-identical here). None of the Teras
+migrations is applied anywhere. A scan of every origin ref and open PR found claims through
+`0923_overtime_formula_candidate_plan` (when1793330000323, performance work), so the Teras claims move above it.
+SQL bytes are unchanged; only file names and journal positions move. The earlier entries for 0890/0891/0895 above
+are superseded by this table. Development source only: no installation priority, no deployment; re-freeze above
+the then-installed ledger at integration.
+
+| idx (branch) | when | Tag | Was | SQL SHA256 |
+| ---: | ---: | --- | --- | --- |
+|757|1793330000324|0924_teras_outcome_record_mandates|0890|f60531e8dcc633857fc5bb18f7cf886a75b1767374956e30a2b49d6a962627c4|
+|758|1793330000325|0925_teras_rule_version_labels|0891|2d779ba3d268fcc68a1cf2e2d1ffde50e72ade996daa02ff4ec4e345203d531b|
+|759|1793330000326|0926_teras_worker_registry|0895|60108e148ce2f7c0c178d4a678217a565c2f2d0f1b6988752ffc61f1f1d3c259|
+|760|1793330000327|0927_teras_conversation_switch|0901|ac5475982a99c2b387bc5f34e9af6f69cb5bbe3aac156bdd8aa906e17579c968|
+|761|1793330000328|0928_teras_outcome_private_turns|0905|17a50608b153559bfa06cf49f2b2efb526c85f2cbf0ce1de16a78fa4a0df8fa9|
+|762|1793330000329|0929_teras_review_services|0906|765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0|
+
+The SQL comments inside these files still name their original provisional numbers; the bodies are kept byte for byte.

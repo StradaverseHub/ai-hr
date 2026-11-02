@@ -2,9 +2,14 @@
 
 The user requested the unfinished Roles, Actions & Data Permissions item continue in a new chat,
 and the other nine implementations prepare for release. This candidate is isolated on
-`codex/board-nine-release-20261102`, based on freshly fetched main
-`ff17d9fc32cbcf150a7c6641910795cc11d66b83`. At preparation, alpha remained
-`6ea88936539c361a17a6f802c5b1e7bcc4ce1e39`. Main's two newer CI build-profile commits are retained.
+`codex/board-nine-release-20261102`. The post-Noveri refresh normally merges the actual aligned
+main/alpha baseline `dfbcf85b1f03e6e3266df6244694079a98e17dc9`, preserving both histories.
+On 3 November MYT, read-only staging checks independently confirmed that source, build
+`2Nx3GLbqC6Gt1waXEfdMR`, healthy deployment state, active service, loopback health200 and all648
+ordered migration timestamps/hashes through1793330000329. Batch6e91abb8 is recorded complete and the
+lease is empty at epoch29. Noveri's handback is owner-directed partial acceptance with known defects;
+this baseline is not represented as full product acceptance. No BOARD admission follows from it.
+The nine board rows still read `building`; no board transition is made by preparation.
 
 ## Included scope
 
@@ -31,7 +36,7 @@ necessary independent compatibility repair: new SKBBK drafts persist numeric roo
 baseline0859's private source capture refused every numeric leaf.0946 changes only that exact root1
 exception under the existing restricted child owner; all other numeric, compression and size fences
 remain, and0859's applied SQL bytes are unchanged. Source reservations and later permissions migration
-ordering are recorded in `docs/MIGRATION-ALLOCATION.md`; actual live ledger acceptance remains pending.
+ordering are recorded in `docs/MIGRATION-ALLOCATION.md`; the current live648-entry prefix is verified unchanged. This does not apply the additions.
 
 ## Qualification and retained evidence
 
@@ -50,8 +55,13 @@ by copying an old approval. No provider or agent activation is part of preparati
 
 ## Release authority
 
-Noveri must complete its full staging handback before BOARD admission. This branch, document and any
-hosted check grant no staging lease, merge, deployment, human acceptance or production permission.
-After handback, refresh main/alpha, the exact staging source/build and ordered migration ledger;
-reconcile the candidate and any invalidated evidence before admission. Follow the shared queue and
-authenticated operator route. No board item is marked complete or deployed by preparation.
+Noveri's orchestration handback is now verified as described above. The next steps are the exact
+source-binding decisions in [the review packet](board-nine-source-binding-2026-11.md), complete
+hosted aggregate qualification on the approved frozen source/controller and current installed
+baseline, then guarded admission and changed authenticated rendered acceptance. The two LOGIN items
+and System Optimization are outside this candidate; the permissions item keeps its separate owner.
+A subsequent source repair must recompute both digests and reassess affected approvals/evidence.
+No lease claim, protected-ref merge, installation, acceptance, package publication or production
+permission is granted by this preparation. Recheck live source/build/ledger and queue immediately
+before any later authorized admission. Original failed runs remain failed; recover only failed or
+invalidated areas after all originally planned gate chunks have finished.
