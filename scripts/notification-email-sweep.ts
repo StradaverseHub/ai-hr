@@ -1,3 +1,4 @@
+import {createOnehrWorkerAccess} from '../packs/performance/onehr/worker-source';
 /** Minute notification projection + conditional email delivery. Use flock in cron, not a web request. */
 import { spawn } from 'node:child_process';
 import { createDb,type SessionContext } from '../db/client';
@@ -23,9 +24,9 @@ async function main(){
     if(isModuleEnabled(ctx,'lifecycle')){await refreshOnboardingPersonnel(ctx,owner.withTenant);await sweepOnboarding(ctx,owner.withTenant);const v9=await v9Sweep(ctx,owner);if(v9.failed>0)failed++;const mail=await v9DeliverEmails(ctx,owner);if(mail.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,lifecycleV9:v9,lifecycleV9Mail:mail}));}
     const letterAutomation=await sweepLetterAutomationFromSweep(ctx,owner);if(letterAutomation.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,letterAutomation}));
     if(!isModuleEnabled(ctx,'notifications')&&!(entitlements.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId)))continue;
-    await sweepAssessmentReminders(ctx);
-    const noticeSweep=await createNoticeSweepAccess(ctx,owner);
-    const letters=await projectLetterNotificationsFromSweep(ctx,owner),letterMail=await deliverLetterEmailsFromSweep(ctx,owner),projected=await dispatchNotificationsFromSweep(ctx,owner),delivered=await deliverNotificationEmails(ctx,undefined,{noticeSweep}),attendanceCc=await deliverAttendanceCcEmails(ctx);
+    await sweepAssessmentReminders(ctx,owner);
+    const noticeSweep=await createNoticeSweepAccess(ctx,owner),onehrSweep=await createOnehrWorkerAccess(ctx,owner);
+    const letters=await projectLetterNotificationsFromSweep(ctx,owner),letterMail=await deliverLetterEmailsFromSweep(ctx,owner),projected=await dispatchNotificationsFromSweep(ctx,owner),delivered=await deliverNotificationEmails(ctx,undefined,{noticeSweep,onehrSweep}),attendanceCc=await deliverAttendanceCcEmails(ctx);
     if(letters.failed>0||letterMail.failed>0)failed++;
     // Outcome details live in the delivery log. No addresses, frozen HR text, credentials or raw SMTP errors.
     console.log(JSON.stringify({tenantId:tenant.id,projected:projected.created,letters,letterMail,...delivered,attendanceCc}));

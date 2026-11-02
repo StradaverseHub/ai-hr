@@ -14,6 +14,13 @@ function graph():ReminderWorkGraph{
 }
 const companies=new Set(['company']);
 describe('current per-login assessment reminder summary',()=>{
+ it('seals actual review sources without treating colleague feedback as a review View course',()=>{
+  const g=graph(),seen:string[]=[];g.reviews[0].taskUserIds=['manager'];
+  const recipients=assessmentReminderWork(g,companies,now,(userId,reviewId)=>seen.push(userId+':'+reviewId));
+  expect([...new Set(seen)]).toEqual(['manager:review']);expect(recipients.find(actor=>actor.userId==='manager')?.tasks.map(task=>task.key)).toContain('feedback');
+  seen.length=0;g.reviews[0].taskUserIds=[];
+  expect(assessmentReminderWork(g,companies,now,(userId,reviewId)=>seen.push(userId+':'+reviewId)).find(actor=>actor.userId==='manager')?.tasks.map(task=>task.key)).toEqual(['feedback']);expect(seen).toEqual([]);
+ });
  it('applies exact review View per account without borrowing feedback or another review',()=>{
   const g=graph();g.reviews[0].taskUserIds=['employee'];g.reviews[0].facts.planStatus=null;
   const first=assessmentReminderWork(g,companies,now),manager=first.find(actor=>actor.userId==='manager')!;

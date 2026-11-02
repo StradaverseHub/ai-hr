@@ -32,18 +32,25 @@ export async function restrictedReminderMailOwner(run:(role:string)=>Promise<voi
   const tables=['performance_assessment_reminder_run','performance_assessment_reminder_recipient','notification_delivery','domain_event','review_cycle','performance_assessment_reminder_epoch'];
   const initial=await owner.client`select c.relname,pg_get_userbyid(c.relowner) as owner from pg_class c where c.relnamespace='public'::regnamespace and c.relname=ANY(${tables}) order by c.relname`;
   const [fn]=await owner.client`select pg_get_userbyid(proowner) as owner from pg_proc where oid='identity_email.assessment_tasks(uuid,uuid,text)'::regprocedure`;
-  for(const name of [...initial.map(r=>r.owner),fn.owner])if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name))throw Error('Unexpected fixture owner identifier');
+  const nativeFunctions=['app.financial_onehr_relay_begin(uuid,uuid,text)','app.financial_onehr_relay_end(uuid,uuid)','app.financial_onehr_prepared_current(uuid,uuid)'];
+  const nativeTables=['financial_onehr_source_context','financial_onehr_prepared_source'];
+  const nativeOwners=await owner.client`select p.oid::regprocedure::text as signature,pg_get_userbyid(p.proowner) as owner from pg_proc p where p.oid=ANY(ARRAY(select name::regprocedure::oid from unnest(${nativeFunctions}::text[]) name))`;
+  const nativeTableOwners=await owner.client`select c.relname,pg_get_userbyid(c.relowner) as owner from pg_class c where c.relnamespace='app'::regnamespace and c.relname=ANY(${nativeTables})`;
+
+  for(const name of [...initial.map(r=>r.owner),fn.owner,...nativeOwners.map(r=>r.owner),...nativeTableOwners.map(r=>r.owner)])if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name))throw Error('Unexpected fixture owner identifier');
   await owner.client.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`);
   try{
     await owner.client.unsafe(`GRANT USAGE,CREATE ON SCHEMA public,app,identity_email TO "${role}"`);
     await owner.client.unsafe(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO "${role}"`);
     await owner.client.unsafe(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app,identity_email TO "${role}"`);
     for(const table of tables)await owner.client.unsafe(`ALTER TABLE ${table} OWNER TO "${role}"`);
+    for(const table of nativeTables)await owner.client.unsafe(`ALTER TABLE app.${table} OWNER TO "${role}"`);
+    for(const signature of nativeFunctions)await owner.client.unsafe(`ALTER FUNCTION ${signature} OWNER TO "${role}"`);
     await owner.client.unsafe(`ALTER FUNCTION identity_email.assessment_tasks(uuid,uuid,text) OWNER TO "${role}"`);
     // Deployment must define the helper as the same restricted owner, not only invoke it later.
-    const migration=readFileSync(new URL('../db/migrations/0542_account_email_failures.sql',import.meta.url),'utf8');
+    const migration=readFileSync(new URL('../db/migrations/0941_financial_letter_actions.sql',import.meta.url),'utf8');
     const marker=migration.indexOf('CREATE OR REPLACE FUNCTION identity_email.assessment_tasks(');
-    expect(marker).toBeGreaterThanOrEqual(0);const definition=migration.slice(marker);expect(definition.length).toBeGreaterThan(1800);
+    expect(marker).toBeGreaterThanOrEqual(0);const definition=migration.slice(marker).split('--> statement-breakpoint')[0];expect(definition.length).toBeGreaterThan(1800);
     await owner.client.begin(async tx=>{await tx.unsafe(`SET LOCAL ROLE "${role}"`);await tx.unsafe(definition);});
     const [flags]=await owner.client`select r.rolsuper,r.rolbypassrls,p.prosecdef,pg_has_role('ai_hr_app',r.oid,'USAGE') as app_member,has_parameter_privilege(r.oid,'app.tenant_id','SET') as persistent_context_set from pg_proc p join pg_roles r on r.oid=p.proowner where p.oid='identity_email.assessment_tasks(uuid,uuid,text)'::regprocedure`;
     expect(flags).toEqual({rolsuper:false,rolbypassrls:false,prosecdef:true,app_member:false,persistent_context_set:false});
@@ -52,6 +59,8 @@ export async function restrictedReminderMailOwner(run:(role:string)=>Promise<voi
   }finally{
     await owner.client.unsafe(`ALTER FUNCTION identity_email.assessment_tasks(uuid,uuid,text) OWNER TO "${fn.owner}"`);
     for(const row of initial)await owner.client.unsafe(`ALTER TABLE ${row.relname} OWNER TO "${row.owner}"`);
+    for(const row of nativeOwners)await owner.client.unsafe(`ALTER FUNCTION ${row.signature} OWNER TO "${row.owner}"`);
+    for(const row of nativeTableOwners)await owner.client.unsafe(`ALTER TABLE app.${row.relname} OWNER TO "${row.owner}"`);
     await owner.client.unsafe(`DROP OWNED BY "${role}"`);await owner.client.unsafe(`DROP ROLE "${role}"`);
   }
 }

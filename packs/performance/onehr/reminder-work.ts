@@ -16,18 +16,18 @@ export type ReminderWorkRecipient={userId:string;personId:string;employmentIds:s
 /** One current work graph, one summary per login. The same phase/lock/window rules power the workspace.
  * Company entitlements are supplied explicitly, including for a group-wide cycle. No user impersonation.
  */
-export function assessmentReminderWork(graph:ReminderWorkGraph,enabledCompanies:ReadonlySet<string>,now=new Date()):ReminderWorkRecipient[]{
+export function assessmentReminderWork(graph:ReminderWorkGraph,enabledCompanies:ReadonlySet<string>,now=new Date(),onReviewTask?:(userId:string,reviewId:string)=>void):ReminderWorkRecipient[]{
  const {policy}=graph.cycle,byEmployment=new Map<string,typeof graph.actors>(),byUser=new Map(graph.actors.map(actor=>[actor.userId,actor]));
  const buckets=new Map<string,Map<TaskKey,TaskBucket>>(),reviews=new Map(graph.reviews.map(review=>[review.id,review]));
  for(const actor of graph.actors)for(const id of actor.employmentIds){const actors=byEmployment.get(id)??[];actors.push(actor);byEmployment.set(id,actors);}
  const bgOnly=new Set(graph.sessions.filter(session=>session.tier==='bg'&&(!session.companyId||enabledCompanies.has(session.companyId))).flatMap(session=>session.reviewerUserIds.filter(id=>!byUser.get(id)?.cycleAdmin)));
  function add(userId:string,key:TaskKey,id:string,cell:WindowCell|null,person?:{personId:string;name:string}){
-  if(cell&&!assessmentWorkWindowOpen(policy,cell,now))return;
+  if(cell&&!assessmentWorkWindowOpen(policy,cell,now))return false;
   const tasks=buckets.get(userId)??new Map<TaskKey,TaskBucket>();buckets.set(userId,tasks);
   const bucket=tasks.get(key)??{ids:new Set<string>(),closesAt:null,people:new Map<string,string>()};tasks.set(key,bucket);
   bucket.ids.add(id);const closesAt=cell?policy.windows[cell]?.closesAt??null:null;
   if(closesAt&&(!bucket.closesAt||Date.parse(closesAt)<Date.parse(bucket.closesAt)))bucket.closesAt=closesAt;
-  if(person)bucket.people.set(person.personId,person.name);
+  if(person)bucket.people.set(person.personId,person.name);return true;
  }
  for(const review of graph.reviews){
   if(!enabledCompanies.has(review.companyId))continue;
@@ -46,7 +46,7 @@ export function assessmentReminderWork(graph:ReminderWorkGraph,enabledCompanies:
      if(part.module==='pm'&&part.stage==='setting')continue;
      key=part.module==='pm'?part.stage==='checkin'?'own_checkin':'own_results':part.module==='tm'?'own_competency':'own_plan';
     }else key=part.module==='pm'?part.stage==='setting'?'team_setting':'team_results':part.module==='tm'?'team_competency':'team_plan';
-    add(actor.userId,key,review.id,part.cell,self?undefined:review);
+    if(add(actor.userId,key,review.id,part.cell,self?undefined:review))onReviewTask?.(actor.userId,review.id);
    }
   }
  }
