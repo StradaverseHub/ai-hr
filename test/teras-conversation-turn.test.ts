@@ -132,7 +132,7 @@ describe('a live-chat turn with the switch on',()=>{
 
  it('runs a two-call response one call after the other, in order, through the gateway; an over-cap response runs nothing',async()=>{
   await openRouter(b.tenantId);
-  const two=():Partial<ConverseResult>=>({toolCalls:[{id:'p-a',name:'my_leave_balances',input:{}},{id:'p-b',name:'my_leave_requests',input:{}}],stop:'tool_use'});
+  const two=():Partial<ConverseResult>=>({toolCalls:[{id:'p-a',name:'my_leave_balances',input:{}},{id:'p-b',name:'my_leave_requests',input:{limit:5}}],stop:'tool_use'});
   script([two,args=>{expect((args.turns.at(-1) as {results:{name:string}[]}).results.map(row=>row.name)).toEqual(['my_leave_balances','my_leave_requests']);return final('Done.');}]);
   const result=await turn(employee,'How much leave do I have, and what have I applied for?');
   // The harness's captured request opts in to multi-call responses (lib/ai/teras-harness-policy.ts).
