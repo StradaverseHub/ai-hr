@@ -33796,6 +33796,7 @@
     }
   },
   "contractManagement": {
+    "retryFiling": "重试归档至 P-file",
     "generationPending": "正在准备合同 PDF。当前文档准备就绪后，方可继续审批和签署。",
     "generationFailed": "合同 PDF 需要审核。People Ops 可检查当前条款并重试生成。",
     "retryGeneration": "重试生成 PDF",

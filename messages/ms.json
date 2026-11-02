@@ -33796,6 +33796,7 @@
     }
   },
   "contractManagement": {
+    "retryFiling": "Cuba pemfailan P-file semula",
     "generationPending": "PDF kontrak sedang disediakan. Kelulusan dan tandatangan akan diteruskan apabila dokumen semasa siap.",
     "generationFailed": "PDF kontrak memerlukan semakan. People Ops boleh menyemak terma semasa dan mencuba penyediaan semula.",
     "retryGeneration": "Cuba sediakan PDF semula",
