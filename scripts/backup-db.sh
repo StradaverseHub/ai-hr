@@ -112,7 +112,13 @@ finish() {
   local rc="${1:-$?}"
   [ "$FINISHED" = "1" ] && return
   FINISHED=1
-  [ "$LOCK_HELD" = "1" ] && rmdir "$LOCK_DIR" 2>/dev/null
+  if [ "$LOCK_HELD" = "1" ]; then
+    if ! python3 "$ROOT/scripts/backup-lock.py" release "$LOCK_DIR" "$LOCK_TOKEN" "$$"; then
+      RESULT=FAIL
+      MESSAGE="$MESSAGE; backup lock cleanup is uncertain, recovery directory retained"
+      if [ "$rc" = "0" ]; then rc=4; STAGE=lock-cleanup; fi
+    fi
+  fi
   if [ "$RESULT" != "PASS" ] && [ "$rc" = "0" ]; then rc=1; fi
   # One line per run in the status file and on stdout: the refusal messages are paragraphs for the
   # operator, but a monitor that counts failures cannot have one run become eight lines.
@@ -215,13 +221,12 @@ dest_run() {
 # atomic on every filesystem that matters, which is the only property a lock needs.
 STAGE=lock
 mkdir -p "$STAGING" || die 2 lock "cannot create the staging directory $STAGING"
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+if ! LOCK_TOKEN="$(python3 "$ROOT/scripts/backup-lock.py" acquire "$LOCK_DIR" "$$")"; then
   HOLDER="$(cat "$LOCK_DIR/pid" 2>/dev/null || echo unknown)"
   die 4 lock "another backup is running (lock $LOCK_DIR, pid $HOLDER). Refusing to run two dumps at once.
   If that process is gone, remove the lock directory and re-run."
 fi
 LOCK_HELD=1
-echo "$$" > "$LOCK_DIR/pid"
 
 # ── 4. the postgres client, chosen rather than inherited ─────────────────────────────────────────
 STAGE=client
