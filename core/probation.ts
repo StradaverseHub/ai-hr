@@ -1,11 +1,10 @@
+import {effectiveProbationSettings} from '../lib/probation-configuration';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {isModuleEnabled,assertModuleEnabled} from './entitlements';
-export async function withProbationTenant<T>(ctx:SessionContext,body:(tx:Tx)=>Promise<T>):Promise<T>{
- if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')&&!ctx.entitlements?.scopedModules.lifecycle?.length)assertModuleEnabled(ctx,'lifecycle');
- return withTenant(ctx,body);
-}
+export {withScopedLifecycleTenant as withProbationTenant} from './module-gate';
+import {withScopedLifecycleTenant as withProbationTenant} from './module-gate';
 const companyGate=(ctx:SessionContext,companyId:string)=>{if(ctx.entitlementsExempt===undefined)assertModuleEnabled(ctx,'lifecycle',companyId);};
 import {workingDatesForSpan} from './leave';
 import {todayInKualaLumpur,addCalendarMonths} from '../lib/hr-date';
@@ -30,9 +29,9 @@ export type ProbationPartView=ProbationPart&{allowedCommands:ProbationCommand[];
 export type ProbationCaseView={record:ProbationCase&{facts:ProbationPersonnel};parts:ProbationPartView[];form:ProbationForm;roles:ProbationRole[];files:{id:string;kind:string;name:string;partId:string|null;revision:number}[];followups:{id:string;kind:string;note:string;at:string;actorId:string}[];outcomes:ProbationOutcomeView[];holderNames:Record<string,string>};
 export type ProbationOutcomeView={id:string;partId:string;outcome:string;state:string;revision:number;letterFileId:string|null;releasedAt:string|null;failure:string|null;sourceKey:string};
 async function sourceTx(tx:Tx,id:string){const[row]=await tx.execute<{data:ProbationPersonnel}>(sql`select app.probation_personnel_source(${uuid(id)}::uuid) as data`);if(!row?.data)throw new ProbationError('forbidden','The employee is unavailable for probation.');return row.data;}
-async function setupTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<ProbationSetup>{
+async function setupTx(tx:Tx,ctx:SessionContext,companyId:string,grade?:string):Promise<ProbationSetup>{
  companyGate(ctx,companyId);
- const rows=await tx.execute<Version<ProbationSettings|ProbationForm|ProbationRouteConfiguration>&{kind:string}>(sql`select distinct on(kind) id,version,kind,data from probation_configuration where tenant_id=${ctx.tenantId}::uuid and company_id=${uuid(companyId)}::uuid and state='published' order by kind,version desc`);
+ const rows=await tx.execute<Version<ProbationSettings|ProbationForm|ProbationRouteConfiguration>&{kind:string}>(sql`select distinct on(kind) id,version,kind,data from probation_configuration where tenant_id=${ctx.tenantId}::uuid and company_id=${uuid(companyId)}::uuid and state='published' and (kind<>'form' or coalesce(data->'targetGrades',${json(Array.from({length:12},(_,i)=>String(i+12)))}::jsonb)?${grade??'12'}) order by kind,version desc`);
  const [access]=await tx.execute<{ok:boolean}>(sql`select app.probation_config_admin(${companyId}::uuid) as ok`);
  const versions=access?.ok?await tx.execute<Version<ProbationSettings|ProbationForm|ProbationRouteConfiguration>&{kind:'settings'|'form'|'route';state:string}>(sql`select distinct on(kind) id,version,kind,state,data from probation_configuration where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid order by kind,version desc`):[];
  const [activation]=await tx.execute<{enabled:boolean;activation_on:string|null}>(sql`select enabled,activation_on::text from probation_activation where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid`);
@@ -59,15 +58,15 @@ export function probationIntakeCandidates(ctx:SessionContext,companyId:string){r
  return Promise.all(ids.map(r=>sourceTx(tx,r.id)));
 });}
 async function admitTx(tx:Tx,ctx:SessionContext,employmentId:string,reason:string){
- const source=await sourceTx(tx,employmentId),setup=await setupTx(tx,ctx,source.companyId);
+ const source=await sourceTx(tx,employmentId),setup=await setupTx(tx,ctx,source.companyId,source.grade);
  if(!setup.settings||!setup.form||!setup.route)throw new ProbationError('invalid','Publish probation settings, form and routes before intake.');
  if(source.confirmationOn||source.resignationOn||source.terminatedOn||source.employmentType!=='full_time'||source.explicitNoProbation)return null;
- const calendarEnd=source.endOn??addDaysIso(addCalendarMonths(source.startOn,setup.settings.data.defaultMonths),-1);
- const calendar=new Set(await workingDatesForSpan(tx,employmentId,addDaysIso(source.startOn,-366),addCalendarMonths(calendarEnd,12)));
  const exactMonths=source.endOn?[...Array(120)].map((_,i)=>i+1).find(n=>addDaysIso(addCalendarMonths(source.startOn,n),-1)===source.endOn):undefined;
+ const config=effectiveProbationSettings(setup.settings.data,source,source.probationMonths??exactMonths??(source.grade==='H'?3:setup.settings.data.defaultMonths));
+ const calendarEnd=source.endOn??addDaysIso(addCalendarMonths(source.startOn,source.grade==='H'?3:config.defaultMonths),-1);
+ const calendar=new Set(await workingDatesForSpan(tx,employmentId,addDaysIso(source.startOn,-366),addCalendarMonths(calendarEnd,12)));
  const months=source.unknownPeriod?null:source.probationMonths??exactMonths??1;
  const unknownLength=!source.unknownPeriod&&source.probationMonths===null&&exactMonths===undefined;
- const config=structuredClone(setup.settings.data);
  const record=createProbationCase({id:randomUUID(),employmentId,companyId:source.companyId,sourceKey:'employment:'+employmentId,startOn:source.startOn,endOn:source.endOn,months,grade:source.grade,explicitNoProbation:false,unknownLength,config,nextId:randomUUID,isWorking:day=>calendar.has(day)});
  if(!record)return null;
  const [row]=await tx.execute<{id:string}>(sql`select app.probation_admit(${json({...record,facts:source})}::jsonb,${json(record.parts)}::jsonb,${setup.settings.id}::uuid,${setup.form.id}::uuid,${setup.route.id}::uuid,${reason}) as id`);return row.id;
@@ -167,7 +166,7 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  for(const row of rows)for(const part of row.parts){if(part.dueOn>=today||['locked','completed_offline','cancelled'].includes(part.state))continue;part.calendarDaysOverdue=Math.round((Date.parse(today+'T00:00:00Z')-Date.parse(part.dueOn+'T00:00:00Z'))/86400000);if(part.type===1)part.workingDaysOverdue=(await workingDatesForSpan(tx,row.employmentId,addDaysIso(part.dueOn,1),today)).length;}
  return{rows:[...rows],offset,limit,hasMore:offset+rows.length<counts.total,total:counts.total,totals:{overdue:counts.overdue,end_passed:counts.end_passed,ending14:counts.ending14,low_result:counts.low_result,kpi_submit:counts.kpi_submit,kpi_ack:counts.kpi_ack},options:await trackerOptionsTx(tx,ctx)};
 });}
-export type ProbationAdministrationOptions={companies:{id:string;name:string}[];users:{id:string;name:string}[];departments:{id:string;name:string;companyId:string}[];businessUnits:{id:string;name:string;companyId:string}[]};
+export type ProbationAdministrationOptions={businessGroups:{id:string;name:string}[];grades:string[];companies:{id:string;name:string}[];users:{id:string;name:string}[];departments:{id:string;name:string;companyId:string}[];businessUnits:{id:string;name:string;companyId:string}[]};
 export function probationAdministrationOptions(ctx:SessionContext):Promise<ProbationAdministrationOptions>{return withProbationTenant(ctx,async tx=>{
  const companies=await tx.execute<{id:string;name:string}>(sql`select c.id,c.legal_name as name from company c where c.tenant_id=${ctx.tenantId}::uuid and c.archived_at is null and (app.probation_config_admin(c.id) or app.is_group_admin() and app.is_admin_for(c.id) and not exists(select 1 from probation_access a where a.company_id=c.id and a.tenant_id=c.tenant_id and a.role='admin' and a.valid_from<=${todayInKualaLumpur()}::date and (a.valid_to is null or a.valid_to>=${todayInKualaLumpur()}::date))) order by c.legal_name,c.id`);
  const allowed=companies.filter(c=>ctx.entitlementsExempt!==undefined||isModuleEnabled(ctx,'lifecycle',c.id));if(!allowed.length)throw new ProbationError('forbidden','Named probation administration access is required.');
@@ -175,7 +174,9 @@ export function probationAdministrationOptions(ctx:SessionContext):Promise<Proba
  const scope=sql`array[${sql.join(allowed.map(c=>sql`${c.id}::uuid`),sql`, `)}]::uuid[]`;
  const departments=await tx.execute<{id:string;name:string;companyId:string}>(sql`select id,name,company_id as "companyId" from department where tenant_id=${ctx.tenantId}::uuid and company_id=any(${scope}) and archived_at is null order by name,id`);
  const businessUnits=await tx.execute<{id:string;name:string;companyId:string}>(sql`select id,name,company_id as "companyId" from business_unit where tenant_id=${ctx.tenantId}::uuid and company_id=any(${scope}) and archived_at is null order by name,id`);
- return{companies:allowed,users:[...users],departments:[...departments],businessUnits:[...businessUnits]};
+ const businessGroups=await tx.execute<{id:string;name:string}>(sql`select distinct bg.id,bg.legal_name as name from company c join company bg on bg.id=coalesce(c.parent_company_id,c.id) and bg.tenant_id=c.tenant_id where c.tenant_id=${ctx.tenantId}::uuid and c.id=any(${scope}) order by bg.legal_name,bg.id`);
+ const grades=await tx.execute<{code:string}>(sql`select regexp_replace(upper(code),'^(JG|GRADE)[ -]*','','g') as code from job_grade where tenant_id=${ctx.tenantId}::uuid and archived_at is null order by rank,code limit 500`);
+ return{businessGroups:[...businessGroups],grades:[...new Set(grades.map(g=>g.code))],companies:allowed,users:[...users],departments:[...departments],businessUnits:[...businessUnits]};
 });}
 export function uploadProbationEvidence(ctx:SessionContext,input:{caseId:string;partId:string;revision:number;name:string;content:Buffer;reason:string}){return withProbationTenant(ctx,async tx=>{
  const view=await caseTx(tx,ctx,input.caseId),part=view.parts.find(p=>p.id===input.partId);if(!part||part.revision!==input.revision)throw new ProbationError('conflict','The intake review changed.');
@@ -201,3 +202,51 @@ async function trackerOptionsTx(tx:Tx,ctx:SessionContext):Promise<ProbationTrack
 }
 export function probationTrackerOptions(ctx:SessionContext){return withProbationTenant(ctx,tx=>trackerOptionsTx(tx,ctx));}
 export function canConfigureProbationWorkflows(ctx:SessionContext):Promise<boolean>{if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')&&!ctx.entitlements?.scopedModules.lifecycle?.length)return Promise.resolve(false);return withProbationTenant(ctx,async tx=>{const rows=await tx.execute<{id:string}>(sql`select id from company where tenant_id=${ctx.tenantId}::uuid and archived_at is null and app.probation_config_admin(id)`);return rows.some(c=>ctx.entitlementsExempt!==undefined||isModuleEnabled(ctx,'lifecycle',c.id));});}
+
+export function prepareProbationCutover(ctx:SessionContext,companyId:string){return withProbationTenant(ctx,async tx=>{companyGate(ctx,companyId);const[row]=await tx.execute<{data:{id:string;digest:string;snapshot:unknown;sends:false}}>(sql`select app.probation_prepare_cutover(${companyId}::uuid) as data`);return row.data;});}
+export function approveProbationCutover(ctx:SessionContext,input:{id:string;digest:string;reason:string}){return withProbationTenant(ctx,tx=>tx.execute(sql`select app.probation_approve_cutover(${input.id}::uuid,${input.digest},${input.reason})`));}
+
+/** Existing minute sweep supplies a real privileged connection; context roles confer no maintenance power. */
+export async function sweepProbation(ctx:SessionContext,connection:import('./notice-projection').NotificationSweepConnection,now=new Date()):Promise<{processed:number;failed:number}>{
+ if(ctx.userId)throw new ProbationError('forbidden','Probation maintenance requires the verified no-login owner connection.');
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kuala_Lumpur',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);
+ const companies=await connection.withTenant(ctx,async tx=>{const[owner]=await tx.execute<{ok:boolean}>(sql`select app.probation_storage_runner() as ok`);if(!owner?.ok)throw new ProbationError('forbidden','Verified probation storage owner required.');return tx.execute<{companyId:string;activationOn:string}>(sql`select company_id as "companyId",activation_on::text as "activationOn" from probation_activation where tenant_id=${ctx.tenantId}::uuid and enabled and activation_on<=${today}::date order by company_id`);});
+ let processed=0,failed=0;
+ for(const company of companies){if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle',company.companyId))continue;
+  // New admissions only: older employees require the reviewed cutover/offline intake path.
+  const admissions=await connection.withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select e.id from employment e join assignment a on a.employment_id=e.id and a.tenant_id=e.tenant_id and a.valid_to is null and a.superseded_at is null where e.tenant_id=${ctx.tenantId}::uuid and e.company_id=${company.companyId}::uuid and a.employment_type='full_time' and coalesce(e.join_date,e.hired_on)>=${company.activationOn}::date and coalesce(e.join_date,e.hired_on)<=${today}::date and not exists(select 1 from probation_case c where c.tenant_id=e.tenant_id and c.employment_id=e.id) order by e.id limit 500`));
+  for(const e of admissions)try{await connection.withTenant(ctx,tx=>admitTx(tx,ctx,e.id,'Activated new starter intake'));processed++;}catch{failed++;}
+  const cases=await connection.withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select id from probation_case where tenant_id=${ctx.tenantId}::uuid and company_id=${company.companyId}::uuid and data->>'state' not in('withdrawn','confirmed','not_confirmed') order by id limit 2000`));
+  for(const c of cases)try{await connection.withTenant(ctx,async tx=>{
+   const view=await caseTx(tx,ctx,c.id);if(view.record.facts.resignationOn||view.record.facts.terminatedOn){await tx.execute(sql`select app.probation_withdraw(${c.id}::uuid,'Canonical Personnel exit recorded')`);return;}
+   const workflows=await tx.execute<{id:string;data:import('../lib/probation-workflow').ProbationWorkflow}>(sql`select id,data from probation_builder_definition where tenant_id=${ctx.tenantId}::uuid and company_id=${company.companyId}::uuid and kind='workflow' and state='published' and id::text in(select jsonb_array_elements_text(data->'workflowIds') from probation_case where id=${c.id}::uuid)`);
+   for(const original of view.parts){let part=original;
+    if(part.state==='not_issued'&&part.issueOn<=today){await tx.execute(sql`select app.probation_issue(${part.id}::uuid,${today}::date)`);part=(await caseTx(tx,ctx,c.id)).parts.find(p=>p.id===part.id)!;}
+    if(['locked','completed_offline','cancelled','not_issued'].includes(part.state)){if(part.state==='locked'&&!view.files.some(f=>f.kind==='completed_part'&&f.partId===part.id&&f.revision===part.contentRevision))await fileCompletedPartTx(tx,ctx,c.id,part.id);continue;}
+    const events=new Set<string>();
+    if(part.issueOn===today)events.add(part.type===1?'kpi_assigned':'review_issued');
+    if(part.type===1){const days=await workingDatesForSpan(tx,view.record.employmentId,addDaysIso(view.record.startOn,1),today);if(days.length===3&&days.includes(today))events.add('kpi_reminder');const afterDue=await workingDatesForSpan(tx,view.record.employmentId,addDaysIso(part.dueOn,1),today);if(afterDue.length===1&&afterDue[0]===today)events.add('kpi_overdue');}
+    else{const{probationReminderDue}=await import('../lib/probation-model');if(probationReminderDue(part,view.record.config,today,company.activationOn,'employee')||probationReminderDue(part,view.record.config,today,company.activationOn,'lm'))events.add('review_reminder');if(part.dueOn===today)events.add('review_due');}
+    if(part.state==='pending_approval')events.add('approval_pending');
+    for(const w of workflows)if(events.has(w.data.trigger.event))await tx.execute(sql`select app.probation_workflow_run(${c.id}::uuid,${part.id}::uuid,${w.id}::uuid,${part.revision},'Current-day automatic probation event')`);
+   }
+   for(const outcome of view.outcomes)if(outcome.releasedAt&&outcome.state!=='completed')await applyProbationOutcomeTx(tx,ctx,outcome.id);
+  });processed++;}catch{failed++;}
+ }
+ return{processed,failed};
+}
+
+async function applyProbationOutcomeTx(tx:Tx,ctx:SessionContext,outcomeId:string){
+ const[outcome]=await tx.execute<{id:string;caseId:string;partId:string;outcome:string;state:string;releasedAt:string|null}>(sql`select id,case_id as "caseId",part_id as "partId",outcome,state,released_at::text as "releasedAt" from probation_outcome where tenant_id=${ctx.tenantId}::uuid and id=${uuid(outcomeId)}::uuid`);
+ if(!outcome||!outcome.releasedAt)throw new ProbationError('invalid','Release the authorised signed letter before applying the outcome.');
+ if(outcome.state==='completed')return{completed:true};const view=await caseTx(tx,ctx,outcome.caseId),part=view.parts.find(p=>p.id===outcome.partId);if(!part)throw new ProbationError('invalid','Outcome source review unavailable.');
+ let movement:string|null=null,handoff:string|null=null,next:{endOn:string}|null=null,newPart:ProbationPart|null=null;
+ if(outcome.outcome==='not_confirm'){const{createProbationOffboardingTx}=await import('../packs/lifecycle/service');handoff=await createProbationOffboardingTx(tx,ctx,view.record.id);}
+ else if(outcome.outcome==='confirm'||outcome.outcome==='extend'){
+  if(outcome.outcome==='confirm'&&view.record.endOn>todayInKualaLumpur())return{completed:false,waitingOn:view.record.endOn};
+  const{applyReleasedProbationMovementTx}=await import('./movement');await applyReleasedProbationMovementTx(tx,ctx,outcome.id);movement='probation:'+outcome.id;
+  if(outcome.outcome==='extend'){const start=addDaysIso(view.record.endOn,1),end=addDaysIso(addCalendarMonths(start,part.extensionMonths!),-1);next={endOn:end};const working=new Set(await workingDatesForSpan(tx,view.record.employmentId,addDaysIso(end,-366),addDaysIso(end,366)));const{newProbationPart,probationDueDay}=await import('../lib/probation-model');newPart=newProbationPart(randomUUID(),3,view.record.extensionCount+1,probationDueDay(end,day=>working.has(day)),view.record.config.issueLeadDays);}
+ }else throw new ProbationError('invalid','PBP must adjudicate Other before an employment outcome can be applied.');
+ await tx.execute(sql`select app.probation_record_effect(${outcome.id}::uuid,${movement},${handoff}::uuid,${json(next)}::jsonb,${json(newPart)}::jsonb)`);return{completed:true};
+}
+export function applyProbationOutcome(ctx:SessionContext,outcomeId:string){return withProbationTenant(ctx,tx=>applyProbationOutcomeTx(tx,ctx,outcomeId));}
