@@ -1,3 +1,4 @@
+import {assertModuleFunction} from '@/core/module-action-access';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -72,6 +73,7 @@ export default async function ClaimLimitsPage({
   searchParams: Promise<{ error?: string; gradeId?: string }>;
 }) {
   const s = await requireAdmin();
+  await assertModuleFunction(s,'claimsConfig.limits','view');
   const t = await getTranslations('admin.claims');
   const { error, gradeId: rawGradeId } = await searchParams;
   const [types, grades, allLimits] = await Promise.all([listClaimTypes(s), listJobGrades(s), listClaimLimits(s)]);

@@ -72,6 +72,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
  after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
  domain text:=TG_ARGV[0];operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+ function_key text:=CASE TG_TABLE_NAME WHEN 'claim_policy' THEN 'claimsConfig.limits' WHEN 'claim_mileage_rate' THEN 'claimsConfig.mileage' ELSE 'claimsConfig.types' END;
 BEGIN
  IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
  PERFORM app.access_workforce_write_lock();
@@ -82,7 +83,7 @@ BEGIN
   OR before_row->>'active'='true' AND after_row->>'active'='false') THEN operation:='delete';END IF;
  -- A policy's dated replacement is an Edit of its logical key. Initial bands are one Add course.
  IF TG_OP='INSERT' AND TG_TABLE_NAME IN ('claim_policy','claim_mileage_rate') THEN operation:=app.claim_configuration_insert_operation(TG_TABLE_NAME,after_row);END IF;
- IF NOT app.module_action_allowed(domain,operation,NULL) AND NOT (TG_OP='UPDATE' AND TG_TABLE_NAME IN ('claim_policy','claim_mileage_rate') AND before_row->>'valid_to' IS NULL AND after_row->>'valid_to' IS NOT NULL AND app.module_action_allowed(domain,'delete',NULL)) THEN RAISE EXCEPTION 'Module configuration action unavailable' USING ERRCODE='42501';END IF;
+ IF NOT (app.module_action_allowed(domain,operation,NULL) AND app.function_action_allowed(function_key,operation,NULL)) AND NOT (TG_OP='UPDATE' AND TG_TABLE_NAME IN ('claim_policy','claim_mileage_rate') AND before_row->>'valid_to' IS NULL AND after_row->>'valid_to' IS NOT NULL AND app.module_action_allowed(domain,'delete',NULL) AND app.function_action_allowed(function_key,'delete',NULL)) THEN RAISE EXCEPTION 'Module configuration action unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
 END; $$;
 --> statement-breakpoint
@@ -136,7 +137,7 @@ BEGIN
  PERFORM app.access_workforce_write_lock();
  IF NOT app.module_action_allowed('claims_configuration','view',NULL) THEN RAISE EXCEPTION 'Module configuration unavailable' USING ERRCODE='42501';END IF;
  operation:=app.claim_configuration_insert_operation(p_kind,jsonb_build_object('tenant_id',app.current_tenant_id(),'claim_type_id',p_claim_type,'grade_id',p_grade,'claim_item_id',p_item,'vehicle_class',p_vehicle));
- IF NOT app.module_action_allowed('claims_configuration',operation,NULL) THEN RAISE EXCEPTION 'Module configuration action unavailable' USING ERRCODE='42501';END IF;
+ IF NOT app.module_action_allowed('claims_configuration',operation,NULL) OR NOT app.function_action_allowed(CASE p_kind WHEN 'claim_policy' THEN 'claimsConfig.limits' WHEN 'claim_mileage_rate' THEN 'claimsConfig.mileage' END,operation,NULL) THEN RAISE EXCEPTION 'Module configuration action unavailable' USING ERRCODE='42501';END IF;
  RETURN operation;
 END; $$;
 --> statement-breakpoint
@@ -154,7 +155,7 @@ BEGIN
  SELECT EXISTS(SELECT 1 FROM app.module_configuration_insert_receipt r WHERE r.xact_id=pg_current_xact_id() AND r.tenant_id=NEW.tenant_id AND r.user_id=app.current_user_id() AND r.kind=TG_TABLE_NAME AND r.resource_key=subject_key AND r.valid_from=(new_row->>'valid_to')::date
   AND CASE WHEN TG_TABLE_NAME='claim_policy' THEN EXISTS(SELECT 1 FROM public.claim_policy p WHERE p.tenant_id=r.tenant_id AND p.id=r.row_id AND p.valid_from=r.valid_from AND jsonb_build_array(p.claim_type_id,p.grade_id,p.claim_item_id)::text=r.resource_key)
    ELSE EXISTS(SELECT 1 FROM public.claim_mileage_rate p WHERE p.tenant_id=r.tenant_id AND p.id=r.row_id AND p.valid_from=r.valid_from AND jsonb_build_array(p.claim_type_id,p.grade_id,p.vehicle_class)::text=r.resource_key) END) INTO replacement;
- IF NOT app.module_action_allowed('claims_configuration',CASE WHEN replacement THEN 'edit' ELSE 'delete' END,NULL) THEN RAISE EXCEPTION 'Dated configuration action unavailable' USING ERRCODE='42501';END IF;
+ IF NOT app.module_action_allowed('claims_configuration',CASE WHEN replacement THEN 'edit' ELSE 'delete' END,NULL) OR NOT app.function_action_allowed(CASE TG_TABLE_NAME WHEN 'claim_policy' THEN 'claimsConfig.limits' ELSE 'claimsConfig.mileage' END,CASE WHEN replacement THEN 'edit' ELSE 'delete' END,NULL) THEN RAISE EXCEPTION 'Dated configuration action unavailable' USING ERRCODE='42501';END IF;
  RETURN NULL;
 END; $$;
 --> statement-breakpoint
@@ -163,3 +164,171 @@ REVOKE ALL ON FUNCTION app.claim_configuration_range_close() FROM PUBLIC,ai_hr_a
 CREATE CONSTRAINT TRIGGER claim_configuration_range_close AFTER UPDATE ON claim_policy DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_configuration_range_close();
 --> statement-breakpoint
 CREATE CONSTRAINT TRIGGER claim_configuration_range_close AFTER UPDATE ON claim_mileage_rate DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_configuration_range_close();
+
+
+--> statement-breakpoint
+-- Exact maintained Claim configuration submenus. /forms is only a Types redirect, never a
+-- second independent permission purpose. Reimbursement payments have separate company owners.
+CREATE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap
+  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration')
+  AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.module_function_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap
+  AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration')
+  AND app.module_action_current_legacy_allowed(t,u,a.parent_capability,co));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.module_function_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+DO $$ DECLARE selected_key text;operation text;BEGIN
+ FOREACH selected_key IN ARRAY ARRAY['types','limits','mileage'] LOOP
+  FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+   PERFORM app.register_function_action('claimsConfig.'||selected_key,operation,'tenant','claims_configuration.'||operation,'app.module_action_current_legacy_allowed',
+    jsonb_build_object('moduleKey','claims','labelKey','admin.claimsTabs.'||selected_key,'kind','submenu','course','administrative','screenKey','claimsConfig','href',CASE WHEN selected_key='types' THEN '/admin/claims' ELSE '/admin/claims/'||selected_key END,'employeeBearing',false));
+  END LOOP;
+ END LOOP;
+END $$;
+
+--> statement-breakpoint
+CREATE FUNCTION app.module_function_allowed(p_key text,p_operation text,p_company uuid DEFAULT NULL) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce((SELECT app.module_action_allowed(split_part(a.parent_capability,'.',1),split_part(a.parent_capability,'.',2),p_company)
+  AND app.function_action_allowed(p_key,p_operation,p_company)
+  FROM app.access_function_action a WHERE a.function_key=p_key AND a.operation=p_operation
+   AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration')),false);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.module_function_allowed(text,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.module_function_allowed(text,text,uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Finite native claim cancellation/reimbursement ports. Runtime cannot mint their effect proofs.
+CREATE TABLE app.module_claim_effect(
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,claim_id uuid NOT NULL,
+ course text NOT NULL CHECK(course IN ('own_cancel','admin_cancel','reimbursement')),
+ before_hash text NOT NULL,after_hash text NOT NULL,event_id uuid NOT NULL,
+ PRIMARY KEY(xact_id,tenant_id,user_id,claim_id,before_hash,after_hash)
+);
+REVOKE ALL ON app.module_claim_effect FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap IN ('function.claims.own.view','function.claims.own.delete') AND co IS NOT NULL
+ AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.employment e ON e.tenant_id=actor.tenant_id AND e.person_id=actor.person_id
+  WHERE actor.id=u AND actor.tenant_id=t AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
+   AND e.company_id=co AND e.voided_at IS NULL);
+$$;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_own_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.claim_own_native_allowed(t,u,cap,co);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.claim_own_native_allowed(uuid,uuid,text,uuid),app.claim_own_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+DO $$ BEGIN
+ PERFORM app.register_function_action('claims.own','view','company',NULL,'app.claim_own_current_native_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"own","employeeBearing":false}'::jsonb);
+ PERFORM app.register_function_action('claims.own','delete','company',NULL,'app.claim_own_current_native_allowed','{}'::jsonb);
+ PERFORM app.register_function_action('claims.administration','view','company','claims.view','app.module_action_current_legacy_allowed','{"moduleKey":"claims","labelKey":"claims.title","kind":"native_acl","course":"administrative","employeeBearing":true}'::jsonb);
+ PERFORM app.register_function_action('claims.administration','delete','company','claims.delete','app.module_action_current_legacy_allowed','{}'::jsonb);
+ PERFORM app.register_function_action('claimsConfig.reimbursements','view','company','claims.view','app.module_action_current_legacy_allowed','{"moduleKey":"claims","labelKey":"admin.claimsTabs.reimbursements","kind":"submenu","course":"administrative","screenKey":"claimsConfig","href":"/admin/claims/reimbursements","employeeBearing":true}'::jsonb);
+ PERFORM app.register_function_action('claimsConfig.reimbursements','execute','company','claims.edit','app.module_action_current_legacy_allowed','{}'::jsonb);
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_cancel_native(p_claim uuid,p_expected_employment uuid DEFAULT NULL) RETURNS TABLE(event_id uuid,employment_id uuid)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected public.claim_request%ROWTYPE;person_id uuid;company_id uuid;own_course boolean;after_row jsonb;audit uuid;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Claim cancellation unavailable' USING ERRCODE='42501';END IF;
+ SELECT q.* INTO selected FROM public.claim_request q WHERE q.id=p_claim AND q.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND THEN RAISE EXCEPTION 'Claim not found' USING ERRCODE='42501';END IF;
+ SELECT e.person_id,e.company_id INTO person_id,company_id FROM public.employment e WHERE e.id=selected.employment_id AND e.tenant_id=selected.tenant_id AND e.voided_at IS NULL;
+ own_course:=app.is_self_person(person_id);
+ IF company_id IS NULL OR NOT (own_course OR app.can_admin_employment(selected.employment_id)) THEN RAISE EXCEPTION 'Only the claimant or an admin can cancel this claim' USING ERRCODE='42501';END IF;
+ IF p_expected_employment IS NOT NULL AND p_expected_employment IS DISTINCT FROM selected.employment_id THEN RAISE EXCEPTION 'Claim does not belong to the selected employment' USING ERRCODE='42501';END IF;
+ IF selected.status::text<>'pending' THEN RAISE EXCEPTION 'Only a pending claim can be cancelled' USING ERRCODE='55000';END IF;
+ IF own_course THEN
+  IF NOT app.function_action_allowed('claims.own','delete',company_id) THEN RAISE EXCEPTION 'Claim cancellation unavailable' USING ERRCODE='42501';END IF;
+ ELSE
+  IF NOT app.module_action_allowed('claims','delete',company_id) OR NOT app.function_action_allowed('claims.administration','delete',company_id) THEN RAISE EXCEPTION 'Claim cancellation unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ UPDATE public.claim_request q SET status='cancelled' WHERE q.id=selected.id AND q.tenant_id=selected.tenant_id RETURNING to_jsonb(q) INTO after_row;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id)
+ VALUES(selected.tenant_id,'claim-request',selected.id,'claim-request.cancelled','user',app.current_user_id(),selected.employment_id) RETURNING id INTO audit;
+ DELETE FROM app.module_claim_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.module_claim_effect VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,CASE WHEN own_course THEN 'own_cancel' ELSE 'admin_cancel' END,
+  encode(sha256(convert_to(to_jsonb(selected)::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex'),audit);
+ RETURN QUERY SELECT audit,selected.employment_id;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.claim_cancel_native(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_cancel_native(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_reimburse_native(p_claims uuid[],p_reference text DEFAULT NULL) RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE selected public.claim_request%ROWTYPE;company_id uuid;after_row jsonb;audit uuid;paid integer:=0;
+ at_time timestamptz:=statement_timestamp();reference text:=coalesce(p_reference,'reimbursement');
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF NOT app.principal_snapshot_current() OR p_claims IS NULL OR cardinality(p_claims)>10000 OR length(reference)>4000 THEN RAISE EXCEPTION 'Claim reimbursement unavailable' USING ERRCODE='42501';END IF;
+ DELETE FROM app.module_claim_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ FOR selected IN SELECT q.* FROM public.claim_request q WHERE q.id=ANY(p_claims) AND q.tenant_id=app.current_tenant_id() AND q.status::text='approved' AND NOT q.taxable ORDER BY q.id FOR UPDATE LOOP
+  SELECT e.company_id INTO company_id FROM public.employment e WHERE e.id=selected.employment_id AND e.tenant_id=selected.tenant_id AND e.voided_at IS NULL;
+  IF company_id IS NULL OR NOT app.can_admin_employment(selected.employment_id) OR NOT app.module_action_allowed('claims','edit',company_id)
+   OR NOT app.function_action_allowed('claimsConfig.reimbursements','execute',company_id) THEN RAISE EXCEPTION 'Claim reimbursement unavailable' USING ERRCODE='42501';END IF;
+  UPDATE public.claim_request q SET status='paid',paid_at=at_time,payout_ref=reference WHERE q.id=selected.id AND q.tenant_id=selected.tenant_id RETURNING to_jsonb(q) INTO after_row;
+  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+  VALUES(selected.tenant_id,'claim-request',selected.id,'claim-request.paid','user',app.current_user_id(),selected.employment_id,jsonb_build_object('via','reimbursement','payoutRef',reference)) RETURNING id INTO audit;
+  INSERT INTO app.module_claim_effect VALUES(pg_current_xact_id(),selected.tenant_id,app.current_user_id(),selected.id,'reimbursement',
+   encode(sha256(convert_to(to_jsonb(selected)::text,'UTF8')),'hex'),encode(sha256(convert_to(after_row::text,'UTF8')),'hex'),audit);
+  paid:=paid+1;
+ END LOOP;RETURN paid;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.claim_reimburse_native(uuid[],text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.claim_reimburse_native(uuid[],text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.claim_native_effect_approved(p_claim uuid,p_before jsonb,p_after jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM app.module_claim_effect proof
+ JOIN public.employment e ON e.tenant_id=proof.tenant_id AND e.id=(p_after->>'employment_id')::uuid
+ JOIN public.domain_event audit ON audit.tenant_id=proof.tenant_id AND audit.id=proof.event_id AND audit.aggregate_id=proof.claim_id AND audit.aggregate_type='claim-request' AND audit.actor_type='user' AND audit.actor_id=proof.user_id AND audit.subject_employment_id=e.id
+ WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.claim_id=p_claim
+ AND proof.before_hash=encode(sha256(convert_to(p_before::text,'UTF8')),'hex') AND proof.after_hash=encode(sha256(convert_to(p_after::text,'UTF8')),'hex')
+ AND CASE proof.course WHEN 'own_cancel' THEN app.is_self_person(e.person_id) AND app.function_action_allowed('claims.own','delete',e.company_id) AND audit.event_type='claim-request.cancelled'
+ WHEN 'admin_cancel' THEN app.can_admin_employment(e.id) AND app.module_action_allowed('claims','delete',e.company_id) AND app.function_action_allowed('claims.administration','delete',e.company_id) AND audit.event_type='claim-request.cancelled'
+ WHEN 'reimbursement' THEN app.can_admin_employment(e.id) AND app.module_action_allowed('claims','edit',e.company_id) AND app.function_action_allowed('claimsConfig.reimbursements','execute',e.company_id) AND audit.event_type='claim-request.paid' AND audit.payload->>'via'='reimbursement' END);
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.claim_native_effect_approved(uuid,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.claim_payment_and_cancel_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE before_row jsonb:=CASE WHEN TG_OP='INSERT' THEN '{}'::jsonb ELSE to_jsonb(OLD) END;
+ after_row jsonb:=CASE WHEN TG_OP='DELETE' THEN '{}'::jsonb ELSE to_jsonb(NEW) END;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NULL;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_OP='UPDATE' AND (NEW.id IS DISTINCT FROM OLD.id OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.employment_id IS DISTINCT FROM OLD.employment_id) THEN RAISE EXCEPTION 'Claim identity cannot be reassigned' USING ERRCODE='42501';END IF;
+ IF TG_OP='UPDATE' AND app.claim_native_effect_approved(NEW.id,before_row,after_row) THEN RETURN NULL;END IF;
+ IF TG_OP='UPDATE' AND app.financial_claim_payment_approved(NEW.id,before_row,after_row) THEN RETURN NULL;END IF;
+ -- A raw administrative role or payroll intent alone cannot authorize a payout/cancellation.
+ -- Check each queued OLD/NEW image, not only the final restored row.
+ IF TG_OP='INSERT' AND (NEW.status::text IN ('paid','cancelled') OR NEW.payroll_batch_id IS NOT NULL OR NEW.paid_at IS NOT NULL OR NEW.payout_ref IS NOT NULL)
+ OR TG_OP='UPDATE' AND (OLD.status::text IN ('paid','cancelled') OR NEW.status::text IN ('paid','cancelled') OR NEW.payroll_batch_id IS DISTINCT FROM OLD.payroll_batch_id OR NEW.paid_at IS DISTINCT FROM OLD.paid_at OR NEW.payout_ref IS DISTINCT FROM OLD.payout_ref) THEN
+  RAISE EXCEPTION 'Claim payment or cancellation source unavailable' USING ERRCODE='42501';
+ END IF;
+ RETURN NULL;
+END; $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.claim_payment_and_cancel_guard() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER claim_payment_and_cancel_guard AFTER INSERT OR UPDATE ON public.claim_request DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_payment_and_cancel_guard();

@@ -1,3 +1,4 @@
+import {assertModuleFunction} from '@/core/module-action-access';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { CLAIM_FIELD_KINDS, listClaimFormFields, listClaimTypes } from '@/core/claims';
@@ -31,6 +32,7 @@ import {
  */
 export default async function ClaimsConfigPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const s = await requireAdmin();
+  await assertModuleFunction(s,'claimsConfig.types','view');
   const t = await getTranslations('admin.claims');
   const { error } = await searchParams;
   const types = await listClaimTypes(s);

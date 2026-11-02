@@ -1,3 +1,4 @@
+import {assertModuleFunction} from '@/core/module-action-access';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -52,6 +53,7 @@ export default async function ClaimMileagePage({
   searchParams: Promise<{ error?: string; gradeId?: string; vehicleClass?: string }>;
 }) {
   const s = await requireAdmin();
+  await assertModuleFunction(s,'claimsConfig.mileage','view');
   const t = await getTranslations('admin.claims');
   const { error, gradeId: rawGradeId, vehicleClass: rawClass } = await searchParams;
   const [selectedType, grades] = await Promise.all([getMileageClaimType(s), listJobGrades(s)]);

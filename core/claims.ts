@@ -62,9 +62,10 @@ const num = (v: string | null): number | null => (v == null ? null : Number(v));
  * without Claims, and a caller-supplied tx must not be a way around it. Web callers pass none: unchanged.
  */
 async function withClaimsTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>): Promise<T> {
-  if (!existingTx) return withTenant(ctx, run);
+  const ordered=async(tx:Tx)=>{await tx.execute(sql`select app.access_workforce_write_lock()`);return run(tx);};
+  if (!existingTx) return withTenant(ctx, ordered);
   assertModuleGate(ctx, 'claims');
-  return run(existingTx);
+  return ordered(existingTx);
 }
 
 /** UTC-date floor for the receipt window: the YYYY-MM-DD `days` before the given UTC date (inclusive on the
@@ -1933,6 +1934,7 @@ export function claimLimitLockKey(tenantId: string, employmentId: string, claimT
  *  lock a claim ROW must take this first, then the row — never the other way round, or two decisions on
  *  different claims of the same pair can deadlock. */
 async function lockClaimLimit(tx: Tx, tenantId: string, employmentId: string, claimTypeId: string): Promise<void> {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${claimLimitLockKey(tenantId, employmentId, claimTypeId)}, 0))`);
 }
 
@@ -2687,40 +2689,17 @@ export async function cancelClaim(
 
 /** cancelClaim in the caller's transaction (ADR-0151): the Assistant's claim-cancellation review commits
  *  the cancellation and its own receipt together. Returns the cancelled event for that receipt. */
+function nativeClaimError(error:unknown):never{
+ for(let cause=error;cause&&typeof cause==='object';cause=(cause as {cause?:unknown}).cause){
+  const native=cause as {code?:string;message?:string};
+  if(['42501','55000'].includes(native.code??'')&&native.message)throw new ClaimError(native.message);
+ }throw error;
+}
 export async function cancelClaimTx(tx: Tx, ctx: SessionContext, claimRequestId: string,expectedEmploymentId?:string): Promise<{ eventId: string; employmentId: string }> {
-  {
-    // Row lock FIRST (no limit read here, so no advisory lock is needed — and taking one would invert the
-    // advisory-before-row ordering decideClaim relies on).
-    const [locked] = await tx
-      .select({ id: claimRequest.id, status: claimRequest.status, employmentId: claimRequest.employmentId })
-      .from(claimRequest)
-      .where(eq(claimRequest.id, claimRequestId))
-      .limit(1)
-      .for('update');
-    if (!locked) throw new ClaimError('Claim not found');
-    if(expectedEmploymentId!==undefined&&locked.employmentId!==expectedEmploymentId)throw new ClaimError('Claim does not belong to the selected employment');
-    const [claim] = await tx
-      .select({ id: claimRequest.id, status: claimRequest.status, employmentId: claimRequest.employmentId, personId: employment.personId })
-      .from(claimRequest)
-      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
-      .where(eq(claimRequest.id, claimRequestId))
-      .limit(1);
-    if (!claim) throw new ClaimError('Claim not found');
-    if (claim.status !== 'pending') throw new ClaimError('Only a pending claim can be cancelled');
-    const isAdmin = (ctx.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
-    const isOwner = ctx.personId != null && claim.personId === ctx.personId;
-    if (!isAdmin && !isOwner) throw new ClaimError('Only the claimant or an admin can cancel this claim');
-    await tx.update(claimRequest).set({ status: 'cancelled' }).where(eq(claimRequest.id, claim.id));
-    const eventId = await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'claim-request',
-      aggregateId: claim.id,
-      eventType: 'claim-request.cancelled',
-      actor: actorOf(ctx),
-      subjectEmploymentId: claim.employmentId,
-    }, { returnId: true });
-    return { eventId, employmentId: claim.employmentId };
-  }
+ try{
+  const [result]=await tx.execute<{eventId:string;employmentId:string}>(sql`select event_id as "eventId",employment_id as "employmentId" from app.claim_cancel_native(${claimRequestId}::uuid,${expectedEmploymentId??null}::uuid)`);
+  if(!result?.eventId||!result.employmentId)throw new ClaimError('Claim cancellation unavailable');return result;
+ }catch(error){return nativeClaimError(error);}
 }
 
 // ─────────────────────────── Draft claims (e7eb5d83 stage 1) ───────────────────────────
@@ -2861,6 +2840,7 @@ async function prepareClaimDraftValuesTx(tx:Tx,ctx:SessionContext,p:ClaimDraftIn
  return{values,claimItemId};
 }
 async function saveClaimDraftOwnerTx(tx:Tx,ctx:SessionContext,p:ClaimDraftInput,attachment:{fileName:string;mimeType:string;content:Buffer}|null,reviewed=false,prepared?:Awaited<ReturnType<typeof prepareClaimDraftValuesTx>>){
+ await tx.execute(sql`select app.access_workforce_write_lock()`);
  const{values,claimItemId}=prepared??await prepareClaimDraftValuesTx(tx,ctx,p);
     if (p.id) {
       // Row lock before the status read: an edit racing this draft's own submit must not overwrite a claim
@@ -2926,6 +2906,7 @@ export async function saveClaimDraft(ctx:SessionContext,p:ClaimDraftInput,attach
  * child rows (including archived/future generations) are owned, so reactivation is not a phantom.
  * App-role acceptance and every dependency interleaving remain UNRUN before Assistant exposure. */
 async function lockReviewedClaimCatalogueTx(tx:Tx,ctx:SessionContext,p:{claimTypeId:string}){
+ await tx.execute(sql`select app.access_workforce_write_lock()`);
  const [type]=await tx.select({id:claimType.id,revision:sql<string>`xmin::text`}).from(claimType).where(and(eq(claimType.tenantId,ctx.tenantId),eq(claimType.id,p.claimTypeId))).limit(1).for('update',{noWait:true});
  if(!type)throw new ClaimError('The own draft source is unavailable');
  const policies=await tx.select({id:claimPolicy.id,revision:sql<string>`xmin::text`}).from(claimPolicy).where(and(eq(claimPolicy.tenantId,ctx.tenantId),eq(claimPolicy.claimTypeId,p.claimTypeId))).orderBy(claimPolicy.id).limit(501).for('share',{noWait:true});
@@ -3225,6 +3206,7 @@ async function insertClaimAttachmentTx(
   ctx: SessionContext,
   p: { claimRequestId: string; employmentId: string; status: string; fileName: string; mimeType: string; content: Buffer },
 ): Promise<{ id: string }> {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
   // e7eb5d83: 'draft' joins 'pending' here. A draft that could not carry its receipt would force the
   // employee to keep the file until submit day, which is the paperwork the feature exists to remove — and
   // the receipt REQUIREMENT is still enforced at submit, not at save, so this loosens nothing.
@@ -3724,6 +3706,7 @@ export type ReimbursementRow = {
   incurredOn: string;
   bankName: string | null;
   bankAccountNo: string | null;
+  canMarkPaid: boolean;
 };
 
 /** Approved, NON-taxable claims awaiting an off-cycle reimbursement payout (RLS-scoped to the caller). */
@@ -3740,13 +3723,14 @@ export async function listReimbursementsDue(ctx: SessionContext): Promise<Reimbu
         incurredOn: claimRequest.incurredOn,
         bankName: employeeStatutoryMy.bankName,
         bankAccountNo: employeeStatutoryMy.bankAccountNo,
+        canMarkPaid:sql<boolean>`app.module_function_allowed('claimsConfig.reimbursements','execute',${employment.companyId})`,
       })
       .from(claimRequest)
       .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
       .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-      .where(and(eq(claimRequest.status, 'approved'), eq(claimRequest.taxable, false)))
+      .where(and(eq(claimRequest.status, 'approved'), eq(claimRequest.taxable, false),sql`app.can_admin_employment(${employment.id}) AND app.module_function_allowed('claimsConfig.reimbursements','view',${employment.companyId})`))
       .orderBy(person.fullName);
     return rows.map((r) => ({
       id: r.id,
@@ -3758,6 +3742,7 @@ export async function listReimbursementsDue(ctx: SessionContext): Promise<Reimbu
       incurredOn: r.incurredOn,
       bankName: r.bankName,
       bankAccountNo: r.bankAccountNo,
+      canMarkPaid:r.canMarkPaid,
     }));
   });
 }
@@ -3793,33 +3778,11 @@ export async function markReimbursementsPaid(
   ctx: SessionContext,
   p: { claimIds: string[]; payoutRef?: string | null },
 ): Promise<{ paid: number }> {
-  if (p.claimIds.length === 0) return { paid: 0 };
-  return withTenant(ctx, async (tx) => {
-    // RLS already scopes visibility; only flip ones that are genuinely approved + non-taxable.
-    const paid = await tx
-      .update(claimRequest)
-      .set({ status: 'paid', paidAt: new Date(), payoutRef: p.payoutRef ?? 'reimbursement' })
-      .where(
-        and(
-          inArray(claimRequest.id, p.claimIds),
-          eq(claimRequest.status, 'approved'),
-          eq(claimRequest.taxable, false),
-        ),
-      )
-      .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId, amount: claimRequest.amount });
-    for (const c of paid) {
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'claim-request',
-        aggregateId: c.id,
-        eventType: 'claim-request.paid',
-        actor: actorOf(ctx),
-        subjectEmploymentId: c.employmentId,
-        payload: { via: 'reimbursement', payoutRef: p.payoutRef ?? 'reimbursement' }, // amount on claim_request[aggregateId] (ADR-0030)
-      });
-    }
-    return { paid: paid.length };
-  });
+ if(p.claimIds.length===0)return {paid:0};
+ try{return await withTenant(ctx,async tx=>{
+  const [result]=await tx.execute<{paid:number}>(sql`select app.claim_reimburse_native(ARRAY[${sql.join(p.claimIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${p.payoutRef??null}) as paid`);
+  if(typeof result?.paid!=='number')throw new ClaimError('Claim reimbursement unavailable');return {paid:result.paid};
+ });}catch(error){return nativeClaimError(error);}
 }
 
 
