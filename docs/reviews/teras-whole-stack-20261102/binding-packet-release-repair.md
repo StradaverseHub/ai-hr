@@ -74,3 +74,13 @@ In this order, on the candidate head:
    sources and why, the route and actual time of the fresh approval, and that it covers this closure only.
 4. **`lib/ai/module-agent-source-manifest.ts`**, generated LAST.
 5. Both `--check` commands, then focused CI including `provider-data-review-gate`; then the release operator's full qualification.
+
+## Binding and results (after the owner's approval at 448edcb8, recorded 2026-11-02T15:30:00Z)
+- **Binding commit:** `152292f77612a5c9f454ffa5b47747a13da2ff72`. Provider `e8692840739a125c8f5f04c4be9a43cc6022bd2f81533a747a76f414d5716913` (1255);
+  module-agent generated last `935877b90d4cbe43b4f8158c35daccef2f22abbde69f1fb689117b8bee39968e` (457). Both `--check` commands pass
+  in the checkout and on an isolated copy of the committed source.
+- **41472414945** on 152292f77: 64 files, typecheck PASS, build PASS at the admitted 8192 heap (`hosted-linux-16g-8192`);
+  64 of 64 files pass, including `provider-data-review-gate`.
+- **41472460099** on 152292f77: 19 of 19 files pass.
+- Not covered here: the release operator's full exact-aggregate qualification on the fast-forwarded main, staging installation,
+  acceptance and alignment.
