@@ -20237,7 +20237,8 @@
         "sections": {
           "profile": "Hồ sơ",
           "employment": "Việc làm",
-          "payroll": "Bảng lương"
+          "payroll": "Bảng lương",
+          "statutory": "Pháp định"
         },
         "defaults": {
           "initialBasicSalary": "Lương cơ bản ban đầu (trống nghĩa là không)",
@@ -20262,7 +20263,8 @@
           "payMode": "Chế độ trả lương",
           "paymentTerm": "Kỳ thanh toán",
           "rateAmount": "Mức theo ngày/giờ",
-          "remarks": "Ghi chú"
+          "remarks": "Ghi chú",
+          "subjectToSkbbk": "Thuộc diện SKBBK"
         },
         "states": {
           "awaiting_confirmation": "Chờ xác nhận",

@@ -20237,7 +20237,8 @@
         "sections": {
           "profile": "Profil",
           "employment": "Penggajian",
-          "payroll": "Gaji"
+          "payroll": "Gaji",
+          "statutory": "Berkanun"
         },
         "defaults": {
           "initialBasicSalary": "Gaji asas awal (kosong bermakna sifar)",
@@ -20262,7 +20263,8 @@
           "payMode": "Mod gaji",
           "paymentTerm": "Tempoh pembayaran",
           "rateAmount": "Kadar harian/jam",
-          "remarks": "Catatan"
+          "remarks": "Catatan",
+          "subjectToSkbbk": "Tertakluk kepada SKBBK"
         },
         "states": {
           "awaiting_confirmation": "Menunggu pengesahan",
