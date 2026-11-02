@@ -33897,7 +33897,9 @@
       "declined": "Penolakan pengakuan disahkan",
       "pending": "Menunggu",
       "missing": "Pemegang perlu ditentukan",
-      "frozenFacts": "Semakan ini mengekalkan butiran pekerja dan tempoh percubaan yang disimpan untuk kandungan bertandatangannya."
+      "frozenFacts": "Semakan ini mengekalkan butiran pekerja dan tempoh percubaan yang disimpan untuk kandungan bertandatangannya.",
+      "combinedConsent": "Saya mengesahkan bahawa ini tandatangan saya untuk peranan berikut: {roles}.",
+      "combinedHistory": "Dilindungi oleh tandatangan yang sama"
     },
     "controls": {
       "title": "Kawalan semakan yang dibenarkan",
@@ -34017,7 +34019,15 @@
       "required": "Langkah wajib",
       "moveUp": "Alih langkah {index} ke atas",
       "moveDown": "Alih langkah {index} ke bawah",
-      "addStep": "Tambah langkah kelulusan"
+      "addStep": "Tambah langkah kelulusan",
+      "duplicateTitle": "Apabila beberapa peranan berkongsi penandatangan yang sama",
+      "duplicateHelp": "Turutan semakan masih terpakai. Akuan penerimaan pekerja atau penilaian pengurus tidak boleh menggantikan kelulusan bebas Bahagian 3.",
+      "duplicateModes": {
+        "escalate": "Rujuk tandatangan yang diperlukan kemudian kepada pengurus pemegang peranan",
+        "sign_once": "Gunakan satu tandatangan untuk kelulusan berturutan yang layak",
+        "named_alternate": "Gunakan pengganti yang dinamakan"
+      },
+      "alternateSigner": "Penandatangan pengganti yang dinamakan"
     },
     "access": {
       "title": "Penugasan modul",
@@ -34297,6 +34307,15 @@
       "success": "Versi telah ditamatkan.",
       "unavailable": "Hanya versi terbitan semasa boleh ditamatkan.",
       "checking": "Menyemak terbitan semasa…"
+    },
+    "legacyReview": {
+      "title": "Semak permintaan untuk kembali kepada proses sebelumnya",
+      "help": "Gunakan hanya untuk kes yang dijeda. Rekod asal kekal tersedia. Pemilik pemasangan yang berasingan mesti melaksanakan permintaan yang diluluskan.",
+      "request": "Mohon kembali kepada proses sebelumnya",
+      "approve": "Luluskan permintaan khusus ini",
+      "pending": "Menunggu semakan People Ops",
+      "approved": "Diluluskan · menunggu tindakan pemilik",
+      "applied": "Proses sebelumnya telah dipulihkan"
     }
   },
   "templateEditor": {

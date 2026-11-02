@@ -33897,7 +33897,9 @@
       "declined": "Acknowledgement declined — confirmed",
       "pending": "Pending",
       "missing": "Holder needs resolution",
-      "frozenFacts": "This review retains the employee and probation-period details captured for its signed content."
+      "frozenFacts": "This review retains the employee and probation-period details captured for its signed content.",
+      "combinedConsent": "I confirm this is my signature for these roles: {roles}.",
+      "combinedHistory": "Covered by the same signature"
     },
     "controls": {
       "title": "Authorized review controls",
@@ -34017,7 +34019,15 @@
       "required": "Required step",
       "moveUp": "Move step {index} up",
       "moveDown": "Move step {index} down",
-      "addStep": "Add approval step"
+      "addStep": "Add approval step",
+      "duplicateTitle": "When roles share the same signer",
+      "duplicateHelp": "The review order still applies. An employee acknowledgement or manager assessment cannot replace an independent Part 3 approval.",
+      "duplicateModes": {
+        "escalate": "Escalate the later signature to the holder’s manager",
+        "sign_once": "Use one signature for eligible adjacent approvals",
+        "named_alternate": "Use a named alternate"
+      },
+      "alternateSigner": "Named alternate signer"
     },
     "access": {
       "title": "Module assignments",
@@ -34297,6 +34307,15 @@
       "success": "Version retired.",
       "unavailable": "Only the current published version can be retired.",
       "checking": "Checking the current publication…"
+    },
+    "legacyReview": {
+      "title": "Review a return to the previous process",
+      "help": "Use this only for a paused case. The original records stay available. A separate installation owner must apply the approved request.",
+      "request": "Request return to previous process",
+      "approve": "Approve this specific request",
+      "pending": "Awaiting People Ops review",
+      "approved": "Approved · awaiting owner action",
+      "applied": "Previous process restored"
     }
   },
   "templateEditor": {

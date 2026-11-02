@@ -33897,7 +33897,9 @@
       "declined": "Đã xác nhận việc từ chối xác nhận",
       "pending": "Đang chờ",
       "missing": "Cần xác định người phụ trách",
-      "frozenFacts": "Đánh giá này giữ thông tin nhân viên và thời hạn thử việc đã chốt cho nội dung được ký."
+      "frozenFacts": "Đánh giá này giữ thông tin nhân viên và thời hạn thử việc đã chốt cho nội dung được ký.",
+      "combinedConsent": "Tôi xác nhận đây là chữ ký của tôi cho các vai trò sau: {roles}.",
+      "combinedHistory": "Được ghi nhận bằng cùng một chữ ký"
     },
     "controls": {
       "title": "Thao tác đánh giá được phép",
@@ -34017,7 +34019,15 @@
       "required": "Bước bắt buộc",
       "moveUp": "Chuyển bước {index} lên",
       "moveDown": "Chuyển bước {index} xuống",
-      "addStep": "Thêm bước phê duyệt"
+      "addStep": "Thêm bước phê duyệt",
+      "duplicateTitle": "Khi nhiều vai trò có cùng người ký",
+      "duplicateHelp": "Vẫn phải tuân thủ thứ tự rà soát. Xác nhận của nhân viên hoặc đánh giá của quản lý không thể thay thế phê duyệt độc lập ở Phần 3.",
+      "duplicateModes": {
+        "escalate": "Chuyển yêu cầu ký ở bước sau lên quản lý của người giữ vai trò",
+        "sign_once": "Dùng một chữ ký cho các lượt phê duyệt liền kề đủ điều kiện",
+        "named_alternate": "Dùng người thay thế được chỉ định"
+      },
+      "alternateSigner": "Người ký thay thế được chỉ định"
     },
     "access": {
       "title": "Phân công mô-đun",
@@ -34297,6 +34307,15 @@
       "success": "Đã ngừng sử dụng phiên bản.",
       "unavailable": "Chỉ có thể ngừng sử dụng phiên bản phát hành hiện tại.",
       "checking": "Đang kiểm tra bản phát hành hiện tại…"
+    },
+    "legacyReview": {
+      "title": "Rà soát yêu cầu quay lại quy trình trước",
+      "help": "Chỉ dùng cho hồ sơ đang tạm dừng. Hồ sơ gốc vẫn có thể truy cập. Người phụ trách triển khai độc lập phải thực hiện yêu cầu đã được phê duyệt.",
+      "request": "Yêu cầu quay lại quy trình trước",
+      "approve": "Phê duyệt yêu cầu cụ thể này",
+      "pending": "Đang chờ bộ phận Vận hành Nhân sự rà soát",
+      "approved": "Đã phê duyệt · chờ người phụ trách thực hiện",
+      "applied": "Đã khôi phục quy trình trước"
     }
   },
   "templateEditor": {

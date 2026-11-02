@@ -10,7 +10,7 @@ import {validateSigningRoute,signingComplete,type SigningDocument,type SigningRo
 import {ProbationError} from '../lib/probation-model';
 import type {ProbationTemplate} from '../lib/probation-workflow';
 import {PROBATION_LETTER_KEYS} from '../lib/probation-letter-template';
-import {createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActionTx} from '../packs/document-signing/service';
+import {createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActionTx,refreshCanonicalProbationSigningRouteTx} from '../packs/document-signing/service';
 const id=z.uuid(),json=(value:unknown)=>JSON.stringify(value);
 const base=v9ConfigSchema.shape.templates.element;
 const route=z.object({version:z.number().int().positive(),steps:z.array(z.object({id:z.string().min(1).max(120),role:z.enum(['lm','hod','pbp','employee']),kind:z.enum(['sign','acknowledge','approve']),stage:z.number().int().min(0).max(30),holderId:z.null(),holderPersonId:z.undefined().optional(),representedId:z.undefined().optional(),required:z.boolean()}).strict()).min(2).max(30)}).strict();
@@ -18,7 +18,7 @@ const letterRules=base.shape.rules.pick({businessGroup:true,company:true,departm
 const templateSchema=base.omit({module:true}).extend({rules:letterRules,module:z.literal('probation'),outcome:z.enum(['confirm','extend','not_confirm']),unfinished:z.boolean(),blocks:base.shape.versions.element.shape.blocks,fields:base.shape.versions.element.shape.fields,route}).strict();
 export type ProbationLetterDefinition={id:string;companyId:string;key:string;version:number;state:'draft'|'published'|'retired';retirementReason?:string|null;data:ProbationTemplate};
 export type ProbationLetterPreview={merge:Record<string,string>;blocks:Block[];fields:Field[];route:SigningRoute;guardrails:SigningGuardrails;companyId:string;employmentId:string;templateId:string;templateVersion:number;templateName?:string;outcomeRevision:number;sourceDigest:string};
-export type ProbationLetterView={id:string;caseId:string;outcomeId:string;outcomeRevision:number|null;storageRevision:number;state:string;createdAt:string;name:string;templateId:string;templateVersion:number;blocks:Block[];fields:Field[];merge:Record<string,string>;signing:{id:string;document:SigningDocument}|null;runtimeEnabled:boolean;sourceMoved:boolean;canPrepare:boolean;canRelease:boolean;document:Document};
+export type ProbationLetterView={id:string;caseId:string;outcomeId:string;outcomeRevision:number|null;storageRevision:number;state:string;createdAt:string;name:string;templateId:string;templateVersion:number;blocks:Block[];fields:Field[];merge:Record<string,string>;signing:{id:string;document:SigningDocument}|null;route:SigningRoute|null;runtimeEnabled:boolean;sourceMoved:boolean;canPrepare:boolean;canRelease:boolean;document:Document};
 function companyGate(ctx:SessionContext,companyId:string){if(ctx.entitlementsExempt===undefined)assertModuleEnabled(ctx,'lifecycle',companyId);}
 function validateTemplate(raw:unknown,publish:boolean):ProbationTemplate{
  const value=templateSchema.parse(raw) as ProbationTemplate;
@@ -73,13 +73,19 @@ async function readLetterTx(tx:Tx,ctx:SessionContext,caseId:string,partId:string
  if(!row)throw new ProbationError('forbidden','This outcome letter is unavailable in your current scope.');companyGate(ctx,row.company_id);
  const[stored]=await tx.execute<{id:string}>(sql`select id from document_signing_document where subject_type='probation' and subject_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
  const signing=stored?{id:stored.id,document:await readSigningDocumentTx(tx,ctx,stored.id)}:null;
- const value={id:row.id,caseId:row.case_id,outcomeId:row.data.letterOutcomeId,outcomeRevision:row.outcome_revision,storageRevision:row.revision,state:row.data.state,createdAt:row.created_at,name:row.data.letterTemplateName??'Probation outcome letter',templateId:row.data.letterTemplateId,templateVersion:row.data.letterTemplateVersion,blocks:row.data.letterBlocks,fields:row.data.letterFields,merge:row.data.letterMerge,signing,runtimeEnabled:row.runtime_enabled&&!row.source_moved,sourceMoved:row.source_moved,canPrepare:row.runtime_enabled&&!row.source_moved&&row.can_prepare,canRelease:row.runtime_enabled&&!row.source_moved&&row.can_release};
+ let currentRoute=signing?.document.route??null;
+ if(signing&&row.runtime_enabled&&!row.source_moved&&!['locked','cancelled','release_requested'].includes(row.data.state)){
+  const[resolved]=await tx.execute<{route:SigningRoute}>(sql`select app.probation_resolved_route(${row.id}::uuid) as route`);currentRoute=resolved?.route??currentRoute;
+ }
+ const value={id:row.id,caseId:row.case_id,outcomeId:row.data.letterOutcomeId,outcomeRevision:row.outcome_revision,storageRevision:row.revision,state:row.data.state,createdAt:row.created_at,name:row.data.letterTemplateName??'Probation outcome letter',templateId:row.data.letterTemplateId,templateVersion:row.data.letterTemplateVersion,blocks:row.data.letterBlocks,fields:row.data.letterFields,merge:row.data.letterMerge,signing,route:currentRoute,runtimeEnabled:row.runtime_enabled&&!row.source_moved,sourceMoved:row.source_moved,canPrepare:row.runtime_enabled&&!row.source_moved&&row.can_prepare,canRelease:row.runtime_enabled&&!row.source_moved&&row.can_release};
  return{...value,document:probationLetterDocument({...value,signing:signing?.document})};
 }
 export function readProbationLetter(ctx:SessionContext,caseId:string,partId:string){return withScopedLifecycleTenant(ctx,tx=>readLetterTx(tx,ctx,caseId,partId));}
 export function actOnProbationLetter(ctx:SessionContext,input:{caseId:string;partId:string;revision:number;stepId:string;action:'signed'|'returned';comment?:string;method?:'typed'|'drawn';value?:string;consent?:boolean;actionId?:string}){return withScopedLifecycleTenant(ctx,async tx=>{
- const view=await readLetterTx(tx,ctx,input.caseId,input.partId);if(view.storageRevision!==input.revision||!view.signing)throw new ProbationError('conflict','Read the current letter revision before acting.');
- const document=await recordDocumentSigningActionTx(tx,ctx,{id:view.signing.id,stepId:input.stepId,revision:view.signing.document.contentRevision,hash:view.signing.document.contentHash,action:input.action,comment:input.comment,method:input.method,value:input.value,consent:input.consent,actionId:input.actionId});await tx.execute(sql`select app.probation_letter_transition(${view.id}::uuid)`);return document;
+ const view=await readLetterTx(tx,ctx,input.caseId,input.partId);if(!view.runtimeEnabled||view.storageRevision!==input.revision||!view.signing)throw new ProbationError('conflict','Read the current letter revision before acting.');
+ const current=view.signing.document,changed=view.route?.steps.some(step=>{const previous=current.route.steps.find(value=>value.id===step.id);return previous&&(previous.holderId!==step.holderId||(previous.representedId??null)!==(step.representedId??null)||JSON.stringify(previous.coveredStepIds??[])!==JSON.stringify(step.coveredStepIds??[])||previous.coveredByStepId!==step.coveredByStepId);});
+ const signerDocument=changed?await refreshCanonicalProbationSigningRouteTx(tx,view.signing.id):current;
+ const document=await recordDocumentSigningActionTx(tx,ctx,{id:view.signing.id,stepId:input.stepId,revision:signerDocument.contentRevision,hash:signerDocument.contentHash,action:input.action,comment:input.comment,method:input.method,value:input.value,consent:input.consent,actionId:input.actionId});await tx.execute(sql`select app.probation_letter_transition(${view.id}::uuid)`);return document;
 });}
 export function releaseProbationLetter(ctx:SessionContext,input:{caseId:string;partId:string;outcomeRevision:number;reason:string}){return withScopedLifecycleTenant(ctx,async tx=>{
  const view=await readLetterTx(tx,ctx,input.caseId,input.partId);if(!view.canRelease||!view.signing||view.outcomeRevision!==input.outcomeRevision)throw new ProbationError('conflict','An authorized current completed letter is required.');

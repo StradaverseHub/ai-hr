@@ -33897,7 +33897,9 @@
       "declined": "拒绝确认 — 已核实",
       "pending": "待处理",
       "missing": "需确定负责人",
-      "frozenFacts": "此评审保留为签署内容捕获的员工及试用期详情。"
+      "frozenFacts": "此评审保留为签署内容捕获的员工及试用期详情。",
+      "combinedConsent": "我确认这是我为以下角色所作的签署：{roles}。",
+      "combinedHistory": "由同一次签署涵盖"
     },
     "controls": {
       "title": "获授权的评审控制",
@@ -34017,7 +34019,15 @@
       "required": "必要步骤",
       "moveUp": "将步骤 {index} 上移",
       "moveDown": "将步骤 {index} 下移",
-      "addStep": "添加审批步骤"
+      "addStep": "添加审批步骤",
+      "duplicateTitle": "多个角色由同一人签署时",
+      "duplicateHelp": "仍须遵循审核顺序。员工确认或经理评估不能替代第 3 部分的独立审批。",
+      "duplicateModes": {
+        "escalate": "将后续签署升级至该角色任职者的主管",
+        "sign_once": "相邻且符合条件的审批共用一次签署",
+        "named_alternate": "使用指定的替代人员"
+      },
+      "alternateSigner": "指定的替代签署人"
     },
     "access": {
       "title": "模块分配",
@@ -34297,6 +34307,15 @@
       "success": "版本已停用。",
       "unavailable": "只能停用当前已发布的版本。",
       "checking": "正在检查当前发布版本…"
+    },
+    "legacyReview": {
+      "title": "复核恢复原流程的请求",
+      "help": "仅用于已暂停的案件。原始记录仍可查阅。获批请求必须由另一位安装环境负责人执行。",
+      "request": "请求恢复原流程",
+      "approve": "批准此项具体请求",
+      "pending": "等待人事运营团队复核",
+      "approved": "已批准 · 等待负责人执行",
+      "applied": "已恢复原流程"
     }
   },
   "templateEditor": {

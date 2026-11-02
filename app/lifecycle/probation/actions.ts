@@ -1,7 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute,saveProbationLetterTemplate,previewProbationLetter,prepareProbationLetter,actOnProbationLetter,releaseProbationLetter,saveProbationWorkflow,previewProbationWorkflow,requestProbationDateShift,applyProbationDateShift,reconcileProbationDates,saveProbationIntakeDisposition,prepareProbationCutoverPlan,approveProbationCutover,supersedeProbationDateShift,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision,probationPublicationRetirement,retireProbationPublication} from '@/packs/probation/service';
+import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute,saveProbationLetterTemplate,previewProbationLetter,prepareProbationLetter,actOnProbationLetter,releaseProbationLetter,saveProbationWorkflow,previewProbationWorkflow,requestProbationDateShift,applyProbationDateShift,reconcileProbationDates,saveProbationIntakeDisposition,prepareProbationCutoverPlan,approveProbationCutover,supersedeProbationDateShift,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision,probationPublicationRetirement,retireProbationPublication,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation} from '@/packs/probation/service';
 async function execute<T>(work:()=>Promise<T>){
  try{const result=await work();revalidatePath('/lifecycle/probation','layout');return{ok:true as const,result};}
  catch(error){return{ok:false as const,code:error instanceof Error&&error.name==='ProbationError'?'review':'unavailable',detail:error instanceof Error&&error.name==='ProbationError'?error.message:undefined};}
@@ -50,3 +50,6 @@ export async function readPublicationRetirement(input:Parameters<typeof probatio
  catch(error){return{ok:false as const,detail:error instanceof Error&&error.name==='ProbationError'?error.message:undefined};}
 }
 export async function retirePublication(input:Parameters<typeof retireProbationPublication>[1]){return execute(async()=>retireProbationPublication(await requireScopedLifecycleModule(),input));}
+
+export async function requestLegacyReconciliation(input:Parameters<typeof requestProbationLegacyReconciliation>[1]){return execute(async()=>requestProbationLegacyReconciliation(await requireScopedLifecycleModule(),input));}
+export async function approveLegacyReconciliation(input:Parameters<typeof approveProbationLegacyReconciliation>[1]){return execute(async()=>{await approveProbationLegacyReconciliation(await requireScopedLifecycleModule(),input);return{approved:true};});}
