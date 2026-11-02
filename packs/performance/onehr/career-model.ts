@@ -2,6 +2,7 @@ import type { Competency, Policy, Statement } from './model';
 import { sourceRound } from './journey-model';
 
 type Profile=Policy['profiles'][number];
+export type CareerSkillEvidence=Pick<Competency,'future'|'skillTitle'|'skillLevel'|'manager'|'self'>;
 export type ProfileMatch='roster'|'self'|'title_grade'|'title'|'assigned'|'grade';
 const grade=(value:string)=>value.replace(/^JG\s*/i,'').trim();
 const gradeRank=(value:string)=>/^\d+$/.test(grade(value))?Number(grade(value)):0;
@@ -40,7 +41,7 @@ export function technicalProfilePlan(profile:Profile,catalogue:Statement[]):Stat
  return [...explicit,...future];
 }
 
-export function demonstratedSkills(records:{status:string;competencies:Competency[]}[],self=false):Record<string,number> {
+export function demonstratedSkills(records:{status:string;competencies:CareerSkillEvidence[]}[],self=false):Record<string,number> {
  const result:Record<string,number>={};
  for(const record of records){
   if(!self&&record.status!=='reviewed')continue;
@@ -96,7 +97,7 @@ export function careerDirections(profile:Profile|null,profiles:Profile[],reviewe
 }
 
 /** Pending self answers are planning context only. A private edit replaces this review's prior claim. */
-export function careerSkillEvidence(records:{reviewId?:string;status:string;competencies:Competency[]}[],current?:{reviewId:string;status:string;competencies:Competency[]}){
+export function careerSkillEvidence(records:{reviewId?:string;status:string;competencies:CareerSkillEvidence[]}[],current?:{reviewId:string;status:string;competencies:CareerSkillEvidence[]}){
  const reviewed=demonstratedSkills(records);
  const planning=demonstratedSkills(current?[...records.filter(r=>r.reviewId!==current.reviewId),current]:records,true);
  return {reviewed,planning};

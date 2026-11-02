@@ -4633,3 +4633,41 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_plan_progress_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER z_financial_onehr_plan_progress_guard BEFORE UPDATE ON public.performance_onehr_plan FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_plan_progress_guard();
+
+
+--> statement-breakpoint
+-- Career history keeps its native Self/effective-reviewer course and a separate
+-- explicitly selected Administrative source; no shared role fallback supplies View.
+CREATE FUNCTION app.financial_onehr_skill_history_native(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+
+ SELECT coalesce((SELECT jsonb_agg(jsonb_build_object('reviewId',h.review_id,'status',h.competency_status,'competencies',h.competencies) ORDER BY h.cycle_id,h.review_id)
+  FROM performance_onehr_review h WHERE h.tenant_id=r.tenant_id AND h.employment_id=r.employment_id
+   AND (h.competency_status='reviewed' OR app.is_self_person(e.person_id))),'[]'::jsonb)
+ FROM performance_onehr_review r JOIN employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ WHERE r.review_id=wanted_review AND r.tenant_id=app.current_tenant_id()
+  AND (app.is_self_person(e.person_id) OR app.onehr_effective_reviewer(r.review_id) OR app.onehr_cycle_admin(r.cycle_id))
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_skill_history_native(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.financial_onehr_skill_history_fields(history jsonb,current_review uuid DEFAULT NULL) RETURNS jsonb
+LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN history IS NULL THEN NULL ELSE coalesce((SELECT jsonb_agg(jsonb_build_object('status',entry->'status','competencies',
+ (SELECT coalesce(jsonb_agg((SELECT coalesce(jsonb_object_agg(field.key,field.value),'{}'::jsonb) FROM jsonb_each(competency) field WHERE field.key=ANY(ARRAY['future','skillTitle','skillLevel','manager','self'])) ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(entry->'competencies') WITH ORDINALITY source(competency,position)))
+ ||CASE WHEN current_review IS NOT NULL AND entry->>'reviewId'=current_review::text THEN jsonb_build_object('reviewId',entry->'reviewId') ELSE '{}'::jsonb END ORDER BY ordinal)
+ FROM jsonb_array_elements(history) WITH ORDINALITY source(entry,ordinal)),'[]'::jsonb) END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_skill_history_fields(jsonb,uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.assessment_skill_history(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.financial_human_principal_current() AND (
+  app.onehr_self_employment(review.employment_id) AND app.onehr_review_task_view(wanted_review,'self')
+  OR NOT app.onehr_self_employment(review.employment_id) AND app.onehr_effective_reviewer(wanted_review) AND app.onehr_review_task_view(wanted_review,'assigned'))
+ THEN app.financial_onehr_skill_history_fields(app.financial_onehr_skill_history_native(wanted_review),CASE WHEN app.onehr_self_employment(review.employment_id) THEN wanted_review END) END
+ FROM public.performance_onehr_review review WHERE review.review_id=wanted_review AND review.tenant_id=app.current_tenant_id();
+$$;
+CREATE FUNCTION app.onehr_administrative_skill_history(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.onehr_review_administration(wanted_review) THEN app.financial_onehr_skill_history_fields(app.financial_onehr_skill_history_native(wanted_review)) END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_administrative_skill_history(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_administrative_skill_history(uuid) TO ai_hr_app;
