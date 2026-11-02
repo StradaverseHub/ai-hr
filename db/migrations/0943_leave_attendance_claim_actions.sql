@@ -1082,10 +1082,11 @@ REVOKE ALL ON app.claim_command_effect FROM PUBLIC,ai_hr_app;
 CREATE OR REPLACE FUNCTION app.claim_own_source_audit_record() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF NEW.aggregate_type='claim-request' AND NEW.event_type IN ('claim-request.draft-saved','claim-request.submitted','claim-request.approved','claim-request.rejected') AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() AND NEW.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() THEN
+ IF NEW.aggregate_type='claim-request' AND NEW.event_type IN ('claim-request.draft-saved','claim-request.submitted','claim-request.approved','claim-request.rejected') AND NEW.actor_type='user' AND NEW.actor_id=app.current_user_id() AND NEW.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current()
+ AND (jsonb_typeof(NEW.payload)='object' OR (NEW.event_type='claim-request.rejected' AND NEW.payload IS NULL)) THEN
   DELETE FROM app.claim_own_source_audit WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
-  INSERT INTO app.claim_own_source_audit VALUES(pg_current_xact_id(),NEW.tenant_id,NEW.actor_id,NEW.aggregate_id,NEW.id,NEW.event_type,NEW.payload);
-  UPDATE app.claim_command_effect proof SET completed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.actor_id AND proof.claim_id=NEW.aggregate_id AND proof.born AND NEW.event_type=CASE proof.course WHEN 'submit' THEN 'claim-request.submitted' WHEN 'approve' THEN 'claim-request.approved' ELSE 'claim-request.rejected' END;
+  INSERT INTO app.claim_own_source_audit VALUES(pg_current_xact_id(),NEW.tenant_id,NEW.actor_id,NEW.aggregate_id,NEW.id,NEW.event_type,coalesce(NEW.payload,'{}'::jsonb));
+  UPDATE app.claim_command_effect proof SET completed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=NEW.actor_id AND proof.claim_id=NEW.aggregate_id AND proof.born AND NEW.subject_employment_id=(proof.after_source->>'employment_id')::uuid AND NEW.event_type=CASE proof.course WHEN 'submit' THEN 'claim-request.submitted' WHEN 'approve' THEN 'claim-request.approved' ELSE 'claim-request.rejected' END;
  END IF;RETURN NULL;
 END $$;
 --> statement-breakpoint

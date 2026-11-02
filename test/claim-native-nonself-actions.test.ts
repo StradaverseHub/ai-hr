@@ -4,6 +4,7 @@ import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
+import {actorOf,appendEvent} from '../db/events';
 import {hireEmployee,setReportingLine,editDelegation} from '../core/org';
 import {createClaimType,submitClaim,decideClaim,listClaimsForEmployment,listPendingClaims,actionablePendingClaimIds,submitClaimWithAttachment,addClaimAttachment,getClaimAttachment,saveClaimDraft,deleteClaimDraft} from '../core/claims';
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand,type DataPermissionState,type DataPermissionPreview} from '../core/data-permissions';
@@ -73,6 +74,10 @@ it('refuses raw administrative decisions without native audit, restored content,
  const pending=await submitClaim(admin,submission()),[before]=await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id));
  const audits=await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`;
  await refusal(withTenant(admin,tx=>tx.update(s.claimRequest).set({status:'approved',decidedAt:new Date()}).where(eq(s.claimRequest.id,pending.id))),'Claim command effects incomplete');
+ await refusal(withTenant(admin,async tx=>{
+  await tx.update(s.claimRequest).set({status:'approved',decidedAt:new Date()}).where(eq(s.claimRequest.id,pending.id));
+  await appendEvent(tx,{tenantId:admin.tenantId,aggregateType:'claim-request',aggregateId:pending.id,eventType:'claim-request.approved',actor:actorOf(admin),subjectEmploymentId:before.employmentId});
+ }),'Claim command effects incomplete');
  await refusal(withTenant(admin,async tx=>{await tx.transaction(async nested=>{await nested.update(s.claimRequest).set({amount:'99.00'}).where(eq(s.claimRequest.id,pending.id));await nested.update(s.claimRequest).set({amount:'25.00'}).where(eq(s.claimRequest.id,pending.id));});}),'Filed claim is immutable');
  await refusal(withTenant(admin,tx=>tx.insert(s.claimRequest).values(before).onConflictDoNothing()),'Claim command effects incomplete');
  expect(await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,pending.id))).toEqual([before]);expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audits);
