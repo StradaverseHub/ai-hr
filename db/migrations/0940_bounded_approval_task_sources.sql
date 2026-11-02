@@ -263,6 +263,7 @@ LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_
 DECLARE context jsonb;q public.profile_change_request;before_row jsonb;after_row jsonb;patch jsonb:='{}'::jsonb;delta jsonb;fields jsonb;entry record;grouped record;column_name text;sets text;columns text;values_sql text;inserted boolean;row_id uuid;expected_key jsonb;
 BEGIN
  context:=app.profile_task_effect_source(p_person);IF context IS NULL THEN RETURN NULL;END IF;
+ IF context->'subject'->>'country' IS DISTINCT FROM 'MY' THEN RAISE EXCEPTION 'Profile statutory jurisdiction unavailable' USING ERRCODE='42501';END IF;
  SELECT request.* INTO q FROM app.profile_task_before c JOIN public.profile_change_request request ON request.id=c.request_id AND request.tenant_id=c.tenant_id WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND request.person_id=p_person;
  IF EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p_person AND e.tenant_id=q.tenant_id AND e.voided_at IS NULL
   AND (NOT app.access_workforce_company(e.company_id,'workforce.maintain') OR NOT app.access_workforce_not_denied(e.company_id,'workforce.maintain'))) THEN RAISE EXCEPTION 'Shared profile company scope unavailable' USING ERRCODE='42501';END IF;
