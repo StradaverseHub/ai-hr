@@ -213,6 +213,19 @@ describe('417d4937 — the consumed-marker backfill', () => {
     expect(skipped!.unmarkedRows).toBe(1);
   });
 
+  it('V33 does not infer historical payment from enabling the fold after calculation', async () => {
+    const { employmentId, batchId } = await hire('2026-05');
+    const { id } = await createIndividualTxn(a, { batchId, employmentId, kind: 'overtime', txnDate: '2026-05-10', amount: 250 });
+    await generatePayslips(a, { batchId });
+    const before = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+    expect((await txnRow(id)).consumedBatchId).toBeNull();
+    await enableFold();
+    const report = await runConsumedBackfill(URL, { apply: true });
+    expect(report.marked).toBe(0);
+    expect((await txnRow(id)).consumedBatchId).toBeNull();
+    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId))).toEqual(before);
+  });
+
   it('leaves an ALREADY-MARKED row exactly as it is — it never overwrites a marker', async () => {
     await enableFold();
     const { employmentId, batchId } = await hire('2026-05');

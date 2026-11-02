@@ -18,6 +18,8 @@ import {buildPayslipPdfData,renderPayslipPdf} from '../lib/payslip-pdf';
 import {labels as pdfLabels} from './fixtures/payslip-pdf-fixture';
 import {getImportAttempt,importAttemptSource} from '../core/import-history';
 import {reportPreview} from '../core/reporting';
+import {cp39FileForBatch} from '../localization/my/cp39-file';
+import {socsoEisFileForBatch} from '../localization/my/socso-eis-file';
 import {pcb2iiStatement} from '../localization/my/pcb2ii';
 import {eaStatement,eaCompaniesInYear} from '../localization/my/reports';
 import {payslipForReview,listPayrollRegisterAcross,listPayslipRunsFor,listProcessedPayslipsAcross} from '../core/payroll-view';
@@ -132,6 +134,32 @@ describe('8550b282 information-only corrections',()=>{
   expect(await payslipForReview(employeeCtx,{companyIds:[b.companyId],payslipId:slip.id})).toBeNull();
   expect(await withTenant(employeeCtx,tx=>tx.execute(sql`select * from app.information_report_records('employment',${b.companyId}::uuid,'2025')`))).toEqual([]);
 
+ });
+ it('BK17 retains upload identities and contribution totals for source-only HR after company correction',async()=>{
+  const id=await fixture();
+  const [subject]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id));
+  await owner.db.insert(schema.companyStatutoryMy).values({tenantId:b.tenantId,companyId:b.companyId,lhdnEmployerNo:'E90891510',socsoEmployerCode:'A3702086586A'})
+   .onConflictDoUpdate({target:schema.companyStatutoryMy.companyId,set:{lhdnEmployerNo:'E90891510',socsoEmployerCode:'A3702086586A'}});
+  await owner.db.insert(schema.employeeStatutoryMy).values({tenantId:b.tenantId,personId:subject.personId,icNumber:'900101145678',taxNumber:'1234567890'});
+  const {slip}=await closedSlip(id,{pcb:10,cp38:2,socsoEmployee:12,socsoEmployer:18,eisEmployee:3,eisEmployer:3,bases:{socsoEis:3000}});
+  const cpBefore=await cp39FileForBatch(ctx(),{companyId:b.companyId,periodKey:'2025-01'});
+  const socsoBefore=await socsoEisFileForBatch(ctx(),{companyId:b.companyId,periodKey:'2025-01'});
+  expect(cpBefore.totals).toMatchObject({mtdRecords:1,mtdCents:1000,cp38Cents:200});
+  expect(socsoBefore.totals).toMatchObject({records:1,socsoCents:3000,eisCents:600,salaryCents:300000});
+  const [destination]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Other employer',companyLabel:'OTHER'}).returning();
+  await assignLabelToCompanies(ctx(),{kind:'department',labelId:b.deptA,companyIds:[b.companyId,destination.id]});
+  await assignLabelToCompanies(ctx(),{kind:'position',labelId:b.positionId,companyIds:[b.companyId,destination.id]});
+  await apply(id,{companyId:destination.id});
+  const [hr]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Retained financial reader'}).returning();
+  const userId=await createAppUser(b.tenantId,hr.id,'hr_admin');
+  await owner.db.update(schema.roleAssignment).set({companyId:b.companyId}).where(eq(schema.roleAssignment.appUserId,userId));
+  const source={...ctx(),userId,personId:hr.id,grants:[{role:'hr_admin',companyId:b.companyId}]};
+  expect(await withTenant(source,tx=>tx.select().from(schema.employment).where(eq(schema.employment.id,id)))).toEqual([]);
+  const cpAfter=await cp39FileForBatch(source,{companyId:b.companyId,periodKey:'2025-01'});
+  const socsoAfter=await socsoEisFileForBatch(source,{companyId:b.companyId,periodKey:'2025-01'});
+  expect(cpAfter).toEqual(cpBefore);
+  expect(socsoAfter).toEqual(socsoBefore);
+  expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,slip.id)))[0]).toEqual(slip);
  });
  it('requires a fresh review when the selected reference code changes',async()=>{
   const id=await fixture();const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'G03',name:'Proposed grade'}).returning();

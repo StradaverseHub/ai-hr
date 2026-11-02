@@ -410,6 +410,20 @@ describe('LHDN TP1 (1/2026) — the full e-form', () => {
    * already effective. The March assertion is the other half of the same sentence: a June approval must
    * not reach back into March.
    */
+  it('BK57 rechecks annual headroom when two already-submitted months are approved', async () => {
+    const admin = adminCtx(base);
+    const e = await hire('Pending headroom', 'pending-headroom@example.test');
+    const jan = await submit(admin, e.personId, { deductionMonth: 1, items: { c9: 5000 } });
+    const feb = await submit(admin, e.personId, { deductionMonth: 2, items: { c9: 5000 } });
+    await approveTp1ForPerson(admin, { personId: e.personId, id: jan.id, approvedMonth: 1, approvedYear: YEAR });
+    await expect(approveTp1ForPerson(admin, { personId: e.personId, id: feb.id, approvedMonth: 2, approvedYear: YEAR }))
+      .rejects.toMatchObject({ breach: { already: 5000, remaining: 3000, over: 2000 } });
+    const [live] = await owner.db.select().from(schema.tp1Relief).where(eq(schema.tp1Relief.id, feb.id));
+    expect(live.status).toBe('submitted');
+    const events = await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId, feb.id));
+    expect(events.filter(event => event.eventType === 'tp1.approved')).toHaveLength(0);
+  });
+
   it('feeds the SUM of the approved months, not the newest declaration', async () => {
     const admin = adminCtx(base);
     const e = await hire('Additive', 'additive@acme.test');

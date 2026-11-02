@@ -35,6 +35,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
+import { assignEmployeeShiftDated } from '../core/shift-arrangement';
 import { absentDaysByEmployment } from '../core/absence-days';
 import { attendanceForDate, attendanceForEmploymentRange, attendanceMonthSummary } from '../core/attendance';
 import { evaluateMonthly } from '../core/attendance-allowance';
@@ -251,6 +252,17 @@ describe('e2632276 — what counts as an absent day', () => {
     const shiftId = await makeShift([1, 2, 3, 4]); // Mon–Thu; no Friday
     await owner.db.update(schema.employment).set({ defaultShiftId: shiftId }).where(eq(schema.employment.id, e));
     expect((await absentDays(a, [e])).get(e)).toBe(16); // 21 − the month's 5 Fridays
+  });
+
+  it('BK44 uses the ordinary shift week in force on each date without a rotation', async () => {
+    const a = await entitledCtx(b);
+    const employmentId = await makeEmp('DatedWeek');
+    const earlier = await makeShift([2, 3, 4, 5]);
+    const later = await makeShift([1, 2, 3, 4, 5]);
+    await assignEmployeeShiftDated(a, { employmentId, shiftType: 'fixed', shiftId: earlier, effectiveFrom: '2026-05-01' });
+    await assignEmployeeShiftDated(a, { employmentId, shiftType: 'fixed', shiftId: later, effectiveFrom: '2026-05-16' });
+    // Four Mondays exist; May4 and11 remain rest days, May18 and25 are working days.
+    expect((await absentDays(a, [employmentId])).get(employmentId)).toBe(19);
   });
 
   it('dates before hire and after termination are skipped', async () => {
