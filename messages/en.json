@@ -29775,7 +29775,9 @@
     "matrixOther": "Other permissions",
     "matrixPayroll": "Payroll",
     "matrixPerformanceCompensation": "Performance and Compensation",
-    "matrixLetters": "Letters"
+    "matrixLetters": "Letters",
+    "matrixOrganisation": "Organisation",
+    "matrixSettings": "Settings"
   },
   "myPayslip": {
     "title": "My Payslip",

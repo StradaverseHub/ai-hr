@@ -29775,7 +29775,9 @@
     "matrixOther": "மற்ற அனுமதிகள்",
     "matrixPayroll": "சம்பளப்பட்டியல்",
     "matrixPerformanceCompensation": "செயல்திறன் மற்றும் இழப்பீடு",
-    "matrixLetters": "கடிதங்கள்"
+    "matrixLetters": "கடிதங்கள்",
+    "matrixOrganisation": "நிறுவன அமைப்பு",
+    "matrixSettings": "அமைப்புகள்"
   },
   "myPayslip": {
     "title": "எனது ஊதியச்சீட்டு",

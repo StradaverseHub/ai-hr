@@ -29775,7 +29775,9 @@
     "matrixOther": "Kebenaran lain",
     "matrixPayroll": "Gaji",
     "matrixPerformanceCompensation": "Prestasi dan Pampasan",
-    "matrixLetters": "Surat"
+    "matrixLetters": "Surat",
+    "matrixOrganisation": "Organisasi",
+    "matrixSettings": "Tetapan"
   },
   "myPayslip": {
     "title": "Slip Gaji Saya",

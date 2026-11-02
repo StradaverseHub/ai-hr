@@ -29775,7 +29775,9 @@
     "matrixOther": "Quyền khác",
     "matrixPayroll": "Tiền lương",
     "matrixPerformanceCompensation": "Hiệu suất và đãi ngộ",
-    "matrixLetters": "Thư"
+    "matrixLetters": "Thư",
+    "matrixOrganisation": "Tổ chức",
+    "matrixSettings": "Cài đặt"
   },
   "myPayslip": {
     "title": "Phiếu lương của tôi",

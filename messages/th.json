@@ -29775,7 +29775,9 @@
     "matrixOther": "สิทธิ์อื่น",
     "matrixPayroll": "เงินเดือน",
     "matrixPerformanceCompensation": "ผลงานและค่าตอบแทน",
-    "matrixLetters": "จดหมาย"
+    "matrixLetters": "จดหมาย",
+    "matrixOrganisation": "องค์กร",
+    "matrixSettings": "การตั้งค่า"
   },
   "myPayslip": {
     "title": "สลิปเงินเดือนของฉัน",

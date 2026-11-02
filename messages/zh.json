@@ -29775,7 +29775,9 @@
     "matrixOther": "其他权限",
     "matrixPayroll": "薪资",
     "matrixPerformanceCompensation": "绩效与薪酬",
-    "matrixLetters": "信函"
+    "matrixLetters": "信函",
+    "matrixOrganisation": "组织",
+    "matrixSettings": "设置"
   },
   "myPayslip": {
     "title": "我的工资单",
