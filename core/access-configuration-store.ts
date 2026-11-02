@@ -23,6 +23,17 @@ export const accessConfigurationStore:AccessConfigurationOwner={
       return parseAccessOwnerState(row?.state,ctx.tenantId);
     }catch(error){return refusal(error);}
   },
+  async validateDelegation(tx,_ctx,current,command){
+    const group='groupId' in command?current.snapshot.groups.find(row=>row.id===command.groupId):undefined;
+    let grants=command.kind==='setOverride'?[{capabilityId:command.capabilityId,companyId:command.companyId}]:command.kind==='createGroup'?[]:[...(group?.grants??[]),...(command.kind==='replaceGroupGrants'?command.grants:[])];
+    if(command.kind==='setMembership')grants=grants.flatMap(grant=>{
+      if(command.companyId===null)return [grant];
+      if(current.catalog.find(capability=>capability.id===grant.capabilityId)?.scope==='tenant')return [];
+      if(grant.companyId===null||grant.companyId===command.companyId||current.evidence.covers(grant.companyId,command.companyId))return [{...grant,companyId:command.companyId}];
+      return current.evidence.covers(command.companyId,grant.companyId)?[grant]:[];
+    });
+    try{await tx.execute(sql`select app.access_configuration_delegation_preview(${JSON.stringify(grants)}::jsonb)`);}catch(error){return refusal(error);}
+  },
   async persist(tx,_ctx,change){
     try{
       const [row]=await tx.execute<{committed:boolean}>(sql`select app.access_configuration_commit(${change.before.revision}::uuid,${change.scopeFingerprint},${JSON.stringify(change.command)}::jsonb,${change.after.revision}::uuid) as committed`);

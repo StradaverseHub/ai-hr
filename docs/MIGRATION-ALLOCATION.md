@@ -953,3 +953,12 @@ when1793330000340, after0939's independently owned action split. It preserves ex
 and Leave task responsibility through request-bound projections and native effect witnesses,
 without a general Personnel read exception. Branch `codex/approved-board-task-projections-20261102`.
 Unapplied source only; re-audit live watermark and refs before coordinated release. No installation authority.
+
+## Workforce action split — 2 November 2026 (provisional source claim)
+
+Actions owner reserves `0939_workforce_action_permissions`, aggregate idx761 /
+when1793330000339, after0938. This additive source identity includes the typed operation
+owners, exact birth/source custody and retained independent workflow witnesses. It is
+unapplied source, requires aggregate hosted migration/behavior checks and re-audit before
+installation, and grants no deployment authority. The full module-binding item is not yet
+accepted solely by this Workforce checkpoint.

@@ -29820,7 +29820,10 @@
     "matrixEdit": "Sửa",
     "matrixDelete": "Xóa",
     "matrixWorkforce": "Nhân sự",
-    "matrixOther": "Quyền khác"
+    "matrixOther": "Quyền khác",
+    "matrixPayroll": "Tiền lương",
+    "matrixPerformanceCompensation": "Hiệu suất và đãi ngộ",
+    "matrixLetters": "Thư"
   },
   "myPayslip": {
     "title": "Phiếu lương của tôi",

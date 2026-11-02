@@ -2,39 +2,39 @@
 import {sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
-export type WorkforceOperation='view'|'maintain';
+export type WorkforceOperation='view'|'maintain'|'add'|'edit'|'delete';
 export class WorkforceAccessError extends Error{
  constructor(){super('Employee record or permission is unavailable.');this.name='WorkforceAccessError';}
 }
 /** This predicate is evaluated inside the actual Workforce query, never cached in a session. */
 export function workforceEmploymentPredicate(subject:SQL,operation:WorkforceOperation='view',companyIds?:readonly string[]){
  if(companyIds?.length===0)return sql`false`;
- return sql`app.access_workforce_employment(${subject},${'workforce.'+operation})`;
+ return sql`app.access_workforce_employment(${subject},${'workforce.'+(operation==='maintain'?'edit':operation)})`;
 }
 async function lockWorkforceOperationTx(tx:Tx,ctx:SessionContext,operation:WorkforceOperation){
- if(operation==='maintain')await tx.execute(sql`select app.access_workforce_write_lock()`);
+ if(operation!=='view')await tx.execute(sql`select app.access_workforce_write_lock()`);
  else await lockAccessConfigurationTx(tx,ctx.tenantId);
 }
 export async function assertWorkforceCompanyTx(tx:Tx,ctx:SessionContext,companyId:string,operation:WorkforceOperation){
  await lockWorkforceOperationTx(tx,ctx,operation);
- const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_company(${companyId}::uuid,${'workforce.'+operation}) as allowed`);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_company(${companyId}::uuid,${'workforce.'+(operation==='maintain'?'edit':operation)}) as allowed`);
  if(!row?.allowed)throw new WorkforceAccessError();
 }
 export async function assertWorkforceEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string,operation:WorkforceOperation){
  await lockWorkforceOperationTx(tx,ctx,operation);
- const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,${'workforce.'+operation}) as allowed`);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,${'workforce.'+(operation==='maintain'?'edit':operation)}) as allowed`);
  if(!row?.allowed)throw new WorkforceAccessError();
 }
 export async function assertWorkforcePersonTx(tx:Tx,ctx:SessionContext,personId:string,operation:WorkforceOperation){
  await lockWorkforceOperationTx(tx,ctx,operation);
- const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_person(${personId}::uuid,${'workforce.'+operation}) as allowed`);
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select (app.access_workforce_person(${personId}::uuid,${'workforce.'+(operation==='maintain'?'edit':operation)}) OR ${operation==='maintain'} AND app.access_workforce_initial_person(${personId}::uuid)) as allowed`);
  if(!row?.allowed)throw new WorkforceAccessError();
 }
 /** Scope metadata only. Actual reads/writes repeat their check under the same access lock. */
 export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperation='view', outerTx?:Tx){
   const run=async (tx:Tx)=>{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
-  const allowed=operation==='view'?sql`app.access_workforce_projection_company(id)`:sql`app.access_workforce_company(id,'workforce.maintain')`;
+  const allowed=operation==='view'?sql`app.access_workforce_projection_company(id)`:sql`app.access_workforce_company(id,${'workforce.'+(operation==='maintain'?'edit':operation)})`;
   const rows=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and ${allowed} order by id`);
   return rows.map(row=>row.id);
  };
@@ -44,7 +44,7 @@ export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperati
 export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string,operation:WorkforceOperation){
  return withTenant(ctx,async tx=>{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
-  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,${'workforce.'+operation}) as allowed`);
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,${'workforce.'+(operation==='maintain'?'edit':operation)}) as allowed`);
   return row?.allowed===true;
  });
 }
@@ -53,7 +53,7 @@ export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string
 export function workforceCommandAccess(ctx:SessionContext,employmentId:string){
  return withTenant(ctx,async tx=>{
   await lockAccessConfigurationTx(tx,ctx.tenantId);
-  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_command_allowed(${employmentId}::uuid) as allowed`);
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_action_employment(${employmentId}::uuid,'edit') as allowed`);
   return row?.allowed===true;
  });
 }

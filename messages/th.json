@@ -29820,7 +29820,10 @@
     "matrixEdit": "แก้ไข",
     "matrixDelete": "ลบ",
     "matrixWorkforce": "พนักงาน",
-    "matrixOther": "สิทธิ์อื่น"
+    "matrixOther": "สิทธิ์อื่น",
+    "matrixPayroll": "เงินเดือน",
+    "matrixPerformanceCompensation": "ผลงานและค่าตอบแทน",
+    "matrixLetters": "จดหมาย"
   },
   "myPayslip": {
     "title": "สลิปเงินเดือนของฉัน",

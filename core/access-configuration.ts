@@ -35,6 +35,7 @@ export type CurrentAccessConfiguration={
  */
 export interface AccessConfigurationOwner{
   loadCurrent(tx:Tx,ctx:SessionContext):Promise<CurrentAccessConfiguration>;
+  validateDelegation?(tx:Tx,ctx:SessionContext,current:CurrentAccessConfiguration,command:AccessConfigurationCommand):Promise<void>;
   persist(tx:Tx,ctx:SessionContext,change:{before:AccessSnapshot;after:AccessSnapshot;command:AccessConfigurationCommand;scopeFingerprint:string}):Promise<boolean>;
 }
 
@@ -55,6 +56,7 @@ async function currentTransition(tx:Tx,ctx:SessionContext,p:AccessConfigurationE
   const current=await owner.loadCurrent(tx,ctx);
   if(current.snapshot.tenantId!==ctx.tenantId||current.evidence.tenantId!==ctx.tenantId)throw new AccessPermissionError('invalid');
   const after=applyAccessConfigurationCommand(current.snapshot,current.catalog,ctx.userId,p.expectedRevision,p.command,current.evidence);
+  await owner.validateDelegation?.(tx,ctx,current,p.command);
   const recovery={...after,users:after.users.map(user=>({...user,active:user.active&&current.recoveryUserIds.has(user.id)}))};
   assertSystemAdministratorSurvives(current.snapshot,recovery,current.catalog,current.evidence);
   const binding:AccessPreviewBinding={actorUserId:ctx.userId,snapshot:current.snapshot,catalog:current.catalog,command:p.command,scopeFingerprint:current.scopeFingerprint};
