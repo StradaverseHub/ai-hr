@@ -2707,3 +2707,73 @@ BEGIN
  RETURN div(cents,100)::text||'.'||lpad(mod(cents,100)::text,2,'0');
 END $$;
 REVOKE ALL ON FUNCTION app.reward_calc_fixed_money(double precision)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Private construction state. No caller supplies salary, actor, event, target employment or
+-- source image. Until the complete posting owner closes this exact context, deferred validation
+-- refuses COMMIT; a salary constructor can never become a standalone partial-post API.
+CREATE TABLE app.reward_post_native_context(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,
+ unit_id uuid NOT NULL,admission jsonb NOT NULL,source_plan jsonb NOT NULL,
+ effects jsonb NOT NULL DEFAULT '{}',active boolean NOT NULL DEFAULT true,completed boolean NOT NULL DEFAULT false,
+ recheck integer NOT NULL DEFAULT 0,posted_event_id uuid
+);
+ALTER TABLE app.reward_post_native_context ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.reward_post_native_context FROM PUBLIC,ai_hr_app;
+CREATE INDEX reward_post_native_current_idx ON app.reward_post_native_context(xact_id,tenant_id,user_id,unit_id);
+CREATE FUNCTION app.reward_post_context_begin(p_unit uuid,p_revision integer,p_batch uuid DEFAULT NULL)RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE prepared jsonb;result uuid;
+BEGIN
+ prepared:=app.reward_post_sources(p_unit,p_revision,p_batch);
+ IF(prepared->>'alreadyPosted')::boolean THEN RETURN NULL;END IF;
+ IF EXISTS(SELECT 1 FROM app.reward_post_native_context c WHERE c.xact_id=pg_current_xact_id()AND c.tenant_id=app.current_tenant_id()AND c.user_id=app.current_user_id()AND c.unit_id=p_unit)THEN RAISE EXCEPTION 'Reward posting construction already entered' USING ERRCODE='42501';END IF;
+ INSERT INTO app.reward_post_native_context(xact_id,tenant_id,user_id,unit_id,admission,source_plan)VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),p_unit,prepared-ARRAY['sourcePlan','calculation','postingAwards'],prepared)RETURNING id INTO result;
+ RETURN result;
+END $$;
+CREATE FUNCTION app.reward_post_context_current(p_context uuid)RETURNS app.reward_post_native_context
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.reward_post_native_context;
+BEGIN
+ IF nullif(current_setting('app.agent_principal_id',true),'')IS NOT NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
+ IF app.current_agent_principal()IS NOT NULL OR NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
+ SELECT c.* INTO proof FROM app.reward_post_native_context c WHERE c.id=p_context AND c.xact_id=pg_current_xact_id()AND c.tenant_id=app.current_tenant_id()AND c.user_id=app.current_user_id()AND c.active AND NOT c.completed FOR UPDATE;
+ IF proof.id IS NULL OR proof.admission->>'authorityStamp'IS DISTINCT FROM app.access_function_authority_stamp()OR NOT EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.id=proof.unit_id AND u.tenant_id=proof.tenant_id AND u.deleted_at IS NULL AND u.status='approved'AND u.revision=(proof.admission->>'revision')::integer AND app.reward_admin(u.company_id)AND'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id))))THEN RAISE EXCEPTION 'Reward posting construction unavailable' USING ERRCODE='42501';END IF;
+ RETURN proof;
+END $$;
+CREATE FUNCTION app.reward_post_salary(p_context uuid,p_entry uuid)RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.reward_post_native_context;plan jsonb;unit public.reward_unit;salary public.compensation;after_salary public.compensation;new_salary public.compensation;entry public.reward_entry;audit_id uuid;native_remarks text;target_employment uuid;
+BEGIN
+ proof:=app.reward_post_context_current(p_context);
+ SELECT value INTO plan FROM jsonb_array_elements(proof.source_plan->'sourcePlan')WHERE value->>'entryId'=p_entry::text;
+ IF plan IS NULL OR proof.effects?('salary:'||p_entry::text)THEN RAISE EXCEPTION 'Reward salary construction unavailable' USING ERRCODE='42501';END IF;
+ SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=proof.unit_id AND u.tenant_id=proof.tenant_id;
+ target_employment:=(plan->'employmentBefore'->>'id')::uuid;
+ SELECT e.* INTO entry FROM public.reward_entry e WHERE e.id=p_entry AND e.unit_id=unit.id AND e.tenant_id=proof.tenant_id AND e.employment_id=target_employment FOR UPDATE;
+ IF entry.id IS NULL THEN RAISE EXCEPTION 'Reward salary entry unavailable' USING ERRCODE='42501';END IF;
+ IF(plan->>'newBasicCents')::numeric=(entry.source->>'basicCents')::numeric THEN RETURN NULL;END IF;
+ -- Same independent financial Add floor as canonical setCompensation, never a Rewards grant.
+ IF NOT app.access_compensation_action(target_employment,'add')THEN RAISE EXCEPTION 'Salary record or permission is unavailable' USING ERRCODE='42501';END IF;
+ SELECT c.* INTO salary FROM public.compensation c WHERE c.id=(plan->'compensationBefore'->>'id')::uuid AND c.tenant_id=proof.tenant_id AND c.employment_id=target_employment FOR UPDATE;
+ IF salary.id IS NULL OR to_jsonb(salary)IS DISTINCT FROM plan->'compensationBefore'OR salary.valid_to IS NOT NULL OR salary.superseded_at IS NOT NULL OR(unit.policy->>'effectiveFrom')::date<=salary.valid_from THEN RAISE EXCEPTION 'Salary data changed after the snapshot. Return and refresh the review.' USING ERRCODE='42501';END IF;
+ native_remarks:=CASE WHEN app.reward_calc_senior(unit.policy,jsonb_build_object('source',entry.source,'facts',entry.facts))THEN'Senior plan — 'ELSE''END||'Approved Reward Desk review '||unit.id::text;
+ UPDATE public.compensation c SET valid_to=(unit.policy->>'effectiveFrom')::date WHERE c.id=salary.id AND c.tenant_id=proof.tenant_id RETURNING c.* INTO after_salary;
+ INSERT INTO public.compensation(tenant_id,employment_id,basic_salary,currency,monthly_allowance,pay_mode,payment_term,rate_amount,remarks,valid_from,valid_to)
+ VALUES(proof.tenant_id,target_employment,(plan->>'newBasicSalary')::numeric,salary.currency,salary.monthly_allowance,salary.pay_mode,salary.payment_term,salary.rate_amount,native_remarks,(unit.policy->>'effectiveFrom')::date,NULL)RETURNING * INTO new_salary;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(proof.tenant_id,'compensation',new_salary.id,'compensation.set','user',proof.user_id,target_employment,jsonb_build_object('employmentId',target_employment,'effectiveFrom',unit.policy->>'effectiveFrom','fieldsChanged',jsonb_build_array('basicSalary','remarks')))RETURNING id INTO audit_id;
+ PERFORM app.financial_mark_source_payroll_stale(ARRAY[target_employment],'compensation',(unit.policy->>'effectiveFrom')::date);
+ UPDATE public.reward_entry e SET enacted_compensation_id=new_salary.id WHERE e.id=p_entry AND e.tenant_id=proof.tenant_id AND e.unit_id=unit.id;
+ UPDATE app.reward_post_native_context c SET effects=c.effects||jsonb_build_object('salary:'||p_entry::text,jsonb_build_object('oldId',salary.id,'oldBefore',to_jsonb(salary),'oldAfter',to_jsonb(after_salary),'newId',new_salary.id,'newAfter',to_jsonb(new_salary),'auditId',audit_id,'employmentId',target_employment))WHERE c.id=proof.id;
+ RETURN new_salary.id;
+END $$;
+-- No completion API yet: this intermediate private constructor cannot commit an orphan effect.
+-- The complete finite posting owner will add exact physical/audit closure, not an app-set flag.
+CREATE FUNCTION app.reward_post_native_validate()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ RAISE EXCEPTION 'Reward posting construction is incomplete' USING ERRCODE='42501';
+END $$;
+CREATE CONSTRAINT TRIGGER rewards_post_native_effect AFTER INSERT OR UPDATE ON app.reward_post_native_context DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.reward_post_native_validate();
+REVOKE ALL ON FUNCTION app.reward_post_context_begin(uuid,integer,uuid),app.reward_post_context_current(uuid),app.reward_post_salary(uuid,uuid),app.reward_post_native_validate()FROM PUBLIC,ai_hr_app;

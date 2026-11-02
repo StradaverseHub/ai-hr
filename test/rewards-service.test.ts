@@ -348,6 +348,19 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(Number(input.bonusAmount)).toBe(10055); expect(Number(input.overtimeAmount)).toBe(123); expect(Number(input.tp1Deduction)).toBe(44); expect(Number(input.zakat)).toBe(9);
     expect((await view()).unit.status).toBe('posted');
   });
+  it('rolls back an orphan private salary construction instead of committing a partial Rewards posting',async()=>{
+    // Owner inspection proves construction/rollback only. Actual app financial guard positivity
+    // must use the future reviewed finite port's real ACL; no fixture grants or fake bridge.
+    const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)}),before=await view(),compensation=await owner.db.select().from(schema.compensation),events=await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id);let constructed=false;
+    await expect(owner.withTenant(admin,async tx=>{
+      const [context]=await tx.execute<{id:string}>(sql`select app.reward_post_context_begin(${unitId}::uuid,${revision},${batch.batchId}::uuid)as id`);expect(context.id).toBeTruthy();
+      const [changed]=await tx.execute<{id:string}>(sql`select app.reward_post_salary(${context.id}::uuid,${before.rows[0].id}::uuid)as id`);expect(changed.id).toBeTruthy();
+      const [created]=await tx.select().from(schema.compensation).where(eq(schema.compensation.id,changed.id));expect(created).toMatchObject({employmentId,basicSalary:(before.rows[0].newBasicCents/100).toFixed(2),currency:'MYR',remarks:`Approved Reward Desk review ${unitId}`,validFrom:today,validTo:null});
+      const [audit]=await tx.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,changed.id),eq(schema.domainEvent.eventType,'compensation.set')));expect(audit).toMatchObject({actorType:'user',actorId:admin.userId,subjectEmploymentId:employmentId,payload:{employmentId,effectiveFrom:today,fieldsChanged:['basicSalary','remarks']}});constructed=true;
+    })).rejects.toThrow('Reward posting construction is incomplete');
+    expect(constructed).toBe(true);expect(await view()).toEqual(before);expect(await owner.db.select().from(schema.compensation)).toEqual(compensation);expect(await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id)).toEqual(events);
+    for(const query of [sql`select app.reward_post_context_begin(${unitId}::uuid,${revision},${batch.batchId}::uuid)`,sql`select app.reward_post_salary(${unitId}::uuid,${before.rows[0].id}::uuid)`])await expect(withTenant(admin,tx=>tx.execute(query))).rejects.toThrow();
+  });
   it('privately prepares exact locked employee salary and existing payroll sources, then refuses a genuinely changed native salary',async()=>{
     const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)});
     await setPayrollInput(admin,{batchId:batch.batchId,employmentId,overtimeAmount:12,bonusAmount:34,tp1Deduction:56,zakat:78});
