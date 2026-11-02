@@ -7,6 +7,8 @@ import * as tenantDb from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import * as events from '../db/events';
 import * as punchOwner from '../core/attendance-punch-change';
+import * as attendancePack from '../packs/attendance/service';
+import * as toilOwner from '../core/toil';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection} from '../core/attendance';
@@ -34,12 +36,12 @@ it('profiles the native callback after the first observed service audit append a
   cases.push({b,worker,hr,id:request.correctionId});
  }
  const role=await tenantDb.withTenant(cases[0].hr.ctx,tx=>tx.execute(sql`select current_user as role`));expect(role[0].role).toBe('ai_hr_app');
- type Trace={start:number;callbackStart:number;callbackEnd:number;commitEnd:number;firstBefore?:number;firstAfter?:number;firstType?:string;auditBeforeFirst?:boolean;punchStart?:number;punchEnd?:number;events:number;punchAuditWrites:number;punchAuditEvents:number;failed:boolean};
+ type Trace={start:number;callbackStart:number;callbackEnd:number;commitEnd:number;firstBefore?:number;firstAfter?:number;firstType?:string;auditBeforeFirst?:boolean;punchStart?:number;punchEnd?:number;events:number;punchAuditWrites:number;punchAuditEvents:number;segments:{owner:'overtime-refresh'|'replacement-leave';elapsedMs:number}[];afterPunchAudit:{eventType:string;elapsedMs:number}[];failed:boolean};
  const sqlProfile=process.env.AIHR_CI_PG_STATEMENTS==='1';
  if(sqlProfile){await owner.client.unsafe('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');await owner.client`select pg_stat_statements_reset()`;}
- const traces:Trace[]=[],byTx=new WeakMap<Tx,Trace>(),realTenant=tenantDb.withTenant,realAppend=events.appendEvent,realBatch=events.appendEvents,realPunch=punchOwner.applyClockChangesTx;
+ const traces:Trace[]=[],byTx=new WeakMap<Tx,Trace>(),realTenant=tenantDb.withTenant,realAppend=events.appendEvent,realBatch=events.appendEvents,realPunch=punchOwner.applyClockChangesTx,realRefresh=attendancePack.refreshOvertimePatternDayTx,realAccrual=toilOwner.maybeAutoAccrueOnApprovalTx;
  const observe:typeof realTenant=async<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>,options?:{readOnlySnapshot:true})=>{
-  const t:Trace={start:performance.now(),callbackStart:0,callbackEnd:0,commitEnd:0,events:0,punchAuditWrites:0,punchAuditEvents:0,failed:false};
+  const t:Trace={start:performance.now(),callbackStart:0,callbackEnd:0,commitEnd:0,events:0,punchAuditWrites:0,punchAuditEvents:0,segments:[],afterPunchAudit:[],failed:false};
   try{return await realTenant(ctx,async tx=>{t.callbackStart=performance.now();byTx.set(tx,t);try{return await read(tx);}finally{t.callbackEnd=performance.now();}},options);}
   catch(error){t.failed=true;throw error;}
   finally{t.commitEnd=performance.now();traces.push(t);}
@@ -51,8 +53,11 @@ it('profiles the native callback after the first observed service audit append a
  const appendSpy=vi.spyOn(events,'appendEvent').mockImplementation((async(tx:Tx,event:events.AppendEventArgs,options?:{returnId:boolean})=>{
   const t=byTx.get(tx),first=t?.firstBefore===undefined;
   if(t){t.events++;if(t.punchStart!==undefined&&t.punchEnd===undefined){t.punchAuditWrites++;t.punchAuditEvents++;}if(first){t.firstType=event.eventType;t.auditBeforeFirst=await ownsAudit(tx,event.tenantId);t.firstBefore=performance.now();}}
-  const result=options?await realAppend(tx,event,options):await realAppend(tx,event);
-  if(t&&first)t.firstAfter=performance.now();return result;
+  const start=performance.now(),afterPunch=t?.punchEnd!==undefined;
+  try{
+   const result=options?await realAppend(tx,event,options):await realAppend(tx,event);
+   if(t&&first)t.firstAfter=performance.now();return result;
+  }finally{if(t&&afterPunch)t.afterPunchAudit.push({eventType:event.eventType,elapsedMs:performance.now()-start});}
  })as typeof realAppend);
  const batchSpy=vi.spyOn(events,'appendEvents').mockImplementation(async(tx,items)=>{
   const t=byTx.get(tx),first=t?.firstBefore===undefined;
@@ -63,14 +68,22 @@ it('profiles the native callback after the first observed service audit append a
   const t=byTx.get(args[0]);if(t)t.punchStart=performance.now();
   try{return await realPunch(...args);}finally{if(t)t.punchEnd=performance.now();}
  });
+ const refreshSpy=vi.spyOn(attendancePack,'refreshOvertimePatternDayTx').mockImplementation(async(...args)=>{
+  const t=byTx.get(args[0]),start=performance.now(),afterPunch=t?.punchEnd!==undefined;
+  try{return await realRefresh(...args);}finally{if(t&&afterPunch)t.segments.push({owner:'overtime-refresh',elapsedMs:performance.now()-start});}
+ });
+ const accrualSpy=vi.spyOn(toilOwner,'maybeAutoAccrueOnApprovalTx').mockImplementation(async(...args)=>{
+  const t=byTx.get(args[0]),start=performance.now(),afterPunch=t?.punchEnd!==undefined;
+  try{return await realAccrual(...args);}finally{if(t&&afterPunch)t.segments.push({owner:'replacement-leave',elapsedMs:performance.now()-start});}
+ });
  let settled:PromiseSettledResult<unknown>[];
  try{settled=await Promise.allSettled(cases.map(c=>decideAttendanceCorrection(c.hr.ctx,{correctionId:c.id,decision:'approved',expectedStageIndex:0,expectedParticipantSlot:'0:0'})));}
- finally{punchSpy.mockRestore();batchSpy.mockRestore();appendSpy.mockRestore();tenantSpy.mockRestore();}
+ finally{accrualSpy.mockRestore();refreshSpy.mockRestore();punchSpy.mockRestore();batchSpy.mockRestore();appendSpy.mockRestore();tenantSpy.mockRestore();}
  const failures=settled.filter(x=>x.status==='rejected').map(x=>String((x as PromiseRejectedResult).reason));
- const spans=traces.map(t=>({admissionMs:t.callbackStart-t.start,callbackMs:t.callbackEnd-t.callbackStart,settlementMs:t.commitEnd-t.callbackEnd,firstObservedServiceAppendWaitAndSqlMs:t.firstAfter===undefined||t.firstBefore===undefined?null:t.firstAfter-t.firstBefore,postFirstObservedServiceAppendCallbackMs:t.firstAfter===undefined?null:t.callbackEnd-t.firstAfter,punchOwnerMs:t.punchEnd===undefined||t.punchStart===undefined?null:t.punchEnd-t.punchStart,postFirstAppendToPunchOwnerExitMs:t.punchEnd===undefined||t.firstAfter===undefined?null:t.punchEnd-t.firstAfter,postPunchOwnerCallbackMs:t.punchEnd===undefined?null:t.callbackEnd-t.punchEnd,auditHeldBeforeFirstObservedAppend:t.auditBeforeFirst??null,punchAuditWrites:t.punchAuditWrites,punchAuditEvents:t.punchAuditEvents,firstEventType:t.firstType??null,events:t.events,failed:t.failed}));
+ const spans=traces.map(t=>({admissionMs:t.callbackStart-t.start,callbackMs:t.callbackEnd-t.callbackStart,settlementMs:t.commitEnd-t.callbackEnd,firstObservedServiceAppendWaitAndSqlMs:t.firstAfter===undefined||t.firstBefore===undefined?null:t.firstAfter-t.firstBefore,postFirstObservedServiceAppendCallbackMs:t.firstAfter===undefined?null:t.callbackEnd-t.firstAfter,punchOwnerMs:t.punchEnd===undefined||t.punchStart===undefined?null:t.punchEnd-t.punchStart,postFirstAppendToPunchOwnerExitMs:t.punchEnd===undefined||t.firstAfter===undefined?null:t.punchEnd-t.firstAfter,postPunchOwnerCallbackMs:t.punchEnd===undefined?null:t.callbackEnd-t.punchEnd,auditHeldBeforeFirstObservedAppend:t.auditBeforeFirst??null,punchAuditWrites:t.punchAuditWrites,punchAuditEvents:t.punchAuditEvents,postPunchOwnerSegments:t.segments,postPunchServiceAudit:t.afterPunchAudit,firstEventType:t.firstType??null,events:t.events,failed:t.failed}));
  const audit=[];for(const b of bases)audit.push(await verifyTenantChain(adminCtx(b)));
  const batchSql=sqlProfile?(await owner.client`select coalesce(sum(s.calls),0)::int as calls,coalesce(sum(s.rows),0)::int as rows from pg_stat_statements s where s.dbid=(select oid from pg_database where datname=current_database())and lower(s.query)like 'insert into "domain_event"%' and s.rows>s.calls`)[0]:null;
- const report={batchSql,kind:'NATIVE_AUDIT_SPAN_DIAGNOSTIC_NOT_CAPACITY_OR_PURE_LOCK_TIME',cases:cases.length,tenants:2,failures,spans,audit,limitations:'First service append can follow earlier native audit writes. Admission includes BEGIN; append includes wait+SQL; post-append callback includes SQL/client work; settlement includes commit and response. No deliberate delay or changed control.'};
+ const report={batchSql,kind:'NATIVE_AUDIT_SPAN_DIAGNOSTIC_NOT_CAPACITY_OR_PURE_LOCK_TIME',cases:cases.length,tenants:2,failures,spans,audit,limitations:'First service append can follow earlier native audit writes. Admission includes BEGIN; append includes wait+SQL; post-append callback includes SQL/client work; settlement includes commit and response. Owner segment and audit durations can overlap and must not be added as CPU or exclusive wall time. No deliberate delay or changed control.'};
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/attendance-audit-spans.json',JSON.stringify(report));
  expect(failures).toEqual([]);expect(spans.filter(t=>t.firstEventType!==null)).toHaveLength(cases.length);expect(spans.filter(t=>t.punchOwnerMs!==null)).toHaveLength(cases.length);
  for(const c of cases){
@@ -82,6 +95,9 @@ it('profiles the native callback after the first observed service audit append a
   expect(punches[0].payload).toMatchObject({correctionId:c.id,reason:'Fictional real audit span probe',before:{punchAt:'08:00:00',direction:'in'},after:{voidedBy:c.hr.ctx.userId,voidReason:'Fictional real audit span probe'}});
   expect(punches[1].payload).toMatchObject({before:{punchAt:'17:00:00',direction:'out'}});expect(punches[2].payload).toMatchObject({after:{punchAt:'09:00:00',direction:'in',method:'admin'}});expect(punches[3].payload).toMatchObject({after:{punchAt:'18:00:00',direction:'out',method:'admin'}});
  }
+ expect(spans.every(t=>t.postPunchOwnerSegments.filter(s=>s.owner==='overtime-refresh').length===1)).toBe(true);
+ expect(spans.every(t=>t.postPunchOwnerSegments.filter(s=>s.owner==='replacement-leave').length===1)).toBe(true);
+ expect(spans.every(t=>t.postPunchServiceAudit.length>0)).toBe(true);
  expect(audit.every(a=>a.valid)).toBe(true);
  expect(spans.every(t=>t.auditHeldBeforeFirstObservedAppend===false)).toBe(true);
  expect(spans.every(t=>t.punchAuditEvents===4)).toBe(true);
