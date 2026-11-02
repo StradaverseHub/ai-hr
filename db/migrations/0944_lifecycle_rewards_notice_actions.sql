@@ -1290,7 +1290,7 @@ BEGIN
   UPDATE public.lc_onboarding_case actual SET company_id=draft.company_id,employment_id=p_employment,data=next_data,revision=c.revision+1,updated_at=clock_timestamp()WHERE actual.id=c.id AND actual.tenant_id=c.tenant_id;
  END IF;
  IF hr THEN
-  INSERT INTO public.lc_onboarding_private(case_id,tenant_id,company_id,data)VALUES(subject,draft.tenant_id,draft.company_id,next_private)ON CONFLICT(case_id)DO UPDATE SET company_id=excluded.company_id,data=excluded.data;
+  INSERT INTO public.lc_onboarding_private(case_id,tenant_id,company_id,data)VALUES(subject,draft.tenant_id,draft.company_id,next_private)ON CONFLICT ON CONSTRAINT lc_onboarding_private_pkey DO UPDATE SET company_id=excluded.company_id,data=excluded.data;
   IF next_private?'lifecycleV9'AND next_private->'lifecycleV9Subject'->>'employmentId'IS NULL THEN UPDATE public.lc_onboarding_private actual SET data=jsonb_set(actual.data,'{lifecycleV9Subject}',jsonb_build_object('personId',p_person,'employmentId',p_employment),true)WHERE actual.case_id=subject AND actual.tenant_id=draft.tenant_id;END IF;
  END IF;
  PERFORM app.lifecycle_native_effect_complete(effect);
