@@ -14,6 +14,8 @@ import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModu
 import { dispatchNotificationsFromSweep, renderRewardRouted } from '../core/notifications';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
+import {createHash} from 'node:crypto';
+import {pgErrorChain} from '../lib/db-error';
 import {calculateRewards} from '../packs/rewards/engine';
 import {calculateOffcycle,offcycleRoute} from '../packs/rewards/offcycle';
 import {emptyGovernance,effectiveRewardPolicy,confirmedSeniorAwards,governanceBasis,maySeeSeniorAmounts} from '../packs/rewards/governance-model';
@@ -354,6 +356,24 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(Number(unchanged.basicSalary)).toBe(5000);
     expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId, batch.batchId))).toEqual([]);
     expect((await view()).unit.status).toBe('approved');
+  });
+  it('privately admits the exact native decision source and preserves different-reviewer stage separation',async()=>{
+    await setRewardMember(admin,unitId,(await view()).unit.revision,actors.bu!.userId!,'bg');
+    const before=await view(),why='Actual independently reviewed native decision';
+    const admission=(actor:SessionContext,action:string,revision=before.unit.revision)=>owner.withTenant(actor,tx=>tx.execute<{value:{fromStage:string;toStage:string;decisionDigest:string;authorityStamp:string}}>(sql`select app.reward_decision_admission(${unitId}::uuid,${revision},${action},${why},false)as value`));
+    const [admitted]=await admission(actors.bu!,'submit'),entries=await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId));
+    const [storedUnit]=await owner.db.select().from(schema.rewardUnit).where(eq(schema.rewardUnit.id,unitId));
+    const expectedDigest=createHash('sha256').update(JSON.stringify({policy:storedUnit.policy,kind:storedUnit.kind,parentUnitId:storedUnit.parentUnitId,offcycle:storedUnit.offcycle,entries:[...entries].sort((a,b)=>a.id.localeCompare(b.id)).map(e=>({id:e.id,source:e.source,facts:e.facts,recommendation:e.recommendation}))})).digest('hex');
+    expect(admitted.value).toMatchObject({fromStage:'draft',toStage:'bg',decisionDigest:expectedDigest});expect(admitted.value.authorityStamp).toMatch(/^[a-f0-9]{64}$/);
+    expect((await view()).unit).toEqual(before.unit);expect(await owner.db.select().from(schema.rewardDecision).where(eq(schema.rewardDecision.unitId,unitId))).toEqual([]);
+    await expect(withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_decision_admission(${unitId}::uuid,${before.unit.revision},'submit',${why},false)`))).rejects.toThrow();
+    await expect(admission(actors.bu!,'submit',before.unit.revision+1)).rejects.toThrow();
+    expect(await decideRewardUnit(actors.bu!,unitId,before.unit.revision,'submit',why)).toBe('bg');
+    let refusal:unknown;try{await admission(actors.bu!,'approve');}catch(error){refusal=error;}
+    expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'A different reviewer must sign the next approval stage.'}));
+    await expect(decideRewardUnit(actors.bu!,unitId,before.unit.revision,'approve',why)).rejects.toThrow('different reviewer');
+    const [next]=await admission(actors.bg!,'approve');expect(next.value).toMatchObject({fromStage:'bg',toStage:'gr',decisionDigest:expectedDigest});
+    expect(await decideRewardUnit(actors.bg!,unitId,before.unit.revision,'approve',why)).toBe('gr');
   });
   it('derives bounded annual calculations from actual governance and native membership without exporting hidden inputs',async()=>{
     for(const actor of [admin,actors.bu!,actors.bg!,actors.ctro!,actors.ec!,actors.pbp!]){

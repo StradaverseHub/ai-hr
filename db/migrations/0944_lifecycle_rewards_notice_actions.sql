@@ -2411,3 +2411,62 @@ BEGIN
  RAISE EXCEPTION 'You cannot perform this action at the current approval stage.' USING ERRCODE='42501';
 END $$;
 REVOKE ALL ON FUNCTION app.reward_calc_decision_digest(jsonb,text,uuid,jsonb,jsonb),app.reward_calc_transition(text,text,text[],text,jsonb)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.reward_calc_senior_grade(value text)RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE grade text:=app.reward_access_reason_trim(value);
+BEGIN
+ IF upper(left(grade,2)COLLATE "C")='JG'THEN grade:=app.reward_access_reason_trim(substr(grade,3));END IF;
+ RETURN coalesce(grade IN('21','22','23'),false);
+END $$;
+-- Private actual-source admission, not a public preview or reusable grant. The future finite
+-- mutation owner must invoke it inside its same locked transaction and bind the exact effects.
+CREATE FUNCTION app.reward_decision_admission(p_unit uuid,p_revision integer,p_action text,p_reason text,p_acknowledged boolean DEFAULT false)RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;actor public.app_user;roles text[];entries jsonb;route jsonb;route_roles text[];governance jsonb;next_stage text;reason text;hash text;calculation jsonb;funding jsonb;missing text[];missing_labels text;prior_actor uuid;authority text;
+BEGIN
+ PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();
+ PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL OR p_action IS NULL OR p_action NOT IN('submit','approve','return','reject','withdraw')OR p_acknowledged IS NULL THEN RAISE EXCEPTION 'Reward decision unavailable' USING ERRCODE='42501';END IF;
+ reason:=app.reward_calc_text(to_jsonb(p_reason),4000);funding:=app.reward_funding(p_unit,true);
+ SELECT actual.* INTO unit FROM public.reward_unit actual WHERE actual.id=p_unit AND actual.tenant_id=app.current_tenant_id()AND actual.deleted_at IS NULL FOR UPDATE;
+ SELECT actual.* INTO actor FROM public.app_user actual WHERE actual.id=app.current_user_id()AND actual.tenant_id=app.current_tenant_id()AND actual.archived_at IS NULL AND NOT app.login_blocked(actual.id);
+ roles:=ARRAY(SELECT app.reward_roles(p_unit));
+ IF unit.id IS NULL OR actor.id IS NULL OR cardinality(roles)=0 THEN RAISE EXCEPTION 'Reward decision unavailable' USING ERRCODE='42501';END IF;
+ IF unit.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'This review changed in another session. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF NOT app.reward_calc_source_identity_current(unit.id,unit.tenant_id)THEN RAISE EXCEPTION 'Reward recipient source unavailable' USING ERRCODE='42501';END IF;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('id',e.id,'source',e.source,'facts',e.facts,'recommendation',e.recommendation)ORDER BY e.id),'[]'::jsonb)INTO entries FROM public.reward_entry e WHERE e.tenant_id=unit.tenant_id AND e.unit_id=unit.id;
+ route:=CASE WHEN unit.kind='annual'THEN'["bu","bg","gr","ctro","ec"]'::jsonb ELSE app.reward_calc_offcycle_route(unit.kind,unit.offcycle,entries)END;
+ IF unit.kind='annual'THEN SELECT g.snapshot INTO governance FROM public.reward_governance_public g WHERE g.unit_id=unit.id AND g.tenant_id=unit.tenant_id;END IF;
+ next_stage:=app.reward_calc_transition(unit.kind,unit.status,roles,p_action,route);
+ IF unit.kind<>'annual'AND p_action='approve'AND NOT p_acknowledged AND EXISTS(SELECT 1 FROM jsonb_array_elements(entries)e WHERE app.reward_calc_entry_visible(e,roles,actor.person_id)AND coalesce(e->'recommendation'->>'promotionGrade','')<>'')THEN RAISE EXCEPTION 'Acknowledge that you reviewed the current and proposed role summaries.' USING ERRCODE='42501';END IF;
+ IF p_action IN('return','reject','withdraw')AND app.reward_calc_units(reason)<10 THEN RAISE EXCEPTION 'Explain why the unit is being returned (at least 10 characters).' USING ERRCODE='42501';END IF;
+ hash:=app.reward_calc_decision_digest(unit.policy,unit.kind,unit.parent_unit_id,unit.offcycle,entries);
+ IF unit.kind='annual'THEN calculation:=app.reward_calc_annual_unit(unit.id,unit.revision);ELSE
+  calculation:=app.reward_calc_offcycle(entries,unit.kind,unit.offcycle,funding);
+  IF(funding->>'duplicate')::boolean THEN calculation:=jsonb_set(calculation,'{flags}',(calculation->'flags')||app.reward_calc_flag('block','OC-12','An employee already has an open off-cycle request against this annual review.'));END IF;
+ END IF;
+ IF p_action IN('submit','approve')THEN
+  IF jsonb_array_length(entries)=0 THEN RAISE EXCEPTION 'A review needs at least one employee.' USING ERRCODE='42501';END IF;
+  IF governance IS NOT NULL THEN
+   IF EXISTS(SELECT 1 FROM jsonb_array_elements(entries)e WHERE app.reward_calc_senior(unit.policy,e)AND NOT app.reward_calc_senior_grade(e->'source'->>'grade'))THEN RAISE EXCEPTION 'Senior plan membership is limited to JG 21–23. Correct selection before submission.' USING ERRCODE='42501';END IF;
+   IF coalesce((governance->>'selectionConfirmed')::boolean,false)IS NOT TRUE THEN RAISE EXCEPTION 'A different Group Rewards user must confirm and lock Senior membership before the BU review opens.' USING ERRCODE='42501';END IF;
+   IF next_stage IN('ctro','ec','approved')AND governance->>'status'IS DISTINCT FROM'final'THEN RAISE EXCEPTION 'The unit bonus pool must be Final (Actual) before CTRO or EC approval.' USING ERRCODE='42501';END IF;
+   IF unit.policy->>'bonusStructure'='branch'AND EXISTS(SELECT 1 FROM jsonb_array_elements(entries)e WHERE coalesce(e->'facts'->>'branch','')<>''AND coalesce(governance->'branchRatings'->>(e->'facts'->>'branch'),'')='')THEN RAISE EXCEPTION 'Every PPCH branch needs a rating before submission.' USING ERRCODE='42501';END IF;
+  END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(calculation->'flags')f WHERE f->>'severity'='block')THEN RAISE EXCEPTION 'Resolve all blocking checks, including restricted records, before proceeding.' USING ERRCODE='42501';END IF;
+  IF app.reward_calc_units(reason)<10 AND EXISTS(SELECT 1 FROM jsonb_array_elements(calculation->'flags')f WHERE f->>'severity'IN('exception','warning'))THEN RAISE EXCEPTION 'Record why the exceptions and warnings are acceptable.' USING ERRCODE='42501';END IF;
+  SELECT array_agg(value ORDER BY n)INTO route_roles FROM jsonb_array_elements_text(route||'["payroll"]'::jsonb)WITH ORDINALITY stages(value,n);
+  SELECT array_agg(role ORDER BY n)INTO missing FROM unnest(route_roles)WITH ORDINALITY required(role,n)WHERE NOT EXISTS(SELECT 1 FROM public.reward_member m JOIN public.app_user u ON u.id=m.user_id AND u.tenant_id=m.tenant_id WHERE m.unit_id=unit.id AND m.tenant_id=unit.tenant_id AND m.role=required.role AND app.reward_member_eligible_internal(m.id));
+  IF cardinality(missing)>0 THEN
+   SELECT string_agg(CASE role WHEN'bu'THEN'BU CEO'WHEN'bg'THEN'BG CEO / authorised proxy'WHEN'gr'THEN'Group Rewards'WHEN'ctro'THEN'CTRO'WHEN'ec'THEN'Executive Chairman'WHEN'payroll'THEN'Payroll handoff'ELSE'PBP'END,', 'ORDER BY n)INTO missing_labels FROM unnest(missing)WITH ORDINALITY required(role,n);
+   RAISE EXCEPTION 'Assign every approval role and the payroll handoff before submitting. Missing: %.',missing_labels USING ERRCODE='42501';
+  END IF;
+  IF unit.status<>'draft'AND unit.approved_digest IS DISTINCT FROM hash THEN RAISE EXCEPTION 'The inputs changed after submission. Return this review to draft.' USING ERRCODE='42501';END IF;
+  SELECT d.actor_id INTO prior_actor FROM public.reward_decision d WHERE d.unit_id=unit.id AND d.tenant_id=unit.tenant_id AND d.revision=p_revision ORDER BY d.created_at DESC,d.id DESC LIMIT 1;
+  IF prior_actor=actor.id AND p_action='approve'THEN RAISE EXCEPTION 'A different reviewer must sign the next approval stage.' USING ERRCODE='42501';END IF;
+ END IF;
+ authority:=app.access_function_authority_stamp();IF authority IS NULL THEN RAISE EXCEPTION 'Reward authority changed' USING ERRCODE='42501';END IF;
+ RETURN jsonb_build_object('tenantId',unit.tenant_id,'actorId',actor.id,'unitId',unit.id,'companyId',unit.company_id,'revision',unit.revision,'kind',unit.kind,'fromStage',unit.status,'toStage',next_stage,'action',p_action,'reason',reason,'decisionDigest',hash,'authorityStamp',authority,'reservedCents',CASE WHEN unit.kind='annual'THEN unit.reserved_cents ELSE jsonb_build_object('standard',calculation->'budgets'->'standard'->'used'->0,'h',calculation->'budgets'->'h'->'used'->0)END);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_calc_senior_grade(text),app.reward_decision_admission(uuid,integer,text,text,boolean)FROM PUBLIC,ai_hr_app;

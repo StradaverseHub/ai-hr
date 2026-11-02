@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
 import {defaultPolicy,emptyFacts,emptyRecommendation,policySchema,transition,type RewardRole,type RewardStage,type RewardEntry} from '../packs/rewards/model';
 import {calculateOffcycle,offcycleRoute,offcycleTransition} from '../packs/rewards/offcycle';
-import {emptyGovernance,effectiveRewardPolicy,governanceBasis,seniorSourceFingerprint} from '../packs/rewards/governance-model';
+import {emptyGovernance,effectiveRewardPolicy,governanceBasis,seniorSourceFingerprint,seniorGrade} from '../packs/rewards/governance-model';
 import {calculateRewards,increase,ratio} from '../packs/rewards/engine';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 let ctx:SessionContext;
@@ -161,4 +161,8 @@ it('matches every selected native decision stage and seat, including consecutive
    if(expected===undefined)await expect(owner.db.execute(query)).rejects.toThrow();else{const [row]=await owner.db.execute<{next:string}>(query);expect({kind,stage,seat,action,next:row.next}).toEqual({kind,stage,seat,action,next:expected});}
   }
  }
+});
+
+it('retains exact native Senior grade admission, including ECMAScript whitespace',async()=>{
+ for(const grade of ['21','JG21','jg 22',' JG\u00a023 ','20','24','21x','\uFEFF21','JG\u200323']){const [row]=await owner.db.execute<{allowed:boolean}>(sql`select app.reward_calc_senior_grade(${grade})as allowed`);expect(row.allowed).toBe(seniorGrade(grade));}
 });
