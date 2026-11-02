@@ -33,7 +33,7 @@ import { emptyRewardCalendar, rewardCalendarSchema, rewardDaysUntil, rewardNextS
 export { rewardCalendarStages, rewardOffcycleSlaStages, emptyRewardCalendar, rewardDueWording, rewardNextSeat, rewardRouteProgress } from './calendar';
 export type { RewardCalendarValues, RewardCalendarStage, RewardOffcycleSlaStage, RewardRouteStep } from './calendar';
 import {changeRewardMember} from './maintenance';
-export {rewardAccessSingleAdminCompanies,rewardAccessRequests,decideRewardAccessRequest,rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange,rewardDeletionEligibility,deleteRewardReview,RewardMaintenanceError} from './maintenance';
+export {rewardAccessCompanies,rewardAccessSingleAdminCompanies,rewardAccessRequests,decideRewardAccessRequest,rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange,rewardDeletionEligibility,deleteRewardReview,RewardMaintenanceError} from './maintenance';
 export type {RewardAccessRequest,RewardAccessChange,RewardAccessAdministration,RewardDeletionReason} from './maintenance';
 export {previewRewardAccessBatch,saveRewardAccessBatch,previewRewardAccessCopy} from './maintenance';
 export type {RewardAccessBatch,RewardAccessCopyProposal} from './maintenance';

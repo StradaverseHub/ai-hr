@@ -10552,8 +10552,8 @@ export const rewardAccessRequest=pgTable('reward_access_request',{
  id:id(),tenantId:tenantId(),changes:jsonb('changes').notNull(),unitRevisions:jsonb('unit_revisions').$type<Record<string,number>>().notNull(),
  beforeMembers:jsonb('before_members').notNull(),peopleFingerprints:jsonb('people_fingerprints').$type<Record<string,string>>().notNull(),
  requestedBy:uuid('requested_by').notNull().references(()=>appUser.id),requestedAt:timestamp('requested_at',{withTimezone:true}).notNull().defaultNow(),
- status:text('status').$type<'pending'|'approved'|'rejected'|'lapsed'>().notNull().default('pending'),
- decidedBy:uuid('decided_by').references(()=>appUser.id),decidedAt:timestamp('decided_at',{withTimezone:true}),reason:text('reason'),
+ status:text('status').$type<'pending'|'approved'|'rejected'|'lapsed'|'applied_no_second_approval'>().notNull().default('pending'),
+ decidedBy:uuid('decided_by').references(()=>appUser.id),decidedAt:timestamp('decided_at',{withTimezone:true}),reason:text('reason'),requestReason:text('request_reason'),requesterAuthority:jsonb('requester_authority').$type<Record<string,string>>(),exemptionBasis:jsonb('exemption_basis').$type<Record<string,string>>(),
 });
 export const rewardAccessObservation=pgTable('reward_access_observation',{
  tenantId:tenantId(),memberId:uuid('member_id').notNull().references(()=>rewardMember.id,{onDelete:'cascade'}),sourceEventId:uuid('source_event_id').notNull().references(()=>domainEvent.id),stateKey:text('state_key').notNull(),observedAt:timestamp('observed_at',{withTimezone:true}).notNull().defaultNow(),

@@ -163,7 +163,7 @@ export async function previewRewardAccessAction(input:unknown){
  catch(error){return{ok:false as const,error:maintenanceErrorCode(error)};}
 }
 export async function saveRewardAccessAction(input:unknown,digest:string){
- try{await saveRewardAccessChange(await getSession(),input,digest);revalidatePath('/rewards','layout');revalidatePath('/admin/rewards','layout');return{ok:true as const};}
+ try{const result=await saveRewardAccessChange(await getSession(),input,digest);revalidatePath('/rewards','layout');revalidatePath('/admin/rewards','layout');return{ok:true as const,result};}
  catch(error){return{ok:false as const,error:maintenanceErrorCode(error)};}
 }
 function maintenanceErrorCode(error:unknown){return error instanceof RewardMaintenanceError?error.code:'system';}

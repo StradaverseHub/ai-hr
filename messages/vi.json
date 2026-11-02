@@ -11226,7 +11226,8 @@
         "securityCenter": "Dành cho quản trị viên hoặc người có quyền cấu hình truy cập.",
         "createLogin": "Chỉ dành cho quản trị viên toàn nhóm. Thiết lập thủ công cũng yêu cầu nhà cung cấp đăng nhập được hỗ trợ và phiên quản trị viên đã xác minh.",
         "inviteUser": "Chỉ dành cho quản trị viên toàn nhóm.",
-        "entra": "Chỉ quản trị viên cấp tập đoàn. Cấu hình đăng nhập Microsoft và cấp tài khoản nhân viên cho tổ chức của mình. Liên kết danh tính hiện có cần được xác nhận rõ ràng."
+        "entra": "Chỉ quản trị viên cấp tập đoàn. Cấu hình đăng nhập Microsoft và cấp tài khoản nhân viên cho tổ chức của mình. Liên kết danh tính hiện có cần được xác nhận rõ ràng.",
+        "rewardsAccess": "Phân công Rewards đang có hiệu lực và quyền quản trị HR theo phạm vi quyết định quyền truy cập; chỉ có vai trò hệ thống không cho phép mọi hành động."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -30377,7 +30378,7 @@
       "missing": "Kỳ xét duyệt không khả dụng hoặc quyền đã bị gỡ.",
       "system": "Không thể lưu thay đổi. Tải lại và thử lại.",
       "lastRequired": "Giữ ít nhất một người đang hoạt động cho mỗi vai trò phê duyệt bắt buộc; thay thế họ trong một lần chỉnh sửa.",
-      "checker": "Cần quản trị viên độc lập khác",
+      "checker": "Chỉ người dùng Group Rewards hiện đủ quyền trên mọi kỳ liên quan mới được quyết định. Người yêu cầu và người bị ảnh hưởng không được quyết định.",
       "reason": "Lý do từ chối (ít nhất 10 ký tự)",
       "proxy": "Người được đại diện",
       "dates": "Đến ngày (không bắt buộc)"
@@ -32537,7 +32538,7 @@
   },
   "rewardsAccessControl": {
     "waiting": "Chờ phê duyệt ({count})",
-    "independent": "Thay đổi chỉ có hiệu lực sau khi quản trị viên khác phê duyệt. Bạn không thể duyệt yêu cầu của mình hoặc thay đổi quyền của chính mình.",
+    "independent": "Chỉ người dùng Group Rewards hiện đủ quyền trên mọi kỳ liên quan mới được quyết định. Người yêu cầu và người bị ảnh hưởng không được quyết định.",
     "noPending": "Không có yêu cầu quyền truy cập chờ duyệt.",
     "history": "Yêu cầu trước đây",
     "administrator": "Quản trị viên",
@@ -32552,7 +32553,7 @@
     "rejectionReason": "Lý do từ chối (ít nhất 10 ký tự)",
     "approve": "Phê duyệt các thay đổi",
     "reject": "Từ chối yêu cầu",
-    "needsChecker": "Cần quản trị viên độc lập khác",
+    "needsChecker": "Chỉ người dùng Group Rewards hiện đủ quyền trên mọi kỳ liên quan mới được quyết định. Người yêu cầu và người bị ảnh hưởng không được quyết định.",
     "decisionFailed": "Không thể xử lý yêu cầu. Tải lại và kiểm tra trạng thái hiện tại.",
     "singleAdmin": "Các công ty này có dưới hai quản trị viên Thưởng đang hoạt động: {companies}. Cần quản trị viên thứ hai để duyệt quyền truy cập.",
     "export": "Xuất danh sách quyền (CSV)",
@@ -32564,7 +32565,8 @@
     "statuses": {
       "approved": "Đã phê duyệt",
       "rejected": "Đã từ chối",
-      "lapsed": "Hết hiệu lực — đánh giá hoặc quyền đã thay đổi"
+      "lapsed": "Hết hiệu lực — đánh giá hoặc quyền đã thay đổi",
+      "applied_no_second_approval": "Đã áp dụng – không cần phê duyệt lần hai"
     },
     "suspensions": {
       "login": "Tạm ngưng: không thể đăng nhập từ {on}",
@@ -32573,7 +32575,16 @@
       "notice": "Tạm ngưng: nộp đơn nghỉ việc ngày {on}",
       "assignment": "Tạm ngưng: phân công trong People thay đổi ngày {on}",
       "unavailable": "Quyền không khả dụng từ {on}"
-    }
+    },
+    "exportAudit": "Xuất nhật ký kiểm toán quyền truy cập",
+    "requestReason": "Lý do thay đổi quyền truy cập (ít nhất 10 ký tự)",
+    "decisionReason": "Lý do quyết định (bắt buộc khi từ chối)",
+    "immediatePreview": "Thay đổi này có hiệu lực ngay mà không cần phê duyệt lần hai.",
+    "pendingPreview": "Toàn bộ yêu cầu sẽ chờ một người dùng Group Rewards độc lập phê duyệt.",
+    "immediateSaved": "Đã áp dụng – không cần phê duyệt lần hai",
+    "pendingSaved": "Đang chờ – quyền truy cập hiện tại không thay đổi.",
+    "proposalScope": "GR và CTRO quản lý các kỳ được giao. CEO có thể yêu cầu người đại diện có thời hạn cho vai trò của mình; PBP có thể yêu cầu quyền xem cho chính mình.",
+    "scopeExplanation": "Phân công Rewards đang có hiệu lực và quyền quản trị HR theo phạm vi quyết định quyền truy cập; chỉ có vai trò hệ thống không cho phép mọi hành động."
   },
   "emailDesign": {
     "title": "Mẫu email",

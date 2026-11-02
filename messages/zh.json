@@ -11226,7 +11226,8 @@
         "securityCenter": "管理员或具有访问配置权限的人员可以使用。",
         "createLogin": "仅限集团级管理员。手动设置还需要受支持的登录提供商和已验证的管理员会话。",
         "inviteUser": "仅限集团级管理员。",
-        "entra": "仅限集团管理员。配置本组织的 Microsoft 登录和员工帐户预配。关联现有身份需要明确确认。"
+        "entra": "仅限集团管理员。配置本组织的 Microsoft 登录和员工帐户预配。关联现有身份需要明确确认。",
+        "rewardsAccess": "有效薪酬职责任命及限定范围的HR管理员权限决定访问权限；仅有系统角色不代表可执行所有操作。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -30377,7 +30378,7 @@
       "missing": "评审不可用或权限已被移除。",
       "system": "无法保存更改。请重新加载后再试。",
       "lastRequired": "每个必需的审批角色至少保留一名有效人员；请在一次编辑中完成替换。",
-      "checker": "需要另一位独立管理员",
+      "checker": "仅对所有相关评审具备有效权限的集团薪酬用户可决定。申请人及受影响人员不可审批。",
       "reason": "拒绝原因（至少10个字符）",
       "proxy": "被代理人",
       "dates": "结束日期（可选）"
@@ -32537,7 +32538,7 @@
   },
   "rewardsAccessControl": {
     "waiting": "待审批（{count}）",
-    "independent": "更改须经另一位管理员批准后生效。您不能批准自己的申请，也不能批准涉及自己权限的更改。",
+    "independent": "仅对所有相关评审具备有效权限的集团薪酬用户可决定。申请人及受影响人员不可审批。",
     "noPending": "没有待审批的权限申请。",
     "history": "历史申请",
     "administrator": "管理员",
@@ -32552,7 +32553,7 @@
     "rejectionReason": "拒绝原因（至少10个字符）",
     "approve": "批准这些更改",
     "reject": "拒绝申请",
-    "needsChecker": "需要另一位独立管理员",
+    "needsChecker": "仅对所有相关评审具备有效权限的集团薪酬用户可决定。申请人及受影响人员不可审批。",
     "decisionFailed": "无法处理申请。请刷新并查看当前状态。",
     "singleAdmin": "以下公司的有效奖励管理员不足两位：{companies}。权限申请须由第二位管理员批准。",
     "export": "导出权限列表（CSV）",
@@ -32564,7 +32565,8 @@
     "statuses": {
       "approved": "已批准",
       "rejected": "已拒绝",
-      "lapsed": "已失效 — 审核或权限已更改"
+      "lapsed": "已失效 — 审核或权限已更改",
+      "applied_no_second_approval": "已应用－无需第二次审批"
     },
     "suspensions": {
       "login": "已暂停：登录自 {on} 起不可用",
@@ -32573,7 +32575,16 @@
       "notice": "已暂停：于 {on} 提交辞职",
       "assignment": "已暂停：People 岗位分配于 {on} 更改",
       "unavailable": "权限自 {on} 起不可用"
-    }
+    },
+    "exportAudit": "导出权限审计",
+    "requestReason": "权限变更原因（至少10个字符）",
+    "decisionReason": "决定原因（拒绝时必填）",
+    "immediatePreview": "此变更将立即生效，无需第二次审批。",
+    "pendingPreview": "整项申请将保持待审批，直到独立的集团薪酬用户批准。",
+    "immediateSaved": "已应用－无需第二次审批",
+    "pendingSaved": "待审批－现有权限保持不变。",
+    "proposalScope": "集团薪酬和CTRO管理获分配的评审。CEO可申请有期限、代表本人职责的代理；PBP可申请本人的查看权限。",
+    "scopeExplanation": "有效薪酬职责任命及限定范围的HR管理员权限决定访问权限；仅有系统角色不代表可执行所有操作。"
   },
   "emailDesign": {
     "title": "邮件模板",

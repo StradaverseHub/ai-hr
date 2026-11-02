@@ -21,34 +21,40 @@ async function fixturePeople(ctx:SessionContext,change:RewardAccessChange){
 }
 async function independentChecker(ctx:SessionContext,changes:RewardAccessChange[]){
  const excluded=new Set([ctx.userId,...changes.flatMap(c=>[c.before?.userId,c.after?.userId])]);
- const [person]=await owner.db.insert(s.person).values({tenantId:ctx.tenantId,fullName:'Independent fictional access checker',primaryEmail:randomUUID()+'@fixture.test'}).returning();
- const userId=await createAppUser(ctx.tenantId,person.id,'hr_admin');
- if(excluded.has(userId))throw Error('Fixture checker must be independent');
- return {...ctx,userId,personId:person.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]} satisfies SessionContext;
+ const members=await owner.db.select().from(s.rewardMember).where(eq(s.rewardMember.unitId,changes[0].unitId));
+ const gr=members.find(m=>m.role==='gr'&&!excluded.has(m.userId));
+ if(!gr)throw Error('Fixture needs an existing independent Group Rewards holder');
+ const [user]=await owner.db.select().from(s.appUser).where(eq(s.appUser.id,gr.userId));
+ return {...ctx,userId:user.id,personId:user.personId??undefined,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
 }
 export async function previewRewardAccessChange(ctx:SessionContext,raw:unknown){
- await fixturePeople(ctx,raw as RewardAccessChange);return nativePreview(ctx,raw);
+ await fixturePeople(ctx,raw as RewardAccessChange);const {pending:_,...preview}=await nativePreview(ctx,{...(raw as object),reason:'Fictional access fixture change'});return preview;
 }
 export async function previewRewardAccessBatch(ctx:SessionContext,raw:unknown){
  for(const change of (raw as {changes:RewardAccessChange[]}).changes)await fixturePeople(ctx,change);
- return nativeBatchPreview(ctx,raw);
+ return nativeBatchPreview(ctx,{...(raw as object),reason:'Fictional access fixture change'});
 }
 export async function saveRewardAccessChange(...args:Parameters<typeof nativeSave>){
- const result=await nativeSave(...args),checker=await independentChecker(args[0],[args[1] as RewardAccessChange]);
+ const result=await nativeSave(args[0],{...(args[1] as object),reason:'Fictional access fixture change'},args[2]);
+ if(!result.pending)return result;
+ const checker=await independentChecker(args[0],[args[1] as RewardAccessChange]);
  const decision=await decideRewardAccessRequest(checker,result.requestId,true);
  if(decision.status!=='approved')throw Error('Access fixture approval lapsed');
  return result;
 }
 export async function saveRewardAccessBatch(...args:Parameters<typeof nativeBatchSave>){
- const result=await nativeBatchSave(...args);
- if(result.requestId){const checker=await independentChecker(args[0],(args[1] as {changes:RewardAccessChange[]}).changes);const decision=await decideRewardAccessRequest(checker,result.requestId,true);if(decision.status!=='approved')throw Error('Access fixture approval lapsed');}
+ const result=await nativeBatchSave(args[0],{...(args[1] as object),reason:'Fictional access fixture change'},args[2]);
+ if(result.requestId&&result.pending){const checker=await independentChecker(args[0],(args[1] as {changes:RewardAccessChange[]}).changes);const decision=await decideRewardAccessRequest(checker,result.requestId,true);if(decision.status!=='approved')throw Error('Access fixture approval lapsed');}
  return result;
 }
 export async function setRewardMember(...args:Parameters<typeof nativeSet>){
  const [ctx,unitId,revision,userId,role,remove]=args;
  const change={unitId,revision,before:remove?{userId,role}:null,after:remove?null:{userId,role}};
  await fixturePeople(ctx,change);
- const result=await nativeSet(...args),checker=await independentChecker(ctx,[change]);
+ const existing=await owner.db.select().from(s.rewardMember).where(and(eq(s.rewardMember.unitId,unitId),eq(s.rewardMember.userId,userId),eq(s.rewardMember.role,role)));
+ if(!remove&&existing.length)return {requestId:'',pending:false,status:'applied_no_second_approval'};
+ const result=await nativeSet(...args);if(!result.pending)return result;
+ const checker=await independentChecker(ctx,[change]);
  const decision=await decideRewardAccessRequest(checker,result.requestId,true);if(decision.status!=='approved')throw Error('Access fixture approval lapsed');
  return result;
 }

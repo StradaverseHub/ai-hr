@@ -207,14 +207,17 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         await expect(saveRewardPolicy(reviewer, id, open.unit.revision, open.unit.policy)).rejects.toThrow();
         await expect(previewRewardAccessChange(reviewer, { unitId: id, revision: await revision(), before: null, after: { userId: reviewer.userId!, role: 'payroll' } })).rejects.toThrow();
     });
-    it('refuses PBP and delegated GR administration and filters non-admin company enumeration', async () => {
+    it('admits scoped GR access maintenance and bounded PBP proposals without granting general review administration', async () => {
         await setRewardMember(admin, id, await revision(), reviewer.userId!, 'gr');
-        expect((await rewardAccessAdministration(reviewer, [b.companyId])).reviews).toEqual([]);
-        await expect(previewRewardAccessChange(reviewer, { unitId: id, revision: await revision(), before: null, after: { userId: reviewer.userId!, role: 'payroll' } })).rejects.toThrow(/administrator/);
-        await expect(deleteRewardReview(reviewer, id, await revision(), id)).rejects.toThrow(/administrator/);
+        expect((await rewardAccessAdministration(reviewer, [b.companyId])).reviews).toEqual([expect.objectContaining({id,accessMode:'manage',exemption:'gr'})]);
+        await expect(previewRewardAccessChange(reviewer, { unitId: id, revision: await revision(), before: null, after: { userId: reviewer.userId!, role: 'payroll' } })).resolves.toMatchObject({unitId:id});
+        expect((await rewardAccessAdministration(reviewer,[randomUUID()])).reviews).toEqual([]);
+        await expect(deleteRewardReview(reviewer, id, await revision(), id)).rejects.toThrow('Rewards access authority for this review is required.');
         await setRewardMember(admin, id, await revision(), reviewer.userId!, 'gr', true);
         await setRewardMember(admin, id, await revision(), reviewer.userId!, 'pbp');
         const v = await getRewardUnit(reviewer, id);
+        expect((await rewardAccessAdministration(reviewer,[b.companyId])).reviews).toEqual([expect.objectContaining({id,accessMode:'propose',exemption:null})]);
+        await expect(previewRewardAccessChange(reviewer,{unitId:id,revision:v.unit.revision,before:null,after:{userId:reviewer.userId!,role:'payroll'}})).rejects.toMatchObject({code:'scope'});
         expect(v.canEdit).toBe(false);
         await expect(saveRewardPolicy(reviewer, id, v.unit.revision, v.unit.policy)).rejects.toThrow('Reward unit not found or access has been removed.');
         expect(await revision()).toBe(v.unit.revision);
