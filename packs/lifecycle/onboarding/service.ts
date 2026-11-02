@@ -582,6 +582,16 @@ export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId
             return;
         }
     }
+    if (mode === 'active' && ctx.userId) {
+        if (!active) M.fail('Draft activation source unavailable.', 'forbidden');
+        const [activated] = rows<{ handled: boolean; case_id: string | null; company_id: string | null; did_change: boolean }>(await tx.execute(sql`select * from app.onboarding_sync_active_draft(${draftId}::uuid,${active.employmentId}::uuid,${active.personId}::uuid)`));
+        if (activated?.did_change && activated.case_id) await appendEvent(tx, {
+            tenantId: ctx.tenantId, aggregateType: 'onboarding-case', aggregateId: activated.case_id,
+            eventType: 'onboarding.personnel_activated', actor: actorOf(ctx), subjectEmploymentId: active.employmentId,
+            payload: { caseId: activated.case_id, companyId: activated.company_id },
+        });
+        return;
+    }
     if (mode === 'discard' && ctx.userId) await tx.execute(sql`select app.onboarding_saved_draft_discard_admit(${draftId}::uuid)`);
     const { config, revision } = await configTx(tx, ctx);
     if (!revision)

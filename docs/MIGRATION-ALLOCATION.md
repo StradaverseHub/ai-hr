@@ -1031,6 +1031,8 @@ authority stamp, current/proposed Draft data scope and the actual Onboarding aud
 may reach the final actual image only through that Draft's recorded OLD→NEW chain. Combined
 activation/discard closes through the canonical completed source APIs; a discard intent alone is
 insufficient. The source port returns only whether it handled the save and the effect's identifiers.
-Refresh/backfill, ACTIVE assignment materialization and independent DISCARD cancellation remain their
-existing native owners; their full finite ports, raw write closure and family publication remain
-unfinished. This source and its positive/rollback tests require genuine hosted qualification.
+The shared private source owner also admits ACTIVE only through the exact canonical hire receipt
+and binds final completion to the same employment/person and consumed source. It calls the existing
+joiner/manager task-actor resolver; group tasks and completed tasks retain their native semantics.
+Refresh/backfill and independent DISCARD cancellation remain their existing native owners; those
+finite ports, raw write closure and family publication remain unfinished. This source and its positive/rollback tests require genuine hosted qualification.

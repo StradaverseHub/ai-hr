@@ -494,6 +494,26 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(await owner.db.select().from(schema.employeeDraft).where(eq(schema.employeeDraft.id, saved.id))).toHaveLength(0);
         expect((await owner.db.select().from(schema.lcOnboardingCaseRevision)).some(r => r.data.personnelStatus === 'Draft')).toBe(true);
     });
+    it('binds ACTIVE synchronization to the actual hire and preserves native role and group tasks',async()=>{
+        const [manager]=await owner.db.select().from(schema.employment).where(eq(schema.employment.personId,tech.personId!));
+        const before=await onboardingContext(admin),config=structuredClone(before.config);
+        config.checklists[0]!.tasks.push({id:'source-joiner',name:'Source joiner task',by:'joiner',group:'',method:'manual',opens:null,due:1,gate:false},{id:'source-manager',name:'Source manager task',by:'manager',group:'',method:'manual',opens:null,due:1,gate:false});
+        await onboardingSaveConfig(admin,before.revision,config);
+        const saved=await saveEmployeeDraft(admin,{data:{profile:{fullName:'Actual source task hire',employeeCode:'ACTUAL-SOURCE-TASK',primaryEmail:'actual-source-task@fixture.invalid'},employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:todayInKualaLumpur(),reportingManagerEmploymentId:manager!.id},payroll:{basicSalary:'5000'}},currentStep:5});
+        let row=(await onboardingList(admin))[0]!;
+        await onboardingCommand(admin,row.case.id,row.revision,{type:'saveSubmit',patch:{hiring:'new_hire',selected:['m365']}});
+        row=(await onboardingList(admin))[0]!;
+        const groupBefore=structuredClone(row.case.tasks.find(task=>task.id==='welcome'));
+        await expect(withTenant(admin,tx=>tx.execute(sql`select * from app.onboarding_sync_active_draft(${saved.id}::uuid,${randomUUID()}::uuid,${randomUUID()}::uuid)`))).rejects.toThrow('Draft activation source unavailable');
+        expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
+        const active=await completeEmployeeDraft(admin,saved.id),after=(await onboardingList(admin))[0]!;
+        expect(after.case).toMatchObject({id:row.case.id,employmentId:active.employmentId,personnelStatus:'Active'});
+        expect(after.case.tasks.find(task=>task.id==='welcome')).toEqual(groupBefore);
+        expect(after.case.tasks.find(task=>task.id==='source-manager')).toMatchObject({assignee:tech.userId,failure:null});
+        expect(after.case.tasks.find(task=>task.id==='source-joiner')).toMatchObject({assignee:null,failure:'The new joiner needs a linked Personnel account.'});
+        expect(after.case.history.at(-1)).toMatchObject({action:'personnel.activated',by:admin.userId});
+        expect(await withTenant(admin,tx=>tx.execute(sql`select has_function_privilege(current_user,'app.onboarding_sync_draft_source(uuid,uuid,uuid)','EXECUTE') as allowed`))).toEqual([{allowed:false}]);
+    });
     it('links tasks when the login is created after activation without a Personnel field change', async () => {
         const context = await onboardingContext(admin), config = structuredClone(context.config);
         config.checklists[0]!.tasks.push({ id: 'acceptance', name: 'Device acknowledgement', by: 'joiner', group: '', method: 'manual', opens: 1, due: 1, gate: true });
