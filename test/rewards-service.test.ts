@@ -408,6 +408,21 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await setCompensation(admin,{employmentId,basicSalary:5500,effectiveFrom:`${year-1}-01-01`});
     await expect(prepare()).rejects.toThrow('Salary data changed');await expect(postRewardUnit(admin,unitId,revision,batch.batchId)).rejects.toThrow('Salary data changed');expect((await view()).unit.status).toBe('approved');expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batch.batchId))).toEqual(inputs);
   });
+  it('preserves the original native NaN payroll carry behavior in private source preparation',async()=>{
+    const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)});
+    await setPayrollInput(admin,{batchId:batch.batchId,employmentId,overtimeAmount:123,bonusAmount:55,tp1Deduction:44,zakat:9});
+    // Historical raw numeric NaN is deliberately fixture-owned, not admitted through a new grant.
+    await owner.db.execute(sql`update payroll_input set overtime_amount='NaN'::numeric,bonus_amount='NaN'::numeric,tp1_deduction='NaN'::numeric where batch_id=${batch.batchId}::uuid and employment_id=${employmentId}::uuid`);
+    const [plan]=await owner.withTenant(admin,tx=>tx.execute<{value:{sourcePlan:{newBonusAmount:string}[]}}>(sql`select app.reward_post_sources(${unitId}::uuid,${revision},${batch.batchId}::uuid)as value`));expect(plan.value.sourcePlan[0].newBonusAmount).toBe('0.00');
+    await postRewardUnit(admin,unitId,revision,batch.batchId);const [input]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batch.batchId));expect(input).toMatchObject({overtimeAmount:'0.00',bonusAmount:'0.00',tp1Deduction:'0.00',zakat:'9.00'});
+  });
+  it('retains the canonical salary carry refusal for a nonfinite legacy monthly allowance',async()=>{
+    const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)});
+    await owner.db.execute(sql`update compensation set monthly_allowance='NaN'::numeric where employment_id=${employmentId}::uuid and valid_to is null and superseded_at is null`);
+    const before=await view(),salaries=await owner.db.select().from(schema.compensation),events=await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id);
+    await expect(owner.withTenant(admin,async tx=>{const [context]=await tx.execute<{id:string}>(sql`select app.reward_post_context_begin(${unitId}::uuid,${revision},${batch.batchId}::uuid)as id`);await tx.execute(sql`select app.reward_post_salary(${context.id}::uuid,${before.rows[0].id}::uuid)`);})).rejects.toThrow('Monthly allowance must be a number');
+    await expect(postRewardUnit(admin,unitId,revision,batch.batchId)).rejects.toThrow('Monthly allowance must be a number');expect(await view()).toEqual(before);expect(await owner.db.select().from(schema.compensation)).toEqual(salaries);expect(await owner.db.select().from(schema.domainEvent).orderBy(schema.domainEvent.id)).toEqual(events);
+  });
   it('a changed salary rejects posting without writing any award', async () => {
     const rev = await approve(); const batch = await createBatch(admin, { companyId: b.companyId, payPeriod: today.slice(0, 7) });
     await setCompensation(admin, { employmentId, basicSalary: 5500, effectiveFrom: `${year - 1}-01-01` });
