@@ -1,8 +1,8 @@
 name: mobile-functional-dependency-audit
-run-name: Mobile production dependency audit · 89baa2a15
+run-name: Mobile complete dependency audit · 262a21c0b
 on:
   push:
-    branches: [codex/mobile-functional-review-controller-20261102]
+    branches: [codex/mobile-sdk58-eval-20261103]
     paths: [.github/workflows/mobile-functional-dependency-audit.yml]
 permissions:
   contents: read
@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: 89baa2a15f6673ffa96bd947f72005e7815c8e1a
+          ref: 262a21c0b46e547f6d3fbb07165db93259f2571a
           path: source
           persist-credentials: false
           sparse-checkout: |
@@ -22,16 +22,16 @@ jobs:
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
-      - name: Audit locked production dependencies without installation or lifecycle scripts
+      - name: Audit all locked dependencies without installation or lifecycle scripts
         run: |
-          test "$(git -C source rev-parse HEAD)" = 89baa2a15f6673ffa96bd947f72005e7815c8e1a
+          test "$(git -C source rev-parse HEAD)" = 262a21c0b46e547f6d3fbb07165db93259f2571a
           mkdir -p "$RUNNER_TEMP/mobile-audit"
-          npm audit --prefix source/mobile --package-lock-only --omit=dev --ignore-scripts --audit-level=high --json > "$RUNNER_TEMP/mobile-audit/audit.json"
+          npm audit --prefix source/mobile --package-lock-only --ignore-scripts --audit-level=low --json > "$RUNNER_TEMP/mobile-audit/audit.json"
       - name: Retain public dependency advisory report briefly
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: onehr-mobile-dependency-audit-89baa2a15
+          name: onehr-mobile-dependency-audit-262a21c0b
           path: ${{ runner.temp }}/mobile-audit/audit.json
           if-no-files-found: error
           retention-days: 1
