@@ -24,7 +24,8 @@ it('retains native scope, exact rows/order, pager and status facets while evalua
   }
   return employments;
  }
- const employees=await population(b,512,'MAIN'),other=await population(foreign,7,'FOREIGN'),ctx=adminCtx(b);
+ const populationSize=16384;
+ const employees=await population(b,populationSize,'MAIN'),other=await population(foreign,7,'FOREIGN'),ctx=adminCtx(b);
  expect((await withTenant(ctx,tx=>tx.execute(sql`select current_user as role`)))[0].role).toBe('ai_hr_app');
  const profile=process.env.AIHR_CI_PG_STATEMENTS==='1';
  if(profile)await owner.client.unsafe('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');
@@ -64,7 +65,7 @@ it('retains native scope, exact rows/order, pager and status facets while evalua
   if(round%2===0){await legacy();await composed();}else{await composed();await legacy();}
   pairedTimings.push({round,order:round%2===0?'legacy-composed':'composed-legacy',legacyMs,composedMs});
  }
- const report={pairedTimings,kind:'NATIVE_PERSONNEL_PROJECTION_COUNT_NOT_SYSTEM_CAPACITY',fictionalEmployments:519,visibleEmployments:512,pageRows:25,elapsedMs,projectionCalls:before===null||after===null?null:after-before,expectedProjectionCalls:1,exactRowsOrderPagerAndFacets:true,emptyAndForeignScopeRefused:true,limitations:'Fictional retained-volume fixture, not native hiring throughput or millions of Personnel records. No public function or policy changed.'};
+ const report={pairedTimings,kind:'NATIVE_PERSONNEL_PROJECTION_COUNT_NOT_SYSTEM_CAPACITY',fictionalEmployments:populationSize+7,visibleEmployments:populationSize,pageRows:25,elapsedMs,projectionCalls:before===null||after===null?null:after-before,expectedProjectionCalls:1,exactRowsOrderPagerAndFacets:true,emptyAndForeignScopeRefused:true,limitations:'Fictional retained-volume fixture, not native hiring throughput or millions of Personnel records. No public function or policy changed.'};
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/personnel-page-projection.json',JSON.stringify(report));
  if(profile){expect(before).toBeGreaterThanOrEqual(3);expect(after!-before!).toBe(1);}
 },240000);
