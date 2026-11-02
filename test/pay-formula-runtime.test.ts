@@ -2,12 +2,14 @@ import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
+import {createIndividualTxn} from '../core/payroll-individual-txn';
+import {resolvePayComponentSet,type ResolvablePayComponent} from '../core/pay-rule';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayComponentCatalog,upsertPayComponent,setEmploymentPayComponent} from '../core/pay-components';
 import {createBatch,generatePayslips} from '../core/payroll';
 import {savePayFormula,testPayFormula,setPayFormulaActive,getFormulaEvaluation,saveFormulaAccumulationGroup} from '../core/pay-formula';
-import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 import type {SessionContext} from '../db/client';
 import type {PayFormulaContext} from '../lib/pay-formula-model';
 let base:Base,ctx:SessionContext,employee:{employmentId:string;personId:string},context:PayFormulaContext;
@@ -143,4 +145,27 @@ it('uses the Native period-end salary owner when testing an existing run',async(
  await generatePayslips(ctx,{batchId});
  const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
  expect(slip.basicSalary).toBe('6200.00');expect((slip.statutory as {componentLines:{code:string;amount:number}[]}).componentLines.find(l=>l.code===item.code)?.amount).toBe(620);
+});
+
+it('BK39 preserves the owner-confirmed all-rows-of-code RM0 fixed aggregate for recurring500 plus one-off100',async()=>{
+ const member:ResolvablePayComponent={code:'HOUSING',kind:'allowance',rule:null,amount:500,orpOvertime:true};
+ const oneOff:ResolvablePayComponent={...member,amount:100,oneOff:true,orpOvertime:false};
+ const fixedReader:ResolvablePayComponent={code:'FIXED_READER',kind:'earning',amount:0,rule:{kind:'formula',start:{ref:'fixed_allowances'},terms:[]}};
+ const totalReader:ResolvablePayComponent={code:'TOTAL_READER',kind:'earning',amount:0,rule:{kind:'formula',start:{ref:'component',code:'HOUSING'},terms:[]}};
+ for(const members of [[member,oneOff],[oneOff,member]]){
+  const result=resolvePayComponentSet([...members,fixedReader,totalReader],{basic:5000,daysWorked:31,hours:0,components:{BASIC:5000}});
+  expect(result.slice(2)).toEqual([0,600]);
+ }
+ await setSetting(base.tenantId,'payroll.individual_txn_pay_enabled',true);ctx=await entitledCtx(base);
+ const housing=await upsertPayComponent(ctx,{...item,code:'HOUSING',name:'Housing',orpOvertime:true,rule:{kind:'fixed'}});
+ await setEmploymentPayComponent(ctx,{employmentId:employee.employmentId,componentId:housing.id,amount:500,effectiveFrom:context.period+'-01'});
+ const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});
+ await createIndividualTxn(ctx,{batchId,employmentId:employee.employmentId,componentId:housing.id,kind:'earning',txnDate:'2026-05-10',amount:100});
+ context={...context,batchId} as PayFormulaContext;
+ const result=await activate('If {#FixedAllowances} = 0 And {#PayItemInput}("HOUSING") = 600 Then\n Return 1\nElse\n Return 2\nEnd If');
+ expect(result.amount).toBe('1');
+ await generatePayslips(ctx,{batchId});
+ const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+ const evaluations=(slip.statutory as {formulaEvaluations:{formulaId:string;amount:string}[]}).formulaEvaluations;
+ expect(evaluations).toEqual(expect.arrayContaining([expect.objectContaining({formulaId:'RUNTIME',amount:'1'})]));
 });
