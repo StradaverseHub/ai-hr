@@ -1230,7 +1230,7 @@ BEGIN
    AND (NOT p_current OR app.performance_current_native_roles(p_company,ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner']));
  END IF;
  IF function_key IN ('performance.onehr.selfReview','performance.onehr.assignedReview') THEN
-  RETURN operation='view' AND p_company IS NOT NULL AND EXISTS(SELECT 1 FROM public.performance_review review
+  RETURN (operation='view' OR function_key='performance.onehr.assignedReview' AND operation='edit') AND p_company IS NOT NULL AND EXISTS(SELECT 1 FROM public.performance_review review
    JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
    JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
    WHERE review.tenant_id=p_tenant AND subject.company_id=p_company
@@ -3368,3 +3368,49 @@ CREATE FUNCTION app.onehr_review_administration_career(wanted_review uuid) RETUR
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT * FROM app.financial_onehr_view_career(wanted_review,'administration'); $$;
 REVOKE ALL ON FUNCTION app.onehr_review_administration_career(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_review_administration_career(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- The assigned Review purpose's Edit keeps the native per-action floor. Its
+-- remaining action bindings must close before the family can be published.
+SELECT app.register_function_action('performance.onehr.assignedReview','edit','company',NULL,'app.financial_delegate_onehr_review',jsonb_build_object(
+ 'moduleKey','performance_compensation','labelKey','onehr.assignments','kind','native_acl','course','assigned','href','/performance/workspace','employeeBearing',false));
+CREATE FUNCTION app.onehr_plan_review(wanted_plan uuid,expected_revision integer,comment text,conversation text,close_plan boolean DEFAULT false,active_review uuid DEFAULT NULL,held_on date DEFAULT NULL,held_supplied boolean DEFAULT false) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE plan public.performance_onehr_plan%ROWTYPE;review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;wanted_review uuid;next_status text;next_held_on date;next_ack timestamptz;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR plan actor unavailable' USING ERRCODE='42501';END IF;
+ IF comment IS NULL OR conversation IS NULL OR close_plan IS NULL OR held_supplied IS NULL OR char_length(btrim(comment))>4000 OR char_length(btrim(conversation))>4000
+ OR cardinality(regexp_split_to_array(btrim(comment),'[[:space:]]+'))>220 THEN RAISE EXCEPTION 'Invalid plan review text' USING ERRCODE='22023';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO plan FROM public.performance_onehr_plan actual WHERE actual.id=wanted_plan AND actual.tenant_id=app.current_tenant_id();
+ IF plan.id IS NULL THEN RAISE EXCEPTION 'Plan not found' USING ERRCODE='42501';END IF;
+ wanted_review:=coalesce(active_review,plan.review_id);
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=plan.tenant_id FOR UPDATE;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ SELECT * INTO plan FROM public.performance_onehr_plan actual WHERE actual.id=wanted_plan AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF review.review_id IS NULL OR plan.id IS NULL OR review.employment_id IS DISTINCT FROM plan.employment_id
+ OR plan.plan_year IS DISTINCT FROM extract(year from cycle.period_end)::integer+CASE WHEN policy->>'kind'='year_end' THEN 1 ELSE 0 END
+ OR app.onehr_self_employment(plan.employment_id) OR NOT (app.onehr_effective_reviewer(review.review_id) OR app.onehr_moderator(review.review_id))
+ OR NOT app.onehr_review_task_view(review.review_id,'assigned') OR NOT app.function_action_allowed('performance.onehr.assignedReview','edit',review.company_id)
+ THEN RAISE EXCEPTION 'Plan review not assigned to you' USING ERRCODE='42501';END IF;
+ IF plan.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF policy->'modules'->>'idp' IS DISTINCT FROM 'true' OR NOT app.assessment_review_participates(review.review_id) OR cycle.status NOT IN ('open','calibration') THEN RAISE EXCEPTION 'This assessment period is read-only' USING ERRCODE='42501';END IF;
+ IF policy->'windows'->'idp_review'->>'opensAt' IS NOT NULL AND now()<(policy->'windows'->'idp_review'->>'opensAt')::timestamptz
+ OR policy->'windows'->'idp_review'->>'closesAt' IS NOT NULL AND now()>=(policy->'windows'->'idp_review'->>'closesAt')::timestamptz THEN RAISE EXCEPTION 'This step is closed' USING ERRCODE='42501';END IF;
+ IF comment IS DISTINCT FROM plan.manager_comment AND NOT app.assessment_plan_remark_writer(review.review_id) THEN RAISE EXCEPTION 'Only the eligible line manager writes the overall plan feedback.' USING ERRCODE='42501';END IF;
+ IF plan.status NOT IN ('shared','closed') THEN RAISE EXCEPTION 'The employee must share the plan first.' USING ERRCODE='42501';END IF;
+ IF plan.status='closed' AND comment IS DISTINCT FROM plan.manager_comment THEN RAISE EXCEPTION 'An agreed plan remark cannot change. Record a new conversation or update goal progress instead.' USING ERRCODE='42501';END IF;
+ next_status:=CASE WHEN close_plan OR plan.status='closed' THEN 'closed' ELSE 'shared' END;
+ next_held_on:=CASE WHEN held_supplied THEN held_on ELSE plan.conversation_held_on END;
+ next_ack:=CASE WHEN conversation IS DISTINCT FROM plan.conversation OR held_supplied AND held_on IS DISTINCT FROM plan.conversation_held_on THEN NULL ELSE plan.acknowledged_at END;
+ UPDATE public.performance_onehr_plan actual SET manager_comment=comment,conversation=onehr_plan_review.conversation,conversation_held_on=next_held_on,acknowledged_at=next_ack,status=next_status,revision=plan.revision+1 WHERE actual.id=plan.id AND actual.tenant_id=plan.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(plan.tenant_id,'onehr',plan.id,CASE WHEN close_plan THEN 'onehr.plan-closed' ELSE 'onehr.plan-reviewed' END,'user',app.current_user_id(),plan.employment_id,
+ jsonb_build_object('reviewId',review.review_id,'previous',jsonb_build_object('comment',plan.manager_comment,'conversation',plan.conversation,'heldOn',plan.conversation_held_on,'status',plan.status),
+ 'next',jsonb_build_object('comment',comment,'conversation',conversation,'heldOn',next_held_on,'status',next_status)));
+ RETURN plan.revision+1;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_plan_review(uuid,integer,text,text,boolean,uuid,date,boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_plan_review(uuid,integer,text,text,boolean,uuid,date,boolean) TO ai_hr_app;
