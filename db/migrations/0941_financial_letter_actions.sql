@@ -585,6 +585,19 @@ BEGIN
  IF NOT app.principal_snapshot_current() OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR TG_OP='DELETE' OR NEW.letter_id IS NULL THEN RAISE EXCEPTION 'Letter delivery consequence unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='UPDATE' AND (NEW.status<>'cancelled' OR NEW.lease_token IS NOT NULL OR NEW.lease_until IS NOT NULL
   OR data-ARRAY['status','lease_token','lease_until','last_error'] IS DISTINCT FROM to_jsonb(OLD)-ARRAY['status','lease_token','lease_until','last_error']) THEN RAISE EXCEPTION 'Letter cancellation consequence unavailable' USING ERRCODE='42501';END IF;
+ -- Native draft creation is an Add consequence, not a fabricated Edit/Approve.
+ IF TG_OP='INSERT' AND NEW.kind='notification' AND NEW.status='pending' AND NEW.attempts=0 AND NEW.lease_token IS NULL AND NEW.lease_until IS NULL THEN
+  IF NEW.payload->>'purpose'='draftCreated' AND app.letter_function_action('letterGenerate','view',NEW.company_id) AND app.letter_function_action('letterGenerate','add',NEW.company_id)
+  AND app.access_letter_action(NEW.company_id,'generate','add') AND app.letter_draft_created_job_current(NEW.tenant_id,NEW.id)
+  AND EXISTS(SELECT 1 FROM app.financial_letter_proposed_birth birth JOIN public.letter_record actual ON actual.id=birth.letter_id AND actual.tenant_id=birth.tenant_id AND actual.company_id=birth.company_id AND actual.batch_id=birth.batch_id AND actual.created_by=birth.user_id
+   WHERE birth.transaction_id=pg_current_xact_id() AND birth.tenant_id=NEW.tenant_id AND birth.user_id=app.current_user_id() AND birth.letter_id=NEW.letter_id AND birth.company_id=NEW.company_id AND birth.completed AND app.data_permission_matches(birth.employment_id))
+  AND EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.id=NEW.source_event_id AND audit.tenant_id=NEW.tenant_id AND audit.aggregate_type='letter' AND audit.aggregate_id=NEW.letter_id AND audit.event_type='letter.draft.batch-created' AND audit.actor_type='user' AND audit.actor_id=app.current_user_id() AND app.financial_audit_written(audit.id)) THEN RETURN NULL;END IF;
+  -- Employee acknowledgement/signature owns a separate, exact recipient consequence.
+  IF NEW.payload->>'purpose'='recipientAcknowledgement' AND app.letter_recipient_function_action('execute') AND app.letter_acknowledgement_job_current(NEW.tenant_id,NEW.id)
+  AND EXISTS(SELECT 1 FROM public.letter_recipient_event action JOIN public.domain_event audit ON audit.id=NEW.source_event_id AND audit.tenant_id=action.tenant_id AND audit.aggregate_id=action.letter_id AND audit.aggregate_type='letter'
+   WHERE action.id::text=NEW.payload->>'recipientEventId' AND action.tenant_id=NEW.tenant_id AND action.letter_id=NEW.letter_id AND action.actor_id=app.current_user_id() AND action.kind IN ('acknowledged','signed')
+   AND audit.actor_type='user' AND audit.actor_id=action.actor_id AND audit.event_type='letter.recipient.'||action.kind AND app.financial_audit_written(audit.id)) THEN RETURN NULL;END IF;
+ END IF;
  IF NOT EXISTS(SELECT 1 FROM app.letter_operation_effect proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.letter_id=NEW.letter_id AND proof.company_id=NEW.company_id
   AND app.access_letter_action(proof.company_id,proof.native_capability,proof.operation)
   AND app.letter_function_action(app.financial_letter_native_function(proof.native_capability,proof.operation),proof.operation,proof.company_id)
