@@ -109,7 +109,11 @@ const eventColumns={
  id:sql`history_event.id`.mapWith(historyEvent.id),tenantId:sql`history_event.tenant_id`.mapWith(historyEvent.tenantId),
  attemptId:sql`history_event.attempt_id`.mapWith(historyEvent.attemptId),kind:sql`history_event.kind`.mapWith(historyEvent.kind),
  actorId:sql`history_event.actor_id`.mapWith(historyEvent.actorId),createdAt:sql`history_event.created_at`.mapWith(historyEvent.createdAt),
- reason:sql`history_event.reason`.mapWith((value:string|null)=>value===null?null:historyEvent.reason.mapFromDriverValue(value)),detail:sql`history_event.detail`.mapWith(historyEvent.detail),
+ reason:sql`history_event.reason`.mapWith((value:unknown):string|null=>{
+  const decoded=value===null?null:historyEvent.reason.mapFromDriverValue(value);
+  if(decoded===null||typeof decoded==='string')return decoded;
+  return fail('Stored import event unavailable.');
+ }),detail:sql`history_event.detail`.mapWith(historyEvent.detail),
 };
 export function importAttemptEventsTx(tx:Tx,attemptId:string){return tx.select(eventColumns).from(eventRelation).where(eq(eventColumns.attemptId,attemptId)).orderBy(asc(eventColumns.createdAt),asc(eventColumns.id));}
 export function importAttemptItemsTx(tx:Tx,attemptId:string){return tx.select().from(item).where(eq(item.attemptId,attemptId)).orderBy(asc(item.ordinal),asc(item.itemKey));}
