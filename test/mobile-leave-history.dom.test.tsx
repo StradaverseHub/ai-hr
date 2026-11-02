@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 /**
  * M07 — the shipped native leave history and detail (mobile/lib/leave-history.tsx, over the shipped paged list),
  * with only native views, transport, navigation and identity injected. The server's rules are tested in
@@ -20,7 +21,7 @@ const ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 function load(path: string, ports: Record<string, unknown>) {
   const module = { exports: {} as any };
   runInNewContext(transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText,
-    { module, exports: module.exports, AbortController, Date, Error, require: (id: string) => { if (id in ports) return ports[id]; throw new Error('Missing port ' + id + ' for ' + path); } });
+    { module, exports: module.exports, AbortController, Date, Error, require: (id: string) => { if (id === './in-app-alert') return inAppAlertPorts(ports['react-native']); if (id in ports) return ports[id]; throw new Error('Missing port ' + id + ' for ' + path); } });
   return module.exports;
 }
 const summary = (over: Record<string, unknown> = {}) => ({ id: ID, leaveType: 'Annual', startDate: '2026-11-02', endDate: '2026-11-04', days: 3, durationType: 'full_day', status: 'approved', displayStatus: 'approved', ...over });

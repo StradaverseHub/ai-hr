@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {JsxEmit,ModuleKind,transpileModule} from 'typescript';
@@ -35,7 +36,7 @@ function fixture(){
   };
   const output={exports:{} as {PendingSubmissions:React.ComponentType<{intent?:'review'|'logout'|'company'}>}};
   runInNewContext(transpileModule(readFileSync('mobile/lib/pending-submissions.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,
-    {module:output,exports:output.exports,Date,require:(name:string)=>{if(name in ports)return ports[name];throw new Error(name);}});
+    {module:output,exports:output.exports,Date,require:(name:string)=>{if (name === './in-app-alert') return inAppAlertPorts(ports['react-native']); if(name in ports)return ports[name];throw new Error(name);}});
   return {View:output.exports.PendingSubmissions,item,list,reconcile,signOut,setEmploymentId,remove,router,drafts,handlers,releasePush,changeAccount:()=>{owner++;},dialog:()=>dialog,queue:(n:number)=>{queued=n;}};
 }
 afterEach(cleanup);

@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 import { mobileVisualPorts } from './helpers/mobile-visual-ports';
 /**
  * M08 — the shipped native approvals list and decision screen (mobile/lib/approval-decision.tsx, over the shipped
@@ -25,7 +26,7 @@ type Loaded = Record<string, any>;
 function load(path: string, ports: Ports): Loaded {
   const module = { exports: {} as Loaded };
   runInNewContext(transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText,
-    { module, exports: module.exports, AbortController, Date, Error, require: (id: string) => { if (id in ports) return ports[id]; throw new Error('Missing port ' + id + ' for ' + path); } });
+    { module, exports: module.exports, AbortController, Date, Error, require: (id: string) => { if (id === './in-app-alert') return inAppAlertPorts(ports['react-native']); if (id in ports) return ports[id]; throw new Error('Missing port ' + id + ' for ' + path); } });
   return module.exports;
 }
 const item = (over: Record<string, unknown> = {}) => ({ id: ID, kind: 'leave', subject: { name: 'Aisyah', code: null }, createdAt: '2026-10-28T01:00:00.000Z', nativeDecision: true, webPath: null, ...over });

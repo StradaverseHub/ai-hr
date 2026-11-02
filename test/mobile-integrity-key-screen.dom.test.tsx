@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 /** Shipped screen with native view, dialog, session and HTTP ports replaced. No device acceptance. */
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
@@ -13,7 +14,7 @@ const key={keyId:id,originChallengeId:id,platform:'ios',appId:'ABCDEFGHIJ.ai.hr'
 function compile(file:string,ports:Record<string,unknown>){
   const output={exports:{} as any};
   runInNewContext(transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,
-    {module:output,exports:output.exports,Date,JSON,Symbol,require:(name:string)=>{if(name in ports)return ports[name];throw new Error(name);}});
+    {module:output,exports:output.exports,Date,JSON,Symbol,require:(name:string)=>{if (name === './in-app-alert') return inAppAlertPorts(ports['react-native']); if(name in ports)return ports[name];throw new Error(name);}});
   return output.exports;
 }
 function fixture(){

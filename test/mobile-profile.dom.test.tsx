@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 /**
  * M13 (D14) — the shipped native profile screens (mobile/lib/profile.tsx, mobile/lib/profile-edit.tsx), with only
  * native views, transport, navigation and identity injected. The server's rules are tested in
@@ -20,7 +21,7 @@ import * as v2profile from '../lib/mobile-api/v2/profile';
 function load(path: string, ports: Record<string, unknown>) {
   const module = { exports: {} as any };
   runInNewContext(transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText,
-    { module, exports: module.exports, AbortController, Date, Error, Intl, require: (id: string) => { if (id in ports) return ports[id]; throw new Error('Missing port ' + id + ' for ' + path); } });
+    { module, exports: module.exports, AbortController, Date, Error, Intl, require: (id: string) => { if (id === './in-app-alert') return inAppAlertPorts(ports['react-native']); if (id in ports) return ports[id]; throw new Error('Missing port ' + id + ' for ' + path); } });
   return module.exports;
 }
 const field = (over: Record<string, unknown> = {}) => ({

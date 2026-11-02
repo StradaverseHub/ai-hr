@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
-import {Alert,TextInput,View} from 'react-native';
+import { TextInput, View } from 'react-native';
+import { InAppAlert as Alert } from './in-app-alert';
 import {router} from 'expo-router';
 import {randomUUID} from 'expo-crypto';
 import {RequestWorkspaceResult,RequestWorkspaceDecisionResult,type RequestWorkspaceKind,type RequestWorkspaceCommand} from '../../lib/mobile-api/v2/request-workspaces';

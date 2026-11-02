@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 /** Actual shipped UI; SDK/storage/transport are controller ports tested independently. */
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
@@ -35,7 +36,7 @@ function fixture(platform='ios'){
    LoadState:({loading,error,onRetry}:{loading:boolean;error:Error|null;onRetry:()=>void})=><>{loading&&<span>capability-loading</span>}{error&&<button onClick={onRetry}>retry-capabilities</button>}</>},
  };
  runInNewContext(transpileModule(readFileSync('mobile/lib/device-enrollment-screen.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,
-  {module:output,exports:output.exports,JSON,Symbol,require:(name:string)=>{if(name in ports)return ports[name];throw new Error(name);}});
+  {module:output,exports:output.exports,JSON,Symbol,require:(name:string)=>{if (name === './in-app-alert') return inAppAlertPorts(ports['react-native']); if(name in ports)return ports[name];throw new Error(name);}});
  return {View:output.exports.DeviceEnrollment,session,controller,capabilities,open,checks,changed,useApi,
   saved:(value:DeviceEnrollmentStatus)=>{saved=value;},accept:()=>dialog.find(button=>button.style!=='cancel')!.onPress!,
   changeOwner:()=>{owner++;},changeCompany:()=>{namespace='other-company';},changeLocale:()=>{locale='ms';}};

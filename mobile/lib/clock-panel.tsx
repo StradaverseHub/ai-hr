@@ -1,6 +1,7 @@
 import { useFocusEffect,router } from 'expo-router';
 import { useCallback,useEffect,useRef,useState,type ReactNode } from 'react';
-import { Alert,AppState,Image,Platform,Pressable,View,Linking } from 'react-native';
+import { AppState, Image, Platform, Pressable, View, Linking } from 'react-native';
+import { InAppAlert as Alert } from './in-app-alert';
 import { DesignText as Text } from './design';
 import { randomUUID } from 'expo-crypto';
 import { apiGet,apiPost,useApi,type ClockResponse } from './api';

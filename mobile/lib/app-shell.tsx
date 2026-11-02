@@ -8,10 +8,11 @@ import { Icon } from './icon';
 import { t } from './i18n';
 import { DailyNavigation } from './daily-navigation';
 import { TenantNavigation } from './tenant-navigation';
+import { InAppAlertBoundary } from './in-app-alert';
 
 export function SignedInShell({ children }: { children: ReactNode }) {
   const { palette, design } = useTenantDesign();
-  return <View style={{ flex: 1, backgroundColor: palette.bg }}>
+  return <InAppAlertBoundary><View style={{ flex: 1, backgroundColor: palette.bg }}>
     <SafeAreaView edges={['top']} style={{ backgroundColor: palette.bg }}>
       <View style={{ minHeight: 56, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <View style={{ flex: 1, paddingTop: 12 }}><TenantBrand /></View>
@@ -25,5 +26,5 @@ export function SignedInShell({ children }: { children: ReactNode }) {
     <View style={{ flex: 1, minHeight: 0 }}>{children}</View>
     {/* In normal flow: fixed page actions end above navigation instead of underneath it. */}
     {design.schemaVersion === 2 && design.composition.navigation.style !== 'top' ? <TenantNavigation design={design} inline /> : <DailyNavigation inline />}
-  </View>;
+  </View></InAppAlertBoundary>;
 }

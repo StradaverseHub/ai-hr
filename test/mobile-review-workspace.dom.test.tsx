@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {JsxEmit,ModuleKind,transpileModule} from 'typescript';
@@ -8,7 +9,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import * as contract from '../lib/mobile-api/v2/review-workspaces';
 import {TERMINATION_REASONS} from '../app/approvals/review-decide-fields';
 const ID='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-function load(file:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{module,exports:module.exports,require:(key:string)=>{if(key==='react')return React;if(key==='react/jsx-runtime')return jsx;if(key in ports)return ports[key];throw Error('Missing '+key);},Error});return module.exports;}
+function load(file:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{module,exports:module.exports,require:(key:string)=>{if(key==='react')return React;if(key==='react/jsx-runtime')return jsx;if (key === './in-app-alert') return inAppAlertPorts(ports['react-native']); if(key in ports)return ports[key];throw Error('Missing '+key);},Error});return module.exports;}
 function fixture(kind:'managerReview'|'hrReview'='managerReview'){
  const post=vi.fn().mockResolvedValue({outcome:'accepted',status:kind==='managerReview'?'pending_hr':'completed'}),alert=vi.fn(),reload=vi.fn(),signOut=vi.fn();
  const copy=Object.fromEntries(['advisory','due','recommendation','managerComments','comments','extension','recommend_confirm','recommend_extend','recommend_terminate','confirm','extend','terminate','submit','next','done','type',...contract.REVIEW_TERMINATION_REASONS].map(s=>[s,s]));

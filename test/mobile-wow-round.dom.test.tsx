@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 /**
  * Mobile WOW round — the shipped files with only native views, transport and identity injected:
  *  - session.tsx: coming back to the foreground re-attaches screenshot protection (a fresh tag) BEFORE the single
@@ -23,7 +24,7 @@ function load(path: string, ports: Record<string, unknown>, strict = true) {
   const module = { exports: {} as any };
   runInNewContext(transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText,
     { module, exports: module.exports, Date, Error, Math, Number, String, Array, Object, JSON, setTimeout, clearTimeout, Promise, Map, Set, queueMicrotask,
-      require: (id: string) => { if (id in ports) return ports[id]; if (!strict) return stub; throw new Error('Missing port ' + id + ' for ' + path); } });
+      require: (id: string) => { if (id === './in-app-alert') return inAppAlertPorts(ports['react-native']); if (id in ports) return ports[id]; if (!strict) return stub; throw new Error('Missing port ' + id + ' for ' + path); } });
   return module.exports;
 }
 afterEach(() => { cleanup(); vi.useRealTimers(); });

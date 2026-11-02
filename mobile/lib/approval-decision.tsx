@@ -12,7 +12,8 @@
  * Claims include recorded amounts, custom fields and protected receipt review.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, TextInput, View } from 'react-native';
+import { Linking, Pressable, TextInput, View } from 'react-native';
+import { InAppAlert as Alert } from './in-app-alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';

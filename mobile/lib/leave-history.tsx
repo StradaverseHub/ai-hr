@@ -9,7 +9,8 @@
  * returns its first answer instead of applying it twice. Nothing is queued or persisted (D10: in memory only).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, TextInput, View } from 'react-native';
+import { Pressable, TextInput, View } from 'react-native';
+import { InAppAlert as Alert } from './in-app-alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';

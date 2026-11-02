@@ -12,7 +12,8 @@
  * applied twice. Only CHANGED fields are sent.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, TextInput, View } from 'react-native';
+import { Pressable, TextInput, View } from 'react-native';
+import { InAppAlert as Alert } from './in-app-alert';
 import DateTimePicker from '@expo/ui/community/datetime-picker';
 import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';

@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 /**
  * M12 (D13) — the shipped native attendance screens (mobile/lib/attendance-*.tsx, over the shipped paged list), with
  * only native views, transport, navigation and identity injected. The server's rules are tested in
@@ -22,7 +23,7 @@ const ZONE = 'Asia/Kuala_Lumpur';
 function load(path: string, ports: Record<string, unknown>) {
   const module = { exports: {} as any };
   runInNewContext(transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText,
-    { module, exports: module.exports, AbortController, Date, Error, Intl, Math, Number, String, JSON, require: (id: string) => { if (id in ports) return ports[id]; throw new Error('Missing port ' + id + ' for ' + path); } });
+    { module, exports: module.exports, AbortController, Date, Error, Intl, Math, Number, String, JSON, require: (id: string) => { if (id === './in-app-alert') return inAppAlertPorts(ports['react-native']); if (id in ports) return ports[id]; throw new Error('Missing port ' + id + ' for ' + path); } });
   return module.exports;
 }
 

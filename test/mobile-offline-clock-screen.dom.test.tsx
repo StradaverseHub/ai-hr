@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 import { mobileVisualPorts } from './helpers/mobile-visual-ports';
 /** Offline clock states on the shipped clock screen (owner design, 2026-10-28): the real clock panel and offline UI
  * module (mobile/lib/offline-clock.tsx) with the build switch ON, executed through the VM with OS/network ports injected
@@ -17,7 +18,7 @@ import * as enrollment from '../mobile/lib/enrollment-journal';
 import {SignedClockUnavailable,type SignedClockStatus} from '../mobile/lib/signed-clock-journal';
 import * as journal from '../mobile/lib/submission-journal';
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function load(path:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{exports:module.exports,module,FormData,Date,Error,require:(id:string)=>{if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if(id in ports)return ports[id];throw new Error('Missing native screen port '+id);}});return module.exports;}
+function load(path:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{exports:module.exports,module,FormData,Date,Error,require:(id:string)=>{if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if (id === './in-app-alert') return inAppAlertPorts(ports['react-native']); if(id in ports)return ports[id];throw new Error('Missing native screen port '+id);}});return module.exports;}
 const origin='https://hr.example.com',ctx='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const kl=(at:number)=>new Date(at).toLocaleTimeString('en',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kuala_Lumpur'});
 const ready=(permits=2)=>({phase:'context_ready',own:true,employmentId:'own',contextId:ctx,expiresAt:Date.now()+3600000,permitsRemaining:permits,claimCount:0});

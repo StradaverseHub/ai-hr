@@ -12,7 +12,8 @@
  * reference. The draft is held in memory only (D10) and is gone when the screen closes.
  */
 import { useRef, useState } from 'react';
-import { Alert, Pressable, TextInput, View } from 'react-native';
+import { Pressable, TextInput, View } from 'react-native';
+import { InAppAlert as Alert } from './in-app-alert';
 import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { DesignText as Text, useTenantDesign } from './design';

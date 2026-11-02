@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 import { mobileVisualPorts, mobileMotionPorts } from './helpers/mobile-visual-ports';
 /** Shipped screens with OS/network ports injected; actual server rules are tested separately. */
 import {readFileSync} from 'node:fs';
@@ -14,7 +15,7 @@ import * as v2team from '../lib/mobile-api/v2/team';
 import * as enrollment from '../mobile/lib/enrollment-journal';
 import {SignedClockUnavailable,type SignedClockStatus} from '../mobile/lib/signed-clock-journal';
 import * as journal from '../mobile/lib/submission-journal';
-function load(path:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{exports:module.exports,module,FormData,Date,Error,setTimeout,clearTimeout,require:(id:string)=>{if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if(id in ports)return ports[id];throw new Error('Missing native screen port '+id);}});return module.exports;}
+function load(path:string,ports:Record<string,unknown>){const module={exports:{} as any};runInNewContext(transpileModule(readFileSync(path,'utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,{exports:module.exports,module,FormData,Date,Error,setTimeout,clearTimeout,require:(id:string)=>{if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if (id === './in-app-alert') return inAppAlertPorts(ports['react-native']); if(id in ports)return ports[id];throw new Error('Missing native screen port '+id);}});return module.exports;}
 function fixture(platform:'ios'|'android'='ios'){
   let drafts:any,sequence=0;const reload=vi.fn(),get=vi.fn(),post=vi.fn(),remove=vi.fn(),capture=vi.fn<()=>Promise<{lat:number;lng:number;accuracy:number;sampledAt:number;permissionAccuracy?:'precise'|'approximate'|'unavailable';source?:import('../lib/mobile-clock-integrity').ClockSourceSignals}>>(async()=>({lat:3,lng:101,accuracy:5,sampledAt:Date.now(),source:{provider:null,mock:false,simulated:null,accessory:null}}));
   const photo=vi.fn<()=>Promise<any>>(async()=>null);

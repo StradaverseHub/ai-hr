@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
-import {Alert} from 'react-native';
+import {  } from 'react-native';
+import { InAppAlert as Alert } from './in-app-alert';
 import {router} from 'expo-router';
 import {DesignText as Text,useTenantDesign} from './design';
 import {useApi} from './api';

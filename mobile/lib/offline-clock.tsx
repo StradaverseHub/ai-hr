@@ -9,7 +9,8 @@
  * Connectivity shown to the employee follows the driver's own test (no HTTP response): a sync or route answered `offline`,
  * a clock read that failed with NetworkUnavailableError, or a controller opened from the offline anchor (cold start). */
 import {useEffect,useRef,useState,type ReactNode} from 'react';
-import {Alert,Pressable,View} from 'react-native';
+import { Pressable, View } from 'react-native';
+import { InAppAlert as Alert } from './in-app-alert';
 import {SymbolView,type SymbolViewProps} from 'expo-symbols';
 import {DesignText as Text,useTenantDesign} from './design';
 import {assertAuthGeneration,authGeneration} from './auth';

@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
-import {Alert,Platform} from 'react-native';
+import { Platform } from 'react-native';
+import { InAppAlert as Alert } from './in-app-alert';
 import {DesignText as Text} from './design';
 import {useApi} from './api';
 import {useSession} from './session';

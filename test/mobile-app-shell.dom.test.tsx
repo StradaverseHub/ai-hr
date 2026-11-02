@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { JsxEmit, ModuleKind, transpileModule } from 'typescript';
@@ -25,7 +26,7 @@ function fixture() {
   function load(file: string) {
     const output = { exports: {} as any };
     runInNewContext(transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText,
-      { module: output, exports: output.exports, require: (id: string) => { if (id in ports) return ports[id]; throw new Error(id); } });
+      { module: output, exports: output.exports, require: (id: string) => { if (id === './in-app-alert') return inAppAlertPorts(ports['react-native']); if (id in ports) return ports[id]; throw new Error(id); } });
     return output.exports;
   }
   ports['./daily-navigation'] = load('mobile/lib/daily-navigation.tsx');

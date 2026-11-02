@@ -10,7 +10,8 @@
  * and is gone when the screen closes. Attachments stay on the web.
  */
 import { useRef, useState } from 'react';
-import { Alert, TextInput, View } from 'react-native';
+import { TextInput, View } from 'react-native';
+import { InAppAlert as Alert } from './in-app-alert';
 import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { DesignText as Text, useTenantDesign } from './design';

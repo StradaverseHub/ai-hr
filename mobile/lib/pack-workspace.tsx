@@ -1,5 +1,6 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {Alert,FlatList,View,TextInput} from 'react-native';
+import { FlatList, View, TextInput } from 'react-native';
+import { InAppAlert as Alert } from './in-app-alert';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {router,Redirect,useFocusEffect} from 'expo-router';
 import {randomUUID} from 'expo-crypto';

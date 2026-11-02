@@ -1,3 +1,4 @@
+import { inAppAlertPorts } from './helpers/in-app-alert-ports';
 /**
  * M09 — the shipped native payslip and EA screens (mobile/lib/pay-documents.tsx, over the shipped paged list) and the
  * shipped protected-document custody (mobile/lib/protected-document.ts) on a fake file system, with only native
@@ -28,7 +29,7 @@ type Loaded = Record<string, any>; // eslint-disable-line @typescript-eslint/no-
 function load(path: string, ports: Ports): Loaded {
   const module = { exports: {} as Loaded };
   runInNewContext(transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText,
-    { module, exports: module.exports, AbortController, Date, Error, Intl, require: (id: string) => { if (id in ports) return ports[id]; throw new Error('Missing port ' + id + ' for ' + path); } });
+    { module, exports: module.exports, AbortController, Date, Error, Intl, require: (id: string) => { if (id === './in-app-alert') return inAppAlertPorts(ports['react-native']); if (id in ports) return ports[id]; throw new Error('Missing port ' + id + ' for ' + path); } });
   return module.exports;
 }
 
