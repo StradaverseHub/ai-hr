@@ -4011,7 +4011,7 @@ BEGIN
   next_panel:=to_jsonb(panel)||jsonb_build_object('archived_at',NULL,'archive_reason',NULL);
   INSERT INTO app.financial_onehr_feedback_effect(transaction_id,tenant_id,user_id,request_id,before_row,after_row) VALUES(pg_current_xact_id(),review.tenant_id,app.current_user_id(),wanted_request,to_jsonb(panel),next_panel) RETURNING id INTO effect_id;
   UPDATE public.performance_onehr_panel actual SET archived_at=NULL,archive_reason=NULL WHERE actual.request_id=wanted_request AND actual.tenant_id=review.tenant_id;
-  UPDATE public.peer_feedback_request actual SET status=CASE WHEN panel.submitted_at IS NOT NULL THEN 'submitted' ELSE 'pending' END WHERE actual.id=wanted_request AND actual.tenant_id=review.tenant_id;
+  UPDATE public.peer_feedback_request actual SET status=(CASE WHEN panel.submitted_at IS NOT NULL THEN 'submitted' ELSE 'pending' END)::public.feedback_request_status WHERE actual.id=wanted_request AND actual.tenant_id=review.tenant_id;
  ELSE
   IF panel.archived_at IS NOT NULL OR panel.submitted_at IS NULL THEN RAISE EXCEPTION 'Reset only an active submitted reviewer.' USING ERRCODE='42501';END IF;
   effect_at:=clock_timestamp();next_panel:=to_jsonb(panel)||jsonb_build_object('submitted_at',NULL,'reset_at',effect_at);
