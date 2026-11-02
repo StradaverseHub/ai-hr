@@ -51,7 +51,7 @@ describe('current own Performance framework metadata',()=>{
   expect((await standard.reviewForViewer(self,nativeStandard.id))?.id).toBe(nativeStandard.id);await standard.submitSelfReview(self,{reviewId:nativeStandard.id,selfRating:4});await standard.submitManagerReview(manager,{reviewId:nativeStandard.id,managerRating:4,overallRating:4});await standard.releaseCycle(a,{cycleId:standardCycle});
   const choices=await withTenant(self,tx=>perf.ownPerformanceAcknowledgementChoicesTx(tx,self));expect(choices.items.some(item=>item.sourceId===nativeStandard.id&&item.action==='performance.review.acknowledge')).toBe(true);expect(choices.items.some(item=>item.sourceId===reviewId&&item.action==='performance.review.acknowledge')).toBe(false);
   const statuses=(await read()).rows;expect(statuses.filter(row=>row.reviewId===reviewId)).toMatchObject([{framework:'onehr',artifact:'review'}]);expect(statuses.filter(row=>row.reviewId===nativeStandard.id)).toMatchObject([{framework:'standard',artifact:'review'}]);
-  await expect(withTenant(self,tx=>tx.execute(sql`select app.financial_performance_cycle_kind(${base.tenantId}::uuid,${cycleId}::uuid)`))).rejects.toThrow(/permission denied/);
+  await expect(withTenant(self,tx=>tx.execute(sql`select app.financial_performance_cycle_kind(${base.tenantId}::uuid,${cycleId}::uuid)`))).rejects.toMatchObject({cause:{code:'42501',message:'permission denied for function financial_performance_cycle_kind'}});
  });
  it('reads real OneHR and standard reviews once each with explicit framework and no unreleased content',async()=>{
   const standard=await perf.createCycle(a,{name:'Fictional standard period',companyId:base.companyId,periodStart:`${year-1}-01-01`,periodEnd:`${year-1}-12-31`});await perf.openCycle(a,standard);
