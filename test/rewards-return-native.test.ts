@@ -110,7 +110,7 @@ describe('Native annual Rewards return seam', () => {
   });
   it('refuses an unsealed unit rewrite after a private native effect instead of manufacturing a chain node',async()=>{
     const revision=await submit();await decideRewardUnit(actors.bg!,unitId,revision,'approve','Actual distinct first-stage reviewer');const before=await state();let refusal:unknown;
-    try{await owner.withTenant(admin,async tx=>{await tx.execute(sql`select app.reward_decision_native(${unitId}::uuid,${revision},'return',${reason},false)`);await tx.execute(sql`update reward_unit set name=name||' unsealed rewrite'where id=${unitId}::uuid`);await tx.execute(sql`set constraints all immediate`);});}catch(error){refusal=error;}
+    try{await owner.withTenant(admin,async tx=>{await tx.execute(sql`select app.reward_decision_native(${unitId}::uuid,${revision},'return',${reason},false)`);await tx.execute(sql`update reward_unit set updated_at=updated_at+interval '1 second' where id=${unitId}::uuid`);await tx.execute(sql`set constraints all immediate`);});}catch(error){refusal=error;}
     expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Native Rewards decision effect incomplete'}));expect(await state()).toEqual(before);
   });
   it.each([false,true])('rechecks every completed private chain node after native membership revoke/restore (early flush: %s)',async immediate=>{

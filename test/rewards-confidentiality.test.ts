@@ -120,7 +120,8 @@ describe('Rewards derived confidentiality', () => {
     await line('plain', 'chairman', today);
     await refreshRewardSources(admin, unitId, (await view()).unit.revision);
     expect((await row('plain'))!.facts.confidentiality).toBe('ec');
-    const self = { ...actors.ctro!, personId: emp.ecReport.personId };
+    await seat('ctro', emp.ecReport.personId, 'Actual own-row reviewer');
+    const self = actors.ctro!;
     expect((await view(self)).rows.map(r => r.source.employmentId)).not.toContain(emp.ecReport.employmentId);
   });
 });
