@@ -58,12 +58,16 @@ describe('authoritative signing persistence and SQL boundaries',()=>{
   expect((await withTenant(manager.ctx,tx=>readSigningDocumentTx(tx,manager.ctx,d.id))).actions).toEqual([]);
  });
  it('rejects missing/null signature method, absent identity and forged person through direct SQL',async()=>{
-  const d=await create();for(const signature of [{consent:true,value:'Forged'}, {method:null,consent:true,value:'Forged'}, {method:'typed',consent:'true',value:'Forged'}, {method:'drawn',consent:true,value:'data:image/png;base64,Zm9yZ2Vk'},null]){await expect(rawAct(d.id,manager,{...rawAction(manager),signature})).rejects.toThrow();}
+  const d=await create();for(const signature of [{consent:true,value:'Forged'}, {method:null,consent:true,value:'Forged'}, {method:'typed',consent:'true',value:'Forged'}, {method:'drawn',consent:true,value:'data:image/png;base64,Zm9yZ2Vk'},{method:'typed',consent:true,value:'Fictional',untrusted:'extra'},{method:'typed',consent:true,value:'control\u0001value'},null]){await expect(rawAct(d.id,manager,{...rawAction(manager),signature})).rejects.toThrow();}
   for(const patch of [{id:1},{stepId:1},{contentRevision:'1'}])await expect(rawAct(d.id,manager,{...rawAction(manager),...patch})).rejects.toThrow();
   const missing=rawAction(manager);delete missing.id;await expect(rawAct(d.id,manager,missing)).rejects.toThrow();await expect(rawAct(d.id,manager,{...rawAction(manager),actorPersonId:head.personId})).rejects.toThrow();expect((await withTenant(manager.ctx,tx=>readSigningDocumentTx(tx,manager.ctx,d.id))).actions).toEqual([]);
  });
  it('rejects fabricated content at creation and a previously current hash after authoritative content changes',async()=>{
   await expect(create('b'.repeat(64))).rejects.toThrow();const d=await create();await owner.db.execute(sql`update test_document_signing_subject set content=content||${JSON.stringify({contentHash:'b'.repeat(64),contentRevision:2})}::jsonb where id=${subjectId}::uuid`);await expect(rawAct(d.id,manager,rawAction(manager))).rejects.toThrow();expect((await withTenant(manager.ctx,tx=>readSigningDocumentTx(tx,manager.ctx,d.id))).actions).toEqual([]);
+ });
+ it('accepts a bounded complete drawn PNG through the same actor-bound native signature path',async()=>{
+  const d=await create(),value='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aRPcAAAAASUVORK5CYII=';
+  const result=await rawAct(d.id,manager,{...rawAction(manager),signature:{method:'drawn',value,consent:true}});expect(result.actions[0].signature).toMatchObject({method:'drawn',value,consent:true});
  });
  it('adopts an authoritative revised route while retaining old signatures as history',async()=>{
   const d=await create();await sign(d.id,manager,'lm');const next=structuredClone(route);next.version=2;next.steps.push({id:'pbp',role:'pbp',kind:'approve',stage:2,required:true,holderId:delegate.userId,holderPersonId:delegate.personId});const nextHash='c'.repeat(64);

@@ -89,9 +89,32 @@ BEGIN
  INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(app.current_tenant_id(),'document-signing',p_id,CASE p_operation WHEN 'create' THEN 'document-signing.created' WHEN 'revise' THEN 'document-signing.revised' ELSE 'document-signing.rerouted' END,'user',app.current_user_id(),p_employment,jsonb_build_object('documentId',p_id,'revision',new_revision));
  RETURN p_id;
 END $$;
+-- Structural validation is shared by new signing subjects. The trusted PDF renderer decodes
+-- drawn images before it seals an employee-file PDF; this is not certificate verification.
+CREATE FUNCTION app.document_signature_valid(p_signature jsonb) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE value text;image bytea;width bigint;height bigint;
+BEGIN
+ IF jsonb_typeof(p_signature) IS DISTINCT FROM 'object' OR p_signature-'method'-'value'-'consent'<>'{}'::jsonb
+ OR jsonb_typeof(p_signature->'method') IS DISTINCT FROM 'string' OR jsonb_typeof(p_signature->'value') IS DISTINCT FROM 'string'
+ OR p_signature->'consent' IS DISTINCT FROM 'true'::jsonb THEN RETURN false;END IF;
+ value:=p_signature->>'value';
+ IF length(btrim(value))=0 OR length(value)>500000 THEN RETURN false;END IF;
+ IF p_signature->>'method'='typed' THEN RETURN length(value)<=200 AND value!~'[[:cntrl:]]';END IF;
+ IF p_signature->>'method' IS DISTINCT FROM 'drawn' OR value!~'^data:image/png;base64,[A-Za-z0-9+/]+={0,2}$' THEN RETURN false;END IF;
+ image:=decode(split_part(value,',',2),'base64');
+ IF octet_length(image)<57 OR encode(substring(image FROM 1 FOR 16),'hex')<>'89504e470d0a1a0a0000000d49484452'
+ OR encode(substring(image FROM octet_length(image)-11 FOR 12),'hex')<>'0000000049454e44ae426082' THEN RETURN false;END IF;
+ width:=get_byte(image,16)::bigint*16777216+get_byte(image,17)::bigint*65536+get_byte(image,18)::bigint*256+get_byte(image,19);
+ height:=get_byte(image,20)::bigint*16777216+get_byte(image,21)::bigint*65536+get_byte(image,22)::bigint*256+get_byte(image,23);
+ RETURN width BETWEEN 1 AND 2048 AND height BETWEEN 1 AND 1024 AND width*height<=2097152;
+EXCEPTION WHEN OTHERS THEN RETURN false;
+END $$;
+REVOKE ALL ON FUNCTION app.document_signature_valid(jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.document_signing_act(p_id uuid,p_action jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE d document_signing_document;step jsonb;prior jsonb;stage integer;v_action jsonb;v_name text;v_person uuid;new_data jsonb;content jsonb;route_allowed boolean;v_png bytea;v_width bigint;v_height bigint;
+DECLARE d document_signing_document;step jsonb;prior jsonb;stage integer;v_action jsonb;v_name text;v_person uuid;new_data jsonb;content jsonb;route_allowed boolean;
 BEGIN
  -- All subject writers lock the source part before the signing document.
  SELECT * INTO d FROM document_signing_document WHERE id=p_id AND tenant_id=app.current_tenant_id();
@@ -120,16 +143,7 @@ BEGIN
  ELSIF p_action->>'action'='returned' THEN
   IF btrim(coalesce(p_action->>'comment',''))='' OR p_action->'signature' IS DISTINCT FROM 'null'::jsonb THEN RAISE EXCEPTION 'A return reason is required'; END IF;
  ELSIF p_action->>'action'='signed' THEN
-  IF p_action->'signature'->'consent' IS DISTINCT FROM 'true'::jsonb OR coalesce(p_action->'signature'->>'method','') NOT IN ('typed','drawn') OR jsonb_typeof(p_action->'signature'->'value') IS DISTINCT FROM 'string' OR length(btrim(coalesce(p_action->'signature'->>'value','')))=0 OR length(p_action->'signature'->>'value')>500000 THEN RAISE EXCEPTION 'A valid signature and consent are required'; END IF;
-  IF p_action->'signature'->>'method'='typed' AND (length(p_action->'signature'->>'value')>200 OR p_action->'signature'->>'value' ~ '[[:cntrl:]]') THEN RAISE EXCEPTION 'Invalid typed signature'; END IF;
-  IF p_action->'signature'->>'method'='drawn' AND p_action->'signature'->>'value' !~ '^data:image/png;base64,[A-Za-z0-9+/]+={0,2}$' THEN RAISE EXCEPTION 'Invalid drawn signature'; END IF;
-  IF p_action->'signature'->>'method'='drawn' THEN
-   v_png:=decode(split_part(p_action->'signature'->>'value',',',2),'base64');
-   IF octet_length(v_png)<24 OR encode(substring(v_png from 1 for 16),'hex')<>'89504e470d0a1a0a0000000d49484452' THEN RAISE EXCEPTION 'Invalid drawn signature header'; END IF;
-   v_width:=get_byte(v_png,16)::bigint*16777216+get_byte(v_png,17)::bigint*65536+get_byte(v_png,18)::bigint*256+get_byte(v_png,19);
-   v_height:=get_byte(v_png,20)::bigint*16777216+get_byte(v_png,21)::bigint*65536+get_byte(v_png,22)::bigint*256+get_byte(v_png,23);
-   IF v_width NOT BETWEEN 1 AND 2048 OR v_height NOT BETWEEN 1 AND 1024 OR v_width*v_height>2097152 THEN RAISE EXCEPTION 'Invalid drawn signature dimensions'; END IF;
-  END IF;
+  IF app.document_signature_valid(p_action->'signature') IS NOT TRUE THEN RAISE EXCEPTION 'A valid signature and consent are required';END IF;
   IF step->>'kind'='approve' AND d.guardrails->>'independentApprovalFromRole' IS NOT NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'actions') a WHERE a->>'role'=d.guardrails->>'independentApprovalFromRole' AND a->>'action'='signed' AND a->>'actorPersonId'=v_person::text AND a->>'contentRevision'=d.data->>'contentRevision' AND a->>'contentHash'=d.data->>'contentHash') AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'route'->'steps') other_step WHERE other_step->>'kind'='approve' AND other_step->>'required'='true' AND other_step->>'holderPersonId'<>v_person::text) THEN RAISE EXCEPTION 'A distinct approving person is required'; END IF;
  ELSE RAISE EXCEPTION 'Invalid signing action'; END IF;
  SELECT p.full_name INTO v_name FROM app_user u JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id();
