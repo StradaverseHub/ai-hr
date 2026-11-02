@@ -1696,7 +1696,7 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | 0939_workforce_action_permissions | 0950_workforce_action_permissions | 797 | 1793330000350 | 12d6c2aef460bc2d5d69fa75638d5438be3db5e21d34ed760ae7796869ef2734 |
 | 0940_bounded_approval_task_sources | 0951_bounded_approval_task_sources | 798 | 1793330000351 | 2c2e90e81f38bba34706057012d8d948c347c6271564dc824e0a4ea13e8cee0d |
 | 0941_financial_letter_actions | 0952_financial_letter_actions | 799 | 1793330000352 | f71c10eaf3697341cfac8e511836d94d47454ae28f970bb757878898d46c6217 |
-| 0942_organisation_settings_actions | 0953_organisation_settings_actions | 800 | 1793330000353 | 1160474bb42ffdbeb6e24169940b34fdfbb5c028038172df590f18652bc79a03 |
+| 0942_organisation_settings_actions | 0953_organisation_settings_actions | 800 | 1793330000353 | f4220f57e388022e35a49d553ee06687291860f160589f7ce6df2b26c421864d |
 | 0943_leave_attendance_claim_actions | 0954_leave_attendance_claim_actions | 801 | 1793330000354 | 40034752a2e0eaeaa0cbb2f9be9bb4394db823baf93112ebbcd52536a1a1a914 |
 | 0944_lifecycle_rewards_notice_actions | 0955_lifecycle_rewards_notice_actions | 802 | 1793330000355 | 83e63b174397aee1d87a7ca728f0da2a187b3b45dd01312c28b7e97dc61d4c38 |
 | 0945_financial_setup_actions | 0956_financial_setup_actions | 803 | 1793330000356 | c0ee123dded074d5074990affefd8d3b55ec474577fc43d4febd9455eff25436 |
