@@ -3057,7 +3057,7 @@ export async function assignRosterRows(
   });
 }
 
-export function assignRosterRow(
+export async function assignRosterRow(
   ctx: SessionContext,
   p: {employmentId:string;shiftDates:string[];brush:string},
 ): Promise<{applied:number}> {
