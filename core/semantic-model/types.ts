@@ -54,7 +54,9 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** AI v2 W2: an own claim and an own profile change request prepared in chat (./entities-own-changes.ts). */
  |'claim_request'|'profile_change_request'
  /** AI v2 W1: what the caller can do, import, report on or open (./entities-catalogue.ts). */
- |'product_capability';
+ |'product_capability'
+ /** AI v2 W5: "Why?" on the caller's own pay difference and claim limits (./entities-why.ts). */
+ |'pay_difference_explanation'|'claim_limit_explanation';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;

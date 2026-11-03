@@ -66,6 +66,11 @@ vi.mock('@/core/employee-home-sharing',()=>({readHomeTeamCalendar:async()=>({sco
 vi.mock('@/core/read',()=>({reportingLinesFor:async()=>({managers:S.managers,reports:[]})}));
 vi.mock('@/core/assistant-grant',()=>({mayUseAssistant:async()=>({allowed:S.assistant})}));
 vi.mock('@/lib/viewer',()=>({viewerIdentity:async()=>({name:'Aisyah Fictional',employeeCode:null,employed:false})}));
+// AI v2 W5: the leave dashboard card's explanation behind a balance's Why?, as core/explainers/own-why.ts reads it as the viewer.
+const why=vi.hoisted(()=>({calls:[] as unknown[]}));
+vi.mock('@/core/explainers/own-why',()=>({ownLeaveBalanceWhy:async(_s:unknown,input:unknown)=>{why.calls.push(input);return {leaveType:'Annual Leave',cycleStart:'2026-01-01',cycleEnd:'2026-12-31',
+ isCurrentCycle:true,canApplyFor:9.5,entitlementTemplateName:'Fictional Standard',entitlementStatus:'generated',withheld:false,carryForwardExpiryDate:null,proration:null,
+ figures:{entitlement:14,earnedSoFar:12,broughtForward:0,adjustments:0,totalEntitlement:14,taken:3.5,pending:1,forfeited:0,available:9.5}};}}));
 
 import {TodayPage} from '../components/today/today-page';
 import {ASK_HANDOFF_KEY} from '../lib/today/ask-handoff';
@@ -93,8 +98,8 @@ beforeEach(()=>{
 });
 afterEach(cleanup);
 
-async function show(session:never,scopeIds:string[],employmentId?:string,needs?:{all?:boolean;recommend?:string}){
- const tree=await resolveServerTree(await TodayPage({session,scopeIds,employmentId,needs,now:NOW,more:<p data-fixture-more>Existing dashboard</p>}));
+async function show(session:never,scopeIds:string[],employmentId?:string,needs?:{all?:boolean;recommend?:string},why_?:string){
+ const tree=await resolveServerTree(await TodayPage({session,scopeIds,employmentId,needs,why:why_,now:NOW,more:<p data-fixture-more>Existing dashboard</p>}));
  const view=render(<NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur">{tree}</NextIntlClientProvider>);
  const section=(id:string)=>view.container.querySelector(`[data-today-section="${id}"]`);
  return {...view,section};
@@ -173,7 +178,8 @@ describe('Today for an employee',()=>{
   const view=await show(EMPLOYEE,['co-a']);
   const glance=view.section('today-at-a-glance')!;
   expect([...glance.querySelectorAll('[data-today-balance]')].map(row=>[text(row.querySelector('dt')),text(row.querySelector('b')),row.querySelector('a')?.getAttribute('href')]))
-   .toEqual([['Annual Leave','9.50 days','/leave/details'],['Medical Leave','11.50 days','/leave/details']]);
+   // AI v2 W5: Why? opens the balance's explanation in place on Today (test/why-panels.dom.test.tsx), no longer Leave Details.
+   .toEqual([['Annual Leave','9.50 days','/?why=leave%3Alt-al'],['Medical Leave','11.50 days','/?why=leave%3Alt-ml']]);
   expect(text(glance.querySelector('[data-today-balance] a'))).toBe('Why? Why is my Annual Leave balance this figure?');
   const payslip=glance.querySelector('[data-today-payslip]')!;
   expect(text(payslip.querySelector('dt'))).toBe('October 2026 payslip');
@@ -184,6 +190,34 @@ describe('Today for an employee',()=>{
   ]);
   // A colleague on the same team calendar is not this person's manager and is not named.
   expect(text(glance)).not.toContain('Peer Fictional');
+ });
+
+ it('opens a balance\'s Why? in place under its row, from the leave service\'s own figures, with Ask AI Centre',async()=>{
+  why.calls.length=0;
+  const view=await show(EMPLOYEE,['co-a'],undefined,undefined,'leave:lt-al');
+  const [annual,medical]=[...view.section('today-at-a-glance')!.querySelectorAll('[data-today-balance]')];
+  // The open row's link now closes the panel; the other row still opens its own.
+  expect(annual.querySelector('a')?.getAttribute('href')).toBe('/');expect(annual.querySelector('a')?.getAttribute('aria-expanded')).toBe('true');
+  expect(medical.querySelector('a')?.getAttribute('href')).toBe('/?why=leave%3Alt-ml');expect(medical.querySelector('[data-why-panel]')).toBeNull();
+  const panel=annual.querySelector('[data-today-why] [data-why-panel="leave"]')!;
+  expect(text(panel.querySelector('h3'))).toBe('Your Annual Leave balance');
+  expect([...panel.querySelectorAll('[data-why-figures] > div')].map(div=>[text(div.querySelector('dt')),text(div.querySelector('dd'))])).toEqual([
+   ['Entitlement for the year','14.00 days'],['Earned so far','12.00 days'],['Carried forward','0.00 days'],['Adjustments','0.00 days'],['Total entitlement','14.00 days'],
+   ['Taken','3.50 days'],['Waiting for approval','1.00 days'],['Available','9.50 days']]);
+  // The figure beside Why? is the figure the panel ends on.
+  expect(text(annual.querySelector('b'))).toBe('9.50 days');
+  expect(why.calls).toEqual([{leaveTypeId:'lt-al',employmentId:undefined,locale:'en'}]);
+  fireEvent.click(within(panel as HTMLElement).getByRole('button',{name:'Ask AI Centre about this'}));
+  expect(JSON.parse(window.sessionStorage.getItem(ASK_HANDOFF_KEY)!).q).toBe('Why is my Annual Leave balance what it is?');
+  expect(S.push).toHaveBeenCalledWith('/assistant');
+  // Someone the Assistant cannot answer still sees the figures, with no Ask.
+  cleanup();S.assistant=false;
+  const quiet=await show(EMPLOYEE,['co-a'],undefined,undefined,'leave:lt-al');
+  expect(quiet.container.querySelector('[data-why-panel="leave"]')).not.toBeNull();expect(quiet.container.querySelector('[data-why-ask]')).toBeNull();
+  // A Why? for a type the person does not hold on Today reads nothing.
+  cleanup();why.calls.length=0;S.assistant=true;
+  await show(EMPLOYEE,['co-a'],undefined,undefined,'leave:not-theirs');
+  expect(why.calls).toEqual([]);
  });
 
  it('keeps a manager\'s absence when their sharing choice withholds the name, without inventing one',async()=>{

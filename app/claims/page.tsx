@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { requireModule } from '@/lib/authz';
 import {ownClaimSubject} from './subject';
 import { claimRecordFacts, getEmployeeClaimTypes, listClaimsForEmployment } from '@/packs/claims/service';
+import { ClaimLimitWhy } from '@/components/why/sections';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ClaimForm, type ClaimDraftPrefill, type ClaimFormType } from '@/components/claim-form';
 import { Button } from '@/components/ui';
@@ -37,6 +38,8 @@ export default async function ClaimsPage({
     /** id of a draft being edited — the form opens prefilled with it instead of empty. */
     draft?: string;
     employmentId?:string|string[];
+    /** AI v2 W5 — the claim type whose "Why?" panel is open (`claim:<claim type id>`). */
+    why?: string;
   }>;
 }) {
   // ADR-0077 slice 4 — a courtesy redirect when the tenant has not bought this module, so they get
@@ -120,6 +123,22 @@ export default async function ClaimsPage({
     },
   }));
 
+  // AI v2 W5 — "Why?" on the claim limit opens its explanation under the balance panel, from the balance this page
+  // already read from the claims owner. The links keep only the chosen employment and the draft being edited.
+  const whyOpenId = typeof sp.why === 'string' && sp.why.startsWith('claim:') ? sp.why.slice('claim:'.length) : null;
+  const whyOpen = types.find((ct) => ct.id === whyOpenId) ?? null;
+  const whyHref = (why?: string) => {
+    const query = new URLSearchParams({ ...selectedQuery, ...(editing ? { draft: editing.id } : {}), ...(why ? { why } : {}) });
+    return query.size ? `/claims?${query}` : '/claims';
+  };
+  const tWhy = types.length ? await getTranslations('why') : null;
+  const claimWhy = tWhy ? {
+    text: tWhy('link'),
+    links: Object.fromEntries(types.map((ct) => [ct.id, { href: ct.id === whyOpen?.id ? whyHref() : whyHref(`claim:${ct.id}`), label: tWhy('claim.linkLabel', { claimType: ct.name }), expanded: ct.id === whyOpen?.id }])),
+    openId: whyOpen?.id ?? null,
+  } : undefined;
+  const claimWhyPanel = whyOpen ? <ClaimLimitWhy session={s} id={`claim-why-${whyOpen.id}`} closeHref={whyHref()} balance={whyOpen.balance} employmentId={me.employmentId} /> : undefined;
+
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader title={t('title')} description={[t('subtitle'),...(selectedQuery.employmentId?[me.company,me.employeeCode]:[])].filter(Boolean).join(' · ')} />
@@ -139,6 +158,8 @@ export default async function ClaimsPage({
             todayUtc={today}
             draft={draftPrefill}
             employmentId={selectedQuery.employmentId}
+            why={claimWhy}
+            whyPanel={claimWhyPanel}
           />
         )}
       </Card>

@@ -33,8 +33,9 @@ const STEP4=[...EXPLAIN_ENTITIES,...SETUP_ENTITIES];
 
 describe('step 4 capabilities in the semantic model',()=>{
  it('declares one read per capability, each over a step 4 entity, and binds each to a runner',()=>{
-  // Issue 13b appends the governed pay averages (core/semantic-model/entities-metrics.ts; test/pay-averages.test.ts).
-  expect(TERAS_READS.map(row=>row.name)).toEqual(['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','setup_copilot','pay_aggregates']);
+  // Issue 13b appends the governed pay averages (core/semantic-model/entities-metrics.ts; test/pay-averages.test.ts); AI v2 W5
+  // appends the pay difference and claim limit explainers (core/semantic-model/entities-why.ts; test/why-explainers.test.ts).
+  expect(TERAS_READS.map(row=>row.name)).toEqual(['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','setup_copilot','pay_aggregates','explain_pay_difference','explain_claim_limit']);
   expect(TERAS_CAPABILITIES.map(row=>row.name)).toEqual(TERAS_READS.map(row=>row.name));
   expect([...EXPLAIN_READS,...SETUP_READS].map(row=>row.entity)).toEqual(STEP4.map(entity=>entity.id));
   expect(TERAS_READS.some(row=>row.input.some(input=>input.identifier)),'no step 4 capability takes a record handle').toBe(false);
