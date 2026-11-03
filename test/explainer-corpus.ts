@@ -6,7 +6,8 @@
  *  - payroll: one RELEASED regular run for 2026-08 and one OPEN (unreleased) run for 2026-09;
  *  - attendance: a 09:00–18:00 shift, clocked 09:20–18:30 on Wednesday 2026-07-01 (20 minutes late);
  *  - leave: the fixture's Annual Leave (17.25 days) and Medical Leave (11.5 days) tables, with accruals;
- *  - setup (administrator): the fixture company as seeded, with no claims readiness owner.
+ *  - setup (administrator): the fixture company as seeded, with no claims readiness owner;
+ *  - loops (administrator, AI v2 W8): every loop off as seeded, so no card is open and none is paused.
  * Ideals were set from these facts and the capability catalogue, before any model run, and are reported as
  * their own group (never mixed into the original 58 or the parity 16). Evaluation-only; fictional data. */
 import {randomUUID} from 'node:crypto';
@@ -26,7 +27,7 @@ import {adminCtx,createAppUser,entitledCtx,owner,type Base} from './harness';
 
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 const answer=(...reads:string[]):BaselineIdeal=>({mode:'answer',reads});
-const statutory=answer('explain_payslip_statutory'),entitlement=answer('explain_leave_entitlement'),day=answer('explain_attendance_day'),copilot=answer('setup_copilot');
+const statutory=answer('explain_payslip_statutory'),entitlement=answer('explain_leave_entitlement'),day=answer('explain_attendance_day'),copilot=answer('setup_copilot'),loops=answer('loops_overview');
 /** Conversations run as the explainer persona (employee role) unless `persona: 'admin'`. */
 export const EXPLAINER_CONVERSATIONS:readonly BaselineConversation[]=freeze([
  {id:'why-statutory',title:'Step 4: why is a statutory line this much',turns:[
@@ -55,6 +56,12 @@ export const EXPLAINER_CONVERSATIONS:readonly BaselineConversation[]=freeze([
   {id:'copilot-claims',question:'Is claims set up correctly?',category:'guidance',ideal:{mode:'honest_gap'}},
   {id:'copilot-login-names',question:'Which employees have no login? List their names.',category:'guidance',ideal:{mode:'honest_gap'}},
  ]},
+ // AI v2 W8: the loops overview (loops_overview, the /control-tower/loops page), administrators only.
+ {id:'loops',title:'AI v2 W8: which loops are on, paused or have open cards',persona:'admin',turns:[
+  {id:'loops-on',question:'Which AI Centre loops are switched on, and is any of them paused for a company?',category:'guidance',ideal:loops},
+  {id:'loops-open',question:'How many cards does the missed clock-outs loop have open right now?',category:'analysis',ideal:loops},
+  {id:'loops-names',question:'Which employees does the probation loop have cards for? List their names.',category:'negative',ideal:{mode:'honest_gap'}},
+ ]},
 ]);
 /** Reviewed against the fixture facts above, not against model output. */
 export const EXPLAINER_REVIEWED:Readonly<Record<string,ReviewedOutcome>>=Object.freeze({
@@ -65,6 +72,7 @@ export const EXPLAINER_REVIEWED:Readonly<Record<string,ReviewedOutcome>>=Object.
  'copilot-first-payroll':{also:[answer('setup_readiness')],reason:'Payroll readiness alone answers what blocks the run; the co-pilot adds the order.'},
  'copilot-claims':{also:[copilot],reason:'Reading the co-pilot and reporting that no owner checks claims setup is as good as stating the gap.'},
  'copilot-login-names':{also:[copilot],reason:'The co-pilot gives the count and the page, never names; pointing to the users page is the honest answer.'},
+ 'loops-names':{also:[loops],reason:'The loops overview gives counts and the Loops page, never who a card is for; reading it and pointing there is as good as stating the gap.'},
 });
 
 /** The explainer persona. Call before any other fixture person is hired (its payroll runs are company-wide). */
