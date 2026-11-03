@@ -433,6 +433,33 @@ describe('V3.1 onboarding database and authorization', () => {
         await onboardingCommand(tech,row.case.id,after!.revision,{type:'removeItem',itemId:added.id});const [removed]=await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id));removedExpected.history.at(-1)!.id=removed!.data.history.at(-1)!.id;removedExpected.history.at(-1)!.at=removed!.data.history.at(-1)!.at;
         expect(removed!.data).toEqual(removedExpected);expect((await onboardingTasks(tech)).some(task=>task.id===removeReview.id)).toBe(false);
     });
+    it('publishes assigned exception courses and preserves the selected review under Additions Execute denial',async()=>{
+        const context=await onboardingContext(admin),config=structuredClone(context.config);
+        config.catalogue.push({id:'fictional-publication-exception',name:'Fictional exception',type:'system',active:true,
+            rules:{},workflow:null,team:'group-tech',card:false});
+        await onboardingSaveConfig(admin,context.revision,config);
+        const row=await prepared(),cap='function.lifecycle.shared.exceptionAdditions.execute';
+        try{
+            expect(await publishActionCapabilityPackage(owner.client,'lifecycle_assigned_exceptions')).toMatchObject({changed:true,capabilities:6});
+            expect(await publishActionCapabilityPackage(owner.client,'lifecycle_assigned_exceptions')).toMatchObject({changed:false});
+            const read=()=>onboardingTasks(tech).then(rows=>rows.find(task=>task.kind==='exceptionAdd'&&task.caseId===row.case.id));
+            expect(await read()).toBeDefined();
+            await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+             values(${b.tenantId}::uuid,${tech.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+            expect(await read()).toMatchObject({canExecute:false});
+            const add=()=>onboardingCommand(tech,row.case.id,row.revision,{type:'addItem',catalogueId:'fictional-publication-exception',
+                reason:'Fictional publication check',approval:false,confirmedBy:null});
+            await expect(add()).rejects.toThrow();
+            expect((await onboardingList(admin)).find(item=>item.case.id===row.case.id)?.revision).toBe(row.revision);
+            await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+            await add();
+            expect((await onboardingList(admin)).find(item=>item.case.id===row.case.id)?.revision).toBe(row.revision+1);
+        }finally{
+            await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+            await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like any(
+             array['function.lifecycle.shared.exceptionAdditions.%','function.lifecycle.shared.exceptionRemovals.%','function.lifecycle.shared.retainedProvision.%'])`;
+        }
+    });
     it('uses the real V9 projection and actual workload limits for a newly added exception',async()=>{
         const row=await prepared();await(await import('../packs/lifecycle/service')).v9Setup(admin);
         const context=await onboardingContext(admin),config=structuredClone(context.config);config.groups.find(group=>group.id==='group-tech')!.members=[tech.userId!,other.userId!];config.groups.find(group=>group.id==='group-tech')!.limit=1;config.catalogue.push({id:'v9-exception',name:'Fictional V9 provision',type:'system',active:true,rules:{},workflow:null,team:'group-tech',card:false});await onboardingSaveConfig(admin,context.revision,config);

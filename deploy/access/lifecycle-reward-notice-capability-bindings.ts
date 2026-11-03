@@ -120,3 +120,17 @@ export const LIFECYCLE_DELIVERY_CAPABILITY_PUBLICATIONS=[
   requiredFunctions:['app.lifecycle_delivery_bindings_complete()','app.onboarding_approval_assign(uuid,integer,text,text,text)'],
  },
 ] as const;
+
+export const LIFECYCLE_ASSIGNED_EXCEPTION_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LIFECYCLE_EXCEPTION_FUNCTIONS.filter(descriptor=>descriptor.course==='assigned'),
+ functionLegacyParityFunction:'app.lifecycle_exception_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.lifecycle_exception_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.lifecycle_delivery_bindings_complete()',
+  'app.onboarding_exception_native_allowed(uuid,uuid,uuid,text,text,boolean)',
+  'app.onboarding_exception_task_rows()',
+  'app.onboarding_exception_update(uuid,integer,text,jsonb)',
+ ],
+} as const;
