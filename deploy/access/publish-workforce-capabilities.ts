@@ -117,7 +117,10 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
   const rows=await tx<CapabilityRow[]>`select id,scope,supported,bindings,prerequisites from public.access_capability
    where id=any(${WORKFORCE_CAPABILITY_BINDINGS.map(item=>item.id)}::text[]) order by id for update`;
   requireInstallation(rows.length===WORKFORCE_CAPABILITY_BINDINGS.length);
-  const expected=[...WORKFORCE_CAPABILITY_BINDINGS].sort((a,b)=>a.id.localeCompare(b.id));
+  // Lock in database order, then compare both inventories in the same application order.
+  const byId=(a:{id:string},b:{id:string})=>a.id<b.id?-1:a.id>b.id?1:0;
+  rows.sort(byId);
+  const expected=[...WORKFORCE_CAPABILITY_BINDINGS].sort(byId);
   requireInstallation(rows.every((row,index)=>row.id===expected[index].id&&row.scope===expected[index].scope&&JSON.stringify(row.prerequisites)===JSON.stringify(expected[index].prerequisites??[])));
   for(const domain of domains){
    for(const descriptor of domain.functions??[]){
