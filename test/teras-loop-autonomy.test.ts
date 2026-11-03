@@ -387,6 +387,8 @@ describe('undo',()=>{
   // The loop carried the undo out at the employee's request, under its sponsor's mandate: said on the correction and its events.
   expect(await correctionAttribution(undo.compensationRef)).toEqual({principal:principalId,worker:LOOP,action:a1.id,sponsor:group.userId,asked:'employee',asker:e1.userId});
   const undoLabel='AI Centre loop (missed clock-outs), at the request of Fictional Early One (the employee), sponsored by Fictional Group Administrator';
+  // The raw clock data names the loop, not the sponsor whose authority it used, as who removed the clocking.
+  expect(raw.rows.filter(row=>row.voidedAt).map(row=>row.voidedBy)).toEqual([undoLabel]);
   for(const item of await correctionEvents(undo.compensationRef)){
    expect([item.eventType,item.actorType,item.actorId]).toEqual([item.eventType,'agent',principalId]);
    expect((item.payload as Attributed).agentAttribution).toMatchObject({askedBy:'employee',askedByUserId:e1.userId,sponsorUserId:group.userId,label:undoLabel});
@@ -407,6 +409,8 @@ describe('undo',()=>{
   const hrUndo=(await undosOf()).find(row=>row.actionId===a2.id)!;
   expect(hrUndo).toMatchObject({undoneBy:'hr',undoneByUserId:scoped.userId});
   expect(await correctionAttribution(hrUndo.compensationRef)).toEqual({principal:principalId,worker:LOOP,action:a2.id,sponsor:group.userId,asked:'hr',asker:scoped.userId});
+  expect((await attendanceClockData(adminCtx(b),e2.employmentId,EARLIER)).rows.filter(row=>row.voidedAt).map(row=>row.voidedBy))
+   .toEqual(['AI Centre loop (missed clock-outs), at the request of Fictional Company Administrator (HR), sponsored by Fictional Group Administrator']);
   expect(await clockOutOn(e2.employmentId,EARLIER)).toBeNull();
   // The undo row is append-only.
   expect(await failure(owner.db.update(terasLoopActionUndo).set({undoneBy:'hr'}).where(eq(terasLoopActionUndo.actionId,a1.id)))).toMatch(/append-only/);
@@ -449,6 +453,10 @@ describe('automatic demotion',()=>{
   const entries=raw.rows.filter(row=>!row.voidedAt).map(row=>row.direction==='out'?{punchAt:'19:10',direction:'out' as const}:{id:row.id,punchAt:row.punchAt,direction:row.direction});
   const {correctionId}=await requestAttendanceCorrection(adminCtx(b),{employmentId:e2.employmentId,date:EARLIER,reason:'Fictional: left at 19:10',clockChanges:{version:1,baseline:raw.baseline,entries}});
   await decideAttendanceCorrection(adminCtx(b),{correctionId,decision:'approved'});
+  // A clocking a person removed keeps the person, not a loop.
+  const removed=(await attendanceClockData(adminCtx(b),e2.employmentId,EARLIER)).rows.filter(row=>row.voidedAt);
+  expect(removed.map(row=>row.punchAt)).toEqual(['18:00:00']);
+  expect(removed[0].voidedBy).not.toMatch(/AI Centre loop/);
   // The employee undoes the other.
   const a1=(await actionFor(e1.employmentId))!;
   expect(await undoLoopAction(e1,{actionId:a1.id,confirm:true})).toMatchObject({kind:'undone'});
@@ -712,5 +720,78 @@ describe('limits after a promotion',()=>{
   expect((await readLoopCards(twice,{scopeIds:[],admin:false})).map(card=>card.kind)).toEqual(['clockOut']);
   expect((await readLoopCards(group,{scopeIds:[b.companyId],admin:true})).find(card=>card.kind==='leftAlone')).toMatchObject({count:1,
    items:[{personName:'Fictional Two Clockings',date:EARLIER,reason:'condition_other_clocking'}]});
+ });
+});
+
+describe('the guards a fix never crosses',()=>{
+ const punchesOf=async(employmentId:string)=>(await owner.db.select().from(schema.attendancePunch).where(and(eq(schema.attendancePunch.employmentId,employmentId),
+  eq(schema.attendancePunch.attendanceDate,EARLIER)))).map(row=>[row.punchAt,row.direction,row.voidedAt===null]);
+ const correctionsOf=(employmentId:string)=>owner.db.select({id:schema.attendanceCorrection.id}).from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.employmentId,employmentId));
+ const overtimeOf=async(employmentId:string)=>(await owner.db.select({ot:schema.attendance.otMinutes}).from(schema.attendance)
+  .where(and(eq(schema.attendance.employmentId,employmentId),eq(schema.attendance.attendanceDate,EARLIER))))[0]?.ot??null;
+ const noticesOf=(employmentId:string)=>owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent)
+  .where(and(eq(schema.domainEvent.eventType,'teras-loop.action.applied'),eq(schema.domainEvent.subjectEmploymentId,employmentId)));
+
+ it('refuses a fix that would grow the day\'s overtime as the owner recomputes it: nothing is written and the card stays with the person; a fix that adds none is kept',async()=>{
+  // A fictional holiday worked on the 09:00–18:00 roster: every minute worked that day is overtime, so the roster-end
+  // clock-out would create about eight hours of it. HR marked the day before the clock-in, so the day type is frozen.
+  const holiday=await login(b,'Fictional Holiday Worker','employee');
+  await assignDefaultShift(adminCtx(b),{employmentId:holiday.employmentId,shiftId:shift});
+  await owner.db.insert(schema.attendanceDayAdjustment).values({tenantId:b.tenantId,employmentId:holiday.employmentId,attendanceDate:EARLIER,dayKind:'holiday',
+   reason:'Fictional company holiday worked',updatedBy:'fixture'});
+  await checkIn(adminCtx(b),{employmentId:holiday.employmentId,date:EARLIER,time:'09:02',manual:true});
+  const workday=await clockedIn('Fictional Workday Worker',EARLIER);
+  await on();
+  await certify(b.companyId,workday.employmentId);
+  await promote(b.companyId,{maxActionsPerNight:50,undoDays:3,condition:'roster_end'});
+  const punchesBefore=await punchesOf(holiday.employmentId),overtimeBefore=await overtimeOf(holiday.employmentId);
+  expect(punchesBefore).toEqual([['09:02:00','in',true]]);
+  expect(overtimeBefore??0).toBe(0);
+  expect(await run()).toMatchObject({status:'ran'});
+  const actions=await actionsOf();
+  const refused=actions.find(row=>row.employmentId===holiday.employmentId)!;
+  expect(refused).toMatchObject({state:'not_applied',reason:'would_create_overtime',ownerRef:null,appliedAt:null});
+  // Every condition held; the owner's own recomputation is what refused it, and the whole attempt rolled back.
+  expect(refused.checks).toEqual(expect.arrayContaining([expect.objectContaining({check:'no_approved_leave',result:'pass'}),
+   expect.objectContaining({check:'no_other_clocking',result:'pass'})]));
+  expect(await punchesOf(holiday.employmentId)).toEqual(punchesBefore);
+  expect(await correctionsOf(holiday.employmentId)).toEqual([]);
+  expect(await overtimeOf(holiday.employmentId)).toBe(overtimeBefore);
+  expect(await clockOutOn(holiday.employmentId,EARLIER)).toBeNull();
+  expect(await noticesOf(holiday.employmentId)).toEqual([]);
+  // The card stays with the person, and HR sees why the loop left it.
+  expect(await caseOf(holiday.employmentId,EARLIER)).toMatchObject({state:'open'});
+  expect((await readLoopCards(holiday,{scopeIds:[],admin:false})).map(card=>card.kind)).toEqual(['clockOut']);
+  expect((await readLoopCards(group,{scopeIds:[b.companyId],admin:true})).find(card=>card.kind==='leftAlone')).toMatchObject({count:1,
+   items:[{personName:'Fictional Holiday Worker',date:EARLIER,reason:'would_create_overtime'}]});
+  // The workday fix ends exactly at the roster end, adds no overtime, and is kept.
+  expect(actions.find(row=>row.employmentId===workday.employmentId)).toMatchObject({state:'applied',reason:null});
+  expect(await clockOutOn(workday.employmentId,EARLIER)).toBe('18:00:00');
+  expect(await overtimeOf(workday.employmentId)).toBe(0);
+  expect(await noticesOf(workday.employmentId)).toHaveLength(1);
+  // The next night does not try the refused day again.
+  await run();
+  expect((await actionsOf()).filter(row=>row.employmentId===holiday.employmentId)).toHaveLength(1);
+  expect(await punchesOf(holiday.employmentId)).toEqual(punchesBefore);
+ });
+
+ it('never fixes its sponsor\'s own day: the loop refuses before the owner\'s self-approval rule, which a super administrator would pass',async()=>{
+  await assignDefaultShift(adminCtx(b),{employmentId:group.employmentId,shiftId:shift});
+  await checkIn(adminCtx(b),{employmentId:group.employmentId,date:EARLIER,time:'09:02',manual:true});
+  const other=await clockedIn('Fictional Colleague',EARLIER);
+  await on();
+  await certify(b.companyId,other.employmentId);
+  await promote(b.companyId,{maxActionsPerNight:50,undoDays:3,condition:'roster_end'});
+  await run();
+  const actions=await actionsOf();
+  expect(actions.find(row=>row.employmentId===group.employmentId)).toMatchObject({state:'not_applied',reason:'condition_sponsor_self',ownerRef:null});
+  expect(await punchesOf(group.employmentId)).toEqual([['09:02:00','in',true]]);
+  expect(await correctionsOf(group.employmentId)).toEqual([]);
+  expect(actions.find(row=>row.employmentId===other.employmentId)).toMatchObject({state:'applied'});
+  // The decision the owner records for the colleague's fix is under the sponsor's own employment (the mandate holder),
+  // which the database's decider guard requires of the session; the correction itself names the loop.
+  const [decided]=await owner.db.select({by:schema.attendanceCorrection.decidedByEmploymentId}).from(schema.attendanceCorrection)
+   .where(eq(schema.attendanceCorrection.id,actions.find(row=>row.employmentId===other.employmentId)!.ownerRef!));
+  expect(decided.by).toBe(group.employmentId);
  });
 });
