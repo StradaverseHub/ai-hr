@@ -78918,6 +78918,15 @@
     },
     {
       "table": "lc_onboarding_case_revision",
+      "policy": "lifecycle_administrative_read",
+      "source": "db/migrations/1007_lifecycle_onboarding_administration_boundary.sql",
+      "owners": [
+        "app.is_admin_for",
+        "app.lifecycle_reward_notice_action"
+      ]
+    },
+    {
+      "table": "lc_onboarding_case_revision",
       "policy": "onb_revision_insert",
       "source": "db/migrations/0564_onboarding_v31.sql",
       "owners": [
@@ -78951,6 +78960,15 @@
       "source": "db/migrations/0955_lifecycle_rewards_notice_actions.sql",
       "owners": [
         "app.onboarding_data_subject_read"
+      ]
+    },
+    {
+      "table": "lc_onboarding_case",
+      "policy": "lifecycle_administrative_read",
+      "source": "db/migrations/1007_lifecycle_onboarding_administration_boundary.sql",
+      "owners": [
+        "app.is_admin_for",
+        "app.lifecycle_reward_notice_action"
       ]
     },
     {
@@ -79185,6 +79203,14 @@
     },
     {
       "table": "lc_onboarding_private_revision",
+      "policy": "lifecycle_administrative_read",
+      "source": "db/migrations/1007_lifecycle_onboarding_administration_boundary.sql",
+      "owners": [
+        "app.lifecycle_reward_notice_action"
+      ]
+    },
+    {
+      "table": "lc_onboarding_private_revision",
       "policy": "onb_private_revision_insert",
       "source": "db/migrations/0564_onboarding_v31.sql",
       "owners": [
@@ -79207,6 +79233,14 @@
       "source": "db/migrations/0955_lifecycle_rewards_notice_actions.sql",
       "owners": [
         "app.onboarding_data_subject_read"
+      ]
+    },
+    {
+      "table": "lc_onboarding_private",
+      "policy": "lifecycle_administrative_read",
+      "source": "db/migrations/1007_lifecycle_onboarding_administration_boundary.sql",
+      "owners": [
+        "app.lifecycle_reward_notice_action"
       ]
     },
     {

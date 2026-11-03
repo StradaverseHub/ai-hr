@@ -628,17 +628,18 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_entry_save_command(${unitId}::uuid,${afterUnit.revision},${entry.id}::uuid,${JSON.stringify(rec)}::jsonb)`))).rejects.toThrow();await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_facts_import_command(${unitId}::uuid,${afterUnit.revision},${JSON.stringify([{employmentId,facts}])}::jsonb)`))).rejects.toThrow();
   });
   it('routes published entry and facts commands through the fixed SQL ports',async()=>{
-    const before=await view(),entry=before.rows[0],entryEdit='function.rewards.entries.edit',factsEdit='function.rewards.facts.edit';
+    const before=await view(),entry=before.rows[0];
+    const capabilities=['entries','facts'].flatMap(key=>['view','edit'].map(operation=>`function.rewards.${key}.${operation}`));
     const recommendation={...entry.recommendation,reason:'Reviewed entry command'};
     const facts={...entry.facts,talent:'STAR' as const};
     try{
       await expectPgRefusal(withTenant(admin,tx=>tx.execute(sql`select app.reward_save_entry(
         ${unitId}::uuid,${before.unit.revision},${entry.id}::uuid,${JSON.stringify(recommendation)}::jsonb)`)),
         '42501','Reward entry command unavailable');
-      await owner.client`insert into app.access_native_capability_default(capability_id,parity_function,current_parity_function)
-        select id,'app.rewards_function_legacy_allowed','app.rewards_function_current_legacy_allowed'
-        from access_capability where id in (${entryEdit},${factsEdit})`;
-      await owner.client`update access_capability set supported=true where id in (${entryEdit},${factsEdit})`;
+      expect(await publishActionCapabilityPackage(owner.client,'rewards_entries')).toMatchObject({changed:true,capabilities:4});
+      expect(await publishActionCapabilityPackage(owner.client,'rewards_entries')).toMatchObject({changed:false});
+      await expectPgRefusal(withTenant(admin,tx=>tx.execute(sql`update reward_entry set facts=${JSON.stringify(facts)}::jsonb
+        where id=${entry.id}::uuid`)),'42501','Published Reward entry changes require their fixed command');
       await saveRewardEntry(admin,unitId,before.unit.revision,entry.id,recommendation);
       const effect=(course:string)=>owner.client`select course from app.reward_entry_native_effect where unit_id=${unitId}::uuid and completed and course=${course}`;
       expect(await effect('save')).toEqual([{course:'save'}]);
@@ -650,8 +651,8 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
       expect(imported.unit.revision).toBe(before.unit.revision+2);
       expect(await effect('facts')).toEqual([{course:'facts'}]);
     }finally{
-      await owner.client`update access_capability set supported=false where id in (${entryEdit},${factsEdit})`;
-      await owner.client`delete from app.access_native_capability_default where capability_id in (${entryEdit},${factsEdit})`;
+      await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${capabilities}::text[])`;
+      await owner.client`delete from app.access_native_capability_default where capability_id=any(${capabilities}::text[])`;
     }
   });
   it('enforces exact entry and decision denials on direct writes while leaving review readable',async()=>{

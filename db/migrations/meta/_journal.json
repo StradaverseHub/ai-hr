@@ -4978,6 +4978,13 @@
       "when": 1793330000407,
       "tag": "1007_lifecycle_onboarding_administration_boundary",
       "breakpoints": true
+    },
+    {
+      "idx": 855,
+      "version": "7",
+      "when": 1793330000408,
+      "tag": "1008_rewards_entry_native_write_boundary",
+      "breakpoints": true
     }
   ]
 }

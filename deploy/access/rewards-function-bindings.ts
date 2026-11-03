@@ -23,7 +23,8 @@ export const REWARDS_FUNCTIONS:readonly FunctionActionDescriptor[]=[
   ]}]},
  ...(['entries','facts']as const).map(course=>({key:`rewards.${course}`,scope:'company' as const,moduleKey:'rewards',labelKey:course==='entries'?'rewards.recommendation':'rewards.import',kind:'native_acl' as const,course:'assigned' as const,screenKey:'rewards',href:'/rewards',employeeBearing:false,
   actions:(['view','edit']as const).map(operation=>({operation,parentCapability:null,delegationFloorFunction:'app.rewards_function_legacy_allowed',bindings:[
-   {owner:course==='entries'?'app.reward_entry_save_command':'app.reward_facts_import_command',operation:course==='entries'?'fixed-entry-save':'fixed-atomic-facts-import'},
+   {owner:course==='entries'?'app.reward_save_entry':'app.reward_import_facts',operation:course==='entries'?'fixed-entry-save':'fixed-atomic-facts-import'},
+   {owner:'app.reward_entry_published_write_guard',operation:'exact-fixed-source-write-admission'},
    {owner:'app.reward_entry_prepare_source',operation:'locked-native-OLD-and-proposed-subject'},
    {owner:'app.reward_entry_native',operation:'exact-entry-unit-fixed-audit'},
    {owner:'app.reward_entry_native_assert',operation:'native-course-physical-receipts-authority-audit'},
@@ -120,5 +121,19 @@ export const REWARDS_READ_CAPABILITY_PUBLICATION={
   'app.reward_offcycle_calculation(uuid,integer)',
   'app.reward_configuration_review(uuid)',
   'app.reward_governance_review(uuid)',
+ ],
+} as const;
+
+export const REWARDS_ENTRY_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:REWARDS_FUNCTIONS.filter(descriptor=>descriptor.key==='rewards.entries'||descriptor.key==='rewards.facts'),
+ functionLegacyParityFunction:REWARDS_FUNCTION_DEFAULTS.pure,
+ functionCurrentLegacyParityFunction:REWARDS_FUNCTION_DEFAULTS.current,
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.rewards_entry_bindings_complete()',
+  'app.reward_save_entry(uuid,integer,uuid,jsonb,jsonb)',
+  'app.reward_import_facts(uuid,integer,jsonb)',
+  'app.reward_entry_published_write_guard()',
  ],
 } as const;
