@@ -64,7 +64,9 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** AI v2 W2 (slice 3): an assigned claim or attendance request the caller decides in chat (./entities-decisions.ts). */
  |'claim_approval_item'|'attendance_approval_item'
  /** AI v2 slice 3 (issue 16b): an import prepared in chat from an attached file (./entities-imports.ts). */
- |'chat_import';
+ |'chat_import'
+ /** AI v2 W8: the loops overview, for administrators (./entities-loops.ts). */
+ |'loop_overview';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;

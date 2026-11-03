@@ -75,6 +75,22 @@ export async function loopsOverview(ctx:SessionContext,options:Readonly<{now?:Da
  });
 }
 
+/** Per loop, the names of the companies the viewer administers where it is paused (AI Centre's loops overview read,
+ * core/semantic-model/entities-loops.ts). Administrators only; read under the viewer's row-level security and
+ * app.is_admin_for, so an HR administrator of one company sees that company's pauses only. Company names only. */
+export async function loopPausedCompanies(ctx:SessionContext):Promise<Readonly<Record<LoopId,readonly string[]>>>{
+ requireAdmin(ctx);
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.select({workerId:terasLoopPause.workerId,name:company.legalName}).from(terasLoopPause)
+   .innerJoin(company,and(eq(company.id,terasLoopPause.companyId),eq(company.tenantId,terasLoopPause.tenantId)))
+   .where(and(eq(terasLoopPause.tenantId,ctx.tenantId),eq(terasLoopPause.paused,true),sql`app.is_admin_for(${terasLoopPause.companyId})`))
+   .orderBy(company.legalName,company.id);
+  const out=Object.fromEntries(LOOP_IDS.map(id=>[id,[] as string[]])) as Record<LoopId,string[]>;
+  for(const row of rows)if(isLoopId(row.workerId))out[row.workerId].push(row.name);
+  return Object.freeze(Object.fromEntries(LOOP_IDS.map(id=>[id,Object.freeze(out[id])])) as Record<LoopId,readonly string[]>);
+ });
+}
+
 export type LoopCompanyPause=Readonly<{companyId:string;companyName:string;paused:boolean}>;
 export type LoopRunView=Readonly<{at:Date;companyName:string|null;status:LoopRunStatus;observed:number;opened:number;reopened:number;closed:number;openNow:number;waitingNow:number;capped:boolean}>;
 export type LoopCaseView=Readonly<{id:string;openedAt:Date;closedAt:Date|null;personName:string|null;companyName:string|null;state:LoopCaseState;

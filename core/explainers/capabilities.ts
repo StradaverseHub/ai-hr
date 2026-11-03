@@ -20,6 +20,7 @@ import {provenance,refuse,type ExplainerOutcome} from './outcome';
 import {explainOwnPayslipStatutory} from './statutory';
 import {explainOwnPayDifference} from './pay-difference';
 import {explainOwnClaimLimit} from './claim-limit';
+import {LoopViewRefused,loopPausedCompanies,loopsOverview} from '../loops/views';
 
 export type TerasCapabilityScope=Readonly<{companyId:string;locale?:string}>;
 export type TerasCapability=Readonly<{name:string;module:string|null;admin:boolean;
@@ -56,6 +57,20 @@ async function workforceAggregates(ctx:SessionContext,input:Record<string,unknow
   provenance:provenance('core/workforce-metrics.ts#workforceMetrics','Not applicable: counts and sums of recorded employment, attendance and leave figures, not a versioned rule.','/analytics',
    `Group figures only, counted by the workforce service; never one person. Groups under ${WORKFORCE_MINIMUM_GROUP} people, groups whose complement is under ${WORKFORCE_MINIMUM_GROUP}, groups whose members share one figure, and groups withheld to protect them are not shown.`)};
 }
+/** AI v2 W8: the loops overview as an administrator may ask about it: the owner's rows without the sponsor (a person),
+ * the window counts or the correction rate, plus where each loop is paused. Every figure is still disclosed as a band
+ * and restored for the person; the owner refuses anyone but an administrator. */
+async function loopsStatus(ctx:SessionContext):Promise<ExplainerOutcome>{
+ try{
+  const overview=await loopsOverview(ctx),paused=await loopPausedCompanies(ctx);
+  return{ok:true,canSwitch:overview.canSwitch,
+   loops:overview.rows.map(row=>({loop:row.id,level:row.level,on:row.on,stopped:row.stopped,running:row.running,
+    lastRun:row.lastRun?{at:row.lastRun.at.toISOString(),status:row.lastRun.status,capped:row.lastRun.capped}:null,
+    openNow:row.openNow,waitingNow:row.waitingNow,pausedIn:paused[row.id].map(company=>({company}))})),
+   provenance:provenance('core/loops/views.ts#loopsOverview','Not applicable: switches, pauses and card counts, not a versioned rule.','/control-tower/loops',
+    'Counts and states only, read under the administrator\'s own access: never who a card is for, who switched a loop on, or a figure from pay. Loops are switched on or off and paused on the Loops page.')};
+ }catch(error){if(error instanceof LoopViewRefused)return refuse('not_permitted','The loops overview is available to administrators only.');throw error;}
+}
 export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'explain_payslip_statutory',module:'payroll',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnPayslipStatutory(ctx,{period:text(input.period),item:text(input.item)})},
  {name:'explain_leave_entitlement',module:'leave',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnLeaveEntitlement(ctx,{leave_type:text(input.leave_type),as_of:text(input.as_of)})},
@@ -66,6 +81,8 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  // AI v2 W5: "Why?" on the pay difference and the claim limits, under the explainers worker switch like the three above.
  {name:'explain_pay_difference',module:'payroll',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnPayDifference(ctx,{period:text(input.period),compare_to:text(input.compare_to)})},
  {name:'explain_claim_limit',module:'claims',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnClaimLimit(ctx,{claim_type:text(input.claim_type)})},
+ // AI v2 W8: the loops overview, administrators only (core/semantic-model/entities-loops.ts).
+ {name:'loops_overview',module:null,admin:true,worker:null,run:ctx=>loopsStatus(ctx)},
 ]);
 /** Capabilities this caller may be offered. A capability that belongs to a worker is offered only while that worker's
  * run gate is open (registered, switched on, tenant not stopped), read once per call in the caller's tenant. */

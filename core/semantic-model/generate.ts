@@ -19,6 +19,7 @@ import {METRIC_ENTITIES,METRIC_READS} from './entities-metrics';
 import {CATALOGUE_ENTITIES} from './entities-catalogue';
 import {IMPORT_ENTITIES} from './entities-imports';
 import {WHY_ENTITIES,WHY_READS} from './entities-why';
+import {LOOP_ENTITIES,LOOP_READS} from './entities-loops';
 
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 const object=(properties:Record<string,unknown>,required:string[]=Object.keys(properties)):AiJsonSchema=>({type:'object',properties,required,additionalProperties:false});
@@ -115,13 +116,14 @@ export function terasEntities():readonly SemanticEntity[]{
  // AI v2 W1 appends the capability catalogue (./entities-catalogue.ts), disclosed for the harness's product_capabilities.
  // AI v2 W5 appends the pay difference and claim limit explainers (./entities-why.ts).
  // AI v2 slice 3 appends the chat import (./entities-imports.ts), disclosed for the harness's prepare_import.
- terasModel??=freeze([...SEMANTIC_ENTITIES,...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...RECOMMEND_ENTITIES,...METRIC_ENTITIES,...CATALOGUE_ENTITIES,...WHY_ENTITIES,...IMPORT_ENTITIES]);
+ // AI v2 W8 appends the loops overview (./entities-loops.ts), for administrators.
+ terasModel??=freeze([...SEMANTIC_ENTITIES,...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...RECOMMEND_ENTITIES,...METRIC_ENTITIES,...CATALOGUE_ENTITIES,...WHY_ENTITIES,...IMPORT_ENTITIES,...LOOP_ENTITIES]);
  return terasModel;
 }
 export const terasEntity=(id:EntityId):SemanticEntity=>{const entity=terasEntities().find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};
 /** The step 4 capabilities and the governed pay averages (issue 13b): harness-only reads, never in the production catalogue. */
-// AI v2 W5 appends the pay difference and claim limit explainers.
-export const TERAS_READS:readonly SemanticRead[]=Object.freeze([...EXPLAIN_READS,...SETUP_READS,...METRIC_READS,...WHY_READS]);
+// AI v2 W5 appends the pay difference and claim limit explainers; AI v2 W8 the loops overview.
+export const TERAS_READS:readonly SemanticRead[]=Object.freeze([...EXPLAIN_READS,...SETUP_READS,...METRIC_READS,...WHY_READS,...LOOP_READS]);
 let terasSpecs:readonly AiToolSpec[]|undefined;
 export function terasToolSpecs():readonly AiToolSpec[]{
  terasSpecs??=freeze(TERAS_READS.map(read=>({name:read.name,description:describe(read,terasEntity(read.entity)),inputSchema:inputSchema(read)})));
