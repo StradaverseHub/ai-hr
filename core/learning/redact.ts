@@ -112,7 +112,7 @@ export function redact(input:string,options:Readonly<{knownNames?:readonly strin
   const lower=word.toLowerCase().replace(/['’]s$/,'');
   if(startsSentence||KEEP.has(lower)||HONORIFICS.has(lower)||/^\p{Lu}{2,6}$/u.test(word))return whole;
   if(!/\p{Script=Latin}/u.test(word))return whole;
-  return before+replaceAll(word,'NAME',/.+/su,numbers,counts);
+  return before+replaceAll(word,'NAME',/^[\s\S]+$/u,numbers,counts);
  });
  // A first and a last name stay two placeholders ("{{NAME_A}} {{NAME_B}}"): each was a word.
  text=text.replace(SENTINEL,(_,slot:string)=>{const item=numbers.table[slot.charCodeAt(0)-0xE100];return `{{${item.kind}_${placeholderLetters(item.n)}}}`;})

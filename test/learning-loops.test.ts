@@ -25,6 +25,9 @@ import {aiQuality} from '../core/learning/quality';
 import {candidateExportFile,markCandidateExported,moveCandidate,promoteGap,promoteSignal,editCandidate,reviewSignal,setGapStatus} from '../core/learning/review';
 import {decideLoopProposal,revertLoopProposal} from '../core/learning/proposals';
 import type {GapTurn} from '../core/learning/gaps';
+import {ASSISTANT_TURN_IDENTITY,RECOMMENDER_IDENTITY} from '../core/learning/capture';
+import {ASSISTANT_AGENT_IDENTITY} from '../core/harness/trace-persistence';
+import {RECOMMENDER_AGENT_IDENTITY} from '../core/recommenders/leave-decision';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 const DAY=86_400_000;
@@ -90,6 +93,10 @@ beforeEach(async()=>{
 });
 
 describe('capturing what people did',()=>{
+ it('learns from the agent identities the turn and the recommender write',()=>{
+  expect([ASSISTANT_TURN_IDENTITY,RECOMMENDER_IDENTITY]).toEqual([ASSISTANT_AGENT_IDENTITY,RECOMMENDER_AGENT_IDENTITY]);
+ });
+
  it('records a card\'s Confirm, Edit and Discard once each, for the person\'s own turn',async()=>{
   const record=await turnRecord(employee);
   const [confirmed,edited,discarded]=[card(employee),card(employee,'attendance.correction.request'),card(employee,'claims.submit')];
@@ -314,7 +321,9 @@ describe('reviewing corrections and eval candidates',()=>{
   await expect(moveCandidate(scoped,{candidateId:row.id,version:2},'approve')).rejects.toMatchObject({reason:'not_found'});
   expect(await moveCandidate(group,{candidateId:row.id,version:2},'approve')).toMatchObject({version:3,state:'approved'});
   // Approved text is fixed: the database refuses a change that is not a draft's, or by anyone but the current administrator.
-  await refusedWith(withTenant(group,tx=>tx.update(terasEvalCandidate).set({question:'Something else',version:4,changedByUserId:group.userId}).where(eq(terasEvalCandidate.id,row.id))),/only while it is a draft/i);
+  await refusedWith(withTenant(group,tx=>tx.update(terasEvalCandidate).set({question:'Something else',version:4,changedByUserId:group.userId}).where(eq(terasEvalCandidate.id,row.id))),/state approved cannot become approved/i);
+  await refusedWith(withTenant(group,tx=>tx.update(terasEvalCandidate).set({state:'draft',question:'Something else',version:4,changedByUserId:group.userId,approvedByUserId:null,approvedAt:null})
+   .where(eq(terasEvalCandidate.id,row.id))),/only while it is a draft/i);
   expect(await markCandidateExported(group,{candidateId:row.id})).toEqual({id:row.id,version:4});
   const file=await candidateExportFile(group,{candidateId:row.id});
   expect(file.text).toContain("question:'Can Siti Fictional Wei Fictional claim parking from last Tuesday?',locale:'en',");
@@ -365,7 +374,7 @@ describe('the loops\' proposals',()=>{
    const caseId=randomUUID();
    await owner.db.execute(sql`insert into public.teras_loop_case (id,tenant_id,worker_id,company_id,employment_id,subject_key,recipient,state,close_reason,resolution,facts,
      first_opened_at,opened_at,checked_at,closed_at,opened_run_id,checked_run_id)
-    values (${caseId}::uuid,${b.tenantId}::uuid,'loop_salary_payroll',${b.companyId}::uuid,${employee.employmentId}::uuid,${`salaryrun:${randomUUID()}`},'payroll','closed','done','completed','{}'::jsonb,
+    values (${caseId}::uuid,${b.tenantId}::uuid,'loop_salary_payroll',${b.companyId}::uuid,null,${`salaryrun:${randomUUID()}`},'payroll','closed','done','completed','{}'::jsonb,
      now()-interval '5 days',now()-interval '5 days',now()-interval '4 days',now()-interval '4 days',${randomUUID()}::uuid,${randomUUID()}::uuid)`);
    await owner.db.execute(sql`insert into public.teras_payroll_swing_disposition (tenant_id,case_id,company_id,employment_id,pay_period,pattern,swing_bp,threshold_bp,disposition,decided_by_user_id,decided_at)
     values (${b.tenantId}::uuid,${caseId}::uuid,${b.companyId}::uuid,${employee.employmentId}::uuid,'2026-10','cause:salary_change',${swing},1500,'expected',${group.userId}::uuid,now()-interval '3 days')`);

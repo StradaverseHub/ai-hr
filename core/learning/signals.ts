@@ -17,38 +17,23 @@
  * proposal references, and the person's login for attribution (never shown; the page shows the role). A gap example is
  * the only text, redacted before it is written and kept for the tenant's "Keep chats for" window. Capture never changes a
  * reply, a card or a decision: every failure is swallowed by the callers and logged by kind only. */
-import {and,eq,sql} from 'drizzle-orm';
+import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
-import {terasOutcomeFollowup,terasOutcomeRecord} from '../../db/teras-schema';
-import {terasGapExample,terasGapOccurrence,terasLearningSignal} from '../../db/teras-learning-schema';
-import {hasTeamAccess,isAdmin,isGroupAdmin,isPayrollPartner} from '../../lib/authz-model';
+import {terasGapExample,terasGapOccurrence} from '../../db/teras-learning-schema';
 import {AGENT_ACTIONS} from '../../lib/ai/agent-action-registry';
 import {MODULE_AREA} from '../product-context/capability-catalogue';
 import {verifyProposal} from '../proposals/proposal';
-import {RECOMMENDER_AGENT_IDENTITY} from '../recommenders/leave-decision';
 import {SEMANTIC_ACTIONS} from '../semantic-model/entities';
 import {terasCapabilityRegistry} from '../semantic-model/generate';
-import {ASSISTANT_TURN_IDENTITY} from '../outcome-record/summary';
 import {gapKindOf,intentOf,type GapTurn} from './gaps';
 export {gapTurnOf} from './gaps';
 import {REDACTION_VERSION,looksRedacted,redact} from './redact';
-import {isCardSignal,isLearningLocale,type CardSignal,type LearningLocale,type LearningRole} from './types';
+import {isCardSignal,type CardSignal} from './types';
+import {ASSISTANT_TURN_IDENTITY,NOT_RECORDED,UUID,affected,capture,insertSignalTx,localeOf,ownRecordTx,person,roleBand,type SignalOutcome} from './capture';
+export {recordRecommendationSignal} from './recommendation-signal';
+export {roleBand,type SignalOutcome} from './capture';
 
-const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
-const person=(ctx:SessionContext):ctx is SessionContext&{userId:string}=>Boolean(ctx.userId)&&!ctx.agent;
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const EXAMPLE_MAX_CHARS=400;
-
-/** The role band a signal is recorded under: the eval set's roles. Group administrator first, then HR administrator, then
- * payroll, then manager; anyone else is an employee. */
-export function roleBand(ctx:SessionContext):LearningRole{
- if(isGroupAdmin(ctx))return 'group_admin';
- if(isAdmin(ctx))return 'hr_admin';
- if(isPayrollPartner(ctx))return 'payroll';
- if(hasTeamAccess(ctx))return 'manager';
- return 'employee';
-}
-const localeOf=(value:unknown):LearningLocale=>isLearningLocale(value)?value:'en';
 
 /** An action's product area, from the module the semantic model or the action registry declares for it. */
 export function actionArea(action:string):string{
@@ -61,29 +46,6 @@ function areasOfReads(reads:readonly {tool:string}[]):string[]{
  readAreas??=new Map(terasCapabilityRegistry().filter(row=>row.effect==='read'&&row.module).map(row=>[row.name,MODULE_AREA[row.module!]??'general']));
  return [...new Set(reads.map(read=>readAreas!.get(read.tool)).filter((area):area is string=>Boolean(area)&&area!=='general'))];
 }
-
-type OwnRecord=Readonly<{id:string;companyId:string;agentIdentity:string;reads:readonly {tool:string}[]}>;
-/** The caller's own open record of a person's run, by run id (a turn) or id. A record private to the asker, another
- * login's record (invisible under 0928) or one without a company is null. */
-async function ownRecordTx(tx:Tx,ctx:SessionContext&{userId:string},by:Readonly<{runId:string}|{id:string}>):Promise<OwnRecord|null>{
- const r=terasOutcomeRecord;
- const [row]=await tx.select({id:r.id,companyId:r.companyId,agentIdentity:r.agentIdentity,reads:r.reads,privateToAsker:r.privateToAsker,authorityKind:r.authorityKind,askedByUserId:r.askedByUserId})
-  .from(r).where(and(eq(r.tenantId,ctx.tenantId),'runId' in by?eq(r.runId,by.runId):eq(r.id,by.id))).limit(1);
- if(!row||row.privateToAsker||row.authorityKind!=='person'||row.askedByUserId!==ctx.userId||!row.companyId)return null;
- return Object.freeze({id:row.id,companyId:row.companyId,agentIdentity:row.agentIdentity,reads:row.reads});
-}
-
-/** Rows a statement without RETURNING wrote (postgres-js reports `count`). */
-const affected=(result:unknown)=>Number((result as {count?:unknown}|null)?.count??0);
-type SignalRow=typeof terasLearningSignal.$inferInsert;
-/** One signal per record and key: a repeat records nothing (the first stands). */
-async function insertSignalTx(tx:Tx,row:SignalRow):Promise<boolean>{
- const inserted=await tx.insert(terasLearningSignal).values(row).onConflictDoNothing().returning({id:terasLearningSignal.id});
- return inserted.length===1;
-}
-
-export type SignalOutcome=Readonly<{recorded:boolean}>;
-const NOT_RECORDED:SignalOutcome=Object.freeze({recorded:false});
 
 /** A prepared card's Confirm (unchanged), Edit or Discard, on the turn `turnId`. */
 export async function recordCardSignal(supplied:SessionContext,input:Readonly<{proposal:unknown;turnId:unknown;signal:unknown;locale?:unknown;now?:Date}>):Promise<SignalOutcome>{
@@ -111,22 +73,6 @@ export async function recordAnswerMark(supplied:SessionContext,input:Readonly<{t
   return {recorded:await insertSignalTx(tx,{tenantId:ctx.tenantId,companyId:record.companyId,recordId:record.id,signalKey:'answer',
    kind:helpful?'answer_helpful':'answer_unhelpful',action:'answer',area:areasOfReads(record.reads)[0]??'general',role:roleBand(ctx),locale:localeOf(input.locale),
    proposalId:null,byUserId:ctx.userId})};
- });
-}
-
-/** The approver decided against a recommendation: recorded only once the recommender's own follow-up says so. */
-export async function recordRecommendationSignal(supplied:SessionContext,input:Readonly<{recordId:unknown;locale?:unknown}>):Promise<SignalOutcome>{
- const ctx=capture(supplied);
- if(!person(ctx)||typeof input.recordId!=='string'||!UUID.test(input.recordId))return NOT_RECORDED;
- const recordId=input.recordId;
- return withTenant(ctx,async tx=>{
-  const record=await ownRecordTx(tx,ctx,{id:recordId});
-  if(!record||record.agentIdentity!==RECOMMENDER_AGENT_IDENTITY)return NOT_RECORDED;
-  const f=terasOutcomeFollowup;
-  const [rejected]=await tx.select({id:f.id}).from(f).where(and(eq(f.tenantId,ctx.tenantId),eq(f.recordId,record.id),eq(f.kind,'decision'),eq(f.decision,'rejected'))).limit(1);
-  if(!rejected)return NOT_RECORDED;
-  return {recorded:await insertSignalTx(tx,{tenantId:ctx.tenantId,companyId:record.companyId,recordId:record.id,signalKey:'recommendation',
-   kind:'recommendation_rejected',action:'approvals.leave.decide',area:'approvals',role:roleBand(ctx),locale:localeOf(input.locale),proposalId:null,byUserId:ctx.userId})};
  });
 }
 

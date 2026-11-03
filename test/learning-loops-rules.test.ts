@@ -211,12 +211,13 @@ describe('the boundaries the owner set',()=>{
  });
  it('learning reads and records only: it never writes the eval set, the harness, a guard, a permission or a disclosure rule',()=>{
   const files=readdirSync(join(root,'core/learning')).filter(name=>name.endsWith('.ts'));
-  expect(files.sort()).toEqual(['access.ts','export.ts','gaps.ts','proposals.ts','quality-math.ts','quality.ts','redact.ts','review.ts','signals.ts','types.ts']);
+  expect(files.sort()).toEqual(['access.ts','capture.ts','export.ts','gaps.ts','proposals.ts','quality-math.ts','quality.ts','recommendation-signal.ts','redact.ts','review.ts','signals.ts','types.ts']);
   for(const name of files){
    const text=readFileSync(join(root,'core/learning',name),'utf8').replace(/\/\*[\s\S]*?\*\//g,'').replace(/^\s*\/\/.*$/gm,'');
    expect(text,name).not.toMatch(/from ['"](?:node:)?(?:fs|child_process|net|http|https)['"]/);
    expect(text,name).not.toMatch(/core\/harness\/(?:spec|tools|runner)|request-gate|semantic-model\/(?:types|disclosure)|lib\/permissions|access-configuration|mandates\/job-types/);
-   expect(text,name).not.toMatch(/assistant-smart-eval-set/);
+   // It names the eval set's file in the export's own instructions, and never imports or writes it.
+   expect(text,name).not.toMatch(/from ['"][^'"]*assistant-smart-eval-set|writeFile|appendFile/);
    // Its only database writes are the learning tables and, through their owners, the payroll loop settings.
    for(const m of text.matchAll(/tx\.(?:insert|update|delete)\((\w+)\)/g))expect(['terasLearningSignal','terasGapOccurrence','terasGapExample','terasLearningSignalReview',
     'terasEvalCandidate','g','c','e','terasGapStatus'],`${name}: ${m[0]}`).toContain(m[1]);
