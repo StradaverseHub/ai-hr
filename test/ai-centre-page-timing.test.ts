@@ -1,6 +1,6 @@
 /** AI v2 R8 (where the seconds go): the server reads that run before AI Centre and Control Tower pages can paint, timed
  * one by one on fictional data. There is no browser lane in focused checks, so this times the page's own owners in the
- * page's own order with the page's own arguments (app/layout.tsx, app/assistant/page.tsx, app/assistant/centre/inbox.tsx,
+ * page's own order with the page's own arguments (app/layout.tsx, app/assistant/page.tsx, the retired Inbox,
  * app/control-tower/**), as the signed-in group administrator and as an employee. It does not time the session
  * resolution (getSession needs a request), React rendering, RSC serialisation or the network: those are named as not
  * measured in the findings.
@@ -108,7 +108,8 @@ const ask=(persona:'admin'|'employee'):Page=>({id:'assistant.ask.'+persona,perso
  {label:'listOwnAssistantChats',stage:3,deps:['conversationScope'],run:(ctx,got)=>listOwnAssistantChats(ctx,{},got.get('conversationScope') as string)},
  {label:'allowedModuleActionEntries',stage:4,deps:['loadAiWorkspace'],run:(ctx,got)=>allowedModuleActionEntries(ctx,(got.get('loadAiWorkspace') as Awaited<ReturnType<typeof loadAiWorkspace>>).jobModules)},
 ]});
-/** app/assistant/centre/inbox.tsx AiCentreInbox (the Inbox tab), and the streamed badge every other tab shows. */
+/** The retired AI Centre Inbox's reads (its component, app/assistant/centre/inbox.tsx, was removed in AI v2 Phase 1 slice 1;
+ * Today replaces it). Kept as the R8 baseline the speed findings were measured against. */
 const inbox=(persona:'admin'|'employee'):Page=>({id:'assistant.inbox.'+persona,persona,firstPaint:true,reads:[
  {label:'allowedCompanies',stage:0,run:ctx=>allowedCompanies(ctx)},
  {label:'scope',stage:1,deps:['allowedCompanies'],run:async(_ctx,got)=>getScopeIds((got.get('allowedCompanies') as {id:string}[]).map(row=>row.id))},

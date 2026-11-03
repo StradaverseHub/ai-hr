@@ -48,16 +48,6 @@ export function AiCentreTabs({ active, isAdmin }: { active: CentreTabKey; isAdmi
   );
 }
 
-/** A waiting count; nothing for zero. Used by the retired Inbox's streamed badge (app/assistant/centre/inbox.tsx). */
-export function InboxCount({ count, label }: { count: number; label: string }) {
-  if (count <= 0) return null;
-  return (
-    <span className="rounded-full bg-primary px-1.5 py-0.5 text-[0.6875rem] font-semibold leading-none tabular-nums text-primary-foreground">
-      <span aria-hidden>{count}</span><span className="sr-only">{label}</span>
-    </span>
-  );
-}
-
 /** The second tab row of Operations or Administration (approved mock-up, Operations.dc.html "Operations sections").
  * Links only, like the first row: every page keeps its own requireAdmin guard, and a payroll queue is offered only
  * while the tenant holds payroll, as its former sidebar row was. */

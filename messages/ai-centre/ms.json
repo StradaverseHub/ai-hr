@@ -206,7 +206,7 @@
       "mapLabel": "Lapisan AI: antara muka, harnes agentik, konteks dan pengetahuan, keupayaan HR dan sistem rekod HR, di atas asas kepercayaan dan tadbir urus.",
       "layers": {
         "interfaces": "Antara muka",
-        "interfacesHelp": "Sembang, sembang terapung, Peti masuk, halaman semakan",
+        "interfacesHelp": "Sembang, sembang terapung, Hari ini, halaman semakan",
         "harness": "Harnes agentik",
         "harnessHelp": "Menjalankan setiap giliran dalam had. Model bekerja di dalamnya.",
         "model": "Model",
@@ -298,7 +298,7 @@
       "walkthroughLink": "Ikuti satu permohonan melalui AI, langkah demi langkah",
       "figureCaption": "Pandangan terurai · seperti mekanisme jam tangan",
       "parts": {
-        "interfaces": "muka jam · sembang · peti masuk · halaman semakan",
+        "interfaces": "muka jam · sembang · Hari ini · halaman semakan",
         "harness": "eskapmen · satu langkah pada satu masa",
         "model": "roda imbangan · tidak memutuskan apa-apa",
         "context": "gelang kalendar · panduan · halaman · peranan anda",

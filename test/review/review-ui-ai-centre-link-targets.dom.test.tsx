@@ -2,7 +2,7 @@
  *
  * PASSING coverage test. Every fixed href the AI centre renders resolves to an app/<route>/page.tsx, and the
  * tab bar hides administrator tabs from non-administrators (the pages' own requireAdmin stays the gate).
- * Hrefs taken from: lib/ai-centre/centre-nav.ts (tabs, subnav via aiManagementHref), app/assistant/centre/inbox.tsx
+ * Hrefs taken from: lib/ai-centre/centre-nav.ts (tabs, subnav via aiManagementHref), the retired Inbox (removed; Today replaces it)
  * (findings), core/digest/daily-digest.ts (DIGEST_PAGES), delegated-jobs.tsx, review-shell.tsx,
  * worker-registry.tsx and app/control-tower/how-it-works/page.tsx (now the 308 to How it works). */
 import { existsSync } from 'node:fs';

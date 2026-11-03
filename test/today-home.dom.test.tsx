@@ -302,6 +302,37 @@ describe('Today keeps what the retired AI Centre Inbox showed',()=>{
   expect(view.container.querySelector('[data-recommendation]')).toBeNull();
   expect(recommendation.read).not.toHaveBeenCalled();
  });
+ // Moved from the retired Inbox's component tests (test/ai-centre-step5-evidence.dom.test.tsx), now asserted on Today.
+ it('names each failed rule with its version label and never a reject verdict, under its own row and focused',async()=>{
+  S.tasks=[{id:'lr-aminah',kind:'leave',subjectName:'Fictional Aminah',createdAt:'2026-11-02T02:00:00Z',linkPath:'/approvals?tab=leave&id=lr-aminah',companyId:'co-a'}];S.recommender=true;
+  recommendation.read.mockResolvedValueOnce({kind:'recommendation',verdict:'needs_review',failedRules:[{check:'balance_covers',blocking:true,version:{kind:'leave_type',version:3}},{check:'team_coverage',blocking:false,version:null}]} as never);
+  const view=await show(MANAGER,['co-a'],undefined,{recommend:'lr-aminah'});
+  const panel=view.container.querySelector('[data-recommendation]') as HTMLElement;
+  expect(panel.getAttribute('data-recommendation')).toBe('needs_review');
+  expect(within(panel).getByText('Needs your review')).toBeInTheDocument();
+  expect(within(panel).getByText('The balance does not cover the days requested')).toBeInTheDocument();
+  expect(within(panel).getByText('A leave rule would refuse this request as it stands.')).toBeInTheDocument();
+  expect(within(panel).getByText('Leave type rules, version 3')).toBeInTheDocument();
+  expect(within(panel).getByText('Team coverage on these dates')).toBeInTheDocument();
+  expect(within(panel).getAllByText(/version/)).toHaveLength(1);
+  expect(panel.textContent).not.toMatch(/reject/i);
+  // Advice only: the decision card beside it decides nothing here, and the panel opens under its own row with focus.
+  const row=panel.closest('li')!;
+  expect(row.getAttribute('data-today-task')).toBe('leave');
+  expect(row.querySelectorAll('[data-proposal-card] button, [data-proposal-card] form')).toHaveLength(0);
+  expect(row.querySelector('a[href="/approvals?tab=leave&id=lr-aminah&from=today"]')).not.toBeNull();
+  expect(panel.getAttribute('tabindex')).toBe('-1');
+  await new Promise(resolve=>setTimeout(resolve,0));expect(document.activeElement).toBe(panel);
+ });
+ // Moved from test/review/review-ui-ai-centre-inbox-digest (M10) and review-ui-ai-centre-inbox-payroll-off (M11).
+ it('sends nobody to a page they cannot open: no approvals link for an employee with nothing to approve, no payroll link without payroll',async()=>{
+  let view=await show(EMPLOYEE,['co-a']);
+  expect(view.container.querySelector('a[href^="/approvals"]')).toBeNull();
+  cleanup();
+  S.modules.delete('payroll');
+  view=await show(HR_ADMIN,['co-a']);
+  expect(view.container.querySelector('a[href^="/payroll"]')).toBeNull();
+ });
 });
 
 describe('Today for an HR administrator',()=>{

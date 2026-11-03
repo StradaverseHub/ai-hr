@@ -206,7 +206,7 @@
       "mapLabel": "AI 的各层：界面、智能体运行框架、上下文与知识、HR 能力以及 HR 记录系统，建立在信任与治理的基础之上。",
       "layers": {
         "interfaces": "界面",
-        "interfacesHelp": "对话、悬浮对话、收件箱、审核页面",
+        "interfacesHelp": "对话、悬浮对话、今日、审核页面",
         "harness": "智能体运行框架",
         "harnessHelp": "在限制范围内运行每一轮。模型在其中工作。",
         "model": "模型",
@@ -298,7 +298,7 @@
       "walkthroughLink": "一步步跟随一个申请走完 AI 流程",
       "figureCaption": "分解图 · 如同腕表机芯",
       "parts": {
-        "interfaces": "表盘 · 对话 · 收件箱 · 审核页面",
+        "interfaces": "表盘 · 对话 · 今日 · 审核页面",
         "harness": "擒纵机构 · 一次只走一步",
         "model": "摆轮 · 不做任何决定",
         "context": "日历圈 · 指南 · 页面 · 你的角色",

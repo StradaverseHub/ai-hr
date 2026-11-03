@@ -19637,7 +19637,7 @@
       },
       "historyPrivacy": {
         "title": "Your chat history",
-        "description": "Chat cleanup uses a 30-day retention period. You can clear your saved text now, even if Assistant access is turned off. Request counts and usage records remain; your HR records are unchanged.",
+        "description": "Saved chats are removed when your company's chat keeping period ends (30 days unless an administrator changes it). You can clear your saved text now, even if Assistant access is turned off. Request counts and usage records remain; your HR records are unchanged.",
         "clear": "Clear my chat text",
         "confirmTitle": "Clear your chat text?",
         "confirmBody": "Your saved chat text goes now and can't be brought back. Usage counts and your HR records stay as they are.",

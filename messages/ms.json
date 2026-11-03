@@ -19637,7 +19637,7 @@
       },
       "historyPrivacy": {
         "title": "Sejarah sembang anda",
-        "description": "Tempoh penyimpanan teks sembang ialah 30 hari. Anda boleh memadamnya sekarang walaupun akses Pembantu dimatikan. Bilangan permintaan dan rekod penggunaan kekal; rekod HR anda tidak berubah.",
+        "description": "Sembang yang disimpan dipadam apabila tempoh simpanan sembang syarikat anda tamat (30 hari melainkan pentadbir menukarnya). Anda boleh memadamnya sekarang walaupun akses Pembantu dimatikan. Bilangan permintaan dan rekod penggunaan kekal; rekod HR anda tidak berubah.",
         "clear": "Padam teks sembang saya",
         "confirmTitle": "Padam teks sembang anda?",
         "confirmBody": "Teks sembang tersimpan anda akan dipadam sekarang dan tidak boleh dipulihkan. Bilangan penggunaan dan rekod HR anda kekal seperti biasa.",

@@ -206,7 +206,7 @@
       "mapLabel": "Các lớp của AI: giao diện, bộ điều phối tác tử, ngữ cảnh và kiến thức, năng lực HR và hệ thống hồ sơ HR, trên nền tảng tin cậy và quản trị.",
       "layers": {
         "interfaces": "Giao diện",
-        "interfacesHelp": "Trò chuyện, trò chuyện nổi, Hộp thư công việc, trang xem xét",
+        "interfacesHelp": "Trò chuyện, trò chuyện nổi, Hôm nay, trang xem xét",
         "harness": "Bộ điều phối tác tử",
         "harnessHelp": "Chạy từng lượt trong giới hạn. Mô hình làm việc bên trong nó.",
         "model": "Mô hình",
@@ -298,7 +298,7 @@
       "walkthroughLink": "Theo dõi một yêu cầu đi qua AI, từng bước một",
       "figureCaption": "Hình tách lớp · như bộ máy đồng hồ",
       "parts": {
-        "interfaces": "mặt số · trò chuyện · hộp thư · trang xem xét",
+        "interfaces": "mặt số · trò chuyện · Hôm nay · trang xem xét",
         "harness": "bộ thoát · mỗi lần một bước",
         "model": "bánh xe cân bằng · không quyết định gì",
         "context": "vòng lịch · hướng dẫn · trang · vai trò của bạn",

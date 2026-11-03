@@ -206,7 +206,7 @@
       "mapLabel": "The AI's layers: interfaces, agentic harness, context and knowledge, HR capabilities and the HR system of record, on a foundation of trust and governance.",
       "layers": {
         "interfaces": "Interfaces",
-        "interfacesHelp": "Chat, floating chat, Inbox, review pages",
+        "interfacesHelp": "Chat, floating chat, Today, review pages",
         "harness": "Agentic harness",
         "harnessHelp": "Runs each turn within limits. The model works inside it.",
         "model": "Model",
@@ -298,7 +298,7 @@
       "walkthroughLink": "Follow a request through the AI, step by step",
       "figureCaption": "Exploded view · like a watch movement",
       "parts": {
-        "interfaces": "the dial · chat · inbox · review pages",
+        "interfaces": "the dial · chat · Today · review pages",
         "harness": "the escapement · one step at a time",
         "model": "the balance wheel · decides nothing",
         "context": "the calendar ring · guides · pages · your role",

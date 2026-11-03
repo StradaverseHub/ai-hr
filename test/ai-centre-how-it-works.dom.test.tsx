@@ -137,3 +137,26 @@ describe('How it works walkthrough', () => {
     expect(HOW_STEPS).toHaveLength(9);
   });
 });
+
+/** AI v2 Phase 1, slice 1: Today replaced the AI Centre Inbox, so How it works names Today among the surfaces, in each
+ * language with the word the launcher uses for it, and the retired Inbox's word no longer appears. Written out by hand. */
+describe('How it works names Today, not the retired Inbox', () => {
+  const LOCALES = [
+    { locale: 'en', base: {}, today: 'Today', inbox: /inbox/i },
+    { locale: 'ms', base: ms, today: 'Hari ini', inbox: /peti masuk/i },
+    { locale: 'zh', base: zh, today: '今日', inbox: /收件箱/ },
+    { locale: 'vi', base: viCopy, today: 'Hôm nay', inbox: /hộp thư/i },
+    { locale: 'ta', base: ta, today: 'இன்று', inbox: /உள்வரும் பெட்டி/ },
+    { locale: 'th', base: th, today: 'วันนี้', inbox: /กล่องงาน/ },
+  ] as const;
+  it.each(LOCALES)('$locale', ({ locale, base, today, inbox }) => {
+    setReducedMotion(true);
+    const messages = locale === 'en' ? enWithAiCentre : withAiCentre(locale, base as Record<string, unknown>);
+    const own = (messages as unknown as { aiCentre: { how: { layers: { interfacesHelp: string }; parts: { interfaces: string } } } }).aiCentre.how;
+    expect(own.layers.interfacesHelp).toContain(today);expect(own.parts.interfaces).toContain(today);
+    const view = show(messages as Record<string, unknown>, locale);
+    expect(view.container.textContent).toContain(own.layers.interfacesHelp);
+    expect(view.container.textContent).not.toMatch(inbox);
+    view.unmount();
+  });
+});
