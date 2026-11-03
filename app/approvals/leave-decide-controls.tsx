@@ -26,17 +26,22 @@ export function LeaveDecideControls({
   id,
   labels,
   nav,
+  recommendationRecordId,
 }: {
   id: string;
   labels: { approve: string; reject: string; rejectReason: string };
   /** Category-panel return params (2dec6406): posted so the action's redirect keeps the filtered view. */
   nav: { category: string; sort: string };
+  /** AI v2 W6: the outcome record of the recommendation shown for this request, so the action can append
+   * whether the approver followed it. The recommender re-checks everything; the id grants nothing. */
+  recommendationRecordId?: string;
 }) {
   const [rejecting, setRejecting] = useState(false);
   const navFields = (
     <>
       <input type="hidden" name="category" value={nav.category} />
       <input type="hidden" name="sort" value={nav.sort} />
+      {recommendationRecordId && <input type="hidden" name="recommendationRecordId" value={recommendationRecordId} />}
     </>
   );
   return (

@@ -451,7 +451,8 @@
       "blocking": "Peraturan cuti akan menolak permohonan ini dalam keadaan sekarang.",
       "version": {
         "leave_type": "Peraturan jenis cuti, versi {version}",
-        "approval_chain": "Rantaian kelulusan, versi {version}"
+        "approval_chain": "Rantaian kelulusan, versi {version}",
+        "recommender": "Semakan cadangan, versi {version}"
       },
       "youDecide": "Ini nasihat sahaja. Anda membuat keputusan pada halaman permohonan itu sendiri.",
       "unavailable": {
@@ -462,7 +463,47 @@
         "not_assigned": "Permohonan ini tidak ditugaskan kepada anda.",
         "not_pending": "Permohonan ini tidak lagi menunggu keputusan.",
         "failed": "Cadangan tidak dapat dimuatkan buat masa ini."
-      }
+      },
+      "youDecideHere": "Ini nasihat sahaja. Anda membuat keputusan dengan Lulus atau Tolak.",
+      "result": {
+        "balance_covers": {
+          "pass": "Baki cuti mencukupi untuk hari yang dimohon.",
+          "fail": "Baki cuti tidak mencukupi, dan jenis cuti ini tidak membenarkan baki negatif sebanyak itu.",
+          "unusual": "Baki cuti hanya mencukupi dengan menjadi negatif, yang dibenarkan oleh jenis cuti ini.",
+          "missing": "Baki cuti tidak dapat dibaca."
+        },
+        "own_overlap": {
+          "pass": "Tiada cuti lain pemohon yang bertindih dengan tarikh ini.",
+          "fail": "Pemohon sudah mempunyai cuti yang diluluskan pada sebahagian tarikh ini.",
+          "unusual": "Pemohon mempunyai permohonan lain yang belum diputuskan pada sebahagian tarikh ini.",
+          "missing": "Cuti lain pemohon tidak dapat dibaca sepenuhnya."
+        },
+        "team_coverage": {
+          "pass": "Tiada orang lain yang boleh anda lihat bercuti pada tarikh ini.",
+          "fail": "Liputan pasukan di bawah tahap minimum.",
+          "unusual": "Ada orang lain yang boleh anda lihat bercuti pada sebahagian tarikh ini.",
+          "missing": "Siapa lagi yang bercuti tidak dapat dibaca."
+        },
+        "policy_limits": {
+          "pass": "Peraturan dokumen dan tarikh bagi jenis cuti ini dipenuhi.",
+          "fail": "Jenis cuti ini memerlukan dokumen dan tiada dokumen dilampirkan.",
+          "unusual": "Cuti ini bermula sebelum hari ini.",
+          "missing": "Peraturan jenis cuti ini tidak dapat dibaca."
+        }
+      },
+      "prepared": {
+        "read": "Permohonan itu, cuti lain pemohon pada tarikh ini, siapa lagi yang boleh anda lihat bercuti, dan peraturan jenis cuti, semuanya dibaca sebagai anda.",
+        "model": "Tiada. Keputusan datang daripada empat semakan, dan ia tidak pernah mencadangkan penolakan.",
+        "recordLabel": "Rekod",
+        "record": "Disimpan sebagai rekod hasil. Apabila anda membuat keputusan, sama ada anda mengikut cadangan itu akan ditambah padanya."
+      },
+      "filter": {
+        "label": "Tapis permohonan cuti mengikut cadangan",
+        "all": "Semua permohonan cuti",
+        "passing": "Lulus setiap semakan ({count})",
+        "help": "Hanya menunjukkan permohonan yang lulus setiap semakan. Pilih permohonan itu, kemudian luluskan atau tolak dengan pengesahan. Tiada apa yang diluluskan secara automatik."
+      },
+      "openOne": "Tunjukkan cadangan"
     },
     "digest": {
       "title": "Hari anda",
