@@ -59,7 +59,7 @@ export type SignalReport=Readonly<{kind:'teras.improvement-signals';version:1;
 const OTHER='other';
 /** The harness spec's names triage reads, pinned to the spec by test/improvement-signals.test.ts. */
 export const HARNESS_VOCABULARY=Object.freeze({
- publicContextTools:Object.freeze(['product_destinations','product_guidance','available_actions','product_capabilities']),
+ publicContextTools:Object.freeze(['product_destinations','product_guidance','available_actions']),
  actionTools:Object.freeze(['available_actions','suggest_action']),
  replyChecks:Object.freeze(['non_blank','destination_links','workplace_channel','overclaim','identifiers']),
  retryReasons:Object.freeze(['truncated','blank']),

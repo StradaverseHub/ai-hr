@@ -68,8 +68,14 @@ export const HARNESS_SPEC=freeze({
   * for is refused with the page where the person already sees it. available_actions is no longer mentioned as a first
   * step at all.
   * 16: "(product_capabilities lists it)" leaves the role note (coordinator, after v15's run 41583443799): it sent every
-  * caller to product_capabilities before answering facts and status. Nothing else changes. */
- version:16,
+  * caller to product_capabilities before answering facts and status. Nothing else changes.
+  * 17: the capability catalogue is offered in code, not by instruction (coordinator, after runs 41577669766, 41581568138 and
+  * 41583443799 found the model calling it before facts and status): only when the person's words ask what they can do,
+  * how to do something, or to import, upload, set up, add or create something (offer.capabilityTool and
+  * capabilityIntentRevision; lib/product-context/capability-intent.ts, six languages, Tamil and Thai pending native
+  * review), and never on a gated turn: product_capabilities leaves publicContextTools again, as in v12. The
+  * instruction text is v16's. */
+ version:17,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -111,7 +117,12 @@ export const HARNESS_SPEC=freeze({
  },
  offer:{
   /** Context tools that hold nothing about the person; the only ones a gated turn keeps. */
-  publicContextTools:['product_destinations','product_guidance','available_actions','product_capabilities'],
+  publicContextTools:['product_destinations','product_guidance','available_actions'],
+  /** v17: the capability catalogue, offered only on an open turn whose words ask what the person can do, how, or to
+   * import, set up, add or create something (lib/product-context/capability-intent.ts, revision below). Not a public
+   * context tool, so a turn about another person, a file or a rule override never has it. */
+  capabilityTool:'product_capabilities',
+  capabilityIntentRevision:1,
   /** available_actions and suggest_action are offered only when the gate allows actions. */
   actionTools:['available_actions','suggest_action'],
   finalTool:'final_answer',
@@ -266,4 +277,5 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  14:'29d137830167860f6e4ee98e1afda7751b75c2ae857fbdfb6c39f2b0f467b0da',
  15:'4cff990778a5b5957d54bdabe691163d506f6948695d989b88c9545873b0ed10',
  16:'8b50784f77cd3a929cbc30d0920ffe1f3b8e665f91fa8a51c8fd5c9ae9d3f055',
+ 17:'818c217a300e529088f03f66042c57dc00de21be787a802a60ed2cf84692e3a8',
 });

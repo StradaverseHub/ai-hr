@@ -30,6 +30,7 @@ import {canManagePayroll,isAdmin,isGroupAdmin,withEffectiveGrants} from '../../l
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {payViewDestinationFor} from '../../lib/product-context/destinations';
 import {gateTurn,isSensitiveReason,TURN_GATE_NOTE} from '../../lib/product-context/request-gate';
+import {asksCapability} from '../../lib/product-context/capability-intent';
 import {destinationLabel} from '../product-context/tools';
 import {canonicalJson,type Proposal} from '../proposals/proposal';
 import {DisclosureLedger,discloseToolOutput,type DisclosureApplied} from './disclosure';
@@ -86,11 +87,15 @@ const finalDeclaration:HarnessToolDeclaration=Object.freeze({name:S.offer.finalT
 const digestOf=(value:string)=>createHash('sha256').update(value).digest('hex');
 const argumentsDigest=(raw:string)=>{try{return digestOf(canonicalJson(JSON.parse(raw||'{}')));}catch{return digestOf(raw);}};
 
-/** Which candidates this turn offers. Pure; the gate and the spec decide, never the model or a tool. */
-export function offerFor(bindings:readonly ToolBinding[],gate:ReturnType<typeof gateTurn>,allowTools?:readonly string[]):readonly ToolBinding[]{
+/** Which candidates this turn offers. Pure; the gate and the spec decide, never the model or a tool. Spec v17: the
+ * capability catalogue (S.offer.capabilityTool) only when `capability`, the person's words asking what they can do, how,
+ * or to import, set up, add or create something (lib/product-context/capability-intent.ts asksCapability); it is not a
+ * public context tool, so a gated turn never has it. */
+export function offerFor(bindings:readonly ToolBinding[],gate:ReturnType<typeof gateTurn>,allowTools?:readonly string[],capability=false):readonly ToolBinding[]{
  const publicContext:readonly string[]=S.offer.publicContextTools,actionTools:readonly string[]=S.offer.actionTools;
  return bindings.filter(binding=>{
   if(allowTools&&!allowTools.includes(binding.name))return false;
+  if(binding.name===S.offer.capabilityTool&&!capability)return false;
   if(actionTools.includes(binding.name)&&!gate.actions)return false;
   if(binding.kind==='suggest')return gate.actions;
   if(binding.kind==='read')return gate.privateReads;
@@ -146,7 +151,7 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  if(history.some(row=>row?.side!=='model'))throw new PersonSideHistory();
  const candidates=await (options.tools??nativeToolProvider)(ctx,{...options.scope,personWords:options.question},gate.actions);
  // A fixed turn offers nothing: the model is never called.
- const offered=fixed?[]:offerFor(candidates.bindings,gate,options.allowTools),offeredNames=new Set(offered.map(binding=>binding.name));
+ const offered=fixed?[]:offerFor(candidates.bindings,gate,options.allowTools,asksCapability(options.question)),offeredNames=new Set(offered.map(binding=>binding.name));
 
  // Task memory: loaded for this tenant and user only, then re-authorised against what the caller is offered now.
  const stored=await options.memory.load(ctx.tenantId,ctx.userId??'',options.conversationId)??emptyMemory(ctx,options.conversationId,started);

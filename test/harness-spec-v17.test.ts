@@ -1,4 +1,4 @@
-/** Spec v13, v14 and v15 (AI v2 Phase 1, slice 1): the capability catalogue rules (W1), claims, profile and attendance details
+/** Spec v13 to v17 (AI v2 Phase 1, slice 1): the capability catalogue rules (W1), claims, profile and attendance details
  * (W2), and fewer model steps (aiv2-speed-findings-20261103, causes 1a and 1b); v14 fixes forward v13's scored evaluation
  * (run 41577669766): at most five numbered options, the most common first, then "Something else"; one entry named is acted
  * on without asking; a setup question asked as "can you help me …" gets steps; and shorter text than v12's. The
@@ -7,7 +7,9 @@
  * description naming the declared actions' purposes. Scripted model and fictional tools; no provider. Whether a model
  * follows the text is measured by the scored evaluation. v15 (after v14's run 41581568138): product_capabilities never for facts
  * or status, "import my employees" names the employee import, imports most common first, a setup task with no entry gets
- * steps, and an identity number asked for is refused with the page where the person already sees it. */
+ * steps, and an identity number asked for is refused with the page where the person already sees it. v16: the role note
+ * names no tool. v17: product_capabilities is offered in code, only when the words ask for it (test/capability-intent.test.ts
+ * holds the classifier's cases), and never on a gated turn. */
 import {describe,expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {HARNESS_SPEC,HARNESS_SPEC_DIGESTS,harnessSpecDigest} from '../core/harness/spec';
@@ -32,14 +34,15 @@ function withCapabilities(base:ToolProvider,asked:Record<string,unknown>[]):Tool
  return async(ctx,scope,actions)=>{const candidates=await base(ctx,scope,actions);return{...candidates,bindings:[...candidates.bindings,binding]};};
 }
 
-describe('spec v16',()=>{
- it('is version 16 with its digest recorded, and every earlier digest is kept',()=>{
-  expect(HARNESS_SPEC.version).toBe(16);expect(HARNESS_SPEC_DIGESTS[16]).toBe(harnessSpecDigest());
+describe('spec v17',()=>{
+ it('is version 17 with its digest recorded, and every earlier digest is kept',()=>{
+  expect(HARNESS_SPEC.version).toBe(17);expect(HARNESS_SPEC_DIGESTS[17]).toBe(harnessSpecDigest());
+  expect(HARNESS_SPEC_DIGESTS[16]).toBe('8b50784f77cd3a929cbc30d0920ffe1f3b8e665f91fa8a51c8fd5c9ae9d3f055');
   expect(HARNESS_SPEC_DIGESTS[15]).toBe('4cff990778a5b5957d54bdabe691163d506f6948695d989b88c9545873b0ed10');
   expect(HARNESS_SPEC_DIGESTS[14]).toBe('29d137830167860f6e4ee98e1afda7751b75c2ae857fbdfb6c39f2b0f467b0da');
   expect(HARNESS_SPEC_DIGESTS[12]).toBe('c5fa36868fa6a153aefef022237df18c9a0bcb2184250c68b219a3af1c41a230');
   expect(HARNESS_SPEC_DIGESTS[13]).toBe('798629ac53828d762cce5d272e4a934fe622a3d185b7b91ed7c0ccda84692ba6');
-  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]);
+  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17]);
  });
  it('sends little more instruction text than v12 did (4,979 characters, 164 in the role note), every safety rule kept',()=>{
   // v13 sent 6,148 characters of instructions; each model call slowed (5.2k to 6.0k input tokens per call, run 41577698046).
@@ -53,31 +56,37 @@ describe('spec v16',()=>{
    /Never infer or judge any person's attitude, sentiment, loyalty, likelihood of leaving or performance/,/Never say anything is submitted, approved, closed or done/,
    /never show a hidden part as 0/])expect(count(rule),String(rule)).toBe(1);
  });
- it('keeps product_capabilities on a gated turn as a public context tool, and the triage copy says the same',()=>{
-  expect(HARNESS_SPEC.offer.publicContextTools).toEqual(['product_destinations','product_guidance','available_actions','product_capabilities']);
+ it('offers product_capabilities only when the words ask for it, never on a gated turn, and the triage copy follows the spec',()=>{
+  expect(HARNESS_SPEC.offer.publicContextTools).toEqual(['product_destinations','product_guidance','available_actions']);
+  expect(HARNESS_SPEC.offer.capabilityTool).toBe('product_capabilities');expect(HARNESS_SPEC.offer.capabilityIntentRevision).toBe(1);
   expect(HARNESS_SPEC.offer.actionTools).toEqual(['available_actions','suggest_action']);
   expect(HARNESS_VOCABULARY.publicContextTools).toEqual(HARNESS_SPEC.offer.publicContextTools);
   const bind=(name:string,kind:ToolBinding['kind']):ToolBinding=>({name,kind,entity:null,spec:{name,description:name,inputSchema:{type:'object'}} as ToolBinding['spec'],identifierInputs:[],async run(){return{ok:true,content:null};}});
-  const bindings=[bind('product_capabilities','context'),bind('approval_queue','context'),bind('my_leave_balances','read'),bind('suggest_action','suggest')];
-  const names=(gate:Parameters<typeof offerFor>[1])=>offerFor(bindings,gate).map(binding=>binding.name);
-  expect(names({privateReads:true,actions:true})).toEqual(['product_capabilities','approval_queue','my_leave_balances','suggest_action']);
-  // About another person: no private read and no private context, but the caller's own capabilities stay.
-  expect(names({privateReads:false,actions:true,reason:'other_person'})).toEqual(['product_capabilities','suggest_action']);
-  // A file: no action either, so nothing can be suggested; the catalogue still says what is theirs (open, not prepare).
-  expect(names({privateReads:false,actions:false,reason:'attachment'})).toEqual(['product_capabilities']);
+  const bindings=[bind('product_capabilities','context'),bind('product_guidance','context'),bind('approval_queue','context'),bind('my_leave_balances','read'),bind('suggest_action','suggest')];
+  const names=(gate:Parameters<typeof offerFor>[1],capability:boolean)=>offerFor(bindings,gate,undefined,capability).map(binding=>binding.name);
+  const open={privateReads:true,actions:true} as const;
+  expect(names(open,true)).toEqual(['product_capabilities','product_guidance','approval_queue','my_leave_balances','suggest_action']);
+  // A fact or status turn: everything else, but not the catalogue.
+  expect(names(open,false)).toEqual(['product_guidance','approval_queue','my_leave_balances','suggest_action']);
+  expect(offerFor(bindings,open).map(binding=>binding.name)).toEqual(names(open,false));
+  // About another person, or a file: no private read and no catalogue, even when the words ask what they can do.
+  expect(names({privateReads:false,actions:true,reason:'other_person'},true)).toEqual(['product_guidance','suggest_action']);
+  expect(names({privateReads:false,actions:false,reason:'attachment'},true)).toEqual(['product_guidance']);
   // A surface's own narrowing still wins.
-  expect(offerFor(bindings,{privateReads:true,actions:true},['my_leave_balances']).map(binding=>binding.name)).toEqual(['my_leave_balances']);
+  expect(offerFor(bindings,open,['my_leave_balances'],true).map(binding=>binding.name)).toEqual(['my_leave_balances']);
  });
- it('offers and runs it on a turn about another person, with no private read',async()=>{
-  const asked:Record<string,unknown>[]=[],{provider,dispatched}=fakeTools({});
-  const model=scriptedModel([{calls:[{name:'product_capabilities',args:{kind:'import'}}]},{final:{reply:'Importing is not available to you here.',mode:'refuse'}}]);
-  const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx:employee,conversationId:'conversation-v13',question:'Can you import Siti\'s leave balance?',scope:SCOPE,model,
-   memory:new InMemoryTaskMemoryStore(),tools:withCapabilities(provider,asked)});
-  expect(result.trace.gate.reason).toBe('other_person');
-  expect(model.requests[0].tools.map(tool=>tool.name).sort()).toEqual(['available_actions','final_answer','product_capabilities','product_destinations','product_guidance','suggest_action']);
-  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['product_capabilities','ok']]);
-  expect(asked).toEqual([{kind:'import'}]);expect(dispatched).toEqual([]);expect(result.reads).toEqual(['product_capabilities']);
-  expect(result.reply).toBe('Importing is not available to you here.');
+ it('decides the offer from the person\'s own words in a turn: offered for "can you", not for status or another person',async()=>{
+  const run=async(question:string)=>{const asked:Record<string,unknown>[]=[],{provider}=fakeTools({});
+   const model=scriptedModel([{final:{reply:'Ok.',mode:'answer'}}]);
+   const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx:employee,conversationId:'conversation-v17',question,scope:SCOPE,model,memory:new InMemoryTaskMemoryStore(),tools:withCapabilities(provider,asked)});
+   return{offered:model.requests[0].tools.map(tool=>tool.name),gate:result.trace.gate.reason,traced:result.trace.offered};};
+  const asks=await run('can you import my leave balances?');
+  expect(asks.gate).toBeNull();expect(asks.offered).toContain('product_capabilities');expect(asks.traced).toContain('product_capabilities');
+  for(const question of ['is this month\'s payroll done?','how much leave do I have left','Can you import Siti\'s leave balance?']){
+   const {offered,traced}=await run(question);
+   expect(offered,question).not.toContain('product_capabilities');expect(traced,question).not.toContain('product_capabilities');
+  }
+  expect((await run('Can you import Siti\'s leave balance?')).gate).toBe('other_person');
  });
  it('describes the caller\'s tools in the role note without naming one',()=>{
   // v16: no tool is named; v13-v15's "(product_capabilities lists it)" sent callers to it before facts and status.
@@ -86,7 +95,7 @@ describe('spec v16',()=>{
  });
 });
 
-describe('spec v15 instructions',()=>{
+describe('spec v15 instructions, unchanged in v16 and v17',()=>{
  it('answers "what can you help with" from product_capabilities, naming nothing it does not list',()=>{
   expect(instructions).toContain('When asked what you can help with, call product_capabilities with no filter and answer with four to six short bullets from its areas, then one example question. Never name anything it does not list.');
  });

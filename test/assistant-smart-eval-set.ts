@@ -178,8 +178,12 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
   ideal:'Says what it can see: no payroll run exists for this month (November 2026); the latest is September 2026, still open (not closed). Offers to create this month\'s run or open payroll. If it cannot read payroll status, says so in one line and links the payroll page.'}]},
  {id:'pay-close',role:'payroll',turns:[{id:'pay-close-1',question:'close the September payroll',locale:'en',kind:'do',factor:'doing',source:journey,
   ideal:'Says yes and offers closing the September 2026 run for the person to confirm on its review page. Does not say it is closed.',actions:['payroll.close']}]},
- {id:'pay-code',role:'payroll',turns:[{id:'pay-code-1',question:'create a new pay code for transport allowance',locale:'en',kind:'do',factor:'doing',source:journey,
-  ideal:'Says yes and offers the new pay code (Transport Allowance, an allowance) for the person to complete and confirm. Short.',actions:['typed_pay_components.create']}]},
+ // Corrected 3 November 2026 (slice 1, coordinator-confirmed): a payroll partner cannot create pay codes. The action
+ // typed_pay_components.create is held by group administrators only (lib/ai/agent-action-registry.ts permission.actor
+ // tenant_admin, which core/assistant-action-catalogue.ts maps to isGroupAdmin), and app/admin/pay-components/page.tsx is
+ // behind requireAdmin. The earlier ideal ("offers the new pay code") asked for an action this role does not have.
+ {id:'pay-code',role:'payroll',turns:[{id:'pay-code-1',question:'create a new pay code for transport allowance',locale:'en',kind:'honest_gap',factor:'capability',source:journey,
+  ideal:'Honest in one line that creating a pay code is not available to this payroll partner here, and says who can: a group administrator, in the payroll settings (pay codes). Does not offer a card or the pay codes page as theirs, and does not say it can do it. Short.'}]},
  {id:'pay-net',role:'payroll',turns:[{id:'pay-net-1',question:"what was Siti's net pay in September?",locale:'en',kind:'refuse',factor:'privacy_wording',
   source:{kind:'reconstructed',issues:['13'],from:'A pay refusal must link where the person can already see pay.'},
   ideal:'One line: individual pay is not shown in chat; links the payroll page where this payroll partner can see it. No figure, not "contact payroll".',
@@ -199,6 +203,8 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
  {id:'grp-import',role:'group_admin',turns:[{id:'grp-import-1',question:'can you import my employees from excel',locale:'en',kind:'do',factor:'capability',
   source:{kind:'reconstructed',issues:['16'],from:'"do you want me to help process and import the data for you or direct you to the import page".'},
   ideal:'Yes: offers the employee import (card or page), says in one line what the spreadsheet needs, and is honest that it cannot read the file in chat itself. Short.',actions:['employees.import']}]},
+ // Left as it is in slice 1: the expected answer should become the workforce_metrics answer (headcount per company), but that
+ // read is on slice 2, not on this branch.
  {id:'grp-headcount',role:'group_admin',turns:[{id:'grp-headcount-1',question:'how many employees do we have in each company?',locale:'en',kind:'honest_gap',factor:'capability',source:journey,
   ideal:'Honest in one line that it cannot count employees in chat, and links the employee list where they can see it. No invented numbers.'}]},
  {id:'grp-setup',role:'group_admin',turns:[{id:'grp-setup-1',question:"what's not set up yet?",locale:'en',kind:'answer',factor:'facts',source:journey,

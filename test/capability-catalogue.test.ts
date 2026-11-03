@@ -186,23 +186,17 @@ describe('product_capabilities in a harness turn',()=>{
   expect(suggest).toContain('claims.submit: Submit an expense claim for yourself.');
   expect(suggest).not.toContain('payroll.close:');expect(suggest).not.toContain('employees.import:');
  });
- it('is kept on a turn about another person (spec v13), listing only the caller\'s own capabilities and no private read',async()=>{
-  // Spec v13: product_capabilities is a public context tool, like available_actions: it lists what the caller may do,
-  // never anything about the person named, so "can you …?" can be answered on a gated turn too.
-  const {hrAdmin,employee}=await callers();
+ it('is not offered on a turn about another person, nor on a fact or status turn (spec v17: offered in code)',async()=>{
+  // v13 to v16 kept it on a gated turn as a public context tool; v17 offers it only when the words ask what the person can
+  // do (lib/product-context/capability-intent.ts), and never on a gated turn.
+  const {hrAdmin}=await callers();
   const {result,model}=await turn(hrAdmin,'Can you import Siti\'s leave balance?',{kind:'import'});
   expect(result.trace.gate.reason).toBe('other_person');
-  const offered=model.requests[0].tools.map(tool=>tool.name);
-  expect(offered).toContain('product_capabilities');
-  for(const privateRead of ['my_leave_balances','my_leave_requests','approval_queue'])expect(offered,privateRead).not.toContain(privateRead);
-  expect(result.trace.calls.map(call=>call.status)).toEqual(['ok']);
-  const sent=lastToolResult(model.requests[1]) as {entries:{id:string}[];totalRows:number};
-  expect(sent.entries.map(row=>row.id)).toEqual((await capabilityCatalogueFor(hrAdmin)).filter(row=>row.kind==='import').map(row=>row.id));
-  expect(sent.totalRows).toBe(IMPORTS.length);expect(JSON.stringify(sent)).not.toMatch(/Siti/);
-  expect(result.reads).toEqual(['product_capabilities']);
-  // An employee asking the same is told from their own catalogue: no import is theirs.
-  const asEmployee=await turn(employee,'Can you import Siti\'s leave balance?',{kind:'import'});
-  expect(asEmployee.result.trace.gate.reason).toBe('other_person');
-  expect(lastToolResult(asEmployee.model.requests[1])).toMatchObject({ok:true,entries:[],totalRows:0});
+  expect(model.requests[0].tools.map(tool=>tool.name)).not.toContain('product_capabilities');
+  expect(result.trace.calls.map(call=>call.status)).toEqual(['not_offered']);expect(result.reads).toEqual([]);
+  const status=await turn(hrAdmin,'is this month\'s payroll done?',{});
+  expect(status.result.trace.gate.reason).toBeNull();
+  expect(status.model.requests[0].tools.map(tool=>tool.name)).not.toContain('product_capabilities');
+  expect(status.result.trace.calls.map(call=>call.status)).toEqual(['not_offered']);
  });
 });
