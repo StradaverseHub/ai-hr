@@ -13,7 +13,7 @@ export type Dispatch=Readonly<{tool:string;input:Readonly<Record<string,unknown>
 type Outputs=Partial<Record<string,(input:Record<string,unknown>)=>ToolRun>>;
 
 const balances=(leaveType='Annual Leave'):ToolRun=>({ok:true,content:{ok:true,employments:[{employmentId:FICTIONAL.ownEmployment,company:FICTIONAL.company,
- balances:[{leaveTypeId:FICTIONAL.leaveType,leaveType,accrued:17.25,taken:3,pending:1,available:13.25,sharedPoolName:null,balance:14.25,withheld:false}]}]}});
+ balances:[{leaveTypeId:FICTIONAL.leaveType,leaveType,accrued:17.25,taken:3,pending:1,available:13.25,sharedPoolName:null,balance:14.25,notShown:[]}]}]}});
 export const DEFAULT_OUTPUTS:Outputs={
  my_leave_balances:()=>balances(),
  leave_entitlement_explain:input=>input.leave_type_id===FICTIONAL.leaveType

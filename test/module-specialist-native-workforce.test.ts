@@ -55,23 +55,23 @@ async function positiveReplacementPending(){
  const submitted=await requestLeave(ctx,{employmentId:mine.employmentId,leaveTypeId:replacementTypeId,startDate:date,endDate:date,durationType:'full_day',reason:'Explicit fictional human replacement request for partial ESS visibility'});
  expect(submitted.days).toBeGreaterThan(0);
  const source=await withAssistantRead(ctx,'leave',read=>read.moduleWork('leave')),before=replacementBalanceProjection(source.data);
- expect(before).toMatchObject({leaveTypeId:replacementTypeId,pending:submitted.days,withheld:false});
+ expect(before).toMatchObject({leaveTypeId:replacementTypeId,pending:submitted.days,notShown:[]});
  expect(typeof before.available).toBe('number');return before;
 }
 function expectOnlyPermittedPartialBalance(balance:Record<string,unknown>){
  // Exact projection keys prohibit accrued/balance, ledger/split aliases and raw policy leakage.
- expect(Object.keys(balance).sort()).toEqual(['available','leaveType','leaveTypeId','pending','sharedPoolName','taken','withheld'].sort());
+ expect(Object.keys(balance).sort()).toEqual(['available','leaveType','leaveTypeId','notShown','pending','sharedPoolName','taken'].sort());
  expect(balance).not.toHaveProperty('accrued');expect(balance).not.toHaveProperty('balance');
 }
 describe('native Workforce specialist facts, not empty readiness',()=>{
  it('employees: actual own active employment is present, with no peer/salary inference',async()=>{const{source,interpreted}=await evaluation('employees');expect(rows(source.data)).toMatchObject([{employmentId:mine.employmentId,employeeCode:'NATIVE-OWNER'}]);expect(interpreted.findings).toContain('employment_active');expect(interpreted.findings).not.toContain('employment_inactive');});
  it('org: actual native administrative line is interpreted as a recorded relationship, not delegated authority',async()=>{const{source,interpreted}=await evaluation('org');expect(rows(source.data)).toMatchObject([{employmentId:mine.employmentId,reportingLines:[{lineType:'administrative',name:'Fictional Recorded Manager',employeeCode:'NATIVE-MANAGER'}]}]);expect(interpreted.findings).toContain('reporting_recorded');expect(interpreted.findings).not.toContain('administrative_manager_missing');});
- it('leave: native banked credit has a genuine visible canonical balance; the specialist never grants or computes entitlement',async()=>{const{source,interpreted}=await evaluation('leave',true),balances=rows(source.data)[0].balances;if(!Array.isArray(balances))throw Error('Expected real native balances');expect(balances).toContainEqual(expect.objectContaining({leaveType:replacementName,available:credit.daysCredited,withheld:false}));expect(interpreted.findings).toContain('leave_available_recorded');});
+ it('leave: native banked credit has a genuine visible canonical balance; the specialist never grants or computes entitlement',async()=>{const{source,interpreted}=await evaluation('leave',true),balances=rows(source.data)[0].balances;if(!Array.isArray(balances))throw Error('Expected real native balances');expect(balances).toContainEqual(expect.objectContaining({leaveType:replacementName,available:credit.daysCredited,notShown:[]}));expect(interpreted.findings).toContain('leave_available_recorded');});
  it('leave partial ESS: hiding available retains genuinely positive permitted pending without decomposition aliases',async()=>{
   const before=await positiveReplacementPending();
   await updateLeaveType(admin,{id:replacementTypeId,name:replacementName,essViewConfig:{available:false,pendingApproval:true}});
   const{source,interpreted}=await evaluation('leave',true),balance=replacementBalanceProjection(source.data);
-  expect(balance).toEqual({leaveTypeId:replacementTypeId,leaveType:replacementName,taken:before.taken,pending:before.pending,available:null,sharedPoolName:null,withheld:true});
+  expect(balance).toEqual({leaveTypeId:replacementTypeId,leaveType:replacementName,taken:before.taken,pending:before.pending,available:null,sharedPoolName:null,notShown:['available','sharedPoolName','accrued','balance']});
   expectOnlyPermittedPartialBalance(balance);expect(balance.pending).toBeGreaterThan(0);
   expect(interpreted.findings).toContain('withheld_not_reconstructable');expect(interpreted.findings).toContain('leave_pending_not_approved');
  });
@@ -81,7 +81,7 @@ describe('native Workforce specialist facts, not empty readiness',()=>{
   // The separate native unpaid request is also hidden, so no other permitted positive pending can mask reconstruction.
   await updateLeaveType(admin,{id:unpaidTypeId,name:'Fictional Unpaid Native Request',essViewConfig:{pendingApproval:false}});
   const{source,interpreted}=await evaluation('leave'),balance=replacementBalanceProjection(source.data);
-  expect(balance).toEqual({leaveTypeId:replacementTypeId,leaveType:replacementName,taken:before.taken,pending:null,available:before.available,sharedPoolName:before.sharedPoolName,withheld:true});
+  expect(balance).toEqual({leaveTypeId:replacementTypeId,leaveType:replacementName,taken:before.taken,pending:null,available:before.available,sharedPoolName:before.sharedPoolName,notShown:['pending','accrued','balance']});
   expectOnlyPermittedPartialBalance(balance);expect(before.pending).toBeGreaterThan(0);
   expect(interpreted.findings).toContain('withheld_not_reconstructable');expect(interpreted.findings).toContain('leave_available_recorded');
   expect(interpreted.findings).not.toContain('leave_pending_not_approved');

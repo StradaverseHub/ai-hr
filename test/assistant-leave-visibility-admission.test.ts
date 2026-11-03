@@ -87,7 +87,7 @@ describe('actual Mine flags bind current provider input and historical source di
   expect(workspace.history[0]).toMatchObject({answer:null,grounded:{mode:'unavailable',views:[]}});
   expect(JSON.stringify(workspace)).not.toContain(binding.answer);
   const current=await tool.run(ctx,input);expect(current.ok).toBe(true);expect(assistantSourceDigest(current)).not.toBe(evidence[0].digest);
-  const text=JSON.stringify(current);expect(text).toContain('"withheld":true');
+  const text=JSON.stringify(current);expect(text).toContain(name==='leave_entitlement_explain'?'"withheld":true':'"notShown":["available","sharedPoolName","accrued","balance"]');
   if(name==='leave_entitlement_explain')expect(text).toContain('"totalAvailable":null');else expect(text).toContain('"available":null');
   expect(text).not.toContain('"transactions"');expect(text).not.toContain('"balance":113.75');
  });

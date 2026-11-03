@@ -6,7 +6,7 @@ import {canonicalSpecialistFollowup,FOLLOWUP_CODES,type SpecialistDiagnostic} fr
 import {AGENT_MODULE_CODES,MODULE_AGENT_CAPABILITIES,type AgentModuleCode} from './module-agents';
 import {MODULE_AGENT_ACTIONS} from './module-agent-actions';
 import {moduleHumanActionHandoffs} from './module-human-handoffs';
-import {presentCanonicalModuleData} from './module-job-presentation';
+import {leaveBalancePartlyHidden,presentCanonicalModuleData} from './module-job-presentation';
 import type {JobPresentation} from './module-jobs';
 import {routingDigest} from './module-agent-routing';
 export const SpecialistCandidate=z.object({kind:z.literal('canonical_specialist_v1'),module:z.enum(AGENT_MODULE_CODES),playbook:z.enum(['canonical_domain_v1','canonical_followup_v1'])}).strict();
@@ -43,7 +43,7 @@ export function executeCanonicalSpecialist(candidateValue:unknown,source:{module
  if(source.module!==module||source.scope!=='current-caller'||source.capability!==MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module)?.[1])return fail();
  // Native Mine disclosure is fieldwise: withheld means ANY component is hidden, not all summaries.
  // It omits decomposition aliases entirely when partial; their presence cannot override the owner.
- const data=source.data;if(module==='leave')for(const row of bounded(data))for(const balance of array(row.balances))if(balance.withheld===true&&['accrued','balance'].some(key=>Object.prototype.hasOwnProperty.call(balance,key)))return fail();if(module==='claims')for(const claim of array(object(data).claims))if(claim.status!=='paid'&&claim.paidAt!=null)return fail();const presentation=presentCanonicalModuleData(module,data),findings=new Set<SpecialistFinding>(['scope_current_caller']),add=(value:SpecialistFinding)=>{findings.add(value);};
+ const data=source.data;if(module==='leave')for(const row of bounded(data))for(const balance of array(row.balances))if(leaveBalancePartlyHidden(balance)&&['accrued','balance'].some(key=>Object.prototype.hasOwnProperty.call(balance,key)))return fail();if(module==='claims')for(const claim of array(object(data).claims))if(claim.status!=='paid'&&claim.paidAt!=null)return fail();const presentation=presentCanonicalModuleData(module,data),findings=new Set<SpecialistFinding>(['scope_current_caller']),add=(value:SpecialistFinding)=>{findings.add(value);};
  if(presentation.truncated)add('bounded_results');if(presentation.cards.some(card=>card.withheld))add('withheld_not_reconstructable');
  if(!presentation.cards.length)add('empty_is_not_tenant_absence');
  switch(module){

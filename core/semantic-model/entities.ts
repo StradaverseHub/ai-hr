@@ -35,7 +35,7 @@ const MODULE_ROW_FIELDS:readonly SemanticField[]=[
  // Own leave (leave, approvals, toil).
  screened('leaveType','minimum','Leave type name.'),f('accrued','number','bands','Days accrued.'),f('taken','number','bands','Days taken.'),f('pending','number','bands','Days awaiting approval.'),
  f('balance','number','bands','Recorded balance.'),f('available','number','bands','Days available.'),f('sharedPoolName','label','minimum','Leave type whose pool a balance draws from.'),
- f('withheld','boolean','full','Whether ESS visibility hid part of the row.'),f('startDate','date','minimum','First day.'),f('endDate','date','minimum','Last day.'),
+ f('notShown','list','full','Fields of a leave balance row not shown to the person, by name; every figure present is real.'),f('startDate','date','minimum','First day.'),f('endDate','date','minimum','Last day.'),
  f('days','number','minimum','Day quantity of an own request.'),f('hours','number','minimum','Hour quantity of an own request.'),f('durationType','enum','full','Full day, half day or hours.'),
  f('hasRejectedDates','boolean','full','Whether some dates were rejected.'),
  f('active','number','bands','Replacement leave days available.'),f('expired','number','bands','Replacement leave days expired.'),f('convertedToPay','number','bands','Replacement leave days paid out.'),
@@ -76,7 +76,8 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
    f('leaveTypeId','id','never','Handle of the leave type, for the entitlement explainer.'),f('leaveType','label','full','Leave type name.'),
    f('accrued','number','bands','Days accrued this cycle.'),f('taken','number','bands','Days taken.'),f('pending','number','bands','Days awaiting approval.'),
    f('balance','number','bands','Recorded balance.'),f('available','number','bands','Days the caller can still apply for.'),
-   f('sharedPoolName','label','minimum','Leave type whose pool this balance draws from.'),f('withheld','boolean','full','Whether ESS visibility hid part of the row.')]},
+   f('sharedPoolName','label','minimum','Leave type whose pool this balance draws from.'),
+   f('notShown','list','full','Fields of this row not shown to the person, by name (ESS visibility); every figure present is real.')]},
  {id:'leave_request',label:'Leave request',meaning:'One leave application by the caller, with its status and covered dates.',
   module:'leave',sensitivity:'ordinary',audience:'self',rls:'own_employment',owners:['core/read.ts#myEmployments','core/read.ts#leaveRequestsFor'],
   ruleVersion:null,relations:[{to:'leave_balance',kind:'many_to_one',via:'leaveTypeId'},{to:'leave_approval_step',kind:'one_to_many',via:'leaveRequestId'}],page:'/leave',

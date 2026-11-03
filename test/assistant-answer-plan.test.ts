@@ -78,7 +78,7 @@ describe('strict terminal model reference plan',()=>{
  it('selects only actually permitted fieldwise Mine facts and keeps hidden fields/decomposition unavailable',()=>{
   const raw={leaveTypeId:'fictional-type',leaveType:'Annual',accrued:9876,taken:2.5,pending:1,balance:8765,available:7,
    essView:resolveEssView({available:false})},balance=projectMineLeaveBalance(raw);
-  expect(balance).toMatchObject({withheld:true,available:null,taken:2.5,pending:1});
+  expect(balance).toMatchObject({notShown:['available','sharedPoolName','accrued','balance'],available:null,taken:2.5,pending:1});expect(balance).not.toHaveProperty('withheld');
   expect(balance).not.toHaveProperty('balance');expect(balance).not.toHaveProperty('accrued');
   const p=presentGroundedToolOutcome('my_leave_balances',{ok:true,employments:[{company:'Canonical employer',balances:[balance]}]})!;
   expect(p.cards[0].withheld).toBe(true);expect(p.cards[0].facts.map(row=>row.field)).toEqual(['company','taken','pending']);
