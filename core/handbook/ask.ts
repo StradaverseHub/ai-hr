@@ -46,6 +46,6 @@ export async function askPolicyHandbook(ctx:SessionContext,input:Readonly<{topic
     paragraphs:picked.map(p=>({paragraph:p.paragraph,text:p.text})),paragraphCount:paragraphs.length};
   }),
   otherPolicies:scored.filter(s=>!chosen.includes(s)).map(s=>s.row.title),
-  provenance:provenance('core/handbook/ask.ts#readPoliciesInForce','The approved policy version in force today (teras_policy_version, migration 0971).','/assistant',
+  provenance:provenance('core/handbook/ask.ts#readPoliciesInForce','The approved policy version in force today (teras_policy_version, migration 0971).','/policies',
    'Answer only from these approved paragraphs and cite the policy title, version and paragraph. If they do not answer the question, say so and suggest asking HR; never guess a rule.')};
 }

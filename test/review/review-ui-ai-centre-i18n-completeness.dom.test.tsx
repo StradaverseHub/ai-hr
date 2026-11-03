@@ -33,7 +33,9 @@ const ARGUMENTS_ONLY = ['aiCentre.autonomy.summaryNamed', 'aiCentre.autonomy.pro
   'aiCentre.payrollCycle.salaryPage.cause', 'payrollAudit.stepLabel', 'payrollAudit.pack.captureLine', 'payrollAudit.pack.findingItem'];
 const BODIES = ['aiCentre.payrollCycle.bodies.epf', 'aiCentre.payrollCycle.bodies.socso', 'aiCentre.payrollCycle.bodies.eis', 'aiCentre.payrollCycle.bodies.pcb',
   'payrollAudit.forms.epf', 'payrollAudit.forms.pcb_cp39', 'today.autonomy.byHr'];
-const PHASE2 = [...ARGUMENTS_ONLY, ...BODIES];
+// AI v2 Phase 2 P2-5 (the Living Handbook): "v{version}" and "RM {amount}", an argument with the version mark and the ringgit sign.
+const HANDBOOK = ['aiCentre.policies.versionShort', 'aiCentre.policies.values.money'];
+const PHASE2 = [...ARGUMENTS_ONLY, ...BODIES, ...HANDBOOK];
 const SAME_AS_ENGLISH_ALLOWED: Readonly<Record<string, readonly string[]>> = { ms: ['aiCentre.how.layers.model', LOOP_STEP, 'aiCentre.loops.cases.columns.status', ...PHASE2,
   'aiCentre.autonomy.actions.columns.status', 'aiCentre.payrollCycle.salaryPage.columns.status', 'aiCentre.payrollCycle.runType.bonus', 'aiCentre.payrollCycle.byCompany.columns.audit'],
   zh: [LOOP_STEP, ...PHASE2], vi: [LOOP_STEP, ...PHASE2], ta: [LOOP_STEP, ...PHASE2], th: [LOOP_STEP, ...PHASE2] };
@@ -116,7 +118,10 @@ describe('AI centre catalogue completeness', () => {
       corrected: 1, applied: 120, by: 'Aisyah Fictional', released: 40, prepared: 4, forms: 5, filed: 3, matched: 1, disposed: 1,
       changed: 'Nov 25', last4: '5678', people: 2, paid: 2, lastDay: 'Oct 31', runType: 'Salary', runSeq: 1, closedAt: 'Nov 26, 2026',
       releasedAt: 'Nov 27, 2026', control: 'Shared bank account', action: 'unlock', at: 'Nov 28, 2026', note: 'Late overtime',
-      head: 'a1b2c3d4', chained: 12, who: 'Aisyah Fictional', state: 'Open', id: 'u-1' };
+      head: 'a1b2c3d4', chained: 12, who: 'Aisyah Fictional', state: 'Open', id: 'u-1',
+      // AI v2 Phase 2 P2-5: arguments of the Living Handbook (aiCentre.policies.*).
+      author: 'Aisyah Fictional', handbook: 'RM 0.60 per km', system: 'RM 0.55 per km', owner: 'claims', setting: 'Mileage rates',
+      message: 'The first mileage band must start at 0 km', accepted: 2, rejected: 1 };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

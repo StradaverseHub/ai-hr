@@ -34,7 +34,7 @@ You can attach a supported spreadsheet or CSV to ask for import mapping help whe
 
 ## Company policies (the Living Handbook)
 
-[AI Centre › Policies](/assistant?view=policies) keeps your company's own policies in your own words, with every version and the date it applies from. Administrators of every company a policy applies to write and edit it.
+[AI Centre › Policies](/policies) keeps your company's own policies in your own words, with every version and the date it applies from. Administrators of every company a policy applies to write and edit it.
 
 1. Write the policy with New policy: its title, area, the companies it applies to and the date it applies from.
 2. Use Read the values. AI Centre highlights the words it read and lists each value under What the system will enforce, beside what the system does now. It only proposes values for settings that already exist: the claims mileage rates, a claim type's submission window and a leave type's default entitlement table. Everything else stays text and is marked Not enforced yet.

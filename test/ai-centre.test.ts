@@ -60,7 +60,9 @@ describe('AI centre tabs keep every permission identical', () => {
     // AI v2 Phase 2 (P2-5): Policies, for everyone, between Operations and Insights ("Operations ▾ · Policies · Insights").
     expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'policies', 'insights', 'how']);
     expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'operations', 'policies', 'insights', 'administration', 'how']);
-    expect(read('app/assistant/page.tsx')).toContain("{sp.view === 'policies' && <AiCentrePolicies session={s} ");
+    // Its own linkable page (app/policies, a signed-in session) inside the AI Centre tab bar, so Ask can link it.
+    expect(read('app/policies/page.tsx')).toContain('<AiCentrePolicies session={s} query={query} />');
+    expect(read('app/policies/page.tsx')).toContain('<AiCentreTabs active="policies" isAdmin={isAdmin(s)} />');
   });
 
   it('every second-row tab is an existing /control-tower page behind requireAdmin, listed in the permission registry', () => {
@@ -88,7 +90,7 @@ describe('AI centre tabs keep every permission identical', () => {
   });
 
   it('the employee views live on /assistant, behind its unchanged session layout', () => {
-    for (const view of ['jobs', 'how', 'insights', 'policies']) {
+    for (const view of ['jobs', 'how', 'insights']) {
       expect(isCentreView(view)).toBe(true);
       expect(CENTRE_TABS.some(tab => tab.href === `/assistant?view=${view}`)).toBe(true);
     }

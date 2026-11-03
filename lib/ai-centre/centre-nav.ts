@@ -13,7 +13,7 @@
  * lib/permissions.ts therefore lists every route unchanged, and `adminOnly` below only hides a tab the
  * page would refuse anyway; it is never the gate. */
 
-export const CENTRE_VIEWS = ['jobs', 'how', 'insights', 'policies'] as const;
+export const CENTRE_VIEWS = ['jobs', 'how', 'insights'] as const;
 export type CentreView = (typeof CENTRE_VIEWS)[number];
 export const isCentreView = (value: unknown): value is CentreView =>
   typeof value === 'string' && (CENTRE_VIEWS as readonly string[]).includes(value);
@@ -27,10 +27,11 @@ export const CENTRE_TABS: readonly CentreTab[] = [
   { key: 'ask', href: '/assistant', adminOnly: false, sections: false },
   { key: 'jobs', href: '/assistant?view=jobs', adminOnly: false, sections: false },
   { key: 'operations', href: '/control-tower', adminOnly: true, sections: true },
-  // AI v2 Phase 2 P2-5: Policies, the Living Handbook, a view of /assistant for every signed-in person (approved mock-ups,
-  // "Operations ▾ · Policies · Insights"). Administrators write and approve policies; everyone else reads the approved text of
-  // their own company's policies only, guarded inside the view (components/ai-centre/policies.tsx) and by migration 0971.
-  { key: 'policies', href: '/assistant?view=policies', adminOnly: false, sections: false },
+  // AI v2 Phase 2 P2-5: Policies, the Living Handbook, for every signed-in person (approved mock-ups, "Operations ▾ · Policies ·
+  // Insights"). Its own linkable page, app/policies (a signed-in session), so Ask can link it. Administrators write and approve
+  // policies; everyone else reads the approved text of their own company's policies only, decided inside the view
+  // (components/ai-centre/policies.tsx) and by migration 0971.
+  { key: 'policies', href: '/policies', adminOnly: false, sections: false },
   // AI v2 Phase 2: Insights, a view of /assistant for every signed-in person (approved mock-ups, between Operations and
   // Administration). Everyone sees their own payroll readiness (P2-3); the HR capacity ledger section (P2-4) is for HR and
   // group administrators only, guarded inside the view (components/ai-centre/insights.tsx) and again by its service.

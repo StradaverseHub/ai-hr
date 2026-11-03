@@ -16,14 +16,14 @@ import { gatewayPolicyValueModel } from '@/core/handbook/provider-model';
  * person who wrote or sent it, a value applied before approval, a draft edited by someone who does not administer
  * every company it applies to). "Read the values" asks the model through the governed gateway; the model only
  * proposes, and nothing is applied until a person confirms each value and a group administrator approves. Every action
- * returns to the Policies view with a closed result code the page translates; no other text crosses. */
-const PAGE = '/assistant';
+ * returns to the Policies page (/policies) with a closed result code the page translates; no other text crosses. */
+const PAGE = '/policies';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const text = (value: FormDataEntryValue | null) => (typeof value === 'string' ? value : '');
 type Outcome = { policy?: string | null; saved?: string; extra?: Record<string, string> };
 
 async function run(formData: FormData, act: (s: Awaited<ReturnType<typeof getBrowserCommandSession>>) => Promise<Outcome>) {
-  const back = new URLSearchParams({ view: 'policies' });
+  const back = new URLSearchParams();
   const policy = text(formData.get('policy'));
   if (UUID.test(policy)) back.set('policy', policy);
   try {
@@ -38,7 +38,8 @@ async function run(formData: FormData, act: (s: Awaited<ReturnType<typeof getBro
     if (formData.get('returnTo') === 'new') back.set('new', '1');
   }
   revalidatePath(PAGE);
-  redirect(`${PAGE}?${back}`);
+  const search = back.toString();
+  redirect(search ? `${PAGE}?${search}` : PAGE);
 }
 
 export async function createPolicyAction(formData: FormData) {

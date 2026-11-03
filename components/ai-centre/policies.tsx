@@ -32,9 +32,10 @@ const ERRORS = ['not_administrator', 'not_group_admin', 'invalid', 'not_found', 
   'stale_submission', 'shared_setting', 'draft_open', 'no_drift', 'not_due', 'model_unavailable', 'no_settings', 'failed'] as const;
 const target = 'pointer-coarse:min-h-11';
 const href = (query: Readonly<Record<string, string | null | undefined>>) => {
-  const params = new URLSearchParams({ view: 'policies' });
+  const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
-  return `/assistant?${params}`;
+  const search = params.toString();
+  return search ? `/policies?${search}` : '/policies';
 };
 const Hidden = ({ name, value }: { name: string; value: string }) => <input type="hidden" name={name} value={value} />;
 

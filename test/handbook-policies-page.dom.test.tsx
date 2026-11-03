@@ -69,6 +69,8 @@ const SESSIONS={
 const wrap=(locale:Locale,node:ReactNode)=>render(<NextIntlClientProvider locale={locale} messages={messagesFor(locale) as never} onError={error=>{throw error;}} timeZone="Asia/Kuala_Lumpur">
  <main className="relative min-w-0"><div className="min-w-0">{node}</div></main></NextIntlClientProvider>);
 const text=(el:Node|null|undefined)=>(el?.textContent??'').replace(/\s+/g,' ').trim();
+/** Text with a space between separate text nodes (adjacent elements, such as a badge after a title, or two buttons). */
+const words=(el:Node|null|undefined)=>{if(!el)return '';const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),out:string[]=[];while(walker.nextNode())out.push(walker.currentNode.textContent??'');return out.join(' ').replace(/\s+/g,' ').trim();};
 const page=async(session:unknown,query:Record<string,string>={})=>resolveServerTree(<AiCentrePolicies session={session as never} query={query} />);
 afterEach(()=>{cleanup();state.locale='en';state.view=null;state.reads=[];});
 
@@ -78,10 +80,10 @@ describe('the Policies tab',()=>{
   const nav=screen.getByRole('navigation',{name:'AI Centre sections'});
   const links=within(nav).getAllByRole('link').map(link=>[text(link),link.getAttribute('href')]);
   expect(links).toEqual(isAdmin
-   ?[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Policies','/assistant?view=policies'],['Insights','/assistant?view=insights'],
+   ?[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Policies','/policies'],['Insights','/assistant?view=insights'],
     ['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']]
-   :[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Policies','/assistant?view=policies'],['Insights','/assistant?view=insights'],['How it works','/assistant?view=how']]);
-  expect(within(nav).getByRole('link',{current:'page'})).toHaveAttribute('href','/assistant?view=policies');
+   :[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Policies','/policies'],['Insights','/assistant?view=insights'],['How it works','/assistant?view=how']]);
+  expect(within(nav).getByRole('link',{current:'page'})).toHaveAttribute('href','/policies');
  });
 });
 
@@ -92,7 +94,7 @@ describe('an employee',()=>{
   const rendered=wrap('en',await page(SESSIONS.employee,{policy:P2}));
   expect(state.reads).toEqual([{policy:P2}]);
   expect(screen.getByRole('heading',{level:1,name:'Policies'})).toBeTruthy();
-  expect(text(rendered.container.querySelector('[data-policy-list]'))).toBe('Handbook Leave Leave v7');
+  expect(words(rendered.container.querySelector('[data-policy-list]'))).toBe('Handbook Leave Leave v7');
   expect(text(rendered.container.querySelector('[data-policy-status]'))).toBe('Version 7 · in force since Jan 1, 2026');
   expect(text(rendered.container.querySelector('[data-policy-text]'))).toBe('Annual leave is 14 days a year.');
   for(const selector of ['[data-policy-enforce]','[data-policy-drift]','[data-policy-approval]','[data-policy-impact]','[data-policy-new]','form'])
@@ -108,7 +110,7 @@ describe('an administrator\'s draft',()=>{
   expect(text(rendered.container.querySelector('[data-policy-status]'))).toBe('Draft v1 · written by Aisyah Fictional · applies to all 2 companies from Jan 1, 2027');
   expect([...rendered.container.querySelectorAll('[data-policy-span]')].map(mark=>text(mark))).toEqual(['RM 0.60 per km','first 500 km','RM 0.45 per km','within 30 days']);
   expect(text(rendered.container.querySelector('[data-policy-text]'))).toBe(BODY);
-  const rows=[...rendered.container.querySelectorAll('[data-policy-enforce] tbody tr')].map(row=>[...row.querySelectorAll('td')].map(cell=>text(cell)));
+  const rows=[...rendered.container.querySelectorAll('[data-policy-enforce] tbody tr')].map(row=>[...row.querySelectorAll('td')].map(cell=>words(cell)));
   expect(rows).toEqual([
    ['Rate, 0 to 500 km','None (any amount)','RM 0.60 per km','Confirm Reject'],
    ['Rate after 500 km','RM 0.45 per km'],
@@ -117,22 +119,22 @@ describe('an administrator\'s draft',()=>{
   expect(text(rendered.container.querySelector('[data-policy-enforce]'))).toContain('AI Centre read these 2 values from the highlighted words. You confirm each one; the owner service applies it after approval.');
   const impact=rendered.container.querySelector('[data-policy-impact]')!;
   expect(text(impact.querySelector('h4'))).toBe('If this had applied from Nov 2025 to Oct 2026');
-  expect([...impact.querySelectorAll('[data-stat-cells] > div')].map(cell=>text(cell))).toEqual(['of 412 mileage claims would change 37','less paid in total RM 12,400.00',
+  expect([...impact.querySelectorAll('[data-stat-cells] > div')].map(cell=>words(cell))).toEqual(['of 412 mileage claims would change 37','less paid in total RM 12,400.00',
    'of 412 claims late under the 30-day rule 6','people affected 4']);
   expect(text(impact.querySelector('[data-policy-impact-owner]'))).toBe('Calculated by the claims service on the last 12 months of real claims. AI Centre did not work out any amount.');
   expect(text(rendered.container.querySelector('[data-policy-rule]'))).toBe('When you send it, a group administrator approves it. A change to what the system enforces needs a second administrator: someone who did not write or send it.');
   // One value is undecided, so it cannot be sent yet.
   const send=screen.getByRole('button',{name:'Send for approval'});expect(send).toBeDisabled();
-  expect(screen.getByRole('link',{name:'Edit text'})).toHaveAttribute('href',`/assistant?view=policies&policy=${P1}&edit=1`);
+  expect(screen.getByRole('link',{name:'Edit text'})).toHaveAttribute('href',`/policies?policy=${P1}&edit=1`);
   expect(screen.getByRole('button',{name:'Read the values'})).toBeTruthy();
-  expect(text(rendered.container.querySelector('[data-policy-list]'))).toBe('Handbook Leave Leave v7 1 drift Claims Claims: mileage draft New policy');
+  expect(words(rendered.container.querySelector('[data-policy-list]'))).toBe('Handbook Leave Leave v7 1 drift Claims Claims: mileage draft New policy');
   for(const control of [...rendered.container.querySelectorAll('button, a[href], input, select, textarea')].filter(el=>!(el as HTMLInputElement).type||(el as HTMLInputElement).type!=='hidden'))
    expect(control.className,control.outerHTML.slice(0,80)).toMatch(/min-h-11|min-h-9|pointer-coarse:min-h-11/);
  });
  it('keeps a policy the system cannot enforce as text, marked not enforced yet',async()=>{
   state.view=admin(detail({area:'other',title:'Dress code',settings:[],values:[],impact:null},{body:'Smart casual from Monday to Thursday.'}));
   const rendered=wrap('en',await page(SESSIONS.hrAdmin,{policy:P1}));
-  expect(text(rendered.container.querySelector('[data-policy-not-enforced]'))).toBe('Not enforced yet This policy is kept as text. AI Centre answers questions from its approved version; the system does not enforce it yet.');
+  expect(words(rendered.container.querySelector('[data-policy-not-enforced]'))).toBe('Not enforced yet This policy is kept as text. AI Centre answers questions from its approved version; the system does not enforce it yet.');
   expect(screen.queryByRole('button',{name:'Read the values'})).toBeNull();
   expect(rendered.container.querySelector('[data-policy-impact]')).toBeNull();
  });

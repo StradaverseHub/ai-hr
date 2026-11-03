@@ -20,7 +20,7 @@ export const HANDBOOK_ENTITIES:readonly SemanticEntity[]=freeze([
   meaning:'The approved company policies in force that apply to the caller\'s company, in the company\'s own words, as numbered paragraphs with the citation to give.',
   module:null,sensitivity:'ordinary',audience:'self',rls:'own_employment',
   owners:['core/handbook/ask.ts#readPoliciesInForce'],
-  ruleVersion:null,relations:[],page:'/assistant',
+  ruleVersion:null,relations:[],page:'/policies',
   fields:[
    f('matchedTopic','boolean','full','Whether any paragraph shares words with the question\'s topic; false means the policies below are listed without a match.'),
    f('policies','list','full','The approved policies in force, the best match first.',{of:[

@@ -3926,7 +3926,7 @@ export async function simulateClaimPolicyImpact(
     if (p.submitWithin) {
       const rows = await tx
         .select({ id: claimRequest.id, employmentId: claimRequest.employmentId, incurredOn: claimRequest.incurredOn, createdAt: claimRequest.createdAt,
-          filedAt: sql<Date | string | null>`(select max(e.occurred_at) from ${domainEvent} e where e.tenant_id=${claimRequest.tenantId} and e.aggregate_type='claim-request' and e.aggregate_id=${claimRequest.id} and e.event_type='claim-request.submitted')` })
+          filedAt: sql<Date | string | null>`(select max(e.occurred_at) from public.domain_event e where e.tenant_id="claim_request"."tenant_id" and e.aggregate_type='claim-request' and e.aggregate_id="claim_request"."id" and e.event_type='claim-request.submitted')` })
         .from(claimRequest)
         .where(and(eq(claimRequest.claimTypeId, p.submitWithin.claimTypeId), inArray(claimRequest.status, [...RESERVING_STATUSES]), sql`${claimRequest.incurredOn} >= ${from}`, sql`${claimRequest.incurredOn} < ${to}`))
         .orderBy(claimRequest.id);

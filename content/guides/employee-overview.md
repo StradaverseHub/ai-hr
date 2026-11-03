@@ -21,7 +21,7 @@ If the app says your login is not linked to an employee, ask HR to check the exa
 | Complete reviews and goals | [My performance](/me/performance) |
 | Check onboarding tasks or request equipment | [Lifecycle](/lifecycle) |
 | Read messages and set delivery preferences | [Notifications](/me/notifications) |
-| Read your company's approved policies | [AI Centre › Policies](/assistant?view=policies) |
+| Read your company's approved policies | [AI Centre › Policies](/policies) |
 
 Payslips and annual tax statements are available through your personal workspace when the relevant records and permissions are available. The directory and organization chart do not grant access to other people's private payroll data.
 

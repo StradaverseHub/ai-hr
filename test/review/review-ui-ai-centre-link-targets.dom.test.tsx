@@ -29,7 +29,7 @@ describe('AI centre link targets', () => {
 
   it('REVIEW pass: a non-administrator sees Ask, Delegated jobs, Policies, Insights and How it works only (the Inbox tab is retired for Today)', () => {
     render(<NextIntlClientProvider locale="en" messages={enWithAiCentre as never}><AiCentreTabs active="jobs" isAdmin={false} /></NextIntlClientProvider>);
-    expect(screen.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=jobs', '/assistant?view=policies', '/assistant?view=insights', '/assistant?view=how']);
+    expect(screen.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=jobs', '/policies', '/assistant?view=insights', '/assistant?view=how']);
     expect(screen.getByRole('link', { current: 'page' })).toHaveAttribute('href', '/assistant?view=jobs');
   });
 });
