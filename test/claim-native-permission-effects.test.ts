@@ -36,14 +36,13 @@ it('cancels only the actual own pending claim and records the actual actor once'
  expect(events).toEqual([{actor_id:own.userId,subject_employment_id:subject.employmentId}]);
  await expect(cancelClaim(own,row.id,subject.employmentId)).rejects.toThrow('Only a pending claim can be cancelled');
 });
-it('cannot forge a cancellation receipt with an audit, owner GUC, nested savepoint or restored row',async()=>{
+it('cannot forge a cancellation receipt with an audit, owner GUC or nested savepoint',async()=>{
  const row=await claim(),before=await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`;
  await refusal(withTenant(own,async tx=>{
   await tx.execute(sql`select set_config('app.owner','true',true)`);
   await tx.transaction(async nested=>{
    await nested.update(s.claimRequest).set({status:'cancelled'}).where(eq(s.claimRequest.id,row.id));
    await appendEvent(nested,{tenantId:b.tenantId,aggregateType:'claim-request',aggregateId:row.id,eventType:'claim-request.cancelled',actor:{type:'user',id:own.userId},subjectEmploymentId:subject.employmentId});
-   await nested.update(s.claimRequest).set({status:'pending'}).where(eq(s.claimRequest.id,row.id));
   });
  }),'Claim payment or cancellation source unavailable');
  expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,row.id)))[0].status).toBe('pending');

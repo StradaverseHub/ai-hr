@@ -4845,6 +4845,13 @@
       "when": 1793330000388,
       "tag": "0988_notice_author_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 836,
+      "version": "7",
+      "when": 1793330000389,
+      "tag": "0989_claim_own_source_policy_readiness",
+      "breakpoints": true
     }
   ]
 }
