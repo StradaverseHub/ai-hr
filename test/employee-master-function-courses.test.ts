@@ -10,7 +10,7 @@ import {decidePayrollPermission} from '../lib/payroll-permissions';
 import {pgSqlState} from '../lib/db-error';
 import {setPayrollPermissionGrant,deletePayrollPermissionGrant} from '../core/payroll-permissions-admin';
 import {masterReportCatalogue,masterReportActionAccess} from '../core/employee-master-access';
-import {saveEmployeeMasterReport,runEmployeeMasterReport,getEmployeeMasterReport,authorizeEmployeeMasterRun} from '../core/employee-master-reports';
+import {saveEmployeeMasterReport,runEmployeeMasterReport,getEmployeeMasterReport,authorizeEmployeeMasterRun,deleteEmployeeMasterReport} from '../core/employee-master-reports';
 import * as projection from '../core/employee-master-projection';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {defaultMasterColumn,type EmployeeMasterSpec} from '../lib/employee-master-report';
@@ -122,5 +122,30 @@ it('publishes View and refuses definitions, fresh runs and generated exports aft
  }finally{
   await owner.client`delete from app.access_native_capability_default where capability_id=${cap}`;
   await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=${cap}`;
+ }
+});
+
+it('publishes definition actions and keeps Edit separate from View, Add and Delete',async()=>{
+ const code=PERSONNEL_FIELDS.find(field=>field.owner==='employment'&&field.ownerField==='employeeCode')!;
+ const spec:EmployeeMasterSpec={v:2,asAt:todayInKualaLumpur(),companyIds:[b.companyId],includeDrafts:false,columns:[defaultMasterColumn(code)],
+  expression:{id:'root',type:'group',logic:'and',children:[]},sorts:[],groups:[],pdf:{paper:'A4',orientation:'landscape',margins:'normal',logo:false,pageBreakGroups:false}};
+ const definition={name:'Fictional editable definition',description:'Fixture',spec,sharedRoleIds:[]};
+ try{
+  await publishActionCapabilityPackage(owner.client,'employee_master_view');
+  expect(await publishActionCapabilityPackage(owner.client,'employee_master_definition')).toMatchObject({changed:true,capabilities:3});
+  expect(await publishActionCapabilityPackage(owner.client,'employee_master_definition')).toMatchObject({changed:false});
+  const report=await saveEmployeeMasterReport(ctx,[b.companyId],definition);
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${ctx.userId!}::uuid,'function.employeeMasterReports.edit',${b.companyId}::uuid,'deny')`;
+  expect(await getEmployeeMasterReport(ctx,[b.companyId],report.id)).toMatchObject({canEdit:false,canDelete:true,canDuplicate:true});
+  await expect(saveEmployeeMasterReport(ctx,[b.companyId],{...definition,id:report.id,version:report.version,name:'Blocked edit'})).rejects.toThrow('unavailable');
+  const raw=await withTenant(ctx,tx=>tx.update(s.customReport).set({name:'Blocked raw edit'}).where(eq(s.customReport.id,report.id))).then(()=>null,error=>error);
+  expect(pgSqlState(raw)).toBe('42501');
+  expect((await getEmployeeMasterReport(ctx,[b.companyId],report.id)).name).toBe(definition.name);
+  await deleteEmployeeMasterReport(ctx,report.id);
+  await expect(getEmployeeMasterReport(ctx,[b.companyId],report.id)).rejects.toThrow('unavailable');
+ }finally{
+  await owner.client`delete from app.access_native_capability_default where capability_id like 'function.employeeMasterReports.%'`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.employeeMasterReports.%'`;
  }
 });
