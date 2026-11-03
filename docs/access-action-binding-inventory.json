@@ -1222,6 +1222,7 @@
             "app.reward_member_eligible",
             "app.reward_policy_unit_origin",
             "app.reward_roles",
+            "app.reward_unit_verification_counts",
             "app.settings_action_allowed",
             "app.subject_head",
             "app.workflow_task_reader",
@@ -1743,6 +1744,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "app.subject_head",
         "app.workflow_task_reader",
@@ -17373,17 +17375,16 @@
             "app.reward_admin",
             "app.reward_annual_calculation",
             "app.reward_deletion_reason",
-            "app.reward_funding",
+            "app.reward_governance_review",
             "app.reward_member_eligible",
             "app.reward_offcycle_calculation",
             "app.reward_policy_unit_origin",
             "app.reward_roles",
-            "app.reward_senior_awards_for_post",
+            "app.reward_unit_verification_counts",
             "app/rewards/[unitId]/page.tsx:requireModule",
             "app/rewards/[unitId]/page.tsx:scopedSession"
           ],
           "tables": [
-            "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
             "appUser",
             "businessUnit",
             "company",
@@ -17395,18 +17396,16 @@
             "rewardCalendar",
             "rewardCycle",
             "rewardDecision",
-            "rewardEntry",
             "rewardGovernance",
-            "rewardGovernanceHistory",
             "rewardGovernancePublic",
             "rewardMember",
-            "rewardSeniorAward",
             "rewardUnit"
           ],
           "boundaries": [
             "core/module-gate.ts#withRewardsTenant",
             "db/client.ts#withTenant",
-            "lib/session.ts#getSession"
+            "lib/session.ts#getSession",
+            "packs/rewards/bounded-read-error.ts#boundedRewardReadFailure"
           ]
         },
         {
@@ -17484,6 +17483,7 @@
             "app.reward_offcycle_calculation",
             "app.reward_policy_unit_origin",
             "app.reward_roles",
+            "app.reward_unit_verification_counts",
             "app/rewards/page.tsx:requireModule",
             "app/rewards/page.tsx:scopedSession"
           ],
@@ -17520,12 +17520,12 @@
         "app.reward_admin",
         "app.reward_annual_calculation",
         "app.reward_deletion_reason",
-        "app.reward_funding",
+        "app.reward_governance_review",
         "app.reward_member_eligible",
         "app.reward_offcycle_calculation",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
-        "app.reward_senior_awards_for_post",
+        "app.reward_unit_verification_counts",
         "app/rewards/[unitId]/page.tsx:requireModule",
         "app/rewards/[unitId]/page.tsx:scopedSession",
         "app/rewards/[unitId]/people/[entryId]/page.tsx:requireModule",
@@ -17534,7 +17534,6 @@
         "app/rewards/page.tsx:scopedSession"
       ],
       "tables": [
-        "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
         "appUser",
         "businessUnit",
         "company",
@@ -17546,12 +17545,9 @@
         "rewardCalendar",
         "rewardCycle",
         "rewardDecision",
-        "rewardEntry",
         "rewardGovernance",
-        "rewardGovernanceHistory",
         "rewardGovernancePublic",
         "rewardMember",
-        "rewardSeniorAward",
         "rewardUnit"
       ],
       "status": "owner-traced-not-runtime-attested"
@@ -17666,6 +17662,7 @@
             "app.reward_policy_memberships",
             "app.reward_policy_unit_origin",
             "app.reward_roles",
+            "app.reward_unit_verification_counts",
             "app/admin/rewards/page.tsx:requireModule",
             "app/admin/rewards/page.tsx:scopedAdmin",
             "lib/scope.ts:requireAdmin"
@@ -17747,6 +17744,7 @@
         "app.reward_policy_memberships",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app/admin/rewards/page.tsx:requireModule",
         "app/admin/rewards/page.tsx:scopedAdmin",
         "app/admin/rewards/shared/page.tsx:requireModule",
@@ -17869,8 +17867,8 @@
             "app.reward_access_lapse_requests",
             "app.reward_admin",
             "app.reward_calendar_access",
-            "app.reward_policy_unit_origin",
-            "app.reward_roles",
+            "app.reward_configuration_review",
+            "app.reward_senior_membership_metadata",
             "app/admin/rewards/[unitId]/page.tsx:requireModule",
             "app/admin/rewards/[unitId]/page.tsx:scopedSession"
           ],
@@ -17883,15 +17881,13 @@
             "new Set(grants.map(g=>g.role))",
             "rewardCalendar",
             "rewardCycle",
-            "rewardEntry",
-            "rewardGovernance",
-            "rewardMember",
             "rewardUnit"
           ],
           "boundaries": [
             "core/module-gate.ts#withRewardsTenant",
             "db/client.ts#withTenant",
-            "lib/session.ts#getSession"
+            "lib/session.ts#getSession",
+            "packs/rewards/bounded-read-error.ts#boundedRewardReadFailure"
           ]
         },
         {
@@ -17913,8 +17909,8 @@
         "app.reward_access_lapse_requests",
         "app.reward_admin",
         "app.reward_calendar_access",
-        "app.reward_policy_unit_origin",
-        "app.reward_roles",
+        "app.reward_configuration_review",
+        "app.reward_senior_membership_metadata",
         "app/admin/rewards/[unitId]/page.tsx:requireModule",
         "app/admin/rewards/[unitId]/page.tsx:scopedSession"
       ],
@@ -17927,9 +17923,6 @@
         "new Set(grants.map(g=>g.role))",
         "rewardCalendar",
         "rewardCycle",
-        "rewardEntry",
-        "rewardGovernance",
-        "rewardMember",
         "rewardUnit"
       ],
       "status": "owner-traced-not-runtime-attested"
@@ -31386,8 +31379,8 @@
         "app.reward_access_lapse_requests",
         "app.reward_admin",
         "app.reward_calendar_access",
-        "app.reward_policy_unit_origin",
-        "app.reward_roles",
+        "app.reward_configuration_review",
+        "app.reward_senior_membership_metadata",
         "app/admin/rewards/[unitId]/page.tsx:requireModule",
         "app/admin/rewards/[unitId]/page.tsx:scopedSession"
       ],
@@ -31400,15 +31393,13 @@
         "new Set(grants.map(g=>g.role))",
         "rewardCalendar",
         "rewardCycle",
-        "rewardEntry",
-        "rewardGovernance",
-        "rewardMember",
         "rewardUnit"
       ],
       "boundaries": [
         "core/module-gate.ts#withRewardsTenant",
         "db/client.ts#withTenant",
-        "lib/session.ts#getSession"
+        "lib/session.ts#getSession",
+        "packs/rewards/bounded-read-error.ts#boundedRewardReadFailure"
       ]
     },
     {
@@ -31627,6 +31618,7 @@
         "app.reward_policy_memberships",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app/admin/rewards/page.tsx:requireModule",
         "app/admin/rewards/page.tsx:scopedAdmin",
         "lib/scope.ts:requireAdmin"
@@ -35159,6 +35151,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.workflow_task_reader",
         "core/ai-domain-analysis.ts:authorizeSourceTx",
         "core/ai-workforce-analysis.ts:authorizeSourceTx",
@@ -37284,6 +37277,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess",
         "lib/ai/assistant-action-catalogue.ts:ASSISTANT_CHAT_ACTIONS.filter(action=>readable.has(action.module)&&actors.has(action.permission.actor)&&!paused.has(action.pauseKey)&&!paused.has(agentActionPauseKey(action)))\n  .map"
@@ -37581,6 +37575,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -38161,6 +38156,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -38315,6 +38311,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -38458,6 +38455,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess",
         "lib/ai/assistant-action-catalogue.ts:ASSISTANT_CHAT_ACTIONS.filter(action=>readable.has(action.module)&&actors.has(action.permission.actor)&&!paused.has(action.pauseKey)&&!paused.has(agentActionPauseKey(action)))\n  .map"
@@ -38596,6 +38594,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess",
         "lib/ai/assistant-action-catalogue.ts:ASSISTANT_CHAT_ACTIONS.filter(action=>readable.has(action.module)&&actors.has(action.permission.actor)&&!paused.has(action.pauseKey)&&!paused.has(agentActionPauseKey(action)))\n  .map"
@@ -38718,6 +38717,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/assistant-threads.ts:authorize",
         "core/schema-explorer.ts:assertExplorerAccess",
@@ -39302,6 +39302,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "app.subject_head",
         "app.workflow_task_reader",
@@ -39784,6 +39785,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -39940,6 +39942,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -65397,17 +65400,16 @@
         "app.reward_admin",
         "app.reward_annual_calculation",
         "app.reward_deletion_reason",
-        "app.reward_funding",
+        "app.reward_governance_review",
         "app.reward_member_eligible",
         "app.reward_offcycle_calculation",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
-        "app.reward_senior_awards_for_post",
+        "app.reward_unit_verification_counts",
         "app/rewards/[unitId]/page.tsx:requireModule",
         "app/rewards/[unitId]/page.tsx:scopedSession"
       ],
       "tables": [
-        "JSON.stringify({group,entries:entries.map(entry=>({id:entry.id,source:entry.source,facts:{performance:entry.facts.performance,seniorPlan:entry.facts.seniorPlan,erCase:entry.facts.erCase,confidentiality:entry.facts.confidentiality}})).sort((a,b)=>a.id.localeCompare(b.id))})",
         "appUser",
         "businessUnit",
         "company",
@@ -65419,18 +65421,16 @@
         "rewardCalendar",
         "rewardCycle",
         "rewardDecision",
-        "rewardEntry",
         "rewardGovernance",
-        "rewardGovernanceHistory",
         "rewardGovernancePublic",
         "rewardMember",
-        "rewardSeniorAward",
         "rewardUnit"
       ],
       "boundaries": [
         "core/module-gate.ts#withRewardsTenant",
         "db/client.ts#withTenant",
-        "lib/session.ts#getSession"
+        "lib/session.ts#getSession",
+        "packs/rewards/bounded-read-error.ts#boundedRewardReadFailure"
       ]
     },
     {
@@ -65496,17 +65496,15 @@
       "line": 3,
       "surface": "route",
       "owners": [
-        "app.reward_roles"
+        "app.reward_senior_evidence_read"
       ],
       "tables": [
-        "file.content",
-        "rewardEntry",
-        "rewardSeniorEvidence",
-        "rewardUnit"
+        "file.content"
       ],
       "boundaries": [
         "core/module-gate.ts#withRewardsTenant",
-        "lib/session.ts#getSession"
+        "lib/session.ts#getSession",
+        "packs/rewards/bounded-read-error.ts#boundedRewardReadFailure"
       ]
     },
     {
@@ -66300,6 +66298,7 @@
         "app.reward_offcycle_calculation",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app/rewards/page.tsx:requireModule",
         "app/rewards/page.tsx:scopedSession"
       ],
@@ -69393,6 +69392,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -69481,6 +69481,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -69569,6 +69570,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -69657,6 +69659,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -69745,6 +69748,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -69833,6 +69837,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -69921,6 +69926,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -70009,6 +70015,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -70097,6 +70104,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -70185,6 +70193,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -70273,6 +70282,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -70361,6 +70371,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -70449,6 +70460,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -70537,6 +70549,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -70625,6 +70638,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -70713,6 +70727,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -70801,6 +70816,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -70889,6 +70905,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -70977,6 +70994,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],
@@ -71065,6 +71083,7 @@
         "app.reward_member_eligible",
         "app.reward_policy_unit_origin",
         "app.reward_roles",
+        "app.reward_unit_verification_counts",
         "app.settings_action_allowed",
         "core/schema-explorer.ts:assertExplorerAccess"
       ],

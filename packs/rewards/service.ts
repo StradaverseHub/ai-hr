@@ -1,3 +1,4 @@
+import {boundedRewardReadFailure} from './bounded-read-error';
 import {mobileRewardPersonBlock} from './mobile-review-projection';
 import type { Tx as AiReadTx } from '../../db/client';
 import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
@@ -16,7 +17,7 @@ import { setPayrollInput } from '../payroll/service';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import type { PackTaskItem } from '../../lib/assigned-work';
 import { calculateRewards, ratio, increase, type RewardMultiplierSuggestion } from './engine';
-import { emptyGovernance, effectiveRewardPolicy, poolStatus, unitInputSchema, confirmedSeniorAwards, seniorGrade, maySeeSeniorAmounts, redactPatPolicy, seniorAwardSchema, governanceBasis,governanceHistoryProjection,seniorSourceFingerprint,type RewardPublicGovernance,type RewardGovernance, type SeniorAward } from './governance-model';
+import { emptyGovernance, effectiveRewardPolicy, poolStatus, unitInputSchema, confirmedSeniorAwards, seniorGrade, maySeeSeniorAmounts, redactPatPolicy, seniorAwardSchema, governanceBasis,seniorSourceFingerprint,type RewardPublicGovernance,type RewardGovernance, type SeniorAward } from './governance-model';
 import { assertRewardPolicyGrids } from './policy-grid-validation';
 import { onehrRewardResultTx } from '../performance/service';
 import { decisionActorRole, factsFromOnehr, isSeniorPlanMember, returnedState } from './model';
@@ -98,24 +99,28 @@ function governanceAuthority(unit:typeof rewardUnit.$inferSelect,roles:RewardRol
  if(unit.kind!=='annual'||!roles.includes('gr'))throw new RewardError('Group Rewards access to a draft annual review is required.');
 }
 function reasonForGovernance(reason:string){return z.string().trim().min(10).max(2000).parse(reason);}
-export async function getRewardUnitGovernance(ctx:SessionContext,unitId:string){
+export type RewardGovernanceReview={
+ unitId:string;revision:number;canEdit:boolean;isGr:boolean;canAmounts:boolean;managed:boolean;available:boolean;
+ legacyInputs:import('./governance-model').RewardUnitInputs|null;poolStatus:RewardPublicGovernance['status'];
+ inputs:RewardGovernance['inputs'];selection:RewardGovernance['selection'];exemption:RewardGovernance['exemption'];previousPools:RewardGovernance['previousPools'];
+ pools:{standard:number;h:number};branches:string[];
+ senior:{entryId:string;employmentId:string;name:string;employeeCode:string;grade:string;basicCents:number|null;award:SeniorAward|null;awaiting:boolean}[];
+ totals:{count:number;incrementCents:number;bonusCents:number}|null;
+ history:{id:string;kind:string;reason:string;actorId:string;actorName:string|null;createdAt:Date;before:RewardGovernance|null;after:RewardGovernance|null}[];
+};
+export async function getRewardUnitGovernance(ctx:SessionContext,unitId:string):Promise<RewardGovernanceReview>{
+ idSchema.parse(unitId);
  return withRewardsTenant(ctx,async tx=>{
-  const {unit,roles,entries}=await load(tx,unitId),state=await governanceStateTx(tx,unitId),publicState=await governancePublicTx(tx,unitId),effective=effectiveRewardPolicy(unit.policy,state),awardProjection=await seniorAwardsTx(tx,unitId);
-  const calculated=await calculateUnit(tx,unit,entries);
-  const visible=entries.filter(entry=>visibleEntry(entry,roles,ctx.personId)),senior=visible.filter(entry=>isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade));
-  const canAmounts=maySeeSeniorAmounts(roles),isGr=roles.includes('gr');
-  const [ready]=await tx.execute<{ready:boolean}>(sql`select to_regclass('public.reward_governance') is not null as ready`);
-  return {unitId,revision:unit.revision,canEdit:isGr&&unit.status==='draft'&&unit.kind==='annual',isGr,canAmounts,managed:!!publicState,
-   available:ready?.ready===true,legacyInputs:isGr?{forecastCents:null,actualCents:unit.policy.patActual,targetCents:unit.policy.patTarget,targetMonthsBp:unit.policy.targetMonthsBp,multiplierBp:unit.policy.bonusStructure==='branch'?10000:unit.policy.multiplierBp,branchRatings:unit.policy.branchRatings}:null,
-   poolStatus:publicState?.status??'legacy',inputs:isGr?(state?.inputs??null):null,selection:isGr?state?.selection??null:null,
-   exemption:isGr?state?.exemption??null:null,previousPools:publicState?.previousPools??null,
-   pools:{standard:calculated.budgets.standard.bonusPoolCents,h:calculated.budgets.h.bonusPoolCents},
-   branches:isGr?[...new Set(entries.filter(entry=>entry.facts.branch).map(entry=>entry.facts.branch))].sort():[],
-   senior:senior.map(entry=>({entryId:entry.id,employmentId:entry.employmentId,name:entry.source.name,employeeCode:entry.source.employeeCode,grade:entry.source.grade,
-    basicCents:canAmounts?entry.source.basicCents:null,award:canAmounts?awardProjection[entry.id]??null:null,awaiting:!awardProjection[entry.id]?.confirmedBy})),
-   totals:canAmounts?{count:senior.length,incrementCents:senior.reduce((n,e)=>n+Math.max(0,(awardProjection[e.id]?.confirmedBy?awardProjection[e.id].newBasicCents:e.source.basicCents)-e.source.basicCents),0),bonusCents:senior.reduce((n,e)=>n+(awardProjection[e.id]?.confirmedBy?awardProjection[e.id].bonusCents:0),0)}:null,
-   history:isGr&&ready?.ready?(await tx.select({id:rewardGovernanceHistory.id,kind:rewardGovernanceHistory.kind,reason:rewardGovernanceHistory.reason,actorId:rewardGovernanceHistory.actorId,actorName:person.fullName,createdAt:rewardGovernanceHistory.createdAt,before:rewardGovernanceHistory.before,after:rewardGovernanceHistory.after}).from(rewardGovernanceHistory).leftJoin(appUser,eq(appUser.id,rewardGovernanceHistory.actorId)).leftJoin(person,eq(person.id,appUser.personId)).where(eq(rewardGovernanceHistory.unitId,unitId)).orderBy(desc(rewardGovernanceHistory.createdAt),desc(rewardGovernanceHistory.id))).map(event=>({...event,before:governanceHistoryProjection(event.before,visible),after:governanceHistoryProjection(event.after,visible)})):[],
-  };
+  try {
+   type NativeProjection=Omit<RewardGovernanceReview,'history'>&{history:(Omit<RewardGovernanceReview['history'][number],'actorName'|'createdAt'>&{createdAt:string})[]};
+   const [result]=await tx.execute<{value:NativeProjection}>(sql`select app.reward_governance_review(${unitId}::uuid)as value`);
+   if(!result?.value)throw new RewardError('Reward unit not found or access has been removed.');
+   const value=result.value,actorIds=[...new Set(value.history.map(event=>event.actorId))];
+   // Preserve actual INVOKER app_user/person RLS for audit names. The private owner does
+   // not broaden personnel metadata access as a side effect of reading a Rewards review.
+   const names=new Map(actorIds.length?(await tx.select({id:appUser.id,name:person.fullName}).from(appUser).leftJoin(person,eq(person.id,appUser.personId)).where(and(eq(appUser.tenantId,ctx.tenantId),inArray(appUser.id,actorIds)))).map(actor=>[actor.id,actor.name]as const):[]);
+   return {...value,branches:[...value.branches].sort(),history:value.history.map(event=>({...event,createdAt:new Date(event.createdAt),actorName:names.get(event.actorId)??null}))};
+  } catch(error) { throw boundedRewardReadFailure(error,RewardError); }
  });
 }
 export async function saveRewardUnitInputs(ctx:SessionContext,unitId:string,revision:number,raw:unknown,reason:string){
@@ -184,12 +189,13 @@ export async function saveRewardSeniorAward(ctx:SessionContext,unitId:string,rev
  });
 }
 export async function readRewardSeniorEvidence(ctx:SessionContext,unitId:string,evidenceId:string){
- idSchema.parse(evidenceId);
+ idSchema.parse(unitId);idSchema.parse(evidenceId);
  return withRewardsTenant(ctx,async tx=>{
-  const {roles,entries}=await load(tx,unitId);if(!maySeeSeniorAmounts(roles))throw new RewardError('Senior plan evidence is restricted.');
-  const [file]=await tx.select().from(rewardSeniorEvidence).where(and(eq(rewardSeniorEvidence.unitId,unitId),eq(rewardSeniorEvidence.id,evidenceId)));
-  const entry=file&&entries.find(entry=>entry.id===file.entryId);if(!file||!entry||!visibleEntry(entry,roles,ctx.personId))throw new RewardError('Evidence is not available.');
-  return {name:file.name,mime:file.mime,content:file.content};
+  try {
+   const [file]=await tx.execute<{value:{name:string;mime:string;content:string}}>(sql`select app.reward_senior_evidence_read(${unitId}::uuid,${evidenceId}::uuid)as value`);
+   if(!file?.value)throw new RewardError('Evidence is not available.');
+   return file.value;
+  } catch(error) { throw boundedRewardReadFailure(error,RewardError); }
  });
 }
 
@@ -410,8 +416,8 @@ async function listRewardUnitsTx(tx:Tx,companyIds:string[]){
     const rows = await tx.select({ id: rewardUnit.id, cycleId: rewardCycle.id, cycle: rewardCycle.name, kind: rewardUnit.kind, year: rewardCycle.year, companyId: rewardUnit.companyId, company: company.legalName, businessUnitId: rewardUnit.businessUnitId, unit: businessUnitDisplayName, status: rewardUnit.status, returnedTo: returnedSeatSql, revision: rewardUnit.revision, canConfigure:sql<boolean>`${rewardUnit.status}='draft' and ${rewardUnit.kind}='annual' and 'gr' in (select app.reward_roles(${rewardUnit.id}))`, deletionReason:sql<import('./maintenance').RewardDeletionReason|null>`case when app.reward_admin(${rewardUnit.companyId}) then app.reward_deletion_reason(${rewardUnit.id}) else 'locked' end`,
       bgOrigin: sql<boolean>`coalesce(${rewardUnit.offcycle}->>'bgOrigin','false')='true'`,
       effectiveFrom: sql<string | null>`${rewardUnit.policy}->>'effectiveFrom'`,
-      people: sql<number | null>`case when ${seated} then (select count(*)::int from reward_entry e where e.unit_id=${rewardUnit.id}) end`,
-      verified: sql<number | null>`case when ${seated} then (select count(*)::int from reward_entry e where e.unit_id=${rewardUnit.id} and e.facts->>'reviewed'='true') end`,
+      people: sql<number | null>`case when ${seated} then (app.reward_unit_verification_counts(${rewardUnit.id})->>'people')::integer end`,
+      verified: sql<number | null>`case when ${seated} then (app.reward_unit_verification_counts(${rewardUnit.id})->>'verified')::integer end`,
       // 56595838: the shared configuration version the review started from, and whether its own settings changed since.
       policyOrigin: sql<{ versionId: string; revision: number; name: string; changed: boolean } | null>`app.reward_policy_unit_origin(${rewardUnit.id})`,
       // 62e743ed: cancelRewardReview's guard, projected for the row actions (the service still decides).
@@ -459,22 +465,21 @@ export async function rewardSetupChoices(ctx: SessionContext, companyIds: string
 }
 
 /** Configuration carries policy and participants, never the employee salary roster. */
-export async function getRewardConfiguration(ctx: SessionContext, unitId: string) {
+export type RewardConfigurationReview={
+ unit:typeof rewardUnit.$inferSelect;cycle:{name:string;year:number}|undefined;name:string;
+ members:Pick<typeof rewardMember.$inferSelect,'id'|'userId'|'role'>[];
+ canReadPat:boolean;policyOrigin:{versionId:string;revision:number;name:string;changed:boolean}|null;canConfigure:boolean;canManageMembers:boolean;
+};
+export async function getRewardConfiguration(ctx: SessionContext, unitId: string):Promise<RewardConfigurationReview> {
   idSchema.parse(unitId);
   return withRewardsTenant(ctx, async tx => {
-    const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId));
-    if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
-    const roles = await rolesFor(tx, unitId);
-    const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
-    if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Rewards configuration requires company administrator or Group Rewards access.');
-    const [cycle] = await tx.select({ name: rewardCycle.name, year: rewardCycle.year }).from(rewardCycle).where(eq(rewardCycle.id, unit.cycleId));
-    const [bu] = await tx.select({ name: businessUnitDisplayName }).from(businessUnit).where(eq(businessUnit.id, unit.businessUnitId));
-    const members = await tx.select({ id: rewardMember.id, userId: rewardMember.userId, role: rewardMember.role }).from(rewardMember).where(eq(rewardMember.unitId, unitId)).orderBy(asc(rewardMember.role), asc(rewardMember.userId));
-    const [originRow]=await tx.execute<{origin:{versionId:string;revision:number;name:string;changed:boolean}|null}>(sql`select app.reward_policy_unit_origin(${unitId}::uuid) as origin`);
-    return { unit:{...unit,policy:redactPatPolicy(effectiveRewardPolicy(unit.policy,await governanceStateTx(tx,unitId)),roles)}, cycle, name: bu?.name ?? 'Business unit', members,canReadPat:roles.includes('gr'),policyOrigin:originRow?.origin??null,
-      canConfigure: roles.includes('gr') && unit.status === 'draft' && unit.kind === 'annual',
-      canManageMembers: !!admin?.ok && unit.status === 'draft',
-    };
+    try {
+      type NativeConfiguration=Omit<RewardConfigurationReview,'unit'>&{unit:Omit<RewardConfigurationReview['unit'],'createdAt'|'updatedAt'|'postedAt'|'deletedAt'>&{createdAt:string;updatedAt:string;postedAt:string|null;deletedAt:string|null}};
+      const [row]=await tx.execute<{value:NativeConfiguration}>(sql`select app.reward_configuration_review(${unitId}::uuid)as value`);
+      if(!row?.value)throw new RewardError('Rewards configuration unavailable');
+      const value=row.value;
+      return {...value,unit:{...value.unit,createdAt:new Date(value.unit.createdAt),updatedAt:new Date(value.unit.updatedAt),postedAt:value.unit.postedAt?new Date(value.unit.postedAt):null,deletedAt:value.unit.deletedAt?new Date(value.unit.deletedAt):null}};
+    } catch(error) { throw boundedRewardReadFailure(error,RewardError); }
   });
 }
 
@@ -660,10 +665,13 @@ function assertSeniorSelectionAuthority(unit: typeof rewardUnit.$inferSelect, re
 
 /** A separate, intentionally pay-free projection; administrative role management never loads this roster. */
 export async function getRewardSeniorMembership(ctx: SessionContext, unitId: string) {
+  idSchema.parse(unitId);
   return withRewardsTenant(ctx, async tx => {
-    const { unit, roles, entries } = await load(tx, unitId);
-    if (!roles.includes('gr')) throw new RewardError('Group Rewards membership access is required.');
-    return { unitId, revision: unit.revision, canEdit: unit.kind === 'annual' && unit.status === 'draft', ...seniorMembershipProjection(unit, entries, roles, ctx) };
+    try {
+      const [projection]=await tx.execute<{value:ReturnType<typeof seniorMembershipProjection>&{unitId:string;revision:number;canEdit:boolean}}>(sql`select app.reward_senior_membership_metadata(${unitId}::uuid)as value`);
+      if(!projection?.value)throw new RewardError('Group Rewards membership access is required.');
+      return projection.value;
+    } catch(error) { throw boundedRewardReadFailure(error,RewardError); }
   });
 }
 
