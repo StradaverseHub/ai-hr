@@ -203,3 +203,28 @@ export const LEAVE_OWN_APPLICATION_CAPABILITY_PUBLICATION={
   'app.leave_own_withdraw(uuid)',
  ],
 } as const;
+
+export const LEAVE_EMPLOYEE_RECORDS_CAPABILITY_PUBLICATION={
+ ...LEAVE_EMPLOYEE_RECORDS_VIEW_CAPABILITY_PUBLICATION,
+ capabilities:[...LEAVE_EMPLOYEE_RECORDS_VIEW_CAPABILITY_PUBLICATION.capabilities,
+  {id:'leave.delete',scope:'company',bindings:[
+   {owner:'app.module_action_allowed',operation:'native-leave-administrative-delete'},
+  ]},
+ ],
+ functions:LEAVE_EMPLOYEE_RECORDS_VIEW_CAPABILITY_PUBLICATION.functions.map(descriptor=>({
+  ...descriptor,
+  actions:[...descriptor.actions,{
+   operation:'delete' as const,parentCapability:'leave.delete',delegationFloorFunction:'app.module_action_delegation_allowed',
+   bindings:[
+    {owner:'app.leave_employee_record_cancel_allowed',operation:'current-subject-status-and-self-exception'},
+    {owner:'app.leave_request_mutation_guard',operation:'pending-administrative-cancellation'},
+    {owner:'app.leave_approved_cancellation_guard',operation:'approved-administrative-cancellation-and-separate-give-back'},
+    {owner:'core/leave.ts',operation:'native-whole-cancellation-ledger-and-audit'},
+   ],
+  }],
+ })),
+ requiredFunctions:[...LEAVE_EMPLOYEE_RECORDS_VIEW_CAPABILITY_PUBLICATION.requiredFunctions,
+  'app.leave_employee_records_delete_bindings_complete()',
+  'app.leave_employee_record_cancel_allowed(uuid)',
+ ],
+} as const;

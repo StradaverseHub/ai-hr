@@ -680,3 +680,29 @@ it('publishes own Leave application and denies withdrawal without hiding the req
   await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.leave.own.application.%'`;
  }
 });
+
+it('publishes Leave Employee Records Delete after View and fences administrative cancellation',async()=>{
+ const subject=await hire('employee'),typeId=await leaveType(),admin=adminCtx(b);
+ const cap='function.leaveEmployeeRecords.delete';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'leave_employee_records_view')).toMatchObject({changed:true,capabilities:2});
+  expect(await publishActionCapabilityPackage(owner.client,'leave_employee_records')).toMatchObject({changed:true,capabilities:4});
+  expect(await publishActionCapabilityPackage(owner.client,'leave_employee_records')).toMatchObject({changed:false});
+  const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+  await owner.db.update(schema.leaveRequest).set({status:'approved'}).where(eq(schema.leaveRequest.id,leaveRequestId));
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${b.adminUserId}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  const list=()=>listLeaveRequestsPage(admin,{purpose:'employeeRecords',ids:[leaveRequestId],limit:10,offset:0});
+  expect((await list()).rows.map(row=>row.id)).toEqual([leaveRequestId]);
+  await expect(adminCancelLeave(admin,{leaveRequestId})).rejects.toMatchObject({refusal:'admin_only'});
+  const raw=withTenant(admin,tx=>tx.update(schema.leaveRequest).set({status:'cancelled'}).where(eq(schema.leaveRequest.id,leaveRequestId)));
+  expect(await raw.then(()=>null,pgSqlState)).toBe('42501');
+  expect((await list()).rows[0]?.status).toBe('approved');
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await expect(adminCancelLeave(admin,{leaveRequestId})).resolves.toMatchObject({previousStatus:'approved'});
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+   where id in ('leave.view','leave.delete','function.leaveEmployeeRecords.view',${cap})`;
+ }
+});

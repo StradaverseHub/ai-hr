@@ -4782,6 +4782,13 @@
       "when": 1793330000379,
       "tag": "0979_leave_own_application_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 827,
+      "version": "7",
+      "when": 1793330000380,
+      "tag": "0980_leave_employee_records_delete_readiness",
+      "breakpoints": true
     }
   ]
 }

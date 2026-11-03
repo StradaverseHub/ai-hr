@@ -4,7 +4,7 @@ import type {Sql} from 'postgres';
 import {functionActionCapabilities,type FunctionActionDescriptor} from './function-action-contract';
 import {PROFILE_MAINTENANCE_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_CAPABILITY_PUBLICATION,WORKFORCE_IMPORT_REVERT_CAPABILITY_PUBLICATION,WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION,WORKFORCE_RECORD_CAPABILITY_PUBLICATION} from './workforce-function-bindings';
 import {EMPLOYEE_MASTER_DEFINITION_CAPABILITY_PUBLICATION,EMPLOYEE_MASTER_VIEW_CAPABILITY_PUBLICATION,REPORT_CATEGORY_CAPABILITY_PUBLICATION} from './employee-master-report-function-bindings';
-import {ATTENDANCE_ROTATION_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CONTROL_CAPABILITY_PUBLICATION,ATTENDANCE_SHIFT_CAPABILITY_PUBLICATION,CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION,CLOCKING_SITE_CAPABILITY_PUBLICATION,LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION,LEAVE_EMPLOYEE_RECORDS_VIEW_CAPABILITY_PUBLICATION,LEAVE_OWN_APPLICATION_CAPABILITY_PUBLICATION} from './leave-attendance-claim-function-bindings';
+import {ATTENDANCE_ROTATION_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CONTROL_CAPABILITY_PUBLICATION,ATTENDANCE_SHIFT_CAPABILITY_PUBLICATION,CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION,CLOCKING_SITE_CAPABILITY_PUBLICATION,LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION,LEAVE_EMPLOYEE_RECORDS_CAPABILITY_PUBLICATION,LEAVE_EMPLOYEE_RECORDS_VIEW_CAPABILITY_PUBLICATION,LEAVE_OWN_APPLICATION_CAPABILITY_PUBLICATION} from './leave-attendance-claim-function-bindings';
 import {FINANCIAL_SETUP_CAPABILITY_PUBLICATION} from './financial-setup-capability-bindings';
 import {FINANCIAL_LETTER_CAPABILITY_PUBLICATION} from './financial-letter-capability-bindings';
 import {ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION} from './organisation-settings-capability-bindings';
@@ -55,7 +55,7 @@ export const WORKFORCE_CAPABILITY_BINDINGS_V2=[...WORKFORCE_CAPABILITY_BINDINGS_
  ]})),
 ] as const;
 export type DomainPublication={capabilities:readonly {id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[]}[];requiredFunctions:readonly string[];legacyGroups:Record<string,readonly string[]>;legacyParityFunction?:string;delegationFloorFunction?:string;functions?:readonly FunctionActionDescriptor[];functionLegacyParityFunction?:string;currentLegacyParityFunction?:string;functionCurrentLegacyParityFunction?:string};
-export const ACTION_DOMAIN_PUBLICATIONS:readonly DomainPublication[]=[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION,FINANCIAL_SETUP_CAPABILITY_PUBLICATION,WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION,WORKFORCE_IMPORT_REVERT_CAPABILITY_PUBLICATION,WORKFORCE_RECORD_CAPABILITY_PUBLICATION,PROFILE_MAINTENANCE_CAPABILITY_PUBLICATION,EMPLOYEE_MASTER_DEFINITION_CAPABILITY_PUBLICATION,REPORT_CATEGORY_CAPABILITY_PUBLICATION,CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION,LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION,ATTENDANCE_SHIFT_CAPABILITY_PUBLICATION,CLOCKING_SITE_CAPABILITY_PUBLICATION,ATTENDANCE_ROTATION_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CONTROL_CAPABILITY_PUBLICATION,LEAVE_EMPLOYEE_RECORDS_VIEW_CAPABILITY_PUBLICATION,LEAVE_OWN_APPLICATION_CAPABILITY_PUBLICATION];
+export const ACTION_DOMAIN_PUBLICATIONS:readonly DomainPublication[]=[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION,FINANCIAL_SETUP_CAPABILITY_PUBLICATION,WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION,WORKFORCE_IMPORT_REVERT_CAPABILITY_PUBLICATION,WORKFORCE_RECORD_CAPABILITY_PUBLICATION,PROFILE_MAINTENANCE_CAPABILITY_PUBLICATION,EMPLOYEE_MASTER_DEFINITION_CAPABILITY_PUBLICATION,REPORT_CATEGORY_CAPABILITY_PUBLICATION,CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION,LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION,ATTENDANCE_SHIFT_CAPABILITY_PUBLICATION,CLOCKING_SITE_CAPABILITY_PUBLICATION,ATTENDANCE_ROTATION_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CONTROL_CAPABILITY_PUBLICATION,LEAVE_EMPLOYEE_RECORDS_CAPABILITY_PUBLICATION,LEAVE_OWN_APPLICATION_CAPABILITY_PUBLICATION];
 export const WORKFORCE_CAPABILITY_BINDINGS=[...WORKFORCE_CAPABILITY_BINDINGS_V2,...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.capabilities)];
 export const WORKFORCE_CAPABILITY_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,capabilities:WORKFORCE_CAPABILITY_BINDINGS})).digest('hex');
 const WORKFORCE_REQUIRED_FUNCTIONS=[
@@ -95,6 +95,7 @@ const ACTION_PACKAGES={
  claim_configuration:[CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION],
  leave_configuration:[LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION],
  leave_employee_records_view:[LEAVE_EMPLOYEE_RECORDS_VIEW_CAPABILITY_PUBLICATION],
+ leave_employee_records:[LEAVE_EMPLOYEE_RECORDS_CAPABILITY_PUBLICATION],
  leave_own_application:[LEAVE_OWN_APPLICATION_CAPABILITY_PUBLICATION],
  attendance_schedule:[ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION],
  attendance_shifts:[ATTENDANCE_SHIFT_CAPABILITY_PUBLICATION],
@@ -193,6 +194,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
   const knownComponents=rows.every((row,index)=>row.supported?exactBindings(row.bindings,expected[index].bindings):Array.isArray(row.bindings)&&row.bindings.length===0)
    &&(!includeWorkforce||rows.filter(row=>WORKFORCE_CAPABILITY_BINDINGS_V2.some(capability=>capability.id===row.id)).every(row=>row.supported)||rows.filter(row=>WORKFORCE_CAPABILITY_BINDINGS_V2.some(capability=>capability.id===row.id)).every(row=>!row.supported))
    &&domains.every(domain=>{const family=rows.filter(row=>domain.capabilities.some(capability=>capability.id===row.id));const children=rows.filter(row=>functionActionCapabilities(domain.functions??[]).some(capability=>capability.id===row.id));return family.every(row=>row.supported)&&children.every(row=>row.supported)||family.every(row=>!row.supported)&&children.every(row=>!row.supported)||family.every(row=>row.supported)&&children.every(row=>!row.supported)
+    ||domain===LEAVE_EMPLOYEE_RECORDS_CAPABILITY_PUBLICATION&&[...family,...children].every(row=>row.supported===(row.id==='leave.view'||row.id==='function.leaveEmployeeRecords.view'))
     ||domain===EMPLOYEE_MASTER_DEFINITION_CAPABILITY_PUBLICATION&&children.every(row=>row.supported===(row.id==='function.employeeMasterReports.view'));});
   requireInstallation(already||uninstalled||knownV1||knownV2||knownComponents); // Refuse partial/unknown versions without overwriting them.
   if(key==='all'){
@@ -232,6 +234,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    ...(key==='all'||key==='attendance_shifts'?['app.attendance_shift_bindings_complete']:[]),
    ...(key==='all'||key==='clocking_sites'?['app.clocking_site_bindings_complete']:[]),
    ...(key==='all'||key==='attendance_schedule_controls'?['app.attendance_schedule_controls_bindings_complete']:[]),
+   ...(key==='all'||key==='leave_employee_records'?['app.leave_employee_records_delete_bindings_complete']:[]),
    ...(key==='all'||key==='leave_own_application'?['app.leave_own_application_bindings_complete']:[]),
    ...(key==='all'?['app.access_all_function_bindings_complete']:[]),
   ];
