@@ -195,6 +195,11 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
     from public.access_capability where id in ('function.claims.administration.view','function.claims.related.view')`;
    requireInstallation(parents?.ready,'publish Claims Administration and Related View before receipt maintenance');
   }
+  if(key==='financial_setup'){
+   const [parents]=await tx<{ready:boolean}[]>`select count(*)=4 and bool_and(supported) as ready
+    from public.access_capability where id in ('payroll.view','payroll.add','payroll.edit','payroll.delete')`;
+   requireInstallation(parents?.ready,'publish Payroll Operations before Financial Setup');
+  }
   const rows=await tx<CapabilityRow[]>`select id,scope,supported,bindings,prerequisites from public.access_capability
    where id=any(${WORKFORCE_CAPABILITY_BINDINGS.map(item=>item.id)}::text[]) order by id for update`;
   requireInstallation(rows.length===WORKFORCE_CAPABILITY_BINDINGS.length);

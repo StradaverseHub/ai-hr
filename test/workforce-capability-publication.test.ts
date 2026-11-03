@@ -216,10 +216,10 @@ it('keeps Workforce Imports closed if the Qualification subject guard is disable
   await owner.client`alter table app.qualification_import_preview enable trigger qualification_import_preview_subject_guard`;
  }
 });
-it('refuses Financial Setup publication while its enforcement completion check is missing',async()=>{
+it('refuses Financial Setup publication before its Payroll Operations parents',async()=>{
  const before=await snapshot();
  await expect(publishActionCapabilityPackage(owner.client,'financial_setup'))
-  .rejects.toThrow('missing function app.financial_setup_bindings_complete()');
+  .rejects.toThrow('publish Payroll Operations before Financial Setup');
  expect(await snapshot()).toEqual(before);
 });
 it('requires a passing Financial Letters completion check before publishing',async()=>{

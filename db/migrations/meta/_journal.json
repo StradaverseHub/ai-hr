@@ -4908,6 +4908,13 @@
       "when": 1793330000397,
       "tag": "0997_payroll_operations_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 845,
+      "version": "7",
+      "when": 1793330000398,
+      "tag": "0998_financial_setup_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

@@ -12,7 +12,7 @@
  * company/cycle identity, append-only corrections/recovery and one effective canonical snapshot.
  * The record-based compatibility writer at the end delegates there too; it owns no SQL writes.
  */
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   company,
@@ -347,11 +347,14 @@ async function analyze(
   records: PayrollHistoryRecord[],
   options: { transaction?: Tx; prepareRevision?: boolean } = {},
 ): Promise<{ preview: HistoryImportPreview; months: ResolvedMonth[]; statutoryVersion: string }> {
-  const codes = await resolveImportCodes(ctx, options.transaction);
   const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => options.transaction ? fn(options.transaction) : withTenant(ctx, fn);
 
   const { companyKeys, targetCompany, employees, cycles, statutoryVersion } = await read(
     async (tx) => {
+      const [access] = await tx.execute<{allowed: boolean}>(sql`select
+        app.can_admin_payroll_for(${companyId}::uuid)
+        AND app.financial_history_function_action(${companyId}::uuid, 'view') as allowed`);
+      if (!access?.allowed) throw new Error('Payroll history access is unavailable for a company in this file.');
       const companies = await tx
         .select({
           id: company.id,
@@ -406,6 +409,8 @@ async function analyze(
       return { companyKeys, targetCompany, employees, cycles, statutoryVersion };
     },
   );
+
+  const codes = await resolveImportCodes(ctx, options.transaction);
 
   // ── Employee lookup by code, within THIS company. `employment_employee_code_uq` (tenant, code) already
   // makes a code unique tenant-wide, so a within-company collision is impossible today — the guard stays

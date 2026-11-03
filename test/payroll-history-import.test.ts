@@ -25,6 +25,7 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { createBatch } from '../core/payroll';
@@ -623,6 +624,28 @@ describe('import payroll history — the long (seven-column) contract', () => {
     expect(Number(mine.gross)).toBeCloseTo(5400, 2);
     expect(Number(mine.epf)).toBeCloseTo(583 + 689, 2);
     expect(Number(mine.pcb)).toBeCloseTo(150, 2);
+  });
+
+  it('publishes Financial Setup after Payroll and closes compatibility preview under exact History View denial',async()=>{
+    const a=adminCtx(b),cap='function.payroll.historyImport.view';
+    await hire(a,'A1001');
+    const records=file(...completeMonth('A1001','202401'));
+    try{
+      await publishActionCapabilityPackage(owner.client,'payroll_operations');
+      await publishActionCapabilityPackage(owner.client,'pay_component_catalogue');
+      expect(await publishActionCapabilityPackage(owner.client,'financial_setup')).toMatchObject({changed:true,capabilities:16});
+      expect(await publishActionCapabilityPackage(owner.client,'financial_setup')).toMatchObject({changed:false});
+      const preview=()=>validatePayrollHistoryImport(a,{companyId:b.companyId,records});
+      expect((await preview()).months).toHaveLength(1);
+      await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+       values(${b.tenantId}::uuid,${a.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+      await expect(preview()).rejects.toThrow('Payroll history access is unavailable');
+      expect(await owner.db.select().from(schema.payrollBatch)).toEqual([]);
+    }finally{
+      await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+      await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+       where id like any(array['payroll.%','payroll_configuration.%','function.payroll.%','function.payComponents.%'])`;
+    }
   });
 
   it('a non-admin compatibility commit is refused by the canonical owner before any write', async () => {
