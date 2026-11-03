@@ -18,6 +18,7 @@
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import * as schema from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
 import { hireEmployee } from '../core/org';
@@ -25,6 +26,8 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import {
   applyStatutoryAdjustment,
+  batchDetail,
+  listBatches,
   createBatch,
   generatePayslips,
   getStatutoryAdjustmentDetail,
@@ -481,4 +484,25 @@ it('keeps a self-visible payslip out of administrative adjustment readers',async
  expect(await listAdjustmentEmployees(employee,{batchId})).toEqual([]);
  expect(await getStatutoryAdjustmentDetail(employee,{batchId,employmentId:subject.employmentId})).toBeNull();
  expect(await getStatutoryAdjustmentDetail(a,{batchId,employmentId:subject.employmentId})).toMatchObject({batchId});
+});
+
+it('publishes payroll operations and isolates Process View from statutory adjustment View',async()=>{
+ const subject=await hire('process-denial@fixture.invalid','900101011234');
+ const batchId=await processedRun(subject.employmentId),cap='function.payroll.process.view';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'payroll_operations')).toMatchObject({changed:true,capabilities:25});
+  expect(await publishActionCapabilityPackage(owner.client,'payroll_operations')).toMatchObject({changed:false});
+  expect(await batchDetail(a,batchId,'process')).toMatchObject({batch:{id:batchId}});
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${base.tenantId}::uuid,${a.userId!}::uuid,${cap},${base.companyId}::uuid,'deny')`;
+  expect(await listBatches(a,[base.companyId],undefined,'process')).toEqual([]);
+  expect(await batchDetail(a,batchId,'process')).toBeNull();
+  expect(await getStatutoryAdjustmentDetail(a,{batchId,employmentId:subject.employmentId})).toMatchObject({batchId});
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${base.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+   where id in ('payroll.view','payroll.add','payroll.edit','payroll.delete')
+    or id like any(array['function.payroll.backPay.%','function.payroll.process.%','function.payroll.fixedTransactions.%',
+      'function.payroll.individualTransactions.%','function.payroll.statutoryAdjustments.%'])`;
+ }
 });

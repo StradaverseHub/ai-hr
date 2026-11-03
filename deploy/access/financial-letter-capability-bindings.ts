@@ -80,3 +80,21 @@ export const ONEHR_PANEL_FEEDBACK_CAPABILITY_PUBLICATION={
   'app.financial_onehr_draft_write_guard()',
  ],
 } as const;
+
+export const PAYROLL_OPERATIONS_CAPABILITY_PUBLICATION={
+ ...FINANCIAL_LETTER_CAPABILITY_PUBLICATION,
+ capabilities:finance.filter(capability=>capability.id.startsWith('payroll.')),
+ functions:FINANCIAL_LETTER_FUNCTIONS.filter(descriptor=>descriptor.moduleKey==='payroll'),
+ legacyGroups:Object.fromEntries(finance.filter(capability=>capability.id.startsWith('payroll.')).map(capability=>
+  [capability.id,['system_administrator','hr_admin','payroll_partner']])),
+ requiredFunctions:[
+  'app.payroll_operations_bindings_complete()',
+  'app.access_financial_action_company(text,uuid,text)',
+  'app.access_financial_action_employment(text,uuid,text)',
+  'app.access_financial_write_guard()',
+  'app.access_payroll_kernel_guard()',
+  'app.access_fixed_payroll_guard()',
+  'app.access_individual_payroll_guard()',
+  'app.access_backpay_guard()',
+ ],
+} as const;
