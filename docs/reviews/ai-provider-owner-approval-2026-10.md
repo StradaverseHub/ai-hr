@@ -611,3 +611,44 @@ human:zenlam repository-owner provisional, and takes evidence #noveri-release-re
 rerun.
 
 This record is not a runtime PASS, staging acceptance or deployment authorisation.
+
+## AI Centre round binding
+
+The AI Centre round on claude/noveri-staging-fix (code eae7be76824afcf460019eada434fb9454e11c62, which fast-forwards from main
+dfbcf85b1) carries:
+- the 3 November staging-acceptance fixes and spec v9 to v12;
+- stored chats (issue 8, migration 0952, not provider-visible);
+- pay averages (13b);
+- a leave application prepared from chat (10, with leave types named in six languages);
+- the Azure content-filter fix (19);
+- the role description, prepared-wording and admin pay-view fixes (20 to 22).
+
+The provider-data closure moves from 1255 files / `e8692840739a125c8f5f04c4be9a43cc6022bd2f81533a747a76f414d5716913` (the
+152292f7 binding on main dfbcf85b1) to 1260 files / `e5db5f47017219e3f2aa27957d60a838253f817321e1ec58ef50ffaf73500a5b`. That is
+5 files added, 0 removed and 19 changed. The packet, with every changed source and what the model receives, is
+docs/reviews/teras-whole-stack-20261102/binding-packet-ai-centre-round.md at 50e1cb033.
+
+No new contract is added. The reviewed data scope of `teras_harness_turn_v1` extends to four things:
+- the `pay_aggregates` read, for payroll-access callers only: headcount, average and median of basic pay as bands, company
+  and department names as minimum, and small, complement, complementary and identical-value groups withheld;
+- the caller's role note: role kinds and a company count, with no names or ids;
+- the admin pay-view destination note: a page path the caller can already open, with no figure or identifier;
+- the caller's own eligible leave-type options for leave.apply.
+
+The person's screened words now carry the neutral label of spec v12. The proposal, the leave service and every reply check
+still decide.
+
+The repository owner approved that exact packet directly in the coordinator session teras-noveri-handoff-54e696 ("I
+approve the packet, but the release needs to wait for the other sessions in codex to finish releasing"), answering the
+session's question to approve the AI Centre round binding packet at fingerprint e5db5f47. The session recorded the
+message on receipt at 2026-11-03T01:08:56Z. The approval covers this closure only and does not transfer to a changed one.
+The owner's condition stands: the staging release waits until the Codex sessions' releases have finished.
+
+The 24 historical approved records receive only the new sourceDigest. Their status, reviewer, evidence and reviewedAt are
+preserved byte-for-byte, and both pending records stay byte-identical. `teras_harness_turn_v1` receives the new
+sourceDigest, keeps reviewer human:zenlam repository-owner provisional, and takes evidence #ai-centre-round-binding and
+reviewedAt 2026-11-03T01:08:56Z from this approval. The module-agent manifest is regenerated last, and both `--check`
+commands are then rerun. Counsel's advice (ADR-0169 §5.1) is still required before any real tenant data reaches a
+provider. Staging uses fictional data only.
+
+This record is not a runtime PASS, staging acceptance or deployment authorisation.
