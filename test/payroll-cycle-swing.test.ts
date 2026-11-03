@@ -32,7 +32,11 @@ const OCT_BONUS=row({payPeriod:'2026-10',runType:'bonus',runSeq:2,basic:'0.00',b
 const OCT_ALLOWANCE=row({payPeriod:'2026-10',allowance:'1000.00',gross:'6000.00',net:'5295.35',
  statutory:statutory({componentLines:[{code:'A0040',name:'Meal Allowance',amount:1000,buckets:[{bucket:'reimburse',amount:1000}]}]})});
 const setting={thresholdBp:DEFAULT_SWING_THRESHOLD_BP,exclusions:[] as string[]};
-const input=(over:Partial<typeof setting>={})=>({period:'2026-10',companyId:'co-a',...setting,...over});
+// The company's pay components by catalogue code: a pattern is keyed on the component's id, never its name.
+const MEAL_ID='0000aaaa-0000-4000-8000-00000000a040',OTHER_ID='0000aaaa-0000-4000-8000-00000000a041';
+const componentIds=new Map([['A0040',MEAL_ID],['A0041',OTHER_ID]]);
+const input=(over:Partial<typeof setting>&{componentIds?:ReadonlyMap<string,string>}={})=>({period:'2026-10',companyId:'co-a',componentIds,...setting,...over});
+const meal=(name:string,amount:number,code='A0040')=>({code,name,amount,buckets:[{bucket:'reimburse',amount}]});
 
 describe('the net-swing flag: the pay-difference service\'s change, as a share of last month\'s net pay',()=>{
  it('starts at ±15%, and flags a salary change with a bonus run by the share of the net change',()=>{
@@ -45,14 +49,29 @@ describe('the net-swing flag: the pay-difference service\'s change, as a share o
   // Exactly at the threshold is not over it.
   expect(netSwingFor('e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS],input({thresholdBp:3108}))).toMatchObject({flagged:false});
  });
- it('names a pay item that explains most of the change as its pattern, and an approved exclusion stops that flag only while it explains it',()=>{
-  // 1,000 / 4,295.35 = 23.28% → 2328 basis points; the meal allowance item moved by the whole 1,000.
+ it('names a pay item that explains most of the change by its component\'s id, and an approved exclusion stops that flag only while it explains it',()=>{
+  // 1,000 / 4,295.35 = 23.28% → 2328 basis points; the meal allowance item (code A0040) moved by the whole 1,000.
   expect(netSwingFor('e2',[SEPTEMBER,OCT_ALLOWANCE],input())).toEqual({employmentId:'e2',changed:true,swingBp:2328,direction:'up',
-   pattern:'item:Meal_Allowance',causes:[],flagged:true,excluded:false});
-  expect(netSwingFor('e2',[SEPTEMBER,OCT_ALLOWANCE],input({exclusions:['item:Meal_Allowance']}))).toMatchObject({swingBp:2328,flagged:false,excluded:true});
+   pattern:`item:${MEAL_ID}`,causes:[],flagged:true,excluded:false});
+  expect(netSwingFor('e2',[SEPTEMBER,OCT_ALLOWANCE],input({exclusions:[`item:${MEAL_ID}`]}))).toMatchObject({swingBp:2328,flagged:false,excluded:true});
   // A cause can be excluded too; a different exclusion changes nothing.
   expect(netSwingFor('e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS],input({exclusions:['cause:salary_change']}))).toMatchObject({flagged:false,excluded:true});
-  expect(netSwingFor('e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS],input({exclusions:['item:Meal_Allowance']}))).toMatchObject({flagged:true,excluded:false});
+  expect(netSwingFor('e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS],input({exclusions:[`item:${MEAL_ID}`]}))).toMatchObject({flagged:true,excluded:false});
+ });
+ it('keeps a learned pattern when the component is renamed, and never guesses between two components of one name',()=>{
+  // September's 200 meal allowance becomes October's 1,200 under a new name; the code, and so the id, is the same.
+  // (5,495.35 − 4,495.35) / 4,495.35 = 22.25% → 2225 basis points.
+  const september=row({allowance:'200.00',gross:'5200.00',net:'4495.35',statutory:statutory({componentLines:[meal('Meal Allowance',200)]})});
+  const renamed=row({payPeriod:'2026-10',allowance:'1200.00',gross:'6200.00',net:'5495.35',statutory:statutory({componentLines:[meal('Fictional Meal Support',1200)]})});
+  expect(netSwingFor('e6',[september,renamed],input())).toMatchObject({swingBp:2225,pattern:`item:${MEAL_ID}`,flagged:true});
+  expect(netSwingFor('e6',[september,renamed],input({exclusions:[`item:${MEAL_ID}`]}))).toMatchObject({pattern:`item:${MEAL_ID}`,flagged:false,excluded:true});
+  // Two components share the name "Meal Allowance": the item cannot be tied to one, so its cause stands in (none: other).
+  // (5,595.35 − 4,595.35) / 4,595.35 = 21.76% → 2176 basis points.
+  const before=row({allowance:'300.00',gross:'5300.00',net:'4595.35',statutory:statutory({componentLines:[meal('Meal Allowance',300,'A0041')]})});
+  const after=row({payPeriod:'2026-10',allowance:'1300.00',gross:'6300.00',net:'5595.35',statutory:statutory({componentLines:[meal('Meal Allowance',1000),meal('Meal Allowance',300,'A0041')]})});
+  expect(netSwingFor('e7',[before,after],input())).toMatchObject({swingBp:2176,pattern:'cause:other',flagged:true});
+  // A code no longer in the catalogue cannot be keyed either.
+  expect(netSwingFor('e2',[SEPTEMBER,OCT_ALLOWANCE],input({componentIds:new Map()}))).toMatchObject({pattern:'cause:other',flagged:true});
  });
  it('never flags a person with no ratio, and counts each cause over the company',()=>{
   // Unchanged: no swing. Paid only this month: no comparison at all. A previous net of zero: changed, but no ratio.
@@ -136,6 +155,8 @@ describe('pay stays at Prepare, enforced in code',()=>{
    expect(text,file).not.toMatch(/from '[./]*lib\/ai'|generateDraft|converse\(/);
   }
   // Its only use of the bank file generation is the preview, which allocates no Tape ID and writes nothing.
-  expect(source('core/loops/salary-payroll.ts')).toContain('preview=await files.preview(sponsor,');
+  expect(source('core/loops/salary-payroll.ts')).toContain('preview=await salaryRunPreview(sponsor,');
+  // Which bank, currency and salary file format is the country pack's to know (localization/my/ocbc-payment.ts), never the loop's.
+  expect(source('core/loops/salary-payroll.ts')).not.toMatch(/ocbc|my\.ocbc|'MYR'|bank_profile|listCompanyBankProfiles/i);
  });
 });

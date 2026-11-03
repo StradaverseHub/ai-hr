@@ -2,13 +2,15 @@
  *
  *  1. Each Pre-salary check, read through its own owner, on a fictional company where every item is known.
  *  2. The Pre-salary loop runs from the start of the period, honours each company's interval, and becomes a Today card in
- *     the last 7 days before the cut-off.
+ *     the last 7 days before the cut-off. Its 15-minute tick runs only that loop, only for companies due, and two ticks
+ *     (or a tick and the nightly sweep) never check one company together.
  *  3. The Salary payroll loop prepares every run of the month (salary, bonus and off-cycle) and never runs, approves or
  *     closes one: a person closes it, and only then is it done.
  *  4. The bank file total against net pay, matching and not matching.
  *  5. Net-swing flags at ±15% by default and at each company's own threshold, and the proposal flow: dispositions,
  *     a proposal that never applies itself, an administrator's approval or rejection, recorded, applied from the next run.
- *  6. The group pipeline is filtered to the companies each administrator may see; another tenant sees nothing.
+ *  6. The group pipeline is filtered to the companies each administrator may see; another tenant sees nothing and can
+ *     change nothing, even naming this tenant's company id (pauses, settings and decisions).
  *  7. No model is called (the gateway is replaced by one that counts and refuses).
  * Expected values are written out from the fixtures or read from the payroll service's own stored figures, never
  * re-derived through the loops' helpers. */
@@ -24,11 +26,12 @@ vi.mock('../lib/ai',async importOriginal=>{
 });
 
 import * as schema from '../db/schema';
-import {terasLoopCase,terasLoopRun} from '../db/teras-schema';
+import {terasLoopCase,terasLoopPause,terasLoopRun} from '../db/teras-schema';
 import {terasPayrollLoopSetting,terasPayrollSwingDisposition,terasPayrollThresholdDecision} from '../db/teras-payroll-cycle-schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee,setEmploymentPaymentMethod} from '../core/org';
 import {setCompensation} from '../core/comp';
+import {listPayComponents,seedPayComponentCatalog,setEmploymentPayComponent} from '../core/pay-components';
 import {upsertCompanyBankProfile} from '../core/bank-profile';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {closeBatch,createAdditionalRun,createBatch,generatePayslips,payrollReadiness,setPayrollInput} from '../packs/payroll/service';
@@ -38,6 +41,8 @@ import {assignDefaultShift,createShift} from '../core/roster';
 import {ensureAgentPrincipal} from '../core/agent-principal';
 import {setWorkerSwitch} from '../core/agent-registry/controls';
 import {runLoop} from '../core/loops/run';
+import {preSalaryTickLockKey,runPreSalaryTick} from '../core/loops/tick';
+import {setLoopPause} from '../core/loops/controls';
 import {readLoopCards} from '../core/loops/cards';
 import {preSalaryChecks} from '../core/loops/pre-salary-checks';
 import {preSalaryWindows} from '../core/loops/payroll-inputs';
@@ -185,10 +190,47 @@ describe('the Pre-salary loop',()=>{
   expect((await withTenant(group,tx=>tx.select().from(terasPayrollLoopSetting).where(eq(terasPayrollLoopSetting.companyId,second.id)))).map(row=>[row.version,row.checkInterval,row.changedByUserId]))
    .toEqual([[1,'hourly',group.userId]]);
  });
+ it('ticks every 15 minutes: only the Pre-salary loop, only for companies due, and never two runs on one company together',async()=>{
+  await setup(['payroll']);
+  const [second]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Hourly Sdn Bhd'}).returning();
+  await on('loop_payroll_inputs');await on('loop_salary_payroll');
+  await setPayrollLoopSetting(group,{companyId:second.id,interval:'hourly'});
+  const ents=await entitlements(),t0=new Date('2026-07-02T03:00:00Z');
+  const tick=(now:Date)=>runPreSalaryTick(owner.client,{tenantId:b.tenantId,principalId,entitlements:ents,today:TODAY,now});
+  const ranFor=async(workerId:LoopId)=>Object.fromEntries((await withTenant(group,tx=>tx.select({companyId:terasLoopRun.companyId,n:count()}).from(terasLoopRun)
+   .where(and(eq(terasLoopRun.workerId,workerId),eq(terasLoopRun.status,'ran'))).groupBy(terasLoopRun.companyId))).map(row=>[row.companyId,Number(row.n)]));
+  // Due: both companies at first; 15 minutes later neither; an hour later only the hourly company; a day later both.
+  expect(await tick(t0)).toMatchObject({workerId:'loop_payroll_inputs',status:'ran',companies:2});
+  expect(await tick(minutes(t0,15))).toMatchObject({status:'ran',companies:0});
+  expect(await tick(minutes(t0,45))).toMatchObject({status:'ran',companies:0});
+  expect(await tick(minutes(t0,60))).toMatchObject({status:'ran',companies:1});
+  expect(await ranFor('loop_payroll_inputs')).toEqual({[b.companyId]:1,[second.id]:2});
+  // The tick runs no other loop, even one that is switched on.
+  expect(await ranFor('loop_salary_payroll')).toEqual({});
+  // A tick still running for the tenant (its lock held): the next one skips the tenant and writes nothing.
+  const held=await owner.client.reserve();
+  try{
+   await held`select pg_advisory_lock(hashtextextended(${preSalaryTickLockKey(b.tenantId)},0))`;
+   expect(await tick(minutes(t0,24*60))).toEqual({workerId:'loop_payroll_inputs',status:'busy'});
+   expect(await ranFor('loop_payroll_inputs')).toEqual({[b.companyId]:1,[second.id]:2});
+  }finally{await held`select pg_advisory_unlock(hashtextextended(${preSalaryTickLockKey(b.tenantId)},0))`;held.release();}
+  // A tick and the nightly sweep at once: each due company is checked once, by whichever writes first; the other writes nothing.
+  const both=await Promise.all([tick(minutes(t0,25*60)),run('loop_payroll_inputs',minutes(t0,25*60))]);
+  expect(both.map(result=>result.status)).toEqual(['ran','ran']);
+  expect(both.reduce((sum,result)=>sum+(result.status==='ran'?result.companies:0),0)).toBe(2);
+  expect(await ranFor('loop_payroll_inputs')).toEqual({[b.companyId]:2,[second.id]:3});
+  // Two ticks at once: one checks, the other skips the tenant or finds nothing due.
+  const pair=await Promise.all([tick(minutes(t0,50*60)),tick(minutes(t0,50*60))]);
+  expect(pair.reduce((sum,result)=>sum+(result.status==='ran'?result.companies:0),0)).toBe(2);
+  expect(await ranFor('loop_payroll_inputs')).toEqual({[b.companyId]:3,[second.id]:4});
+ });
 });
 
-/** Seven fictional people paid by bank in May and June: five with a pay rise in June, one unchanged, one with a June bonus run. */
+/** Seven fictional people paid by bank in May and June: five with a new housing allowance in June (one pay component,
+ * so one pattern), one unchanged, one with a June bonus run. */
 async function payrollFixture(){
+ await seedPayComponentCatalog(a);
+ const housing=(await listPayComponents(a,{includeArchived:true})).find(component=>component.code==='HOUSING')!;
  const people=[];
  for(const [i,name] of ['FICTIONAL RAISE ONE','FICTIONAL RAISE TWO','FICTIONAL RAISE THREE','FICTIONAL RAISE FOUR','FICTIONAL RAISE FIVE','FICTIONAL STEADY','FICTIONAL BONUS'].entries()){
   const e=await hireEmployee(a,{person:{fullName:name,primaryEmail:`salary-${i}-${randomUUID()}@fixture.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
@@ -198,7 +240,7 @@ async function payrollFixture(){
   people.push(e);
  }
  const may=(await createBatch(a,{companyId:b.companyId,payPeriod:MAY})).batchId;await generatePayslips(a,{batchId:may});await closeBatch(a,{batchId:may});
- for(const [i,basic] of [4000,4100,4200,4300,4400].entries())await setCompensation(a,{employmentId:people[i].employmentId,basicSalary:basic,effectiveFrom:'2026-06-01'});
+ for(const [i,amount] of [1000,1100,1200,1300,1400].entries())await setEmploymentPayComponent(a,{employmentId:people[i].employmentId,componentId:housing.id,amount,effectiveFrom:'2026-06-01'});
  const june=(await createBatch(a,{companyId:b.companyId,payPeriod:JUNE})).batchId;await generatePayslips(a,{batchId:june});
  const bonus=(await createAdditionalRun(a,{companyId:b.companyId,payPeriod:JUNE,runType:'bonus'})).batchId;
  await setPayrollInput(a,{batchId:bonus,employmentId:people[6].employmentId,overtimeAmount:0,bonusAmount:2000});
@@ -212,7 +254,7 @@ async function payrollFixture(){
  const net=(employmentId:string,batches:string[])=>slips.filter(slip=>slip.employmentId===employmentId&&batches.includes(slip.batchId)).reduce((sum,slip)=>sum+Number(slip.net),0);
  const swing=Object.fromEntries(people.map(e=>{const before=net(e.employmentId,[may]),after=net(e.employmentId,[june,bonus]);
   return [e.employmentId,Math.round(Math.abs(Math.round((after-before)*100)/100)*10_000/before)];}));
- return {people,may,june,bonus,offCycle,swing};
+ return {people,may,june,bonus,offCycle,swing,housing};
 }
 const snapshot=async()=>({
  batches:(await owner.db.select({id:schema.payrollBatch.id,status:schema.payrollBatch.status,closedAt:schema.payrollBatch.closedAt,totals:schema.payrollBatch.totals})
@@ -225,7 +267,7 @@ const snapshot=async()=>({
 
 describe('the Salary payroll loop',()=>{
  it('prepares every run of the month, salary, bonus and off-cycle, and never runs, approves or closes one',async()=>{
-  await setup(['payroll','multi_cycle_payroll']);
+  await setup(['payroll','multi_cycle_payroll','typed_pay_components']);
   const fx=await payrollFixture();
   const before=await snapshot();
   await on('loop_salary_payroll');
@@ -265,7 +307,7 @@ describe('the Salary payroll loop',()=>{
  });
 
  it('checks the bank file total against net pay and the headcount, and says when they do not match',async()=>{
-  await setup(['payroll','multi_cycle_payroll']);
+  await setup(['payroll','multi_cycle_payroll','typed_pay_components']);
   const fx=await payrollFixture();
   await on('loop_salary_payroll');
   await run('loop_salary_payroll');
@@ -297,11 +339,11 @@ describe('the Salary payroll loop',()=>{
  });
 
  it('flags net-pay swings over ±15%, at each company\'s own threshold, and learns from payroll HR\'s dispositions through an administrator',async()=>{
-  await setup(['payroll','multi_cycle_payroll']);
+  await setup(['payroll','multi_cycle_payroll','typed_pay_components']);
   const fx=await payrollFixture();
   const [raises,steady,bonusPerson]=[fx.people.slice(0,5),fx.people[5],fx.people[6]];
   const flagged=fx.people.filter(e=>fx.swing[e.employmentId]>1500).map(e=>e.employmentId).sort();
-  // Every pay rise (to 4,000–4,400 from 3,000) and the 2,000 bonus moves net pay by more than 15%; the steady pay does not.
+  // Every new housing allowance (1,000–1,400 on 3,000) and the 2,000 bonus moves net pay by more than 15%; the steady pay does not.
   expect(flagged).toEqual([...raises,bonusPerson].map(e=>e.employmentId).sort());
   expect(fx.swing[steady.employmentId]).toBe(0);
   const thresholds=await thresholdsInForce(group,{batchId:fx.june});
@@ -313,7 +355,9 @@ describe('the Salary payroll loop',()=>{
    facts:{payPeriod:JUNE,swingBp:fx.swing[row.employmentId!],direction:'up',thresholdBp:1500}});
   const pattern=(employmentId:string)=>String(swingsNow.find(row=>row.employmentId===employmentId)!.facts.pattern);
   let swingsNow=await swings();
+  // The five housing allowances share one pattern, keyed on the pay component's id (never its name).
   const raisePattern=pattern(raises[0].employmentId);
+  expect(raisePattern).toBe(`item:${fx.housing.id}`);
   for(const e of raises)expect(pattern(e.employmentId)).toBe(raisePattern);
   expect(pattern(bonusPerson.employmentId)).not.toBe(raisePattern);
   // The change against last month is explained by cause on the run's case.
@@ -326,7 +370,7 @@ describe('the Salary payroll loop',()=>{
   await setPayrollLoopSetting(group,{companyId:b.companyId,thresholdBp:1500});
   expect(await run('loop_salary_payroll')).toMatchObject({totals:{reopened:6}});
   swingsNow=await swings();
-  // Payroll HR records each flag: the pay rises were expected, the bonus a real problem. Nobody else may.
+  // Payroll HR records each flag: the housing allowances were expected, the bonus a real problem. Nobody else may.
   const caseFor=(employmentId:string)=>swingsNow.find(row=>row.employmentId===employmentId)!.id;
   const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Other Sdn Bhd'}).returning();
   await expect(recordSwingDisposition(await companyAdministrator(b,other.id),{caseId:caseFor(raises[0].employmentId),disposition:'expected'})).rejects.toMatchObject({reason:'not_found'});
@@ -341,7 +385,7 @@ describe('the Salary payroll loop',()=>{
   // The next run closes the decided flags.
   await run('loop_salary_payroll');
   expect((await swings()).map(row=>[row.state,row.closeReason,row.resolution])).toEqual(flagged.map(()=>['closed','done','completed']));
-  // Proposals: 5 of 5 flags of the raise pattern expected (an exclusion), and 5 of 6 flags expected (a higher threshold),
+  // Proposals: 5 of 5 flags of the housing pattern expected (an exclusion), and 5 of 6 flags expected (a higher threshold),
   // worked here from the stored swings: 80% of the expected swings fall at or below the 4th smallest, rounded up to a whole
   // percentage, never at or above the bonus swing payroll HR called a problem, never above 50%.
   const expectedSwings=raises.map(e=>fx.swing[e.employmentId]).sort((x,y)=>x-y);
@@ -375,16 +419,28 @@ describe('the Salary payroll loop',()=>{
   expect(events.filter(e=>e.type==='teras-payroll-loop.setting-changed')).toHaveLength(3);
   expect(events.filter(e=>e.type==='teras-payroll-loop.proposal-decided')).toHaveLength(to>1500?2:1);
   for(const e of events)expect(e.actorId).toBe(group.userId);
-  // Applied from the next run: the raise pattern no longer flags; the bonus still does. The anomaly detectors are untouched.
+  // Applied from the next run: the housing pattern no longer flags; the bonus still does. The anomaly detectors are untouched.
   await run('loop_salary_payroll');
   expect((await caseOf('loop_salary_payroll',`salaryrun:${fx.june}`))!.facts).toMatchObject({changed:6,flagged:1});
   expect(await thresholdsInForce(group,{batchId:fx.june})).toEqual(thresholds);
+  // Renaming the component re-keys nothing: the same flags, the same exclusion and decisions, shown under the new name.
+  const keys=async()=>(await swings()).map(row=>[row.subjectKey,row.facts.pattern]).sort();
+  const learned=await keys();
+  await owner.db.update(schema.payComponent).set({name:'Fictional Housing Support'}).where(eq(schema.payComponent.id,fx.housing.id));
+  await run('loop_salary_payroll');
+  expect(await keys()).toEqual(learned);
+  expect((await caseOf('loop_salary_payroll',`salaryrun:${fx.june}`))!.facts).toMatchObject({changed:6,flagged:1});
+  const renamed=await payrollLoopSettingsPage(group);
+  expect(renamed.companies.find(c=>c.companyId===b.companyId)!.setting.exclusions).toEqual([raisePattern]);
+  expect(renamed.patternNames[raisePattern]).toBe('Fictional Housing Support');
+  expect((await withTenant(group,tx=>tx.select().from(terasPayrollSwingDisposition))).filter(row=>row.pattern===raisePattern)).toHaveLength(5);
+  expect((await salaryLoopPage(group,{period:JUNE,today:TODAY})).patternNames).toMatchObject({[raisePattern]:'Fictional Housing Support'});
  });
 });
 
 describe('the group pipeline and isolation',()=>{
  it('shows each administrator only the companies they administer, refuses everyone else, and shows another tenant nothing',async()=>{
-  await setup(['payroll','multi_cycle_payroll']);
+  await setup(['payroll','multi_cycle_payroll','typed_pay_components']);
   const fx=await payrollFixture();
   const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional Branch Sdn Bhd'}).returning();
   await on('loop_payroll_inputs');await on('loop_salary_payroll');
@@ -433,6 +489,11 @@ describe('the group pipeline and isolation',()=>{
   expect(await withTenant(outsider,tx=>tx.select().from(terasPayrollLoopSetting))).toEqual([]);
   expect(await withTenant(outsider,tx=>tx.select().from(terasPayrollSwingDisposition))).toEqual([]);
   await expect(setPayrollLoopSetting(outsider,{companyId:b.companyId,thresholdBp:3000})).rejects.toMatchObject({reason:'not_administrator'});
+  await expect(decideThresholdProposal(outsider,{companyId:b.companyId,proposalKey:'a'.repeat(64),decision:'approved'})).rejects.toMatchObject({reason:'not_administrator'});
+  // Nor pause a loop for this tenant's company (core/loops/controls.ts checks the company is the caller's tenant's first).
+  await expect(setLoopPause(outsider,{workerId:'loop_salary_payroll',companyId:b.companyId,paused:true})).rejects.toMatchObject({reason:'not_administrator'});
+  await setLoopPause(group,{workerId:'loop_salary_payroll',companyId:b.companyId,paused:true});
+  expect((await withTenant(group,tx=>tx.select().from(terasLoopPause))).map(row=>[row.tenantId,row.companyId,row.changedByUserId])).toEqual([[b.tenantId,b.companyId,group.userId]]);
  });
 });
 

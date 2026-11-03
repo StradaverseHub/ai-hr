@@ -1135,7 +1135,8 @@
         "changed": "Ini telah berubah sejak halaman dibuka. Lihat sekali lagi.",
         "already": "Sudah direkodkan, atau tiada apa yang berubah.",
         "failed": "Perubahan tidak dapat disimpan. Cuba lagi."
-      }
+      },
+      "patternUnknown": "Item gaji yang tiada lagi dalam katalog"
     }
   },
   "today": {

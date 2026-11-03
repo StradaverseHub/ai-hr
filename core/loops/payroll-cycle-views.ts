@@ -20,6 +20,7 @@ import {todayInKualaLumpur} from '../../lib/hr-date';
 import {tenantStoppedTx,workerSwitchStateTx} from '../agent-registry/controls';
 import {registeredWorker} from '../agent-registry/workers';
 import {anomalyMetrics} from '../payroll-anomaly';
+import {listPayComponents} from '../../packs/payroll/service';
 import {PAY_CAUSE_KINDS,type PayCauseKind} from '../pay-difference';
 import {decodeCheck,type PreSalaryCheck} from './pre-salary-checks';
 import {daysBetween,nextPeriod,preSalaryWindows,previousPeriod,payrollKey,type CompanyCutOffs} from './payroll-inputs';
@@ -203,7 +204,18 @@ export type SwingFlagView=Readonly<{caseId:string;companyId:string;companyName:s
  pattern:string;thresholdBp:number;causes:readonly PayCauseKind[];state:'open'|'closed';closeReason:string|null;
  disposition:Readonly<{value:'expected'|'problem';by:string|null;at:Date}>|null}>;
 export type SalaryLoopPage=Readonly<{period:string;today:string;allowed:readonly CompanyRef[];filter:string|null;loop:LoopSwitch;
- companies:readonly Readonly<CompanyRef&{cutOff:string;thresholdBp:number;startOpen:boolean;runs:readonly SalaryRunView[]}>[];flags:readonly SwingFlagView[]}>;
+ companies:readonly Readonly<CompanyRef&{cutOff:string;thresholdBp:number;startOpen:boolean;runs:readonly SalaryRunView[]}>[];flags:readonly SwingFlagView[];
+ /** The current name of each pay item a pattern names (item:<pay component id>), for display only. */
+ patternNames:Readonly<Record<string,string>>}>;
+
+/** The current names of the pay components that item patterns name. A pattern is keyed on the id, so a renamed
+ * component shows its new name and keeps everything learned under it. */
+async function patternNamesOf(ctx:SessionContext,patterns:readonly string[]):Promise<Readonly<Record<string,string>>>{
+ const wanted=new Set(patterns.filter(pattern=>pattern.startsWith('item:')));
+ if(!wanted.size)return Object.freeze({});
+ const components=await listPayComponents(ctx,{includeArchived:true});
+ return Object.freeze(Object.fromEntries(components.filter(component=>wanted.has(`item:${component.id}`)).map(component=>[`item:${component.id}`,component.name])));
+}
 
 export async function salaryLoopPage(ctx:SessionContext,options:Readonly<{period?:unknown;companyId?:unknown;today?:string}>={}):Promise<SalaryLoopPage>{
  requireViewer(ctx);
@@ -247,7 +259,7 @@ export async function salaryLoopPage(ctx:SessionContext,options:Readonly<{period
    startOpen:cases.some(row=>row.subjectKey===startKey(ref.companyId,period)&&row.state!=='closed'),
    runs:Object.freeze(runs.filter(run=>run.companyId===ref.companyId).sort((a,b)=>a.runSeq-b.runSeq))}));
   return Object.freeze({period,today,allowed:Object.freeze(allowed),filter,loop,companies:Object.freeze(companies),flags:Object.freeze(flags)});
- });
+ }).then(async view=>Object.freeze({...view,patternNames:await patternNamesOf(ctx,view.flags.map(flag=>flag.pattern))}));
 }
 
 // ── Settings: the interval and threshold per company, the proposals and the history ──
@@ -257,7 +269,9 @@ export type ThresholdDecisionView=Readonly<{id:string;kind:'threshold'|'exclusio
 export type SettingHistoryView=Readonly<{version:number;interval:PayrollLoopSetting['interval'];thresholdBp:number;exclusions:readonly string[];source:'admin'|'proposal';
  by:string|null;at:Date}>;
 export type PayrollLoopSettingsPage=Readonly<{companies:readonly Readonly<CompanyRef&{setting:PayrollLoopSetting;proposals:readonly SwingProposal[];
- history:readonly SettingHistoryView[];decisions:readonly ThresholdDecisionView[]}>[]}>;
+ history:readonly SettingHistoryView[];decisions:readonly ThresholdDecisionView[]}>[];
+ /** The current name of each pay item an exclusion or proposal names, for display only. */
+ patternNames:Readonly<Record<string,string>>}>;
 
 export async function payrollLoopSettingsPage(ctx:SessionContext,options:Readonly<{now?:Date}>={}):Promise<PayrollLoopSettingsPage>{
  requireViewer(ctx);
@@ -280,6 +294,7 @@ export async function payrollLoopSettingsPage(ctx:SessionContext,options:Readonl
      toThresholdBp:row.toThresholdBp,pattern:row.pattern,decision:row.decision,by:names.get(row.decidedByUserId)??null,at:row.decidedAt})))}));
   }
   return Object.freeze({companies:Object.freeze(companies)});
- });
+ }).then(async view=>Object.freeze({...view,patternNames:await patternNamesOf(ctx,view.companies.flatMap(c=>[...c.setting.exclusions,
+  ...c.proposals.flatMap(p=>p.pattern?[p.pattern]:[]),...c.decisions.flatMap(d=>d.pattern?[d.pattern]:[])]))}));
 }
 

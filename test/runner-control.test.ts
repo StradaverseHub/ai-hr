@@ -12,7 +12,8 @@ describe('installation runner control',()=>{
   const valid={id:'reviews',revision:'a'.repeat(64),enabled:true,schedule:{time:'03:00'}};
   expect(runnerChangeSchema.safeParse(valid).success).toBe(true);
   for(const input of [{...valid,id:'../../x'},{...valid,unit:'attacker'},{...valid,environment:'production'},{...valid,schedule:{time:'03:00\nUser=root'}},{...valid,schedule:{minutes:0}}])expect(runnerChangeSchema.safeParse(input).success).toBe(false);
-  expect(new Set(RUNNERS.map(row=>row.id)).size).toBe(19);
+  // AI v2 P2-2a adds the Pre-salary loop's tick (payroll-loops).
+  expect(new Set(RUNNERS.map(row=>row.id)).size).toBe(20);
  });
  it('does not infer host-control authority from customer or flattened roles',()=>{
   for(const grants of [[],[{role:'hr_admin',companyId:null}],[{role:'super_admin',companyId:null}]])expect(isOperator({roles:['operator'],grants} as SessionContext)).toBe(false);

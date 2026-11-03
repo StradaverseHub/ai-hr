@@ -26,7 +26,9 @@ export default async function SalaryLoopPage({ searchParams }: { searchParams: P
   const month = (period: string) => f.dateTime(new Date(`${period}-01T00:00:00Z`), { month: 'long', year: 'numeric', timeZone: 'UTC' });
   const day = (iso: string) => f.dateTime(new Date(`${iso}T00:00:00Z`), { dateStyle: 'medium', timeZone: 'UTC' });
   const percent = (bp: number) => f.number(bp / 10_000, { style: 'percent', maximumFractionDigits: 1 });
-  const pattern = (value: string) => value.startsWith('cause:') ? t(`causes.${value.slice(6)}`) : t('patternItem', { item: value.slice(5).replace(/_/g, ' ') });
+  // A pay item pattern is keyed on its component's id; its current name is shown (the catalogue's, read with the page).
+  const pattern = (value: string) => value.startsWith('cause:') ? t(`causes.${value.slice(6)}`)
+    : view.patternNames[value] ? t('patternItem', { item: view.patternNames[value] }) : t('patternUnknown');
   const back = `/control-tower/loops/payroll-cycle?${new URLSearchParams({ period: view.period, ...(view.filter ? { company: view.filter } : {}) })}`;
   const bankText = (run: SalaryRunView) => t(`bank.${run.bank}`);
   return (

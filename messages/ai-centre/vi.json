@@ -1135,7 +1135,8 @@
         "changed": "Nội dung đã thay đổi kể từ khi mở trang. Hãy xem lại.",
         "already": "Đã ghi nhận, hoặc không có gì thay đổi.",
         "failed": "Không thể lưu thay đổi. Hãy thử lại."
-      }
+      },
+      "patternUnknown": "Một khoản lương không còn trong danh mục"
     }
   },
   "today": {

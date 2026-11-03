@@ -1,0 +1,25 @@
+# AI HR sweep — payroll-loop-tick. Disabled source template: installed by hand at release, never by deploy.sh
+# (see deploy/systemd/README.md). AI v2 P2-2a, owner decision 4.
+#
+# Runs ONLY the Pre-salary loop, for the companies whose own interval (hourly, twice daily or daily) has come round.
+# It writes loop cases and run records only (teras_loop_case, teras_loop_run): no HR record, no pay, no model.
+# Overlap-safe: a per-tenant advisory lock (a tick still running makes the next skip that tenant) and the runner's own
+# due re-check under its write lock (the 03:00 review sweep and a tick never check one company twice in its interval).
+[Unit]
+Description=AI HR sweep: payroll-loop-tick (Pre-salary loop)
+After=network.target postgresql.service aihr.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+User=aihr
+WorkingDirectory=/opt/ai-hr
+# The server's default node is v18 and predates --env-file. Pinned, not inherited (see README.md, "Node path").
+Environment=PATH=/opt/node20/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+ExecStart=/opt/node20/bin/node --env-file=/opt/ai-hr/.env.production --import tsx /opt/ai-hr/scripts/payroll-loop-tick.ts
+# A tick that fails must not retry itself into a storm: the timer brings it round again in 15 minutes.
+TimeoutStartSec=600
+Restart=no
+NoNewPrivileges=true
+PrivateTmp=true

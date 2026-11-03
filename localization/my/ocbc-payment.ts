@@ -68,8 +68,19 @@ async function source(tx:Tx,ctx:SessionContext,p:BankPaymentRequest){
  const input:OcbcInput={format,payer:{name:bank.orgName?.trim()||bank.accountName?.trim()||co.name,corporateId:bank.corporateId,account:bank.debitAccountNo,branch:bank.branch??'',employerReference:format==='kwsp'?statutory?.epfEmployerNo??'':format==='lhdn'?(statutory?.lhdnEmployerNo??'').replace(/\D/g,''):format==='zakat'?zakatAuthority?.accountNo??'':statutory?.socsoEmployerCode??'',settings:{contactName:bank.fileContactName??'',contactPhone:bank.fileContactPhone??'',stateCode:bank.fileStateCode??'',requireIdCheck:bank.requirePayeeIdCheck}},paymentDate:p.paymentDate,periodKey:p.periodKey,tapeId:1,testFile:p.testFile,reference:p.reference,rows:[...grouped.values()]};
  const built=buildOcbcFile(input);return {input,built,digest:hash({selection:{companyId:p.companyId,bankProfileId:p.bankProfileId,formatId:p.formatId,periodKey:p.periodKey,runSeq:p.runSeq??null},input}),companyName:co.name};
 }
+const previewOf=(value:Awaited<ReturnType<typeof source>>,p:{paymentDate:string;periodKey:string})=>({digest:value.digest,recordCount:value.built.recordCount,totalCents:value.built.totalCents,companyName:value.companyName,paymentDate:p.paymentDate,periodKey:p.periodKey});
 export const ocbcBankPaymentFiles:BankPaymentFiles={
- preview:(ctx,p)=>withPayrollHistoryTenant(ctx,async tx=>{const value=await source(tx,ctx,p);return{digest:value.digest,recordCount:value.built.recordCount,totalCents:value.built.totalCents,companyName:value.companyName,paymentDate:p.paymentDate,periodKey:p.periodKey};}),
+ preview:(ctx,p)=>withPayrollHistoryTenant(ctx,async tx=>previewOf(await source(tx,ctx,p),p)),
+ // AI v2 P2-2a: the Salary payroll loop's bank check. The company's first OCBC MYR account (the bank file screen
+ // offers the same accounts) and the salary format; a preview only, so no Tape ID is used and nothing is recorded.
+ salaryRunPreview:(ctx,p)=>withPayrollHistoryTenant(ctx,async tx=>{
+  await authorize(tx,ctx,p.companyId);
+  const [account]=await tx.select({id:companyBankProfile.id}).from(companyBankProfile).where(and(eq(companyBankProfile.companyId,p.companyId),eq(companyBankProfile.tenantId,ctx.tenantId),
+   eq(companyBankProfile.bank,'ocbc_bank'),eq(companyBankProfile.currency,'MYR'))).orderBy(asc(companyBankProfile.createdAt),asc(companyBankProfile.id)).limit(1);
+  if(!account)return null;
+  const request={companyId:p.companyId,bankProfileId:account.id,formatId:'my.ocbc.salary',periodKey:p.periodKey,paymentDate:p.paymentDate,runSeq:p.runSeq,testFile:false,reference:'PAYROLL CHECK'};
+  return previewOf(await source(tx,ctx,request),request);
+ }),
  download:(ctx,p)=>withPayrollHistoryTenant(ctx,async tx=>{
   await authorize(tx,ctx,p.companyId);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'bank-file-request:'+ctx.tenantId+':'+ctx.userId+':'+p.requestKey},0))`);

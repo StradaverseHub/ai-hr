@@ -27220,7 +27220,8 @@
       "jobs": {
         "review-sweep": "இரவு HR பணிவரிசை இயக்கம்",
         "ai-retention": "AI இயக்க வரலாறு தக்கவைப்பு",
-        "ai-alerts": "AI எச்சரிக்கை சோதனை"
+        "ai-alerts": "AI எச்சரிக்கை சோதனை",
+        "payroll-loops": "சம்பளத்துக்கு முந்தைய சுழல் நேரச் சரிபார்ப்பு"
       },
       "steps": {
         "observe": "பணியாளர் பதிவுகளைச் சரிபார்",
@@ -33688,6 +33689,11 @@
         "name": "Database backups",
         "description": "Creates database backups to an approved destination when configured.",
         "results": "Backup storage and protected backup logs"
+      },
+      "payroll-loops": {
+        "name": "Pre-salary loop tick",
+        "description": "Checks payroll inputs for the companies whose own check interval has come round. Prepares cards for payroll administrators; changes no record.",
+        "results": "Payroll cycle"
       }
     }
   },

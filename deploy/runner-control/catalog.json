@@ -17,5 +17,6 @@
  {"id":"auth-cleanup","unit":"aihr-auth-prune","frequency":"daily","impact":"deletion","destination":null},
  {"id":"account-email-retention","unit":"aihr-account-email-retention","frequency":"interval","defaultMinutes":60,"impact":"deletion","destination":"/admin/settings/email"},
  {"id":"dunning","unit":"aihr-apply-dunning","frequency":"daily","impact":"configuration","destination":"/operator"},
- {"id":"backups","unit":"aihr-db-backup","frequency":"daily","impact":"backup","destination":null}
+ {"id":"backups","unit":"aihr-db-backup","frequency":"daily","impact":"backup","destination":null},
+ {"id":"payroll-loops","unit":"aihr-payroll-loop-tick","frequency":"interval","defaultMinutes":15,"impact":"hr","destination":"/control-tower/loops/payroll-cycle"}
 ]

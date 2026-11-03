@@ -31,14 +31,14 @@ import {terasPayrollSwingDisposition} from '../../db/teras-payroll-cycle-schema'
 import {isModuleEnabled} from '../entitlements';
 import {anomalyMetrics} from '../payroll-anomaly';
 import {DETECTORS} from '../payroll-anomaly-detectors';
-import {listCompanyBankProfiles} from '../bank-profile';
 import type {StoredPayslipRow} from '../pay-difference';
 import {packFor} from '../../localization/registry';
 import {BankPaymentFileError} from '../../localization/country-pack';
 import {read,unique,type LoopDetectInput,type LoopDetection,type LoopObservation} from './detect';
 import {companyCutOffs,nextPeriod,preSalaryWindows,previousPeriod} from './payroll-inputs';
 import {payrollLoopSettingsTx} from './payroll-loop-settings';
-import {netSwings,type SwingSummary} from './net-swing';
+import {netSwings,type ComponentIds,type SwingSummary} from './net-swing';
+import {listPayComponents} from '../../packs/payroll/service';
 import type {LoopFacts} from './types';
 
 export const SALARY_PAYROLL_LOOP_VERSION='loop_salary_payroll@v1';
@@ -50,9 +50,6 @@ export const runKey=(batchId:string)=>`salaryrun:${batchId}`;
 export const startKey=(companyId:string,payPeriod:string)=>`salarystart:${companyId}:${payPeriod}`;
 export const swingKey=(employmentId:string,payPeriod:string)=>`swing:${employmentId}:${payPeriod}`;
 const PERIOD=/^\d{4}-(0[1-9]|1[0-2])$/;
-/** The salary file each supported bank account produces (the bank file screen offers the same accounts). */
-const SALARY_FILES:readonly Readonly<{country:string;bank:string;currency:string;formatId:string}>[]=Object.freeze([
- {country:'MY',bank:'ocbc_bank',currency:'MYR',formatId:'my.ocbc.salary'}]);
 const periodEnd=(period:string)=>{const y=Number(period.slice(0,4)),m=Number(period.slice(5,7));return new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);};
 const cents=(value:unknown)=>{const raw=String(value??'0');const n=Number(raw);return Number.isFinite(n)?Math.round(n*100):0;};
 
@@ -70,8 +67,9 @@ export function salaryPeriods(cutOffEnd:(period:string)=>string,today:string){
 
 async function bankCheckFor(sponsor:SessionContext,batch:Batch,country:string):Promise<BankCheck>{
  if(batch.status==='draft'||batch.stale)return 'not_ready';
- const files=packFor(country)?.bankPaymentFiles,format=SALARY_FILES.find(item=>item.country===country);
- if(!files||!format)return 'not_available';
+ // Which bank account, currency and salary format the company's file uses is the country pack's to know.
+ const salaryRunPreview=packFor(country)?.bankPaymentFiles?.salaryRunPreview;
+ if(!salaryRunPreview)return 'not_available';
  // The run's own recorded net pay and headcount, and what of it is paid by bank (cash and cheque are not in the file).
  const [own]=await withTenant(sponsor,tx=>tx.select({
   slips:sql<number>`count(*)::int`,
@@ -80,16 +78,14 @@ async function bankCheckFor(sponsor:SessionContext,batch:Batch,country:string):P
   .from(payslip).innerJoin(employment,eq(employment.id,payslip.employmentId)).where(eq(payslip.batchId,batch.id)));
  const bankRecords=Number(own?.bankRecords??0);
  if(!bankRecords)return 'not_available';
- const accounts=(await listCompanyBankProfiles(sponsor,batch.companyId)).filter(item=>item.bank===format.bank&&item.currency===format.currency);
- if(!accounts.length)return 'not_available';
  let preview;
  try{
-  preview=await files.preview(sponsor,{companyId:batch.companyId,bankProfileId:accounts[0].id,formatId:format.formatId,periodKey:batch.payPeriod,
-   paymentDate:batch.batchDate,runSeq:batch.runSeq,testFile:false,reference:'PAYROLL CHECK'});
+  preview=await salaryRunPreview(sponsor,{companyId:batch.companyId,periodKey:batch.payPeriod,runSeq:batch.runSeq,paymentDate:batch.batchDate});
  }catch(error){
   if(error instanceof BankPaymentFileError)return 'blocked';
   throw error;
  }
+ if(!preview)return 'not_available';
  // The bank file's total against the run's recorded net pay less what is paid outside the bank; both in sen.
  if(preview.totalCents!==cents(batch.netTotal)-Number(own?.otherCents??0))return 'total_mismatch';
  if(preview.recordCount!==bankRecords||batch.employeeCount!==Number(own?.slips??0))return 'count_mismatch';
@@ -112,7 +108,7 @@ async function ruleVersionsFor(sponsor:SessionContext,batch:Batch,country:string
  });
 }
 
-async function swingsFor(sponsor:SessionContext,companyId:string,period:string,setting:{thresholdBp:number;exclusions:readonly string[]}):Promise<SwingSummary>{
+async function swingsFor(sponsor:SessionContext,companyId:string,period:string,setting:{thresholdBp:number;exclusions:readonly string[]},componentIds:ComponentIds):Promise<SwingSummary>{
  const periods=[period,previousPeriod(period),previousPeriod(previousPeriod(period)),previousPeriod(previousPeriod(previousPeriod(period)))];
  const rows=await withTenant(sponsor,tx=>tx.select({employmentId:payslip.employmentId,payPeriod:payrollBatch.payPeriod,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq,
   basic:payslip.basicSalary,allowance:payslip.allowance,overtime:payslip.overtimePay,bonus:payslip.bonus,gross:payslip.grossPay,statutory:payslip.statutory,
@@ -128,7 +124,7 @@ async function swingsFor(sponsor:SessionContext,companyId:string,period:string,s
  }
  // Only people paid in the period itself are compared.
  for(const [employmentId,list] of byEmployment)if(!list.some(row=>row.payPeriod===period))byEmployment.delete(employmentId);
- return netSwings(byEmployment,{period,companyId,thresholdBp:setting.thresholdBp,exclusions:setting.exclusions});
+ return netSwings(byEmployment,{period,companyId,thresholdBp:setting.thresholdBp,exclusions:setting.exclusions,componentIds});
 }
 
 export async function detectSalaryPayroll(sponsor:SessionContext,input:LoopDetectInput):Promise<LoopDetection>{
@@ -160,10 +156,13 @@ export async function detectSalaryPayroll(sponsor:SessionContext,input:LoopDetec
  const observations:LoopObservation[]=[];
  // Net swings, once per company and month that has a processed or closed run.
  const swingMonths=new Map<string,SwingSummary>();
+ // Pay items are keyed on their component's stable id, through the catalogue code each run stamped on its lines.
+ const componentIds:ComponentIds=batches.some(batch=>batch.status!=='draft')
+  ?new Map((await listPayComponents(sponsor,{includeArchived:true})).map(component=>[component.code,component.id])):new Map();
  for(const batch of batches){
   const key=`${batch.companyId}:${batch.payPeriod}`;
   if(batch.status==='draft'||swingMonths.has(key))continue;
-  swingMonths.set(key,await swingsFor(sponsor,batch.companyId,batch.payPeriod,settings.get(batch.companyId)!));
+  swingMonths.set(key,await swingsFor(sponsor,batch.companyId,batch.payPeriod,settings.get(batch.companyId)!,componentIds));
  }
  // Each run's case.
  for(const batch of batches){

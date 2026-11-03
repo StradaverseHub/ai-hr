@@ -74,14 +74,18 @@ const fx=vi.hoisted(()=>{
    {caseId:'00000000-0000-4000-8000-00000000f001',companyId:A,companyName:companyA.companyName,personName:'Ravi Fictional',payPeriod:'2026-10',swingBp:3108,direction:'up',
     pattern:'cause:salary_change',thresholdBp:1500,causes:['salary_change'],state:'open',closeReason:null,disposition:null},
    {caseId:'00000000-0000-4000-8000-00000000f002',companyId:A,companyName:companyA.companyName,personName:'Mei Ling Fictional',payPeriod:'2026-10',swingBp:2328,direction:'down',
-    pattern:'item:Meal_Allowance',thresholdBp:1500,causes:[],state:'closed',closeReason:'done',disposition:{value:'expected',by:'Siti Fictional',at:new Date('2026-11-02T01:00:00Z')}}]};
+    pattern:'item:0000aaaa-0000-4000-8000-00000000a040',thresholdBp:1500,causes:[],state:'closed',closeReason:'done',disposition:{value:'expected',by:'Siti Fictional',at:new Date('2026-11-02T01:00:00Z')}}],
+  // Patterns are keyed on the pay component's id; the page shows the catalogue's current name.
+  patternNames:{'item:0000aaaa-0000-4000-8000-00000000a040':'Meal Allowance'}};
  const settings={companies:[{companyId:A,companyName:companyA.companyName,
-  setting:{companyId:A,version:2,interval:'hourly',thresholdBp:1500,exclusions:['item:COMM'],source:'proposal',changedByUserId:'u-1',changedAt:new Date('2026-11-03T15:04:00Z')},
+  setting:{companyId:A,version:2,interval:'hourly',thresholdBp:1500,exclusions:['item:0000aaaa-0000-4000-8000-00000000c044','item:0000aaaa-0000-4000-8000-0000000000ff'],source:'proposal',changedByUserId:'u-1',changedAt:new Date('2026-11-03T15:04:00Z')},
   proposals:[{key:'a'.repeat(64),kind:'threshold',fromThresholdBp:1500,toThresholdBp:2000,pattern:null,
    evidence:{windowDays:30,flags:6,expected:5,problems:1,expectedShareBp:8333,smallestProblemBp:2100}}],
-  history:[{version:2,interval:'hourly',thresholdBp:1500,exclusions:['item:COMM'],source:'proposal',by:'Aisyah Fictional',at:new Date('2026-11-03T15:04:00Z')},
+  history:[{version:2,interval:'hourly',thresholdBp:1500,exclusions:['item:0000aaaa-0000-4000-8000-00000000c044'],source:'proposal',by:'Aisyah Fictional',at:new Date('2026-11-03T15:04:00Z')},
    {version:1,interval:'hourly',thresholdBp:1500,exclusions:[],source:'admin',by:'Aisyah Fictional',at:new Date('2026-11-02T15:04:00Z')}],
-  decisions:[{id:'d-1',kind:'threshold',fromThresholdBp:1500,toThresholdBp:1800,pattern:null,decision:'rejected',by:'Daniel Fictional',at:new Date('2026-11-01T15:04:00Z')}]}]};
+  decisions:[{id:'d-1',kind:'threshold',fromThresholdBp:1500,toThresholdBp:1800,pattern:null,decision:'rejected',by:'Daniel Fictional',at:new Date('2026-11-01T15:04:00Z')}]}],
+  // A pattern whose component is no longer in the catalogue has no name.
+  patternNames:{'item:0000aaaa-0000-4000-8000-00000000c044':'Sales Commission'}};
  class PayrollCycleRefused extends Error{constructor(readonly reason:string){super(reason);}}
  return {A,B,overview,salary,settings,PayrollCycleRefused};
 });
@@ -220,7 +224,7 @@ describe('Operations › Loops › Payroll cycle, per role',()=>{
   expect((company.querySelector('select[name="interval"]') as HTMLSelectElement).value).toBe('hourly');
   expect([...company.querySelectorAll('select[name="interval"] option')].map(text)).toEqual(['Checked hourly','Checked twice a day','Checked daily']);
   expect((company.querySelector('input[name="threshold"]') as HTMLInputElement).value).toBe('15');
-  expect([...company.querySelectorAll('[data-exclusions] li')].map(parts)).toEqual(['Pay item COMM Remove']);
+  expect([...company.querySelectorAll('[data-exclusions] li')].map(parts)).toEqual(['Pay item Sales Commission Remove','A pay item no longer in the catalogue Remove']);
   const proposal=company.querySelector('[data-proposal="threshold"]')!;
   expect([...proposal.querySelectorAll('p')].map(text)).toEqual(['Raise the threshold from ±15% to ±20%','5 of 6 flags cleared as expected (83.33%), real problems: 1, last 30 days']);
   expect([...proposal.querySelectorAll('button')].map(button=>[text(button),button.getAttribute('aria-label')])).toEqual([

@@ -1135,7 +1135,8 @@
         "changed": "This changed since the page opened. Look again.",
         "already": "Already recorded, or nothing changed.",
         "failed": "The change could not be saved. Try again."
-      }
+      },
+      "patternUnknown": "A pay item no longer in the catalogue"
     }
   },
   "today": {

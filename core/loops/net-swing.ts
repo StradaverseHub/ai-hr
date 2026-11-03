@@ -7,12 +7,16 @@
  * changes or proposes a figure of pay.
  *
  * A person's PATTERN names what moved their pay most, so payroll HR's dispositions can be grouped by it
- * (core/loops/swing-proposals.ts): the pay item whose own change is at least half of the net change (item:<code>), else
- * the first cause the runs recorded (cause:<kind>), else cause:other. An EXCLUDED pattern (approved by an administrator)
+ * (core/loops/swing-proposals.ts): the pay item whose own change is at least half of the net change, keyed on its pay
+ * component's stable id (item:<pay component id>, resolved from the code the run stamped on the line, so renaming the
+ * component never re-keys a pattern it has learned; the name is only ever shown), else the first cause the runs
+ * recorded (cause:<kind>), else cause:other. An item whose line cannot be tied to exactly one catalogued component (two
+ * components sharing its name, or a code no longer in the catalogue) is described by its cause instead. An EXCLUDED pattern (approved by an administrator)
  * does not raise a flag while the change left after that item's own change is within the threshold; an excluded cause
  * does not raise one at all. A person paid in only one of the two months, or whose previous net pay was not positive, has
  * no ratio and is never flagged (they are listed as changed). */
 import {comparePayPeriods,PAY_CAUSE_KINDS,type PayCauseKind,type StoredPayslipRow} from '../pay-difference';
+import {storedComponentLines} from '../payslip-earning-lines';
 
 export const DEFAULT_SWING_THRESHOLD_BP=1500;
 export const SWING_PATTERN_RE=/^(cause:[a-z_]{1,40}|item:[A-Za-z0-9_.-]{1,40})$/;
@@ -30,19 +34,32 @@ export type SwingSummary=Readonly<{people:readonly SwingPerson[];compared:number
  /** How many people's change each cause appears in. */
  causes:Readonly<Record<PayCauseKind,number>>}>;
 export type SwingSetting=Readonly<{thresholdBp:number;exclusions:readonly string[]}>;
+/** The company's pay components by the code a run stamps on its lines (packs/payroll/service listPayComponents). */
+export type ComponentIds=ReadonlyMap<string,string>;
+type SwingInput=Readonly<{period:string;companyId:string;componentIds?:ComponentIds}>&SwingSetting;
 
-/** A pay item's stored code as a pattern; an item with no code that fits is described by its cause instead. */
-const itemPattern=(name:string)=>{const code=name.trim().replace(/\s+/g,'_');return /^[A-Za-z0-9_.-]{1,40}$/.test(code)?`item:${code}`:null;};
+/** The pattern of the pay item the pay-difference service named: its one catalogued component, or null. */
+function itemPattern(rows:readonly StoredPayslipRow[],name:string,componentIds:ComponentIds|undefined):string|null{
+ if(!componentIds)return null;
+ const codes=new Set<string>();
+ for(const row of rows)for(const line of storedComponentLines(row.statutory)){
+  const lineName=(line.name??'').trim(),code=(line.code??'').trim();
+  if(code&&(lineName===name||(!lineName&&code===name)))codes.add(code);
+ }
+ if(codes.size!==1)return null;
+ const id=componentIds.get([...codes][0]);
+ return id&&isSwingPattern(`item:${id}`)?`item:${id}`:null;
+}
 
-export function netSwingFor(employmentId:string,rows:readonly StoredPayslipRow[],input:Readonly<{period:string;companyId:string}>&SwingSetting):SwingPerson|null{
+export function netSwingFor(employmentId:string,rows:readonly StoredPayslipRow[],input:SwingInput):SwingPerson|null{
  const result=comparePayPeriods(rows,{period:input.period,companyId:input.companyId});
  if(!result.ok||!result.comparisons.length)return null;
  const cmp=result.comparisons[0],net=cmp.totals.net,causes=cmp.causes.map(cause=>cause.kind);
  const changed=net.change!==0;
  if(!changed)return Object.freeze({employmentId,changed,swingBp:0,direction:null,pattern:null,causes,flagged:false,excluded:false});
  const top=cmp.payItems[0];
- const pattern=top&&Math.abs(top.change)*2>=Math.abs(net.change)?(itemPattern(top.name)??(causes[0]?`cause:${causes[0]}`:'cause:other'))
-  :causes[0]?`cause:${causes[0]}`:'cause:other';
+ const pattern=(top&&Math.abs(top.change)*2>=Math.abs(net.change)?itemPattern(rows,top.name,input.componentIds):null)
+  ??(causes[0]?`cause:${causes[0]}`:'cause:other');
  const direction=net.change>0?'up' as const:'down' as const;
  if(!(net.previous>0))return Object.freeze({employmentId,changed,swingBp:null,direction,pattern,causes,flagged:false,excluded:false});
  const ratio=(value:number)=>Math.round(Math.abs(value)*10_000/net.previous);
@@ -57,7 +74,7 @@ export function netSwingFor(employmentId:string,rows:readonly StoredPayslipRow[]
 }
 
 /** Every person paid by the company in the period, compared with their previous paid month there. */
-export function netSwings(rowsByEmployment:ReadonlyMap<string,readonly StoredPayslipRow[]>,input:Readonly<{period:string;companyId:string}>&SwingSetting):SwingSummary{
+export function netSwings(rowsByEmployment:ReadonlyMap<string,readonly StoredPayslipRow[]>,input:SwingInput):SwingSummary{
  const people:SwingPerson[]=[];
  for(const [employmentId,rows] of [...rowsByEmployment].sort(([a],[b])=>a.localeCompare(b))){
   const person=netSwingFor(employmentId,rows,input);

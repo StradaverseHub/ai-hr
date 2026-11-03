@@ -2,7 +2,7 @@
 
 For the dedicated Bank & Statutory background worker, follow [BANK-IMPORT.md](BANK-IMPORT.md).
 
-Six service/timer pairs are supplied, including AI custody and account-email retention. **`deploy.sh` deliberately does not install or enable any of them**, because
+Seven service/timer pairs are supplied, including AI custody and account-email retention and the Pre-salary loop's tick. **`deploy.sh` deliberately does not install or enable any of them**, because
 scheduling a job that suspends a customer or writes billing data is an OWNER decision, not a
 deployment side effect. These files exist so that decision is a one-line `systemctl enable`, not a
 half-hour of writing units under pressure.
@@ -31,6 +31,23 @@ it stood before they mutate it.
 
 `aihr-apply-dunning.service` intentionally omits `--apply`, so enabling the timer gives you a nightly
 REPORT and suspends nobody. Adding `--apply` is a second, separate decision.
+
+## The Pre-salary loop's tick (AI v2 P2-2a)
+
+**`aihr-payroll-loop-tick`** runs every 15 minutes after the previous tick finishes. It runs only the Pre-salary loop
+(`scripts/payroll-loop-tick.ts`), and only for the companies whose own check interval has come round: AI Centre ›
+Operations › Loops › Payroll cycle › settings sets hourly, twice daily or daily per company (daily by default). Without
+it the 03:00 review sweep is the only run, so every company is checked daily whatever it chose. It changes no HR record
+and calls no model: it prepares cases for payroll administrators, as the loop does in the nightly sweep. It does nothing
+for a tenant whose Pre-salary loop is switched off. Enable it at release, after the migration that adds the loop's
+settings (0964) is applied:
+
+    sudo cp deploy/systemd/aihr-payroll-loop-tick.service deploy/systemd/aihr-payroll-loop-tick.timer /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now aihr-payroll-loop-tick.timer
+
+Two ticks never check one company together: a tick that finds the previous one still running for a tenant skips that
+tenant, and the loop checks again under its own lock that a company is still due before writing anything for it.
 
 ## Before enabling the expiry sweep
 

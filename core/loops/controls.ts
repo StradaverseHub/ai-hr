@@ -22,7 +22,10 @@ export async function setLoopPause(supplied:SessionContext,input:Readonly<{worke
  if(!isLoopId(input.workerId)||!companyId.success||typeof input.paused!=='boolean')throw new LoopControlRefused('invalid');
  const workerId=input.workerId,paused=input.paused;
  return withTenant(ctx,async tx=>{
-  const [admin]=await tx.execute(sql`select app.is_admin_for(${companyId.data}::uuid) as ok`) as unknown as {ok:boolean|null}[];
+  // The company must be this tenant's before the administrator check: app.is_admin_for answers from the grants alone,
+  // so another tenant's group-wide grant would pass it for any company id (AI v2 P2-2a review).
+  const [admin]=await tx.execute(sql`select exists(select 1 from public.company c where c.id=${companyId.data}::uuid and c.tenant_id=app.current_tenant_id()
+   and app.is_admin_for(c.id)) as ok`) as unknown as {ok:boolean|null}[];
   if(admin?.ok!==true)throw new LoopControlRefused('not_administrator');
   const where=and(eq(terasLoopPause.tenantId,ctx.tenantId),eq(terasLoopPause.workerId,workerId),eq(terasLoopPause.companyId,companyId.data));
   const [before]=await tx.select({paused:terasLoopPause.paused}).from(terasLoopPause).where(where).limit(1).for('update');

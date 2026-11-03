@@ -22,7 +22,9 @@ export default async function PayrollLoopSettingsPage({ searchParams }: { search
   const error = ERRORS.find(code => code === query.error), saved = SAVED.find(code => code === query.saved);
   const percent = (bp: number) => f.number(bp / 10_000, { style: 'percent', maximumFractionDigits: 2 });
   const when = (at: Date) => f.dateTime(at, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' });
-  const pattern = (value: string) => value.startsWith('cause:') ? t(`causes.${value.slice(6)}`) : t('patternItem', { item: value.slice(5).replace(/_/g, ' ') });
+  // A pay item pattern is keyed on its component's id; its current name is shown (the catalogue's, read with the page).
+  const pattern = (value: string) => value.startsWith('cause:') ? t(`causes.${value.slice(6)}`)
+    : view.patternNames[value] ? t('patternItem', { item: view.patternNames[value] }) : t('patternUnknown');
   return (
     <div className={pageWideCls}>
       <OperationsTabs session={s} active="loops" />

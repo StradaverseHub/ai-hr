@@ -130,7 +130,11 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
   if(!gate.run||!now||now.version!==control.version||now.sponsorUserId!==sponsorUserId)
    return Object.freeze({workerId,status:'not_run' as const,reasons:Object.freeze([...gate.reasons,'switch_changed'])});
   const paused=await pausedTx(tx,options.tenantId,workerId);
-  const counts=new Map(companies.filter(companyId=>!paused.has(companyId)).map(companyId=>[companyId,zero()]));
+  // AI v2 P2-2a: a loop with an interval checks again, under this lock, that each company is still due. A run of the
+  // same loop that recorded meanwhile (an overlapping tick, or the nightly sweep) already checked it: this run writes
+  // nothing there, so one company is never run twice in its interval, however the runs overlap.
+  const stillDue=def.due?new Set(await def.due(tx,{tenantId:options.tenantId,workerId,companies:companies.filter(companyId=>!paused.has(companyId)),now:startedAt})):null;
+  const counts=new Map(companies.filter(companyId=>!paused.has(companyId)&&(!stillDue||stillDue.has(companyId))).map(companyId=>[companyId,zero()]));
   const keys=unique(observations.map(item=>item.subjectKey));
   const existing:(typeof terasLoopCase.$inferSelect)[]=[];
   for(let offset=0;offset<keys.length;offset+=500)existing.push(...await tx.select().from(terasLoopCase)
