@@ -80,7 +80,7 @@ export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Pr
   const preview=await previewRewardAccessChange(accessAdmin,input);
   if(preview.pending)return refuse();
   const result=await saveRewardAccessChange(accessAdmin,input,preview.digest);
-  if(result.pending||result.status!=='approved')return refuse();
+  if(result.pending||result.status!=='applied_no_second_approval')return refuse();
  }
  await addFixtureSeat(checker.userId,'gr');
  const selection={employmentIds:[],adoptLegacy:false},governance=await getRewardUnitGovernance(admin,rewardId),selectionPreview=await previewRewardSeniorMembership(admin,rewardId,governance.revision,selection);
