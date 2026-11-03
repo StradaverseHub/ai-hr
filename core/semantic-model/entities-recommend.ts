@@ -103,5 +103,11 @@ export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
     f('applicant','name','minimum','Who applied.'),f('leaveType','label','full','Leave type name.',{screen:'sensitive_label'}),
     f('days','number','full','Day quantity; with the applicant withheld it identifies no one.'),
     f('starts','enum','full','When it starts, relative to today.',{values:PENDING_STARTS}),
-    f('startDate','date','minimum','First day.'),f('endDate','date','minimum','Last day.')]})]},
+    f('startDate','date','minimum','First day.'),f('endDate','date','minimum','Last day.'),
+    // AI v2 W2 (slice 3): assigned claims and attendance requests to choose between (core/proposals/assigned-decide.ts).
+    f('date','date','minimum','The claim\'s date incurred, or the attendance day.'),
+    f('claimType','label','full','Claim type name.',{screen:'sensitive_label'}),f('claimItem','label','full','Claim item name.',{screen:'sensitive_label'}),
+    f('amount','number','bands','Amount of the claim, as stored.'),f('kind','enum','full','An overtime request or a clock correction.',{values:['overtime','correction']}),
+    f('plannedStart','time','minimum','Overtime start.'),f('plannedEnd','time','minimum','Overtime end.'),
+    f('checkIn','time','minimum','Clock-in asked for.'),f('checkOut','time','minimum','Clock-out asked for.')]})]},
 ] satisfies SemanticEntity[]);

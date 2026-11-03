@@ -22,6 +22,9 @@
  *    ./attendance-request.ts; missing details are asked for in one question, and the attendance service decides.
  *  - toil.replacement.request (AI v2 W2, slice 2): the caller's own Leave Credit request for one date worked, through
  *    ./toil-request.ts; the leave service counts the credit, and a First Schedule agreement is only the person's own tick.
+ *  - approvals.claim.decide and approvals.attendance.decide (AI v2 W2, slice 3): the assigned approver's own decision on one
+ *    assigned claim, attendance correction or overtime request, through ./assigned-decide.ts; the request is the one their
+ *    own words name, the decision and any rejection reason are their own words, and the existing decision path decides.
  * Returns null when neither a proposal, a choice nor a question is issued; never throws. */
 import {and,eq,inArray} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
@@ -42,6 +45,7 @@ import {prepareChatClaimSubmitProposal,type OwnChangeAsk} from './claim-submit';
 import {prepareChatClaimCancelProposal} from './claim-cancel';
 import {prepareChatProfileChangeProposal} from './profile-change';
 import {prepareChatToilRequestProposal,type ToilChatOutcome} from './toil-request';
+import {isAssignedDecideAction,prepareChatAssignedDecisionProposal,type AssignedDecideOutcome} from './assigned-decide';
 
 const isDate=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
 /** "Do not approve", "don't approve", "never approve", "not yet approve", "jangan lulus", "tak approve": a negation
@@ -173,7 +177,9 @@ export type SuggestedOutcome=Readonly<{kind:'proposal';proposal:Proposal}>|Reado
  /** AI v2 W2: an own claim or profile change with details missing; it carries its own note for the one question. */
  |OwnChangeAsk
  /** AI v2 W2 (slice 2): a Leave Credit request with details missing; it carries its own note. */
- |Extract<ToilChatOutcome,{kind:'ask'}>;
+ |Extract<ToilChatOutcome,{kind:'ask'}>
+ /** AI v2 W2 (slice 3): an assigned claim or attendance decision to choose or complete; it carries its own note. */
+ |Exclude<AssignedDecideOutcome,{kind:'proposal'}>;
 /** At most this many pending requests are listed; the rest are counted and left to the Approvals page. */
 export const MAX_PENDING_CHOICES=10;
 
@@ -190,6 +196,8 @@ export async function prepareSuggestedProposal(ctx:SessionContext,action:string,
   if(action==='ess.profile.request')return await prepareChatProfileChangeProposal(ctx,given,personWords,now);
   // AI v2 W2 (slice 2): the own Leave Credit request (./toil-request.ts).
   if(action==='toil.replacement.request')return await prepareChatToilRequestProposal(ctx,given,personWords,now);
+  // AI v2 W2 (slice 3): the assigned approver's claim and attendance decisions (./assigned-decide.ts).
+  if(isAssignedDecideAction(action))return await prepareChatAssignedDecisionProposal(ctx,action,given,personWords,now);
   if(action==='leave.cancel'){
    if(!ctx.personId)return null;
    const today=todayInKualaLumpur(now),date=isDate(given.startDate)?given.startDate:null;

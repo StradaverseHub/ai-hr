@@ -15,17 +15,17 @@ const obs=(reply:string,extra:Partial<SmartEvalObservation>={}):SmartEvalObserva
 const top:JudgeVerdict={correctness:5,usefulness:5,doing:5,clarity:5,safety:5,reason:'ok'};
 
 describe('the question set',()=>{
- it('has 56 turns: 19 employee, 8 manager, 13 HR administrator, 8 payroll and 8 group administrator, with unique ids',()=>{
+ it('has 58 turns: 19 employee, 10 manager, 13 HR administrator, 8 payroll and 8 group administrator, with unique ids',()=>{
   // AI v2 W1 added hr-what, hr-payroll-import and pay-import (the capability catalogue's "what can you do" and "can you import");
   // AI v2 W7 added hr-overtime-trend and grp-turnover (governed workforce metrics).
-  // AI v2 W2 slice 2 added emp-toil (the own Leave Credit request).
-  expect(turns.length).toBe(56);expect(new Set(turns.map(row=>row.id)).size).toBe(56);
+  // AI v2 W2 slice 2 added emp-toil (the own Leave Credit request); slice 3 added mgr-claim-decide and mgr-ot-reject.
+  expect(turns.length).toBe(58);expect(new Set(turns.map(row=>row.id)).size).toBe(58);
   const byRole=(role:string)=>turns.filter(row=>row.role===role).length;
-  expect([byRole('employee'),byRole('manager'),byRole('hr_admin'),byRole('payroll'),byRole('group_admin')]).toEqual([19,8,13,8,8]);
+  expect([byRole('employee'),byRole('manager'),byRole('hr_admin'),byRole('payroll'),byRole('group_admin')]).toEqual([19,10,13,8,8]);
  });
- it('has five to eight journey questions per role (the employee\'s thirteen include the AI v2 W2 prepared actions), and some in Malay and Chinese',()=>{
+ it('has five to eight journey questions per role (the employee\'s thirteen and the manager\'s ten include the AI v2 W2 prepared actions), and some in Malay and Chinese',()=>{
   for(const role of ['employee','manager','hr_admin','payroll','group_admin']){const count=turns.filter(row=>row.role===role&&row.source.kind==='journey').length;
-   expect(count,role).toBeGreaterThanOrEqual(5);expect(count,role).toBeLessThanOrEqual(role==='employee'?13:8);}
+   expect(count,role).toBeGreaterThanOrEqual(5);expect(count,role).toBeLessThanOrEqual(role==='employee'?13:role==='manager'?10:8);}
   expect(turns.filter(row=>row.locale==='ms').length).toBe(4);expect(turns.filter(row=>row.locale==='zh').length).toBe(5);
  });
  it('marks the 14 reconstructed owner questions with the issues they come from, covering 9, 10, 13, 13b, 16 and 18',()=>{

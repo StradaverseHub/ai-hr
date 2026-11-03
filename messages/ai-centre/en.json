@@ -534,6 +534,8 @@
       "profileDependantTitle": "Add a dependant",
       "profileBankTitle": "Change your bank account to {bankName}, ending {ending}",
       "toilRequestTitle": "Leave Credit request, {date}, {start} – {end}",
+      "decisionApproveTitle": "Approve: {item}",
+      "decisionRejectTitle": "Reject: {item}",
       "creditDays": "{count, plural, one {# day} other {# days}} credited if approved",
       "review": "Review",
       "open": "Open",
@@ -562,7 +564,10 @@
           "claimDraftSaved": "Saved as a draft. Add the receipt on Claims to submit it.",
           "claimCancelled": "Claim cancelled.",
           "profileRequested": "Sent to HR. Nothing changes until HR approves it.",
-          "toilSubmitted": "Sent for approval, not approved yet. Nothing is credited until it is approved."
+          "toilSubmitted": "Sent for approval, not approved yet. Nothing is credited until it is approved.",
+          "decisionApproved": "Approved. Your decision is recorded.",
+          "decisionRejected": "Rejected, with your reason. Your decision is recorded.",
+          "decisionLevelRecorded": "Your approval is recorded. The next approver decides now."
         },
         "refused": {
           "expired": "This card has expired. Ask again for a new one.",
@@ -593,7 +598,9 @@
         "claims_submit": "Expense claim ready to review",
         "claims_cancel": "Claim cancellation ready to review",
         "ess_profile_request": "Profile change ready to review",
-        "toil_replacement_request": "Leave Credit request ready to review"
+        "toil_replacement_request": "Leave Credit request ready to review",
+        "approvals_claim_decide": "Claim decision ready to review",
+        "approvals_attendance_decide": "Attendance decision ready to review"
       },
       "checks": {
         "actor_current": "Your access is current",
@@ -615,7 +622,10 @@
         "profile_request_reviewed": "Checked against your record",
         "leave_credit_offered": "You may ask for a Leave Credit",
         "worked_day_read": "Day type read from your roster",
-        "leave_credit_rules": "Leave Credit rules allow it"
+        "leave_credit_rules": "Leave Credit rules allow it",
+        "assigned_approver_current": "You are its assigned approver",
+        "not_own_request": "Not your own request",
+        "request_still_pending": "Request still pending"
       },
       "outcomes": {
         "withdrawn_now": "Withdrawn at once",
@@ -628,7 +638,8 @@
         "claim_draft_receipt_needed": "Saved as a draft; add the receipt on Claims",
         "claim_cancelled_now": "Cancelled at once",
         "hr_approval_required": "Sent to HR; changes only when HR approves",
-        "hr_verification_required": "HR verifies the new bank details before they are used"
+        "hr_verification_required": "HR verifies the new bank details before they are used",
+        "attendance_decision_if_checks_pass": "Recorded at your approval level if the checks still pass"
       },
       "reads": {
         "my_leave_balances": "your leave balances",

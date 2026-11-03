@@ -67,7 +67,9 @@ const SUGGEST_DESCRIPTION='Point the person to the page where they complete and 
  +' For ess.profile.request, details carry change (address, emergency_contact, dependant or bank) and only what the person said: addressLine1, addressLine2, addressLine3, postcode, city, state; contactName, relationship; dependantName, relationship, dateOfBirth (YYYY-MM-DD), gender; bankName.'
  +' Never put a bank account, phone or identity number in details: the system reads those from the person\'s own message.'
  // AI v2 W2 (slice 2): the own Leave Credit request, time off in lieu (core/proposals/toil-request.ts).
- +' For toil.replacement.request, details may carry workedDate (YYYY-MM-DD), claimStart and claimEnd (HH:MM, 24-hour) and reason, only what the person said. The system counts any days credited; never state or work out a credit, rate or pay, and never put anything about agreement or consent in details: only the person can agree, on the card.';
+ +' For toil.replacement.request, details may carry workedDate (YYYY-MM-DD), claimStart and claimEnd (HH:MM, 24-hour) and reason, only what the person said. The system counts any days credited; never state or work out a credit, rate or pay, and never put anything about agreement or consent in details: only the person can agree, on the card.'
+ // AI v2 W2 (slice 3): an assigned approver's claim or attendance decision (core/proposals/assigned-decide.ts).
+ +' For approvals.claim.decide and approvals.attendance.decide, details may carry request (the number the person chose from a list), date (YYYY-MM-DD) and, for a rejection, reason in the person\'s own words. Never put a name, an amount or a decision in details: the system reads whose request it is and whether to approve or reject from the person\'s own message, and the approver confirms it on the card.';
 /** Spec v13 (aiv2-speed-findings-20261103, cause 1b): suggest_action is called without available_actions when the action is
  * clear, so its description names the purpose of each declared action (core/semantic-model/entities.ts SEMANTIC_ACTIONS)
  * this caller holds, from the same catalogue rows available_actions returns. Only those eight: the other ids keep their
@@ -139,14 +141,17 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
    // for the native preparer (core/proposals/attendance-request.ts), never a hint, so it is left out of the hint check.
    const hinted=input.action==='attendance.overtime.request'&&input.details&&typeof input.details==='object'&&!Array.isArray(input.details)
     ?Object.fromEntries(Object.entries(input.details as Record<string,unknown>).filter(([key])=>key!=='reason')):input.details;
-   const result=suggestAction(catalogue,input.action,hinted);
+   // AI v2 W2 (slice 3): an assigned decision card has no hint selectors; the request number, date and reason are for the
+   // native preparer (core/proposals/assigned-decide.ts), which counts them only when the person said them.
+   const decideHint=input.action==='approvals.claim.decide'||input.action==='approvals.attendance.decide'?{}:hinted;
+   const result=suggestAction(catalogue,input.action,decideHint);
    if(result.suggested){const outcome=await prepareSuggestedProposal(ctx,result.action,input.details,scope.personWords,undefined,scope.locale);
     // A leave application with details missing or unclear: the person is asked, and nothing is suggested yet.
     if(outcome?.kind==='ask')return{ok:false,refusal:'missing_details',content:{suggested:false,action:result.action,reason:'missing_details',missing:outcome.missing,
      ...(outcome.options.length?{options:outcome.options}:{}),note:'note' in outcome?outcome.note:result.action.startsWith('attendance.')?ATTENDANCE_ASK_NOTE:ASK_NOTE}};
     const suggestion={action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard};
     // Several pending: the person chooses; the model lists them and asks, and nothing is prepared (ADR-0170 §3.15).
-    if(outcome?.kind==='choose')return{ok:true,content:{...result,pending:outcome.pending,...(outcome.more?{notListed:outcome.more}:{}),note:CHOOSE_NOTE},suggestion};
+    if(outcome?.kind==='choose')return{ok:true,content:{...result,pending:outcome.pending,...(outcome.more?{notListed:outcome.more}:{}),note:'note' in outcome?outcome.note:CHOOSE_NOTE},suggestion};
     const proposal=outcome?.kind==='proposal'?outcome.proposal:null;
     const note=!proposal?'The person completes and confirms this on the review page; nothing is prepared or submitted.'
      :proposal.body.review.route===LEAVE_APPLY_FORM_ROUTE?FORM_NOTE:'A review item is ready; the person checks and confirms it on the review page. Nothing is submitted until they do.';

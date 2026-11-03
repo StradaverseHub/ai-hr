@@ -29,6 +29,7 @@ const OUTCOME_TEXT:Readonly<Record<NonNullable<ProposalFacts['outcome']>,string>
  claim_draft_receipt_needed:'A draft is saved; add the receipt on Claims to submit it.',claim_cancelled_now:'The claim is cancelled at once.',
  hr_approval_required:'The change is sent to HR; nothing changes until HR approves it.',
  hr_verification_required:'The new bank details are sent to HR to verify; pay keeps going to the current account until HR approves them.',
+ attendance_decision_if_checks_pass:'Your decision is recorded if the attendance checks still pass; a later approver may still need to decide.',
 });
 const PROFILE_CHANGE_TEXT:Readonly<Record<NonNullable<ProposalFacts['profileChange']>,string>>=Object.freeze({
  address:'Your address',emergency_contact:'Your emergency contact',dependant:'A new dependant',bank:'Your bank details',

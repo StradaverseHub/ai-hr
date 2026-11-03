@@ -8,6 +8,7 @@ import { confirmLeaveApplyProposalAction, editLeaveApplyProposalAction } from '@
 import { confirmAttendanceRequestProposalAction, editAttendanceRequestProposalAction } from '@/app/assistant/attendance-request-proposal-actions';
 import { confirmOwnChangeProposalAction, editOwnChangeProposalAction } from '@/app/assistant/own-change-proposal-actions';
 import { confirmToilRequestProposalAction, editToilRequestProposalAction } from '@/app/assistant/toil-request-proposal-actions';
+import { confirmAssignedDecisionProposalAction, editAssignedDecisionProposalAction } from '@/app/assistant/assigned-decision-proposal-actions';
 import {
   inlineDoneKey, inlineRefusalKey, internalHref,
   type InlineConfirmResult, type InlineEditResult, type InlineProposalCopy, type InlineProposalKind,
@@ -25,6 +26,7 @@ const POST: Readonly<Record<InlineProposalKind, Post>> = {
   attendance: { confirm: confirmAttendanceRequestProposalAction, edit: editAttendanceRequestProposalAction },
   own_change: { confirm: confirmOwnChangeProposalAction, edit: editOwnChangeProposalAction },
   toil: { confirm: confirmToilRequestProposalAction, edit: editToilRequestProposalAction },
+  decision: { confirm: confirmAssignedDecisionProposalAction, edit: editAssignedDecisionProposalAction },
 };
 
 /** Coarse pointers get 44px targets (DESIGN.md); a fine pointer keeps the card's compact controls. */

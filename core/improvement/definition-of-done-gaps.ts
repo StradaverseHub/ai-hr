@@ -33,7 +33,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:claims.cancel',
  ],
  'semantic':[
- 'action:approvals.attendance.decide','action:approvals.claim.decide','action:knowledge_base.article.create',
+ 'action:knowledge_base.article.create',
  'action:leave.adjustment.apply','action:notifications.email_preferences.save',
  ],
  'semantic,corpus':[
