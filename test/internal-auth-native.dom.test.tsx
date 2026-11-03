@@ -18,6 +18,7 @@ function fixture(organization?: string) {
   const output = { exports: {} as {InternalSignIn:React.ComponentType} };
   const ports: Record<string, unknown> = {
     'expo/fetch':{fetch:vi.fn()},
+    '../assets/onehr-icon.png':{uri:'fixture://onehr-icon'},
     react: React, 'react/jsx-runtime': jsx,
     'react-native': { Text, Pressable:({children,accessibilityLabel,accessibilityRole,disabled,onPress}:any)=><button aria-label={accessibilityLabel} role={accessibilityRole==='link'?'link':undefined} disabled={disabled} onClick={onPress}>{typeof children==='function'?children({pressed:false}):children}</button>, ActivityIndicator:()=>null, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
     'expo-router':{router,Redirect:()=>null},'expo-web-browser':{openBrowserAsync:vi.fn()},
