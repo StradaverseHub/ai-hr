@@ -4705,6 +4705,13 @@
       "when": 1793330000368,
       "tag": "0968_employee_master_definition_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 816,
+      "version": "7",
+      "when": 1793330000369,
+      "tag": "0969_report_category_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

@@ -149,3 +149,21 @@ it('publishes definition actions and keeps Edit separate from View, Add and Dele
   await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.employeeMasterReports.%'`;
  }
 });
+
+it('publishes all six report categories and keeps Bank denial separate from Personnel View',async()=>{
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'report_categories')).toMatchObject({changed:true,capabilities:6});
+  expect(await publishActionCapabilityPackage(owner.client,'report_categories')).toMatchObject({changed:false});
+  const access=()=>withTenant(ctx,tx=>tx.execute(sql`select
+   app.pay_formula_category(${b.companyId}::uuid,'personnel') as personnel,
+   app.pay_formula_category(${b.companyId}::uuid,'bank') as bank,
+   app.pay_formula_category(${b.companyId}::uuid,'invented') as invented`));
+  expect(await access()).toEqual([{personnel:true,bank:true,invented:false}]);
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${ctx.userId!}::uuid,'function.reportCategories.bank.view',${b.companyId}::uuid,'deny')`;
+  expect(await access()).toEqual([{personnel:true,bank:false,invented:false}]);
+ }finally{
+  await owner.client`delete from app.access_native_capability_default where capability_id like 'function.reportCategories.%'`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.reportCategories.%'`;
+ }
+});

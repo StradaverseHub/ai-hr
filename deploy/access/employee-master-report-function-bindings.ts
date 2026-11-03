@@ -56,3 +56,17 @@ export const EMPLOYEE_MASTER_DEFINITION_CAPABILITY_PUBLICATION={
   'app.employee_master_schedule_guard()',
  ],
 } as const;
+
+export const REPORT_CATEGORY_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:REPORT_CATEGORY_FUNCTIONS,
+ functionLegacyParityFunction:'app.report_category_native',
+ functionCurrentLegacyParityFunction:'app.report_category_current',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.report_category_bindings_complete()',
+  'app.pay_formula_category(uuid,text)',
+  'app.report_permission_grant_set(uuid,text,text,boolean)',
+  'app.report_permission_grant_delete(uuid)',
+ ],
+} as const;
