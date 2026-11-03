@@ -1702,3 +1702,4 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | 0945_financial_setup_actions | 0956_financial_setup_actions | 803 | 1793330000356 | c0ee123dded074d5074990affefd8d3b55ec474577fc43d4febd9455eff25436 |
 | New candidate migration | 0957_organisation_settings_binding_readiness | 804 | 1793330000357 | 1bad0684db997893212fe84b7071de85ab911c5895287935fe043ad29872b135 |
 | New candidate migration | 0958_qualification_import_preview | 805 | 1793330000358 | 70c1fd2398370008971fdf3f8a7bc382fc9a52dbe516b5b8efa85ec854fea694 |
+| New candidate migration | 0959_formula_builder_read_binding | 806 | 1793330000359 | 17a0fbd55ac33577ec76c98b7417c4aadc0f49359df51d5cab5ef535c306f54d |

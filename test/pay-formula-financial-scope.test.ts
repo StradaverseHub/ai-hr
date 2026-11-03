@@ -182,3 +182,18 @@ describe('Native financial authority is independent of protected Workforce-purpo
   expect(await getFormulaEvaluation(actor,evidence.id)).toBeNull();
  });
 });
+
+it('requires the exact Formula Builder view action for unreferenced authoring rows',async()=>{
+ const saved=await savePayFormula(full,{formulaId:'PRIVATE_DRAFT',description:'Unreferenced draft',method:'write',source:'Return {#Basic} / 10'});
+ const raw=()=>withTenant(full,tx=>tx.select({id:schema.payFormula.id}).from(schema.payFormula).where(eq(schema.payFormula.formulaId,'PRIVATE_DRAFT')));
+ expect(await raw()).toEqual([{id:saved.id}]);
+ const id='function.payComponents.formulaBuilder.view';
+ await owner.client`update access_capability set supported=true,bindings='[{"owner":"app.pay_formula_catalog_access","operation":"view"}]'::jsonb where id=${id}`;
+ try{
+  const [checks]=await withTenant(full,tx=>tx.execute(sql`select app.financial_setup_catalog_action('view') as catalogue,app.pay_formula_catalog_access() as builder`));
+  expect(checks).toEqual({catalogue:true,builder:false});
+  expect(await raw()).toEqual([]);
+ }finally{
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=${id}`;
+ }
+});
