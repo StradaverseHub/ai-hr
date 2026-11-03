@@ -84,7 +84,7 @@ export async function decideThresholdProposalAction(formData: FormData) {
 }
 
 /** Where an acknowledgement or rule command returns: the Salary payroll page (with its month and company) or settings. */
-const pageOf = (formData: FormData) => {
+const pageOf = (formData: FormData): { path: string; params: Record<string, string | null> } => {
   const to = formData.get('back'), period = formData.get('period'), company = formData.get('company');
   return to === 'salary' ? { path: `${ROOT}/salary`, params: { period: typeof period === 'string' && PERIOD.test(period) ? period : null,
     company: typeof company === 'string' && UUID.test(company) ? company : null } } : { path: `${ROOT}/settings`, params: {} };

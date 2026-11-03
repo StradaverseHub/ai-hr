@@ -44,7 +44,8 @@ describe('an excluded cause never hides a change of any size (review finding A1)
   expect(swing([SEPTEMBER,OCT_REGULAR],500,['cause:salary_change'])).toMatchObject({swingBp:1036,flagged:true,excluded:false});
   // A second cause beside the excluded one (the bonus run): flagged.
   const both=swing([SEPTEMBER,OCT_REGULAR,OCT_BONUS],2000,['cause:salary_change']);
-  expect(both.causes.length).toBeGreaterThan(1);
+  expect(both).not.toBeNull();
+  expect(both!.causes.length).toBeGreaterThan(1);
   expect(both).toMatchObject({flagged:true,excluded:false});
   // No exclusion: flagged as before.
   expect(swing([SEPTEMBER,OCT_REGULAR],1000,[])).toMatchObject({flagged:true,excluded:false});
