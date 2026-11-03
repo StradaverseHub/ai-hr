@@ -13892,6 +13892,8 @@
     "typeLabel": "Jenis tuntutan",
     "receiptRequired": "resit diperlukan",
     "amountLabel": "Amaun (RM)",
+    "amountLabelInCurrency": "Amaun ({currency})",
+    "amountLabelNoCurrency": "Amaun",
     "incurredOnLabel": "Tarikh ditanggung",
     "receiptLabel": "Resit",
     "descriptionLabel": "Penerangan (pilihan)",

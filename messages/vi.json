@@ -13892,6 +13892,8 @@
     "typeLabel": "Loại khoản chi",
     "receiptRequired": "yêu cầu biên lai",
     "amountLabel": "Số tiền (RM)",
+    "amountLabelInCurrency": "Số tiền ({currency})",
+    "amountLabelNoCurrency": "Số tiền",
     "incurredOnLabel": "Ngày phát sinh",
     "receiptLabel": "Biên lai",
     "descriptionLabel": "Mô tả (tùy chọn)",

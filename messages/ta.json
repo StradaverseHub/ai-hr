@@ -13892,6 +13892,8 @@
     "typeLabel": "கோரிக்கை வகை",
     "receiptRequired": "ரசீது தேவை",
     "amountLabel": "தொகை (RM)",
+    "amountLabelInCurrency": "தொகை ({currency})",
+    "amountLabelNoCurrency": "தொகை",
     "incurredOnLabel": "ஏற்பட்ட தேதி",
     "receiptLabel": "ரசீது",
     "descriptionLabel": "விளக்கம் (விருப்பத்தேர்வு)",

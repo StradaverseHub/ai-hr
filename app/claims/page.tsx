@@ -6,6 +6,7 @@ import { requireModule } from '@/lib/authz';
 import {ownClaimSubject} from './subject';
 import { claimRecordFacts, getEmployeeClaimTypes, listClaimsForEmployment } from '@/packs/claims/service';
 import { ClaimLimitWhy } from '@/components/why/sections';
+import { currencyOfEmployment } from '@/core/mobile-claims';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ClaimForm, type ClaimDraftPrefill, type ClaimFormType } from '@/components/claim-form';
 import { Button } from '@/components/ui';
@@ -65,9 +66,12 @@ export default async function ClaimsPage({
     );
   }
 
-  const [types, allClaims] = await Promise.all([
+  // The claim form's amounts are labelled with the employing company's own currency, as the claim limit's "Why?" panel
+  // labels them (lib/money.ts: never a defaulted "RM"); unreadable ⇒ the amounts show unlabelled, never guessed.
+  const [types, allClaims, currency] = await Promise.all([
     getEmployeeClaimTypes(s, me.employmentId),
     listClaimsForEmployment(s, me.employmentId),
+    currencyOfEmployment(s, me.employmentId).catch(() => null),
   ]);
   // e7eb5d83 — drafts get their own card. Kept OUT of the history table on purpose: that table is the
   // record of what has been filed, and a draft has not been filed. Mixing them is how someone believes a
@@ -156,6 +160,7 @@ export default async function ClaimsPage({
             types={formTypes}
             submitAction={submitClaimAction}
             todayUtc={today}
+            currency={currency}
             draft={draftPrefill}
             employmentId={selectedQuery.employmentId}
             why={claimWhy}

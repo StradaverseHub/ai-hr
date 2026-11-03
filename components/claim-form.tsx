@@ -4,6 +4,7 @@ import { useActionState, useMemo, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, ErrorBanner, Field, inputCls } from './ui';
 import { WhyLink } from './why/why-panel';
+import { formatMoney } from '@/lib/money';
 
 type SubmitState = { error: string | null };
 type Action = (prevState: SubmitState, fd: FormData) => SubmitState | Promise<SubmitState>;
@@ -75,7 +76,6 @@ export type ClaimFormType = {
   balance: ClaimBalance;
 };
 
-const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
 
 /**
  * Claim submission form (extracted to a client component for the Type→Item dependency + the conditional
@@ -88,6 +88,7 @@ export function ClaimForm({
   types,
   submitAction,
   todayUtc,
+  currency = null,
   draft,
   employmentId,
   why,
@@ -96,6 +97,8 @@ export function ClaimForm({
   types: ClaimFormType[];
   submitAction: Action;
   todayUtc: string;
+  /** The employing company's currency (company.currency), which labels every amount; null ⇒ unlabelled, never "RM". */
+  currency?: string | null;
   /** Present ⇒ the form is EDITING this draft: Save updates it in place, Submit files that same row. */
   draft?: ClaimDraftPrefill;
   employmentId?:string;
@@ -105,6 +108,8 @@ export function ClaimForm({
   whyPanel?: ReactNode;
 }) {
   const t = useTranslations('claims');
+  const rm = (n: number) => formatMoney(n, currency);
+  const amountLabel = currency ? t('amountLabelInCurrency', { currency }) : t('amountLabelNoCurrency');
   const [typeId, setTypeId] = useState(draft?.claimTypeId ?? types[0]?.id ?? '');
   const [claimItemId, setClaimItemId] = useState(
     draft?.claimItemId ?? types.find((ct) => ct.id === draft?.claimTypeId)?.items[0]?.id ?? types[0]?.items[0]?.id ?? '',
@@ -308,12 +313,12 @@ export function ClaimForm({
           <input type="hidden" name="amount" value="0" />
         </Field>
       ) : kind === 'fixed_allowance' ? (
-        <Field label={t('amountLabel')}>
+        <Field label={amountLabel}>
           <input type="text" readOnly value={rm(fixedAmount)} className={`${inputCls} bg-muted`} />
           <input type="hidden" name="amount" value="0" />
         </Field>
       ) : (
-        <Field label={t('amountLabel')}>
+        <Field label={amountLabel}>
           <input
             name="amount"
             type="number"

@@ -13892,6 +13892,8 @@
     "typeLabel": "报销类型",
     "receiptRequired": "需要收据",
     "amountLabel": "金额（RM）",
+    "amountLabelInCurrency": "金额（{currency}）",
+    "amountLabelNoCurrency": "金额",
     "incurredOnLabel": "发生日期",
     "receiptLabel": "收据",
     "descriptionLabel": "说明（选填）",

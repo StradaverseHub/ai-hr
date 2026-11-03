@@ -13892,6 +13892,8 @@
     "typeLabel": "ประเภทการเบิก",
     "receiptRequired": "ต้องมีใบเสร็จ",
     "amountLabel": "จำนวนเงิน (RM)",
+    "amountLabelInCurrency": "จำนวนเงิน ({currency})",
+    "amountLabelNoCurrency": "จำนวนเงิน",
     "incurredOnLabel": "วันที่เกิดค่าใช้จ่าย",
     "receiptLabel": "ใบเสร็จ",
     "descriptionLabel": "รายละเอียด (ไม่บังคับ)",
