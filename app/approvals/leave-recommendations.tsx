@@ -33,7 +33,7 @@ export type ApprovalRecommendations = Readonly<{
   /** Assigned rows past the cap, which offer their own review page instead. */
   deferred: ReadonlySet<string>;
 }>;
-const NONE: ApprovalRecommendations = Object.freeze({ active: false, views: new Map(), deferred: new Set() });
+const NONE: ApprovalRecommendations = Object.freeze({ active: false, views: new Map<string, LeaveRecommendationView>(), deferred: new Set<string>() });
 
 export async function readApprovalRecommendations(session: SessionContext, leaveRequestIds: readonly string[]): Promise<ApprovalRecommendations> {
   if (leaveRequestIds.length === 0) return NONE;
