@@ -37,7 +37,9 @@ import {
   ownLeaveCancellations,
   ownLeaveRejections,
 } from '@/core/my-leave';
-import { MyLeaveDashboard, type MyLeaveDashboardCard } from '@/components/leave/my-leave-dashboard';
+import { MyLeaveDashboard, type LeaveDashboardWhy, type MyLeaveDashboardCard } from '@/components/leave/my-leave-dashboard';
+import { LeaveBalanceWhy } from '@/components/why/sections';
+import { leaveBalanceExplanation } from '@/core/leave-balance-explain';
 import { UpcomingLeave, type UpcomingLeaveRow } from '@/components/leave/upcoming-leave';
 import {
   LEAVE_HISTORY_TABS,
@@ -181,6 +183,8 @@ export default async function LeavePage({
     applyEnd?: string;
     applyDuration?: string;
     employmentId?:string|string[];
+    // AI v2 W5 — the dashboard card whose "Why?" panel is open (`leave:<leave type id>`).
+    why?: string;
   }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
@@ -560,6 +564,23 @@ export default async function LeavePage({
       ceilingLines: also.map((g) => tMe('sharedLeaveGroups.alsoCountsToward', { group: g.name })),
     };
   });
+
+  // AI v2 W5 — each card's "Why?" opens its explanation in place, from the card's own figures (no further read). The
+  // links keep only the dashboard's own state (the leave year and the chosen employment), never a dialog or a toast.
+  const leaveDashboardWhy = async () => {
+    const tWhy = await getTranslations('today.glance');
+    const keep = { ...(sp.leaveYear ? { leaveYear: sp.leaveYear } : {}), ...(typeof sp.employmentId === 'string' ? { employmentId: sp.employmentId } : {}) };
+    const href = (why?: string) => { const query = new URLSearchParams({ ...keep, ...(why ? { why } : {}) }); return query.size ? `/leave?${query}` : '/leave'; };
+    const openId = sp.why?.startsWith('leave:') ? sp.why.slice('leave:'.length) : null;
+    const open = dashboardCardsWithCeilings.find((c) => c.leaveTypeId === openId) ?? null;
+    const why: LeaveDashboardWhy = {
+      text: tWhy('why'),
+      links: Object.fromEntries(dashboardCardsWithCeilings.map((c) => [c.leaveTypeId, {
+        href: c.leaveTypeId === open?.leaveTypeId ? href() : href(`leave:${c.leaveTypeId}`), label: tWhy('whyLabel', { leaveType: c.leaveType }), expanded: c.leaveTypeId === open?.leaveTypeId }])),
+      openId: open?.leaveTypeId ?? null,
+    };
+    return { why, whyPanel: open ? <LeaveBalanceWhy session={session} id={`leave-why-${open.leaveTypeId}`} closeHref={href()} leaveTypeId={open.leaveTypeId} explanation={leaveBalanceExplanation(open)} /> : undefined };
+  };
   // Placement is ORDER (r302), so the tiles that survive keep it: Primary groups before Secondary ones.
   const standaloneGroupIds = new Set(ceilingPlan.standalone.map((g) => g.id));
   const standaloneSharedGroups = [...sharedGroupsPrimary, ...sharedGroupsSecondary].filter((g) =>
@@ -802,6 +823,7 @@ export default async function LeavePage({
               cards={dashboardCardsWithCeilings}
               sharedGroups={standaloneSharedGroups}
               locale={locale}
+              {...await leaveDashboardWhy()}
             />
           </div>
         </Card>

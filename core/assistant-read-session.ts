@@ -7,7 +7,7 @@ import { assertMayUseAssistant } from './assistant-grant';
 import { assertModuleEnabled, resolveEntitlementsTx } from './entitlements';
 import { assertAiActionUnpausedTx } from './ai-governance';
 import * as reads from './read';
-import { ownClaimStatuses } from '../packs/claims/service';
+import { employeeClaimTypesTx, ownClaimStatuses } from '../packs/claims/service';
 import { createModuleAgentReaders } from './module-agent-readers';
 import {executeCanonicalSpecialist,compactSpecialistWork,type CompactSpecialistWork} from '../lib/ai/module-specialists';
 import type {AgentModuleCode} from '../lib/ai/module-agents';
@@ -50,6 +50,8 @@ function createReads(ctx: SessionContext, tx: Tx, active: () => boolean,interpre
     upcomingHolidays: (opts: { from: string; limit?: number }) => checked(() => reads.upcomingHolidays(ctx, opts, tx)),
     holidayDatesForEmployment: (range: { employmentId: string; from: string; to: string }) => checked(() => reads.holidayDatesForEmployment(ctx, range, tx)),
     ownClaimStatuses: (limit: number) => checked(() => ownClaimStatuses(ctx, limit, tx)),
+    // AI v2 W5: the claim form's own limits and usage (core/claims.ts), for an employment the caller resolved as their own.
+    employeeClaimTypes: (id: string) => checked(() => employeeClaimTypesTx(tx, id)),
   });
 }
 /** Closed canonical methods only: no transaction handle, session constructor or effect function. */
