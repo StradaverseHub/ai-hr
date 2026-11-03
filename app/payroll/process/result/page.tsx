@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { Badge, Card, ErrorBanner, EmployeeCode, PageHeader } from '@/components/ui';
+import { payrollProcessCompanyScope } from '@/core/payroll';
 import { listEmployeesForPayrollRun } from '@/core/read';
 // r227 — the skipped are read from the run's own durable event, not carried in the redirect. See below.
 import { listSkippedEmployees } from '@/core/payroll-view';
@@ -37,14 +38,16 @@ export default async function PayrollProcessResultPage({
 }: {
   searchParams: Promise<{ r?: string; from?: string }>;
 }) {
-  const { s } = await scopedAdmin();
+  const { s, scopeIds: candidates } = await scopedAdmin();
   const t = await getTranslations('payroll.process');
   const { r, from } = await searchParams;
   // 9066bd6c — this screen is the terminal step of the run flow and had no way back at all: the only
   // exit was the browser's own. Back returns the Payroll Process list as it was left. The label and the
   // `payroll.list` lookup live in the shared helper so this page keeps ONE namespace (see app/payroll/back.ts).
   const back = await payrollProcessBack(from);
-  const result = decodeRunGroupResult(r);
+  const decoded = decodeRunGroupResult(r);
+  const allowed = new Set(decoded ? await payrollProcessCompanyScope(s, candidates) : []);
+  const result = decoded?.perCompany.every(row => allowed.has(row.companyId)) ? decoded : null;
 
   if (!result) {
     return (

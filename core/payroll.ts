@@ -10452,6 +10452,23 @@ export async function removeEmployeePayrollTx(
   };
 }
 
+export function payrollProcessCompanyScope(ctx: SessionContext, candidates: string[]) {
+  return withTenant(ctx, async tx => {
+    if (!candidates.length) return [];
+    const rows = await tx.select({id: company.id}).from(company).where(and(
+      eq(company.tenantId, ctx.tenantId), inArray(company.id, candidates),
+      sql`app.access_financial_action_company('payroll', ${company.id}, 'view')
+        AND app.function_action_allowed('payroll.process', 'view', ${company.id})`,
+    ));
+    return rows.map(row => row.id);
+  });
+}
+
+function payrollProcessBatchView() {
+  return sql`app.access_financial_action_company('payroll', ${payrollBatch.companyId}, 'view')
+    AND app.function_action_allowed('payroll.process', 'view', ${payrollBatch.companyId})`;
+}
+
 // Read-only list (no events.append per the CLAUDE.md skip rule). `payPeriod` is an OPTIONAL
 // additive filter: when a non-empty string is passed it is AND-ed onto the existing tenant-RLS +
 // companyIds guard, so it can only NARROW the result (Build #10). Omitting it (or passing '')
@@ -10468,6 +10485,7 @@ export function listBatches(
   ctx: SessionContext,
   companyIds?: string[],
   payPeriod?: string | readonly string[],
+  purpose?: 'process',
 ) {
   const periodFilter = Array.isArray(payPeriod)
     ? inArray(payrollBatch.payPeriod, payPeriod as string[])
@@ -10530,7 +10548,8 @@ export function listBatches(
       .leftJoin(payrollCycle, eq(payrollCycle.id, payrollBatch.payrollCycleId))
       .where(
         and(
-          companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
+          companyIds && (companyIds.length || purpose === 'process') ? inArray(payrollBatch.companyId, companyIds) : undefined,
+          purpose === 'process' ? payrollProcessBatchView() : undefined,
           periodFilter,
           or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0)),
         ),
@@ -11242,9 +11261,9 @@ export function preProcessAdvisoryForSelection(
   });
 }
 
-export function batchDetail(ctx: SessionContext, batchId: string) {
+export function batchDetail(ctx: SessionContext, batchId: string, purpose?: 'process') {
   return withTenant(ctx, async (tx) => {
-    const [batch] = await tx.select().from(payrollHistoryEffectiveBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+    const [batch] = await tx.select().from(payrollHistoryEffectiveBatch).where(and(eq(payrollBatch.id, batchId), purpose === 'process' ? payrollProcessBatchView() : undefined)).limit(1);
     if (!batch) return null;
     const slips = await tx
       .select({

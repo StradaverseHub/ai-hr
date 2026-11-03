@@ -251,7 +251,7 @@ export async function resumeRunAction(formData: FormData) {
   // Re-read the batch AFTER the scope write: the persisted scope is the authority on who this run covers
   // (updateBatchScope intersects out cross-company ids and normalises an empty selection back to
   // whole-company), so the "selected" count on the result page is the run's own figure, never the client's.
-  const data = await batchDetail(s, batchId);
+  const data = await batchDetail(s, batchId, 'process');
   if (!data) {
     redirect(`/payroll/process?error=${encodeURIComponent('That payroll run is no longer available.')}`);
   }

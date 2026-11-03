@@ -87,7 +87,7 @@ export default async function BatchPage({
   const backHref = payrollListReturnTo(from);
   // …and the two screens BELOW this one get it too, so Back is unbroken all the way down the chain.
   const fromSuffix = backHref === '/payroll' ? '' : `?from=${encodeURIComponent(backHref)}`;
-  const data = await batchDetail(s, batchId);
+  const data = await batchDetail(s, batchId, 'process');
   if (!data) notFound();
   const { batch, slips } = data;
   const scope = (batch.scope ?? null) as BatchScope | null;

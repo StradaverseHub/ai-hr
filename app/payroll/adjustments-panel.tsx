@@ -56,7 +56,7 @@ export async function PayrollAdjustmentsPanel({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
-  const data = await batchDetail(s, batchId);
+  const data = await batchDetail(s, batchId, 'process');
   if (!data || data.batch.status !== 'draft') return null;
   const { batch } = data;
 

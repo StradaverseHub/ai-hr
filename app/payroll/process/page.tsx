@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { PageHeader, ErrorBanner, pageWideCls } from '@/components/ui';
-import { batchDetail, listBatches } from '@/core/payroll';
+import { batchDetail, listBatches, payrollProcessCompanyScope } from '@/core/payroll';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
 import { listCompanies, listDepartments, listJobGrades } from '@/core/read';
 import { listPayrollConfigs } from '@/core/payroll-config';
@@ -47,7 +47,8 @@ export default async function PayrollProcessPage({
   // the run screen used, so paging it can never be confused with a future listing on this page.
   searchParams: Promise<{ error?: string; resume?: string; from?: string; iPage?: string; iSize?: string }>;
 }) {
-  const { s, scopeIds } = await scopedAdmin();
+  const { s, scopeIds: candidates } = await scopedAdmin();
+  const scopeIds = await payrollProcessCompanyScope(s, candidates);
   const t = await getTranslations('payroll.process');
   const { error, resume, from, iPage, iSize } = await searchParams;
   // d75b0c11 — the Payroll Process list hands this screen its own filter query as `?from=…` (on the
@@ -70,8 +71,8 @@ export default async function PayrollProcessPage({
   let resumeBatch: ResumeBatch | undefined;
   let resumeError: string | undefined;
   if (resume) {
-    const data = await batchDetail(s, resume);
-    if (!data) {
+    const data = await batchDetail(s, resume, 'process');
+    if (!data || !scopeIds.includes(data.batch.companyId)) {
       // Not found OR not authorised for this admin's scope — show an explicit error, NOT a blank Step 1
       // (a silent fresh wizard reads as "my draft vanished"). Access-control edge case, per plan §3b.
       resumeError = t('draftNotFoundOrNoAccess');
@@ -96,13 +97,13 @@ export default async function PayrollProcessPage({
 
   const [companies, departments, businessUnits, positions, costCenters, jobGrades, payrollConfigs, allBatches] = await Promise.all([
     listCompanies(s),
-    listDepartments(s, { companyIds: scopeIds }),
-    listBusinessUnits(s, { companyIds: scopeIds }),
-    listPositions(s, { companyIds: scopeIds }),
-    listCostCenters(s, { companyIds: scopeIds }),
+    scopeIds.length ? listDepartments(s, { companyIds: scopeIds }) : [],
+    scopeIds.length ? listBusinessUnits(s, { companyIds: scopeIds }) : [],
+    scopeIds.length ? listPositions(s, { companyIds: scopeIds }) : [],
+    scopeIds.length ? listCostCenters(s, { companyIds: scopeIds }) : [],
     listJobGrades(s),
-    listPayrollConfigs(s, scopeIds),
-    listBatches(s, scopeIds),
+    scopeIds.length ? listPayrollConfigs(s, scopeIds) : [],
+    listBatches(s, scopeIds, undefined, 'process'),
   ]);
 
   const payDayByCompany = Object.fromEntries(payrollConfigs.map((c) => [c.companyId, c.payDay]));

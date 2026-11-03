@@ -3,7 +3,7 @@ import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { listBatches, payrollCloseCompanyIds } from '@/core/payroll';
+import { listBatches, payrollCloseCompanyIds, payrollProcessCompanyScope } from '@/core/payroll';
 import { listBatchProcessedDates } from '@/core/payroll-view';
 import { listCompanies } from '@/core/read';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
@@ -109,7 +109,8 @@ export default async function PayrollPage({
   // own (D3), and this guard fails open on an unresolved snapshot. Applied at the module ENTRY
   // point; a deep link skips it and meets the service refusal, which is the correct outcome.
   await requireModule('payroll');
-  const { s, scopeIds } = await scopedAdmin();
+  const { s, scopeIds: candidates } = await scopedAdmin();
+  const scopeIds = await payrollProcessCompanyScope(s, candidates);
   const locale = await getLocale();
   const t = await getTranslations('payroll.list');
   // Payroll Reset (a03b2d9b) shares the batch-detail namespace so the confirm copy is written once.
@@ -149,14 +150,14 @@ export default async function PayrollPage({
     // listBatches' widened period-set argument. Bounded by construction, and it is the whole year rather
     // than only the ticked months on purpose — every month cell shows its own run count, so an untick
     // must not blind the timeline to what is in the months you are not looking at.
-    listBatches(s, scopeIds, periodsForYear(filters.year)),
+    listBatches(s, scopeIds, periodsForYear(filters.year), 'process'),
     // The UNPUBLISHED BANNER read, and NOTHING else. ef31d251 exists because eighteen runs were
     // processed and never closed, so no employee ever saw a payslip — "a skipped one cannot sit
     // unnoticed for months". That warning has to span ALL TIME: counted off the year's rows instead, a
     // run left unpublished last December would stop being warned about the moment the clock ticked over
     // to January, which is precisely the failure it was written to prevent. If this read ever becomes
     // expensive the fix is to make it a COUNT — not to scope it to the selected year.
-    listBatches(s, scopeIds),
+    listBatches(s, scopeIds, undefined, 'process'),
     // Company filter options. Sourced from the authorised company list rather than from the year's runs,
     // so the dropdown does not change shape as you step through years and a selected company cannot
     // vanish underneath you. Narrowed to scopeIds: a view filter must never widen the access fence.

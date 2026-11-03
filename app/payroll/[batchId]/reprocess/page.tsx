@@ -109,7 +109,7 @@ export default async function ReprocessPage({
   // time the operator read the job result. `undefined` when there is nothing to carry, so an unfiltered
   // visit posts no field at all and the address stays exactly as it was.
 
-  const data = await batchDetail(s, batchId);
+  const data = await batchDetail(s, batchId, 'process');
   if (!data) notFound();
   const { batch, slips } = data;
 

@@ -93,7 +93,7 @@ export default async function AnomaliesPage({
   // when there is nothing to carry, so an unfiltered visit posts no field at all.
   const carry = carried === '/payroll' ? undefined : carried;
 
-  const batch = await batchDetail(s, batchId).catch(() => null);
+  const batch = await batchDetail(s, batchId, 'process').catch(() => null);
   if (!batch) notFound();
 
   const [rows, metrics, swing, provenance] = await Promise.all([

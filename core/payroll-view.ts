@@ -3076,11 +3076,14 @@ export function listSkippedEmployees(
         payload: domainEvent.payload,
       })
       .from(domainEvent)
+      .innerJoin(payrollBatch, and(eq(payrollBatch.id, domainEvent.aggregateId), eq(payrollBatch.tenantId, domainEvent.tenantId)))
       .where(
         and(
           eq(domainEvent.aggregateType, 'payroll-batch'),
           eq(domainEvent.eventType, 'payroll-batch.processed'),
           inArray(domainEvent.aggregateId, batchIds as string[]),
+          sql`app.access_financial_action_company('payroll', ${payrollBatch.companyId}, 'view')
+            AND app.function_action_allowed('payroll.process', 'view', ${payrollBatch.companyId})`,
         ),
       )
       .orderBy(asc(domainEvent.occurredAt));

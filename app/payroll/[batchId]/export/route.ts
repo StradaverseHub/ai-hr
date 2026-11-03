@@ -42,7 +42,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ batchId:
   const { batchId } = await params;
   if (!UUID_RE.test(batchId)) return new Response('Not found', { status: 404 });
 
-  const data = await batchDetail(s, batchId);
+  const data = await batchDetail(s, batchId, 'process');
   // Not found, another tenant (RLS), or a company this admin is not scoped to — all one answer, so the
   // response cannot be used to probe which batch ids exist.
   if (!data || !scopeIds.includes(data.batch.companyId)) return new Response('Not found', { status: 404 });

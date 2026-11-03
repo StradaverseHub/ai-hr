@@ -98,7 +98,7 @@ export default async function ResetPayrollPage({
   const back = payrollListReturnTo(sp.from);
   const from = back === '/payroll' ? null : back;
 
-  const data = await batchDetail(s, batchId);
+  const data = await batchDetail(s, batchId, 'process');
   if (!data) notFound();
   const { batch, slips } = data;
 
