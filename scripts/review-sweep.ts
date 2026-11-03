@@ -52,6 +52,7 @@ import { todayInKualaLumpur } from '../core/leave';
 import { recordJobRun } from '../core/job-run';
 import { resolveEntitlementsTx } from '../core/entitlements';
 import { runLoopsForTenant } from '../core/loops/run';
+import { runPayrollAuditLoop } from '../core/payroll-audit/run';
 
 async function main() {
   const startedAt = Date.now();
@@ -217,6 +218,19 @@ async function main() {
           console.error(`  ${loop.workerId} failed: an owner read did not complete; no card was changed.`);
         }
       }
+      // AI v2 P2-2b: the payroll Audit loop, as the same principal, behind its own switch. Captures and findings only.
+      const audit = await runPayrollAuditLoop({ tenantId: t.id, principalId, entitlements, today }).catch(() => null);
+      if (audit?.status === 'ran') {
+        loopRuns++;
+        loopCardsOpened += audit.findingsOpened;
+        if (audit.failed) { loopRunsFailed++; console.error(`  loop_payroll_audit could not complete ${audit.failed} compan${audit.failed === 1 ? 'y' : 'ies'}; nothing was written for them.`); }
+      } else if (audit?.status === 'sponsor_lost') {
+        loopRunsStopped++;
+        console.error('  ⚠ loop_payroll_audit stopped: its sponsor no longer holds administrator access. Switch it off and on again in AI Centre.');
+      } else if (audit === null) {
+        loopRunsFailed++;
+        console.error('  loop_payroll_audit failed before it reached a company.');
+      }
 
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
@@ -226,7 +240,7 @@ async function main() {
         notificationCappedTenants++;
         console.error('  Notification queue reached its batch limit; more work may remain.');
       }
-      if (orchestration?.failed || chasers?.failed || projection.cappedOut || releasesFailed || loops.some(loop => loop.status === 'failed')) failures++;
+      if (orchestration?.failed || chasers?.failed || projection.cappedOut || releasesFailed || loops.some(loop => loop.status === 'failed') || audit === null || (audit?.status === 'ran' && audit.failed > 0)) failures++;
       totalOpened += opened;
       totalReminders += reminders;
       totalEscalated += escalated;

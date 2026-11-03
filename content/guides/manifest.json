@@ -329,6 +329,13 @@
       "audience": "employee",
       "category": "performance-faq",
       "order": 117
+    },
+    {
+      "slug": "admin-ai-payroll-loops",
+      "title": "Admin Guide: AI Centre Payroll Cycle Loops",
+      "audience": "hr_admin",
+      "category": "intelligence",
+      "order": 30
     }
   ],
   "reviewedOn": "2026-10-12"

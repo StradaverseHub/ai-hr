@@ -3,6 +3,7 @@
  * the live e-PCB Plus portal). Byte layout: LHDN MTD spec Exhibit 4 (REPORT-FORMATS.md §1).
  * Each download records an append-only statutory_report artefact + domain event.
  */
+import { recordPayrollExport } from '@/core/payroll-audit/access-log';
 import { scopedAdmin } from '@/lib/scope';
 import { cp39FileForBatch, Cp39NotReadyError } from '@/localization/my/cp39-file';
 import { recordFileReport } from '@/core/reporting';
@@ -44,6 +45,8 @@ export async function GET(req: Request) {
       // leaving the customer unable to file at all.
       agency: 'LHDN',
     });
+    // AI v2 P2-2b: the file handed over is recorded with its sha256 (fail closed: the catch below answers 500).
+    await recordPayrollExport(s, { surface: 'statutory_file', companyId, payPeriod: periodKey, format: 'txt', detail: 'my.cp39-file' }, file.content, file.totals.mtdRecords);
     return new Response(file.content, {
       headers: {
         'Content-Type': 'text/plain; charset=us-ascii',

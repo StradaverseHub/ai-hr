@@ -232,6 +232,9 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/assistant/own-change-proposal-actions.ts":{"confirmOwnChangeProposalAction":"internal:assistant_surface","editOwnChangeProposalAction":"internal:assistant_surface"},
  "app/assistant/chat-import-actions.ts":{"confirmChatImportAction":"internal:assistant_surface"},
  "app/assistant/loop-clock-out-actions.ts":{"confirmMissedClockOutAction":"internal:assistant_surface"},
+ "app/assistant/capacity-actions.ts":{"setCapacityBaselineAction":"handoff:ai_governance"},
+ // AI v2 Phase 2 P2-1: the employee's own Undo of a clock-out the missed clock-outs loop set (core/loops/undo.ts).
+ "app/assistant/loop-undo-actions.ts":{"undoOwnLoopAction":"internal:assistant_surface"},
  "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface","askFromWorkspaceAction":"internal:assistant_surface","loadEarlierChatAction":"internal:assistant_surface","loadMoreChatsAction":"internal:assistant_surface","openStoredChatAction":"internal:assistant_surface","chatImportOfferedAction":"internal:assistant_surface"},
  "app/assistant/chat-actions.ts":{"chatRetentionAction":"internal:assistant_surface","deleteChatAction":"internal:assistant_surface","eraseAllChatsAction":"internal:assistant_surface","listChatsAction":"internal:assistant_surface","setChatRetentionAction":"handoff:ai_governance"},
  "app/assistant/module-plan-actions.ts":{"eraseModuleProposalsAction":"internal:assistant_surface","evaluateHumanPlannerAction":"internal:assistant_surface","proposeModulePlanAction":"internal:assistant_surface"},
@@ -252,6 +255,10 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/control-tower/agents/actions.ts":{"applyBulkAssistantAction":"handoff:ai_governance","clearGroupAllowanceAction":"handoff:ai_governance","clearUserAllowanceAction":"handoff:ai_governance","setAiAllowanceAction":"handoff:ai_governance","setAiFeatureAction":"handoff:ai_governance","setAiFeatureCapAction":"handoff:ai_governance","setAgentActionPauseAction":"handoff:ai_governance","setAiSpendBudgetAction":"handoff:ai_governance","setAssistantPermissionAction":"handoff:ai_governance","setGroupAllowanceAction":"handoff:ai_governance"},
  "app/control-tower/agents/launcher-actions.ts":{"setAssistantLauncherAction":"handoff:ai_governance"},
  "app/control-tower/loops/actions.ts":{"setLoopPauseAction":"handoff:ai_governance","setLoopSwitchAction":"handoff:ai_governance"},
+ "app/control-tower/loops/loop_payroll_audit/actions.ts":{"captureAuditNowAction":"handoff:ai_governance","disposeAuditFindingAction":"handoff:ai_governance","grantAuditReaderAction":"handoff:access_and_authentication","recordCorrectionCauseAction":"handoff:ai_governance","revokeAuditReaderAction":"handoff:access_and_authentication","setAuditSettingsAction":"handoff:ai_governance"},
+ "app/control-tower/loops/payroll-cycle/actions.ts":{"decideThresholdProposalAction":"handoff:ai_governance","recordSwingDispositionAction":"handoff:ai_governance","setPayrollLoopSettingAction":"handoff:ai_governance"},
+ // AI v2 Phase 2 P2-1: a loop's level per company (group administrators) and HR's undo of an automatic loop action.
+ "app/control-tower/loops/autonomy-actions.ts":{"changeLoopLimitsAction":"handoff:ai_governance","reviewLoopSampleAction":"handoff:ai_governance","setLoopLevelAction":"handoff:ai_governance","undoLoopActionFromDetailAction":"handoff:ai_governance"},
  "app/control-tower/orchestrator-actions.ts":{"refreshOrchestrationAction":"handoff:ai_governance"},
  "app/dashboard-layout-actions.ts":{"resetDashboardLayoutAction":"internal:session_and_presentation","saveDashboardLayoutAction":"internal:session_and_presentation"},
  "app/delegations/actions.ts":{"createSelfDelegationAction":"backlog:confirm","hrCreateDelegationAction":"backlog:confirm","hrEditDelegationAction":"backlog:confirm","hrRevokeDelegationAction":"backlog:confirm","loadDelegationContextAction":"backlog:automatic","loadEligibleDelegatesAction":"backlog:automatic","revokeSelfDelegationAction":"backlog:confirm"},
@@ -351,6 +358,26 @@ export const AGENT_PRINCIPAL_SPECIALISTS=Object.freeze({
  document_reminders:{tier:'automatic',setting:'notifications.passport_expiry_reminders_enabled',service:'core/automatic-followups.ts#runAutomaticFollowups',effect:'Remind the employee and authorised HR about a recorded passport expiry within 30 calendar days. No file is read or changed.'},
  lifecycle_chasers:{tier:'automatic',setting:'notifications.lifecycle_step_chasers_enabled',service:'core/automatic-followups.ts#runAutomaticFollowups',effect:'Remind current lifecycle staff about actionable incomplete steps after three working days without a workflow transition. No task is completed.'},
 } as const satisfies Record<'readiness_reminders'|'claims_triage'|'approval_chasers'|'review_chasers'|'clock_reminders'|'document_reminders'|'lifecycle_chasers',{tier:'automatic';setting:string;service:string;effect:string}>);
+
+/** AI v2 Phase 2 P2-1 — what each AI Centre loop does at each level it may reach, run as the agent principal for its
+ * sponsor. Levels above Prepare exist only for the loops whose cap allows them (core/loops/autonomy.ts, enforced in code and
+ * in migration 0963); test/teras-loop-autonomy-registry.test.ts keeps this list, the agent registry and the cap in step.
+ * Pay, employment status, access, discipline and statutory filing loops never go above Prepare. */
+const WATCH='Records what it finds for the company; shows nobody a card and changes no record';
+export const AGENT_LOOP_LEVELS=Object.freeze({
+ loop_probation_ending:{0:WATCH,1:'Prepares a confirmation review card for HR; HR records the decision'},
+ loop_payroll_inputs:{0:WATCH,1:'Prepares a Today card for payroll administrators listing what blocks the payroll run'},
+ loop_missing_employee_data:{0:WATCH,1:'Prepares a request card for the employee to fill in their own missing details',
+  2:'Sends the employee the request itself, within the company\'s nightly limit; changes no record; HR can withdraw it within the undo window',
+  3:'As Level 2; HR reviews a weekly sample of at least 10% and at least 5 requests instead of every one'},
+ loop_missed_clock_outs:{0:WATCH,1:'Prepares a correction card for the employee, who confirms or changes the time',
+  2:'Sets the clock-out to the roster end through the attendance owner when the chosen condition holds, within the nightly limit; tells the employee; never creates overtime; undone by the employee or HR within the window',
+  3:'As Level 2; HR reviews a weekly sample of at least 10% and at least 5 fixes instead of every one'},
+ loop_document_expiry:{0:WATCH,1:'Prepares a Today card for HR and a reminder card for the employee to renew the passport'},
+ // AI v2 P2-2a and P2-2b: pay and statutory filing, so Prepare at most in every company.
+ loop_salary_payroll:{0:WATCH,1:'Prepares each payroll run\'s checks for payroll HR (exceptions, net swing, rule versions, bank file against net pay); a person runs, approves and closes payroll'},
+ loop_payroll_audit:{0:WATCH,1:'Captures each run\'s evidence and prepares control findings for payroll HR; a person files with EPF, PERKESO and LHDN and records each disposition'},
+} as const satisfies Record<'loop_probation_ending'|'loop_payroll_inputs'|'loop_missing_employee_data'|'loop_missed_clock_outs'|'loop_document_expiry'|'loop_salary_payroll'|'loop_payroll_audit',Readonly<Partial<Record<0|1|2|3,string>>>>);
 
 /** Counts by class, for a Control Tower coverage view and for measuring how the backlog moves. */
 export function agentCapabilityCoverage(){

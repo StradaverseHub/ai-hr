@@ -57,6 +57,8 @@ export const AI_SCHEDULED_JOBS=Object.freeze([
  {id:'review.sweep',jobKey:'review.sweep',featureId:null},
  {id:'ai-retention',jobKey:null,featureId:null},
  {id:'ai-alerts',jobKey:'ai.alerts',featureId:null},
+ // AI v2 P2-2a: the Pre-salary loop's 15-minute tick (scripts/payroll-loop-tick.ts, systemd timer, no job_run row).
+ {id:'payroll-loops',jobKey:null,featureId:null},
 ] as const);
 
 export function aiInventoryComponents():readonly AiInventoryComponent[]{

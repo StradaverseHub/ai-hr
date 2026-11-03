@@ -72,9 +72,16 @@ describe('guards are unchanged by the merge',()=>{
   const walk=(dir:string)=>{for(const entry of fs.readdirSync(path.join(ROOT,dir),{withFileTypes:true})){
    const rel=path.join(dir,entry.name);if(entry.isDirectory())walk(rel);else if(entry.name==='page.tsx')pages.push(rel);}};
   walk('app/control-tower');
-  // Fifteen, plus the AI v2 W8 loops list and loop detail (app/control-tower/loops/page.tsx and [loop]/page.tsx).
-  expect(pages.length).toBe(17);
-  expect(pages).toEqual(expect.arrayContaining([path.join('app/control-tower/loops','page.tsx'),path.join('app/control-tower/loops','[loop]','page.tsx')]));
+  // Fifteen, plus the AI v2 W8 loops list and loop detail (app/control-tower/loops/page.tsx and [loop]/page.tsx), plus
+  // AI v2 P2-2a's Payroll cycle view, its Salary payroll page and its settings (app/control-tower/loops/payroll-cycle/), and
+  // the AI v2 P2-2b Audit loop page (app/control-tower/loops/loop_payroll_audit/page.tsx), and AI v2 P2-1's promote page
+  // (app/control-tower/loops/[loop]/promote/page.tsx).
+  expect(pages.length).toBe(22);
+  expect(pages).toContain(path.join('app/control-tower/loops','[loop]','promote','page.tsx'));
+  expect(pages).toEqual(expect.arrayContaining([path.join('app/control-tower/loops','page.tsx'),path.join('app/control-tower/loops','[loop]','page.tsx'),
+   path.join('app/control-tower/loops','loop_payroll_audit','page.tsx')]));
+  expect(pages).toEqual(expect.arrayContaining([path.join('app/control-tower/loops','payroll-cycle','page.tsx'),
+   path.join('app/control-tower/loops','payroll-cycle','salary','page.tsx'),path.join('app/control-tower/loops','payroll-cycle','settings','page.tsx')]));
   for(const page of pages)expect(read(page),page).toMatch(/await requireAdmin\(\)/);
  });
 });

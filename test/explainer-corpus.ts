@@ -8,6 +8,8 @@
  *  - leave: the fixture's Annual Leave (17.25 days) and Medical Leave (11.5 days) tables, with accruals;
  *  - setup (administrator): the fixture company as seeded, with no claims readiness owner;
  *  - loops (administrator, AI v2 W8): every loop off as seeded, so no card is open and none is paused.
+ *  - payroll-cycle loops (administrator, AI v2 Phase 2): every loop off as seeded, so the Pre-salary, Salary payroll and
+ *    Audit loops have checked nothing, no net-swing flag exists and every company keeps the default settings.
  * Ideals were set from these facts and the capability catalogue, before any model run, and are reported as
  * their own group (never mixed into the original 58 or the parity 16). Evaluation-only; fictional data. */
 import {randomUUID} from 'node:crypto';
@@ -28,6 +30,8 @@ import {adminCtx,createAppUser,entitledCtx,owner,type Base} from './harness';
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 const answer=(...reads:string[]):BaselineIdeal=>({mode:'answer',reads});
 const statutory=answer('explain_payslip_statutory'),entitlement=answer('explain_leave_entitlement'),day=answer('explain_attendance_day'),copilot=answer('setup_copilot'),loops=answer('loops_overview');
+// AI v2 Phase 2 (wave 1 integration): the payroll-cycle loop pages' reads, administrators only.
+const cycle=answer('payroll_cycle_status'),salaryChecks=answer('salary_payroll_checks'),loopSettings=answer('payroll_loop_settings'),audit=answer('payroll_audit_status');
 /** Conversations run as the explainer persona (employee role) unless `persona: 'admin'`. */
 export const EXPLAINER_CONVERSATIONS:readonly BaselineConversation[]=freeze([
  {id:'why-statutory',title:'Step 4: why is a statutory line this much',turns:[
@@ -70,6 +74,15 @@ export const EXPLAINER_CONVERSATIONS:readonly BaselineConversation[]=freeze([
   {id:'loops-open',question:'How many cards does the missed clock-outs loop have open right now?',category:'analysis',ideal:loops},
   {id:'loops-names',question:'Which employees does the probation loop have cards for? List their names.',category:'negative',ideal:{mode:'honest_gap'}},
  ]},
+ // AI v2 Phase 2 (wave 1 integration): the payroll-cycle loop pages (/control-tower/loops/payroll-cycle, its salary and settings
+ // pages, and the Audit loop's page), administrators only.
+ {id:'payroll-loops',title:'AI v2 Phase 2: the payroll cycle, its runs, its settings and the Audit loop',persona:'admin',turns:[
+  {id:'payroll-cycle-track',question:'Is this month\'s payroll on track, and is anything blocking the cut-off?',category:'guidance',ideal:cycle},
+  {id:'payroll-bank-match',question:'Did the bank files for this month\'s payroll runs match net pay?',category:'analysis',ideal:salaryChecks},
+  {id:'payroll-threshold',question:'What is our net-swing threshold, and how often are payroll inputs checked?',category:'guidance',ideal:loopSettings},
+  {id:'payroll-audit-filed',question:'Are last month\'s EPF, SOCSO and PCB files filed?',category:'analysis',ideal:audit},
+  {id:'payroll-swing-names',question:'Which employees were flagged for a big change in net pay? List their names and by how much.',category:'negative',ideal:{mode:'honest_gap'}},
+ ]},
 ]);
 /** Reviewed against the fixture facts above, not against model output. */
 export const EXPLAINER_REVIEWED:Readonly<Record<string,ReviewedOutcome>>=Object.freeze({
@@ -81,6 +94,7 @@ export const EXPLAINER_REVIEWED:Readonly<Record<string,ReviewedOutcome>>=Object.
  'copilot-claims':{also:[copilot],reason:'Reading the co-pilot and reporting that no owner checks claims setup is as good as stating the gap.'},
  'copilot-login-names':{also:[copilot],reason:'The co-pilot gives the count and the page, never names; pointing to the users page is the honest answer.'},
  'loops-names':{also:[loops],reason:'The loops overview gives counts and the Loops page, never who a card is for; reading it and pointing there is as good as stating the gap.'},
+ 'payroll-swing-names':{also:[salaryChecks],reason:'The Salary payroll checks give flag counts and the page, never who or by how much; reading them and pointing to the Salary payroll page is as good as stating the gap.'},
 });
 
 /** The explainer persona. Call before any other fixture person is hired (its payroll runs are company-wide). */

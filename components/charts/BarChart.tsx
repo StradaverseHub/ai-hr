@@ -20,11 +20,16 @@ export type BarChartProps = {
   grouped?: boolean;
   height?: number;
   ariaLabel?: string;
+  /** Optional (AI v2 P2-4): a dashed line before the category at `index`, with its label (the ledger's "Autopilot
+   * started"). Omitted by every earlier caller, which draw as before. */
+  marker?: { index: number; label: string };
+  /** Optional: a printed value above each bar of a single-series chart, one per category ('' prints none). */
+  valueLabels?: string[];
 };
 
 const FONT = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif';
 
-export function BarChart({ id, categories, series, grouped = false, height = 220, ariaLabel }: BarChartProps) {
+export function BarChart({ id, categories, series, grouped = false, height = 220, ariaLabel, marker, valueLabels }: BarChartProps) {
   const W = 640;
   const H = height;
   const padL = 40;
@@ -94,6 +99,11 @@ export function BarChart({ id, categories, series, grouped = false, height = 220
                 </rect>
               );
             })}
+            {!grouped && valueLabels?.[ci] && (
+              <text x={x0 + barW / 2} y={y(seriesList[0]?.values[ci] ?? 0) - 4} textAnchor="middle" fontSize={9} fill="var(--foreground)">
+                {valueLabels[ci]}
+              </text>
+            )}
             <text
               x={x0 + (slot - barGap * 2) / 2}
               y={H - padB + 14}
@@ -107,6 +117,14 @@ export function BarChart({ id, categories, series, grouped = false, height = 220
           </g>
         );
       })}
+
+      {/* marker (optional): a dashed line between two categories, labelled */}
+      {marker && marker.index >= 0 && marker.index < n && (
+        <g data-chart-marker>
+          <line x1={padL + marker.index * slot} y1={padT} x2={padL + marker.index * slot} y2={padT + plotH} stroke="var(--primary)" strokeWidth={1} strokeDasharray="4 4" />
+          <text x={padL + marker.index * slot + 4} y={padT + 8} fontSize={9} fill="var(--foreground)">{marker.label}</text>
+        </g>
+      )}
 
       {/* legend (grouped only) */}
       {grouped && (

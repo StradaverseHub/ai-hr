@@ -3,6 +3,7 @@
  * NOT a byte-exact bank giro file (that's bank-specific Layer-B work). The export is logged as a
  * domain event on the batch. Admin-only; available once the batch is processed/closed.
  */
+import { recordPayrollExportForBatch } from '@/core/payroll-audit/access-log';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import { paymentSummaryForBatch, PaymentSummaryNotReadyError } from '@/core/payroll';
@@ -16,6 +17,8 @@ export async function GET(req: Request) {
   if (!UUID.test(batchId)) return new Response('A valid batchId (uuid) is required', { status: 400 });
   try {
     const file = await paymentSummaryForBatch(s, batchId);
+    // AI v2 P2-2b: recorded against the run, with the file's sha256, before it is handed over (fail closed).
+    await recordPayrollExportForBatch(s, { surface: 'payment_summary', batchId, format: 'csv' }, file.content);
     return new Response(file.content, {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',

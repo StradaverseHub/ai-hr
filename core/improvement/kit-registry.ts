@@ -11,11 +11,13 @@ import {SETUP_ENTITIES,SETUP_READS} from '../semantic-model/entities-setup';
 import {METRIC_ENTITIES,METRIC_READS} from '../semantic-model/entities-metrics';
 import {WHY_ENTITIES,WHY_READS} from '../semantic-model/entities-why';
 import {LOOP_ENTITIES,LOOP_READS} from '../semantic-model/entities-loops';
+import {PAYROLL_READINESS_ENTITIES,PAYROLL_READINESS_READS} from '../semantic-model/entities-payroll-readiness';
+import {PAYROLL_LOOP_ENTITIES,PAYROLL_LOOP_READS} from '../semantic-model/entities-payroll-loops';
 import type {EntityId,OwnerAnchor,SemanticEntity,SemanticRead} from '../semantic-model/types';
 import {kitCapability,type KitCapability,type KitDeclaration} from './kit';
 
-const entity=(id:EntityId):SemanticEntity=>{const found=[...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...METRIC_ENTITIES,...WHY_ENTITIES,...LOOP_ENTITIES].find(row=>row.id===id);if(!found)throw Error('Unknown kit entity.');return found;};
-const read=(name:string):SemanticRead=>{const found=[...EXPLAIN_READS,...SETUP_READS,...METRIC_READS,...WHY_READS,...LOOP_READS].find(row=>row.name===name);if(!found)throw Error('Unknown kit read.');return found;};
+const entity=(id:EntityId):SemanticEntity=>{const found=[...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...METRIC_ENTITIES,...WHY_ENTITIES,...LOOP_ENTITIES,...PAYROLL_READINESS_ENTITIES,...PAYROLL_LOOP_ENTITIES].find(row=>row.id===id);if(!found)throw Error('Unknown kit entity.');return found;};
+const read=(name:string):SemanticRead=>{const found=[...EXPLAIN_READS,...SETUP_READS,...METRIC_READS,...WHY_READS,...LOOP_READS,...PAYROLL_READINESS_READS,...PAYROLL_LOOP_READS].find(row=>row.name===name);if(!found)throw Error('Unknown kit read.');return found;};
 /** Purpose and inputs are the declaration's own words; the kit generates the rest. */
 const declare=(name:string,owner:OwnerAnchor,permission:KitDeclaration['permission']):KitDeclaration=>{
  const row=read(name);return{name,purpose:row.purpose,input:row.input,owner,permission,entity:entity(row.entity)};
@@ -37,5 +39,12 @@ export const KIT_DECLARATIONS:readonly KitDeclaration[]=Object.freeze([
  declare('explain_claim_limit','core/claims.ts#employeeClaimTypesTx',{module:'claims',admin:false}),
  // AI v2 W8: the loops overview (core/semantic-model/entities-loops.ts), offered to administrators only.
  declare('loops_overview','core/loops/views.ts#loopsOverview',{module:null,admin:true}),
+ // AI v2 Phase 2 P2-3: the person's own "Before payroll" checklist (core/semantic-model/entities-payroll-readiness.ts).
+ declare('my_payroll_readiness','core/pre-salary/person-items.ts#readMyPayrollReadiness',{module:null,admin:false}),
+ // AI v2 Phase 2 (wave 1 integration): the payroll-cycle loop pages (core/semantic-model/entities-payroll-loops.ts), administrators only.
+ declare('payroll_cycle_status','core/loops/payroll-cycle-views.ts#payrollCycleOverview',{module:'payroll',admin:true}),
+ declare('salary_payroll_checks','core/loops/payroll-cycle-views.ts#salaryLoopPage',{module:'payroll',admin:true}),
+ declare('payroll_loop_settings','core/loops/payroll-cycle-views.ts#payrollLoopSettingsPage',{module:'payroll',admin:true}),
+ declare('payroll_audit_status','core/payroll-audit/status.ts#auditLoopSummary',{module:'payroll',admin:true}),
 ]);
 export const KIT_CAPABILITIES:readonly KitCapability[]=Object.freeze(KIT_DECLARATIONS.map(kitCapability));

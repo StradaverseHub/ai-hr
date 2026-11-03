@@ -117,5 +117,12 @@
     "ta": "நிர்வாகி வழிகாட்டி: AI மையச் சுழல்கள்",
     "th": "คู่มือผู้ดูแลระบบ: ลูปของศูนย์ AI",
     "vi": "Hướng dẫn Quản trị viên: Vòng lặp của Trung tâm AI"
+  },
+  "admin-ai-payroll-loops": {
+    "zh": "管理员指南：AI 中心薪资周期循环",
+    "ms": "Panduan Pentadbir: Gelung Kitaran Gaji Pusat AI",
+    "ta": "நிர்வாகி வழிகாட்டி: AI மைய ஊதியச் சுழற்சிச் சுழல்கள்",
+    "th": "คู่มือผู้ดูแลระบบ: ลูปรอบเงินเดือนของศูนย์ AI",
+    "vi": "Hướng dẫn Quản trị viên: Vòng lặp chu kỳ lương của Trung tâm AI"
   }
 }

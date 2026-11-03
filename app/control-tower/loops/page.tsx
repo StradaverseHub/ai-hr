@@ -6,6 +6,8 @@ import { Card, ErrorBanner, PageHeader, btnGhost, pageWideCls } from '@/componen
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../operations-tabs';
 import { setLoopSwitchAction } from './actions';
+import { loopLevelSummaries } from '@/core/loops/autonomy-views';
+import { levelKey } from '@/core/loops/autonomy-types';
 
 /** AI v2 W8 — AI Centre › Operations › Loops (approved mock-up Operations.dc.html, its loop table, at the Prepare level).
  *
@@ -21,14 +23,22 @@ const SWITCH_TONE = 'text-emerald-700 dark:text-emerald-300';
 
 export default async function LoopsPage({ searchParams }: { searchParams: Promise<{ error?: string; saved?: string }> }) {
   const s = await requireAdmin();
-  const [t, f, view, query] = await Promise.all([getTranslations('aiCentre.loops'), getFormatter(), loopsOverview(s), searchParams]);
+  const [t, f, view, query, levels, ta] = await Promise.all([getTranslations('aiCentre.loops'), getFormatter(), loopsOverview(s), searchParams,
+    loopLevelSummaries(s), getTranslations('aiCentre.autonomy')]);
+  // AI v2 Phase 2 P2-1: the level of each loop across the companies the viewer administers (one level: just its name).
+  const levelText = (row: LoopRow) => {
+    const groups = levels[row.id] ?? [];
+    if (groups.length <= 1) return ta(`levels.${levelKey(groups[0]?.level ?? 1)}`);
+    return groups.map(group => ta('summaryCount', { level: ta(`levels.${levelKey(group.level)}`), count: group.count })).join(' · ');
+  };
   const error = ERRORS.find(code => code === query.error);
   const when = (date: Date) => f.dateTime(date, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' });
   const name = (row: LoopRow) => t(`names.${row.id}`);
   return (
     <div className={pageWideCls}>
       <OperationsTabs session={s} active="loops" />
-      <PageHeader title={t('title')} description={t('description')} />
+      <PageHeader title={t('title')} description={t('description')}
+        actions={<Link href="/control-tower/loops/payroll-cycle" data-payroll-cycle-link className={cn(btnGhost, 'pointer-coarse:min-h-11')}>{t('payrollCycle')}</Link>} />
       {error && <ErrorBanner message={t(`errors.${error}`)} />}
       {query.saved === 'switch' && <p role="status" className="rounded-lg border border-border bg-muted/50 p-3 text-sm">{t('saved')}</p>}
       <Card className="overflow-hidden">
@@ -47,7 +57,7 @@ export default async function LoopsPage({ searchParams }: { searchParams: Promis
                     {row.pausedCompanies > 0 && <p className="mt-1 text-xs font-normal text-muted-foreground">{t('pausedIn', { count: row.pausedCompanies })}</p>}
                   </th>
                   <td className="px-4 py-3 text-muted-foreground">{t(`doneMeans.${row.id}`)}</td>
-                  <td className="px-4 py-3">{t('level.prepare')}</td>
+                  <td data-loop-level-summary className="px-4 py-3">{levelText(row)}</td>
                   <td className="px-4 py-3">
                     <p data-loop-switch={row.on ? 'on' : 'off'} className={cn(row.on && !row.stopped && SWITCH_TONE)}>{row.stopped ? t('stopped') : row.on ? t('on') : t('off')}</p>
                     {view.canSwitch && (

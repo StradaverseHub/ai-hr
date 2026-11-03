@@ -49,10 +49,16 @@ describe('AI centre tabs keep every permission identical', () => {
     // Issue 17 (owner: "Merge both entirely"): Operations and Administration, each a group with a second tab row.
     expect(admin.map(tab => [tab.key, tab.href, tab.sections])).toEqual([['operations', '/control-tower', true], ['administration', '/control-tower/agents/features', true]]);
     for (const tab of admin) expect(read(pageOf(tab.href))).toContain('requireAdmin');
+    // AI v2 Phase 2: Insights is a tab for everyone (P2-3); its HR capacity ledger section (P2-4) is guarded inside the
+    // view, which only an administrator's page asks for, and the ledger service checks the administrator again.
+    expect(read('app/assistant/page.tsx')).toContain("{sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} ");
+    expect(read('components/ai-centre/insights.tsx')).toContain('{isAdmin&&<CapacityLedgerSection ');
+    expect(read('core/capacity/ledger.ts')).toContain('requireCapacityAdmin(ctx);');
     expect(read('app/control-tower/layout.tsx')).toContain('await requireAdmin();');
     // AI v2 Phase 1: the Inbox tab is retired; Today at / replaces it.
-    expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'how']);
-    expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'operations', 'administration', 'how']);
+    // AI v2 Phase 2 (P2-3): Insights, for everyone, between Operations and Administration as in the approved mock-ups.
+    expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'insights', 'how']);
+    expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'operations', 'insights', 'administration', 'how']);
   });
 
   it('every second-row tab is an existing /control-tower page behind requireAdmin, listed in the permission registry', () => {
@@ -80,7 +86,7 @@ describe('AI centre tabs keep every permission identical', () => {
   });
 
   it('the employee views live on /assistant, behind its unchanged session layout', () => {
-    for (const view of ['jobs', 'how']) {
+    for (const view of ['jobs', 'how', 'insights']) {
       expect(isCentreView(view)).toBe(true);
       expect(CENTRE_TABS.some(tab => tab.href === `/assistant?view=${view}`)).toBe(true);
     }
@@ -160,10 +166,16 @@ describe('AI centre messages', () => {
   const flat = (value: Dict, prefix = ''): [string, string][] =>
     Object.entries(value).flatMap(([key, child]) => typeof child === 'string' ? [[prefix + key, child] as [string, string]] : flat(child, `${prefix}${key}.`));
   // Plural arms ({Today}, {# days}) are translated text, not placeholders: drop them before collecting names.
+  // An argument opens at even brace depth; at odd depth a brace opens a plural or select branch, whose text is not a
+  // placeholder (so AI v2 P2-2a's `{status, select, draft {…} …}` reads as `status`, as a plural always did).
   const placeholders = (text: string) => {
-    let rest = text, previous = '';
-    while (rest !== previous) { previous = rest; rest = rest.replace(/(=\d+|zero|one|two|few|many|other)\s*\{[^{}]*\}/g, ''); }
-    return [...rest.matchAll(/\{(\w+)/g)].map(match => match[1]).sort().join(',');
+    const names: string[] = [];
+    let depth = 0;
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '{') { if (depth % 2 === 0) { const match = /^\s*(\w+)/.exec(text.slice(i + 1)); if (match) names.push(match[1]); } depth++; }
+      else if (text[i] === '}') depth--;
+    }
+    return names.sort().join(',');
   };
   const catalogue = (locale: string) => new Map(flat(JSON.parse(read(`messages/ai-centre/${locale}.json`))));
   /** The login story's keys that may name Noveri (owner, 3 November 2026: "Keep Noveri on login"); no other login key may. */

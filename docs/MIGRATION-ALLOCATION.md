@@ -1112,6 +1112,125 @@ below is the revised body's.
 Superseded on 3 November 2026, before any application: renumbered to `2003_letter_requests` / when1793330001403 in the AI Centre block
 2000–2019 (see that entry below). This identity is not an alternative installation path.
 
+## AI v2 Phase 2 P2-4 HR capacity ledger baseline — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-capacity-ledger` (cut from `360e7f065` on `claude/aiv2-phase1-final`, journal ending
+`0961_letter_requests` idx766 / when1793330000361) appends `0966_teras_capacity_baseline` as idx767 / when1793330000366, the
+number and `when` the AI v2 coordinator reserved for P2-4 ("only if needed"). It is needed: the baseline (each company's own
+manual minutes per item and the period they describe) must be recorded, attributed and kept as history, and no existing
+store is per company and writable by that company's HR administrators. A fresh fetch on 3 November 2026 and a scan of every
+origin ref, every local branch and the registered Phase 2 worktrees (including uncommitted files) found no claim on 0962 to
+0966 or on when1793330000362 to when1793330000366; 0962 to 0965 stay reserved for the coordinator, P2-1, P2-2a and P2-2b.
+Development source only: no installation priority, no deployment; the idx is this branch's own journal position and must be
+re-frozen above the then-installed ledger at integration. Sibling Phase 2 branches cut from the same base claim idx767 for
+their own numbers; reconcile at integration, ordered by number.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000366|0966_teras_capacity_baseline|0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c|
+
+## AI v2 Phase 2 P2-3, own payroll cut-off — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-payroll-checklist` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 /
+when1793330000361) appends `0967_own_payroll_cut_off` as idx767 / when1793330000367, the number and `when` the AI v2
+coordinator assigned for "P2-3, own payroll cut-off". A fresh fetch on 3 November 2026 and a scan of every origin ref and
+every registered AI v2 worktree found Phase 2 claims 0963 (autonomy ladder), 0964 (payroll cycle loops), 0965 (audit loop)
+and 0966 (capacity baseline), each on its own branch and each the next journal idx after the same base, and nothing
+claiming 0967 or when1793330000367. The migration adds one STABLE SECURITY DEFINER function,
+`app.own_payroll_cut_off_day(uuid)`, returning only the calling login's own current employment's company cut-off day; no
+table, column, constraint or policy changes. Development source only: no installation priority, no deployment; idx767 is
+this branch's own journal position and is re-frozen with the sibling Phase 2 claims at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000367|0967_own_payroll_cut_off|b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca|
+
+## AI v2 Phase 2 P2-2b payroll Audit loop — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-audit-loop` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 / when1793330000361)
+appends `0965_payroll_audit_loop` as idx767 / when1793330000365, the number and `when` the Phase 2 coordinator reserved for this
+task (0962 renumbering reserve, 0963 P2-1, 0964 P2-2a, 0965 P2-2b, 0966 P2-4). A fresh fetch on 3 November 2026, a scan of
+every ref's history for `db/migrations/096[2-6]*` and of the registered Phase 2 worktrees (`aiv2-p2-autonomy-ladder`,
+`aiv2-p2-payroll-loops`, `aiv2-p2-capacity-ledger`, `aiv2-p2-payroll-checklist`, including uncommitted files) found no claim of
+0962–0966. Development source only: no installation priority, no deployment. The idx is this branch's own journal position:
+0963 and 0964, when merged, sit before it, so it must be re-frozen after them at integration (by number). It widens the
+`teras_worker_control`, `teras_loop_pause` and `teras_loop_run` worker CHECKs of 0960 by one value; a sibling branch that
+widens the same CHECKs must be merged as the union of both lists.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000365|0965_payroll_audit_loop|f7c68fa2a062470880715d70781a6c2c998de8afb821e580dca17b057f4f925e|
+
+## AI v2 Phase 2 P2-2a payroll-cycle loops — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-payroll-loops` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 / when1793330000361)
+appends `0964_teras_payroll_cycle_loops` as idx767 / when1793330000364, the number and `when` the AI v2 coordinator reserved
+for this task (0962 is reserved for renumbering `0952_teras_chats`, 0963 for P2-1, 0965 for P2-2b and 0966 for P2-4). A
+fresh fetch on 3 November 2026 found no origin ref claiming 0962 or above; the parallel Phase 2 worktrees hold 0963, 0965
+and 0966 only. Development source only: no installation priority, no deployment; the idx is this branch's own journal
+position (0962 and 0963 sort before it and are not on this branch) and must be re-frozen above the then-installed ledger at
+integration. 0964 and 0965 both widen the 0960 loop-list CHECK constraints (teras_worker_control, teras_loop_pause,
+teras_loop_run and, here, teras_loop_case): whichever is applied second must list both `loop_salary_payroll` and
+`loop_payroll_audit`, or it would drop the other's value.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000364|0964_teras_payroll_cycle_loops|0a38a5628362ac03b6eb4afe67c3b3d3e632be6e7e9bff6eec9f8a0f828407f3|
+
+
+## AI v2 Phase 2 P2-1 autonomy ladder — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-autonomy-ladder` (cut from `360e7f065` on `claude/aiv2-phase1-final`, journal ending
+`0961_letter_requests` idx766 / when1793330000361) appends `0963_teras_loop_autonomy` as idx767 / when1793330000363, the
+number and `when` the AI v2 coordinator reserved for P2-1 (Phase 2 common rules: 0962 is held for renumbering
+`0952_teras_chats` at release, 0964–0966 for P2-2a, P2-2b and P2-4). A fresh fetch on 3 November 2026 and a scan of every
+origin ref's migration files and journals (1618 refs) and every registered worktree found file claims through 0961 and
+journal `when` values through 1793330000361 on origin, and only the reserved `0966_teras_capacity_baseline` in the P2-4
+worktree; nothing claims 0963 or when1793330000363. Development source only: no installation priority, no deployment; the
+idx is this branch's own journal position and must be re-frozen above the then-installed ledger at integration (after
+0962 if the renumbered chats migration is placed first). Sibling Phase 2 branches cut from the same base may claim the
+same idx; reconcile at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000363|0963_teras_loop_autonomy|d093765e06101882dbb2b17df70fc070363b0939a1aa97e55b9059d35666f655|
+
+## AI v2 Phase 2 wave 1 integration re-freeze — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-phase2-wave1` (cut from `ec2beecc0` on `claude/aiv2-phase1-final`, journal ending `0961_letter_requests`
+idx766 / when1793330000361) merges P2-4, P2-3, P2-2b and P2-2a, then P2-1, each of which claimed idx767 on its own branch. The journal is re-frozen by
+number: a Phase 2 migration `09NN` takes **idx = 767 + (NN − 63)** and **when = 1793330000300 + NN**. idx767 / when1793330000363
+was first left free for `0963_teras_loop_autonomy` (P2-1 arrived last), so when it was merged it took idx767 and nothing
+shifted; the journal tests require only a strictly ascending idx and `when`, so the interim gap was allowed (the journal holds
+42 older gaps). 0963 is byte-identical to its branch (`e44303b90`). The four upgrade tests that pin the journal tail (`ai-dev-populated-upgrade`,
+`bank-import-point-read-upgrade`, `lifecycle-v9-populated-upgrade`, `payroll-tax-basis-upgrade`) pin these positions.
+
+One unapplied body changed at integration. 0964 runs before 0965 and adds `loop_salary_payroll` to the worker lists of
+`teras_worker_control`, `teras_loop_pause`, `teras_loop_case` and `teras_loop_run`; 0965 then drops and rebuilds three of those
+lists (not `teras_loop_case`) to add `loop_payroll_audit`. Left as written, 0965 would have dropped `loop_salary_payroll` again,
+so every Salary payroll loop switch, pause and run record would have been refused. 0965's three rebuilt lists now carry
+`loop_salary_payroll` before `loop_payroll_audit` (the only change, with a comment saying so); 0964's `teras_loop_case` list,
+which 0965 does not touch, stands. The change is made in 0965 rather than in a new migration because 0965 is the last
+migration to rebuild those lists and it is applied nowhere. 0965's branch body
+(`f7c68fa2a062470880715d70781a6c2c998de8afb821e580dca17b057f4f925e`) was never installed. 0964, 0966 and 0967 are byte-identical to
+their branches.
+
+A fresh fetch on 3 November 2026 found competing **file numbers and `when` values** on other workstreams' origin branches:
+`codex/permissions-*-20261103` claim `0962_workforce_draft_binding_readiness` to `0966_profile_maintenance_binding_readiness` at
+when1793330000362–366 (their idx809–813), and `claude/wonderful-mccarthy-2fb38f` claims 0968–0970 at when1793330000368–370. The
+AI v2 coordinator's Phase 2 reservations (0962–0967) were assigned before this scan; the overlap is reported to the
+coordinator and must be reconciled before either set integrates with the other (identical `when` values cannot both stand in
+one journal). Development source only: no installation priority, no deployment; re-freeze above the then-installed ledger at
+integration.
+
+| idx (wave 1) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000363|0963_teras_loop_autonomy|d093765e06101882dbb2b17df70fc070363b0939a1aa97e55b9059d35666f655|
+|768|1793330000364|0964_teras_payroll_cycle_loops|0a38a5628362ac03b6eb4afe67c3b3d3e632be6e7e9bff6eec9f8a0f828407f3|
+|769|1793330000365|0965_payroll_audit_loop|d370a0dba6fb8b04ae6c1686572dd116f300ff440b37cc43c6944c7b4fac8c41|
+|770|1793330000366|0966_teras_capacity_baseline|0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c|
+|771|1793330000367|0967_own_payroll_cut_off|b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca|
+
 ## AI Centre block 2000–2019: AI v2 Phase 1 release — 3 November 2026 (unapplied source reservation)
 
 Branch `claude/aiv2-phase1-release` merges `origin/main` `848c7be36414a1a5216bb33d0ecd49429fcdd60f` (aligned with alpha; the

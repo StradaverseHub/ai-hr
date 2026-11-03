@@ -1,6 +1,7 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { SessionContext,Tx } from '../db/client';
-import { appUser, person, employment, clockingImportLine, clockingImportRun, attendanceClockCapture } from '../db/schema';
+import { appUser, person, employment, clockingImportLine, clockingImportRun, attendanceClockCapture, domainEvent } from '../db/schema';
+import { loopActorOf } from '../lib/ai-centre/loop-attribution';
 import { withAttendanceTenant } from './module-gate';
 import { clockFingerprint, punchesForCorrectionTx } from './attendance-punch-change';
 import { clockCaptureEffectiveAtTx } from './attendance-clock';
@@ -21,7 +22,15 @@ export async function attendanceClockData(ctx: SessionContext, employmentId: str
     };
     const actors = rows.map(r => r.voidedBy).filter((id): id is string => !!id);
     const names = actors.length ? await tx.select({ id: appUser.id, name: person.fullName }).from(appUser).leftJoin(person, eq(person.id, appUser.personId)).where(and(eq(appUser.tenantId, ctx.tenantId), inArray(sql<string> `${appUser.id}::text`, actors))) : [];
-    return { baseline: clockFingerprint(rows), rows: rows.map(r => ({ id: r.id, punchAt: r.punchAt, direction: r.direction, method: r.method, captureId: r.clockCaptureId, photoAvailable: captures.some(c => c.id === r.clockCaptureId && !!c.digest && !c.purged), ...source(r.clockCaptureId), lat: r.lat, lng: r.lng, voidedAt: r.voidedAt?.toISOString() ?? null, voidedBy: names.find(n => n.id === r.voidedBy)?.name ?? r.voidedBy, voidReason: r.voidReason, importRun: imports.find(i => i.punchId === r.id)?.runId ?? null, importFile: imports.find(i => i.punchId === r.id)?.fileName ?? null })) };
+    // AI v2 Phase 2 P2-1: a clocking an AI Centre loop removed (an undo it carried out under its sponsor's authority)
+    // names the loop, who asked and its sponsor, from the latest removal's own audit event (migration 0963), never the
+    // session's person alone. A clocking a person removed keeps that person's name.
+    const voided = rows.filter(r => r.voidedAt).map(r => r.id), removedBy = new Map<string, string | null>();
+    if (voided.length) for (const removal of await tx.select({ punchId: domainEvent.aggregateId, payload: domainEvent.payload }).from(domainEvent)
+      .where(and(eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.aggregateType, 'attendance-punch'), eq(domainEvent.eventType, 'attendance.punch.voided'), inArray(domainEvent.aggregateId, voided)))
+      .orderBy(desc(domainEvent.occurredAt), desc(domainEvent.sequence)))
+      if (!removedBy.has(removal.punchId)) removedBy.set(removal.punchId, loopActorOf(removal.payload)?.label ?? null);
+    return { baseline: clockFingerprint(rows), rows: rows.map(r => ({ id: r.id, punchAt: r.punchAt, direction: r.direction, method: r.method, captureId: r.clockCaptureId, photoAvailable: captures.some(c => c.id === r.clockCaptureId && !!c.digest && !c.purged), ...source(r.clockCaptureId), lat: r.lat, lng: r.lng, voidedAt: r.voidedAt?.toISOString() ?? null, voidedBy: removedBy.get(r.id) ?? names.find(n => n.id === r.voidedBy)?.name ?? r.voidedBy, voidReason: r.voidReason, importRun: imports.find(i => i.punchId === r.id)?.runId ?? null, importFile: imports.find(i => i.punchId === r.id)?.fileName ?? null })) };
   });
 }
 

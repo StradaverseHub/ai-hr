@@ -27252,7 +27252,8 @@
       "jobs": {
         "review-sweep": "การรันคิวงาน HR ยามค่ำ",
         "ai-retention": "การเก็บรักษาประวัติการทำงานของ AI",
-        "ai-alerts": "การตรวจสอบการแจ้งเตือน AI"
+        "ai-alerts": "การตรวจสอบการแจ้งเตือน AI",
+        "payroll-loops": "รอบตรวจสอบลูปก่อนจ่ายเงินเดือน"
       },
       "steps": {
         "observe": "ตรวจสอบข้อมูลพนักงาน",
@@ -33827,6 +33828,11 @@
         "name": "Database backups",
         "description": "Creates database backups to an approved destination when configured.",
         "results": "Backup storage and protected backup logs"
+      },
+      "payroll-loops": {
+        "name": "Pre-salary loop tick",
+        "description": "Checks payroll inputs for the companies whose own check interval has come round. Prepares cards for payroll administrators; changes no record.",
+        "results": "Payroll cycle"
       }
     }
   },

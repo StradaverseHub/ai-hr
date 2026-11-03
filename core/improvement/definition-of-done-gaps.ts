@@ -19,6 +19,8 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  ],
  'guide,corpus':[
  'page:/personnel',
+ // AI v2 Phase 2 P2-3 gave Today (/) its semantic entry (payroll_readiness); its guide link and corpus turn are still to come.
+ 'page:/',
  ],
  'guide':[
  'page:/me/payslip',
@@ -79,7 +81,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:employees.workforce_profile.maintain','action:lifecycle.offboarding.case.cancel','action:lifecycle.offboarding.step.complete',
  'action:lifecycle.offboarding.step.undo','action:org.department.archive','action:org.people_general.change','action:payroll.reopen',
  'action:payroll.reset','action:performance.goal.approve','action:performance.onehr.plan.acknowledge','action:rewards.annual_review.return',
- 'action:rewards.calendar.update','action:rewards.post','action:system_testing.execution.save','page:/','page:/admin','page:/admin/attendance',
+ 'action:rewards.calendar.update','action:rewards.post','action:system_testing.execution.save','page:/admin','page:/admin/attendance',
  'page:/admin/attendance-allowance','page:/admin/attendance-allowance/new','page:/admin/attendance-policy','page:/admin/attendance-policy/rules/new',
  'page:/admin/attendance-policy/schedule','page:/admin/attendance/approval-workflow','page:/admin/attendance/approval-workflow/new',
  'page:/admin/attendance/file-mappings/new','page:/admin/attendance/new','page:/admin/attendance/schedule',

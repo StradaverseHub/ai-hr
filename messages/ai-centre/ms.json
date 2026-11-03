@@ -20,6 +20,7 @@
       "spend": "Perbelanjaan dan penyedia",
       "operations": "Operasi",
       "administration": "Pentadbiran",
+      "insights": "Wawasan",
       "how": "Cara ia berfungsi"
     },
     "inboxCount": "{count, plural, one {# item menunggu} other {# item menunggu}}",
@@ -52,17 +53,19 @@
       },
       "names": {
         "loop_probation_ending": "Tempoh percubaan tamat",
-        "loop_payroll_inputs": "Input gaji sedia",
+        "loop_payroll_inputs": "Gelung pra-gaji",
         "loop_missing_employee_data": "Data pekerja tiada",
         "loop_missed_clock_outs": "Rekod keluar tertinggal",
-        "loop_document_expiry": "Pasport hampir tamat tempoh"
+        "loop_document_expiry": "Pasport hampir tamat tempoh",
+        "loop_salary_payroll": "Gelung penggajian"
       },
       "doneMeans": {
         "loop_probation_ending": "Keputusan direkodkan sebelum tempoh percubaan tamat",
-        "loop_payroll_inputs": "Tiada apa yang menyekat larian gaji sebelum tarikh tutup",
+        "loop_payroll_inputs": "Setiap input lengkap dan diluluskan sebelum tarikh tutup",
         "loop_missing_employee_data": "Setiap butiran yang boleh diisi oleh pekerja telah diisi dan diluluskan",
         "loop_missed_clock_outs": "Setiap rekod keluar ada dalam rekod",
-        "loop_document_expiry": "Setiap pasport diperbaharui sebelum tamat tempoh"
+        "loop_document_expiry": "Setiap pasport diperbaharui sebelum tamat tempoh",
+        "loop_salary_payroll": "Setiap larian disemak, diluluskan oleh seseorang, ditutup dan fail bank sepadan"
       },
       "doneMeansLine": "Selesai bermaksud: {done}.",
       "level": {
@@ -111,10 +114,10 @@
           "verify": "Ditutup apabila keputusan direkodkan. Tarikh tamat baharu tanpa keputusan membukanya semula."
         },
         "loop_payroll_inputs": {
-          "detect": "Tarikh tutup gaji dalam 7 hari dan semakan kesediaan gaji menemui sesuatu yang menyekat larian.",
-          "diagnose": "Semakan mana yang belum sedia, dan berapa banyak yang menyekat larian.",
-          "prepare": "Kad Hari Ini untuk pentadbir gaji yang menyenaraikan apa yang tiada di setiap syarikat.",
-          "verify": "Ditutup apabila tiada apa yang menyekat larian sebelum tarikh tutup. Sekatan baharu sebelum tarikh tutup membukanya semula."
+          "detect": "Dari awal tempoh gaji hingga tarikh tutup, mengikut selang setiap syarikat: lembaran masa, kerja lebih masa, cuti, tuntutan, pekerja baharu dan yang berhenti, butiran bank dan berkanun, perubahan gaji serta tetapan gaji.",
+          "diagnose": "Item terbuka, menunggu dan untuk disemak bagi setiap semakan, dibaca daripada pemiliknya.",
+          "prepare": "Satu kes untuk pentadbir gaji di halaman Kitaran gaji, dan kad Hari Ini dalam 7 hari terakhir sebelum tarikh tutup. Setiap semakan memautkan halaman tempat ia dibetulkan.",
+          "verify": "Selesai apabila tiada apa yang terbuka atau menunggu sebelum tarikh tutup. Penghalang baharu sebelum tarikh tutup membukanya semula."
         },
         "loop_missing_employee_data": {
           "detect": "Rekod pekerja tiada butiran yang diperlukan untuk gaji atau pemfailan berkanun.",
@@ -133,6 +136,12 @@
           "diagnose": "Tarikh tamat tempoh dalam rekod.",
           "prepare": "Kad Hari Ini untuk HR dan kad peringatan untuk pekerja memperbaharuinya.",
           "verify": "Ditutup apabila tarikh tamat tempoh yang diperbaharui direkodkan. Tarikh yang dialihkan semula ke dalam tempoh membukanya semula."
+        },
+        "loop_salary_payroll": {
+          "detect": "Selepas tarikh tutup, larian setiap syarikat untuk bulan itu: gaji, bonus dan luar kitaran. Larian yang belum dimulakan disediakan untuk HR memulakannya.",
+          "diagnose": "11 semakan anomali, perubahan berbanding bulan lepas mengikut sebab, bendera perubahan gaji bersih, versi peraturan berkanun dan fail bank berbanding gaji bersih.",
+          "prepare": "Satu kes bagi setiap larian untuk pentadbir gaji, dan satu bendera bagi setiap orang untuk HR gaji tandakan dijangka atau masalah sebenar. Ia tidak pernah menjalankan, meluluskan atau menutup gaji.",
+          "verify": "Selesai apabila seseorang telah menutup larian dan fail bank sepadan. Larian yang dibuka semula selepas ditutup membukanya semula."
         }
       },
       "figures": {
@@ -168,7 +177,10 @@
         "payroll": "{count, plural, other {# input}} tiada sebelum tarikh tutup {date}",
         "record": "{count, plural, other {# butiran}} perlu diisi",
         "clockOut": "Rekod keluar pada {time} dicadangkan untuk {date}",
-        "passport": "Pasport tamat tempoh {date}"
+        "passport": "Pasport tamat tempoh {date}",
+        "salaryRun": "{status, select, draft {Larian gaji, belum diproses} processed {Larian gaji, telah diproses} closed {Larian gaji, ditutup} other {Larian gaji}}",
+        "swing": "Gaji bersih berubah melebihi ambang",
+        "salaryStart": "Larian gaji untuk dimulakan selepas tarikh tutup {date}"
       },
       "caseState": {
         "open": "Menunggu orang itu",
@@ -199,6 +211,116 @@
         "none": "Belum ada larian.",
         "summary": "{opened} disediakan, {closed} ditutup, {open} terbuka, {waiting} menunggu",
         "capped": "Had kad dicapai; selebihnya pada larian seterusnya."
+      },
+      "payrollCycle": "Kitaran gaji"
+    },
+    "capacity": {
+      "title": "Kapasiti HR",
+      "descriptionCompany": "Apa yang dilakukan AI Centre untuk pasukan HR {company}, diukur berbanding garis dasarnya sendiri.",
+      "descriptionAll": "Apa yang dilakukan AI Centre untuk pasukan HR syarikat yang anda tadbir, setiap satu diukur berbanding garis dasarnya sendiri.",
+      "periodLabel": "Tempoh",
+      "periods": {
+        "last30": "30 hari lepas",
+        "quarter": "Suku tahun ini",
+        "year": "Tahun ini"
+      },
+      "companyLabel": "Syarikat",
+      "allCompanies": "Semua syarikat anda ({count})",
+      "show": "Tunjukkan",
+      "noCompanies": "Anda belum mentadbir mana-mana syarikat.",
+      "hours": "{hours} j",
+      "minutes": "{minutes} minit",
+      "items": {
+        "questions_answered": "Soalan pekerja yang dijawab",
+        "actions_confirmed": "Tindakan disediakan yang disahkan"
+      },
+      "tiles": {
+        "freed": "Masa HR yang dijimatkan",
+        "freedDays": "kira-kira {days} hari bekerja",
+        "freedNone": "Tetapkan garis dasar untuk mengukurnya",
+        "errors": "Ralat gaji dikesan sebelum larian",
+        "errorsNote": "setiap satu akan memerlukan pembetulan",
+        "errorsNoPayroll": "Gaji tidak digunakan",
+        "loops": "Tindakan gelung diselesaikan",
+        "loopsChanged": "{rate} diubah oleh seseorang",
+        "loopsNone": "belum ada yang diselesaikan",
+        "questions": "Soalan pekerja yang dijawab",
+        "questionsNote": "dijawab serta-merta, pada bila-bila masa",
+        "questionsGroupOnly": "Ditunjukkan kepada pentadbir kumpulan",
+        "notShown": "Tidak ditunjukkan"
+      },
+      "chart": {
+        "title": "Masa HR yang dijimatkan, mengikut bulan",
+        "unit": "Jam dijimatkan",
+        "label": "Masa HR yang dijimatkan mengikut bulan: {values}.",
+        "value": "{month} {hours} jam",
+        "marker": "Autopilot bermula",
+        "markerSentence": "Autopilot bermula pada {month}.",
+        "note": "Masa yang diperoleh semula oleh pasukan untuk kerja yang hanya boleh dilakukan oleh manusia: perbualan dengan pekerja, perancangan, kes."
+      },
+      "table": {
+        "title": "Dari mana masa itu datang",
+        "item": "Kerja gelung atau pembantu",
+        "done": "Selesai",
+        "manual": "Masa manual anda setiap satu",
+        "review": "Masa semakan",
+        "freed": "Jam dijimatkan",
+        "noWork": "Belum ada kerja diselesaikan dalam tempoh ini.",
+        "notInBaseline": "Tiada dalam garis dasar",
+        "withoutBaseline": "{count, plural, other {# selesai tetapi garis dasar tiada minit untuknya}}",
+        "averaged": "Jika garis dasar syarikat anda berbeza, masa manual setiap satu ialah puratanya, ditimbang mengikut kerja yang selesai."
+      },
+      "method": {
+        "summary": "Cara ia diukur: jam dijimatkan = kerja selesai × masa manual anda sendiri bagi setiap item (diukur daripada log peristiwa sebelum Autopilot) − masa yang digunakan untuk menyemak. Tiada apa-apa dianggarkan daripada purata industri.",
+        "link": "Kaedah penuh",
+        "work": "Kerja selesai: setiap kad gelung yang diselesaikan oleh seseorang dalam tempoh ini, setiap soalan pekerja yang dijawab oleh AI Centre, dan setiap tindakan yang disediakan oleh AI Centre dan disahkan oleh seseorang. Ralat gaji yang dikesan ialah penemuan anomali yang dibetulkan sebelum larian gaji ditutup; ia dikira, bukan ditukar kepada jam.",
+        "baseline": "Masa manual anda setiap satu datang daripada garis dasar anda: satu tempoh sebelum Autopilot bermula di syarikat itu. Bagi rekod keluar tertinggal dan data pekerja tiada, log peristiwa mengukur tindakan kakitangan bagi setiap kes dalam tempoh itu (pembetulan kehadiran dan perubahan profil), dan minit anda bagi setiap tindakan kakitangan menukarnya kepada masa. Bagi kerja lain, ia ialah minit yang anda masukkan. Syarikat tanpa garis dasar mengira kerjanya sebagai selesai tanpa menjimatkan masa.",
+        "review": "Masa semakan: bagi setiap item, masa antara AI Centre menyediakannya dan seseorang mengesahkannya, sehingga {cap} minit dan tidak melebihi masa manual item itu sendiri. Jurang yang lebih panjang bermakna item itu menunggu, bukan seseorang bekerja padanya. Gelung merekodkan pengesahan apabila ia menyemak semula, jadi kebanyakan item mengira had penuh: lejar ini mengurangkan anggaran masa dijimatkan, bukan melebihkannya. Soalan yang dijawab tiada langkah semakan.",
+        "arithmetic": "Jam dijimatkan = kerja selesai × masa manual anda setiap satu − masa semakan, bagi setiap syarikat dengan garis dasarnya sendiri, kemudian dijumlahkan. Satu hari bekerja ialah {hours} jam.",
+        "access": "Pentadbir HR dan pentadbir kumpulan melihat ini bagi syarikat yang mereka tadbir. Bilangan soalan dan tindakan yang disahkan datang daripada rekod hasil AI Centre, yang hanya boleh dibaca merentas orang oleh pentadbir kumpulan, jadi pentadbir lain tidak melihatnya.",
+        "records": "Setiap angka datang daripada rekod: kad gelung, rekod hasil dan penemuan anomali gaji, dibaca dengan akses anda sendiri. Tiada apa-apa dianggarkan daripada purata industri."
+      },
+      "baseline": {
+        "notSet": "Garis dasar belum ditetapkan",
+        "notSetBody": "Jam dijimatkan diukur berbanding masa manual anda sendiri sebelum Autopilot bermula. Tetapkan garis dasar untuk melihatnya; log peristiwa mengukur apa yang boleh, dan anda menambah minit yang tidak dapat diketahuinya.",
+        "missingSome": "{count, plural, other {# syarikat belum mempunyai garis dasar, jadi kerjanya dikira sebagai selesai tanpa menjimatkan masa.}}",
+        "setFor": "Tetapkan garis dasar untuk {company}",
+        "saved": "Garis dasar disimpan (versi {version}).",
+        "errors": {
+          "invalid": "Masukkan minit sebagai nombor sehingga {max}, dengan paling banyak satu perpuluhan, atau biarkan medan kosong.",
+          "empty": "Masukkan sekurang-kurangnya satu angka, atau minit anda bagi setiap tindakan kakitangan jika log peristiwa boleh mengukur kerja itu.",
+          "not_administrator": "Anda hanya boleh menetapkan garis dasar syarikat yang anda tadbir.",
+          "conflict": "Seseorang menyimpan garis dasar pada masa yang sama. Cuba lagi.",
+          "failed": "Garis dasar tidak dapat disimpan. Cuba lagi."
+        }
+      },
+      "setup": {
+        "title": "Garis dasar untuk {company}",
+        "intro": "Masa manual pasukan anda sendiri bagi setiap item sebelum Autopilot. Log peristiwa mengukur apa yang boleh; anda menambah minit yang tidak dapat diketahuinya. Menyimpan mengekalkan garis dasar terdahulu.",
+        "current": "Garis dasar semasa: versi {version}, {from} hingga {to}.",
+        "step1": "1. Tempoh garis dasar",
+        "periodEnds": "Ia berakhir pada {date}, hari Autopilot bermula di sini.",
+        "periodEndsToday": "Autopilot belum bermula di sini, jadi ia berakhir hari ini.",
+        "daysLabel": "Panjang",
+        "daysOption": "{days} hari",
+        "usePeriod": "Guna tempoh ini",
+        "period": "Tempoh: {from} hingga {to}.",
+        "step2": "2. Apa yang diukur oleh log peristiwa",
+        "processes": {
+          "attendance_correction": "Pembetulan kehadiran (rekod keluar tertinggal)",
+          "profile_change": "Perubahan profil (data pekerja tiada)"
+        },
+        "evidence": "{cases} kes bermula, {completed} selesai, {actions} tindakan kakitangan ({perCase} bagi setiap kes).",
+        "evidenceShort": "Sejarah tidak cukup untuk diukur: {completed} kes selesai, sekurang-kurangnya {min} diperlukan. Masukkan minit anda untuknya di bawah.",
+        "evidenceOff": "Tidak diukur: modul tidak digunakan.",
+        "step3": "3. Minit anda",
+        "perAction": "Minit bagi setiap tindakan kakitangan",
+        "perActionHelp": "Digunakan bersama ukuran log peristiwa, sehingga {max}.",
+        "itemMinutes": "Minit setiap satu: {item}",
+        "itemMeasuredHelp": "Digunakan hanya jika log peristiwa tidak dapat mengukurnya.",
+        "blankHelp": "Biarkan medan kosong jika anda tidak tahu. Sehingga {max} minit, dengan paling banyak satu perpuluhan.",
+        "save": "Simpan garis dasar",
+        "cancel": "Batal"
       }
     },
     "subnav": {
@@ -280,6 +402,10 @@
       "findingAuthority": "Suis syarikat anda untuk semakan ini",
       "findingRead": "Rekod dalam skop pentadbiran anda",
       "findingModel": "Tiada untuk penemuan ini. Huraian dalam bahasa mudah, jika dihidupkan, ditunjukkan pada halamannya."
+    },
+    "insights": {
+      "title": "Wawasan",
+      "description": "Perkara yang belum selesai sebelum gaji, untuk anda dan untuk permohonan yang anda luluskan."
     },
     "jobs": {
       "title": "Tugas diwakilkan",
@@ -594,11 +720,13 @@
         "team_absence_weekly_summary": "Ringkasan mingguan ketidakhadiran pasukan",
         "daily_digest": "Ringkasan harian",
         "loop_probation_ending": "Tempoh percubaan tamat",
-        "loop_payroll_inputs": "Input gaji sedia",
+        "loop_payroll_inputs": "Gelung pra-gaji",
         "loop_missing_employee_data": "Data pekerja tiada",
         "loop_missed_clock_outs": "Rekod keluar tertinggal",
         "loop_document_expiry": "Pasport hampir tamat tempoh",
-        "conversation": "Perbualan sembang langsung"
+        "loop_payroll_audit": "Gelung audit",
+        "conversation": "Perbualan sembang langsung",
+        "loop_salary_payroll": "Gelung penggajian"
       },
       "switchInvalid": "Suis itu tidak boleh ditukar di sini.",
       "switchRefused": "Hanya pentadbir kumpulan boleh menukar suis ini.",
@@ -853,6 +981,515 @@
         "provider_error": "Pusat AI tidak dapat menjawab sekarang. Sila cuba lagi."
       },
       "letterRequestTitle": "Permohonan {letterType}"
+    },
+    "autonomy": {
+      "levels": {
+        "watch": "Pantau",
+        "prepare": "Sediakan",
+        "act": "Bertindak dalam had",
+        "act_audit": "Bertindak dan diaudit"
+      },
+      "levelNumber": "Tahap {n} · {level}",
+      "levelOnly": "Tahap {n}",
+      "summaryNamed": "{level} · {companies}",
+      "summaryCount": "{level} · {count, plural, one {# syarikat} other {# syarikat}}",
+      "companiesTitle": "Tahap di setiap syarikat",
+      "companiesHelp": "Setiap syarikat mempunyai tahapnya sendiri. Gelung naik satu tahap pada satu masa, dengan bukti, dan boleh diturunkan semula pada bila-bila masa.",
+      "capped": "Gaji, status pekerjaan, akses sistem, tindakan tatatertib dan pemfailan berkanun kekal pada tahap Sediakan di setiap syarikat: seseorang sentiasa membuat keputusan.",
+      "stayPrepare": "Gelung ini kekal pada tahap Sediakan di setiap syarikat: seseorang sentiasa membuat keputusan.",
+      "noActor": "Gelung ini boleh naik melebihi Sediakan, tetapi langkah automatiknya belum dibina, jadi ia kekal pada Sediakan buat masa ini.",
+      "noCompanies": "Anda tidak mentadbir mana-mana syarikat di sini.",
+      "changedBy": "Ditetapkan oleh {name} pada {date}",
+      "changedAuto": "Turun dengan sendirinya pada {date}",
+      "anAdministrator": "seorang pentadbir",
+      "limitsLink": "Had dan tahap",
+      "notices": {
+        "undone": "Telah dibuat asal. Hari itu kembali seperti sebelumnya, dan orang itu menerima kad untuk mengesahkan masanya.",
+        "expired": "Tempoh buat asal telah tamat.",
+        "changed": "Tindakan ini telah dibuat asal atau diubah.",
+        "access": "Anda tidak boleh membuat asal tindakan ini.",
+        "ask_hr": "Ini tidak boleh dibuat asal dari sini sekarang.",
+        "unavailable": "Ia tidak dapat dibuat asal. Cuba lagi.",
+        "invalid": "Permintaan itu tidak difahami.",
+        "reviewed": "Semakan sampel direkodkan.",
+        "review_failed": "Semakan tidak dapat direkodkan. Cuba lagi."
+      },
+      "figures": {
+        "applied": "Pembetulan dalam {days} hari",
+        "corrected": "Dibetulkan oleh orang",
+        "undoneByEmployee": "Dibuat asal oleh pekerja",
+        "none": "Belum ada",
+        "appliedRequests": "Permintaan dihantar dalam {days} hari",
+        "withdrawn": "Ditarik balik oleh orang"
+      },
+      "actions": {
+        "title": "Tindakan terkini",
+        "none": "Belum ada tindakan automatik.",
+        "columns": {
+          "when": "Bila",
+          "person": "Orang",
+          "what": "Apa yang berlaku",
+          "status": "Status",
+          "action": "Tindakan"
+        },
+        "set": "Rekod keluar ditetapkan kepada {time} (tamat jadual tugas) untuk {date}",
+        "notSet": "Tidak diubah untuk {date}: {reason}",
+        "reasons": {
+          "condition_site_exit": "tiada rekod keluar tapak yang sepadan dengan tamat jadual tugas",
+          "condition_leave": "cuti yang diluluskan pada hari itu",
+          "condition_day_changed": "hari itu berubah sebelum pembetulan",
+          "condition_sponsor_self": "ia hari penaja sendiri",
+          "owner_refused": "perkhidmatan kehadiran menolaknya",
+          "payroll_closed": "gaji untuk hari itu telah ditutup",
+          "approval_pending": "kelulusan kehadiran memerlukan seseorang",
+          "interrupted": "larian terganggu",
+          "condition_other_clocking": "ada rekod masa lain pada hari itu",
+          "condition_inactive": "pekerjaan telah tamat",
+          "would_create_overtime": "pembetulan itu akan mewujudkan kerja lebih masa",
+          "approval_routed": "kelulusan kehadiran dihantar ke aliran kerja"
+        },
+        "status": {
+          "fixed": "Dibetulkan · boleh dibuat asal hingga {date}",
+          "fixedClosed": "Dibetulkan",
+          "undoneEmployee": "Dibuat asal oleh pekerja",
+          "undoneHr": "Dibuat asal oleh HR",
+          "changed": "Diubah oleh seseorang selepas itu",
+          "applying": "Sedang dijalankan",
+          "toPerson": "Diserahkan kepada orang itu untuk disahkan",
+          "withdrawnEmployee": "Ditarik balik atas permintaan pekerja",
+          "withdrawnHr": "Ditarik balik oleh HR",
+          "sentOpen": "Dihantar · boleh ditarik balik hingga {date}",
+          "sentClosed": "Dihantar"
+        },
+        "undo": "Buat asal",
+        "notSent": "Tidak dihantar: {reason}",
+        "sent": "Permintaan dihantar untuk mengisi {count, plural, one {# butiran} other {# butiran}}",
+        "withdraw": "Tarik balik"
+      },
+      "limits": {
+        "title": "Had yang tidak boleh dilangkaui",
+        "clockIn": "Bertindak hanya apabila rekod masuk dan masa tamat jadual tugas kedua-duanya wujud",
+        "leave": "Tidak menyentuh hari yang mempunyai cuti yang diluluskan",
+        "pay": "Tidak mengubah gaji, kadar atau kerja lebih masa",
+        "perNight": "{company}: paling banyak {count, plural, one {# pembetulan} other {# pembetulan}} semalam, setiap satu boleh dibuat asal selama {days} hari",
+        "demotion": "Kembali ke Sediakan dengan sendirinya jika lebih daripada 1% dibetulkan dalam 7 hari",
+        "noOvertime": "Tidak sekali-kali mewujudkan kerja lebih masa: pembetulan yang menambah kerja lebih masa tidak disimpan",
+        "condition": "{company}: bertindak hanya apabila “{condition}”",
+        "chosenBy": "(dipilih oleh {name} pada {date})",
+        "requestOnly": "Hanya menghantar permintaan; tidak sekali-kali mengubah rekod",
+        "requestActive": "Tidak sekali-kali menghantar permintaan kepada orang yang pekerjaannya telah tamat",
+        "perNightRequests": "{company}: paling banyak {count, plural, one {# permintaan} other {# permintaan}} semalam, setiap satu boleh ditarik balik selama {days} hari",
+        "level3": "Pada tahap Bertindak dan diaudit, HR menyemak sampel mingguan dan bukannya setiap tindakan."
+      },
+      "owner": {
+        "suspended": "Digantung: penajanya tidak lagi mempunyai akses HR.",
+        "note": "Digantung secara automatik jika penaja meninggalkan syarikat atau kehilangan akses HR. Setiap tindakan direkodkan dengan versi peraturannya."
+      },
+      "inSentence": {
+        "loop_probation_ending": "gelung tamat percubaan",
+        "loop_payroll_inputs": "gelung pra-gaji",
+        "loop_missing_employee_data": "gelung data pekerja yang tiada",
+        "loop_missed_clock_outs": "gelung rekod keluar tertinggal",
+        "loop_document_expiry": "gelung pasport",
+        "loop_salary_payroll": "gelung penggajian"
+      },
+      "promote": {
+        "titleTo": {
+          "prepare": "Kembalikan {loop} ke Sediakan di {company}?",
+          "act": "Benarkan {loop} bertindak dalam had di {company}?",
+          "act_audit": "Benarkan {loop} bertindak dan diaudit di {company}?"
+        },
+        "titleAt": "Tahap {loop} di {company}: {level}",
+        "intro": {
+          "prepare": "Pada tahap Pantau ia merekodkan apa yang ditemuinya dan tidak menunjukkan kad kepada sesiapa. Pada tahap Sediakan ia menyediakan setiap kad untuk disahkan oleh orang itu semula.",
+          "act": "Sekarang ia menyediakan setiap pembetulan untuk disahkan oleh pekerja. Pada tahap seterusnya ia membetulkannya sendiri dalam had di bawah, memberitahu setiap orang, dan setiap pembetulan boleh dibuat asal.",
+          "act_audit": "Ia terus membetulkan dalam had di bawah, memberitahu setiap orang, dan setiap pembetulan boleh dibuat asal. Tahap 3 memerlukan 90 hari pada Tahap 2 dan bukti di bawah."
+        },
+        "top": "Ia berada pada tahap tertinggi yang boleh dicapai oleh gelung ini.",
+        "ladder": "Tahap autonomi",
+        "now": "sekarang",
+        "proposed": "dicadangkan",
+        "after90": "selepas 90 hari pada Tahap 2",
+        "notForThisLoop": "Bukan untuk gelung ini",
+        "evidenceTitle": "Bukti ({days} hari lepas, {company})",
+        "columns": {
+          "requirement": "Keperluan",
+          "needed": "Diperlukan",
+          "actual": "Sebenar",
+          "met": "Dipenuhi"
+        },
+        "criteria": {
+          "prepared": "Pembetulan yang disediakan",
+          "changed": "Diubah oleh seseorang",
+          "rule_broken": "Peraturan dilanggar",
+          "days_at_level": "Masa pada tahap ini"
+        },
+        "needed": {
+          "prepared": "{count} atau lebih",
+          "changed": "Kurang daripada {percent}",
+          "rule_broken": "Tiada",
+          "days_at_level": "{count} hari"
+        },
+        "actual": {
+          "changed": "{percent} ({count})",
+          "unknown": "Belum diketahui",
+          "none": "Tiada",
+          "days": "{count, plural, one {# hari} other {# hari}}"
+        },
+        "yes": "Ya",
+        "no": "Tidak",
+        "noCertificate": "Tiada tahap di atas tahap ini untuk dicapai.",
+        "sampleTitle": "Kad terkini dan hasilnya",
+        "sampleNone": "Belum ada kad.",
+        "seeAll": "Lihat kesemua {count} bersama hasilnya",
+        "autoApplied": "Dibetulkan secara automatik",
+        "limitsTitle": "Had pada Tahap {n}",
+        "maxPerNight": "Paling banyak pembetulan semalam",
+        "undoFor": "Pekerja boleh membuat asal selama",
+        "undoDays": "{count} hari",
+        "onlyWhen": "Betulkan hanya apabila",
+        "conditions": {
+          "roster_and_site_exit": "Tamat jadual tugas dan keluar tapak sepadan",
+          "roster_end": "Tamat jadual tugas, tiada cuti diluluskan dan tiada rekod masa lain pada hari itu"
+        },
+        "siteExitNote": "Belum ada rekod keluar tapak di sini, jadi “Tamat jadual tugas dan keluar tapak sepadan” tidak boleh dipenuhi: dengannya gelung tidak akan membetulkan apa-apa dan terus menyediakan kad.",
+        "tell": "Beritahu setiap orang",
+        "tellValue": "Sentiasa (tetap)",
+        "dropBack": "Kembali ke Sediakan apabila",
+        "dropBackValue": "Lebih 1% diubah dalam 7 hari (tetap)",
+        "currentLimits": "Paling banyak {count} semalam, boleh dibuat asal selama {days} hari, hanya apabila: {condition}.",
+        "noLimits": "Pada tahap ini ia tidak mengubah sebarang rekod, jadi tiada had untuk ditetapkan.",
+        "capNote": "Gaji, status pekerjaan, akses sistem dan tindakan tatatertib tidak boleh naik melebihi Sediakan, di mana-mana syarikat. Seseorang sentiasa membuat keputusan tersebut.",
+        "submit": "Naikkan ke Tahap {n} di {company}",
+        "notYet": "Belum lagi",
+        "moveDown": "Turunkan ke {level}",
+        "groupOnly": "Pentadbir kumpulan sahaja. Direkodkan dengan nama anda; anda boleh menurunkannya semula pada bila-bila masa.",
+        "readOnly": "Hanya pentadbir kumpulan boleh mengubah tahap gelung.",
+        "notMet": "Belum semua keperluan dipenuhi, jadi ia tidak boleh dinaikkan.",
+        "saved": {
+          "promoted": "Dinaikkan. Kini ia berada pada {level} di {company}.",
+          "moved_down": "Diturunkan. Kini ia berada pada {level} di {company}.",
+          "limits": "Had disimpan untuk {company}."
+        },
+        "errors": {
+          "invalid": "Perubahan itu tidak difahami.",
+          "refused": "Hanya pentadbir kumpulan boleh mengubah tahap gelung.",
+          "capped": "Gelung ini kekal pada Sediakan di setiap syarikat.",
+          "no_actor": "Langkah automatik gelung ini belum dibina.",
+          "not_next_level": "Gelung naik satu tahap pada satu masa.",
+          "certificate": "Belum semua keperluan dipenuhi, jadi ia tidak dinaikkan.",
+          "changed": "Tahap telah berubah sejak anda membuka halaman ini. Semak semula.",
+          "unchanged": "Ia sudah berada pada tahap itu.",
+          "not_found": "Syarikat atau gelung itu tidak ditemui.",
+          "failed": "Perubahan tidak dapat disimpan. Cuba lagi.",
+          "raise_needs_promotion": "Menaikkan had memerlukan kenaikan tahap.",
+          "not_acting": "Gelung tidak berada di atas Sediakan di syarikat ini."
+        },
+        "rosterEndNote": "Dengan syarat tamat jadual tugas, rekod keluar ditetapkan kepada tamat jadual tugas, pekerja diberitahu dan boleh membuat asal, dan pembetulan tidak sekali-kali mewujudkan kerja lebih masa.",
+        "maxPerNightRequests": "Paling banyak permintaan semalam",
+        "undoForRequests": "HR boleh menarik balik selama",
+        "currentLimitsTitle": "Had sekarang, pada Tahap {n}",
+        "changeLimitsNote": "Tanpa kenaikan tahap, had hanya boleh diperketat: kurang semalam, atau tempoh buat asal yang lebih panjang. Syarat boleh diubah pada bila-bila masa. Setiap perubahan direkodkan dengan nama anda.",
+        "saveLimits": "Simpan had"
+      },
+      "cannotActYet": "Ia belum boleh bertindak: tiada rekod keluar tapak, jadi “tamat jadual tugas dan keluar tapak sepadan” tidak boleh dipenuhi. Ia terus menyediakan kad.",
+      "sample": {
+        "title": "Sampel mingguan untuk disemak",
+        "help": "Pada tahap Bertindak dan diaudit, HR menyemak sampel tindakan setiap minggu (sekurang-kurangnya 10% dan sekurang-kurangnya 5) dan bukannya setiap satu.",
+        "summary": "{size} daripada {total} tindakan dalam minggu {week}",
+        "reviewed": "Disemak oleh {name} pada {date}",
+        "markReviewed": "Tandakan sampel telah disemak",
+        "none": "Belum ada tindakan minggu ini."
+      },
+      "attribution": {
+        "loops": {
+          "loop_probation_ending": "tamat percubaan",
+          "loop_payroll_inputs": "pra-gaji",
+          "loop_missing_employee_data": "data pekerja yang tiada",
+          "loop_missed_clock_outs": "rekod keluar tertinggal",
+          "loop_document_expiry": "pasport",
+          "loop_salary_payroll": "penggajian"
+        },
+        "byLoop": "Gelung AI Centre ({loop}), ditaja oleh {sponsor}",
+        "byLoopForEmployee": "Gelung AI Centre ({loop}), atas permintaan {asker} (pekerja), ditaja oleh {sponsor}",
+        "byLoopForHr": "Gelung AI Centre ({loop}), atas permintaan {asker} (HR), ditaja oleh {sponsor}",
+        "sponsorUnnamed": "penajanya",
+        "byLoopForEmployeeUnnamed": "Gelung AI Centre ({loop}), atas permintaan pekerja, ditaja oleh {sponsor}",
+        "byLoopForHrUnnamed": "Gelung AI Centre ({loop}), atas permintaan HR, ditaja oleh {sponsor}",
+        "madeBy": "Dibuat dan diluluskan oleh {actor}."
+      }
+    },
+    "payrollCycle": {
+      "title": "Kitaran gaji: {month}",
+      "description": "Tiga gelung membawa gaji setiap syarikat daripada input hingga audit.",
+      "headerOne": "Tarikh tutup {cutOff} · hari gaji {payDay} · KWSP, PERKESO, SIP dan PCB perlu dibayar {due}.",
+      "headerGroup": "KWSP, PERKESO, SIP dan PCB perlu dibayar {due}. Setiap syarikat mempunyai tarikh tutup dan hari gajinya sendiri.",
+      "company": "Syarikat",
+      "allCompanies": "{count, plural, one {Semua # syarikat} other {Semua # syarikat}}",
+      "show": "Tunjukkan",
+      "noCompanies": "Anda tidak mentadbir mana-mana syarikat di sini.",
+      "loopsLabel": "Gelung gaji mengikut turutan",
+      "backToCycle": "Kitaran gaji",
+      "checks": {
+        "timesheets": "Lembaran masa bersih",
+        "overtime": "Kerja lebih masa diluluskan",
+        "leave": "Cuti dan hari tanpa gaji muktamad",
+        "claims": "Tuntutan diputuskan",
+        "joinersLeavers": "Pekerja baharu dan yang berhenti lengkap",
+        "statutoryBank": "Nombor bank, KWSP, PERKESO dan cukai",
+        "payChanges": "Elaun dan perubahan gaji diluluskan",
+        "setup": "Tetapan gaji sedia",
+        "repeatAudit": "Isu berulang daripada gelung audit"
+      },
+      "pre": {
+        "title": "1 · Gelung pra-gaji",
+        "done": "Selesai apabila setiap input lengkap dan diluluskan sebelum tarikh tutup.",
+        "note": "Ia menyemak setiap pemilik dan menyediakan apa yang perlu disahkan. Tahap: Sediakan, jadi tiada apa berubah sehingga seseorang mengesahkannya.",
+        "open": "Buka gelung pra-gaji",
+        "state": {
+          "open": "{count, plural, =0 {Berjalan · tarikh tutup hari ini} one {Berjalan · # hari ke tarikh tutup} other {Berjalan · # hari ke tarikh tutup}}",
+          "openPast": "Berjalan",
+          "done": "Selesai",
+          "missed": "Tidak sedia menjelang tarikh tutup",
+          "not_checked": "Belum disemak",
+          "paused": "Dijeda",
+          "off": "Dimatikan"
+        },
+        "value": {
+          "notChecked": "Belum disemak",
+          "off": "Tidak digunakan",
+          "open": "{count} terbuka",
+          "waiting": "{count} menunggu",
+          "review": "{count} untuk disemak",
+          "done": "Selesai"
+        }
+      },
+      "salary": {
+        "title": "2 · Gelung penggajian",
+        "done": "Selesai apabila setiap larian disemak, diluluskan oleh seseorang, ditutup dan fail bank sepadan.",
+        "note": "Gaji dikira hanya oleh perkhidmatan gaji. Gelung ini kekal pada Sediakan di setiap syarikat: ia menyemak dan menyediakan, dan seseorang meluluskan serta menutup.",
+        "open": "Buka gelung penggajian",
+        "state": {
+          "before_cut_off": "Bermula pada tarikh tutup",
+          "not_checked": "Belum disemak",
+          "ready_to_start": "Sedia untuk dimulakan",
+          "in_progress": "Sedang berjalan",
+          "attention": "Perlu perhatian",
+          "done": "Selesai",
+          "paused": "Dijeda",
+          "off": "Dimatikan"
+        },
+        "rows": {
+          "run": "Jalankan gaji setiap syarikat",
+          "change": "Perubahan berbanding bulan lepas, setiap orang",
+          "anomalies": "{count} semakan anomali",
+          "rules": "KWSP, PERKESO, SIP, PCB mengikut peraturan semasa",
+          "close": "Luluskan dan tutup",
+          "bank": "Jumlah fail bank sama dengan gaji bersih"
+        },
+        "value": {
+          "started": "{started} daripada {total} dimulakan",
+          "preparedForHr": "Disediakan untuk HR",
+          "flagged": "{count, plural, one {# orang melebihi ambang} other {# orang melebihi ambang}}",
+          "explained": "Dijelaskan mengikut sebab",
+          "afterRun": "Dijelaskan mengikut sebab",
+          "exceptions": "{count, plural, one {# pengecualian terbuka} other {# pengecualian terbuka}}",
+          "noExceptions": "Tiada pengecualian terbuka",
+          "toToday": "Pengecualian ke Hari Ini",
+          "newer": "{count, plural, one {Peraturan lebih baharu untuk # larian} other {Peraturan lebih baharu untuk # larian}}",
+          "ruleVersion": "Versi peraturan {version}",
+          "versionShown": "Versi peraturan ditunjukkan",
+          "closed": "{closed} daripada {total} ditutup",
+          "person": "Seseorang, sentiasa",
+          "mismatch": "{count, plural, one {# larian tidak sepadan} other {# larian tidak sepadan}}",
+          "matches": "Sepadan",
+          "beforeRelease": "Disemak sebelum dikeluarkan"
+        },
+        "runLine": "{type}: {status}"
+      },
+      "audit": {
+        "title": "3 · Gelung audit",
+        "done": "Selesai apabila semuanya dibayar, difailkan, disesuaikan dan dibuktikan.",
+        "note": "Fail dan pemfailan kekal pada Sediakan: seseorang menghantar kepada KWSP, PERKESO dan LHDN."
+      },
+      "interval": {
+        "hourly": "Disemak setiap jam",
+        "twice_daily": "Disemak dua kali sehari",
+        "daily": "Disemak setiap hari"
+      },
+      "runType": {
+        "regular": "Gaji",
+        "bonus": "Bonus",
+        "off_cycle": "Luar kitaran"
+      },
+      "runStatus": {
+        "draft": "Draf",
+        "processed": "Diproses",
+        "closed": "Ditutup"
+      },
+      "byCompany": {
+        "title": "Setiap syarikat",
+        "columns": {
+          "company": "Syarikat",
+          "preSalary": "Pra-gaji",
+          "salary": "Penggajian",
+          "audit": "Audit"
+        }
+      },
+      "history": {
+        "title": "Tiga kitaran terakhir",
+        "columns": {
+          "month": "Bulan",
+          "inputsReady": "Input sedia",
+          "issuesCaught": "Isu dikesan sebelum larian",
+          "closed": "Ditutup",
+          "corrections": "Pembetulan selepas larian",
+          "filed": "Difailkan tepat pada masa"
+        },
+        "notMeasured": "Tidak diukur",
+        "missed": "Tidak sedia menjelang tarikh tutup",
+        "onCutOff": "Pada hari tarikh tutup",
+        "before": "{count, plural, one {# hari sebelum tarikh tutup} other {# hari sebelum tarikh tutup}}",
+        "after": "{count, plural, one {# hari selepas tarikh tutup} other {# hari selepas tarikh tutup}}",
+        "notClosed": "Belum ditutup",
+        "noRun": "Tiada larian",
+        "settingsTitle": "Perubahan",
+        "noChanges": "Belum ada perubahan: nilai lalai digunakan.",
+        "settingRow": "Versi {version}: {interval}, ambang ±{threshold}, {exclusions, plural, =0 {tiada pengecualian} one {# pengecualian} other {# pengecualian}} ({source}) oleh {name}, {when}",
+        "rejectedRow": "Satu cadangan ditolak oleh {name}, {when}",
+        "source": {
+          "admin": "ditetapkan oleh pentadbir",
+          "proposal": "cadangan yang diluluskan"
+        }
+      },
+      "people": {
+        "title": "Gelung pekerja",
+        "item": "{name} · {count} terbuka"
+      },
+      "patternItem": "Item gaji {item}",
+      "causes": {
+        "unpaid_leave": "Cuti tanpa gaji",
+        "absence": "Ketidakhadiran",
+        "overtime_hours": "Jam kerja lebih masa",
+        "salary_change": "Perubahan gaji",
+        "days_paid": "Hari dibayar",
+        "additional_run": "Larian tambahan",
+        "statutory_rules": "Peraturan berkanun",
+        "set_by_hand": "Berkanun ditetapkan secara manual",
+        "other": "Perubahan lain"
+      },
+      "bodies": {
+        "epf": "KWSP",
+        "socso": "PERKESO",
+        "eis": "SIP",
+        "pcb": "PCB",
+        "hrdf": "Levi HRD Corp"
+      },
+      "bank": {
+        "match": "Sepadan dengan gaji bersih dan bilangan pekerja",
+        "total_mismatch": "Jumlah tidak sepadan dengan gaji bersih",
+        "count_mismatch": "Bilangan rekod tidak sepadan",
+        "not_available": "Tiada fail bank untuk disemak",
+        "blocked": "Fail bank belum boleh dihasilkan",
+        "not_ready": "Disemak setelah diproses"
+      },
+      "salaryPage": {
+        "title": "Gelung penggajian: {month}",
+        "description": "Semakan setiap larian seperti yang terakhir direkodkan oleh gelung. Seseorang menjalankan, meluluskan dan menutup gaji di meja kerja gaji.",
+        "level": "Sediakan di setiap syarikat",
+        "off": "Gelung penggajian dimatikan. Hidupkannya di Gelung untuk menyemak larian.",
+        "noCompanies": "Anda tidak menguruskan gaji bagi mana-mana syarikat di sini.",
+        "companyLine": "Tarikh tutup {cutOff} · ambang perubahan gaji bersih ±{threshold}",
+        "readyToStart": "Sedia untuk dimulakan: belum ada larian gaji untuk {month}.",
+        "openPayroll": "Buka gaji",
+        "noRuns": "Belum ada larian untuk bulan ini.",
+        "runsCaption": "Larian gaji {company}",
+        "columns": {
+          "run": "Larian",
+          "status": "Status",
+          "anomalies": "Semakan anomali",
+          "change": "Perubahan berbanding bulan lepas",
+          "rules": "Peraturan berkanun",
+          "close": "Luluskan dan tutup",
+          "bank": "Fail bank"
+        },
+        "runName": "Larian {type} {seq}",
+        "stale": "Perlu dikira semula",
+        "employees": "{count, plural, one {# pekerja} other {# pekerja}}",
+        "afterProcessing": "Selepas diproses",
+        "notEvaluated": "{count} semakan belum dijalankan",
+        "changed": "{count, plural, one {# orang berubah} other {# orang berubah}}",
+        "cause": "{cause} ({count})",
+        "newerRules": "Peraturan lebih baharu: {bodies}",
+        "closedBy": "Ditutup oleh {name}",
+        "closed": "Ditutup",
+        "notClosed": "Belum ditutup",
+        "reopened": "{count, plural, one {Dibuka semula sekali selepas ditutup} other {Dibuka semula # kali selepas ditutup}}",
+        "note": "Ambang perubahan gaji bersih bermula pada ±15%. Ia berubah hanya apabila pentadbir menetapkannya atau meluluskan cadangan, dan ia tidak pernah mengubah semakan anomali.",
+        "settingsLink": "Ambang dan selang"
+      },
+      "flags": {
+        "title": "Bendera perubahan gaji bersih",
+        "help": "Orang yang gaji bersihnya berubah melebihi ambang syarikat berbanding bulan lepas. Tandakan setiap satu: dijangka, atau masalah sebenar.",
+        "none": "Tiada bendera bulan ini.",
+        "columns": {
+          "person": "Orang",
+          "change": "Perubahan gaji bersih",
+          "pattern": "Punca perubahan",
+          "disposition": "Keputusan"
+        },
+        "up": "Naik {swing}",
+        "down": "Turun {swing}",
+        "threshold": "Ambang ±{threshold}",
+        "unnamed": "Seseorang",
+        "disposition": {
+          "expected": "Dijangka",
+          "problem": "Masalah sebenar"
+        },
+        "by": "Oleh {name}",
+        "mark": {
+          "expected": "Dijangka",
+          "problem": "Masalah sebenar"
+        }
+      },
+      "settings": {
+        "title": "Tetapan kitaran gaji",
+        "description": "Kekerapan gelung pra-gaji menyemak setiap syarikat, dan ambang perubahan gaji bersih yang ditandakan oleh gelung penggajian. Setiap perubahan direkodkan bersama siapa yang membuatnya.",
+        "defaults": "Lalai: disemak setiap hari, ambang ±15%",
+        "version": "Versi {version}",
+        "interval": "Selang semakan pra-gaji",
+        "intervalHelp": "Dari awal tempoh gaji hingga tarikh tutup.",
+        "threshold": "Ambang perubahan gaji bersih",
+        "thresholdHelp": "Tandakan orang yang gaji bersihnya berubah lebih daripada ini berbanding bulan lepas.",
+        "save": "Simpan",
+        "exclusions": "Corak gaji yang dikecualikan",
+        "noExclusions": "Tiada. Pengecualian ditambah hanya dengan meluluskan cadangan.",
+        "remove": "Buang"
+      },
+      "proposals": {
+        "title": "Cadangan",
+        "help": "Dicadangkan daripada keputusan HR gaji dalam 30 hari lepas. Tiada apa berkuat kuasa sehingga pentadbir meluluskannya; ia kemudian berkuat kuasa mulai larian seterusnya.",
+        "none": "Tiada cadangan: tidak cukup bendera yang dijelaskan sebagai dijangka.",
+        "threshold": "Naikkan ambang daripada ±{from} kepada ±{to}",
+        "exclusion": "Berhenti menandakan perubahan yang dijelaskan oleh {pattern}",
+        "evidence": "{expected} daripada {flags} bendera dijelaskan sebagai dijangka ({share}), {problems} masalah sebenar, {days} hari lepas",
+        "approved": "Luluskan",
+        "rejected": "Tolak"
+      },
+      "saved": {
+        "disposition": "Keputusan direkodkan.",
+        "setting": "Disimpan. Ia berkuat kuasa mulai larian seterusnya.",
+        "approved": "Cadangan diluluskan. Ia berkuat kuasa mulai larian seterusnya.",
+        "rejected": "Cadangan ditolak."
+      },
+      "errors": {
+        "invalid": "Perubahan itu tidak difahami.",
+        "refused": "Anda tidak boleh membuat perubahan itu.",
+        "changed": "Ini telah berubah sejak halaman dibuka. Lihat sekali lagi.",
+        "already": "Sudah direkodkan, atau tiada apa yang berubah.",
+        "failed": "Perubahan tidak dapat disimpan. Cuba lagi."
+      },
+      "patternUnknown": "Item gaji yang tiada lagi dalam katalog"
     }
   },
   "today": {
@@ -949,16 +1586,17 @@
       "payrollTitle": "{company}: input gaji tiada sebelum tarikh tutup {date}",
       "payrollTitleUnnamed": "Input gaji tiada sebelum tarikh tutup {date}",
       "payrollBlockers": "{count, plural, other {# menyekat larian}}",
-      "payrollCta": "Buka kesediaan",
+      "payrollCta": "Buka kitaran gaji",
       "passportsTitle": "{count, plural, other {# pasport tamat tempoh dalam 60 hari}}",
       "passportsFirst": "Yang pertama pada {date}",
       "passportsCta": "Buka senarai pekerja",
       "names": {
         "loop_probation_ending": "Tempoh percubaan tamat",
-        "loop_payroll_inputs": "Input gaji sedia",
+        "loop_payroll_inputs": "Gelung pra-gaji",
         "loop_missing_employee_data": "Data pekerja tiada",
         "loop_missed_clock_outs": "Rekod keluar tertinggal",
-        "loop_document_expiry": "Pasport hampir tamat tempoh"
+        "loop_document_expiry": "Pasport hampir tamat tempoh",
+        "loop_salary_payroll": "Gelung penggajian"
       }
     },
     "done": {
@@ -1005,6 +1643,43 @@
       "nothingComingUp": "Tiada apa-apa dalam dua minggu akan datang.",
       "managerAwayRangeUnnamed": "Pengurus anda tiada di pejabat {start} – {end}.",
       "managerAwayDayUnnamed": "Pengurus anda tiada di pejabat pada {date}."
+    },
+    "autonomy": {
+      "undo": "Buat asal",
+      "undoing": "Sedang dibuat asal…",
+      "undone": "Telah dibuat asal. Hari anda kembali seperti sebelumnya; sahkan rekod keluar anda pada kadnya.",
+      "actionsLabel": "Buat asal pembetulan",
+      "refused": {
+        "unavailable": "Ia tidak dapat dibuat asal. Cuba lagi.",
+        "expired": "Tempoh buat asal telah tamat. Minta HR mengubahnya.",
+        "changed": "Ia telah berubah. Buka hari kehadiran anda untuk menyemaknya.",
+        "access": "Anda tidak boleh membuat asal ini.",
+        "ask_hr": "Ia tidak boleh dibuat asal dari sini sekarang. Minta HR membuat asal."
+      },
+      "autoFixedTitle": "Rekod keluar ditetapkan kepada {time} untuk {date}",
+      "autoFixedRoster": "Tamat jadual tugas anda",
+      "autoFixedSource": "Dilakukan oleh AI Centre: {loop}",
+      "autoFixedUntil": "Anda boleh membuat asal hingga {date}",
+      "autoFixedNote": "Jika anda keluar pada masa lain, buat asal dan sahkan masa yang betul.",
+      "movedDownTitle": "{loop} turun ke Sediakan di {company}",
+      "movedDownTitleUnnamed": "{loop} turun ke Sediakan",
+      "movedDownShare": "{corrected} daripada {applied} pembetulan dibetulkan oleh orang dalam 7 hari",
+      "correctionUndone": "{name} · {date} · dibuat asal oleh {by}",
+      "correctionChanged": "{name} · {date} · diubah selepas itu",
+      "byEmployee": "pekerja",
+      "byHr": "HR",
+      "someone": "Seseorang",
+      "correctionMore": "dan {count} lagi",
+      "movedDownNote": "Ia menyediakan kad semula sehingga pentadbir kumpulan menaikkannya.",
+      "movedDownCta": "Buka gelung",
+      "actedTitle": "{loop} membuat {count, plural, one {# perubahan} other {# perubahan}} di {company} dalam sehari lepas",
+      "actedNote": "Pada tahap Bertindak dalam had, setiap tindakan dipaparkan di sini. Buka gelung untuk membuat asal.",
+      "sampleTitle": "Sampel mingguan untuk disemak: {loop} di {company}",
+      "sampleMeta": "{size} daripada {total} tindakan minggu ini",
+      "sampleNote": "Pada tahap Bertindak dan diaudit, HR menyemak sampel ini dan bukannya setiap tindakan.",
+      "sampleCta": "Semak sampel",
+      "leftAloneTitle": "{loop} meninggalkan {count, plural, one {# perkara} other {# perkara}} untuk orang di {company}",
+      "leftAloneNote": "Satu syarat tidak dipenuhi, jadi orang itu mengesahkannya sendiri."
     }
   },
   "why": {
@@ -1250,6 +1925,367 @@
       "inProgress": "Import ini sedang disahkan.",
       "invalid": "Kad ini tidak dapat disemak. Lampirkan fail semula.",
       "unavailable": "Import tidak dapat diselesaikan, dan tiada apa-apa diimport. Cuba lagi, atau gunakan halaman import."
+    }
+  },
+  "payrollAudit": {
+    "name": "Gelung audit",
+    "doneMeansLine": "Selesai bermaksud: {done}",
+    "column": {
+      "title": "Gelung audit",
+      "titleNumbered": "{n} · Gelung audit",
+      "badge": "Selepas hari gaji",
+      "done": "Selesai",
+      "doneMeans": "Selesai apabila semuanya dibayar, difailkan, disesuaikan dan berbukti.",
+      "items": {
+        "payslips": "Slip gaji dikeluarkan dan dibuka",
+        "statutory": "Fail KWSP, PERKESO, SIP, PCB, HRD",
+        "bank": "Fail bank",
+        "corrections": "Pembetulan selepas larian",
+        "findings": "Semakan kawalan",
+        "approvals": "Siapa meluluskan apa, bila",
+        "repeat": "Isu berulang",
+        "bankPaid": "Bayaran bank berbanding gaji"
+      },
+      "values": {
+        "payslips": "{released} daripada {total} dikeluarkan · {opened} dibuka",
+        "statutory": "{prepared} daripada {forms} disediakan · {filed} difailkan · tarikh akhir {due}",
+        "bank": "{count, plural, =0 {Tiada fail bank direkodkan} other {# fail bank direkodkan}}",
+        "corrections": "{count, plural, =0 {Tiada · sasaran sifar} other {# · sasaran sifar}}",
+        "findings": "{count, plural, =0 {Tiada yang terbuka} other {# dapatan terbuka}}",
+        "pack": "Pek audit setiap syarikat",
+        "packLink": "Muat turun pek audit",
+        "repeat": "{count, plural, =0 {Tiada} other {# dihantar ke gelung Pra-gaji seterusnya}}",
+        "bankReconciled": "Diselaraskan",
+        "bankMismatch": "{count, plural, one {# larian tidak sepadan} other {# larian tidak sepadan}}",
+        "bankPartial": "{matched} daripada {total} diselaraskan",
+        "bankNone": "Disemak selepas larian"
+      },
+      "note": "Fail dan pemfailan kekal di peringkat Sediakan: seorang pegawai menghantar kepada KWSP, PERKESO dan LHDN. Pek audit ialah bukti baca sahaja untuk juruaudit anda.",
+      "open": "Buka gelung audit"
+    },
+    "errors": {
+      "invalid": "Itu tidak dapat direkodkan. Semak borang dan cuba lagi.",
+      "refused": "Hanya pentadbir gaji syarikat ini boleh melakukannya.",
+      "module": "Modul gaji tidak digunakan, jadi gelung audit tidak boleh dihidupkan.",
+      "failed": "Itu tidak selesai. Tiada apa yang diubah. Cuba lagi."
+    },
+    "saved": {
+      "disposed": "Keputusan direkodkan.",
+      "cause": "Punca utama direkodkan.",
+      "captured": "Dirakam dan disemak sekarang.",
+      "switch": "Disimpan.",
+      "pause": "Disimpan.",
+      "settings": "Tetapan kawalan disimpan.",
+      "granted": "Akses juruaudit diberikan.",
+      "revoked": "Akses juruaudit ditarik balik."
+    },
+    "filter": {
+      "period": "Bulan gaji",
+      "company": "Syarikat",
+      "allCompanies": "{count, plural, other {Semua # syarikat}}",
+      "show": "Papar"
+    },
+    "monthLine": "{month}: fail berkanun perlu dihantar pada {due}.",
+    "stepLabel": "{n} · {step}",
+    "steps": {
+      "capture": "Rakam",
+      "check": "Semak",
+      "prepare": "Sediakan",
+      "verify": "Sahkan"
+    },
+    "stepText": {
+      "capture": "Bagi setiap larian, biasa, bonus dan luar kitaran: inputnya, setiap perubahan dari draf ke muktamad dengan siapa dan sebab, pelarasan, versi peraturan, pengecualian, kelulusan, fail bank dan berkanun, pemfailan, slip gaji yang dibuka, pembetulan, siapa melihat atau mengeksport data gaji dan perubahan konfigurasi. Setiap salinan dicincang dan dirantai.",
+      "check": "Tujuh semakan kawalan setiap malam, masing-masing dengan buktinya. Tiada apa yang disekat atau diubah.",
+      "prepare": "Dapatan untuk diputuskan oleh pentadbir gaji, punca utama bagi setiap pembetulan, dan pek audit setiap syarikat.",
+      "verify": "Slip gaji dikeluarkan, fail berkanun disediakan sebelum {due} dan difailkan dengan resit, pembetulan pada sifar, dan setiap rakaman tidak berubah."
+    },
+    "figures": {
+      "captures": "Rakaman bulan ini",
+      "findings": "Dapatan terbuka",
+      "corrections": "Pembetulan selepas larian",
+      "filed": "Fail berkanun difailkan"
+    },
+    "ofForms": "{filed} daripada {forms}",
+    "companies": {
+      "title": "Syarikat",
+      "none": "Anda tidak mentadbir mana-mana syarikat dengan gaji di sini.",
+      "columns": {
+        "company": "Syarikat",
+        "runs": "Larian",
+        "payslips": "Slip gaji",
+        "statutory": "Difailkan",
+        "findings": "Dapatan",
+        "corrections": "Pembetulan",
+        "captures": "Bukti",
+        "pack": "Pek audit"
+      },
+      "noRun": "Tiada larian bulan ini",
+      "run": "Larian {type} {seq}: {status}",
+      "payslips": "{released} daripada {total} dikeluarkan · {opened} dibuka",
+      "findings": "{open} terbuka · {disposed} diputuskan",
+      "corrections": "{count, plural, =0 {Tiada} other {#}}",
+      "correctionsMissing": "{count, plural, other {# memerlukan punca utama}}",
+      "captures": "{count, plural, =0 {Belum dirakam} other {# rakaman}}",
+      "pack": "Muat turun",
+      "capture": "Rakam dan semak sekarang",
+      "packHelp": "Pek audit ialah ringkasan PDF dengan bukti CSV dan JSON, setiap satu disenaraikan dengan sha256nya. Memuat turunnya merakam bulan itu dahulu dan muat turun itu sendiri direkodkan.",
+      "opensNote": "Pembukaan slip gaji dikira di web, termasuk muat turun PDF. Pembukaan dalam aplikasi mudah alih belum dikira."
+    },
+    "state": {
+      "done": "Selesai",
+      "open": "Sedang berjalan"
+    },
+    "runType": {
+      "regular": "gaji",
+      "off_cycle": "luar kitaran",
+      "bonus": "bonus",
+      "adjustment": "pelarasan",
+      "other": "lain"
+    },
+    "runStatus": {
+      "draft": "draf",
+      "processed": "diproses",
+      "closed": "ditutup",
+      "other": "lain"
+    },
+    "statutory": {
+      "title": "Fail berkanun, tarikh akhir {due}",
+      "columns": {
+        "company": "Syarikat",
+        "form": "Fail",
+        "prepared": "Disediakan",
+        "filed": "Difailkan"
+      },
+      "beforeDue": "Sebelum tarikh akhir",
+      "late": "Selepas tarikh akhir",
+      "notYet": "Belum disediakan",
+      "receipt": "Resit direkodkan",
+      "notFiled": "Belum difailkan",
+      "help": "Seorang pegawai memfailkan kepada KWSP, PERKESO, LHDN dan HRD Corp serta merekodkan resit. Gelung audit tidak pernah menghantar apa-apa."
+    },
+    "forms": {
+      "epf": "KWSP",
+      "socso_eis": "PERKESO dan SIP",
+      "pcb_cp39": "PCB (CP39)",
+      "hrd": "Levi HRD Corp"
+    },
+    "findings": {
+      "title": "Dapatan kawalan",
+      "none": "Tiada semakan kawalan menemui apa-apa bulan ini.",
+      "disposition": "Keputusan",
+      "choose": "Pilih",
+      "note": "Nota",
+      "record": "Rekod"
+    },
+    "controls": {
+      "bank_change_before_pay_day": "Butiran bank diubah sejurus sebelum hari gaji",
+      "shared_bank_account": "Satu akaun bank pada dua orang atau lebih",
+      "pay_after_last_day": "Gaji selepas hari bekerja terakhir",
+      "pay_without_attendance": "Gaji tanpa kehadiran",
+      "preparer_closed_run": "Orang yang sama memproses dan menutup larian",
+      "adjustment_without_reason": "Pelarasan manual besar tanpa sebab",
+      "formula_changed_open_period": "Formula diubah semasa larian masih terbuka"
+    },
+    "what": {
+      "bank_change_before_pay_day": "Akaun bank diubah pada {changed}, {days} hari sebelum hari gaji pada {payDay} (kini berakhir {last4}).",
+      "shared_bank_account": "Satu akaun berakhir {last4} digunakan oleh {people} orang; {paid} dibayar oleh syarikat ini.",
+      "pay_after_last_day": "Gaji bersih pada slip gaji yang bermula selepas hari bekerja terakhir, {lastDay}.",
+      "pay_without_attendance": "Gaji bersih tanpa kehadiran dan tanpa cuti yang diluluskan dalam tempoh itu.",
+      "preparer_closed_run": "Orang yang sama memproses dan menutup larian {seq}. Ditanda sahaja: tiada pelulus kedua.",
+      "adjustment_without_reason": "Pelarasan manual melebihi {threshold} dimasukkan tanpa sebab.",
+      "formula_changed_open_period": "Formula gaji atau komponen gaji diubah semasa larian {seq} masih terbuka."
+    },
+    "dispositions": {
+      "expected": "Dijangka",
+      "corrected": "Dibetulkan",
+      "false_positive": "Bukan isu",
+      "escalated": "Dirujuk ke atas"
+    },
+    "corrections": {
+      "title": "Pembetulan selepas larian",
+      "none": "Tiada larian dibuka semula atau ditetapkan semula bulan ini. Sasarannya sifar.",
+      "actions": {
+        "unlock": "Larian {seq} yang ditutup dibuka semula",
+        "rollback": "Larian {seq} yang diproses ditetapkan semula"
+      },
+      "reason": "Sebab diberikan: {reason}",
+      "noReason": "Tiada sebab diberikan.",
+      "cause": "Punca utama",
+      "choose": "Pilih",
+      "note": "Nota",
+      "record": "Rekod",
+      "update": "Nyatakan semula"
+    },
+    "rootCauses": {
+      "late_input": "Input tiba lewat",
+      "input_error": "Input dimasukkan salah",
+      "employee_data": "Data pekerja salah",
+      "configuration": "Tetapan gaji salah",
+      "rule_or_formula": "Peraturan atau formula",
+      "missed_exception": "Pengecualian tidak diambil tindakan",
+      "statutory_change": "Perubahan berkanun",
+      "other": "Lain-lain"
+    },
+    "limits": {
+      "pay": "Tidak pernah mengubah gaji, larian, fail bank atau pemfailan.",
+      "block": "Tidak pernah menyekat larian: seorang yang memproses dan menutup hanya ditanda.",
+      "file": "Tidak pernah memfailkan atau menghantar: seorang pegawai memfailkan kepada setiap agensi dan merekodkan resit.",
+      "model": "Tidak memanggil model AI: setiap semakan ialah peraturan tetap."
+    },
+    "pack": {
+      "title": "Pek audit gaji",
+      "company": "Syarikat",
+      "payPeriod": "Bulan gaji",
+      "generated": "Dijana",
+      "by": "Oleh",
+      "runs": "Larian",
+      "runLine": "Larian {runType} {runSeq}: {status}, ditutup {closedAt}, dikeluarkan {releasedAt}",
+      "statutory": "Fail berkanun dan fail bank",
+      "filingEvidence": "Bukti pemfailan dan resit",
+      "findings": "Dapatan kawalan",
+      "findingLine": "{control}: {count} ({open} terbuka, {disposed} diputuskan)",
+      "corrections": "Pembetulan selepas larian",
+      "correctionLine": "{action} pada {at}: punca utama {cause}, {note}",
+      "captures": "Rakaman",
+      "captureLine": "{kind}: {count}",
+      "verification": "Semakan gangguan",
+      "verified": "{count} rakaman disahkan. Kepala rantai {head}.",
+      "notVerified": "{count} masalah ditemui. Lihat verification.json.",
+      "anchors": "{matched} disauh dalam log audit, {chained} di dalam rantai cincangnya.",
+      "files": "Fail",
+      "none": "Tiada",
+      "kinds": {
+        "run": "Larian",
+        "inputs_snapshot": "Petikan input",
+        "payslip": "Slip gaji",
+        "change": "Perubahan dari draf ke muktamad",
+        "adjustment": "Pelarasan atau penggantian manual",
+        "rule_version": "Versi peraturan dan formula",
+        "exception": "Pengecualian dan keputusan",
+        "approval": "Jejak kelulusan dan penutupan",
+        "bank_file": "Fail bank",
+        "statutory_file": "Fail berkanun",
+        "filing": "Bukti pemfailan",
+        "payslip_release": "Pengeluaran dan pembukaan slip gaji",
+        "correction": "Pembetulan selepas larian",
+        "access": "Dilihat atau dieksport",
+        "config_change": "Perubahan konfigurasi",
+        "control_finding": "Dapatan kawalan"
+      },
+      "controls": {
+        "bank_change_before_pay_day": "Butiran bank diubah sejurus sebelum hari gaji",
+        "shared_bank_account": "Satu akaun bank pada dua orang atau lebih",
+        "pay_after_last_day": "Gaji selepas hari bekerja terakhir",
+        "pay_without_attendance": "Gaji tanpa kehadiran",
+        "preparer_closed_run": "Orang yang sama memproses dan menutup larian",
+        "adjustment_without_reason": "Pelarasan manual besar tanpa sebab",
+        "formula_changed_open_period": "Formula diubah semasa larian masih terbuka"
+      },
+      "findingItem": "{control}: {who} ({state})",
+      "open": "terbuka",
+      "unprintable": "{count} aksara tidak dapat dilukis dalam mana-mana fon yang tersedia dan dipaparkan sebagai '?'. Fail CSV dan JSON memuatkan teks yang tepat."
+    },
+    "administration": {
+      "title": "Tetapan dan juruaudit",
+      "help": "Setiap perubahan direkodkan bersama siapa membuatnya, bila, dan nilai sebelum serta selepas.",
+      "bankChangeDays": "Tempoh perubahan bank (hari sebelum hari gaji)",
+      "adjustmentThreshold": "Amaun pelarasan manual yang memerlukan sebab",
+      "save": "Simpan",
+      "defaults": "Nilai lalai sehingga diubah",
+      "version": "Versi {version}",
+      "auditorsTitle": "Juruaudit (baca sahaja)",
+      "none": "Tiada juruaudit mempunyai akses.",
+      "loginWithoutRecord": "Log masuk tanpa rekod pekerja ({id})",
+      "grantedOn": "diberikan {date}",
+      "revoke": "Tarik balik",
+      "login": "Log masuk",
+      "choose": "Pilih log masuk",
+      "grant": "Beri akses",
+      "auditorsHelp": "Juruaudit membaca bukti gelung audit dan pek audit syarikat ini, baca sahaja, sehingga ditarik balik. Setiap pemberian dan penarikan balik direkodkan."
+    }
+  },
+  "payrollReadiness": {
+    "todayTitle": "Sebelum gaji pada {date}",
+    "todayTitleNoDate": "Sebelum gaji",
+    "seeAll": "Lihat semua",
+    "waitingCount": "{count, plural, other {# perkara}} sedang menunggu kelulusan orang lain.",
+    "insightsTitle": "Kesediaan gaji saya",
+    "period": "Gaji {month} · tarikh tutup {date}",
+    "periodNoCutOff": "Gaji {month} · pasukan HR anda boleh memberitahu tarikh tutup",
+    "due": "Sebelum {date}",
+    "range": "{from} hingga {to}",
+    "allDone": "Tiada apa-apa yang menunggu anda untuk gaji ini.",
+    "unavailable": "Sebahagian daripada ini tidak dapat disemak sekarang. Cuba lagi nanti.",
+    "notInUse": "Gaji tidak digunakan di sini, jadi tiada apa-apa untuk disediakan.",
+    "groupDone": "Tiada yang tertunggak.",
+    "groupUnknown": "Tidak dapat disemak sekarang.",
+    "approvalsHelp": "Permohonan yang menunggu keputusan anda sebelum tarikh tutup.",
+    "notCovered": "Belum disemak di sini: pertukaran syif, jurang jadual, pengesahan helaian masa, kerja lebih masa yang dibuat tetapi belum dipohon, serta perubahan gaji untuk diakui.",
+    "open": "Buka",
+    "review": "Semak",
+    "confirm": "Sahkan",
+    "state": {
+      "todo": "Perlu dibuat",
+      "waiting": "Menunggu kelulusan",
+      "check": "Semak"
+    },
+    "status": {
+      "done": "Selesai",
+      "todo": "Perlu dibuat",
+      "waiting": "Menunggu",
+      "unknown": "Tidak dapat disemak",
+      "off": "Tidak digunakan"
+    },
+    "groups": {
+      "attendance": "Kehadiran",
+      "overtime": "Kerja lebih masa",
+      "leave": "Cuti",
+      "claims": "Tuntutan",
+      "toil": "Cuti ganti",
+      "details": "Butiran peribadi dan berkanun",
+      "acknowledge": "Untuk diakui",
+      "approvals": "Menunggu anda"
+    },
+    "fallback": {
+      "leave": "Cuti",
+      "claim": "perbelanjaan",
+      "someone": "ahli pasukan"
+    },
+    "kinds": {
+      "missed_clock_in": "Tiada rekod masuk",
+      "missed_clock_out": "Tiada rekod keluar",
+      "absent_no_leave": "Tidak hadir tanpa cuti direkodkan",
+      "late_or_early": "Lewat masuk atau awal keluar",
+      "attendance_request_pending": "Pembetulan kehadiran menunggu kelulusan",
+      "overtime_pending": "Permohonan kerja lebih masa menunggu kelulusan",
+      "overtime_over_cap": "Kerja lebih masa bulan ini melebihi had bulanan",
+      "leave_pending": "{label} menunggu kelulusan",
+      "leave_unpaid": "Cuti tanpa gaji: {label}",
+      "leave_certificate_missing": "Tambah dokumen sokongan untuk {label}",
+      "claim_deadline": "Hantar tuntutan {label} anda sebelum resitnya terlalu lama",
+      "claim_receipt_missing": "Tambah resit pada tuntutan {label} anda",
+      "claim_draft": "Hantar draf tuntutan {label} anda",
+      "claim_pending": "Tuntutan {label} menunggu kelulusan",
+      "toil_pending": "Permohonan cuti ganti menunggu kelulusan",
+      "bank_missing": "Tambah akaun bank anda",
+      "tax_number_missing": "Tambah nombor cukai pendapatan anda",
+      "epf_number_missing": "Tambah nombor KWSP anda",
+      "socso_number_missing": "Tambah nombor PERKESO anda",
+      "identity_missing": "Tambah nombor MyKad atau pasport anda",
+      "details_request_pending": "Perubahan butiran anda menunggu HR",
+      "tp3_new_joiner": "Maklumkan majikan terdahulu tahun ini kepada pasukan gaji (TP3)",
+      "letter_acknowledge": "Akui surat anda",
+      "notice_acknowledge": "Akui satu notis",
+      "approve_leave": "Cuti untuk diluluskan · {name}",
+      "approve_leave_cancellation": "Pembatalan cuti untuk diluluskan · {name}",
+      "approve_attendance": "Kehadiran atau kerja lebih masa untuk diluluskan · {name}",
+      "approve_claim": "Tuntutan untuk diluluskan · {name}",
+      "approve_toil": "Cuti ganti untuk diluluskan · {name}",
+      "tp1_draft": "Hantar akuan pelepasan cukai anda (TP1)",
+      "tp1_pending": "Akuan pelepasan cukai anda (TP1) menunggu kelulusan",
+      "dependants_mismatch": "Semak anak untuk pelepasan cukai: rekod keluarga anda menyenaraikan kurang daripada yang anda isytiharkan",
+      "review_acknowledge": "Akui penilaian prestasi anda",
+      "onboarding_acknowledge": "Akui serahan onboarding anda"
     }
   }
 }

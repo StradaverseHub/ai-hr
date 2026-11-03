@@ -4621,6 +4621,41 @@
       "when": 1793330001403,
       "tag": "2003_letter_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 804,
+      "version": "7",
+      "when": 1793330000363,
+      "tag": "0963_teras_loop_autonomy",
+      "breakpoints": true
+    },
+    {
+      "idx": 805,
+      "version": "7",
+      "when": 1793330000364,
+      "tag": "0964_teras_payroll_cycle_loops",
+      "breakpoints": true
+    },
+    {
+      "idx": 806,
+      "version": "7",
+      "when": 1793330000365,
+      "tag": "0965_payroll_audit_loop",
+      "breakpoints": true
+    },
+    {
+      "idx": 807,
+      "version": "7",
+      "when": 1793330000366,
+      "tag": "0966_teras_capacity_baseline",
+      "breakpoints": true
+    },
+    {
+      "idx": 808,
+      "version": "7",
+      "when": 1793330000367,
+      "tag": "0967_own_payroll_cut_off",
+      "breakpoints": true
     }
   ]
 }

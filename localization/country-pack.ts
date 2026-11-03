@@ -226,6 +226,11 @@ export type BankPaymentPreview = {digest:string;recordCount:number;totalCents:nu
 export type BankPaymentFiles = {
  preview:(ctx:SessionContext,p:BankPaymentRequest)=>Promise<BankPaymentPreview>;
  download:(ctx:SessionContext,p:BankPaymentRequest & {expectedDigest:string;requestKey:string})=>Promise<{content:string;filename:string}>;
+ /** AI v2 P2-2a — one payroll run's salary bank file as the Salary payroll loop checks it: the pack picks the company's
+  *  bank account and salary format it supports and previews that file (no Tape ID, nothing written). Null when the
+  *  company has no account this pack can produce a salary file for. Which bank, currency and format is the pack's to
+  *  know, never the kernel's. Throws BankPaymentFileError when the file cannot be produced from the run as it stands. */
+ salaryRunPreview?:(ctx:SessionContext,p:{companyId:string;periodKey:string;runSeq:number;paymentDate:string})=>Promise<BankPaymentPreview|null>;
 };
 
 export type StatutoryPaymentFile =

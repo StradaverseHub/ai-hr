@@ -1,6 +1,7 @@
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
 import {readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx} from './payroll-formula-inputs';
+import { captureRunInputsAtProcessingTx } from './payroll-audit/inputs';
 import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic,payrollRoundAmount as roundAmount} from '../lib/payroll-basic';
 import {preparePayFormulaRuntimeTx} from './pay-formula-runtime';
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
@@ -1381,6 +1382,20 @@ function batchTypeWindow(
   payPeriod: string,
 ): { start: string; end: string } {
   return cutOffWindowFor(type, sched.defaultConfig, sched.companyCfg, payPeriod);
+}
+
+/** AI v2 P2-2b — the Audit loop's record of the inputs a run used, taken in the processing transaction itself. The windows are
+ *  the same company schedule the kernel just read; the capture only reads and hashes (core/payroll-audit/inputs.ts). */
+async function captureAuditInputsTx(tx: Tx, ctx: SessionContext, batch: { batchId: string; companyId: string; payPeriod: string },
+  trigger: 'processed' | 'reprocessed', employmentIds?: readonly string[]) {
+  const sched = await loadBatchCutOffSchedule(tx, batch.companyId);
+  const windows = {
+    attendance: batchTypeWindow(sched, 'attendance', batch.payPeriod),
+    overtime: batchTypeWindow(sched, 'overtime', batch.payPeriod),
+    leave: batchTypeWindow(sched, 'leave', batch.payPeriod),
+    claim: batchTypeWindow(sched, 'claim', batch.payPeriod),
+  };
+  await captureRunInputsAtProcessingTx(tx, ctx, { ...batch, windows, trigger, ...(employmentIds ? { employmentIds } : {}) });
 }
 
 /** c7fdfcf6 (Payroll Schedule) — resolve the company-level cut-off window for a transaction TYPE + period in one
@@ -8147,6 +8162,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           employmentIds: emps.map((e) => e.employmentId),
         },
       });
+      // AI v2 P2-2b — the inputs as this reprocess used them, captured for the Audit loop in this same transaction.
+      // Read-only (core/payroll-audit/inputs.ts): it hashes owner rows, never changes a figure, never stops the run.
+      await captureAuditInputsTx(tx, ctx, { batchId: p.batchId, companyId: batch.companyId, payPeriod: batch.payPeriod }, 'reprocessed',
+        emps.map((e) => e.employmentId));
       // 49e7e0a2 — these employees' figures now match their transactions again, so the recalculation mark
       // is cleared FOR THEM ONLY. A reprocess that covers some of the waiting employees leaves the rest
       // marked, which is the whole point: Close stays refused until every stale employee is dealt with.
@@ -8293,6 +8312,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         cutOffSchedule: { frequency: runFrequency, periods: runSchedule.periods, disbursedPerCycle: perCycle },
       },
     });
+    // AI v2 P2-2b — the inputs as this run used them, captured for the Audit loop in this same transaction.
+    // Read-only (core/payroll-audit/inputs.ts): it hashes owner rows, never changes a figure, never stops the run.
+    await captureAuditInputsTx(tx, ctx, { batchId: p.batchId, companyId: batch.companyId, payPeriod: batch.payPeriod }, 'processed');
     // r226 — `payslips` is the number of payslips WRITTEN (it always was; the skip is what made the
     // distinction visible), and `skipped` names everyone this run had nothing to pay. The subset-reprocess
     // branch returns its own shape above and never carries a skip: it recomputes existing payslips.

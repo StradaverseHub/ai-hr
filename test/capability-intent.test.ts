@@ -18,8 +18,9 @@ const OFFERED=new Set(['emp-howto-1','emp-self-approve-1','emp-what-1','grp-ai-1
 
 describe('the capability offer on the scored questions',()=>{
  const turns=SMART_EVAL_SET.flatMap(conversation=>conversation.turns);
- it('covers all 65 questions, and the spec records the classifier revision',()=>{
-  expect(turns).toHaveLength(65);expect(turns.filter(turn=>OFFERED.has(turn.id))).toHaveLength(OFFERED.size);
+ // AI v2 Phase 2 P2-3 adds emp-before-payroll-1, a status question: not offered.
+ it('covers all 66 questions, and the spec records the classifier revision',()=>{
+  expect(turns).toHaveLength(66);expect(turns.filter(turn=>OFFERED.has(turn.id))).toHaveLength(OFFERED.size);
   expect(HARNESS_SPEC.offer.capabilityIntentRevision).toBe(CAPABILITY_INTENT_REVISION);
  });
  it.each(turns.map(turn=>[turn.id,turn.question,OFFERED.has(turn.id)] as const))('%s',(_id,question,offered)=>{

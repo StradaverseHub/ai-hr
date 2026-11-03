@@ -29,12 +29,15 @@ import {workerModule,workerRunGateTx} from '../agent-registry/controls';
 import type {EntitlementSnapshot} from '../entitlement-types';
 import {isModuleEnabled} from '../entitlements';
 import {LOOP_DEFINITIONS} from './definitions';
+import {runLoopAutonomy} from './act';
 import {LoopObservationSchema,unique,type LoopObservation,type TrackedCase} from './detect';
 import {LOOP_IDS,type LoopCheck,type LoopId,type LoopRead} from './types';
 
 export type LoopRunOptions=Readonly<{tenantId:string;principalId:string;entitlements:EntitlementSnapshot;
  /** The HR day the run is for (Asia/Kuala_Lumpur); defaults to today. */
- today?:string}>;
+ today?:string;
+ /** AI v2 P2-2a: the instant the run starts (a loop with a per-company interval compares it with its last run). */
+ now?:Date}>;
 export type LoopCounts={observed:number;opened:number;reopened:number;closed:number;openNow:number;waitingNow:number;capped:boolean};
 export type LoopRunResult=
  |Readonly<{workerId:LoopId;status:'not_run';reasons:readonly string[]}>
@@ -48,7 +51,7 @@ const authorityFingerprint=(ctx:SessionContext)=>createHash('sha256').update(JSO
  [...(ctx.grants??[])].map(grant=>grant.role+'@'+(grant.companyId??'*')).sort()])).digest('hex').slice(0,16);
 
 /** The sponsor's authority now, from the database. Null when the login is gone or blocked, or not of this tenant. */
-async function currentSponsorTx(tx:Tx,tenantId:string,userId:string,entitlements:EntitlementSnapshot):Promise<SessionContext|null>{
+export async function currentSponsorTx(tx:Tx,tenantId:string,userId:string,entitlements:EntitlementSnapshot):Promise<SessionContext|null>{
  const [principal]=await tx.execute(sql`select p.tenant_id,p.person_id,p.grants,app.login_blocked(${userId}::uuid) as blocked from app.principal(${userId}::uuid) p`) as unknown as
   {tenant_id:string;person_id:string|null;grants:Grant[]|null;blocked:boolean}[];
  if(!principal||principal.tenant_id!==tenantId||principal.blocked)return null;
@@ -69,7 +72,7 @@ async function pausedTx(tx:Tx,tenantId:string,workerId:LoopId):Promise<Set<strin
 
 /** One run of one loop for one tenant. Never throws for a refusal; a database failure while preparing propagates. */
 export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<LoopRunResult>{
- const def=LOOP_DEFINITIONS[workerId],today=options.today??todayInKualaLumpur(),runId=randomUUID(),startedAt=new Date();
+ const def=LOOP_DEFINITIONS[workerId],today=options.today??todayInKualaLumpur(),runId=randomUUID(),startedAt=options.now??new Date();
  const agent=agentContext(options.tenantId,options.principalId,options.entitlements),module=workerModule(workerId);
  // 1 and 2: gate and sponsor, as the agent principal.
  const first=await withTenant(agent,async tx=>{
@@ -103,7 +106,10 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
  }).catch(()=>null):null;
  if(!sponsor||!scope)return recordStatus('sponsor_lost',[...gateChecks,check('sponsor_authority',sponsor?`authority:${authorityFingerprint(sponsor)}`:null,false)],[]);
  const checks=[...gateChecks,check('sponsor_authority',`authority:${authorityFingerprint(sponsor)}`,true)];
- const companies=scope.filter(companyId=>!first.paused.has(companyId)&&isModuleEnabled(agent,module,companyId));
+ const inScope=scope.filter(companyId=>!first.paused.has(companyId)&&isModuleEnabled(agent,module,companyId));
+ // AI v2 P2-2a: a loop with a per-company interval (the Pre-salary loop) runs only for the companies due now; the others
+ // are left untouched and record nothing, so their last run stays the one their interval counts from.
+ const companies=def.due&&inScope.length?await withTenant(agent,tx=>def.due!(tx,{tenantId:options.tenantId,workerId,companies:inScope,now:startedAt})):inScope;
  if(!companies.length)return Object.freeze({workerId,status:'ran' as const,runId,companies:0,totals:Object.freeze(zero())});
  // The cases this loop is tracking in scope, as the agent principal.
  const tracked:TrackedCase[]=await withTenant(agent,tx=>tx.select({id:terasLoopCase.id,subjectKey:terasLoopCase.subjectKey,companyId:terasLoopCase.companyId,
@@ -119,13 +125,17 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
   return recordStatus('failed',[...checks,check('owner_read',def.version,false)],[]);
  }
  // 4 and 5: prepare and record, as the agent principal, one run of this loop at a time.
- return withTenant(agent,async tx=>{
+ const prepared=await withTenant(agent,async tx=>{
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`teras-loop:${options.tenantId}:${workerId}`},0))`);
   const gate=await workerRunGateTx(tx,agent,workerId),now=await controlTx(tx,options.tenantId,workerId);
   if(!gate.run||!now||now.version!==control.version||now.sponsorUserId!==sponsorUserId)
    return Object.freeze({workerId,status:'not_run' as const,reasons:Object.freeze([...gate.reasons,'switch_changed'])});
   const paused=await pausedTx(tx,options.tenantId,workerId);
-  const counts=new Map(companies.filter(companyId=>!paused.has(companyId)).map(companyId=>[companyId,zero()]));
+  // AI v2 P2-2a: a loop with an interval checks again, under this lock, that each company is still due. A run of the
+  // same loop that recorded meanwhile (an overlapping tick, or the nightly sweep) already checked it: this run writes
+  // nothing there, so one company is never run twice in its interval, however the runs overlap.
+  const stillDue=def.due?new Set(await def.due(tx,{tenantId:options.tenantId,workerId,companies:companies.filter(companyId=>!paused.has(companyId)),now:startedAt})):null;
+  const counts=new Map(companies.filter(companyId=>!paused.has(companyId)&&(!stillDue||stillDue.has(companyId))).map(companyId=>[companyId,zero()]));
   const keys=unique(observations.map(item=>item.subjectKey));
   const existing:(typeof terasLoopCase.$inferSelect)[]=[];
   for(let offset=0;offset<keys.length;offset+=500)existing.push(...await tx.select().from(terasLoopCase)
@@ -172,6 +182,11 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
    totals.openNow+=c.openNow;totals.waitingNow+=c.waitingNow;totals.capped||=c.capped;}
   return Object.freeze({workerId,status:'ran' as const,runId,companies:live.length,totals:Object.freeze(totals)});
  });
+ // AI v2 Phase 2 P2-1: above Prepare, act within each company's limits, observe, and demote (core/loops/act.ts). A loop
+ // capped at Prepare returns at once; this step never throws and never changes the Prepare result.
+ if(prepared.status==='ran'&&prepared.companies>0)await runLoopAutonomy({workerId,tenantId:options.tenantId,principalId:options.principalId,agent,sponsor,
+  sponsorUserId:sponsor.userId!,runId,today,companies});
+ return prepared;
 }
 
 /** Every loop for one tenant, in registry order. One loop's failure never stops the others. */
