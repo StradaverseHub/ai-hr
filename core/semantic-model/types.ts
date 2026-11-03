@@ -52,7 +52,9 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** AI v2 W2: the caller's own attendance correction or overtime request (./entities.ts). */
  |'attendance_request'
  /** AI v2 W2: an own claim and an own profile change request prepared in chat (./entities-own-changes.ts). */
- |'claim_request'|'profile_change_request';
+ |'claim_request'|'profile_change_request'
+ /** AI v2 W1: what the caller can do, import, report on or open (./entities-catalogue.ts). */
+ |'product_capability';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;

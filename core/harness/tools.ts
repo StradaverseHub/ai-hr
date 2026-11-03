@@ -15,6 +15,8 @@
  *    records and words; it saves a review, never a change, and the person confirms on the review page. A leave
  *    application (issue 10) with details missing or unclear returns them, with the leave types numbered, so the
  *    person is asked one question; nothing is suggested until it is clear.
+ *  - product_capabilities (AI v2 W1): the caller's capability catalogue (core/product-context/capability-catalogue.ts),
+ *    a context tool disclosed under its semantic entity (core/semantic-model/entities-catalogue.ts).
  * No binding changes HR data; the only write is the review custody row a native preparer saves for a proposal.
  * Tests may pass their own provider; production wiring will not. */
 import {and,eq,inArray,sql} from 'drizzle-orm';
@@ -35,6 +37,7 @@ import {asksToBypassReview,prepareSuggestedProposal} from '../proposals/suggeste
 import {LEAVE_APPLY_FORM_ROUTE} from '../proposals/leave-apply';
 import type {Proposal} from '../proposals/proposal';
 import {HARNESS_SPEC} from './spec';
+import {PRODUCT_CAPABILITIES_SPEC,productCapabilities} from '../product-context/capability-catalogue';
 
 export type ToolKind='read'|'context'|'suggest';
 export type ToolRun=Readonly<{ok:boolean;content:unknown;refusal?:string;suggestion?:Readonly<{action:string;reviewRoute:string;inlineCard:boolean}>;
@@ -139,7 +142,10 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
     return{ok:true,content:{...result,note},
      suggestion,...(proposal?{proposal}:{})};}
    return{ok:false,refusal:result.reason,content:{...result,note:result.reason==='missing_details'?'Ask the person for the missing details. Do not say anything is prepared.':'This change is not available to this person here.'}};}}]:[];
- return Object.freeze({bindings:Object.freeze([...context,...reads,...teras,...suggest]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
+ // AI v2 W1: what this person can do, import, report on or open; nothing is `prepare` when this surface offers no actions.
+ const capabilities:ToolBinding[]=[{name:PRODUCT_CAPABILITIES_SPEC.name,kind:'context',entity:'product_capability',spec:PRODUCT_CAPABILITIES_SPEC,identifierInputs:[],
+  async run(input){const result=await productCapabilities(ctx,input,{locale:scope.locale,prepare:actions});return result.ok?{ok:true,content:result}:{ok:false,content:result,refusal:result.refusal};}}];
+ return Object.freeze({bindings:Object.freeze([...context,...reads,...teras,...suggest,...capabilities]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
   destinations:linkablePathsFor(ctx,visibleModuleCodes(ctx)??undefined)});
 };
 
