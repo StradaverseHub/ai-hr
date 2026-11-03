@@ -232,6 +232,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/assistant/own-change-proposal-actions.ts":{"confirmOwnChangeProposalAction":"internal:assistant_surface","editOwnChangeProposalAction":"internal:assistant_surface"},
  "app/assistant/chat-import-actions.ts":{"confirmChatImportAction":"internal:assistant_surface"},
  "app/assistant/loop-clock-out-actions.ts":{"confirmMissedClockOutAction":"internal:assistant_surface"},
+ // AI v2 Phase 2 hardening (loops): the person's own one-tap TP3 answer on the Before payroll checklist card; the AI never answers it.
+ "app/assistant/payroll-readiness-actions.ts":{"answerTp3PreviousEmployerAction":"internal:assistant_surface"},
  "app/assistant/capacity-actions.ts":{"setCapacityBaselineAction":"handoff:ai_governance"},
  // AI v2 Phase 2 P2-5: the Living Handbook (AI Centre › Policies). People write, confirm and approve policies; the AI never does.
  "app/assistant/policy-actions.ts":{"applyScheduledPolicyValueAction":"handoff:ai_governance","approvePolicyAction":"handoff:ai_governance","createPolicyAction":"handoff:ai_governance","decidePolicyValueAction":"handoff:ai_governance","draftFromVersionAction":"handoff:ai_governance","markTextOnlyAction":"handoff:ai_governance","prepareFromDriftAction":"handoff:ai_governance","readPolicyValuesAction":"handoff:ai_governance","returnPolicyAction":"handoff:ai_governance","saveDraftAction":"handoff:ai_governance","submitPolicyAction":"handoff:ai_governance"},

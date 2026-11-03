@@ -149,7 +149,7 @@ describe('capturing what people did',()=>{
    signalKey:'answer',kind:'answer_unhelpful',action:'answer',area:'general',role:'employee',locale:'en',byUserId:employee.userId})),/row-level security/i);
   // A gap is counted only through the asker's own note on their own open turn: a gated turn's record is refused there.
   for(const record of [gated,others])await refusedWith(withTenant(employee,tx=>tx.insert(terasGapTurn).values({tenantId:b.tenantId,recordId:record.id,companyId:b.companyId,
-   byUserId:employee.userId})),/row-level security/i);
+   byUserId:employee.userId,intentKey:'cannot_answer:general'})),/row-level security/i);
   expect(await owner.db.select().from(terasGapTurn)).toEqual([]);
   // Nor may a signal name a company other than its turn's, or be attributed to someone else.
   await refusedWith(withTenant(employee,tx=>tx.insert(terasLearningSignal).values({tenantId:b.tenantId,companyId:second.id,recordId:own.id,
@@ -544,7 +544,10 @@ describe('reviewing corrections and eval candidates',()=>{
 
 describe('the loops\' proposals',()=>{
  it('applies a threshold proposal only by an administrator, as a new settings version, and reverts it as another',async()=>{
-  // Payroll HR cleared five net-swing flags as expected (20% to 24%) in the last 30 days.
+  // Payroll HR cleared five net-swing flags as expected (20% to 24%) in the last 30 days. Phase 2 integration: another
+  // administrator than the approver (the loops hardening branch's 2005: a proposal is approved only by a group
+  // administrator who disposed of none of its flags).
+  const payrollHr=await login(b,'Fictional Payroll HR Administrator','hr_admin');
   for(const swing of [2000,2100,2200,2300,2400]){
    const caseId=randomUUID();
    await owner.db.execute(sql`insert into public.teras_loop_case (id,tenant_id,worker_id,company_id,employment_id,subject_key,recipient,state,close_reason,resolution,facts,
@@ -552,7 +555,7 @@ describe('the loops\' proposals',()=>{
     values (${caseId}::uuid,${b.tenantId}::uuid,'loop_salary_payroll',${b.companyId}::uuid,null,${`salaryrun:${randomUUID()}`},'payroll','closed','done','completed','{}'::jsonb,
      now()-interval '5 days',now()-interval '5 days',now()-interval '4 days',now()-interval '4 days',${randomUUID()}::uuid,${randomUUID()}::uuid)`);
    await owner.db.execute(sql`insert into public.teras_payroll_swing_disposition (tenant_id,case_id,company_id,employment_id,pay_period,pattern,swing_bp,threshold_bp,disposition,decided_by_user_id,decided_at)
-    values (${b.tenantId}::uuid,${caseId}::uuid,${b.companyId}::uuid,${employee.employmentId}::uuid,'2026-10','cause:salary_change',${swing},1500,'expected',${group.userId}::uuid,now()-interval '3 days')`);
+    values (${b.tenantId}::uuid,${caseId}::uuid,${b.companyId}::uuid,${employee.employmentId}::uuid,'2026-10','cause:salary_change',${swing},1500,'expected',${payrollHr.userId}::uuid,now()-interval '3 days')`);
   }
   let view=await aiQuality(group);
   // Hand-worked: 80% of the 5 expected swings fall at or below the 4th (2300 bp), so 15% -> 23%; and the one pattern, all expected.
