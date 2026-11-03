@@ -4,7 +4,7 @@ import {existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {eq} from 'drizzle-orm';
 import * as schema from '../db/schema';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {seedGuides} from '../db/seed-guides';
@@ -14,9 +14,12 @@ import {ASSISTANT_PROPOSABLE_ACTIONS} from '../lib/ai/assistant-action-proposal-
 import {capabilityRegistry,checkProposal,contextToolSpecsFor,runContextTool,suggestAction} from '../core/product-context/tools';
 import {ACTION_PURPOSE,SUGGESTABLE_ACTIONS,actionCatalogueFor} from '../core/product-context/actions';
 import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
+import {HARNESS_TEST_ONLY,runTurn} from '../core/harness/runner';
+import {InMemoryTaskMemoryStore} from '../core/harness/memory';
+import {scriptedModel} from './harness-ratchet/scripted-model';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let base:Base;
-beforeAll(migrateTestDb);afterAll(closeAll);
+beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.unstubAllEnvs();});
 beforeEach(async()=>{await resetDb();base=await seedBase();await seedGuides(owner.db,base.tenantId);});
 const NAMES=['Fictional Context Employee','Fictional Context Admin'];
 async function people(){
@@ -56,6 +59,46 @@ describe('Assistant context layer tools',()=>{
   for(const page of [content.pages.leaveTypes,content.pages.scheduleGroups].filter((page):page is string=>Boolean(page)))expect(existsSync(join(process.cwd(),'app',page,'page.tsx')),page).toBe(true);
   const body=JSON.stringify(content);for(const name of NAMES)expect(body.includes(name),name).toBe(false);
  });
+ // After spec v20's scored run 41641279562 (grp-zh-1, "我们集团有哪些公司？"): no read named the administrator's companies, so
+ // a group administrator was told only her own employment's company and sent to the org chart.
+ it('lists the active companies an administrator administers, by name, with the Organization page',async()=>{
+  const {hr}=await people();
+  await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional Sister Sdn Bhd'});
+  await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional Closed Sdn Bhd',archivedAt:new Date('2025-01-01T00:00:00Z')});
+  const companies=async(ctx:SessionContext)=>{const result=await runContextTool(ctx,'company_setup',{},scope());if(!result.ok)throw Error('company_setup refused');
+   return result.content as {companies:{name:string}[];pages:{companies:string}};};
+  // A group-wide HR administrator (createAppUser grants hr_admin for every company): every active company, by legal name.
+  const group=await companies(hr);
+  expect(group.companies).toEqual([{name:'Acme Sdn Bhd'},{name:'Fictional Sister Sdn Bhd'}]);
+  expect(group.pages.companies).toBe('/admin/organization');expect(existsSync(join(process.cwd(),'app/admin/organization/page.tsx'))).toBe(true);
+  const destinations=await runContextTool(hr,'product_destinations',{},scope());if(!destinations.ok)throw Error('destinations unavailable');
+  expect((destinations.content as {href:string}[]).map(row=>row.href)).toContain(group.pages.companies);
+  // A company-scoped HR administrator: their own company only (the database's app.is_admin_for, as the Organization listing).
+  const scopedPerson=await hireEmployee(adminCtx(base),{person:{fullName:'Fictional Scoped Admin',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptB,employmentType:'full_time',hiredOn:'2020-01-01'});
+  const [scopedUser]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'user_'+randomUUID(),personId:scopedPerson.personId}).returning({id:schema.appUser.id});
+  await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:scopedUser.id,companyId:base.companyId,role:'hr_admin'});
+  const scoped={...await entitledCtx(base,['hr_admin']),userId:scopedUser.id,personId:scopedPerson.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:base.companyId}]} as SessionContext;
+  expect((await companies(scoped)).companies).toEqual([{name:'Acme Sdn Bhd'}]);
+  // Never to someone who is not an administrator.
+  const {employee}=await people();expect(await runContextTool(employee,'company_setup',{},scope())).toEqual({ok:false,refusal:'not_offered'});
+ });
+ it('answers "我们集团有哪些公司？" from company_setup on the ordinary path, linking the companies page, not the org chart',async()=>{
+  vi.stubEnv('AI_CONFIG_SECRET','fictional-context-companies-passphrase');
+  const {hr}=await people();
+  await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional Sister Sdn Bhd'});
+  const reply='集团有两家公司：\n- Acme Sdn Bhd\n- Fictional Sister Sdn Bhd\n\n可在[组织](/admin/organization)查看。';
+  const model=scriptedModel([{calls:[{name:'company_setup'}]},{final:{reply,mode:'answer'}}]);
+  const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx:hr,conversationId:randomUUID(),question:'我们集团有哪些公司？',scope:{companyId:base.companyId,locale:'zh'},model,memory:new InMemoryTaskMemoryStore()});
+  // The Chinese question takes the ordinary path: open gate, company_setup offered, no capability catalogue (not a "can you" ask).
+  expect(result.trace.gate.reason).toBeNull();
+  const offered=model.requests[0].tools.map(tool=>tool.name);
+  expect(offered).toContain('company_setup');expect(offered).not.toContain('product_capabilities');
+  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['company_setup','ok']]);
+  const tool=[...model.requests[1].messages].reverse().find(message=>message.role==='tool')!.content as string;
+  for(const name of ['Acme Sdn Bhd','Fictional Sister Sdn Bhd','/admin/organization'])expect(tool,name).toContain(name);
+  // The companies page passes the reply's link check: the reply is shown as written, no fallback and no retry.
+  expect(result.reply).toBe(reply);expect(model.requests).toHaveLength(2);
+ },60000);
  it('finds authored guide sections within the caller\'s audience clearance',async()=>{
   const {employee,hr}=await people(),adminOnly=new Set(loadGuides().filter(guide=>guide.meta.audience==='hr_admin').map(guide=>guide.meta.title));
   const forAdmin=await runContextTool(hr,'product_guidance',{query:'payroll setup statutory'},scope());
