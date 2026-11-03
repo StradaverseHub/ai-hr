@@ -275,6 +275,7 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
       id: schema.payrollBatch.id,
       companyId: schema.payrollBatch.companyId,
       payPeriod: schema.payrollBatch.payPeriod,
+      runType: schema.payrollBatch.runType,
       country: schema.company.country,
     })
     .from(schema.payrollBatch)
@@ -342,18 +343,22 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
     : [];
   const profileByPerson = new Map(profiles.map((p) => [p.personId, p]));
 
-  // PRIOR CYCLE — the immediately preceding period for the SAME company that produced payslips. Ordered
-  // by payPeriod (a 'YYYY-MM' string, so lexicographic order is chronological order) and limited to one.
+  // PRIOR CYCLE — the immediately preceding period for the SAME company and the SAME RUN TYPE (AI v2 Phase 2
+  // hardening: a bonus run is compared with the last bonus run, an off-cycle run with the last off-cycle run, a salary
+  // run with the last salary run, never with each other). Ordered by payPeriod (a 'YYYY-MM' string, so lexicographic
+  // order is chronological order), then the highest run sequence, and limited to one: the row
+  // app.payroll_close_circuit_inputs selects too (migration 2011).
   const [priorBatch] = await tx
     .select({ id: schema.payrollBatch.id })
     .from(schema.payrollBatch)
     .where(
       and(
         eq(schema.payrollBatch.companyId, batch.companyId),
+        eq(schema.payrollBatch.runType, batch.runType),
         lt(schema.payrollBatch.payPeriod, batch.payPeriod),
       ),
     )
-    .orderBy(sql`${schema.payrollBatch.payPeriod} desc`)
+    .orderBy(sql`${schema.payrollBatch.payPeriod} desc`, sql`${schema.payrollBatch.runSeq} desc`, sql`${schema.payrollBatch.id} desc`)
     .limit(1);
 
   const priorSlips = priorBatch
@@ -450,6 +455,30 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
     capsSkipReason = 'statutory ruleset could not be loaded';
   }
 
+  // AI v2 Phase 2 hardening — the owning facts the data-aware detectors read first: the pay mode in force at the period's
+  // end (a daily-rated person's partial month is their normal pay) and the attendance owner's own exemption (a schedule
+  // group exempt from absence judgments on every day of the period has no attendance to expect).
+  const payModes = employmentIds.length
+    ? await tx.select({ employmentId: schema.compensation.employmentId, payMode: schema.compensation.payMode }).from(schema.compensation)
+        .where(and(inArray(schema.compensation.employmentId, employmentIds), isNull(schema.compensation.supersededAt),
+          sql`${schema.compensation.validFrom} <= ${periodEnd}`, sql`(${schema.compensation.validTo} is null or ${schema.compensation.validTo} > ${periodEnd})`))
+    : [];
+  const payModeByEmployment = new Map(payModes.map((row) => [row.employmentId, row.payMode as string | null]));
+  const exemptByEmployment = new Map<string, boolean>();
+  if (employmentIds.length) {
+    try {
+      // Loaded on use (the schedule-group owner imports the payroll facade, which imports this file).
+      const { exceptionDecisionsTx } = await import('./schedule-group-controls');
+      // In a savepoint, so a read that fails leaves the evaluation's transaction usable.
+      const exemptOn = await tx.transaction((savepoint) => exceptionDecisionsTx(savepoint as unknown as Tx, employmentIds, periodStart, periodEnd));
+      const days: string[] = [];
+      for (let d = 1; d <= dim; d++) days.push(`${batch.payPeriod}-${String(d).padStart(2, '0')}`);
+      for (const id of employmentIds) exemptByEmployment.set(id, days.every((day) => exemptOn(id, day).enabled === true));
+    } catch {
+      // An exemption that cannot be read is no exemption: the detector runs as before.
+    }
+  }
+
   const contexts: DetectorContext[] = slips.map((slip) => {
     const emp = empById.get(slip.employmentId);
     const profile = emp ? profileByPerson.get(emp.personId) : undefined;
@@ -467,10 +496,12 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string): Promise
         hiredOn: emp?.hiredOn ?? null,
         terminatedOn: emp?.terminatedOn ?? null,
         concurrentPaidEmploymentIds: concurrent,
+        payMode: payModeByEmployment.get(slip.employmentId) ?? null,
       },
       activity: {
         attendanceDays: attByEmployment.get(slip.employmentId) ?? 0,
         approvedLeaveDays: leaveByEmployment.get(slip.employmentId) ?? 0,
+        attendanceExempt: exemptByEmployment.get(slip.employmentId) === true,
       },
       period: { start: periodStart, end: periodEnd, calendarDays: dim },
       caps: caps ?? {},
@@ -894,6 +925,7 @@ async function evaluateCircuitBreakerSourceTx(tx:Tx,tenantId:string,batchId:stri
     .select({
       companyId: schema.payrollBatch.companyId,
       payPeriod: schema.payrollBatch.payPeriod,
+      runType: schema.payrollBatch.runType,
     })
     .from(schema.payrollBatch)
     .where(eq(schema.payrollBatch.id, batchId))
@@ -952,13 +984,15 @@ async function evaluateCircuitBreakerSourceTx(tx:Tx,tenantId:string,batchId:stri
     if(priorBatchId===null)return observed({...blank,skippedReason:'no prior cycle to compare against'});
     currentNet=num(inputs.current_net);priorNet=num(inputs.prior_net);
   }else{
+  // The prior cycle of the same run type, exactly as app.payroll_close_circuit_inputs selects it (migration 2011).
   const [priorBatch] = await tx
     .select({ id: schema.payrollBatch.id })
     .from(schema.payrollBatch)
     .where(
-      and(eq(schema.payrollBatch.companyId, batch.companyId), lt(schema.payrollBatch.payPeriod, batch.payPeriod)),
+      and(eq(schema.payrollBatch.companyId, batch.companyId), eq(schema.payrollBatch.runType, batch.runType),
+        lt(schema.payrollBatch.payPeriod, batch.payPeriod)),
     )
-    .orderBy(sql`${schema.payrollBatch.payPeriod} desc`)
+    .orderBy(sql`${schema.payrollBatch.payPeriod} desc`, sql`${schema.payrollBatch.runSeq} desc`, sql`${schema.payrollBatch.id} desc`)
     .limit(1);
   if (!priorBatch) return observed({ ...blank, skippedReason: 'no prior cycle to compare against' });
 

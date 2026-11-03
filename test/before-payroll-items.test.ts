@@ -203,7 +203,10 @@ describe('the cut-off is the payroll owner\'s',()=>{
  it('for the person\'s own employment: the owner\'s window for the cut-off day the database returns for it',async()=>{
   await read();
   expect(fx.calls.filter(call=>call[0]==='ownCutOff')).toHaveLength(1);
-  expect(fx.calls.filter(call=>call[0]==='cutOffWindowFor')).toEqual([['cutOffWindowFor','salary',null,{cutOffDay:20},'2026-11']]);
+  // Phase 2 hardening: the salary window, and each input type's own window from the company's per-type cut-off days (none
+  // set here), all for the same pay period: the Pre-salary loop's own resolution (core/loops/payroll-inputs.ts).
+  const company={cutOffDay:20,attendanceCutOffDay:null,overtimeCutOffDay:null,claimCutOffDay:null,unpaidLeaveCutOffDay:null,payDay:null};
+  expect(fx.calls.filter(call=>call[0]==='cutOffWindowFor')).toEqual(['salary','attendance','overtime','claim','leave'].map(type=>['cutOffWindowFor',type,null,company,'2026-11']));
  });
  it('moves to the next period once this one\'s cut-off has passed',async()=>{
   const result=(await readMyPayrollReadiness(CTX,{today:'2026-11-25'}))!;

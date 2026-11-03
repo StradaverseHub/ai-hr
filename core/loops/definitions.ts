@@ -12,8 +12,16 @@ import {CLOCK_OUT_LOOP_VERSION,detectMissedClockOuts} from './missed-clock-outs'
 import {DOCUMENT_EXPIRY_LOOP_VERSION,detectDocumentExpiry} from './document-expiry';
 import {SALARY_PAYROLL_LOOP_VERSION,detectSalaryPayroll} from './salary-payroll';
 import {payrollLoopDueTx} from './payroll-loop-settings';
+import {payrollChangedCompanies} from './payroll-freshness';
+import {sendCutOffReminders} from './cut-off-reminders';
+import type {SessionContext} from '../../db/client';
 
 export type LoopDueCheck=(tx:Tx,input:Readonly<{tenantId:string;workerId:LoopId;companies:readonly string[];now:Date}>)=>Promise<string[]>;
+/** Phase 2 hardening: a step after Prepare that only notifies (the Pre-salary loop's cut-off reminders). Never throws. */
+export type LoopAfterPrepare=(input:Readonly<{tenantId:string;principalId:string;runId:string;agent:SessionContext;sponsor:SessionContext;
+ companies:readonly string[];today:string}>)=>Promise<unknown>;
+/** Phase 2 hardening: the companies whose source changed since the loop last ran there (read as the sponsor). */
+export type LoopChangedCheck=(sponsor:SessionContext,input:Readonly<{companies:readonly string[];since:ReadonlyMap<string,Date|null>}>)=>Promise<string[]>;
 export type LoopDefinition=Readonly<{id:LoopId;version:string;detect:LoopDetector;
  /** Who the loop's card is for. A passport card goes to the employee; HR sees them together on Today. */
  recipient:LoopRecipient;
@@ -24,15 +32,19 @@ export type LoopDefinition=Readonly<{id:LoopId;version:string;detect:LoopDetecto
  /** AI v2 P2-2a: the companies due now, for a loop that checks each company at its own interval (read as the agent). */
  due?:LoopDueCheck;
  /** AI v2 P2-2a: a loop about pay stays at Prepare in every company (owner hard rule): no level may ever let it act. */
- prepareOnly?:true}>;
+ prepareOnly?:true;
+ /** Phase 2 hardening: what makes the payroll tick refresh this loop for a company between nightly sweeps. */
+ changedSince?:LoopChangedCheck;
+ /** Phase 2 hardening: a notice step after Prepare (classed in core/loops/autonomy.ts LOOP_NOTICES). */
+ afterPrepare?:LoopAfterPrepare}>;
 
 export const LOOP_DEFINITIONS:Readonly<Record<LoopId,LoopDefinition>>=Object.freeze({
  loop_probation_ending:{id:'loop_probation_ending',version:PROBATION_LOOP_VERSION,detect:detectProbationEnding,recipient:'hr',proposesValue:false,openCap:200},
  loop_payroll_inputs:{id:'loop_payroll_inputs',version:PAYROLL_INPUTS_LOOP_VERSION,detect:detectPayrollInputs,recipient:'payroll',proposesValue:false,openCap:200,
-  due:payrollLoopDueTx,prepareOnly:true},
+  due:payrollLoopDueTx,prepareOnly:true,afterPrepare:sendCutOffReminders},
  loop_missing_employee_data:{id:'loop_missing_employee_data',version:MISSING_DATA_LOOP_VERSION,detect:detectMissingEmployeeData,recipient:'employee',proposesValue:false,openCap:200},
  loop_missed_clock_outs:{id:'loop_missed_clock_outs',version:CLOCK_OUT_LOOP_VERSION,detect:detectMissedClockOuts,recipient:'employee',proposesValue:true,openCap:200},
  loop_document_expiry:{id:'loop_document_expiry',version:DOCUMENT_EXPIRY_LOOP_VERSION,detect:detectDocumentExpiry,recipient:'employee',proposesValue:false,openCap:200},
  loop_salary_payroll:{id:'loop_salary_payroll',version:SALARY_PAYROLL_LOOP_VERSION,detect:detectSalaryPayroll,recipient:'payroll',proposesValue:false,openCap:200,
-  prepareOnly:true},
+  prepareOnly:true,changedSince:(sponsor,input)=>payrollChangedCompanies(sponsor,input)},
 });

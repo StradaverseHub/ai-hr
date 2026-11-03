@@ -9,8 +9,10 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const state=vi.hoisted(()=>({session:null as unknown}));
+const state=vi.hoisted(()=>({session:null as unknown,auditor:false}));
 vi.mock('../lib/session',()=>({getSession:async()=>state.session}));
+// Phase 2 hardening: whether the login holds a current read-only auditor grant (the database's answer, stood in for here).
+vi.mock('../core/payroll-audit/reader-grant',()=>({hasAuditReaderGrant:async()=>state.auditor,auditReaderCompaniesTx:async()=>[]}));
 // lib/authz imports the entitlement owner for other guards; none of the guards exercised here reads it.
 vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>{throw Error('not read by requireAdmin');}}));
 import ControlTowerLayout from '../app/control-tower/layout';
@@ -35,7 +37,7 @@ async function redirectOf(run:()=>unknown):Promise<{url:string;status:string}|nu
   return {url:parts.slice(2,-2).join(';'),status:parts[parts.length-2]};
  }
 }
-beforeEach(()=>{state.session=null;});
+beforeEach(()=>{state.session=null;state.auditor=false;});
 
 describe('guards are unchanged by the merge',()=>{
  it.each(['employee','manager'] as const)('%s: every /control-tower route is refused by the shared layout, and the old explainer refuses before forwarding',async role=>{
@@ -62,9 +64,24 @@ describe('guards are unchanged by the merge',()=>{
 }`);
   expect(read('lib/authz-model.ts')).toContain(`const ADMIN_ROLES = new Set(['hr_admin', 'super_admin']);`);
   expect(read('app/control-tower/layout.tsx')).toContain(`export default async function ControlTowerLayout({ children }: { children: ReactNode }) {
-  await requireAdmin();
+  await requireAdminOrAuditReader();
   return <>{children}</>;
 }`);
+  expect(read('lib/authz.ts')).toContain(`export async function requireAdminOrAuditReader(): Promise<SessionContext> {
+  const s = await getSession();
+  if (isAdmin(s)) return s;
+  if (!(await hasAuditReaderGrant(s))) redirect('/');
+  return s;
+}`);
+ });
+
+ it('Phase 2 hardening: a read-only auditor passes the layout for the Audit loop page, and every other page still sends them home',async()=>{
+  state.session=SESSIONS.employee;state.auditor=true;
+  expect(await redirectOf(()=>ControlTowerLayout({children:null}))).toBeNull();
+  expect(await redirectOf(()=>requireAdmin())).toEqual({url:'/',status:'307'});
+  expect(await redirectOf(()=>HowItWorksPage())).toEqual({url:'/',status:'307'});
+  state.auditor=false;
+  expect(await redirectOf(()=>ControlTowerLayout({children:null}))).toEqual({url:'/',status:'307'});
  });
 
  it('every /control-tower page still calls requireAdmin first, under the shared layout',()=>{
@@ -82,6 +99,8 @@ describe('guards are unchanged by the merge',()=>{
    path.join('app/control-tower/loops','loop_payroll_audit','page.tsx')]));
   expect(pages).toEqual(expect.arrayContaining([path.join('app/control-tower/loops','payroll-cycle','page.tsx'),
    path.join('app/control-tower/loops','payroll-cycle','salary','page.tsx'),path.join('app/control-tower/loops','payroll-cycle','settings','page.tsx')]));
-  for(const page of pages)expect(read(page),page).toMatch(/await requireAdmin\(\)/);
+  // Phase 2 hardening: the Audit loop page alone admits a read-only auditor (its own read is the auditor's granted companies).
+  const auditPage=path.join('app/control-tower/loops','loop_payroll_audit','page.tsx');
+  for(const page of pages)expect(read(page),page).toMatch(page===auditPage?/await requireAdminOrAuditReader\(\)/:/await requireAdmin\(\)/);
  });
 });

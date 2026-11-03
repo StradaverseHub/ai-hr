@@ -226,6 +226,12 @@ describe('continuous control checks',()=>{
   // Bank change: A's change moved to 3 days before pay day (31 January), B's to 21 days before, C's and D's long before.
   for(const [person,at] of [[f.a,'2026-01-28T10:00:00+08:00'],[f.bb,'2026-01-10T10:00:00+08:00'],[f.c,'2025-11-01T10:00:00+08:00'],[f.d,'2025-11-01T10:00:00+08:00']] as const)
    await tamper(sql`update public.domain_event set occurred_at=${at}::timestamptz where tenant_id=${b.tenantId}::uuid and event_type='employee.bank.updated' and payload->>'personId'=${person.personId}`);
+  // Phase 2 hardening: a first bank entry is not a change, so A's details are CHANGED too, on the same day, from an account
+  // ending 2222 to the shared one (the statutory owner's own event shape).
+  await tamper(sql`insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload,occurred_at)
+   values (${b.tenantId}::uuid,'employee',${f.a.personId}::uuid,'employee.bank.updated','user',${f.hr.userId}::uuid,
+    ${JSON.stringify({personId:f.a.personId,before:{bankName:'Maybank',bankAccountNo:'000011112222'},after:{bankName:'Maybank',bankAccountNo:'1122-3344-5566'}})}::jsonb,
+    '2026-01-28T11:00:00+08:00'::timestamptz)`);
   // Pay after the last working day: B left on 31 December 2025.
   await tamper(sql`update public.employment set last_working_date='2025-12-31' where id=${f.bb.employmentId}::uuid`);
   // Attendance for A and C in January; none for B.
@@ -247,11 +253,13 @@ describe('continuous control checks',()=>{
  it('each check fires on its fixture and stays quiet on its counterpart; preparer-and-closer flags without blocking',async()=>{
   const f=await fixture();
   const {inside}=await controlFixtures(f);
+  // Phase 2 hardening: preparer-and-closer is information only by default (owner decision 2); this company asks for a finding.
+  await setControlSettings(f.hr,{companyId:b.companyId,bankChangeDays:7,adjustmentThreshold:1000,preparerClosedMode:'finding'});
   expect(await runControlChecks(f.hr,{companyId:b.companyId,payPeriod:PERIOD})).toMatchObject({opened:7});
   const found=await findingsOf(f.hr,b.companyId);
   const by=(control:string)=>found.filter(row=>row.controlId===control);
   expect(by('bank_change_before_pay_day').map(row=>[row.employmentId,row.evidence])).toEqual([[f.a.employmentId,expect.objectContaining({payDay:'2026-01-31',changedOn:'2026-01-28',
-   daysBeforePayDay:3,windowDays:7,bankAfter:'Maybank',accountAfterLast4:'5566',accountBeforeLast4:null})]]);
+   daysBeforePayDay:3,windowDays:7,bankAfter:'Maybank',accountAfterLast4:'5566',accountBeforeLast4:'2222'})]]);
   expect(by('shared_bank_account')).toHaveLength(1);
   expect(by('shared_bank_account')[0].evidence).toMatchObject({accountLast4:'5566',people:2,paidHere:2,employmentIds:[f.a.employmentId,f.c.employmentId].sort(),banks:['Maybank']});
   expect(JSON.stringify(by('shared_bank_account')[0].evidence)).not.toContain('112233445566');
@@ -276,17 +284,22 @@ describe('continuous control checks',()=>{
   await controlFixtures(f);
   await expect(setControlSettings(f.hr,{companyId:b.companyId,bankChangeDays:0,adjustmentThreshold:1000})).rejects.toMatchObject({reason:'invalid'});
   await expect(setControlSettings(f.hr,{companyId:b.companyId,bankChangeDays:7,adjustmentThreshold:10.005})).rejects.toMatchObject({reason:'invalid'});
-  expect(await setControlSettings(f.hr,{companyId:b.companyId,bankChangeDays:5,adjustmentThreshold:1800})).toEqual({bankChangeDays:5,adjustmentThreshold:1800,version:1});
-  expect(await setControlSettings(f.hr,{companyId:b.companyId,bankChangeDays:2,adjustmentThreshold:2500})).toEqual({bankChangeDays:2,adjustmentThreshold:2500,version:2});
+  // Phase 2 hardening: bounds (a window of 3 to 30 days, an amount of 100.00 to 50,000.00).
+  await expect(setControlSettings(f.hr,{companyId:b.companyId,bankChangeDays:2,adjustmentThreshold:1000})).rejects.toMatchObject({reason:'invalid'});
+  await expect(setControlSettings(f.hr,{companyId:b.companyId,bankChangeDays:7,adjustmentThreshold:50_000.01})).rejects.toMatchObject({reason:'invalid'});
+  // f.hr is a group administrator, so it may loosen (a shorter window, a higher amount).
+  expect(await setControlSettings(f.hr,{companyId:b.companyId,bankChangeDays:5,adjustmentThreshold:1800})).toEqual({bankChangeDays:5,adjustmentThreshold:1800,preparerClosedMode:'info',version:1});
+  expect(await setControlSettings(f.hr,{companyId:b.companyId,bankChangeDays:3,adjustmentThreshold:2500})).toEqual({bankChangeDays:3,adjustmentThreshold:2500,preparerClosedMode:'info',version:2});
   const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.eventType,'payroll-audit.settings-changed')))
    .orderBy(schema.domainEvent.sequence);
   expect(events.map(event=>[event.actorId,(event.payload as {before:unknown;after:unknown}).before,(event.payload as {after:unknown}).after])).toEqual([
-   [f.hr.userId,{bankChangeDays:7,adjustmentThreshold:'1000.00'},{bankChangeDays:5,adjustmentThreshold:'1800.00'}],
-   [f.hr.userId,{bankChangeDays:5,adjustmentThreshold:'1800.00'},{bankChangeDays:2,adjustmentThreshold:'2500.00'}]]);
-  // A's change was 3 days before pay day (outside 2 days) and A's override 1500.00 (under 2500.00): both quiet now.
+   [f.hr.userId,{bankChangeDays:7,adjustmentThreshold:'1000.00',preparerClosedMode:'info'},{bankChangeDays:5,adjustmentThreshold:'1800.00',preparerClosedMode:'info'}],
+   [f.hr.userId,{bankChangeDays:5,adjustmentThreshold:'1800.00',preparerClosedMode:'info'},{bankChangeDays:3,adjustmentThreshold:'2500.00',preparerClosedMode:'info'}]]);
+  // A's override 1500.00 is under 2500.00: quiet now. A's change, 3 days before pay day, is still inside a 3-day window.
   await runControlChecks(f.hr,{companyId:b.companyId,payPeriod:PERIOD});
   const found=await findingsOf(f.hr,b.companyId);
-  expect(found.filter(row=>row.controlId==='bank_change_before_pay_day'||row.controlId==='adjustment_without_reason')).toEqual([]);
+  expect(found.filter(row=>row.controlId==='adjustment_without_reason')).toEqual([]);
+  expect(found.filter(row=>row.controlId==='bank_change_before_pay_day').map(row=>row.employmentId)).toEqual([f.a.employmentId]);
   // Another company's administrator cannot change this company's settings.
   const other=await adminLogin(b,[{role:'hr_admin',companyId:f.co2}]);
   await expect(setControlSettings(other,{companyId:b.companyId,bankChangeDays:3,adjustmentThreshold:1000})).rejects.toMatchObject({reason:'not_administrator'});
@@ -294,14 +307,18 @@ describe('continuous control checks',()=>{
 
  it('a disposition is a payroll administrator\'s, with a note, and the latest one is the finding\'s state',async()=>{
   const f=await fixture();
+  await setControlSettings(f.hr,{companyId:b.companyId,bankChangeDays:7,adjustmentThreshold:1000,preparerClosedMode:'finding'});
   await runControlChecks(f.hr,{companyId:b.companyId,payPeriod:PERIOD});
   const finding=(await findingsOf(f.hr,b.companyId)).find(row=>row.controlId==='preparer_closed_run')!;
-  await expect(disposeFinding(f.hr,{findingId:finding.id,disposition:'expected',note:'  '})).rejects.toMatchObject({reason:'invalid'});
-  await expect(disposeFinding(f.hr,{findingId:finding.id,disposition:'ignored',note:'x'})).rejects.toMatchObject({reason:'invalid'});
-  await disposeFinding(f.hr,{findingId:finding.id,disposition:'escalated',note:'Raised with the finance director.'});
-  await disposeFinding(f.hr,{findingId:finding.id,disposition:'expected',note:'One-person team this month; reviewed after the fact.'});
+  await expect(disposeFinding(f.group,{findingId:finding.id,disposition:'expected',note:'  '})).rejects.toMatchObject({reason:'invalid'});
+  await expect(disposeFinding(f.group,{findingId:finding.id,disposition:'ignored',note:'x'})).rejects.toMatchObject({reason:'invalid'});
+  // Phase 2 hardening: f.hr processed and closed the run, so f.hr may not dispose of it; another administrator does.
+  expect(finding.subjectUserIds).toEqual([f.hr.userId]);
+  await expect(disposeFinding(f.hr,{findingId:finding.id,disposition:'expected',note:'Fine.'})).rejects.toMatchObject({reason:'subject'});
+  await disposeFinding(f.group,{findingId:finding.id,disposition:'escalated',note:'Raised with the finance director.'});
+  await disposeFinding(f.group,{findingId:finding.id,disposition:'expected',note:'One-person team this month; reviewed after the fact.'});
   const detail=await auditLoopDetail(f.hr,{payPeriod:PERIOD,companyIds:[b.companyId]});
-  expect(detail.findings.find(item=>item.id===finding.id)).toMatchObject({disposition:'expected',note:'One-person team this month; reviewed after the fact.',disposedBy:f.hr.userId});
+  expect(detail.findings.find(item=>item.id===finding.id)).toMatchObject({disposition:'expected',note:'One-person team this month; reviewed after the fact.',disposedBy:f.group.userId});
   const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.eventType,'payroll-audit.finding-disposed')))
    .orderBy(schema.domainEvent.sequence);
   expect(events.map(event=>(event.payload as {disposition:string}).disposition)).toEqual(['escalated','expected']);
@@ -365,9 +382,10 @@ describe('the audit pack',()=>{
   expect(pack.sha256).toBe(sha(pack.bytes));
   expect(pack.filename).toBe('audit-pack-Acme-Sdn-Bhd-2026-01.zip');
   const zip=await JSZip.loadAsync(pack.bytes);
-  expect(Object.keys(zip.files).sort()).toEqual(['access-log.csv','captures.csv','captures.json','findings.csv','findings.json','manifest.json','summary.pdf','verification.json']);
+  expect(Object.keys(zip.files).sort()).toEqual(['access-log.csv','acknowledgements.json','captures.csv','captures.json','findings.csv','findings.json','manifest.json','summary.pdf','verification.json']);
   const manifest=JSON.parse(await zip.file('manifest.json')!.async('string')) as {files:{name:string;sha256:string;bytes:number}[];captures:number;chainHead:string;verification:{valid:boolean}};
-  expect(manifest.files.map(file=>file.name).sort()).toEqual(['access-log.csv','captures.csv','captures.json','findings.csv','findings.json','summary.pdf','verification.json']);
+  expect(manifest.files.map(file=>file.name).sort()).toEqual(['access-log.csv','acknowledgements.json','captures.csv','captures.json','findings.csv','findings.json','summary.pdf','verification.json']);
+  expect(JSON.parse(await zip.file('acknowledgements.json')!.async('string'))).toEqual([]);
   for(const file of manifest.files){
    const bytes=await zip.file(file.name)!.async('uint8array');
    expect(file.sha256,file.name).toBe(sha(bytes));expect(file.bytes,file.name).toBe(bytes.byteLength);
@@ -377,8 +395,9 @@ describe('the audit pack',()=>{
   expect(captures.map(item=>[item.seq,item.chainHash])).toEqual(stored.map(row=>[row.seq,row.chainHash]));
   expect(manifest).toMatchObject({captures:stored.length,chainHead:stored.at(-1)!.chainHash,verification:{valid:true}});
   const findings=JSON.parse(await zip.file('findings.json')!.async('string')) as {controlId:string}[];
-  // Each of the three people has no attendance recorded, one person processed and closed, and A and C share an account.
-  expect(findings.map(item=>item.controlId).sort()).toEqual(['pay_without_attendance','pay_without_attendance','pay_without_attendance','preparer_closed_run','shared_bank_account']);
+  // Each of the three people has no attendance recorded, and A and C share an account (one person processing and closing is
+  // information only by default, Phase 2 hardening).
+  expect(findings.map(item=>item.controlId).sort()).toEqual(['pay_without_attendance','pay_without_attendance','pay_without_attendance','shared_bank_account']);
   expect(new TextDecoder().decode((await zip.file('summary.pdf')!.async('uint8array')).slice(0,5))).toBe('%PDF-');
   expect(await zip.file('verification.json')!.async('string')).toContain('"valid": true');
  });
@@ -430,11 +449,11 @@ describe('the daily loop',()=>{
   expect(rows.length).toBeGreaterThan(0);
   for(const row of rows)expect([row.writer,row.writerId]).toEqual(['agent',principalId]);
   const found=await findingsOf(f.hr,b.companyId);
-  expect(found.map(row=>row.controlId).sort()).toEqual(['pay_without_attendance','pay_without_attendance','pay_without_attendance','preparer_closed_run','shared_bank_account']);
+  expect(found.map(row=>row.controlId).sort()).toEqual(['pay_without_attendance','pay_without_attendance','pay_without_attendance','shared_bank_account']);
   for(const row of found)expect([row.writer,row.writerId]).toEqual(['agent',principalId]);
   const runs=await withTenant(f.group,tx=>tx.select().from(terasLoopRun).where(eq(terasLoopRun.workerId,'loop_payroll_audit')));
   expect(runs.map(run=>[run.companyId,run.status,run.sponsorUserId]).sort()).toEqual([[b.companyId,'ran',f.group.userId],[f.co2,'ran',f.group.userId]].sort());
-  expect(runs.find(run=>run.companyId===b.companyId)).toMatchObject({opened:5,openNow:5});
+  expect(runs.find(run=>run.companyId===b.companyId)).toMatchObject({opened:4,openNow:4});
   expect(runs.find(run=>run.companyId===f.co2)).toMatchObject({opened:1,openNow:1});
   // The per-company pause stops it there; the database refuses an agent capture for a paused company.
   await setLoopPause(f.group,{workerId:'loop_payroll_audit',companyId:b.companyId,paused:true});
@@ -457,11 +476,17 @@ describe('the status read',()=>{
   expect(summary).toMatchObject({payPeriod:PERIOD,dueDate:'2026-02-15',level:'prepare',loop:{on:false,sponsorUserId:null}});
   const one=summary.companies.find(item=>item.companyId===b.companyId)!;
   expect(one.payslips).toEqual({total:3,released:3,opened:0});
-  expect(one.statutory.map(form=>[form.form,form.prepared,form.filed])).toEqual([['epf',false,false],['socso_eis',false,false],['pcb_cp39',false,false],['hrd',false,false]]);
-  expect(one.findings).toEqual({open:5,disposed:0});
+  // Phase 2 hardening, data-aware: PCB is required when a payslip of the month deducted it; HRD only from a company liable
+  // for the levy (no registration here, no levy charged). Read from the payroll owner's own stored payslips.
+  const pcbOf=async(companyId:string)=>(await owner.db.execute(sql`select exists(select 1 from public.payslip s join public.payroll_batch b on b.id=s.batch_id
+   where b.company_id=${companyId}::uuid and b.pay_period=${PERIOD} and coalesce((s.statutory->>'pcb')::numeric,0)>0) as ok`) as unknown as {ok:boolean}[])[0].ok;
+  const pcb1=await pcbOf(b.companyId),pcb2=await pcbOf(f.co2);
+  expect(one.statutory.map(form=>[form.form,form.required,form.prepared,form.filed])).toEqual([['epf',true,false,false],['socso_eis',true,false,false],
+   ['pcb_cp39',pcb1,false,false],['hrd',false,false,false]]);
+  expect(one.findings).toEqual({open:4,disposed:0,acknowledged:0});
   expect(one.repeatIssues).toEqual([]);
   expect(one.done).toBe(false);
-  expect(summary.totals).toMatchObject({payslips:4,released:4,forms:8,formsFiled:0,openFindings:5});
+  expect(summary.totals).toMatchObject({payslips:4,released:4,forms:4+Number(pcb1)+Number(pcb2),formsFiled:0,openFindings:4});
  });
 });
 
@@ -474,8 +499,9 @@ describe('the inputs snapshot, taken when the run is processed',()=>{
   const snap=taken[0].content as {basis:string;trigger:string;processedBy:string;employments:number;components:Record<string,{rows:number;hash:string}>;results:{rows:number;hash:string}};
   expect(snap).toMatchObject({basis:'processed',trigger:'processed',processedBy:f.hr.userId,employments:3,results:{rows:3}});
   expect(Object.keys(snap.components).sort()).toEqual([...INPUT_COMPONENTS].sort());
-  // No attendance was recorded in January when the run was processed: no rows, and the sha256 of an empty list.
-  expect(snap.components.attendance).toEqual({rows:0,hash:sha('[]')});
+  // No attendance was recorded in January when the run was processed: no rows, and (Phase 2 hardening: folded one
+  // employment at a time) the sha256 of nothing.
+  expect(snap.components.attendance).toEqual({rows:0,hash:sha('')});
   // Company 2's run has its own snapshot, by the same administrator who processed it.
   expect((await capturesOf(f.hr,f.co2)).filter(row=>row.sourceKey==='inputs:'+f.batch2).map(row=>[row.writer,row.writerId])).toEqual([['user',f.hr.userId]]);
   // An input changes after processing: A's attendance on 5 January is recorded late.
@@ -498,13 +524,13 @@ describe('the inputs snapshot, taken when the run is processed',()=>{
    claim:{start:'2026-01-01',end:'2026-01-31'}};
   const employee=await adminLogin(b,[{role:'employee',companyId:null}]);
   const refused=await withTenant(employee,async tx=>{
-   const ok=await captureRunInputsAtProcessingTx(tx,employee,{batchId:f.batch1,companyId:b.companyId,payPeriod:PERIOD,windows,trigger:'processed'});
+   const ok=await captureRunInputsAtProcessingTx(tx,employee,{batchId:f.batch1,companyId:b.companyId,payPeriod:PERIOD,windows:async()=>windows,trigger:'processed'});
    const [still]=await tx.execute(sql`select 1 as one`) as unknown as {one:number}[];
    return {ok,still:Number(still?.one)};
   });
   expect(refused).toEqual({ok:false,still:1});
   const loginless={tenantId:b.tenantId,roles:['hr_admin'],entitlements:f.hr.entitlements} as SessionContext;
-  expect(await withTenant(loginless,tx=>captureRunInputsAtProcessingTx(tx,loginless,{batchId:f.batch1,companyId:b.companyId,payPeriod:PERIOD,windows,trigger:'processed'}))).toBe(false);
+  expect(await withTenant(loginless,tx=>captureRunInputsAtProcessingTx(tx,loginless,{batchId:f.batch1,companyId:b.companyId,payPeriod:PERIOD,windows:async()=>windows,trigger:'processed'}))).toBe(false);
   const misses=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.eventType,'payroll-audit.inputs-not-captured')))
    .orderBy(schema.domainEvent.sequence);
   expect(misses.map(event=>[event.actorId,(event.payload as {reason:string}).reason,(event.payload as {batchId:string}).batchId])).toEqual([
@@ -519,8 +545,8 @@ describe('the administration of the Audit loop',()=>{
   const f=await fixture();
   const auditor=await adminLogin(b,[{role:'employee',companyId:null}]);
   const view=await auditAdministration(f.hr);
-  expect(view.companies.map(item=>[item.companyName,item.settings])).toEqual([['Acme Sdn Bhd',{bankChangeDays:7,adjustmentThreshold:1000,version:null}],
-   ['Fictional Two Sdn Bhd',{bankChangeDays:7,adjustmentThreshold:1000,version:null}]]);
+  expect(view.companies.map(item=>[item.companyName,item.settings])).toEqual([['Acme Sdn Bhd',{bankChangeDays:7,adjustmentThreshold:1000,preparerClosedMode:'info',version:null}],
+   ['Fictional Two Sdn Bhd',{bankChangeDays:7,adjustmentThreshold:1000,preparerClosedMode:'info',version:null}]]);
   expect(view.candidates.map(item=>item.appUserId)).toContain(auditor.userId);
   expect(view.candidates.map(item=>item.appUserId)).not.toContain(f.hr.userId);
   const grant=await grantAuditReader(f.hr,{companyId:b.companyId,appUserId:auditor.userId});

@@ -5,20 +5,28 @@
  * person needs to judge it. A finding never acts: no run is blocked, no figure changed, nobody notified on the finding's own
  * authority. Every comparison is of stored values against a stored or configured limit; no figure is calculated.
  *  1. bank_change_before_pay_day: an employee's bank account or bank changed within the company's window (default 7 days)
- *     before the run's pay day (employee.bank.updated, before and after). Only the last four digits are kept.
+ *     before the run's pay day (employee.bank.updated, before and after). Only the last four digits are kept. A joiner's
+ *     FIRST bank details (no account before) are an entry, not a change, and are not flagged (Phase 2 hardening).
  *  2. shared_bank_account: one bank account number on two or more people, at least one of them paid by the company that
- *     month. The account is kept as its last four digits and a hash, never in full.
+ *     month. The account is kept as its last four digits and a hash, never in full. ONE finding per account and set of
+ *     people, whatever the month (Phase 2 hardening): the same people sharing the same account are not found again every
+ *     month; someone new joining the account is a new finding.
  *  3. pay_after_last_day: net pay on a payslip whose coverage starts after the employment's last working day.
  *  4. pay_without_attendance: the payroll anomaly layer's own pure detector (core/payroll-anomaly-detectors.ts
  *     `pay-without-attendance`) over the same context the anomaly evaluator builds, for salary runs.
- *  5. preparer_closed_run: one login both processed and closed a run. Flagged, never blocked (owner decision: there is no
- *     second approver).
+ *  5. preparer_closed_run: one login both processed and closed a run. Never blocked (owner decision 2: there is no second
+ *     approver), and by default information only, kept in the run's approval capture: a finding is opened only where the
+ *     company's setting asks for one (payroll_audit_control_setting.preparer_closed_mode, Phase 2 hardening).
  *  6. adjustment_without_reason: a manual one-off transaction, run component or statutory override above the company's amount
  *     (default 1000.00) with no stated reason.
  *  7. formula_changed_open_period: a pay formula revision or a pay component change saved while a run was open (from its
  *     creation until its close).
  * A finding is recorded once per subject (migration 0965: unique per control and subject). A person disposes of it with one of
- * four dispositions and a note; the latest disposition is its state. */
+ * four dispositions and a note; the latest disposition is its state. Nobody disposes of a finding about themselves (the
+ * login who processed and closed the run, changed the bank details or the formula, keyed the adjustment, or the person the
+ * finding's employment belongs to): another payroll administrator or a group administrator does (migration 2006 repeats
+ * the rule in the disposition policy). Pay without attendance reads the attendance owner's own exemption first: a person
+ * whose schedule group is exempt from absence judgments for the whole month is not flagged (core/payroll-anomaly-detectors.ts). */
 import {createHash} from 'node:crypto';
 import {and,desc,eq,inArray,sql,type SQL} from 'drizzle-orm';
 import {z} from 'zod';
@@ -34,7 +42,7 @@ import {isAuditDisposition,type AuditControlId,type AuditDisposition} from './ty
 export type ControlObservation=Readonly<{controlId:AuditControlId;companyId:string;payPeriod:string;batchId:string|null;employmentId:string|null;
  subjectKey:string;evidence:Record<string,unknown>}>;
 export type ControlWriter=Readonly<{kind:'agent';principalId:string;runId:string}>|Readonly<{kind:'user';userId:string}>;
-export class AuditFindingRefused extends Error{constructor(readonly reason:'not_administrator'|'invalid'|'not_found'){super('Audit finding refused: '+reason);this.name='AuditFindingRefused';}}
+export class AuditFindingRefused extends Error{constructor(readonly reason:'not_administrator'|'invalid'|'not_found'|'subject'){super('Audit finding refused: '+reason);this.name='AuditFindingRefused';}}
 
 type Row=Record<string,unknown>;
 const rows=async(tx:Tx,query:SQL)=>Array.from(await tx.execute(query) as unknown as Row[]);
@@ -74,6 +82,8 @@ export async function detectControlFindingsTx(tx:Tx,reader:SessionContext,p:Read
     const payload=(change.payload??{}) as {personId?:string;before?:Row;after?:Row};
     const before=payload.before??{},after=payload.after??{};
     if(digits(before.bankAccountNo)===digits(after.bankAccountNo)&&String(before.bankName??'')===String(after.bankName??''))continue;
+    // A first entry (no account before) is a joiner's details arriving, not a change of them.
+    if(!digits(before.bankAccountNo))continue;
     latest.set(String(payload.personId),change);
    }
    for(const slip of slips){
@@ -102,8 +112,8 @@ export async function detectControlFindingsTx(tx:Tx,reader:SessionContext,p:Read
       evidence:{detector:finding.detectorId,severity:finding.severity,facts:finding.facts,period:context.period,runType,runSeq:batch.run_seq}});
    }
   }
-  // 5. One login both processed and closed the run.
-  if(status==='closed'){
+  // 5. One login both processed and closed the run: a finding only where the company asked for one.
+  if(status==='closed'&&settings.preparerClosedMode==='finding'){
    const trail=await rows(tx,sql`select d.event_type,d.actor_id,d.occurred_at from public.domain_event d where d.tenant_id=${reader.tenantId}::uuid and d.aggregate_id=${batchId}::uuid
     and d.actor_type='user' and d.event_type in ('payroll-batch.processed','payroll-batch.selective-reprocessed','payroll-batch.closed') order by d.sequence`);
    const preparers=new Map<string,string[]>();
@@ -126,13 +136,13 @@ export async function detectControlFindingsTx(tx:Tx,reader:SessionContext,p:Read
    where c.batch_id=${batchId}::uuid and abs(c.amount)>${threshold}::numeric and coalesce(btrim(c.notes),'')='' order by c.id`))
    push({controlId:'adjustment_without_reason',batchId,employmentId:String(item.employment_id),subjectKey:'adjustment:'+item.id,
     evidence:{type:'run_component',rowId:item.id,amount:item.amount,threshold,componentId:item.component_id??null,runType,runSeq:batch.run_seq}});
-  for(const item of await rows(tx,sql`select a.id,a.employment_id,greatest(abs(coalesce(a.pcb,0)),abs(coalesce(a.epf_employee,0)),abs(coalesce(a.socso_employee,0)),
+  for(const item of await rows(tx,sql`select a.id,a.employment_id,a.created_by_user_id,greatest(abs(coalesce(a.pcb,0)),abs(coalesce(a.epf_employee,0)),abs(coalesce(a.socso_employee,0)),
     abs(coalesce(a.eis_employee,0)),abs(coalesce(a.epf_employer,0)),abs(coalesce(a.socso_employer,0)),abs(coalesce(a.eis_employer,0)),abs(coalesce(a.hrdf,0))) as largest
    from public.payroll_statutory_adjustment a where a.batch_id=${batchId}::uuid and coalesce(btrim(a.reason),'')=''
     and greatest(abs(coalesce(a.pcb,0)),abs(coalesce(a.epf_employee,0)),abs(coalesce(a.socso_employee,0)),abs(coalesce(a.eis_employee,0)),
      abs(coalesce(a.epf_employer,0)),abs(coalesce(a.socso_employer,0)),abs(coalesce(a.eis_employer,0)),abs(coalesce(a.hrdf,0)))>${threshold}::numeric order by a.id`))
    push({controlId:'adjustment_without_reason',batchId,employmentId:String(item.employment_id),subjectKey:'adjustment:'+item.id,
-    evidence:{type:'statutory_adjustment',rowId:item.id,largestLine:item.largest,threshold,runType,runSeq:batch.run_seq}});
+    evidence:{type:'statutory_adjustment',rowId:item.id,largestLine:item.largest,threshold,createdBy:item.created_by_user_id??null,runType,runSeq:batch.run_seq}});
   // 7. A formula or pay component changed while the run was open.
   const openedAt=new Date(String(batch.created_at)).toISOString(),closedAt=batch.closed_at?new Date(String(batch.closed_at)).toISOString():null;
   for(const item of await optional(tx,sql`select r.id,f.formula_id as code,r.ordinal,r.content_hash,r.created_at,r.created_by from public.pay_formula_revision r
@@ -164,7 +174,9 @@ export async function detectControlFindingsTx(tx:Tx,reader:SessionContext,p:Read
    const here=people.filter(person=>paidPeople.has(person));
    if(!here.length)continue;
    const accountHash=createHash('sha256').update(`${reader.tenantId}:${group.account}`).digest('hex');
-   push({controlId:'shared_bank_account',batchId:null,employmentId:null,subjectKey:`shared_bank:${companyId}:${payPeriod}:${accountHash.slice(0,32)}`,
+   // One finding per account and set of people, not per month: the month only says when it was first seen.
+   const peopleHash=createHash('sha256').update([...people].sort().join(',')).digest('hex');
+   push({controlId:'shared_bank_account',batchId:null,employmentId:null,subjectKey:`shared_bank:${companyId}:${accountHash.slice(0,32)}:${peopleHash.slice(0,16)}`,
     evidence:{accountLast4:String(group.account).slice(-4),accountHash,people:people.length,paidHere:here.length,
      employmentIds:here.flatMap(person=>paidPeople.get(person)??[]).sort(),banks:(group.banks as string[]).filter(Boolean).sort()}});
   }
@@ -202,6 +214,14 @@ export async function runControlChecks(supplied:SessionContext,input:Readonly<{c
 }
 
 /** A payroll administrator of the finding's company disposes of it, with a note. Appended; the latest disposition is its state. */
+/** Whether the caller is what a finding is about: one of its subject logins, or the person its employment belongs to. */
+export async function isFindingSubjectTx(tx:Tx,userId:string,finding:Readonly<{subjectUserIds:readonly string[];employmentId:string|null}>):Promise<boolean>{
+ if(finding.subjectUserIds.includes(userId))return true;
+ if(!finding.employmentId)return false;
+ const [own]=await rows(tx,sql`select exists(select 1 from public.employment e where e.id=${finding.employmentId}::uuid and app.is_self_person(e.person_id) is true) as ok`);
+ return own?.ok===true;
+}
+
 export async function disposeFinding(supplied:SessionContext,input:Readonly<{findingId:unknown;disposition:unknown;note:unknown}>){
  const ctx:SessionContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  if(!ctx.userId||ctx.agent||!canManagePayroll(ctx))throw new AuditFindingRefused('not_administrator');
@@ -209,11 +229,14 @@ export async function disposeFinding(supplied:SessionContext,input:Readonly<{fin
  if(!findingId.success||!isAuditDisposition(input.disposition)||note.length<1||note.length>1000)throw new AuditFindingRefused('invalid');
  const disposition:AuditDisposition=input.disposition;
  return withTenant(ctx,async tx=>{
-  const [finding]=await tx.select({id:payrollAuditFinding.id,companyId:payrollAuditFinding.companyId}).from(payrollAuditFinding)
+  const [finding]=await tx.select({id:payrollAuditFinding.id,companyId:payrollAuditFinding.companyId,employmentId:payrollAuditFinding.employmentId,
+   subjectUserIds:payrollAuditFinding.subjectUserIds}).from(payrollAuditFinding)
    .where(and(eq(payrollAuditFinding.tenantId,ctx.tenantId),eq(payrollAuditFinding.id,findingId.data))).limit(1);
   if(!finding)throw new AuditFindingRefused('not_found');
   const [allowed]=await rows(tx,sql`select app.can_admin_payroll_for(${finding.companyId}::uuid) as ok`);
   if(allowed?.ok!==true)throw new AuditFindingRefused('not_administrator');
+  // Nobody disposes of a finding about themselves (migration 2006 refuses it too).
+  if(await isFindingSubjectTx(tx,ctx.userId!,finding))throw new AuditFindingRefused('subject');
   const [row]=await tx.insert(payrollAuditDisposition).values({tenantId:ctx.tenantId,findingId:finding.id,companyId:finding.companyId,disposition,note,
    disposedByUserId:ctx.userId!}).returning();
   return Object.freeze(row!);

@@ -15,7 +15,8 @@
  *    filed.ts), who viewed or exported payroll data, pay-affecting configuration changes with before and after, and the
  *    control findings with their dispositions.
  * Append (as the writer: the agent principal for the daily loop, or the same administrator) inserts each artefact whose
- * content differs from every version already captured for its source key; an unchanged artefact is not captured again. The
+ * content differs from the latest version captured for its source key; an unchanged artefact is not captured again, and
+ * one changed back to an earlier version is (Phase 2 hardening). The
  * database computes the content hash, the sequence and the link to the previous capture of the company and month, and anchors
  * each capture in the tenant audit hash chain (migration 0965). A capture is never updated or deleted.
  * No model is called. */
@@ -41,9 +42,15 @@ const str=(value:unknown)=>typeof value==='string'?value:value==null?null:String
 const optional=async(tx:Tx,query:SQL):Promise<Row[]>=>{try{return await tx.transaction(savepoint=>rows(savepoint as unknown as Tx,query));}catch{return [];}};
 
 /** Pay-affecting configuration, by domain event type prefix. Employee bank changes are employee data, followed by the
- * bank-change control, not here. */
+ * bank-change control, not here. Phase 2 hardening (4 November 2026): the payroll loops' own controls are configuration
+ * too, so a change that loosens a check can never go unseen: the Salary payroll loop's threshold settings and proposal
+ * decisions, the Audit loop's control settings and auditor grants, and the standing "expected" acknowledgements
+ * (core/loops/acknowledgements.ts). Each prefix is a closed event type, never `payroll-audit.` as a whole: the Audit
+ * loop's own capture anchors are `payroll-audit.captured` events and must not be captured back into the chain. */
 export const CONFIG_EVENT_PREFIXES=Object.freeze(['pay-component.','payroll-policy.','payroll-cycle.','statutory.config.','statutory.component.',
- 'company-statutory-authority.','company-bank-profile.','payroll-config.','pay-formula.','payslip-information.','payroll-permission-grant.']);
+ 'company-statutory-authority.','company-bank-profile.','payroll-config.','pay-formula.','payslip-information.','payroll-permission-grant.',
+ 'teras-payroll-loop.setting-changed','teras-payroll-loop.proposal-decided','payroll-audit.settings-changed','payroll-audit.reader-',
+ 'payroll-check.acknowledgement-','payroll-check.rule-proposal-']);
 /** Post-run corrections: a closed run reopened, or a processed run reset to draft. */
 const CORRECTION_ACTIONS=['unlock','rollback'];
 

@@ -1,12 +1,14 @@
 # AI HR sweep — payroll-loop-tick. Disabled source template: installed by hand at release, never by deploy.sh
 # (see deploy/systemd/README.md). AI v2 P2-2a, owner decision 4.
 #
-# Runs ONLY the Pre-salary loop, for the companies whose own interval (hourly, twice daily or daily) has come round.
-# It writes loop cases and run records only (teras_loop_case, teras_loop_run): no HR record, no pay, no model.
+# Runs the Pre-salary loop for the companies whose own interval (hourly, twice daily or daily) has come round or whose
+# cut-off is today (re-checked from 23:00), and refreshes the Salary payroll and Audit loops for the companies whose payroll
+# changed since each last ran (Phase 2 hardening). It writes loop cases, run records, audit captures and findings, and the
+# cut-off reminder ledger and notices only: no HR record, no pay, no model.
 # Overlap-safe: a per-tenant advisory lock (a tick still running makes the next skip that tenant) and the runner's own
 # due re-check under its write lock (the 03:00 review sweep and a tick never check one company twice in its interval).
 [Unit]
-Description=AI HR sweep: payroll-loop-tick (Pre-salary loop)
+Description=AI HR sweep: payroll-loop-tick (Pre-salary, Salary payroll and Audit loops)
 After=network.target postgresql.service aihr.service
 Wants=postgresql.service
 

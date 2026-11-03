@@ -14,9 +14,9 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(667); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the seven AI v2 Phase 2 migrations 2004-2010 below.
+ expect(journal.entries).toHaveLength(668); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the seven AI v2 Phase 2 migrations 2004-2010 and the Phase 2 hardening migration 2011 below.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(96);
+ expect(journal.entries.slice(boundary)).toHaveLength(97);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
@@ -63,17 +63,19 @@ it('preserves populated Native issuance, private data, identity and every applie
   // AI v2 Phase 2 P2-1 autonomy ladder (claude/aiv2-p2-autonomy-ladder), frozen here.
   {idx:804,version:'7',when:1793330001404,tag:'2004_teras_loop_autonomy',breakpoints:true,hash:'b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132'},
   // AI v2 Phase 2 P2-2a payroll-cycle loops (claude/aiv2-p2-payroll-loops), frozen here.
-  {idx:805,version:'7',when:1793330001405,tag:'2005_teras_payroll_cycle_loops',breakpoints:true,hash:'31234dca83bad7cc1bb4dc82f04f9743cb6cb690a1352149acd7d4f3b613f887'},
+  {idx:805,version:'7',when:1793330001405,tag:'2005_teras_payroll_cycle_loops',breakpoints:true,hash:'d211dd97ebdeb673998d29a2a9b3b8d8597c39a5646259ac0c855d46eca49fbc'},
   // AI v2 Phase 2 P2-2b Audit loop (claude/aiv2-p2-audit-loop), frozen here.
-  {idx:806,version:'7',when:1793330001406,tag:'2006_payroll_audit_loop',breakpoints:true,hash:'e0ed1ea1b561cedf2f4d2bba37853e781a23c370ba12cf7b4f220a5d002cffce'},
+  {idx:806,version:'7',when:1793330001406,tag:'2006_payroll_audit_loop',breakpoints:true,hash:'05bc9e35367093ae4c6aec877a7ca7ec171387cb84b28940e0db0e190fcf7723'},
   // AI v2 Phase 2 P2-4 HR capacity baseline (claude/aiv2-p2-capacity-ledger), frozen here.
   {idx:807,version:'7',when:1793330001407,tag:'2007_teras_capacity_baseline',breakpoints:true,hash:'8b2bb6e38d76c7bf6643e45c62c11ed89e71d954615438d527adf1b4593f22ad'},
   // AI v2 Phase 2 P2-3 own payroll cut-off (claude/aiv2-p2-payroll-checklist), frozen here.
-  {idx:808,version:'7',when:1793330001408,tag:'2008_own_payroll_cut_off',breakpoints:true,hash:'9c5f91f7380568067fbea128768a412f200ef58676d9541bb891f3539cb18c02'},
+  {idx:808,version:'7',when:1793330001408,tag:'2008_own_payroll_cut_off',breakpoints:true,hash:'c068fa72631c648453117fdf73cc81e6ffbbb4cc94d55d82397e40ac4e4291f8'},
   // AI v2 Phase 2 P2-5 Living Handbook (claude/aiv2-p2-living-handbook), frozen here.
   {idx:809,version:'7',when:1793330001409,tag:'2009_teras_living_handbook',breakpoints:true,hash:'fe54c4a68689e761ca670a81bdfd1e8c1b502cb58201150fa9593c546acae3b7'},
   // AI v2 Phase 2 P2-6 learning loops (claude/aiv2-p2-learning-loops), frozen here.
   {idx:810,version:'7',when:1793330001410,tag:'2010_teras_learning_loops',breakpoints:true,hash:'316ce555983b42a896fbba7d7f75c73d4037b75ab60f41da6df611d8e0e2c3c0'},
+  // AI v2 Phase 2 hardening, payroll loops, audit and checklist (claude/aiv2-p2h-loops-hardening), frozen here.
+  {idx:811,version:'7',when:1793330001411,tag:'2011_payroll_loops_hardening',breakpoints:true,hash:'d5b9cf2cdb8c76821ead04ad35efaf4c2518cefe1f7b0a72148c0cfdf52e670a'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

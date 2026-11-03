@@ -44,7 +44,13 @@ vi.mock('next/navigation',()=>({
 }));
 vi.mock('../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>true,isModuleEnabledOrFalse:()=>true}));
-vi.mock('../app/control-tower/loops/payroll-cycle/actions',()=>({recordSwingDispositionAction:vi.fn(),setPayrollLoopSettingAction:vi.fn(),decideThresholdProposalAction:vi.fn()}));
+vi.mock('../app/control-tower/loops/payroll-cycle/actions',()=>({recordSwingDispositionAction:vi.fn(),setPayrollLoopSettingAction:vi.fn(),decideThresholdProposalAction:vi.fn(),
+ disposeSwingGroupAction:vi.fn(),resolveAcknowledgedBlockAction:vi.fn(),acknowledgeCheckAction:vi.fn(),revokeAcknowledgementAction:vi.fn(),decideRuleProposalAction:vi.fn()}));
+// Phase 2 hardening: the grouping is the real pure function; the acknowledged blocks are a fixture (the service is covered by
+// test/payroll-loops-hardening.test.ts).
+vi.mock('../core/loops/grouped-dispositions',async importOriginal=>({...(await importOriginal<typeof import('../core/loops/grouped-dispositions')>()),
+ acknowledgedBlocks:async()=>{state.reads.push('blocks');return [{verdictId:'00000000-0000-4000-8000-0000000000f1',batchId:'b-1',companyId:fx.A,
+  employmentId:'00000000-0000-4000-8000-0000000000e9',personName:'Chong Fictional',detectors:['missing-bank-profile'],acknowledgementId:'k-2',reason:'Paid in cash at the site office'}];}}));
 const fx=vi.hoisted(()=>{
  const A='00000000-0000-4000-8000-0000000000c1',B='00000000-0000-4000-8000-0000000000c2';
  const check=(key:string,status:string,open=0,waiting=0,warnings=0,info=0)=>({key,status,open,waiting,warnings,info});
@@ -88,19 +94,25 @@ const fx=vi.hoisted(()=>{
    run({runSeq:1,exceptions:2,changed:12,flagged:2,causes:[{kind:'salary_change',count:3},{kind:'overtime_hours',count:8}],rulesNewer:['pcb'],bank:'total_mismatch'}),
    run({runSeq:2,runType:'bonus',status:'closed',employees:5,done:true,closedBy:'Aisyah Fictional',reopened:1})]}],
   flags:[
-   {caseId:'00000000-0000-4000-8000-00000000f001',companyId:A,companyName:companyA.companyName,personName:'Ravi Fictional',payPeriod:'2026-10',swingBp:3108,direction:'up',
+   {caseId:'00000000-0000-4000-8000-00000000f001',companyId:A,companyName:companyA.companyName,employmentId:'00000000-0000-4000-8000-0000000000e1',personName:'Ravi Fictional',payPeriod:'2026-10',swingBp:3108,direction:'up',
     pattern:'cause:salary_change',thresholdBp:1500,causes:['salary_change'],state:'open',closeReason:null,disposition:null},
-   {caseId:'00000000-0000-4000-8000-00000000f002',companyId:A,companyName:companyA.companyName,personName:'Mei Ling Fictional',payPeriod:'2026-10',swingBp:2328,direction:'down',
+   {caseId:'00000000-0000-4000-8000-00000000f002',companyId:A,companyName:companyA.companyName,employmentId:'00000000-0000-4000-8000-0000000000e2',personName:'Mei Ling Fictional',payPeriod:'2026-10',swingBp:2328,direction:'down',
     pattern:'item:0000aaaa-0000-4000-8000-00000000a040',thresholdBp:1500,causes:[],state:'closed',closeReason:'done',disposition:{value:'expected',by:'Siti Fictional',at:new Date('2026-11-02T01:00:00Z')}}],
   // Patterns are keyed on the pay component's id; the page shows the catalogue's current name.
   patternNames:{'item:0000aaaa-0000-4000-8000-00000000a040':'Meal Allowance'}};
  const settings={companies:[{companyId:A,companyName:companyA.companyName,
-  setting:{companyId:A,version:2,interval:'hourly',thresholdBp:1500,exclusions:['item:0000aaaa-0000-4000-8000-00000000c044','item:0000aaaa-0000-4000-8000-0000000000ff'],source:'proposal',changedByUserId:'u-1',changedAt:new Date('2026-11-03T15:04:00Z')},
+  setting:{companyId:A,version:2,interval:'hourly',thresholdBp:1500,exclusions:['item:0000aaaa-0000-4000-8000-00000000c044','item:0000aaaa-0000-4000-8000-0000000000ff'],remindersEnabled:true,source:'proposal',changedByUserId:'u-1',changedAt:new Date('2026-11-03T15:04:00Z')},
   proposals:[{key:'a'.repeat(64),kind:'threshold',fromThresholdBp:1500,toThresholdBp:2000,pattern:null,
    evidence:{windowDays:30,flags:6,expected:5,problems:1,expectedShareBp:8333,smallestProblemBp:2100}}],
   history:[{version:2,interval:'hourly',thresholdBp:1500,exclusions:['item:0000aaaa-0000-4000-8000-00000000c044'],source:'proposal',by:'Aisyah Fictional',at:new Date('2026-11-03T15:04:00Z')},
    {version:1,interval:'hourly',thresholdBp:1500,exclusions:[],source:'admin',by:'Aisyah Fictional',at:new Date('2026-11-02T15:04:00Z')}],
-  decisions:[{id:'d-1',kind:'threshold',fromThresholdBp:1500,toThresholdBp:1800,pattern:null,decision:'rejected',by:'Daniel Fictional',at:new Date('2026-11-01T15:04:00Z')}]}],
+  decisions:[{id:'d-1',kind:'threshold',fromThresholdBp:1500,toThresholdBp:1800,pattern:null,decision:'rejected',by:'Daniel Fictional',at:new Date('2026-11-01T15:04:00Z')}],
+  // Phase 2 hardening: a standing acknowledgement in force, and a standing rule the dispositions propose.
+  acknowledgements:[{id:'k-1',companyId:A,checkId:'audit:pay_without_attendance',scope:'person',employmentId:'00000000-0000-4000-8000-0000000000e3',departmentId:null,
+   reason:'Cash-paid driver, never clocks in',reviewOn:'2027-01-31',source:'person',createdByUserId:'u-1',createdAt:new Date('2026-11-02T02:00:00Z'),
+   personName:'Ah Kow Fictional',departmentName:null,createdBy:'Aisyah Fictional',blocks:false}],
+  ruleProposals:[{key:'b'.repeat(64),companyId:A,checkId:'swing:net_swing',employmentId:'00000000-0000-4000-8000-0000000000e4',
+   evidence:{runs:6,expected:5,expectedShareBp:8333,lastDisposedAt:'2026-11-01T00:00:00.000Z'},disposers:['u-2'],personName:'Kumar Fictional'}]}],
   // A pattern whose component is no longer in the catalogue has no name.
   patternNames:{'item:0000aaaa-0000-4000-8000-00000000c044':'Sales Commission'}};
  class PayrollCycleRefused extends Error{constructor(readonly reason:string){super(reason);}}
@@ -132,6 +144,17 @@ const rows=(container:Element,selector:string)=>[...container.querySelectorAll(`
 const coarse=(container:Element)=>{for(const el of container.querySelectorAll('main button, main select, main input:not([type=hidden]), [data-payroll-loops] a, [data-people-loops] a, [data-swing-flags] button'))
  expect(el.className,el.outerHTML.slice(0,120)).toContain('pointer-coarse:min-h-11');};
 afterEach(()=>{cleanup();state.locale='en';state.session=null;state.reads=[];state.scope='group';state.runs=[];});
+
+describe('Phase 2 hardening: approving is a group administrator\'s',()=>{
+ it('an HR administrator of one company may reject a proposal but is not offered Approve',async()=>{
+  state.session=SESSIONS.hrAdmin;
+  const view=wrap('en',await settings());
+  const proposal=view.container.querySelector('[data-proposal="threshold"]')!;
+  expect([...proposal.querySelectorAll('button')].map(text)).toEqual(['Reject']);
+  expect(text(proposal)).toContain('A group administrator approves this; you can reject it.');
+  expect([...view.container.querySelectorAll('[data-rule-proposal] button')].map(text)).toEqual(['Reject']);
+ });
+});
 
 describe('Operations › Loops › Payroll cycle, per role',()=>{
  it.each(['employee','manager'] as const)('%s is refused before any read',async role=>{
@@ -243,7 +266,7 @@ describe('Operations › Loops › Payroll cycle, per role',()=>{
  it('the Salary payroll loop\'s page: each run\'s checks, who closed it, and a disposition per flag that changes no pay',async()=>{
   state.session=SESSIONS.groupAdmin;
   const view=wrap('en',await salary({period:'2026-10',saved:'disposition'}));
-  expect(state.reads).toEqual(['salary']);
+  expect(state.reads).toEqual(['salary','blocks']);
   expect(screen.getByRole('heading',{level:1,name:'Salary payroll loop: October 2026'})).toBeTruthy();
   expect(text(view.container.querySelector('[data-page-header]'))).toContain('Prepare in every company');
   expect(screen.getByRole('status').textContent).toBe('Disposition recorded.');
@@ -257,10 +280,30 @@ describe('Operations › Loops › Payroll cycle, per role',()=>{
    ['Mei Ling Fictional Fictional A Sdn Bhd','Down 23.3% Threshold ±15%','Pay item Meal Allowance']]);
   // The decided flag shows its disposition and who recorded it; the open one offers the two dispositions.
   expect([...view.container.querySelectorAll('[data-disposition]')].map(el=>[el.getAttribute('data-disposition'),parts(el)])).toEqual([['expected','Expected By Siti Fictional']]);
-  const forms=[...view.container.querySelectorAll('[data-swing-flags] form')];
+  const forms=[...view.container.querySelectorAll('[data-swing-flags] form:not([data-acknowledge-flag])')];
   expect(forms.map(form=>[...form.querySelectorAll('input')].map(input=>`${input.getAttribute('name')}=${input.getAttribute('value')}`))).toEqual([
    ['case=00000000-0000-4000-8000-00000000f001','disposition=expected','period=2026-10'],['case=00000000-0000-4000-8000-00000000f001','disposition=problem','period=2026-10']]);
-  expect([...view.container.querySelectorAll('[data-swing-flags] button')].map(button=>button.getAttribute('aria-label'))).toEqual(['Expected · Ravi Fictional','Real problem · Ravi Fictional']);
+  expect([...view.container.querySelectorAll('[data-swing-flags] button')].map(button=>button.getAttribute('aria-label'))).toEqual(['Expected · Ravi Fictional','Real problem · Ravi Fictional',
+   'Always expected for this person · Ravi Fictional']);
+  // Phase 2 hardening: the open flag can be acknowledged as standing "expected" for its person, with a reason.
+  const acknowledge=view.container.querySelector('[data-acknowledge-flag]')!;
+  expect([...acknowledge.querySelectorAll('input[type="hidden"]')].map(input=>`${input.getAttribute('name')}=${input.getAttribute('value')}`)).toEqual(['back=salary','period=2026-10',
+   `target=${fx.A}`,'check=swing:net_swing','scope=person','employment=00000000-0000-4000-8000-0000000000e1']);
+  expect(acknowledge.querySelector('input[name="reason"]')?.hasAttribute('required')).toBe(true);
+  // The open flags grouped by what moved the pay, with the evidence and one tap for the group (a person still decides).
+  const group=view.container.querySelector('[data-swing-group="cause:salary_change"]')!;
+  expect(parts(group.querySelector('p')!)).toBe('Salary change: 1 person Fictional A Sdn Bhd');
+  expect([...group.querySelectorAll('[data-group-evidence] li')].map(text)).toEqual(['Ravi Fictional: Up 31.1% (Salary change)']);
+  expect([...group.querySelectorAll('form')].map(form=>[...form.querySelectorAll('input')].map(input=>`${input.getAttribute('name')}=${input.getAttribute('value')}`))).toEqual([
+   ['back=salary','period=2026-10',`target=${fx.A}`,'pattern=cause:salary_change','disposition=expected'],
+   ['back=salary','period=2026-10',`target=${fx.A}`,'pattern=cause:salary_change','disposition=problem']]);
+  expect([...group.querySelectorAll('button')].map(text)).toEqual(['All 1 expected','All 1 are a real problem']);
+  expect(view.container.querySelectorAll('[data-swing-group]')).toHaveLength(1);
+  // A blocking exception a standing acknowledgement covers: never hidden; its one-tap resolve pre-filled with the reason.
+  const block=view.container.querySelector('[data-acknowledged-block]')!;
+  expect(parts(block.querySelector('p')!)).toBe('Chong Fictional No bank account to pay into');
+  expect((block.querySelector('input[readonly]') as HTMLInputElement).value).toBe('Paid in cash at the site office');
+  expect(block.querySelector('button')?.getAttribute('aria-label')).toBe('Resolve as expected · Chong Fictional');
   // Nothing on the page starts, approves or closes payroll.
   expect(text(view.container)).not.toMatch(/\b(Run payroll|Approve run|Close run)\b/);
   expect(text(view.container)).toContain('The net-swing threshold starts at ±15%.');
@@ -284,6 +327,18 @@ describe('Operations › Loops › Payroll cycle, per role',()=>{
    ['Approve','Approve · Raise the threshold from ±15% to ±20%'],['Reject','Reject · Raise the threshold from ±15% to ±20%']]);
   expect([...proposal.querySelectorAll('form')].map(form=>[...form.querySelectorAll('input')].map(input=>`${input.getAttribute('name')}=${input.getAttribute('value')}`))).toEqual([
    [`company=${fx.A}`,`proposal=${'a'.repeat(64)}`,'decision=approved'],[`company=${fx.A}`,`proposal=${'a'.repeat(64)}`,'decision=rejected']]);
+  // Phase 2 hardening: the threshold is capped at 50%; the cut-off reminders switch per company.
+  expect(company.querySelector('input[name="threshold"]')?.getAttribute('max')).toBe('50');
+  const reminders=company.querySelector('[data-setting-form="reminders"]')!;
+  expect(text(reminders.querySelector('[data-reminders]'))).toBe('On');
+  expect([...reminders.querySelectorAll('input')].map(input=>`${input.getAttribute('name')}=${input.getAttribute('value')}`)).toEqual([`company=${fx.A}`,'reminders=off']);
+  expect(reminders.querySelector('button')?.getAttribute('aria-label')).toBe('Turn off · Fictional A Sdn Bhd');
+  // The standing acknowledgements, each revocable, and the proposed standing rule a group administrator approves.
+  expect([...company.querySelectorAll('[data-acknowledgement]')].map(parts)).toEqual([
+   'Pay without attendance · Ah Kow FictionalWarning, hidden from to-do: Cash-paid driver, never clocks in. Aisyah Fictional, Nov 2, 2026, 10:00 AM · review on 2027-01-31 Revoke']);
+  const rule=company.querySelector('[data-rule-proposal="swing:net_swing"]')!;
+  expect([...rule.querySelectorAll('p')].map(text)).toEqual(['Always expect Net pay change against last month for Kumar Fictional','5 of the last 6 decided as expected (83.33%)']);
+  expect([...rule.querySelectorAll('button')].map(text)).toEqual(['Approve','Reject']);
   expect([...company.querySelectorAll('[data-setting-history] li')].map(text)).toEqual([
    'Version 2: Checked hourly, threshold ±15%, 1 exclusion (an approved proposal) by Aisyah Fictional, Nov 3, 2026, 11:04 PM',
    'Version 1: Checked hourly, threshold ±15%, no exclusion (set by an administrator) by Aisyah Fictional, Nov 2, 2026, 11:04 PM',

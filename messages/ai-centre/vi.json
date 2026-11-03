@@ -1390,7 +1390,7 @@
         "match": "Khớp lương thực nhận và số người",
         "total_mismatch": "Tổng không khớp lương thực nhận",
         "count_mismatch": "Số bản ghi không khớp",
-        "not_available": "Không có tệp ngân hàng để kiểm tra",
+        "not_available": "Không thể kiểm tra tệp ngân hàng, nên đợt lương chưa xong",
         "blocked": "Chưa thể tạo tệp ngân hàng",
         "not_ready": "Kiểm tra sau khi xử lý"
       },
@@ -1465,7 +1465,13 @@
         "save": "Lưu",
         "exclusions": "Mẫu lương được loại trừ",
         "noExclusions": "Không có. Chỉ thêm loại trừ khi duyệt một đề xuất.",
-        "remove": "Xóa"
+        "remove": "Xóa",
+        "reminders": "Nhắc hạn chốt tự động",
+        "remindersOn": "Bật",
+        "remindersOff": "Tắt",
+        "remindersTurnOn": "Bật",
+        "remindersTurnOff": "Tắt",
+        "remindersHelp": "Trước mỗi hạn chốt 5, 2 và 1 ngày, mỗi nhân viên và người duyệt có việc tồn đọng nhận một lời nhắc về việc của chính họ. Chỉ có số lượng, không bao giờ có số tiền lương."
       },
       "proposals": {
         "title": "Đề xuất",
@@ -1475,22 +1481,69 @@
         "exclusion": "Ngừng gắn cờ các thay đổi do {pattern}",
         "evidence": "{expected}/{flags} cờ được kết luận là dự kiến ({share}), {problems} vấn đề thật, {days} ngày qua",
         "approved": "Duyệt",
-        "rejected": "Từ chối"
+        "rejected": "Từ chối",
+        "approveGroupOnly": "Quản trị viên tập đoàn phê duyệt mục này; bạn có thể từ chối."
       },
       "saved": {
         "disposition": "Đã ghi nhận kết luận.",
         "setting": "Đã lưu. Áp dụng từ lần chạy tiếp theo.",
         "approved": "Đã duyệt đề xuất. Áp dụng từ lần chạy tiếp theo.",
-        "rejected": "Đã từ chối đề xuất."
+        "rejected": "Đã từ chối đề xuất.",
+        "grouped": "Đã ghi nhận cho cả nhóm.",
+        "acknowledged": "Đã ghi nhận là dự kiến. Mục này vẫn được liệt kê và không còn tính là đang mở.",
+        "resolved": "Đã giải quyết là dự kiến.",
+        "revoked": "Đã thu hồi xác nhận. Kiểm tra được tính lại từ lần chạy tiếp theo.",
+        "ruleApproved": "Đã phê duyệt quy tắc thường trực và ghi nhận thành xác nhận.",
+        "ruleRejected": "Đã từ chối đề xuất."
       },
       "errors": {
         "invalid": "Không hiểu được thay đổi đó.",
         "refused": "Bạn không thể thực hiện thay đổi đó.",
         "changed": "Nội dung đã thay đổi kể từ khi mở trang. Hãy xem lại.",
         "already": "Đã ghi nhận, hoặc không có gì thay đổi.",
-        "failed": "Không thể lưu thay đổi. Hãy thử lại."
+        "failed": "Không thể lưu thay đổi. Hãy thử lại.",
+        "groupAdministrator": "Chỉ quản trị viên tập đoàn mới có thể phê duyệt mục này.",
+        "ownEvidence": "Bạn đã xử lý các cờ làm căn cứ cho đề xuất này, nên quản trị viên tập đoàn khác phải phê duyệt.",
+        "own": "Bạn không thể ghi nhận điều này về chính mình."
       },
-      "patternUnknown": "Một khoản lương không còn trong danh mục"
+      "patternUnknown": "Một khoản lương không còn trong danh mục",
+      "groups": {
+        "title": "Cờ theo nguyên nhân thay đổi lương",
+        "help": "Kiểm tra những người trong nhóm rồi quyết định cùng lúc. Mỗi người vẫn được ghi nhận là quyết định của bạn.",
+        "heading": "{pattern}: {count, plural, other {# người}}",
+        "member": "{name}: {change} ({causes})",
+        "mark": {
+          "expected": "Cả {count} đều dự kiến",
+          "problem": "Cả {count} đều là vấn đề thật"
+        },
+        "note": "Đánh dấu một nhóm là dự kiến cũng giải quyết bất thường biến động lương thực nhận của cùng những người đó trong tháng, nên bạn chỉ quyết định một lần."
+      },
+      "acknowledgedBlocks": {
+        "title": "Ngoại lệ chặn có xác nhận thường trực",
+        "help": "Mục chặn không bao giờ bị ẩn. Phần giải quyết được điền sẵn từ xác nhận; hãy bấm nếu vẫn đúng cho lần chạy này.",
+        "prefilled": "Giải quyết (từ xác nhận)",
+        "resolve": "Giải quyết là dự kiến"
+      },
+      "acknowledge": {
+        "reason": "Vì sao là dự kiến",
+        "reviewOn": "Xem lại vào (tùy chọn)",
+        "person": "Luôn dự kiến cho người này"
+      },
+      "acknowledgements": {
+        "title": "Xác nhận thường trực",
+        "help": "Các kiểm tra HR lương đánh dấu là dự kiến, không phải ngoại lệ. Cảnh báo bị loại khỏi số việc cần làm nhưng vẫn được liệt kê trong vòng Kiểm toán và gói của nó; mục chặn luôn được giữ, với phần giải quyết điền sẵn. Không phép tính nào thay đổi.",
+        "none": "Chưa ghi nhận.",
+        "netSwing": "Thay đổi lương thực nhận so với tháng trước",
+        "group": "Phòng ban",
+        "company": "Toàn công ty",
+        "warningLine": "Cảnh báo, ẩn khỏi việc cần làm: {reason}. {name}, {when}",
+        "blockLine": "Mục chặn, giải quyết điền sẵn: {reason}. {name}, {when}",
+        "reviewOn": "xem lại vào {date}",
+        "revoke": "Thu hồi",
+        "proposalsTitle": "Đề xuất quy tắc thường trực",
+        "proposal": "Luôn coi {check} của {name} là dự kiến",
+        "proposalEvidence": "{expected} trong {runs} lần gần nhất được quyết định là dự kiến ({share})"
+      }
     },
     "policies": {
       "title": "Chính sách",
@@ -2403,7 +2456,10 @@
       "invalid": "Không thể ghi nhận. Hãy kiểm tra biểu mẫu và thử lại.",
       "refused": "Chỉ quản trị viên lương của công ty này mới làm được việc đó.",
       "module": "Mô-đun lương chưa được dùng, nên không thể bật vòng lặp kiểm toán.",
-      "failed": "Thao tác chưa hoàn tất. Không có gì bị thay đổi. Hãy thử lại."
+      "failed": "Thao tác chưa hoàn tất. Không có gì bị thay đổi. Hãy thử lại.",
+      "subject": "Bạn không thể xử lý phát hiện về chính mình. Quản trị viên lương khác hoặc quản trị viên tập đoàn có thể làm.",
+      "groupAdministrator": "Nới lỏng một kiểm soát cần quản trị viên tập đoàn.",
+      "already": "Điều này đã được ghi nhận."
     },
     "saved": {
       "disposed": "Đã ghi nhận kết luận.",
@@ -2413,7 +2469,8 @@
       "pause": "Đã lưu.",
       "settings": "Đã lưu cài đặt kiểm soát.",
       "granted": "Đã cấp quyền cho kiểm toán viên.",
-      "revoked": "Đã thu hồi quyền của kiểm toán viên."
+      "revoked": "Đã thu hồi quyền của kiểm toán viên.",
+      "acknowledged": "Đã ghi nhận là dự kiến. Mục này không còn tính là đang mở và vẫn được liệt kê."
     },
     "filter": {
       "period": "Tháng lương",
@@ -2497,7 +2554,8 @@
       "notYet": "Chưa chuẩn bị",
       "receipt": "Đã ghi nhận biên nhận",
       "notFiled": "Chưa nộp",
-      "help": "Một người nộp cho EPF, PERKESO, LHDN và HRD Corp rồi ghi nhận biên nhận. Vòng lặp kiểm toán không bao giờ tự nộp."
+      "help": "Một người nộp cho EPF, PERKESO, LHDN và HRD Corp rồi ghi nhận biên nhận. Vòng lặp kiểm toán không bao giờ tự nộp.",
+      "notRequired": "Không bắt buộc tháng này"
     },
     "forms": {
       "epf": "EPF",
@@ -2511,7 +2569,8 @@
       "disposition": "Kết luận",
       "choose": "Chọn",
       "note": "Ghi chú",
-      "record": "Ghi nhận"
+      "record": "Ghi nhận",
+      "openReadOnly": "Đang mở: chờ quản trị viên lương."
     },
     "controls": {
       "bank_change_before_pay_day": "Thông tin ngân hàng đổi ngay trước ngày trả lương",
@@ -2637,7 +2696,29 @@
       "login": "Tài khoản đăng nhập",
       "choose": "Chọn tài khoản",
       "grant": "Cấp quyền",
-      "auditorsHelp": "Kiểm toán viên xem bằng chứng vòng lặp kiểm toán và gói kiểm toán của công ty này, chỉ đọc, cho đến khi bị thu hồi. Mỗi lần cấp và thu hồi đều được ghi nhận."
+      "auditorsHelp": "Kiểm toán viên xem bằng chứng vòng lặp kiểm toán và gói kiểm toán của công ty này, chỉ đọc, cho đến khi bị thu hồi. Mỗi lần cấp và thu hồi đều được ghi nhận.",
+      "preparerClosedMode": "Cùng một tài khoản đã xử lý và đóng đợt lương",
+      "preparerClosed": {
+        "info": "Chỉ để thông tin (không tạo phát hiện)",
+        "finding": "Tạo phát hiện"
+      },
+      "loosenHelp": "Khoảng thay đổi ngân hàng từ 3 đến 30 ngày và số tiền từ 100.00 đến 50,000.00. Khoảng ngắn hơn, số tiền cao hơn hoặc chuyển phát hiện thành thông tin là nới lỏng kiểm soát và cần quản trị viên tập đoàn. Mọi thay đổi đều có trong gói kiểm toán của tháng."
+    },
+    "auditor": {
+      "readOnly": "Bạn có quyền kiểm toán viên chỉ đọc với các công ty được liệt kê ở đây. Bạn có thể đọc bằng chứng và tải gói kiểm toán; bạn không thể thay đổi gì."
+    },
+    "acknowledged": {
+      "label": "Dự kiến (xác nhận thường trực)",
+      "scope": {
+        "person": "cho người này",
+        "group": "cho phòng ban của họ",
+        "company": "cho toàn công ty"
+      },
+      "note": "Dự kiến (xác nhận thường trực): {reason}",
+      "for": "Dự kiến",
+      "reason": "Vì sao là dự kiến",
+      "reviewOn": "Xem lại vào (tùy chọn)",
+      "record": "Luôn là dự kiến"
     }
   },
   "payrollReadiness": {

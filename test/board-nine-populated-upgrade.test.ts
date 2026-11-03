@@ -49,6 +49,8 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   {tag:'2008_own_payroll_cut_off',when:1793330001408},
   {tag:'2009_teras_living_handbook',when:1793330001409},
   {tag:'2010_teras_learning_loops',when:1793330001410},
+  // AI v2 Phase 2 hardening (claude/aiv2-p2h-loops-hardening): payroll loops, audit and checklist.
+  {tag:'2011_payroll_loops_hardening',when:1793330001411},
  ]);
  expect(hash(readFileSync('db/migrations/0935_password_account_unlock.sql'))).toBe('3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa');
  expect(hash(readFileSync('db/migrations/0946_draft_creation_cohort_custody.sql'))).toBe('cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390');
@@ -152,7 +154,7 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   // Then this integration's seven AI v2 Phase 2 migrations, by the ordinary migrator over the whole journal. Their when
   // values sit above Phase 1's 1793330001403, so none is skipped.
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  const afterLedger=await ledger();expect(afterLedger).toHaveLength(667);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
+  const afterLedger=await ledger();expect(afterLedger).toHaveLength(668);expect(afterLedger.slice(0,660)).toEqual(phaseOneLedger);
   expect(afterLedger.slice(660).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132',created_at:'1793330001404'},
    {hash:'31234dca83bad7cc1bb4dc82f04f9743cb6cb690a1352149acd7d4f3b613f887',created_at:'1793330001405'},
@@ -161,6 +163,7 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
    {hash:'9c5f91f7380568067fbea128768a412f200ef58676d9541bb891f3539cb18c02',created_at:'1793330001408'},
    {hash:'fe54c4a68689e761ca670a81bdfd1e8c1b502cb58201150fa9593c546acae3b7',created_at:'1793330001409'},
    {hash:'316ce555983b42a896fbba7d7f75c73d4037b75ab60f41da6df611d8e0e2c3c0',created_at:'1793330001410'},
+   {hash:'d5b9cf2cdb8c76821ead04ad35efaf4c2518cefe1f7b0a72148c0cfdf52e670a',created_at:'1793330001411'},
   ]);
   expect(await phaseTwoObjects()).toEqual([{levels:'teras_loop_level',settings:'teras_payroll_loop_setting',audit:'payroll_audit_capture',baseline:'teras_capacity_baseline',
    cutoff:true,handbook:'teras_policy_version',learning:'teras_learning_signal'}]);

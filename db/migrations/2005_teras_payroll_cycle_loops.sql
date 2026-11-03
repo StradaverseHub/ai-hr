@@ -20,6 +20,11 @@
 --     the proposals read one table. Append-only; one disposition per flag.
 -- No column holds a name, an amount, an account number or free text: swings and thresholds are ratios in basis points
 -- and patterns are closed keys (cause:<kind>) or a pay item's code (item:<code>).
+-- Phase 2 hardening (4 November 2026, while unapplied): a threshold never exceeds 5000 (50%), the proposal cap, whether
+-- an administrator sets it directly or approves a proposal; a setting row also carries whether the Pre-salary loop sends
+-- automatic cut-off reminders (on unless an administrator switches them off for the company); and only a group
+-- administrator who disposed of none of the flags behind a proposal in its 30-day window may approve it (anyone who
+-- administers the company may still reject one, which only keeps the flag as tight as it is).
 -- Who reads and writes (FORCE row-level security on the three new tables):
 --  - settings: administrators of the company and the tenant's agent principal read; an administrator of the company
 --    writes under their own current login, attributed to them;
@@ -87,8 +92,8 @@ CREATE TABLE public.teras_payroll_threshold_decision (
  company_id uuid NOT NULL,
  proposal_key text NOT NULL CHECK (proposal_key ~ '^[0-9a-f]{64}$'),
  kind text NOT NULL CHECK (kind IN ('threshold','exclusion')),
- from_threshold_bp integer NOT NULL CHECK (from_threshold_bp BETWEEN 100 AND 10000),
- to_threshold_bp integer CHECK (to_threshold_bp BETWEEN 100 AND 10000),
+ from_threshold_bp integer NOT NULL CHECK (from_threshold_bp BETWEEN 100 AND 5000),
+ to_threshold_bp integer CHECK (to_threshold_bp BETWEEN 100 AND 5000),
  pattern text CHECK (pattern IS NULL OR app.teras_swing_pattern_valid(pattern)),
  evidence jsonb NOT NULL CHECK (jsonb_typeof(evidence)='object' AND octet_length(evidence::text)<=2048),
  decision text NOT NULL CHECK (decision IN ('approved','rejected')),
@@ -112,8 +117,9 @@ CREATE TABLE public.teras_payroll_loop_setting (
  company_id uuid NOT NULL,
  version integer NOT NULL CHECK (version>=1),
  check_interval text NOT NULL CHECK (check_interval IN ('hourly','twice_daily','daily')),
- swing_threshold_bp integer NOT NULL CHECK (swing_threshold_bp BETWEEN 100 AND 10000),
+ swing_threshold_bp integer NOT NULL CHECK (swing_threshold_bp BETWEEN 100 AND 5000),
  swing_exclusions text[] NOT NULL DEFAULT '{}' CHECK (app.teras_swing_patterns_valid(swing_exclusions)),
+ reminders_enabled boolean NOT NULL DEFAULT true,
  source text NOT NULL CHECK (source IN ('admin','proposal')),
  decision_id uuid,
  changed_by_user_id uuid NOT NULL REFERENCES public.app_user(id),
@@ -138,7 +144,7 @@ CREATE TABLE public.teras_payroll_swing_disposition (
  pay_period text NOT NULL CHECK (pay_period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),
  pattern text NOT NULL CHECK (app.teras_swing_pattern_valid(pattern)),
  swing_bp integer NOT NULL CHECK (swing_bp BETWEEN 0 AND 10000000),
- threshold_bp integer NOT NULL CHECK (threshold_bp BETWEEN 100 AND 10000),
+ threshold_bp integer NOT NULL CHECK (threshold_bp BETWEEN 100 AND 5000),
  disposition text NOT NULL CHECK (disposition IN ('expected','problem')),
  decided_by_user_id uuid NOT NULL REFERENCES public.app_user(id),
  decided_at timestamptz NOT NULL DEFAULT now(),
@@ -168,9 +174,15 @@ CREATE POLICY teras_payroll_threshold_decision_admin_read ON public.teras_payrol
  USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.current_user_id() IS NOT NULL
   AND app.is_admin_for(company_id));
 --> statement-breakpoint
+-- An approval loosens the flag: a group administrator only, and never one whose own dispositions in the proposal's
+-- 30-day window are part of its evidence (of that pattern, for an exclusion; of any pattern, for a threshold).
 CREATE POLICY teras_payroll_threshold_decision_admin_insert ON public.teras_payroll_threshold_decision FOR INSERT TO ai_hr_app
  WITH CHECK (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.principal_snapshot_current() IS TRUE
-  AND app.is_admin_for(company_id) AND decided_by_user_id=app.current_user_id());
+  AND app.is_admin_for(company_id) AND decided_by_user_id=app.current_user_id()
+  AND (decision='rejected' OR (app.is_group_admin() IS TRUE AND NOT EXISTS (SELECT 1 FROM public.teras_payroll_swing_disposition d
+   WHERE d.tenant_id=teras_payroll_threshold_decision.tenant_id AND d.company_id=teras_payroll_threshold_decision.company_id
+    AND d.decided_by_user_id=app.current_user_id() AND d.decided_at>=now()-interval '30 days'
+    AND (teras_payroll_threshold_decision.pattern IS NULL OR d.pattern=teras_payroll_threshold_decision.pattern)))));
 --> statement-breakpoint
 CREATE POLICY teras_payroll_loop_setting_read ON public.teras_payroll_loop_setting FOR SELECT TO ai_hr_app
  USING (tenant_id=app.current_tenant_id() AND (app.current_agent_principal() IS NOT NULL

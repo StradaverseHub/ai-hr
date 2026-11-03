@@ -1078,6 +1078,24 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     category: null,
     render: () => ({ severity: 'info', title: 'Details request withdrawn', body: 'The request to complete your details was withdrawn. You can ignore it.', linkPath: '/me' }),
   },
+  // AI v2 Phase 2 hardening (core/loops/cut-off-reminders.ts, owner ruling 18): the Pre-salary loop's automatic cut-off
+  // reminder, 5, 2 or 1 days before a payroll cut-off, to the person (the event's subject) about their OWN pending items and
+  // the requests waiting on them. Counts and the cut-off date only: never a pay figure, an amount or another person's
+  // name. It opens their own "Before payroll" checklist on Today. In-app only (no email category).
+  'teras-loop.cut-off-reminder': {
+    kind: 'teras-loop.cut-off-reminder',
+    category: null,
+    render: (p) => {
+      const cutOff = typeof p?.cutOff === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.cutOff) ? p.cutOff : null;
+      const lead = typeof p?.leadDays === 'number' && Number.isInteger(p.leadDays) && p.leadDays > 0 ? p.leadDays : null;
+      const own = typeof p?.ownItems === 'number' && Number.isInteger(p.ownItems) && p.ownItems > 0 ? p.ownItems : 0;
+      const approvals = typeof p?.approvals === 'number' && Number.isInteger(p.approvals) && p.approvals > 0 ? p.approvals : 0;
+      const parts = [own ? `${own} item${own === 1 ? '' : 's'} of your own to finish` : null,
+        approvals ? `${approvals} request${approvals === 1 ? '' : 's'} waiting for your decision` : null].filter(Boolean).join(' and ');
+      return { severity: 'action', title: lead === 1 ? 'Payroll cut-off tomorrow' : `Payroll cut-off in ${lead ?? 'a few'} days`,
+        body: `You have ${parts || 'items'} before the payroll cut-off${cutOff ? ` on ${cutOff}` : ''}. Open Before payroll on Today to see them.`, linkPath: '/' };
+    },
+  },
 };
 
 export type DispatchResult = { processed: number; created: number };

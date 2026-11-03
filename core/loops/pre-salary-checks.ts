@@ -15,6 +15,17 @@
  * no blocker left). A check whose module the company does not use is off. Each check names the owner page where its
  * items are fixed (PRE_SALARY_CHECK_HREF); the loop itself changes nothing. Counts only: no name, no amount.
  *
+ * Phase 2 hardening (4 November 2026), data-aware: each check reads the owning fact first, so a legitimate set-up is not
+ * flagged (owner input 17):
+ *  - a day the person's schedule group is exempt from absence, late-in and early-out judgments (the attendance owner's
+ *    own "Enable Exception", for staff who do not clock in) is neither an absence nor a short-day mark;
+ *  - only pay-relevant profile updates wait for payroll (bank, statutory and tax details, identity numbers, marital
+ *    status and children: lib/profile-requestable-fields.ts); a photo or a contact change does not;
+ *  - a pending claim counts when it was incurred within the year before the claim cut-off, and a recommended pay change
+ *    when its review cycle ended within the year before the salary cut-off, so a stale request left years ago does not
+ *    hold this month's payroll;
+ *  - statutory numbers are asked only of people they apply to (record readiness: EPF-exempt, SOCSO- and EIS-exempt staff),
+ *    and a bank account only of people paid by bank (cash and cheque need none).
  * Wave 1 integration: the last check is the payroll Audit loop's repeat issues (P2-2b, core/payroll-audit/status.ts
  * repeatAuditIssues): the control checks that found something in the last audited month (the month before this one) and
  * in the month before that too, which the next Pre-salary loop should look at first. A warning per repeated check, never
@@ -22,7 +33,8 @@
 import {and,count,eq,gte,inArray,isNotNull,isNull,lte,or,sql,type Column} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {attendance,attendanceCorrection,claimAttachment,claimRequest,claimType,compensation,employeeStatutoryMy,employment,employmentPayComponent,
- leaveRequest,performanceReview,profileChangeRequest,resignationRequest} from '../../db/schema';
+ leaveRequest,performanceReview,profileChangeRequest,resignationRequest,reviewCycle} from '../../db/schema';
+import {isPayRelevantProfileChange} from './pay-relevant';
 import {terasLoopCase} from '../../db/teras-schema';
 import {isModuleEnabled} from '../entitlements';
 import {compensationEffectiveOn} from '../comp';
@@ -105,9 +117,11 @@ export async function preSalaryChecks(sponsor:SessionContext,input:PreSalaryInpu
       if(!day)continue;
       const key=`${employmentId}:${row.date}`;
       if(pending.has(key)){waiting++;continue;}
+      // The schedule group's own exemption: no absence and no short-day mark on an exempt day.
+      const exempt=(row as {exceptionExempt?:boolean}).exceptionExempt===true;
       if(day.section==='incomplete')missing++;
-      else if(day.section==='absent')absent++;
-      else if(!explained.has(key))short++;
+      else if(day.section==='absent'){if(!exempt)absent++;}
+      else if(!exempt&&!explained.has(key))short++;
      }
     }
    }
@@ -146,7 +160,8 @@ export async function preSalaryChecks(sponsor:SessionContext,input:PreSalaryInpu
  // ── Claims: waiting for a decision, missing a required receipt, and drafts not yet submitted ──
  let claims=off('claims');
  if(uses('claims')){
-  const inWindow=lte(claimRequest.incurredOn,windows.claim.end);
+  // Incurred within the year before the claim cut-off: a request left pending for longer is not this month's input.
+  const inWindow=and(lte(claimRequest.incurredOn,windows.claim.end),gte(claimRequest.incurredOn,addHrDays(windows.claim.end,-365)));
   const noReceipt=sql`${claimType.requiresReceipt} and not exists (select 1 from ${claimAttachment} a where a.claim_request_id=${claimRequest.id})`;
   const [waiting,receipts,drafts]=await withTenant(sponsor,async tx=>[
    n(await tx.select({n:count()}).from(claimRequest).where(and(among(claimRequest.employmentId),eq(claimRequest.status,'pending'),inWindow))),
@@ -178,8 +193,9 @@ export async function preSalaryChecks(sponsor:SessionContext,input:PreSalaryInpu
  const active=people.filter(row=>row.terminatedOn==null).map(row=>row.id);
  const [gaps,profileUpdates,dataRequests]=await withTenant(sponsor,async tx=>[
   active.length?(await readinessSnapshot(tx,0,true,{employmentIds:active})).view.gaps:[],
-  n(await tx.select({n:count()}).from(profileChangeRequest).where(and(among(profileChangeRequest.employmentId),eq(profileChangeRequest.status,'pending'),
-   sql`coalesce(${profileChangeRequest.proposed}->>'kind','')<>'photo'`))),
+  // Only a pay-relevant update waits for payroll (not a photo, a contact detail or a preferred name).
+  (await tx.select({proposed:profileChangeRequest.proposed}).from(profileChangeRequest).where(and(among(profileChangeRequest.employmentId),
+   eq(profileChangeRequest.status,'pending'),sql`coalesce(${profileChangeRequest.proposed}->>'kind','')<>'photo'`))).filter(row=>isPayRelevantProfileChange(row.proposed)).length,
   n(await tx.select({n:count()}).from(terasLoopCase).where(and(eq(terasLoopCase.workerId,'loop_missing_employee_data'),eq(terasLoopCase.companyId,companyId),
    inArray(terasLoopCase.state,['open','waiting'])))),
  ] as const);
@@ -189,7 +205,10 @@ export async function preSalaryChecks(sponsor:SessionContext,input:PreSalaryInpu
 
  // ── Pay changes: recommended changes not yet decided, and recorded changes taking effect in the window ──
  const [recommended,changes]=await withTenant(sponsor,async tx=>[
-  uses('performance')?n(await tx.select({n:count()}).from(performanceReview).where(and(among(performanceReview.employmentId),eq(performanceReview.compActionStatus,'recommended')))):0,
+  // A recommendation from a review cycle that ended within the year before the salary cut-off (and not after it).
+  uses('performance')?n(await tx.select({n:count()}).from(performanceReview).innerJoin(reviewCycle,eq(reviewCycle.id,performanceReview.cycleId))
+   .where(and(among(performanceReview.employmentId),eq(performanceReview.compActionStatus,'recommended'),
+    lte(reviewCycle.periodEnd,windows.salary.end),gte(reviewCycle.periodEnd,addHrDays(windows.salary.end,-365))))):0,
   n(await tx.select({n:count()}).from(compensation).where(and(among(compensation.employmentId),isNull(compensation.supersededAt),
    gte(compensation.validFrom,windows.salary.start),lte(compensation.validFrom,windows.salary.end))))
   +n(await tx.select({n:count()}).from(employmentPayComponent).where(and(among(employmentPayComponent.employmentId),isNull(employmentPayComponent.supersededAt),

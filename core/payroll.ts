@@ -1385,15 +1385,18 @@ function batchTypeWindow(
 }
 
 /** AI v2 P2-2b — the Audit loop's record of the inputs a run used, taken in the processing transaction itself. The windows are
- *  the same company schedule the kernel just read; the capture only reads and hashes (core/payroll-audit/inputs.ts). */
+ *  the same company schedule the kernel just read; the capture only reads and hashes (core/payroll-audit/inputs.ts). Phase 2
+ *  hardening: the schedule is read inside the capture's own savepoint too, so nothing the capture does can stop the run. */
 async function captureAuditInputsTx(tx: Tx, ctx: SessionContext, batch: { batchId: string; companyId: string; payPeriod: string },
   trigger: 'processed' | 'reprocessed', employmentIds?: readonly string[]) {
-  const sched = await loadBatchCutOffSchedule(tx, batch.companyId);
-  const windows = {
-    attendance: batchTypeWindow(sched, 'attendance', batch.payPeriod),
-    overtime: batchTypeWindow(sched, 'overtime', batch.payPeriod),
-    leave: batchTypeWindow(sched, 'leave', batch.payPeriod),
-    claim: batchTypeWindow(sched, 'claim', batch.payPeriod),
+  const windows = async (savepoint: Tx) => {
+    const sched = await loadBatchCutOffSchedule(savepoint, batch.companyId);
+    return {
+      attendance: batchTypeWindow(sched, 'attendance', batch.payPeriod),
+      overtime: batchTypeWindow(sched, 'overtime', batch.payPeriod),
+      leave: batchTypeWindow(sched, 'leave', batch.payPeriod),
+      claim: batchTypeWindow(sched, 'claim', batch.payPeriod),
+    };
   };
   await captureRunInputsAtProcessingTx(tx, ctx, { ...batch, windows, trigger, ...(employmentIds ? { employmentIds } : {}) });
 }

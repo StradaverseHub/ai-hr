@@ -53,6 +53,12 @@ export type PayrollItem=Readonly<{
  * the owner's default month-end applies; unavailable: the person has no own current employment to read a cut-off for,
  * so no cut-off date is shown and the month is the calendar month (no date is guessed). */
 export type CutOffSource='company'|'month_end'|'unavailable';
+/** One input type's window for the pay period: from its first day to its own cut-off (the item's due date). */
+export type TypeWindow=Readonly<{start:string;end:string}>;
+/** Phase 2 hardening: each input type's own window, from the company's per-type cut-off days (attendance, overtime,
+ * claim and unpaid leave), as the payroll owner resolves them for the same pay period (core/pre-salary/person-items.ts);
+ * each item's due date is its own type's cut-off. */
+export type PayrollTypeWindows=Readonly<{attendance:TypeWindow;overtime:TypeWindow;claim:TypeWindow;leave:TypeWindow}>;
 export type PayrollPeriod=Readonly<{payPeriod:string;start:string;cutOff:string|null;source:CutOffSource}>;
 
 /** done: nothing to do in the group; todo: something for the person; waiting: only things others decide; unknown: the
