@@ -1,3 +1,4 @@
+import {createHmac,randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import * as schema from '../db/schema';
@@ -64,6 +65,14 @@ describe('Qualification and Emergency Contact register imports',()=>{
     process.env.QUALIFICATION_IMPORT_REVIEW_KEY=key;
     try{
       await expect(withTenant(ctx,tx=>tx.execute(sql`select app.stage_qualification_import_preview('{}',${'00'.repeat(32)})`))).rejects.toThrow();
+      await expect(withTenant(ctx,async tx=>{
+        const [stamp]=await tx.execute<{value:string}>(sql`select app.data_permission_read_stamp() as value`);
+        const payload=JSON.stringify({tenantId:ctx.tenantId,userId:ctx.userId,accessStamp:stamp.value,
+          nonce:randomUUID(),expiresAt:Date.now()+60000,sourceHash:'a'.repeat(64),snapshot:'b'.repeat(64),records:parsed,
+          subjects:[{employmentId:e.employmentId,companyId:randomUUID(),employeeCode:'SIGNED01',recordId:second.id}]});
+        const mac=createHmac('sha256',Buffer.from(key,'hex')).update('aihr.qualification-import.v1\n'+payload).digest('hex');
+        return tx.execute(sql`select app.stage_qualification_import_preview(${payload},${mac})`);
+      })).rejects.toMatchObject({cause:{code:'42501',message:'Qualification import subjects unavailable'}});
       const stale=await previewQualificationSection(ctx,parsed,csv);
       expect(stale.qualificationReviewId).toBeTruthy();
       await updateQualification(ctx,{id:first.id,result:'Changed after review'});

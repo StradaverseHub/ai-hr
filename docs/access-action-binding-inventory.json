@@ -30504,9 +30504,7 @@
         "app.workforce_full_import_allowed",
         "app.workforce_section_import_allowed",
         "app/admin/personnel/import/section-actions.ts:requireAdmin",
-        "core/import-sections.ts:requirePackFor",
-        "core/personnel-register-import.ts:assertWorkforceSectionImportEmploymentTx",
-        "core/workforce-access.ts:assertWorkforceSectionImportCompanyTx"
+        "core/import-sections.ts:requirePackFor"
       ],
       "tables": [
         "'aihr.qualification-import.v1\\n'",

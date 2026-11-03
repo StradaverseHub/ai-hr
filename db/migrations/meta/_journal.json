@@ -4642,6 +4642,13 @@
       "when": 1793330000359,
       "tag": "0959_formula_builder_read_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 807,
+      "version": "7",
+      "when": 1793330000360,
+      "tag": "0960_qualification_import_subject_binding",
+      "breakpoints": true
     }
   ]
 }

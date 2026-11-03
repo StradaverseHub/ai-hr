@@ -170,11 +170,13 @@ export async function previewQualificationSection(ctx:SessionContext,records:Imp
     if(!key||!(/^[0-9a-f]{64}$/i.test(key)))throw new Error(reviewUnavailable);
     const [stamp]=await tx.execute<{value:string|null}>(sql`select app.data_permission_read_stamp() as value`);
     if(!stamp?.value||!ctx.userId)throw new Error(reviewUnavailable);
-    for(const employmentId of new Set(resolved.map(row=>row.subject!.employmentId!))){
-      await assertWorkforceSectionImportEmploymentTx(tx,ctx,employmentId);
-    }
+    const subjects=resolved.map(({subject,recordId})=>({
+      employmentId:subject!.employmentId,companyId:subject!.companyId,employeeCode:subject!.employeeCode,
+      recordId:recordId||null,
+    }));
     const payload=JSON.stringify({tenantId:ctx.tenantId,userId:ctx.userId,accessStamp:stamp.value,
-      nonce:randomUUID(),expiresAt:Date.now()+14*60_000,sourceHash:importSourceHash(Buffer.from(csv,'utf8')),records,snapshot:await qualificationReviewSnapshot(tx,resolved,false)});
+      nonce:randomUUID(),expiresAt:Date.now()+14*60_000,sourceHash:importSourceHash(Buffer.from(csv,'utf8')),
+      records,subjects,snapshot:await qualificationReviewSnapshot(tx,resolved,false)});
     const mac=createHmac('sha256',Buffer.from(key,'hex')).update('aihr.qualification-import.v1\n').update(payload).digest('hex');
     try{
       const [packet]=await tx.execute<{id:string}>(sql`select app.stage_qualification_import_preview(${payload},${mac}) as id`);
