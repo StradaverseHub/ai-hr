@@ -64,14 +64,15 @@ it('retention, a shortened setting and person erasure work under forced RLS for 
    (select bool_and(c.relforcerowsecurity and c.relrowsecurity and c.relowner=r.oid) from pg_class c where c.oid in ('public.teras_chat'::regclass,'public.teras_chat_turn'::regclass,'public.teras_chat_retention'::regclass,'public.letter_request'::regclass)) as forced_owned
    from pg_roles r where r.rolname=${role}`);
   expect(shape).toEqual({super:false,bypass:false,app_member:false,forced_owned:true});
-  // Synthetic letter requests of one synthetic template, written with the triggers off (no option, version or guard is
+  // Synthetic letter requests of synthetic templates, written with the triggers off (no option, version or guard is
   // needed), each carrying a chat card's id. Their foreign keys are real: PostgreSQL re-checks every foreign key of a row
-  // updated in the transaction that inserted it.
-  const cards={mine:randomUUID(),theirs:randomUUID(),later:randomUUID()},templateId=randomUUID();
+  // updated in the transaction that inserted it. One open request per person and template (letter_request_open_uq).
+  const cards={mine:randomUUID(),theirs:randomUUID(),later:randomUUID()},templates=[randomUUID(),randomUUID()];
   await tx.execute(sql`set local session_replication_role=replica`);
-  await tx.execute(sql`insert into public.letter_template(id,tenant_id,company_id,code,created_by) values(${templateId}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,'FICTIONAL',${admin.ctx.userId}::uuid)`);
+  for(const [index,id] of templates.entries())
+   await tx.execute(sql`insert into public.letter_template(id,tenant_id,company_id,code,created_by) values(${id}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${'FICTIONAL-'+index},${admin.ctx.userId}::uuid)`);
   await tx.execute(sql`set local session_replication_role=origin`);
-  const request=async(who:Person,key:string)=>{await tx.execute(sql`set local session_replication_role=replica`);
+  const request=async(who:Person,key:string,templateId=templates[0])=>{await tx.execute(sql`set local session_replication_role=replica`);
    const [row]=await tx.execute<{id:string}>(sql`insert into public.letter_request(tenant_id,company_id,employment_id,requested_by,template_id,letter_type_name,client_key)
     values(${b.tenantId}::uuid,${b.companyId}::uuid,${who.employmentId}::uuid,${who.ctx.userId}::uuid,${templateId}::uuid,'Fictional letter',${key}::uuid) returning id`);
    await tx.execute(sql`set local session_replication_role=origin`);return row.id;};
@@ -113,7 +114,7 @@ it('retention, a shortened setting and person erasure work under forced RLS for 
   expect(await tx.execute(sql`select current_setting('app.teras_chat_restamp',true) as marker`)).toEqual([{marker:''}]);
   verified++;
 
-  const laterRequest=await request(me,cards.later);
+  const laterRequest=await request(me,cards.later,templates[1]);
   // 3. Person erasure: the admitted intent for the subject in THIS transaction (as app.assistant_own_leave_reviews_redact
   //    records it), then the definer function from the administrator's application session.
   await tx.execute(sql`insert into app.assistant_review_erasure_intent(xact_id,tenant_id,user_id,person_id,employment_id,cleared,event_id,review_ids)
