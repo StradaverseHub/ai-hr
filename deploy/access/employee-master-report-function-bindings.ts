@@ -24,3 +24,19 @@ export const REPORT_CATEGORY_FUNCTIONS:readonly FunctionActionDescriptor[]=
    {owner:'app.report_permission_admit',operation:'actual-role-set-widening-and-data-ceilings'},
   ]}],
  }));
+
+export const EMPLOYEE_MASTER_VIEW_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:EMPLOYEE_MASTER_REPORT_FUNCTIONS.map(descriptor=>({
+  ...descriptor,actions:descriptor.actions.filter(action=>action.operation==='view'),
+ })),
+ functionLegacyParityFunction:EMPLOYEE_MASTER_REPORT_DEFAULTS.pure,
+ functionCurrentLegacyParityFunction:EMPLOYEE_MASTER_REPORT_DEFAULTS.current,
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.employee_master_view_bindings_complete()',
+  'app.employee_master_definition_allowed(jsonb,text)',
+  'app.employee_master_access_stamp(uuid,uuid[])',
+  'app.pay_formula_category(uuid,text)',
+ ],
+} as const;

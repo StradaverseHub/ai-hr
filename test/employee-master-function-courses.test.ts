@@ -1,15 +1,16 @@
 /** Actual report-category owner, pure target floors and a real sharing-revocation race.
- * No supported cells, private execution grants or fabricated result rows. */
+ * Publication uses the restricted installer and actual report rows. */
 import {beforeAll,beforeEach,afterAll,afterEach,it,expect,vi} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import {hireEmployee} from '../core/org';
 import {decidePayrollPermission} from '../lib/payroll-permissions';
 import {pgSqlState} from '../lib/db-error';
 import {setPayrollPermissionGrant,deletePayrollPermissionGrant} from '../core/payroll-permissions-admin';
 import {masterReportCatalogue,masterReportActionAccess} from '../core/employee-master-access';
-import {saveEmployeeMasterReport,runEmployeeMasterReport,getEmployeeMasterReport} from '../core/employee-master-reports';
+import {saveEmployeeMasterReport,runEmployeeMasterReport,getEmployeeMasterReport,authorizeEmployeeMasterRun} from '../core/employee-master-reports';
 import * as projection from '../core/employee-master-projection';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {defaultMasterColumn,type EmployeeMasterSpec} from '../lib/employee-master-report';
@@ -91,4 +92,35 @@ it('refuses raw Master definition creation by a real non-HR owner without a nati
  expect(await masterReportActionAccess(employee,[b.companyId])).toEqual({canAdd:false,canEdit:false,canDelete:false});
  let denial:unknown;try{await withTenant(employee,tx=>tx.insert(s.customReport).values({tenantId:b.tenantId,createdByUserId:userId,name:'Fictional refused raw definition',category:'master',datasetId:'master',spec:{datasetId:'master',columns:['name']}}));}catch(error){denial=error;}
  expect(pgSqlState(denial)).toBe('42501');expect(await owner.db.select().from(s.customReport).where(eq(s.customReport.createdByUserId,userId))).toEqual([]);
+});
+
+it('publishes View and refuses definitions, fresh runs and generated exports after a scoped denial',async()=>{
+ await hireEmployee(ctx,{person:{fullName:'Fictional report subject',primaryEmail:'report-view@fixture.invalid'},
+  companyId:b.companyId,departmentId:b.deptA,employeeCode:'REPORT-VIEW',employmentType:'full_time',hiredOn:'2025-01-01'});
+ const code=PERSONNEL_FIELDS.find(field=>field.owner==='employment'&&field.ownerField==='employeeCode')!;
+ const spec:EmployeeMasterSpec={v:2,asAt:todayInKualaLumpur(),companyIds:[b.companyId],includeDrafts:false,columns:[defaultMasterColumn(code)],
+  expression:{id:'root',type:'group',logic:'and',children:[]},sorts:[],groups:[],pdf:{paper:'A4',orientation:'landscape',margins:'normal',logo:false,pageBreakGroups:false}};
+ const report=await saveEmployeeMasterReport(ctx,[b.companyId],{name:'Fictional view binding report',description:'Fixture',spec,sharedRoleIds:[]});
+ const cap='function.employeeMasterReports.view';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'employee_master_view')).toMatchObject({changed:true,capabilities:1});
+  expect(await publishActionCapabilityPackage(owner.client,'employee_master_view')).toMatchObject({changed:false});
+  const run=await runEmployeeMasterReport(ctx,[b.companyId],{id:report.id});
+  expect(run.result.totalRows).toBe(1);
+  await expect(authorizeEmployeeMasterRun(ctx,[b.companyId],run)).resolves.toBeUndefined();
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${ctx.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  expect(await withTenant(ctx,tx=>tx.select({id:s.customReport.id}).from(s.customReport).where(eq(s.customReport.id,report.id)))).toEqual([]);
+  await expect(runEmployeeMasterReport(ctx,[b.companyId],{id:report.id})).rejects.toThrow('unavailable');
+  await expect(authorizeEmployeeMasterRun(ctx,[b.companyId],run)).rejects.toThrow('unavailable');
+  const [[category],stamp]=await Promise.all([
+   withTenant(ctx,tx=>tx.execute(sql`select app.pay_formula_category(${b.companyId}::uuid,'personnel') as allowed`)),
+   withTenant(ctx,tx=>tx.execute(sql`select app.employee_master_access_stamp(null,array[${b.companyId}::uuid])`)).then(()=>null,error=>error),
+  ]);
+  expect(category.allowed).toBe(true);
+  expect(pgSqlState(stamp)).toBe('42501');
+ }finally{
+  await owner.client`delete from app.access_native_capability_default where capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=${cap}`;
+ }
 });

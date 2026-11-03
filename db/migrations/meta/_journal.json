@@ -4691,6 +4691,13 @@
       "when": 1793330000366,
       "tag": "0966_profile_maintenance_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 814,
+      "version": "7",
+      "when": 1793330000367,
+      "tag": "0967_employee_master_view_binding_readiness",
+      "breakpoints": true
     }
   ]
 }
