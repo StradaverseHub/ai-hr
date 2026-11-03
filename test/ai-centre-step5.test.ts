@@ -40,7 +40,10 @@ describe('worker registry gate', () => {
     expect(fs.existsSync(path.join(ROOT, 'app/control-tower/agents/registry-actions.ts'))).toBe(false);
     const actions = read('app/control-tower/agents/actions.ts');
     expect(actions).not.toMatch(/export async function setRegistryWorkerSwitch|export const REGISTRY_SWITCHES/);
-    expect(actions).toContain("const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers', 'conversation']);");
+    // AI v2 W8 appends the five loops to the closed list (also switched on AI Centre › Operations › Loops).
+    expect(actions).toContain("const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers', 'conversation',\n"+
+     "  // AI v2 W8: the five loops at the Prepare level, also switched on AI Centre › Operations › Loops.\n"+
+     "  'loop_probation_ending', 'loop_payroll_inputs', 'loop_missing_employee_data', 'loop_missed_clock_outs', 'loop_document_expiry']);");
     expect(actions).toContain("if (formData.has('worker')) return setRegistryWorkerSwitch(formData);");
     expect(actions).toContain('if (!s.userId || s.agent || !isGroupAdmin(s)) throw');
     expect(read('app/control-tower/agents/worker-registry.tsx')).toContain('<form action={setAiFeatureAction} data-worker-switch={row.id}>');
@@ -60,7 +63,9 @@ describe('worker registry gate', () => {
   it('checks the group administrator, the module, and audits and records every change in the service', () => {
     const controls = read('core/agent-registry/controls.ts');
     expect(controls).toContain("if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new WorkerControlRefused('not_administrator')");
-    expect(controls).toContain("SWITCHED_MODULE:Readonly<Record<TerasSwitchedWorker,string>>=Object.freeze({approver_recommendation:'leave',explainers:'assistant',conversation:'assistant'})");
+    expect(controls).toContain("SWITCHED_MODULE:Readonly<Record<TerasSwitchedWorker,string>>=Object.freeze({approver_recommendation:'leave',explainers:'assistant',conversation:'assistant',\n"+
+     // AI v2 W8: each loop's switch checks the module its work belongs to.
+     " loop_probation_ending:'employees',loop_payroll_inputs:'payroll',loop_missing_employee_data:'employees',loop_missed_clock_outs:'attendance',loop_document_expiry:'employees'})");
     expect(controls).toContain("if(!isModuleEnabled(ctx,SWITCHED_MODULE[workerId]))throw new WorkerControlRefused('module_not_enabled')");
     expect(controls).toContain("payload:{workerId,from,to:enabled,version:row.version,...(workerId==='conversation'?{attestedProvider}:{})}");
     expect(controls).toContain('agentIdentity:WORKER_SWITCH_IDENTITY');

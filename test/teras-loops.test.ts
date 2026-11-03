@@ -45,8 +45,8 @@ const TODAY='2026-07-02',YESTERDAY='2026-07-01',TUESDAY='2026-06-30';
 let b:Base,principalId:string,group:SessionContext&{employmentId:string;personId:string};
 
 type Login=SessionContext&{employmentId:string;personId:string;userId:string};
-async function login(base:Base,name:string,role:'employee'|'manager'|'hr_admin',companyId=base.companyId,departmentId:string|undefined=base.deptA):Promise<Login>{
- const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:`${randomUUID()}@fixture.test`},companyId,...(departmentId?{departmentId}:{}),employmentType:'full_time',hiredOn:'2024-01-01'});
+async function login(base:Base,name:string,role:'employee'|'manager'|'hr_admin',companyId=base.companyId,departmentId=base.deptA):Promise<Login>{
+ const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:`${randomUUID()}@fixture.test`},companyId,departmentId,employmentType:'full_time',hiredOn:'2024-01-01'});
  const userId=await createAppUser(base.tenantId,hired.personId,role);
  const ctx=await entitledCtx(base,[role]);
  return {...ctx,userId,personId:hired.personId,roles:[role],grants:[{role,companyId:null}],employmentId:hired.employmentId};
@@ -260,7 +260,9 @@ describe('loop 3: missing employee data',()=>{
   // No compensation is HR's to fill: only the bank account is on the employee's card.
   expect(await caseOf('loop_missing_employee_data',key)).toMatchObject({state:'open',recipient:'employee',facts:{gaps:['no_bank_account'],tabs:['bankStatutory'],pending:0}});
   expect(await cards(e,false)).toEqual([{kind:'record',caseId:expect.any(String),gaps:['no_bank_account'],href:'/me?tab=bankStatutory#section-request-bankStatutory'}]);
-  expect((await cards(group,true)).filter(item=>item.kind==='record')).toEqual([]);
+  // The card is the employee's own: an administrator's Today shows only their own record card, never this one.
+  const caseId=(await caseOf('loop_missing_employee_data',key))!.id;
+  expect((await cards(group,true)).filter(item=>item.kind==='record').map(item=>item.caseId)).not.toContain(caseId);
   // Nothing changed on the record.
   const [record]=await owner.db.select({bank:schema.employeeStatutoryMy.bankAccountNo}).from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,e.personId));
   expect(record.bank).toBeNull();
