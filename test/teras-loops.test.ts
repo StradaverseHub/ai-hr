@@ -69,7 +69,8 @@ const hoursLater=(hours:number)=>new Date(Date.now()+hours*3_600_000);
 const casesOf=(id:LoopId,ctx:SessionContext=group)=>withTenant(ctx,tx=>tx.select().from(terasLoopCase).where(eq(terasLoopCase.workerId,id)));
 const caseOf=async(id:LoopId,key:string)=>(await casesOf(id)).find(row=>row.subjectKey===key);
 const runsOf=(id:LoopId,ctx:SessionContext=group)=>withTenant(ctx,tx=>tx.select().from(terasLoopRun).where(eq(terasLoopRun.workerId,id)));
-const cards=(ctx:SessionContext,admin:boolean,scopeIds=[b.companyId])=>readLoopCards(ctx,{scopeIds,admin});
+// The HR day the cards are read on is the runs' own (AI v2 P2-2a: the Pre-salary card shows in the last 7 days before its cut-off).
+const cards=(ctx:SessionContext,admin:boolean,scopeIds=[b.companyId])=>readLoopCards(ctx,{scopeIds,admin,today:TODAY});
 const pgText=(error:unknown)=>{const parts:string[]=[];for(let cur=error as Record<string,unknown>|undefined,n=0;cur&&typeof cur==='object'&&n<5;cur=cur.cause as never,n++)
  for(const key of ['message','detail'])if(typeof cur[key]==='string')parts.push(cur[key] as string);return parts.join(' | ');};
 const day=(offset:number)=>new Date(Date.parse(`${TODAY}T00:00:00Z`)+offset*86_400_000).toISOString().slice(0,10);

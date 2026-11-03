@@ -1,7 +1,7 @@
 /** AI v2 P2-2a — the Salary payroll loop, from the salary cut-off to close (owner decisions, payroll-cycle loops, items
  * 1, 2, 3 and 5). PREPARE ONLY, IN EVERY COMPANY, ENFORCED: this module reads through the payroll owners and returns
  * observations; it never creates, processes, approves, closes or reopens a run, and it never generates or sends a bank
- * file (test/payroll-cycle-loops.test.ts pins both the behaviour and this file's imports). A person runs, approves and
+ * file (test/payroll-cycle-loops.test.ts pins the behaviour, test/payroll-cycle-swing.test.ts this file's source). A person runs, approves and
  * closes payroll; there is no second approver.
  *
  * Detect, per company in scope that uses payroll:

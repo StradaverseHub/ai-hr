@@ -1119,7 +1119,7 @@
         "none": "No proposal: not enough flags were cleared as expected.",
         "threshold": "Raise the threshold from ±{from} to ±{to}",
         "exclusion": "Stop flagging changes explained by {pattern}",
-        "evidence": "{expected} of {flags} flags cleared as expected ({share}), {problems} real problems, last {days} days",
+        "evidence": "{expected} of {flags} flags cleared as expected ({share}), real problems: {problems}, last {days} days",
         "approved": "Approve",
         "rejected": "Reject"
       },
