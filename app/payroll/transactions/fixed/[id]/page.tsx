@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
-import { getEmploymentPayComponent } from '@/core/pay-components';
+import { fixedTransactionCompanyScope, getEmploymentPayComponent } from '@/core/pay-components';
 import { listPayrollCycles } from '@/core/payroll-cycle';
 import { Badge, Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -54,14 +54,15 @@ export default async function FixedTransactionDetailPage({
     nextFirst?: string;
   }>;
 }) {
-  const { s, scopeIds } = await scopedAdmin();
+  const { s, scopeIds: candidates } = await scopedAdmin();
+  const scopeIds = await fixedTransactionCompanyScope(s, candidates);
   const t = await getTranslations('payroll.transactions');
   const { id } = await params;
   const { employmentId, error, clashCode, clashFrom, clashTo, clashPeriod, nextFirst } = await searchParams;
 
   // Scope-guard the employment exactly as the list does: RLS isolates tenants, company scope does not
   // travel with it, so an out-of-scope (or absent) employmentId is simply not found.
-  const employees = await listEmployees(s, scopeIds);
+  const employees = scopeIds.length ? await listEmployees(s, scopeIds) : [];
   const emp = employmentId ? (employees.find((e) => e.employmentId === employmentId) ?? null) : null;
   if (!emp) notFound();
 

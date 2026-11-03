@@ -19,6 +19,7 @@ import { actorOf, appendEvent } from '../db/events';
 import {
   attendance,
   compensation,
+  company,
   employment,
   employmentPayComponent,
   payComponent,
@@ -215,6 +216,28 @@ const flagsOf = (c: Pick<PayComponentSeed, 'includedInEpf' | 'includedInSocsoEis
   prorates: c.prorates,
 });
 
+export function fixedTransactionCompanyScope(ctx: SessionContext, candidates: string[]) {
+  return withTenant(ctx, async tx => {
+    if (!candidates.length) return [];
+    const rows = await tx.select({id: company.id}).from(company).where(and(
+      eq(company.tenantId, ctx.tenantId), inArray(company.id, candidates),
+      sql`app.access_financial_action_company('payroll', ${company.id}, 'view')
+        AND app.function_action_allowed('payroll.fixedTransactions', 'view', ${company.id})`,
+    ));
+    return rows.map(row => row.id);
+  });
+}
+
+function fixedTransactionRowView() {
+  return sql`exists (
+    select from public.employment subject
+    where subject.tenant_id = ${employmentPayComponent.tenantId}
+      and subject.id = ${employmentPayComponent.employmentId}
+      and app.access_financial_action_employment('payroll', subject.id, 'view')
+      and app.function_action_allowed('payroll.fixedTransactions', 'view', subject.company_id)
+  )`;
+}
+
 /**
  * Recurring components for an employee, joined with the catalog (for the people page).
  *
@@ -225,7 +248,7 @@ const flagsOf = (c: Pick<PayComponentSeed, 'includedInEpf' | 'includedInSocsoEis
  * `active` vs `ended` from validTo against today. `prorates` (catalog) is selected so the UI can render the
  * resolved prorate (override ?? catalog).
  */
-export function listEmploymentPayComponents(ctx: SessionContext, employmentId: string) {
+export function listEmploymentPayComponents(ctx: SessionContext, employmentId: string, purpose?: 'fixedTransactions') {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -256,6 +279,7 @@ export function listEmploymentPayComponents(ctx: SessionContext, employmentId: s
         and(
           eq(employmentPayComponent.employmentId, employmentId),
           isNull(employmentPayComponent.supersededAt),
+          purpose === 'fixedTransactions' ? fixedTransactionRowView() : undefined,
         ),
       )
       .orderBy(payComponent.code, employmentPayComponent.validFrom),
@@ -310,6 +334,7 @@ export function getEmploymentPayComponent(
           eq(employmentPayComponent.id, p.id),
           eq(employmentPayComponent.employmentId, p.employmentId),
           isNull(employmentPayComponent.supersededAt),
+          fixedTransactionRowView(),
         ),
       )
       .limit(1);

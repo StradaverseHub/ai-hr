@@ -2,7 +2,7 @@ import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
-import { listEmploymentPayComponents, listPayComponents, FIXED_TRANSACTION_CYCLES } from '@/core/pay-components';
+import { fixedTransactionCompanyScope, listEmploymentPayComponents, listPayComponents, FIXED_TRANSACTION_CYCLES } from '@/core/pay-components';
 import { listPayrollCycles } from '@/core/payroll-cycle';
 import { Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
@@ -63,14 +63,15 @@ export default async function FixedTransactionPage({
     nextFirst?: string;
   }>;
 }) {
-  const { s, scopeIds } = await scopedAdmin();
+  const { s, scopeIds: candidates } = await scopedAdmin();
+  const scopeIds = await fixedTransactionCompanyScope(s, candidates);
   const t = await getTranslations('payroll.transactions');
   const { employmentId, error, clashCode, clashFrom, clashTo, clashPeriod, nextFirst } = await searchParams;
   const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const panelDefaultOpen = (await cookies()).get(FIXED_PANEL_COOKIE)?.value !== '0';
 
-  const employees = await listEmployees(s, scopeIds);
+  const employees = scopeIds.length ? await listEmployees(s, scopeIds) : [];
   // SCOPE-GUARD the param (mirror individual/page.tsx): the ?employmentId= must be in the admin's
   // scoped list. Company scope is an application concern (RLS only isolates tenants), so without this an
   // admin could cross-company read/write by URL tampering. An out-of-scope param is treated as no selection.
@@ -95,7 +96,7 @@ export default async function FixedTransactionPage({
   const [components, existing, cycles] = selectedEmp
     ? await Promise.all([
         listPayComponents(s, { readyOnly: true }),
-        listEmploymentPayComponents(s, selectedEmp.employmentId),
+        listEmploymentPayComponents(s, selectedEmp.employmentId, 'fixedTransactions'),
         listPayrollCycles(s, selectedEmp.companyId, { activeOnly: true }),
       ])
     : [[], [], []];
