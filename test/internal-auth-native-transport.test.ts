@@ -36,6 +36,13 @@ describe('native embedded credential transport',()=>{
     f.fetcher.mockReturnValueOnce(new Promise(resolve=>{release=resolve;}));const pending=f.send();f.change();release(Response.json({step:'mfa',challenge:'c'.repeat(43)}));
     await expect(pending).rejects.toBeInstanceOf(SessionChangedError);
   });
+  it('preserves a 401 credential refusal when the Android error body cannot be read',async()=>{
+    const f=fixture();
+    f.fetcher.mockResolvedValueOnce(new Response(new ReadableStream({
+      start(controller){controller.error(new Error('Native error stream unavailable'));}
+    }),{status:401}));
+    await expect(f.send()).rejects.toMatchObject({code:'invalidLogin'});
+  });
   it('bounds streamed responses before accumulating an unbounded body',async()=>{
     const f=fixture(),cancel=vi.fn();
     f.fetcher.mockResolvedValueOnce(new Response(new ReadableStream({start(controller){controller.enqueue(new Uint8Array(40_000));},cancel})));

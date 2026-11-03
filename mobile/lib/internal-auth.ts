@@ -17,6 +17,12 @@ export async function internalAuthRequest(operation: 'login' | 'password' | 'mfa
     const response = await fetcher(endpoint, { method: 'POST', headers: { 'content-type': 'application/json', 'x-aihr-client': 'native' },
       body: JSON.stringify(values), credentials: 'omit', redirect: 'error', signal: controller.signal });
     assertAuthGeneration(owner);
+    // The embedded auth endpoint reserves 401 for invalidLogin.
+    // Android can expose the status even when its native error stream is unreadable.
+    if (response.status === 401) {
+      void response.body?.cancel().catch(() => {});
+      throw new InternalSignInError('invalidLogin');
+    }
     let text: string;
     try{text=new TextDecoder('utf-8',{fatal:true}).decode(await readBoundedBody(response,32768,20000,controller.signal));}
     catch{assertAuthGeneration(owner);throw new InternalSignInError('unavailable');}
