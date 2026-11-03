@@ -236,7 +236,8 @@ export function LeaveRequestForm({options,today,onSubmitted,notices={},cards=[]}
       {field(t('reason'),draft.command.reason??'',v=>edit({reason:v}),true)}
       <Text style={{color:palette.muted,fontSize:14}}>{t('supportingDocument')}{selected?.requiresDocument?` · ${selected.mandatoryAfterDays?t('documentAfterDays',{n:selected.mandatoryAfterDays}):t('required')}`:''} · {t('documentLimit',{n:Math.min(selected?.maxDocBytes??10485760,10485760)/1048576})}</Text>
       {draft.document&&<><Muted>{draft.document.name}</Muted><Button title={t('removeDocument')} disabled={!!disabled} kind="quiet" onPress={()=>{removeLocalFile(draft.document);putLeave({...draft,document:undefined,command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}});}}/></>}
-      <Button title={t('chooseDocument')} disabled={!!disabled} kind="quiet" onPress={()=>void pickDocument()}/>
+      {!selected&&<Text style={{color:palette.muted,fontSize:14}}>{t('chooseLeaveTypeFirst')}</Text>}
+      <Button title={t('chooseDocument')} disabled={!!disabled||!selected} kind="quiet" onPress={()=>void pickDocument()}/>
       {field(t('employeeRemark')+(selected?.employeeRemarkRequired?` · ${t('required')}`:''),draft.command.employeeRemark??'',v=>edit({employeeRemark:v}),true)}
     </View>:<View style={{flexDirection:'row'}}><Chip title={`+ ${t('addReasonOrDocument')}`} onPress={()=>setExtrasOpen(true)}/></View>}
   </View>,bar);
