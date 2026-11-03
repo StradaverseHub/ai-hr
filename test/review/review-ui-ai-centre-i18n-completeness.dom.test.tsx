@@ -124,7 +124,7 @@ describe('AI centre catalogue completeness', () => {
       // Wave 2: arguments of AI quality (aiCentre.quality.*, P2-6) this list did not carry.
       helpful: 4, marked: 5, unchanged: 7, decided: 9, edited: '11.1%', editedCount: 1, discarded: 1, questions: 6, roles: 'Employee, Manager',
       intent: 'Could not answer about leave', signal: 'A prepared action was discarded', role: 'Employee', locale: 'Malay',
-      example: 'Can NAME_A take leave on DATE_A?', expectation: 'Gives the balance in one line.', reason: 'Wrong' };
+      example: 'Can NAME_A take leave on DATE_A?', expectation: 'Gives the balance in one line.' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

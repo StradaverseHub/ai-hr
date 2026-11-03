@@ -87,13 +87,17 @@ export async function gapStatusesTx(tx:Tx,ctx:SessionContext,scope:readonly stri
 /** Deletes the expired examples of these companies (their own stamp, or the tenant's "Keep chats for" as it is now), then
  * reads up to EXAMPLES_PER_INTENT per intent, newest first. An example whose chat was deleted, erased or removed by
  * retention is already gone with it (0972's ON DELETE CASCADE). */
+/** An example within its own stamp and the tenant's "Keep chats for" as it is now. 0972's read policy cannot say this
+ * (a DELETE that names its rows must pass the read policy too, so an expired example has to stay visible to be deleted):
+ * every read of an example says it here, after deleting the expired ones in the same transaction. */
+const exampleKept=(e:typeof terasGapExample)=>sql`(${e.expiresAt}>now() and app.teras_gap_example_kept(${e.tenantId},${e.at}))`;
 async function examplesTx(tx:Tx,ctx:SessionContext,scope:readonly string[],intents:readonly string[]):Promise<Map<string,string[]>>{
  const out=new Map<string,string[]>();
  if(!scope.length||!intents.length)return out;
  const e=terasGapExample;
- await tx.delete(e).where(and(eq(e.tenantId,ctx.tenantId),inArray(e.companyId,[...scope]),sql`(${e.expiresAt}<=now() or not app.teras_gap_example_kept(${e.tenantId},${e.at}))`));
+ await tx.delete(e).where(and(eq(e.tenantId,ctx.tenantId),inArray(e.companyId,[...scope]),sql`not ${exampleKept(e)}`));
  const rows=await tx.select({intentKey:e.intentKey,text:e.text}).from(e)
-  .where(and(eq(e.tenantId,ctx.tenantId),inArray(e.companyId,[...scope]),inArray(e.intentKey,[...intents]),sql`${e.expiresAt}>now()`))
+  .where(and(eq(e.tenantId,ctx.tenantId),inArray(e.companyId,[...scope]),inArray(e.intentKey,[...intents]),exampleKept(e)))
   .orderBy(e.intentKey,desc(e.at),desc(e.id));
  for(const row of rows){const list=out.get(row.intentKey)??[];if(list.length<EXAMPLES_PER_INTENT&&!list.includes(row.text))list.push(row.text);out.set(row.intentKey,list);}
  return out;
@@ -117,7 +121,7 @@ async function correctionsTx(tx:Tx,ctx:SessionContext,scope:readonly string[],fr
  const open=rows.filter(row=>{const state=reviewed.get(row.id)?.decision;return state===undefined||state==='reopened';}).slice(0,CORRECTIONS_SHOWN);
  const e=terasGapExample;
  const examples=open.length?await tx.select({recordId:e.recordId,text:e.text}).from(e)
-  .where(and(eq(e.tenantId,ctx.tenantId),inArray(e.recordId,open.map(row=>row.recordId)),sql`${e.expiresAt}>now()`)):[];
+  .where(and(eq(e.tenantId,ctx.tenantId),inArray(e.recordId,open.map(row=>row.recordId)),exampleKept(e))):[];
  const byRecord=new Map(examples.map(row=>[row.recordId,row.text]));
  return open.map(row=>Object.freeze({id:row.id,companyId:row.companyId,kind:row.kind,action:row.action,area:row.area,role:row.role,locale:row.locale,at:row.at,
   reason:row.reason??null,example:byRecord.get(row.recordId)??null}));

@@ -1,4 +1,4 @@
-[AI quality](/assistant?view=insights#ai-quality), under AI Centre › Insights, is for HR and group administrators, for the companies they administer. Choose the last 30 days, this quarter or this year, and one company or all of them.
+[AI quality](/ai-quality), under AI Centre › Insights, is for HR and group administrators, for the companies they administer. Choose the last 30 days, this quarter or this year, and one company or all of them.
 
 ## The figures
 

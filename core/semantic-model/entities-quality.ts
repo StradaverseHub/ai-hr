@@ -26,7 +26,8 @@ export const QUALITY_ENTITIES:readonly SemanticEntity[]=freeze([
  {id:'ai_quality',label:'AI quality',
   meaning:'How people used AI Centre\'s answers and prepared actions, what it could not answer or do, and what the loops propose, for the companies an HR or group administrator administers: the AI quality page under AI Centre › Insights.',
   module:null,sensitivity:'ordinary',audience:'admin',rls:'administered_scope',owners:['core/learning/quality.ts#aiQuality'],
-  ruleVersion:null,relations:[],page:'/assistant',
+  // /assistant is never a link target: /ai-quality is the section's linkable address (it forwards to it).
+  ruleVersion:null,relations:[],page:'/ai-quality',
   fields:[
    f('period','object','full','The period the figures cover.',{of:[f('name','enum','full','last30, quarter (this quarter) or year (this year).',{values:AI_QUALITY_PERIODS}),
     f('from','date','full','Its first day.'),f('to','date','full','Its last day (today).')]}),

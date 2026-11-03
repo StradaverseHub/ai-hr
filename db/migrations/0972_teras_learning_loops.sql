@@ -33,8 +33,8 @@
 --    written only for a turn stored in the asker's own chat (teras_chat, 0952), keeps an internal link to that chat (never
 --    shown, never exported), and goes with it: ON DELETE CASCADE removes it when the chat is deleted, erased by the person,
 --    removed by retention or by person erasure. Its own expiry is the tenant's "Keep chats for" from when it was written (a
---    trigger stamps it), and a shortened setting hides it at once, so it never outlives its chat; an administrator's read
---    deletes an expired one. The gap's count (teras_gap_occurrence) stays. Never written
+--    trigger stamps it), and a shortened setting expires it at once, so it never outlives its chat; an administrator's read
+--    deletes every expired one before it reads. The gap's count (teras_gap_occurrence) stays. Never written
 --    for a gated turn (the same record check).
 -- 5. teras_gap_status: an administrator's status for one intent in one company: open, planned, won't do or duplicate (of
 --    another intent). Append-only versions; the latest wins; setting it back to open is a new version.
@@ -258,7 +258,7 @@ END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.teras_gap_example_stamp() FROM PUBLIC;
 --> statement-breakpoint
--- Whether an example is within the tenant's "Keep chats for" as it is NOW: a shortened setting hides older examples at
+-- Whether an example is within the tenant's "Keep chats for" as it is NOW: a shortened setting expires older examples at
 -- once, as it expires older chats at once (0952), without reading any chat (chats are their login's only).
 CREATE FUNCTION app.teras_gap_example_kept(p_tenant uuid,p_at timestamptz) RETURNS boolean
  LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
@@ -276,8 +276,12 @@ ALTER TABLE public.teras_gap_example ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE public.teras_gap_example FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
+-- An administrator of the company reads its examples. The expiry is not repeated here: a DELETE that names its rows must
+-- also pass this policy, so an expired example has to stay visible to the delete below. The one reader
+-- (core/learning/quality.ts) deletes the expired examples first and filters on the same two conditions in the same
+-- transaction.
 CREATE POLICY teras_gap_example_read ON public.teras_gap_example FOR SELECT TO ai_hr_app
- USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id) AND expires_at>now() AND app.teras_gap_example_kept(tenant_id,at));
+ USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id));
 --> statement-breakpoint
 -- The chat must be the asker's own (0952 lets a login read only its own chats).
 CREATE POLICY teras_gap_example_own_insert ON public.teras_gap_example FOR INSERT TO ai_hr_app

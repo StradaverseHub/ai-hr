@@ -184,7 +184,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/admin/system-testing/new','admin','system_testing'],['/admin/toil','admin',null],['/admin/users','admin',null],
  ['/admin/users/access','admin',null],['/admin/users/create','admin',null],['/admin/users/function-access','admin',null],
  ['/admin/users/invite','admin',null],['/admin/work-locations','admin',null],['/admin/work-locations/clocking','admin',null],
- ['/admin/work-locations/clocking/new','admin',null],['/admin/work-locations/new','admin',null],['/analytics','admin',null],
+ ['/admin/work-locations/clocking/new','admin',null],['/admin/work-locations/new','admin',null],['/ai-quality','admin',null],['/analytics','admin',null],
  ['/approvals','admin',null],['/approvals/history','admin',null],['/attendance','everyone','attendance'],
  ['/attendance/application-history','admin','attendance'],['/attendance/application-history/visible','everyone','attendance'],
  ['/attendance/breakdown','admin','attendance'],['/attendance/clock','everyone','attendance'],['/attendance/daily','everyone','attendance'],

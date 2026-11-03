@@ -1,4 +1,4 @@
-[Kualiti AI](/assistant?view=insights#ai-quality), di bawah AI Centre › Insights, adalah untuk pentadbir HR dan kumpulan, bagi syarikat yang mereka tadbir. Pilih 30 hari lepas, suku tahun ini atau tahun ini, dan satu syarikat atau semuanya.
+[Kualiti AI](/ai-quality), di bawah AI Centre › Insights, adalah untuk pentadbir HR dan kumpulan, bagi syarikat yang mereka tadbir. Pilih 30 hari lepas, suku tahun ini atau tahun ini, dan satu syarikat atau semuanya.
 
 ## Angka
 

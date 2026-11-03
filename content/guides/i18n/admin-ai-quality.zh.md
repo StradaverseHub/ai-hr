@@ -1,4 +1,4 @@
-[AI 质量](/assistant?view=insights#ai-quality)位于 AI Centre › Insights 下，供 HR 管理员和集团管理员查看其管理的公司。可选择最近 30 天、本季度或今年，以及一家或全部公司。
+[AI 质量](/ai-quality)位于 AI Centre › Insights 下，供 HR 管理员和集团管理员查看其管理的公司。可选择最近 30 天、本季度或今年，以及一家或全部公司。
 
 ## 数字
 

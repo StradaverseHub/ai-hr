@@ -1548,6 +1548,9 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'privateCaseHandlers', href: '/admin/privacy/case-handlers', labelKey: 'privateCases.admin.title', guard: 'requireAdmin', routes: ['/admin/privacy/case-handlers'] },
   // Provider setup moved to AI management › Provider; /admin/ai is now a redirect-only segment.
   { screenKey: 'aiConfig', href: '/control-tower/agents/provider', labelKey: 'nav.aiConfig', guard: 'requireAdmin', routes: ['/admin/ai', '/control-tower/agents/provider'] },
+  // AI v2 Phase 2 P2-6: the linkable address of AI Centre › Insights › AI quality (HR and group administrators); it reads no
+  // data and forwards to the section, which checks again.
+  { screenKey: 'aiQuality', href: '/ai-quality', labelKey: 'nav.aiQuality', guard: 'requireAdmin', routes: ['/ai-quality'] },
   { screenKey: 'usersRoles', href: '/admin/users', labelKey: 'nav.usersRoles', guard: 'requireAdmin', routes: ['/admin/users'] },
   {
     // System Analysis & Dependency Explorer (deec1691) — the record-relationship reference, moved from

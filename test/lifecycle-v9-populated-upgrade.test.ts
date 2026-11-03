@@ -60,7 +60,7 @@ it('preserves populated Native issuance, private data, identity and every applie
   // AI v2 Phase 2 P2-3 own payroll cut-off (claude/aiv2-p2-payroll-checklist), frozen here.
   {idx:771,version:'7',when:1793330000367,tag:'0967_own_payroll_cut_off',breakpoints:true,hash:'b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca'},
   // AI v2 Phase 2 P2-6 learning loops (claude/aiv2-p2-learning-loops), frozen here at its number's place (idx = 767 + (72 - 63)).
-  {idx:776,version:'7',when:1793330000372,tag:'0972_teras_learning_loops',breakpoints:true,hash:'368eb5553f232d434148eca9444a6ef12da58358287816b7e4478cd150df94d7'},
+  {idx:776,version:'7',when:1793330000372,tag:'0972_teras_learning_loops',breakpoints:true,hash:'f4b3574ce920a1e4336e105d0122e779c99a054b1e3db9b452d5d52dfc98294a'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

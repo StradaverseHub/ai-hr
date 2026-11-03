@@ -1,4 +1,4 @@
-[Chất lượng AI](/assistant?view=insights#ai-quality), trong AI Centre › Insights, dành cho quản trị viên HR và quản trị viên tập đoàn, cho các công ty họ quản trị. Chọn 30 ngày qua, quý này hoặc năm nay, và một công ty hoặc tất cả.
+[Chất lượng AI](/ai-quality), trong AI Centre › Insights, dành cho quản trị viên HR và quản trị viên tập đoàn, cho các công ty họ quản trị. Chọn 30 ngày qua, quý này hoặc năm nay, và một công ty hoặc tất cả.
 
 ## Các số liệu
 

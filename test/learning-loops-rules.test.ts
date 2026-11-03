@@ -202,6 +202,13 @@ describe('the boundaries the owner set',()=>{
   }
   expect(SQL).toContain('GRANT SELECT,INSERT,DELETE ON public.teras_gap_example TO ai_hr_app;');
   expect(SQL).toContain('USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id) AND (expires_at<=now() OR NOT app.teras_gap_example_kept(tenant_id,at)));');
+  // The read policy cannot repeat the expiry (a DELETE naming its rows must pass it too), so the one reader deletes the
+  // expired examples first and filters on both conditions in every read.
+  expect(SQL).toContain('CREATE POLICY teras_gap_example_read ON public.teras_gap_example FOR SELECT TO ai_hr_app\n USING (tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id));');
+  const quality=readFileSync(join(root,'core/learning/quality.ts'),'utf8');
+  expect(quality).toContain('const exampleKept=(e:typeof terasGapExample)=>sql`(${e.expiresAt}>now() and app.teras_gap_example_kept(${e.tenantId},${e.at}))`;');
+  expect(quality.match(/exampleKept\(e\)/g)).toHaveLength(3);
+  expect(quality.match(/\.from\(e\)/g)).toHaveLength(2);
   // Every insert of a signal or a gap, and a mark's reason, names its own, open (not private to the asker) turn.
   expect(SQL.match(/app\.teras_learning_own_record\(record_id,company_id\)/g)).toHaveLength(4);
   // A gap example follows the asker's chat: written only for their own chat, removed with it.
