@@ -11908,6 +11908,11 @@ export function previewStatutoryAdjustment(p: {
   };
 }
 
+function statutoryAdjustmentView() {
+  return sql`app.access_financial_action_company('payroll', ${payrollBatch.companyId}, 'view')
+    AND app.function_action_allowed('payroll.statutoryAdjustments', 'view', ${payrollBatch.companyId})`;
+}
+
 /**
  * Payroll runs an adjustment may be entered against: PROCESSED and not closed, newest period first.
  *
@@ -11921,7 +11926,7 @@ export function listAdjustableBatches(
   p: { companyId?: string; year?: string; month?: string; runType?: string } = {},
 ) {
   return withTenant(ctx, async (tx) => {
-    const conds = [eq(payrollBatch.tenantId, ctx.tenantId), eq(payrollBatch.status, 'processed')];
+    const conds = [eq(payrollBatch.tenantId, ctx.tenantId), eq(payrollBatch.status, 'processed'), statutoryAdjustmentView()];
     if (p.companyId) conds.push(eq(payrollBatch.companyId, p.companyId));
     if (p.year && p.month) conds.push(eq(payrollBatch.payPeriod, `${p.year}-${p.month}`));
     else if (p.year) conds.push(like(payrollBatch.payPeriod, `${p.year}-%`));
@@ -11955,6 +11960,7 @@ export function listAdjustmentEmployees(ctx: SessionContext, p: { batchId: strin
         adjustedAt: payrollStatutoryAdjustment.updatedAt,
       })
       .from(payslip)
+      .innerJoin(payrollBatch, and(eq(payrollBatch.id, payslip.batchId), eq(payrollBatch.tenantId, payslip.tenantId)))
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(
@@ -11964,7 +11970,7 @@ export function listAdjustmentEmployees(ctx: SessionContext, p: { batchId: strin
           eq(payrollStatutoryAdjustment.employmentId, payslip.employmentId),
         ),
       )
-      .where(eq(payslip.batchId, p.batchId))
+      .where(and(eq(payslip.batchId, p.batchId), statutoryAdjustmentView()))
       .orderBy(employment.employeeCode);
     const q = (p.q ?? '').trim().toLowerCase();
     if (!q) return rows;
@@ -11993,7 +11999,7 @@ export function getStatutoryAdjustmentDetail(ctx: SessionContext, p: { batchId: 
         runType: payrollBatch.runType,
       })
       .from(payrollBatch)
-      .where(eq(payrollBatch.id, p.batchId))
+      .where(and(eq(payrollBatch.id, p.batchId), statutoryAdjustmentView()))
       .limit(1);
     if (!batch) return null;
     const [slip] = await tx

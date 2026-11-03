@@ -19,7 +19,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import type { SessionContext } from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -40,7 +40,7 @@ import {
   StatutoryAdjustmentReasonRequiredError,
   STATUTORY_ADJUSTMENT_LINES,
 } from '../core/payroll';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let base: Base;
 let a: SessionContext;
@@ -468,4 +468,17 @@ describe('2961a7ae — the selection screens', () => {
     expect(d2.current!.epfEmployee).toBeNull(); // blank stays blank on the way back out
     expect(d2.reason).toBe('why');
   });
+});
+
+it('keeps a self-visible payslip out of administrative adjustment readers',async()=>{
+ const subject=await hire('adjustment-self@fixture.invalid','900101011234');
+ const batchId=await processedRun(subject.employmentId);
+ const employee:SessionContext={...a,userId:await createAppUser(base.tenantId,subject.personId,'employee'),
+  personId:subject.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+ const visible=await withTenant(employee,tx=>tx.select({id:schema.payslip.id}).from(schema.payslip).where(eq(schema.payslip.batchId,batchId)));
+ expect(visible).toHaveLength(1);
+ expect(await listAdjustableBatches(employee,{companyId:base.companyId})).toEqual([]);
+ expect(await listAdjustmentEmployees(employee,{batchId})).toEqual([]);
+ expect(await getStatutoryAdjustmentDetail(employee,{batchId,employmentId:subject.employmentId})).toBeNull();
+ expect(await getStatutoryAdjustmentDetail(a,{batchId,employmentId:subject.employmentId})).toMatchObject({batchId});
 });
