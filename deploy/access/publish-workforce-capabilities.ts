@@ -4,7 +4,7 @@ import type {Sql} from 'postgres';
 import {functionActionCapabilities,type FunctionActionDescriptor} from './function-action-contract';
 import {PROFILE_MAINTENANCE_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_CAPABILITY_PUBLICATION,WORKFORCE_IMPORT_REVERT_CAPABILITY_PUBLICATION,WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION,WORKFORCE_RECORD_CAPABILITY_PUBLICATION} from './workforce-function-bindings';
 import {EMPLOYEE_MASTER_DEFINITION_CAPABILITY_PUBLICATION,EMPLOYEE_MASTER_VIEW_CAPABILITY_PUBLICATION,REPORT_CATEGORY_CAPABILITY_PUBLICATION} from './employee-master-report-function-bindings';
-import {ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION,CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION,LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION} from './leave-attendance-claim-function-bindings';
+import {ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION,ATTENDANCE_SHIFT_CAPABILITY_PUBLICATION,CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION,LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION} from './leave-attendance-claim-function-bindings';
 import {FINANCIAL_SETUP_CAPABILITY_PUBLICATION} from './financial-setup-capability-bindings';
 import {FINANCIAL_LETTER_CAPABILITY_PUBLICATION} from './financial-letter-capability-bindings';
 import {ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION} from './organisation-settings-capability-bindings';
@@ -55,7 +55,7 @@ export const WORKFORCE_CAPABILITY_BINDINGS_V2=[...WORKFORCE_CAPABILITY_BINDINGS_
  ]})),
 ] as const;
 export type DomainPublication={capabilities:readonly {id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[]}[];requiredFunctions:readonly string[];legacyGroups:Record<string,readonly string[]>;legacyParityFunction?:string;delegationFloorFunction?:string;functions?:readonly FunctionActionDescriptor[];functionLegacyParityFunction?:string;currentLegacyParityFunction?:string;functionCurrentLegacyParityFunction?:string};
-export const ACTION_DOMAIN_PUBLICATIONS:readonly DomainPublication[]=[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION,FINANCIAL_SETUP_CAPABILITY_PUBLICATION,WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION,WORKFORCE_IMPORT_REVERT_CAPABILITY_PUBLICATION,WORKFORCE_RECORD_CAPABILITY_PUBLICATION,PROFILE_MAINTENANCE_CAPABILITY_PUBLICATION,EMPLOYEE_MASTER_DEFINITION_CAPABILITY_PUBLICATION,REPORT_CATEGORY_CAPABILITY_PUBLICATION,CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION,LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION];
+export const ACTION_DOMAIN_PUBLICATIONS:readonly DomainPublication[]=[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION,FINANCIAL_SETUP_CAPABILITY_PUBLICATION,WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION,WORKFORCE_IMPORT_REVERT_CAPABILITY_PUBLICATION,WORKFORCE_RECORD_CAPABILITY_PUBLICATION,PROFILE_MAINTENANCE_CAPABILITY_PUBLICATION,EMPLOYEE_MASTER_DEFINITION_CAPABILITY_PUBLICATION,REPORT_CATEGORY_CAPABILITY_PUBLICATION,CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION,LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION,ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION,ATTENDANCE_SHIFT_CAPABILITY_PUBLICATION];
 export const WORKFORCE_CAPABILITY_BINDINGS=[...WORKFORCE_CAPABILITY_BINDINGS_V2,...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.capabilities)];
 export const WORKFORCE_CAPABILITY_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,capabilities:WORKFORCE_CAPABILITY_BINDINGS})).digest('hex');
 const WORKFORCE_REQUIRED_FUNCTIONS=[
@@ -95,6 +95,7 @@ const ACTION_PACKAGES={
  claim_configuration:[CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION],
  leave_configuration:[LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION],
  attendance_schedule:[ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION],
+ attendance_shifts:[ATTENDANCE_SHIFT_CAPABILITY_PUBLICATION],
  workforce_imports:[WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION],
  workforce_import_revert:[WORKFORCE_IMPORT_REVERT_CAPABILITY_PUBLICATION],
  workforce_drafts:[WORKFORCE_DRAFT_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION],
@@ -152,6 +153,12 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    const [view]=await tx<{ready:boolean}[]>`select supported as ready from public.access_capability
     where id='function.employeeMasterReports.view'`;
    requireInstallation(view?.ready,'publish Employee Master Reports View before definition actions');
+  }
+  if(key==='attendance_shifts'){
+   const [parents]=await tx<{ready:boolean}[]>`select count(*)=4 and bool_and(supported) as ready
+    from public.access_capability where id in ('attendance_configuration.view','attendance_configuration.add',
+     'attendance_configuration.edit','attendance_configuration.delete')`;
+   requireInstallation(parents?.ready,'publish Attendance Configuration before Shift actions');
   }
   const rows=await tx<CapabilityRow[]>`select id,scope,supported,bindings,prerequisites from public.access_capability
    where id=any(${WORKFORCE_CAPABILITY_BINDINGS.map(item=>item.id)}::text[]) order by id for update`;
@@ -213,6 +220,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    ...(key==='all'||key==='claim_configuration'?['app.claim_configuration_bindings_complete']:[]),
    ...(key==='all'||key==='leave_configuration'?['app.leave_configuration_bindings_complete']:[]),
    ...(key==='all'||key==='attendance_schedule'?['app.attendance_schedule_bindings_complete']:[]),
+   ...(key==='all'||key==='attendance_shifts'?['app.attendance_shift_bindings_complete']:[]),
    ...(key==='all'?['app.access_all_function_bindings_complete']:[]),
   ];
   for(const check of coverageChecks){

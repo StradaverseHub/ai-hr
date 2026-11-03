@@ -117,3 +117,17 @@ export const ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION={
   'app.module_configuration_write_lock()',
  ],
 } as const;
+
+export const ATTENDANCE_SHIFT_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='attendancePolicy.shifts'),
+ functionLegacyParityFunction:'app.module_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.module_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.attendance_shift_bindings_complete()',
+  'app.attendance_shift_guard()',
+  'app.attendance_shift_window_guard()',
+  'app.shift_initial_membership_complete()',
+ ],
+} as const;

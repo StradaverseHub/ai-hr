@@ -4733,6 +4733,13 @@
       "when": 1793330000372,
       "tag": "0972_attendance_schedule_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 820,
+      "version": "7",
+      "when": 1793330000373,
+      "tag": "0973_attendance_shift_binding_readiness",
+      "breakpoints": true
     }
   ]
 }
