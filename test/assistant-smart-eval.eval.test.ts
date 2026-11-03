@@ -122,7 +122,9 @@ async function judge(messages:readonly {role:string;content:string}[]):Promise<{
 }
 
 beforeAll(migrateTestDb);afterAll(closeAll);
-const MODULES=['assistant','claims','notifications','multi_cycle_payroll','typed_pay_components'];
+// toil (AI v2 W2 slice 2) is active before any context is made: adminCtx's entitlement snapshot is taken when it is built,
+// so turning it on inside fixtures() left setToilPolicy refused (run 41609549974, ModuleNotEnabledError, no model called).
+const MODULES=['assistant','claims','notifications','multi_cycle_payroll','typed_pay_components','toil'];
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-smart-eval-passphrase');vi.stubEnv('TERAS_PROPOSAL_SECRET','fictional-smart-eval-proposal-secret-0123456789abcdef');
  await resetDb();base=await seedBase();for(const code of MODULES)await setModule(base.tenantId,code,'active');await seedGuides(owner.db,base.tenantId);});
 
