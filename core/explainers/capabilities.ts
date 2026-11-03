@@ -21,6 +21,7 @@ import {explainOwnPayslipStatutory} from './statutory';
 import {explainOwnPayDifference} from './pay-difference';
 import {explainOwnClaimLimit} from './claim-limit';
 import {askMyPayrollReadiness} from '../pre-salary/ask';
+import {payrollAuditStatus,payrollCycleStatus,payrollLoopSettings,salaryPayrollChecks} from './payroll-loops';
 
 export type TerasCapabilityScope=Readonly<{companyId:string;locale?:string}>;
 export type TerasCapability=Readonly<{name:string;module:string|null;admin:boolean;
@@ -69,6 +70,11 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'explain_claim_limit',module:'claims',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnClaimLimit(ctx,{claim_type:text(input.claim_type)})},
  // AI v2 Phase 2 P2-3: "what do I need to do before payroll?", the person's own checklist (core/pre-salary/person-items.ts).
  {name:'my_payroll_readiness',module:null,admin:false,worker:null,run:(ctx,_input,scope)=>askMyPayrollReadiness(ctx,scope)},
+ // AI v2 Phase 2 (wave 1 integration): the payroll-cycle loop pages, administrators only (core/semantic-model/entities-payroll-loops.ts).
+ {name:'payroll_cycle_status',module:'payroll',admin:true,worker:null,run:(ctx,input)=>payrollCycleStatus(ctx,input)},
+ {name:'salary_payroll_checks',module:'payroll',admin:true,worker:null,run:(ctx,input)=>salaryPayrollChecks(ctx,input)},
+ {name:'payroll_loop_settings',module:'payroll',admin:true,worker:null,run:ctx=>payrollLoopSettings(ctx)},
+ {name:'payroll_audit_status',module:'payroll',admin:true,worker:null,run:(ctx,input)=>payrollAuditStatus(ctx,input)},
 ]);
 /** Capabilities this caller may be offered. A capability that belongs to a worker is offered only while that worker's
  * run gate is open (registered, switched on, tenant not stopped), read once per call in the caller's tenant. */

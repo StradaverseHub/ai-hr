@@ -66,7 +66,9 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** AI v2 slice 3 (issue 16b): an import prepared in chat from an attached file (./entities-imports.ts). */
  |'chat_import'
  /** AI v2 Phase 2 P2-3: the caller's own "Before payroll" checklist (./entities-payroll-readiness.ts). */
- |'payroll_readiness';
+ |'payroll_readiness'
+ /** AI v2 Phase 2 (wave 1 integration): the payroll-cycle loop pages, for administrators (./entities-payroll-loops.ts). */
+ |'payroll_cycle'|'salary_payroll_run'|'payroll_loop_setting'|'payroll_audit_status';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;
