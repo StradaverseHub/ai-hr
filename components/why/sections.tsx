@@ -4,7 +4,7 @@ import {mayUseAssistant} from '@/core/assistant-grant';
 import {explainPayslipDeduction,type PayslipDeductionWhy,type PayslipFigureRow} from '@/core/pay-difference';
 import type {LeaveBalanceExplanation} from '@/core/leave-balance-explain';
 import {claimLimitExplanation} from '@/core/claim-limit-explain';
-import type {ClaimBalanceRow} from '@/core/claims';
+import type {ClaimBalanceRow} from '@/packs/claims/service';
 import {FocusOnMount} from '@/components/ai-centre/focus-on-mount';
 import {WhyPanel,type WhyPanelView} from './why-panel';
 import {claimLimitView,deductionView,leaveBalanceView,payDifferenceView,type Translate} from './views';

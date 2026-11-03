@@ -5,7 +5,7 @@
  * the expense was incurred; drafts hold nothing) and what remains, which the claims owner computed. Nothing is
  * recomputed here: a limit that is not set is reported as not set, never as zero, and every figure is copied across
  * unchanged. The policy version is the resolved claim_policy row's own valid_from. Pure. */
-import type {ClaimBalanceRow,ClaimItemBalance} from './claims';
+import type {ClaimBalanceRow,ClaimItemBalance} from '../packs/claims/service';
 
 export type ClaimLimitPot=Readonly<{limit:number;used:number;remaining:number|null}>;
 export type ClaimLimitExplanation=Readonly<{claimType:string;
