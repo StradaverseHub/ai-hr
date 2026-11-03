@@ -1372,7 +1372,7 @@ plus this block's 2000–2003; nothing claims a file from 2004 to 2019 or a `whe
 |0965|806|1793330001406|2006_payroll_audit_loop|e0ed1ea1b561cedf2f4d2bba37853e781a23c370ba12cf7b4f220a5d002cffce|
 |0966|807|1793330001407|2007_teras_capacity_baseline|8b2bb6e38d76c7bf6643e45c62c11ed89e71d954615438d527adf1b4593f22ad|
 |0967|808|1793330001408|2008_own_payroll_cut_off|9c5f91f7380568067fbea128768a412f200ef58676d9541bb891f3539cb18c02|
-|0971|809|1793330001409|2009_teras_living_handbook|fe54c4a68689e761ca670a81bdfd1e8c1b502cb58201150fa9593c546acae3b7|
+|0971|809|1793330001409|2009_teras_living_handbook|2ffa6731bc3e8cfbc0586875ba9c33d0db2c67104376dc99e35ba181214ccae0|
 |0972|810|1793330001410|2010_teras_learning_loops|316ce555983b42a896fbba7d7f75c73d4037b75ab60f41da6df611d8e0e2c3c0|
 
 The SQL statements are unchanged; only the header comment lines that named the provisional number (and, in 2006, the
@@ -1385,3 +1385,10 @@ staging's 656-entry ledger, then 2000–2003, then 2004–2010 on a populated da
 
 Development source only: no installation priority, no deployment. At installation the numbers and `when` values are
 re-checked against staging's applied watermark (the ordered live ledger) and re-frozen above it if it has reached them.
+
+Phase 2 hardening, 4 November 2026 (`claude/aiv2-p2h-handbook-hardening`, still unapplied, so edited in place): 2009's
+statements changed, not only its comments. It adds `teras_policy_contribution` and `teras_policy_text_only` (FORCE RLS,
+SELECT and INSERT only, append-only triggers), the contribution-recording triggers, and guard changes: the second approver
+of a settings change contributed nothing to it, `changes_settings` is derived from the confirmed values when a version is
+sent, and a rejected value's setting must be confirmed or marked text only. Its SHA256 in the table above, the
+`lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx and `when`.

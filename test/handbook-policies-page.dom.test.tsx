@@ -7,7 +7,11 @@
  * change sees that another administrator must approve it; a second group administrator approves; drift shows both
  * values with "Use the handbook" and "Update the handbook"; the claims service's simulation says it calculated the
  * figures. Every locale renders with no missing message and never says Noveri; every control keeps a 44px target on a
- * coarse pointer. Expected text is written out by hand. */
+ * coarse pointer. Phase 2 hardening: each enforceable setting the text mentions shows how it is covered (a confirmed
+ * value, or "text only, not enforced" with who marked it), and sending waits for every one; a disagreement between the
+ * text and what the system will enforce is listed and approval waits; anyone who contributed to a settings change is
+ * told another group administrator must approve it; text drift shows the words with no resolution buttons. Expected
+ * text is written out by hand. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen,within} from '@testing-library/react';
 import type {ReactNode} from 'react';
@@ -37,7 +41,7 @@ vi.mock('next-intl/server',async()=>{
   getFormatter:async()=>formatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'}),getLocale:async()=>state.locale};
 });
 vi.mock('../app/assistant/policy-actions',()=>Object.fromEntries(['applyScheduledPolicyValueAction','approvePolicyAction','createPolicyAction','decidePolicyValueAction',
- 'draftFromVersionAction','prepareFromDriftAction','readPolicyValuesAction','returnPolicyAction','saveDraftAction','submitPolicyAction'].map(name=>[name,vi.fn()])));
+ 'draftFromVersionAction','markTextOnlyAction','prepareFromDriftAction','readPolicyValuesAction','returnPolicyAction','saveDraftAction','submitPolicyAction'].map(name=>[name,vi.fn()])));
 vi.mock('../core/handbook/policies',()=>({policiesView:async(_session:unknown,input:unknown)=>{state.reads.push(input);return state.view;}}));
 import {AiCentrePolicies} from '../components/ai-centre/policies';
 import {AiCentreTabs} from '../components/ai-centre/centre-tabs';
@@ -55,10 +59,11 @@ const VALUES=[
   source:'model',decision:null,now:{days:90},nowDefaulted:false,differs:true},
 ];
 const LIST=[{id:P1,area:'claims',title:'Claims: mileage',inForce:null,open:{version:1,status:'draft'},drift:0},{id:P2,area:'leave',title:'Leave',inForce:7,open:null,drift:1}];
-const version=(over:Record<string,unknown>={})=>({id:V1,version:1,status:'draft',effectiveFrom:'2027-01-01',origin:'written',authorName:'Aisyah Fictional',authorIsViewer:false,submittedByViewer:false,
+const version=(over:Record<string,unknown>={})=>({id:V1,version:1,status:'draft',effectiveFrom:'2027-01-01',origin:'written',authorName:'Aisyah Fictional',authorIsViewer:false,submittedByViewer:false,contributedByViewer:false,
  submittedAt:null,approvedAt:null,changesSettings:null,body:BODY,companies:[C1,C2],...over});
 const detail=(over:Record<string,unknown>={},versionOver:Record<string,unknown>={})=>({id:P1,area:'claims',title:'Claims: mileage',current:version(versionOver),inForceId:null,
  versions:[version(versionOver)],values:VALUES,settings:['claims.mileage_rates','claims.submit_within_days'],sharedOk:true,canEdit:true,approvals:[],applications:[],drift:[],
+ mentions:[],mismatches:[],
  impact:{from:'2025-11-01',to:'2026-11-01',mileage:{claimTypeId:'x',claims:412,changed:37,deltaSen:-1240000},deadline:{claimTypeId:'x',days:30,claims:412,late:6},people:4},...over});
 const admin=(selected:unknown,isGroupAdmin=false)=>({role:'admin',today:'2026-11-03',companies:COMPANIES,isGroupAdmin,list:LIST,selected});
 const SESSIONS={
@@ -190,7 +195,7 @@ describe('approval',()=>{
 describe('drift',()=>{
  it('shows both values and offers Use the handbook and Update the handbook',async()=>{
   state.view=admin(detail({inForceId:V1,impact:null,values:VALUES.map(v=>({...v,decision:'confirmed'})),
-   drift:[{valueId:VALUES[0]!.id,setting:'claims.mileage_rates',target:{},targetName:'Mileage',handbook:VALUES[0]!.value,system:{bands:[{fromKm:0,toKm:null,ratePerKm:0.55}]},companies:[C1,C2]}]},
+   drift:[{kind:'value',valueId:VALUES[0]!.id,setting:'claims.mileage_rates',target:{},targetName:'Mileage',handbook:VALUES[0]!.value,quote:null,system:{bands:[{fromKm:0,toKm:null,ratePerKm:0.55}]},companies:[C1,C2]}]},
    {status:'approved',changesSettings:true,approvedAt:new Date()}),true);
   const rendered=wrap('en',await page(SESSIONS.groupAdmin,{policy:P1}));
   const drift=rendered.container.querySelector('[data-policy-drift]')!;
@@ -201,17 +206,69 @@ describe('drift',()=>{
  });
 });
 
+const MENTIONS=[{setting:'claims.mileage_rates',confirmed:false,textOnly:{byName:'Brandon Fictional',at:new Date('2026-11-03T02:00:00Z')}},
+ {setting:'claims.submit_within_days',confirmed:false,textOnly:null},{setting:'leave.entitlement_days',confirmed:true,textOnly:null}];
+const MISMATCHES=[{setting:'claims.mileage_rates',target:{},targetName:'Mileage',quote:'RM1.00/km',source:'text',valueId:null,enforced:{bands:[{fromKm:0,toKm:null,ratePerKm:0.6}]}}];
+const TEXT_DRIFT={kind:'text',valueId:null,setting:'claims.mileage_rates',target:{},targetName:'Mileage',handbook:null,quote:'RM1.00/km',system:{bands:[{fromKm:0,toKm:null,ratePerKm:0.6}]},companies:[C1,C2]};
+
+describe('Phase 2 hardening',()=>{
+ it('a draft shows each mentioned setting\'s cover, offers Keep as text only, and waits to be sent until every one is covered',async()=>{
+  state.view=admin(detail({values:VALUES.map(v=>({...v,decision:'confirmed'})),mentions:MENTIONS,mismatches:MISMATCHES}));
+  const rendered=wrap('en',await page(SESSIONS.hrAdmin,{policy:P1}));
+  const mentions=rendered.container.querySelector('[data-policy-mentions]')!;
+  expect([...mentions.querySelectorAll('[data-policy-mention]')].map(li=>[li.getAttribute('data-policy-mention-state'),words(li)])).toEqual([
+   ['text_only','Mileage rates · text only, not enforced (marked by Brandon Fictional on Nov 3, 2026) Undo text only'],
+   ['needed','Claim submission windows · confirm a value for it, or keep it as text only, before sending Keep as text only'],
+   ['confirmed','Leave entitlements · enforced from this policy once approved']]);
+  expect([...mentions.querySelectorAll('form')].map(form=>[...form.querySelectorAll('input[type="hidden"]')].map(i=>[(i as HTMLInputElement).name,(i as HTMLInputElement).value])
+   .filter(([name])=>name==='setting'||name==='marked'))).toEqual([[['setting','claims.mileage_rates'],['marked','false']],[['setting','claims.submit_within_days'],['marked','true']]]);
+  // Every value is decided, but one mentioned setting is neither confirmed nor text only.
+  expect(screen.getByRole('button',{name:'Send for approval'})).toBeDisabled();
+  const mismatch=rendered.container.querySelector('[data-policy-mismatch]')!;
+  expect(text(mismatch.querySelector('h4'))).toBe('Where your text disagrees with what the system will enforce');
+  expect(text(mismatch.querySelector('[data-policy-mismatch-item]'))).toBe('“RM1.00/km” (Mileage rates): the claims service will enforce RM 0.60 per km from 0 km.');
+  expect(text(mismatch)).toContain('Approval waits until they agree. Change the text, or confirm a value so that it is applied.');
+  for(const control of [...rendered.container.querySelectorAll('button, a[href], input, select, textarea')].filter(el=>!(el as HTMLInputElement).type||(el as HTMLInputElement).type!=='hidden'))
+   expect(control.className,control.outerHTML.slice(0,80)).toMatch(/min-h-11|min-h-9|pointer-coarse:min-h-11/);
+ });
+ it('a version waiting with a disagreement offers no approval to anyone, and says why',async()=>{
+  state.view=admin(detail({mentions:MENTIONS.slice(0,1),mismatches:MISMATCHES},{status:'submitted',changesSettings:false}),true);
+  const rendered=wrap('en',await page(SESSIONS.groupAdmin,{policy:P1}));
+  expect(text(rendered.container.querySelector('[data-policy-blocked]'))).toBe('It cannot be approved while its text disagrees with what the system will enforce. Return it to draft to change the text.');
+  expect(screen.queryByRole('button',{name:'Approve'})).toBeNull();
+  expect(screen.queryByRole('button',{name:'Keep as text only'})).toBeNull();
+  expect(screen.queryByRole('button',{name:'Undo text only'})).toBeNull();
+ });
+ it('tells a group administrator who contributed to a settings change, without writing or sending it, that another must approve it',async()=>{
+  state.view=admin(detail({values:VALUES.map(v=>({...v,decision:'confirmed'}))},{status:'submitted',changesSettings:true,contributedByViewer:true}),true);
+  const rendered=wrap('en',await page(SESSIONS.groupAdmin,{policy:P1}));
+  expect(text(rendered.container.querySelector('[data-policy-second]'))).toBe('You wrote or sent this change, so another group administrator must approve it.');
+  expect(screen.queryByRole('button',{name:'Approve and apply'})).toBeNull();
+ });
+ it('shows text drift with the handbook\'s words and what employees are told, and no resolution buttons for it',async()=>{
+  state.view=admin(detail({inForceId:V1,impact:null,values:[],drift:[TEXT_DRIFT]},{status:'approved',changesSettings:false,approvedAt:new Date()}),true);
+  const rendered=wrap('en',await page(SESSIONS.groupAdmin,{policy:P1}));
+  const item=rendered.container.querySelector('[data-policy-drift-kind="text"]')!;
+  expect(text(item.querySelector('p'))).toBe('Mileage rates: the handbook says “RM1.00/km”; the claims service says RM 0.60 per km from 0 km. Applies to all 2 companies.');
+  expect(text(item.querySelector('[data-policy-drift-text-note]'))).toBe('Employees who ask AI Centre are given the system\'s setting, not this figure. Edit the text to match, or confirm a value in a new draft.');
+  expect(within(item as HTMLElement).queryByRole('button')).toBeNull();
+ });
+});
+
 describe('every locale',()=>{
  it.each(LOCALES.map(locale=>[locale]))('%s renders every Policies state with no missing message and never says Noveri',async(locale)=>{
   state.locale=locale;
   const views=[admin(detail()),admin(detail({values:VALUES.map(v=>({...v,decision:'confirmed'}))},{status:'submitted',changesSettings:true,authorIsViewer:true}),true),
-   admin(detail({drift:[{valueId:VALUES[0]!.id,setting:'claims.mileage_rates',target:{},targetName:'Mileage',handbook:VALUES[0]!.value,system:null,companies:[C1]}],inForceId:V1,
+   admin(detail({drift:[{kind:'value',valueId:VALUES[0]!.id,setting:'claims.mileage_rates',target:{},targetName:'Mileage',handbook:VALUES[0]!.value,quote:null,system:null,companies:[C1]},TEXT_DRIFT],inForceId:V1,
     applications:[{valueId:VALUES[1]!.id,setting:'claims.submit_within_days',status:'scheduled',applyOn:'2026-11-01',before:{days:90},after:{days:30},ownerMessage:null,at:new Date()}],
     values:VALUES.map(v=>({...v,decision:'confirmed'}))},{status:'approved',changesSettings:true,approvedAt:new Date()}),true),
-   admin(null),{role:'reader',today:'2026-11-03',list:[],selected:null}];
+   admin(null),{role:'reader',today:'2026-11-03',list:[],selected:null},
+   admin(detail({mentions:MENTIONS,mismatches:MISMATCHES},{status:'submitted',changesSettings:false}),true),admin(detail({mentions:MENTIONS,mismatches:MISMATCHES})),
+   admin(detail({values:VALUES.map(v=>({...v,decision:'confirmed'}))},{status:'submitted',changesSettings:true,contributedByViewer:true}),true)];
+  const extra=[{saved:'text_only',error:'unmarked'},{saved:'text_only_withdrawn',error:'mismatch'}];
   for(const [i,view] of views.entries()){
    state.view=view;
-   const rendered=wrap(locale,await page(i===4?SESSIONS.employee:SESSIONS.groupAdmin,{policy:P1,saved:'read',n:'2',r:'1',error:'same_administrator',...(i===3?{new:'1'}:{})}));
+   const rendered=wrap(locale,await page(i===4?SESSIONS.employee:SESSIONS.groupAdmin,{policy:P1,saved:'read',n:'2',r:'1',error:'same_administrator',...(i===3?{new:'1'}:{}),...(i>=5?extra[i%2]:{})}));
    expect(rendered.container.textContent).not.toMatch(/Noveri/);
    expect(rendered.container.textContent).not.toMatch(/aiCentre\.policies/);
    cleanup();

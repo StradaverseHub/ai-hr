@@ -1579,6 +1579,8 @@
         "owner": "Do dịch vụ công tác phí tính trên các yêu cầu thực tế của 12 tháng qua. AI Centre không tính bất kỳ số tiền nào."
       },
       "drift": {
+        "textBody": "sổ tay ghi “{quote}”; dịch vụ {owner} ghi {system}. Áp dụng cho {companies}.",
+        "textNote": "Nhân viên hỏi AI Centre sẽ nhận được thiết lập của hệ thống, không phải con số này. Hãy sửa văn bản cho khớp, hoặc xác nhận một giá trị trong bản nháp mới.",
         "title": "Chỗ sổ tay và hệ thống không khớp",
         "setting": {
           "claims_mileage_rates": "Mức phí đi lại",
@@ -1595,6 +1597,7 @@
         "leave": "nghỉ phép"
       },
       "approval": {
+        "blocked": "Không thể phê duyệt phiên bản này khi văn bản khác với những gì hệ thống sẽ thực thi. Hãy trả về bản nháp để sửa văn bản.",
         "title": "Phê duyệt",
         "ruleDraft": "Khi bạn gửi, một quản trị viên tập đoàn sẽ phê duyệt. Thay đổi những gì hệ thống thực thi cần một quản trị viên thứ hai: người không viết và không gửi nó.",
         "ruleSettings": "Phiên bản này thay đổi những gì hệ thống thực thi, nên một quản trị viên thứ hai, người không viết và không gửi nó, phải phê duyệt trước khi áp dụng.",
@@ -1641,6 +1644,8 @@
         "leaveFrom": "{type}, từ {from} năm làm việc trở lên"
       },
       "saved": {
+        "text_only": "Đã đánh dấu là chỉ văn bản. Thiết lập của hệ thống được giữ nguyên.",
+        "text_only_withdrawn": "Không còn là chỉ văn bản. Hãy xác nhận một giá trị cho nó, hoặc đánh dấu lại.",
         "created": "Đã lưu bản nháp.",
         "draft": "Đã lưu bản nháp.",
         "read": "AI Centre đã đọc {accepted, plural, other {# giá trị}} để bạn xác nhận{rejected, plural, =0 {.} other {; đã bỏ qua # đề xuất không khớp với lời của bạn.}}",
@@ -1659,6 +1664,8 @@
         "draft_made": "Một bản nháp mới đã sẵn sàng để sửa."
       },
       "errors": {
+        "unmarked": "Văn bản của bạn nhắc đến một thiết lập mà hệ thống thực thi. Hãy xác nhận một giá trị cho nó, hoặc giữ là chỉ văn bản, trước khi gửi.",
+        "mismatch": "Văn bản ghi một con số mà hệ thống sẽ không thực thi. Hãy trả về bản nháp và sửa văn bản, hoặc xác nhận giá trị đó.",
         "not_administrator": "Chỉ quản trị viên của mọi công ty mà chính sách này áp dụng mới làm được việc đó.",
         "not_group_admin": "Chỉ quản trị viên tập đoàn mới phê duyệt hoặc trả lại chính sách.",
         "invalid": "Hãy kiểm tra tiêu đề, ngày, văn bản và chọn ít nhất một công ty.",
@@ -1676,6 +1683,24 @@
         "model_unavailable": "AI Centre chưa đọc được các giá trị. Việc gửi văn bản chính sách đến nhà cung cấp AI đang chờ chủ sở hữu xem xét dữ liệu.",
         "no_settings": "Chưa có nội dung nào hệ thống có thể thực thi cho lĩnh vực này. Chính sách được lưu dưới dạng văn bản.",
         "failed": "Không thực hiện được. Hãy thử lại."
+      },
+      "mentions": {
+        "title": "Các thiết lập văn bản nhắc đến",
+        "enforced": "được thực thi từ chính sách này sau khi phê duyệt",
+        "textOnly": "chỉ văn bản, không thực thi (do {name} đánh dấu ngày {date})",
+        "needed": "hãy xác nhận một giá trị, hoặc giữ là chỉ văn bản, trước khi gửi",
+        "markTextOnly": "Giữ là chỉ văn bản",
+        "unmark": "Bỏ chỉ văn bản",
+        "setting": {
+          "claims_mileage_rates": "Mức phí đi lại",
+          "claims_submit_within_days": "Thời hạn nộp yêu cầu thanh toán",
+          "leave_entitlement_days": "Số ngày nghỉ được hưởng"
+        }
+      },
+      "mismatch": {
+        "title": "Chỗ văn bản khác với những gì hệ thống sẽ thực thi",
+        "row": "“{quote}” ({setting}): dịch vụ {owner} sẽ thực thi {enforced}.",
+        "note": "Việc phê duyệt chờ đến khi hai bên khớp nhau. Hãy sửa văn bản, hoặc xác nhận một giá trị để nó được áp dụng."
       },
       "footer": "Câu hỏi của nhân viên chỉ được trả lời từ phiên bản đã phê duyệt. Mọi phiên bản đều được lưu.",
       "readerLine": "Phiên bản {version} · hiệu lực từ {date}",

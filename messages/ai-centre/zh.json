@@ -1579,6 +1579,8 @@
         "owner": "由报销服务根据过去 12 个月的真实报销计算。AI Centre 未计算任何金额。"
       },
       "drift": {
+        "textBody": "手册写的是“{quote}”；{owner}服务现为 {system}。适用于 {companies}。",
+        "textNote": "员工询问 AI Centre 时，得到的是系统的设置，而不是这个数字。请修改文本使之一致，或在新草稿中确认一个数值。",
         "title": "手册与系统不一致之处",
         "setting": {
           "claims_mileage_rates": "里程费率",
@@ -1595,6 +1597,7 @@
         "leave": "休假"
       },
       "approval": {
+        "blocked": "文本与系统将执行的设置不一致时，此版本无法批准。请退回草稿并修改文本。",
         "title": "批准",
         "ruleDraft": "提交后，由集团管理员批准。更改系统执行的内容须由第二位管理员批准：即未撰写也未提交此变更的人。",
         "ruleSettings": "此版本会更改系统执行的内容，因此必须由未撰写也未提交它的第二位管理员批准后才会生效。",
@@ -1641,6 +1644,8 @@
         "leaveFrom": "{type}，服务 {from} 年或以上"
       },
       "saved": {
+        "text_only": "已标记为仅文本。系统自身的设置保持不变。",
+        "text_only_withdrawn": "已取消仅文本。请为其确认一个数值，或重新标记。",
         "created": "草稿已保存。",
         "draft": "草稿已保存。",
         "read": "AI Centre 读取了 {accepted, plural, other {# 个数值}}，供您确认{rejected, plural, =0 {。} other {；另有 # 项提议无法与您的文字对应，已搁置。}}",
@@ -1659,6 +1664,8 @@
         "draft_made": "新草稿已可编辑。"
       },
       "errors": {
+        "unmarked": "您的文本提到了系统执行的设置。发送前请为其确认一个数值，或保留为仅文本。",
+        "mismatch": "文本写明的数字系统不会执行。请退回草稿并修改文本，或确认该数值。",
         "not_administrator": "只有此政策所适用的每家公司的管理员才能执行此操作。",
         "not_group_admin": "只有集团管理员才能批准或退回政策。",
         "invalid": "请检查标题、日期、文本，并至少选择一家公司。",
@@ -1676,6 +1683,24 @@
         "model_unavailable": "AI Centre 暂时无法读取数值。将政策文本发送给 AI 服务商一事正在等待所有者的数据审查。",
         "no_settings": "此类别暂时没有系统可执行的内容。政策以文本形式保存。",
         "failed": "操作未成功，请重试。"
+      },
+      "mentions": {
+        "title": "文本提到的设置",
+        "enforced": "批准后由此政策执行",
+        "textOnly": "仅文本，不执行（由 {name} 于 {date} 标记）",
+        "needed": "发送前请为其确认一个数值，或保留为仅文本",
+        "markTextOnly": "保留为仅文本",
+        "unmark": "撤销仅文本",
+        "setting": {
+          "claims_mileage_rates": "里程费率",
+          "claims_submit_within_days": "报销提交期限",
+          "leave_entitlement_days": "假期应享天数"
+        }
+      },
+      "mismatch": {
+        "title": "文本与系统将执行的设置不一致之处",
+        "row": "“{quote}”（{setting}）：{owner}服务将执行 {enforced}。",
+        "note": "两者一致后才能批准。请修改文本，或确认一个数值以便执行。"
       },
       "footer": "员工的问题只根据已批准的版本回答。每个版本都会保留。",
       "readerLine": "版本 {version} · 自 {date} 起生效",

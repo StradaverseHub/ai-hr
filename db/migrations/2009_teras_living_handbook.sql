@@ -10,8 +10,11 @@
 --  2. teras_policy_version: one version of its text, with the date it applies from. A draft is edited in place by the
 --     administrators of every company it applies to; it is then sent for approval (locked), approved (immutable) or
 --     returned to draft. At most one version of a policy is in progress at a time. Approval is checked HERE as well as in
---     code: a version that changes what the system enforces is approved only once a group administrator other than its
---     author and its sender has approved it; a text-only version needs one group administrator's approval.
+--     code: a version that changes what the system enforces is approved only once a group administrator who contributed
+--     nothing to it (not its author, an editor, a reader or decider of its values, a text-only marker or a sender, table 9)
+--     has approved it; a text-only version needs one group administrator's approval. Whether a version changes what the
+--     system enforces is DERIVED here when it is sent, never taken from the sender: it does when any value read from its
+--     current text is confirmed (Phase 2 hardening, 4 November 2026).
 --  3. teras_policy_scope: the companies a version applies to, all of the caller's tenant. Never across tenants.
 --  4. teras_policy_value: a value AI Centre read from the text for a setting that ALREADY EXISTS in an owner service
 --     (claims mileage rates, the claims submission window, a leave type's default entitlement table), with the exact
@@ -24,10 +27,17 @@
 --     The write itself is the owner's own settings write, under the approving administrator's login.
 --  8. teras_policy_drift_finding: a disagreement between an approved policy value and the owner's current setting that
 --     an administrator acted on ("Use the handbook" or "Update the handbook"), with both values and the draft prepared.
+--  9. teras_policy_contribution: who shaped a version, recorded by this migration's own triggers under the acting login:
+--     its author, each editor of its text, date or companies, each login that read or decided its values or marked a
+--     setting text only, and each sender. Never written by an approval or a return.
+-- 10. teras_policy_text_only: a person's mark that what a version's current text says about one enforceable setting is
+--     text only and not enforced (the owner's setting stays), or the withdrawal of that mark. The latest one counts. A
+--     version is sent only when every value read from its current text that is not confirmed is covered: a confirmed value
+--     of the same setting, or this mark.
 -- No amount is computed or stored by AI Centre: the values are the policy's own words, the before and after values are
 -- the owner's, and the impact simulation is the claims service's read-only answer (it is not stored).
 --
--- Who reads (FORCE row-level security on all eight tables):
+-- Who reads (FORCE row-level security on all ten tables):
 --  - administrators of any company a version applies to: the policy, every version, its values, decisions, approvals,
 --    applications and drift findings;
 --  - every other login of the tenant who holds a current employment in a company a version applies to: APPROVED versions
@@ -35,12 +45,13 @@
 --  - scope rows (version and company ids only) are readable by the tenant, so the policies above can be evaluated;
 --  - never an agent principal; never another tenant.
 -- Who writes: administrators of every company a version applies to (drafts, values, decisions, applications, drift
--- findings); group administrators (approvals, and the version's move to approved or back to draft). Every row is
--- attributed to the current login. Grants: SELECT and INSERT; UPDATE on teras_policy_version only; DELETE on
--- teras_policy_scope only (a draft's companies). Everything else is revoked. Triggers refuse every other change.
+-- findings, text-only marks); group administrators (approvals, and the version's move to approved or back to draft).
+-- Contributions are written by the triggers below, each for the acting login only. Every row is attributed to the
+-- current login. Grants: SELECT and INSERT; UPDATE on teras_policy_version only; DELETE on teras_policy_scope only (a
+-- draft's companies). Everything else is revoked. Triggers refuse every other change.
 --
--- Writers reviewed: all eight tables are new; core/handbook/policies.ts is their only writer. Nothing here changes an
--- existing table, policy or function.
+-- Writers reviewed: all ten tables are new; core/handbook/policies.ts and this migration's triggers are their only
+-- writers. Nothing here changes an existing table, policy or function.
 
 -- 1. Policies.
 CREATE TABLE public.teras_policy_document (
@@ -185,6 +196,34 @@ CREATE TABLE public.teras_policy_drift_finding (
  FOREIGN KEY (company_id,tenant_id) REFERENCES public.company(id,tenant_id)
 );
 --> statement-breakpoint
+-- 9. Who contributed to a version (written by the triggers below, for the acting login).
+CREATE TABLE public.teras_policy_contribution (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ tenant_id uuid NOT NULL,
+ version_id uuid NOT NULL,
+ user_id uuid NOT NULL REFERENCES public.app_user(id),
+ kind text NOT NULL CHECK (kind IN ('author','editor','value_reader','value_decider','text_only_marker','sender')),
+ contributed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ FOREIGN KEY (version_id,tenant_id) REFERENCES public.teras_policy_version(id,tenant_id)
+);
+--> statement-breakpoint
+CREATE INDEX teras_policy_contribution_version_idx ON public.teras_policy_contribution(version_id,user_id);
+--> statement-breakpoint
+-- 10. A person's mark that what the current text says about a setting is text only, not enforced (or its withdrawal).
+CREATE TABLE public.teras_policy_text_only (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ tenant_id uuid NOT NULL,
+ version_id uuid NOT NULL,
+ setting text NOT NULL CHECK (setting IN ('claims.mileage_rates','claims.submit_within_days','leave.entitlement_days')),
+ body_digest text NOT NULL CHECK (body_digest ~ '^[a-f0-9]{64}$'),
+ marked boolean NOT NULL,
+ marked_by_user_id uuid NOT NULL REFERENCES public.app_user(id),
+ marked_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ FOREIGN KEY (version_id,tenant_id) REFERENCES public.teras_policy_version(id,tenant_id)
+);
+--> statement-breakpoint
+CREATE INDEX teras_policy_text_only_version_idx ON public.teras_policy_text_only(version_id,setting,marked_at DESC);
+--> statement-breakpoint
 -- ── Who the caller is for a version (invoker rights: each reads the scope rows under the tenant's own policy) ──
 -- The caller holds a current employment in the company. Definer: reads the login and employment tables (not forced).
 CREATE FUNCTION app.teras_policy_employed_in(p_company uuid) RETURNS boolean
@@ -244,6 +283,52 @@ REVOKE ALL ON FUNCTION app.teras_policy_body_digest(text) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.teras_policy_body_digest(text) TO ai_hr_app;
 --> statement-breakpoint
+-- A value's latest decision (null: undecided).
+CREATE FUNCTION app.teras_policy_latest_decision(p_value uuid) RETURNS text
+ LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT c.decision FROM public.teras_policy_value_confirmation c WHERE c.value_id=p_value ORDER BY c.decided_at DESC,c.id DESC LIMIT 1
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_policy_latest_decision(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.teras_policy_latest_decision(uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Whether a setting of a version's text (by its digest) is marked text only now (the latest mark counts).
+CREATE FUNCTION app.teras_policy_marked_text_only(p_version uuid,p_digest text,p_setting text) RETURNS boolean
+ LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT coalesce((SELECT m.marked FROM public.teras_policy_text_only m WHERE m.version_id=p_version AND m.body_digest=p_digest AND m.setting=p_setting
+  ORDER BY m.marked_at DESC,m.id DESC LIMIT 1),false)
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_policy_marked_text_only(uuid,text,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.teras_policy_marked_text_only(uuid,text,text) TO ai_hr_app;
+--> statement-breakpoint
+-- Whether a login contributed anything to a version. A caller always reads its own contributions; an administrator of
+-- a company the version applies to reads everyone's (the approver of a settings change administers all of them).
+CREATE FUNCTION app.teras_policy_contributed(p_version uuid,p_user uuid) RETURNS boolean
+ LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.teras_policy_contribution c WHERE c.version_id=p_version AND c.user_id=p_user)
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_policy_contributed(uuid,uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.teras_policy_contributed(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+-- Records the acting login's contribution to a version, once per kind (invoker rights: under its own insert policy).
+CREATE FUNCTION app.teras_policy_record_contribution(p_tenant uuid,p_version uuid,p_kind text) RETURNS void
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.current_user_id() IS NULL THEN RAISE EXCEPTION 'A policy contribution is a login''s' USING ERRCODE='42501'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.teras_policy_contribution c WHERE c.version_id=p_version AND c.user_id=app.current_user_id() AND c.kind=p_kind) THEN
+  INSERT INTO public.teras_policy_contribution (tenant_id,version_id,user_id,kind) VALUES (p_tenant,p_version,app.current_user_id(),p_kind);
+ END IF;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_policy_record_contribution(uuid,uuid,text) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.teras_policy_record_contribution(uuid,uuid,text) TO ai_hr_app;
+--> statement-breakpoint
 -- ── Guards ──
 -- A policy is written once and never changed.
 CREATE FUNCTION app.teras_policy_append_only() RETURNS trigger
@@ -260,7 +345,7 @@ CREATE TRIGGER teras_policy_document_append_only BEFORE UPDATE OR DELETE ON publ
 -- the rule; returned to draft only by a group administrator who returned this submission; immutable once approved.
 CREATE FUNCTION app.teras_policy_version_guard() RETURNS trigger
  LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE digest text;
+DECLARE digest text;confirmed boolean;
 BEGIN
  IF TG_OP='DELETE' THEN RAISE EXCEPTION 'A policy version is never deleted' USING ERRCODE='42501'; END IF;
  IF TG_OP='INSERT' THEN
@@ -288,13 +373,29 @@ BEGIN
  END IF;
  digest:=app.teras_policy_body_digest(OLD.body);
  IF OLD.status='draft' AND NEW.status='submitted' THEN
-  IF NEW.submission<>OLD.submission+1 OR NEW.changes_settings IS NULL OR NEW.submitted_by_user_id IS DISTINCT FROM app.current_user_id() THEN
+  IF NEW.submission<>OLD.submission+1 OR NEW.submitted_by_user_id IS DISTINCT FROM app.current_user_id() THEN
    RAISE EXCEPTION 'A version is sent by the current login, once per submission' USING ERRCODE='42501';
   END IF;
   IF EXISTS(SELECT 1 FROM public.teras_policy_value v WHERE v.version_id=OLD.id AND v.body_digest=digest
    AND NOT EXISTS(SELECT 1 FROM public.teras_policy_value_confirmation c WHERE c.value_id=v.id)) THEN
    RAISE EXCEPTION 'Every value read from the text needs a decision before it is sent' USING ERRCODE='42501';
   END IF;
+  -- Every enforceable setting a value was read for is confirmed, or a person marked it text only: a rejected value
+  -- alone never lets the text say one thing while the system enforces another unseen.
+  IF EXISTS(SELECT 1 FROM public.teras_policy_value v WHERE v.version_id=OLD.id AND v.body_digest=digest
+   AND app.teras_policy_latest_decision(v.id) IS DISTINCT FROM 'confirmed'
+   AND NOT EXISTS(SELECT 1 FROM public.teras_policy_value w WHERE w.version_id=OLD.id AND w.body_digest=digest AND w.setting=v.setting
+    AND app.teras_policy_latest_decision(w.id)='confirmed')
+   AND NOT app.teras_policy_marked_text_only(OLD.id,digest,v.setting)) THEN
+   RAISE EXCEPTION 'Every enforceable setting the text states is confirmed or marked text only before it is sent' USING ERRCODE='42501';
+  END IF;
+  -- Whether it changes what the system enforces is derived from its confirmed values, never taken from the sender.
+  confirmed:=EXISTS(SELECT 1 FROM public.teras_policy_value v WHERE v.version_id=OLD.id AND v.body_digest=digest
+   AND app.teras_policy_latest_decision(v.id)='confirmed');
+  IF NEW.changes_settings IS NOT NULL AND NEW.changes_settings IS DISTINCT FROM confirmed THEN
+   RAISE EXCEPTION 'Whether a version changes enforced settings is derived from its confirmed values' USING ERRCODE='42501';
+  END IF;
+  NEW.changes_settings:=confirmed;
   NEW.submitted_at:=now();NEW.updated_at:=now();RETURN NEW;
  END IF;
  IF OLD.status='submitted' AND NEW.status='approved' THEN
@@ -307,10 +408,11 @@ BEGIN
    RAISE EXCEPTION 'A version is approved by the approving group administrator' USING ERRCODE='42501';
   END IF;
   -- The rule (owner, 3 November 2026): a version that changes what the system enforces needs a second, different
-  -- administrator: approved by a group administrator who neither wrote nor sent it. Text only: one approval.
+  -- administrator: approved by a group administrator who contributed nothing to it (not its author, an editor, a reader
+  -- or decider of its values, a text-only marker or a sender). Text only: one approval.
   IF OLD.changes_settings AND NOT EXISTS(SELECT 1 FROM public.teras_policy_approval a WHERE a.version_id=OLD.id
    AND a.submission=OLD.submission AND a.decision='approved' AND a.approver_user_id<>OLD.author_user_id
-   AND a.approver_user_id<>OLD.submitted_by_user_id) THEN
+   AND a.approver_user_id<>OLD.submitted_by_user_id AND NOT app.teras_policy_contributed(OLD.id,a.approver_user_id)) THEN
    RAISE EXCEPTION 'A change to enforced settings needs a second administrator''s approval' USING ERRCODE='42501';
   END IF;
   NEW.approved_at:=now();NEW.updated_at:=now();RETURN NEW;
@@ -388,7 +490,8 @@ CREATE TRIGGER teras_policy_confirmation_append_only BEFORE UPDATE OR DELETE ON 
  FOR EACH ROW EXECUTE FUNCTION app.teras_policy_append_only();
 --> statement-breakpoint
 -- An approval or return is the current login's, on the version's current submission while it waits; a group
--- administrator never approves a settings change they wrote or sent.
+-- administrator never approves a settings change they contributed to (wrote, edited, read or decided values for, marked
+-- text only or sent).
 CREATE FUNCTION app.teras_policy_approval_guard() RETURNS trigger
  LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE v record;
@@ -398,7 +501,8 @@ BEGIN
   OR app.is_group_admin() IS NOT TRUE THEN
   RAISE EXCEPTION 'A group administrator decides a version that waits for approval' USING ERRCODE='42501';
  END IF;
- IF NEW.decision='approved' AND v.changes_settings AND (NEW.approver_user_id=v.author_user_id OR NEW.approver_user_id=v.submitted_by_user_id) THEN
+ IF NEW.decision='approved' AND v.changes_settings AND (NEW.approver_user_id=v.author_user_id OR NEW.approver_user_id=v.submitted_by_user_id
+  OR app.teras_policy_contributed(v.id,NEW.approver_user_id)) THEN
   RAISE EXCEPTION 'A change to enforced settings is approved by a different administrator' USING ERRCODE='42501';
  END IF;
  NEW.decided_at:=now();RETURN NEW;
@@ -465,6 +569,100 @@ CREATE TRIGGER teras_policy_drift_guard BEFORE INSERT ON public.teras_policy_dri
 CREATE TRIGGER teras_policy_drift_append_only BEFORE UPDATE OR DELETE ON public.teras_policy_drift_finding
  FOR EACH ROW EXECUTE FUNCTION app.teras_policy_append_only();
 --> statement-breakpoint
+-- A text-only mark is made by the current login on a draft's current text.
+CREATE FUNCTION app.teras_policy_text_only_guard() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.marked_by_user_id IS DISTINCT FROM app.current_user_id() OR NOT EXISTS(SELECT 1 FROM public.teras_policy_version v
+  WHERE v.id=NEW.version_id AND v.status='draft' AND app.teras_policy_body_digest(v.body)=NEW.body_digest) THEN
+  RAISE EXCEPTION 'A text-only mark is made on a draft''s current text' USING ERRCODE='42501';
+ END IF;
+ NEW.marked_at:=clock_timestamp();RETURN NEW;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_policy_text_only_guard() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER teras_policy_text_only_guard BEFORE INSERT ON public.teras_policy_text_only
+ FOR EACH ROW EXECUTE FUNCTION app.teras_policy_text_only_guard();
+--> statement-breakpoint
+CREATE TRIGGER teras_policy_text_only_append_only BEFORE UPDATE OR DELETE ON public.teras_policy_text_only
+ FOR EACH ROW EXECUTE FUNCTION app.teras_policy_append_only();
+--> statement-breakpoint
+-- A contribution is recorded by the triggers below for the acting login; it is never changed or deleted.
+CREATE FUNCTION app.teras_policy_contribution_guard() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.user_id IS DISTINCT FROM app.current_user_id() THEN
+  RAISE EXCEPTION 'A contribution is the acting login''s' USING ERRCODE='42501';
+ END IF;
+ NEW.contributed_at:=clock_timestamp();RETURN NEW;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_policy_contribution_guard() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER teras_policy_contribution_guard BEFORE INSERT ON public.teras_policy_contribution
+ FOR EACH ROW EXECUTE FUNCTION app.teras_policy_contribution_guard();
+--> statement-breakpoint
+CREATE TRIGGER teras_policy_contribution_append_only BEFORE UPDATE OR DELETE ON public.teras_policy_contribution
+ FOR EACH ROW EXECUTE FUNCTION app.teras_policy_append_only();
+--> statement-breakpoint
+-- Who contributed, recorded as each change happens: the author when a version is written; an editor (other than its
+-- author, already recorded) when a draft's text or date changes or its companies do; the sender when it is sent; a
+-- reader of its values, a decider of one, and a text-only marker. An approval or a return is not a contribution.
+CREATE FUNCTION app.teras_policy_version_contribution() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_OP='INSERT' THEN PERFORM app.teras_policy_record_contribution(NEW.tenant_id,NEW.id,'author');
+ ELSIF OLD.status='draft' AND NEW.status='draft' AND (NEW.body,NEW.effective_from) IS DISTINCT FROM (OLD.body,OLD.effective_from)
+  AND NEW.author_user_id IS DISTINCT FROM app.current_user_id() THEN
+  PERFORM app.teras_policy_record_contribution(NEW.tenant_id,NEW.id,'editor');
+ ELSIF OLD.status='draft' AND NEW.status='submitted' THEN PERFORM app.teras_policy_record_contribution(NEW.tenant_id,NEW.id,'sender');
+ END IF;
+ RETURN NULL;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_policy_version_contribution() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER teras_policy_version_contribution AFTER INSERT OR UPDATE ON public.teras_policy_version
+ FOR EACH ROW EXECUTE FUNCTION app.teras_policy_version_contribution();
+--> statement-breakpoint
+CREATE FUNCTION app.teras_policy_scope_contribution() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE tenant uuid:=CASE WHEN TG_OP='DELETE' THEN OLD.tenant_id ELSE NEW.tenant_id END;
+ target uuid:=CASE WHEN TG_OP='DELETE' THEN OLD.version_id ELSE NEW.version_id END;
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM public.teras_policy_version v WHERE v.id=target AND v.author_user_id=app.current_user_id()) THEN
+  PERFORM app.teras_policy_record_contribution(tenant,target,'editor');
+ END IF;
+ RETURN NULL;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_policy_scope_contribution() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER teras_policy_scope_contribution AFTER INSERT OR DELETE ON public.teras_policy_scope
+ FOR EACH ROW EXECUTE FUNCTION app.teras_policy_scope_contribution();
+--> statement-breakpoint
+CREATE FUNCTION app.teras_policy_value_contribution() RETURNS trigger
+ LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_TABLE_NAME='teras_policy_value' THEN PERFORM app.teras_policy_record_contribution(NEW.tenant_id,NEW.version_id,'value_reader');
+ ELSIF TG_TABLE_NAME='teras_policy_text_only' THEN PERFORM app.teras_policy_record_contribution(NEW.tenant_id,NEW.version_id,'text_only_marker');
+ ELSE PERFORM app.teras_policy_record_contribution(NEW.tenant_id,(SELECT x.version_id FROM public.teras_policy_value x WHERE x.id=NEW.value_id),'value_decider');
+ END IF;
+ RETURN NULL;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_policy_value_contribution() FROM PUBLIC;
+--> statement-breakpoint
+CREATE TRIGGER teras_policy_value_contribution AFTER INSERT ON public.teras_policy_value
+ FOR EACH ROW EXECUTE FUNCTION app.teras_policy_value_contribution();
+--> statement-breakpoint
+CREATE TRIGGER teras_policy_confirmation_contribution AFTER INSERT ON public.teras_policy_value_confirmation
+ FOR EACH ROW EXECUTE FUNCTION app.teras_policy_value_contribution();
+--> statement-breakpoint
+CREATE TRIGGER teras_policy_text_only_contribution AFTER INSERT ON public.teras_policy_text_only
+ FOR EACH ROW EXECUTE FUNCTION app.teras_policy_value_contribution();
+--> statement-breakpoint
 -- ── RLS: forced on every new table ──
 ALTER TABLE public.teras_policy_document ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
@@ -497,6 +695,14 @@ ALTER TABLE public.teras_policy_application FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.teras_policy_drift_finding ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
 ALTER TABLE public.teras_policy_drift_finding FORCE ROW LEVEL SECURITY;
+--> statement-breakpoint
+ALTER TABLE public.teras_policy_contribution ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+ALTER TABLE public.teras_policy_contribution FORCE ROW LEVEL SECURITY;
+--> statement-breakpoint
+ALTER TABLE public.teras_policy_text_only ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+ALTER TABLE public.teras_policy_text_only FORCE ROW LEVEL SECURITY;
 --> statement-breakpoint
 -- Policies: readable when one of its versions is (or by its author); written by an administrator under their login.
 CREATE POLICY teras_policy_document_read ON public.teras_policy_document FOR SELECT TO ai_hr_app
@@ -569,13 +775,31 @@ CREATE POLICY teras_policy_drift_finding_insert ON public.teras_policy_drift_fin
  WITH CHECK (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE AND app.teras_policy_admin_all(version_id)
   AND resolved_by_user_id=app.current_user_id() AND (company_id IS NULL OR app.is_admin_for(company_id)));
 --> statement-breakpoint
+-- Contributions: an administrator of a company the version applies to reads them, and every login reads its own (so a
+-- guard asking whether the acting login contributed always sees the answer). Each is written for the acting login only.
+CREATE POLICY teras_policy_contribution_read ON public.teras_policy_contribution FOR SELECT TO ai_hr_app
+ USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL
+  AND (user_id=app.current_user_id() OR app.teras_policy_admin_any(version_id)));
+--> statement-breakpoint
+CREATE POLICY teras_policy_contribution_insert ON public.teras_policy_contribution FOR INSERT TO ai_hr_app
+ WITH CHECK (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND user_id=app.current_user_id());
+--> statement-breakpoint
+CREATE POLICY teras_policy_text_only_read ON public.teras_policy_text_only FOR SELECT TO ai_hr_app
+ USING (tenant_id=app.current_tenant_id() AND app.teras_policy_admin_any(version_id));
+--> statement-breakpoint
+CREATE POLICY teras_policy_text_only_insert ON public.teras_policy_text_only FOR INSERT TO ai_hr_app
+ WITH CHECK (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE AND app.teras_policy_admin_all(version_id)
+  AND marked_by_user_id=app.current_user_id());
+--> statement-breakpoint
 -- ── Grants: every privilege a table must not have is revoked ──
 REVOKE ALL ON public.teras_policy_document,public.teras_policy_version,public.teras_policy_scope,public.teras_policy_value,
- public.teras_policy_value_confirmation,public.teras_policy_approval,public.teras_policy_application,public.teras_policy_drift_finding
+ public.teras_policy_value_confirmation,public.teras_policy_approval,public.teras_policy_application,public.teras_policy_drift_finding,
+ public.teras_policy_contribution,public.teras_policy_text_only
  FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 GRANT SELECT,INSERT ON public.teras_policy_document,public.teras_policy_value,public.teras_policy_value_confirmation,
- public.teras_policy_approval,public.teras_policy_application,public.teras_policy_drift_finding TO ai_hr_app;
+ public.teras_policy_approval,public.teras_policy_application,public.teras_policy_drift_finding,
+ public.teras_policy_contribution,public.teras_policy_text_only TO ai_hr_app;
 --> statement-breakpoint
 GRANT SELECT,INSERT,UPDATE ON public.teras_policy_version TO ai_hr_app;
 --> statement-breakpoint

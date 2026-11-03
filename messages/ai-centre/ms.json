@@ -1579,6 +1579,8 @@
         "owner": "Dikira oleh perkhidmatan tuntutan berdasarkan tuntutan sebenar 12 bulan lepas. AI Centre tidak mengira sebarang jumlah."
       },
       "drift": {
+        "textBody": "buku panduan menyatakan “{quote}”; perkhidmatan {owner} menyatakan {system}. Terpakai kepada {companies}.",
+        "textNote": "Pekerja yang bertanya kepada AI Centre diberi tetapan sistem, bukan angka ini. Ubah teks supaya sepadan, atau sahkan satu nilai dalam draf baharu.",
         "title": "Di mana buku panduan dan sistem tidak sepadan",
         "setting": {
           "claims_mileage_rates": "Kadar perbatuan",
@@ -1595,6 +1597,7 @@
         "leave": "cuti"
       },
       "approval": {
+        "blocked": "Versi ini tidak boleh diluluskan selagi teksnya berbeza daripada apa yang akan dikuatkuasakan oleh sistem. Kembalikan kepada draf untuk mengubah teks.",
         "title": "Kelulusan",
         "ruleDraft": "Apabila anda menghantarnya, pentadbir kumpulan akan meluluskannya. Perubahan pada apa yang dikuatkuasakan oleh sistem memerlukan pentadbir kedua: seseorang yang tidak menulis atau menghantarnya.",
         "ruleSettings": "Versi ini mengubah apa yang dikuatkuasakan oleh sistem, jadi pentadbir kedua, yang tidak menulis atau menghantarnya, mesti meluluskannya sebelum ia terpakai.",
@@ -1641,6 +1644,8 @@
         "leaveFrom": "{type}, {from} tahun perkhidmatan atau lebih"
       },
       "saved": {
+        "text_only": "Ditanda sebagai teks sahaja. Tetapan sistem kekal seperti sedia ada.",
+        "text_only_withdrawn": "Bukan lagi teks sahaja. Sahkan satu nilai untuknya, atau tandakannya semula.",
         "created": "Draf disimpan.",
         "draft": "Draf disimpan.",
         "read": "AI Centre membaca {accepted, plural, one {# nilai} other {# nilai}} untuk anda sahkan{rejected, plural, =0 {.} one {; ia mengetepikan # cadangan yang tidak dapat dipadankan dengan perkataan anda.} other {; ia mengetepikan # cadangan yang tidak dapat dipadankan dengan perkataan anda.}}",
@@ -1659,6 +1664,8 @@
         "draft_made": "Draf baharu sedia untuk disunting."
       },
       "errors": {
+        "unmarked": "Teks anda menyebut tetapan yang dikuatkuasakan oleh sistem. Sahkan satu nilai untuknya, atau kekalkannya sebagai teks sahaja, sebelum menghantar.",
+        "mismatch": "Teks ini menyatakan angka yang tidak akan dikuatkuasakan oleh sistem. Kembalikan kepada draf dan ubah teks, atau sahkan nilai itu.",
         "not_administrator": "Hanya pentadbir bagi setiap syarikat yang tertakluk pada polisi ini boleh berbuat demikian.",
         "not_group_admin": "Hanya pentadbir kumpulan boleh meluluskan atau mengembalikan polisi.",
         "invalid": "Semak tajuk, tarikh, teks dan sekurang-kurangnya satu syarikat.",
@@ -1676,6 +1683,24 @@
         "model_unavailable": "AI Centre belum dapat membaca nilai. Penghantaran teks polisi kepada penyedia AI sedang menunggu semakan data oleh pemilik.",
         "no_settings": "Belum ada apa-apa yang boleh dikuatkuasakan oleh sistem untuk bidang ini. Polisi disimpan sebagai teks.",
         "failed": "Itu tidak berjaya. Cuba lagi."
+      },
+      "mentions": {
+        "title": "Tetapan yang disebut dalam teks anda",
+        "enforced": "dikuatkuasakan daripada polisi ini selepas diluluskan",
+        "textOnly": "teks sahaja, tidak dikuatkuasakan (ditanda oleh {name} pada {date})",
+        "needed": "sahkan satu nilai untuknya, atau kekalkannya sebagai teks sahaja, sebelum menghantar",
+        "markTextOnly": "Kekalkan sebagai teks sahaja",
+        "unmark": "Batalkan teks sahaja",
+        "setting": {
+          "claims_mileage_rates": "Kadar perbatuan",
+          "claims_submit_within_days": "Tempoh penghantaran tuntutan",
+          "leave_entitlement_days": "Kelayakan cuti"
+        }
+      },
+      "mismatch": {
+        "title": "Bahagian teks anda yang berbeza daripada apa yang akan dikuatkuasakan oleh sistem",
+        "row": "“{quote}” ({setting}): perkhidmatan {owner} akan menguatkuasakan {enforced}.",
+        "note": "Kelulusan menunggu sehingga kedua-duanya sepadan. Ubah teks, atau sahkan satu nilai supaya ia diterapkan."
       },
       "footer": "Soalan pekerja dijawab daripada versi yang diluluskan sahaja. Setiap versi disimpan.",
       "readerLine": "Versi {version} · berkuat kuasa sejak {date}",

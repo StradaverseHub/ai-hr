@@ -14,6 +14,11 @@
  *  5. Employees read approved versions only, in the Policies view, in Ask and in the database.
  *  6. Role access and isolation: company administrators, employees, another company and another tenant.
  *  7. Injection: policy text that orders "set rate RM 100" yields only an undecided span; nothing is written.
+ *  8. Phase 2 hardening (4 November 2026): the second approver contributed nothing to the change (a returner who
+ *     rewrote it cannot approve it); every enforceable setting the text mentions is confirmed or marked text only, and a
+ *     figure that disagrees with the system blocks approval and never reaches an employee's answer (RM1.00 against
+ *     RM0.60); whether a version changes settings is derived by the database, and the owner's write rolls back with a
+ *     refused application row.
  * Expected values are written out from the fixtures, never re-derived from the services' own helpers. */
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -21,10 +26,11 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import * as schema from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
-import {createClaimType,listClaimTypes,listMileageRateTables,setMileageRateTable,simulateClaimPolicyImpact} from '../packs/claims/service';
+import {createClaimType,listClaimTypes,listMileageRateTables,setMileageRateTable,simulateClaimPolicyImpact,updateClaimType} from '../packs/claims/service';
 import {createEntitlementTemplate,listEntitlementTemplates,setLeaveTypeDefaultTemplate} from '../packs/leave/service';
-import {PolicyRefused,applyScheduledValue,approvePolicyVersion,createPolicy,decidePolicyValue,draftFromVersion,policiesView,prepareFromDrift,
- readPolicyValues,returnPolicyVersion,submitPolicyVersion} from '../core/handbook/policies';
+import {PolicyRefused,applyScheduledValue,approvePolicyVersion,createPolicy,decidePolicyValue,draftFromVersion,markTextOnly,policiesView,prepareFromDrift,
+ readPolicyValues,returnPolicyVersion,saveDraft,submitPolicyVersion} from '../core/handbook/policies';
+import {applyOwnerValueTx,ownerTargets} from '../core/handbook/settings';
 import {askPolicyHandbook} from '../core/handbook/ask';
 import {DisclosureLedger,discloseToolOutput} from '../core/harness/disclosure';
 import type {PolicyValueModel} from '../core/handbook/extract';
@@ -116,6 +122,9 @@ describe('confirmation and a second administrator',()=>{
   await decidePolicyValue(g1,{valueId:mileage!.id,decision:'confirmed'});
   await decidePolicyValue(g1,{valueId:within!.id,decision:'confirmed'});
   await decidePolicyValue(g1,{valueId:within!.id,decision:'rejected'});
+  // The text still states a submission window: rejecting its value alone is not enough; it is marked text only.
+  await refused(submitPolicyVersion(g1,{versionId:created.versionId}),'unmarked');
+  await markTextOnly(g1,{versionId:created.versionId,setting:'claims.submit_within_days',marked:true});
   expect(await submitPolicyVersion(g1,{versionId:created.versionId})).toEqual({changesSettings:true});
   await refused(approvePolicyVersion(g1,{versionId:created.versionId}),'same_administrator');
   await refused(approvePolicyVersion(ca,{versionId:created.versionId}),'not_group_admin');
@@ -126,13 +135,25 @@ describe('confirmation and a second administrator',()=>{
   await refusedBy(withTenant(g2,tx=>tx.execute(sql`insert into public.teras_policy_application (tenant_id,version_id,value_id,status,before_value,after_value,apply_on,applied_by_user_id)
    values (${b.tenantId}::uuid,${created.versionId}::uuid,${mileage!.id}::uuid,'applied','{}'::jsonb,'{"x":1}'::jsonb,current_date,${g2.userId}::uuid)`)),/approved version/);
   expect(await companyTable(g1)).toEqual([{fromKm:0,toKm:null,ratePerKm:0.5}]);
+  // Its text says "within 30 days" while the claims service enforces 90 and nothing here changes that: not approved.
+  await refused(approvePolicyVersion(g2,{versionId:created.versionId}),'mismatch');
+  expect(await companyTable(g1)).toEqual([{fromKm:0,toKm:null,ratePerKm:0.5}]);
+  // The claims screen moves to 30 days; sent again, the text and the system agree.
+  await returnPolicyVersion(g2,{versionId:created.versionId});
+  await updateClaimType(g1,{id:mileageTypeId,name:'Mileage',defaultTaxable:false,requiresReceipt:false,maxReceiptAgeDays:30});
+  expect(await submitPolicyVersion(g1,{versionId:created.versionId})).toEqual({changesSettings:true});
   const approved=await approvePolicyVersion(g2,{versionId:created.versionId});
   expect(approved.applications.map(a=>[a.setting,a.status])).toEqual([['claims.mileage_rates','applied']]);
-  // The claims service now holds the confirmed table; the rejected submission window is untouched.
+  // The claims service now holds the confirmed table; the rejected submission window was never applied.
   expect(await companyTable(g1)).toEqual([{fromKm:0,toKm:500,ratePerKm:0.6},{fromKm:500,toKm:null,ratePerKm:0.45}]);
-  expect(await receiptDays(g1)).toBe(90);
+  expect(await receiptDays(g1)).toBe(30);
+  const [applied]=await owner.db.execute(sql`select count(*)::int as n from public.teras_policy_application where value_id=${within!.id}::uuid`) as unknown as {n:number}[];
+  expect(applied!.n).toBe(0);
   const [application]=await owner.db.execute(sql`select status,before_value,after_value,applied_by_user_id from public.teras_policy_application where version_id=${created.versionId}::uuid`) as unknown as Record<string,unknown>[];
   expect(application).toEqual({status:'applied',before_value:{bands:[{fromKm:0,toKm:null,ratePerKm:0.5}]},after_value:{bands:[{fromKm:0,toKm:500,ratePerKm:0.6},{fromKm:500,toKm:null,ratePerKm:0.45}]},applied_by_user_id:g2.userId});
+  // The text-only mark is recorded with who made it.
+  const [mark]=await owner.db.execute(sql`select setting,marked,marked_by_user_id from public.teras_policy_text_only where version_id=${created.versionId}::uuid`) as unknown as Record<string,unknown>[];
+  expect(mark).toEqual({setting:'claims.submit_within_days',marked:true,marked_by_user_id:g1.userId});
   // Approved is final: no edit, no second approval.
   await refusedBy(withTenant(g1,tx=>tx.execute(sql`update public.teras_policy_version set body='changed' where id=${created.versionId}::uuid`)),/never changed/);
   await refused(approvePolicyVersion(g2,{versionId:created.versionId}),'not_submitted');
@@ -144,19 +165,21 @@ describe('confirmation and a second administrator',()=>{
   const copies=await valuesOf(draft.versionId);
   expect(copies.map(v=>[v.setting,v.source])).toEqual([['claims.mileage_rates','copied'],['claims.submit_within_days','copied']]);
   await refused(submitPolicyVersion(g1,{versionId:draft.versionId}),'undecided');
-  for(const value of copies)await decidePolicyValue(g1,{valueId:value.id,decision:'confirmed'});
+  // A confirmed value makes it a settings change (the database derives it): text only means each value is set aside
+  // and its setting marked text only, by a person.
+  for(const value of copies)await decidePolicyValue(g1,{valueId:value.id,decision:'rejected'});
+  await refused(submitPolicyVersion(g1,{versionId:draft.versionId}),'unmarked');
+  for(const setting of ['claims.mileage_rates','claims.submit_within_days'])await markTextOnly(g1,{versionId:draft.versionId,setting,marked:true});
   expect(await submitPolicyVersion(g1,{versionId:draft.versionId})).toEqual({changesSettings:false});
   await returnPolicyVersion(g2,{versionId:draft.versionId});
   expect(await submitPolicyVersion(g1,{versionId:draft.versionId})).toEqual({changesSettings:false});
-  // The author approves their own text-only version.
+  // The author approves their own text-only version: its words agree with what the claims service enforces.
   const approved=await approvePolicyVersion(g1,{versionId:draft.versionId});
-  expect(approved.applications.map(a=>a.status)).toEqual(['applied','applied']);
-  const [last]=await owner.db.execute(sql`select count(*)::int as n,bool_and(before_value=after_value) as same from public.teras_policy_application where version_id=${draft.versionId}::uuid`) as unknown as {n:number;same:boolean}[];
-  expect(last).toEqual({n:2,same:true});
-  // A text-only version can never carry a setting change into an owner.
+  expect(approved.applications).toEqual([]);
+  // A text-only version can never carry a setting change into an owner: it has no confirmed value to apply.
   const [value]=await valuesOf(draft.versionId);
   await refusedBy(withTenant(g1,tx=>tx.execute(sql`insert into public.teras_policy_application (tenant_id,version_id,value_id,status,before_value,after_value,apply_on,applied_by_user_id)
-   values (${b.tenantId}::uuid,${draft.versionId}::uuid,${value!.id}::uuid,'applied','{"a":1}'::jsonb,'{"a":2}'::jsonb,current_date,${g1.userId}::uuid)`)),/settings change/);
+   values (${b.tenantId}::uuid,${draft.versionId}::uuid,${value!.id}::uuid,'applied','{"a":1}'::jsonb,'{"a":2}'::jsonb,current_date,${g1.userId}::uuid)`)),/confirmed value/);
  });
 
  it('dated owner settings take the version\'s date; an undated one waits for it',async()=>{
@@ -223,9 +246,10 @@ describe('drift, both ways',()=>{
   const [finding]=await owner.db.execute(sql`select setting,handbook_value,system_value,resolution,prepared_version_id from public.teras_policy_drift_finding`) as unknown as Record<string,unknown>[];
   expect(finding).toEqual({setting:'claims.mileage_rates',handbook_value:{bands:[{fromKm:0,toKm:500,ratePerKm:0.6},{fromKm:500,toKm:null,ratePerKm:0.45}]},
    system_value:{bands:[{fromKm:0,toKm:500,ratePerKm:0.55},{fromKm:500,toKm:null,ratePerKm:0.45}]},resolution:'update_handbook',prepared_version_id:prepared.versionId});
-  // The new text agrees with the system: once confirmed it is a text-only change, for one approval.
+  // The new text agrees with the system. Its values, once confirmed, are enforced from it again, so the database
+  // derives a settings change: a second administrator approves it.
   for(const value of copies)await decidePolicyValue(g1,{valueId:value.id,decision:'confirmed'});
-  expect(await submitPolicyVersion(g1,{versionId:prepared.versionId})).toEqual({changesSettings:false});
+  expect(await submitPolicyVersion(g1,{versionId:prepared.versionId})).toEqual({changesSettings:true});
   await refused(prepareFromDrift(g1,{versionId:first.versionId,valueId:drifted.valueId,resolution:'use_handbook'}),'draft_open');
  });
 
@@ -286,7 +310,7 @@ describe('role access and isolation',()=>{
   await refused(createPolicy(employee,{area:'other',title:'Mine',body:'x',effectiveFrom:todayInKualaLumpur(),companyIds:[b.companyId]}),'not_administrator');
   await refused(createPolicy(ca,{area:'claims',title:'Both',body:TEXT,effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()}),'not_administrator');
   // A company administrator writes for their own company; the shared claims settings stay text there.
-  const own=await createPolicy(ca,{area:'claims',title:'Company A claims',body:TEXT,effectiveFrom:todayInKualaLumpur(),companyIds:[b.companyId]});
+  const own=await createPolicy(ca,{area:'claims',title:'Company A claims',body:'Trips over 100 km need their manager\'s approval before travel.',effectiveFrom:todayInKualaLumpur(),companyIds:[b.companyId]});
   await refused(readPolicyValues(ca,{versionId:own.versionId},scripted([MILEAGE])),'shared_setting');
   await submitPolicyVersion(ca,{versionId:own.versionId});
   await refused(approvePolicyVersion(ca,{versionId:own.versionId}),'not_group_admin');
@@ -348,5 +372,137 @@ describe('identifiers in an approved paragraph never reach the model',()=>{
   const paragraphs=(disclosed.value as {policies:{paragraphs:{paragraph:number;text:string}[]}[]}).policies[0]!.paragraphs;
   expect(paragraphs).toEqual([{paragraph:1,text:clean},
    {paragraph:2,text:'Questions go to Aisyah at [email removed] or [phone removed]. An identity card is written like [ic removed]. Refunds are paid into account [bank_account removed].'}]);
+ });
+});
+
+describe('Phase 2 hardening: the second approver contributed nothing (owner decision 13)',()=>{
+ it('a group administrator who returned a change, rewrote its rate, read and confirmed its values cannot approve it; a third one can',async()=>{
+  const g3=await login(b,'Fictional Chandra Third','hr_admin');
+  const created=await readClaimsPolicy(g1);
+  expect(await submitPolicyVersion(g1,{versionId:created.versionId})).toEqual({changesSettings:true});
+  // G returns it, rewrites the rate, reads the values again and confirms them. A sends it again.
+  await returnPolicyVersion(g2,{versionId:created.versionId});
+  const rewritten=TEXT.replace('RM 0.60 per km','RM 0.70 per km');
+  await saveDraft(g2,{versionId:created.versionId,body:rewritten,effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()});
+  const rate70={...MILEAGE,bands:[{ratePerKm:0.7,rateQuote:'RM 0.70 per km',upToKm:500,limitQuote:'first 500 km'},{ratePerKm:0.45,rateQuote:'RM 0.45 per km',upToKm:null}]};
+  await readPolicyValues(g2,{versionId:created.versionId},scripted([rate70,WITHIN]));
+  const current=(await valuesOf(created.versionId)).slice(-2);
+  expect(current.map(v=>v.value)).toEqual([{bands:[{fromKm:0,toKm:500,ratePerKm:0.7},{fromKm:500,toKm:null,ratePerKm:0.45}]},{days:30}]);
+  for(const value of current)await decidePolicyValue(g2,{valueId:value.id,decision:'confirmed'});
+  expect(await submitPolicyVersion(g1,{versionId:created.versionId})).toEqual({changesSettings:true});
+  // G wrote this change alone: neither the service nor the database lets G approve it.
+  await refused(approvePolicyVersion(g2,{versionId:created.versionId}),'same_administrator');
+  await refusedBy(withTenant(g2,tx=>tx.execute(sql`insert into public.teras_policy_approval (tenant_id,version_id,submission,decision,approver_user_id)
+   values (${b.tenantId}::uuid,${created.versionId}::uuid,2,'approved',${g2.userId}::uuid)`)),/different administrator/);
+  // Every contribution was recorded by the database, under the acting login; the return is not one.
+  const recorded=await owner.db.execute(sql`select user_id,kind from public.teras_policy_contribution where version_id=${created.versionId}::uuid order by user_id,kind`) as unknown as {user_id:string;kind:string}[];
+  const kinds=(userId:string)=>Array.from(recorded).filter(r=>r.user_id===userId).map(r=>r.kind).sort();
+  expect(kinds(g1.userId)).toEqual(['author','sender','value_decider','value_reader']);
+  expect(kinds(g2.userId)).toEqual(['editor','value_decider','value_reader']);
+  expect(kinds(g3.userId)).toEqual([]);
+  // A login cannot record a contribution for someone else, nor erase one.
+  await refusedBy(withTenant(g1,tx=>tx.execute(sql`insert into public.teras_policy_contribution (tenant_id,version_id,user_id,kind)
+   values (${b.tenantId}::uuid,${created.versionId}::uuid,${g3.userId}::uuid,'editor')`)),/row-level security|acting login/);
+  await refusedBy(withTenant(g1,tx=>tx.execute(sql`delete from public.teras_policy_contribution where version_id=${created.versionId}::uuid`)),/permission denied/);
+  const view=await policiesView(g2,{policy:created.documentId});
+  if(view.role!=='admin'||!view.selected)throw Error('expected the administrator view');
+  expect([view.selected.current.authorIsViewer,view.selected.current.submittedByViewer,view.selected.current.contributedByViewer]).toEqual([false,false,true]);
+  // A third group administrator, who contributed nothing, approves; G's rate is what the claims service applies.
+  const approved=await approvePolicyVersion(g3,{versionId:created.versionId});
+  expect(approved.applications.map(a=>[a.setting,a.status])).toEqual([['claims.mileage_rates','applied'],['claims.submit_within_days','applied']]);
+  expect(await companyTable(g1)).toEqual([{fromKm:0,toKm:500,ratePerKm:0.7},{fromKm:500,toKm:null,ratePerKm:0.45}]);
+ });
+});
+
+describe('Phase 2 hardening: the text never contradicts what the system enforces',()=>{
+ const RM100='Mileage is reimbursed at RM1.00/km.';
+ const RATE100={setting:'claims.mileage_rates',bands:[{ratePerKm:1,rateQuote:'RM1.00/km',upToKm:null}]};
+ const sixty=async(effectiveFrom=todayInKualaLumpur())=>setMileageRateTable(g1,{claimTypeId:mileageTypeId,gradeId:null,vehicleClass:'any',effectiveFrom,bands:[{fromKm:0,toKm:null,ratePerKm:0.6}]});
+
+ it('RM1.00 in the text against RM0.60 in the claims service: never read, or read and rejected, it must be marked, and approval waits',async()=>{
+  await sixty();
+  // Never read: the deterministic read still finds the rate.
+  const unread=await createPolicy(g1,{area:'claims',title:'Mileage',body:RM100,effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()});
+  await refused(submitPolicyVersion(g1,{versionId:unread.versionId}),'unmarked');
+  let view=await policiesView(g1,{policy:unread.documentId});
+  if(view.role!=='admin'||!view.selected)throw Error('expected the administrator view');
+  expect(view.selected.mentions).toEqual([{setting:'claims.mileage_rates',confirmed:false,textOnly:null}]);
+  expect(view.selected.mismatches.map(m=>[m.setting,m.quote,m.source,m.enforced])).toEqual([['claims.mileage_rates','RM1.00/km','text',{bands:[{fromKm:0,toKm:null,ratePerKm:0.6}]}]]);
+  await markTextOnly(g1,{versionId:unread.versionId,setting:'claims.mileage_rates',marked:true});
+  view=await policiesView(g1,{policy:unread.documentId});
+  if(view.role!=='admin'||!view.selected)throw Error('expected the administrator view');
+  expect(view.selected.mentions.map(m=>[m.setting,m.confirmed,m.textOnly?.byName])).toEqual([['claims.mileage_rates',false,'Fictional Aisyah Author']]);
+  // Text only, so one approval would do; but its words disagree with the claims service, so nobody approves it.
+  expect(await submitPolicyVersion(g1,{versionId:unread.versionId})).toEqual({changesSettings:false});
+  await refused(approvePolicyVersion(g1,{versionId:unread.versionId}),'mismatch');
+  await refused(approvePolicyVersion(g2,{versionId:unread.versionId}),'mismatch');
+  // Read, and every value rejected: the same.
+  const rejected=await createPolicy(g1,{area:'claims',title:'Mileage too',body:RM100,effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()});
+  expect(await readPolicyValues(g1,{versionId:rejected.versionId},scripted([RATE100]))).toEqual({accepted:1,rejected:0,unparseable:false});
+  const [value]=await valuesOf(rejected.versionId);await decidePolicyValue(g1,{valueId:value!.id,decision:'rejected'});
+  await refused(submitPolicyVersion(g1,{versionId:rejected.versionId}),'unmarked');
+  // The database refuses the same send, whatever the service checks.
+  await refusedBy(withTenant(g1,tx=>tx.execute(sql`update public.teras_policy_version set status='submitted',submission=1,submitted_by_user_id=${g1.userId}::uuid,submitted_at=now()
+   where id=${rejected.versionId}::uuid`)),/confirmed or marked text only/);
+  await markTextOnly(g1,{versionId:rejected.versionId,setting:'claims.mileage_rates',marked:true});
+  expect(await submitPolicyVersion(g1,{versionId:rejected.versionId})).toEqual({changesSettings:false});
+  await refused(approvePolicyVersion(g1,{versionId:rejected.versionId}),'mismatch');
+  // Nothing was approved: employees have no policy, and the claims service still enforces RM0.60.
+  expect((await askPolicyHandbook(employee,{topic:'mileage'})).ok).toBe(false);
+  expect(await companyTable(g1)).toEqual([{fromKm:0,toKm:null,ratePerKm:0.6}]);
+  // Withdrawn, the mark no longer covers it.
+  const again=await createPolicy(g1,{area:'claims',title:'Mileage three',body:RM100,effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()});
+  await markTextOnly(g1,{versionId:again.versionId,setting:'claims.mileage_rates',marked:true});
+  await markTextOnly(g1,{versionId:again.versionId,setting:'claims.mileage_rates',marked:false});
+  await refused(submitPolicyVersion(g1,{versionId:again.versionId}),'unmarked');
+ });
+
+ it('once the system moves after approval, an employee is given the setting, never the handbook\'s figure, and HR sees the drift',async()=>{
+  // The claims service pays RM1.00 from mid-2025, and the text-only policy that says so is approved.
+  await setMileageRateTable(g1,{claimTypeId:mileageTypeId,gradeId:null,vehicleClass:'any',effectiveFrom:'2025-06-01',bands:[{fromKm:0,toKm:null,ratePerKm:1}]});
+  const created=await createPolicy(g1,{area:'claims',title:'Mileage',body:RM100,effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()});
+  await markTextOnly(g1,{versionId:created.versionId,setting:'claims.mileage_rates',marked:true});
+  await submitPolicyVersion(g1,{versionId:created.versionId});await approvePolicyVersion(g1,{versionId:created.versionId});
+  const paragraphs=async()=>{const answer=await askPolicyHandbook(employee,{topic:'mileage rate'});expect(answer.ok).toBe(true);
+   return (answer as unknown as {policies:{paragraphs:{text:string}[]}[]}).policies.flatMap(p=>p.paragraphs.map(x=>x.text));};
+  expect(await paragraphs()).toEqual([RM100]);
+  expect((await policiesView(g1,{})).list.map(row=>row.drift)).toEqual([0]);
+  // Someone sets RM0.60 on the claims screen itself.
+  await sixty();
+  const told=await paragraphs();
+  expect(told).toEqual(['Mileage is reimbursed at [current setting: RM 0.60 per km. The handbook\'s figure here differs from what the system applies; HR has been flagged to correct it].']);
+  expect(JSON.stringify(told)).not.toMatch(/1\.00/);
+  const view=await policiesView(g1,{policy:created.documentId});
+  if(view.role!=='admin'||!view.selected)throw Error('expected the administrator view');
+  expect(view.list.map(row=>row.drift)).toEqual([1]);
+  expect(view.selected.drift.map(d=>[d.kind,d.setting,d.quote,d.handbook,d.system])).toEqual([['text','claims.mileage_rates','RM1.00/km',null,{bands:[{fromKm:0,toKm:null,ratePerKm:0.6}]}]]);
+ });
+});
+
+describe('Phase 2 hardening: the database derives a settings change, and a refused application rolls the owner\'s write back',()=>{
+ it('a sender who claims "text only" while a value is confirmed is refused, and so is the reverse',async()=>{
+  const created=await readClaimsPolicy(g1);
+  const send=(versionId:string,claim:boolean|null)=>withTenant(g1,tx=>tx.execute(sql`update public.teras_policy_version set status='submitted',submission=1,
+   changes_settings=${claim},submitted_by_user_id=${g1.userId}::uuid,submitted_at=now() where id=${versionId}::uuid returning changes_settings`));
+  await refusedBy(send(created.versionId,false),/derived from its confirmed values/);
+  const plain=await createPolicy(g1,{area:'other',title:'Dress code',body:'Smart casual from Monday to Thursday.',effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()});
+  await refusedBy(send(plain.versionId,true),/derived from its confirmed values/);
+  // Left to the database, each is what its confirmed values say.
+  expect(Array.from(await send(created.versionId,null) as unknown as {changes_settings:boolean}[])).toEqual([{changes_settings:true}]);
+  expect(Array.from(await send(plain.versionId,null) as unknown as {changes_settings:boolean}[])).toEqual([{changes_settings:false}]);
+ });
+
+ it('the owner\'s settings write and the application row share one transaction: the guard\'s refusal undoes the write',async()=>{
+  const created=await readClaimsPolicy(g1);await submitPolicyVersion(g1,{versionId:created.versionId});
+  const [mileage]=await valuesOf(created.versionId);
+  const targets=await ownerTargets(g2,todayInKualaLumpur());
+  // The version is not approved, so its application row is refused, inside the transaction that wrote RM0.90.
+  await refusedBy(withTenant(g2,async tx=>{
+   const written=await applyOwnerValueTx(tx,g2,'claims.mileage_rates',{},{bands:[{fromKm:0,toKm:null,ratePerKm:0.9}]},targets,todayInKualaLumpur());
+   expect(written.after).toEqual({bands:[{fromKm:0,toKm:null,ratePerKm:0.9}]});
+   await tx.execute(sql`insert into public.teras_policy_application (tenant_id,version_id,value_id,status,before_value,after_value,apply_on,applied_by_user_id)
+    values (${b.tenantId}::uuid,${created.versionId}::uuid,${mileage!.id}::uuid,'applied',${JSON.stringify(written.before)}::jsonb,${JSON.stringify(written.after)}::jsonb,current_date,${g2.userId}::uuid)`);
+  }),/approved version/);
+  expect(await companyTable(g1)).toEqual([{fromKm:0,toKm:null,ratePerKm:0.5}]);
  });
 });
