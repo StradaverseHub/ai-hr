@@ -1,5 +1,5 @@
 name: mobile-android-backup-review
-run-name: Android SDK58 fixed-input sign-in diagnostic
+run-name: Android SDK58 sign-in fix review
 on:
   push:
     branches: [codex/sdk58-android-signin-diagnostic]
@@ -18,9 +18,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      EXPECTED_SOURCE: ${{ github.sha }}
+      EXPECTED_SOURCE: d5b7e0c9e8b922e79a1364dfe1775e03cc84523f
       CI: '1'
-      EXPO_PUBLIC_SIGNIN_CLIENT_PROBE: '1'
       EXPO_NO_TELEMETRY: '1'
       EXPO_PUBLIC_RUNTIME_CONNECTIONS: '1'
       EXPO_PUBLIC_AUTH_PROVIDER: internal
@@ -33,7 +32,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ github.sha }}
+          ref: d5b7e0c9e8b922e79a1364dfe1775e03cc84523f
           path: source
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
@@ -47,7 +46,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: onehr-sdk58-android-signin-diagnostic
+          name: onehr-sdk58-android-signin-fix
           path: ${{ runner.temp }}/onehr-android-backup-review/
           if-no-files-found: warn
           retention-days: 1
