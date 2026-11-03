@@ -208,7 +208,7 @@ describe('the explainers worker switch',()=>{
   // Spec v23: offered as explain_why's leave_entitlement topic, never as a tool of its own.
   expect(sent[0].tools.map(tool=>tool.name)).toContain('explain_why');expect(sent[0].tools.map(tool=>tool.name)).not.toContain('explain_leave_entitlement');
   const why=sent[0].tools.find(tool=>tool.name==='explain_why')!;
-  expect((why.inputSchema as {properties:{topic:{enum:string[]}}}).properties.topic.enum).toContain('leave_entitlement');
+  expect((why.inputSchema as unknown as {properties:{topic:{enum:string[]}}}).properties.topic.enum).toContain('leave_entitlement');
  },60000);
 });
 
