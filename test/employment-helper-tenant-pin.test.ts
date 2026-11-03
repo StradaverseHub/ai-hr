@@ -90,7 +90,7 @@ describe('ADR-0174 — tenant-pinned employment helpers', () => {
   it('pins every helper search_path with pg_temp last and keeps them SECURITY DEFINER', async () => {
     const rows = rowsOf<{ name: string; definer: boolean; config: string[] }>(await owner.db.execute(sql`
       SELECT p.proname AS name, p.prosecdef AS definer, p.proconfig AS config FROM pg_proc p
-      WHERE p.pronamespace = 'app'::regnamespace AND p.proname = ANY(${[...HELPERS, 'company_subtree']}::text[])
+      WHERE p.pronamespace = 'app'::regnamespace AND p.proname IN ('can_admin_employment', 'can_admin_payroll_employment', 'can_admin_perfcomp_employment', 'company_subtree')
       ORDER BY p.proname`));
     expect(rows.map((r) => r.name)).toEqual(['can_admin_employment', 'can_admin_payroll_employment', 'can_admin_perfcomp_employment', 'company_subtree']);
     for (const r of rows) {

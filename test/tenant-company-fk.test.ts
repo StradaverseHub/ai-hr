@@ -90,12 +90,19 @@ describe('ADR-0174 — company/tenant composite keys', () => {
   });
 
   it('refuses re-pointing an existing row at another tenant’s company', async () => {
-    const err = await withTenant(adminCtx(a), (tx) =>
-      tx.update(schema.position).set({ companyId: b.companyId }).where(eq(schema.position.id, a.positionId)),
+    // location has no guard triggers of its own, so the key is the only thing that can refuse this, and
+    // its policy (0111) asks only `app.is_admin_for(company_id)`, which a group-wide grant satisfies.
+    const ctx = adminCtx(a);
+    const [site] = await withTenant(ctx, (tx) =>
+      tx.insert(schema.location).values({ tenantId: a.tenantId, companyId: a.companyId, code: 'HQ', name: 'Head office' })
+        .returning({ id: schema.location.id }),
+    );
+    const err = await withTenant(ctx, (tx) =>
+      tx.update(schema.location).set({ companyId: b.companyId }).where(eq(schema.location.id, site.id)),
     ).catch((e) => e);
-    expect(refusal(err)).toEqual({ code: '23503', constraint: 'position_company_tenant_fk' });
-    const [kept] = await owner.db.select({ companyId: schema.position.companyId }).from(schema.position)
-      .where(eq(schema.position.id, a.positionId));
+    expect(refusal(err)).toEqual({ code: '23503', constraint: 'location_company_tenant_fk' });
+    const [kept] = await owner.db.select({ companyId: schema.location.companyId }).from(schema.location)
+      .where(eq(schema.location.id, site.id));
     expect(kept.companyId).toBe(a.companyId);
   });
 
