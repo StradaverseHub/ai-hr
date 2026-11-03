@@ -586,6 +586,9 @@ it('rejects a raw approved cancellation that also alters the record',async()=>{
  const raw=withTenant(admin,tx=>tx.update(schema.leaveRequest).set({status:'cancelled',reason:'Forged reason'})
   .where(eq(schema.leaveRequest.id,leaveRequestId)));
  expect(await raw.then(()=>null,pgSqlState)).toBe('42501');
+ const forgedSplit=withTenant(admin,tx=>tx.update(schema.leaveRequest).set({status:'cancelled',parentGroupId:randomUUID()})
+  .where(eq(schema.leaveRequest.id,leaveRequestId)));
+ expect(await forgedSplit.then(()=>null,pgSqlState)).toBe('42501');
  await expect(adminCancelLeave(admin,{leaveRequestId})).resolves.toMatchObject({previousStatus:'approved'});
 });
 
