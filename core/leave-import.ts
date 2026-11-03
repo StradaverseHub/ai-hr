@@ -58,6 +58,7 @@ import { leaveCreditRegisterLive } from './leave-credit-live';
 import {
   LEAVE_IMPORT_COLUMNS,
   LEAVE_IMPORT_ENTRY_TYPES,
+  LEAVE_IMPORT_OTHER_COMPANY,
   type LeaveImportEntryType,
   type LeaveImportRecord,
   type LeaveRowResult,
@@ -69,6 +70,7 @@ import {
 export {
   LEAVE_IMPORT_COLUMNS,
   LEAVE_IMPORT_ENTRY_TYPES,
+  LEAVE_IMPORT_OTHER_COMPANY,
   type LeaveImportEntryType,
   type LeaveImportRecord,
   type LeaveRowResult,
@@ -114,6 +116,8 @@ async function analyze(
   ctx: SessionContext,
   records: LeaveImportRecord[],
   existingTx?: Tx,
+  /** A company-scoped import (core/chat-import): a row matched to an employment of any other company is refused. */
+  companyId?: string,
 ): Promise<{ preview: LeaveImportPreview; resolved: ResolvedRow[] }> {
   const effective = withEffectiveGrants(ctx);
   const groupAdmin = isGroupAdmin(effective);
@@ -234,6 +238,9 @@ async function analyze(
     const emp=match==='ambiguous'?undefined:match;
     if (employeeRef && !emp && match!=='ambiguous') errors.push(`Employee not found: ${employeeRef}`);
     if (emp?.terminated) warnings.push('Terminated employee');
+    // A company-scoped import writes rows for its own company only. Matching still runs across every employment the
+    // caller may see, so a row of another company is named as such rather than "not found" (and never retargeted).
+    if (emp && companyId !== undefined && emp.companyId !== companyId) errors.push(LEAVE_IMPORT_OTHER_COMPANY);
 
     // ── Authority: check the acting admin can write for the employee's company. Doing this in analyze()
     //    (not deferred to commit) means the preview never shows a false "Success" for a row that RLS would
@@ -352,9 +359,9 @@ async function analyze(
 /** Dry-run wrapper — validates against the tenant catalog + existing ledger, writes nothing. */
 export async function validateLeaveImport(
   ctx: SessionContext,
-  p: { records: LeaveImportRecord[] },
+  p: { records: LeaveImportRecord[]; companyId?: string },
 ): Promise<LeaveImportPreview> {
-  const { preview } = await analyze(ctx, p.records);
+  const { preview } = await analyze(ctx, p.records, undefined, p.companyId);
   return preview;
 }
 
@@ -369,11 +376,11 @@ export async function validateLeaveImport(
  */
 export async function commitLeaveImport(
   ctx: SessionContext,
-  p: { records: LeaveImportRecord[]; source?: LeaveImportSource },
+  p: { records: LeaveImportRecord[]; source?: LeaveImportSource; companyId?: string },
 ): Promise<LeaveImportResult> {
   p = { ...p, records: p.records.map(record => ({ ...record })) };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  const { resolved } = await analyze(ctx, p.records);
+  const { resolved } = await analyze(ctx, p.records, undefined, p.companyId);
   // Skip = a valid row that already exists in the ledger (already-imported warning) — never written.
   const alreadyImported = (r: ResolvedRow) => r.result.warnings.some((w) => w.startsWith('Already imported'));
   const writable = resolved.filter((r) => r.result.ok && !alreadyImported(r));
@@ -396,7 +403,7 @@ export async function commitLeaveImport(
         // join this actual row transaction after ownership. Do not lock a whole file or retarget.
         const raw = p.records[r.result.rowNum - 1];
         if (!raw) throw new LeaveDependencyUnavailable();
-        const { resolved: freshRows } = await analyze(ctx, [raw], tx);
+        const { resolved: freshRows } = await analyze(ctx, [raw], tx, p.companyId);
         const fresh = freshRows[0];
         if (!fresh?.result.ok || fresh.employmentId !== r.employmentId || fresh.leaveTypeId !== r.leaveTypeId
           || fresh.entryType !== r.entryType || fresh.days !== r.days || fresh.effectiveOn !== r.effectiveOn
@@ -437,5 +444,6 @@ export async function commitLeaveImport(
     }),
   );
 
-  return { imported, failed, skipped, totalRows: resolved.length };
+  const otherCompany = p.companyId === undefined ? undefined : resolved.filter((r) => r.result.errors.includes(LEAVE_IMPORT_OTHER_COMPANY)).length;
+  return { imported, failed, skipped, totalRows: resolved.length, ...(otherCompany === undefined ? {} : { otherCompany }) };
 }

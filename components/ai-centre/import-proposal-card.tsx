@@ -21,6 +21,7 @@ export async function ImportProposalCard({ proposal }: { proposal: Proposal }) {
     ...(summary.attention > 0 ? [{ label: t('attention', { count: summary.attention }), tone: 'warn' as const }] : [])];
   const notes = [
     !summary.confirmable && summary.ready > 0 ? t('allRowsFirst') : null,
+    summary.otherCompany > 0 ? t('otherCompany', { count: summary.otherCompany }) : null,
     summary.replacing > 0 ? t('replacing', { count: summary.replacing }) : null,
     summary.warned > 0 ? t('warned', { count: summary.warned }) : null,
     summary.revertible ? t('noteRevert') : t('note'),

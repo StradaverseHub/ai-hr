@@ -36,9 +36,10 @@ export function ImportProposalActions({proposal}:{proposal:Proposal}){
   router.push(page);
  }
  if(result?.kind==='imported'){
-  const history=internalHref(result.historyHref);
+  const history=internalHref(result.historyHref),otherCompany=result.otherCompany??0,leftOut=Math.max(0,result.notImported-otherCompany);
   return <div role="status" data-chat-import-outcome="imported" className="space-y-1 text-sm">
-   <p className="font-medium">{result.replayed?t('replayed'):t('done',{count:result.imported})}{result.notImported>0&&<> {t('doneLeftOut',{count:result.notImported})}</>}</p>
+   <p className="font-medium">{result.replayed?t('replayed'):t('done',{count:result.imported})}{leftOut>0&&<> {t('doneLeftOut',{count:leftOut})}</>}
+    {otherCompany>0&&<> {t('otherCompany',{count:otherCompany})}</>}</p>
    {history&&<Link href={history} className="inline-flex items-center text-sm font-medium text-primary underline underline-offset-2 hover:no-underline pointer-coarse:min-h-11">{result.revertible?t('historyRevert'):t('history')}</Link>}
   </div>;
  }

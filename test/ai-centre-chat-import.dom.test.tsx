@@ -46,7 +46,7 @@ function card(summary: Partial<ProposalImport> = {}, route = '/admin/leave-confi
     forWhom: { tenantId, subject: 'company', subjectId: companyId }, authority: { kind: 'person', tenantId, userId, personId },
     checks: [{ check: 'rows_checked', owner: 'core/leave-import.ts#validateLeaveImport', ruleVersion: null, result: 'needs_review' }],
     review: { route, href: route, reference: randomUUID() },
-    import: { kind, company: 'Acme Fictional Sdn Bhd', total: 214, ready: 211, attention: 3, warned: 0, issueCount: 3, confirmable: true, revertible: false, replacing: 0, template: null,
+    import: { kind, company: 'Acme Fictional Sdn Bhd', total: 214, ready: 211, attention: 3, warned: 0, issueCount: 3, confirmable: true, revertible: false, replacing: 0, template: null, otherCompany: 0,
       issues: [{ row: 17, field: 'days', reason: 'invalid_number' }, { row: 88, field: 'leave_type', reason: 'unknown_type' }, { row: 190, field: 'employee_id', reason: 'unknown_employee' }], ...summary },
     createdAt: created.toISOString(), expiresAt: new Date(created.getTime() + 1_800_000).toISOString() });
 }
@@ -83,7 +83,7 @@ describe('the prepared import card', () => {
 
   it('Confirm posts the very card and the attached file once, then shows what the import service imported', async () => {
     const proposal = card(), article = await show(proposal);
-    posts.confirm.mockResolvedValueOnce({ kind: 'imported', importKind: 'leave_balances', imported: 211, notImported: 3, historyHref: null, revertible: false, replayed: false });
+    posts.confirm.mockResolvedValueOnce({ kind: 'imported', importKind: 'leave_balances', imported: 211, notImported: 3, otherCompany: 0, historyHref: null, revertible: false, replayed: false });
     await act(async () => { fireEvent.click(within(article).getByRole('button', { name: 'Confirm 211 rows' })); });
     expect(posts.confirm).toHaveBeenCalledExactlyOnceWith({ proposal, confirm: true, file: { name: file.name, format: 'xlsx', text: TEXT } });
     const outcome = await within(article).findByRole('status');
@@ -96,7 +96,7 @@ describe('the prepared import card', () => {
     posts.confirm.mockResolvedValueOnce({ kind: 'refused', reason: 'changed' });
     await act(async () => { fireEvent.click(within(article).getByRole('button', { name: 'Confirm 211 rows' })); });
     expect(await within(article).findByRole('alert')).toHaveTextContent(copy.refused.changed);
-    posts.confirm.mockResolvedValueOnce({ kind: 'imported', importKind: 'leave_balances', imported: 211, notImported: 3, historyHref: null, revertible: false, replayed: true });
+    posts.confirm.mockResolvedValueOnce({ kind: 'imported', importKind: 'leave_balances', imported: 211, notImported: 3, otherCompany: 0, historyHref: null, revertible: false, replayed: true });
     await act(async () => { fireEvent.click(within(article).getByRole('button', { name: 'Confirm 211 rows' })); });
     expect(await within(article).findByRole('status')).toHaveTextContent(copy.replayed);
   });
@@ -111,6 +111,19 @@ describe('the prepared import card', () => {
     const nonce = decodeURIComponent(href.split('=')[1]);
     expect(carrier?.take('leave_balances', nonce)).toBe(TEXT);
     expect(posts.confirm).not.toHaveBeenCalled();
+  });
+
+  it('rows of another company: the card lists them as not imported here, and the outcome says so apart from the other rows left out', async () => {
+    const proposal = card({ ready: 210, attention: 4, otherCompany: 2, issueCount: 4,
+      issues: [{ row: 5, field: 'employee_id', reason: 'other_company' }, { row: 9, field: 'employee_id', reason: 'other_company' }, { row: 17, field: 'days', reason: 'invalid_number' }] });
+    const article = await show(proposal);
+    expect(article).toHaveTextContent('2 rows belong to another company, not imported.');
+    const table = within(article).getByRole('table', { name: copy.issuesLabel });
+    expect(within(table).getAllByRole('row').slice(1).map(row => [...row.querySelectorAll('td')].map(cell => cell.textContent))).toEqual([
+      ['5', 'employee_id', 'Belongs to another company, not imported'], ['9', 'employee_id', 'Belongs to another company, not imported'], ['17', 'days', copy.reasons.invalid_number]]);
+    posts.confirm.mockResolvedValueOnce({ kind: 'imported', importKind: 'leave_balances', imported: 210, notImported: 4, otherCompany: 2, historyHref: null, revertible: false, replayed: false });
+    await act(async () => { fireEvent.click(within(article).getByRole('button', { name: 'Confirm 210 rows' })); });
+    expect(await within(article).findByRole('status')).toHaveTextContent('210 rows imported. 2 rows were not imported. 2 rows belong to another company, not imported.');
   });
 
   it('a payroll history card with an invalid row has no Confirm: every row is fixed on its page first', async () => {
@@ -153,7 +166,7 @@ describe('the composer paperclip', () => {
     fireEvent.change(screen.getByLabelText(assistant.workspace.question), { target: { value: 'leave balances' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: assistant.ask })); });
     const confirm = await screen.findByRole('button', { name: 'Confirm 211 rows' });
-    posts.confirm.mockResolvedValueOnce({ kind: 'imported', importKind: 'leave_balances', imported: 211, notImported: 3, historyHref: null, revertible: false, replayed: false });
+    posts.confirm.mockResolvedValueOnce({ kind: 'imported', importKind: 'leave_balances', imported: 211, notImported: 3, otherCompany: 0, historyHref: null, revertible: false, replayed: false });
     await act(async () => { fireEvent.click(confirm); });
     expect(posts.confirm).toHaveBeenCalledExactlyOnceWith({ proposal, confirm: true, file: { name: 'leave-balances-nov.csv', format: 'csv', text: TEXT } });
   });

@@ -13,10 +13,15 @@
  *  6. the import owner's own commit path runs, with its own checks, history and revert:
  *     - employee records: core/employee-import-upload.ts commitEmployeeImportUpload (Import History, kind employee_full,
  *       with this card's operation key, which the owner itself admits once);
- *     - leave balances: commitLeaveImport, which re-checks every row and skips one already imported;
+ *     - leave balances: commitLeaveImport for the card's company, which re-checks every row, skips one already imported
+ *       and refuses a row of another company;
  *     - payroll history: confirmPayrollHistoryUpload on the owner's own attempt and plan hash (once only by its own index),
- *       importing only the new records when some would replace earlier history (the replacement is decided on its page);
- *     - attendance clockings: commitClockingImport with the built-in template, which logs the run.
+ *       for the card's company (the owner refuses an attempt spanning another), importing only the new records when some
+ *       would replace earlier history (the replacement is decided on its page);
+ *     - attendance clockings: commitClockingImport with the built-in template for the card's company, which logs the run
+ *       and refuses a clocking of another company.
+ *  7. the outcome is what the owner committed on this Confirm: its own counts, never the card's. An attempt the owner
+ *     reports already committed (confirmed on its own page) imported nothing here and is answered as already confirmed.
  * Errors are bounded to a refusal code; no source detail, cell value or SQL escapes. No model. */
 import {createHash} from 'node:crypto';
 import {and,eq} from 'drizzle-orm';
@@ -36,9 +41,12 @@ import {previewChatImport,previewDigest,sourceHashOf,historySourceName} from './
 
 export type ChatImportRefusal=ProposalRefusal|'wrong_action'|'not_confirmed'|'not_permitted'|'file_changed'|'changed'|'not_confirmable'|'in_progress'|'unavailable';
 export type ChatImportConfirmResult=Readonly<{kind:'imported';importKind:ChatImportKind;imported:number;notImported:number;
+ /** Of the rows not imported, those that belong to another company than the card's (never imported here). */
+ otherCompany:number;
  /** The owner's own history of this import, where its revert is, when it keeps one. */
  historyHref:string|null;revertible:boolean;
- /** This card had already been confirmed: its first outcome, not a second import. */
+ /** This card had already been confirmed, or its owner reports the import already committed: the first outcome, not a
+  * second import. */
  replayed:boolean}>
  |Readonly<{kind:'refused';reason:ChatImportRefusal}>;
 
@@ -49,10 +57,16 @@ export function outcomeEventId(proposalId:string):string{
  const hex=createHash('sha256').update('teras:chat-import:outcome\n'+proposalId).digest('hex');
  return `${hex.slice(0,8)}-${hex.slice(8,12)}-5${hex.slice(13,16)}-${((parseInt(hex[16],16)&3)|8).toString(16)}${hex.slice(17,20)}-${hex.slice(20,32)}`;
 }
-type Outcome=Readonly<{importKind:ChatImportKind;imported:number;notImported:number;historyHref:string|null;revertible:boolean}>;
+type Outcome=Readonly<{importKind:ChatImportKind;imported:number;notImported:number;otherCompany:number;historyHref:string|null;revertible:boolean;
+ /** The owner reported the import already committed by an earlier confirmation: nothing was imported by this Confirm. */
+ alreadyCommitted:boolean}>;
 const AGGREGATE='chat-import';
 
 type Failed=Readonly<{failed:ChatImportRefusal}>;
+/** The person's view of an outcome: the counts and the history link (whether the owner had already committed it is
+ * answered as `replayed`). */
+const shown=(outcome:Outcome)=>({importKind:outcome.importKind,imported:outcome.imported,notImported:outcome.notImported,otherCompany:outcome.otherCompany,
+ historyHref:outcome.historyHref,revertible:outcome.revertible});
 async function recordedOutcome(ctx:SessionContext,proposalId:string):Promise<Outcome|Failed|'claimed'|null>{
  return withTenant(ctx,async tx=>{
   const rows=await tx.select({id:domainEvent.id,payload:domainEvent.payload}).from(domainEvent)
@@ -61,7 +75,8 @@ async function recordedOutcome(ctx:SessionContext,proposalId:string):Promise<Out
   if(done){const value=done.payload as (Partial<Outcome>&{failed?:unknown})|null;
    if(value&&typeof value.failed==='string')return Object.freeze({failed:value.failed as ChatImportRefusal});
    if(value&&isChatImportKind(value.importKind)&&typeof value.imported==='number'&&typeof value.notImported==='number')
-    return Object.freeze({importKind:value.importKind,imported:value.imported,notImported:value.notImported,historyHref:typeof value.historyHref==='string'?value.historyHref:null,revertible:value.revertible===true});}
+    return Object.freeze({importKind:value.importKind,imported:value.imported,notImported:value.notImported,otherCompany:typeof value.otherCompany==='number'?value.otherCompany:0,
+     historyHref:typeof value.historyHref==='string'?value.historyHref:null,revertible:value.revertible===true,alreadyCommitted:value.alreadyCommitted===true});}
   return rows.some(row=>row.id===proposalId)?'claimed':null;
  });
 }
@@ -82,23 +97,28 @@ async function commit(ctx:SessionContext,proposal:Proposal,kind:ChatImportKind,f
  const body=proposal.body,companyId=body.forWhom.subjectId,summary=body.import!;
  if(kind==='payroll_history'){
   const result=await confirmPayrollHistoryUpload(ctx,{attemptId:body.review.reference,previewHash:body.what.selectors.previewHash??'',confirmReplacement:false,
-   skipReplacements:summary.replacing>0,acknowledgeWarnings:false});
-  return {importKind:kind,imported:summary.ready,notImported:summary.total-summary.ready,historyHref:'/payroll/history-import/logs/'+result.attemptId,revertible:true};
+   skipReplacements:summary.replacing>0,acknowledgeWarnings:false,expectedCompanyId:companyId});
+  // The rows the owner applied on this call, never the card's count: an attempt already confirmed on the payroll history
+  // page imports nothing here.
+  const imported=result.alreadyCommitted?0:result.importedRows;
+  return {importKind:kind,imported,notImported:result.alreadyCommitted?0:summary.total-imported,otherCompany:0,historyHref:'/payroll/history-import/logs/'+result.attemptId,revertible:true,
+   alreadyCommitted:result.alreadyCommitted===true};
  }
  if(!file)return 'file_changed';
  if(kind==='leave_balances'){
-  const result=await commitLeaveImport(ctx,{records:parseCsvRecords(file.text).records,source:{kind:'file',name:file.name,format:file.format==='txt'?'csv':file.format}});
-  return {importKind:kind,imported:result.imported,notImported:result.totalRows-result.imported,historyHref:null,revertible:false};
+  const result=await commitLeaveImport(ctx,{records:parseCsvRecords(file.text).records,source:{kind:'file',name:file.name,format:file.format==='txt'?'csv':file.format},companyId});
+  return {importKind:kind,imported:result.imported,notImported:result.totalRows-result.imported,otherCompany:result.otherCompany??0,historyHref:null,revertible:false,alreadyCommitted:false};
  }
  if(kind==='employee_records'){
   const result=await commitEmployeeImportUpload(ctx,employeeImportUploadInput({companyId,csv:file.text,fileName:file.name}),
    {name:historySourceName(file.name),content:Buffer.from(file.text,'utf8'),operationKey:body.review.reference});
   const attemptId=(result as {attemptId?:unknown}).attemptId;
-  return {importKind:kind,imported:result.imported,notImported:summary.total-result.imported,
-   historyHref:typeof attemptId==='string'?'/admin/personnel/import/history/'+attemptId:'/admin/personnel/import/history',revertible:true};
+  return {importKind:kind,imported:result.imported,notImported:summary.total-result.imported,otherCompany:0,
+   historyHref:typeof attemptId==='string'?'/admin/personnel/import/history/'+attemptId:'/admin/personnel/import/history',revertible:true,alreadyCommitted:false};
  }
- const result=await commitClockingImport(ctx,{mappingId:BUILTIN_MAPPING_ID,text:file.text,fileName:file.name,fileBytes:Buffer.byteLength(file.text,'utf8')});
- return {importKind:kind,imported:result.imported,notImported:result.counts.total-result.imported,historyHref:result.runId?'/attendance/import/logs/'+result.runId:null,revertible:false};
+ const result=await commitClockingImport(ctx,{mappingId:BUILTIN_MAPPING_ID,text:file.text,fileName:file.name,fileBytes:Buffer.byteLength(file.text,'utf8'),companyId});
+ return {importKind:kind,imported:result.imported,notImported:result.counts.total-result.imported,otherCompany:result.otherCompany??0,
+  historyHref:result.runId?'/attendance/import/logs/'+result.runId:null,revertible:false,alreadyCommitted:false};
 }
 
 export async function confirmChatImport(supplied:SessionContext,input:Readonly<{proposal:unknown;confirm:unknown;file?:unknown}>,now:Date=new Date()):Promise<ChatImportConfirmResult>{
@@ -119,7 +139,7 @@ export async function confirmChatImport(supplied:SessionContext,input:Readonly<{
   const prior=await recordedOutcome(ctx,body.id);
   if(prior==='claimed')return refused('in_progress');
   if(prior&&'failed' in prior)return refused(prior.failed);
-  if(prior)return Object.freeze({kind:'imported' as const,...prior,replayed:true});
+  if(prior)return Object.freeze({kind:'imported' as const,...shown(prior),replayed:true});
   if(!body.import.confirmable)return refused('not_confirmable');
   if(kind!=='payroll_history'){
    // What the person saw must still hold: the same rows ready, the same rows needing attention.
@@ -128,7 +148,7 @@ export async function confirmChatImport(supplied:SessionContext,input:Readonly<{
   }
   if(!await claim(ctx,proposal)){
    const raced=await recordedOutcome(ctx,body.id);
-   if(raced&&raced!=='claimed')return 'failed' in raced?refused(raced.failed):Object.freeze({kind:'imported' as const,...raced,replayed:true});
+   if(raced&&raced!=='claimed')return 'failed' in raced?refused(raced.failed):Object.freeze({kind:'imported' as const,...shown(raced),replayed:true});
    return refused('in_progress');
   }
   let outcome:Outcome|ChatImportRefusal;
@@ -137,6 +157,6 @@ export async function confirmChatImport(supplied:SessionContext,input:Readonly<{
   // A Confirm the owner refused stays refused for this card: the person fixes the rows or attaches the file again.
   if(typeof outcome==='string'){await record(ctx,proposal,{importKind:kind,failed:outcome});return refused(outcome);}
   await record(ctx,proposal,outcome);
-  return Object.freeze({kind:'imported' as const,...outcome,replayed:false});
+  return Object.freeze({kind:'imported' as const,...shown(outcome),replayed:outcome.alreadyCommitted});
  }catch{return refused('unavailable');}
 }

@@ -7,7 +7,10 @@
  *    (bound to the caller, with the source and its hash), exactly as the payroll history page's upload does;
  *  - attendance clockings: validateClockingImport (packs/attendance/service) with the built-in AIHR Standard Template
  *    (a tenant's own device mapping is chosen on the clocking import page).
- * Each runs as the caller. The result is reduced to counts and closed-vocabulary issues (lib/chat-import.ts): the owner's
+ * Each runs as the caller, for the card's one company: the leave and clocking owners take it and refuse a row of any
+ * other company; payroll history marks such rows here and its Confirm names the company (the owner refuses an attempt
+ * spanning another). A row of another company is reported as `other_company` and is never imported from the card.
+ * The result is reduced to counts and closed-vocabulary issues (lib/chat-import.ts): the owner's
  * own sentences can echo a cell, so they are never returned. The digest seals what the person saw. */
 import {createHash} from 'node:crypto';
 import type {SessionContext} from '../../db/client';
@@ -18,9 +21,9 @@ import {IMPORT_COLUMNS} from '../../lib/import-schema';
 import {BUILTIN_MAPPING_ID} from '../../lib/clocking-file';
 import {CHAT_IMPORT_ISSUES,type ChatImportFile,type ChatImportIssue,type ChatImportKind} from '../../lib/chat-import';
 import {validateEmployeeImport} from '../import';
-import {validateLeaveImport} from '../../packs/leave/service';
+import {LEAVE_IMPORT_OTHER_COMPANY,validateLeaveImport} from '../../packs/leave/service';
 import {previewPayrollHistoryUpload} from '../../packs/payroll/service';
-import {validateClockingImport} from '../../packs/attendance/service';
+import {CLOCKING_OTHER_COMPANY,validateClockingImport} from '../../packs/attendance/service';
 import type {ClockingImportLineResult} from '../../db/schema';
 import {canonicalJson} from '../proposals/proposal';
 
@@ -43,16 +46,18 @@ export type ChatImportPreview=Readonly<{kind:ChatImportKind;
  /** Payroll history: the owner's attempt and plan hash, which its own confirmation takes. */
  attemptId?:string;previewHash?:string;
  /** Payroll history: rows that would replace history already imported; Confirm here imports only the new ones. */
- replacing?:number}>;
+ replacing?:number;
+ /** Rows that belong to another company than the card's: reported, never imported here. */
+ otherCompany:number}>;
 
 export const sourceHashOf=(text:string)=>createHash('sha256').update(text,'utf8').digest('hex');
 const FIELD=/^[a-z0-9_]{1,40}$/;
 const issue=(row:number,field:string,reason:ChatImportIssue):ChatImportRowIssue=>Object.freeze({row:Math.max(0,Math.trunc(row)),field:FIELD.test(field)?field:'row',reason});
 /** The digest of everything the card shows and Confirm relies on. */
 export function previewDigest(companyId:string,preview:ChatImportPreview):string{
- const {kind,total,ready,attention,warned,issues,confirmable,sourceHash,attemptId,previewHash,replacing}=preview;
+ const {kind,total,ready,attention,warned,issues,confirmable,sourceHash,attemptId,previewHash,replacing,otherCompany}=preview;
  return createHash('sha256').update('teras:chat-import:v1\n'+canonicalJson({companyId,kind,total,ready,attention,warned,issues:issues.map(row=>({...row})),confirmable,sourceHash,
-  attemptId:attemptId??null,previewHash:previewHash??null,replacing:replacing??0})).digest('hex');
+  attemptId:attemptId??null,previewHash:previewHash??null,replacing:replacing??0,otherCompany})).digest('hex');
 }
 
 /** An owner sentence without the cell it echoes: owners write "Employee not found: <cell>" or "... (got "<cell>")", so
@@ -69,6 +74,7 @@ export function fieldIn(message:string,columns:readonly string[]):string{
 /** Reduces one owner sentence to the closed vocabulary. Unknown sentences are `other`. */
 export function issueOf(message:string):ChatImportIssue{
  const text=ownerSentence(message);
+ if(/belongs to another company/.test(text))return 'other_company';
  if(/missing required column|missing columns?|required column/.test(text))return 'missing_column';
  if(/^missing\b|\bis required\b|\brequired\b|\bempty\b|\bblank\b/.test(text))return 'missing_value';
  if(/not authori[sz]ed|permission|access is unavailable|outside your/.test(text))return 'not_permitted';
@@ -84,18 +90,20 @@ export function issueOf(message:string):ChatImportIssue{
 }
 
 const LEAVE_COLUMNS=['employee_id','leave_type','transaction_type','days','effective_date'];
-async function leaveBalances(ctx:SessionContext,file:ChatImportFile,sourceHash:string):Promise<ChatImportPreview>{
+async function leaveBalances(ctx:SessionContext,companyId:string,file:ChatImportFile,sourceHash:string):Promise<ChatImportPreview>{
  const {records}=parseCsvRecords(file.text);
- const preview=await validateLeaveImport(ctx,{records});
+ const preview=await validateLeaveImport(ctx,{records,companyId});
  const issues:ChatImportRowIssue[]=preview.missingColumns.map(column=>issue(0,column,'missing_column'));
  let ready=0,warned=0;
  for(const row of preview.rows){
   const skipped=row.warnings.some(warning=>warning.startsWith('Already imported'));
   if(row.ok&&!skipped){ready++;if(row.warnings.some(warning=>warning!=='Terminated employee'))warned++;continue;}
   if(row.ok){issues.push(issue(row.rowNum,'row','already_imported'));continue;}
-  const first=row.errors[0]??'';issues.push(issue(row.rowNum,fieldIn(first,LEAVE_COLUMNS),issueOf(first)));
+  const first=row.errors[0]??'';
+  issues.push(first===LEAVE_IMPORT_OTHER_COMPANY?issue(row.rowNum,'employee_id','other_company'):issue(row.rowNum,fieldIn(first,LEAVE_COLUMNS),issueOf(first)));
  }
- return Object.freeze({kind:'leave_balances' as const,total:preview.total,ready,attention:preview.total-ready,warned,issues:Object.freeze(issues),confirmable:ready>0,sourceHash});
+ const otherCompany=preview.rows.filter(row=>row.errors.includes(LEAVE_IMPORT_OTHER_COMPANY)).length;
+ return Object.freeze({kind:'leave_balances' as const,total:preview.total,ready,attention:preview.total-ready,warned,issues:Object.freeze(issues),confirmable:ready>0,sourceHash,otherCompany});
 }
 
 async function employeeRecords(ctx:SessionContext,companyId:string,file:ChatImportFile,sourceHash:string):Promise<ChatImportPreview>{
@@ -105,25 +113,29 @@ async function employeeRecords(ctx:SessionContext,companyId:string,file:ChatImpo
  const issues:ChatImportRowIssue[]=preview.missingColumns.map(column=>issue(0,column,'missing_column'));
  // A whole-file refusal writes nothing (core/import.ts item 2983802f): every row waits for the import page.
  if(preview.fileErrors.length)return Object.freeze({kind:'employee_records' as const,total:preview.total,ready:0,attention:preview.total,warned:0,
-  issues:Object.freeze([...issues,issue(0,'row','needs_page')]),confirmable:false,sourceHash});
+  issues:Object.freeze([...issues,issue(0,'row','needs_page')]),confirmable:false,sourceHash,otherCompany:0});
  let ready=0,warned=0;
  for(const row of preview.rows){
   if(row.ok){ready++;if(row.warnings.length)warned++;continue;}
   const first=row.errors[0]??'';issues.push(issue(row.rowNum,fieldIn(first,columns),issueOf(first)));
  }
- return Object.freeze({kind:'employee_records' as const,total:preview.total,ready,attention:preview.total-ready,warned,issues:Object.freeze(issues),confirmable:ready>0,sourceHash});
+ // The employee import owner already takes the company: every record it writes is the card's company's.
+ return Object.freeze({kind:'employee_records' as const,total:preview.total,ready,attention:preview.total-ready,warned,issues:Object.freeze(issues),confirmable:ready>0,sourceHash,otherCompany:0});
 }
 
 const HISTORY_COLUMNS=['employee_no','payroll_period','payroll_cycle','doe_code','company_code','amount'];
 /** The payroll history parser reads a workbook by its extension; the attached workbook arrives as its CSV text. */
 export const historySourceName=(name:string)=>/\.csv$/i.test(name)?name:name.replace(/\.(xlsx|xls)$/i,'')+'.csv';
-async function payrollHistory(ctx:SessionContext,file:ChatImportFile,sourceHash:string,operationKey:string):Promise<ChatImportPreview>{
+async function payrollHistory(ctx:SessionContext,companyId:string,file:ChatImportFile,sourceHash:string,operationKey:string):Promise<ChatImportPreview>{
  const total=parseCsvRecords(file.text).records.length;
  const {attemptId,plan}=await previewPayrollHistoryUpload(ctx,{name:historySourceName(file.name),content:Buffer.from(file.text,'utf8'),operationKey});
  const issues:ChatImportRowIssue[]=[];
  for(const problem of plan.issues)issues.push(issue(/missing required column/i.test(problem.reason)?0:problem.rowNum,fieldIn(problem.reason,HISTORY_COLUMNS),issueOf(problem.reason)));
- let ready=0,replacing=0,warned=0;
+ let ready=0,replacing=0,warned=0,otherCompany=0;
  for(const row of plan.rows){
+  // A record of another company (one the person also administers) is never imported from this card: the payroll
+  // history owner refuses an attempt that spans another company when Confirm names this one.
+  if(row.companyId&&row.companyId!==companyId){otherCompany+=row.rowNums.length;for(const at of row.rowNums)issues.push(issue(at,'company_code','other_company'));continue;}
   if(row.operation==='create'){ready+=row.rowNums.length;if(row.warnings?.length)warned+=row.rowNums.length;continue;}
   if(row.operation==='replace'){replacing+=row.rowNums.length;for(const at of row.rowNums)issues.push(issue(at,'row','needs_page'));continue;}
   if(row.operation==='unchanged'){for(const at of row.rowNums)issues.push(issue(at,'row','already_imported'));continue;}
@@ -132,9 +144,10 @@ async function payrollHistory(ctx:SessionContext,file:ChatImportFile,sourceHash:
  issues.sort((a,b)=>a.row-b.row);
  // The payroll history owner confirms a file only when nothing in it is invalid, and a record with a warning only once
  // the person acknowledges it on its page (the payroll history owner's own confirmation, core/payroll-history-revisions.ts).
- const confirmable=ready>0&&!plan.counts.invalid&&!plan.issues.length&&warned===0;
+ // A file with rows of another company is the payroll history page's to import (its multi-company original-file flow).
+ const confirmable=ready>0&&!plan.counts.invalid&&!plan.issues.length&&warned===0&&otherCompany===0;
  return Object.freeze({kind:'payroll_history' as const,total,ready,attention:Math.max(0,total-ready),warned,issues:Object.freeze(issues),confirmable,sourceHash,
-  attemptId,previewHash:plan.previewHash,replacing});
+  attemptId,previewHash:plan.previewHash,replacing,otherCompany});
 }
 
 const CLOCKING_ISSUE:Readonly<Record<ClockingImportLineResult,readonly [string,ChatImportIssue]>>=Object.freeze({
@@ -143,21 +156,24 @@ const CLOCKING_ISSUE:Readonly<Record<ClockingImportLineResult,readonly [string,C
  missing_value:['row','missing_value'],line_too_short:['row','missing_value'],not_employed_on_date:['card','not_employed'],
  day_corrected:['date','period_closed'],period_closed:['date','period_closed'],uncoded_on_clocked_day:['date','period_closed'],other:['row','other'],
 });
-async function attendanceClockings(ctx:SessionContext,file:ChatImportFile,sourceHash:string):Promise<ChatImportPreview>{
- const preview=await validateClockingImport(ctx,{mappingId:BUILTIN_MAPPING_ID,text:file.text});
- const issues=preview.errorRows.map(line=>{const [field,reason]=CLOCKING_ISSUE[line.result]??CLOCKING_ISSUE.other;return issue(line.lineNo,field,reason);});
+async function attendanceClockings(ctx:SessionContext,companyId:string,file:ChatImportFile,sourceHash:string):Promise<ChatImportPreview>{
+ const preview=await validateClockingImport(ctx,{mappingId:BUILTIN_MAPPING_ID,text:file.text,companyId});
+ const issues=preview.errorRows.map(line=>{
+  const [field,reason]=line.result==='other'&&line.detail===CLOCKING_OTHER_COMPANY?(['card','other_company'] as const):CLOCKING_ISSUE[line.result]??CLOCKING_ISSUE.other;
+  return issue(line.lineNo,field,reason);});
  const {total,valid}=preview.counts;
- return Object.freeze({kind:'attendance_clockings' as const,total,ready:valid,attention:Math.max(0,total-valid),warned:0,issues:Object.freeze(issues),confirmable:valid>0,sourceHash});
+ return Object.freeze({kind:'attendance_clockings' as const,total,ready:valid,attention:Math.max(0,total-valid),warned:0,issues:Object.freeze(issues),confirmable:valid>0,sourceHash,
+  otherCompany:preview.otherCompany??0});
 }
 
 /** Runs the kind's own preview as the caller. Throws what the owner throws (no access, module off, unreadable file). */
 export async function previewChatImport(ctx:SessionContext,input:Readonly<{kind:ChatImportKind;companyId:string;file:ChatImportFile;operationKey:string}>):Promise<ChatImportPreview>{
  const sourceHash=sourceHashOf(input.file.text);
  switch(input.kind){
-  case 'leave_balances':return leaveBalances(ctx,input.file,sourceHash);
+  case 'leave_balances':return leaveBalances(ctx,input.companyId,input.file,sourceHash);
   case 'employee_records':return employeeRecords(ctx,input.companyId,input.file,sourceHash);
-  case 'payroll_history':return payrollHistory(ctx,input.file,sourceHash,input.operationKey);
-  case 'attendance_clockings':return attendanceClockings(ctx,input.file,sourceHash);
+  case 'payroll_history':return payrollHistory(ctx,input.companyId,input.file,sourceHash,input.operationKey);
+  case 'attendance_clockings':return attendanceClockings(ctx,input.companyId,input.file,sourceHash);
  }
 }
 /** Issue counts by reason, for the model: categories and counts only. */

@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import {describe,expect,it} from 'vitest';
 import {CHAT_IMPORT_ISSUES,CHAT_IMPORT_KINDS,CHAT_IMPORT_MAX_TEXT_BYTES,chatImportFileInput,chatImportFormat} from '../lib/chat-import';
+import {LEAVE_IMPORT_OTHER_COMPANY} from '../lib/leave-import-schema';
 import {chatImportKindInfo,kindsFittingHeader,kindsNamedBy,resolveChatImportKind} from '../core/chat-import/kinds';
 import {fieldIn,issueCounts,issueOf,ownerSentence} from '../core/chat-import/previews';
 import {FILE_NOTE,prepareImportSpec,runPrepareImport} from '../core/chat-import/tool';
@@ -77,6 +78,8 @@ describe('owner sentences become the closed vocabulary, without the cell they ec
   expect(issueOf("Not authorized for this employee's company")).toBe('not_permitted');
   expect(issueOf('Missing required column: Employee No')).toBe('missing_column');
   expect(issueOf('Something nobody planned for')).toBe('other');
+  // The leave import owner's own sentence for a row of another company than the card's.
+  expect(issueOf(LEAVE_IMPORT_OTHER_COMPANY)).toBe('other_company');expect(CHAT_IMPORT_ISSUES).toContain('other_company');
   const columns=['employee_id','leave_type','transaction_type','days','effective_date'];
   expect(fieldIn('Employee not found: days effective_date',columns)).toBe('employee_id');
   expect(fieldIn('Leave type not found: employee_id',columns)).toBe('leave_type');
