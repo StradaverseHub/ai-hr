@@ -15,7 +15,9 @@ const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => navigation }));
 const fetcher = vi.fn<typeof fetch>();
 async function view(props: Parameters<typeof InternalAuthForm>[0] = {},locale='en') {
-  vi.stubGlobal('fetch', fetcher);
+  // Public availability has its own response; auth assertions still observe every credential request.
+  vi.stubGlobal('fetch', (input:RequestInfo|URL,init?:RequestInit)=>String(input).startsWith('/login/entra/options?')
+    ?Promise.resolve(Response.json({microsoft:false})):fetcher(input,init));
   const result = render(<NextIntlClientProvider locale={locale} messages={enBase}><InternalAuthForm organization="alpha" {...props}/></NextIntlClientProvider>);
   if (!props.mode || props.mode === 'login') await userEvent.click(screen.getByRole('button', { name: en.loginEditorial.continueLabel }));
   return result;
