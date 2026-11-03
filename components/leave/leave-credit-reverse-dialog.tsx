@@ -27,7 +27,7 @@ export function LeaveCreditReverseDialog({ accrualId, action }: { accrualId: str
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[95vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-5 shadow-xl">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] overflow-y-auto w-[95vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-5 shadow-xl">
           <Dialog.Title className="text-base font-semibold text-foreground">{t('title')}</Dialog.Title>
           <Dialog.Description className="mt-1 text-xs text-muted-foreground">{t('body')}</Dialog.Description>
           <form action={action} onSubmit={() => setOpen(false)} className="mt-4 space-y-4">
