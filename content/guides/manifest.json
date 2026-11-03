@@ -191,6 +191,13 @@
       "order": 27
     },
     {
+      "slug": "private-cases",
+      "title": "Private Cases with HR: Raising a Sensitive Matter in Writing",
+      "audience": "all",
+      "category": "me",
+      "order": 28
+    },
+    {
       "slug": "performance-faq-kpi-justification",
       "title": "How to write a KPI result justification",
       "audience": "employee",

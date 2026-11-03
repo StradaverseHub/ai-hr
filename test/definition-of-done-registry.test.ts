@@ -5,7 +5,14 @@
  * are a shrink-only allowlist (core/improvement/definition-of-done-gaps.ts): a new gap fails, a closed gap left
  * on the list fails, and the list's size is pinned. No database. */
 import {describe,expect,it} from 'vitest';
-import {DONE_REQUIREMENTS,definitionOfDoneGaps,guideReferences,routeOfScreen,type DoneInputs} from '../core/improvement/definition-of-done';
+import {readdirSync,readFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {DONE_REQUIREMENTS,PRIVATE_BY_DESIGN,definitionOfDoneGaps,guideReferences,routeOfScreen,type DoneInputs} from '../core/improvement/definition-of-done';
+import {SEMANTIC_ACTIONS,SEMANTIC_READS} from '../core/semantic-model/entities';
+import {TERAS_READS,contextToolSpecs,referencedPages,terasEntities,terasEntity,terasToolSpecs} from '../core/semantic-model/generate';
+import {ASSISTANT_TOOL_CATALOGUE} from '../lib/ai/assistant-tool-catalogue';
+import {LINKABLE_PAGES} from '../lib/product-context/destinations';
 import {DEFINITION_OF_DONE_GAPS} from '../core/improvement/definition-of-done-gaps';
 import {definitionOfDoneInputs} from './definition-of-done-inputs';
 
@@ -75,9 +82,52 @@ describe('the rules fail when they should',()=>{
   expect(routeOfScreen('app/page.tsx')).toBe('/');
   expect(routeOfScreen('app/admin/x/actions.ts')).toBeNull();
  });
+ it('exempts a private-by-design page from the semantic and corpus requirements only',()=>{
+  const page='/me/cases';expect(PRIVATE_BY_DESIGN[page]).toBe('ADR-0173: the AI never sees case words.');
+  const unguided:DoneInputs={...base,actions:[],pages:[{path:page,module:null},{path:'/fictional',module:null}],guideBodies:[]};
+  expect(definitionOfDoneGaps(unguided)).toEqual({'page:/fictional':['semantic','guide','corpus'],[`page:${page}`]:['guide']});
+  expect(definitionOfDoneGaps({...unguided,guideBodies:[`Open [it](${page}).`]})).toEqual({'page:/fictional':['semantic','guide','corpus']});
+  expect(definitionOfDoneGaps({...unguided,pages:[{path:page,module:'claims'}],guideBodies:[`Open [it](${page}).`]})).toEqual({[`page:${page}`]:['readiness']});
+ });
  it('a new action or page without its pieces fails the allowlist',()=>{
   const live=definitionOfDoneInputs();
   const grown=definitionOfDoneGaps({...live,actions:[...live.actions,base.actions[0]],pages:[...live.pages,base.pages[0]]});
   expect(compare(grown,allowed()).fresh).toEqual(expect.arrayContaining(['action:fictional.action semantic','page:/fictional readiness']));
+ });
+});
+
+/** The private-by-design classification is a guard, not debt: none of its pages has an AI semantic surface. */
+describe('private by design: no AI semantic surface (ADR-0173)',()=>{
+ const pages=Object.keys(PRIVATE_BY_DESIGN);
+ const root=fileURLToPath(new URL('..',import.meta.url));
+ const names=(path:string)=>new RegExp('(?<![A-Za-z0-9/_-])'+path.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?![A-Za-z0-9/_-])');
+ it('lists the four private case pages, each a linkable page with its reason',()=>{
+  expect(pages.sort()).toEqual(['/admin/privacy/case-handlers','/cases','/me/cases','/me/cases/new']);
+  const linkable=new Set(LINKABLE_PAGES.map(([path])=>path));
+  for(const page of pages){expect(linkable.has(page),page).toBe(true);expect(PRIVATE_BY_DESIGN[page]).toMatch(/^ADR-0173: /);}
+ });
+ it('gives none of them a semantic entity, a declared action or a read',()=>{
+  const entityPages=new Set(terasEntities().map(entity=>entity.page));
+  const readPages=new Set([...SEMANTIC_READS,...TERAS_READS].map(read=>terasEntity(read.entity).page));
+  for(const page of pages){
+   expect(entityPages.has(page),page+' is an entity page').toBe(false);expect(readPages.has(page),page+' is a read\'s page').toBe(false);
+   expect(referencedPages(),page).not.toContain(page);expect(SEMANTIC_ACTIONS.some(action=>action.reviewRoute===page),page+' is a review route').toBe(false);
+   expect(definitionOfDoneInputs().semanticPages.has(page),page).toBe(false);
+  }
+ });
+ it('names none of them in any tool the model is offered',()=>{
+  const specs=[...ASSISTANT_TOOL_CATALOGUE,...contextToolSpecs(),...terasToolSpecs()];expect(specs.length).toBeGreaterThan(10);
+  for(const page of pages)for(const spec of specs)expect(JSON.stringify(spec),spec.name+' names '+page).not.toMatch(names(page));
+ });
+ it('keeps the private case owner and tables out of the semantic model and the harness, and the pages out of the model',()=>{
+  const files=(dir:string)=>readdirSync(join(root,dir)).filter(name=>/\.tsx?$/.test(name)).map(name=>join(dir,name));
+  const model=files('core/semantic-model'),harness=files('core/harness');expect(model.length).toBeGreaterThan(10);expect(harness.length).toBeGreaterThan(5);
+  // The harness may one day link the case form from a routed reply (ADR-0173 §3); it must never read a case.
+  for(const file of [...model,...harness])expect(readFileSync(join(root,file),'utf8'),file).not.toMatch(/private-cases['"]|private_case\b|private_case_/);
+  for(const file of model){const source=readFileSync(join(root,file),'utf8');for(const page of pages)expect(source,file+' names '+page).not.toMatch(names(page));}
+ });
+ it('still needs, and has, a guide for each page',()=>{
+  const gaps=definitionOfDoneGaps(definitionOfDoneInputs());
+  for(const page of pages)expect(gaps['page:'+page],page).toBeUndefined();
  });
 });
