@@ -1562,7 +1562,7 @@
       },
       "same": "Giống hiện tại",
       "enforceNote": "AI Centre đã đọc {count, plural, other {# giá trị này}} từ các từ được tô sáng. Bạn xác nhận từng giá trị; dịch vụ phụ trách sẽ áp dụng sau khi phê duyệt.",
-      "perClaimNote": "Dịch vụ công tác phí tính giá quãng đường của từng yêu cầu theo các bậc này. Nó không cộng dồn tổng theo tháng.",
+      "perClaimNote": "Hiển thị như đã viết. Dịch vụ công tác phí tính giá quãng đường của từng yêu cầu theo các bậc này và không cộng dồn tổng theo tháng, nên giới hạn theo tháng trong văn bản của bạn không được thực thi.",
       "notEnforced": "Chưa thực thi",
       "notEnforcedBody": "Chính sách này được lưu dưới dạng văn bản. AI Centre trả lời câu hỏi từ phiên bản đã phê duyệt; hệ thống chưa thực thi nó.",
       "sharedSetting": "Cài đặt công tác phí và nghỉ phép được dùng chung cho mọi công ty trong tập đoàn, nên chỉ được thực thi từ một chính sách áp dụng cho tất cả. Chính sách này được lưu dưới dạng văn bản.",

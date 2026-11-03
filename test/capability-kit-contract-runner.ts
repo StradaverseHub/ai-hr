@@ -34,7 +34,7 @@ const OWN_SCOPES:ReadonlySet<string>=new Set(['own_employment','own_person','own
 /** A fictional result with one value per declared field, of the field's type. */
 export function sampleResult(fields:readonly SemanticField[]):Record<string,unknown>{
  const value=(field:SemanticField):unknown=>{switch(field.type){
-  case 'id':return SAMPLE_ID;case 'code':return SAMPLE_CODE;case 'text':return SAMPLE_TEXT;case 'name':return 'Aina Fictional';case 'label':return 'Fictional label';
+  case 'id':return SAMPLE_ID;case 'code':return SAMPLE_CODE;case 'text':return SAMPLE_TEXT;case 'name':return 'Aina Fictional';case 'label':return 'Fictional label';case 'published_text':return 'Fictional approved policy paragraph.';
   case 'date':return '2026-07-01';case 'datetime':return '2026-07-01T09:00:00+08:00';case 'time':return '09:00';case 'period':return '2026-08';
   case 'number':return 12.5;case 'integer':return 3;case 'boolean':return true;case 'enum':return field.values?.[0]??'value';
   case 'list':return field.of?[sampleResult(field.of)]:['2026-07-01'];case 'object':return field.of?sampleResult(field.of):{flag:true};}};

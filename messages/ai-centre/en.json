@@ -1562,7 +1562,7 @@
       },
       "same": "Same as now",
       "enforceNote": "AI Centre read {count, plural, one {this value} other {these # values}} from the highlighted words. You confirm each one; the owner service applies it after approval.",
-      "perClaimNote": "The claims service prices each claim's own distance against these bands. It keeps no monthly total.",
+      "perClaimNote": "Shown as written. The claims service prices each claim's own distance against these bands and keeps no monthly total, so a monthly limit in your text is not enforced.",
       "notEnforced": "Not enforced yet",
       "notEnforcedBody": "This policy is kept as text. AI Centre answers questions from its approved version; the system does not enforce it yet.",
       "sharedSetting": "Claims and leave settings are shared by every company in your group, so they are enforced only from a policy that applies to all of them. This one is kept as text.",

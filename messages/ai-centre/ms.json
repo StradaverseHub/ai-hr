@@ -1562,7 +1562,7 @@
       },
       "same": "Sama seperti sekarang",
       "enforceNote": "AI Centre membaca {count, plural, one {nilai ini} other {# nilai ini}} daripada perkataan yang diserlahkan. Anda mengesahkan setiap satu; perkhidmatan pemilik menerapkannya selepas kelulusan.",
-      "perClaimNote": "Perkhidmatan tuntutan mengira harga jarak setiap tuntutan berdasarkan jalur ini. Ia tidak menyimpan jumlah bulanan.",
+      "perClaimNote": "Ditunjukkan seperti yang ditulis. Perkhidmatan tuntutan mengira harga jarak setiap tuntutan berdasarkan jalur ini dan tidak menyimpan jumlah bulanan, jadi had bulanan dalam teks anda tidak dikuatkuasakan.",
       "notEnforced": "Belum dikuatkuasakan",
       "notEnforcedBody": "Polisi ini disimpan sebagai teks. AI Centre menjawab soalan daripada versi yang diluluskan; sistem belum menguatkuasakannya.",
       "sharedSetting": "Tetapan tuntutan dan cuti dikongsi oleh setiap syarikat dalam kumpulan anda, jadi ia hanya dikuatkuasakan daripada polisi yang terpakai kepada semuanya. Polisi ini disimpan sebagai teks.",

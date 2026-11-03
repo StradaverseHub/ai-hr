@@ -114,6 +114,8 @@ describe('an administrator\'s draft',()=>{
   expect(rows).toEqual([
    ['Rate, 0 to 500 km','None (any amount)','RM 0.60 per km','Confirm Reject'],
    ['Rate after 500 km','RM 0.45 per km'],
+   // The monthly wording of the mock-up's policy is shown as written, never as enforced: the claims service prices each claim.
+   ['Shown as written. The claims service prices each claim\'s own distance against these bands and keeps no monthly total, so a monthly limit in your text is not enforced.'],
    ['Submit within (Mileage)','90 days','30 days','Confirm Reject']]);
   expect(rendered.container.querySelector('[data-policy-decision="confirmed"] button[aria-pressed="true"]')?.textContent).toBe('Confirm');
   expect(text(rendered.container.querySelector('[data-policy-enforce]'))).toContain('AI Centre read these 2 values from the highlighted words. You confirm each one; the owner service applies it after approval.');

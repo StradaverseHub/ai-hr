@@ -20,7 +20,11 @@ import type {AiJsonSchema} from '../../lib/ai/types';
 
 export type DisclosureClass='never'|'bands'|'minimum'|'full';
 export const DISCLOSURE_CLASSES:readonly DisclosureClass[]=Object.freeze(['never','bands','minimum','full']);
-export type FieldType='id'|'code'|'text'|'name'|'label'|'date'|'datetime'|'time'|'period'|'number'|'integer'|'boolean'|'enum'|'list'|'object';
+export type FieldType='id'|'code'|'text'|'name'|'label'|'date'|'datetime'|'time'|'period'|'number'|'integer'|'boolean'|'enum'|'list'|'object'
+ /** AI v2 Phase 2 P2-5: an organisation's own APPROVED wording, published to the people it applies to (an approved Living
+  * Handbook paragraph). Not `text`, which is free text a person typed about themselves or someone else and is always
+  * `never`: this is company content its readers already see, disclosed by its class like any other field. */
+ |'published_text';
 export type SemanticField=Readonly<{name:string;type:FieldType;disclosure:DisclosureClass;meaning:string;
  /** Closed vocabulary for `enum` fields. */values?:readonly string[];
  /** Row shape for `list`/`object` fields; each nested field carries its own class. An undeclared child is

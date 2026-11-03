@@ -74,7 +74,9 @@ export function contextToolSpecs():readonly AiToolSpec[]{
 }
 
 const JSON_TYPE:Readonly<Record<SemanticField['type'],string>>={id:'string',code:'string',text:'string',name:'string',label:'string',date:'string',datetime:'string',
- time:'string',period:'string',number:'number',integer:'integer',boolean:'boolean',enum:'string',list:'array',object:'object'};
+ time:'string',period:'string',number:'number',integer:'integer',boolean:'boolean',enum:'string',list:'array',object:'object',
+ // AI v2 Phase 2 P2-5: an approved, published policy paragraph (./types.ts published_text).
+ published_text:'string'};
 function outputProperty(field:SemanticField):Record<string,unknown>{
  const tag={'x-teras-disclosure':field.disclosure,description:field.meaning};
  if(field.disclosure==='bands')return{type:'string',...tag,description:field.meaning+' Released as a band, restored locally.'};

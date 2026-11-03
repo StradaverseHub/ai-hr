@@ -248,7 +248,6 @@ function AdminPolicy({ t, f, detail, companies, isGroupAdmin, today, editing }: 
                 ? <p className="text-sm text-muted-foreground" data-policy-no-values>{draft ? t('noValuesDraft') : t('noValues')}</p>
                 : <EnforceTable t={t} f={f} values={detail.values} policy={policy} decide={draft && detail.canEdit} />}
           {detail.values.length > 0 && <p className="text-xs text-muted-foreground">{t('enforceNote', { count: detail.values.length })}</p>}
-          {detail.settings.includes('claims.mileage_rates') && detail.sharedOk && <p className="text-xs text-muted-foreground">{t('perClaimNote')}</p>}
         </section>
       </div>
 
@@ -359,7 +358,10 @@ function EnforceTable({ t, f, values, policy, decide }: { t: T; f: F; values: re
         <tbody>
           {values.map(value => {
             const rows = settingRows(t, f, value.setting, value.targetName, value.value);
-            return rows.map((row, i) => (
+            // The claims service prices each claim's own distance: a monthly limit in the text is shown as written, never as enforced.
+            const note = value.setting === 'claims.mileage_rates'
+              ? [<tr key={value.id + 'note'} data-policy-per-claim><td colSpan={4} className="pb-2 text-xs text-muted-foreground">{t('perClaimNote')}</td></tr>] : [];
+            return [...rows.map((row, i) => (
               <tr key={value.id + i} className={cn('border-t border-border align-top', value.decision === 'rejected' && 'text-muted-foreground line-through')} data-policy-value={value.setting}>
                 <td className="py-2 pr-2">{row.label}</td>
                 {i === 0 && <td rowSpan={rows.length} className="px-2 py-2 text-muted-foreground" data-policy-now>{ownerSummary(t, f, value.setting, value.now, value.nowDefaulted)}</td>}
@@ -379,7 +381,7 @@ function EnforceTable({ t, f, values, policy, decide }: { t: T; f: F; values: re
                   </td>
                 )}
               </tr>
-            ));
+            )), ...note];
           })}
         </tbody>
       </table>
