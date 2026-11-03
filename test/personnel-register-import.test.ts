@@ -72,6 +72,9 @@ describe('Qualification and Emergency Contact register imports',()=>{
       const fresh=await previewQualificationSection(ctx,parsed,csv);
       expect(fresh.qualificationReviewId).not.toBe(stale.qualificationReviewId);
       expect((await commitQualificationSection(ctx,csv)).updated).toBe(0);
+      const otherAdmin=await createAppUser(b.tenantId,null,'hr_admin');
+      const otherCtx={...ctx,userId:otherAdmin,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+      expect((await commitQualificationSection(otherCtx,fresh.qualificationReviewId!)).updated).toBe(0);
       const results=await Promise.all([commitQualificationSection(ctx,fresh.qualificationReviewId!),commitQualificationSection(ctx,fresh.qualificationReviewId!)]);
       expect(results.map(result=>result.updated).sort()).toEqual([0,1]);
       const rows=await listQualifications(ctx,{employmentId:e.employmentId});

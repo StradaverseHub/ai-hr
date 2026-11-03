@@ -1700,3 +1700,5 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | 0943_leave_attendance_claim_actions | 0954_leave_attendance_claim_actions | 801 | 1793330000354 | 40034752a2e0eaeaa0cbb2f9be9bb4394db823baf93112ebbcd52536a1a1a914 |
 | 0944_lifecycle_rewards_notice_actions | 0955_lifecycle_rewards_notice_actions | 802 | 1793330000355 | 996a1ac6ab91d2966415949d19236cf429ede2ee57a62b5eb1eb91b4e0ff3347 |
 | 0945_financial_setup_actions | 0956_financial_setup_actions | 803 | 1793330000356 | c0ee123dded074d5074990affefd8d3b55ec474577fc43d4febd9455eff25436 |
+| New candidate migration | 0957_organisation_settings_binding_readiness | 804 | 1793330000357 | 1bad0684db997893212fe84b7071de85ab911c5895287935fe043ad29872b135 |
+| New candidate migration | 0958_qualification_import_preview | 805 | 1793330000358 | 70c1fd2398370008971fdf3f8a7bc382fc9a52dbe516b5b8efa85ec854fea694 |
