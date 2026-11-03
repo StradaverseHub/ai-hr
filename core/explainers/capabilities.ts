@@ -20,6 +20,7 @@ import {provenance,refuse,type ExplainerOutcome} from './outcome';
 import {explainOwnPayslipStatutory} from './statutory';
 import {explainOwnPayDifference} from './pay-difference';
 import {explainOwnClaimLimit} from './claim-limit';
+import {askMyPayrollReadiness} from '../pre-salary/ask';
 
 export type TerasCapabilityScope=Readonly<{companyId:string;locale?:string}>;
 export type TerasCapability=Readonly<{name:string;module:string|null;admin:boolean;
@@ -66,6 +67,8 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  // AI v2 W5: "Why?" on the pay difference and the claim limits, under the explainers worker switch like the three above.
  {name:'explain_pay_difference',module:'payroll',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnPayDifference(ctx,{period:text(input.period),compare_to:text(input.compare_to)})},
  {name:'explain_claim_limit',module:'claims',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnClaimLimit(ctx,{claim_type:text(input.claim_type)})},
+ // AI v2 Phase 2 P2-3: "what do I need to do before payroll?", the person's own checklist (core/pre-salary/person-items.ts).
+ {name:'my_payroll_readiness',module:null,admin:false,worker:null,run:(ctx,_input,scope)=>askMyPayrollReadiness(ctx,scope)},
 ]);
 /** Capabilities this caller may be offered. A capability that belongs to a worker is offered only while that worker's
  * run gate is open (registered, switched on, tenant not stopped), read once per call in the caller's tenant. */

@@ -51,8 +51,9 @@ describe('AI centre tabs keep every permission identical', () => {
     for (const tab of admin) expect(read(pageOf(tab.href))).toContain('requireAdmin');
     expect(read('app/control-tower/layout.tsx')).toContain('await requireAdmin();');
     // AI v2 Phase 1: the Inbox tab is retired; Today at / replaces it.
-    expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'how']);
-    expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'operations', 'administration', 'how']);
+    // AI v2 Phase 2 (P2-3): Insights, for everyone, between Operations and Administration as in the approved mock-ups.
+    expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'insights', 'how']);
+    expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'operations', 'insights', 'administration', 'how']);
   });
 
   it('every second-row tab is an existing /control-tower page behind requireAdmin, listed in the permission registry', () => {
@@ -78,7 +79,7 @@ describe('AI centre tabs keep every permission identical', () => {
   });
 
   it('the employee views live on /assistant, behind its unchanged session layout', () => {
-    for (const view of ['jobs', 'how']) {
+    for (const view of ['jobs', 'how', 'insights']) {
       expect(isCentreView(view)).toBe(true);
       expect(CENTRE_TABS.some(tab => tab.href === `/assistant?view=${view}`)).toBe(true);
     }

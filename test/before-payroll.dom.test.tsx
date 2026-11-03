@@ -1,0 +1,155 @@
+/** AI v2 Phase 2, P2-3 — the "Before payroll" checklist as each role sees it: Today's card and AI Centre › Insights'
+ * "My payroll readiness", rendered from fictional checklists through the real English catalogue.
+ *
+ * The checklist read (core/pre-salary/person-items.ts) is replaced by a fixture per role: an employee (no cut-off date:
+ * their role cannot read the company's payroll settings), a manager (decisions waiting on them) and an administrator
+ * (the company's cut-off date). Expected text is written out literally. Pinned: the title carries the cut-off date only
+ * when the payroll owner gave one; the top three items, the waiting line and "See all"; one action per row, the
+ * missed clock-out's own Confirm card on Insights (and a pointer to it in Needs you on Today); groups with their status
+ * in words; approvals only for whoever has some; nothing shown when nothing is pending; no pay figure anywhere. */
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
+import {cleanup,render,within} from '@testing-library/react';
+import {NextIntlClientProvider} from 'next-intl';
+import en from '../messages/en.json';
+import {withAiCentre} from './helpers/ai-centre-messages';
+import {resolveServerTree} from './helpers/server-tree';
+import type {PayrollItem,PayrollReadiness} from '../lib/pre-salary/items';
+
+const fx=vi.hoisted(()=>({readiness:null as unknown,calls:[] as unknown[]}));
+vi.mock('next-intl/server',async()=>{
+ const {createTranslator}=await import('next-intl');
+ const base=(await import('../messages/en.json')).default;
+ const {withAiCentre:merge}=await import('./helpers/ai-centre-messages');
+ const messages=merge('en',base);
+ return {getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages,namespace:namespace as never}),getLocale:async()=>'en'};
+});
+vi.mock('next/navigation',()=>({useRouter:()=>({push:vi.fn(),refresh:vi.fn()}),usePathname:()=>'/assistant'}));
+vi.mock('@/app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:async()=>({kind:'submitted'})}));
+vi.mock('@/core/pre-salary/person-items',()=>({readMyPayrollReadiness:async(...args:unknown[])=>{fx.calls.push(args.slice(1));return fx.readiness;}}));
+
+import {BeforePayrollSection} from '../components/today/before-payroll';
+import {AiCentreInsights} from '../components/ai-centre/insights';
+import {AiCentreTabs} from '../components/ai-centre/centre-tabs';
+
+const SESSION={tenantId:'t',userId:'u',personId:'p',roles:['employee']} as never;
+const open=(href:string)=>({kind:'open' as const,href});
+const item=(kind:PayrollItem['kind'],group:PayrollItem['group'],state:PayrollItem['state'],date:string|null,due:string|null,action:PayrollItem['action'],extra:Partial<PayrollItem>={}):PayrollItem=>
+ ({key:`${kind}:${date}`,kind,group,state,date,due,action,...extra});
+const groups=(status:Partial<Record<PayrollItem['group'],string>>)=>(['attendance','overtime','leave','claims','toil','details','acknowledge','approvals'] as const)
+ .map(group=>({group,status:(status[group]??'done') as never}));
+
+const EMPLOYEE:PayrollReadiness={period:{payPeriod:'2026-11',start:'2026-11-01',cutOff:null,source:'unavailable'},failed:false,
+ items:[
+  item('missed_clock_out','attendance','todo','2026-11-03',null,{kind:'confirm',card:'clockOut',caseId:'case-1',date:'2026-11-03',checkIn:'09:02',proposedCheckOut:'18:00',href:'/attendance/my-records/2026-11-03?checkOut=18%3A00'}),
+  item('claim_receipt_missing','claims','todo','2026-11-08','2026-11-20',open('/claims?draft=cl-1'),{label:'Parking'}),
+  item('bank_missing','details','todo',null,null,open('/me?tab=bankStatutory#section-request-bankStatutory')),
+  item('late_or_early','attendance','check','2026-11-06',null,open('/attendance/requests?section=short&fix=2026-11-06')),
+  item('leave_pending','leave','waiting','2026-11-12',null,open('/leave'),{label:'Annual Leave',endDate:'2026-11-13'})],
+ approvals:[],groups:groups({attendance:'todo',claims:'todo',details:'todo',leave:'waiting',toil:'off'})};
+const MANAGER:PayrollReadiness={period:{payPeriod:'2026-11',start:'2026-11-01',cutOff:null,source:'unavailable'},failed:false,items:[],
+ approvals:[item('approve_leave','approvals','todo',null,null,open('/approvals?section=leave&focus=t-1'),{key:'approve_leave:t-1',label:'Siti Fictional'}),
+  item('approve_claim','approvals','todo',null,null,open('/approvals?section=claims&focus=t-2'),{key:'approve_claim:t-2',label:'Wei Fictional'})],
+ groups:groups({approvals:'todo'})};
+const ADMIN:PayrollReadiness={period:{payPeriod:'2026-11',start:'2026-10-20',cutOff:'2026-11-19',source:'company'},failed:false,
+ items:[item('tax_number_missing','details','todo',null,'2026-11-19',open('/me?tab=bankStatutory#section-request-bankStatutory'))],
+ approvals:[item('approve_attendance','approvals','todo',null,'2026-11-19',open('/approvals?section=attendance&focus=t-3'),{key:'approve_attendance:t-3',label:'Nur Fictional'})],
+ groups:groups({details:'todo',approvals:'todo'})};
+const NOTHING:PayrollReadiness={...ADMIN,items:[],approvals:[],groups:groups({})};
+
+const messages=withAiCentre('en',en) as never;
+const show=async(node:React.ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur">{await resolveServerTree(node)}</NextIntlClientProvider>);
+const today=(readiness:unknown)=>{fx.readiness=readiness;return show(<BeforePayrollSection session={SESSION} employmentId="emp-own" scopeIds={['co-1']} locale="en" today="2026-11-10"/>);};
+const insights=(readiness:unknown)=>{fx.readiness=readiness;return show(<AiCentreInsights session={SESSION} scopeIds={['co-1']}/>);};
+const rows=(root:HTMLElement)=>[...root.querySelectorAll('[data-payroll-item]')].map(row=>[row.getAttribute('data-payroll-item'),row.querySelector('p')?.textContent,
+ row.querySelector('a')?.textContent?.split(' · ')[0],row.querySelector('a')?.getAttribute('href')]);
+beforeEach(()=>{fx.calls=[];});
+afterEach(cleanup);
+
+describe('Today: "Before payroll on <date>"',()=>{
+ it('employee: no date their role cannot read, the top three items, the waiting line and See all',async()=>{
+  const view=await today(EMPLOYEE);
+  const card=view.container.querySelector('[data-today-section="today-before-payroll"]') as HTMLElement;
+  expect(within(card).getByRole('heading',{level:2}).textContent).toBe('Before payroll');
+  expect(card.querySelector('[data-today-count]')?.textContent).toBe('4');
+  expect(rows(card)).toEqual([
+   ['missed_clock_out','Missing clock-out · Nov 3','Confirm','#today-needs-you'],
+   ['claim_receipt_missing','Add the receipt to your Parking claim · Nov 8','Open','/claims?draft=cl-1'],
+   ['bank_missing','Add your bank account','Open','/me?tab=bankStatutory#section-request-bankStatutory']]);
+  expect(card.querySelector('[data-payroll-item="claim_receipt_missing"]')?.textContent).toContain('Due Nov 20');
+  expect(card.querySelector('[data-payroll-waiting]')?.textContent).toBe('1 item is waiting for someone else to approve.');
+  expect(within(card).getByRole('link',{name:'See all'})).toHaveAttribute('href','/assistant?view=insights#my-payroll-readiness');
+  expect(card.textContent).not.toMatch(/RM|\d+\.\d{2}/);
+  expect(fx.calls).toEqual([[{employmentId:'emp-own',scopeIds:['co-1'],locale:'en',today:'2026-11-10'}]]);
+ });
+ it('manager: the decisions waiting on them, each opening its approval',async()=>{
+  const card=(await today(MANAGER)).container.querySelector('[data-today-section="today-before-payroll"]') as HTMLElement;
+  expect(rows(card)).toEqual([
+   ['approve_leave','Leave to approve · Siti Fictional','Review','/approvals?section=leave&focus=t-1'],
+   ['approve_claim','Claim to approve · Wei Fictional','Review','/approvals?section=claims&focus=t-2']]);
+  expect(card.querySelector('[data-payroll-waiting]')).toBeNull();
+ });
+ it('administrator: the company\'s cut-off date from the payroll owner in the title',async()=>{
+  const card=(await today(ADMIN)).container.querySelector('[data-today-section="today-before-payroll"]') as HTMLElement;
+  expect(within(card).getByRole('heading',{level:2}).textContent).toBe('Before payroll on Nov 19');
+  expect(rows(card).map(row=>row[0])).toEqual(['tax_number_missing','approve_attendance']);
+ });
+ it('shows no card when nothing is pending, payroll is not in use, or the read failed',async()=>{
+  for(const readiness of [NOTHING,null]){
+   const view=await today(readiness);
+   expect(view.container.querySelector('[data-today-section="today-before-payroll"]')).toBeNull();
+   cleanup();
+  }
+ });
+});
+
+describe('AI Centre › Insights: "My payroll readiness"',()=>{
+ it('employee: every item by group with the status in words, the clock-out Confirm card in its group, no approvals',async()=>{
+  const view=await insights(EMPLOYEE);
+  expect(view.getByRole('heading',{level:1,name:'Insights'})).toBeTruthy();
+  const section=view.container.querySelector('#my-payroll-readiness') as HTMLElement;
+  expect(within(section).getByRole('heading',{level:2}).textContent).toBe('My payroll readiness');
+  expect(section.querySelector('[data-payroll-cutoff]')?.textContent).toBe('November 2026 payroll · your HR team can tell you the cut-off date');
+  const status=[...section.querySelectorAll('[data-payroll-group]')].map(group=>[group.getAttribute('data-payroll-group'),group.querySelector('h3')?.textContent,
+   group.querySelector('h3')?.nextElementSibling?.textContent]);
+  // Replacement leave is not in use for this person: not shown. No approvals wait on an employee.
+  expect(status).toEqual([['attendance','Attendance','To do'],['overtime','Overtime','Done'],['leave','Leave','Waiting'],['claims','Claims','To do'],
+   ['details','Personal and statutory details','To do'],['acknowledge','To acknowledge','Done']]);
+  const attendance=section.querySelector('[data-payroll-group="attendance"]') as HTMLElement;
+  expect(rows(attendance)).toEqual([['late_or_early','Late arrival or early finish · Nov 6','Open','/attendance/requests?section=short&fix=2026-11-06']]);
+  // The missed clock-out is the loop's own card, with its own Confirm and Edit.
+  const clockOut=attendance.querySelector('[data-today-loop="clockOut"]') as HTMLElement;
+  expect(clockOut).toBeTruthy();
+  expect(within(clockOut).getByRole('button',{name:/Confirm and submit/})).toBeTruthy();
+  expect(within(clockOut).getByRole('link',{name:/Edit/})).toHaveAttribute('href','/attendance/my-records/2026-11-03?checkOut=18%3A00');
+  expect(rows(section.querySelector('[data-payroll-group="leave"]') as HTMLElement)).toEqual([['leave_pending','Annual Leave waiting for approval · Nov 12 to Nov 13','Open','/leave']]);
+  expect((section.querySelector('[data-payroll-group="overtime"]') as HTMLElement).textContent).toContain('Nothing pending.');
+  expect(section.querySelector('#payroll-approvals-heading')).toBeNull();
+  expect(section.textContent).toContain('Not checked here yet: shift swaps, timesheet sign-off');
+  expect(section.textContent).not.toMatch(/RM|\d+\.\d{2}/);
+ });
+ it('manager: the decisions waiting on them under "Waiting on you"',async()=>{
+  const section=(await insights(MANAGER)).container.querySelector('#my-payroll-readiness') as HTMLElement;
+  const approvals=section.querySelector('[data-payroll-group="approvals"]') as HTMLElement;
+  expect(within(approvals).getByRole('heading',{level:3}).textContent).toBe('Waiting on you');
+  expect(rows(approvals).map(row=>row[1])).toEqual(['Leave to approve · Siti Fictional','Claim to approve · Wei Fictional']);
+  expect(section.querySelector('[data-payroll-all-done]')?.textContent).toBe('Nothing is waiting on you for this payroll.');
+ });
+ it('administrator: their own items with the company\'s cut-off date, and their approvals',async()=>{
+  const section=(await insights(ADMIN)).container.querySelector('#my-payroll-readiness') as HTMLElement;
+  expect(section.querySelector('[data-payroll-cutoff]')?.textContent).toBe('November 2026 payroll · cut-off Nov 19');
+  expect(section.querySelector('[data-payroll-item="tax_number_missing"]')?.textContent).toContain('Due Nov 19');
+  expect(rows(section.querySelector('[data-payroll-group="approvals"]') as HTMLElement).map(row=>row[1])).toEqual(['Attendance or overtime to approve · Nur Fictional']);
+ });
+ it('says plainly when payroll is not in use',async()=>{
+  const section=(await insights(null)).container.querySelector('#my-payroll-readiness') as HTMLElement;
+  expect(section.textContent).toContain('Payroll is not in use here, so there is nothing to get ready.');
+ });
+ it('is a tab for every role, current on its own page',async()=>{
+  for(const isAdmin of [false,true]){
+   const view=render(<NextIntlClientProvider locale="en" messages={messages}><AiCentreTabs active="insights" isAdmin={isAdmin}/></NextIntlClientProvider>);
+   expect(view.getByRole('link',{current:'page'})).toHaveAttribute('href','/assistant?view=insights');
+   expect(view.getByRole('link',{current:'page'}).textContent).toBe('Insights');
+   cleanup();
+  }
+ });
+});

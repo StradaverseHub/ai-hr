@@ -9,6 +9,7 @@ import {greetingFor,greetingName,todayAudience,type TodayAudience} from '@/lib/t
 import {TodayAsk} from './today-ask';
 import {TodaySectionSkeleton} from './today-ui';
 import {AtAGlanceSection,DoneForYouSection,NeedsYouSection,WatchingSection,needsYouHeading} from './sections';
+import {BeforePayrollSection} from './before-payroll';
 
 /** Today (AI v2 Phase 1, W3, owner-approved mock-ups Main.dc.html and TodayEmployee.dc.html): the home screen
  * for every role, at `/`.
@@ -54,6 +55,8 @@ export async function TodayPage({session,scopeIds,employmentId,notice,more,needs
   </div>:<div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
    <div className="min-w-0 space-y-6">
     <Suspense fallback={<TodaySectionSkeleton title={t(needsYouHeading(audience))} rows={3}/>}><NeedsYouSection {...common} {...needs}/></Suspense>
+    {/* AI v2 Phase 2 P2-3: the person's own "Before payroll" checklist, top items and See all. */}
+    <Suspense fallback={null}><BeforePayrollSection session={session} employmentId={employmentId} scopeIds={scopeIds} locale={locale} today={today}/></Suspense>
     <Suspense fallback={<TodaySectionSkeleton title={t('doneForYou')} rows={1}/>}><DoneForYouSection {...common}/></Suspense>
    </div>
    <Suspense fallback={<TodaySectionSkeleton title={t('atAGlance')} rows={2}/>}><AtAGlanceSection {...common} employmentId={employmentId} why={why}/></Suspense>

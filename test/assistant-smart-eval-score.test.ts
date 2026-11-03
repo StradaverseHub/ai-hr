@@ -16,20 +16,21 @@ const obs=(reply:string,extra:Partial<SmartEvalObservation>={}):SmartEvalObserva
 const top:JudgeVerdict={correctness:5,usefulness:5,doing:5,clarity:5,safety:5,reason:'ok'};
 
 describe('the question set',()=>{
- it('has 65 turns: 24 employee, 10 manager, 15 HR administrator, 8 payroll and 8 group administrator, with unique ids',()=>{
+ it('has 66 turns: 25 employee, 10 manager, 15 HR administrator, 8 payroll and 8 group administrator, with unique ids',()=>{
   // AI v2 W1 added hr-what, hr-payroll-import and pay-import (the capability catalogue's "what can you do" and "can you import");
   // AI v2 W7 added hr-overtime-trend and grp-turnover (governed workforce metrics).
   // AI v2 W2 slice 2 added emp-toil (the own Leave Credit request); slice 3 added mgr-claim-decide and mgr-ot-reject.
   // AI v2 slice 3 added hr-import-file (two turns: the numbered imports, then the prepared import card from an attached file).
   // AI v2 slice 3 follow-up added emp-pay-why, emp-epf-why, emp-claim-limit and emp-toil-ask (the slice 2 explanations).
   // AI v2 Phase 1 slice 3 added emp-letter (an employment letter).
-  expect(turns.length).toBe(65);expect(new Set(turns.map(row=>row.id)).size).toBe(65);
+  // AI v2 Phase 2 P2-3 added emp-before-payroll (the person's own "Before payroll" checklist).
+  expect(turns.length).toBe(66);expect(new Set(turns.map(row=>row.id)).size).toBe(66);
   const byRole=(role:string)=>turns.filter(row=>row.role===role).length;
-  expect([byRole('employee'),byRole('manager'),byRole('hr_admin'),byRole('payroll'),byRole('group_admin')]).toEqual([24,10,15,8,8]);
+  expect([byRole('employee'),byRole('manager'),byRole('hr_admin'),byRole('payroll'),byRole('group_admin')]).toEqual([25,10,15,8,8]);
  });
- it('has five to eight journey questions per role (the employee\'s eighteen and the manager\'s ten include the AI v2 W2 prepared actions, the slice 2 explanations and the letter request), and some in Malay and Chinese',()=>{
+ it('has five to eight journey questions per role (the employee\'s nineteen and the manager\'s ten include the AI v2 W2 prepared actions, the slice 2 explanations, the letter request and the payroll checklist), and some in Malay and Chinese',()=>{
   for(const role of ['employee','manager','hr_admin','payroll','group_admin']){const count=turns.filter(row=>row.role===role&&row.source.kind==='journey').length;
-   expect(count,role).toBeGreaterThanOrEqual(5);expect(count,role).toBeLessThanOrEqual(role==='employee'?18:role==='manager'?10:8);}
+   expect(count,role).toBeGreaterThanOrEqual(5);expect(count,role).toBeLessThanOrEqual(role==='employee'?19:role==='manager'?10:8);}
   expect(turns.filter(row=>row.locale==='ms').length).toBe(4);expect(turns.filter(row=>row.locale==='zh').length).toBe(5);
  });
  it('marks the 16 reconstructed owner questions with the issues they come from, covering 9, 10, 13, 13b, 16 and 18',()=>{

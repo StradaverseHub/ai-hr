@@ -20,7 +20,8 @@
       "spend": "Spend and providers",
       "operations": "Operations",
       "administration": "Administration",
-      "how": "How it works"
+      "how": "How it works",
+      "insights": "Insights"
     },
     "inboxCount": "{count, plural, one {# item waiting} other {# items waiting}}",
     "backToToday": "Back to Today",
@@ -280,6 +281,10 @@
       "findingAuthority": "Your company's switch for this check",
       "findingRead": "Records in your administration scope",
       "findingModel": "None for the finding. Plain-language wording, where switched on, is shown on its page."
+    },
+    "insights": {
+      "title": "Insights",
+      "description": "What is pending before payroll, for you and for the requests you approve."
     },
     "jobs": {
       "title": "Delegated jobs",
@@ -1250,6 +1255,85 @@
       "inProgress": "This import is already being confirmed.",
       "invalid": "This card could not be checked. Attach the file again.",
       "unavailable": "The import could not be completed, and nothing was imported. Try again, or use the import page."
+    }
+  },
+  "payrollReadiness": {
+    "todayTitle": "Before payroll on {date}",
+    "todayTitleNoDate": "Before payroll",
+    "seeAll": "See all",
+    "waitingCount": "{count, plural, one {# item is} other {# items are}} waiting for someone else to approve.",
+    "insightsTitle": "My payroll readiness",
+    "period": "{month} payroll · cut-off {date}",
+    "periodNoCutOff": "{month} payroll · your HR team can tell you the cut-off date",
+    "due": "Due {date}",
+    "range": "{from} to {to}",
+    "allDone": "Nothing is waiting on you for this payroll.",
+    "unavailable": "Some of this could not be checked just now. Try again later.",
+    "notInUse": "Payroll is not in use here, so there is nothing to get ready.",
+    "groupDone": "Nothing pending.",
+    "groupUnknown": "Could not be checked just now.",
+    "approvalsHelp": "Requests waiting for your decision before the cut-off.",
+    "notCovered": "Not checked here yet: shift swaps, timesheet sign-off, tax relief and dependant details, and pay changes to acknowledge.",
+    "open": "Open",
+    "review": "Review",
+    "confirm": "Confirm",
+    "state": {
+      "todo": "To do",
+      "waiting": "Waiting for approval",
+      "check": "Check"
+    },
+    "status": {
+      "done": "Done",
+      "todo": "To do",
+      "waiting": "Waiting",
+      "unknown": "Could not check",
+      "off": "Not used"
+    },
+    "groups": {
+      "attendance": "Attendance",
+      "overtime": "Overtime",
+      "leave": "Leave",
+      "claims": "Claims",
+      "toil": "Replacement leave",
+      "details": "Personal and statutory details",
+      "acknowledge": "To acknowledge",
+      "approvals": "Waiting on you"
+    },
+    "fallback": {
+      "leave": "Leave",
+      "claim": "expense",
+      "someone": "a team member"
+    },
+    "kinds": {
+      "missed_clock_in": "Missing clock-in",
+      "missed_clock_out": "Missing clock-out",
+      "absent_no_leave": "Absent with no leave recorded",
+      "late_or_early": "Late arrival or early finish",
+      "attendance_request_pending": "Attendance correction waiting for approval",
+      "overtime_pending": "Overtime request waiting for approval",
+      "overtime_over_cap": "Overtime this month is over the monthly limit",
+      "leave_pending": "{label} waiting for approval",
+      "leave_unpaid": "Unpaid leave: {label}",
+      "leave_certificate_missing": "Add the supporting document for {label}",
+      "claim_deadline": "Submit your {label} claim before its receipt is too old",
+      "claim_receipt_missing": "Add the receipt to your {label} claim",
+      "claim_draft": "Submit your draft {label} claim",
+      "claim_pending": "{label} claim waiting for approval",
+      "toil_pending": "Replacement leave request waiting for approval",
+      "bank_missing": "Add your bank account",
+      "tax_number_missing": "Add your income tax number",
+      "epf_number_missing": "Add your EPF number",
+      "socso_number_missing": "Add your SOCSO number",
+      "identity_missing": "Add your IC or passport number",
+      "details_request_pending": "Your details change is waiting for HR",
+      "tp3_new_joiner": "Tell payroll about an earlier employer this year (TP3)",
+      "letter_acknowledge": "Acknowledge your letter",
+      "notice_acknowledge": "Acknowledge a notice",
+      "approve_leave": "Leave to approve · {name}",
+      "approve_leave_cancellation": "Leave cancellation to approve · {name}",
+      "approve_attendance": "Attendance or overtime to approve · {name}",
+      "approve_claim": "Claim to approve · {name}",
+      "approve_toil": "Replacement leave to approve · {name}"
     }
   }
 }
