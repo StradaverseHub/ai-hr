@@ -40,6 +40,7 @@ import {identifiersIn,overclaim} from '../core/harness/reply-checks';
 import type {HarnessMessage,ModelClient,ModelResponse} from '../core/harness/model-client';
 import {ACTION_PURPOSE} from '../core/product-context/actions';
 import {requestLeave,setToilPolicy} from '../packs/leave/service';
+import {createClaimType,setClaimPolicy} from '../packs/claims/service';
 import {setRestDay} from '../core/roster';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {explainerFixture} from './explainer-corpus';
@@ -150,6 +151,10 @@ async function fixtures(){
  await setToilPolicy(admin,{companyId:base.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',allowFirstScheduleEligible:false,
   autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true,extendedHoursEnabled:true});
  await setRestDay(admin,{employmentId:aina.employmentId,shiftDate:lastSaturday});
+ // AI v2 slice 3 follow-up (emp-claim-limit): one claim type with an annual limit and a per-claim cap; nobody has claimed.
+ const claimYear=todayInKualaLumpur().slice(0,4);
+ const travel=await createClaimType(admin,{code:'FTRAVEL',name:'Fictional Travel',defaultTaxable:false,requiresReceipt:false});
+ await setClaimPolicy(admin,{claimTypeId:travel.id,annualBudget:2000,perClaimCap:500,effectiveFrom:`${claimYear}-01-01`});
  await credit(aina.employmentId,base.annualLeaveTypeId,'17.25');await credit(aina.employmentId,medical.id,'11.5');await credit(siti.employmentId,base.annualLeaveTypeId,'10');
  const holiday9=todayInKualaLumpur(new Date(Date.now()+9*86400000)),holiday40=todayInKualaLumpur(new Date(Date.now()+40*86400000));
  for(const [date,name] of [[holiday9,'Fictional Holiday 9'],[holiday40,'Fictional Holiday 40']])await owner.db.insert(schema.holiday).values({tenantId:base.tenantId,country:'MY',holidayDate:date,name});
@@ -180,6 +185,8 @@ async function fixtures(){
   `Fictional New Admin (HR administrator, Acme Sdn Bhd) has one direct report, Nur Fictional, with one pending one-day Annual Leave request for ${leaveDate}. As Acme's HR administrator, both pending requests (Nur's and Siti's) wait for their decision.`,
   'Who-is-away results list everyone the asking person may see, not only direct reports: for Ravi they include Nur Fictional (same department). Listing her is correct, not a leak.',
   'Acme Sdn Bhd payroll: the August 2026 run is closed; the September 2026 run is open (payslips generated, not closed); there is no later run. The only payslips belong to one other fictional employee; Aina has none.',
+  'Pay and deduction explanations read only the asking person\'s own released payslips. Aina has no payslip, so asked why her pay or her EPF is what it is, the correct answer is that there is no payslip yet to explain, without any figure or guessed cause.',
+  `Claims: Acme has one claim type, "Fictional Travel": an annual limit of RM2,000 and a per-claim cap of RM500 for everyone in ${claimYear}. Aina has claimed nothing, so RM2,000 is left; the claims service works that out.`,
   'Setup readiness reads the real fixture: most employees have no compensation, bank or statutory details, and no payroll cycle, schedule or policy is set. The gaps and counts it reports come from the system and are true.',
   'The AI conversation is switched on for the whole group by a group administrator on AI administration\'s Features and agents page (/control-tower/agents/features), after the AI provider is set up (/control-tower/agents/provider); each person also needs Assistant access. Those pages may still be titled "AI Control Tower".',
   `Public holidays: "Fictional Holiday 9" on ${holiday9}; "Fictional Holiday 40" on ${holiday40}.`,
