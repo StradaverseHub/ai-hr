@@ -5,6 +5,7 @@ import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {createGradeGroup,updateGradeGroup,deleteGradeGroup,listGradeGroups,listGradeGroupsForMaintenance} from '../packs/leave/service';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import {moduleFunctionAccess} from '../core/module-action-access';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,admin:SessionContext,employee:SessionContext,gradeA:string,gradeB:string;
@@ -39,4 +40,23 @@ it('keeps metadata available to routing consumers while refusing employee mainte
  expect((await listGradeGroups(admin)).find(row=>row.id===group.id)?.gradeIds).toEqual([gradeA]);
  expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(before);
  await expect(withTenant(employee,tx=>tx.execute(sql`insert into app.module_grade_group_source values(pg_current_xact_id(),${b.tenantId}::uuid,${employee.userId}::uuid,${randomUUID()}::uuid,'add')`))).rejects.toThrow();
+});
+
+it('publishes Leave Configuration and separates Grade Group Edit from Leave Type Edit',async()=>{
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'leave_configuration')).toMatchObject({changed:true,capabilities:12});
+  expect(await publishActionCapabilityPackage(owner.client,'leave_configuration')).toMatchObject({changed:false});
+  const group=await createGradeGroup(admin,{name:'Fictional published group',gradeIds:[gradeA]});
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,effect)
+   values(${b.tenantId}::uuid,${admin.userId!}::uuid,'function.leaveConfig.gradeGroups.edit','deny')`;
+  await expect(updateGradeGroup(admin,{id:group.id,name:'Blocked name',gradeIds:[gradeB]})).rejects.toThrow();
+  expect((await listGradeGroupsForMaintenance(admin)).find(row=>row.id===group.id)?.gradeIds).toEqual([gradeA]);
+  expect(await moduleFunctionAccess(admin,'leaveConfig.types','edit')).toBe(true);
+  expect(await moduleFunctionAccess(employee,'leaveConfig.types','view')).toBe(false);
+ }finally{
+  await owner.client`delete from app.access_native_capability_default
+   where capability_id like 'leave_configuration.%' or capability_id like 'function.leaveConfig.%'`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+   where id like 'leave_configuration.%' or id like 'function.leaveConfig.%'`;
+ }
 });

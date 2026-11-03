@@ -1714,3 +1714,4 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | New candidate migration | 0968_employee_master_definition_binding_readiness | 815 | 1793330000368 | 74a144cb9edb2dcf92b5b4136667e509bead4a898fc2541fc6833120eaf08fb9 |
 | New candidate migration | 0969_report_category_binding_readiness | 816 | 1793330000369 | ca17b10e3819bdb0df68343419bcbc40d3b05c92a365277fe90dedd8752c09f8 |
 | New candidate migration | 0970_claim_configuration_binding_readiness | 817 | 1793330000370 | fd5eef5d5902aa6f99ec6dd6f9fae2201c65383176394d0c3f2cba7169b54d53 |
+| New candidate migration | 0971_leave_configuration_binding_readiness | 818 | 1793330000371 | 9ec28825b87c20d19d80e69e7f50fa60c7c87e0a8f7b84bfbd364f23f43901eb |

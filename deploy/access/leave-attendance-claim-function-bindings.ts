@@ -75,3 +75,25 @@ export const CLAIM_CONFIGURATION_CAPABILITY_PUBLICATION={
   'app.claim_configuration_range_close()',
  ],
 } as const;
+
+export const LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION={
+ capabilities:(['view','add','edit','delete'] as const).map(operation=>({
+  id:'leave_configuration.'+operation,scope:'tenant' as const,bindings:[
+   {owner:'app.module_action_allowed',operation:'native-leave-configuration-'+operation},
+   {owner:operation==='view'?'app.module_function_allowed':'app.module_catalogue_action_guard',operation:'exact-maintained-source'},
+  ],
+ })),
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='leaveConfig.types'||descriptor.key==='leaveConfig.gradeGroups'),
+ legacyParityFunction:'app.module_action_legacy_allowed',
+ currentLegacyParityFunction:'app.module_action_current_native_default',
+ functionLegacyParityFunction:'app.module_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.module_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.leave_configuration_bindings_complete()',
+  'app.module_action_allowed(text,text,uuid)',
+  'app.module_function_allowed(text,text,uuid)',
+  'app.module_catalogue_action_guard()',
+  'app.module_grade_group_member_guard()',
+ ],
+} as const;
