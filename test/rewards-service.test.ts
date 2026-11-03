@@ -743,9 +743,14 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
       actor={...admin,userId:await createAppUser(b.tenantId,person.id,'hr_admin'),personId:person.id,grants:undefined};
     }
     const cap=`function.rewards.cancellation.${course}.execute`;
-    const cancel=()=>withTenant(actor,tx=>cancelRewardReviewTx(tx,actor,unitId,before.unit.revision,reason));
+    const decisions=['submit','approve','return','reject','withdraw'].flatMap(action=>
+      ['view',action==='approve'?'approve':'execute'].map(operation=>`function.rewards.decisions.${action}.${operation}`));
+    capabilities.push(...decisions);
+    const cancel=()=>withTenant(actor,tx=>tx.transaction(savepoint=>cancelRewardReviewTx(
+      savepoint,actor,unitId,before.unit.revision,reason)));
     try{
       await publishActionCapabilityPackage(owner.client,'rewards_read');
+      await publishActionCapabilityPackage(owner.client,'rewards_decisions');
       expect(await publishActionCapabilityPackage(owner.client,'rewards_cancellation')).toMatchObject({changed:true,capabilities:5});
       await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
         values(${b.tenantId}::uuid,${actor.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;

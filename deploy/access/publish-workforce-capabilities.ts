@@ -309,9 +309,10 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
   ];
   for(const check of coverageChecks){
    const signature=check+'()';
-   const [prerequisite]=await tx<{trusted:boolean}[]>`select p.prosecdef and p.prorettype='boolean'::regtype
+   const [prerequisite]=await tx<{trusted:boolean}[]>`select p.prosecdef and p.prorettype='boolean'::regtype and p.proowner=c.relowner
     and not has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as trusted
-    from pg_proc p where p.oid=to_regprocedure(${signature})`;
+    from pg_proc p join pg_class c on c.oid='public.access_capability'::regclass
+    where p.oid=to_regprocedure(${signature})`;
    requireInstallation(prerequisite?.trusted,`untrusted completeness predicate ${signature}`);
    const [coverage]=await tx<{complete:boolean}[]>`select ${tx('app')}.${tx(check.slice(4))}() as complete`;
    requireInstallation(coverage?.complete===true,check==='app.organisation_settings_bindings_complete'

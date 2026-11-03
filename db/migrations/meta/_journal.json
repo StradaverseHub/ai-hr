@@ -5020,6 +5020,13 @@
       "when": 1793330000413,
       "tag": "1013_full_permission_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 861,
+      "version": "7",
+      "when": 1793330000414,
+      "tag": "1014_rewards_cancellation_savepoint_boundary",
+      "breakpoints": true
     }
   ]
 }
