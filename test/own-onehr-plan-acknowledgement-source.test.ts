@@ -1,9 +1,10 @@
-/** Authored UNRUN: actual OneHR human share/conversation/acknowledgement owners. Fictional career
+/** Actual OneHR human share/conversation/acknowledgement owners. Fictional career
  * words and goals are human fixture inputs, never generated facts, ratings or promotion decisions. */
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
@@ -37,6 +38,27 @@ describe('own OneHR plan acknowledgement source',()=>{
  });
  it('preserves ordinary UI void/empty payload/null subject and extends only reviewed canonical events',async()=>{
   const a=await fixture(),before=await state(a);expect(await perf.acknowledgeOnehrPlan(a.ctx,a.intent.planId,before.plan.revision)).toBeUndefined();const after=await state(a);expect(after.events).toHaveLength(1);expect(after.events[0].payload).toEqual({});expect(after.events[0].subjectEmploymentId).toBeNull();expect(after.plan.revision).toBe(before.plan.revision+1);expect(after.plan.acknowledgedAt).not.toBeNull();await expect(prepare(a)).rejects.toThrow();await expect(withTenant(a.ctx,tx=>reopenOwnOnehrPlanAcknowledgementEventTx(tx,a.ctx,{employmentId:a.employmentId,eventId:after.events[0].id}))).rejects.toThrow();
+ });
+ it('publishes own acknowledgement and preserves plan View while Edit is denied',async()=>{
+  const a=await fixture(),before=await state(a),cap='function.performance.onehr.planAcknowledgement.edit';
+  try{
+   expect(await publishActionCapabilityPackage(owner.client,'onehr_plan_acknowledgement')).toMatchObject({changed:true,capabilities:2});
+   expect(await publishActionCapabilityPackage(owner.client,'onehr_plan_acknowledgement')).toMatchObject({changed:false});
+   const read=()=>withTenant(a.ctx,tx=>tx.execute(sql`select app.onehr_plan_acknowledgement_action(${a.intent.planId}::uuid,'view') as allowed`));
+   expect(await read()).toEqual([{allowed:true}]);
+   await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+    values(${base.tenantId}::uuid,${a.ctx.userId!}::uuid,${cap},null,'deny')`;
+   expect(await read()).toEqual([{allowed:true}]);
+   await expect(perf.acknowledgeOnehrPlan(a.ctx,a.intent.planId,before.plan.revision)).rejects.toThrow();
+   expect(await state(a)).toEqual(before);
+   await owner.client`delete from access_user_override where tenant_id=${base.tenantId}::uuid and capability_id=${cap}`;
+   await perf.acknowledgeOnehrPlan(a.ctx,a.intent.planId,before.plan.revision);
+   expect((await state(a)).events).toHaveLength(1);
+  }finally{
+   await owner.client`delete from access_user_override where tenant_id=${base.tenantId}::uuid and capability_id=${cap}`;
+   await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+    where id like 'function.performance.onehr.planAcknowledgement.%'`;
+  }
  });
  it('uses exact native revision/time metadata, preserves narrative/goals and reopens without another effect',async()=>{
   const a=await fixture(),before=await state(a),review=await prepare(a);expect(review.engine).toBe('onehr_plan');expect(JSON.stringify(review)).not.toMatch(/Human fixture workshop|Fictional recorded career conversation|aspiration/);const receipt=await confirm(a,review.reviewDigest),after=await state(a);expect(after.events).toHaveLength(1);expect(after.events[0].id).toBe(receipt.eventId);expect(after.events[0].subjectEmploymentId).toBe(a.employmentId);expect(after.events[0].payload).toEqual({version:1,planRevision:after.plan.revision,acknowledgedAt:after.plan.acknowledgedAt!.toISOString()});expect(after.plan.career).toEqual(before.plan.career);expect(after.plan.goals).toEqual(before.plan.goals);expect(after.plan.conversation).toBe(before.plan.conversation);expect(after.plan.managerComment).toBe(before.plan.managerComment);

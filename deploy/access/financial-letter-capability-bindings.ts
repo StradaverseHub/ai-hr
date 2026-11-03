@@ -54,3 +54,17 @@ export const LETTER_OPERATIONS_CAPABILITY_PUBLICATION={
   'app.letter_recipient_function_action(text)',
  ],
 } as const;
+
+export const ONEHR_PLAN_ACKNOWLEDGEMENT_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:FINANCIAL_LETTER_FUNCTIONS.filter(descriptor=>descriptor.key==='performance.onehr.planAcknowledgement'),
+ functionLegacyParityFunction:FINANCIAL_LETTER_CAPABILITY_PUBLICATION.functionLegacyParityFunction,
+ functionCurrentLegacyParityFunction:FINANCIAL_LETTER_CAPABILITY_PUBLICATION.functionCurrentLegacyParityFunction,
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.onehr_plan_acknowledgement_bindings_complete()',
+  'app.onehr_plan_acknowledgement_action(uuid,text)',
+  'app.onehr_plan_acknowledge(uuid,integer,boolean,uuid,text)',
+  'app.financial_onehr_plan_acknowledgement_guard()',
+ ],
+} as const;

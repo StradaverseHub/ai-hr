@@ -1738,3 +1738,4 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | New candidate migration | 0992_rewards_read_binding_readiness | 839 | 1793330000392 | d95eb07577bae8d50b070a1d6e09fc9578d3c51566b9fec45a7a2f4d18638c16 |
 | New candidate migration | 0993_letter_operations_binding_readiness | 840 | 1793330000393 | 544409434835fa46f514f08324f59fe3fcc7c6480dba0aa5f24b7657e982e0d3 |
 | New candidate migration | 0994_pay_component_catalogue_binding_readiness | 841 | 1793330000394 | 0a394a256d8af8b680e034d86488842eed4bf309f95371fd3ca3aa60bbe62d52 |
+| New candidate migration | 0995_onehr_plan_acknowledgement_binding_readiness | 842 | 1793330000395 | 3745f3429a778645161cea2b9fc09b3cb0f7b6f47bcbf6477101c54624db2c32 |
