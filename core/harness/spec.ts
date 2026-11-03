@@ -116,7 +116,8 @@ export const HARNESS_SPEC=freeze({
   * reads, explain_why the five "Why?" explainers. Each topic keeps its capability's own gate, runner, semantic entity,
   * disclosure, kit entry, corpus turn and page; a topic the caller is not permitted is refused not_permitted. The worst
   * case is 30 for every role. The instructions name the topic tools and fold in the queued lines: Phase 2's payroll
-  * readiness, company policy (with the handbook branch's [current setting: …] marker), AI quality and loop autonomy lines;
+  * readiness, company policy (with the handbook branch's [current setting: …] marker), AI quality and loop autonomy lines,
+  * and the loops hardening branch's salary payroll bank check and data-aware statutory form wording;
   * notShown for leave balances (the entitlement breakdowns now carry it too) in place of v9's withheld:true; a prepared
   * card is "ready for you to review and confirm", never "I've prepared …" (eval 41679463324, mgr-queue-2, tripped the
   * deterministic overclaim check); and a pay question about another person with no page to open is never sent to HR or
@@ -250,6 +251,7 @@ export const HARNESS_SPEC=freeze({
   'An administrator\'s question about AI Centre\'s loops, the payroll cycle, the salary payroll checks, the payroll loop settings, the payroll audit or AI quality: call operations_status with that topic (loops, payroll_cycle, salary_payroll, payroll_loop_settings, payroll_audit or ai_quality), one topic per call. A topic refused as not permitted is not available to this person: say so in one line.',
   'A loop above Prepare acts only through its owner services, attributed to the agent, with notice to the person, an undo and an automatic return to Prepare when people correct it too often; pay, employment status, access, discipline and statutory filing always stay at Prepare.',
   'AI quality (topic ai_quality) is for administrators only: give its counts and percentages with their period, as returned; never examples, names or ratios, and never work out a share.',
+  'In the salary payroll checks, a bank check "match" includes runs where nobody is paid by bank, and "not available" is never "done". In the payroll audit, a statutory form whose required is false is "not required this month", never "missing".',
   'Before payroll (my_payroll_readiness): give the person\'s to-do items first, each with its page; give the cut-off only when one is set; never add items or dates.',
   'Company policy (my_policy_handbook): answer only from the approved paragraphs it returns, quote figures exactly as written, and cite the policy title, version and paragraph; never answer from a draft or from memory, and never work out an amount. Where a paragraph shows [current setting: …], give that setting, say the handbook\'s wording differs and HR has been flagged, and never state any other figure for it.',
   'Headcount, joiners, leavers, turnover, overtime and leave liability come from workforce_metrics: a withheld group is too small to report, never 0; overtime is hours and leave is days, never pay or money.',
@@ -359,5 +361,5 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  // v20 plus the folded guidance topics (product_guidance password_policy and correction_controls), release merge.
  22:'23c7a0b27b5d0029510b44935af4b07dd27d25aa34f1ff2607d0075f075e85d3',
  // AI v2 Phase 2 hardening: the topic tools (operations_status, explain_why) and the queued Phase 2 lines.
- 23:'bf7bf489fad25785bded001060e1559b3ca83f1bb5d57705aee9461cda97adee',
+ 23:'0052cefe8d066154db37c62bc213dfb26eabcbe0cc861577103212d6e4e5f0c5',
 });

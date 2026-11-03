@@ -42,7 +42,7 @@ const period=(meaning:string)=>f('period','period','full',meaning);
 const runType=f('runType','label','full','The run\'s type: regular (the salary run), bonus, off_cycle or another additional run.');
 const runSeq=f('runSeq','integer','full','The run\'s number in the month, from 1.');
 const runStatus=f('status','enum','full','draft (not processed yet), processed (calculated, not closed) or closed (approved and closed by a person).',{values:SALARY_RUN_STATUSES});
-const bank=f('bank','enum','full','The Salary payroll loop\'s check of the run\'s bank file against its net pay and headcount: match; total_mismatch or count_mismatch (they differ); blocked (the bank file cannot be produced); not_available (no bank file format to compare); not_ready (not checked yet).',{values:SALARY_BANK_CHECKS});
+const bank=f('bank','enum','full','The Salary payroll loop\'s check of the run\'s bank file against its net pay and headcount: match (it matches, including a run where nobody is paid by bank); total_mismatch or count_mismatch (they differ); blocked (the bank file cannot be produced); not_available (no bank file format to compare: never done); not_ready (not checked yet).',{values:SALARY_BANK_CHECKS});
 
 export const PAYROLL_LOOP_ENTITIES:readonly SemanticEntity[]=freeze([
  {id:'payroll_cycle',label:'Payroll cycle',
@@ -130,7 +130,9 @@ export const PAYROLL_LOOP_ENTITIES:readonly SemanticEntity[]=freeze([
     f('statutory','list','full','Each statutory file.',{of:[f('form','enum','full','epf, socso_eis, pcb_cp39 or hrd.',{values:AUDIT_STATUTORY_FORMS}),
      f('prepared','boolean','full','Prepared or exported.'),f('preparedOn','date','full','When it was first prepared; null when not yet.'),
      f('beforeDue','boolean','full','Prepared on or before its due date; null when not prepared.'),f('filed','boolean','full','Filed, with a receipt recorded by a person.'),
-     f('filedOn','date','full','When it was filed; null when not yet.')]}),
+     f('filedOn','date','full','When it was filed; null when not yet.'),
+     // Spec v23 (the loops hardening branch's core/payroll-audit/status.ts, merged by the coordinator): data-aware forms.
+     f('required','boolean','full','Whether the company must file this form this month (PCB CP39 only with tax to remit, the HRD Corp levy only for a liable company). False: not required this month, never missing.')]}),
     f('bankFiles','integer','full','Bank files recorded for the month.'),
     f('corrections','object','full','Corrections after the run (target zero).',{of:[f('count','integer','bands','Corrections.'),f('withoutRootCause','integer','bands','Still without a root cause.')]}),
     f('findings','object','full','Control findings.',{of:[f('open','integer','bands','Waiting for a disposition.'),f('disposed','integer','bands','Disposed.')]}),
@@ -138,6 +140,25 @@ export const PAYROLL_LOOP_ENTITIES:readonly SemanticEntity[]=freeze([
     f('captures','integer','full','Evidence captures that month.')]}),
    provenanceField]},
 ] satisfies SemanticEntity[]);
+
+/** Spec v23 addendum (coordinator, from claude/aiv2-p2h-loops-hardening @ 592d7ce5e, migration 2011): a standing "expected"
+ * acknowledgement of one payroll check (owner ruling 19), declared here as TEXT ONLY. Its owner (core/loops/acknowledgements.ts)
+ * and table are on that branch, not this one, so it is not registered in the harness's model (./generate.ts terasEntities)
+ * and no read or operations_status topic offers it yet; the coordinator merges and tests them together. If it is offered,
+ * it becomes its own operations_status topic, gated to payroll audit readers (canManagePayroll: administrators and payroll
+ * partners of the company), and the tool worst case stays at 30 or fewer per role (no new tool). It never carries a pay
+ * figure, a person or the reason an administrator typed (free text, `never`). The cut-off reminders of the same migration
+ * (teras_cut_off_reminder) are not declared: if they are ever offered, counts only. */
+export const PAYROLL_CHECK_ACKNOWLEDGEMENT_ENTITY:SemanticEntity=freeze({id:'payroll_check_acknowledgement',label:'Payroll check acknowledgement',
+ meaning:'For payroll audit readers: a standing acknowledgement that one payroll check is expected for one person, one group or the whole company, with its review date. A warning it covers leaves the to-do counts but is still listed as expected; a block is never suppressed. It never changes a calculation, a figure or a check\'s result.',
+ module:'payroll',sensitivity:'ordinary',audience:'admin',rls:'administered_scope',
+ owners:['core/loops/acknowledgements.ts#acknowledgementsTx'],
+ ruleVersion:null,relations:[],page:'/control-tower/loops/loop_payroll_audit',
+ fields:[f('checkId','label','full','The check acknowledged: an Audit loop control (audit:<id>), a payroll anomaly detector (anomaly:<id>) or the net-swing flag (swing:net_swing).'),
+  f('scope','enum','full','Whom it covers: person (one employee, never named here), group (one department) or company.',{values:['person','group','company']}),
+  f('reason','text','never','Free text the administrator typed.'),
+  f('reviewOn','date','full','When it is to be reviewed again; null when no date was set.'),
+  provenanceField]} satisfies SemanticEntity);
 
 const periodInput={name:'period',identifier:false,optional:true as const,schema:{type:'string',pattern:'^\\d{4}-(0[1-9]|1[0-2])$',description:'A pay month, YYYY-MM. Omit for the month the page shows by default.'}};
 export const PAYROLL_LOOP_READS:readonly SemanticRead[]=freeze([

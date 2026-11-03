@@ -36,11 +36,11 @@ describe('spec v18',()=>{
   expect(HARNESS_SPEC_DIGESTS[17]).toBe('818c217a300e529088f03f66042c57dc00de21be787a802a60ed2cf84692e3a8');
   expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]);
  });
- it('adds under 1,500 characters of instructions to v17\'s 5,216 for the eight queued rules (v19: 6,673; v23: 8,329)',()=>{
+ it('adds under 1,500 characters of instructions to v17\'s 5,216 for the eight queued rules (v19: 6,673; v23: 8,571)',()=>{
   // v13 sent 6,148 characters and each model call slowed (run 41577698046); v18 folds slices 2 and 3 into 24 lines, the new
-  // ones short because each tool's own description carries its detail. v23 adds Phase 2's five lines (29 in all).
-  expect(instructions).toHaveLength(29);
-  expect(instructions.join(' ').length).toBeLessThanOrEqual(8400);
+  // ones short because each tool's own description carries its detail. v23 adds Phase 2's six lines (30 in all).
+  expect(instructions).toHaveLength(30);
+  expect(instructions.join(' ').length).toBeLessThanOrEqual(8600);
  });
 });
 

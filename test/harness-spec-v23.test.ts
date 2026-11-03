@@ -11,7 +11,8 @@
 import {describe,expect,it} from 'vitest';
 import {HARNESS_SPEC,HARNESS_SPEC_DIGESTS,harnessSpecDigest} from '../core/harness/spec';
 import {FOLDED_READS,TOPIC_TOOLS,topicRead,topicToolSpecs} from '../core/semantic-model/topic-tools';
-import {TERAS_READS,terasEntity,terasToolSpecs} from '../core/semantic-model/generate';
+import {TERAS_READS,terasEntities,terasEntity,terasToolSpecs} from '../core/semantic-model/generate';
+import {PAYROLL_CHECK_ACKNOWLEDGEMENT_ENTITY} from '../core/semantic-model/entities-payroll-loops';
 import {TERAS_CAPABILITIES} from '../core/explainers/capabilities';
 import {KIT_CAPABILITIES} from '../core/improvement/kit-registry';
 import {LINKABLE_PAGES} from '../lib/product-context/destinations';
@@ -28,15 +29,15 @@ const WHY={pay_difference:'explain_pay_difference',payslip_statutory:'explain_pa
 describe('spec v23',()=>{
  it('is version 23 with its digest recorded, and every earlier digest is kept',()=>{
   expect(HARNESS_SPEC.version).toBe(23);expect(HARNESS_SPEC_DIGESTS[23]).toBe(harnessSpecDigest());
-  expect(HARNESS_SPEC_DIGESTS[23]).toBe('bf7bf489fad25785bded001060e1559b3ca83f1bb5d57705aee9461cda97adee');
+  expect(HARNESS_SPEC_DIGESTS[23]).toBe('0052cefe8d066154db37c62bc213dfb26eabcbe0cc861577103212d6e4e5f0c5');
   expect(HARNESS_SPEC_DIGESTS[22]).toBe('23c7a0b27b5d0029510b44935af4b07dd27d25aa34f1ff2607d0075f075e85d3');
   expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual(Array.from({length:23},(_,index)=>index+1));
  });
  it('is v22 with only its own changes: the v22-shaped spec hashes to v22\'s recorded digest',()=>{
   expect(harnessSpecDigest(v22ShapedSpec())).toBe(HARNESS_SPEC_DIGESTS[22]);
   expect(harnessSpecDigest({...HARNESS_SPEC,version:22})).not.toBe(HARNESS_SPEC_DIGESTS[22]);
-  // v23 changes four lines, adds five, adds offer.topicTools, and rewords the pay-view note and the overclaim retry note.
-  expect(V23_REPLACED).toHaveLength(4);expect(V23_ADDED).toHaveLength(5);expect(instructions).toHaveLength(29);
+  // v23 changes four lines, adds six, adds offer.topicTools, and rewords the pay-view note and the overclaim retry note.
+  expect(V23_REPLACED).toHaveLength(4);expect(V23_ADDED).toHaveLength(6);expect(instructions).toHaveLength(30);
   expect(HARNESS_SPEC.payView.none).toBe(V23_PAY_VIEW_NONE);expect(HARNESS_SPEC.retryNotes.overclaim).toBe(V23_OVERCLAIM_NOTE);
   expect(V22_PAY_VIEW_NONE).not.toBe(V23_PAY_VIEW_NONE);expect(V22_OVERCLAIM_NOTE).not.toBe(V23_OVERCLAIM_NOTE);
   expect(Object.keys(HARNESS_SPEC.offer)).toContain('topicTools');expect(Object.keys(v22ShapedSpec().offer)).not.toContain('topicTools');
@@ -103,6 +104,26 @@ describe('the topic tools',()=>{
  });
 });
 
+describe('the loops hardening branch\'s declarations (coordinator, text only until merged)',()=>{
+ it('declares the payroll check acknowledgement with no pay figure and the typed reason never, offered by no read or topic yet',()=>{
+  const entity=PAYROLL_CHECK_ACKNOWLEDGEMENT_ENTITY;
+  expect(entity.fields.map(field=>[field.name,field.type,field.disclosure])).toEqual([['checkId','label','full'],['scope','enum','full'],['reason','text','never'],
+   ['reviewOn','date','full'],['provenance','object','full']]);
+  expect(entity).toMatchObject({module:'payroll',audience:'admin',rls:'administered_scope',sensitivity:'ordinary'});
+  expect(terasEntities().some(row=>row.id==='payroll_check_acknowledgement')).toBe(false);
+  expect(TERAS_READS.some(read=>read.entity==='payroll_check_acknowledgement')).toBe(false);
+  expect(Object.values(HARNESS_SPEC.offer.topicTools).flat()).not.toContain('payroll_check_acknowledgements');
+ });
+ it('declares the audit\'s data-aware required flag on each statutory form, and the bank check\'s match and not_available meanings',()=>{
+  const companies=terasEntity('payroll_audit_status').fields.find(field=>field.name==='companies')!;
+  const statutory=companies.of!.find(field=>field.name==='statutory')!;
+  expect(statutory.of!.find(field=>field.name==='required')).toMatchObject({type:'boolean',disclosure:'full'});
+  expect(statutory.of!.find(field=>field.name==='required')!.meaning).toMatch(/not required this month, never missing/);
+  const salary=terasEntity('salary_payroll_run').fields.find(field=>field.name==='companies')!.of!.find(field=>field.name==='runs')!.of!.find(field=>field.name==='bank')!;
+  expect(salary.meaning).toMatch(/match \(it matches, including a run where nobody is paid by bank\)/);expect(salary.meaning).toMatch(/not_available \(no bank file format to compare: never done\)/);
+ });
+});
+
 describe('the lines v23 folds in, one each',()=>{
  const line=(start:string)=>{const found=instructions.filter(row=>row.startsWith(start));expect(found,start).toHaveLength(1);return found[0];};
  it('names the topic tools: explain_why for the five "Why?" topics, operations_status for an administrator\'s six',()=>{
@@ -116,6 +137,9 @@ describe('the lines v23 folds in, one each',()=>{
  });
  it('AI quality: administrators only, counts and percentages with their period, never examples, names, ratios or a share worked out',()=>{
   expect(line('AI quality')).toBe('AI quality (topic ai_quality) is for administrators only: give its counts and percentages with their period, as returned; never examples, names or ratios, and never work out a share.');
+ });
+ it('payroll loops: a bank "match" includes runs nobody is paid by bank, "not available" is never done; a form not required is never missing',()=>{
+  expect(line('In the salary payroll checks')).toBe('In the salary payroll checks, a bank check "match" includes runs where nobody is paid by bank, and "not available" is never "done". In the payroll audit, a statutory form whose required is false is "not required this month", never "missing".');
  });
  it('before payroll: to-do items first with their pages, the cut-off only when set, nothing added',()=>{
   expect(line('Before payroll')).toBe('Before payroll (my_payroll_readiness): give the person\'s to-do items first, each with its page; give the cut-off only when one is set; never add items or dates.');
