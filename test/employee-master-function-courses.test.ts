@@ -132,7 +132,7 @@ it('publishes definition actions and keeps Edit separate from View, Add and Dele
  const definition={name:'Fictional editable definition',description:'Fixture',spec,sharedRoleIds:[]};
  try{
   await publishActionCapabilityPackage(owner.client,'employee_master_view');
-  expect(await publishActionCapabilityPackage(owner.client,'employee_master_definition')).toMatchObject({changed:true,capabilities:3});
+  expect(await publishActionCapabilityPackage(owner.client,'employee_master_definition')).toMatchObject({changed:true,capabilities:4});
   expect(await publishActionCapabilityPackage(owner.client,'employee_master_definition')).toMatchObject({changed:false});
   const report=await saveEmployeeMasterReport(ctx,[b.companyId],definition);
   await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)

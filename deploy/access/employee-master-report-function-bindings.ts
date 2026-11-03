@@ -43,14 +43,13 @@ export const EMPLOYEE_MASTER_VIEW_CAPABILITY_PUBLICATION={
 
 export const EMPLOYEE_MASTER_DEFINITION_CAPABILITY_PUBLICATION={
  capabilities:[],
- functions:EMPLOYEE_MASTER_REPORT_FUNCTIONS.map(descriptor=>({
-  ...descriptor,actions:descriptor.actions.filter(action=>action.operation!=='view'),
- })),
+ functions:EMPLOYEE_MASTER_REPORT_FUNCTIONS,
  functionLegacyParityFunction:EMPLOYEE_MASTER_REPORT_DEFAULTS.pure,
  functionCurrentLegacyParityFunction:EMPLOYEE_MASTER_REPORT_DEFAULTS.current,
  legacyGroups:{},
  requiredFunctions:[
   'app.employee_master_definition_bindings_complete()',
+  'app.employee_master_view_bindings_complete()',
   'app.employee_master_definition_allowed(jsonb,text)',
   'app.employee_master_definition_guard()',
   'app.employee_master_schedule_guard()',
