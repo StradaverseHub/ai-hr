@@ -57,9 +57,16 @@ it.each(['roles','person_link','archived'] as const)('refuses stale actual %s wi
  await denied(run());
 });
 it.each(['workforce.view','workforce.maintain'] as const)('preserves the restrictive native %s denial',async capabilityId=>{
- await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"discard-context-fixture","operation":"read-write"}]'::jsonb where id in ('workforce.view','workforce.maintain')`);
- const root=adminCtx(b),before=await withTenant(root,tx=>accessConfigurationStore.loadCurrent(tx,root));const edit={expectedRevision:before.snapshot.revision,command:{kind:'setOverride' as const,userId:ctx.userId!,capabilityId,companyId:b.companyId,effect:'deny' as const}};
- const preview=await previewAccessConfiguration(root,edit,accessConfigurationStore);await saveAccessConfiguration(root,{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);await denied(run());
+ const prior=await owner.client<{id:string;supported:boolean;bindings:unknown}[]>`
+  select id,supported,bindings from access_capability where id in ('workforce.view','workforce.maintain')`;
+ try{
+  await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"discard-context-fixture","operation":"read-write"}]'::jsonb where id in ('workforce.view','workforce.maintain')`);
+  const root=adminCtx(b),before=await withTenant(root,tx=>accessConfigurationStore.loadCurrent(tx,root));const edit={expectedRevision:before.snapshot.revision,command:{kind:'setOverride' as const,userId:ctx.userId!,capabilityId,companyId:b.companyId,effect:'deny' as const}};
+  const preview=await previewAccessConfiguration(root,edit,accessConfigurationStore);await saveAccessConfiguration(root,{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);await denied(run());
+ }finally{
+  for(const row of prior)await owner.client`update access_capability
+   set supported=${row.supported},bindings=${JSON.stringify(row.bindings)}::text::jsonb where id=${row.id}`;
+ }
 });
 it('refuses missing/foreign company, SYSTEM, non-admin and foreign-tenant nominations',async()=>{
  await denied(run(writer));await denied(run({...ctx,userId:undefined}));const employeeId=await createAppUser(b.tenantId,null,'employee');await denied(run({...ctx,userId:employeeId,roles:['employee'],grants:[{role:'employee',companyId:null}]}));
