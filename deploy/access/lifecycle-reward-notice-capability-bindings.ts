@@ -87,3 +87,36 @@ export const LIFECYCLE_TASK_CAPABILITY_PUBLICATION={
   'app.lifecycle_native_effect_begin(text,uuid,text)',
  ],
 } as const;
+
+export const LIFECYCLE_DELIVERY_CAPABILITY_PUBLICATIONS=[
+ {
+  capabilities:[],functions:LIFECYCLE_DELIVERY_FUNCTIONS,legacyGroups:{},
+  functionLegacyParityFunction:'app.lifecycle_delivery_function_legacy_allowed',
+  functionCurrentLegacyParityFunction:'app.lifecycle_delivery_function_current_legacy_allowed',
+  requiredFunctions:[
+   'app.lifecycle_delivery_bindings_complete()','app.onboarding_delivery_task_rows()','app.onboarding_delivery_task_detail(text)',
+   'app.onboarding_delivery_update(uuid,integer,text,jsonb)','app.onboarding_fulfil_item(uuid,integer,text,text)',
+  ],
+ },
+ {
+  capabilities:[],functions:LIFECYCLE_CONVERSATION_FUNCTIONS,legacyGroups:{},
+  functionLegacyParityFunction:'app.lifecycle_conversation_function_legacy_allowed',
+  functionCurrentLegacyParityFunction:'app.lifecycle_conversation_function_current_legacy_allowed',
+  requiredFunctions:[
+   'app.lifecycle_delivery_bindings_complete()','app.onboarding_conversation_rows(uuid,text)',
+   'app.onboarding_conversation_update(uuid,text,uuid,text,jsonb,boolean,boolean)',
+  ],
+ },
+ {
+  capabilities:[],functions:LIFECYCLE_APPROVAL_FUNCTIONS,legacyGroups:{},
+  functionLegacyParityFunction:'app.lifecycle_approval_function_legacy_allowed',
+  functionCurrentLegacyParityFunction:'app.lifecycle_approval_function_current_legacy_allowed',
+  requiredFunctions:['app.lifecycle_delivery_bindings_complete()','app.onboarding_approval_decide(uuid,integer,jsonb,text)'],
+ },
+ {
+  capabilities:[],functions:LIFECYCLE_APPROVAL_ASSIGNMENT_FUNCTIONS,legacyGroups:{},
+  functionLegacyParityFunction:'app.lifecycle_approval_assignment_legacy_allowed',
+  functionCurrentLegacyParityFunction:'app.lifecycle_approval_assignment_current_legacy_allowed',
+  requiredFunctions:['app.lifecycle_delivery_bindings_complete()','app.onboarding_approval_assign(uuid,integer,text,text,text)'],
+ },
+] as const;

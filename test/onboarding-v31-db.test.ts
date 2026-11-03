@@ -505,6 +505,30 @@ describe('V3.1 onboarding database and authorization', () => {
         await v9OwnTask(tech,{caseId:updated.case.id,revision:updated.revision,taskId:'welcome',status:'done',reason:''});
         expect((await onboardingList(admin))[0]!.case.tasks.find(task=>task.id==='welcome')?.status).toBe('done');
     });
+    it('publishes delivery courses and leaves the assigned item visible under Fulfilment Execute denial',async()=>{
+        const row=await prepared(),itemId=row.case.requisitions[0]!.items[0]!.id;
+        const cap='function.lifecycle.shared.fulfilment.execute';
+        const keys=['handover','requisitionNotes','fulfilment','conversations','approvals','approvalAssignments']
+            .map(key=>'function.lifecycle.shared.'+key+'.%').concat('function.lifecycle.self.acknowledgement.%');
+        try{
+            expect(await publishActionCapabilityPackage(owner.client,'lifecycle_delivery')).toMatchObject({changed:true,capabilities:14});
+            expect(await publishActionCapabilityPackage(owner.client,'lifecycle_delivery')).toMatchObject({changed:false});
+            const read=()=>onboardingTasks(tech).then(rows=>rows.find(task=>task.kind==='team'&&task.caseId===row.case.id));
+            expect((await read())?.itemIds).toContain(itemId);
+            await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+             values(${b.tenantId}::uuid,${tech.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+            expect((await read())?.itemIds).toContain(itemId);
+            const fulfil=()=>onboardingCommand(tech,row.case.id,row.revision,{type:'fulfil',itemId,status:'done'});
+            await expect(fulfil()).rejects.toThrow();
+            expect((await onboardingList(admin)).find(item=>item.case.id===row.case.id)?.revision).toBe(row.revision);
+            await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+            await fulfil();
+            expect((await onboardingList(admin)).find(item=>item.case.id===row.case.id)?.case.requisitions[0]?.items[0]?.state).toBe('ready');
+        }finally{
+            await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+            await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like any(${keys}::text[])`;
+        }
+    });
     it('records only native handover and note effects for a hidden assigned team',async()=>{
         let row=await prepared();
         const id=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Delivery scope '+id})`;
