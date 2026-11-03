@@ -1,5 +1,4 @@
-/** Exact native courses, not a publication/completion attestation. Public command ACL,
- * consumer cutover, runtime parity and complete raw closure remain held for review. */
+/** Exact Rewards courses and the owners of their published read and write boundaries. */
 import type {FunctionActionDescriptor,FunctionOperation} from './function-action-contract';
 
 const decisionCourses=[
@@ -53,8 +52,8 @@ export const REWARDS_FUNCTIONS:readonly FunctionActionDescriptor[]=[
   ]}))})),
  {key:'rewards.posting',scope:'company',moduleKey:'rewards',labelKey:'rewards.post',kind:'native_acl',course:'assigned',screenKey:'rewards',href:'/rewards',employeeBearing:true,
   actions:(['view','execute']as const).map(operation=>({operation,parentCapability:null,delegationFloorFunction:'app.rewards_function_legacy_allowed',bindings:[
-   {owner:'app.reward_post_command',operation:'fixed-human-post-frontdoor'},
-   {owner:'app.reward_post_receipt_command',operation:'fixed-human-post-own-event-receipt'},
+   {owner:'app.reward_post_review',operation:'fixed-human-post-and-own-event-receipt'},
+   {owner:'app.reward_posting_published_source_guard',operation:'exact-approved-source-and-posting-proof'},
    {owner:'app.reward_post_admission',operation:'native-payroll-seat-and-company-admin'},
    {owner:'app.reward_post_sources',operation:'exact-locked-native-financial-sources'},
    {owner:'app.reward_post_native',operation:'fixed-salary-grade-input-funding-post'},
@@ -168,5 +167,18 @@ export const REWARDS_CANCELLATION_CAPABILITY_PUBLICATION={
   'app.rewards_cancellation_bindings_complete()',
   'app.reward_cancel_review(uuid,integer,text)',
   'app.rewards_delete_current_legacy_allowed(uuid,uuid,text,uuid)',
+ ],
+} as const;
+
+export const REWARDS_POSTING_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:REWARDS_FUNCTIONS.filter(descriptor=>descriptor.key==='rewards.posting'),
+ functionLegacyParityFunction:REWARDS_FUNCTION_DEFAULTS.pure,
+ functionCurrentLegacyParityFunction:REWARDS_FUNCTION_DEFAULTS.current,
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.rewards_posting_bindings_complete()',
+  'app.reward_post_review(uuid,integer,uuid)',
+  'app.reward_posting_published_source_guard()',
  ],
 } as const;

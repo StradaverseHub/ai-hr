@@ -122,11 +122,31 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
  await expect(owner.client`insert into access_capability(id,scope) values('function.payComponents.catalogueRegistrationRegression.destroy','tenant')`).rejects.toMatchObject({code:'23514'});
 });
 
-it('reports registered actions without a package and leaves the full publisher closed',async()=>{
+it('publishes the entire registered action catalogue and remains idempotent',async()=>{
  const before=await snapshot();
- await expect(publishAllActionCapabilities(owner.client))
-  .rejects.toThrow(/registry coverage differs .*function\.rewards\.posting\.execute/);
- expect(await snapshot()).toEqual(before);
+ const defaults=await owner.client`select capability_id from app.access_native_capability_default`;
+ try{
+  expect(await publishAllActionCapabilities(owner.client)).toMatchObject({changed:true});
+  const missing=await owner.client`select a.capability_id from app.access_function_action a
+   join access_capability c on c.id=a.capability_id where not c.supported or jsonb_array_length(c.bindings)=0`;
+  expect(missing).toEqual([]);
+  expect(await publishAllActionCapabilities(owner.client)).toMatchObject({changed:false,tenantsFenced:0});
+ }finally{
+  const uninstalled=before.catalog.filter(row=>!row.supported).map(row=>row.id);
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${uninstalled}::text[])`;
+  await owner.client`delete from app.access_native_capability_default
+   where not (capability_id=any(${defaults.map(row=>row.capability_id)}::text[]))`;
+ }
+});
+it('refuses the full publisher when the exact Rewards posting guard is disabled',async()=>{
+ const before=await snapshot();
+ await owner.client`alter table public.reward_unit disable trigger z_reward_posting_published_source`;
+ try{
+  await expect(publishAllActionCapabilities(owner.client)).rejects.toThrow(/reported incomplete enforcement/);
+  expect(await snapshot()).toEqual(before);
+ }finally{
+  await owner.client`alter table public.reward_unit enable trigger z_reward_posting_published_source`;
+ }
 });
 it('publishes Workforce Records and preserves the separate Edit denial',async()=>{
  await publishWorkforceCapabilities(owner.client);

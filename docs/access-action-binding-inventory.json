@@ -65873,6 +65873,7 @@
         "app.function_action_allowed",
         "app.reward_admin",
         "app.reward_funding",
+        "app.reward_post_review",
         "app.reward_roles",
         "app.reward_senior_awards_for_post",
         "packs/rewards/service.ts:requireRewardAction"
@@ -68361,6 +68362,7 @@
         "app.function_action_allowed",
         "app.reward_admin",
         "app.reward_funding",
+        "app.reward_post_review",
         "app.reward_roles",
         "app.reward_senior_awards_for_post",
         "packs/rewards/service.ts:requireRewardAction"

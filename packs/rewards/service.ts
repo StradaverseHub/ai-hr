@@ -1199,6 +1199,12 @@ async function postRewardEffectTx(tx:Tx,ctx:SessionContext,unitId:string,revisio
     return { alreadyPosted: false, ...(returnEventId?{postedEventId}: {}) };
 }
 
+async function postRewardThroughInstalledPort(tx: Tx, unitId: string, revision: number, batchId?: string | null) {
+  const [row] = await runRewardCommandPort(() => tx.execute<{ result: { alreadyPosted: boolean; postedEventId?: string } }>(sql`
+    select app.reward_post_review(${unitId}::uuid,${revision}::integer,${batchId ?? null}::uuid) as result`));
+  return row.result;
+}
+
 export async function postRewardUnit(ctx: SessionContext, unitId: string, revision: number, batchId?: string) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if (batchId) idSchema.parse(batchId);
@@ -1210,6 +1216,10 @@ export async function postRewardUnit(ctx: SessionContext, unitId: string, revisi
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const prepared=await prepareRewardPostTx(tx,ctx,unitId,revision,batchId);
     if(prepared.alreadyPosted)return {alreadyPosted:true};
+    if (await rewardActionPortInstalled(tx, 'function.rewards.posting.execute')) {
+      const effect = await postRewardThroughInstalledPort(tx, unitId, revision, batchId);
+      return { alreadyPosted: effect.alreadyPosted };
+    }
     return postRewardEffectTx(tx,ctx,unitId,revision,batchId,prepared);
 
   });
@@ -1311,7 +1321,9 @@ async function reviewedRewardPostPreflightTx(tx:Tx,supplied:SessionContext,selec
 export async function prepareReviewedRewardPostTx(tx:Tx,ctx:SessionContext,p:ReviewedRewardPostSelection){const prepared=await reviewedRewardPostPreflightTx(tx,ctx,p);return{review:prepared.review,reviewedDigest:prepared.reviewedDigest};}
 export async function postReviewedRewardUnitTx(tx:Tx,ctx:SessionContext,p:ReviewedRewardPostSelection,reviewedDigest:string){
  const prepared=await reviewedRewardPostPreflightTx(tx,ctx,p);if(prepared.reviewedDigest!==reviewedDigest)throw new RewardError('The approved posting source changed.');
- const effect=await postRewardEffectTx(tx,prepared.ctx,prepared.p.unitId,prepared.p.revision,prepared.p.batchId??undefined,prepared.prepared,true);
+ const effect=await rewardActionPortInstalled(tx,'function.rewards.posting.execute')
+  ? await postRewardThroughInstalledPort(tx,prepared.p.unitId,prepared.p.revision,prepared.p.batchId)
+  : await postRewardEffectTx(tx,prepared.ctx,prepared.p.unitId,prepared.p.revision,prepared.p.batchId??undefined,prepared.prepared,true);
  if(!effect.postedEventId)throw new RewardError('The native posting event is unavailable.');
  const receipt=await readReviewedRewardPostReferenceTx(tx,prepared.ctx,{unitId:prepared.p.unitId,postedEventId:effect.postedEventId});
  if(!receipt)throw new RewardError('The canonical posting reference is unavailable.');return receipt;

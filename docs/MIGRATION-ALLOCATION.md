@@ -1755,3 +1755,5 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | New candidate migration | 1009_lifecycle_hr_removal_binding_readiness | 856 | 1793330000409 | 22a7a4a2cc58fc56228a61a43f7b63d038e980eaa58ddd9a0d0e442809748fc4 |
 | New candidate migration | 1010_rewards_decision_command_port | 857 | 1793330000410 | 154d7a16d3ecddb4e54b18de8a35aa385ae23981b842e71ffeae7077a9679133 |
 | New candidate migration | 1011_rewards_cancellation_command_port | 858 | 1793330000411 | 8a55abe3b9805570a2d753098c08bc706fa9729fb01e1976802d0037be6062ed |
+| New candidate migration | 1012_rewards_posting_command_port | 859 | 1793330000412 | c8d4b8092bf5af61d690f362bdbb6ecaf0adc2654e17fa07bab80db67b2017da |
+| New candidate migration | 1013_full_permission_binding_readiness | 860 | 1793330000413 | c7e7306169e0fedeec712bad739554e933149cf303ed41eba969e7cbd2345742 |

@@ -5006,6 +5006,20 @@
       "when": 1793330000411,
       "tag": "1011_rewards_cancellation_command_port",
       "breakpoints": true
+    },
+    {
+      "idx": 859,
+      "version": "7",
+      "when": 1793330000412,
+      "tag": "1012_rewards_posting_command_port",
+      "breakpoints": true
+    },
+    {
+      "idx": 860,
+      "version": "7",
+      "when": 1793330000413,
+      "tag": "1013_full_permission_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

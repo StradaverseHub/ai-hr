@@ -373,6 +373,31 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     }finally{await owner.db.execute(sql`drop policy rewards_metadata_forbid_raw on reward_entry`);}
     expect((await view()).unit.status).toBe('draft');
   });
+  it.each([false,true])('publishes the fixed posting command and receipts for reviewed=%s',async reviewed=>{
+    const revision=await approve(),batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)});
+    const selection={unitId,revision,batchId:batch.batchId},capabilities=['function.rewards.posting.view','function.rewards.posting.execute'];
+    try{
+      expect(await publishActionCapabilityPackage(owner.client,'rewards_posting')).toMatchObject({changed:true,capabilities:2});
+      await expectPgRefusal(withTenant(admin,tx=>tx.execute(sql`update reward_unit set status='posted'
+        where id=${unitId}::uuid`)),'42501','Published Reward posting requires its fixed command');
+      if(reviewed){
+        const receipt=await withTenant(admin,async tx=>{
+          const prepared=await prepareReviewedRewardPostTx(tx,admin,selection);
+          return postReviewedRewardUnitTx(tx,admin,selection,prepared.reviewedDigest);
+        });
+        expect(receipt).toMatchObject({unitId,currentStatus:'posted',postedRevision:revision});
+      }else{
+        expect(await postRewardUnit(admin,unitId,revision,batch.batchId)).toEqual({alreadyPosted:false});
+      }
+      expect(await postRewardUnit(admin,unitId,revision,batch.batchId)).toEqual({alreadyPosted:true});
+      const [proof]=await owner.client`select completed,posted_event_id from app.reward_post_native_context
+        where unit_id=${unitId}::uuid`;
+      expect(proof).toMatchObject({completed:true,posted_event_id:expect.any(String)});
+    }finally{
+      await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${capabilities}::text[])`;
+      await owner.client`delete from app.access_native_capability_default where capability_id=any(${capabilities}::text[])`;
+    }
+  });
   it('observes the original app native prepare and enact under pre-existing immediate constraints',async()=>{
     // Uses the original exported native transaction owners and their real app ACL, with no
     // private posting constructor, new grants, bridge, policy, flag or source replacement.
