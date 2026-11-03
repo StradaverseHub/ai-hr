@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      EXPECTED_SOURCE: 954babf3d54f4c180930e24c8fc6068fabf60793
+      EXPECTED_SOURCE: 0fd97bc4f9adf1924e155bbb0f1183d95ceb95bf
       CI: '1'
       EXPO_NO_TELEMETRY: '1'
       EXPO_PUBLIC_RUNTIME_CONNECTIONS: '1'
@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: 954babf3d54f4c180930e24c8fc6068fabf60793
+          ref: 0fd97bc4f9adf1924e155bbb0f1183d95ceb95bf
           path: source
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
