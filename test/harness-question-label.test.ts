@@ -22,8 +22,9 @@ async function turn(question:string,script:readonly ScriptStep[]=[],extra:Partia
 }
 
 describe('the person\'s message to the model (spec v12)',()=>{
- it('is spec 12 with its digest recorded, and the label is this fixed sentence',()=>{
-  expect(HARNESS_SPEC.version).toBe(12);expect(HARNESS_SPEC_DIGESTS[12]).toBe(harnessSpecDigest());
+ it('is spec 12 or later with its digest recorded, and the label is this fixed sentence',()=>{
+  // Spec 13 (AI v2 Phase 1, slice 1) keeps the label unchanged (test/harness-spec-v13.test.ts).
+  expect(HARNESS_SPEC.version).toBeGreaterThanOrEqual(12);expect(HARNESS_SPEC_DIGESTS[HARNESS_SPEC.version]).toBe(harnessSpecDigest());
   expect(HARNESS_SPEC.question.label).toBe(LABEL);
  });
  it('sends the words labelled and unchanged, and keeps the bare words in both transcripts',async()=>{

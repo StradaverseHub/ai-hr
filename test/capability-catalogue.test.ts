@@ -174,12 +174,29 @@ describe('product_capabilities in a harness turn',()=>{
   expect(sent.entries.map(row=>row.id)).toEqual(own);expect(sent.totalRows).toBe(IMPORTS.length);
   expect(sent.entries.map(row=>row.title)).toContain('Import payroll history (past payslips from a previous system)');
   expect(result.reads).toContain('product_capabilities');
+  // Spec v13: suggest_action names the purposes of the declared actions this caller holds, so it can be called directly.
+  const suggest=model.requests[0].tools.find(tool=>tool.name==='suggest_action')!.description;
+  expect(suggest).toContain('What these actions do: leave.apply: Apply for leave for yourself.');
+  expect(suggest).toContain('claims.submit: Submit an expense claim for yourself.');
+  expect(suggest).not.toContain('payroll.close:');expect(suggest).not.toContain('employees.import:');
  });
- it('is not offered on a turn about another person, which gets no caller context',async()=>{
-  const {hrAdmin}=await callers();
+ it('is kept on a turn about another person (spec v13), listing only the caller\'s own capabilities and no private read',async()=>{
+  // Spec v13: product_capabilities is a public context tool, like available_actions: it lists what the caller may do,
+  // never anything about the person named, so "can you …?" can be answered on a gated turn too.
+  const {hrAdmin,employee}=await callers();
   const {result,model}=await turn(hrAdmin,'Can you import Siti\'s leave balance?',{kind:'import'});
   expect(result.trace.gate.reason).toBe('other_person');
-  expect(model.requests[0].tools.map(tool=>tool.name)).not.toContain('product_capabilities');
-  expect(result.trace.calls.map(call=>call.status)).toEqual(['not_offered']);
+  const offered=model.requests[0].tools.map(tool=>tool.name);
+  expect(offered).toContain('product_capabilities');
+  for(const privateRead of ['my_leave_balances','my_leave_requests','approval_queue'])expect(offered,privateRead).not.toContain(privateRead);
+  expect(result.trace.calls.map(call=>call.status)).toEqual(['ok']);
+  const sent=lastToolResult(model.requests[1]) as {entries:{id:string}[];totalRows:number};
+  expect(sent.entries.map(row=>row.id)).toEqual((await capabilityCatalogueFor(hrAdmin)).filter(row=>row.kind==='import').map(row=>row.id));
+  expect(sent.totalRows).toBe(IMPORTS.length);expect(JSON.stringify(sent)).not.toMatch(/Siti/);
+  expect(result.reads).toEqual(['product_capabilities']);
+  // An employee asking the same is told from their own catalogue: no import is theirs.
+  const asEmployee=await turn(employee,'Can you import Siti\'s leave balance?',{kind:'import'});
+  expect(asEmployee.result.trace.gate.reason).toBe('other_person');
+  expect(lastToolResult(asEmployee.model.requests[1])).toMatchObject({ok:true,entries:[],totalRows:0});
  });
 });

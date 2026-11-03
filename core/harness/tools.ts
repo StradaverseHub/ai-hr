@@ -31,7 +31,7 @@ import {linkablePathsFor} from '../../lib/product-context/destinations';
 import {visibleModuleCodes} from '../../lib/nav-entitlements';
 import {contextToolSpecs,TERAS_READS,terasToolSpecs} from '../semantic-model/generate';
 import {terasCapabilitiesFor} from '../explainers/capabilities';
-import {SEMANTIC_READS} from '../semantic-model/entities';
+import {SEMANTIC_ACTIONS,SEMANTIC_READS} from '../semantic-model/entities';
 import type {EntityId} from '../semantic-model/types';
 import {asksToBypassReview,prepareSuggestedProposal} from '../proposals/suggested';
 import {LEAVE_APPLY_FORM_ROUTE} from '../proposals/leave-apply';
@@ -59,13 +59,22 @@ export type ToolCandidates=Readonly<{bindings:readonly ToolBinding[];
  destinations:readonly string[]}>;
 export type ToolProvider=(ctx:SessionContext,scope:ToolScope,actions:boolean)=>Promise<ToolCandidates>;
 
-const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change from available_actions. For leave.apply, details may carry leaveType, startDate and endDate (YYYY-MM-DD), durationType (full_day, half_day_am or half_day_pm) and reason, each only from the person\'s own words; leave out what they did not say. Nothing is submitted.'
+const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change: action is one of this person\'s action ids (available_actions gives every purpose and the details each page collects). For leave.apply, details may carry leaveType, startDate and endDate (YYYY-MM-DD), durationType (full_day, half_day_am or half_day_pm) and reason, each only from the person\'s own words; leave out what they did not say. Nothing is submitted.'
  // AI v2 W2: the attendance requests prepared from chat (core/proposals/attendance-request.ts).
  +' For attendance.correction.request, details may carry date (YYYY-MM-DD), checkIn and checkOut (HH:MM, 24-hour) and reason; for attendance.overtime.request, date, plannedStartTime and plannedEndTime (HH:MM, 24-hour) and reason. The same rule applies: only what the person said.'
  // AI v2 W2: own claims and own profile changes (core/proposals/claim-submit.ts, claim-cancel.ts, profile-change.ts).
  +' For claims.submit, details may carry claimType, claimItem, amount (exactly as the person stated it), incurredOn (YYYY-MM-DD) and description. For claims.cancel, details may carry incurredOn.'
  +' For ess.profile.request, details carry change (address, emergency_contact, dependant or bank) and only what the person said: addressLine1, addressLine2, addressLine3, postcode, city, state; contactName, relationship; dependantName, relationship, dateOfBirth (YYYY-MM-DD), gender; bankName.'
  +' Never put a bank account, phone or identity number in details: the system reads those from the person\'s own message.';
+/** Spec v13 (aiv2-speed-findings-20261103, cause 1b): suggest_action is called without available_actions when the action is
+ * clear, so its description names the purpose of each declared action (core/semantic-model/entities.ts SEMANTIC_ACTIONS)
+ * this caller holds, from the same catalogue rows available_actions returns. Only those eight: the other ids keep their
+ * purposes in available_actions. Pure. */
+const DECLARED_ACTIONS:ReadonlySet<string>=new Set(SEMANTIC_ACTIONS.map(action=>action.id));
+export function suggestDescription(catalogue:readonly Readonly<{id:string;purpose:string}>[]):string{
+ const purposes=catalogue.filter(row=>DECLARED_ACTIONS.has(row.id)).map(row=>row.id+': '+row.purpose);
+ return purposes.length?SUGGEST_DESCRIPTION+' What these actions do: '+purposes.join(' '):SUGGEST_DESCRIPTION;
+}
 /** Issue 10: a leave application from chat with details missing or unclear. One question, never a guess. */
 const ASK_NOTE='Some details for this leave application are missing or unclear (listed in missing). Nothing is prepared. Ask the person one short question for them; when options are listed, show them numbered as given and ask for the number. Never guess a leave type or a date.';
 /** AI v2 W2: an attendance correction or overtime request with details missing (the date, a time, a clock-in to pair with
@@ -119,7 +128,7 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  // Disclosed under its declared entity (core/semantic-model/entities-recommend.ts): pending applicants and dates are
  // another person's, so they leave as placeholders.
  const suggest:ToolBinding[]=catalogue.length?[{name:HARNESS_SPEC.offer.suggestTool,kind:'suggest',entity:'suggested_action',identifierInputs:[],
-  spec:{name:HARNESS_SPEC.offer.suggestTool,description:SUGGEST_DESCRIPTION,inputSchema:{type:'object',properties:{action:{type:'string',enum:catalogue.map(row=>row.id)},details:{type:'object',additionalProperties:{type:'string'}}},required:['action'],additionalProperties:false} as AiToolSpec['inputSchema']},
+  spec:{name:HARNESS_SPEC.offer.suggestTool,description:suggestDescription(catalogue),inputSchema:{type:'object',properties:{action:{type:'string',enum:catalogue.map(row=>row.id)},details:{type:'object',additionalProperties:{type:'string'}}},required:['action'],additionalProperties:false} as AiToolSpec['inputSchema']},
   async run(input){
    // A request to skip the review or decide in bulk gets no decision suggestion at all (model run 41360905376).
    if(typeof input.action==='string'&&/^approvals\..+\.decide$/.test(input.action)&&asksToBypassReview(scope.personWords))

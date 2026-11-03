@@ -17,10 +17,12 @@ describe('reply style (spec v9)',()=>{
   expect(instructions).toMatch(/"1\." numbered steps/);
   expect(instructions).toMatch(/Bold only the key figure or term/);
   expect(instructions).toMatch(/\[Page name\]\(path\), using only paths product_destinations returns/);
-  expect(instructions).toMatch(/four to six short bullets of what you can do for this person in their role, then one example question/);
+  // Spec v13 (AI v2 W1): drawn from product_capabilities' areas for this person, naming nothing it does not list.
+  expect(instructions).toMatch(/When asked what you can help with, call product_capabilities with no filter\. Answer with four to six short bullets of what you can do for this person in their role, drawn from its areas, then one example question they could ask\. Never name anything it does not list\./);
   expect(instructions).not.toMatch(/short plain reply/);
-  // Owner, 3 November 2026: ask rather than guess, and offer to do it rather than point at a page.
-  expect(instructions).toMatch(/could mean more than one action, ask one short question with a numbered list of the matching options available_actions returns/);
+  // Owner, 3 November 2026: ask rather than guess, and offer to do it rather than point at a page. Spec v13: the options
+  // are the catalogue's entries for this person, numbered by title.
+  expect(instructions).toMatch(/could mean more than one thing this person can do \(such as "help me import data"\), call product_capabilities with the matching kind or area\. Ask one short question with its entries numbered by title, grouped by area when there are more than six; never guess which they meant\./);
   // Spec v11: "Yes, I can …" when an action is listed; the card carries the page (test/teras-harness-v11.test.ts).
   expect(instructions).toMatch(/start with "Yes, I can …" and call suggest_action, so its card comes with your reply; never open with "I can't" when an action is listed\. Do not link that page in your text/);
   expect(instructions).toMatch(/When no listed action fits, say so in one line/);
@@ -33,7 +35,7 @@ describe('reply style (spec v9)',()=>{
   expect(instructions).toMatch(/withheld:true means the company hides some parts of that row; every figure that is present is real/);
   expect(instructions).toMatch(/never show a hidden part as 0/);
   // Spec v10, issue 10: a leave application with a missing or unclear detail is one numbered question, never a guess.
-  expect(instructions).toMatch(/If it reports missing details, ask for them in one short question, numbering any options it lists as given; never guess them\./);
+  expect(instructions).toMatch(/If suggest_action reports missing details, ask for them in one short question, numbering any options it lists as given; never guess them\./);
   expect(HARNESS_SPEC.version).toBeGreaterThanOrEqual(10);
  });
  it('passes a structured reply that links only to this person\'s destinations',()=>{
