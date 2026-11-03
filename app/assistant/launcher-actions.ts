@@ -78,7 +78,9 @@ async function askThroughHarness(session:SessionContext,route:Extract<Conversati
   const continuation=await withoutDeletedChat(session,input.continuation);
   const turn=await runConversationTurn(session,route,{question:input.question,companyId,locale:await getLocale(),...(continuation===undefined?{}:{continuation}),...(input.importFile?{importFile:input.importFile}:{})});
   // AI v2 W11: the case route's form is linkable on its own turn, so a spec case clause naming it renders as a link.
-  const answer=await ConversationReply({turn,links:await replyLinksFor(session,turn.suggestion?.reviewRoute,turn.caseRoute)});
+  // An approver's decision card names the applicant, read now from its review for this approver: never in the card's
+  // facts, the stored turn or anything the model sees.
+  const answer=await ConversationReply({turn,links:await replyLinksFor(session,turn.suggestion?.reviewRoute,turn.caseRoute),applicants:await decisionApplicants(session,turn)});
   // Stored only once the reply could be shown, so a reopened chat holds no turn the person never saw.
   const chatId=await storeTurn(session,{question:input.question,conversationScope:input.conversationScope,companyId,turn});
   return {ok:true,exchangeId:'teras-'+turn.turnId,answer,conversationToken:turn.continuation,...(chatId?{chatId}:{})};
@@ -92,6 +94,19 @@ async function askThroughHarness(session:SessionContext,route:Extract<Conversati
 }
 const unclassifiedFailure=(error:unknown)=>{const code=(error as {code?:unknown}|null)?.code;
  return {name:error instanceof Error?error.name:typeof error,code:typeof code==='string'&&/^[A-Z0-9_]{1,40}$/.test(code)?code:null,supportId:randomUUID()};};
+
+/** AI v2 W2 slice 3: the applicant's name for each approver decision card this turn, by proposal id, read through the
+ * decision custody as this approver (core/assistant-actions/assigned-decision-proposal-confirm.ts). A card whose name
+ * cannot be read keeps its title without one. */
+async function decisionApplicants(session:SessionContext,turn:ConversationTurn):Promise<ReadonlyMap<string,string>>{
+ const decisions=turn.proposals.filter(proposal=>proposal.body.what.action==='approvals.claim.decide'||proposal.body.what.action==='approvals.attendance.decide');
+ if(!decisions.length)return new Map();
+ try{
+  const {assignedDecisionApplicantName}=await import('@/core/assistant-actions/assigned-decision-proposal-confirm');
+  const named=await Promise.all(decisions.map(async proposal=>[proposal.body.id,await assignedDecisionApplicantName(session,proposal)] as const));
+  return new Map(named.flatMap(([id,name])=>name?[[id,name] as const]:[]));
+ }catch{return new Map();}
+}
 
 /** A continuation of a stored chat its owner has deleted (a stale client, such as the side panel, still holding it) is
  * dropped, so the turn starts a new conversation and so a new chat id; the deleted chat's words are not sent on. The

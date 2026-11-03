@@ -78,3 +78,22 @@ export function editAssignedDecisionProposal(supplied:SessionContext,proposal:un
   return checked.ok?Object.freeze({ok:true as const,href:checked.proposal.body.review.href}):Object.freeze({ok:false as const,reason:checked.reason});
  }catch{return Object.freeze({ok:false as const,reason:'unavailable' as const});}
 }
+
+/** AI v2 W2 slice 3 (review): the applicant's name on an approver's decision card, read when the card is drawn. The card
+ * must verify for THIS caller and its sealed review must reopen through the custody as the caller, which admits only
+ * the request's current assigned approver; the name is the one the review holds for them. It is never put in the
+ * proposal's facts, and nothing here reaches the model: the chat command calls it only to render the card. Null when
+ * the card does not verify, the review is not open for the caller, or anything fails. Never throws. */
+export async function assignedDecisionApplicantName(supplied:SessionContext,proposal:unknown,now:Date=new Date()):Promise<string|null>{
+ const ctx=capture(supplied);
+ try{
+  const checked=verified(ctx,proposal,now);
+  if(!checked.ok)return null;
+  const {review,forWhom}=checked.proposal.body;
+  const store=checked.action===ASSIGNED_CLAIM_DECISION_ACTION?claimDecisionReviews:attendanceDecisionReviews;
+  const held=await store.reopen(ctx,review.reference);
+  if(held.kind!=='prepared'||held.review.content.subjectId!==forWhom.subjectId)return null;
+  const name=held.review.review.employeeName.trim();
+  return name?name:null;
+ }catch{return null;}
+}

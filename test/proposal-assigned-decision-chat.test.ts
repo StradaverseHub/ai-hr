@@ -20,7 +20,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {issueProposal,type Proposal} from '../core/proposals/proposal';
 import {prepareSuggestedProposal} from '../core/proposals/suggested';
 import {decisionInWords,wordsNameEmployee,wordsNameDay} from '../core/proposals/assigned-decide';
-import {confirmAssignedDecisionProposal,editAssignedDecisionProposal} from '../core/assistant-actions/assigned-decision-proposal-confirm';
+import {assignedDecisionApplicantName,confirmAssignedDecisionProposal,editAssignedDecisionProposal} from '../core/assistant-actions/assigned-decision-proposal-confirm';
 import {claimDecisionReviews} from '../core/assistant-actions/assigned-decision-review-store';
 import {ASSIGNED_CLAIM_DECISION_ACTION} from '../lib/assistant-actions/assigned-decision-contract';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -98,6 +98,11 @@ describe('an assigned claim decision from chat',()=>{
   expect(proposal.body.checks.map(check=>check.check)).toEqual(['ai_controls_unpaused','assigned_approver_current','not_own_request','request_still_pending']);
   // The card names no one: the applicant stays in the sealed review.
   expect(JSON.stringify(proposal)).not.toContain('Siti');
+  // Drawn for the approver, the card names the applicant from that review; for anyone else, or a tampered card, nothing.
+  expect(await assignedDecisionApplicantName(mgr,proposal)).toBe('Siti Fictional');
+  for(const who of [otherMgr,stranger,sitiCtx])expect(await assignedDecisionApplicantName(who,proposal),String(who.userId)).toBeNull();
+  expect(await assignedDecisionApplicantName(mgr,{...clone(proposal),signature:{alg:'HMAC-SHA256',value:'0'.repeat(64)}})).toBeNull();
+  expect(await assignedDecisionApplicantName(mgr,'not a card')).toBeNull();
   // Nothing happens without Confirm.
   expect(await claimRow(id)).toBe('pending');expect(await decisions(id)).toEqual([]);
   expect(await reviews()).toEqual([expect.objectContaining({id:proposal.body.review.reference,state:'awaiting_confirmation'})]);
@@ -109,6 +114,8 @@ describe('an assigned claim decision from chat',()=>{
   // A second press replays the recorded decision; the claims service decided once, as the approver.
   expect(await confirmAssignedDecisionProposal(mgr,{proposal,confirm:true})).toEqual(first);
   expect(await decisions(id)).toEqual([{event_type:'claim-request.approved',actor_id:mgr.userId,reason:null}]);
+  // Decided, the review is no longer open: the name is not read again.
+  expect(await assignedDecisionApplicantName(mgr,proposal)).toBeNull();
  });
 
  it('rejects only with the approver\'s own reason, which reaches the claims service and never the card',async()=>{

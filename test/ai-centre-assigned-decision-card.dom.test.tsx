@@ -71,9 +71,9 @@ const clockOut = (decision: 'approved' | 'rejected') => decisionCard('attendance
 
 const turn = (proposals: ReturnType<typeof decisionCard>[]) => ({ turnId: randomUUID(), reply: '', mode: 'answer', slot: null, suggestion: null, proposals, reads: [],
   sensitive: false, refused: false, crisis: false, fallback: false, continuation: '', trace: null as never, modelTurn: [] });
-async function show(card: ReturnType<typeof decisionCard>, locale: keyof typeof MESSAGES = 'en') {
+async function show(card: ReturnType<typeof decisionCard>, locale: keyof typeof MESSAGES = 'en', applicants?: ReadonlyMap<string, string>) {
   state.locale = locale; state.messages = MESSAGES[locale] as Record<string, unknown>;
-  const element = await ConversationReply({ turn: turn([card]) as never });
+  const element = await ConversationReply({ turn: turn([card]) as never, ...(applicants ? { applicants } : {}) });
   render(<NextIntlClientProvider locale={locale} messages={MESSAGES[locale] as never} timeZone="Asia/Kuala_Lumpur">{element}</NextIntlClientProvider>);
   return screen.getByRole('article');
 }
@@ -97,6 +97,18 @@ describe('an approver\'s claim decision card in chat', () => {
     // The card carries no link of its own: its buttons replace it.
     expect(within(card).queryAllByRole('link').filter(link => link.getAttribute('href')?.startsWith('/assistant/approvals'))).toEqual([]);
     for (const post of allPosts()) expect(post).not.toHaveBeenCalled();
+  });
+
+  it('names the applicant the chat command read for the approver, which the card itself never carries', async () => {
+    const signed = claim('approved');
+    expect(JSON.stringify(signed)).not.toContain('Siti');
+    const card = await show(signed, 'en', new Map([[signed.body.id, 'Siti Fictional']]));
+    expect(within(card).getByRole('heading', { level: 3 })).toHaveTextContent(`Approve: Fictional Travel claim, RM 42.60, ${claimDate('en', '2026-10-31')} · Siti Fictional`);
+    expect(button(card, inline('en').confirm)).toHaveAccessibleName(`${inline('en').confirm} · Approve: Fictional Travel claim, RM 42.60, ${claimDate('en', '2026-10-31')} · Siti Fictional`);
+    cleanup();
+    // A name for another card is not used.
+    const other = await show(claim('approved'), 'en', new Map([[randomUUID(), 'Siti Fictional']]));
+    expect(other).not.toHaveTextContent('Siti');
   });
 
   it('Confirm posts this very card with confirm: true to the decision owner and shows the recorded approval', async () => {

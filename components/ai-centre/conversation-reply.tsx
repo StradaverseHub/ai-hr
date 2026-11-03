@@ -31,7 +31,9 @@ const words = (value: string) => value.replace(/[._]+/g, ' ').trim();
  * without a press. Every other card only links to its review page, where the person confirms. The approver recommendation
  * shows only "recommend approve" or "needs your review", never a rejection. Awaited by the chat command, like the
  * closed grammar's ExchangeReply. */
-export async function ConversationReply({ turn, links = new Map() }: { turn: ConversationTurn; links?: ReplyLinks }) {
+/** `applicants` (AI v2 W2 slice 3): the applicant's name for an approver's decision card, by proposal id, read by the chat
+ * command from the card's review for this approver when it renders the reply. It is never in the proposal. */
+export async function ConversationReply({ turn, links = new Map(), applicants = new Map() }: { turn: ConversationTurn; links?: ReplyLinks; applicants?: ReadonlyMap<string, string> }) {
   const t = await getTranslations('aiCentre.conversation');
   const tc = await getTranslations('aiCentre.card');
   const tr = await getTranslations('aiCentre.recommendation');
@@ -107,13 +109,16 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
         const tone = body.what.effect === 'decide' ? 'decide' as const : 'prepared' as const;
         const expires = t('expires', { time: format.dateTime(new Date(body.expiresAt), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) });
         const kind = inlineProposalKind(body.what.action);
+        // The approver sees whose request they decide, as the approvals queue names it ("· Siti Fictional").
+        const applicant = kind === 'decision' ? applicants.get(body.id) : undefined;
+        const shownTitle = applicant ? `${title} · ${applicant}` : title;
         // The leave service decided, when the card was prepared, that the person's own First Schedule agreement is asked for.
         const agreement = kind === 'toil' && body.what.selectors.firstScheduleAgreement === 'required' ? { label: tLeaveCredit('firstScheduleConsent') } : undefined;
         return (
           <div key={body.id} className="space-y-1">
             {kind ? (
               <InlineProposalCard kind={kind} proposal={proposal} copy={inline} awaitingLabel={tc('awaiting')} agreement={agreement}
-                card={{ icon: <CalendarDays />, tone, title, meta, checks, expires,
+                card={{ icon: <CalendarDays />, tone, title: shownTitle, meta, checks, expires,
                   prepared: { summary: t('howPrepared'), rows: [[t('preparedBy'), t('preparedByValue')], [t('confirmOn'), t('inline.confirmOnValue')]] } }} />
             ) : (
               <ProposalCard icon={<CalendarDays />} tone={tone}
