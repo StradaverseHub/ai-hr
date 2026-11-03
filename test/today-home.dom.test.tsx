@@ -68,9 +68,22 @@ vi.mock('@/core/assistant-grant',()=>({mayUseAssistant:async()=>({allowed:S.assi
 vi.mock('@/lib/viewer',()=>({viewerIdentity:async()=>({name:'Aisyah Fictional',employeeCode:null,employed:false})}));
 // AI v2 W5: the leave dashboard card's explanation behind a balance's Why?, as core/explainers/own-why.ts reads it as the viewer.
 const why=vi.hoisted(()=>({calls:[] as unknown[]}));
-vi.mock('@/core/explainers/own-why',()=>({ownLeaveBalanceWhy:async(_s:unknown,input:unknown)=>{why.calls.push(input);return {leaveType:'Annual Leave',cycleStart:'2026-01-01',cycleEnd:'2026-12-31',
+// Slice 3 follow-up: the payslip row's Why? reads the payslip's own detail (the payslip screen's own-only read), then the
+// person's own released payslips through the real comparison owner. October is September less one day's unpaid leave.
+const pay=vi.hoisted(()=>({detailCalls:[] as unknown[],differenceCalls:[] as unknown[],detail:null as null|{companyId:string;payPeriod:string;currency:string|null}}));
+vi.mock('@/packs/payroll/service',()=>({myPayslipDetail:async(_s:unknown,id:string)=>{pay.detailCalls.push(id);return id==='ps-oct'?pay.detail:null;}}));
+vi.mock('@/core/explainers/own-why',async()=>{
+ const {comparePayPeriods}=await import('../core/pay-difference');
+ const stat=(over:Record<string,unknown>={})=>({version:'my-2026.1',epfEmployee:550,epfEmployer:650,socsoEmployee:24.75,socsoEmployer:86.65,socsoSkbbk:0,eisEmployee:9.9,eisEmployer:9.9,pcb:120,hrdf:0,
+  bases:{epf:5000,epfAdditional:0,socsoEis:5000,pcb:5000,hrdf:5000},salaryBasis:{version:1,basicSalary:5000,effectiveFrom:'2024-01-01'},...over});
+ const row=(over:Record<string,unknown>)=>({companyId:'co-a',company:'Fictional Ceria Sdn Bhd',payPeriod:'2026-09',runType:'regular',runSeq:1,basic:'5000.00',allowance:'0.00',overtime:'0.00',
+  bonus:'0.00',gross:'5000.00',statutory:stat(),otherDeductions:'0.00',totalDeductions:'704.65',net:'4295.35',daysWorked:'30.00',...over});
+ const OCTOBER=row({payPeriod:'2026-10',otherDeductions:'230.77',totalDeductions:'892.02',net:'4107.98',
+  statutory:stat({epfEmployee:528,socsoEmployee:23.75,eisEmployee:9.5,pcb:100,unpaidLeave:{days:1,amount:230.77},bases:{epf:4769.23,epfAdditional:0,socsoEis:4769.23,pcb:4769.23,hrdf:4769.23}})});
+ return {ownPayDifference:async(_s:unknown,input:{companyId:string;period:string})=>{pay.differenceCalls.push(input);return comparePayPeriods([OCTOBER,row({})] as never,input);},
+ ownLeaveBalanceWhy:async(_s:unknown,input:unknown)=>{why.calls.push(input);return {leaveType:'Annual Leave',cycleStart:'2026-01-01',cycleEnd:'2026-12-31',
  isCurrentCycle:true,canApplyFor:9.5,entitlementTemplateName:'Fictional Standard',entitlementStatus:'generated',withheld:false,carryForwardExpiryDate:null,proration:null,
- figures:{entitlement:14,earnedSoFar:12,broughtForward:0,adjustments:0,totalEntitlement:14,taken:3.5,pending:1,forfeited:0,available:9.5}};}}));
+ figures:{entitlement:14,earnedSoFar:12,broughtForward:0,adjustments:0,totalEntitlement:14,taken:3.5,pending:1,forfeited:0,available:9.5}};}};});
 
 import {TodayPage} from '../components/today/today-page';
 import {ASK_HANDOFF_KEY} from '../lib/today/ask-handoff';
@@ -185,7 +198,12 @@ describe('Today for an employee',()=>{
   expect(glance.querySelector('[data-today-balance] a')?.getAttribute('aria-label')).toBe('Why? Why is my Annual Leave balance this figure?');
   const payslip=glance.querySelector('[data-today-payslip]')!;
   expect(text(payslip.querySelector('dt'))).toBe('October 2026 payslip');
-  expect(payslip.querySelector('a')?.getAttribute('href')).toBe('/me/payslip?year=2026&month=10&payslipId=ps-oct');
+  expect(payslip.querySelector('a:not([data-why-link])')?.getAttribute('href')).toBe('/me/payslip?year=2026&month=10&payslipId=ps-oct');
+  // Slice 3 follow-up: the payslip row has its own Why?, closed until asked for.
+  const payWhy=payslip.querySelector('[data-why-link]')!;
+  expect([text(payWhy),payWhy.getAttribute('href'),payWhy.getAttribute('aria-label'),payWhy.getAttribute('aria-expanded')])
+   .toEqual(['Why?','/?why=pay','Why? Why is my pay different from last month?','false']);
+  expect(payslip.querySelector('[data-why-panel]')).toBeNull();
   expect([...glance.querySelectorAll('[data-today-away]')].map(text)).toEqual([
    'Siti Fictional, your manager, is away Fri, Nov 6 – Sat, Nov 7.',
    'Siti Fictional, your manager, is away on Tue, Nov 10.',
@@ -220,6 +238,33 @@ describe('Today for an employee',()=>{
   cleanup();why.calls.length=0;S.assistant=true;
   await show(EMPLOYEE,['co-a'],undefined,undefined,'leave:not-theirs');
   expect(why.calls).toEqual([]);
+ });
+
+ it('opens the payslip row\'s Why? in place: the payslip screen\'s pay-difference panel for that payslip, in its company\'s currency',async()=>{
+  pay.detailCalls.length=0;pay.differenceCalls.length=0;pay.detail={companyId:'co-a',payPeriod:'2026-10',currency:'MYR'};
+  const view=await show(EMPLOYEE,['co-a'],undefined,undefined,'pay');
+  const row=view.section('today-at-a-glance')!.querySelector('[data-today-payslip]')!;
+  const link=row.querySelector('[data-why-link]')!;
+  expect([link.getAttribute('href'),link.getAttribute('aria-expanded'),link.getAttribute('aria-controls')]).toEqual(['/','true','today-why-pay']);
+  const panel=row.querySelector('[data-today-why="pay"] [data-why-panel="pay"]')!;
+  expect(panel.id).toBe('today-why-pay');
+  expect(text(panel.querySelector('[data-why-lead]'))).toBe('Your net pay was MYR 187.37 lower than in September 2026.');
+  expect(text(panel)).toContain('MYR 230.77');
+  expect(pay.detailCalls).toEqual(['ps-oct']);expect(pay.differenceCalls).toEqual([{companyId:'co-a',period:'2026-10'}]);
+  // No balance panel opens with it, and Close returns to Today.
+  expect(view.container.querySelector('[data-why-panel="leave"]')).toBeNull();
+  expect(panel.querySelector('[data-why-close]')?.getAttribute('href')).toBe('/');
+  fireEvent.click(within(panel as HTMLElement).getByRole('button',{name:'Ask AI Centre about this'}));
+  expect(S.push).toHaveBeenCalledWith('/assistant');
+  // A payslip the person cannot open shows the quiet line, never a guessed figure.
+  cleanup();pay.detailCalls.length=0;pay.differenceCalls.length=0;pay.detail=null;
+  const missing=await show(EMPLOYEE,['co-a'],undefined,undefined,'pay');
+  expect(missing.container.querySelector('[data-today-why="pay"] [data-why-unavailable]')).not.toBeNull();
+  expect(missing.container.querySelector('[data-why-panel]')).toBeNull();expect(pay.differenceCalls).toEqual([]);
+  // Without payroll in use there is no payslip row and nothing is read.
+  cleanup();pay.detailCalls.length=0;S.modules.delete('payroll');
+  const none=await show(EMPLOYEE,['co-a'],undefined,undefined,'pay');
+  expect(none.container.querySelector('[data-today-payslip]')).toBeNull();expect(pay.detailCalls).toEqual([]);
  });
 
  it('keeps a manager\'s absence when their sharing choice withholds the name, without inventing one',async()=>{
