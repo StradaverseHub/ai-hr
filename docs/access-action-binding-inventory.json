@@ -31644,8 +31644,10 @@
       "line": 11,
       "surface": "server-action",
       "owners": [
+        "app.function_action_allowed",
         "app.reward_admin",
-        "app.reward_roles"
+        "app.reward_roles",
+        "packs/rewards/service.ts:requireRewardAction"
       ],
       "tables": [
         "JSON.stringify({ policy: unit.policy, kind: unit.kind, parentUnitId: unit.parentUnitId, offcycle: unit.offcycle, entries: [...entries].sort((a, b) => a.id.localeCompare(b.id)).map(e => ({ id: e.id, source: e.source, facts: e.facts, recommendation: e.recommendation })) })",
@@ -65830,10 +65832,12 @@
       "line": 66,
       "surface": "server-action",
       "owners": [
+        "app.function_action_allowed",
         "app.reward_funding",
         "app.reward_member_eligible",
         "app.reward_roles",
-        "app.reward_senior_awards_for_post"
+        "app.reward_senior_awards_for_post",
+        "packs/rewards/service.ts:requireRewardAction"
       ],
       "tables": [
         "JSON.stringify({ policy: unit.policy, kind: unit.kind, parentUnitId: unit.parentUnitId, offcycle: unit.offcycle, entries: [...entries].sort((a, b) => a.id.localeCompare(b.id)).map(e => ({ id: e.id, source: e.source, facts: e.facts, recommendation: e.recommendation })) })",
@@ -65862,10 +65866,12 @@
         "app.access_compensation_action",
         "app.access_workforce_write_lock",
         "app.current_tenant_id",
+        "app.function_action_allowed",
         "app.reward_admin",
         "app.reward_funding",
         "app.reward_roles",
-        "app.reward_senior_awards_for_post"
+        "app.reward_senior_awards_for_post",
+        "packs/rewards/service.ts:requireRewardAction"
       ],
       "tables": [
         "JSON.stringify({ policy: unit.policy, kind: unit.kind, parentUnitId: unit.parentUnitId, offcycle: unit.offcycle, entries: [...entries].sort((a, b) => a.id.localeCompare(b.id)).map(e => ({ id: e.id, source: e.source, facts: e.facts, recommendation: e.recommendation })) })",
@@ -65915,11 +65921,13 @@
       "line": 79,
       "surface": "server-action",
       "owners": [
+        "app.function_action_allowed",
         "app.reward_access_observe",
         "app.reward_admin",
         "app.reward_annual_calculation",
         "app.reward_offcycle_calculation",
-        "app.reward_roles"
+        "app.reward_roles",
+        "packs/rewards/service.ts:requireRewardAction"
       ],
       "tables": [
         "businessUnit",
@@ -66024,11 +66032,13 @@
       "line": 122,
       "surface": "server-action",
       "owners": [
+        "app.function_action_allowed",
         "app.reward_access_observe",
         "app.reward_admin",
         "app.reward_annual_calculation",
         "app.reward_offcycle_calculation",
-        "app.reward_roles"
+        "app.reward_roles",
+        "packs/rewards/service.ts:requireRewardAction"
       ],
       "tables": [
         "businessUnit",
@@ -66210,13 +66220,15 @@
       "owners": [
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.function_action_allowed",
         "app.login_blocked",
         "app.principal_snapshot_current",
         "app.reward_funding",
         "app.reward_member_eligible",
         "app.reward_roles",
         "app.reward_senior_awards_for_post",
-        "app/rewards/approvals/actions.ts:scopedSession"
+        "app/rewards/approvals/actions.ts:scopedSession",
+        "packs/rewards/service.ts:requireRewardAction"
       ],
       "tables": [
         "JSON.stringify({ policy: unit.policy, kind: unit.kind, parentUnitId: unit.parentUnitId, offcycle: unit.offcycle, entries: [...entries].sort((a, b) => a.id.localeCompare(b.id)).map(e => ({ id: e.id, source: e.source, facts: e.facts, recommendation: e.recommendation })) })",
@@ -66248,6 +66260,7 @@
       "owners": [
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.function_action_allowed",
         "app.login_blocked",
         "app.principal_snapshot_current",
         "app.reward_access_observe",
@@ -66258,7 +66271,8 @@
         "app.reward_offcycle_calculation",
         "app.reward_roles",
         "app.reward_senior_awards_for_post",
-        "app/rewards/approvals/actions.ts:scopedSession"
+        "app/rewards/approvals/actions.ts:scopedSession",
+        "packs/rewards/service.ts:requireRewardAction"
       ],
       "tables": [
         "JSON.stringify({ policy: unit.policy, kind: unit.kind, parentUnitId: unit.parentUnitId, offcycle: unit.offcycle, entries: [...entries].sort((a, b) => a.id.localeCompare(b.id)).map(e => ({ id: e.id, source: e.source, facts: e.facts, recommendation: e.recommendation })) })",
@@ -68334,10 +68348,12 @@
         "app.access_compensation_action",
         "app.access_workforce_write_lock",
         "app.current_tenant_id",
+        "app.function_action_allowed",
         "app.reward_admin",
         "app.reward_funding",
         "app.reward_roles",
-        "app.reward_senior_awards_for_post"
+        "app.reward_senior_awards_for_post",
+        "packs/rewards/service.ts:requireRewardAction"
       ],
       "tables": [
         "JSON.stringify({ policy: unit.policy, kind: unit.kind, parentUnitId: unit.parentUnitId, offcycle: unit.offcycle, entries: [...entries].sort((a, b) => a.id.localeCompare(b.id)).map(e => ({ id: e.id, source: e.source, facts: e.facts, recommendation: e.recommendation })) })",
@@ -68369,8 +68385,10 @@
       "service": "packs/rewards/service.ts#cancelRewardReview",
       "subject": "company",
       "owners": [
+        "app.function_action_allowed",
         "app.reward_admin",
-        "app.reward_roles"
+        "app.reward_roles",
+        "packs/rewards/service.ts:requireRewardAction"
       ],
       "tables": [
         "JSON.stringify({ policy: unit.policy, kind: unit.kind, parentUnitId: unit.parentUnitId, offcycle: unit.offcycle, entries: [...entries].sort((a, b) => a.id.localeCompare(b.id)).map(e => ({ id: e.id, source: e.source, facts: e.facts, recommendation: e.recommendation })) })",
@@ -68473,10 +68491,12 @@
       "service": "packs/rewards/service.ts#returnAnnualRewardReview",
       "subject": "company",
       "owners": [
+        "app.function_action_allowed",
         "app.reward_funding",
         "app.reward_member_eligible",
         "app.reward_roles",
-        "app.reward_senior_awards_for_post"
+        "app.reward_senior_awards_for_post",
+        "packs/rewards/service.ts:requireRewardAction"
       ],
       "tables": [
         "JSON.stringify([unit, digest(unit, entries), source.xmin])",

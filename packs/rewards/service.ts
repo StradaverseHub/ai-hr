@@ -246,6 +246,13 @@ export async function administersRewardsForAnyCompany(ctx: SessionContext): Prom
     return r?.ok === true;
   });
 }
+async function requireRewardAction(tx: Tx, companyId: string, key: string, operation: 'edit'|'execute'|'approve') {
+  const [access] = await tx.execute<{allowed: boolean}>(sql`select
+    app.function_action_allowed(${key}, 'view', ${companyId}::uuid)
+    AND app.function_action_allowed(${key}, ${operation}, ${companyId}::uuid) as allowed`);
+  if (!access?.allowed) throw new RewardError('This Rewards action is unavailable for the selected company.');
+}
+
 async function requireAdmin(tx: Tx, companyId: string) {
   const [r] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${companyId}::uuid) as ok`);
   if (!r?.ok) throw new RewardError('Company administrator access is required.');
@@ -753,6 +760,7 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
 export async function saveRewardEntryTx(tx:Tx,ctx:SessionContext,unitId:string,revision:number,entryId:string,recommendation:unknown,facts?:unknown){
   assertModuleGate(ctx,'rewards');idSchema.parse(entryId);const rec=recommendationSchema.parse(recommendation),validatedFacts=facts===undefined?undefined:factsSchema.parse(facts);
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
+    await requireRewardAction(tx,unit.companyId,'rewards.entries','edit');
     const entry = entries.find(e => e.id === entryId);
     if (!entry || !visibleEntry(entry, roles, ctx.personId)) throw new RewardError('This reward record is not available to you.');
     const canEC = entry.facts.confidentiality === 'ec' && roles.some(r => ['gr', 'ctro', 'ec'].includes(r));
@@ -778,6 +786,7 @@ export async function importRewardFacts(ctx: SessionContext, unitId: string, rev
 export async function importRewardFactsTx(tx:Tx,ctx:SessionContext,unitId:string,revision:number,rows:{employmentId:string;facts:RewardFacts}[]){
   assertModuleGate(ctx,'rewards');const input=z.array(z.object({employmentId:idSchema,facts:factsSchema})).min(1).max(10000).parse(rows);
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision); assertUnlocked(unit);
+    await requireRewardAction(tx,unit.companyId,'rewards.facts','edit');
     if (!roles.includes('gr')) throw new RewardError('Only Group Rewards may import ratings and classifications.');
     const seen = new Set<string>();
     for (const row of input) {
@@ -970,6 +979,7 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
   z.enum(['submit', 'approve', 'return', 'reject', 'withdraw']).parse(action); reason = z.string().trim().max(4000).parse(reason);
     idSchema.parse(unitId); await funding(tx, unitId, true);
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
+    await requireRewardAction(tx,unit.companyId,'rewards.decisions.'+action,action==='approve'?'approve':'execute');
     const route = unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] as RewardRole[] : offcycleRoute(unit.kind, unit.offcycle!, entries);
     if (unit.kind === 'annual' && (action === 'reject' || action === 'withdraw')) throw new RewardError('Return an annual review to draft instead.');
     const governance=unit.kind==='annual'?await governancePublicTx(tx,unitId):null;
@@ -1046,6 +1056,7 @@ export async function cancelRewardReviewTx(tx: Tx, ctx: SessionContext, unitId: 
   const roles = await rolesFor(tx, unitId);
   const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
   if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Only the company Rewards administrator or Group Rewards may cancel this review.');
+  await requireRewardAction(tx,unit.companyId,roles.includes('gr')?'rewards.cancellation.assigned':'rewards.cancellation.administration','execute');
   assertRevision(unit, revision);
   if (['posted', 'withdrawn', 'rejected'].includes(unit.status)) throw new RewardError('This review can no longer be cancelled.');
   // Serialize with sibling off-cycle submissions against the same annual funding.
@@ -1078,6 +1089,7 @@ async function prepareRewardPostTx(tx:Tx,ctx:SessionContext,unitId:string,revisi
     const authority = await rewardPostingAuthorityTx(tx, unit, roles);
     if (authority === 'no-seat') throw new RewardError('The assigned payroll role is required.');
     if (authority === 'needs-admin') throw new RewardError('Company administrator access is required.');
+    await requireRewardAction(tx,unit.companyId,'rewards.posting','execute');
     if (unit.status === 'posted') return { alreadyPosted: true as const,unit,roles,entries };
     if (unit.status !== 'approved' || unit.approvedDigest !== digest(unit, entries)) throw new RewardError('Only the unchanged, fully approved review can be posted.');
     const postingAwards=await seniorAwardsTx(tx,unitId,true);
