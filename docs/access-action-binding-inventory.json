@@ -61265,6 +61265,7 @@
         "app.assessment_skill_history",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.function_action_allowed",
         "app.is_company_descendant",
         "app.is_group_admin",
         "app.login_blocked",
@@ -61293,7 +61294,8 @@
         "app.organisation_settings_function_allowed",
         "app.performance_provider_source_read_hold_v1",
         "app.principal_snapshot_current",
-        "packs/performance/onehr/service.ts:requireParticipant"
+        "packs/performance/onehr/service.ts:requireParticipant",
+        "packs/performance/onehr/service.ts:requireReviewEdit"
       ],
       "tables": [
         "'\\0'",
@@ -61339,10 +61341,12 @@
       "owners": [
         "app.assessment_review_participates",
         "app.assessment_skill_history",
+        "app.function_action_allowed",
         "app.onehr_administrative_skill_history",
         "app.onehr_review_task_header",
         "app.onehr_self_employment",
-        "packs/performance/onehr/service.ts:requireParticipant"
+        "packs/performance/onehr/service.ts:requireParticipant",
+        "packs/performance/onehr/service.ts:requireReviewEdit"
       ],
       "tables": [
         "JSON.stringify(value)",
@@ -62054,6 +62058,7 @@
         "app.can_see_employment",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.function_action_allowed",
         "app.heads_department_of",
         "app.is_admin_report_of",
         "app.is_company_descendant",
@@ -62107,7 +62112,8 @@
         "app.principal_snapshot_current",
         "packs/performance/onehr/service.ts:requireAdmin",
         "packs/performance/onehr/service.ts:requireKernelReviewWriter",
-        "packs/performance/onehr/service.ts:requireParticipant"
+        "packs/performance/onehr/service.ts:requireParticipant",
+        "packs/performance/onehr/service.ts:requireReviewEdit"
       ],
       "tables": [
         "'\\0'",
@@ -62163,6 +62169,7 @@
       "owners": [
         "app.access_workforce_write_lock",
         "app.assessment_review_participates",
+        "app.function_action_allowed",
         "app.onehr_effective_reviewer",
         "app.onehr_feedback_apply",
         "app.onehr_feedback_card",
@@ -62170,7 +62177,8 @@
         "app.onehr_moderator",
         "app.onehr_review_frozen",
         "app.onehr_review_task_header",
-        "app.onehr_self_employment"
+        "app.onehr_self_employment",
+        "packs/performance/onehr/service.ts:requireReviewEdit"
       ],
       "tables": [
         "assessmentDraft",
@@ -62464,13 +62472,15 @@
       "owners": [
         "app.access_workforce_write_lock",
         "app.assessment_review_participates",
+        "app.function_action_allowed",
         "app.onehr_effective_reviewer",
         "app.onehr_feedback_card",
         "app.onehr_manager",
         "app.onehr_moderator",
         "app.onehr_review_frozen",
         "app.onehr_review_task_header",
-        "app.onehr_self_employment"
+        "app.onehr_self_employment",
+        "packs/performance/onehr/service.ts:requireReviewEdit"
       ],
       "tables": [
         "assessmentDraft",
@@ -62516,6 +62526,7 @@
         "app.assessment_skill_history",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.function_action_allowed",
         "app.is_company_descendant",
         "app.is_group_admin",
         "app.login_blocked",
@@ -62556,7 +62567,8 @@
         "packs/performance/onehr/conversation.ts:authorizedTx",
         "packs/performance/onehr/feedback-conversation.ts:authorized",
         "packs/performance/onehr/feedback-conversation.ts:authorizedTx",
-        "packs/performance/onehr/service.ts:requireParticipant"
+        "packs/performance/onehr/service.ts:requireParticipant",
+        "packs/performance/onehr/service.ts:requireReviewEdit"
       ],
       "tables": [
         "'\\0'",
@@ -62846,6 +62858,7 @@
         "app.assessment_skill_history",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.function_action_allowed",
         "app.is_company_descendant",
         "app.is_group_admin",
         "app.login_blocked",
@@ -62872,7 +62885,8 @@
         "app.onehr_self_employment",
         "app.onehr_task_result_card",
         "app.organisation_settings_function_allowed",
-        "app.principal_snapshot_current"
+        "app.principal_snapshot_current",
+        "packs/performance/onehr/service.ts:requireReviewEdit"
       ],
       "tables": [
         "'\\0'",
@@ -63275,6 +63289,7 @@
         "app.assessment_skill_history",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.function_action_allowed",
         "app.is_company_descendant",
         "app.is_group_admin",
         "app.login_blocked",
@@ -63304,7 +63319,8 @@
         "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
         "packs/performance/onehr/conversation.ts:authorized",
-        "packs/performance/onehr/conversation.ts:authorizedTx"
+        "packs/performance/onehr/conversation.ts:authorizedTx",
+        "packs/performance/onehr/service.ts:requireReviewEdit"
       ],
       "tables": [
         "'\\0'",

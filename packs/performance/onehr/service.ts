@@ -149,12 +149,21 @@ async function notifyKpiApprovers(tx:Tx,ctx:SessionContext,id:string,kpis:KPI[],
 }
 async function isModerator(tx:Tx,id:string,kpiId?:string){const [r]=await tx.execute<{ok:boolean}>(sql`select app.onehr_moderator(${id}::uuid,${kpiId??null}::uuid) as ok`);return !!r?.ok;}
 
+async function requireReviewEdit(tx: Tx, companyId: string, course: 'selfReview'|'assignedReview'|'reviewAdministration') {
+  const key = 'performance.onehr.' + course;
+  const [access] = await tx.execute<{allowed: boolean}>(sql`select
+    app.function_action_allowed(${key}, 'view', ${companyId}::uuid)
+    AND app.function_action_allowed(${key}, 'edit', ${companyId}::uuid) as allowed`);
+  if (!access?.allowed) throw Error('OneHR review editing is unavailable for this course.');
+}
+
 async function writable(tx: Tx, r: Awaited<ReturnType<typeof loadReview>>, cell: WindowCell, expected: number, actor: 'self'|'manager'|'reviewer'|'either'|'moderator') {
   revision(r.row.revision,expected);
   const [participation]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${r.row.reviewId}::uuid) as ok`);
   if(!participation?.ok)throw Error('This employee is not participating in the cycle.');
   const self=await isSelf(tx,r.row.employmentId), manager=!self&&await isManager(tx,r.row.reviewId);
   if (actor==='self'?!self:actor==='manager'?!manager:actor==='reviewer'?self||!await isEffectiveReviewer(tx,r.row.reviewId):actor==='moderator'?self||!await isModerator(tx,r.row.reviewId):!self&&!manager) throw Error('This action is not assigned to you.');
+  await requireReviewEdit(tx,r.row.companyId,self?'selfReview':'assignedReview');
   if (!['open','calibration'].includes(r.cycle.native.status)) throw Error('The cycle is not open.');
   const [frozen]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${r.row.reviewId}::uuid)`);
   if (frozen||r.native.closedAt) throw Error('This assessment has been finalized.');
@@ -1087,6 +1096,7 @@ export async function saveAssessmentCareerProfileTx(tx:Tx,ctx:SessionContext,rev
   const self=await isSelf(tx,r.row.employmentId),admin=!self&&await isAdmin(tx,r.row.cycleId);
   if(!r.cycle.policy.modules.idp||!self&&!admin)throw Error('Only the employee or a scoped Performance administrator may update the career profile.');
   if(!admin){if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_self');await requireParticipant(tx,reviewId);}
+  await requireReviewEdit(tx,r.row.companyId,admin?'reviewAdministration':'selfReview');
   const [previous]=await tx.select({career:assessmentCareerProfile.career}).from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
   await saveCareerTx(tx,ctx,r,career,expected,admin?'administration':'task');await audit(tx,ctx,reviewId,'career-profile-saved',{byAdmin:admin,previous:previous?.career??null,next:career});
 }
@@ -1107,6 +1117,7 @@ export async function saveOnehrPlan(ctx:SessionContext,reviewId:string,expected:
 export async function saveOnehrPlanTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number|null,raw:unknown,share=false) {
   const p=z.object({careerRevision:z.number().int().nullable().optional(),career:careerSchema,goals:z.array(goalSchema.pick({id:true,area:true,dueOn:true,onJob:true,fromOthers:true,formalLearning:true,status:true})).max(100)}).parse(raw);
     const r=await loadReview(tx,reviewId);if(!await isSelf(tx,r.row.employmentId))throw Error('Only the employee may write their plan.');await requireParticipant(tx,reviewId);if(!r.cycle.policy.modules.idp)throw Error('Development plans are disabled.');if(r.cycle.policy.kind!=='year_end')throw Error('Write development plans at year-end; use this period to review the agreed plan.');if(!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment period is read-only.');assertWindow(r.cycle.policy,'idp_self');
+    await requireReviewEdit(tx,r.row.companyId,'selfReview');
     const year=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
     const [existing]=await tx.select().from(onehrPlan).where(and(eq(onehrPlan.employmentId,r.row.employmentId),eq(onehrPlan.planYear,year))).for('update');
     if(existing){revision(existing.revision,expected!);if(existing.status!=='draft')throw Error('Career and development goals are locked after sharing.');}else if(expected!=null)throw Error('Reload this plan.');
@@ -1184,6 +1195,7 @@ export async function addOnehrEvidenceTx(tx:Tx,ctx:SessionContext,reviewId:strin
   if(!r.cycle.policy.modules.evidence)throw Error('Evidence is disabled.');
   if(!self&&!await isManager(tx,reviewId)&&!await isModerator(tx,reviewId))throw Error('Only the employee or assigned manager may add evidence.');
   await requireParticipant(tx,reviewId);
+  await requireReviewEdit(tx,r.row.companyId,self?'selfReview':'assignedReview');
   if(!self&&p.links.length)throw Error('Only the employee may link evidence to their assessment.');
   await validateEvidenceLinks(r,p.links);
   if(p.supersedesId){const [previous]=await tx.select().from(onehrEvidence).where(eq(onehrEvidence.id,p.supersedesId));if(!previous||previous.employmentId!==r.row.employmentId||previous.authorUserId!==ctx.userId||previous.state!=='shared')throw Error('Correct only your own shared evidence.');}
@@ -1197,6 +1209,7 @@ export async function editAssessmentEvidence(ctx:SessionContext,id:string,expect
   const [e]=await tx.select().from(onehrEvidence).where(eq(onehrEvidence.id,id)).for('update');
   if(!e||e.authorUserId!==ctx.userId)throw Error('Edit only evidence you wrote.');revision(e.revision,expected);if(e.state!=='draft')throw Error('Shared evidence cannot be edited. Add a correction instead.');
   const r=await loadReview(tx,e.reviewId);if(!r.cycle.policy.modules.evidence)throw Error('Evidence is disabled.');
+  await requireReviewEdit(tx,r.row.companyId,await isSelf(tx,r.row.employmentId)?'selfReview':'assignedReview');
   const next=patchEvidenceFields({kind:e.kind as z.infer<typeof evidenceFieldsSchema>['kind'],body:e.body,occurredOn:e.occurredOn,...evidenceDetailsSchema.parse(e.details)},raw),{kind,body,occurredOn,...details}=next;
   await tx.update(onehrEvidence).set({kind,body,occurredOn,details,revision:e.revision+1}).where(eq(onehrEvidence.id,id));await audit(tx,ctx,id,'evidence-draft-edited',{previous:{kind:e.kind,body:e.body,occurredOn:e.occurredOn,details:e.details},next});
  });
@@ -1205,6 +1218,7 @@ export async function linkAssessmentEvidence(ctx:SessionContext,reviewId:string,
  uuid.parse(id);const target=evidenceLinkSchema.parse(raw);z.boolean().parse(link);
  return withPerformanceTenant(ctx,async tx=>{
   const r=await loadReview(tx,reviewId);if(!r.cycle.policy.modules.evidence||!await isSelf(tx,r.row.employmentId))throw Error('Only the employee may change their evidence links.');
+  await requireReviewEdit(tx,r.row.companyId,'selfReview');
   const [e]=await tx.select().from(onehrEvidence).where(eq(onehrEvidence.id,id)).for('update');if(!e||e.employmentId!==r.row.employmentId||e.state==='retracted')throw Error('Evidence not found.');revision(e.revision,expected);
   await validateEvidenceLinks(r,[target]);const previous=evidenceLinkSchema.array().parse(e.links),exists=previous.some(l=>l.kind===target.kind&&l.id===target.id);
   const links=link?exists?previous:[...previous,target]:previous.filter(l=>l.kind!==target.kind||l.id!==target.id);
@@ -1216,6 +1230,7 @@ export async function citeAssessmentEvidence(ctx:SessionContext,reviewId:string,
  uuid.parse(id);const citation=evidenceCitationSchema.parse({userId:ctx.userId,stance,decisionKind,at:new Date().toISOString()});
  return withPerformanceTenant(ctx,async tx=>{
   const r=await loadReview(tx,reviewId);if(!r.cycle.policy.modules.evidence||!await isSelf(tx,r.row.employmentId)&&!await isManager(tx,reviewId)&&!await isModerator(tx,reviewId))throw Error('This evidence decision is not assigned to you.');
+  await requireReviewEdit(tx,r.row.companyId,await isSelf(tx,r.row.employmentId)?'selfReview':'assignedReview');
   const [e]=await tx.select().from(onehrEvidence).where(eq(onehrEvidence.id,id)).for('update');if(!e||e.employmentId!==r.row.employmentId||e.state!=='shared')throw Error('Cite only shared evidence.');revision(e.revision,expected);
   const previous=evidenceCitationSchema.array().parse(e.citations),found=previous.some(c=>c.userId===ctx.userId&&c.decisionKind===decisionKind);
   const citations=found?previous.map(c=>c.userId===ctx.userId&&c.decisionKind===decisionKind?citation:c):[...previous,citation];
