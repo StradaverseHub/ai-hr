@@ -21,6 +21,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq,sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { publishActionCapabilityPackage } from '../deploy/access/publish-workforce-capabilities';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { adminCancelLeave, canApplyLeaveOnBehalf, cancelOwnLeave, decideLeave, editLeaveRequest, leaveEmployeeRecordCancellationAccess, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess,ownLeaveRequestActionAccess } from '../core/leave';
@@ -657,4 +658,25 @@ it('binds stored Leave attachments to the actual request subject, human uploader
   expect(await withTenant(subject.ctx,tx=>tx.insert(schema.leaveRequestAttachment).values(candidate)).then(()=>null,pgSqlState)).toBe('42501');
  }
  expect(await owner.db.select().from(schema.leaveRequestAttachment).where(eq(schema.leaveRequestAttachment.tenantId,b.tenantId))).toEqual([]);
+});
+
+it('publishes own Leave application and denies withdrawal without hiding the request',async()=>{
+ const subject=await hire('employee'),typeId=await leaveType();
+ const cap='function.leave.own.application.delete';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'leave_own_application')).toMatchObject({changed:true,capabilities:4});
+  expect(await publishActionCapabilityPackage(owner.client,'leave_own_application')).toMatchObject({changed:false});
+  const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${subject.ctx.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  const list=()=>listLeaveRequestsPage(subject.ctx,{purpose:'ownApplication',ids:[leaveRequestId],limit:10,offset:0});
+  expect((await list()).rows.map(row=>row.id)).toEqual([leaveRequestId]);
+  await expect(cancelOwnLeave(subject.ctx,{leaveRequestId})).rejects.toThrow();
+  expect((await list()).rows[0]?.status).toBe('pending');
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await expect(cancelOwnLeave(subject.ctx,{leaveRequestId})).resolves.toMatchObject({previousStatus:'pending'});
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.leave.own.application.%'`;
+ }
 });

@@ -189,3 +189,17 @@ export const LEAVE_EMPLOYEE_RECORDS_VIEW_CAPABILITY_PUBLICATION={
   'app.leave_employee_records_subject_allowed(uuid,text)',
  ],
 } as const;
+
+export const LEAVE_OWN_APPLICATION_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='leave.own.application'),
+ functionLegacyParityFunction:'app.leave_own_application_native_allowed',
+ functionCurrentLegacyParityFunction:'app.leave_own_application_current_native_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.leave_own_application_bindings_complete()',
+  'app.leave_own_application_allowed(uuid,text)',
+  'app.leave_own_request_view_allowed(uuid)',
+  'app.leave_own_withdraw(uuid)',
+ ],
+} as const;
