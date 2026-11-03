@@ -118,9 +118,10 @@ export async function decideLeaveDateAction(formData: FormData) {
   const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   const rejectReason = String(formData.get('rejectReason') || '') || undefined;
+  let outcome: { status: 'pending' | 'approved' | 'rejected' } | undefined;
   try {
     const me = await myEmployment(s);
-    await decideLeaveDate(s, {
+    outcome = await decideLeaveDate(s, {
       leaveRequestId: String(formData.get('id')),
       leaveDate: String(formData.get('leaveDate')),
       decision,
@@ -130,6 +131,7 @@ export async function decideLeaveDateAction(formData: FormData) {
   } catch (e) {
     await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
+  await followPerDateRecommendation(s, formData, outcome);
   await done(`Date ${decision}`, nav, s);
 }
 
@@ -155,9 +157,10 @@ export async function decideLeaveDatesAction(formData: FormData) {
   } catch (e) {
     await fail(e, nav, s);
   }
+  let outcome: { status: 'pending' | 'approved' | 'rejected' } | undefined;
   try {
     const me = await myEmployment(s);
-    await decideLeaveDates(s, {
+    outcome = await decideLeaveDates(s, {
       leaveRequestId: String(formData.get('id')),
       decisions,
       deciderEmploymentId: me?.employmentId,
@@ -165,7 +168,16 @@ export async function decideLeaveDatesAction(formData: FormData) {
   } catch (e) {
     await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
+  await followPerDateRecommendation(s, formData, outcome);
   await done('Leave decided', nav, s);
+}
+
+/** AI v2 slice 3 follow-up: the per-date path records whether the approver followed the recommendation, as the
+ * single and bulk paths do, once the request's dates are all decided and the leave engine has finalized it (approved
+ * when any date was approved, rejected when none was). While dates are still pending there is no decision yet, so
+ * nothing is recorded; the service binds the decision to the engine's own event either way. */
+async function followPerDateRecommendation(s: Awaited<ReturnType<typeof getSession>>, formData: FormData, outcome: { status: 'pending' | 'approved' | 'rejected' } | undefined) {
+  if (outcome?.status === 'approved' || outcome?.status === 'rejected') await followLeaveRecommendation(s, formData.get('recommendationRecordId'), outcome.status);
 }
 
 // Partial Leave Cancellation (ADR-0065): manager approves/rejects an employee's request to give back a

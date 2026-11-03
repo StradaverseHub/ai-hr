@@ -53,6 +53,7 @@ export function LeaveDateBreakdown({
   remark,
   labels,
   nav,
+  recommendationRecordId,
 }: {
   requestId: string;
   dates: LeaveDateRow[];
@@ -61,6 +62,9 @@ export function LeaveDateBreakdown({
   labels: Labels;
   /** Category-panel return params (2dec6406): posted so the action's redirect keeps the filtered view. */
   nav?: { category: string; sort: string };
+  /** AI v2 slice 3 follow-up: the outcome record of the recommendation shown for this request, so the action can
+   *  append whether the approver followed it once the dates are decided (as LeaveDecideControls posts it). */
+  recommendationRecordId?: string;
 }) {
   const pendingDates = useMemo(() => dates.filter((d) => d.status === 'pending'), [dates]);
   // Per pending date: the staged decision + reason. Defaults to Approve (the common case) with an empty reason.
@@ -219,6 +223,7 @@ export function LeaveDateBreakdown({
               <form action={decideLeaveDatesAction} onSubmit={() => setOpen(false)}>
                 <input type="hidden" name="id" value={requestId} />
                 <input type="hidden" name="decisions" value={JSON.stringify(payload)} />
+                {recommendationRecordId && <input type="hidden" name="recommendationRecordId" value={recommendationRecordId} />}
                 {nav && (
                   <>
                     <input type="hidden" name="category" value={nav.category} />
