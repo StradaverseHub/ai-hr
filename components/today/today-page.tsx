@@ -8,7 +8,7 @@ import {HR_LOCAL_TZ,todayInKualaLumpur} from '@/lib/hr-date';
 import {greetingFor,greetingName,todayAudience,type TodayAudience} from '@/lib/today/audience';
 import {TodayAsk} from './today-ask';
 import {TodaySectionSkeleton} from './today-ui';
-import {AtAGlanceSection,DoneForYouSection,NeedsYouSection,WatchingSection} from './sections';
+import {AtAGlanceSection,DoneForYouSection,NeedsYouSection,WatchingSection,needsYouHeading} from './sections';
 
 /** Today (AI v2 Phase 1, W3, owner-approved mock-ups Main.dc.html and TodayEmployee.dc.html): the home screen
  * for every role, at `/`.
@@ -49,7 +49,7 @@ export async function TodayPage({session,scopeIds,employmentId,notice,more,now=n
    <Suspense fallback={<TodaySectionSkeleton title={t('watching')}/>}><WatchingSection {...common}/></Suspense>
   </div>:<div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
    <div className="min-w-0 space-y-6">
-    <Suspense fallback={<TodaySectionSkeleton title={t('needsYou')} rows={3}/>}><NeedsYouSection {...common}/></Suspense>
+    <Suspense fallback={<TodaySectionSkeleton title={t(needsYouHeading(audience))} rows={3}/>}><NeedsYouSection {...common}/></Suspense>
     <Suspense fallback={<TodaySectionSkeleton title={t('doneForYou')} rows={1}/>}><DoneForYouSection {...common}/></Suspense>
    </div>
    <Suspense fallback={<TodaySectionSkeleton title={t('atAGlance')} rows={2}/>}><AtAGlanceSection {...common} employmentId={employmentId}/></Suspense>

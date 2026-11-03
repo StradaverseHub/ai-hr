@@ -20,9 +20,12 @@
 import {withTenant,type SessionContext} from '@/db/client';
 import {isModuleEnabledOrFalse} from '@/core/entitlements';
 import {listPendingTasks,type PendingTaskItem} from '@/core/approvals-inbox';
-import {listOwnLeaveReviewsTx} from '@/core/assistant-actions/own-leave-store';
+import {listOwnLeaveReviewsTx,reopenOwnLeaveReviewTx} from '@/core/assistant-actions/own-leave-store';
 import {leaveCancellationReviews} from '@/core/assistant-actions/leave-change-review-store';
-import {listLeaveDecisionReviews} from '@/core/assistant-actions/leave-decision-review-store';
+import {listLeaveDecisionReviews,reopenLeaveDecisionReview} from '@/core/assistant-actions/leave-decision-review-store';
+import {OwnLeavePreparedReview} from '@/lib/assistant-actions/own-leave-contract';
+import {LeaveCancellationPreparedReview} from '@/lib/assistant-actions/own-leave-change-contract';
+import {LeaveDecisionPreparedReview} from '@/lib/assistant-actions/leave-decision-review-contract';
 import {proposeActions} from '@/core/agent-actions';
 import {recordReadiness} from '@/core/record-readiness';
 import {DIGEST_PAGES,latestDailyDigest} from '@/core/digest/daily-digest';
@@ -49,7 +52,10 @@ const inboxModules=(s:SessionContext)=>({attendance:isModuleEnabledOrFalse(s,'at
 
 // ── Needs you ───────────────────────────────────────────────────────────────────────────────────────────────
 export type PreparedKind='leaveApply'|'leaveCancel'|'leaveDecision';
-export type PreparedItem=Readonly<{kind:PreparedKind;actionId:string;createdAt:string;expiresAt:string;href:string}>;
+/** What the prepared change is about, from the owner's own reopen of the caller's review (the read its review page
+ * makes, with every current check): the leave type, dates and days the leave service counted, and the duration. */
+export type PreparedLeave=Readonly<{leaveType:string;startDate:string;endDate:string;days:number;durationType:string|null}>;
+export type PreparedItem=Readonly<{kind:PreparedKind;actionId:string;createdAt:string;expiresAt:string;href:string;leave?:PreparedLeave|null}>;
 export type Finding=Readonly<{key:'setup'|'readiness'|'proposals';count:number;href:string}>;
 export type NeedsYouData=Readonly<{tasks:readonly PendingTaskItem[];recommender:boolean;prepared:readonly PreparedItem[];findings:readonly Finding[];failed:boolean}>;
 
@@ -69,7 +75,30 @@ function awaiting(kind:PreparedKind,rows:readonly IndexRow[]|undefined,now:numbe
   .map(row=>Object.freeze({kind,actionId:row.actionId,createdAt:row.createdAt,expiresAt:row.expiresAt,href:PREPARED_HREF[kind](row.actionId)}));
 }
 
-export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonly string[];audience:TodayAudience;today:string;now?:number}>):Promise<NeedsYouData>{
+/** At most this many prepared cards are reopened for their details on one view; any further card keeps its generic
+ * title. Each reopen repeats its owner's full current checks, so it is not free. */
+export const PREPARED_DETAIL_LIMIT=5;
+const preparedBody=(result:unknown):unknown=>result&&typeof result==='object'&&(result as {kind?:unknown}).kind==='prepared'?(result as {review?:unknown}).review:null;
+const leaveFacts=(leaveType:string,startDate:string,endDate:string,days:number,durationType:string|null):PreparedLeave|null=>
+ Number.isFinite(days)&&days>0&&leaveType.trim()?Object.freeze({leaveType,startDate,endDate,days,durationType}):null;
+/** The caller's own prepared review, reopened by its owner as the caller. Anything the owner refuses (changed since,
+ * paused, no longer assigned) or fails on leaves the card with its generic title, never a guessed one. */
+async function preparedLeave(s:SessionContext,item:PreparedItem,locale:string):Promise<PreparedLeave|null>{
+ try{
+  if(item.kind==='leaveApply'){
+   const review=OwnLeavePreparedReview.safeParse(preparedBody(await withTenant(s,tx=>reopenOwnLeaveReviewTx(tx,s,item.actionId,locale))));
+   return review.success?leaveFacts(review.data.leaveTypeName,review.data.date,review.data.date,review.data.deductionDays,review.data.durationType):null;
+  }
+  if(item.kind==='leaveCancel'){
+   const review=LeaveCancellationPreparedReview.safeParse(preparedBody(await leaveCancellationReviews.reopen(s,item.actionId)));
+   return review.success?leaveFacts(review.data.review.leaveTypeName,review.data.review.startDate,review.data.review.endDate,review.data.review.days,null):null;
+  }
+  const review=LeaveDecisionPreparedReview.safeParse(preparedBody(await reopenLeaveDecisionReview(s,item.actionId)));
+  return review.success?leaveFacts(review.data.review.leaveTypeName,review.data.review.startDate,review.data.review.endDate,Number(review.data.review.days),review.data.review.durationType):null;
+ }catch{return null;}
+}
+
+export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonly string[];audience:TodayAudience;today:string;locale?:string;now?:number}>):Promise<NeedsYouData>{
  const now=p.now??Date.now(),admin=p.audience.layout==='administrator',payroll=isModuleEnabledOrFalse(s,'payroll'),leave=isModuleEnabledOrFalse(s,'leave');
  const [tasks,ownLeave,cancellations,decisions,proposals,readiness,digest]=await Promise.all([
   settle(()=>listPendingTasks(s,[...p.scopeIds],inboxModules(s))),
@@ -88,6 +117,7 @@ export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonl
   ...awaiting('leaveCancel',cancellations?.ok?cancellations.value.reviews:undefined,now),
   ...awaiting('leaveDecision',decisions?.ok?decisions.value.reviews:undefined,now),
  ].sort((a,b)=>a.expiresAt.localeCompare(b.expiresAt)||a.actionId.localeCompare(b.actionId));
+ const detailed=await Promise.all(prepared.map(async(item,index)=>index<PREPARED_DETAIL_LIMIT?Object.freeze({...item,leave:await preparedLeave(s,item,p.locale??'en')}):item));
  const findings:Finding[]=[];
  if(digest?.ok&&digest.value&&digest.value.digest.asOf===p.today&&digest.value.digest.setup){
   const setup=digest.value.digest.setup,count=setup.blocked+setup.attention;
@@ -98,7 +128,7 @@ export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonl
  const fixes=proposals?.ok?proposals.value.reduce((sum,proposal)=>sum+proposal.count,0):0;
  if(fixes>0)findings.push(Object.freeze({key:'proposals',count:fixes,href:'/control-tower/actions'}));
  const failed=!tasks.ok||[proposals,readiness].some(result=>result!==null&&!result.ok);
- return Object.freeze({tasks:list,recommender,prepared,findings,failed});
+ return Object.freeze({tasks:list,recommender,prepared:detailed,findings,failed});
 }
 
 // ── Done for you ────────────────────────────────────────────────────────────────────────────────────────────

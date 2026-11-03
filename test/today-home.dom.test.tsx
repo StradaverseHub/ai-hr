@@ -17,7 +17,7 @@ const fx=vi.hoisted(()=>{
  const empty={answeredForYou:0,answeredForOthers:0,leaveChecks:0,preparedForYou:0};
  return {FixtureHomeAccessError,empty,state:{} as {
   tasks:{id:string;kind:string;subjectName:string|null;createdAt:string;linkPath:string;companyId:string}[];tasksFail:boolean;
-  ownLeave:{actionId:string;state:string;createdAt:string;expiresAt:string}[];cancellations:{actionId:string;state:string;createdAt:string;expiresAt:string}[];
+  ownLeave:{actionId:string;state:string;createdAt:string;expiresAt:string}[];reopened:Record<string,unknown>;reopenCalls:string[];cancellations:{actionId:string;state:string;createdAt:string;expiresAt:string}[];
   decisions:{actionId:string;state:string;createdAt:string;expiresAt:string}[];
   proposals:{count:number}[];readiness:{employees:number;ready:number};digest:unknown;recommender:boolean;
   summary:typeof empty;summaryFail:boolean;worklist:Record<string,{status:string}[]>;exceptions:{rows:{disposition:string}[];total:number};
@@ -41,9 +41,11 @@ vi.mock('@/db/client',()=>({withTenant:async(_s:unknown,run:(tx:unknown)=>unknow
 vi.mock('@/core/entitlements',()=>({isModuleEnabledOrFalse:(_s:unknown,code:string)=>S.modules.has(code)}));
 vi.mock('@/core/approvals-inbox',()=>({listPendingTasks:async(_s:unknown,scope:string[])=>{S.calls.tasks.push(scope);if(S.tasksFail)throw Error('Fixture queue outage');
  return S.tasks.filter(task=>scope.includes(task.companyId)).map(({companyId:_companyId,...task})=>task);}}));
-vi.mock('@/core/assistant-actions/own-leave-store',()=>({listOwnLeaveReviewsTx:async()=>({kind:'review_index',reviews:S.ownLeave})}));
-vi.mock('@/core/assistant-actions/leave-change-review-store',()=>({leaveCancellationReviews:{list:async()=>({kind:'leave_cancellation_review_index',reviews:S.cancellations})}}));
-vi.mock('@/core/assistant-actions/leave-decision-review-store',()=>({listLeaveDecisionReviews:async()=>({kind:'leave_decision_review_index',reviews:S.decisions})}));
+// The owners' own reopen of the caller's review, as the review page reads it; a missing fixture is the owner refusing.
+const reopen=async(id:string)=>{S.reopenCalls.push(id);if(!(id in S.reopened))throw Error('Fixture review unavailable');return S.reopened[id];};
+vi.mock('@/core/assistant-actions/own-leave-store',()=>({listOwnLeaveReviewsTx:async()=>({kind:'review_index',reviews:S.ownLeave}),reopenOwnLeaveReviewTx:async(_tx:unknown,_s:unknown,id:string)=>reopen(id)}));
+vi.mock('@/core/assistant-actions/leave-change-review-store',()=>({leaveCancellationReviews:{list:async()=>({kind:'leave_cancellation_review_index',reviews:S.cancellations}),reopen:async(_s:unknown,id:string)=>reopen(id)}}));
+vi.mock('@/core/assistant-actions/leave-decision-review-store',()=>({listLeaveDecisionReviews:async()=>({kind:'leave_decision_review_index',reviews:S.decisions}),reopenLeaveDecisionReview:async(_s:unknown,id:string)=>reopen(id)}));
 vi.mock('@/core/agent-actions',()=>({proposeActions:async()=>{S.calls.proposals++;return S.proposals;}}));
 vi.mock('@/core/record-readiness',()=>({recordReadiness:async()=>{S.calls.readiness++;return S.readiness;}}));
 vi.mock('@/core/digest/daily-digest',()=>({DIGEST_PAGES:{approvals:'/approvals',setup:'/control-tower/readiness',deadlines:'/payroll/statutory-forms'},latestDailyDigest:async()=>S.digest}));
@@ -79,7 +81,7 @@ const PAYROLL_PARTNER=ctx(['payroll_partner'],[{role:'payroll_partner',companyId
 const text=(el:Element|null|undefined)=>(el?.textContent??'').replace(/\s+/g,' ').trim();
 
 beforeEach(()=>{
- Object.assign(S,{tasks:[],tasksFail:false,ownLeave:[],cancellations:[],decisions:[],proposals:[],readiness:{employees:0,ready:0},digest:null,recommender:false,
+ Object.assign(S,{tasks:[],tasksFail:false,ownLeave:[],reopened:{},reopenCalls:[],cancellations:[],decisions:[],proposals:[],readiness:{employees:0,ready:0},digest:null,recommender:false,
   summary:{...fx.empty},summaryFail:false,worklist:{},exceptions:{rows:[],total:0},passports:[],timeOff:{version:1,employmentId:'emp-own',asOf:'2026-11-04',canApply:true,balances:[],nextApproved:null},
   timeOffError:null,pay:{version:1,employmentId:'emp-own',payslips:[],nextPayment:null},payError:null,managers:[],calendarDays:[],assistant:true,name:'Ravi Fictional',
   modules:new Set(['leave','payroll','attendance','claims','performance','rewards']),push:vi.fn(),
@@ -103,6 +105,9 @@ describe('Today for an employee',()=>{
    {actionId:'22222222-2222-4222-8222-222222222222',state:'completed',createdAt:'2026-11-01T00:00:00.000Z',expiresAt:FUTURE},
    {actionId:'33333333-3333-4333-8333-333333333333',state:'awaiting_confirmation',createdAt:'2020-01-01T00:00:00.000Z',expiresAt:'2020-01-02T00:00:00.000Z'},
   ];
+  S.reopened={'11111111-1111-4111-8111-111111111111':{kind:'prepared',review:{actionId:'11111111-1111-4111-8111-111111111111',contractVersion:1,
+   reviewedDigest:'a'.repeat(64),humanIntentDigest:'b'.repeat(64),createdAt:'2026-11-04T00:12:00.000Z',expiresAt:FUTURE,companyName:'Fictional Sdn Bhd',employeeCode:'F-1',
+   leaveTypeName:'Annual Leave',date:'2026-11-05',durationType:'full_day',deductionDays:1,availableBalance:null,estimatedAvailableAfter:null,holidayWarnings:[],approvalRouting:'unknown',humanText:{}}}};
   S.summary={...fx.empty,answeredForYou:3};
   S.timeOff={version:1,employmentId:'emp-own',asOf:'2026-11-04',canApply:true,nextApproved:null,
    balances:[{id:'lt-al',name:'Annual Leave',annualLeave:true,available:9.5,pending:0},{id:'lt-ml',name:'Medical Leave',annualLeave:false,available:11.5,pending:null}]};
@@ -118,6 +123,7 @@ describe('Today for an employee',()=>{
 
  it('greets the person by name on the HR date and offers the Ask bar with the four suggestions',async()=>{
   const view=await show(EMPLOYEE,['co-a']);
+  expect(text(view.section('today-needs-you')!.querySelector('h2'))).toBe('Ready for you to confirm');
   expect(text(view.container.querySelector('h1'))).toBe('Good morning, Ravi');
   expect(text(view.container.querySelector('[data-today-date]'))).toBe('Wednesday, November 4, 2026');
   expect(view.container.querySelector('[data-today-date]')?.getAttribute('data-today-date')).toBe('2026-11-04');
@@ -134,13 +140,16 @@ describe('Today for an employee',()=>{
   expect(text(needs.querySelector('[data-today-count]'))).toBe('2');
   const prepared=needs.querySelectorAll('[data-today-prepared]');
   expect(prepared).toHaveLength(1);
-  expect(text(prepared[0].querySelector('h3'))).toBe('Leave application prepared for you');
+  // Named the way the chat card names it, from the owner's reopen of this person's own review.
+  expect(text(prepared[0].querySelector('h3'))).toBe('Annual Leave, Thu, Nov 5 (1 day)');
+  expect(text(prepared[0])).toContain('Leave application prepared for you');
   expect(text(prepared[0])).toContain('Prepared Nov 4, 2026, 8:12 AM');
+  expect(S.reopenCalls).toEqual(['11111111-1111-4111-8111-111111111111']);
   expect(text(prepared[0])).toContain('Nothing is submitted until you confirm.');
   const links=prepared[0].querySelectorAll('a');
   expect(links).toHaveLength(1);
   expect(links[0].getAttribute('href')).toBe('/assistant/leave?review=11111111-1111-4111-8111-111111111111');
-  expect(text(links[0])).toBe('Review and confirm · Leave application prepared for you');
+  expect(text(links[0])).toBe('Review and confirm · Annual Leave, Thu, Nov 5 (1 day)');
   const task=needs.querySelector('[data-today-task="noticeAcknowledgement"]')!;
   expect(text(task.querySelector('h3'))).toBe('Acknowledge notice');
   expect(text(task)).toContain('Received Nov 3, 2026');
@@ -179,6 +188,22 @@ describe('Today for an employee',()=>{
   expect([...view.section('today-at-a-glance')!.querySelectorAll('[data-today-away]')].map(text)).toEqual(['Your manager is away on Fri, Nov 6.']);
  });
 
+ it('keeps the generic title when the owner refuses to reopen a review, and the cancellation kind still names itself',async()=>{
+  S.ownLeave=[];
+  S.cancellations=[{actionId:'55555555-5555-4555-8555-555555555555',state:'awaiting_confirmation',createdAt:'2026-11-04T00:30:00.000Z',expiresAt:FUTURE},
+   {actionId:'66666666-6666-4666-8666-666666666666',state:'awaiting_confirmation',createdAt:'2026-11-04T00:40:00.000Z',expiresAt:'2098-01-01T00:00:00.000Z'}];
+  S.reopened={'66666666-6666-4666-8666-666666666666':{kind:'prepared',review:{action:'leave.cancel',contractVersion:1,actionId:'66666666-6666-4666-8666-666666666666',reviewedDigest:'c'.repeat(64),
+   createdAt:'2026-11-04T00:40:00.000Z',expiresAt:'2098-01-01T00:00:00.000Z',content:{action:'leave.cancel',contractVersion:1,employmentId:'77777777-7777-4777-8777-777777777777',leaveRequestId:'88888888-8888-4888-8888-888888888888',cancel:true},
+   review:{employmentId:'77777777-7777-4777-8777-777777777777',leaveRequestId:'88888888-8888-4888-8888-888888888888',leaveTypeName:'Medical Leave',startDate:'2026-11-09',endDate:'2026-11-10',days:2,reason:null,employeeRemark:null},
+   consequence:'pending_leave_withdrawn'}}};
+  const view=await show(EMPLOYEE,['co-a']);
+  const cards=[...view.container.querySelectorAll('[data-today-prepared="leaveCancel"]')];
+  // Soonest expiry first: the reopened one, then the one its owner refused.
+  expect(cards.map(card=>text(card.querySelector('h3')))).toEqual(['Medical Leave, Mon, Nov 9 – Tue, Nov 10 (2 days)','Leave cancellation prepared for you']);
+  expect(text(cards[0])).toContain('Leave cancellation prepared for you');
+  expect(cards[0].querySelector('a')?.getAttribute('href')).toBe('/assistant/leave?flow=change&action=leave.cancel&review=66666666-6666-4666-8666-666666666666');
+ });
+
  it('runs no administrator read and keeps the existing dashboard under More',async()=>{
   const view=await show(EMPLOYEE,['co-a']);
   expect(S.calls).toMatchObject({proposals:0,readiness:0,exceptions:0,passports:0,worklist:[]});
@@ -213,6 +238,11 @@ describe('Today for a manager',()=>{
  it('puts the team\'s leave decision in Needs you with the recommendation only while its worker may run',async()=>{
   S.tasks=[{id:'lr-aminah',kind:'leave',subjectName:'Fictional Aminah',createdAt:'2026-11-02T02:00:00Z',linkPath:'/approvals?tab=leave',companyId:'co-a'}];
   S.decisions=[{actionId:'44444444-4444-4444-8444-444444444444',state:'awaiting_confirmation',createdAt:'2026-11-04T01:00:00.000Z',expiresAt:FUTURE}];
+  S.reopened={'44444444-4444-4444-8444-444444444444':{kind:'prepared',review:{action:'approvals.leave.decide',contractVersion:1,actionId:'44444444-4444-4444-8444-444444444444',reviewedDigest:'d'.repeat(64),
+   createdAt:'2026-11-04T01:00:00.000Z',expiresAt:FUTURE,content:{action:'approvals.leave.decide',contractVersion:1,leaveRequestId:'99999999-9999-4999-8999-999999999999',currentStepId:null,decision:'approved',rejectReason:null,confirmAssignedDecision:true},
+   review:{leaveRequestId:'99999999-9999-4999-8999-999999999999',employmentId:'77777777-7777-4777-8777-777777777777',leaveTypeId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',leaveTypeName:'Annual Leave',
+    startDate:'2026-11-09',endDate:'2026-11-11',days:'3',durationType:'full_day',hours:null,fromTime:null,toTime:null,applicantReason:null,employeeRemark:null,currentStepId:null,stepIndex:null,
+    decision:'approved',rejectReason:null,outcome:'approval_if_native_checks_pass'},consequence:'assigned_decision_request_may_remain_pending'}}};
   S.summary={...fx.empty,leaveChecks:2};
   S.recommender=true;
   let view=await show(MANAGER,['co-a']);
@@ -221,7 +251,9 @@ describe('Today for a manager',()=>{
   expect(task.querySelector('a[href="/approvals?tab=leave"]')).not.toBeNull();
   expect(task.querySelector('a[data-recommendation-loader]')?.getAttribute('href')).toBe('/assistant?view=inbox&recommend=lr-aminah');
   const decision=view.container.querySelector('[data-today-prepared="leaveDecision"]')!;
-  expect(text(decision.querySelector('h3'))).toBe('Leave decision prepared for you');
+  expect(text(decision.querySelector('h3'))).toBe('Annual Leave, Mon, Nov 9 – Wed, Nov 11 (3 days)');
+  expect(text(decision)).toContain('Leave decision prepared for you');
+  expect(text(view.section('today-needs-you')!.querySelector('h2'))).toBe('Needs you');
   expect(decision.querySelector('a')?.getAttribute('href')).toBe('/assistant/approvals?review=44444444-4444-4444-8444-444444444444');
   expect(text(view.section('today-done-for-you')!.querySelector('[data-today-note="leaveChecks"] h3'))).toBe('Checked 2 leave requests for you');
   expect(view.section('today-at-a-glance')).not.toBeNull();
@@ -250,6 +282,7 @@ describe('Today for an HR administrator',()=>{
  it('lays out Needs you, Done for you and Watching with the findings each owner returned',async()=>{
   const view=await show(HR_ADMIN,['co-a']);
   expect(view.container.querySelector('[data-today="administrator"]')).not.toBeNull();
+  expect(text(view.section('today-needs-you')!.querySelector('h2'))).toBe('Needs you');
   expect(text(view.container.querySelector('h1'))).toBe('Good morning, Ravi');
   expect(view.container.querySelectorAll('[data-today-ask] [role="group"]')).toHaveLength(0);
   expect(view.container.querySelector('[data-today-ask] input')?.getAttribute('placeholder')).toBe('Ask AI Centre, or tell it what to do…');
@@ -328,6 +361,7 @@ describe('Today for a payroll partner',()=>{
   S.passports=[{itemId:'e1',employmentId:'e1',companyId:'co-a',stage:'passport:2026-11-20',waitingOn:'2026-11-20'}];
   const view=await show(PAYROLL_PARTNER,['co-a']);
   expect(view.container.querySelector('[data-today="personal"]')).not.toBeNull();
+  expect(text(view.section('today-needs-you')!.querySelector('h2'))).toBe('Ready for you to confirm');
   expect(S.calls).toMatchObject({proposals:0,readiness:0,exceptions:0,passports:0,worklist:[]});
   expect(view.container.querySelector('[data-today-finding],[data-today-section="today-watching"]')).toBeNull();
   expect(view.section('today-at-a-glance')).not.toBeNull();

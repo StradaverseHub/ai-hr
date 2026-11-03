@@ -6,6 +6,7 @@ import type {PendingTaskItem} from '@/core/approvals-inbox';
 import {ProposalCard} from '@/components/ai-centre/proposal-card';
 import {LeaveRecommendationLink} from '@/components/ai-centre/leave-recommendation';
 import {AI_INBOX_HREF} from '@/lib/ai-centre/inbox-origin';
+import {LEAVE_APPLY_TITLE_DATE,leaveApplyCardTitle} from '@/lib/ai-centre/leave-apply-title';
 import {HR_LOCAL_TZ,formatPayPeriodMonth} from '@/lib/hr-date';
 import {formatDays} from '@/lib/day-format';
 import type {TodayAudience} from '@/lib/today/audience';
@@ -28,25 +29,35 @@ const instantWithTime=(locale:string)=>new Intl.DateTimeFormat(locale,{dateStyle
 const hrDay=(locale:string,iso:string,style:'short'|'medium'='medium')=>new Intl.DateTimeFormat(locale,
  style==='short'?{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'}:{dateStyle:'medium',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
 
+/** The approved employee mock-up names the first section "Ready for you to confirm"; administrators and managers,
+ * whose list is mostly decisions on other people's requests, keep "Needs you". */
+export const needsYouHeading=(audience:TodayAudience)=>audience.layout==='personal'&&!audience.manager?'readyToConfirm' as const:'needsYou' as const;
+
 export async function NeedsYouSection(p:Common){
- const [t,tTask,data]=await Promise.all([getTranslations('today'),getTranslations('notifications.task'),
-  readNeedsYou(p.session,{scopeIds:p.scopeIds,audience:p.audience,today:p.today})]);
+ const [t,tTask,tCard,data]=await Promise.all([getTranslations('today'),getTranslations('notifications.task'),getTranslations('aiCentre.conversation'),
+  readNeedsYou(p.session,{scopeIds:p.scopeIds,audience:p.audience,today:p.today,locale:p.locale})]);
+ const cardDate=new Intl.DateTimeFormat(p.locale,LEAVE_APPLY_TITLE_DATE);
+ /** Issue 16: a prepared card names its leave the way the chat card does (lib/ai-centre/leave-apply-title.ts:
+  * "Annual Leave, Thu, Nov 5 (1 day)"), from the facts its owner returned; the formatter is used for that leave
+  * phrase for all three kinds, and the kind itself is the card's first line. No facts: the generic title. */
+ const leavePhrase=(item:PreparedItem)=>item.leave?leaveApplyCardTitle({what:{action:'leave.apply',selectors:item.leave.durationType?{durationType:item.leave.durationType}:{}},
+  facts:{leaveType:item.leave.leaveType,startDate:item.leave.startDate,endDate:item.leave.endDate,days:item.leave.days}},(key,values)=>tCard(key,values),date=>cardDate.format(date)):null;
  const shown=data.tasks.slice(0,TASK_LIMIT),f=instant(p.locale),fTime=instantWithTime(p.locale);
  const taskTitle=(task:PendingTaskItem)=>{
   const label=tTask.has(task.kind)?tTask(task.kind):t('tasks.review');
   return task.subjectName?`${label} · ${task.subjectName}`:label;
  };
- const preparedCard=(item:PreparedItem)=><li key={`${item.kind}:${item.actionId}`} data-today-prepared={item.kind}>
-  <ProposalCard tone="prepared" icon={<FileCheck2/>} title={t(`prepared.${item.kind}`)} awaitingLabel={t('prepared.awaiting')}
-   meta={[t('prepared.meta',{date:fTime.format(new Date(item.createdAt))}),t('prepared.note')]}
+ const preparedCard=(item:PreparedItem)=>{const named=leavePhrase(item);return <li key={`${item.kind}:${item.actionId}`} data-today-prepared={item.kind}>
+  <ProposalCard tone="prepared" icon={<FileCheck2/>} title={named??t(`prepared.${item.kind}`)} awaitingLabel={t('prepared.awaiting')}
+   meta={[...(named?[t(`prepared.${item.kind}`)]:[]),t('prepared.meta',{date:fTime.format(new Date(item.createdAt))}),t('prepared.note')]}
    href={item.href} cta={t('prepared.cta')} expires={t('prepared.expires',{date:fTime.format(new Date(item.expiresAt))})}/>
- </li>;
+ </li>;};
  const findingCard=(finding:Finding)=><li key={finding.key} data-today-finding={finding.key}>
   <ProposalCard tone="finding" icon={finding.key==='proposals'?<Wand2/>:<ClipboardCheck/>} title={t(`findings.${finding.key}Title`,{count:finding.count})}
    meta={[t(`findings.${finding.key}Source`)]} href={finding.href} cta={t(`findings.${finding.key}Cta`)}/>
  </li>;
  const count=data.tasks.length+data.prepared.length+data.findings.length;
- return <TodaySection id="today-needs-you" title={t('needsYou')} count={count} empty={count===0} emptyText={t('needsYouEmpty')}
+ return <TodaySection id="today-needs-you" title={t(needsYouHeading(p.audience))} count={count} empty={count===0} emptyText={t('needsYouEmpty')}
   unavailable={data.failed?t('unavailable'):null}
   footer={data.tasks.length>shown.length?<Link href={AI_INBOX_HREF} className="inline-flex min-h-9 items-center text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
    {t('tasks.seeAll',{count:data.tasks.length})}</Link>:null}>
