@@ -134,3 +134,19 @@ export const LIFECYCLE_ASSIGNED_EXCEPTION_CAPABILITY_PUBLICATION={
   'app.onboarding_exception_update(uuid,integer,text,jsonb)',
  ],
 } as const;
+
+export const LIFECYCLE_RECOVERY_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LIFECYCLE_RECOVERY_FUNCTIONS,
+ functionLegacyParityFunction:'app.lifecycle_recovery_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.lifecycle_recovery_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.lifecycle_assigned_task_bindings_complete()',
+  'app.lc_v9_work(uuid)',
+  'app.lc_v9_assigned_item(uuid,integer,text)',
+  'app.lc_v9_fulfil_item(uuid,integer,text,text,text)',
+  'app.onboarding_recover_assigned_holding(uuid,integer,text,uuid,text,text,uuid,uuid,text)',
+  'app.lifecycle_holding_recovery_completed(uuid)',
+ ],
+} as const;

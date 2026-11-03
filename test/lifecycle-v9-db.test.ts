@@ -1,3 +1,4 @@
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -1039,6 +1040,24 @@ it('snapshots handed Native items by employment and records recovery on their or
   expect(boundedRecovery.items).toEqual([expect.objectContaining({id:assigned.id,canFulfil:true})]);
   expect(Object.keys(boundedRecovery.facts).sort()).toEqual(['employeeNo','joinDate','lastDay','name']);
   expect(boundedRecovery.documents).toEqual([]);
+  const recoveryCap='function.lifecycle.shared.recovery.execute';
+  try{
+    expect(await publishActionCapabilityPackage(owner.client,'lifecycle_recovery')).toMatchObject({changed:true,capabilities:2});
+    expect(await publishActionCapabilityPackage(owner.client,'lifecycle_recovery')).toMatchObject({changed:false});
+    const recovery=()=>v9OwnWork(employee).then(rows=>rows.find(row=>row.id===first.id)?.items.find(item=>item.id===assigned.id));
+    expect(await recovery()).toMatchObject({canFulfil:true});
+    await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+     values(${base.tenantId}::uuid,${employee.userId!}::uuid,${recoveryCap},${base.companyId}::uuid,'deny')`;
+    expect(await recovery()).toMatchObject({canFulfil:false});
+    await expect(v9OwnItem(employee,workInput)).rejects.toThrow();
+    expect((await v9CaseDetail(admin,first.id)).case.revision).toBe(declared.revision);
+    await owner.client`delete from access_user_override where tenant_id=${base.tenantId}::uuid and capability_id=${recoveryCap}`;
+    expect(await recovery()).toMatchObject({canFulfil:true});
+  }finally{
+    await owner.client`delete from access_user_override where tenant_id=${base.tenantId}::uuid and capability_id=${recoveryCap}`;
+    await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.lifecycle.shared.recovery.%'`;
+  }
+
   for(const operation of ['view','execute']as const){
     const capability=`function.lifecycle.shared.recovery.${operation}`;
     expect(await owner.withTenant(employee,tx=>tx.execute(sql`select (select capability_id from app.access_function_action where function_key='lifecycle.shared.recovery'and operation=${operation})as registered,app.lifecycle_recovery_function_legacy_allowed(${base.tenantId}::uuid,${employee.userId!}::uuid,${capability},${base.companyId}::uuid) as pure,app.lifecycle_recovery_function_current_legacy_allowed(${base.tenantId}::uuid,${employee.userId!}::uuid,${capability},${base.companyId}::uuid) as current`))).toEqual([{registered:capability,pure:true,current:true}]);
