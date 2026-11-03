@@ -664,6 +664,20 @@ it('publishes own Leave application and denies withdrawal without hiding the req
  const subject=await hire('employee'),typeId=await leaveType();
  const cap='function.leave.own.application.delete';
  try{
+  const [coverage]=await owner.client`select app.leave_own_application_bindings_complete() as complete`;
+  if(!coverage.complete){
+   const triggers=await owner.client`select t.tgname,t.tgtype,t.tgenabled,t.tgdeferrable,t.tginitdeferred,
+    p.oid::regprocedure::text as handler,p.proowner=c.relowner as matching_owner,p.prosecdef,
+    has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as runtime_execute
+    from pg_trigger t join pg_proc p on p.oid=t.tgfoid join pg_class c on c.oid=t.tgrelid
+    where t.tgname like 'leave_own_withdraw_%'
+     or t.tgname in ('module_leave_pending_application','aaa_leave_request_mutation','aaa_leave_request_access')
+    order by t.tgname`;
+   const [grants]=await owner.client`select
+    has_table_privilege('ai_hr_app','app.leave_own_withdraw_effect','SELECT,INSERT,UPDATE,DELETE') as receipt_grant,
+    has_table_privilege('ai_hr_app','public.leave_request','DELETE') as request_delete`;
+   throw new Error('Incomplete own Leave binding: '+JSON.stringify({triggers,grants}));
+  }
   expect(await publishActionCapabilityPackage(owner.client,'leave_own_application')).toMatchObject({changed:true,capabilities:4});
   expect(await publishActionCapabilityPackage(owner.client,'leave_own_application')).toMatchObject({changed:false});
   const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
