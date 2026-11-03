@@ -675,3 +675,17 @@ boundaries. It is a technical same-purpose reassessment under the already verifi
 fix/release authority. Only 26 digest values change; original human metadata and pending records
 remain intact. No fresh human exact-hash review, private-data expansion, new action permission or
 old evaluation/promotion renewal is claimed. Actual hosted qualification and staging acceptance remain required.
+
+### Re-plan exact source binding
+
+On 3 November 2026 the repository owner explicitly approved the exact provider source digest
+`66cf4753ea58c94f21d00b65e489f06d49d864360b99d775eb1ac02e8b4dcf43` in the release coordination chat.
+The authorized scope is the same 26 already approved purposes. Both pending purposes remain pending.
+The reviewed source is `a737b6c3fb7204432cdefbed9cc722b8206e53a1`; the test-only successor
+`4073ae7b411b0e63388f7965ff4639e9c3f9fdd3` computes the same digest.
+The previous 1,262-file LOGIN closure grew to 1,292 files through Lifecycle, Personnel, Payroll and
+Rewards integration. The private comparison retains the exact changed-file inventory.
+
+Only the 26 source digest values move. Existing reviewer, evidence and review time fields remain
+intact. This is a source binding decision under the existing approved purposes. It does not add a
+provider purpose, enable pending approvals, or renew agent evaluation or promotion evidence.
