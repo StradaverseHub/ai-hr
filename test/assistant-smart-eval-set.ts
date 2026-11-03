@@ -41,7 +41,7 @@
  *   group of five or more.
  * - Leave applications (issue 10): prepared from chat as a filled Request Leave form for the person to check and
  *   submit; when the leave type or dates are missing or unclear, one short question with the leave types numbered.
- * - What the product cannot do in chat today: read or import a file, show any individual's pay, count headcount, or
+ * - What the product cannot do in chat today: read or import a file, show any individual's pay, or
  *   show identity, bank, tax, EPF or SOCSO numbers (removed before the model sees them). Besides leave applications, a
  *   prepared card exists for cancelling or changing leave, overtime requests, claim cancellation and some approval
  *   decisions; other actions are suggested as a card that opens their page.
@@ -51,7 +51,13 @@
  *   group administrator can import employees and their details, leave balances, history and brought-forward leave,
  *   payroll history, pay transactions and pay codes, attendance clockings, rosters and cards, and system labels, each on
  *   its own page (payroll history on "Import payroll history", /payroll/history-import); the chat cannot read the file.
- *   A payroll partner, a manager or an employee can import nothing. */
+ *   A payroll partner, a manager or an employee can import nothing.
+ * - Workforce metrics (AI v2 W7, workforce_metrics): for HR administrators (their companies) and managers (their own team),
+ *   headcount with joiners and leavers, turnover, overtime hours per month for the six full months before this month and
+ *   annual leave days, withholding any group under five people, any group that would reveal one, and any group whose
+ *   members all have the same figure (zero hours included). Fictional Sister Sdn Bhd has one employee, so for the group
+ *   administrator each company's headcount and turnover is withheld while the group total is shown. Nobody has left, so
+ *   turnover is 0%. No company or department is called Penang. */
 import type {SmartEvalConversation} from '../core/improvement/smart-eval-score';
 
 const journey={kind:'journey'} as const;
@@ -169,6 +175,10 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
   ideal:'Replies in Malay: the pay averages read withholds every Acme group, because its latest closed payroll run (August 2026) pays fewer than five people, so the average is not shown because the group is too small to report; may name the basis and links the payroll or report page. No figure.',noPayFigures:true}]},
  {id:'hr-what',role:'hr_admin',turns:[{id:'hr-what-1',question:'what can you do for me?',locale:'en',kind:'guide',factor:'capability',source:journey,
   ideal:'Four to six short bullets of what it can do for this HR administrator, from what they can actually do here: for example prepare leave applications and decisions, suggest employee record changes and payroll close, open the imports (employees, leave, payroll history, attendance) and reports; then one example question. Nothing they cannot do, nothing only a group administrator can do.'}]},
+ // AI v2 W7: a governed overtime trend asked for a place the administrator's scope does not have.
+ {id:'hr-overtime-trend',role:'hr_admin',turns:[{id:'hr-overtime-trend-1',question:'overtime trend in Penang',locale:'en',kind:'answer',factor:'facts',source:journey,
+  ideal:'Uses the workforce metrics overtime trend: hours, not pay, for each of the six full months before this month. Nothing in this administrator\'s scope (Acme Sdn Bhd, departments Finance and Operations) is called Penang, so it says so in one line and gives or offers the trend for Acme Sdn Bhd instead. A month or department the read withholds is said to be withheld for privacy, never given as zero. If attendance is not switched on, says overtime is not available rather than guessing. No pay, no names, no invented figures.',
+  mustNotMention:['Aina','Siti','Nur']}]},
  {id:'hr-payroll-import',role:'hr_admin',turns:[{id:'hr-payroll-import-1',question:'can you import payroll history?',locale:'en',kind:'guide',factor:'capability',source:journey,
   ideal:'Starts with yes: payroll history is imported on the Import payroll history page, which it links; it cannot read the file in chat itself, and nothing is imported until the administrator confirms there. Does not offer the employee import instead. Short.',
   mustMention:['payroll history']}]},
@@ -199,8 +209,13 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
  {id:'grp-import',role:'group_admin',turns:[{id:'grp-import-1',question:'can you import my employees from excel',locale:'en',kind:'do',factor:'capability',
   source:{kind:'reconstructed',issues:['16'],from:'"do you want me to help process and import the data for you or direct you to the import page".'},
   ideal:'Yes: offers the employee import (card or page), says in one line what the spreadsheet needs, and is honest that it cannot read the file in chat itself. Short.',actions:['employees.import']}]},
- {id:'grp-headcount',role:'group_admin',turns:[{id:'grp-headcount-1',question:'how many employees do we have in each company?',locale:'en',kind:'honest_gap',factor:'capability',source:journey,
-  ideal:'Honest in one line that it cannot count employees in chat, and links the employee list where they can see it. No invented numbers.'}]},
+ // AI v2 W7: headcount is now a governed workforce metric (was an honest gap).
+ {id:'grp-headcount',role:'group_admin',turns:[{id:'grp-headcount-1',question:'how many employees do we have in each company?',locale:'en',kind:'answer',factor:'facts',source:journey,
+  ideal:'Uses the workforce metrics headcount by company: gives the group\'s total headcount as the read reports it, and says in one line that each company\'s own count is withheld for privacy, because Fictional Sister Sdn Bhd has fewer than five people and Acme Sdn Bhd\'s figure would reveal it. May link the analytics page. No names, no invented per-company numbers.',
+  mustNotMention:['Aina','Siti','Nur']}]},
+ {id:'grp-turnover',role:'group_admin',turns:[{id:'grp-turnover-1',question:'turnover last quarter',locale:'en',kind:'answer',factor:'facts',source:journey,
+  ideal:'Uses the workforce metrics turnover for last quarter, the last full calendar quarter, which it names: nobody left, so turnover for the group as a whole is 0%. Each company\'s figure is withheld for privacy because Fictional Sister Sdn Bhd has fewer than five people and Acme Sdn Bhd\'s figure would reveal it; says so in one line rather than giving 0% per company. No names, no invented figures.',
+  mustNotMention:['Aina','Siti','Nur']}]},
  {id:'grp-setup',role:'group_admin',turns:[{id:'grp-setup-1',question:"what's not set up yet?",locale:'en',kind:'answer',factor:'facts',source:journey,
   ideal:'Lists the top gaps setup readiness reports (for example payroll not ready: employees missing compensation or statutory details, no payroll cycle or schedule), in a few short bullets with the page for each. Short: the main gaps, not every item. No invented items.'}]},
  {id:'grp-ai',role:'group_admin',turns:[{id:'grp-ai-1',question:'how do I turn on the AI for everyone in the group?',locale:'en',kind:'guide',factor:'capability',source:journey,
