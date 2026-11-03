@@ -43,6 +43,15 @@ export function validateInterruptedTransfer({status,lease,phase,runId,recoveryPo
  validatePrelaunchState(status, {baseline:incident.baseline,baselineBuildId:interruptedTransfer.build,candidate:incident.source,announced:true});
  return incident.baseline;
 }
+export function existingPendingCommand(source) {
+ assert.equal(source,ASSERTION_INCIDENT.source,'Exact interrupted source required');
+ const marker = '/var/tmp/aihr-deploy/pending';
+ return [
+  'set -eu', `test -f ${marker}`, `test ! -L ${marker}`,
+  `test "$(sed -n 's/^ref=//p' ${marker})" = '${source}'`,
+  `test "$(sed -n 's/^at=//p' ${marker})" = '1793667863'`,
+ ].join('\n');
+}
 export async function operatorRelease(options){try{return await leasedOperatorRelease(options);}catch(error){throw redactLeaseError(error);}}
 async function leasedOperatorRelease({candidatePath,runId,execute=false,recoveryRunIds=[],repair=null,browserRecovery=null}){
  candidatePath=resolve(candidatePath);bindStaging(process.env);
@@ -100,7 +109,7 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  if(Object.keys(snapshot).sort().join(',')!=='baselineBuildId,environmentSha256'||snapshot.baselineBuildId!==initial.built_build_id)throw Error('Actual baseline build differs from ready deployment state');
  const grant=installationGrantFromVerifiedFiles({evidence,run:JSON.parse(readFileSync(join(evidence.evidenceDirectory,'run.json'))),
   jobs:JSON.parse(readFileSync(join(evidence.evidenceDirectory,'jobs.json'))),...snapshot});
- await transferAndLaunchCiBuild({grant,evidence,official,ssh,save,frozen,revalidate,pendingCommand:strictPendingCommand(evidence.sha),
+ await transferAndLaunchCiBuild({grant,evidence,official,ssh,save,frozen,revalidate,pendingCommand:resumePending ? existingPendingCommand(evidence.sha) : strictPendingCommand(evidence.sha),
   // Canonical transfer may need to apply thousands of source mtimes; retain a finite bundle-sized transport budget.
   transferSource:()=>execFileSync('rsync',guardedRsync(lease,[...(resumePending?['--checksum']:[]),...transport.rsyncArgs(official,candidatePath)]),{stdio:'inherit',timeout:600000}),
   transferPacket:(packet,destination)=>execFileSync('rsync',guardedRsync(lease,transport.packetRsyncArgs(packet,destination)),{stdio:'inherit',timeout:120000})});

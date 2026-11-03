@@ -6,7 +6,7 @@ import {hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
 import {verifyBrowserRecovery,validateBrowserMetadata,BROWSER_IMAGE,BROWSER_WORKFLOW_ID,requireReviewedBrowserController,validateBrowserRecoveryGrantEvidence,BROWSER_ASSERTION_RECOVERY_POLICY,ASSERTION_INCIDENT,verifyAssertionCaseInventory,originalAssertionProducer} from './browser-recovery-policy.mjs';
 import {validateBrowserControllerDelta,validateBrowserHistory,validateAssertionVerifierDelta} from './browser-recovery.mjs';
-import {operatorRelease,validateInterruptedTransfer} from './operator-release.mjs';
+import {operatorRelease,validateInterruptedTransfer,existingPendingCommand} from './operator-release.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 const branch='codex/recovery',candidateBranch='codex/source',controller='e'.repeat(40),lock='f'.repeat(64);
@@ -214,4 +214,13 @@ test('Pending source transfer can resume only under the original installing leas
   {status:{...status,pid:'0'}},{status:{...status,ref:baseline}},{status:{...status,build_id:'different'}}]) {
   assert.throws(()=>validateInterruptedTransfer({...input,...changes}));
  }
+});
+
+
+test('Pending transfer validates the existing marker without reannouncing source', () => {
+ const command = existingPendingCommand(ASSERTION_INCIDENT.source);
+ assert.match(command,/1793667863/);
+ assert.match(command,/test ! -L/);
+ assert.doesNotMatch(command,/deploy-state\.sh/);
+ assert.throws(()=>existingPendingCommand(ASSERTION_INCIDENT.baseline));
 });
