@@ -150,7 +150,7 @@ describe('Today for an employee',()=>{
  it('counts what AI Centre answered for the person, and shows nothing else from the record',async()=>{
   const view=await show(EMPLOYEE,['co-a']);
   const done=view.section('today-done-for-you')!;
-  expect([...done.querySelectorAll('[data-today-note]')].map(note=>[note.getAttribute('data-today-note'),...[...note.querySelectorAll('article > *')].map(text)])).toEqual([
+  expect([...done.querySelectorAll('[data-today-note]')].map(note=>[note.getAttribute('data-today-note'),...[...note.children].map(text)])).toEqual([
    ['answeredYou','Answered','Answered 3 of your questions','In the last 7 days.'],
   ]);
   expect(S.calls.summary).toEqual([{since:new Date('2026-10-28T16:00:00.000Z'),companyIds:['co-a']}]);
