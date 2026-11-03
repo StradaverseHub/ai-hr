@@ -9685,6 +9685,7 @@
           "owners": [
             "app.current_tenant_id",
             "app.current_user_id",
+            "app.financial_tp1_admin_action",
             "app.is_self_person",
             "app.login_blocked",
             "app.principal_snapshot_current",
@@ -9713,6 +9714,7 @@
       "nativeOwners": [
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.financial_tp1_admin_action",
         "app.is_self_person",
         "app.login_blocked",
         "app.principal_snapshot_current",
@@ -13626,6 +13628,7 @@
             "app.access_workforce_employment",
             "app.current_tenant_id",
             "app.current_user_id",
+            "app.financial_tp1_admin_action",
             "app.has_role_for",
             "app.information_payslip_document",
             "app.is_company_descendant",
@@ -14444,6 +14447,7 @@
             "app.access_workforce_employment",
             "app.current_tenant_id",
             "app.current_user_id",
+            "app.financial_tp1_admin_action",
             "app.is_self_person",
             "app.login_blocked",
             "app.principal_snapshot_current",
@@ -14509,6 +14513,7 @@
             "app.access_workforce_employment",
             "app.current_tenant_id",
             "app.current_user_id",
+            "app.financial_tp1_admin_action",
             "app.is_self_person",
             "app.login_blocked",
             "app.principal_snapshot_current",
@@ -14674,6 +14679,7 @@
         "app.employment_status_on",
         "app.financial_history_function_action",
         "app.financial_setup_catalog_function",
+        "app.financial_tp1_admin_action",
         "app.function_action_allowed",
         "app.has_role_for",
         "app.information_payslip_document",
@@ -50984,6 +50990,7 @@
       "owners": [
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.financial_tp1_admin_action",
         "app.is_self_person",
         "app.login_blocked",
         "app.principal_snapshot_current",
@@ -55583,6 +55590,7 @@
         "app.access_workforce_employment",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.financial_tp1_admin_action",
         "app.information_payslip_document",
         "app.is_self_person",
         "app.login_blocked",
@@ -55617,6 +55625,7 @@
         "app.access_workforce_employment",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.financial_tp1_admin_action",
         "app.has_role_for",
         "app.information_payslip_document",
         "app.is_company_descendant",
@@ -58458,6 +58467,7 @@
         "app.access_workforce_employment",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.financial_tp1_admin_action",
         "app.is_self_person",
         "app.login_blocked",
         "app.principal_snapshot_current",
@@ -58497,6 +58507,7 @@
         "app.access_workforce_employment",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.financial_tp1_admin_action",
         "app.is_self_person",
         "app.login_blocked",
         "app.principal_snapshot_current",
@@ -58572,6 +58583,7 @@
         "app.access_workforce_employment",
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.financial_tp1_admin_action",
         "app.is_self_person",
         "app.login_blocked",
         "app.principal_snapshot_current",
@@ -80678,10 +80690,10 @@
     {
       "table": "pay_formula_accumulation",
       "policy": "formula_read",
-      "source": "db/migrations/0956_financial_setup_actions.sql",
+      "source": "db/migrations/0959_formula_builder_read_binding.sql",
       "owners": [
         "app.current_tenant_id",
-        "app.financial_setup_catalog_action",
+        "app.pay_formula_catalog_access",
         "app.financial_catalog_reference_read"
       ]
     },
@@ -80696,20 +80708,20 @@
     {
       "table": "pay_formula_event",
       "policy": "formula_read",
-      "source": "db/migrations/0956_financial_setup_actions.sql",
+      "source": "db/migrations/0959_formula_builder_read_binding.sql",
       "owners": [
         "app.current_tenant_id",
-        "app.financial_setup_catalog_action",
+        "app.pay_formula_catalog_access",
         "app.financial_formula_runtime_read"
       ]
     },
     {
       "table": "pay_formula_revision",
       "policy": "formula_read",
-      "source": "db/migrations/0956_financial_setup_actions.sql",
+      "source": "db/migrations/0959_formula_builder_read_binding.sql",
       "owners": [
         "app.current_tenant_id",
-        "app.financial_setup_catalog_action",
+        "app.pay_formula_catalog_access",
         "app.financial_formula_runtime_read"
       ]
     },
@@ -80724,10 +80736,10 @@
     {
       "table": "pay_formula",
       "policy": "formula_read",
-      "source": "db/migrations/0956_financial_setup_actions.sql",
+      "source": "db/migrations/0959_formula_builder_read_binding.sql",
       "owners": [
         "app.current_tenant_id",
-        "app.financial_setup_catalog_action",
+        "app.pay_formula_catalog_access",
         "app.financial_formula_runtime_read"
       ]
     },

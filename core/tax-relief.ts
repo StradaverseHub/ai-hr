@@ -1335,6 +1335,7 @@ function listTp1MonthDeclarations(ctx: SessionContext, personId: string, assessm
   const year = assessmentYear == null ? null : validateYear(assessmentYear);
   return withTenant(ctx, async (tx) => {
     if(ownOnly)await assertMyTp1OwnerTx(tx,personId);
+    else await assertTp1AdministrativeAction(tx,personId,'view');
     const rows = await tx
       .select({
         id: tp1Relief.id,
@@ -1469,11 +1470,12 @@ export function listTp1Years(ctx: SessionContext): Promise<number[]> {
 
 /** Admin-on-behalf: distinct assessment years a SELECTED employee has TP1 rows for. Admin-gated. */
 export async function listTp1YearsForPerson(ctx: SessionContext, p: { personId: string }): Promise<number[]> {
-  return listTp1YearsForPersonId(ctx, requireAdminTarget(ctx, p.personId));
+  return listTp1YearsForPersonId(ctx, requireAdminTarget(ctx, p.personId),true);
 }
 
-function listTp1YearsForPersonId(ctx: SessionContext, personId: string): Promise<number[]> {
+function listTp1YearsForPersonId(ctx: SessionContext, personId: string, administrative=false): Promise<number[]> {
   return withTenant(ctx, async (tx) => {
+    if(administrative)await assertTp1AdministrativeAction(tx,personId,'view');
     const rows = await tx
       .selectDistinct({ year: tp1Relief.assessmentYear })
       .from(tp1Relief)
