@@ -4726,6 +4726,13 @@
       "when": 1793330000371,
       "tag": "0971_leave_configuration_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 819,
+      "version": "7",
+      "when": 1793330000372,
+      "tag": "0972_attendance_schedule_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

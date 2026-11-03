@@ -97,3 +97,23 @@ export const LEAVE_CONFIGURATION_CAPABILITY_PUBLICATION={
   'app.module_grade_group_member_guard()',
  ],
 } as const;
+
+export const ATTENDANCE_SCHEDULE_CAPABILITY_PUBLICATION={
+ capabilities:(['view','add','edit','delete'] as const).map(operation=>({
+  id:'attendance_configuration.'+operation,scope:'tenant' as const,bindings:[
+   {owner:'app.module_action_allowed',operation:'native-attendance-configuration-'+operation},
+  ],
+ })),
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='attendancePolicy.schedule'),
+ legacyParityFunction:'app.module_action_legacy_allowed',
+ currentLegacyParityFunction:'app.module_action_current_native_default',
+ functionLegacyParityFunction:'app.module_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.module_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.attendance_schedule_bindings_complete()',
+  'app.module_attendance_rule_guard()',
+  'app.module_attendance_delete_floor()',
+  'app.module_configuration_write_lock()',
+ ],
+} as const;
