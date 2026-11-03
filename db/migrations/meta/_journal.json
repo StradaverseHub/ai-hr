@@ -4831,6 +4831,13 @@
       "when": 1793330000386,
       "tag": "0986_leave_own_application_hierarchy_trigger_shape",
       "breakpoints": true
+    },
+    {
+      "idx": 834,
+      "version": "7",
+      "when": 1793330000387,
+      "tag": "0987_claim_administration_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

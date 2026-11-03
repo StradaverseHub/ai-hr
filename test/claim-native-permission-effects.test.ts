@@ -164,3 +164,26 @@ it('publishes the own Claims courses and keeps a draft editable under Submit Exe
   await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.claims.own.%'`;
  }
 });
+
+it('publishes Claims Administration and keeps reimbursement visible under Execute denial',async()=>{
+ const cap='function.claimsConfig.reimbursements.execute',row=await claim('approved');
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'claim_administration')).toMatchObject({changed:true,capabilities:10});
+  expect(await publishActionCapabilityPackage(owner.client,'claim_administration')).toMatchObject({changed:false});
+  expect((await listReimbursementsDue(admin)).find(item=>item.id===row.id)?.canMarkPaid).toBe(true);
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${admin.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  expect((await listReimbursementsDue(admin)).find(item=>item.id===row.id)?.canMarkPaid).toBe(false);
+  const pay=()=>markReimbursementsPaid(admin,{claimIds:[row.id],payoutRef:'Fictional payment'});
+  await expect(pay()).rejects.toThrow();
+  expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,row.id)))[0]?.status).toBe('approved');
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await expect(pay()).resolves.toEqual({paid:1});
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+   where id in ('claims.view','claims.add','claims.edit','claims.delete','function.claims.administration.view',
+    'function.claims.administration.delete','function.claims.administration.execute','function.claims.administration.approve',
+    'function.claimsConfig.reimbursements.view','function.claimsConfig.reimbursements.execute')`;
+ }
+});

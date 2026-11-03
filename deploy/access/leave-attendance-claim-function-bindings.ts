@@ -308,3 +308,39 @@ export const CLAIM_SELF_DECISION_CAPABILITY_PUBLICATION={
  legacyGroups:{},
  requiredFunctions:['app.claim_decision_bindings_complete()','app.claim_self_decision_allowed(uuid,text)','app.claim_command_guard()'],
 } as const;
+
+export const CLAIM_ADMINISTRATION_CAPABILITY_PUBLICATION={
+ capabilities:(['view','add','edit','delete'] as const).map(operation=>({
+  id:'claims.'+operation,scope:'company' as const,bindings:[
+   {owner:'app.module_action_allowed',operation:'native-claims-administrative-'+operation},
+  ],
+ })),
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='claims.administration'||descriptor.key==='claimsConfig.reimbursements'),
+ legacyParityFunction:'app.module_action_legacy_allowed',
+ currentLegacyParityFunction:'app.module_action_current_native_default',
+ functionLegacyParityFunction:'app.module_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.module_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.claim_administration_bindings_complete()',
+  'app.claim_nonself_submit_allowed(uuid)',
+  'app.claim_decision_allowed(uuid)',
+  'app.claim_source_read_allowed(uuid,text)',
+  'app.claim_cancel_native(uuid,uuid)',
+  'app.claim_reimburse_native(uuid[],text)',
+ ],
+} as const;
+
+export const CLAIM_MAINTENANCE_RECEIPT_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='claims.related.receipts'||descriptor.key==='claims.administration.receipts'),
+ functionLegacyParityFunction:'app.claim_receipt_native_allowed',
+ functionCurrentLegacyParityFunction:'app.claim_receipt_current_native_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.claim_administration_bindings_complete()',
+  'app.claim_maintenance_receipt_allowed(uuid,text)',
+  'app.claim_own_receipt_read_allowed(uuid,uuid)',
+  'app.claim_receipt_native(uuid,text,text,bytea,text)',
+ ],
+} as const;
