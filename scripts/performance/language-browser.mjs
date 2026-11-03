@@ -29,10 +29,15 @@ try{
  assert.equal(response.status(),200);assert(!page.url().includes('/login'));
  report.personnel.responseMs=performance.now()-navigationStart;save();
  await page.getByRole('heading',{level:1,name:expected.en,exact:true}).waitFor();
- const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
- if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.welcomeTourDismissed=true;}
  assert((await page.locator('body').innerText()).includes(actor.name),'fixture actor identity is missing');
  await page.locator('main tbody tr').first().waitFor({state:'visible'});
+ report.personnel.rowsVisibleMs=performance.now()-navigationStart;save();
+ // New fixture accounts have not completed the tour. Wait for hydration instead
+ // of racing the tour's visibility against the initial server-rendered rows.
+ const tour=page.getByRole('dialog').filter({has:page.getByRole('button',{name:'Skip',exact:true})});
+ await tour.getByRole('button',{name:'Skip',exact:true}).click();
+ await tour.waitFor({state:'hidden'});
+ report.welcomeTourDismissed=true;
  await page.getByRole('button',{name:'Change language',exact:true}).click({trial:true});
  report.personnel={...report.personnel,status:'usable',usableMs:performance.now()-navigationStart};
  save();
