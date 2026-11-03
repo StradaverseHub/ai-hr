@@ -13,6 +13,9 @@ export function createSessionState(ports: Ports, initialVisibility: Visibility =
   let visibility = initialVisibility;
   let generation = 0;
   let initialized = false;
+  let focused = true;
+  let prompting = false;
+  let authenticatedOwner: number | null = null;
   let snapshot: Snapshot = { status: 'loading', employmentId: null, error: false, visible: visibility === 'active', unlocking: false };
   const listeners = new Set<() => void>();
   function update(patch: Partial<Snapshot>) {
@@ -20,9 +23,16 @@ export function createSessionState(ports: Ports, initialVisibility: Visibility =
     listeners.forEach((listener) => listener());
   }
   function current(owner: number) { return owner === generation; }
-  function canShowUnlockResult() { return visibility !== 'background'; }
+  function applyUnlock() {
+    if (authenticatedOwner === generation && visibility === 'active' && focused) {
+      authenticatedOwner = null;
+      update({ status: 'signedIn' });
+    }
+  }
   async function signOut() {
     generation += 1;
+    prompting = false;
+    authenticatedOwner = null;
     const owner = generation;
     initialized = true;
     update({ status: 'signedOut', employmentId: null, error: false, unlocking: false });
@@ -31,7 +41,7 @@ export function createSessionState(ports: Ports, initialVisibility: Visibility =
   }
   async function unlock() {
     if (!initialized) { await initialize(); return; }
-    if (snapshot.status !== 'locked' || snapshot.unlocking || visibility !== 'active') return;
+    if (snapshot.status !== 'locked' || snapshot.unlocking || !focused || visibility !== 'active') return;
     const owner = generation;
     update({ unlocking: true, error: false });
     try {
@@ -39,12 +49,16 @@ export function createSessionState(ports: Ports, initialVisibility: Visibility =
       if (!current(owner)) return;
       // No OS credentials: full hosted sign-in, never an automatic unlock of a stored session.
       if (!possible) { await signOut(); return; }
+      prompting = true;
       const success = await ports.authenticate();
-      if (current(owner) && success && canShowUnlockResult()) update({ status: 'signedIn' });
+      if (current(owner) && success && visibility !== 'background') {
+        authenticatedOwner = owner;
+        applyUnlock();
+      }
     } catch {
       if (current(owner)) update({ error: true });
     } finally {
-      if (current(owner)) update({ unlocking: false });
+      if (current(owner)) { prompting = false; update({ unlocking: false }); }
     }
   }
   async function initialize() {
@@ -65,6 +79,8 @@ export function createSessionState(ports: Ports, initialVisibility: Visibility =
     signOut,
     markSignedIn() {
       generation += 1;
+      prompting = false;
+      authenticatedOwner = null;
       initialized = true;
       update({ status: visibility === 'active' ? 'signedIn' : 'locked', employmentId: null, unlocking: false, error: false });
     },
@@ -73,12 +89,29 @@ export function createSessionState(ports: Ports, initialVisibility: Visibility =
     },
     setVisibility(next: Visibility) {
       visibility = next;
-      if (next === 'background' && snapshot.unlocking) generation += 1; // invalidate a pending OS result
+      if (next === 'background' && (snapshot.unlocking || authenticatedOwner !== null)) {
+        generation += 1;
+        prompting = false;
+        authenticatedOwner = null;
+      }
       update({ visible: next === 'active', ...(next === 'background' ? { unlocking: false } : {}),
         ...(next !== 'active' && snapshot.status === 'signedIn' ? { status: 'locked' as const } : {}) });
+      applyUnlock();
     },
-    blur() {
-      if (snapshot.unlocking) generation += 1; // the notification shade must invalidate a pending prompt too
+    focus() {
+      focused = true;
+      applyUnlock();
+    },
+    blur(nativePromptMayOwnFocus = false) {
+      if (nativePromptMayOwnFocus) {
+        focused = false;
+        // Android's own prompt can take focus. Keep the private tree locked until
+        // native authentication succeeds and the application regains focus.
+        if (snapshot.status === 'locked' && prompting) return;
+      }
+      if (snapshot.unlocking || authenticatedOwner !== null) generation += 1;
+      prompting = false;
+      authenticatedOwner = null;
       update({ unlocking: false, ...(snapshot.status === 'signedIn' ? { status: 'locked' as const } : {}) });
     },
     dispose() { generation += 1; listeners.clear(); },

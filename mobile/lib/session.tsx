@@ -87,9 +87,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         void reassertScreenProtection().then(() => { if (auto && state.getSnapshot().status === 'locked') void state.unlock(); });
       }
     });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', state.blur) : null;
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => state.blur(true)) : null;
+    const focus = Platform.OS === 'android' ? AppState.addEventListener('focus', state.focus) : null;
     void state.initialize();
-    return () => { revoked(); armed(); change.remove(); blur?.remove(); state.dispose(); };
+    return () => { revoked(); armed(); change.remove(); blur?.remove(); focus?.remove(); state.dispose(); };
   }, [state]);
   // A document fetched for one employment never survives a switch to another. Stable, as before.
   const setEmploymentId = useCallback((employmentId: string | null) => {

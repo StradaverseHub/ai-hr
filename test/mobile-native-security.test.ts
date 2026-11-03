@@ -221,6 +221,27 @@ describe('native device gate', () => {
     prompt.resolve(true); await pending;
     expect(f.state.getSnapshot().status).not.toBe('signedIn');
   });
+  it('keeps Android locked until the successful native prompt returns window focus', async () => {
+    const f = sessionFixture(); const prompt = deferred<boolean>();
+    f.ports.authenticate.mockReturnValueOnce(prompt.promise);
+    const pending = f.state.initialize(); await drain();
+    f.state.blur(true);
+    prompt.resolve(true); await pending;
+    expect(f.state.getSnapshot().status).toBe('locked');
+    f.state.focus();
+    expect(f.state.getSnapshot().status).toBe('signedIn');
+  });
+  it('discards a successful Android prompt result if the app backgrounds before focus returns', async () => {
+    const f = sessionFixture(); const prompt = deferred<boolean>();
+    f.ports.authenticate.mockReturnValueOnce(prompt.promise);
+    const pending = f.state.initialize(); await drain();
+    f.state.blur(true);
+    prompt.resolve(true); await pending;
+    f.state.setVisibility('background');
+    f.state.setVisibility('active');
+    f.state.focus();
+    expect(f.state.getSnapshot().status).toBe('locked');
+  });
   it('allows the OS prompt transient inactive state without showing private content there', async () => {
     const f = sessionFixture(); const prompt = deferred<boolean>();
     f.ports.authenticate.mockReturnValueOnce(prompt.promise);
