@@ -6,7 +6,7 @@ import {afterAll, beforeAll, beforeEach, expect, it} from 'vitest';
 import {claimRequest} from '../../db/schema';
 import {hireEmployee} from '../../core/org';
 import {createClaimType, listClaimHistoryPage, listClaimsForEmployment} from '../../packs/claims/service';
-import {adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
+import {adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base} from '../harness';
 let base: Base;
 beforeAll(() => migrateTestDb());
 beforeEach(async () => {await resetDb(); base = await seedBase();});
