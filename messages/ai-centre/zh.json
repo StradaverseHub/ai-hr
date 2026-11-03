@@ -476,6 +476,7 @@
     "conversation": {
       "routed": "已转给您的人事团队：助手不处理此类话题。",
       "routedCrisis": "如果您身处危险，请立即联系紧急服务。",
+      "startPrivateCase": "向人力资源部门提交私密个案",
       "days": "{count, plural, other {# 天}}",
       "leaveApplyTitle": "{leaveType}，{start}（{days, plural, other {# 天}}）",
       "leaveApplyRangeTitle": "{leaveType}，{start} – {end}（{days, plural, other {# 天}}）",

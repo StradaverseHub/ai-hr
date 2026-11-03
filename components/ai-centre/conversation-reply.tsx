@@ -55,7 +55,17 @@ export async function ConversationReply({ turn, links = new Map() }: { turn: Con
         <aside role="note" data-teras-route={turn.crisis ? 'crisis' : 'hr_contact'}
           className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-900 dark:text-amber-200">
           <ShieldCheck aria-hidden className="mt-0.5 size-4 flex-none" />
-          <span>{t(turn.crisis ? 'routedCrisis' : 'routed')}</span>
+          {/* AI v2 W11: emergency help first on a crisis turn, then the protected case route where it is set up. The
+              person writes the case on its own form; nothing of this turn is passed to it. */}
+          <span className="min-w-0 space-y-1">
+            <span className="block">{t(turn.crisis ? 'routedCrisis' : 'routed')}</span>
+            {turn.caseRoute && (
+              <Link href={turn.caseRoute} data-teras-case-route
+                className="inline-flex items-center font-medium text-primary underline underline-offset-2 hover:no-underline pointer-coarse:min-h-11">
+                {t('startPrivateCase')}
+              </Link>
+            )}
+          </span>
         </aside>
       )}
       {turn.reply && <ReplyMarkdown text={turn.reply} links={links} />}

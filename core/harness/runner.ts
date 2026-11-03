@@ -64,6 +64,9 @@ export type TurnOptions=Readonly<{
  /** Defaults to the native owners. Tests may substitute bindings; the offer policy still applies. */
  tools?:ToolProvider;
  clock?:()=>Date;
+ /** AI v2 W11: whether the protected case route is set up for this caller and company (core/private-case-route.ts).
+  * Asked only on a routed sensitive turn, after the gate; it reads no case and nothing of the person's words. */
+ caseRouteAvailable?:()=>Promise<boolean>;
 }>;
 export type TurnSuggestion=Readonly<{action:string;reviewRoute:string;inlineCard:boolean}>;
 export type TurnResult=Readonly<{
@@ -78,7 +81,9 @@ export type TurnResult=Readonly<{
  /** The caller's open proposals, each verified again this turn. The harness never creates or confirms one. */
  proposals:readonly Proposal[];
  /** Names of reads and context tools that returned data this turn. */
- reads:readonly string[];trace:TurnTrace;memory:TaskMemory}>;
+ reads:readonly string[];trace:TurnTrace;memory:TaskMemory;
+ /** AI v2 W11: a routed sensitive turn for a caller whose company has the protected case route set up. */
+ caseRoute:boolean}>;
 
 const S=HARNESS_SPEC;
 const finalDeclaration:HarnessToolDeclaration=Object.freeze({name:S.offer.finalTool,description:S.offer.finalDescription,parameters:{type:'object',
@@ -127,9 +132,10 @@ export function payViewNoteFor(ctx:SessionContext,destinations:readonly string[]
  return page?S.payView.page.replace('{label}',destinationLabel(page.labelKey,locale)).replace('{href}',page.href):S.payView.none;
 }
 
-/** The spec's contact route for a sensitive-topic turn. */
-export function routeReply():string{
- const {contact,routeReply:template,caseClause}=S.sensitive,route:string|null=contact.caseRoute;
+/** The spec's contact route for a sensitive-topic turn. AI v2 W11: the spec's case clause joins it only where the
+ * protected case route is set up for the caller (`caseRoute`), and only once the spec names a route. */
+export function routeReply(caseRoute=false):string{
+ const {contact,routeReply:template,caseClause}=S.sensitive,route:string|null=caseRoute?contact.caseRoute:null;
  return template.replace('{contact}',contact.label).replace('{case}',route?caseClause.replace('{route}',route):'');
 }
 
@@ -262,8 +268,10 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
 
  const shown=reply??S.replyChecks.fallbackReply;
  const restoration=fallback||fixed?{reply:shown,restored:0,refused:[]}:restoreFigures(shown,ledger,callerKey,offeredNames);
- // A routed turn ends with the contact route (a crisis turn: the safe message, then the route).
- const shownReply=routed?[restoration.reply,routeReply()].filter(Boolean).join('\n\n'):restoration.reply;
+ // A routed turn ends with the contact route (a crisis turn: the safe message first, then the route). AI v2 W11: the
+ // case route is asked about only now, on a routed turn; a failure keeps the contact route alone.
+ const caseRoute=routed&&options.caseRouteAvailable?await options.caseRouteAvailable().then(value=>value===true,()=>false):false;
+ const shownReply=routed?[restoration.reply,routeReply(caseRoute)].filter(Boolean).join('\n\n'):restoration.reply;
  // The two transcripts part here: the person sees shownReply; a later model call may only see modelTurn.
  const modelTurn:readonly ModelHistoryMessage[]=Object.freeze([
   Object.freeze({role:'user' as const,content:routed?S.history.routedQuestion:reason==='instruction_override'?S.history.overrideQuestion:refused?S.history.refusedQuestion:question,side:'model' as const}),
@@ -286,5 +294,5 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
   budgets:{steps,inputTokens,outputTokens,spendUsd:Number(spendUsd.toFixed(6)),wallMs:Date.now()-startedMs,exhausted,refusedCalls},
   restoration:{restored:restoration.restored,refused:restoration.refused},memory:memoryResult,
   outcome:{mode,slot,suggestion:suggestion?.action??null,openProposals:next.openProposals.length,fallback}});
- return Object.freeze({reply:shownReply,personTurn,modelTurn,mode,slot,suggestion,proposals:next.openProposals,reads:Object.freeze(reads),trace,memory:next});
+ return Object.freeze({reply:shownReply,personTurn,modelTurn,mode,slot,suggestion,proposals:next.openProposals,reads:Object.freeze(reads),trace,memory:next,caseRoute});
 }

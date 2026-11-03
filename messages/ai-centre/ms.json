@@ -476,6 +476,7 @@
     "conversation": {
       "routed": "Dihantar kepada pasukan HR anda: topik ini tidak dikendalikan oleh pembantu.",
       "routedCrisis": "Jika anda dalam bahaya, hubungi perkhidmatan kecemasan sekarang.",
+      "startPrivateCase": "Mulakan kes peribadi dengan HR",
       "days": "{count, plural, other {# hari}}",
       "leaveApplyTitle": "{leaveType}, {start} ({days, plural, other {# hari}})",
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, other {# hari}})",
