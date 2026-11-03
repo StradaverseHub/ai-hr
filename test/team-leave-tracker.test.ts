@@ -315,7 +315,12 @@ describe('the Dashboard no longer carries the calendar', () => {
       .split(';')
       .map((p) => p.split(':')[0].replace('?', '').trim())
       .filter(Boolean);
-    expect(declaredParams).toEqual(['moduleUnavailable','employmentId','workspace']);
+    // AI v2 Phase 1 adds three Today params, none of them the calendar's: `?needs=all` and `?recommend=<leave request>`
+    // (Needs you: every waiting decision, and the approver recommendation the person opened, matched only against
+    // the viewer's own task list) and `?why=leave:<leave type>|pay` (At a glance: the "Why?" panel opened in place,
+    // matched only against the rows the viewer already sees). The bound stays exact, and the calendar four stay out.
+    expect(declaredParams).toEqual(['moduleUnavailable','employmentId','workspace','needs','recommend','why']);
+    for (const calendar of ['abs','view','cal','focus']) expect(declaredParams).not.toContain(calendar);
     // …which also retires app/page.tsx from the leave pack's drift allowlist (the ratchet only shrinks).
     expect(dashboard).not.toContain("from '@/core/leave'");
     const allowlist = JSON.parse(read('test/pack-drift-allowlist.json')) as Record<string, string[]>;
