@@ -1,7 +1,7 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 const state=vi.hoisted(()=>({subjects:vi.fn(),lines:vi.fn(),photo:vi.fn(),tenant:vi.fn(),proof:vi.fn(),names:vi.fn()}));
 vi.mock('../db/client',()=>({withTenant:state.tenant}));
-vi.mock('../core/read',()=>({myOwnEmploymentSubjects:state.subjects,reportingLinesFor:state.lines}));
+vi.mock('../core/read',()=>({myOwnEmploymentSubjectsTx:state.subjects,reportingLinesFor:state.lines}));
 vi.mock('../core/person-photo',()=>({hasPersonPhoto:state.photo}));
 import {readEmployeeHomeIdentity,readEmployeeHomeGreetingIdentity} from '../core/employee-home';
 
@@ -20,6 +20,8 @@ describe('Home identity versus greeting presentation failure',()=>{
     const identity=await readEmployeeHomeIdentity(ctx);
     expect(identity).toMatchObject({role:'employee',employmentState:'selected',selectedEmploymentId:'own'});
     expect(state.photo).not.toHaveBeenCalled();expect(state.names).not.toHaveBeenCalled();expect(state.proof).toHaveBeenCalledTimes(2);
+    expect(state.tenant).toHaveBeenCalledTimes(2);
+    expect(state.subjects).toHaveBeenCalledWith(expect.objectContaining({execute:state.proof}),ctx);
     expect(identity).not.toHaveProperty('name');expect(identity).not.toHaveProperty('photoHref');
     await expect(readEmployeeHomeGreetingIdentity(ctx)).rejects.toThrow('Fictional private photo failure');
     expect(state.photo).toHaveBeenCalledWith(ctx,'fictional-person');
