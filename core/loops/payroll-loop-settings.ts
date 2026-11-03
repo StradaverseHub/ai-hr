@@ -67,8 +67,11 @@ export async function payrollLoopDueTx(tx:Tx,input:Readonly<{tenantId:string;wor
 
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
 const lockCompany=(tx:Tx,tenantId:string,companyId:string)=>tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`teras-payroll-loop-setting:${tenantId}:${companyId}`},0))`);
+/** The company must be this tenant's and the person its administrator: app.is_admin_for answers from the grants alone,
+ * so a group-wide grant of another tenant would pass it for any company id. */
 async function requireCompanyAdminTx(tx:Tx,companyId:string){
- const [row]=await tx.execute(sql`select app.is_admin_for(${companyId}::uuid) as ok`) as unknown as {ok:boolean|null}[];
+ const [row]=await tx.execute(sql`select exists(select 1 from public.company c where c.id=${companyId}::uuid and c.tenant_id=app.current_tenant_id()
+  and app.is_admin_for(c.id)) as ok`) as unknown as {ok:boolean|null}[];
  if(row?.ok!==true)throw new PayrollLoopRefused('not_administrator');
 }
 const guard=(ctx:SessionContext)=>{if(!ctx.userId||ctx.agent||!isAdmin(ctx))throw new PayrollLoopRefused('not_administrator');};
