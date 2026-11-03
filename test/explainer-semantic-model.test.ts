@@ -81,7 +81,8 @@ describe('step 4 capabilities in the semantic model',()=>{
  it('generates specs whose required inputs exclude the optional ones and whose descriptions name no never field',()=>{
   const specs=terasToolSpecs();expect(specs.map(spec=>spec.name)).toEqual(TERAS_READS.map(row=>row.name));
   const required=Object.fromEntries(specs.map(spec=>[spec.name,(spec.inputSchema as {required:string[]}).required]));
-  expect(required).toEqual({explain_payslip_statutory:[],explain_leave_entitlement:['leave_type'],explain_attendance_day:['date'],setup_copilot:[],pay_aggregates:[]});
+  expect(required).toEqual({explain_payslip_statutory:[],explain_leave_entitlement:['leave_type'],explain_attendance_day:['date'],setup_copilot:[],pay_aggregates:[],
+   explain_pay_difference:[],explain_claim_limit:['claim_type']});
   const never=[...new Set(STEP4.flatMap(entity=>walk(entity.fields)).filter(field=>field.disclosure==='never').map(field=>field.name))];
   for(const spec of specs)for(const name of never)expect(spec.description).not.toMatch(new RegExp(`(^|[^A-Za-z0-9_])${name}([^A-Za-z0-9_]|$)`));
  });

@@ -180,7 +180,9 @@ describe('Today for an employee',()=>{
   expect([...glance.querySelectorAll('[data-today-balance]')].map(row=>[text(row.querySelector('dt')),text(row.querySelector('b')),row.querySelector('a')?.getAttribute('href')]))
    // AI v2 W5: Why? opens the balance's explanation in place on Today (test/why-panels.dom.test.tsx), no longer Leave Details.
    .toEqual([['Annual Leave','9.50 days','/?why=leave%3Alt-al'],['Medical Leave','11.50 days','/?why=leave%3Alt-ml']]);
-  expect(text(glance.querySelector('[data-today-balance] a'))).toBe('Why? Why is my Annual Leave balance this figure?');
+  // AI v2 W5: the link's accessible name says which balance it explains; the visible word is Why?.
+  expect(text(glance.querySelector('[data-today-balance] a'))).toBe('Why?');
+  expect(glance.querySelector('[data-today-balance] a')?.getAttribute('aria-label')).toBe('Why? Why is my Annual Leave balance this figure?');
   const payslip=glance.querySelector('[data-today-payslip]')!;
   expect(text(payslip.querySelector('dt'))).toBe('October 2026 payslip');
   expect(payslip.querySelector('a')?.getAttribute('href')).toBe('/me/payslip?year=2026&month=10&payslipId=ps-oct');

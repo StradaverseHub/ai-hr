@@ -21,10 +21,11 @@ export type WhyAskLabels=Readonly<{label:string;openingLabel:string}>;
 
 const linkCls='inline-flex min-h-9 items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11';
 
-/** The "Why?" link beside a figure. `label` names the figure for a screen reader ("Why is my EPF this amount?"). */
+/** The "Why?" link beside a figure. `label` names the figure for assistive technology ("Why? Why is my EPF this amount?"):
+ * the accessible name starts with the visible word, then says which figure it explains. */
 export function WhyLink({href,text,label,expanded,controls,className}:{href:string;text:string;label?:string;expanded?:boolean;controls?:string;className?:string}){
- return <Link href={href} scroll={false} prefetch={false} data-why-link aria-expanded={expanded??false} aria-controls={expanded?controls:undefined}
-  className={`${linkCls} ${className??'text-sm'}`}>{text}{label&&<span className="sr-only"> {label}</span>}</Link>;
+ return <Link href={href} scroll={false} prefetch={false} data-why-link aria-label={label?`${text} ${label}`:undefined} aria-expanded={expanded??false} aria-controls={expanded?controls:undefined}
+  className={`${linkCls} ${className??'text-sm'}`}>{text}</Link>;
 }
 
 export function WhyPanel({id,view,ask,closeHref,closeLabel}:{id:string;view:WhyPanelView;ask:WhyAskLabels|null;closeHref:string;closeLabel:string}){

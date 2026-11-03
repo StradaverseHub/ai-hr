@@ -144,8 +144,8 @@ function compareMonths(company:{companyId:string;company:string},now:Month,befor
   .filter(item=>item.change!==0).sort((a,b)=>Math.abs(b.change)-Math.abs(a.change)||a.name.localeCompare(b.name));
  const nowWorking=now.regular?explainStatutory(now.regular.statutory,now.regular.runType):null;
  const beforeWorking=before.regular?explainStatutory(before.regular.statutory,before.regular.runType):null;
- const moved=new Set(lines.map(line=>line.key));
- const statutory:StatutoryChange[]=nowWorking?nowWorking.items.filter(item=>moved.has(item.key as PayLineKey)).map(item=>{
+ const moved=new Set<string>(lines.map(line=>line.key));
+ const statutory:StatutoryChange[]=nowWorking?nowWorking.items.filter(item=>moved.has(item.key)).map(item=>{
   const prior=beforeWorking?.items.find(row=>row.key===item.key)??null;
   const baseCurrent=item.totalBase,basePrevious=prior?.totalBase??null;
   return{key:item.key,ruleKind:item.ruleKind,setBy:item.provenance.source,baseCurrent,basePrevious,

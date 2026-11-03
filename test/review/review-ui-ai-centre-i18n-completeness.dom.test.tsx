@@ -82,7 +82,9 @@ describe('AI centre catalogue completeness', () => {
       // Arguments of the own claim and bank change card titles (aiCentre.conversation.claim*Title, profileBankTitle; AI v2 W2).
       claimType: 'Travel', amount: '42.60', bankName: 'Maybank', ending: '5678',
       // Argument of the second tab row's label (aiCentre.sectionsLabel, issue 17).
-      tab: 'Operations' };
+      tab: 'Operations',
+      // Arguments of the "Why?" panels (why.*, AI v2 W5); current and previous are counts in the payslip-runs plural.
+      period: 'October 2026', previousPeriod: 'September 2026', current: 2, previous: 1, companies: 'Fictional Ceria Sdn Bhd', items: 'EPF', annual: '14.00 days', display: '12.00 days' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });
