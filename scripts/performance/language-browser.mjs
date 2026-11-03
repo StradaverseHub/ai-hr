@@ -22,7 +22,7 @@ try{
  await context.addCookies([{name:'__Host-aihr_internal',value:actor.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'},{name:'NEXT_LOCALE',value:'en',url:base,secure:true,sameSite:'Lax'}]);
  const page=await context.newPage();lastPage=page;page.setDefaultTimeout(90000);
  page.on('pageerror',error=>{errors.push(String(error.message).slice(0,250));save();});
- page.on('response',response=>{const request=response.request();if(request.method()!=='POST')return;const timing=request.timing();actions.push({path:new URL(response.url()).pathname,status:response.status(),ttfbMs:timing.responseStart>=0?timing.responseStart-timing.requestStart:null});save();});
+ page.on('response',response=>{const request=response.request();if(request.method()!=='POST'||!request.headers()['next-action'])return;const timing=request.timing();actions.push({path:new URL(response.url()).pathname,status:response.status(),ttfbMs:timing.responseStart>=0?timing.responseStart-timing.requestStart:null});save();});
  const navigationStart=performance.now();
  report.personnel={status:'loading'};save();
  const response=await page.goto(base+'/admin/personnel',{waitUntil:'commit',timeout:90000});
@@ -35,7 +35,10 @@ try{
  // New fixture accounts have not completed the tour. Wait for hydration instead
  // of racing the tour's visibility against the initial server-rendered rows.
  const tour=page.getByRole('dialog').filter({has:page.getByRole('button',{name:'Skip',exact:true})});
- await tour.getByRole('button',{name:'Skip',exact:true}).click();
+ await Promise.all([
+  page.waitForResponse(response=>response.request().method()==='POST'&&Boolean(response.request().headers()['next-action'])),
+  tour.getByRole('button',{name:'Skip',exact:true}).click(),
+ ]);
  await tour.waitFor({state:'hidden'});
  report.welcomeTourDismissed=true;
  await page.getByRole('button',{name:'Change language',exact:true}).click({trial:true});
