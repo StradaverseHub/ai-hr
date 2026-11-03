@@ -11216,7 +11216,9 @@
         "securityCenter": "Dành cho quản trị viên hoặc người có quyền cấu hình truy cập.",
         "createLogin": "Chỉ dành cho quản trị viên toàn nhóm. Thiết lập thủ công cũng yêu cầu nhà cung cấp đăng nhập được hỗ trợ và phiên quản trị viên đã xác minh.",
         "inviteUser": "Chỉ dành cho quản trị viên toàn nhóm.",
-        "entra": "Chỉ quản trị viên cấp tập đoàn. Cấu hình đăng nhập Microsoft và cấp tài khoản nhân viên cho tổ chức của mình. Liên kết danh tính hiện có cần được xác nhận rõ ràng."
+        "entra": "Chỉ quản trị viên cấp tập đoàn. Cấu hình đăng nhập Microsoft và cấp tài khoản nhân viên cho tổ chức của mình. Liên kết danh tính hiện có cần được xác nhận rõ ràng.",
+        "myPrivateCases": "Chỉ các hồ sơ riêng tư của chính người đăng nhập. Vai trò đặc quyền không mở rộng phạm vi; quản trị viên không thể đọc hồ sơ của người khác tại đây.",
+        "privateCaseHandling": "Mọi người đều truy cập được, nhưng chỉ hiển thị hồ sơ cho người xử lý được chỉ định của công ty liên quan (hoặc quản trị viên tập đoàn khi không còn người xử lý phù hợp), không bao giờ cho người gửi hoặc người bị người gửi loại trừ. Vai trò không cấp quyền gì tại đây."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -33628,6 +33630,133 @@
       "conflict": "Quản trị viên khác đã đổi chính sách. Tải lại trước khi lưu.",
       "forbidden": "Bạn không có quyền thay đổi chính sách này.",
       "unavailable": "Không thể truy cập cài đặt mật khẩu. Hãy thử lại."
+    }
+  },
+  "privateCases": {
+    "categories": {
+      "grievance": "Khiếu nại",
+      "harassment": "Quấy rối",
+      "safety": "An toàn",
+      "other": "Vấn đề khác"
+    },
+    "statuses": {
+      "received": "Đã nhận",
+      "in_review": "Đang xem xét",
+      "closed": "Đã đóng"
+    },
+    "errors": {
+      "invalid": "Vui lòng kiểm tra biểu mẫu: chọn nội dung liên quan và mô tả những gì đã xảy ra.",
+      "not_set_up": "Hồ sơ riêng tư chưa được thiết lập cho công ty này. Vui lòng liên hệ trực tiếp với bộ phận nhân sự.",
+      "no_recipient": "Với lựa chọn hiện tại, không ai có thể nhận hồ sơ này. Hãy loại trừ ít người hơn, hoặc liên hệ trực tiếp với bộ phận nhân sự.",
+      "not_found": "Bạn không thể xem hồ sơ này.",
+      "not_allowed": "Bạn không thể thực hiện thao tác này.",
+      "unavailable": "Hiện không khả dụng. Vui lòng thử lại sau.",
+      "conflict": "Nội dung đã thay đổi kể từ khi bạn mở. Vui lòng kiểm tra lại."
+    },
+    "entry": {
+      "title": "Hồ sơ riêng tư với bộ phận nhân sự",
+      "help": "Gửi khiếu nại, vấn đề quấy rối, mối lo ngại về an toàn hoặc vấn đề nhạy cảm khác bằng văn bản tới người xử lý hồ sơ nhân sự. AI Centre không bao giờ đọc nội dung này.",
+      "open": "Hồ sơ riêng tư"
+    },
+    "me": {
+      "title": "Hồ sơ riêng tư với bộ phận nhân sự",
+      "description": "Viết riêng cho người xử lý hồ sơ nhân sự của công ty bạn. Chỉ bạn và họ có thể đọc; AI Centre không bao giờ đọc, lưu trữ hay nhìn thấy những gì bạn viết.",
+      "start": "Mở một hồ sơ riêng tư",
+      "notSetUp": "Hồ sơ riêng tư chưa được thiết lập cho công ty của bạn. Vui lòng liên hệ trực tiếp với bộ phận nhân sự.",
+      "empty": "Bạn chưa mở hồ sơ riêng tư nào.",
+      "listTitle": "Hồ sơ của bạn",
+      "opened": "Mở ngày {date}",
+      "updated": "Cập nhật ngày {date}",
+      "handle": "Hồ sơ bạn xử lý",
+      "view": "Xem"
+    },
+    "new": {
+      "title": "Mở một hồ sơ riêng tư",
+      "description": "Hãy viết bằng lời của chính bạn. Hồ sơ được gửi tới những người xử lý hồ sơ nhân sự có tên dưới đây, không phải tới AI Centre.",
+      "back": "Hồ sơ riêng tư",
+      "company": "Công ty",
+      "chooseCompany": "Hiển thị công ty này",
+      "category": "Nội dung liên quan đến điều gì?",
+      "text": "Điều gì đã xảy ra",
+      "textHelp": "Tối đa 8.000 ký tự. Hãy chia sẻ những gì bạn cảm thấy thoải mái; người xử lý có thể liên hệ với bạn.",
+      "handlers": "Ai sẽ nhận",
+      "handlersHelp": "Những người xử lý hồ sơ nhân sự này có thể đọc hồ sơ của bạn. Nếu hồ sơ liên quan đến một trong số họ, hãy đánh dấu tên người đó và họ sẽ không thấy hồ sơ.",
+      "exclude": "Liên quan đến {name}: không gửi cho người này",
+      "unnamed": "Người xử lý hồ sơ không có hồ sơ nhân viên",
+      "groupAdmin": "Gửi cho quản trị viên tập đoàn thay vì người xử lý hồ sơ",
+      "groupAdminHelp": "Nếu bạn loại trừ tất cả người xử lý, hồ sơ sẽ được gửi cho quản trị viên tập đoàn.",
+      "privacy": "Hồ sơ của bạn được lưu trữ ở dạng mã hóa. Người xử lý hồ sơ nhân sự thấy hồ sơ kèm tên bạn; các quản trị viên nhân sự khác, quản lý và AI Centre thì không.",
+      "submit": "Gửi cho bộ phận nhân sự",
+      "notStorable": "Hiện không thể lưu hồ sơ riêng tư. Vui lòng liên hệ trực tiếp với bộ phận nhân sự."
+    },
+    "detail": {
+      "back": "Hồ sơ riêng tư",
+      "sent": "Hồ sơ của bạn đã được gửi tới bộ phận nhân sự.",
+      "opened": "Mở ngày {date}",
+      "company": "Công ty",
+      "category": "Loại",
+      "status": "Trạng thái",
+      "text": "Nội dung bạn đã viết",
+      "history": "Lịch sử trạng thái",
+      "step": "{status}, {date}"
+    },
+    "handle": {
+      "title": "Hồ sơ riêng tư bạn xử lý",
+      "description": "Các hồ sơ gửi tới bạn với tư cách người xử lý hồ sơ. Mỗi lần một hồ sơ được mở đều được ghi lại.",
+      "none": "Bạn không xử lý hồ sơ riêng tư.",
+      "empty": "Chưa có hồ sơ riêng tư nào.",
+      "opened": "Mở ngày {date}",
+      "toGroupAdmin": "Đã gửi cho quản trị viên tập đoàn",
+      "erasure": "Người gửi đã yêu cầu xóa dữ liệu của họ: hồ sơ này sẽ bị xóa khi được đóng.",
+      "view": "Mở",
+      "back": "Hồ sơ bạn xử lý",
+      "author": "Người gửi",
+      "noName": "Không có tên",
+      "text": "Nội dung họ đã viết",
+      "status": "Trạng thái",
+      "moveTo": "Đánh dấu là {status}",
+      "notes": "Ghi chú của người xử lý",
+      "notesHelp": "Chỉ những người xử lý hồ sơ này thấy ghi chú; người gửi hồ sơ thì không.",
+      "noNotes": "Chưa có ghi chú.",
+      "noteBy": "{name}, {date}",
+      "you": "Bạn",
+      "noteLabel": "Ghi chú",
+      "saveNote": "Lưu ghi chú",
+      "closedNoNotes": "Hồ sơ này đã đóng nên không thể thêm ghi chú.",
+      "audit": "Nhật ký hồ sơ",
+      "auditCreated": "{name} đã mở",
+      "auditRead": "{name} đã đọc",
+      "auditStatus": "{name} đã đổi từ {from} sang {to}",
+      "auditNote": "{name} đã thêm ghi chú",
+      "noteSaved": "Đã lưu ghi chú.",
+      "statusSaved": "Đã thay đổi trạng thái.",
+      "erased": "Hồ sơ đã được đóng và xóa theo yêu cầu xóa dữ liệu của người gửi."
+    },
+    "admin": {
+      "title": "Người xử lý hồ sơ riêng tư",
+      "description": "Chỉ định những người nhận hồ sơ riêng tư cho từng công ty. Chỉ họ có thể đọc các hồ sơ đó: việc chỉ định người xử lý không cho phép bạn đọc chúng.",
+      "back": "Quyền riêng tư dữ liệu",
+      "company": "Công ty",
+      "show": "Hiển thị",
+      "current": "Người xử lý hiện tại",
+      "none": "Chưa có người xử lý nên công ty này chưa cung cấp hồ sơ riêng tư.",
+      "since": "Từ {date}",
+      "revoke": "Gỡ bỏ",
+      "revoked": "Đã gỡ bỏ ngày {date}",
+      "history": "Người xử lý trước đây",
+      "designate": "Thêm người xử lý",
+      "person": "Người",
+      "noRecord": "Tài khoản đăng nhập không có hồ sơ nhân viên",
+      "add": "Thêm người xử lý",
+      "selfNote": "Chỉ quản trị viên tập đoàn mới có thể tự chỉ định mình làm người xử lý.",
+      "added": "Đã thêm người xử lý.",
+      "removed": "Đã gỡ bỏ người xử lý.",
+      "noCompanies": "Bạn không quản trị công ty nào."
+    },
+    "privacyCard": {
+      "title": "Người xử lý hồ sơ riêng tư",
+      "help": "Chọn người nhận các hồ sơ riêng tư mà nhân viên gửi tới bộ phận nhân sự.",
+      "link": "Quản lý người xử lý hồ sơ"
     }
   }
 }

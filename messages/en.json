@@ -11216,7 +11216,9 @@
         "securityCenter": "Available to administrators or people with permission to configure access.",
         "createLogin": "Group-wide administrators only. Manual setup also requires a supported login provider and a verified administrator session.",
         "inviteUser": "Group-wide administrators only.",
-        "entra": "Group administrators only. Configure Microsoft sign-in and employee provisioning for their own organization. Linking existing identities requires explicit confirmation."
+        "entra": "Group administrators only. Configure Microsoft sign-in and employee provisioning for their own organization. Linking existing identities requires explicit confirmation.",
+        "myPrivateCases": "Only the signed-in person’s own private cases. Privileged roles do not widen it; administrators cannot read others’ cases here.",
+        "privateCaseHandling": "Reachable by everyone, but shows cases only to the designated case handlers of the case’s company (or the group administrator when no eligible handler remains), never to the author or anyone the author left out. A role grants nothing here."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -33628,6 +33630,133 @@
       "conflict": "Another administrator changed this policy. Reload before saving.",
       "forbidden": "You do not have permission to change this policy.",
       "unavailable": "Password settings are unavailable. Try again."
+    }
+  },
+  "privateCases": {
+    "categories": {
+      "grievance": "Grievance",
+      "harassment": "Harassment",
+      "safety": "Safety",
+      "other": "Something else"
+    },
+    "statuses": {
+      "received": "Received",
+      "in_review": "In review",
+      "closed": "Closed"
+    },
+    "errors": {
+      "invalid": "Check the form: choose what it is about and write what happened.",
+      "not_set_up": "Private cases are not set up for this company. Please contact your HR team directly.",
+      "no_recipient": "Nobody could receive this case as it stands. Leave fewer people out, or contact your HR team directly.",
+      "not_found": "This case is not available to you.",
+      "not_allowed": "You cannot do this.",
+      "unavailable": "This is not available just now. Please try again later.",
+      "conflict": "This changed since you opened it. Please check it again."
+    },
+    "entry": {
+      "title": "Private cases with HR",
+      "help": "Raise a grievance, harassment, a safety concern or another sensitive matter in writing with your HR case handlers. The AI Centre never reads it.",
+      "open": "Private cases"
+    },
+    "me": {
+      "title": "Private cases with HR",
+      "description": "Write to your company’s HR case handlers in private. Only you and they can read it; the AI Centre never reads, stores or sees what you write.",
+      "start": "Start a private case",
+      "notSetUp": "Private cases are not set up for your company yet. Please contact your HR team directly.",
+      "empty": "You have not opened a private case.",
+      "listTitle": "Your cases",
+      "opened": "Opened {date}",
+      "updated": "Updated {date}",
+      "handle": "Cases you handle",
+      "view": "View"
+    },
+    "new": {
+      "title": "Start a private case",
+      "description": "Write it in your own words. It goes to the HR case handlers named below, not to the AI Centre.",
+      "back": "Private cases",
+      "company": "Company",
+      "chooseCompany": "Show this company",
+      "category": "What is it about?",
+      "text": "What happened",
+      "textHelp": "Up to 8,000 characters. Share what you are comfortable sharing; a handler may contact you.",
+      "handlers": "Who receives it",
+      "handlersHelp": "These HR case handlers can read your case. If it is about one of them, tick their name and they will not see it.",
+      "exclude": "It is about {name}: do not send it to them",
+      "unnamed": "A case handler without an employee record",
+      "groupAdmin": "Send it to the group administrator instead of the case handlers",
+      "groupAdminHelp": "If you leave out every handler, it goes to the group administrator.",
+      "privacy": "Your case is stored encrypted. Your HR case handlers see it with your name; other HR administrators, managers and the AI Centre do not.",
+      "submit": "Send to HR",
+      "notStorable": "Private cases cannot be saved just now. Please contact your HR team directly."
+    },
+    "detail": {
+      "back": "Private cases",
+      "sent": "Your case was sent to HR.",
+      "opened": "Opened {date}",
+      "company": "Company",
+      "category": "Category",
+      "status": "Status",
+      "text": "What you wrote",
+      "history": "Status history",
+      "step": "{status}, {date}"
+    },
+    "handle": {
+      "title": "Private cases you handle",
+      "description": "Cases written to you as a case handler. Each time a case is opened, it is recorded.",
+      "none": "You do not handle private cases.",
+      "empty": "No private cases yet.",
+      "opened": "Opened {date}",
+      "toGroupAdmin": "Sent to the group administrator",
+      "erasure": "Its author asked for their data to be erased: this case will be deleted when it is closed.",
+      "view": "Open",
+      "back": "Cases you handle",
+      "author": "From",
+      "noName": "Name not available",
+      "text": "What they wrote",
+      "status": "Status",
+      "moveTo": "Mark as {status}",
+      "notes": "Handler notes",
+      "notesHelp": "Only the case’s handlers see notes; the person who wrote the case does not.",
+      "noNotes": "No notes yet.",
+      "noteBy": "{name}, {date}",
+      "you": "You",
+      "noteLabel": "Note",
+      "saveNote": "Save note",
+      "closedNoNotes": "This case is closed, so notes can no longer be added.",
+      "audit": "Case record",
+      "auditCreated": "Opened by {name}",
+      "auditRead": "Read by {name}",
+      "auditStatus": "{name} changed it from {from} to {to}",
+      "auditNote": "{name} added a note",
+      "noteSaved": "Note saved.",
+      "statusSaved": "Status changed.",
+      "erased": "The case was closed and deleted, as its author’s erasure request required."
+    },
+    "admin": {
+      "title": "Private case handlers",
+      "description": "Name the people who receive private cases for each company. Only they can read those cases: naming a handler does not let you read them.",
+      "back": "Data privacy",
+      "company": "Company",
+      "show": "Show",
+      "current": "Current handlers",
+      "none": "No handlers yet, so private cases are not offered for this company.",
+      "since": "Since {date}",
+      "revoke": "Remove",
+      "revoked": "Removed {date}",
+      "history": "Earlier handlers",
+      "designate": "Add a handler",
+      "person": "Person",
+      "noRecord": "Login without an employee record",
+      "add": "Add handler",
+      "selfNote": "Only a group administrator can name themself a handler.",
+      "added": "Handler added.",
+      "removed": "Handler removed.",
+      "noCompanies": "You do not administer a company."
+    },
+    "privacyCard": {
+      "title": "Private case handlers",
+      "help": "Choose who receives the private cases people write to HR.",
+      "link": "Manage case handlers"
     }
   }
 }

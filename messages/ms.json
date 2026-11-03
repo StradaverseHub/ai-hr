@@ -11216,7 +11216,9 @@
         "securityCenter": "Tersedia kepada pentadbir atau individu dengan kebenaran mengkonfigurasi akses.",
         "createLogin": "Pentadbir seluruh kumpulan sahaja. Persediaan manual juga memerlukan penyedia log masuk yang disokong dan sesi pentadbir yang disahkan.",
         "inviteUser": "Pentadbir seluruh kumpulan sahaja.",
-        "entra": "Pentadbir kumpulan sahaja. Konfigurasikan log masuk Microsoft dan penyediaan akaun pekerja untuk organisasi sendiri. Pautan identiti sedia ada memerlukan pengesahan jelas."
+        "entra": "Pentadbir kumpulan sahaja. Konfigurasikan log masuk Microsoft dan penyediaan akaun pekerja untuk organisasi sendiri. Pautan identiti sedia ada memerlukan pengesahan jelas.",
+        "myPrivateCases": "Hanya kes peribadi milik orang yang log masuk. Peranan berkeistimewaan tidak meluaskannya; pentadbir tidak boleh membaca kes orang lain di sini.",
+        "privateCaseHandling": "Boleh dicapai oleh semua orang, tetapi menunjukkan kes hanya kepada pengendali kes yang dilantik bagi syarikat kes itu (atau pentadbir kumpulan apabila tiada pengendali yang layak), tidak sekali-kali kepada penulisnya atau sesiapa yang dikecualikan oleh penulis. Peranan tidak memberi apa-apa di sini."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -33628,6 +33630,133 @@
       "conflict": "Pentadbir lain mengubah dasar ini. Muat semula sebelum menyimpan.",
       "forbidden": "Anda tiada kebenaran untuk mengubah dasar ini.",
       "unavailable": "Tetapan kata laluan tidak tersedia. Cuba lagi."
+    }
+  },
+  "privateCases": {
+    "categories": {
+      "grievance": "Rungutan",
+      "harassment": "Gangguan",
+      "safety": "Keselamatan",
+      "other": "Perkara lain"
+    },
+    "statuses": {
+      "received": "Diterima",
+      "in_review": "Dalam semakan",
+      "closed": "Ditutup"
+    },
+    "errors": {
+      "invalid": "Semak borang: pilih perkara yang berkaitan dan tulis apa yang berlaku.",
+      "not_set_up": "Kes peribadi belum disediakan untuk syarikat ini. Sila hubungi pasukan HR anda secara terus.",
+      "no_recipient": "Tiada sesiapa boleh menerima kes ini seperti sekarang. Kecualikan lebih sedikit orang, atau hubungi pasukan HR anda secara terus.",
+      "not_found": "Kes ini tidak tersedia untuk anda.",
+      "not_allowed": "Anda tidak boleh melakukan ini.",
+      "unavailable": "Ini tidak tersedia buat masa ini. Sila cuba lagi kemudian.",
+      "conflict": "Perkara ini telah berubah sejak anda membukanya. Sila semak semula."
+    },
+    "entry": {
+      "title": "Kes peribadi dengan HR",
+      "help": "Bangkitkan rungutan, gangguan, kebimbangan keselamatan atau perkara sensitif lain secara bertulis kepada pengendali kes HR anda. AI Centre tidak pernah membacanya.",
+      "open": "Kes peribadi"
+    },
+    "me": {
+      "title": "Kes peribadi dengan HR",
+      "description": "Tulis kepada pengendali kes HR syarikat anda secara peribadi. Hanya anda dan mereka boleh membacanya; AI Centre tidak pernah membaca, menyimpan atau melihat apa yang anda tulis.",
+      "start": "Mulakan kes peribadi",
+      "notSetUp": "Kes peribadi belum disediakan untuk syarikat anda. Sila hubungi pasukan HR anda secara terus.",
+      "empty": "Anda belum membuka sebarang kes peribadi.",
+      "listTitle": "Kes anda",
+      "opened": "Dibuka {date}",
+      "updated": "Dikemas kini {date}",
+      "handle": "Kes yang anda kendalikan",
+      "view": "Lihat"
+    },
+    "new": {
+      "title": "Mulakan kes peribadi",
+      "description": "Tulis dengan kata-kata anda sendiri. Ia dihantar kepada pengendali kes HR yang dinamakan di bawah, bukan kepada AI Centre.",
+      "back": "Kes peribadi",
+      "company": "Syarikat",
+      "chooseCompany": "Tunjukkan syarikat ini",
+      "category": "Mengenai apa?",
+      "text": "Apa yang berlaku",
+      "textHelp": "Sehingga 8,000 aksara. Kongsi apa yang anda selesa kongsikan; pengendali mungkin menghubungi anda.",
+      "handlers": "Siapa yang menerimanya",
+      "handlersHelp": "Pengendali kes HR ini boleh membaca kes anda. Jika ia mengenai salah seorang daripada mereka, tandakan nama mereka dan mereka tidak akan melihatnya.",
+      "exclude": "Ia mengenai {name}: jangan hantar kepada mereka",
+      "unnamed": "Pengendali kes tanpa rekod pekerja",
+      "groupAdmin": "Hantar kepada pentadbir kumpulan, bukan kepada pengendali kes",
+      "groupAdminHelp": "Jika anda mengecualikan semua pengendali, ia dihantar kepada pentadbir kumpulan.",
+      "privacy": "Kes anda disimpan secara tersulit. Pengendali kes HR anda melihatnya bersama nama anda; pentadbir HR lain, pengurus dan AI Centre tidak.",
+      "submit": "Hantar kepada HR",
+      "notStorable": "Kes peribadi tidak dapat disimpan buat masa ini. Sila hubungi pasukan HR anda secara terus."
+    },
+    "detail": {
+      "back": "Kes peribadi",
+      "sent": "Kes anda telah dihantar kepada HR.",
+      "opened": "Dibuka {date}",
+      "company": "Syarikat",
+      "category": "Kategori",
+      "status": "Status",
+      "text": "Apa yang anda tulis",
+      "history": "Sejarah status",
+      "step": "{status}, {date}"
+    },
+    "handle": {
+      "title": "Kes peribadi yang anda kendalikan",
+      "description": "Kes yang ditulis kepada anda sebagai pengendali kes. Setiap kali kes dibuka, ia direkodkan.",
+      "none": "Anda tidak mengendalikan kes peribadi.",
+      "empty": "Belum ada kes peribadi.",
+      "opened": "Dibuka {date}",
+      "toGroupAdmin": "Dihantar kepada pentadbir kumpulan",
+      "erasure": "Penulisnya meminta datanya dipadam: kes ini akan dipadam apabila ia ditutup.",
+      "view": "Buka",
+      "back": "Kes yang anda kendalikan",
+      "author": "Daripada",
+      "noName": "Nama tidak tersedia",
+      "text": "Apa yang mereka tulis",
+      "status": "Status",
+      "moveTo": "Tandakan sebagai {status}",
+      "notes": "Nota pengendali",
+      "notesHelp": "Hanya pengendali kes ini melihat nota; orang yang menulis kes tidak.",
+      "noNotes": "Belum ada nota.",
+      "noteBy": "{name}, {date}",
+      "you": "Anda",
+      "noteLabel": "Nota",
+      "saveNote": "Simpan nota",
+      "closedNoNotes": "Kes ini telah ditutup, jadi nota tidak lagi boleh ditambah.",
+      "audit": "Rekod kes",
+      "auditCreated": "Dibuka oleh {name}",
+      "auditRead": "Dibaca oleh {name}",
+      "auditStatus": "{name} mengubahnya daripada {from} kepada {to}",
+      "auditNote": "{name} menambah nota",
+      "noteSaved": "Nota disimpan.",
+      "statusSaved": "Status diubah.",
+      "erased": "Kes telah ditutup dan dipadam, seperti yang dikehendaki oleh permintaan pemadaman penulisnya."
+    },
+    "admin": {
+      "title": "Pengendali kes peribadi",
+      "description": "Namakan orang yang menerima kes peribadi bagi setiap syarikat. Hanya mereka boleh membaca kes tersebut: menamakan pengendali tidak membenarkan anda membacanya.",
+      "back": "Privasi data",
+      "company": "Syarikat",
+      "show": "Tunjukkan",
+      "current": "Pengendali semasa",
+      "none": "Belum ada pengendali, jadi kes peribadi tidak ditawarkan untuk syarikat ini.",
+      "since": "Sejak {date}",
+      "revoke": "Alih keluar",
+      "revoked": "Dialih keluar {date}",
+      "history": "Pengendali terdahulu",
+      "designate": "Tambah pengendali",
+      "person": "Individu",
+      "noRecord": "Log masuk tanpa rekod pekerja",
+      "add": "Tambah pengendali",
+      "selfNote": "Hanya pentadbir kumpulan boleh menamakan dirinya sebagai pengendali.",
+      "added": "Pengendali ditambah.",
+      "removed": "Pengendali dialih keluar.",
+      "noCompanies": "Anda tidak mentadbir sebarang syarikat."
+    },
+    "privacyCard": {
+      "title": "Pengendali kes peribadi",
+      "help": "Pilih siapa yang menerima kes peribadi yang ditulis kepada HR.",
+      "link": "Urus pengendali kes"
     }
   }
 }

@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/authz';
 import { verifyTenantChain,AuditChainScopeError,type ChainVerification } from '@/core/audit-chain';
 import { Card, PageHeader } from '@/components/ui';
 import { PdpaErasureForm } from '@/components/pdpa-erasure-form';
+import { PrivateCaseHandlersCard } from '@/components/private-cases/entry-cards';
 
 /**
  * Data Privacy & Audit Integrity — the DPO surface for ADR-0030. Shows the tamper-evidence verdict over
@@ -71,6 +72,9 @@ export default async function PrivacyPage({ searchParams }: { searchParams: Prom
         {initialEmploymentId && <p className="text-xs text-muted-foreground">{t('prefilled')}</p>}
         <PdpaErasureForm initialEmploymentId={initialEmploymentId} />
       </Card>
+
+      {/* AI v2 W11: who receives private cases is a privacy decision, so it is chosen from here (ADR-0173). */}
+      <PrivateCaseHandlersCard />
     </div>
   );
 }
