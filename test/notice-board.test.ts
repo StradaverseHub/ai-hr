@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { publishActionCapabilityPackage } from '../deploy/access/publish-workforce-capabilities';
 import * as schema from '../db/schema';
 import en from '../messages/en.json';
 import { hireEmployee } from '../core/org';
@@ -526,4 +527,23 @@ describe('6e122302 · the i18n keys the coverage guard cannot reach', () => {
   it('the nav label exists (function-access + sidebar both resolve nav.noticeBoard dynamically)', () => {
     expect(typeof at('nav.noticeBoard')).toBe('string');
   });
+});
+
+it('publishes Notice authoring and preserves scoped Add and View under Edit denial',async()=>{
+  const ctx=adminCtx(b),cap='function.noticeBoard.edit';
+  try{
+    expect(await publishActionCapabilityPackage(owner.client,'notice_author')).toMatchObject({changed:true,capabilities:16});
+    expect(await publishActionCapabilityPackage(owner.client,'notice_author')).toMatchObject({changed:false});
+    const notice=await draft({companyId:b.companyId});
+    await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+     values(${b.tenantId}::uuid,${ctx.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+    await expect(updateNotice(ctx,notice.id,{title:'Fictional denied title',body:'Fictional body',
+      startOn:'2026-01-01',endOn:'2026-12-31'})).rejects.toThrow();
+    await expect(draft({companyId:b.companyId,title:'Fictional independent draft'})).resolves.toMatchObject({id:expect.any(String)});
+    expect((await getNotice(ctx,notice.id))?.title).toBe('Annual Leave Policy');
+  }finally{
+    await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+    await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+     where id like 'notices.%' or id like 'notices_global.%' or id like 'function.noticeBoard.%'`;
+  }
 });

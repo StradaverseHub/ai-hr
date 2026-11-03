@@ -50,3 +50,23 @@ export const LIFECYCLE_EXCEPTION_FUNCTIONS:readonly FunctionActionDescriptor[]=(
 /** Assigned offboarding recovery only; the independent IT register authority remains required. */
 export const LIFECYCLE_RECOVERY_FUNCTIONS:readonly FunctionActionDescriptor[]=[{key:'lifecycle.shared.recovery',scope:'company',moduleKey:'lifecycle',labelKey:'onboardingV31.copy.caseReturnRevoke',kind:'native_acl',course:'assigned',href:'/me/lifecycle',employeeBearing:false,
  actions:(['view','execute']as const).map(operation=>({operation,parentCapability:null,delegationFloorFunction:'app.lifecycle_recovery_function_legacy_allowed',bindings:[{owner:'app.lc_v9_work',operation:'bounded-actual-assignee-read'},{owner:'app.lc_v9_assigned_item',operation:'exact-current-assigned-item'},{owner:'app.onboarding_recover_assigned_holding',operation:'exact-issuing-record-transition'},{owner:'app.lc_v9_fulfil_item',operation:'native-selected-return-command'},{owner:'app.lifecycle_holding_recovery_completed',operation:'paired-source-and-native-done-proof'},{owner:'app.lifecycle_native_effect_cleanup',operation:'same-purpose-final-audits'}]}))}];
+
+export const NOTICE_AUTHOR_CAPABILITY_PUBLICATION={
+ capabilities:(['notices','notices_global'] as const).flatMap(domain=>(['view','add','edit','delete'] as const).map(operation=>({
+  id:domain+'.'+operation,scope:domain==='notices'?'company' as const:'tenant' as const,
+  bindings:[{owner:'app.notice_owner_action_allowed',operation:'native-notice-owner-'+operation}],
+ }))),
+ functions:NOTICE_AUTHOR_FUNCTIONS,
+ legacyParityFunction:'app.lifecycle_reward_notice_legacy_allowed',
+ currentLegacyParityFunction:'app.notice_parent_current_legacy_allowed',
+ functionLegacyParityFunction:'app.notice_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.notice_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.notice_author_bindings_complete()',
+  'app.notice_owner_action_allowed(uuid,text)',
+  'app.notice_action_allowed(uuid,text)',
+  'app.notice_action_write_guard()',
+  'app.guard_notice_owner()',
+ ],
+} as const;

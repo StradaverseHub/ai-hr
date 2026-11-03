@@ -4838,6 +4838,13 @@
       "when": 1793330000387,
       "tag": "0987_claim_administration_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 835,
+      "version": "7",
+      "when": 1793330000388,
+      "tag": "0988_notice_author_binding_readiness",
+      "breakpoints": true
     }
   ]
 }
