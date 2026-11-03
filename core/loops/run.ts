@@ -13,8 +13,11 @@
  *     principal itself gains no read. No model is called.
  *  4. Prepare, as the agent principal, in one transaction serialised per tenant and loop: the gate and the sponsor's
  *     switch-on are checked again (a switch changed since step 1 discards the run), then each observation opens,
- *     updates, closes or reopens its case. The database refuses a case write whenever the loop is off, stopped or the
- *     company paused (migration 0960). A case is a card for its person; it changes no HR record.
+ *     updates, closes or reopens its case. An open case of a company the loop no longer covers (the sponsor no longer
+ *     administers it, or the loop's module is off there) is retired as out_of_scope, so its card never stays on Today
+ *     unchecked; a paused company's cases are the pause's, kept and hidden while it holds. The database refuses a case
+ *     write whenever the loop is off, stopped or the company paused (migration 0960). A case is a card for its person;
+ *     it changes no HR record.
  *  5. Record: one append-only outcome row per company (teras_loop_run): the sponsor, the checks with their versions,
  *     the owners read and what changed. A detector failure records a failed run and changes no case.
  * Called by the nightly sweep (scripts/review-sweep.ts). */
@@ -39,7 +42,9 @@ export type LoopCounts={observed:number;opened:number;reopened:number;closed:num
 export type LoopRunResult=
  |Readonly<{workerId:LoopId;status:'not_run';reasons:readonly string[]}>
  |Readonly<{workerId:LoopId;status:'sponsor_lost'|'failed';runId:string}>
- |Readonly<{workerId:LoopId;status:'ran';runId:string;companies:number;totals:Readonly<LoopCounts>}>;
+ |Readonly<{workerId:LoopId;status:'ran';runId:string;companies:number;totals:Readonly<LoopCounts>;
+  /** Open cases of companies the loop no longer covers, retired as out of scope at this run. */
+  retired:number}>;
 
 const zero=():LoopCounts=>({observed:0,opened:0,reopened:0,closed:0,openNow:0,waitingNow:0,capped:false});
 const check=(name:string,ruleVersion:string|null,ok:boolean):LoopCheck=>Object.freeze({check:name,ruleVersion,result:ok?'pass':'fail'});
@@ -104,14 +109,20 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
  if(!sponsor||!scope)return recordStatus('sponsor_lost',[...gateChecks,check('sponsor_authority',sponsor?`authority:${authorityFingerprint(sponsor)}`:null,false)],[]);
  const checks=[...gateChecks,check('sponsor_authority',`authority:${authorityFingerprint(sponsor)}`,true)];
  const companies=scope.filter(companyId=>!first.paused.has(companyId)&&isModuleEnabled(agent,module,companyId));
- if(!companies.length)return Object.freeze({workerId,status:'ran' as const,runId,companies:0,totals:Object.freeze(zero())});
+ // Open cases of companies the loop no longer covers: outside the sponsor's current scope, or the module off there.
+ // They are retired below, never left open on Today with nobody checking them. A paused company is not retired.
+ const covered=new Set(companies);
+ const outside=(await withTenant(agent,tx=>tx.select({id:terasLoopCase.id,companyId:terasLoopCase.companyId}).from(terasLoopCase)
+  .where(and(eq(terasLoopCase.tenantId,options.tenantId),eq(terasLoopCase.workerId,workerId),inArray(terasLoopCase.state,['open','waiting'])))))
+  .filter(row=>!covered.has(row.companyId)&&!first.paused.has(row.companyId));
+ if(!companies.length&&!outside.length)return Object.freeze({workerId,status:'ran' as const,runId,companies:0,totals:Object.freeze(zero()),retired:0});
  // The cases this loop is tracking in scope, as the agent principal.
- const tracked:TrackedCase[]=await withTenant(agent,tx=>tx.select({id:terasLoopCase.id,subjectKey:terasLoopCase.subjectKey,companyId:terasLoopCase.companyId,
+ const tracked:TrackedCase[]=!companies.length?[]:await withTenant(agent,tx=>tx.select({id:terasLoopCase.id,subjectKey:terasLoopCase.subjectKey,companyId:terasLoopCase.companyId,
   employmentId:terasLoopCase.employmentId,state:terasLoopCase.state,facts:terasLoopCase.facts}).from(terasLoopCase)
   .where(and(eq(terasLoopCase.tenantId,options.tenantId),eq(terasLoopCase.workerId,workerId),inArray(terasLoopCase.state,['open','waiting']),inArray(terasLoopCase.companyId,companies))));
  // 3: detect, diagnose and verify through the owners, as the sponsor.
- let observations:LoopObservation[],reads:readonly LoopRead[];
- try{
+ let observations:LoopObservation[]=[],reads:readonly LoopRead[]=[];
+ if(companies.length)try{
   const detection=await def.detect(sponsor,{companyIds:companies,today,tracked});
   observations=detection.observations.map(item=>LoopObservationSchema.parse(item) as LoopObservation);
   reads=detection.reads;
@@ -156,6 +167,15 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
     counted.closed++;
    }
   }
+  // Retire the open cases of companies the loop no longer covers (not one paused since: its cases are the pause's).
+  let retired=0;
+  const retiring=outside.filter(row=>!paused.has(row.companyId)).map(row=>row.id);
+  for(let offset=0;offset<retiring.length;offset+=500){
+   const done=await tx.update(terasLoopCase).set({state:'closed',closeReason:'out_of_scope',resolution:null,closedAt:at,checkedAt:at,checkedRunId:runId})
+    .where(and(eq(terasLoopCase.tenantId,options.tenantId),eq(terasLoopCase.workerId,workerId),inArray(terasLoopCase.id,retiring.slice(offset,offset+500)),
+     inArray(terasLoopCase.state,['open','waiting']))).returning({id:terasLoopCase.id});
+   retired+=done.length;
+  }
   const live=[...counts.keys()];
   if(live.length){
    const totals=await tx.select({companyId:terasLoopCase.companyId,state:terasLoopCase.state,n:count()}).from(terasLoopCase)
@@ -170,7 +190,7 @@ export async function runLoop(workerId:LoopId,options:LoopRunOptions):Promise<Lo
   const totals=zero();
   for(const c of counts.values()){totals.observed+=c.observed;totals.opened+=c.opened;totals.reopened+=c.reopened;totals.closed+=c.closed;
    totals.openNow+=c.openNow;totals.waitingNow+=c.waitingNow;totals.capped||=c.capped;}
-  return Object.freeze({workerId,status:'ran' as const,runId,companies:live.length,totals:Object.freeze(totals)});
+  return Object.freeze({workerId,status:'ran' as const,runId,companies:live.length,totals:Object.freeze(totals),retired});
  });
 }
 

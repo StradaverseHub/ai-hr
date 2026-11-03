@@ -64,13 +64,19 @@ export type AttendanceChatOutcome<D extends string>=Readonly<{kind:'proposal';pr
 const ask=<D extends string>(missing:D[])=>Object.freeze({kind:'ask' as const,missing:Object.freeze([...new Set(missing)]),options:Object.freeze([]) as readonly never[]});
 
 /** A correction of the caller's own attendance day from a chat turn. `details`: date, checkIn and/or checkOut (HH:MM),
- * reason. Null when the caller has no own employment here or the attendance service refuses it (the suggestion then
- * stays a pointer to the review page). Never throws. */
-export async function prepareChatAttendanceCorrectionProposal(supplied:SessionContext,details:Readonly<Record<string,unknown>>,personWords:string|undefined,now:Date=new Date()):Promise<AttendanceChatOutcome<AttendanceCorrectionDetail>|null>{
+ * reason. `employmentId`: the one employment it is for, when the caller names it (a loop case is about one employment);
+ * it must be the caller's own and current (serving notice included), or nothing is prepared. Without it, the caller's
+ * own active employment. Null when the caller has no such employment here or the attendance service refuses it (the
+ * suggestion then stays a pointer to the review page). Never throws. */
+export async function prepareChatAttendanceCorrectionProposal(supplied:SessionContext,details:Readonly<Record<string,unknown>>,personWords:string|undefined,now:Date=new Date(),
+ options:Readonly<{employmentId?:string}>={}):Promise<AttendanceChatOutcome<AttendanceCorrectionDetail>|null>{
  const ctx=capture(supplied);
  try{
   const userId=ctx.userId,personId=ctx.personId;if(!userId||!personId)return null;
-  const own=await myEmployment(ctx);if(!own)return null;
+  // A named employment is checked as the caller's own (core/read.ts myEmployment: their person, a current login and an
+  // employment not ended before today), never assumed from the first active one.
+  const own=options.employmentId!==undefined?await myEmployment(ctx,{employmentId:options.employmentId}):await myEmployment(ctx);
+  if(!own||(options.employmentId!==undefined&&own.employmentId!==options.employmentId))return null;
   const date=text(details,'date','startDate'),givenIn=text(details,'checkIn','clockIn'),givenOut=text(details,'checkOut','clockOut');
   const missing:AttendanceCorrectionDetail[]=[];
   // Today is the HR date owner's Kuala Lumpur day; the attendance service refuses a future day as well.
