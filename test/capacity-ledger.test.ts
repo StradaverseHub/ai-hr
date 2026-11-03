@@ -46,12 +46,12 @@ const closedAt=()=>new Date(Date.now()-2*DAY);
 let subjects=0;
 /** A distinct calendar day per card, so no two cards share a subject. */
 const subjectDay=()=>{const n=subjects++;return `20${10+Math.floor(n/300)}-${String(1+Math.floor(n/28)%12).padStart(2,'0')}-${String(1+n%28).padStart(2,'0')}`;};
-async function doneCase(p:Readonly<{companyId:string;employmentId:string|null;worker:'loop_missed_clock_outs'|'loop_payroll_inputs';gapMinutes:number;resolution?:'as_prepared'|'changed'|'completed'}>){
+async function doneCase(p:Readonly<{companyId:string;employmentId:string|null;worker:'loop_missed_clock_outs'|'loop_payroll_inputs'|'loop_salary_payroll';gapMinutes:number;resolution?:'as_prepared'|'changed'|'completed'}>){
  const closed=closedAt(),opened=new Date(closed.getTime()-p.gapMinutes*MIN);
- const subject=p.worker==='loop_payroll_inputs'?`payroll:${p.companyId}:${subjectDay()}`:`clockout:${p.employmentId}:${subjectDay()}`;
+ const subject=p.worker==='loop_payroll_inputs'?`payroll:${p.companyId}:${subjectDay()}`:p.worker==='loop_salary_payroll'?`salaryrun:${randomUUID()}`:`clockout:${p.employmentId}:${subjectDay()}`;
  await owner.db.execute(sql`insert into public.teras_loop_case (tenant_id,worker_id,company_id,employment_id,subject_key,recipient,state,close_reason,resolution,facts,
    first_opened_at,opened_at,checked_at,closed_at,opened_run_id,checked_run_id)
-  values (${b.tenantId}::uuid,${p.worker},${p.companyId}::uuid,${p.employmentId}::uuid,${subject},${p.worker==='loop_payroll_inputs'?'payroll':'employee'},'closed','done',
+  values (${b.tenantId}::uuid,${p.worker},${p.companyId}::uuid,${p.employmentId}::uuid,${subject},${p.worker==='loop_missed_clock_outs'?'employee':'payroll'},'closed','done',
    ${p.resolution??'completed'},'{}'::jsonb,${opened.toISOString()}::timestamptz,${opened.toISOString()}::timestamptz,${closed.toISOString()}::timestamptz,
    ${closed.toISOString()}::timestamptz,${randomUUID()}::uuid,${randomUUID()}::uuid)`);
 }
@@ -162,6 +162,8 @@ describe('hours freed from the records',()=>{
   await doneCase({companyId:b.companyId,employmentId:worker.employmentId,worker:'loop_missed_clock_outs',gapMinutes:45,resolution:'changed'});
   // Payroll inputs at 240 minutes: confirmed after 10 minutes (review 10).
   await doneCase({companyId:b.companyId,employmentId:null,worker:'loop_payroll_inputs',gapMinutes:10});
+  // Wave 1 integration: a Salary payroll loop run check (P2-2a) has no baseline item, so the ledger does not count it at all.
+  await doneCase({companyId:b.companyId,employmentId:null,worker:'loop_salary_payroll',gapMinutes:30});
   await setBaseline(group,b.companyId,{loop_missed_clock_outs:'6',loop_payroll_inputs:'240'});
   const view=await capacityLedger(group,{companyId:b.companyId,period:'last30'});
   // Clock-outs: 12 - (2 + 6) = 4. Payroll inputs: 240 - 10 = 230. Total 234 minutes.

@@ -22,9 +22,8 @@ import {todayInKualaLumpur} from '../../lib/hr-date';
 import {isModuleEnabled} from '../entitlements';
 import {ASSISTANT_TURN_IDENTITY} from '../outcome-record/summary';
 import {adminCompaniesTx,autopilotStartsTx,currentBaselinesTx,requireCapacityAdmin,type CapacityCompany,type CurrentBaseline} from './baseline';
-import {LOOP_IDS} from '../loops/types';
 import {chartMonths,computeLedger,malaysiaDayStart,periodStartDate,type CountFact,type Ledger,type WorkFact} from './ledger-math';
-import {isCapacityPeriod,type CapacityItem,type CapacityPeriod} from './types';
+import {CAPACITY_ITEMS,isCapacityPeriod,type CapacityItem,type CapacityPeriod} from './types';
 
 export type CapacityLedgerView=Readonly<{
  period:CapacityPeriod;periodFrom:string;today:string;
@@ -43,6 +42,12 @@ type FactRow={company_id:string;item:string;day:string;n:number|string;changed:n
 const toFacts=(rows:FactRow[]):WorkFact[]=>rows.map(row=>Object.freeze({companyId:row.company_id,item:row.item as CapacityItem,date:row.day,
  count:Number(row.n),changed:Number(row.changed),gaps:row.gaps===null?null:row.gaps.map(Number)}));
 
+/** The loops the ledger counts: those with a baseline item (CAPACITY_ITEMS), not every loop that exists. Wave 1 integration:
+ * the Pre-salary loop is loop_payroll_inputs (same id and item, wider checks). The Salary payroll loop (P2-2a) is left out:
+ * its cases are run checks, net-swing flags and start cards on work a person still does (run, approve, close), so there is
+ * no single manual item its baseline minutes would describe; the payroll Audit loop (P2-2b) opens no loop case. */
+const LEDGER_LOOPS=Object.freeze(CAPACITY_ITEMS.filter(item=>item.startsWith('loop_')));
+
 async function loopFactsTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[],from:Date):Promise<WorkFact[]>{
  const closed=sql`c.closed_at`;
  const rows=await tx.execute(sql`select c.company_id,c.worker_id as item,${day(closed)} as day,count(*)::int as n,
@@ -50,7 +55,7 @@ async function loopFactsTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[]
    array_agg(round((greatest(0,extract(epoch from c.closed_at-c.opened_at))/60.0)::numeric,1)::float8) as gaps
   from public.teras_loop_case c
   where c.tenant_id=${ctx.tenantId}::uuid and c.state='closed' and c.close_reason='done' and c.closed_at>=${from.toISOString()}::timestamptz
-   and c.company_id=any(${ids(companyIds)}) and c.worker_id=any(array[${sql.join(LOOP_IDS.map(id=>sql`${id}`),sql`, `)}]::text[])
+   and c.company_id=any(${ids(companyIds)}) and c.worker_id=any(array[${sql.join(LEDGER_LOOPS.map(id=>sql`${id}`),sql`, `)}]::text[])
   group by 1,2,3`) as unknown as FactRow[];
  return toFacts(Array.from(rows));
 }
