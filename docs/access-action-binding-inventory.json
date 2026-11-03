@@ -31646,6 +31646,7 @@
       "owners": [
         "app.function_action_allowed",
         "app.reward_admin",
+        "app.reward_cancel_review",
         "app.reward_roles",
         "packs/rewards/service.ts:requireRewardAction"
       ],
@@ -66205,6 +66206,8 @@
       "line": 170,
       "surface": "server-action",
       "owners": [
+        "app.access_workforce_write_lock",
+        "app.lifecycle_reward_notice_action",
         "app.reward_admin",
         "app.reward_deletion_reason"
       ],
@@ -68394,6 +68397,7 @@
       "owners": [
         "app.function_action_allowed",
         "app.reward_admin",
+        "app.reward_cancel_review",
         "app.reward_roles",
         "packs/rewards/service.ts:requireRewardAction"
       ],

@@ -706,6 +706,34 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_entry_save_admission(${unitId}::uuid,${saved.unit.revision},${entry.id}::uuid,${JSON.stringify(recommendation)}::jsonb,${JSON.stringify(facts)}::jsonb)`))).rejects.toThrow();
     const changedSelection={...facts,seniorPlan:!facts.seniorPlan};await expect(saveRewardEntry(admin,unitId,saved.unit.revision,entry.id,recommendation,changedSelection)).rejects.toThrow('checked Senior membership workflow');await expectPgRefusal(owner.withTenant(admin,tx=>tx.execute(sql`select app.reward_entry_save_admission(${unitId}::uuid,${saved.unit.revision},${entry.id}::uuid,${JSON.stringify(recommendation)}::jsonb,${JSON.stringify(changedSelection)}::jsonb)`)), '42501', 'Use the checked Senior membership workflow to change selection.');expect((await view()).unit).toEqual(saved.unit);expect((await view()).rows).toEqual(saved.rows);
   });
+  it.each(['assigned','administration'] as const)('publishes and enforces the %s cancellation course',async course=>{
+    const before=await view(),reason='Actual reviewed cancellation';
+    const capabilities=['rewards.view','rewards.delete','function.rewards.review.view',
+      ...['assigned','administration'].map(name=>`function.rewards.configuration.${name}.view`),
+      ...['assigned','administration'].flatMap(name=>['view','execute'].map(operation=>`function.rewards.cancellation.${name}.${operation}`))];
+    let actor=admin;
+    if(course==='administration'){
+      const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,
+        fullName:'Fictional cancellation administrator',primaryEmail:'cancellation-admin@rewards.test'}).returning();
+      actor={...admin,userId:await createAppUser(b.tenantId,person.id,'hr_admin'),personId:person.id,grants:undefined};
+    }
+    const cap=`function.rewards.cancellation.${course}.execute`;
+    const cancel=()=>withTenant(actor,tx=>cancelRewardReviewTx(tx,actor,unitId,before.unit.revision,reason));
+    try{
+      await publishActionCapabilityPackage(owner.client,'rewards_read');
+      expect(await publishActionCapabilityPackage(owner.client,'rewards_cancellation')).toMatchObject({changed:true,capabilities:5});
+      await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+        values(${b.tenantId}::uuid,${actor.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+      await expect(cancel()).rejects.toThrow();
+      expect((await view()).unit).toEqual(before.unit);
+      await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+      expect(await cancel()).toMatchObject({unitId,status:'withdrawn',currentRevision:before.unit.revision+1});
+      expect((await view()).unit.status).toBe('withdrawn');
+    }finally{
+      await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${capabilities}::text[])`;
+      await owner.client`delete from app.access_native_capability_default where capability_id=any(${capabilities}::text[])`;
+    }
+  });
   it('refuses non-GR participants and any raw agent stamp at the private cancellation admission',async()=>{
     const before=await view();
     let participant:unknown;try{await owner.withTenant(actors.bu!,tx=>tx.execute(sql`select app.reward_cancel_admission(${unitId}::uuid,${before.unit.revision},'Actual cancelled unit request')`));}catch(error){participant=error;}

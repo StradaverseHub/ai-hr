@@ -35,7 +35,8 @@ export const REWARDS_FUNCTIONS:readonly FunctionActionDescriptor[]=[
   actions:[{operation:'view' as const,parentCapability:course==='administration'?'rewards.view':null,delegationFloorFunction:'app.rewards_function_legacy_allowed',bindings:[{owner:'app.reward_configuration_review',operation:course==='assigned'?'native-GR-configuration-metadata':'native-company-HR-configuration-metadata'}]}]})),
  ...(['assigned','administration']as const).map(course=>({key:`rewards.cancellation.${course}`,scope:'company' as const,moduleKey:'rewards',labelKey:'rewardsConfig.actions.cancel',kind:'native_acl' as const,course:course==='assigned'?'assigned' as const:'administrative' as const,screenKey:course==='assigned'?'rewards':'rewardsAdmin',href:course==='assigned'?'/rewards':'/admin/rewards',employeeBearing:false,
   actions:(['view','execute']as const).map(operation=>({operation,parentCapability:course==='administration'?(operation==='view'?'rewards.view':'rewards.delete'):null,delegationFloorFunction:'app.rewards_function_legacy_allowed',bindings:[
-   {owner:'app.reward_cancel_command',operation:'fixed-human-actor-only-cancel-frontdoor'},
+   {owner:'app.reward_cancel_review',operation:'fixed-human-actor-only-cancel-frontdoor'},
+   {owner:'app.reward_cancellation_published_source_guard',operation:'exact-native-cancellation-and-retained-history-guard'},
    {owner:'app.reward_cancel_admission',operation:'actual-native-nonterminal-source-and-course'},
    {owner:'app.reward_cancel_native',operation:'exact-unit-optional-decision-fixed-audit'},
    {owner:'app.reward_cancel_native_validate',operation:'sealed-final-source-native-authority-and-denial'},
@@ -149,5 +150,23 @@ export const REWARDS_DECISION_CAPABILITY_PUBLICATION={
   'app.rewards_decision_bindings_complete()',
   'app.reward_decide(uuid,integer,text,text,boolean)',
   'app.reward_decision_published_source_guard()',
+ ],
+} as const;
+
+export const REWARDS_CANCELLATION_CAPABILITY_PUBLICATION={
+ capabilities:[{id:'rewards.delete',scope:'company' as const,bindings:[
+  {owner:'app.reward_cancellation_published_source_guard',operation:'scoped-unused-review-deletion'},
+  {owner:'app.reward_cancel_admission',operation:'scoped-company-administrative-cancellation'},
+ ]}],
+ functions:REWARDS_FUNCTIONS.filter(descriptor=>descriptor.key.startsWith('rewards.cancellation.')),
+ legacyParityFunction:'app.lifecycle_reward_notice_legacy_allowed',
+ currentLegacyParityFunction:'app.rewards_delete_current_legacy_allowed',
+ functionLegacyParityFunction:REWARDS_FUNCTION_DEFAULTS.pure,
+ functionCurrentLegacyParityFunction:REWARDS_FUNCTION_DEFAULTS.current,
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.rewards_cancellation_bindings_complete()',
+  'app.reward_cancel_review(uuid,integer,text)',
+  'app.rewards_delete_current_legacy_allowed(uuid,uuid,text,uuid)',
  ],
 } as const;

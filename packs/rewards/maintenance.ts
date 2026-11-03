@@ -303,10 +303,15 @@ export async function deleteRewardReview(ctx: SessionContext, unitId: string, re
     if (confirmation !== unitId)
         throw new RewardMaintenanceError('confirmation');
     return withRewardsTenant(ctx, async (tx) => {
+        await tx.execute(sql`select app.access_workforce_write_lock()`);
         const [unit] = await tx.select({id:rewardUnit.id,companyId:rewardUnit.companyId,cycleId:rewardUnit.cycleId,deletedAt:rewardUnit.deletedAt,revision:rewardUnit.revision}).from(rewardUnit).where(eq(rewardUnit.id, unitId)).for('update');
         if (!unit)
             throw new RewardMaintenanceError('missing');
         await admin(tx, unit.companyId);
+        const [permission] = await tx.execute<{ allowed: boolean }>(sql`
+            select app.lifecycle_reward_notice_action('rewards','delete',${unit.companyId}::uuid) as allowed`);
+        if (!permission?.allowed)
+            throw new RewardMaintenanceError('scope');
         if (unit.deletedAt)
             return { alreadyDeleted: true };
         if (unit.revision !== revision)

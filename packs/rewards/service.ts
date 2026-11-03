@@ -1086,6 +1086,12 @@ export async function cancelRewardReview(ctx: SessionContext, unitId: string, re
 export async function cancelRewardReviewTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, reason: string) {
   assertModuleGate(ctx, 'rewards');
   idSchema.parse(unitId); reason = z.string().trim().min(10).max(4000).parse(reason);
+  if (await rewardActionPortInstalled(tx, 'function.rewards.cancellation.assigned.execute')) {
+    const [row] = await runRewardCommandPort(() => tx.execute<{ result: {
+      unitId: string; eventId: string; cancelledRevision: number; currentRevision: number; status: 'withdrawn';
+    } }>(sql`select app.reward_cancel_review(${unitId}::uuid,${revision}::integer,${reason}) as result`));
+    return row.result;
+  }
   const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId)).for('update');
   if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
   const roles = await rolesFor(tx, unitId);
