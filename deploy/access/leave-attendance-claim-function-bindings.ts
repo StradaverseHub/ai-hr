@@ -163,3 +163,29 @@ export const ATTENDANCE_SCHEDULE_CONTROL_CAPABILITY_PUBLICATION={
  legacyGroups:{},
  requiredFunctions:['app.attendance_schedule_controls_bindings_complete()','app.attendance_schedule_control_allowed(text,text)','app.attendance_schedule_control_guard()'],
 } as const;
+
+export const LEAVE_EMPLOYEE_RECORDS_VIEW_CAPABILITY_PUBLICATION={
+ capabilities:[{id:'leave.view',scope:'company',bindings:[
+  {owner:'app.module_action_allowed',operation:'native-leave-administrative-view'},
+ ]}],
+ functions:[{
+  key:'leaveEmployeeRecords',scope:'company',moduleKey:'leave',labelKey:'admin.users.screen.leaveEmployeeRecords',
+  kind:'screen',course:'administrative',screenKey:'leaveEmployeeRecords',href:'/leave/employee-records',employeeBearing:true,
+  actions:[{operation:'view',parentCapability:'leave.view',delegationFloorFunction:'app.module_action_delegation_allowed',bindings:[
+   {owner:'app.leave_employee_records_company_allowed',operation:'native-company-view'},
+   {owner:'app.leave_employee_records_subject_allowed',operation:'current-employment-and-data-profile-view'},
+   {owner:'core/read.ts',operation:'bounded-records-page-export-and-cursor'},
+   {owner:'core/leave-inquiry.ts',operation:'bounded-company-and-employee-picker'},
+  ]}],
+ }],
+ legacyParityFunction:'app.module_action_legacy_allowed',
+ currentLegacyParityFunction:'app.module_action_current_native_default',
+ functionLegacyParityFunction:'app.module_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.module_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.module_action_allowed(text,text,uuid)',
+  'app.leave_employee_records_company_allowed(uuid,text)',
+  'app.leave_employee_records_subject_allowed(uuid,text)',
+ ],
+} as const;

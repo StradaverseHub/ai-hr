@@ -125,7 +125,7 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
 it('reports registered actions without a package and leaves the full publisher closed',async()=>{
  const before=await snapshot();
  await expect(publishAllActionCapabilities(owner.client))
-  .rejects.toThrow(/registry coverage differs .*function\.leaveEmployeeRecords\.view/);
+  .rejects.toThrow(/registry coverage differs .*function\.leaveEmployeeRecords\.delete/);
  expect(await snapshot()).toEqual(before);
 });
 it('publishes Workforce Records and preserves the separate Edit denial',async()=>{
@@ -267,4 +267,22 @@ it('derives new native holders live, preserves overrides and refuses narrowed-aw
  const employeeOnly={...context,roles:['employee'],grants:[{role:'employee',companyId:null}]};
  await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role:'employee',companyId:null});
  expect(await allowed(employeeOnly)).toBe(false);
+});
+
+it('publishes Leave Employee Records View independently and respects a company denial',async()=>{
+ const ctx=adminCtx(b),cap='function.leaveEmployeeRecords.view';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'leave_employee_records_view')).toMatchObject({changed:true,capabilities:2});
+  expect(await publishActionCapabilityPackage(owner.client,'leave_employee_records_view')).toMatchObject({changed:false});
+  const read=()=>withTenant(ctx,tx=>tx.execute(sql`select
+   app.module_action_allowed('leave','view',${b.companyId}::uuid) as parent,
+   app.leave_employee_records_company_allowed(${b.companyId}::uuid,'view') as records`));
+  expect(await read()).toEqual([{parent:true,records:true}]);
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${ctx.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  expect(await read()).toEqual([{parent:true,records:false}]);
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id in ('leave.view',${cap})`;
+ }
 });
