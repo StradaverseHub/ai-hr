@@ -1,5 +1,6 @@
 /** First-party authentication configuration. Never derive trust from request headers. */
 type Env = Record<string, string | undefined>;
+export const INTERNAL_REMEMBERED_MFA_COOKIE = '__Host-aihr_mfa';
 export const INTERNAL_SESSION_COOKIE = '__Host-aihr_internal';
 export function internalSelected(env: Env = process.env) { return env.AUTH_PROVIDER === 'internal'; }
 export function internalConfig(env: Env = process.env) {
