@@ -186,7 +186,7 @@ describe('loop 1: probation ending',()=>{
   expect(await run('loop_probation_ending')).toMatchObject({status:'ran',companies:1});
   const key=`probation:${p.employmentId}`;
   expect(await caseOf('loop_probation_ending',key)).toMatchObject({state:'open',recipient:'hr',reopenCount:0,facts:{endDate:'2026-07-12',stage:'none',overdue:false}});
-  expect(await cards(group,true)).toEqual([{kind:'probation',caseId:expect.any(String),name:'Fictional Probationer',endDate:'2026-07-12',stage:'none',overdue:false,
+  expect(await cards(group,true)).toEqual([{kind:'probation',caseId:expect.any(String),name:'Fictional Probationer',endDate:'2026-07-12',stage:'none',overdue:false,reviewId:null,
    href:`/admin/personnel/${p.employmentId}`}]);
   expect(await cards(p,false)).toEqual([]);
   // Nothing was decided or opened for HR: the review is HR's.

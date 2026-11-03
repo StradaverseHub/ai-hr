@@ -69,7 +69,25 @@ export type PreparedItem=Readonly<{kind:PreparedKind;actionId:string;createdAt:s
 export type Finding=Readonly<{key:'setup'|'readiness'|'proposals';count:number;href:string}>;
 export type NeedsYouData=Readonly<{tasks:readonly PendingTaskItem[];recommender:boolean;prepared:readonly PreparedItem[];findings:readonly Finding[];
  /** AI v2 W8: the loops' open cards for this viewer. */
- loops:readonly LoopCard[];failed:boolean}>;
+ loops:readonly LoopCard[];
+ /** AI v2 W8: a probation review already waiting on this viewer as an approvals task is shown once, as that task; the
+  * loop's context for it, by `${kind}:${id}` of the task. */
+ taskLoops:Readonly<Record<string,TaskLoopContext>>;
+ failed:boolean}>;
+export type TaskLoopContext=Readonly<{loop:'loop_probation_ending';endDate:string;overdue:boolean}>;
+const REVIEW_TASKS:ReadonlySet<string>=new Set(['hrReview','managerReview']);
+/** The loop cards, less any probation card whose review is already one of the viewer's tasks, with that task's context. */
+export function mergeReviewLoops(tasks:readonly PendingTaskItem[],loops:readonly LoopCard[]):Readonly<{loops:readonly LoopCard[];taskLoops:Readonly<Record<string,TaskLoopContext>>}>{
+ const waiting=new Map(tasks.filter(task=>REVIEW_TASKS.has(task.kind)).map(task=>[task.id,task]));
+ const taskLoops:Record<string,TaskLoopContext>={};
+ const kept=loops.filter(card=>{
+  const task=card.kind==='probation'&&card.reviewId?waiting.get(card.reviewId):undefined;
+  if(!task||card.kind!=='probation')return true;
+  taskLoops[`${task.kind}:${task.id}`]=Object.freeze({loop:'loop_probation_ending' as const,endDate:card.endDate,overdue:card.overdue});
+  return false;
+ });
+ return Object.freeze({loops:Object.freeze(kept),taskLoops:Object.freeze(taskLoops)});
+}
 
 /** The review page of each governed proposal, as its preparer names it (core/proposals/*.ts and the semantic
  * model's reviewRoute). The cancellation review resumes in the leave page's change flow. */
@@ -141,7 +159,8 @@ export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonl
  const fixes=proposals?.ok?proposals.value.reduce((sum,proposal)=>sum+proposal.count,0):0;
  if(fixes>0)findings.push(Object.freeze({key:'proposals',count:fixes,href:'/control-tower/actions'}));
  const failed=modules.failed()||!tasks.ok||!loops.ok||[proposals,readiness].some(result=>result!==null&&!result.ok);
- return Object.freeze({tasks:list,recommender,prepared:detailed,findings,loops:loops.ok?loops.value:[],failed});
+ const merged=mergeReviewLoops(list,loops.ok?loops.value:[]);
+ return Object.freeze({tasks:list,recommender,prepared:detailed,findings,loops:merged.loops,taskLoops:merged.taskLoops,failed});
 }
 
 // ── Done for you ────────────────────────────────────────────────────────────────────────────────────────────

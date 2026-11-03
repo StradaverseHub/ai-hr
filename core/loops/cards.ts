@@ -15,7 +15,9 @@ import {workerRunGateTx} from '../agent-registry/controls';
 import {LOOP_IDS,type LoopFacts,type LoopId} from './types';
 
 export type LoopCard=Readonly<
- |{kind:'probation';caseId:string;name:string|null;endDate:string;stage:'none'|'with_manager'|'with_hr';overdue:boolean;href:string}
+ /** `reviewId`: the probation review the case found, when one is open (Today shows a review already waiting as an
+  * approvals task once, as that task: components/today/reads.ts). */
+ |{kind:'probation';caseId:string;name:string|null;endDate:string;stage:'none'|'with_manager'|'with_hr';overdue:boolean;reviewId:string|null;href:string}
  |{kind:'payroll';caseId:string;companyName:string|null;payPeriod:string;cutOff:string;missing:readonly string[];blockers:number;href:string}
  |{kind:'passports';count:number;first:string;href:string}
  |{kind:'clockOut';caseId:string;date:string;checkIn:string;proposedCheckOut:string;href:string}
@@ -79,7 +81,8 @@ export async function readLoopCards(ctx:SessionContext,p:Readonly<{scopeIds:read
   // HR's cards, for the companies in the viewer's current scope.
   take(rows.filter(row=>hr(row)&&row.workerId==='loop_probation_ending'&&row.employmentId).flatMap(row=>{
    const endDate=str(row.facts,'endDate'),raw=str(row.facts,'stage'),stage=raw==='with_hr'||raw==='with_manager'?raw:'none';
-   return isDate(endDate)?[{kind:'probation' as const,caseId:row.id,name:row.name??null,endDate,stage,overdue:row.facts.overdue===true,
+   const reviewId=stage!=='none'&&isUuid(str(row.facts,'reviewId'))?str(row.facts,'reviewId'):null;
+   return isDate(endDate)?[{kind:'probation' as const,caseId:row.id,name:row.name??null,endDate,stage,overdue:row.facts.overdue===true,reviewId,
     href:LOOP_CARD_HREF.probation(row.employmentId!,stage,str(row.facts,'reviewId'))}]:[];
   }),card=>card.endDate);
   take(rows.filter(row=>hr(row)&&row.workerId==='loop_payroll_inputs').flatMap(row=>{

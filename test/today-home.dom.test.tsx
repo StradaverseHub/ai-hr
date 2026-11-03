@@ -656,7 +656,7 @@ describe('Today with the cards the loops prepared (AI v2 W8)',()=>{
  });
  it('an HR administrator sees the review, payroll and passport cards for the companies in scope',async()=>{
   S.loops=[
-   {kind:'probation',caseId:'p1',name:'Siti Fictional',endDate:'2026-11-14',stage:'none',overdue:false,href:'/admin/personnel/emp-siti'},
+   {kind:'probation',caseId:'p1',name:'Siti Fictional',endDate:'2026-11-14',stage:'none',overdue:false,reviewId:null,href:'/admin/personnel/emp-siti'},
    {kind:'payroll',caseId:'p2',companyName:'Fictional Sdn Bhd',payPeriod:'2026-11',cutOff:'2026-11-10',missing:['payrollCycle','payrollSchedule'],blockers:1,href:'/payroll/setup?readiness=full'},
    {kind:'passports',count:2,first:'2026-11-20',href:'/personnel'},
   ];
@@ -670,6 +670,24 @@ describe('Today with the cards the loops prepared (AI v2 W8)',()=>{
    {kind:'passports',title:'2 passports expire within 60 days',meta:['First on Nov 20, 2026','Prepared by AI Centre: Passports expiring'],
     links:[['/personnel','Open people · 2 passports expire within 60 days']]},
   ]);
+ });
+ it('a probation review already waiting as an approvals task shows once, as that task, with the loop\'s context',async()=>{
+  const REVIEW='44444444-4444-4444-8444-444444444444',OTHER='55555555-5555-4555-8555-555555555555';
+  S.tasks=[{id:REVIEW,kind:'hrReview',subjectName:'Siti Fictional',createdAt:'2026-11-03T02:00:00Z',linkPath:`/approvals?focus=hrReview:${REVIEW}`,companyId:'co-a'}];
+  S.loops=[
+   {kind:'probation',caseId:'p1',name:'Siti Fictional',endDate:'2026-11-02',stage:'with_hr',overdue:true,reviewId:REVIEW,href:`/approvals?focus=hrReview:${REVIEW}`},
+   {kind:'probation',caseId:'p2',name:'Wei Fictional',endDate:'2026-11-16',stage:'with_manager',overdue:false,reviewId:OTHER,href:'/admin/personnel/emp-wei'},
+  ];
+  const view=await show(HR_ADMIN,['co-a']);
+  const needs=view.section('today-needs-you')!;
+  // Two items, not three: Siti's review once, as the task, and Wei's card, whose review is not this viewer's task.
+  expect(text(needs.querySelector('[data-today-count]'))).toBe('2');
+  expect(cardsOf(view).map(card=>[card.kind,card.title])).toEqual([['probation','Probation ends Nov 16, 2026: Wei Fictional']]);
+  const task=needs.querySelector('[data-today-task="hrReview"]')!;
+  expect(task.getAttribute('data-today-task-loop')).toBe('loop_probation_ending');
+  expect(text(task.querySelector('h3'))).toBe('Record HR review decision · Siti Fictional');
+  expect([...task.querySelectorAll('h3 + div > span:not([role])')].map(text)).toEqual(['From approvals','Received Nov 3, 2026','A probation ends Nov 2, 2026',
+   'The end date has passed with no decision','Prepared by AI Centre: Probation ending']);
  });
  it('a failing loop read costs Needs you one sentence, never a guessed card',async()=>{
   S.loopsFail=true;

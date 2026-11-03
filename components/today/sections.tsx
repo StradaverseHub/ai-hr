@@ -76,13 +76,17 @@ export async function NeedsYouSection(p:Common&Readonly<{all?:boolean;recommend?
   {data.prepared.map(preparedCard)}
   {/* AI v2 W8: what the loops prepared for this person, before the decisions waiting on them. */}
   <LoopCards cards={data.loops} locale={p.locale}/>
-  {shown.map(task=><li key={`${task.kind}:${task.id}`} data-today-task={task.kind}>
+  {shown.map(task=>{const loop=data.taskLoops[`${task.kind}:${task.id}`];return <li key={`${task.kind}:${task.id}`} data-today-task={task.kind} {...(loop?{'data-today-task-loop':loop.loop}:{})}>
    <ProposalCard tone="decide" icon={task.kind==='noticeAcknowledgement'?<ListChecks/>:<CalendarCheck/>} title={taskTitle(task)} awaitingLabel={t('prepared.awaiting')}
-    meta={[t('tasks.from'),t('tasks.received',{date:f.format(new Date(task.createdAt))})]} href={withTodayOrigin(task.linkPath)} cta={t('tasks.open')}/>
+    meta={[t('tasks.from'),t('tasks.received',{date:f.format(new Date(task.createdAt))}),
+     // AI v2 W8: the probation loop's context for a review it found already waiting here (shown once, as this task).
+     ...(loop?[t('loops.probationTitleUnnamed',{date:hrDay(p.locale,loop.endDate)}),...(loop.overdue?[t('loops.probationOverdue')]:[]),
+      t('loops.source',{loop:t(`loops.names.${loop.loop}`)})]:[])]}
+    href={withTodayOrigin(task.linkPath)} cta={t('tasks.open')}/>
    {task.kind==='leave'&&(opened?.id===task.id
     ?<><RecommendationPanel id={`recommendation-${task.id}`} view={opened.view}/><FocusOnMount targetId={`recommendation-${task.id}`}/></>
     :data.recommender?<LeaveRecommendationLink leaveRequestId={task.id}/>:null)}
-  </li>)}
+  </li>;})}
   {data.findings.map(findingCard)}
  </TodaySection>;
 }
