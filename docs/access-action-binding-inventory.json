@@ -17404,8 +17404,7 @@
           "boundaries": [
             "core/module-gate.ts#withRewardsTenant",
             "db/client.ts#withTenant",
-            "lib/session.ts#getSession",
-            "packs/rewards/bounded-read-error.ts#boundedRewardReadFailure"
+            "lib/session.ts#getSession"
           ]
         },
         {
@@ -17886,8 +17885,7 @@
           "boundaries": [
             "core/module-gate.ts#withRewardsTenant",
             "db/client.ts#withTenant",
-            "lib/session.ts#getSession",
-            "packs/rewards/bounded-read-error.ts#boundedRewardReadFailure"
+            "lib/session.ts#getSession"
           ]
         },
         {
@@ -31398,8 +31396,7 @@
       "boundaries": [
         "core/module-gate.ts#withRewardsTenant",
         "db/client.ts#withTenant",
-        "lib/session.ts#getSession",
-        "packs/rewards/bounded-read-error.ts#boundedRewardReadFailure"
+        "lib/session.ts#getSession"
       ]
     },
     {
@@ -65429,8 +65426,7 @@
       "boundaries": [
         "core/module-gate.ts#withRewardsTenant",
         "db/client.ts#withTenant",
-        "lib/session.ts#getSession",
-        "packs/rewards/bounded-read-error.ts#boundedRewardReadFailure"
+        "lib/session.ts#getSession"
       ]
     },
     {
@@ -65503,8 +65499,7 @@
       ],
       "boundaries": [
         "core/module-gate.ts#withRewardsTenant",
-        "lib/session.ts#getSession",
-        "packs/rewards/bounded-read-error.ts#boundedRewardReadFailure"
+        "lib/session.ts#getSession"
       ]
     },
     {

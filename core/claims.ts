@@ -3746,12 +3746,28 @@ export async function markReimbursementsPaid(
 export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,personId:sql<string>`approval_subject.person_id`,
-   employee:sql<string>`approval_subject.employee`,createdAt:claimRequest.createdAt}).from(claimRequest)
-   .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
-   .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
-    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
-   .orderBy(desc(claimRequest.createdAt),claimRequest.id);
+  // Group only the native subject lookup. Request RLS and the per-record delegation and
+  // decision checks still run through the existing owners.
+  const headers=await tx.execute<Omit<AssignedApprovalMetadata,'createdAt'>&{createdAt:Date|string}>(sql`
+   with visible_requests as materialized (
+    select id, employment_id, created_at from public.claim_request
+    where tenant_id=${ctx.tenantId}::uuid and status='pending'
+   ), subjects as materialized (
+    select distinct employment_id from visible_requests
+   ), labels as materialized (
+    select subject.employment_id, approval_subject.person_id, approval_subject.employee
+    from subjects subject
+    join lateral app.delegated_approval_subject(subject.employment_id,'claims','claims.claim') approval_subject on true
+    where not app.is_self_person(approval_subject.person_id)
+      and ${companyIds===undefined?sql`true`:sql`approval_subject.company_id=any(array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}
+   )
+   select request.id, request.employment_id as "employmentId", labels.person_id as "personId",
+    labels.employee, request.created_at as "createdAt"
+   from visible_requests request join labels using (employment_id)
+   order by request.created_at desc, request.id
+  `);
+  const rows=headers.map(row=>({...row,createdAt:row.createdAt instanceof Date
+   ?row.createdAt:claimRequest.createdAt.mapFromDriverValue(row.createdAt)}));
   return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId,row=>({kind:'claims.claim',id:row.id}));
  });
  const allowed=new Set(await actionablePendingClaimIds(ctx,candidates.map(row=>row.id)));
