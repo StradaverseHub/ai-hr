@@ -39,6 +39,18 @@ const hiredOn=attendanceDays===180?'2025-01-01':new Date(Date.parse(today+'T12:0
 const hash=await passwordHash(password),users=[],tenants=[];
 const operationTimings={hire:[],identityAndSessionProvisioning:[],historyAndCompensationSeed:[],payrollGenerate50:[],payrollClose50:[]};
 const timingSummary=values=>{const rows=[...values].sort((a,b)=>a-b);return{samples:rows.length,totalMs:rows.reduce((sum,value)=>sum+value,0),p50Ms:rows[Math.ceil(rows.length*.5)-1]??null,p95Ms:rows[Math.ceil(rows.length*.95)-1]??null,maxMs:rows.at(-1)??null};};
+const fixturePhases=[];
+async function fixturePhase(tenant,phase,run){
+ const entry={tenant,phase,status:'running'};
+ fixturePhases.push(entry);
+ const path=join(process.env.PERF_EVIDENCE_DIR,'fixture-phases.json');
+ const save=()=>writeFileSync(path,JSON.stringify(fixturePhases,null,2));
+ save();
+ const start=performance.now();
+ try{const result=await run();entry.status='passed';return result;}
+ catch(error){entry.status='failed';throw error;}
+ finally{entry.elapsedMs=performance.now()-start;save();}
+}
 try{
  await owner.client`create extension if not exists pg_stat_statements`;
  for(let t=0;t<2;t++){
@@ -88,16 +100,23 @@ try{
   }
   const cohort=users.filter(u=>u.tenant===t);
   const historyStarted=performance.now();
-  await owner.client`insert into claim_request(tenant_id,employment_id,claim_type_id,amount,incurred_on,status,created_at)
+  await fixturePhase(t,'claims-history',()=>owner.client`insert into claim_request(tenant_id,employment_id,claim_type_id,amount,incurred_on,status,created_at)
     select ${b.tenantId}::uuid,e.id,${type.id}::uuid,1,${today}::date,'pending',now()-n*interval '1 minute'
-    from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(1,${claimsPerEmployee}::integer)n`;
-  await owner.client`insert into attendance(tenant_id,employment_id,attendance_date,check_in_at,check_out_at,status,worked_minutes,ot_minutes)
+    from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(1,${claimsPerEmployee}::integer)n`);
+  await fixturePhase(t,'attendance-history',()=>owner.client`insert into attendance(tenant_id,employment_id,attendance_date,check_in_at,check_out_at,status,worked_minutes,ot_minutes)
     select ${b.tenantId}::uuid,e.id,${today}::date-n,'09:00'::time,'17:00'::time,'present',480,0
-    from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(0,${attendanceDays-1}::integer)n`;
+    from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(0,${attendanceDays-1}::integer)n`);
   await owner.db.insert(s.compensation).values(cohort.map(u=>({tenantId:b.tenantId,employmentId:u.employmentId,basicSalary:'5000',validFrom:hiredOn})));
   operationTimings.historyAndCompensationSeed.push(performance.now()-historyStarted);
   // Retained published slips belong to a real completed historical run. Processing drafts stay empty.
-  for(const company of companies){let started=performance.now();await generatePayslips(ctx,{batchId:company.historicalBatchId});operationTimings.payrollGenerate50.push(performance.now()-started);started=performance.now();await closeBatch(ctx,{batchId:company.historicalBatchId});operationTimings.payrollClose50.push(performance.now()-started);}
+  for(const company of companies){
+   let started=performance.now();
+   await fixturePhase(t,'historical-payroll-generate',()=>generatePayslips(ctx,{batchId:company.historicalBatchId}));
+   operationTimings.payrollGenerate50.push(performance.now()-started);
+   started=performance.now();
+   await fixturePhase(t,'historical-payroll-close',()=>closeBatch(ctx,{batchId:company.historicalBatchId}));
+   operationTimings.payrollClose50.push(performance.now()-started);
+  }
   for(const company of companies){
    const approver=cohort.find(u=>u.companyId===company.companyId&&['companyHR','groupHR'].includes(u.role));assert(approver);
    await saveAttendanceWorkflow(ctx,{companyId:company.companyId,applicationType:'irregularity',routingVersion:4,code:'PERF',name:'Fictional performance approval',priority:100,active:true,criteria:{employeeIds:cohort.filter(u=>u.companyId===company.companyId&&u.role==='employee').map(u=>u.employmentId)},stages:[{name:'HR',mode:'any_one',sources:[{kind:'specific_employee',employmentIds:[approver.employmentId]}],hrAlternative:false}],cc:[]});
@@ -114,7 +133,7 @@ try{
   count(*) filter(where a.attendance_date<e.hired_on)::int as before_hire
   from attendance a join employment e on e.id=a.employment_id and e.tenant_id=a.tenant_id`;
  assert.equal(attendanceBounds.current_rows,500);assert.equal(attendanceBounds.before_hire,0);
- const audit=await fixtureAuditCounts(owner.client,tenants.map(tenant=>tenant.tenantId));
+ const audit=await fixturePhase(null,'audit-counts',()=>fixtureAuditCounts(owner.client,tenants.map(tenant=>tenant.tenantId)));
  const auditCounts=tenants.map((tenant,index)=>({tenant:index,...Object.fromEntries(Object.entries(audit.find(row=>row.tenant_id===tenant.tenantId)??{}).filter(([key])=>key!=='tenant_id'))}));
  writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'audit-fixture.json'),JSON.stringify(auditCounts,null,2));
  assertFixtureAudit(audit,tenants.map(tenant=>tenant.tenantId));
