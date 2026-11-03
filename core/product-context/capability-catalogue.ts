@@ -120,6 +120,9 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/personnel-import-evaluation.ts':'Evaluation custody of the employee import.',
  'core/personnel-import-operations.ts':'Operational field writes inside the employee import.',
  'core/personnel-register-import.ts':'Register sections inside the employee and section imports.',
+ // AI v2 slice 3 (issue 16b): imports prepared in chat run the owners above; they own no import of their own.
+ 'core/proposals/chat-import.ts':'AI Centre chat import preparer: runs the listed owners\' own previews and signs the card; imports nothing.',
+ 'core/semantic-model/entities-imports.ts':'Semantic declaration of the chat import result the model is shown (counts and reasons only).',
  'packs/attendance/policy-import-input.ts':'Attendance policy routing inside the clocking import.',
  'packs/performance/onehr/import-model.ts':'Record-scoped: KPI and panel imports inside one OneHR cycle, admitted per cycle by its owner; not listed.',
 });

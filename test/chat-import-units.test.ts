@@ -97,8 +97,9 @@ describe('what the model is told and shown',()=>{
   expect(FILE_NOTE).toMatch(/^No file is attached yet.*"Yes, I can import that here\."/);
   const spec=prepareImportSpec(kinds.slice(1,2));
   expect(spec.name).toBe('prepare_import');
-  expect((spec.inputSchema as {properties:{kind:{enum:string[]}}}).properties.kind.enum).toEqual(['leave_balances','import:leave_balances']);
-  expect((spec.inputSchema as {additionalProperties:boolean}).additionalProperties).toBe(false);
+  const schema=spec.inputSchema as unknown as {properties:{kind:{enum:string[]}};additionalProperties:boolean};
+  expect(schema.properties.kind.enum).toEqual(['leave_balances','import:leave_balances']);
+  expect(schema.additionalProperties).toBe(false);
  });
  it('a prepared import leaves as kinds, banded counts and reasons; anything undeclared is removed',()=>{
   expect(terasEntity('chat_import').audience).toBe('admin');

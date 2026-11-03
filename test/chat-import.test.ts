@@ -49,7 +49,8 @@ beforeEach(async()=>{
  vi.stubEnv('TERAS_PROPOSAL_SECRET','fictional-proposal-signing-secret-0123456789abcdef');
  vi.stubEnv('AI_CONFIG_SECRET','fictional-chat-import-storage-master-key');
  await resetDb();base=await seedBase();
- for(const module of ['assistant','leave','payroll','attendance'])await setModule(base.tenantId,module,'active');
+ // Leave is a core module (always on); the others are switched on for this tenant.
+ for(const module of ['assistant','payroll','attendance'])await setModule(base.tenantId,module,'active');
  ctx=await admin();other=await admin();
 });
 
@@ -135,7 +136,7 @@ describe('through the turn runner: the model gets the kind, counts and reasons, 
   const memory=new InMemoryTaskMemoryStore(),conversationId=randomUUID();
   const first=scriptedModel([{calls:[{name:'prepare_import',args:{}}]},{final:{reply:'Yes, I can import that here. Which data is it?',mode:'clarify'}}]);
   const asked=await runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId,question:'help me import data',scope:{companyId:base.companyId,locale:'en'},model:first,memory});
-  const listed=first.requests[1].messages.find(row=>row.role==='tool')!.content;
+  const listed=String(first.requests[1].messages.find(row=>row.role==='tool')!.content);
   expect(listed).toContain('"refusal":"file_needed"');
   const options=JSON.parse(listed.split('\n').slice(1,-1).join('\n')) as {options:{option:number;kind:string}[]};
   const leave=options.options.find(row=>row.kind==='leave_balances')!.option;
@@ -143,7 +144,7 @@ describe('through the turn runner: the model gets the kind, counts and reasons, 
 
   const file=leaveFile(['L0001,ANNUAL,adjustment,5,2026-01-15','L0002,ANNUAL,adjustment,3,2026-01-15','E0999,ANNUAL,adjustment,2,2026-01-15',`L0002,"${INJECTION}",adjustment,1,2026-01-15`]);
   const second=scriptedModel([{calls:[{name:'prepare_import',args:{choice:String(leave)}}]},request=>{
-   const result=[...request.messages].reverse().find(row=>row.role==='tool')!.content;
+   const result=String([...request.messages].reverse().find(row=>row.role==='tool')!.content);
    const ready=/"ready":"(\{\{F\d+\}\})/.exec(result)![1],attention=/"attention":"(\{\{F\d+\}\})/.exec(result)![1];
    return{final:{reply:`I've prepared the leave balance import for you to review and confirm. ${ready} rows are ready; ${attention} need your attention.`,mode:'propose'}};
   }]);

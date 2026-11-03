@@ -131,7 +131,7 @@ async function payrollHistory(ctx:SessionContext,file:ChatImportFile,sourceHash:
  }
  issues.sort((a,b)=>a.row-b.row);
  // The payroll history owner confirms a file only when nothing in it is invalid, and a record with a warning only once
- // the person acknowledges it on its page (core/payroll-history-revisions.ts confirmPayrollHistoryUpload).
+ // the person acknowledges it on its page (the payroll history owner's own confirmation, core/payroll-history-revisions.ts).
  const confirmable=ready>0&&!plan.counts.invalid&&!plan.issues.length&&warned===0;
  return Object.freeze({kind:'payroll_history' as const,total,ready,attention:Math.max(0,total-ready),warned,issues:Object.freeze(issues),confirmable,sourceHash,
   attemptId,previewHash:plan.previewHash,replacing});

@@ -131,6 +131,18 @@ export async function openStoredChatAction(input:{chatId:unknown}):Promise<Store
  }catch{return {ok:false,message:t('workspace.conversation.unavailable')};}
 }
 
+/** AI v2 slice 3 (issue 16b): whether Ask offers the paperclip. True only when this caller's chat runs through the harness
+ * (the conversation switch, read here like every turn) and the capability catalogue lists an import they may prepare in
+ * chat (core/chat-import/kinds.ts). Any failure is false: no paperclip. Grants nothing; each turn and Confirm re-check. */
+export async function chatImportOfferedAction():Promise<boolean>{
+ try{
+  const session=await getBrowserCommandSession();
+  const route:ConversationRoute=await import('@/core/teras-wiring/switch').then(owner=>owner.conversationRoute(session));
+  if(route.route!=='harness')return false;
+  return (await import('@/core/chat-import/kinds').then(owner=>owner.chatImportKindsFor(session))).length>0;
+ }catch{return false;}
+}
+
 /** Home chat has no posted page context. It uses exactly the same command and authoritative replay. */
 export async function askFromWorkspaceAction(input: {question:unknown;previousExchangeId?:unknown;previousConversationToken?:unknown;clarificationExchangeId?:unknown;importFile?:unknown}):Promise<LauncherReply>{
  return askFromLauncherAction({question:input.question,path:'/assistant',...(input.importFile===undefined?{}:{importFile:input.importFile}),...(input.clarificationExchangeId===undefined?{}:{clarificationExchangeId:input.clarificationExchangeId}),...(input.previousExchangeId===undefined?{}:{previousExchangeId:input.previousExchangeId,previousConversationToken:input.previousConversationToken})});

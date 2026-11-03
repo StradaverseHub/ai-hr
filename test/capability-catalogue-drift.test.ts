@@ -83,6 +83,10 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/admin/settings/system-labels/import/route.ts':'system_labels',
  'app/assistant/file-import-actions.ts':support('AI Centre file preparation (core/assistant-import.ts); it imports nothing.'),
  'app/assistant/import-privacy-actions.ts':support('AI Centre import privacy controls.'),
+ // AI v2 slice 3 (issue 16b): Confirm on an import prepared in chat; core/chat-import/confirm.ts admits it by the catalogue's own
+ // guard for that import (an HR administrator, isAdmin) and commits through the import's own owner.
+ 'app/assistant/chat-import-actions.ts':support('AI Centre chat import Confirm through each import\'s own owner (core/chat-import/confirm.ts).'),
+ 'app/assistant/launcher-actions.ts':support('AI Centre chat command; chatImportOfferedAction only says whether Ask offers the paperclip.'),
  'app/attendance/import/actions.ts':'attendance_clockings',
  'app/attendance/import/logs/[runId]/page.tsx':'attendance_clockings',
  'app/attendance/import/logs/page.tsx':'attendance_clockings',

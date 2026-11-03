@@ -225,8 +225,7 @@ export default async function AssistantPage({
   // AI v2 slice 3 (issue 16b): the paperclip attaches a file to import, for a caller whose chat runs through the harness
   // and who may import here (core/chat-import/kinds.ts). It replaces the older file preparation, which stays for the
   // closed grammar. Any failure shows no paperclip.
-  const chatImport=await import('@/core/teras-wiring/switch').then(owner=>owner.conversationRoute(s))
-    .then(async route=>route.route==='harness'&&(await import('@/core/chat-import/kinds').then(owner=>owner.chatImportKindsFor(s))).length>0).catch(()=>false);
+  const chatImport=await import('./launcher-actions').then(owner=>owner.chatImportOfferedAction()).catch(()=>false);
   const today = todayInKualaLumpur();
   const tasks = workspace.taskIds.map(id => ({
     id, label: t(`workspace.${id}_label`), prompt: t(`workspace.${id}_prompt`, { date: today }),

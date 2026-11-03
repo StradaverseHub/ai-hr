@@ -22,9 +22,10 @@ import {issueCounts} from './previews';
 export const PREPARE_IMPORT_TOOL='prepare_import' as const;
 const DESCRIPTION='Prepare an import from a file the person attaches in this chat, for them to review and confirm on its card. Call it when the person wants to import data, or attaches a file to import. kind is an import id from product_capabilities (or its catalogue id) when the person picked one; choice is the number they chose from a list this tool gave. The file is read by the product, never shown to you; you get only the kind, row counts and kinds of issue. Nothing is imported until the person confirms.';
 export function prepareImportSpec(kinds:readonly ChatImportKindInfo[]):AiToolSpec{
- return Object.freeze({name:PREPARE_IMPORT_TOOL,description:DESCRIPTION,inputSchema:Object.freeze({type:'object',properties:{
+ const inputSchema:AiToolSpec['inputSchema']={type:'object',properties:{
   kind:{type:'string',enum:[...kinds.map(row=>row.kind),...kinds.map(row=>'import:'+row.kind)]},
-  choice:{type:'string',pattern:'^\\d{1,2}$',description:'The number the person chose from the numbered imports.'}},additionalProperties:false}) as AiToolSpec['inputSchema']});
+  choice:{type:'string',pattern:'^\\d{1,2}$',description:'The number the person chose from the numbered imports.'}},required:[],additionalProperties:false};
+ return Object.freeze({name:PREPARE_IMPORT_TOOL,description:DESCRIPTION,inputSchema:Object.freeze(inputSchema)});
 }
 
 export const FILE_NOTE='No file is attached yet, so nothing is prepared. Start with "Yes, I can import that here." If the person has not said which data it is, ask which, with the options numbered as given. Ask them to attach the file with the paperclip beside the message box; the product reads it and it is never shown to you. They can also use the import page linked for each option.';

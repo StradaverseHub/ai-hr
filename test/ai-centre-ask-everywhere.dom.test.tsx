@@ -52,6 +52,8 @@ vi.mock('../core/teras-chats', () => ({ listOwnChats: state.listOwnChats, readCh
 vi.mock('../app/assistant/chat-actions', () => ({ listChatsAction: state.listChats, deleteChatAction: state.deleteChat, setChatRetentionAction: state.setRetention }));
 vi.mock('../app/assistant/launcher-actions', () => ({
   openStoredChatAction: state.openStoredChat, askFromWorkspaceAction: state.askWorkspace, askFromLauncherAction: state.askLauncher,
+  // AI v2 slice 3: the chat command's own answer to "is the paperclip offered" (harness route and an import this caller may prepare).
+  chatImportOfferedAction: async () => state.route.route === 'harness' && ((state.session.roles as string[] | undefined) ?? []).includes('hr_admin') && state.importKinds.length > 0,
   loadEarlierChatAction: vi.fn(), loadMoreChatsAction: vi.fn(),
 }));
 vi.mock('../app/assistant/conversation-scope', () => ({ assistantBrowserConversationScope: async () => '["c0000000-0000-4000-8000-000000000001"]' }));
@@ -89,8 +91,6 @@ vi.mock('../core/assistant-launcher', async original => ({ ...(await original<ob
 vi.mock('../app/control-tower/agents/launcher-actions', () => ({ setAssistantLauncherAction: vi.fn() }));
 vi.mock('../core/entitlements', async original => ({ ...(await original<object>()), isModuleEnabledOrFalse: () => false }));
 vi.mock('../lib/scope', () => ({ getScopeIds: async (ids: string[]) => ids }));
-vi.mock('../core/teras-wiring/switch', () => ({ conversationRoute: async () => state.route }));
-vi.mock('../core/chat-import/kinds', () => ({ chatImportKindsFor: async (ctx: { roles?: string[] }) => ((ctx.roles ?? []).includes('hr_admin') ? state.importKinds : []) }));
 
 import AssistantPage from '../app/assistant/page';
 import { AiAssistantSection } from '../app/control-tower/agents/assistant-section';

@@ -144,7 +144,7 @@ describe('the capability catalogue per role',()=>{
   const {payroll,hrAdmin}=await callers();
   const summary=await productCapabilities(hrAdmin,{},{locale:'en'});
   expect(summary.ok).toBe(true);if(!summary.ok)return;
-  expect(summary.entries.map(row=>row.id).sort()).toEqual(PREPARED_HERE);
+  expect(summary.entries.map(row=>row.id).sort()).toEqual(sorted(PREPARED_HERE,IMPORTS_PREPARED_HERE));
   expect(summary.areas?.find(row=>row.area==='payroll')).toMatchObject({imports:5,reports:3});
   const imports=await productCapabilities(hrAdmin,{kind:'import',area:'payroll history'},{});
   expect(imports.ok&&imports.entries.map(row=>row.id)).toEqual(['import:payroll_history']);
