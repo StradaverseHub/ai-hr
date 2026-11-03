@@ -160,7 +160,7 @@ describe('the capability catalogue per role',()=>{
 
 // After spec v20's scored run 41641279562 (emp-what-1: "I can help with ... approvals", for an employee with nothing to
 // approve). Each role's list, read from the real owners, against what that role may do by hand.
-const ACTOR=new Map(AGENT_ACTIONS.map(action=>[action.id,action.permission.actor as string]));
+const ACTOR=new Map<string,string>(AGENT_ACTIONS.map(action=>[action.id,action.permission.actor]));
 const ADMIN_PAGE=/^\/(admin|control-tower|payroll|reports|analytics|approvals)(\/|\?|$)/;
 describe('no approver or administrator capability for an employee, and each role only its own',()=>{
  it('an employee with nothing to decide: only their own requests, no approval, no administration, no approvals area',async()=>{
