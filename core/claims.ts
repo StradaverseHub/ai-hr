@@ -3830,8 +3830,14 @@ export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:st
    from visible_requests request join labels using (employment_id)
    order by request.created_at desc, request.id
   `);
-  const rows=headers.map(row=>({...row,createdAt:row.createdAt instanceof Date
-   ?row.createdAt:claimRequest.createdAt.mapFromDriverValue(row.createdAt)}));
+  const rows=headers.map(row=>{
+   const createdAt=row.createdAt instanceof Date
+    ?row.createdAt:claimRequest.createdAt.mapFromDriverValue(row.createdAt);
+   if(!(createdAt instanceof Date)||!Number.isFinite(createdAt.getTime())){
+    throw new TypeError('Invalid Claims task timestamp');
+   }
+   return {...row,createdAt};
+  });
   return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
  });
  const allowed=new Set(await actionablePendingClaimIds(ctx,candidates.map(row=>row.id)));
