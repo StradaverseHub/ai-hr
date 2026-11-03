@@ -41,7 +41,7 @@ const minutes=(clock:string)=>Number(clock.slice(0,2))*60+Number(clock.slice(3,5
 export const clockOutCorrectable=(checkIn:string,checkOut:string)=>minutes(checkOut)>minutes(checkIn);
 /** The case for one day: the employee's card proposing the roster end, or HR's when the service would refuse that. */
 function caseFor(date:string,checkIn:string,shiftEnd:string,shiftStart:string|null):Readonly<{recipient:'employee'|'hr';facts:LoopObservation['facts']}>{
- const end=shiftEnd.slice(0,5),start=shiftStart?{shiftStart:shiftStart.slice(0,5)}:{};
+ const end=shiftEnd.slice(0,5),start:Readonly<Record<string,string>>=shiftStart?{shiftStart:shiftStart.slice(0,5)}:{};
  return clockOutCorrectable(checkIn,end)?{recipient:'employee',facts:{date,checkIn,proposedCheckOut:end,...start}}
   :{recipient:'hr',facts:{date,checkIn,needs:CLOCK_OUT_MANUAL,shiftEnd:end,...start}};
 }
