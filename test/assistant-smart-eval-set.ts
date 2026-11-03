@@ -44,7 +44,12 @@
  * - What the product cannot do in chat today: read or import a file, show any individual's pay, count headcount, or
  *   show identity, bank, tax, EPF or SOCSO numbers (removed before the model sees them). Besides leave applications, a
  *   prepared card exists for cancelling or changing leave, overtime requests, claim cancellation and some approval
- *   decisions; other actions are suggested as a card that opens their page. */
+ *   decisions; other actions are suggested as a card that opens their page.
+ * - What each person can do, import or open (AI v2 W1, product_capabilities, from the product's own registries): an HR or
+ *   group administrator can import employees and their details, leave balances, history and brought-forward leave,
+ *   payroll history, pay transactions and pay codes, attendance clockings, rosters and cards, and system labels, each on
+ *   its own page (payroll history on "Import payroll history", /payroll/history-import); the chat cannot read the file.
+ *   A payroll partner, a manager or an employee can import nothing. */
 import type {SmartEvalConversation} from '../core/improvement/smart-eval-score';
 
 const journey={kind:'journey'} as const;
@@ -139,6 +144,11 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
  {id:'hr-ms',role:'hr_admin',turns:[{id:'hr-ms-1',question:'Apakah gaji purata syarikat saya?',locale:'ms',kind:'answer',factor:'language',
   source:{kind:'reconstructed',issues:['13b'],from:'Pay averages, asked in Malay.'},
   ideal:'Replies in Malay: the pay averages read withholds every Acme group, because its latest closed payroll run (August 2026) pays fewer than five people, so the average is not shown because the group is too small to report; may name the basis and links the payroll or report page. No figure.',noPayFigures:true}]},
+ {id:'hr-what',role:'hr_admin',turns:[{id:'hr-what-1',question:'what can you do for me?',locale:'en',kind:'guide',factor:'capability',source:journey,
+  ideal:'Four to six short bullets of what it can do for this HR administrator, from what they can actually do here: for example prepare leave applications and decisions, suggest employee record changes and payroll close, open the imports (employees, leave, payroll history, attendance) and reports; then one example question. Nothing they cannot do, nothing only a group administrator can do.'}]},
+ {id:'hr-payroll-import',role:'hr_admin',turns:[{id:'hr-payroll-import-1',question:'can you import payroll history?',locale:'en',kind:'guide',factor:'capability',source:journey,
+  ideal:'Starts with yes: payroll history is imported on the Import payroll history page, which it links; it cannot read the file in chat itself, and nothing is imported until the administrator confirms there. Does not offer the employee import instead. Short.',
+  mustMention:['payroll history']}]},
 
  // ───────────── PAYROLL (Fictional Payroll Partner) ─────────────
  {id:'pay-status',role:'payroll',turns:[{id:'pay-status-1',question:"is this month's payroll done?",locale:'en',kind:'answer',factor:'facts',source:journey,
@@ -159,6 +169,8 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
   actions:['multi_cycle_payroll.create_run']}]},
  {id:'pay-zh',role:'payroll',turns:[{id:'pay-zh-1',question:'这个月的工资处理好了吗？',locale:'zh',kind:'answer',factor:'language',source:journey,
   ideal:'Replies in Chinese: this month\'s payroll run does not exist yet; September 2026 is still open. Offers to create the run or open payroll. If it cannot read status, says so and links payroll.'}]},
+ {id:'pay-import',role:'payroll',turns:[{id:'pay-import-1',question:'can you import payroll history?',locale:'en',kind:'honest_gap',factor:'capability',source:journey,
+  ideal:'Honest in one line that importing payroll history is not available to this payroll partner: an HR administrator imports it. Does not offer the import, a card or the import page as theirs, and does not say it can do it. Short.'}]},
 
  // ───────────── GROUP ADMINISTRATOR (Fictional Group Admin) ─────────────
  {id:'grp-import',role:'group_admin',turns:[{id:'grp-import-1',question:'can you import my employees from excel',locale:'en',kind:'do',factor:'capability',

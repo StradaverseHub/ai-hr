@@ -139,7 +139,7 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
  {id:'conversation',label:'Noveri conversation',family:'preparer',
   owners:['core/teras-wiring/turn.ts#runConversationTurn'],trigger:{kind:'request',detail:'A person asks a question in the Assistant chat'},
   // Any read the caller is offered in a turn, and the leave cards it may prepare for the person to confirm.
-  readScope:[...new Set([...SEMANTIC_READS,...TERAS_READS].map(read=>read.entity)),'suggested_action'],effect:'prepare',
+  readScope:[...new Set([...SEMANTIC_READS,...TERAS_READS].map(read=>read.entity)),'suggested_action','product_capability'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'requester'},switch:{kind:'worker_control',workerId:'conversation'},stop:{honoured:true},
   record:{kind:'outcome_record',agentIdentity:'teras.assistant'},
   metrics:{kind:'not_measurable',reason:'A conversation turn has no accept or decline; each prepared card is decided, and measured, on its own review page.'}},

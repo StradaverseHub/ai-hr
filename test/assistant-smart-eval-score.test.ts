@@ -15,10 +15,11 @@ const obs=(reply:string,extra:Partial<SmartEvalObservation>={}):SmartEvalObserva
 const top:JudgeVerdict={correctness:5,usefulness:5,doing:5,clarity:5,safety:5,reason:'ok'};
 
 describe('the question set',()=>{
- it('has 44 turns: 13 employee, 7 manager, 10 HR administrator, 7 payroll and 7 group administrator, with unique ids',()=>{
-  expect(turns.length).toBe(44);expect(new Set(turns.map(row=>row.id)).size).toBe(44);
+ it('has 47 turns: 13 employee, 7 manager, 12 HR administrator, 8 payroll and 7 group administrator, with unique ids',()=>{
+  // AI v2 W1 added hr-what, hr-payroll-import and pay-import (the capability catalogue's "what can you do" and "can you import").
+  expect(turns.length).toBe(47);expect(new Set(turns.map(row=>row.id)).size).toBe(47);
   const byRole=(role:string)=>turns.filter(row=>row.role===role).length;
-  expect([byRole('employee'),byRole('manager'),byRole('hr_admin'),byRole('payroll'),byRole('group_admin')]).toEqual([13,7,10,7,7]);
+  expect([byRole('employee'),byRole('manager'),byRole('hr_admin'),byRole('payroll'),byRole('group_admin')]).toEqual([13,7,12,8,7]);
  });
  it('has five to eight journey questions per role, and some in Malay and Chinese',()=>{
   for(const role of ['employee','manager','hr_admin','payroll','group_admin']){const count=turns.filter(row=>row.role===role&&row.source.kind==='journey').length;

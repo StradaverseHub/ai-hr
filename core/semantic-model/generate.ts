@@ -16,6 +16,7 @@ import {EXPLAIN_ENTITIES,EXPLAIN_READS} from './entities-explain';
 import {SETUP_ENTITIES,SETUP_READS} from './entities-setup';
 import {RECOMMEND_ENTITIES} from './entities-recommend';
 import {METRIC_ENTITIES,METRIC_READS} from './entities-metrics';
+import {CATALOGUE_ENTITIES} from './entities-catalogue';
 
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 const object=(properties:Record<string,unknown>,required:string[]=Object.keys(properties)):AiJsonSchema=>({type:'object',properties,required,additionalProperties:false});
@@ -109,7 +110,8 @@ export const referencedPages=():readonly string[]=>Object.freeze([...new Set([..
  * production catalogue outputs above are unchanged; the Teras harness disclosure (disclosure.ts) discloses by these. */
 let terasModel:readonly SemanticEntity[]|undefined;
 export function terasEntities():readonly SemanticEntity[]{
- terasModel??=freeze([...SEMANTIC_ENTITIES,...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...RECOMMEND_ENTITIES,...METRIC_ENTITIES]);
+ // AI v2 W1 appends the capability catalogue (./entities-catalogue.ts), disclosed for the harness's product_capabilities.
+ terasModel??=freeze([...SEMANTIC_ENTITIES,...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...RECOMMEND_ENTITIES,...METRIC_ENTITIES,...CATALOGUE_ENTITIES]);
  return terasModel;
 }
 export const terasEntity=(id:EntityId):SemanticEntity=>{const entity=terasEntities().find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};
