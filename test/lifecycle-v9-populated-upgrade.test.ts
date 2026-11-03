@@ -59,6 +59,8 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:770,version:'7',when:1793330000366,tag:'0966_teras_capacity_baseline',breakpoints:true,hash:'0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c'},
   // AI v2 Phase 2 P2-3 own payroll cut-off (claude/aiv2-p2-payroll-checklist), frozen here.
   {idx:771,version:'7',when:1793330000367,tag:'0967_own_payroll_cut_off',breakpoints:true,hash:'b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca'},
+  // AI v2 Phase 2 P2-5 Living Handbook (claude/aiv2-p2-living-handbook), frozen here.
+  {idx:775,version:'7',when:1793330000371,tag:'0971_teras_living_handbook',breakpoints:true,hash:'7abaf32815d657b559e6550acf50ecde543bd99f857538889ec48a82920048f0'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

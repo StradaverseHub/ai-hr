@@ -2,7 +2,7 @@
 // so a tab switch renders from the client cache instead of the loading shell (AI v2 W9).
 import Link from '@/components/intent-link';
 import { useTranslations } from 'next-intl';
-import { BookOpen, ChartNoAxesCombined, ChevronDown, Gauge, MessageSquareText, Settings2, UserCheck } from 'lucide-react';
+import { BookOpen, ChartNoAxesCombined, ChevronDown, Gauge, MessageSquareText, ScrollText, Settings2, UserCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { aiCentreName } from '@/lib/ai-centre/brand';
 import { ADMIN_GROUPS, centreSectionsFor, centreTabsFor, type AdminSection, type AdministrationSection, type CentreGroup, type CentreSection, type CentreTabKey } from '@/lib/ai-centre/centre-nav';
@@ -12,6 +12,7 @@ import { ScrollCurrentTabIntoView } from './centre-tabs-scroll';
 const ICONS: Readonly<Record<CentreTabKey, LucideIcon>> = {
   ask: MessageSquareText, jobs: UserCheck, operations: Gauge, administration: Settings2, how: BookOpen,
   insights: ChartNoAxesCombined,
+  policies: ScrollText,
 };
 
 /** Synchronous with useTranslations, so it renders from server pages and from client tests alike.

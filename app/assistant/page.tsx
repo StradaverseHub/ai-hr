@@ -41,6 +41,7 @@ import { AI_ARCHITECTURE_LABEL, AI_PRODUCT_NAME, aiCentreName } from '@/lib/ai-c
 import { AiCentreTabs } from '@/components/ai-centre/centre-tabs';
 import { AiCentreDelegatedJobs } from '@/components/ai-centre/delegated-jobs';
 import { AiCentreInsights } from '@/components/ai-centre/insights';
+import { AiCentrePolicies } from '@/components/ai-centre/policies';
 import { scopedSession } from '@/lib/scope';
 import { HowItWorks } from '@/components/ai-centre/how-it-works';
 import { AiCentreLiveStatus } from '@/components/ai-centre/live-status';
@@ -74,7 +75,7 @@ import { todayInboxRedirect } from '@/lib/ai-centre/today-redirect';
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; recommend?: string; e?: string; chat?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
+  searchParams: Promise<{ view?: string; recommend?: string; e?: string; chat?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string;policy?:string;new?:string;edit?:string;saved?:string;n?:string;r?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
@@ -97,6 +98,9 @@ export default async function AssistantPage({
             section only for HR and group administrators, guarded inside the view. Approvals follow the viewer's company
             scope, as Today's do. */}
         {sp.view === 'insights' && <AiCentreInsights session={s} scopeIds={insightsScope} isAdmin={admin} capacityQuery={sp as Readonly<Record<string, string | undefined>>} />}
+        {/* AI v2 Phase 2 P2-5: Policies (the Living Handbook), for every role; what each person sees is decided inside the view and
+            by the 0971 row-level security. */}
+        {sp.view === 'policies' && <AiCentrePolicies session={s} query={sp as Readonly<Record<string, string | undefined>>} />}
         {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '#ai-centre-live-status' : undefined} />{admin && <AiCentreLiveStatus session={s} />}</>}
       </div>
     );

@@ -3863,3 +3863,80 @@ export async function claimsAnalysisSourceTx(tx:Tx,ctx:SessionContext,companyIds
  const scoped=await filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
  return {selection:'all_visible_claims',rows:scoped.map(row=>({personId:row.personId,conditions:{pending_claim_share:row.status==='pending'}}))};
 }
+
+// ═══════════════ AI v2 Phase 2 P2-5 — the Living Handbook's impact simulation, owned here ═══════════════
+//
+// "If this had applied over the last twelve months": what a proposed company-wide mileage rate table and a proposed
+// submission window would have done to the REAL claims of the last twelve full calendar months. READ-ONLY: nothing is
+// written, stamped or re-priced; no claim changes. The arithmetic is this service's own (priceMileage, in whole sen),
+// so the Handbook page shows the claims service's figures and AI Centre works out no amount.
+//
+// Which claims: the mileage claim type's claims incurred in the window that reserve money (pending, approved, paid), read
+// under the caller's own row-level security (an administrator sees the companies they administer). A claim priced from
+// a grade's own table, or from a vehicle-class table, keeps its price: the proposed table is the company-wide "any
+// vehicle" table those take precedence over (resolveMileageRateBands' tiering). The submission window counts the
+// claims of its claim type whose filing (the latest `claim-request.submitted` event, else the row's creation) came more
+// than the proposed number of days after the date incurred: the same comparison the submit path makes.
+export type ClaimPolicyImpact = Readonly<{
+  from: string;
+  to: string;
+  mileage: Readonly<{ claimTypeId: string; claims: number; changed: number; deltaSen: number }> | null;
+  deadline: Readonly<{ claimTypeId: string; days: number; claims: number; late: number }> | null;
+  people: number;
+}>;
+const monthStartMinus = (yyyyMmDd: string, months: number): string => addMonthsClamped(`${yyyyMmDd.slice(0, 7)}-01`, -months);
+const toSen = (value: number | string): number => Math.round(Number(value) * 100);
+const kualaLumpurDate = (at: Date): string => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
+const daysBetweenDates = (from: string, to: string): number => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
+
+export async function simulateClaimPolicyImpact(
+  ctx: SessionContext,
+  p: { mileageBands?: MileageBand[] | null; submitWithin?: { claimTypeId: string; days: number } | null; today?: string },
+): Promise<ClaimPolicyImpact> {
+  if (!(ctx.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin')) throw new ClaimError('Only an administrator can simulate a claims policy');
+  if (p.mileageBands) assertValidMileageBands(p.mileageBands);
+  if (p.submitWithin && (!Number.isInteger(p.submitWithin.days) || p.submitWithin.days <= 0)) throw new ClaimError('The submission window must be a positive whole number of days');
+  const now = p.today ?? today();
+  const from = monthStartMinus(now, 12), to = monthStartMinus(now, 0);
+  return withTenant(ctx, async (tx) => {
+    const affected = new Set<string>();
+    let mileage: ClaimPolicyImpact['mileage'] = null;
+    if (p.mileageBands) {
+      const [type] = await tx.select({ id: claimType.id }).from(claimType).where(and(isNull(claimType.archivedAt), eq(claimType.isMileage, true))).limit(1);
+      if (type) {
+        const rows = await tx
+          .select({ id: claimRequest.id, employmentId: claimRequest.employmentId, amount: claimRequest.amount, km: claimRequest.quantityKm, stamp: claimRequest.mileageRateApplied })
+          .from(claimRequest)
+          .where(and(eq(claimRequest.claimTypeId, type.id), inArray(claimRequest.status, [...RESERVING_STATUSES]), sql`${claimRequest.incurredOn} >= ${from}`, sql`${claimRequest.incurredOn} < ${to}`))
+          .orderBy(claimRequest.id);
+        let changed = 0, deltaSen = 0, claims = 0;
+        for (const row of rows) {
+          const km = row.km == null ? null : Number(row.km);
+          if (km == null || !(km > 0)) continue;
+          claims++;
+          if (row.stamp && (row.stamp.source === 'grade' || row.stamp.vehicleClass !== 'any')) continue;
+          const before = toSen(row.amount), after = toSen(priceMileage(p.mileageBands, km).amount);
+          if (after === before) continue;
+          changed++; deltaSen += after - before; affected.add(row.employmentId);
+        }
+        mileage = Object.freeze({ claimTypeId: type.id, claims, changed, deltaSen });
+      }
+    }
+    let deadline: ClaimPolicyImpact['deadline'] = null;
+    if (p.submitWithin) {
+      const rows = await tx
+        .select({ id: claimRequest.id, employmentId: claimRequest.employmentId, incurredOn: claimRequest.incurredOn, createdAt: claimRequest.createdAt,
+          filedAt: sql<Date | string | null>`(select max(e.occurred_at) from ${domainEvent} e where e.tenant_id=${claimRequest.tenantId} and e.aggregate_type='claim-request' and e.aggregate_id=${claimRequest.id} and e.event_type='claim-request.submitted')` })
+        .from(claimRequest)
+        .where(and(eq(claimRequest.claimTypeId, p.submitWithin.claimTypeId), inArray(claimRequest.status, [...RESERVING_STATUSES]), sql`${claimRequest.incurredOn} >= ${from}`, sql`${claimRequest.incurredOn} < ${to}`))
+        .orderBy(claimRequest.id);
+      let late = 0;
+      for (const row of rows) {
+        const filed = kualaLumpurDate(row.filedAt ? new Date(row.filedAt) : row.createdAt);
+        if (daysBetweenDates(row.incurredOn, filed) > p.submitWithin.days) { late++; affected.add(row.employmentId); }
+      }
+      deadline = Object.freeze({ claimTypeId: p.submitWithin.claimTypeId, days: p.submitWithin.days, claims: rows.length, late });
+    }
+    return Object.freeze({ from, to, mileage, deadline, people: affected.size });
+  });
+}

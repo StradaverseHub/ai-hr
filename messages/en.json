@@ -27298,7 +27298,8 @@
           "product_feedback_text": "Product feedback text",
           "closed_references": "Opaque references and closed categories (source text and values stay local)",
           "coarse_aggregate_bands": "Coarse aggregate bands (not an anonymity guarantee)",
-          "pseudonymous_person_bands": "Per-person bands with random aliases (not anonymous)"
+          "pseudonymous_person_bands": "Per-person bands with random aliases (not anonymous)",
+          "authored_policy_text": "Policy text written by HR administrators (refused if it holds a personal identifier)"
         },
         "redaction": {
           "pii_masked": "Masked",

@@ -21,7 +21,8 @@
       "operations": "日常运营",
       "administration": "管理",
       "insights": "洞察",
-      "how": "运作方式"
+      "how": "运作方式",
+      "policies": "政策"
     },
     "inboxCount": "{count, plural, one {# 项待处理} other {# 项待处理}}",
     "backToToday": "返回今日",
@@ -1490,6 +1491,195 @@
         "failed": "无法保存更改，请重试。"
       },
       "patternUnknown": "已不在目录中的薪资项目"
+    },
+    "policies": {
+      "title": "政策",
+      "descriptionAdmin": "用您自己的话写成的公司手册。AI Centre 读取每项政策中的数值；由您确认，变更须经第二位管理员批准，再由报销和休假服务执行。",
+      "descriptionReader": "贵公司已批准的政策。AI Centre 只根据这些已批准的版本回答您的问题。",
+      "handbook": "手册",
+      "none": "尚无政策。",
+      "new": "新政策",
+      "choose": "选择一项政策以阅读。",
+      "emptyAdmin": "尚无政策。点击“新政策”撰写第一项。",
+      "emptyReader": "贵公司尚未在此发布任何政策。",
+      "versionShort": "v{version}",
+      "badges": {
+        "draft": "草稿",
+        "submitted": "待批",
+        "drift": "{count, plural, other {# 处不一致}}"
+      },
+      "areas": {
+        "leave": "休假",
+        "attendance": "考勤与加班",
+        "claims": "报销",
+        "allowances": "津贴",
+        "people": "员工",
+        "other": "其他"
+      },
+      "status": {
+        "draft": "草稿",
+        "submitted": "等待批准",
+        "approved": "已批准"
+      },
+      "statusLine": "{status} v{version} · 撰写人 {author} · 适用于 {companies}，自 {date} 起",
+      "anAdministrator": "一位管理员",
+      "otherCompany": "另一家公司",
+      "allCompanies": "全部 {count} 家公司",
+      "actions": {
+        "edit": "编辑文本",
+        "read": "读取数值",
+        "send": "提交审批"
+      },
+      "form": {
+        "newTitle": "新政策",
+        "titleLabel": "标题",
+        "area": "类别",
+        "effectiveFrom": "生效日期",
+        "companies": "适用公司",
+        "body": "您的政策，用您自己的话",
+        "bodyHint": "像写给员工那样撰写。保存后，AI Centre 可读取系统能够执行的数值，供您确认。",
+        "editHint": "更改文本后，需重新读取并确认其数值。",
+        "create": "保存草稿",
+        "save": "保存草稿",
+        "cancel": "取消"
+      },
+      "words": "您的政策，用您自己的话",
+      "enforce": "系统将执行的内容",
+      "table": {
+        "setting": "设置",
+        "now": "现在",
+        "fromText": "来自您的文本",
+        "decision": "您的决定"
+      },
+      "decide": {
+        "confirmed": "确认",
+        "rejected": "拒绝"
+      },
+      "decision": {
+        "confirmed": "已确认",
+        "rejected": "已拒绝",
+        "pending": "未决定"
+      },
+      "same": "与现在相同",
+      "enforceNote": "AI Centre 从高亮的文字中读取了{count, plural, other {这 # 个数值}}。请逐一确认；批准后由负责的服务执行。",
+      "perClaimNote": "报销服务按这些区间为每笔报销的里程计价，不累计每月总里程。",
+      "notEnforced": "尚未执行",
+      "notEnforcedBody": "此政策以文本形式保存。AI Centre 根据其已批准版本回答问题；系统尚未执行它。",
+      "sharedSetting": "报销和休假设置由集团内所有公司共用，因此只能由适用于所有公司的政策来执行。此政策以文本形式保存。",
+      "noValuesDraft": "尚未读取数值。文本准备好后，请使用“读取数值”。",
+      "noValues": "此版本没有已确认的数值。",
+      "impact": {
+        "title": "如果从 {from} 到 {to} 已实行此政策",
+        "changedLabel": "笔里程报销会改变（共 {total} 笔）",
+        "lessPaid": "总支付减少",
+        "morePaid": "总支付增加",
+        "samePaid": "总支付不变",
+        "lateLabel": "笔报销按 {days} 天规则属逾期（共 {total} 笔）",
+        "peopleLabel": "人受影响",
+        "owner": "由报销服务根据过去 12 个月的真实报销计算。AI Centre 未计算任何金额。"
+      },
+      "drift": {
+        "title": "手册与系统不一致之处",
+        "setting": {
+          "claims_mileage_rates": "里程费率",
+          "claims_submit_within_days": "提交期限（{type}）",
+          "leave_entitlement_days": "{type}应享天数"
+        },
+        "body": "手册写的是 {handbook}；{owner}服务现为 {system}。适用于 {companies}。",
+        "useHandbook": "采用手册",
+        "updateHandbook": "更新手册",
+        "draftOpen": "请先完成或退回此政策尚未完成的草稿。"
+      },
+      "owners": {
+        "claims": "报销",
+        "leave": "休假"
+      },
+      "approval": {
+        "title": "批准",
+        "ruleDraft": "提交后，由集团管理员批准。更改系统执行的内容须由第二位管理员批准：即未撰写也未提交此变更的人。",
+        "ruleSettings": "此版本会更改系统执行的内容，因此必须由未撰写也未提交它的第二位管理员批准后才会生效。",
+        "ruleText": "此版本只更改文本，一次批准即可发布。",
+        "approved": "{name} 于 {date} 批准",
+        "returned": "{name} 于 {date} 退回草稿",
+        "needSecond": "此变更由您撰写或提交，因此须由另一位集团管理员批准。",
+        "approveApply": "批准并执行",
+        "approve": "批准",
+        "return": "退回草稿",
+        "waiting": "等待集团管理员批准。"
+      },
+      "applied": {
+        "applied": "{setting}：{owner}服务已自 {date} 起执行。",
+        "refused": "{setting}：{owner}服务拒绝：{message}",
+        "scheduled": "{setting}：等到 {date}。{owner}服务会在写入当天执行此设置。",
+        "applyNow": "立即执行"
+      },
+      "versions": {
+        "title": "版本",
+        "row": "版本 {version} · {status} · 自 {date} 起",
+        "inForce": "现行",
+        "restore": "将此版本设为草稿"
+      },
+      "values": {
+        "days": "{days} 天",
+        "daysDefault": "{days} 天（默认）",
+        "ratePerKm": "每公里 RM {rate}",
+        "daysAYear": "每年 {days} 天",
+        "money": "RM {amount}",
+        "none": "无",
+        "noneMileage": "无（任何金额）",
+        "mileageRange": "{from} 至 {to} 公里，每公里 RM {rate}",
+        "mileageOpen": "{from} 公里起，每公里 RM {rate}",
+        "leaveRange": "{from} 至 {to} 年，{days} 天",
+        "leaveOpen": "{from} 年起，{days} 天"
+      },
+      "settings": {
+        "mileageBand": "费率，{from} 至 {to} 公里",
+        "mileageAfter": "超过 {from} 公里后的费率",
+        "mileageAny": "费率，任何距离",
+        "submitWithin": "提交期限（{type}）",
+        "leaveBand": "{type}，服务 {from} 至 {to} 年",
+        "leaveFrom": "{type}，服务 {from} 年或以上"
+      },
+      "saved": {
+        "created": "草稿已保存。",
+        "draft": "草稿已保存。",
+        "read": "AI Centre 读取了 {accepted, plural, other {# 个数值}}，供您确认{rejected, plural, =0 {。} other {；另有 # 项提议无法与您的文字对应，已搁置。}}",
+        "unread": "AI Centre 无法读取任何数值。请检查文本，或在负责服务的设置页面中输入。",
+        "confirmed": "数值已确认。",
+        "rejected": "数值已拒绝，将不会执行。",
+        "sent_settings": "已提交审批。它会更改系统执行的内容，因此须由第二位管理员批准。",
+        "sent_text": "已提交审批。它只更改文本。",
+        "approved": "已批准。每个已确认的数值已交由其负责的服务。",
+        "approved_refused": "已批准，但有负责的服务拒绝了一个数值。请查看“批准”。",
+        "returned": "已退回草稿。",
+        "applied": "已执行。",
+        "drift_settings": "草稿已准备好，用于重新执行手册中的数值。请确认后提交审批。",
+        "drift_text": "草稿已准备好，文本已改为系统现行做法。请检查后提交审批。",
+        "drift_text_manual": "草稿已准备好。请修改文本使之与系统一致，然后读取并确认数值。",
+        "draft_made": "新草稿已可编辑。"
+      },
+      "errors": {
+        "not_administrator": "只有此政策所适用的每家公司的管理员才能执行此操作。",
+        "not_group_admin": "只有集团管理员才能批准或退回政策。",
+        "invalid": "请检查标题、日期、文本，并至少选择一家公司。",
+        "not_found": "该政策不可用。",
+        "not_draft": "此版本已不是草稿，或其文本已更改。请重新加载后再试。",
+        "not_submitted": "此版本未在等待批准。",
+        "not_approved": "该版本不是现行的已批准版本。",
+        "undecided": "提交前请确认或拒绝每个数值。",
+        "same_administrator": "此变更由您撰写或提交，须由另一位集团管理员批准。",
+        "stale_submission": "自提交以来系统已有变化，因此它现在会更改执行的设置。请退回草稿后重新提交。",
+        "shared_setting": "这些设置由集团内所有公司共用。请先让政策适用于所有公司。",
+        "draft_open": "此政策已有未完成的草稿。请先完成或退回。",
+        "no_drift": "手册与系统现在一致。",
+        "not_due": "该数值尚未到期。",
+        "model_unavailable": "AI Centre 暂时无法读取数值。将政策文本发送给 AI 服务商一事正在等待所有者的数据审查。",
+        "no_settings": "此类别暂时没有系统可执行的内容。政策以文本形式保存。",
+        "failed": "操作未成功，请重试。"
+      },
+      "footer": "员工的问题只根据已批准的版本回答。每个版本都会保留。",
+      "readerLine": "版本 {version} · 自 {date} 起生效",
+      "readerNote": "这是已批准的版本。可在“提问”中向 AI Centre 询问，或联系您的人力资源团队。"
     }
   },
   "today": {

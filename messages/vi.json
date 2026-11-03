@@ -27298,7 +27298,8 @@
           "product_feedback_text": "Văn bản phản hồi sản phẩm",
           "closed_references": "Tham chiếu mờ và danh mục cố định (văn bản và giá trị nguồn ở lại cục bộ)",
           "coarse_aggregate_bands": "Khoảng tổng hợp thô (không bảo đảm ẩn danh)",
-          "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)"
+          "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)",
+          "authored_policy_text": "Văn bản chính sách do quản trị viên nhân sự viết (bị từ chối nếu chứa thông tin định danh cá nhân)"
         },
         "redaction": {
           "pii_masked": "Đã che",

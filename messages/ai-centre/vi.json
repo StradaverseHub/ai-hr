@@ -21,7 +21,8 @@
       "operations": "Vận hành",
       "administration": "Quản trị",
       "insights": "Thông tin chi tiết",
-      "how": "Cách hoạt động"
+      "how": "Cách hoạt động",
+      "policies": "Chính sách"
     },
     "inboxCount": "{count, plural, one {# mục đang chờ} other {# mục đang chờ}}",
     "backToToday": "Quay lại Hôm nay",
@@ -1490,6 +1491,195 @@
         "failed": "Không thể lưu thay đổi. Hãy thử lại."
       },
       "patternUnknown": "Một khoản lương không còn trong danh mục"
+    },
+    "policies": {
+      "title": "Chính sách",
+      "descriptionAdmin": "Sổ tay công ty, bằng chính lời của bạn. AI Centre đọc các giá trị trong mỗi chính sách; bạn xác nhận, một quản trị viên thứ hai phê duyệt thay đổi, và dịch vụ công tác phí và nghỉ phép áp dụng nó.",
+      "descriptionReader": "Các chính sách đã được phê duyệt của công ty bạn. AI Centre chỉ trả lời câu hỏi của bạn từ các phiên bản đã phê duyệt này.",
+      "handbook": "Sổ tay",
+      "none": "Chưa có chính sách.",
+      "new": "Chính sách mới",
+      "choose": "Chọn một chính sách để đọc.",
+      "emptyAdmin": "Chưa có chính sách. Viết chính sách đầu tiên bằng Chính sách mới.",
+      "emptyReader": "Công ty bạn chưa công bố chính sách nào ở đây.",
+      "versionShort": "v{version}",
+      "badges": {
+        "draft": "bản nháp",
+        "submitted": "đang chờ",
+        "drift": "{count, plural, other {# chỗ lệch}}"
+      },
+      "areas": {
+        "leave": "Nghỉ phép",
+        "attendance": "Chấm công và làm thêm giờ",
+        "claims": "Công tác phí",
+        "allowances": "Phụ cấp",
+        "people": "Nhân sự",
+        "other": "Khác"
+      },
+      "status": {
+        "draft": "Bản nháp",
+        "submitted": "Đang chờ phê duyệt",
+        "approved": "Đã phê duyệt"
+      },
+      "statusLine": "{status} v{version} · do {author} viết · áp dụng cho {companies} từ {date}",
+      "anAdministrator": "một quản trị viên",
+      "otherCompany": "một công ty khác",
+      "allCompanies": "cả {count} công ty",
+      "actions": {
+        "edit": "Sửa văn bản",
+        "read": "Đọc các giá trị",
+        "send": "Gửi phê duyệt"
+      },
+      "form": {
+        "newTitle": "Chính sách mới",
+        "titleLabel": "Tiêu đề",
+        "area": "Lĩnh vực",
+        "effectiveFrom": "Áp dụng từ",
+        "companies": "Áp dụng cho",
+        "body": "Chính sách của bạn, bằng lời của bạn",
+        "bodyHint": "Viết như bạn viết cho nhân viên. Sau khi lưu, AI Centre có thể đọc các giá trị mà hệ thống có thể thực thi để bạn xác nhận.",
+        "editHint": "Thay đổi văn bản nghĩa là các giá trị của nó cần được đọc và xác nhận lại.",
+        "create": "Lưu bản nháp",
+        "save": "Lưu bản nháp",
+        "cancel": "Hủy"
+      },
+      "words": "Chính sách của bạn, bằng lời của bạn",
+      "enforce": "Những gì hệ thống sẽ thực thi",
+      "table": {
+        "setting": "Cài đặt",
+        "now": "Hiện tại",
+        "fromText": "Từ văn bản của bạn",
+        "decision": "Quyết định của bạn"
+      },
+      "decide": {
+        "confirmed": "Xác nhận",
+        "rejected": "Từ chối"
+      },
+      "decision": {
+        "confirmed": "Đã xác nhận",
+        "rejected": "Đã từ chối",
+        "pending": "Chưa quyết định"
+      },
+      "same": "Giống hiện tại",
+      "enforceNote": "AI Centre đã đọc {count, plural, other {# giá trị này}} từ các từ được tô sáng. Bạn xác nhận từng giá trị; dịch vụ phụ trách sẽ áp dụng sau khi phê duyệt.",
+      "perClaimNote": "Dịch vụ công tác phí tính giá quãng đường của từng yêu cầu theo các bậc này. Nó không cộng dồn tổng theo tháng.",
+      "notEnforced": "Chưa thực thi",
+      "notEnforcedBody": "Chính sách này được lưu dưới dạng văn bản. AI Centre trả lời câu hỏi từ phiên bản đã phê duyệt; hệ thống chưa thực thi nó.",
+      "sharedSetting": "Cài đặt công tác phí và nghỉ phép được dùng chung cho mọi công ty trong tập đoàn, nên chỉ được thực thi từ một chính sách áp dụng cho tất cả. Chính sách này được lưu dưới dạng văn bản.",
+      "noValuesDraft": "Chưa đọc giá trị nào. Dùng Đọc các giá trị khi văn bản đã sẵn sàng.",
+      "noValues": "Không có giá trị nào được xác nhận cho phiên bản này.",
+      "impact": {
+        "title": "Nếu đã áp dụng từ {from} đến {to}",
+        "changedLabel": "trong {total} yêu cầu phí đi lại sẽ thay đổi",
+        "lessPaid": "trả ít hơn tổng cộng",
+        "morePaid": "trả nhiều hơn tổng cộng",
+        "samePaid": "tổng số tiền trả không đổi",
+        "lateLabel": "trong {total} yêu cầu bị trễ theo quy tắc {days} ngày",
+        "peopleLabel": "người bị ảnh hưởng",
+        "owner": "Do dịch vụ công tác phí tính trên các yêu cầu thực tế của 12 tháng qua. AI Centre không tính bất kỳ số tiền nào."
+      },
+      "drift": {
+        "title": "Chỗ sổ tay và hệ thống không khớp",
+        "setting": {
+          "claims_mileage_rates": "Mức phí đi lại",
+          "claims_submit_within_days": "Thời hạn nộp ({type})",
+          "leave_entitlement_days": "Số ngày được hưởng {type}"
+        },
+        "body": "sổ tay ghi {handbook}; dịch vụ {owner} ghi {system}. Áp dụng cho {companies}.",
+        "useHandbook": "Dùng theo sổ tay",
+        "updateHandbook": "Cập nhật sổ tay",
+        "draftOpen": "Hãy hoàn tất hoặc trả lại bản nháp đang mở của chính sách này trước."
+      },
+      "owners": {
+        "claims": "công tác phí",
+        "leave": "nghỉ phép"
+      },
+      "approval": {
+        "title": "Phê duyệt",
+        "ruleDraft": "Khi bạn gửi, một quản trị viên tập đoàn sẽ phê duyệt. Thay đổi những gì hệ thống thực thi cần một quản trị viên thứ hai: người không viết và không gửi nó.",
+        "ruleSettings": "Phiên bản này thay đổi những gì hệ thống thực thi, nên một quản trị viên thứ hai, người không viết và không gửi nó, phải phê duyệt trước khi áp dụng.",
+        "ruleText": "Phiên bản này chỉ thay đổi văn bản, nên một lần phê duyệt sẽ công bố nó.",
+        "approved": "Được {name} phê duyệt ngày {date}",
+        "returned": "Được {name} trả lại bản nháp ngày {date}",
+        "needSecond": "Bạn đã viết hoặc gửi thay đổi này, nên một quản trị viên tập đoàn khác phải phê duyệt.",
+        "approveApply": "Phê duyệt và áp dụng",
+        "approve": "Phê duyệt",
+        "return": "Trả lại bản nháp",
+        "waiting": "Đang chờ một quản trị viên tập đoàn phê duyệt."
+      },
+      "applied": {
+        "applied": "{setting}: dịch vụ {owner} đã áp dụng từ {date}.",
+        "refused": "{setting}: dịch vụ {owner} đã từ chối: {message}",
+        "scheduled": "{setting}: chờ đến {date}. Dịch vụ {owner} áp dụng cài đặt này ngay ngày nó được ghi.",
+        "applyNow": "Áp dụng ngay"
+      },
+      "versions": {
+        "title": "Phiên bản",
+        "row": "Phiên bản {version} · {status} · từ {date}",
+        "inForce": "đang hiệu lực",
+        "restore": "Lấy làm bản nháp"
+      },
+      "values": {
+        "days": "{days} ngày",
+        "daysDefault": "{days} ngày (mặc định)",
+        "ratePerKm": "RM {rate} mỗi km",
+        "daysAYear": "{days} ngày mỗi năm",
+        "money": "RM {amount}",
+        "none": "Không có",
+        "noneMileage": "Không có (bất kỳ số tiền nào)",
+        "mileageRange": "RM {rate} mỗi km từ {from} đến {to} km",
+        "mileageOpen": "RM {rate} mỗi km từ {from} km",
+        "leaveRange": "{days} ngày từ {from} đến {to} năm",
+        "leaveOpen": "{days} ngày từ {from} năm"
+      },
+      "settings": {
+        "mileageBand": "Mức phí, {from} đến {to} km",
+        "mileageAfter": "Mức phí sau {from} km",
+        "mileageAny": "Mức phí, mọi quãng đường",
+        "submitWithin": "Nộp trong vòng ({type})",
+        "leaveBand": "{type}, {from} đến {to} năm làm việc",
+        "leaveFrom": "{type}, từ {from} năm làm việc trở lên"
+      },
+      "saved": {
+        "created": "Đã lưu bản nháp.",
+        "draft": "Đã lưu bản nháp.",
+        "read": "AI Centre đã đọc {accepted, plural, other {# giá trị}} để bạn xác nhận{rejected, plural, =0 {.} other {; đã bỏ qua # đề xuất không khớp với lời của bạn.}}",
+        "unread": "AI Centre không đọc được giá trị nào. Hãy kiểm tra văn bản, hoặc nhập trên trang cài đặt của dịch vụ phụ trách.",
+        "confirmed": "Đã xác nhận giá trị.",
+        "rejected": "Đã từ chối giá trị. Nó sẽ không được áp dụng.",
+        "sent_settings": "Đã gửi phê duyệt. Nó thay đổi những gì hệ thống thực thi, nên một quản trị viên thứ hai phải phê duyệt.",
+        "sent_text": "Đã gửi phê duyệt. Nó chỉ thay đổi văn bản.",
+        "approved": "Đã phê duyệt. Mỗi giá trị đã xác nhận đã được chuyển đến dịch vụ phụ trách.",
+        "approved_refused": "Đã phê duyệt, nhưng một dịch vụ phụ trách đã từ chối một giá trị. Xem Phê duyệt.",
+        "returned": "Đã trả lại bản nháp.",
+        "applied": "Đã áp dụng.",
+        "drift_settings": "Một bản nháp đã sẵn sàng để áp dụng lại các giá trị của sổ tay. Hãy xác nhận và gửi phê duyệt.",
+        "drift_text": "Một bản nháp đã sẵn sàng với văn bản đổi theo những gì hệ thống đang làm. Hãy kiểm tra và gửi phê duyệt.",
+        "drift_text_manual": "Một bản nháp đã sẵn sàng. Hãy sửa văn bản cho khớp với hệ thống, rồi đọc và xác nhận các giá trị.",
+        "draft_made": "Một bản nháp mới đã sẵn sàng để sửa."
+      },
+      "errors": {
+        "not_administrator": "Chỉ quản trị viên của mọi công ty mà chính sách này áp dụng mới làm được việc đó.",
+        "not_group_admin": "Chỉ quản trị viên tập đoàn mới phê duyệt hoặc trả lại chính sách.",
+        "invalid": "Hãy kiểm tra tiêu đề, ngày, văn bản và chọn ít nhất một công ty.",
+        "not_found": "Chính sách đó không có sẵn.",
+        "not_draft": "Phiên bản này không còn là bản nháp, hoặc văn bản đã thay đổi. Hãy tải lại và thử lại.",
+        "not_submitted": "Phiên bản này không đang chờ phê duyệt.",
+        "not_approved": "Phiên bản đó không phải phiên bản đã phê duyệt đang hiệu lực.",
+        "undecided": "Hãy xác nhận hoặc từ chối mọi giá trị trước khi gửi.",
+        "same_administrator": "Bạn đã viết hoặc gửi thay đổi này. Một quản trị viên tập đoàn khác phải phê duyệt.",
+        "stale_submission": "Hệ thống đã thay đổi kể từ khi gửi, nên giờ nó thay đổi cài đặt được thực thi. Hãy trả lại bản nháp và gửi lại.",
+        "shared_setting": "Các cài đặt này được dùng chung cho mọi công ty trong tập đoàn. Hãy cho chính sách áp dụng cho tất cả trước.",
+        "draft_open": "Chính sách này đã có một bản nháp đang mở. Hãy hoàn tất hoặc trả lại trước.",
+        "no_drift": "Sổ tay và hệ thống hiện đã khớp.",
+        "not_due": "Giá trị đó chưa đến hạn.",
+        "model_unavailable": "AI Centre chưa đọc được các giá trị. Việc gửi văn bản chính sách đến nhà cung cấp AI đang chờ chủ sở hữu xem xét dữ liệu.",
+        "no_settings": "Chưa có nội dung nào hệ thống có thể thực thi cho lĩnh vực này. Chính sách được lưu dưới dạng văn bản.",
+        "failed": "Không thực hiện được. Hãy thử lại."
+      },
+      "footer": "Câu hỏi của nhân viên chỉ được trả lời từ phiên bản đã phê duyệt. Mọi phiên bản đều được lưu.",
+      "readerLine": "Phiên bản {version} · hiệu lực từ {date}",
+      "readerNote": "Đây là phiên bản đã phê duyệt. Hỏi AI Centre về nó ở mục Hỏi, hoặc liên hệ bộ phận nhân sự."
     }
   },
   "today": {

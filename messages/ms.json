@@ -27298,7 +27298,8 @@
           "product_feedback_text": "Teks maklum balas produk",
           "closed_references": "Rujukan legap dan kategori tertutup (teks serta nilai sumber kekal setempat)",
           "coarse_aggregate_bands": "Julat agregat kasar (bukan jaminan tanpa nama)",
-          "pseudonymous_person_bands": "Julat setiap orang dengan alias rawak (bukan tanpa nama)"
+          "pseudonymous_person_bands": "Julat setiap orang dengan alias rawak (bukan tanpa nama)",
+          "authored_policy_text": "Teks polisi yang ditulis oleh pentadbir HR (ditolak jika ada pengecam peribadi)"
         },
         "redaction": {
           "pii_masked": "Disembunyikan",

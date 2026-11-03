@@ -38,7 +38,9 @@ describe('step 4 capabilities in the semantic model',()=>{
   // explainers (core/semantic-model/entities-why.ts; test/why-explainers.test.ts).
   expect(TERAS_READS.map(row=>row.name)).toEqual(['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day','setup_copilot','pay_aggregates','workforce_metrics','explain_pay_difference','explain_claim_limit',
    // AI v2 Phase 2 P2-3 appends the "Before payroll" checklist (core/semantic-model/entities-payroll-readiness.ts; test/before-payroll-items.test.ts).
-   'my_payroll_readiness']);
+   'my_payroll_readiness',
+   // AI v2 Phase 2 P2-5 appends the Living Handbook's approved policies in force (core/semantic-model/entities-handbook.ts; test/handbook-policies.test.ts).
+   'my_policy_handbook']);
   expect(TERAS_CAPABILITIES.map(row=>row.name)).toEqual(TERAS_READS.map(row=>row.name));
   expect([...EXPLAIN_READS,...SETUP_READS].map(row=>row.entity)).toEqual(STEP4.map(entity=>entity.id));
   expect(TERAS_READS.some(row=>row.input.some(input=>input.identifier)),'no step 4 capability takes a record handle').toBe(false);
@@ -85,7 +87,7 @@ describe('step 4 capabilities in the semantic model',()=>{
   const specs=terasToolSpecs();expect(specs.map(spec=>spec.name)).toEqual(TERAS_READS.map(row=>row.name));
   const required=Object.fromEntries(specs.map(spec=>[spec.name,(spec.inputSchema as {required:string[]}).required]));
   expect(required).toEqual({explain_payslip_statutory:[],explain_leave_entitlement:['leave_type'],explain_attendance_day:['date'],setup_copilot:[],pay_aggregates:[],workforce_metrics:['metric'],
-   explain_pay_difference:[],explain_claim_limit:['claim_type'],my_payroll_readiness:[]});
+   explain_pay_difference:[],explain_claim_limit:['claim_type'],my_payroll_readiness:[],my_policy_handbook:[]});
   const never=[...new Set(STEP4.flatMap(entity=>walk(entity.fields)).filter(field=>field.disclosure==='never').map(field=>field.name))];
   for(const spec of specs)for(const name of never)expect(spec.description).not.toMatch(new RegExp(`(^|[^A-Za-z0-9_])${name}([^A-Za-z0-9_]|$)`));
  });

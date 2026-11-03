@@ -170,6 +170,12 @@ export const SMART_EVAL_SET:readonly SmartEvalConversation[]=Object.freeze([
  {id:'emp-before-payroll',role:'employee',turns:[{id:'emp-before-payroll-1',question:'what do I need to do before payroll?',locale:'en',kind:'answer',factor:'facts',source:journey,
   ideal:'Lists, as short bullets, only her own pending items from her payroll checklist (for example adding her bank account and her income tax, EPF and SOCSO numbers, sent to HR from her profile), each with where she does it, and says when nothing else is pending. Gives the cut-off date the checklist returns (the last day of this month) and no pay figure; never invents an item or a date, and never mentions anyone else.',
   noPayFigures:true}]},
+ // AI v2 Phase 2 P2-5: "what does our policy say?", answered from the approved policies in force only (my_policy_handbook,
+ // core/handbook/ask.ts). Acme has published no approved policy, so the right answer says there is none to quote and points her to
+ // HR; it never invents a rate or quotes a draft.
+ {id:'emp-handbook',role:'employee',turns:[{id:'emp-handbook-1',question:'what is our mileage claim rate per km under the company policy?',locale:'en',kind:'answer',factor:'facts',source:journey,
+  ideal:'Reads her company\'s approved policies, finds none published, and says so plainly: there is no approved company policy to quote yet, so she can ask her HR team (and Claims shows what she can claim). Gives no rate per km and quotes no draft or guess.',
+  mustNotMention:['RM 0.']}]},
  // ───────────── MANAGER (Ravi Fictional) ─────────────
  {id:'mgr-queue',role:'manager',turns:[
   {id:'mgr-queue-1',question:'anything waiting for my approval?',locale:'en',kind:'answer',factor:'facts',source:journey,

@@ -27298,7 +27298,8 @@
           "product_feedback_text": "产品反馈文本",
           "closed_references": "不透明引用与限定类别（来源文本和值保留在本地）",
           "coarse_aggregate_bands": "粗粒度汇总区间（不保证匿名）",
-          "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）"
+          "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）",
+          "authored_policy_text": "由人力资源管理员撰写的政策文本（含个人身份信息时拒绝发送）"
         },
         "redaction": {
           "pii_masked": "已遮盖",

@@ -11,11 +11,12 @@ import {SETUP_ENTITIES,SETUP_READS} from '../semantic-model/entities-setup';
 import {METRIC_ENTITIES,METRIC_READS} from '../semantic-model/entities-metrics';
 import {WHY_ENTITIES,WHY_READS} from '../semantic-model/entities-why';
 import {PAYROLL_READINESS_ENTITIES,PAYROLL_READINESS_READS} from '../semantic-model/entities-payroll-readiness';
+import {HANDBOOK_ENTITIES,HANDBOOK_READS} from '../semantic-model/entities-handbook';
 import type {EntityId,OwnerAnchor,SemanticEntity,SemanticRead} from '../semantic-model/types';
 import {kitCapability,type KitCapability,type KitDeclaration} from './kit';
 
-const entity=(id:EntityId):SemanticEntity=>{const found=[...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...METRIC_ENTITIES,...WHY_ENTITIES,...PAYROLL_READINESS_ENTITIES].find(row=>row.id===id);if(!found)throw Error('Unknown kit entity.');return found;};
-const read=(name:string):SemanticRead=>{const found=[...EXPLAIN_READS,...SETUP_READS,...METRIC_READS,...WHY_READS,...PAYROLL_READINESS_READS].find(row=>row.name===name);if(!found)throw Error('Unknown kit read.');return found;};
+const entity=(id:EntityId):SemanticEntity=>{const found=[...EXPLAIN_ENTITIES,...SETUP_ENTITIES,...METRIC_ENTITIES,...WHY_ENTITIES,...PAYROLL_READINESS_ENTITIES,...HANDBOOK_ENTITIES].find(row=>row.id===id);if(!found)throw Error('Unknown kit entity.');return found;};
+const read=(name:string):SemanticRead=>{const found=[...EXPLAIN_READS,...SETUP_READS,...METRIC_READS,...WHY_READS,...PAYROLL_READINESS_READS,...HANDBOOK_READS].find(row=>row.name===name);if(!found)throw Error('Unknown kit read.');return found;};
 /** Purpose and inputs are the declaration's own words; the kit generates the rest. */
 const declare=(name:string,owner:OwnerAnchor,permission:KitDeclaration['permission']):KitDeclaration=>{
  const row=read(name);return{name,purpose:row.purpose,input:row.input,owner,permission,entity:entity(row.entity)};
@@ -35,5 +36,7 @@ export const KIT_DECLARATIONS:readonly KitDeclaration[]=Object.freeze([
  declare('explain_claim_limit','core/claims.ts#employeeClaimTypesTx',{module:'claims',admin:false}),
  // AI v2 Phase 2 P2-3: the person's own "Before payroll" checklist (core/semantic-model/entities-payroll-readiness.ts).
  declare('my_payroll_readiness','core/pre-salary/person-items.ts#readMyPayrollReadiness',{module:null,admin:false}),
+ // AI v2 Phase 2 P2-5: the approved company policies in force (core/semantic-model/entities-handbook.ts).
+ declare('my_policy_handbook','core/handbook/ask.ts#readPoliciesInForce',{module:null,admin:false}),
 ]);
 export const KIT_CAPABILITIES:readonly KitCapability[]=Object.freeze(KIT_DECLARATIONS.map(kitCapability));
