@@ -638,6 +638,7 @@ async function preparePayComponentCreateInputTx(tx:Tx,ctx:SessionContext,input:P
   const issues = validatePayComponentCreateSettings(p);
   if (issues.length) throw new PayComponentInputError(issues);
   await lockPayComponentCatalogTx(tx,ctx);
+  if(!await payrollCatalogueAccessTx(tx,'view')||!await payrollCatalogueAccessTx(tx,'add'))throw new Error('Forbidden');
   const [hit] = await tx.select({ archivedAt: payComponent.archivedAt }).from(payComponent)
     .where(and(eq(payComponent.tenantId, ctx.tenantId), sql`upper(trim(${payComponent.code})) = ${p.code}`)).limit(1);
   if (hit) throw new PayComponentCodeExistsError(p.code, hit.archivedAt != null);
