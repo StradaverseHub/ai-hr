@@ -68,8 +68,8 @@ const WORKFORCE_REQUIRED_FUNCTIONS=[
  'app.access_profile_value_begin(uuid)','app.access_profile_value_audit()',
  'app.access_withdraw_profile_requests(jsonb,text)',
 ] as const;
-function requireInstallation(value:unknown):asserts value{
- if(!value)throw new Error('Workforce capability installation refused; review exact owner, catalogue, bindings and tenant readiness.');
+function requireInstallation(value:unknown,detail='review exact owner, catalogue, bindings and tenant readiness'):asserts value{
+ if(!value)throw new Error(`Workforce capability installation refused; ${detail}.`);
 }
 type CapabilityRow={id:string;scope:string;supported:boolean;bindings:unknown;prerequisites:unknown};
 function exactBindings(actual:unknown,expected:readonly {owner:string;operation:string}[]){
@@ -118,7 +118,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
     const {key:definitionKey,scope:definitionScope,actions,...metadata}=descriptor;
     for(const action of actions){
      const [registered]=await tx<{correct:boolean}[]>`select d.scope=${definitionScope} and d.metadata=${JSON.stringify(metadata)}::text::jsonb and a.parent_capability is not distinct from ${action.parentCapability??null} and a.delegation_floor_function is not distinct from ${action.delegationFloorFunction??null} as correct from app.access_function_definition d join app.access_function_action a using(function_key) where d.function_key=${definitionKey} and a.operation=${action.operation}`;
-     requireInstallation(registered?.correct);
+     requireInstallation(registered?.correct,`missing or mismatched registry entry ${definitionKey}.${action.operation}`);
     }
    }
   }
@@ -130,24 +130,30 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    &&(!includeWorkforce||rows.filter(row=>WORKFORCE_CAPABILITY_BINDINGS_V2.some(capability=>capability.id===row.id)).every(row=>row.supported)||rows.filter(row=>WORKFORCE_CAPABILITY_BINDINGS_V2.some(capability=>capability.id===row.id)).every(row=>!row.supported))
    &&domains.every(domain=>{const family=rows.filter(row=>domain.capabilities.some(capability=>capability.id===row.id));const children=rows.filter(row=>functionActionCapabilities(domain.functions??[]).some(capability=>capability.id===row.id));return family.every(row=>row.supported)&&children.every(row=>row.supported)||family.every(row=>!row.supported)&&children.every(row=>!row.supported)||family.every(row=>row.supported)&&children.every(row=>!row.supported);});
   requireInstallation(already||uninstalled||knownV1||knownV2||knownComponents); // Refuse partial/unknown versions without overwriting them.
-  const functions=await tx<{count:number;owners:boolean}[]>`select count(*)::integer as count,
-   coalesce(bool_and(p.proowner=c.relowner),false) as owners
+  const invalidFunctions=await tx<{signature:string;missing:boolean}[]>`select f.signature,p.oid is null as missing
    from unnest(${[...REQUIRED_FUNCTIONS]}::text[]) f(signature)
-   join pg_proc p on p.oid=to_regprocedure(f.signature)
-   cross join pg_class c where c.oid='public.access_capability'::regclass`;
-  requireInstallation(functions[0]?.count===REQUIRED_FUNCTIONS.length&&functions[0].owners);
+   left join pg_proc p on p.oid=to_regprocedure(f.signature)
+   cross join pg_class c where c.oid='public.access_capability'::regclass
+   and p.proowner is distinct from c.relowner order by f.signature`;
+  requireInstallation(invalidFunctions.length===0,invalidFunctions.map(row=>
+   `${row.missing?'missing function':'unexpected function owner'} ${row.signature}`).join(', '));
   if(key==='all'){
    // The full installation must cover the closed SQL registry in the same
    // transaction. A package or completion function alone cannot omit an action.
    const registered=await tx<{id:string}[]>`select capability_id as id from app.access_function_action order by capability_id collate "C"`;
    const described=WORKFORCE_CAPABILITY_BINDINGS.filter(capability=>capability.id.startsWith('function.')).map(capability=>capability.id).sort();
-   requireInstallation(registered.length===described.length&&registered.every((row,index)=>row.id===described[index]));
+   const registeredIds=new Set(registered.map(row=>row.id));
+   const describedIds=new Set(described);
+   const missing=described.filter(id=>!registeredIds.has(id));
+   const unexpected=registered.filter(row=>!describedIds.has(row.id)).map(row=>row.id);
+   requireInstallation(missing.length===0&&unexpected.length===0,
+    `registry coverage differs (missing: ${missing.join(', ')||'none'}; unexpected: ${unexpected.join(', ')||'none'})`);
    const [prerequisite]=await tx<{trusted:boolean}[]>`select p.prosecdef and p.prorettype='boolean'::regtype
     and not has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as trusted
     from pg_proc p where p.oid='app.access_all_function_bindings_complete()'::regprocedure`;
-   requireInstallation(prerequisite?.trusted);
+   requireInstallation(prerequisite?.trusted,'untrusted completeness predicate app.access_all_function_bindings_complete()');
    const [coverage]=await tx<{complete:boolean}[]>`select app.access_all_function_bindings_complete() as complete`;
-   requireInstallation(coverage?.complete===true);
+   requireInstallation(coverage?.complete===true,'app.access_all_function_bindings_complete() reported incomplete enforcement');
   }
   const nativeHooks=[...new Set(domains.flatMap(domain=>[domain.legacyParityFunction,domain.currentLegacyParityFunction,domain.functionLegacyParityFunction,domain.functionCurrentLegacyParityFunction,...(domain.functions??[]).flatMap(descriptor=>descriptor.actions.map(action=>action.delegationFloorFunction))].filter((hook):hook is string=>!!hook)))];
   for(const hook of nativeHooks){
