@@ -5,6 +5,23 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Tenant-isolation hardening (ADR-0174) — 3 November 2026 (provisional source claim)
+
+`claude/wonderful-mccarthy-2fb38f` appends three migrations above the 650-entry main/alpha journal
+(`d3bab0214`). A read-only scan of 3558 local and remote heads, 358 journal blobs and every registered
+worktree on 3 November 2026 found claims up to file 0967, idx 812 and when 1793330000367 (unmerged AI Centre
+branches hold 0952–0967), so these sit above all of them.
+
+| Tag | idx | when | SQL SHA256 |
+| --- | ---: | ---: | --- |
+|0968_employment_helper_tenant_pin|813|1793330000368|f492c0306ec81e4fd8d976aeab82b23defa099093b31f360e7e02ebdf5d45b9a|
+|0969_company_tenant_fk_not_valid|814|1793330000369|54aefce4652bea206c14c1d12e01d7f0578cc63e617c7a41bd04fd5406a4e71a|
+|0970_company_tenant_fk_validate|815|1793330000370|c1e957cdc49e18998cb78aaee69e4f3f8ec28e6def3828cbf69dec779f8483be|
+
+0968 pins the employment helpers and `app.company_subtree` to the session tenant; 0969 adds 128 composite
+company/tenant keys NOT VALID; 0970 checks the data and validates them. Unapplied source only: relocate the
+idx with competing claims and keep each timestamp above every earlier-applied migration before integration.
+
 ## Nine-item BOARD split: post-Noveri refresh — 3 November 2026 (unapplied)
 
 The nine-item candidate preserves the complete648-entry journal from aligned main/alpha

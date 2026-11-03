@@ -1,5 +1,5 @@
 /** Ordinary journal upgrade over a populated, trigger-protected database at the installed 636-entry prefix,
- *  through the appended tail (0873 movement, 0874 tax, 0875 Rewards read-policy role, 0876 EPF manual 0%, 0898 idle policy, 0899 Entra, 0924–0929 Teras, 0935 account unlock, 0946 cohort custody). Hosted only. */
+ *  through the appended tail (0873 movement, 0874 tax, 0875 Rewards read-policy role, 0876 EPF manual 0%, 0898 idle policy, 0899 Entra, 0924–0929 Teras, 0935 account unlock, 0946 cohort custody, 0968–0970 tenant-isolation hardening). Hosted only. */
 import {randomUUID,createHash} from 'node:crypto';
 import {copyFileSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -26,12 +26,15 @@ it('applies the pinned payroll and authentication successor tail through the ord
  const destinationUrl=new URL(sourceUrl);destinationUrl.pathname='/'+name;
  const preDirectory=mkdtempSync(join(tmpdir(),'aihr-tax-pre0873-'));
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
- const tail=[['0873_movement_exit_payroll_preservation','1793330000273'],['0874_payroll_tax_basis_corrections','1793330000274'],['0875_reward_access_request_read_role','1793330000275'],['0876_epf_manual_percentage_zero','1793330000276'],['0898_session_idle_timeout','1793330000298'],['0899_entra_workforce','1793330000299'],['0924_teras_outcome_record_mandates','1793330000324'],['0925_teras_rule_version_labels','1793330000325'],['0926_teras_worker_registry','1793330000326'],['0927_teras_conversation_switch','1793330000327'],['0928_teras_outcome_private_turns','1793330000328'],['0929_teras_review_services','1793330000329'],['0935_password_account_unlock','1793330000335'],['0946_draft_creation_cohort_custody','1793330000346']] as const;
+ const tail=[['0873_movement_exit_payroll_preservation','1793330000273'],['0874_payroll_tax_basis_corrections','1793330000274'],['0875_reward_access_request_read_role','1793330000275'],['0876_epf_manual_percentage_zero','1793330000276'],['0898_session_idle_timeout','1793330000298'],['0899_entra_workforce','1793330000299'],['0924_teras_outcome_record_mandates','1793330000324'],['0925_teras_rule_version_labels','1793330000325'],['0926_teras_worker_registry','1793330000326'],['0927_teras_conversation_switch','1793330000327'],['0928_teras_outcome_private_turns','1793330000328'],['0929_teras_review_services','1793330000329'],['0935_password_account_unlock','1793330000335'],['0946_draft_creation_cohort_custody','1793330000346'],['0968_employment_helper_tenant_pin','1793330000368'],['0969_company_tenant_fk_not_valid','1793330000369'],['0970_company_tenant_fk_validate','1793330000370']] as const;
  expect(journal.entries.slice(-tail.length).map((entry:{tag:string;when:number})=>[entry.tag,String(entry.when)])).toEqual(tail);
  // The Board successors are exact appended source, not a count-only tail adjustment.
- expect(journal.entries.slice(-2)).toEqual([
+ expect(journal.entries.slice(-5)).toEqual([
   {idx:763,version:'7',when:1793330000335,tag:'0935_password_account_unlock',breakpoints:true},
   {idx:793,version:'7',when:1793330000346,tag:'0946_draft_creation_cohort_custody',breakpoints:true},
+  {idx:813,version:'7',when:1793330000368,tag:'0968_employment_helper_tenant_pin',breakpoints:true},
+  {idx:814,version:'7',when:1793330000369,tag:'0969_company_tenant_fk_not_valid',breakpoints:true},
+  {idx:815,version:'7',when:1793330000370,tag:'0970_company_tenant_fk_validate',breakpoints:true},
  ]);
  for(const [tag,expectedHash] of [
   ['0935_password_account_unlock','3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa'],

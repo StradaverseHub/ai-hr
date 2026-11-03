@@ -4551,6 +4551,27 @@
       "when": 1793330000346,
       "tag": "0946_draft_creation_cohort_custody",
       "breakpoints": true
+    },
+    {
+      "idx": 813,
+      "version": "7",
+      "when": 1793330000368,
+      "tag": "0968_employment_helper_tenant_pin",
+      "breakpoints": true
+    },
+    {
+      "idx": 814,
+      "version": "7",
+      "when": 1793330000369,
+      "tag": "0969_company_tenant_fk_not_valid",
+      "breakpoints": true
+    },
+    {
+      "idx": 815,
+      "version": "7",
+      "when": 1793330000370,
+      "tag": "0970_company_tenant_fk_validate",
+      "breakpoints": true
     }
   ]
 }

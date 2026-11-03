@@ -29,6 +29,9 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
  expect(journal.entries.slice(boundary).map(({tag,when})=>({tag,when}))).toEqual([
   {tag:'0935_password_account_unlock',when:1793330000335},
   {tag:'0946_draft_creation_cohort_custody',when:1793330000346},
+  {tag:'0968_employment_helper_tenant_pin',when:1793330000368},
+  {tag:'0969_company_tenant_fk_not_valid',when:1793330000369},
+  {tag:'0970_company_tenant_fk_validate',when:1793330000370},
  ]);
  expect(hash(readFileSync('db/migrations/0935_password_account_unlock.sql'))).toBe('3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa');
  expect(hash(readFileSync('db/migrations/0946_draft_creation_cohort_custody.sql'))).toBe('cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390');
@@ -90,10 +93,11 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   // The original historical row is present at the upgrade boundary; the mutation above is preflight only.
   const upgradeNative=await native();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
-  const afterLedger=await ledger();expect(afterLedger).toHaveLength(650);expect(afterLedger.slice(0,648)).toEqual(beforeLedger);
+  const afterLedger=await ledger();expect(afterLedger).toHaveLength(653);expect(afterLedger.slice(0,648)).toEqual(beforeLedger);
   expect(afterLedger.slice(648).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual([
    {hash:'3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa',created_at:'1793330000335'},
    {hash:'cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390',created_at:'1793330000346'},
+   ...['0968_employment_helper_tenant_pin','0969_company_tenant_fk_not_valid','0970_company_tenant_fk_validate'].map((tag,i)=>({hash:hash(readFileSync('db/migrations/'+tag+'.sql')),created_at:String(1793330000368+i)})),
   ]);
   expect(await native()).toEqual(upgradeNative);
   const afterSource=await source();
