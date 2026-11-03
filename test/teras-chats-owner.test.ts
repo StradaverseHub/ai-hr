@@ -64,11 +64,16 @@ it('retention, a shortened setting and person erasure work under forced RLS for 
    (select bool_and(c.relforcerowsecurity and c.relrowsecurity and c.relowner=r.oid) from pg_class c where c.oid in ('public.teras_chat'::regclass,'public.teras_chat_turn'::regclass,'public.teras_chat_retention'::regclass,'public.letter_request'::regclass)) as forced_owned
    from pg_roles r where r.rolname=${role}`);
   expect(shape).toEqual({super:false,bypass:false,app_member:false,forced_owned:true});
-  // Synthetic letter requests (triggers off, so no template is needed), each carrying a chat card's id.
-  const cards={mine:randomUUID(),theirs:randomUUID(),later:randomUUID()};
+  // Synthetic letter requests of one synthetic template, written with the triggers off (no option, version or guard is
+  // needed), each carrying a chat card's id. Their foreign keys are real: PostgreSQL re-checks every foreign key of a row
+  // updated in the transaction that inserted it.
+  const cards={mine:randomUUID(),theirs:randomUUID(),later:randomUUID()},templateId=randomUUID();
+  await tx.execute(sql`set local session_replication_role=replica`);
+  await tx.execute(sql`insert into public.letter_template(id,tenant_id,company_id,code,created_by) values(${templateId}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,'FICTIONAL',${admin.ctx.userId}::uuid)`);
+  await tx.execute(sql`set local session_replication_role=origin`);
   const request=async(who:Person,key:string)=>{await tx.execute(sql`set local session_replication_role=replica`);
    const [row]=await tx.execute<{id:string}>(sql`insert into public.letter_request(tenant_id,company_id,employment_id,requested_by,template_id,letter_type_name,client_key)
-    values(${b.tenantId}::uuid,${b.companyId}::uuid,${who.employmentId}::uuid,${who.ctx.userId}::uuid,${randomUUID()}::uuid,'Fictional letter',${key}::uuid) returning id`);
+    values(${b.tenantId}::uuid,${b.companyId}::uuid,${who.employmentId}::uuid,${who.ctx.userId}::uuid,${templateId}::uuid,'Fictional letter',${key}::uuid) returning id`);
    await tx.execute(sql`set local session_replication_role=origin`);return row.id;};
   const mineRequest=await request(me,cards.mine),theirRequest=await request(peer,cards.theirs);
   const letterKeys=async()=>Object.fromEntries((await tx.execute<{id:string;client_key:string|null;version:number;status:string}>(sql`select id,client_key,version,status from public.letter_request order by id`))
@@ -84,10 +89,6 @@ it('retention, a shortened setting and person erasure work under forced RLS for 
   expect(await tx.execute(sql`select question_ciphertext,reply_ciphertext,model_ciphertext from public.teras_chat_turn`)).toEqual([]);
   expect(await tx.execute(sql`select count(*)::int as n from public.teras_chat_turn`)).toEqual([{n:0}]);
   expect(await ids(tx,sql`select id from public.teras_chat`)).toEqual([expired]);
-  await tx.execute(sql`savepoint debug_letter`);
-  const debug=await tx.execute(sql`delete from public.teras_chat where id=${expired}::uuid and expires_at<=now() returning id`).then(rows=>'ok '+rows.length,(error:unknown)=>{let at=error as {code?:string;message?:string;where?:string;detail?:string;cause?:unknown}|undefined;for(let i=0;i<6&&at;i++){if(at.code)return [at.code,at.message,at.where,at.detail].join(' | ');at=at.cause as typeof at;}return String(error);});
-  await tx.execute(sql`rollback to savepoint debug_letter`);
-  expect(debug).toBe('DEBUG');
   expect(await retireExpiredTerasChatsTx(tx)).toBe(1);
   expect(await ids(tx,sql`select id from public.teras_chat`)).toEqual([]);
   expect(await tx.execute(sql`delete from public.teras_chat where id=${live}::uuid returning id`)).toEqual([]);
