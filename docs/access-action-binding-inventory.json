@@ -61244,6 +61244,7 @@
       "line": 38,
       "surface": "server-action",
       "owners": [
+        "app.access_workforce_write_lock",
         "app.ai_active_provider_config_v2",
         "app.ai_admit",
         "app.ai_configuration_evaluation_stamp",
@@ -61341,6 +61342,7 @@
       "line": 41,
       "surface": "server-action",
       "owners": [
+        "app.access_workforce_write_lock",
         "app.assessment_review_participates",
         "app.assessment_skill_history",
         "app.function_action_allowed",
@@ -82378,10 +82380,11 @@
     {
       "table": "performance_onehr_review",
       "policy": "onehr_review_read",
-      "source": "db/migrations/0529_onehr_native.sql",
+      "source": "db/migrations/1001_onehr_review_storage_actions.sql",
       "owners": [
         "app.current_tenant_id",
-        "app.onehr_review_header"
+        "app.onehr_review_task_view",
+        "app.onehr_review_administration"
       ]
     },
     {

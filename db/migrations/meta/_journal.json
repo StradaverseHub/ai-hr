@@ -4943,6 +4943,13 @@
       "when": 1793330000402,
       "tag": "1002_financial_letter_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 850,
+      "version": "7",
+      "when": 1793330000403,
+      "tag": "1003_lifecycle_offboarding_view_boundary",
+      "breakpoints": true
     }
   ]
 }

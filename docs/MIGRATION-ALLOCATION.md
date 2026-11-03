@@ -1746,3 +1746,4 @@ Accepted main a02845ba retains its complete journal and applied migration bodies
 | New candidate migration | 1000_onehr_own_plan_edit_guard | 847 | 1793330000400 | dc07e7d4437b461e2e480b78533172b79662b5c088b1dfcab69b5935c359efec |
 | New candidate migration | 1001_onehr_review_storage_actions | 848 | 1793330000401 | 94f2f4a2dcb6b41883bdc32d70ef0f18747b80e233e2281821dbd0a0a7451750 |
 | New candidate migration | 1002_financial_letter_binding_readiness | 849 | 1793330000402 | 2e9c4ae12a93f34853856504fe7be3f5bf4db8c428c0530c34b079d80732b82d |
+| New candidate migration | 1003_lifecycle_offboarding_view_boundary | 850 | 1793330000403 | 5ebfb8dd96d973d7df1f9fffeb41f3df51167051fe0bd49f3421441ee929dad7 |
