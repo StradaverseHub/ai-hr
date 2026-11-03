@@ -129,9 +129,10 @@ describe('access',()=>{
   const author=await hire('Fictional Route Author','employee'),first=await hire('Fictional First Handler','employee'),second=await hire('Fictional Second Handler','employee');
   const companyAdmin=await hire('Fictional Route Company Administrator','hr_admin',true);
   await designate(first.ctx.userId);await designate(second.ctx.userId);
+  // Who handles the case: the handler policy, so an author's own visibility of what they wrote is not counted here.
   const reach=async(caseId:string)=>{const out:string[]=[];
    for(const [who,ctx] of [['first',first.ctx],['second',second.ctx],['group',group],['company admin',companyAdmin.ctx]] as const)
-    if((await seen(ctx)).cases.includes(caseId))out.push(who);
+    if((await listHandledPrivateCases(ctx)).some(row=>row.id===caseId))out.push(who);
    return out;};
   // About the first handler: only the second reads it.
   const aboutFirst=await open(author,{excludedUserIds:[first.ctx.userId]});
@@ -150,7 +151,10 @@ describe('access',()=>{
   // A handler who writes a case never handles it; the other handler does.
   const byHandler=await open(first);
   expect(await reach(byHandler)).toEqual(['second']);
+  await expect(readHandledPrivateCase(first.ctx,byHandler)).rejects.toMatchObject({code:'not_found'});
   expect((await readOwnPrivateCase(first.ctx,byHandler)).text).toBe(TEXT);
+  // Row security agrees: the excluded handler and the company HR administrator see none of these cases at all.
+  expect((await seen(first.ctx)).cases).toEqual([byHandler]);expect((await seen(companyAdmin.ctx)).cases).toEqual([]);
   // Only a current handler of the company can be left out, and an invalid choice stores nothing.
   await refusedWith(open(author,{excludedUserIds:[companyAdmin.ctx.userId]}),'invalid');
   await refusedWith(open(author,{sendTo:'everyone'}),'invalid');
