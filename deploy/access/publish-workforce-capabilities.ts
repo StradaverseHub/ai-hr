@@ -165,6 +165,17 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
     ?'Organisation Settings physical enforcement is incomplete'
     :`${signature} reported incomplete enforcement`);
   }
+  // A descriptor must still point to an installed enforcement owner when a package is enabled.
+  const bindingFunctions=[...new Set(expected.flatMap(capability=>capability.bindings.map(binding=>binding.owner))
+   .filter(owner=>owner.startsWith('app.')))].sort();
+  const missingBindingFunctions=await tx<{name:string}[]>`select binding.name
+   from unnest(${bindingFunctions}::text[]) binding(name)
+   cross join pg_class capability where capability.oid='public.access_capability'::regclass
+   and not exists(select from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='app' and p.proname=substring(binding.name from 5) and p.proowner=capability.relowner)
+   order by binding.name`;
+  requireInstallation(missingBindingFunctions.length===0,
+   `missing or untrusted binding owners: ${missingBindingFunctions.map(row=>row.name).join(', ')}`);
   const nativeHooks=[...new Set(domains.flatMap(domain=>[domain.legacyParityFunction,domain.currentLegacyParityFunction,domain.functionLegacyParityFunction,domain.functionCurrentLegacyParityFunction,...(domain.functions??[]).flatMap(descriptor=>descriptor.actions.map(action=>action.delegationFloorFunction))].filter((hook):hook is string=>!!hook)))];
   for(const hook of nativeHooks){
    requireInstallation(/^app\.[a-z][a-z0-9_]*$/.test(hook));
