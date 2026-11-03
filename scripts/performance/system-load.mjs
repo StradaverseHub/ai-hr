@@ -14,7 +14,7 @@ import {chromium} from 'playwright';
 import postgres from 'postgres';
 import {closePerformanceDbPools,performanceNativeDbClient} from './driver-shutdown.mjs';
 const base='https://localhost:3443',out=process.env.PERF_EVIDENCE_DIR;
-assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_system_perf');
+assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_dev');
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
 const db=postgres(process.env.MIGRATION_DATABASE_URL,{max:2});
 const agent=new https.Agent({keepAlive:true,maxSockets:4000,rejectUnauthorized:false,
