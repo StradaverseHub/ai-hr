@@ -19,8 +19,8 @@ const authKey=randomBytes(32).toString('hex');
 const env={...process.env,AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',AUTH_PROVIDER:'internal',AUTH_SESSION_KEY:authKey,AUTH_PUBLIC_ORIGIN:'https://localhost:3443',
  AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',AUDIT_HASH_CHAIN_ENABLED:'true',
  AI_CONFIG_SECRET:randomBytes(32).toString('hex'),PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:out,AIHR_FOCUSED_EVIDENCE_DIR:out,
- DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_system_perf',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_system_perf',
- TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_system_perf',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_system_perf'};
+ DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
+ TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev'};
 for(const key of Object.keys(env))if(key.startsWith('WORKOS_')||key==='SHARE_PASSWORD'||key==='DEV_USER_ID')delete env[key];
 env.SHARE_PASSWORD='';env.DEV_USER_ID='';
 const workers=Number(process.env.PERF_APP_WORKERS||'1');assert([1,2].includes(workers));
@@ -96,7 +96,6 @@ try{
  const buildEnv={...env,NODE_ENV:'production',NODE_OPTIONS:'--max-old-space-size=6144'};
  for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])buildEnv[key]='postgres://nobody:nothing@127.0.0.1:1/no_database';
  await run('postgres','bash',['.github/ci/postgres.sh','reset']);dbStarted=true;
- await run('database','docker',['exec',container,'psql','-U','postgres','-p','5433','-d','postgres','-v','ON_ERROR_STOP=1','-c','CREATE DATABASE ai_hr_system_perf OWNER ai_hr_app']);
  await run('migrate','pnpm',['db:migrate']);await run('catalogs',process.execPath,['--import','tsx','scripts/seed-catalogs.ts']);
  await run('fixture',process.execPath,['--import','tsx','scripts/performance/system-fixture.mjs'],{...env,NODE_ENV:'development'},600000);
  // Refuse invalid database/role/fixture setup before paying for the production build.
