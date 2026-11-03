@@ -38,8 +38,9 @@ export const DESTINATION_PURPOSE:Readonly<Record<string,string>>=Object.freeze({
  '/payroll/transaction-view':'Payroll staff: the pay transactions of any employee they administer. Not the signed-in person\'s own payslips.',
  '/payroll':'Payroll staff: the payroll runs of the companies they administer.',
 });
-/** Spec v20: what each pay-view page shows, for the turn note about another person's pay (core/harness/runner.ts
- * payViewNoteFor). Every PAY_VIEW_PAGES entry has one. */
+/** Spec v20: what each pay-view page shows, for the conversation's turn note about another person's pay (the
+ * conversation's payViewNoteFor reads it from here; this file names nothing of the conversation's own). Every
+ * PAY_VIEW_PAGES entry has one. */
 export const PAY_VIEW_PURPOSE:Readonly<Record<string,string>>=Object.freeze({
  '/payroll/individual-payslip':'where they open the payslip of any employee they administer (not their own payslips)',
  '/payroll/transaction-view':'where they see the pay transactions of any employee they administer',
