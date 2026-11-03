@@ -97,6 +97,16 @@ it('applies the Teras tail from 0890/0891 on over populated leave policy and app
    {table:'teras_payroll_loop_setting',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_payroll_swing_disposition',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_payroll_threshold_decision',rls:true,s:true,i:true,u:false,d:false,t:false},
+   // 0971 (AI v2 Phase 2 P2-5, the Living Handbook): REVOKE ALL, then GRANT SELECT, INSERT; UPDATE on the version only (a draft
+   // is edited, then sent, approved or returned), DELETE on the scope only (a draft's companies). Everything else append-only.
+   {table:'teras_policy_application',rls:true,s:true,i:true,u:false,d:false,t:false},
+   {table:'teras_policy_approval',rls:true,s:true,i:true,u:false,d:false,t:false},
+   {table:'teras_policy_document',rls:true,s:true,i:true,u:false,d:false,t:false},
+   {table:'teras_policy_drift_finding',rls:true,s:true,i:true,u:false,d:false,t:false},
+   {table:'teras_policy_scope',rls:true,s:true,i:true,u:false,d:true,t:false},
+   {table:'teras_policy_value',rls:true,s:true,i:true,u:false,d:false,t:false},
+   {table:'teras_policy_value_confirmation',rls:true,s:true,i:true,u:false,d:false,t:false},
+   {table:'teras_policy_version',rls:true,s:true,i:true,u:true,d:false,t:false},
    {table:'teras_task_memory',rls:true,s:true,i:true,u:true,d:true,t:false},
    // 0895: the registry's worker switches (GRANT SELECT, INSERT, UPDATE).
    {table:'teras_worker_control',rls:true,s:true,i:true,u:true,d:false,t:false},

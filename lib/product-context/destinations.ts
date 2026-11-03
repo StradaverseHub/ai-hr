@@ -255,6 +255,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/performance/plan','everyone','performance'],['/performance/plan/profile','everyone','performance'],
  ['/performance/plan/team','everyone','performance'],['/performance/team','everyone','performance'],
  ['/performance/team/kpis','everyone','performance'],['/performance/workspace','everyone','performance'],['/personnel','everyone',null],
+ ['/policies','everyone',null],
  ['/reports','admin',null],['/reports/employee-master','admin',null],['/rewards','everyone','rewards'],['/rewards/approvals','everyone','rewards'],
  ['/roster','everyone','attendance'],['/roster/exceptions','everyone','attendance'],['/roster/import','admin','attendance'],
  ['/system-testing','everyone','system_testing'],['/tasks','everyone',null],

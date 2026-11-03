@@ -4656,6 +4656,13 @@
       "when": 1793330000367,
       "tag": "0967_own_payroll_cut_off",
       "breakpoints": true
+    },
+    {
+      "idx": 809,
+      "version": "7",
+      "when": 1793330000371,
+      "tag": "0971_teras_living_handbook",
+      "breakpoints": true
     }
   ]
 }

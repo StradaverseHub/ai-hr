@@ -383,6 +383,7 @@
     "reportPerformance": "Hiệu suất",
     "profileOptions": "Tùy chọn hồ sơ",
     "delegations": "Ủy quyền phê duyệt",
+    "policies": "Chính sách",
     "dashboardCardConfig": "Thẻ bảng điều khiển",
     "scheduledActions": "Tác vụ theo lịch",
     "systemSettings": "Cài đặt hệ thống",
@@ -11197,6 +11198,7 @@
         "attendanceVisibleApplications": "Chỉ các đơn chấm công đã có quyền xem theo phạm vi nhân viên, tuyến báo cáo, ủy quyền hoặc người tham gia đã lưu hiện tại. Trang này không cấp quyền xem hồ sơ nhân sự hoặc lịch sử HR rộng hơn.",
         "childReliefReview": "Chỉ liệt kê nhân viên đang làm việc trong các công ty bạn quản lý, nên tổng ringgit là tổng của những gì bạn thấy được. Chỉ đọc — không thể thay đổi thiết lập thuế nào từ màn hình này.",
         "delegations": "HR và quản trị viên thấy mọi ủy quyền; bạn chỉ thấy những ủy quyền do bạn tạo hoặc đảm nhận.",
+        "aiCentrePolicies": "Quản trị viên xem chính sách của các công ty họ quản lý; những người khác đọc chính sách đã phê duyệt của công ty mình.",
         "duplicatePersonRecords": "Chỉ liệt kê nhân viên thuộc các công ty bạn quản trị, nên một nửa của cặp trải trên hai công ty có thể không hiển thị với bạn. Chỉ đọc — không thể thay đổi hồ sơ nào từ màn hình này.",
         "identityEmail": "Quản trị viên HR có thể xem trước biểu mẫu SMTP. Việc xem hoặc thay đổi thiết lập thực tế yêu cầu đăng ký riêng làm quản trị viên danh tính của bản cài đặt.",
         "leave": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
@@ -27331,7 +27333,8 @@
           "closed_references": "Tham chiếu mờ và danh mục cố định (văn bản và giá trị nguồn ở lại cục bộ)",
           "coarse_aggregate_bands": "Khoảng tổng hợp thô (không bảo đảm ẩn danh)",
           "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)",
-          "authored_formula_request": "Yêu cầu công thức do người dùng viết"
+          "authored_formula_request": "Yêu cầu công thức do người dùng viết",
+          "authored_policy_text": "Văn bản chính sách do quản trị viên nhân sự viết (bị từ chối nếu chứa thông tin định danh cá nhân)"
         },
         "redaction": {
           "pii_masked": "Đã che",

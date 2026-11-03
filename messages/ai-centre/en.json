@@ -21,7 +21,8 @@
       "operations": "Operations",
       "administration": "Administration",
       "insights": "Insights",
-      "how": "How it works"
+      "how": "How it works",
+      "policies": "Policies"
     },
     "inboxCount": "{count, plural, one {# item waiting} other {# items waiting}}",
     "backToToday": "Back to Today",
@@ -1490,6 +1491,195 @@
         "failed": "The change could not be saved. Try again."
       },
       "patternUnknown": "A pay item no longer in the catalogue"
+    },
+    "policies": {
+      "title": "Policies",
+      "descriptionAdmin": "Your company handbook, in your own words. AI Centre reads the values in each policy; you confirm them, a second administrator approves a change, and the claims and leave services apply it.",
+      "descriptionReader": "Your company's approved policies. AI Centre answers your questions from these approved versions only.",
+      "handbook": "Handbook",
+      "none": "No policies yet.",
+      "new": "New policy",
+      "choose": "Choose a policy to read it.",
+      "emptyAdmin": "No policies yet. Write your first one with New policy.",
+      "emptyReader": "Your company has not published any policies here yet.",
+      "versionShort": "v{version}",
+      "badges": {
+        "draft": "draft",
+        "submitted": "waiting",
+        "drift": "{count, plural, one {# drift} other {# drifts}}"
+      },
+      "areas": {
+        "leave": "Leave",
+        "attendance": "Attendance and overtime",
+        "claims": "Claims",
+        "allowances": "Allowances",
+        "people": "People",
+        "other": "Other"
+      },
+      "status": {
+        "draft": "Draft",
+        "submitted": "Waiting for approval",
+        "approved": "Approved"
+      },
+      "statusLine": "{status} v{version} · written by {author} · applies to {companies} from {date}",
+      "anAdministrator": "an administrator",
+      "otherCompany": "another company",
+      "allCompanies": "all {count} companies",
+      "actions": {
+        "edit": "Edit text",
+        "read": "Read the values",
+        "send": "Send for approval"
+      },
+      "form": {
+        "newTitle": "New policy",
+        "titleLabel": "Title",
+        "area": "Area",
+        "effectiveFrom": "Applies from",
+        "companies": "Applies to",
+        "body": "Your policy, in your words",
+        "bodyHint": "Write it as you would for your staff. After saving, AI Centre can read the values the system can enforce, for you to confirm.",
+        "editHint": "Changing the text means its values need reading and confirming again.",
+        "create": "Save draft",
+        "save": "Save draft",
+        "cancel": "Cancel"
+      },
+      "words": "Your policy, in your words",
+      "enforce": "What the system will enforce",
+      "table": {
+        "setting": "Setting",
+        "now": "Now",
+        "fromText": "From your text",
+        "decision": "Your decision"
+      },
+      "decide": {
+        "confirmed": "Confirm",
+        "rejected": "Reject"
+      },
+      "decision": {
+        "confirmed": "Confirmed",
+        "rejected": "Rejected",
+        "pending": "Not decided"
+      },
+      "same": "Same as now",
+      "enforceNote": "AI Centre read {count, plural, one {this value} other {these # values}} from the highlighted words. You confirm each one; the owner service applies it after approval.",
+      "perClaimNote": "Shown as written. The claims service prices each claim's own distance against these bands and keeps no monthly total, so a monthly limit in your text is not enforced.",
+      "notEnforced": "Not enforced yet",
+      "notEnforcedBody": "This policy is kept as text. AI Centre answers questions from its approved version; the system does not enforce it yet.",
+      "sharedSetting": "Claims and leave settings are shared by every company in your group, so they are enforced only from a policy that applies to all of them. This one is kept as text.",
+      "noValuesDraft": "No values read yet. Use Read the values once the text is ready.",
+      "noValues": "No values were confirmed for this version.",
+      "impact": {
+        "title": "If this had applied from {from} to {to}",
+        "changedLabel": "of {total} mileage claims would change",
+        "lessPaid": "less paid in total",
+        "morePaid": "more paid in total",
+        "samePaid": "no change in the total paid",
+        "lateLabel": "of {total} claims late under the {days}-day rule",
+        "peopleLabel": "people affected",
+        "owner": "Calculated by the claims service on the last 12 months of real claims. AI Centre did not work out any amount."
+      },
+      "drift": {
+        "title": "Where the handbook and the system disagree",
+        "setting": {
+          "claims_mileage_rates": "Mileage rates",
+          "claims_submit_within_days": "Submission window ({type})",
+          "leave_entitlement_days": "{type} entitlement"
+        },
+        "body": "the handbook says {handbook}; the {owner} service says {system}. Applies to {companies}.",
+        "useHandbook": "Use the handbook",
+        "updateHandbook": "Update the handbook",
+        "draftOpen": "Finish or return the open draft of this policy first."
+      },
+      "owners": {
+        "claims": "claims",
+        "leave": "leave"
+      },
+      "approval": {
+        "title": "Approval",
+        "ruleDraft": "When you send it, a group administrator approves it. A change to what the system enforces needs a second administrator: someone who did not write or send it.",
+        "ruleSettings": "This version changes what the system enforces, so a second administrator, who did not write or send it, must approve it before it applies.",
+        "ruleText": "This version changes text only, so one approval publishes it.",
+        "approved": "Approved by {name} on {date}",
+        "returned": "Returned to draft by {name} on {date}",
+        "needSecond": "You wrote or sent this change, so another group administrator must approve it.",
+        "approveApply": "Approve and apply",
+        "approve": "Approve",
+        "return": "Return to draft",
+        "waiting": "Waiting for a group administrator to approve it."
+      },
+      "applied": {
+        "applied": "{setting}: applied by the {owner} service from {date}.",
+        "refused": "{setting}: the {owner} service refused it: {message}",
+        "scheduled": "{setting}: waits for {date}. The {owner} service applies this setting the day it is written.",
+        "applyNow": "Apply now"
+      },
+      "versions": {
+        "title": "Versions",
+        "row": "Version {version} · {status} · from {date}",
+        "inForce": "in force",
+        "restore": "Make this the draft"
+      },
+      "values": {
+        "days": "{days} days",
+        "daysDefault": "{days} days (the default)",
+        "ratePerKm": "RM {rate} per km",
+        "daysAYear": "{days} days a year",
+        "money": "RM {amount}",
+        "none": "None",
+        "noneMileage": "None (any amount)",
+        "mileageRange": "RM {rate} per km from {from} to {to} km",
+        "mileageOpen": "RM {rate} per km from {from} km",
+        "leaveRange": "{days} days from {from} to {to} years",
+        "leaveOpen": "{days} days from {from} years"
+      },
+      "settings": {
+        "mileageBand": "Rate, {from} to {to} km",
+        "mileageAfter": "Rate after {from} km",
+        "mileageAny": "Rate, any distance",
+        "submitWithin": "Submit within ({type})",
+        "leaveBand": "{type}, {from} to {to} years of service",
+        "leaveFrom": "{type}, {from} years of service or more"
+      },
+      "saved": {
+        "created": "Draft saved.",
+        "draft": "Draft saved.",
+        "read": "AI Centre read {accepted, plural, one {# value} other {# values}} for you to confirm{rejected, plural, =0 {.} one {; it set aside # proposal it could not match to your words.} other {; it set aside # proposals it could not match to your words.}}",
+        "unread": "AI Centre could not read any values. Check the text, or enter them on the owner's settings page.",
+        "confirmed": "Value confirmed.",
+        "rejected": "Value rejected. It will not be applied.",
+        "sent_settings": "Sent for approval. It changes what the system enforces, so a second administrator must approve it.",
+        "sent_text": "Sent for approval. It changes text only.",
+        "approved": "Approved. Each confirmed value went to its owner service.",
+        "approved_refused": "Approved, but an owner service refused a value. See Approval.",
+        "returned": "Returned to draft.",
+        "applied": "Applied.",
+        "drift_settings": "A draft is ready to apply the handbook's values again. Confirm them and send it for approval.",
+        "drift_text": "A draft is ready with the text changed to what the system does. Check it and send it for approval.",
+        "drift_text_manual": "A draft is ready. Reword the text to match the system, then read and confirm the values.",
+        "draft_made": "A new draft is ready to edit."
+      },
+      "errors": {
+        "not_administrator": "Only an administrator of every company this policy applies to can do that.",
+        "not_group_admin": "Only a group administrator can approve or return a policy.",
+        "invalid": "Check the title, the date, the text and at least one company.",
+        "not_found": "That policy is not available.",
+        "not_draft": "This version is no longer a draft, or its text has changed. Reload and try again.",
+        "not_submitted": "This version is not waiting for approval.",
+        "not_approved": "That version is not the approved version in force.",
+        "undecided": "Confirm or reject every value before sending it.",
+        "same_administrator": "You wrote or sent this change. Another group administrator must approve it.",
+        "stale_submission": "The system has changed since this was sent, so it now changes enforced settings. Return it to draft and send it again.",
+        "shared_setting": "These settings are shared by every company in your group. Make the policy apply to all of them first.",
+        "draft_open": "This policy already has an open draft. Finish or return it first.",
+        "no_drift": "The handbook and the system agree now.",
+        "not_due": "That value is not due yet.",
+        "model_unavailable": "AI Centre cannot read the values yet. Sending policy text to the AI provider is waiting for the owner's data review.",
+        "no_settings": "There is nothing the system can enforce for this area yet. The policy is kept as text.",
+        "failed": "That did not work. Try again."
+      },
+      "footer": "Employees' questions are answered from the approved version only. Every version is kept.",
+      "readerLine": "Version {version} · in force since {date}",
+      "readerNote": "This is the approved version. Ask AI Centre about it on Ask, or contact your HR team."
     }
   },
   "today": {

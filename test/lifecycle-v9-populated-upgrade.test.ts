@@ -14,9 +14,9 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(665); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the AI v2 Phase 2 migrations below.
+ expect(journal.entries).toHaveLength(666); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors, the four AI v2 Phase 1 migrations 2000-2003 and the AI v2 Phase 2 migrations below.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(94);
+ expect(journal.entries.slice(boundary)).toHaveLength(95);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
@@ -69,6 +69,8 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:807,version:'7',when:1793330000366,tag:'0966_teras_capacity_baseline',breakpoints:true,hash:'0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c'},
   // AI v2 Phase 2 P2-3 own payroll cut-off (claude/aiv2-p2-payroll-checklist), frozen here.
   {idx:808,version:'7',when:1793330000367,tag:'0967_own_payroll_cut_off',breakpoints:true,hash:'b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca'},
+  // AI v2 Phase 2 P2-5 Living Handbook (claude/aiv2-p2-living-handbook), frozen here.
+  {idx:809,version:'7',when:1793330000371,tag:'0971_teras_living_handbook',breakpoints:true,hash:'7abaf32815d657b559e6550acf50ecde543bd99f857538889ec48a82920048f0'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

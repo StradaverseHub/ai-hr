@@ -21,7 +21,8 @@
       "operations": "Operasi",
       "administration": "Pentadbiran",
       "insights": "Wawasan",
-      "how": "Cara ia berfungsi"
+      "how": "Cara ia berfungsi",
+      "policies": "Polisi"
     },
     "inboxCount": "{count, plural, one {# item menunggu} other {# item menunggu}}",
     "backToToday": "Kembali ke Hari ini",
@@ -1490,6 +1491,195 @@
         "failed": "Perubahan tidak dapat disimpan. Cuba lagi."
       },
       "patternUnknown": "Item gaji yang tiada lagi dalam katalog"
+    },
+    "policies": {
+      "title": "Polisi",
+      "descriptionAdmin": "Buku panduan syarikat anda, dalam kata-kata anda sendiri. AI Centre membaca nilai dalam setiap polisi; anda mengesahkannya, pentadbir kedua meluluskan perubahan, dan perkhidmatan tuntutan dan cuti menerapkannya.",
+      "descriptionReader": "Polisi syarikat anda yang telah diluluskan. AI Centre menjawab soalan anda daripada versi yang diluluskan ini sahaja.",
+      "handbook": "Buku panduan",
+      "none": "Belum ada polisi.",
+      "new": "Polisi baharu",
+      "choose": "Pilih polisi untuk membacanya.",
+      "emptyAdmin": "Belum ada polisi. Tulis yang pertama dengan Polisi baharu.",
+      "emptyReader": "Syarikat anda belum menerbitkan sebarang polisi di sini.",
+      "versionShort": "v{version}",
+      "badges": {
+        "draft": "draf",
+        "submitted": "menunggu",
+        "drift": "{count, plural, one {# percanggahan} other {# percanggahan}}"
+      },
+      "areas": {
+        "leave": "Cuti",
+        "attendance": "Kehadiran dan kerja lebih masa",
+        "claims": "Tuntutan",
+        "allowances": "Elaun",
+        "people": "Pekerja",
+        "other": "Lain-lain"
+      },
+      "status": {
+        "draft": "Draf",
+        "submitted": "Menunggu kelulusan",
+        "approved": "Diluluskan"
+      },
+      "statusLine": "{status} v{version} · ditulis oleh {author} · terpakai kepada {companies} mulai {date}",
+      "anAdministrator": "seorang pentadbir",
+      "otherCompany": "syarikat lain",
+      "allCompanies": "semua {count} syarikat",
+      "actions": {
+        "edit": "Sunting teks",
+        "read": "Baca nilai",
+        "send": "Hantar untuk kelulusan"
+      },
+      "form": {
+        "newTitle": "Polisi baharu",
+        "titleLabel": "Tajuk",
+        "area": "Bidang",
+        "effectiveFrom": "Terpakai mulai",
+        "companies": "Terpakai kepada",
+        "body": "Polisi anda, dalam kata-kata anda",
+        "bodyHint": "Tulis seperti anda menulis untuk kakitangan anda. Selepas disimpan, AI Centre boleh membaca nilai yang boleh dikuatkuasakan oleh sistem, untuk anda sahkan.",
+        "editHint": "Mengubah teks bermakna nilainya perlu dibaca dan disahkan semula.",
+        "create": "Simpan draf",
+        "save": "Simpan draf",
+        "cancel": "Batal"
+      },
+      "words": "Polisi anda, dalam kata-kata anda",
+      "enforce": "Apa yang akan dikuatkuasakan oleh sistem",
+      "table": {
+        "setting": "Tetapan",
+        "now": "Sekarang",
+        "fromText": "Daripada teks anda",
+        "decision": "Keputusan anda"
+      },
+      "decide": {
+        "confirmed": "Sahkan",
+        "rejected": "Tolak"
+      },
+      "decision": {
+        "confirmed": "Disahkan",
+        "rejected": "Ditolak",
+        "pending": "Belum diputuskan"
+      },
+      "same": "Sama seperti sekarang",
+      "enforceNote": "AI Centre membaca {count, plural, one {nilai ini} other {# nilai ini}} daripada perkataan yang diserlahkan. Anda mengesahkan setiap satu; perkhidmatan pemilik menerapkannya selepas kelulusan.",
+      "perClaimNote": "Ditunjukkan seperti yang ditulis. Perkhidmatan tuntutan mengira harga jarak setiap tuntutan berdasarkan jalur ini dan tidak menyimpan jumlah bulanan, jadi had bulanan dalam teks anda tidak dikuatkuasakan.",
+      "notEnforced": "Belum dikuatkuasakan",
+      "notEnforcedBody": "Polisi ini disimpan sebagai teks. AI Centre menjawab soalan daripada versi yang diluluskan; sistem belum menguatkuasakannya.",
+      "sharedSetting": "Tetapan tuntutan dan cuti dikongsi oleh setiap syarikat dalam kumpulan anda, jadi ia hanya dikuatkuasakan daripada polisi yang terpakai kepada semuanya. Polisi ini disimpan sebagai teks.",
+      "noValuesDraft": "Belum ada nilai dibaca. Gunakan Baca nilai apabila teks sudah sedia.",
+      "noValues": "Tiada nilai disahkan untuk versi ini.",
+      "impact": {
+        "title": "Jika ini terpakai dari {from} hingga {to}",
+        "changedLabel": "daripada {total} tuntutan perbatuan akan berubah",
+        "lessPaid": "kurang dibayar secara keseluruhan",
+        "morePaid": "lebih dibayar secara keseluruhan",
+        "samePaid": "tiada perubahan pada jumlah dibayar",
+        "lateLabel": "daripada {total} tuntutan lewat di bawah peraturan {days} hari",
+        "peopleLabel": "orang terjejas",
+        "owner": "Dikira oleh perkhidmatan tuntutan berdasarkan tuntutan sebenar 12 bulan lepas. AI Centre tidak mengira sebarang jumlah."
+      },
+      "drift": {
+        "title": "Di mana buku panduan dan sistem tidak sepadan",
+        "setting": {
+          "claims_mileage_rates": "Kadar perbatuan",
+          "claims_submit_within_days": "Tempoh penghantaran ({type})",
+          "leave_entitlement_days": "Kelayakan {type}"
+        },
+        "body": "buku panduan menyatakan {handbook}; perkhidmatan {owner} menyatakan {system}. Terpakai kepada {companies}.",
+        "useHandbook": "Guna buku panduan",
+        "updateHandbook": "Kemas kini buku panduan",
+        "draftOpen": "Selesaikan atau kembalikan draf polisi ini yang masih terbuka dahulu."
+      },
+      "owners": {
+        "claims": "tuntutan",
+        "leave": "cuti"
+      },
+      "approval": {
+        "title": "Kelulusan",
+        "ruleDraft": "Apabila anda menghantarnya, pentadbir kumpulan akan meluluskannya. Perubahan pada apa yang dikuatkuasakan oleh sistem memerlukan pentadbir kedua: seseorang yang tidak menulis atau menghantarnya.",
+        "ruleSettings": "Versi ini mengubah apa yang dikuatkuasakan oleh sistem, jadi pentadbir kedua, yang tidak menulis atau menghantarnya, mesti meluluskannya sebelum ia terpakai.",
+        "ruleText": "Versi ini hanya mengubah teks, jadi satu kelulusan akan menerbitkannya.",
+        "approved": "Diluluskan oleh {name} pada {date}",
+        "returned": "Dikembalikan kepada draf oleh {name} pada {date}",
+        "needSecond": "Anda menulis atau menghantar perubahan ini, jadi pentadbir kumpulan lain mesti meluluskannya.",
+        "approveApply": "Luluskan dan terapkan",
+        "approve": "Luluskan",
+        "return": "Kembalikan kepada draf",
+        "waiting": "Menunggu pentadbir kumpulan meluluskannya."
+      },
+      "applied": {
+        "applied": "{setting}: diterapkan oleh perkhidmatan {owner} mulai {date}.",
+        "refused": "{setting}: perkhidmatan {owner} menolaknya: {message}",
+        "scheduled": "{setting}: menunggu {date}. Perkhidmatan {owner} menerapkan tetapan ini pada hari ia ditulis.",
+        "applyNow": "Terapkan sekarang"
+      },
+      "versions": {
+        "title": "Versi",
+        "row": "Versi {version} · {status} · mulai {date}",
+        "inForce": "sedang berkuat kuasa",
+        "restore": "Jadikan ini draf"
+      },
+      "values": {
+        "days": "{days} hari",
+        "daysDefault": "{days} hari (lalai)",
+        "ratePerKm": "RM {rate} sekilometer",
+        "daysAYear": "{days} hari setahun",
+        "money": "RM {amount}",
+        "none": "Tiada",
+        "noneMileage": "Tiada (sebarang jumlah)",
+        "mileageRange": "RM {rate} sekilometer dari {from} hingga {to} km",
+        "mileageOpen": "RM {rate} sekilometer mulai {from} km",
+        "leaveRange": "{days} hari dari {from} hingga {to} tahun",
+        "leaveOpen": "{days} hari mulai {from} tahun"
+      },
+      "settings": {
+        "mileageBand": "Kadar, {from} hingga {to} km",
+        "mileageAfter": "Kadar selepas {from} km",
+        "mileageAny": "Kadar, sebarang jarak",
+        "submitWithin": "Hantar dalam tempoh ({type})",
+        "leaveBand": "{type}, {from} hingga {to} tahun perkhidmatan",
+        "leaveFrom": "{type}, {from} tahun perkhidmatan atau lebih"
+      },
+      "saved": {
+        "created": "Draf disimpan.",
+        "draft": "Draf disimpan.",
+        "read": "AI Centre membaca {accepted, plural, one {# nilai} other {# nilai}} untuk anda sahkan{rejected, plural, =0 {.} one {; ia mengetepikan # cadangan yang tidak dapat dipadankan dengan perkataan anda.} other {; ia mengetepikan # cadangan yang tidak dapat dipadankan dengan perkataan anda.}}",
+        "unread": "AI Centre tidak dapat membaca sebarang nilai. Semak teks, atau masukkan nilai di halaman tetapan pemilik.",
+        "confirmed": "Nilai disahkan.",
+        "rejected": "Nilai ditolak. Ia tidak akan diterapkan.",
+        "sent_settings": "Dihantar untuk kelulusan. Ia mengubah apa yang dikuatkuasakan oleh sistem, jadi pentadbir kedua mesti meluluskannya.",
+        "sent_text": "Dihantar untuk kelulusan. Ia hanya mengubah teks.",
+        "approved": "Diluluskan. Setiap nilai yang disahkan dihantar kepada perkhidmatan pemiliknya.",
+        "approved_refused": "Diluluskan, tetapi perkhidmatan pemilik menolak satu nilai. Lihat Kelulusan.",
+        "returned": "Dikembalikan kepada draf.",
+        "applied": "Diterapkan.",
+        "drift_settings": "Draf sudah sedia untuk menerapkan semula nilai buku panduan. Sahkannya dan hantar untuk kelulusan.",
+        "drift_text": "Draf sudah sedia dengan teks diubah mengikut apa yang dilakukan oleh sistem. Semaknya dan hantar untuk kelulusan.",
+        "drift_text_manual": "Draf sudah sedia. Ubah teks supaya sepadan dengan sistem, kemudian baca dan sahkan nilainya.",
+        "draft_made": "Draf baharu sedia untuk disunting."
+      },
+      "errors": {
+        "not_administrator": "Hanya pentadbir bagi setiap syarikat yang tertakluk pada polisi ini boleh berbuat demikian.",
+        "not_group_admin": "Hanya pentadbir kumpulan boleh meluluskan atau mengembalikan polisi.",
+        "invalid": "Semak tajuk, tarikh, teks dan sekurang-kurangnya satu syarikat.",
+        "not_found": "Polisi itu tidak tersedia.",
+        "not_draft": "Versi ini bukan lagi draf, atau teksnya telah berubah. Muat semula dan cuba lagi.",
+        "not_submitted": "Versi ini tidak menunggu kelulusan.",
+        "not_approved": "Versi itu bukan versi diluluskan yang sedang berkuat kuasa.",
+        "undecided": "Sahkan atau tolak setiap nilai sebelum menghantarnya.",
+        "same_administrator": "Anda menulis atau menghantar perubahan ini. Pentadbir kumpulan lain mesti meluluskannya.",
+        "stale_submission": "Sistem telah berubah sejak ini dihantar, jadi ia kini mengubah tetapan yang dikuatkuasakan. Kembalikan kepada draf dan hantar semula.",
+        "shared_setting": "Tetapan ini dikongsi oleh setiap syarikat dalam kumpulan anda. Jadikan polisi terpakai kepada semuanya dahulu.",
+        "draft_open": "Polisi ini sudah mempunyai draf terbuka. Selesaikan atau kembalikan dahulu.",
+        "no_drift": "Buku panduan dan sistem kini sepadan.",
+        "not_due": "Nilai itu belum tiba masanya.",
+        "model_unavailable": "AI Centre belum dapat membaca nilai. Penghantaran teks polisi kepada penyedia AI sedang menunggu semakan data oleh pemilik.",
+        "no_settings": "Belum ada apa-apa yang boleh dikuatkuasakan oleh sistem untuk bidang ini. Polisi disimpan sebagai teks.",
+        "failed": "Itu tidak berjaya. Cuba lagi."
+      },
+      "footer": "Soalan pekerja dijawab daripada versi yang diluluskan sahaja. Setiap versi disimpan.",
+      "readerLine": "Versi {version} · berkuat kuasa sejak {date}",
+      "readerNote": "Ini ialah versi yang diluluskan. Tanya AI Centre mengenainya di Tanya, atau hubungi pasukan HR anda."
     }
   },
   "today": {

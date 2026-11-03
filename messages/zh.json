@@ -383,6 +383,7 @@
     "reportPerformance": "绩效",
     "profileOptions": "档案选项",
     "delegations": "审批委托",
+    "policies": "政策",
     "dashboardCardConfig": "仪表板卡片",
     "scheduledActions": "计划任务",
     "systemSettings": "系统设置",
@@ -11197,6 +11198,7 @@
         "attendanceVisibleApplications": "仅显示现有员工、汇报、委托或已保存参与者范围内可见的出勤申请。此页不会授予人员浏览或更广泛的人事历史权限。",
         "childReliefReview": "仅列出您所管理公司的在职员工，因此令吉总额是您可查看范围的总额。只读——无法从此页面更改任何税务设定。",
         "delegations": "HR 和管理员可见所有委托；您只能看到自己委托或代理的委托。",
+        "aiCentrePolicies": "管理员可查看其所管理公司的政策；其他人只能阅读本公司已批准的政策。",
         "duplicatePersonRecords": "仅列出您所管理的公司中的员工，因此跨两家公司的一对记录中可能有一半对您不可见。只读——无法从此页面更改任何记录。",
         "identityEmail": "HR 管理员可以预览 SMTP 表单。查看或更改实际设置需要单独注册为安装身份管理员。",
         "leave": "所有人都可打开；你查看自己的假期，经理和管理员查看下属的假期。",
@@ -27331,7 +27333,8 @@
           "closed_references": "不透明引用与限定类别（来源文本和值保留在本地）",
           "coarse_aggregate_bands": "粗粒度汇总区间（不保证匿名）",
           "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）",
-          "authored_formula_request": "用户编写的公式要求"
+          "authored_formula_request": "用户编写的公式要求",
+          "authored_policy_text": "由人力资源管理员撰写的政策文本（含个人身份信息时拒绝发送）"
         },
         "redaction": {
           "pii_masked": "已遮盖",

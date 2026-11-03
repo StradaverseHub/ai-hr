@@ -22,6 +22,7 @@ import {WHY_ENTITIES,WHY_READS} from './entities-why';
 import {LOOP_ENTITIES,LOOP_READS} from './entities-loops';
 import {PAYROLL_READINESS_ENTITIES,PAYROLL_READINESS_READS} from './entities-payroll-readiness';
 import {PAYROLL_LOOP_ENTITIES,PAYROLL_LOOP_READS} from './entities-payroll-loops';
+import {HANDBOOK_ENTITIES,HANDBOOK_READS} from './entities-handbook';
 
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 const object=(properties:Record<string,unknown>,required:string[]=Object.keys(properties)):AiJsonSchema=>({type:'object',properties,required,additionalProperties:false});
@@ -75,7 +76,9 @@ export function contextToolSpecs():readonly AiToolSpec[]{
 }
 
 const JSON_TYPE:Readonly<Record<SemanticField['type'],string>>={id:'string',code:'string',text:'string',name:'string',label:'string',date:'string',datetime:'string',
- time:'string',period:'string',number:'number',integer:'integer',boolean:'boolean',enum:'string',list:'array',object:'object'};
+ time:'string',period:'string',number:'number',integer:'integer',boolean:'boolean',enum:'string',list:'array',object:'object',
+ // AI v2 Phase 2 P2-5: an approved, published policy paragraph (./types.ts published_text).
+ published_text:'string'};
 function outputProperty(field:SemanticField):Record<string,unknown>{
  const tag={'x-teras-disclosure':field.disclosure,description:field.meaning};
  if(field.disclosure==='bands')return{type:'string',...tag,description:field.meaning+' Released as a band, restored locally.'};
@@ -123,7 +126,9 @@ export function terasEntities():readonly SemanticEntity[]{
   // AI v2 Phase 2 P2-3 appends the "Before payroll" checklist (./entities-payroll-readiness.ts).
   ...PAYROLL_READINESS_ENTITIES,
   // AI v2 Phase 2 (wave 1 integration) appends the payroll-cycle loop pages (./entities-payroll-loops.ts).
-  ...PAYROLL_LOOP_ENTITIES]);
+  ...PAYROLL_LOOP_ENTITIES,
+  // AI v2 Phase 2 P2-5 appends the Living Handbook's approved policies (./entities-handbook.ts).
+  ...HANDBOOK_ENTITIES]);
  return terasModel;
 }
 export const terasEntity=(id:EntityId):SemanticEntity=>{const entity=terasEntities().find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};
@@ -131,7 +136,9 @@ export const terasEntity=(id:EntityId):SemanticEntity=>{const entity=terasEntiti
 // AI v2 W5 appends the pay difference and claim limit explainers; AI v2 W8 the loops overview.
 export const TERAS_READS:readonly SemanticRead[]=Object.freeze([...EXPLAIN_READS,...SETUP_READS,...METRIC_READS,...WHY_READS,...LOOP_READS,
  // AI v2 Phase 2 P2-3 appends my_payroll_readiness; the wave 1 integration the payroll-cycle loop reads.
- ...PAYROLL_READINESS_READS,...PAYROLL_LOOP_READS]);
+ ...PAYROLL_READINESS_READS,...PAYROLL_LOOP_READS,
+ // AI v2 Phase 2 P2-5 appends my_policy_handbook.
+ ...HANDBOOK_READS]);
 let terasSpecs:readonly AiToolSpec[]|undefined;
 export function terasToolSpecs():readonly AiToolSpec[]{
  terasSpecs??=freeze(TERAS_READS.map(read=>({name:read.name,description:describe(read,terasEntity(read.entity)),inputSchema:inputSchema(read)})));

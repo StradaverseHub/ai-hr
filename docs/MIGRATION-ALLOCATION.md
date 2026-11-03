@@ -1231,6 +1231,23 @@ integration.
 |770|1793330000366|0966_teras_capacity_baseline|0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c|
 |771|1793330000367|0967_own_payroll_cut_off|b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca|
 
+## AI v2 Phase 2 P2-5 Living Handbook — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-living-handbook` (cut from `9492a6b43` on `claude/aiv2-phase2-wave1`, journal ending `0967_own_payroll_cut_off`
+idx771 / when1793330000367) appends `0971_teras_living_handbook` as idx775 / when1793330000371: the number the AI v2 coordinator
+reserved for P2-5 (wave 2: 0968–0970 for the tenant-isolation hardening PR, 0972 learning loops, 0973 letters chat custody), placed
+by the wave 1 rule (idx = 767 + (NN − 63), when = 1793330000300 + NN), so idx772–774 stay free for 0968–0970. A fresh fetch on
+3 November 2026 found competing **file numbers** on other workstreams' origin branches: `codex/permissions-*-20261103` claim
+0968 and 0970–0986 (among them `0971_leave_configuration_binding_readiness`), and `claude/wonderful-mccarthy-2fb38f` claims 0969–0970.
+The coordinator's reservation is kept, as for 0962–0967; the overlap is reported and must be reconciled before these sets integrate
+(identical file numbers or `when` values cannot both stand in one journal). Development source only: no installation priority, no
+deployment; re-freeze above the then-installed ledger at integration. All eight tables are new; `core/handbook/policies.ts` is their
+only writer.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|775|1793330000371|0971_teras_living_handbook|7abaf32815d657b559e6550acf50ecde543bd99f857538889ec48a82920048f0|
+
 ## AI Centre block 2000–2019: AI v2 Phase 1 release — 3 November 2026 (unapplied source reservation)
 
 Branch `claude/aiv2-phase1-release` merges `origin/main` `848c7be36414a1a5216bb33d0ecd49429fcdd60f` (aligned with alpha; the

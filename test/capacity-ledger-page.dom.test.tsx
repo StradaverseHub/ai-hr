@@ -89,15 +89,15 @@ const RATIO=[/per\s*100\b/i,/per\s+hundred/i,/staff\s+per\b/i,/staff[-\s]+to[-\s
  /setiap\s+100/i,/nisbah/i,/每\s*(百|100)/,/比率/,/tỷ\s*lệ/i,/trên\s+100/i,/விகிதம்/,/อัตราส่วน/,/ต่อ\s*100/];
 
 describe('the Insights tab',()=>{
- it.each([['employee',false],['manager',false],['hrAdmin',true],['groupAdmin',true]] as const)('%s: offered to every role, between Operations and Administration where those are shown',(role,admitted)=>{
+ it.each([['employee',false],['manager',false],['hrAdmin',true],['groupAdmin',true]] as const)('%s: offered to every role, between Policies (AI v2 Phase 2 P2-5) and Administration where those are shown',(role,admitted)=>{
   expect(isAdmin(SESSIONS[role] as never)).toBe(admitted);
   wrap('en',<AiCentreTabs active="insights" isAdmin={admitted} />);
   const nav=screen.getByRole('navigation',{name:'AI Centre sections'});
   const links=within(nav).getAllByRole('link').map(link=>[text(link),link.getAttribute('href')]);
   expect(links).toEqual(admitted
-   ?[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Insights','/assistant?view=insights'],
+   ?[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Policies','/policies'],['Insights','/assistant?view=insights'],
     ['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']]
-   :[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Insights','/assistant?view=insights'],['How it works','/assistant?view=how']]);
+   :[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Policies','/policies'],['Insights','/assistant?view=insights'],['How it works','/assistant?view=how']]);
   expect(within(nav).getByRole('link',{current:'page'})).toHaveAttribute('href','/assistant?view=insights');
   for(const link of within(nav).getAllByRole('link'))expect(link.className).toContain('min-h-11');
  });

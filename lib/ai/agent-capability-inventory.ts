@@ -233,6 +233,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/assistant/chat-import-actions.ts":{"confirmChatImportAction":"internal:assistant_surface"},
  "app/assistant/loop-clock-out-actions.ts":{"confirmMissedClockOutAction":"internal:assistant_surface"},
  "app/assistant/capacity-actions.ts":{"setCapacityBaselineAction":"handoff:ai_governance"},
+ // AI v2 Phase 2 P2-5: the Living Handbook (AI Centre › Policies). People write, confirm and approve policies; the AI never does.
+ "app/assistant/policy-actions.ts":{"applyScheduledPolicyValueAction":"handoff:ai_governance","approvePolicyAction":"handoff:ai_governance","createPolicyAction":"handoff:ai_governance","decidePolicyValueAction":"handoff:ai_governance","draftFromVersionAction":"handoff:ai_governance","prepareFromDriftAction":"handoff:ai_governance","readPolicyValuesAction":"handoff:ai_governance","returnPolicyAction":"handoff:ai_governance","saveDraftAction":"handoff:ai_governance","submitPolicyAction":"handoff:ai_governance"},
  // AI v2 Phase 2 P2-1: the employee's own Undo of a clock-out the missed clock-outs loop set (core/loops/undo.ts).
  "app/assistant/loop-undo-actions.ts":{"undoOwnLoopAction":"internal:assistant_surface"},
  "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface","askFromWorkspaceAction":"internal:assistant_surface","loadEarlierChatAction":"internal:assistant_surface","loadMoreChatsAction":"internal:assistant_surface","openStoredChatAction":"internal:assistant_surface","chatImportOfferedAction":"internal:assistant_surface"},

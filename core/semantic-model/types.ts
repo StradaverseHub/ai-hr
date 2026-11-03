@@ -20,7 +20,15 @@ import type {AiJsonSchema} from '../../lib/ai/types';
 
 export type DisclosureClass='never'|'bands'|'minimum'|'full';
 export const DISCLOSURE_CLASSES:readonly DisclosureClass[]=Object.freeze(['never','bands','minimum','full']);
-export type FieldType='id'|'code'|'text'|'name'|'label'|'date'|'datetime'|'time'|'period'|'number'|'integer'|'boolean'|'enum'|'list'|'object';
+export type FieldType='id'|'code'|'text'|'name'|'label'|'date'|'datetime'|'time'|'period'|'number'|'integer'|'boolean'|'enum'|'list'|'object'
+ /** AI v2 Phase 2 P2-5: an organisation's own APPROVED wording, published to the people it applies to (an approved Living
+  * Handbook paragraph). Not `text`, which is free text a person typed about themselves or someone else and is always
+  * `never`: this is company content its readers already see, disclosed by its class like any other field. Like every
+  * string the harness sends, it is screened for identifiers first (core/harness/disclosure.ts, reply-checks.ts
+  * screenIdentifiers): an email address, IC, phone, bank account or other identifier written in the policy becomes
+  * `[<kind> removed]` before the model sees it (test/handbook-policies.test.ts). Accepted by the AI v2 coordinator on that
+  * condition; it goes into the owner's next provider-data binding packet for review. */
+ |'published_text';
 export type SemanticField=Readonly<{name:string;type:FieldType;disclosure:DisclosureClass;meaning:string;
  /** Closed vocabulary for `enum` fields. */values?:readonly string[];
  /** Row shape for `list`/`object` fields; each nested field carries its own class. An undeclared child is
@@ -72,7 +80,9 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** AI v2 Phase 2 P2-3: the caller's own "Before payroll" checklist (./entities-payroll-readiness.ts). */
  |'payroll_readiness'
  /** AI v2 Phase 2 (wave 1 integration): the payroll-cycle loop pages, for administrators (./entities-payroll-loops.ts). */
- |'payroll_cycle'|'salary_payroll_run'|'payroll_loop_setting'|'payroll_audit_status';
+ |'payroll_cycle'|'salary_payroll_run'|'payroll_loop_setting'|'payroll_audit_status'
+ /** AI v2 Phase 2 P2-5: the approved company policies in force for the caller (./entities-handbook.ts). */
+ |'policy_handbook';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;

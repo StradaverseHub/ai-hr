@@ -61,8 +61,10 @@ const linksOf=(nav:HTMLElement)=>within(nav).getAllByRole('link').map(link=>[lin
 afterEach(()=>{cleanup();state.locale='en';state.payroll=true;state.session=null;state.reads=0;});
 
 describe('AI Centre tabs per role',()=>{
+ // AI v2 Phase 2 (P2-5): Policies, the Living Handbook, for every role (employees read approved text only), between Operations
+ // and Insights as in the approved mock-ups.
  // AI v2 Phase 2 (P2-3): Insights, for every role. Its HR capacity ledger section (P2-4) is admin-only inside the view.
- const ALL=[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Insights','/assistant?view=insights'],['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']];
+ const ALL=[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Policies','/policies'],['Insights','/assistant?view=insights'],['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']];
  it.each([['employee',false],['manager',false],['hrAdmin',true],['groupAdmin',true]] as const)('%s sees exactly the tabs whose guard admits them',(role,admitted)=>{
   expect(isAdmin(SESSIONS[role] as never)).toBe(admitted);
   wrap('en',<AiCentreTabs active="ask" isAdmin={isAdmin(SESSIONS[role] as never)} />);

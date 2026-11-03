@@ -32,6 +32,19 @@ existing quality and coverage metrics. The employee links open the authoritative
 
 You can attach a supported spreadsheet or CSV to ask for import mapping help when that capability is available to your role. Review the proposed destination and column mapping, then open the relevant native import screen to validate its preview. An Assistant suggestion or file attachment does not save HR records: the native import screen retains its own permissions, validation and confirmation. Keep private workbooks out of public feedback and provide only the data needed for the selected task. If provider setup is unavailable, a Group HR administrator can review its configuration and evaluation status under AI configuration; a saved provider is not proof of a successful evaluation.
 
+## Company policies (the Living Handbook)
+
+[AI Centre › Policies](/policies) keeps your company's own policies in your own words, with every version and the date it applies from. Administrators of every company a policy applies to write and edit it.
+
+1. Write the policy with New policy: its title, area, the companies it applies to and the date it applies from.
+2. Use Read the values. AI Centre highlights the words it read and lists each value under What the system will enforce, beside what the system does now. It only proposes values for settings that already exist: the claims mileage rates, a claim type's submission window and a leave type's default entitlement table. Everything else stays text and is marked Not enforced yet.
+3. Confirm or reject each value. Changing the text means its values are read and confirmed again.
+4. For claims policies, If this had applied shows what the claims service calculates from the last 12 months of real claims. AI Centre works out no amount.
+5. Send for approval. A group administrator approves it. A change to what the system enforces needs a second, different administrator: someone who did not write or send it. A text-only change needs one approval.
+6. On approval, the claims or leave service applies each confirmed value through its own settings and checks, from the policy's date. An owner can refuse a value; the refusal is shown under Approval.
+
+Where the handbook and the system disagree lists every confirmed value the system no longer matches, with both values. Use the handbook prepares a draft that applies the handbook again; Update the handbook prepares a draft whose text says what the system does. Both go through the same confirmation and approval. Claims and leave settings are shared by every company in your group, so they are enforced only from a policy that applies to all of them. Employees see approved versions only, and AI Centre answers their questions from the version in force, citing the policy and paragraph.
+
 ## Reports and operations
 
 Use [Reports](/reports) and [Analytics](/analytics) for authorized summaries. Confirm filters and totals before sharing an export. [Scheduled actions](/admin/scheduled-actions) shows the operational actions available to the relevant administrator; a configured item is not proof that its last execution succeeded.
