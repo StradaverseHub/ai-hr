@@ -73,7 +73,7 @@ export async function prepareChatToilRequestProposal(supplied:SessionContext,det
   if(!isClock(claimEnd)||claimEnd===claimStart)missing.push('claimEnd');
   const reason=ownWords(details.reason,personWords,500);
   if(!reason)missing.push('reason');
-  if(missing.length)return ask(missing);
+  if(missing.length||!reason)return ask(missing);
   // What the roster holds for that date, as the Leave Credit form fills it; the leave service adjudicates it again.
   const dayType=await ownWorkedDayKind(ctx,own.employmentId,workedDate);
   if(dayType==='workday'&&!subject.ordinaryDayAllowed)return null;

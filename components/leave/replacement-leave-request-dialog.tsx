@@ -2,7 +2,7 @@
 import type {LeaveCreditDayFactsResult} from '@/lib/leave-credit-day-facts-result';
 import type {LeaveCreditClaimReviewAction} from '@/lib/leave-credit-claim-review';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Plus } from 'lucide-react';
@@ -120,6 +120,19 @@ export function ReplacementLeaveRequestDialog({
 }) {
   const t = useTranslations('replacementRequest');
   const [open, setOpen] = useState(prefill != null);
+  /* AI v2 W2 slice 2 — the chat card's `credit*` seed is stripped once the dialog has opened on it, as Request Leave strips
+     its `?apply=1`, so a refresh or Back does not reopen a form the person closed. history.replaceState integrates with
+     the App Router and needs no router here; `stripped` guards React's dev double-invoke. */
+  const stripped = useRef(false);
+  useEffect(() => {
+    if (prefill == null || stripped.current || typeof window === 'undefined') return;
+    stripped.current = true;
+    const url = new URL(window.location.href);
+    const seeded = ['credit', 'creditDate', 'creditStart', 'creditEnd'].filter((key) => url.searchParams.has(key));
+    if (!seeded.length) return;
+    for (const key of seeded) url.searchParams.delete(key);
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  }, [prefill]);
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>

@@ -3,7 +3,8 @@
  *
  * The prefill only seeds the first row: the dialog opens on arrival with the date and the two times in the very fields the
  * form posts, the First Schedule agreement box is NOT ticked (nothing in the link can tick it), and a malformed, future or
- * agreement-carrying link seeds nothing. Without a prefill the dialog stays closed, as before. Fictional values only. */
+ * agreement-carrying link seeds nothing. The seed leaves the address once used, so a refresh does not reopen the form.
+ * Without a prefill the dialog stays closed, as before. Fictional values only. */
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
@@ -57,6 +58,14 @@ describe('the Leave Credit prefill from a chat card\'s Edit', () => {
     expect(dialog).toHaveTextContent(en.replacementRequest.firstScheduleConsent);
     // The reason is the person's own: never seeded.
     expect(form.get('reason')).toBe('');
+  });
+
+  it('strips the seed from the address once the dialog has opened on it, keeping every other parameter', () => {
+    window.history.replaceState(null, '', '/leave?leaveYear=2026&credit=1&creditDate=2026-11-01&creditStart=09%3A00&creditEnd=17%3A00#apply');
+    mount({ workedDate: '2026-11-01', claimStart: '09:00', claimEnd: '17:00' });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe('/leave?leaveYear=2026#apply');
+    window.history.replaceState(null, '', '/');
   });
 
   it('stays closed without a prefill, as before', () => {
