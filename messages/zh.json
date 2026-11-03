@@ -509,7 +509,9 @@
     "functionAccess": "功能访问",
     "securityCenter": "安全中心",
     "aiManagementInventory": "AI 清单",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "myPrivateCases": "我的私密个案",
+    "privateCases": "私密个案"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -11216,7 +11218,9 @@
         "securityCenter": "管理员或具有访问配置权限的人员可以使用。",
         "createLogin": "仅限集团级管理员。手动设置还需要受支持的登录提供商和已验证的管理员会话。",
         "inviteUser": "仅限集团级管理员。",
-        "entra": "仅限集团管理员。配置本组织的 Microsoft 登录和员工帐户预配。关联现有身份需要明确确认。"
+        "entra": "仅限集团管理员。配置本组织的 Microsoft 登录和员工帐户预配。关联现有身份需要明确确认。",
+        "myPrivateCases": "仅限登录者本人的私密个案。特权角色不会扩大范围；管理员无法在此阅读他人的个案。",
+        "privateCaseHandling": "所有人都可以访问，但只向个案所属公司的指定个案处理人显示个案（若没有符合条件的处理人，则向集团管理员显示），绝不向提交人或被提交人排除的人显示。角色在此不授予任何权限。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -33629,5 +33633,136 @@
       "forbidden": "您无权更改此策略。",
       "unavailable": "密码设置暂不可用。请重试。"
     }
+  },
+  "privateCases": {
+    "categories": {
+      "grievance": "申诉",
+      "harassment": "骚扰",
+      "safety": "安全",
+      "other": "其他事项"
+    },
+    "statuses": {
+      "received": "已收到",
+      "in_review": "审核中",
+      "closed": "已结案"
+    },
+    "errors": {
+      "invalid": "请检查表单：选择事项类别并写下发生了什么。",
+      "not_set_up": "该公司尚未设置私密个案。请直接联系您的人力资源团队。",
+      "not_found": "您无法查看此个案。",
+      "not_allowed": "您无法执行此操作。",
+      "unavailable": "暂时无法使用。请稍后再试。",
+      "conflict": "自您打开后此内容已更改。请重新查看。"
+    },
+    "entry": {
+      "title": "向人力资源部门提交的私密个案",
+      "help": "以书面形式向人力资源个案处理人提出申诉、骚扰、安全问题或其他敏感事项。AI Centre 绝不会读取这些内容。",
+      "open": "私密个案"
+    },
+    "me": {
+      "title": "向人力资源部门提交的私密个案",
+      "description": "私下写给贵公司的人力资源个案处理人。只有您和他们可以阅读；AI Centre 绝不会读取、存储或看到您所写的内容。",
+      "start": "提交私密个案",
+      "notSetUp": "贵公司尚未设置私密个案。请直接联系您的人力资源团队。",
+      "empty": "您尚未提交任何私密个案。",
+      "listTitle": "您的个案",
+      "opened": "提交于 {date}",
+      "updated": "更新于 {date}",
+      "handle": "您处理的个案",
+      "view": "查看",
+      "unreachable": "目前没有人可以阅读"
+    },
+    "new": {
+      "title": "提交私密个案",
+      "description": "请用您自己的话来写。它将发送给下列人力资源个案处理人，而不是 AI Centre。",
+      "back": "私密个案",
+      "company": "公司",
+      "chooseCompany": "显示此公司",
+      "category": "是关于什么的？",
+      "text": "发生了什么",
+      "textHelp": "最多 8,000 个字符。请分享您愿意分享的内容；处理人可能会联系您。",
+      "handlers": "谁可以阅读",
+      "handlersHelp": "以下人员可以阅读您的个案。如果事情与其中某人有关，或其中某人不应看到，请勾选其姓名。",
+      "exclude": "不要发送给 {name}（{role}）",
+      "unnamed": "没有员工记录的人员",
+      "groupAdmin": "发送给集团管理员，而不是个案处理人",
+      "groupAdminHelp": "如果您排除了所有个案处理人，个案将发送给集团管理员。如果您排除了所有人，个案仍会保存，但目前没有人可以阅读。",
+      "privacy": "您的个案以加密方式存储。您的人力资源个案处理人可以看到个案及您的姓名；其他人力资源管理员、经理和 AI Centre 则看不到。",
+      "submit": "发送给人力资源部门",
+      "notStorable": "暂时无法保存私密个案。请直接联系您的人力资源团队。",
+      "readerHandler": "个案处理人",
+      "readerGroupAdmin": "集团管理员"
+    },
+    "detail": {
+      "back": "私密个案",
+      "sent": "您的个案已发送给人力资源部门。",
+      "opened": "提交于 {date}",
+      "company": "公司",
+      "category": "类别",
+      "status": "状态",
+      "text": "您所写的内容",
+      "history": "状态记录",
+      "step": "{status}，{date}"
+    },
+    "handle": {
+      "title": "您处理的私密个案",
+      "description": "以个案处理人身份收到的个案。每次打开个案都会被记录。",
+      "none": "您不负责处理私密个案。",
+      "empty": "暂无私密个案。",
+      "opened": "提交于 {date}",
+      "toGroupAdmin": "已发送给集团管理员",
+      "erasure": "提交人已要求删除其数据：此个案将在结案时删除。",
+      "view": "打开",
+      "back": "您处理的个案",
+      "author": "提交人",
+      "noName": "无法显示姓名",
+      "text": "对方所写的内容",
+      "status": "状态",
+      "moveTo": "标记为{status}",
+      "notes": "处理人备注",
+      "notesHelp": "只有此个案的处理人可以看到备注；提交个案的人看不到。",
+      "noNotes": "暂无备注。",
+      "noteBy": "{name}，{date}",
+      "you": "您",
+      "noteLabel": "备注",
+      "saveNote": "保存备注",
+      "closedNoNotes": "此个案已结案，无法再添加备注。",
+      "audit": "个案记录",
+      "auditCreated": "由 {name} 提交",
+      "auditRead": "{name} 已阅读",
+      "auditStatus": "{name} 将状态从{from}改为{to}",
+      "auditNote": "{name} 添加了备注",
+      "noteSaved": "备注已保存。",
+      "statusSaved": "状态已更改。",
+      "erased": "根据提交人的删除请求，此个案已结案并删除。"
+    },
+    "admin": {
+      "title": "私密个案处理人",
+      "description": "为每家公司指定接收私密个案的人员。只有他们可以阅读这些个案：指定处理人并不会让您能够阅读个案。",
+      "back": "数据隐私",
+      "company": "公司",
+      "show": "显示",
+      "current": "当前处理人",
+      "none": "尚无处理人，因此该公司不提供私密个案。",
+      "since": "自 {date} 起",
+      "revoke": "移除",
+      "revoked": "于 {date} 移除",
+      "history": "以前的处理人",
+      "designate": "添加处理人",
+      "person": "人员",
+      "noRecord": "没有员工记录的登录账户",
+      "add": "添加处理人",
+      "selfNote": "您不能将自己指定为处理人。集团管理员或该公司的其他管理员会指定您。",
+      "added": "已添加处理人。",
+      "removed": "已移除处理人。",
+      "noCompanies": "您没有管理任何公司。"
+    },
+    "privacyCard": {
+      "title": "私密个案处理人",
+      "help": "选择由谁接收员工提交给人力资源部门的私密个案。",
+      "link": "管理个案处理人"
+    },
+    "noReader": "该公司尚未设置符合条件的阅读人，因此目前没有人可以阅读此个案。请联系{channel}。",
+    "externalChannel": "[公司指定的外部渠道，例如道德热线]"
   }
 }

@@ -517,6 +517,7 @@
     "conversation": {
       "routed": "Sent to your HR team: this topic is not handled by the assistant.",
       "routedCrisis": "If you are in danger, contact emergency services now.",
+      "startPrivateCase": "Start a private case with HR",
       "days": "{count, plural, one {# day} other {# days}}",
       "leaveApplyTitle": "{leaveType}, {start} ({days, plural, one {# day} other {# days}})",
       "leaveApplyRangeTitle": "{leaveType}, {start} – {end} ({days, plural, one {# day} other {# days}})",

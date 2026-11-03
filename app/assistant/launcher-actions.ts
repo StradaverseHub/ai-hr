@@ -71,7 +71,8 @@ async function askThroughHarness(session:SessionContext,route:Extract<Conversati
   if(input.clarification)throw new ConversationTurnError('continuation_invalid');
   const companyId=(JSON.parse(input.conversationScope) as unknown[]).find((id):id is string=>typeof id==='string')??'';
   const turn=await runConversationTurn(session,route,{question:input.question,companyId,locale:await getLocale(),...(input.continuation===undefined?{}:{continuation:input.continuation})});
-  const answer=await ConversationReply({turn,links:await replyLinksFor(session,turn.suggestion?.reviewRoute)});
+  // AI v2 W11: the case route's form is linkable on its own turn, so a spec case clause naming it renders as a link.
+  const answer=await ConversationReply({turn,links:await replyLinksFor(session,turn.suggestion?.reviewRoute,turn.caseRoute)});
   // Stored only once the reply could be shown, so a reopened chat holds no turn the person never saw.
   const chatId=await storeTurn(session,{question:input.question,conversationScope:input.conversationScope,companyId,turn});
   return {ok:true,exchangeId:'teras-'+turn.turnId,answer,conversationToken:turn.continuation,...(chatId?{chatId}:{})};
@@ -150,12 +151,12 @@ export async function loadMoreChatsAction(input:{cursor:unknown}):Promise<{ok:tr
 }
 
 /** The destinations this caller's reply may link to, the same set the runner's link check allows (linkablePathsFor,
- * plus this turn's suggestion route), each with the registry's localised title where it has one. */
-async function replyLinksFor(session:SessionContext,suggestionRoute?:string){
+ * plus this turn's suggestion route and, on a routed turn, its case route), each with the registry's localised title where it has one. */
+async function replyLinksFor(session:SessionContext,...turnRoutes:(string|null|undefined)[]){
  const [{destinationsFor,linkablePathsFor},{visibleModuleCodes},{linkKey}]=await Promise.all([import('@/lib/product-context/destinations'),import('@/lib/nav-entitlements'),import('@/components/ai-centre/reply-markdown')]);
  const nav=await getTranslations('nav'),modules=visibleModuleCodes(session)??undefined,links=new Map<string,string|null>();
  for(const path of linkablePathsFor(session,modules))links.set(linkKey(path),null);
  for(const row of destinationsFor(session,modules))links.set(linkKey(row.href),nav.has(row.labelKey)?nav(row.labelKey):null);
- if(suggestionRoute)links.set(linkKey(suggestionRoute),links.get(linkKey(suggestionRoute))??null);
+ for(const route of turnRoutes)if(route)links.set(linkKey(route),links.get(linkKey(route))??null);
  return links;
 }

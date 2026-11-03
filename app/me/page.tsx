@@ -5,6 +5,7 @@ import {saveOwnPhotoAction} from './own-photo-action';
 import {getSetting} from '@/core/entitlements';
 import {readProfilePresentationPolicy} from '@/core/profile-edit-policy';
 import Link from 'next/link';
+import {PrivateCaseEntryCard} from '@/components/private-cases/entry-cards';
 import {redirect} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
@@ -497,5 +498,7 @@ export default async function MePage({
     {!workspace.statutoryAvailable&&<Card className="p-4 text-sm text-muted-foreground">{te('countryUnavailable')}</Card>}
     <ProfileEditor key={employmentId+':'+profileVisibilityFingerprint(visibilityPolicy)} workspace={workspace} facts={facts} defaultTab={activeTab} history={tabVisible('Others')?history:[]} hiddenTabs={[...hiddenTabs]} extraPanels={{payroll:tabVisible('Payroll')?payrollPanel:null,documents:sectionVisible('Documents','Employee documents')?documentsPanel:null,attendance:tabVisible('Attendance')&&facts.modules.attendance?attendancePanel:null,leave:tabVisible('Leave')&&facts.modules.leave?leavePanel:null,others:tabVisible('Others')?<Card className="p-4"><Link href="/me/performance" className="text-primary underline">{t('myPerformanceLink')}</Link></Card>:null}}/>
     <Card className="flex flex-wrap items-center justify-between gap-3 p-4"><div className="min-w-0"><p className="text-sm font-medium">{assistantData('dataTitle')}</p><p className="mt-1 text-xs text-muted-foreground">{assistantData('dataHelp')}</p></div><Link href="/assistant?view=privacy#assistant-privacy" className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{assistantData('dataLink')}</Link></Card>
+    {/* AI v2 W11: a person's private cases with HR, written on their own form, never through the AI (ADR-0173). */}
+    <PrivateCaseEntryCard/>
   </div>;
 }
