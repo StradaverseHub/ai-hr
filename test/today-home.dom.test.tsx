@@ -64,6 +64,9 @@ vi.mock('@/core/reporting',()=>({complianceWorklist:async(_s:unknown,p:{companyI
 vi.mock('@/core/payroll-anomaly',()=>({openExceptionsAcrossRuns:async()=>{S.calls.exceptions++;return {...S.exceptions,cappedOut:false};}}));
 vi.mock('@/core/automatic-followups',()=>({followupItemsTx:async()=>{S.calls.passports++;return S.passports;}}));
 // AI v2 W8: the loops' open cards, as core/loops/cards.ts reads them for this viewer (row-level security decides whose).
+// AI v2 W8: Confirm on the missed clock-out card posts the case, the person's reason option and, for Other, their words.
+const clockOut=vi.hoisted(()=>({posts:[] as unknown[],result:{kind:'submitted'} as unknown}));
+vi.mock('@/app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:async(input:unknown)=>{clockOut.posts.push(input);return clockOut.result;}}));
 vi.mock('@/core/loops/cards',()=>({readLoopCards:async(_s:unknown,p:unknown)=>{S.calls.loops.push(p);if(S.loopsFail)throw Error('Fixture loop outage');return S.loops;}}));
 vi.mock('@/core/employee-home-time-off',()=>({readEmployeeHomeTimeOff:async(_s:unknown,employmentId?:string)=>{S.calls.timeOff.push(employmentId);if(S.timeOffError)throw S.timeOffError;return S.timeOff;}}));
 vi.mock('@/core/employee-home',()=>({HomeAccessError:fx.FixtureHomeAccessError,
@@ -604,15 +607,52 @@ describe('Today with the cards the loops prepared (AI v2 W8)',()=>{
   expect(cardsOf(view)).toEqual([
    {kind:'clockOut',title:'Did you leave at 18:00 on Tue, Nov 3?',
     meta:['Clock-in on record 09:02','No clock-out recorded','Your roster ends at 18:00','Prepared by AI Centre: Missed clock-outs','Nothing changes until you send the correction; your approver decides it as usual.'],
-    links:[['/attendance/my-records/2026-11-03?checkOut=18%3A00','Review and confirm · Did you leave at 18:00 on Tue, Nov 3?']]},
+    links:[['/attendance/my-records/2026-11-03?checkOut=18%3A00','Edit · Did you leave at 18:00 on Tue, Nov 3?']]},
    {kind:'record',title:'Your record is missing 1 detail',meta:['No bank account','Prepared by AI Centre: Missing employee data','HR approves your update as usual.'],
     links:[['/me?tab=bankStatutory#section-request-bankStatutory','Fill in · Your record is missing 1 detail']]},
    {kind:'passport',title:'Your passport expires on Dec 20, 2026',meta:['Renew it and send HR the new details.','Prepared by AI Centre: Passports expiring'],
     links:[['/me?tab=profile','Update your details · Your passport expires on Dec 20, 2026']]},
   ]);
-  // A card is a link to the owner's page: no button on it posts anything.
-  expect(view.section('today-needs-you')!.querySelectorAll('[data-today-loop] button,[data-today-loop] form')).toHaveLength(0);
+  // A card is a link to the owner's page; only the missed clock-out card has a button, its Confirm, which waits for the
+  // person's own reason. Nothing has been posted.
+  expect([...view.section('today-needs-you')!.querySelectorAll('[data-today-loop] button')].map(button=>[button.closest('[data-today-loop]')!.getAttribute('data-today-loop'),text(button),(button as HTMLButtonElement).disabled]))
+   .toEqual([['clockOut','Confirm and submit · Did you leave at 18:00 on Tue, Nov 3?',true]]);
+  expect(view.section('today-needs-you')!.querySelectorAll('[data-today-loop] form')).toHaveLength(0);
+  expect(clockOut.posts).toEqual([]);
   expect(view.container.textContent).not.toMatch(/noveri/i);
+ });
+ it('the missed clock-out card: the person picks the reason, then Confirm sends it; Other is typed; a refusal shows in place',async()=>{
+  const card={kind:'clockOut',caseId:'c1',date:'2026-11-03',checkIn:'09:02',proposedCheckOut:'18:00',href:'/attendance/my-records/2026-11-03?checkOut=18%3A00'};
+  S.loops=[card];clockOut.posts.length=0;clockOut.result={kind:'submitted'};
+  let view=await show(EMPLOYEE,['co-a']);
+  let el=view.container.querySelector('[data-today-loop="clockOut"]') as HTMLElement;
+  const fieldset=el.querySelector('[data-clock-out-reasons]')!;
+  expect(text(fieldset.querySelector('legend'))).toBe('Why is the clock-out missing?');
+  expect([...fieldset.querySelectorAll('label')].map(text)).toEqual(['Forgot to clock out','Device problem','Other']);
+  expect([...fieldset.querySelectorAll('input[type="radio"]')].map(input=>(input as HTMLInputElement).checked)).toEqual([false,false,false]);
+  const confirmButton=()=>within(el).getByRole('button',{name:'Confirm and submit · Did you leave at 18:00 on Tue, Nov 3?'}) as HTMLButtonElement;
+  expect(confirmButton().disabled).toBe(true);
+  fireEvent.click(within(el).getByRole('radio',{name:'Forgot to clock out'}));
+  expect(confirmButton().disabled).toBe(false);
+  fireEvent.click(confirmButton());
+  expect(text(await within(el).findByRole('status'))).toBe('Confirmed by you · Sent for approval, not approved yet.');
+  expect(clockOut.posts).toEqual([{caseId:'c1',reason:'forgot',confirm:true}]);
+  expect(el.querySelector('[data-clock-out-reasons]')).toBeNull();
+  cleanup();
+
+  // Other: Confirm waits for the person's own words, which are posted as typed.
+  clockOut.posts.length=0;
+  view=await show(EMPLOYEE,['co-a']);el=view.container.querySelector('[data-today-loop="clockOut"]') as HTMLElement;
+  fireEvent.click(within(el).getByRole('radio',{name:'Other'}));
+  const typed=within(el).getByRole('textbox',{name:'Type the reason'}) as HTMLInputElement;
+  expect(typed.maxLength).toBe(500);expect(confirmButton().disabled).toBe(true);
+  fireEvent.change(typed,{target:{value:'Fictional: the gate reader was off'}});
+  clockOut.result={kind:'refused',reason:'changed'};
+  fireEvent.click(confirmButton());
+  expect(text(await within(el).findByRole('alert'))).toBe('This day has changed since the card was prepared, so nothing was sent. Use Edit to check it on the form.');
+  expect(clockOut.posts).toEqual([{caseId:'c1',reason:'other',other:'Fictional: the gate reader was off',confirm:true}]);
+  // Edit still opens the correction form, with the proposed clock-out.
+  expect(within(el).getByRole('link',{name:'Edit · Did you leave at 18:00 on Tue, Nov 3?'})).toHaveAttribute('href','/attendance/my-records/2026-11-03?checkOut=18%3A00');
  });
  it('an HR administrator sees the review, payroll and passport cards for the companies in scope',async()=>{
   S.loops=[
