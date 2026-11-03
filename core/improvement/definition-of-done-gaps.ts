@@ -18,6 +18,8 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  ],
  'guide':[
  'page:/me/payslip',
+ // AI v2 W2 declared the own attendance correction and overtime request; their guide links are still to be written.
+ 'action:attendance.correction.request','action:attendance.overtime.request',
  ],
  'readiness':[
  // AI v2 W2 declared claims.submit; the claims setup stage still has no readiness owner.
@@ -59,7 +61,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/rewards','page:/roster',
  ],
  'semantic,guide':[
- 'action:attendance.correction.request','action:attendance.overtime.request','action:employees.bank.maintain',
+ 'action:employees.bank.maintain',
  'action:employees.emergency_contact.maintain','action:employees.movement.transfer','action:multi_cycle_payroll.create_run',
  'action:org.position.archive','action:org.reporting.change','action:payroll.close','action:performance.review.acknowledge',
  'action:typed_pay_components.create',

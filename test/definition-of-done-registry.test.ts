@@ -30,7 +30,7 @@ describe('definition of done',()=>{
  it('reads the live registries',()=>{
   expect(inputs.actions.length).toBeGreaterThanOrEqual(71);expect(inputs.pages.length).toBeGreaterThanOrEqual(293);
   expect(inputs.guideBodies.length).toBeGreaterThan(40);expect(inputs.corpus.length).toBeGreaterThan(150);
-  expect(inputs.semanticActions).toEqual(new Set(['leave.apply','leave.cancel','approvals.leave.decide','claims.submit','claims.cancel','ess.profile.request']));
+  expect(inputs.semanticActions).toEqual(new Set(['leave.apply','leave.cancel','approvals.leave.decide','attendance.correction.request','attendance.overtime.request','claims.submit','claims.cancel','ess.profile.request']));
   expect([...inputs.moduleStages.keys()].sort()).toEqual(['attendance','claims','leave','payroll']);
  });
  it('has no gap outside the allowlist',()=>{
