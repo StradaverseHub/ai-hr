@@ -48,7 +48,7 @@ const authorityFingerprint=(ctx:SessionContext)=>createHash('sha256').update(JSO
  [...(ctx.grants??[])].map(grant=>grant.role+'@'+(grant.companyId??'*')).sort()])).digest('hex').slice(0,16);
 
 /** The sponsor's authority now, from the database. Null when the login is gone or blocked, or not of this tenant. */
-async function currentSponsorTx(tx:Tx,tenantId:string,userId:string,entitlements:EntitlementSnapshot):Promise<SessionContext|null>{
+export async function currentSponsorTx(tx:Tx,tenantId:string,userId:string,entitlements:EntitlementSnapshot):Promise<SessionContext|null>{
  const [principal]=await tx.execute(sql`select p.tenant_id,p.person_id,p.grants,app.login_blocked(${userId}::uuid) as blocked from app.principal(${userId}::uuid) p`) as unknown as
   {tenant_id:string;person_id:string|null;grants:Grant[]|null;blocked:boolean}[];
  if(!principal||principal.tenant_id!==tenantId||principal.blocked)return null;

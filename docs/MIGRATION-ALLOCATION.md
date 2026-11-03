@@ -1072,3 +1072,19 @@ this branch's own journal position and is re-frozen with the sibling Phase 2 cla
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |767|1793330000367|0967_own_payroll_cut_off|b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca|
+
+## AI v2 Phase 2 P2-2b payroll Audit loop — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-audit-loop` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 / when1793330000361)
+appends `0965_payroll_audit_loop` as idx767 / when1793330000365, the number and `when` the Phase 2 coordinator reserved for this
+task (0962 renumbering reserve, 0963 P2-1, 0964 P2-2a, 0965 P2-2b, 0966 P2-4). A fresh fetch on 3 November 2026, a scan of
+every ref's history for `db/migrations/096[2-6]*` and of the registered Phase 2 worktrees (`aiv2-p2-autonomy-ladder`,
+`aiv2-p2-payroll-loops`, `aiv2-p2-capacity-ledger`, `aiv2-p2-payroll-checklist`, including uncommitted files) found no claim of
+0962–0966. Development source only: no installation priority, no deployment. The idx is this branch's own journal position:
+0963 and 0964, when merged, sit before it, so it must be re-frozen after them at integration (by number). It widens the
+`teras_worker_control`, `teras_loop_pause` and `teras_loop_run` worker CHECKs of 0960 by one value; a sibling branch that
+widens the same CHECKs must be merged as the union of both lists.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000365|0965_payroll_audit_loop|f7c68fa2a062470880715d70781a6c2c998de8afb821e580dca17b057f4f925e|

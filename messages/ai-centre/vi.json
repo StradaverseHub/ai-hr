@@ -712,6 +712,7 @@
         "loop_missing_employee_data": "Thiếu dữ liệu nhân viên",
         "loop_missed_clock_outs": "Quên chấm công ra",
         "loop_document_expiry": "Hộ chiếu sắp hết hạn",
+        "loop_payroll_audit": "Vòng lặp kiểm toán",
         "conversation": "Hội thoại trò chuyện trực tiếp"
       },
       "switchInvalid": "Không thể thay đổi công tắc đó tại đây.",
@@ -1364,6 +1365,278 @@
       "inProgress": "Lần nhập này đang được xác nhận.",
       "invalid": "Không kiểm tra được thẻ này. Hãy đính kèm tệp lại.",
       "unavailable": "Không thể hoàn tất lần nhập và chưa có gì được nhập. Hãy thử lại, hoặc dùng trang nhập."
+    }
+  },
+  "payrollAudit": {
+    "name": "Vòng lặp kiểm toán",
+    "doneMeansLine": "Hoàn tất nghĩa là: {done}",
+    "column": {
+      "title": "Vòng lặp kiểm toán",
+      "titleNumbered": "{n} · Vòng lặp kiểm toán",
+      "badge": "Sau ngày trả lương",
+      "done": "Hoàn tất",
+      "doneMeans": "Hoàn tất khi mọi khoản đã được trả, đã nộp hồ sơ, đã đối chiếu và có bằng chứng.",
+      "items": {
+        "payslips": "Phiếu lương đã phát hành và đã mở",
+        "statutory": "Tệp EPF, SOCSO, EIS, PCB, HRD",
+        "bank": "Tệp ngân hàng",
+        "corrections": "Chỉnh sửa sau khi chạy lương",
+        "findings": "Kiểm tra kiểm soát",
+        "approvals": "Ai đã duyệt gì, khi nào",
+        "repeat": "Vấn đề lặp lại"
+      },
+      "values": {
+        "payslips": "Đã phát hành {released}/{total} · đã mở {opened}",
+        "statutory": "Đã chuẩn bị {prepared}/{forms} · đã nộp {filed} · hạn {due}",
+        "bank": "{count, plural, =0 {Chưa ghi nhận tệp ngân hàng} other {Đã ghi nhận # tệp ngân hàng}}",
+        "corrections": "{count, plural, =0 {Không có · mục tiêu bằng 0} other {# · mục tiêu bằng 0}}",
+        "findings": "{count, plural, =0 {Không có mục mở} other {# phát hiện đang mở}}",
+        "pack": "Gói kiểm toán cho từng công ty",
+        "packLink": "Tải gói kiểm toán",
+        "repeat": "{count, plural, =0 {Không có} other {# mục chuyển sang vòng lặp Trước lương tiếp theo}}"
+      },
+      "note": "Tệp và hồ sơ nộp vẫn ở mức Chuẩn bị: một người nộp cho EPF, PERKESO và LHDN. Gói kiểm toán là bằng chứng chỉ đọc cho kiểm toán viên của bạn.",
+      "open": "Mở vòng lặp kiểm toán"
+    },
+    "errors": {
+      "invalid": "Không thể ghi nhận. Hãy kiểm tra biểu mẫu và thử lại.",
+      "refused": "Chỉ quản trị viên lương của công ty này mới làm được việc đó.",
+      "module": "Mô-đun lương chưa được dùng, nên không thể bật vòng lặp kiểm toán.",
+      "failed": "Thao tác chưa hoàn tất. Không có gì bị thay đổi. Hãy thử lại."
+    },
+    "saved": {
+      "disposed": "Đã ghi nhận kết luận.",
+      "cause": "Đã ghi nhận nguyên nhân gốc.",
+      "captured": "Đã ghi lại và kiểm tra ngay.",
+      "switch": "Đã lưu.",
+      "pause": "Đã lưu.",
+      "settings": "Đã lưu cài đặt kiểm soát.",
+      "granted": "Đã cấp quyền cho kiểm toán viên.",
+      "revoked": "Đã thu hồi quyền của kiểm toán viên."
+    },
+    "filter": {
+      "period": "Tháng lương",
+      "company": "Công ty",
+      "allCompanies": "{count, plural, other {Tất cả # công ty}}",
+      "show": "Hiển thị"
+    },
+    "monthLine": "{month}: hạn nộp tệp theo luật định là {due}.",
+    "stepLabel": "{n} · {step}",
+    "steps": {
+      "capture": "Ghi lại",
+      "check": "Kiểm tra",
+      "prepare": "Chuẩn bị",
+      "verify": "Xác minh"
+    },
+    "stepText": {
+      "capture": "Với mỗi lần chạy lương, thường kỳ, thưởng và ngoài kỳ: dữ liệu đầu vào, mọi thay đổi từ bản nháp đến bản cuối kèm người thực hiện và lý do, điều chỉnh, phiên bản quy tắc, ngoại lệ, phê duyệt, tệp ngân hàng và tệp luật định, hồ sơ nộp, việc mở phiếu lương, chỉnh sửa, ai đã xem hoặc xuất dữ liệu lương và thay đổi cấu hình. Mỗi bản sao được băm và xâu chuỗi.",
+      "check": "Bảy kiểm tra kiểm soát mỗi đêm, mỗi kiểm tra kèm bằng chứng. Không chặn hay thay đổi điều gì.",
+      "prepare": "Các phát hiện để quản trị viên lương kết luận, nguyên nhân gốc cho mỗi chỉnh sửa và gói kiểm toán cho từng công ty.",
+      "verify": "Phiếu lương đã phát hành, tệp luật định được chuẩn bị trước {due} và nộp kèm biên nhận, chỉnh sửa bằng 0, và mọi bản ghi lại không bị thay đổi."
+    },
+    "figures": {
+      "captures": "Bản ghi lại trong tháng",
+      "findings": "Phát hiện đang mở",
+      "corrections": "Chỉnh sửa sau khi chạy lương",
+      "filed": "Tệp luật định đã nộp"
+    },
+    "ofForms": "{filed}/{forms}",
+    "companies": {
+      "title": "Công ty",
+      "none": "Bạn không quản trị công ty nào có dùng lương tại đây.",
+      "columns": {
+        "company": "Công ty",
+        "runs": "Lần chạy",
+        "payslips": "Phiếu lương",
+        "statutory": "Đã nộp",
+        "findings": "Phát hiện",
+        "corrections": "Chỉnh sửa",
+        "captures": "Bằng chứng",
+        "pack": "Gói kiểm toán"
+      },
+      "noRun": "Không có lần chạy nào trong tháng",
+      "run": "Lần chạy {type} {seq}: {status}",
+      "payslips": "Đã phát hành {released}/{total} · đã mở {opened}",
+      "findings": "{open} đang mở · {disposed} đã kết luận",
+      "corrections": "{count, plural, =0 {Không có} other {#}}",
+      "correctionsMissing": "{count, plural, other {# cần nguyên nhân gốc}}",
+      "captures": "{count, plural, =0 {Chưa ghi lại} other {# bản ghi lại}}",
+      "pack": "Tải xuống",
+      "capture": "Ghi lại và kiểm tra ngay",
+      "packHelp": "Gói kiểm toán gồm bản tóm tắt PDF cùng bằng chứng CSV và JSON, mỗi tệp được liệt kê kèm sha256. Khi tải xuống, tháng đó được ghi lại trước và chính lần tải cũng được ghi nhận.",
+      "opensNote": "Lượt mở phiếu lương được đếm trên web, kể cả tải PDF. Lượt mở trong ứng dụng di động chưa được đếm."
+    },
+    "state": {
+      "done": "Hoàn tất",
+      "open": "Đang thực hiện"
+    },
+    "runType": {
+      "regular": "lương",
+      "off_cycle": "ngoài kỳ",
+      "bonus": "thưởng",
+      "adjustment": "điều chỉnh",
+      "other": "khác"
+    },
+    "runStatus": {
+      "draft": "bản nháp",
+      "processed": "đã xử lý",
+      "closed": "đã đóng",
+      "other": "khác"
+    },
+    "statutory": {
+      "title": "Tệp luật định, hạn {due}",
+      "columns": {
+        "company": "Công ty",
+        "form": "Tệp",
+        "prepared": "Đã chuẩn bị",
+        "filed": "Đã nộp"
+      },
+      "beforeDue": "Trước hạn",
+      "late": "Sau hạn",
+      "notYet": "Chưa chuẩn bị",
+      "receipt": "Đã ghi nhận biên nhận",
+      "notFiled": "Chưa nộp",
+      "help": "Một người nộp cho EPF, PERKESO, LHDN và HRD Corp rồi ghi nhận biên nhận. Vòng lặp kiểm toán không bao giờ tự nộp."
+    },
+    "forms": {
+      "epf": "EPF",
+      "socso_eis": "SOCSO và EIS",
+      "pcb_cp39": "PCB (CP39)",
+      "hrd": "Phí HRD Corp"
+    },
+    "findings": {
+      "title": "Phát hiện kiểm soát",
+      "none": "Không kiểm tra kiểm soát nào phát hiện vấn đề trong tháng này.",
+      "disposition": "Kết luận",
+      "choose": "Chọn",
+      "note": "Ghi chú",
+      "record": "Ghi nhận"
+    },
+    "controls": {
+      "bank_change_before_pay_day": "Thông tin ngân hàng đổi ngay trước ngày trả lương",
+      "shared_bank_account": "Một tài khoản ngân hàng cho hai người trở lên",
+      "pay_after_last_day": "Trả lương sau ngày làm việc cuối cùng",
+      "pay_without_attendance": "Trả lương khi không có chấm công",
+      "preparer_closed_run": "Cùng một người xử lý và đóng lần chạy",
+      "adjustment_without_reason": "Điều chỉnh thủ công lớn không có lý do",
+      "formula_changed_open_period": "Công thức thay đổi khi lần chạy còn mở"
+    },
+    "what": {
+      "bank_change_before_pay_day": "Tài khoản ngân hàng đổi vào {changed}, {days} ngày trước ngày trả lương {payDay} (nay kết thúc bằng {last4}).",
+      "shared_bank_account": "Một tài khoản kết thúc bằng {last4} thuộc {people} người; {paid} người do công ty này trả lương.",
+      "pay_after_last_day": "Lương thực nhận trên phiếu lương bắt đầu sau ngày làm việc cuối cùng, {lastDay}.",
+      "pay_without_attendance": "Có lương thực nhận nhưng không có chấm công và không có nghỉ phép được duyệt trong kỳ.",
+      "preparer_closed_run": "Cùng một người đã xử lý và đóng lần chạy {seq}. Chỉ đánh dấu: không có người duyệt thứ hai.",
+      "adjustment_without_reason": "Một điều chỉnh thủ công trên {threshold} được nhập mà không có lý do.",
+      "formula_changed_open_period": "Một công thức lương hoặc khoản mục lương đã thay đổi khi lần chạy {seq} còn mở."
+    },
+    "dispositions": {
+      "expected": "Đúng dự kiến",
+      "corrected": "Đã sửa",
+      "false_positive": "Không phải vấn đề",
+      "escalated": "Đã chuyển cấp trên"
+    },
+    "corrections": {
+      "title": "Chỉnh sửa sau khi chạy lương",
+      "none": "Không có lần chạy nào được mở lại hoặc đặt lại trong tháng này. Mục tiêu là 0.",
+      "actions": {
+        "unlock": "Lần chạy {seq} đã đóng được mở lại",
+        "rollback": "Lần chạy {seq} đã xử lý được đặt lại"
+      },
+      "reason": "Lý do đưa ra: {reason}",
+      "noReason": "Không có lý do nào được đưa ra.",
+      "cause": "Nguyên nhân gốc",
+      "choose": "Chọn",
+      "note": "Ghi chú",
+      "record": "Ghi nhận",
+      "update": "Nêu lại"
+    },
+    "rootCauses": {
+      "late_input": "Dữ liệu đến muộn",
+      "input_error": "Nhập sai dữ liệu",
+      "employee_data": "Dữ liệu nhân viên sai",
+      "configuration": "Thiết lập lương sai",
+      "rule_or_formula": "Quy tắc hoặc công thức",
+      "missed_exception": "Ngoại lệ không được xử lý",
+      "statutory_change": "Thay đổi luật định",
+      "other": "Khác"
+    },
+    "limits": {
+      "pay": "Không bao giờ thay đổi lương, lần chạy, tệp ngân hàng hay hồ sơ nộp.",
+      "block": "Không bao giờ chặn lần chạy: một người vừa xử lý vừa đóng chỉ bị đánh dấu.",
+      "file": "Không bao giờ tự nộp: một người nộp cho từng cơ quan và ghi nhận biên nhận.",
+      "model": "Không gọi mô hình AI: mỗi kiểm tra là một quy tắc cố định."
+    },
+    "pack": {
+      "title": "Gói kiểm toán lương",
+      "company": "Công ty",
+      "payPeriod": "Tháng lương",
+      "generated": "Tạo lúc",
+      "by": "Bởi",
+      "runs": "Lần chạy",
+      "runLine": "Lần chạy {runType} {runSeq}: {status}, đóng {closedAt}, phát hành {releasedAt}",
+      "statutory": "Tệp luật định và tệp ngân hàng",
+      "filingEvidence": "Bằng chứng nộp và biên nhận",
+      "findings": "Phát hiện kiểm soát",
+      "findingLine": "{control}: {count} ({open} đang mở, {disposed} đã kết luận)",
+      "corrections": "Chỉnh sửa sau khi chạy lương",
+      "correctionLine": "{action} vào {at}: nguyên nhân gốc {cause}, {note}",
+      "captures": "Bản ghi lại",
+      "captureLine": "{kind}: {count}",
+      "verification": "Kiểm tra chống sửa đổi",
+      "verified": "Đã xác minh {count} bản ghi lại. Đầu chuỗi {head}.",
+      "notVerified": "Phát hiện {count} vấn đề. Xem verification.json.",
+      "anchors": "{matched} được neo trong nhật ký kiểm toán, {chained} nằm trong chuỗi băm của nó.",
+      "files": "Tệp",
+      "none": "Không có",
+      "kinds": {
+        "run": "Lần chạy",
+        "inputs_snapshot": "Ảnh chụp dữ liệu đầu vào",
+        "payslip": "Phiếu lương",
+        "change": "Thay đổi từ bản nháp đến bản cuối",
+        "adjustment": "Điều chỉnh hoặc ghi đè thủ công",
+        "rule_version": "Phiên bản quy tắc và công thức",
+        "exception": "Ngoại lệ và kết luận",
+        "approval": "Dấu vết phê duyệt và đóng",
+        "bank_file": "Tệp ngân hàng",
+        "statutory_file": "Tệp luật định",
+        "filing": "Bằng chứng nộp",
+        "payslip_release": "Phát hành và mở phiếu lương",
+        "correction": "Chỉnh sửa sau khi chạy lương",
+        "access": "Đã xem hoặc xuất",
+        "config_change": "Thay đổi cấu hình",
+        "control_finding": "Phát hiện kiểm soát"
+      },
+      "controls": {
+        "bank_change_before_pay_day": "Thông tin ngân hàng đổi ngay trước ngày trả lương",
+        "shared_bank_account": "Một tài khoản ngân hàng cho hai người trở lên",
+        "pay_after_last_day": "Trả lương sau ngày làm việc cuối cùng",
+        "pay_without_attendance": "Trả lương khi không có chấm công",
+        "preparer_closed_run": "Cùng một người xử lý và đóng lần chạy",
+        "adjustment_without_reason": "Điều chỉnh thủ công lớn không có lý do",
+        "formula_changed_open_period": "Công thức thay đổi khi lần chạy còn mở"
+      },
+      "findingItem": "{control}: {who} ({state})",
+      "open": "đang mở",
+      "unprintable": "{count} ký tự không thể vẽ bằng phông chữ nào hiện có và hiển thị là '?'. Tệp CSV và JSON chứa văn bản chính xác."
+    },
+    "administration": {
+      "title": "Cài đặt và kiểm toán viên",
+      "help": "Mỗi thay đổi được ghi nhận kèm người thực hiện, thời điểm và giá trị trước, sau.",
+      "bankChangeDays": "Khoảng thay đổi ngân hàng (số ngày trước ngày trả lương)",
+      "adjustmentThreshold": "Số tiền điều chỉnh thủ công cần có lý do",
+      "save": "Lưu",
+      "defaults": "Giá trị mặc định cho đến khi thay đổi",
+      "version": "Phiên bản {version}",
+      "auditorsTitle": "Kiểm toán viên (chỉ đọc)",
+      "none": "Chưa có kiểm toán viên nào có quyền.",
+      "loginWithoutRecord": "Tài khoản đăng nhập không có hồ sơ nhân viên ({id})",
+      "grantedOn": "cấp ngày {date}",
+      "revoke": "Thu hồi",
+      "login": "Tài khoản đăng nhập",
+      "choose": "Chọn tài khoản",
+      "grant": "Cấp quyền",
+      "auditorsHelp": "Kiểm toán viên xem bằng chứng vòng lặp kiểm toán và gói kiểm toán của công ty này, chỉ đọc, cho đến khi bị thu hồi. Mỗi lần cấp và thu hồi đều được ghi nhận."
     }
   },
   "payrollReadiness": {

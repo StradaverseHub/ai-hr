@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {GET as payslipGet} from '../app/me/payslip/[payslipId]/pdf/route';
 import {GET as eaGet} from '../app/me/ea/[employmentId]/pdf/route';
-const mocks=vi.hoisted(()=>({document:vi.fn(),ea:vi.fn(),payslipPdf:vi.fn(),eaPdf:vi.fn(),eaLabels:vi.fn(),locale:'en'}));
+const mocks=vi.hoisted(()=>({document:vi.fn(),ea:vi.fn(),payslipPdf:vi.fn(),eaPdf:vi.fn(),eaLabels:vi.fn(),locale:'en',opened:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:async()=>({tenantId:'fictional-tenant',userId:'fictional-user',personId:'fictional-person',roles:['employee']})}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale}));
 vi.mock('../app/me/payslip/document',()=>({myPayslipDocument:mocks.document}));
@@ -11,11 +11,14 @@ vi.mock('../lib/payslip-pdf',()=>({renderPayslipPdf:mocks.payslipPdf}));
 vi.mock('../core/reporting',()=>({myEaStatement:mocks.ea}));
 vi.mock('../lib/ea-pdf',()=>({renderEaPdf:mocks.eaPdf,EaLayoutFitError:class extends Error{}}));
 vi.mock('../lib/ea-pdf-labels',()=>({eaPdfLabels:mocks.eaLabels}));
+// AI v2 P2-2b: a download of one's own payslip is counted as an open (test/payroll-audit-loop.test.ts covers the writer).
+vi.mock('../core/payroll-audit/access-log',()=>({recordPayslipOpened:mocks.opened}));
 const id=randomUUID(),companyId=randomUUID();
 const request=(path:string)=>new Request(`https://fictional.example.invalid${path}`);
 const session=expect.objectContaining({userId:'fictional-user',personId:'fictional-person'});
 beforeEach(()=>{
  vi.clearAllMocks();mocks.locale='en';mocks.document.mockResolvedValue(null);mocks.ea.mockResolvedValue(null);
+ mocks.opened.mockResolvedValue({recorded:true,eventId:'fictional-event'});
  mocks.payslipPdf.mockResolvedValue(new Uint8Array([1,2,3]));mocks.eaPdf.mockResolvedValue(new Uint8Array([4,5,6]));mocks.eaLabels.mockResolvedValue({fictional:true});
 });
 describe('own document endpoints retain owner checks and private responses',()=>{
@@ -27,6 +30,7 @@ describe('own document endpoints retain owner checks and private responses',()=>
   expect(response.status).toBe(200);expect(response.headers.get('Cache-Control')).toBe('private, no-store');
   expect(response.headers.get('Content-Disposition')).toBe(`${disposition}; filename="payslip-2025-03-bonus-2-FICTIONAL-001.pdf"`);
   expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1,2,3]));
+  expect(mocks.opened).toHaveBeenCalledWith(session,{payslipId:id,channel:'pdf'});
  });
  it('never passes a malformed payslip ID to the reader, and makes an unavailable/foreign refusal indistinguishable',async()=>{
   const malformed=await payslipGet(request('/me/payslip/invalid/pdf'),{params:Promise.resolve({payslipId:'invalid'})});
@@ -34,6 +38,7 @@ describe('own document endpoints retain owner checks and private responses',()=>
   const denied=await payslipGet(request(`/me/payslip/${id}/pdf`),{params:Promise.resolve({payslipId:id})});
   for(const response of [malformed,denied]){expect(response.status).toBe(404);expect(response.headers.get('Cache-Control')).toBe('private, no-store');expect(await response.text()).toBe('Not found');}
   expect(mocks.payslipPdf).not.toHaveBeenCalled();
+  expect(mocks.opened,'a refused download is not an open').not.toHaveBeenCalled();
  });
  it.each(['en','ms'])('uses one canonical EA DTO for inline and download in %s',async(lang)=>{
   const ea={year:'2025',employer:{name:'Fictional paying employer'},employee:{name:'Fictional employee'},partB:{salary:1234.56},partC:{},partD:{},partE:{},formDate:'2026-02-28',statutoryVersion:'fictional-version',overrides:[{field:'salary',amended:1234.56}]};

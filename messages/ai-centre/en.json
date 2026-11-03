@@ -712,6 +712,7 @@
         "loop_missing_employee_data": "Missing employee data",
         "loop_missed_clock_outs": "Missed clock-outs",
         "loop_document_expiry": "Passports expiring",
+        "loop_payroll_audit": "Audit loop",
         "conversation": "Live chat conversation"
       },
       "switchInvalid": "That switch cannot be changed here.",
@@ -1364,6 +1365,278 @@
       "inProgress": "This import is already being confirmed.",
       "invalid": "This card could not be checked. Attach the file again.",
       "unavailable": "The import could not be completed, and nothing was imported. Try again, or use the import page."
+    }
+  },
+  "payrollAudit": {
+    "name": "Audit loop",
+    "doneMeansLine": "Done means: {done}",
+    "column": {
+      "title": "Audit loop",
+      "titleNumbered": "{n} · Audit loop",
+      "badge": "After pay day",
+      "done": "Done",
+      "doneMeans": "Done when everything is paid, filed, reconciled and evidenced.",
+      "items": {
+        "payslips": "Payslips released and opened",
+        "statutory": "EPF, SOCSO, EIS, PCB, HRD files",
+        "bank": "Bank files",
+        "corrections": "Corrections after the run",
+        "findings": "Control checks",
+        "approvals": "Who approved what, when",
+        "repeat": "Repeat issues"
+      },
+      "values": {
+        "payslips": "{released} of {total} released · {opened} opened",
+        "statutory": "{prepared} of {forms} prepared · {filed} filed · due {due}",
+        "bank": "{count, plural, =0 {No bank file recorded} one {# bank file recorded} other {# bank files recorded}}",
+        "corrections": "{count, plural, =0 {None · target zero} other {# · target zero}}",
+        "findings": "{count, plural, =0 {Nothing open} one {# open finding} other {# open findings}}",
+        "pack": "Audit pack per company",
+        "packLink": "Download audit pack",
+        "repeat": "{count, plural, =0 {None} other {# fed to the next Pre-salary loop}}"
+      },
+      "note": "Files and filings stay at Prepare: a person submits to EPF, PERKESO and LHDN. The audit pack is read-only evidence for your auditors.",
+      "open": "Open Audit loop"
+    },
+    "errors": {
+      "invalid": "That could not be recorded. Check the form and try again.",
+      "refused": "Only a payroll administrator of this company can do that.",
+      "module": "Payroll is not in use, so the Audit loop cannot be switched on.",
+      "failed": "That did not complete. Nothing was changed. Try again."
+    },
+    "saved": {
+      "disposed": "Disposition recorded.",
+      "cause": "Root cause recorded.",
+      "captured": "Captured and checked now.",
+      "switch": "Saved.",
+      "pause": "Saved.",
+      "settings": "Control settings saved.",
+      "granted": "Auditor access given.",
+      "revoked": "Auditor access revoked."
+    },
+    "filter": {
+      "period": "Pay month",
+      "company": "Company",
+      "allCompanies": "{count, plural, one {All # company} other {All # companies}}",
+      "show": "Show"
+    },
+    "monthLine": "{month}: statutory files due {due}.",
+    "stepLabel": "{n} · {step}",
+    "steps": {
+      "capture": "Capture",
+      "check": "Check",
+      "prepare": "Prepare",
+      "verify": "Verify"
+    },
+    "stepText": {
+      "capture": "For every run, regular, bonus and off-cycle: its inputs, each change from draft to final with who and why, adjustments, rule versions, exceptions, approvals, bank and statutory files, filings, payslip opens, corrections, who viewed or exported pay data and configuration changes. Each copy is hashed and chained.",
+      "check": "Seven control checks every night, each with its evidence. Nothing is blocked or changed.",
+      "prepare": "Findings for a payroll administrator to dispose of, a root cause for each correction, and the audit pack per company.",
+      "verify": "Payslips released, statutory files prepared before {due} and filed with a receipt, corrections at zero, and every capture unchanged."
+    },
+    "figures": {
+      "captures": "Captures this month",
+      "findings": "Open findings",
+      "corrections": "Corrections after the run",
+      "filed": "Statutory files filed"
+    },
+    "ofForms": "{filed} of {forms}",
+    "companies": {
+      "title": "Companies",
+      "none": "You administer no company with payroll here.",
+      "columns": {
+        "company": "Company",
+        "runs": "Runs",
+        "payslips": "Payslips",
+        "statutory": "Filed",
+        "findings": "Findings",
+        "corrections": "Corrections",
+        "captures": "Evidence",
+        "pack": "Audit pack"
+      },
+      "noRun": "No run this month",
+      "run": "{type} run {seq}: {status}",
+      "payslips": "{released} of {total} released · {opened} opened",
+      "findings": "{open} open · {disposed} disposed",
+      "corrections": "{count, plural, =0 {None} other {#}}",
+      "captures": "{count, plural, =0 {Not captured yet} one {# capture} other {# captures}}",
+      "pack": "Download",
+      "capture": "Capture and check now",
+      "packHelp": "The audit pack is a PDF summary with CSV and JSON evidence, each listed with its sha256. Downloading it captures the month first and is itself recorded.",
+      "correctionsMissing": "{count, plural, one {# needs a root cause} other {# need a root cause}}",
+      "opensNote": "Payslip opens are counted on the web, including PDF downloads. Opens in the mobile app are not counted yet."
+    },
+    "state": {
+      "done": "Done",
+      "open": "In progress"
+    },
+    "runType": {
+      "regular": "Salary",
+      "off_cycle": "Off-cycle",
+      "bonus": "Bonus",
+      "adjustment": "Adjustment",
+      "other": "Other"
+    },
+    "runStatus": {
+      "draft": "draft",
+      "processed": "processed",
+      "closed": "closed",
+      "other": "other"
+    },
+    "statutory": {
+      "title": "Statutory files, due {due}",
+      "columns": {
+        "company": "Company",
+        "form": "File",
+        "prepared": "Prepared",
+        "filed": "Filed"
+      },
+      "beforeDue": "Before the due date",
+      "late": "After the due date",
+      "notYet": "Not prepared yet",
+      "receipt": "Receipt recorded",
+      "notFiled": "Not filed yet",
+      "help": "A person files with EPF, PERKESO, LHDN and HRD Corp and records the receipt. The Audit loop never submits anything."
+    },
+    "forms": {
+      "epf": "EPF",
+      "socso_eis": "SOCSO and EIS",
+      "pcb_cp39": "PCB (CP39)",
+      "hrd": "HRD Corp levy"
+    },
+    "findings": {
+      "title": "Control findings",
+      "none": "No control check found anything this month.",
+      "disposition": "Disposition",
+      "choose": "Choose",
+      "note": "Note",
+      "record": "Record"
+    },
+    "controls": {
+      "bank_change_before_pay_day": "Bank details changed shortly before pay day",
+      "shared_bank_account": "One bank account on two or more people",
+      "pay_after_last_day": "Pay after the last working day",
+      "pay_without_attendance": "Pay without attendance",
+      "preparer_closed_run": "Same person processed and closed a run",
+      "adjustment_without_reason": "Large manual adjustment without a reason",
+      "formula_changed_open_period": "Formula changed while a run was open"
+    },
+    "what": {
+      "bank_change_before_pay_day": "Bank account changed on {changed}, {days, plural, one {# day} other {# days}} before pay day on {payDay} (now ending {last4}).",
+      "shared_bank_account": "One account ending {last4} is on {people} people; {paid} paid by this company.",
+      "pay_after_last_day": "Net pay on a payslip that starts after the last working day, {lastDay}.",
+      "pay_without_attendance": "Net pay with no attendance and no approved leave in the period.",
+      "preparer_closed_run": "The same person processed and closed run {seq}. Flagged only: there is no second approver.",
+      "adjustment_without_reason": "A manual adjustment above {threshold} was keyed with no reason.",
+      "formula_changed_open_period": "A pay formula or pay component changed while run {seq} was open."
+    },
+    "dispositions": {
+      "expected": "Expected",
+      "corrected": "Corrected",
+      "false_positive": "Not an issue",
+      "escalated": "Escalated"
+    },
+    "corrections": {
+      "title": "Corrections after the run",
+      "none": "No run was reopened or reset this month. The target is zero.",
+      "actions": {
+        "unlock": "Closed run {seq} reopened",
+        "rollback": "Processed run {seq} reset"
+      },
+      "reason": "Reason given: {reason}",
+      "noReason": "No reason was given.",
+      "cause": "Root cause",
+      "choose": "Choose",
+      "note": "Note",
+      "record": "Record",
+      "update": "Restate"
+    },
+    "rootCauses": {
+      "late_input": "Input arrived late",
+      "input_error": "Input keyed wrongly",
+      "employee_data": "Employee data wrong",
+      "configuration": "Pay set-up wrong",
+      "rule_or_formula": "Rule or formula",
+      "missed_exception": "Exception not acted on",
+      "statutory_change": "Statutory change",
+      "other": "Other"
+    },
+    "limits": {
+      "pay": "Never changes pay, a run, a bank file or a filing.",
+      "block": "Never blocks a run: one person processing and closing is flagged only.",
+      "file": "Never files or submits: a person files with each agency and records the receipt.",
+      "model": "Calls no AI model: every check is a fixed rule."
+    },
+    "pack": {
+      "title": "Payroll audit pack",
+      "company": "Company",
+      "payPeriod": "Pay month",
+      "generated": "Generated",
+      "by": "By",
+      "runs": "Runs",
+      "runLine": "{runType} run {runSeq}: {status}, closed {closedAt}, released {releasedAt}",
+      "statutory": "Statutory and bank files",
+      "filingEvidence": "Filing evidence and receipts",
+      "findings": "Control findings",
+      "findingLine": "{control}: {count} ({open} open, {disposed} disposed)",
+      "corrections": "Corrections after the run",
+      "correctionLine": "{action} on {at}: root cause {cause}, {note}",
+      "captures": "Captures",
+      "captureLine": "{kind}: {count}",
+      "verification": "Tamper check",
+      "verified": "{count} captures verified. Chain head {head}.",
+      "notVerified": "{count} problems found. See verification.json.",
+      "anchors": "{matched} anchored in the audit log, {chained} inside its hash chain.",
+      "files": "Files",
+      "none": "None",
+      "kinds": {
+        "run": "Run",
+        "inputs_snapshot": "Inputs snapshot",
+        "payslip": "Payslip",
+        "change": "Change from draft to final",
+        "adjustment": "Manual adjustment or override",
+        "rule_version": "Rule and formula versions",
+        "exception": "Exception and disposition",
+        "approval": "Approval and close trail",
+        "bank_file": "Bank file",
+        "statutory_file": "Statutory file",
+        "filing": "Filing evidence",
+        "payslip_release": "Payslip release and opens",
+        "correction": "Post-run correction",
+        "access": "Viewed or exported",
+        "config_change": "Configuration change",
+        "control_finding": "Control finding"
+      },
+      "controls": {
+        "bank_change_before_pay_day": "Bank details changed shortly before pay day",
+        "shared_bank_account": "One bank account on two or more people",
+        "pay_after_last_day": "Pay after the last working day",
+        "pay_without_attendance": "Pay without attendance",
+        "preparer_closed_run": "Same person processed and closed a run",
+        "adjustment_without_reason": "Large manual adjustment without a reason",
+        "formula_changed_open_period": "Formula changed while a run was open"
+      },
+      "findingItem": "{control}: {who} ({state})",
+      "open": "open",
+      "unprintable": "{count} characters could not be drawn in any available font and show as '?'. The CSV and JSON files carry the exact text."
+    },
+    "administration": {
+      "title": "Settings and auditors",
+      "help": "Each change is recorded with who made it, when, and the value before and after.",
+      "bankChangeDays": "Bank change window (days before pay day)",
+      "adjustmentThreshold": "Manual adjustment amount that needs a reason",
+      "save": "Save",
+      "defaults": "Defaults until changed",
+      "version": "Version {version}",
+      "auditorsTitle": "Auditors (read-only)",
+      "none": "No auditor has access.",
+      "loginWithoutRecord": "Login without an employee record ({id})",
+      "grantedOn": "given {date}",
+      "revoke": "Revoke",
+      "login": "Login",
+      "choose": "Choose a login",
+      "grant": "Give access",
+      "auditorsHelp": "An auditor reads this company’s Audit loop evidence and audit pack, read-only, until revoked. Every grant and revocation is recorded."
     }
   },
   "payrollReadiness": {

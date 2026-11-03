@@ -198,6 +198,14 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   trigger:LOOP_NIGHTLY,readScope:['followup_item'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_document_expiry'},stop:{honoured:true},
   record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
+ // AI v2 P2-2b: the payroll Audit loop (core/payroll-audit). Daily, per company and pay month: captures each run's evidence,
+ // hashed and chained, runs seven control checks that prepare findings for a person, and never files, closes or changes pay.
+ {id:'loop_payroll_audit',label:'Audit loop',family:'preparer',
+  owners:['core/payroll-audit/run.ts#runPayrollAuditLoop','core/payroll-audit/capture.ts#collectPayrollPeriodArtefactsTx',
+   'core/payroll-audit/controls.ts#detectControlFindingsTx','core/statutory-filed.ts#periodFiledTx','core/payroll-anomaly.ts#loadBatchContexts'],
+  trigger:LOOP_NIGHTLY,readScope:['payslip','pay_change','payroll_anomaly','employment_profile','absence','claim_status'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_payroll_audit'},stop:{honoured:true},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
 ];
 
 /** Builds a registry, refusing the whole list if any declaration breaks the contract or repeats an id. */

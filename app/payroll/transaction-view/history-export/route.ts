@@ -20,6 +20,7 @@
  * an out-of-scope companyId/employmentId is treated as "no selection", so a hand-edited export link can
  * never cross the company fence. `scope=all` widens to `scopeIds` and NEVER beyond it.
  */
+import { recordPayrollExportAcross } from '@/core/payroll-audit/access-log';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies, listEmployees } from '@/core/read';
@@ -169,6 +170,9 @@ export async function GET(req: Request) {
   });
 
   const file = toXlsxReport(data);
+  // AI v2 P2-2b: recorded per company in the export, with the file's sha256, before it is handed over (fail closed).
+  await recordPayrollExportAcross(s, { surface: 'transaction_export', companyIds: filters.companyIds,
+    ...(filters.year != null && filters.month != null ? { payPeriod: `${filters.year}-${String(filters.month).padStart(2, '0')}` } : {}), format: 'xlsx', detail: 'history' }, new Uint8Array(file.bytes));
   return new Response(Buffer.from(file.bytes), {
     headers: {
       'Content-Type': file.contentType,
