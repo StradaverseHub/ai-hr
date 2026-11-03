@@ -4796,6 +4796,13 @@
       "when": 1793330000381,
       "tag": "0981_leave_on_behalf_application_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 829,
+      "version": "7",
+      "when": 1793330000382,
+      "tag": "0982_leave_approval_template_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

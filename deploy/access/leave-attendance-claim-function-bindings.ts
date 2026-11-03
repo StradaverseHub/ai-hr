@@ -241,3 +241,16 @@ export const LEAVE_ON_BEHALF_APPLICATION_CAPABILITY_PUBLICATION={
   'app.leave_on_behalf_native(uuid)',
  ],
 } as const;
+
+export const LEAVE_APPROVAL_TEMPLATE_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='leaveApproval.templates'),
+ functionLegacyParityFunction:'app.leave_approval_template_native_allowed',
+ functionCurrentLegacyParityFunction:'app.leave_approval_template_current_native_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.leave_approval_template_bindings_complete()',
+  'app.leave_approval_template_allowed(text)',
+  'app.leave_approval_template_guard()',
+ ],
+} as const;

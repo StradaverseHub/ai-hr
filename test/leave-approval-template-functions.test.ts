@@ -1,8 +1,9 @@
-/** Exact template-native courses. No fabricated publication/default bindings. */
+/** Exact template-native courses and storage-owner publication. */
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import * as s from '../db/schema';
 import {assignApprovalTemplate,previewApprovalTemplateAssignment,unassignApprovalTemplate,createApprovalTemplate,updateApprovalTemplate,duplicateApprovalTemplate,setApprovalTemplateActive,setTenantDefaultTemplate,deleteApprovalTemplate,listApprovalTemplates,listApprovalTemplatesForMaintenance,approvalTemplateActionAccess} from '../core/leave-approval-template';
 import {getLeaveEscalationPolicy,getLeaveEscalationPolicyForMaintenance,setLeaveEscalationPolicy,resolveApprovalChain} from '../core/leave-approval-policy';
@@ -104,4 +105,21 @@ it('cannot turn a posted preview selection into source authority or a private lo
  expect(await previewApprovalTemplateAssignment(member,input)).toEqual({allowed:false,count:1});expect(await previewApprovalTemplateAssignment(companyHr,{...input,leaveTypeIds:[randomUUID()]})).toEqual({allowed:false,count:1});
  await expect(withTenant(companyHr,tx=>tx.execute(sql`select * from app.leave_approval_assignment_bucket(${b.tenantId}::uuid,${b.companyId}::uuid,${b.annualLeaveTypeId}::uuid,null,null,null,null)`))).rejects.toThrow();
  expect(await owner.db.select().from(s.leaveApprovalPolicy)).toEqual([]);
+});
+
+it('publishes templates and preserves company HR creation under a scoped Edit denial',async()=>{
+ const cap='function.leaveApproval.templates.edit';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'leave_approval_templates')).toMatchObject({changed:true,capabilities:4});
+  expect(await publishActionCapabilityPackage(owner.client,'leave_approval_templates')).toMatchObject({changed:false});
+  const template=await createApprovalTemplate(companyHr,{name:'Fictional publication template',levels:['direct_manager']});
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${companyHr.userId!}::uuid,${cap},null,'deny')`;
+  await expect(updateApprovalTemplate(companyHr,template.id,{name:'Fictional denied update',levels:['hr_admin']})).rejects.toThrow('Leave approval template action unavailable');
+  await expect(createApprovalTemplate(companyHr,{name:'Fictional separate constructor',levels:['direct_manager']})).resolves.toMatchObject({id:expect.any(String)});
+  expect((await listApprovalTemplatesForMaintenance(companyHr)).map(row=>row.id)).toContain(template.id);
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.leaveApproval.templates.%'`;
+ }
 });
