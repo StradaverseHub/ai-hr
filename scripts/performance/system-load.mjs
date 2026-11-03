@@ -12,6 +12,7 @@ import {performance} from 'node:perf_hooks';
 import {setTimeout as pause} from 'node:timers/promises';
 import {chromium} from 'playwright';
 import postgres from 'postgres';
+import {generate} from 'otplib';
 import {closePerformanceDbPools,performanceNativeDbClient} from './driver-shutdown.mjs';
 const base='https://localhost:3443',out=process.env.PERF_EVIDENCE_DIR;
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_dev');
@@ -23,7 +24,7 @@ const suite=process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
- assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',driverMaxSockets:4000,tls:'fixture-only self-signed localhost',browserContexts:6,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
+ assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',driverMaxSockets:4000,tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:1,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
  workloadManifest:{readRoutes:30,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['concurrent Payroll close/publish','Lifecycle mutations','Performance mutations','Rewards mutations','large Personnel imports','report-definition CRUD','long-running document jobs'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
@@ -167,9 +168,10 @@ try{
   if(!lastPage||lastPage.isClosed())return;
   report.browserPendingSnapshot={at:new Date().toISOString(),requests:[...(pendingBrowserRequests.get(lastPage)?.values()??[])].slice(0,50).map(row=>({...row,elapsedMs:performance.now()-row.startedMs}))};save();
  },5000);
- async function context(user,locale='en'){
+ async function context(user,locale='en',signIn=false){
   const context=await browser.newContext({ignoreHTTPSErrors:true,locale});
-  await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'},{name:'NEXT_LOCALE',value:locale,url:base}]);
+  await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:base}]);
+  if(!signIn)await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'}]);
   context.on('page',page=>{
    const pending=new Map();pendingBrowserRequests.set(page,pending);
    page.on('request',req=>{const url=new URL(req.url());pending.set(req,{method:req.method(),path:url.origin===base?url.pathname:'<external>',sameOrigin:url.origin===base,type:req.resourceType(),startedMs:performance.now()});});
@@ -186,18 +188,41 @@ try{
   });
   return context;
  }
- async function visit(page,user,path,phase='baseline'){
+ async function signInToHome(page,user){
+  await page.goto(base+'/login?returnTo=%2F',{waitUntil:'domcontentloaded',timeout:90000});
+  const username=page.locator('input[name="username"]');
+  if(!await username.isVisible()){
+   const workspace=page.locator('input[name="organization"]:visible');
+   await workspace.fill(user.organization);
+   await page.locator('form').filter({has:workspace}).locator('button[type="submit"]').click();
+  }
+  await username.fill(user.username);
+  const password=page.locator('input[name="password"]');
+  await password.fill(user.password);
+  await page.locator('form').filter({has:password}).locator('button[type="submit"]').click();
+  const code=page.locator('input[name="code"]');
+  await code.waitFor({state:'visible',timeout:90000});
+  await code.fill(await generate({strategy:'totp',secret:user.secret}));
+  await page.locator('form').filter({has:code}).locator('button[type="submit"]').click();
+  await page.waitForURL(url=>url.origin===base&&url.pathname==='/',{timeout:90000});
+  const session=(await page.context().cookies()).find(cookie=>cookie.name==='__Host-aihr_internal');
+  assert(session&&session.value!==user.token,'browser sign-in did not establish a new session');
+ }
+ async function visit(page,user,path,phase='baseline',signIn=false){
   lastPage=page;const stopHomeTracking=homeHttp.track(page,user,path);
   const start=performance.now();let response;
-  try{response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});}
+  try{
+   if(signIn)await signInToHome(page,user);
+   else response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});
+  }
   catch(error){report.browserPendingRequests=[...(pendingBrowserRequests.get(page)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));save();throw error;}
-  assert.equal(response.status(),200);
+  if(response)assert.equal(response.status(),200);
   assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));
   const heading=(await page.locator('h1').allTextContents()).join(' ').trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
   if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
   if(['/claims','/admin/personnel','/payroll'].includes(path))assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
-  let homeCards=null;
+  let homeCards=null,homeCardIds=[];
   if(path==='/'&&['employee','manager'].includes(user.role)){
    await page.locator('[data-home-card]').first().waitFor({timeout:90000});
    await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
@@ -205,11 +230,21 @@ try{
    if(failures.length)report.homeCardFailures.push({role:user.role,phase,messages:failures});
    // Keep collecting independent workflow evidence, then refuse load/acceptance below.
    // A handled card error must never become a passing preflight or a capacity result.
-   homeCards=await page.locator('[data-home-card]').count();assert(homeCards>0,'expected fictional Home cards');
+   homeCardIds=await page.locator('main [data-home-card]').evaluateAll(cards=>cards.map(card=>card.getAttribute('data-home-card')).sort());
+   homeCards=homeCardIds.length;assert(homeCards>0,'expected fictional Home cards');
+   if(signIn){
+    const baseline=report.browser.find(row=>row.phase==='baseline'&&row.role===user.role&&row.path==='/');
+    assert.deepEqual(homeCardIds,baseline?.homeCardIds,'loaded sign-in Home card inventory changed');
+   }
   }
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
   stopHomeTracking();
-  report.browser.push({phase,role:user.role,path,heading,homeCards,elapsedMs:performance.now()-start,...timing});save();
+  if(signIn){
+   report.loadedBrowserSignIn={role:user.role,homeCards,homeCardIds,elapsedMs:performance.now()-start,
+    cardFailures:report.homeCardFailures.filter(row=>row.role===user.role&&row.phase===phase).length};
+   save();
+  }
+  report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,elapsedMs:performance.now()-start,...timing});save();
  }
  for(const user of [employee,manager,hr,group,fixture.users[254],fixture.users[251]]){
   const ctx=await context(user),page=await ctx.newPage();
@@ -403,9 +438,10 @@ try{
  // Representative hydrated browsers share the load interval with all 500 HTTP principals.
  const browserLoad=Promise.allSettled([employee,manager,hr,group,fixture.users[254],fixture.users[251]].map(async user=>{
   await pause(10000);
-  const ctx=await context(user),page=await ctx.newPage();
+  const signIn=user.index===employee.index;
+  const ctx=await context(user,'en',signIn),page=await ctx.newPage();
   try{for(const route of user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims']){
-   await visit(page,user,route,'loaded');await pause(thinkTimeMs);
+   await visit(page,user,route,'loaded',signIn&&route==='/');await pause(thinkTimeMs);
   }
   if(user.role==='employee')await browserClaimJourney(page,user,'PERF_BROWSER_LOADED_'+user.index,'loaded');
   }finally{await ctx.close();}
@@ -469,7 +505,7 @@ try{
  report.latencyTargetMet=progress.peakActive===500&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
  report.concurrentHomeApiCoverage=report.homeApiTraffic.templates.flatMap(({role,requests})=>requests.map(({path})=>({role,path,requests:loaded.filter(sample=>sample.role===role&&sample.method==='GET'&&sample.route===path).length})));
- await databaseSnapshot('loaded');await verifyAudit();save();if(suite==='whole-system')assert(report.concurrentHomeApiCoverage.length>0&&report.concurrentHomeApiCoverage.every(row=>row.requests>0),'observed Home fetches missing from concurrent traffic');if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.homeCardFailures.length,0,'loaded Home card/summary failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
+ await databaseSnapshot('loaded');await verifyAudit();save();if(suite==='whole-system')assert(report.concurrentHomeApiCoverage.length>0&&report.concurrentHomeApiCoverage.every(row=>row.requests>0),'observed Home fetches missing from concurrent traffic');if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.homeCardFailures.length,0,'loaded Home card/summary failures');assert(report.loadedBrowserSignIn?.homeCards>0,'real loaded browser sign-in did not finish');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
 }catch(error){report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
 finally{
  if(sqlSnapshotTimer)clearInterval(sqlSnapshotTimer);if(browserDiagnosticTimer)clearInterval(browserDiagnosticTimer);if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);
