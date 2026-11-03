@@ -166,6 +166,8 @@ describe('AI centre messages', () => {
     return [...rest.matchAll(/\{(\w+)/g)].map(match => match[1]).sort().join(',');
   };
   const catalogue = (locale: string) => new Map(flat(JSON.parse(read(`messages/ai-centre/${locale}.json`))));
+  /** The login story's keys that may name Noveri (owner, 3 November 2026: "Keep Noveri on login"); no other login key may. */
+  const LOGIN_NOVERI_KEYS = ['storyLabel', 'storyDescription', 'clockAlt'] as const;
   const en = catalogue('en');
 
   it.each(['ms', 'zh', 'vi', 'ta', 'th'])('%s has every key, with the same placeholders, and no blank value', locale => {
@@ -187,8 +189,17 @@ describe('AI centre messages', () => {
     expect(AI_PRODUCT_NAME).toBe('Noveri');
     // Owner, 3 November 2026: the product surface is "AI Centre"; "Noveri" only on How it works.
     expect(aiCentreName('AI Centre')).toBe('AI Centre');
-    for (const file of walkSource()) if (!['lib/ai-centre/brand.ts', 'components/ai-centre/how-it-works.tsx', 'app/assistant/page.tsx'].includes(file))
+    // Owner, 3 November 2026 ("Keep Noveri on login"): the login page's story (app/login/noveri-story.tsx, with its copy
+    // in messages/login-editorial/<locale>.json, keys LOGIN_NOVERI_KEYS below) may name Noveri too. Exactly these files.
+    for (const file of walkSource()) if (!['lib/ai-centre/brand.ts', 'components/ai-centre/how-it-works.tsx', 'app/assistant/page.tsx', 'app/login/noveri-story.tsx'].includes(file))
       expect(read(file), file).not.toMatch(/\bAI_PRODUCT_NAME\b|\bAI_ARCHITECTURE_LABEL\b/);
+    // On the login story the name is only the clockwork's watch face.
+    expect(read('app/login/noveri-story.tsx').split('\n').filter(line => /AI_PRODUCT_NAME|AI_ARCHITECTURE_LABEL/.test(line) && !/^import /.test(line)))
+      .toEqual([expect.stringMatching(/faceLabel=\{AI_ARCHITECTURE_LABEL \?\? undefined\}/)]);
+    for (const locale of ['en', 'ms', 'zh', 'vi', 'ta', 'th']) {
+      const named = flat(JSON.parse(read(`messages/login-editorial/${locale}.json`))).filter(([, text]) => /\b(Teras|Noveri)\b/.test(text)).map(([key]) => key);
+      expect(named, `login-editorial ${locale}`).toEqual([...LOGIN_NOVERI_KEYS]);
+    }
     // On the Ask page the name is used only by the How it works view.
     for (const line of read('app/assistant/page.tsx').split('\n').filter(line => /AI_PRODUCT_NAME|AI_ARCHITECTURE_LABEL/.test(line) && !/^import /.test(line)))
       expect(line).toMatch(/sp\.view === 'how'/);
