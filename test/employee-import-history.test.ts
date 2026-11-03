@@ -35,6 +35,7 @@ import { listEmployees } from '../core/read';
 import {
   adminCtx,
   closeAll,
+  createAppUser,
   eventTypesFor,
   migrateTestDb,
   owner,
@@ -285,7 +286,8 @@ describe('cf43c909 · employee import history', () => {
       .returning({ id: schema.person.id });
     // Same tenant and the same entitlement snapshot as the admin — the ONLY difference is the role, so
     // what this proves is the RLS policy and nothing else.
-    const employeeCtx = { ...adminCtx(b), userId: `user_${randomUUID()}`, personId: p.id, roles: ['employee'] };
+    const userId = await createAppUser(b.tenantId, p.id, 'employee');
+    const employeeCtx = { ...adminCtx(b), userId, personId: p.id, roles: ['employee'], grants: [{role:'employee',companyId:null}] };
     expect(await listEmployeeImportRuns(employeeCtx)).toHaveLength(0);
   });
 });
