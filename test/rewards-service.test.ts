@@ -718,6 +718,23 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     try{await owner.withTenant(admin,async tx=>{await tx.execute(sql`select app.reward_cancel_native(${unitId}::uuid,${before.unit.revision},'Actual cancellation authority rollback')`);await tx.execute(sql`set constraints all immediate`);if(restore)await tx.execute(sql`set constraints app.rewards_cancel_native_effect deferred`);await tx.execute(sql`update role_assignment set role='manager'where tenant_id=${b.tenantId}::uuid and app_user_id=${admin.userId!}::uuid and role='hr_admin'`);if(restore){await tx.execute(sql`update role_assignment set role='hr_admin'where tenant_id=${b.tenantId}::uuid and app_user_id=${admin.userId!}::uuid and role='manager'`);restored=true;}});}catch(error){refusal=error;}
     expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward cancellation authority changed'}));expect(restored).toBe(restore);expect((await view()).unit).toEqual(before.unit);expect(await owner.db.select().from(schema.rewardDecision).where(eq(schema.rewardDecision.unitId,unitId))).toEqual(decisions);expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,unitId))).toEqual(events);
   });
+  it('publishes the native decision routes and refuses a raw transition from an eligible seat',async()=>{
+    const before=await view(),bu=actors.bu!,why='Actual published Rewards decision';
+    const capabilities=['submit','approve','return','reject','withdraw'].flatMap(action=>
+      ['view',action==='approve'?'approve':'execute'].map(operation=>`function.rewards.decisions.${action}.${operation}`));
+    try{
+      expect(await publishActionCapabilityPackage(owner.client,'rewards_decisions')).toMatchObject({changed:true,capabilities:10});
+      await expectPgRefusal(withTenant(bu,tx=>tx.execute(sql`update reward_unit set status='bg'
+        where id=${unitId}::uuid`)),'42501','Published Reward decisions require their fixed command');
+      expect(await decideRewardUnit(bu,unitId,before.unit.revision,'submit',why)).toBe('bg');
+      expect(await decideRewardUnit(actors.bg!,unitId,before.unit.revision,'approve',why)).toBe('gr');
+      expect(await decideRewardUnit(admin,unitId,before.unit.revision,'return',why)).toBe('draft');
+      expect((await view()).unit).toMatchObject({revision:before.unit.revision+1,status:'draft'});
+    }finally{
+      await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${capabilities}::text[])`;
+      await owner.client`delete from app.access_native_capability_default where capability_id=any(${capabilities}::text[])`;
+    }
+  });
   it('privately performs one actual native decision with its exact actor, physical effects and audit under a savepoint',async()=>{
     const before=await view(),why='Actual private native decision reviewed';
     const [registered]=await owner.db.execute<{capability_id:string;parent_capability:string|null;delegation_floor_function:string|null}>(sql`select capability_id,parent_capability,delegation_floor_function from app.access_function_action where function_key='rewards.decisions.submit'and operation='execute'`);

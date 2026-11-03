@@ -4992,6 +4992,13 @@
       "when": 1793330000409,
       "tag": "1009_lifecycle_hr_removal_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 857,
+      "version": "7",
+      "when": 1793330000410,
+      "tag": "1010_rewards_decision_command_port",
+      "breakpoints": true
     }
   ]
 }

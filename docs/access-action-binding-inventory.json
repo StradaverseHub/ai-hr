@@ -65835,6 +65835,7 @@
       "surface": "server-action",
       "owners": [
         "app.function_action_allowed",
+        "app.reward_decide",
         "app.reward_funding",
         "app.reward_member_eligible",
         "app.reward_roles",
@@ -66227,6 +66228,7 @@
         "app.function_action_allowed",
         "app.login_blocked",
         "app.principal_snapshot_current",
+        "app.reward_decide",
         "app.reward_funding",
         "app.reward_member_eligible",
         "app.reward_roles",
@@ -66270,6 +66272,7 @@
         "app.reward_access_observe",
         "app.reward_admin",
         "app.reward_annual_calculation",
+        "app.reward_decide",
         "app.reward_funding",
         "app.reward_member_eligible",
         "app.reward_offcycle_calculation",
@@ -68496,6 +68499,7 @@
       "subject": "company",
       "owners": [
         "app.function_action_allowed",
+        "app.reward_decide",
         "app.reward_funding",
         "app.reward_member_eligible",
         "app.reward_roles",

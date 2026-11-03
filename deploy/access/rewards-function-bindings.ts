@@ -43,7 +43,8 @@ export const REWARDS_FUNCTIONS:readonly FunctionActionDescriptor[]=[
   ]}))})),
  ...decisionCourses.map(({command,operation,labelKey}):FunctionActionDescriptor=>({key:`rewards.decisions.${command}`,scope:'company',moduleKey:'rewards',labelKey,kind:'native_acl',course:'assigned',screenKey:'rewards',href:'/rewards',employeeBearing:false,
   actions:(['view',operation]as readonly FunctionOperation[]).map(action=>({operation:action,parentCapability:null,delegationFloorFunction:'app.rewards_function_legacy_allowed',bindings:[
-   {owner:'app.reward_decision_command',operation:`fixed-human-${command}-frontdoor`},
+   {owner:'app.reward_decide',operation:`fixed-human-${command}-frontdoor`},
+   {owner:'app.reward_decision_published_source_guard',operation:'exact-decision-source-and-transition-proof'},
    {owner:'app.reward_decision_admission',operation:`native-${command}-admission`},
    {owner:'app.reward_decision_native',operation:`sealed-${command}-effect`},
    {owner:'app.reward_decision_native_validate',operation:'exact-final-function-denial-and-native-audit'},
@@ -135,5 +136,18 @@ export const REWARDS_ENTRY_CAPABILITY_PUBLICATION={
   'app.reward_save_entry(uuid,integer,uuid,jsonb,jsonb)',
   'app.reward_import_facts(uuid,integer,jsonb)',
   'app.reward_entry_published_write_guard()',
+ ],
+} as const;
+
+export const REWARDS_DECISION_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:REWARDS_FUNCTIONS.filter(descriptor=>descriptor.key.startsWith('rewards.decisions.')),
+ functionLegacyParityFunction:REWARDS_FUNCTION_DEFAULTS.pure,
+ functionCurrentLegacyParityFunction:REWARDS_FUNCTION_DEFAULTS.current,
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.rewards_decision_bindings_complete()',
+  'app.reward_decide(uuid,integer,text,text,boolean)',
+  'app.reward_decision_published_source_guard()',
  ],
 } as const;

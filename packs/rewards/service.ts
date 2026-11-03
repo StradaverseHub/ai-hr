@@ -289,14 +289,14 @@ async function nativeReviewCalculationTx(tx:Tx,unit:typeof rewardUnit.$inferSele
  const [row]=await tx.execute<{value:NativeReviewCalculation}>(unit.kind==='annual'?sql`select app.reward_annual_calculation(${unit.id}::uuid,${unit.revision})as value`:sql`select app.reward_offcycle_calculation(${unit.id}::uuid,${unit.revision})as value`);
  if(!row?.value)throw new RewardError('Reward calculation unavailable.');return row.value;
 }
-async function rewardEntryPortInstalled(tx: Tx, capability: 'function.rewards.entries.edit' | 'function.rewards.facts.edit') {
+async function rewardActionPortInstalled(tx: Tx, capability: string) {
   const [result] = await tx.execute<{ supported: boolean }>(sql`select supported from access_capability where id=${capability}`);
   return result?.supported === true;
 }
 
-async function runRewardEntryPort(command: () => Promise<unknown>) {
+async function runRewardCommandPort<T>(command: () => Promise<T>): Promise<T> {
   try {
-    await command();
+    return await command();
   } catch (error) {
     const cause = error instanceof Error ? error.cause : undefined;
     if (cause instanceof Error && 'code' in cause && ['22023', '40001', '42501'].includes(String(cause.code))) {
@@ -776,8 +776,8 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
 /** Uses the installed command port when available and preserves the legacy transaction course. */
 export async function saveRewardEntryTx(tx:Tx,ctx:SessionContext,unitId:string,revision:number,entryId:string,recommendation:unknown,facts?:unknown){
   assertModuleGate(ctx,'rewards');idSchema.parse(entryId);const rec=recommendationSchema.parse(recommendation),validatedFacts=facts===undefined?undefined:factsSchema.parse(facts);
-  if (await rewardEntryPortInstalled(tx, 'function.rewards.entries.edit')) {
-    await runRewardEntryPort(() => tx.execute(sql`select app.reward_save_entry(
+  if (await rewardActionPortInstalled(tx, 'function.rewards.entries.edit')) {
+    await runRewardCommandPort(() => tx.execute(sql`select app.reward_save_entry(
       ${unitId}::uuid,${revision}::integer,${entryId}::uuid,
       ${JSON.stringify(rec)}::jsonb,${validatedFacts ? JSON.stringify(validatedFacts) : null}::jsonb)`));
     return;
@@ -808,8 +808,8 @@ export async function importRewardFacts(ctx: SessionContext, unitId: string, rev
 /** The installed port and legacy import each validate the whole input before commit. */
 export async function importRewardFactsTx(tx:Tx,ctx:SessionContext,unitId:string,revision:number,rows:{employmentId:string;facts:RewardFacts}[]){
   assertModuleGate(ctx,'rewards');const input=z.array(z.object({employmentId:idSchema,facts:factsSchema})).min(1).max(10000).parse(rows);
-  if (await rewardEntryPortInstalled(tx, 'function.rewards.facts.edit')) {
-    await runRewardEntryPort(() => tx.execute(sql`select app.reward_import_facts(
+  if (await rewardActionPortInstalled(tx, 'function.rewards.facts.edit')) {
+    await runRewardCommandPort(() => tx.execute(sql`select app.reward_import_facts(
       ${unitId}::uuid,${revision}::integer,${JSON.stringify(input)}::jsonb)`));
     return;
   }
@@ -1001,11 +1001,18 @@ export async function decideRewardUnit(ctx: SessionContext, unitId: string, revi
   return withRewardsTenant(ctx, tx => decideRewardUnitTx(tx, ctx, unitId, revision, action, reason, acknowledged));
 }
 
-/** Supplied-transaction seam; native decision body below is preserved byte for byte. */
+/** Shared transaction seam for ordinary and reviewed Rewards decisions. */
 export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, action: 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', reason: string, acknowledged = false) {
   assertModuleGate(ctx, 'rewards');
   z.enum(['submit', 'approve', 'return', 'reject', 'withdraw']).parse(action); reason = z.string().trim().max(4000).parse(reason);
-    idSchema.parse(unitId); await funding(tx, unitId, true);
+  idSchema.parse(unitId);
+  const operation = action === 'approve' ? 'approve' : 'execute';
+  if (await rewardActionPortInstalled(tx, `function.rewards.decisions.${action}.${operation}`)) {
+    const [result] = await runRewardCommandPort(() => tx.execute<{ stage: typeof rewardUnit.$inferSelect['status'] }>(sql`
+      select app.reward_decide(${unitId}::uuid,${revision}::integer,${action},${reason},${acknowledged}) as stage`));
+    return result.stage;
+  }
+    await funding(tx, unitId, true);
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
     await requireRewardAction(tx,unit.companyId,'rewards.decisions.'+action,action==='approve'?'approve':'execute');
     const route = unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] as RewardRole[] : offcycleRoute(unit.kind, unit.offcycle!, entries);
