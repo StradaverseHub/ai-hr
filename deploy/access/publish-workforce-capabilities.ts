@@ -130,6 +130,18 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    &&(!includeWorkforce||rows.filter(row=>WORKFORCE_CAPABILITY_BINDINGS_V2.some(capability=>capability.id===row.id)).every(row=>row.supported)||rows.filter(row=>WORKFORCE_CAPABILITY_BINDINGS_V2.some(capability=>capability.id===row.id)).every(row=>!row.supported))
    &&domains.every(domain=>{const family=rows.filter(row=>domain.capabilities.some(capability=>capability.id===row.id));const children=rows.filter(row=>functionActionCapabilities(domain.functions??[]).some(capability=>capability.id===row.id));return family.every(row=>row.supported)&&children.every(row=>row.supported)||family.every(row=>!row.supported)&&children.every(row=>!row.supported)||family.every(row=>row.supported)&&children.every(row=>!row.supported);});
   requireInstallation(already||uninstalled||knownV1||knownV2||knownComponents); // Refuse partial/unknown versions without overwriting them.
+  if(key==='all'){
+   // The full installation must cover the closed SQL registry in the same
+   // transaction. A package or completion function alone cannot omit an action.
+   const registered=await tx<{id:string}[]>`select capability_id as id from app.access_function_action order by capability_id collate "C"`;
+   const described=WORKFORCE_CAPABILITY_BINDINGS.filter(capability=>capability.id.startsWith('function.')).map(capability=>capability.id).sort();
+   const registeredIds=new Set(registered.map(row=>row.id));
+   const describedIds=new Set(described);
+   const missing=described.filter(id=>!registeredIds.has(id));
+   const unexpected=registered.filter(row=>!describedIds.has(row.id)).map(row=>row.id);
+   requireInstallation(missing.length===0&&unexpected.length===0,
+    `registry coverage differs (missing: ${missing.join(', ')||'none'}; unexpected: ${unexpected.join(', ')||'none'})`);
+  }
   const invalidFunctions=await tx<{signature:string;missing:boolean}[]>`select f.signature,p.oid is null as missing
    from unnest(${[...REQUIRED_FUNCTIONS]}::text[]) f(signature)
    left join pg_proc p on p.oid=to_regprocedure(f.signature)
@@ -146,16 +158,6 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    requireInstallation(coverage?.complete===true,'Organisation Settings physical enforcement is incomplete');
   }
   if(key==='all'){
-   // The full installation must cover the closed SQL registry in the same
-   // transaction. A package or completion function alone cannot omit an action.
-   const registered=await tx<{id:string}[]>`select capability_id as id from app.access_function_action order by capability_id collate "C"`;
-   const described=WORKFORCE_CAPABILITY_BINDINGS.filter(capability=>capability.id.startsWith('function.')).map(capability=>capability.id).sort();
-   const registeredIds=new Set(registered.map(row=>row.id));
-   const describedIds=new Set(described);
-   const missing=described.filter(id=>!registeredIds.has(id));
-   const unexpected=registered.filter(row=>!describedIds.has(row.id)).map(row=>row.id);
-   requireInstallation(missing.length===0&&unexpected.length===0,
-    `registry coverage differs (missing: ${missing.join(', ')||'none'}; unexpected: ${unexpected.join(', ')||'none'})`);
    const [prerequisite]=await tx<{trusted:boolean}[]>`select p.prosecdef and p.prorettype='boolean'::regtype
     and not has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as trusted
     from pg_proc p where p.oid='app.access_all_function_bindings_complete()'::regprocedure`;

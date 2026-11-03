@@ -6,7 +6,7 @@ import {eq,sql} from 'drizzle-orm';
 import {migrateTestDb,resetDb,seedBase,adminCtx,owner,closeAll,type Base} from './harness';
 import {client,db,withTenant,type SessionContext} from '../db/client';
 import {appUser,tenant,company,roleAssignment} from '../db/schema';
-import {publishActionCapabilityPackage,publishWorkforceActionPackage as publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS_V2 as WORKFORCE_CAPABILITY_BINDINGS,WORKFORCE_ACTION_PACKAGE_BINDINGS_SHA256 as WORKFORCE_CAPABILITY_BINDINGS_SHA256} from '../deploy/access/publish-workforce-capabilities';
+import {publishActionCapabilityPackage,publishWorkforceCapabilities as publishAllActionCapabilities,publishWorkforceActionPackage as publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS_V2 as WORKFORCE_CAPABILITY_BINDINGS,WORKFORCE_ACTION_PACKAGE_BINDINGS_SHA256 as WORKFORCE_CAPABILITY_BINDINGS_SHA256} from '../deploy/access/publish-workforce-capabilities';
 import {workforceCompanies} from '../core/workforce-access';
 import {readAccessConfigurationEditor} from '../core/access-configuration-editor';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
@@ -121,6 +121,12 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
  await expect(owner.client`insert into access_capability(id,scope) values('function.payComponents.catalogueRegistrationRegression.destroy','tenant')`).rejects.toMatchObject({code:'23514'});
 });
 
+it('reports registered actions without a package and leaves the full publisher closed',async()=>{
+ const before=await snapshot();
+ await expect(publishAllActionCapabilities(owner.client))
+  .rejects.toThrow(/registry coverage differs .*function\.payroll\.historyImport\.view/);
+ expect(await snapshot()).toEqual(before);
+});
 it('refuses Organisation Settings publication when a physical write guard is disabled',async()=>{
  const before=await snapshot();
  await owner.client`alter table public.profile_option disable trigger organisation_settings_action`;
