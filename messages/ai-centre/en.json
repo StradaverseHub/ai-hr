@@ -532,6 +532,8 @@
       "profileEmergencyTitle": "Change your emergency contact",
       "profileDependantTitle": "Add a dependant",
       "profileBankTitle": "Change your bank account to {bankName}, ending {ending}",
+      "toilRequestTitle": "Leave Credit request, {date}, {start} – {end}",
+      "creditDays": "{count, plural, one {# day} other {# days}} credited if approved",
       "review": "Review",
       "open": "Open",
       "expires": "Expires {time}",
@@ -558,14 +560,16 @@
           "claimSubmitted": "Claim submitted for approval, not approved yet.",
           "claimDraftSaved": "Saved as a draft. Add the receipt on Claims to submit it.",
           "claimCancelled": "Claim cancelled.",
-          "profileRequested": "Sent to HR. Nothing changes until HR approves it."
+          "profileRequested": "Sent to HR. Nothing changes until HR approves it.",
+          "toilSubmitted": "Sent for approval, not approved yet. Nothing is credited until it is approved."
         },
         "refused": {
           "expired": "This card has expired. Ask again for a new one.",
           "invalid": "This card can no longer be used. Ask again for a new one.",
           "access": "This card no longer matches your access. Ask again for a new one.",
           "retired": "This card was already used or replaced. Check the request on its page.",
-          "unavailable": "This could not be checked just now. Try again in a moment."
+          "unavailable": "This could not be checked just now. Try again in a moment.",
+          "consent": "Tick the agreement above to confirm."
         }
       },
       "suggestionMeta": "Complete and confirm it on its page",
@@ -587,7 +591,8 @@
         "attendance_overtime_request": "Overtime request ready to review",
         "claims_submit": "Expense claim ready to review",
         "claims_cancel": "Claim cancellation ready to review",
-        "ess_profile_request": "Profile change ready to review"
+        "ess_profile_request": "Profile change ready to review",
+        "toil_replacement_request": "Leave Credit request ready to review"
       },
       "checks": {
         "actor_current": "Your access is current",
@@ -606,7 +611,10 @@
         "receipt_attached": "Receipt requirement",
         "own_pending_claim": "Claim still pending",
         "profile_fields_editable": "You may request these changes",
-        "profile_request_reviewed": "Checked against your record"
+        "profile_request_reviewed": "Checked against your record",
+        "leave_credit_offered": "You may ask for a Leave Credit",
+        "worked_day_read": "Day type read from your roster",
+        "leave_credit_rules": "Leave Credit rules allow it"
       },
       "outcomes": {
         "withdrawn_now": "Withdrawn at once",

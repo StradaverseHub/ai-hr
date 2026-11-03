@@ -40,6 +40,8 @@ import * as profileEdit from '../core/profile-edit';
 import * as claimSubmitProposal from '../core/proposals/claim-submit';
 import * as claimCancelProposal from '../core/proposals/claim-cancel';
 import * as profileChangeProposal from '../core/proposals/profile-change';
+import * as ownToilReplacement from '../core/assistant-actions/own-toil-replacement-source';
+import * as toilRequestProposal from '../core/proposals/toil-request';
 
 /** Literal imports only, so a new anchor file must be added here on purpose. */
 const OWNER_MODULES:Readonly<Record<string,Record<string,unknown>>>={
@@ -57,6 +59,8 @@ const OWNER_MODULES:Readonly<Record<string,Record<string,unknown>>>={
  'core/assistant-actions/own-claim-source.ts':ownClaimDraft,'core/assistant-actions/own-profile-change-source.ts':ownProfileChange,'core/profile.ts':profile,
  'core/profile-edit.ts':profileEdit,'core/proposals/claim-submit.ts':claimSubmitProposal,'core/proposals/claim-cancel.ts':claimCancelProposal,
  'core/proposals/profile-change.ts':profileChangeProposal,
+ // AI v2 W2 slice 2: the own Leave Credit request.
+ 'core/assistant-actions/own-toil-replacement-source.ts':ownToilReplacement,'core/proposals/toil-request.ts':toilRequestProposal,
 };
 const root=fileURLToPath(new URL('..',import.meta.url));
 function resolveAnchor(anchor:OwnerAnchor):unknown{
@@ -82,14 +86,14 @@ describe('semantic model covers every live Assistant read and registry action',(
   expect(unmodelledReads(readNames)).toEqual([]);
   expect(unmodelledReads([...readNames,'fictional_new_read'])).toEqual(['fictional_new_read']);
  });
- it('declares the leave and attendance actions, the own claim and profile actions, and lists every other registry action as pending, shrink only',()=>{
-  expect(SEMANTIC_ACTIONS.map(row=>row.id).sort()).toEqual(['approvals.leave.decide','attendance.correction.request','attendance.overtime.request','claims.cancel','claims.submit','ess.profile.request','leave.apply','leave.cancel']);
+ it('declares the leave and attendance actions, the own claim, profile and Leave Credit actions, and lists every other registry action as pending, shrink only',()=>{
+  expect(SEMANTIC_ACTIONS.map(row=>row.id).sort()).toEqual(['approvals.leave.decide','attendance.correction.request','attendance.overtime.request','claims.cancel','claims.submit','ess.profile.request','leave.apply','leave.cancel','toil.replacement.request']);
   expect(unaccountedActions(actionIds)).toEqual([]);
   expect(unaccountedActions([...actionIds,'fictional.new.action'])).toEqual(['fictional.new.action']);
   expect(NOT_YET_MODELLED_ACTIONS.filter(id=>!actionIds.includes(id))).toEqual([]);
   expect(NOT_YET_MODELLED_ACTIONS.filter(id=>SEMANTIC_ACTIONS.some(row=>row.id===id))).toEqual([]);
   expect(new Set(NOT_YET_MODELLED_ACTIONS).size).toBe(NOT_YET_MODELLED_ACTIONS.length);
-  expect(NOT_YET_MODELLED_ACTIONS.length).toBeLessThanOrEqual(63);
+  expect(NOT_YET_MODELLED_ACTIONS.length).toBeLessThanOrEqual(62);
   expect(NOT_YET_MODELLED_ACTIONS.length+SEMANTIC_ACTIONS.length).toBe(actionIds.length);
  });
  it('matches each read\'s module and sensitivity to the Assistant read it describes',()=>{

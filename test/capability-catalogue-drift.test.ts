@@ -40,7 +40,7 @@ describe('registry actions',()=>{
  it('prepares exactly the actions the semantic model declares a proposal preparer for, each a registry action',()=>{
   expect([...PREPARED_ACTIONS].sort()).toEqual(SEMANTIC_ACTIONS.filter(action=>action.proposal!==null).map(action=>action.id).sort());
   expect([...PREPARED_ACTIONS].sort()).toEqual(['approvals.leave.decide','attendance.correction.request','attendance.overtime.request','claims.cancel','claims.submit',
-   'ess.profile.request','leave.apply','leave.cancel']);
+   'ess.profile.request','leave.apply','leave.cancel','toil.replacement.request']);
   for(const id of PREPARED_ACTIONS)expect(SUGGESTABLE_ACTIONS.some(action=>action.id===id),id).toBe(true);
  });
 });
