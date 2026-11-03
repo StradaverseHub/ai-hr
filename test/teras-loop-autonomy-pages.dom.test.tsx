@@ -49,6 +49,7 @@ vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>true,isModuleEnabledOrF
 vi.mock('../app/control-tower/loops/actions',()=>({setLoopSwitchAction:vi.fn(),setLoopPauseAction:vi.fn()}));
 vi.mock('../app/control-tower/loops/autonomy-actions',()=>({setLoopLevelAction:vi.fn(),undoLoopActionFromDetailAction:vi.fn(),changeLoopLimitsAction:vi.fn(),reviewLoopSampleAction:vi.fn()}));
 vi.mock('../app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:vi.fn()}));
+vi.mock('../app/assistant/payroll-readiness-actions',()=>({answerTp3PreviousEmployerAction:vi.fn()}));
 vi.mock('../app/assistant/loop-undo-actions',()=>({undoOwnLoopAction:async(input:unknown)=>{state.undo.posts.push(input);return state.undo.result;}}));
 
 const A='00000000-0000-4000-8000-0000000000c1',B='00000000-0000-4000-8000-0000000000c2';

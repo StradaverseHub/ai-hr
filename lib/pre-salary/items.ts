@@ -31,10 +31,14 @@ export type PayrollItemState='todo'|'waiting'|'check';
 export const PAYROLL_ITEM_STATES:readonly PayrollItemState[]=Object.freeze(['todo','waiting','check']);
 
 /** One action. `confirm`: the existing one-tap Confirm card of a Phase 1 loop (the missed clock-out card,
- * core/loops/clock-out-confirm.ts); its own Confirm re-runs every owner check. `open`: the owner's own page. */
+ * core/loops/clock-out-confirm.ts); its own Confirm re-runs every owner check. `open`: the owner's own page. `answer`
+ * (Phase 2 hardening): a one-tap question on the checklist itself, today only the TP3 one ("Did you work for another
+ * employer earlier this year?", core/pre-salary/tp3-answer.ts); `href` is still the owner's page for anyone who would
+ * rather go straight there. */
 export type PayrollItemAction=Readonly<
  |{kind:'open';href:string}
- |{kind:'confirm';card:'clockOut';caseId:string;date:string;checkIn:string;proposedCheckOut:string;href:string}>;
+ |{kind:'confirm';card:'clockOut';caseId:string;date:string;checkIn:string;proposedCheckOut:string;href:string}
+ |{kind:'answer';card:'tp3PreviousEmployer';employmentId:string;year:number;href:string}>;
 
 export type PayrollItem=Readonly<{
  /** Stable within one read: `${kind}:${owner row}`. Never shown and never sent to the model. */

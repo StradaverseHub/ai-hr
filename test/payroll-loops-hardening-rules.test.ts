@@ -199,13 +199,16 @@ describe('the autonomy step honours a stop between record and apply (review find
 describe('migration 2011',()=>{
  const sql=readFileSync('db/migrations/2011_payroll_loops_hardening.sql','utf8');
  it('forces row-level security on every new table and grants exactly what each needs',()=>{
-  for(const table of ['payroll_check_acknowledgement','payroll_check_rule_decision','teras_cut_off_reminder']){
+  for(const table of ['payroll_check_acknowledgement','payroll_check_rule_decision','teras_cut_off_reminder','payroll_tp3_previous_employer_answer']){
    expect(sql).toContain(`ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY;`);
    expect(sql).toContain(`ALTER TABLE public.${table} FORCE ROW LEVEL SECURITY;`);
   }
   expect(sql).toContain('REVOKE ALL ON public.payroll_check_acknowledgement,public.payroll_check_rule_decision,public.teras_cut_off_reminder FROM PUBLIC,ai_hr_app;');
   expect(sql).toContain('GRANT SELECT,INSERT,UPDATE ON public.payroll_check_acknowledgement TO ai_hr_app;');
   expect(sql).toContain('GRANT SELECT,INSERT ON public.payroll_check_rule_decision,public.teras_cut_off_reminder TO ai_hr_app;');
+  // Coordinator review: a joiner's own TP3 answer, read and inserted only (never rewritten).
+  expect(sql).toContain('REVOKE ALL ON public.payroll_tp3_previous_employer_answer FROM PUBLIC,ai_hr_app;');
+  expect(sql).toContain('GRANT SELECT,INSERT ON public.payroll_tp3_previous_employer_answer TO ai_hr_app;');
   expect(sql).not.toMatch(/GRANT[^;]*DELETE/);
  });
  it('selects the close circuit\'s prior cycle by run type, and accepts only such a prior',()=>{

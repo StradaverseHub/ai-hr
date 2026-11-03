@@ -2803,6 +2803,24 @@
       "dependants_mismatch": "Kiểm tra số con được giảm trừ thuế: hồ sơ gia đình của bạn ghi ít hơn số bạn đã khai",
       "review_acknowledge": "Xác nhận bản đánh giá hiệu suất của bạn",
       "onboarding_acknowledge": "Xác nhận bàn giao nhận việc của bạn"
+    },
+    "tp3Question": {
+      "prompt": "Đầu năm nay bạn có làm việc cho một chủ lao động khác không?",
+      "yes": "Có",
+      "no": "Không"
+    },
+    "reminder": {
+      "title": {
+        "lead5": "Còn 5 ngày đến hạn chốt lương",
+        "lead2": "Còn 2 ngày đến hạn chốt lương",
+        "lead1": "Ngày mai là hạn chốt lương",
+        "soon": "Sắp đến hạn chốt lương"
+      },
+      "body": {
+        "own": "Bạn có việc của mình cần hoàn tất trước hạn chốt lương. Mở Trước kỳ lương trong Hôm nay để xem.",
+        "approvals": "Có yêu cầu đang chờ bạn quyết định trước hạn chốt lương. Mở Trước kỳ lương trong Hôm nay để xem.",
+        "both": "Bạn có việc của mình cần hoàn tất và yêu cầu đang chờ bạn quyết định trước hạn chốt lương. Mở Trước kỳ lương trong Hôm nay để xem."
+      }
     }
   }
 }

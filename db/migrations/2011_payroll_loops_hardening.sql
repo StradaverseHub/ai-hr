@@ -28,15 +28,22 @@
 --     paused); the reminder itself is a `teras-loop.cut-off-reminder` domain event about the recipient's own employment,
 --     appended by a SECURITY DEFINER trigger from the row just inserted (the agent principal's own event inserts are closed
 --     shapes, migration 0819), which core/notifications.ts turns into the recipient's in-app notice. It changes no record.
--- Who reads and writes (FORCE row-level security on the three new tables):
+--  5. payroll_tp3_previous_employer_answer: a new joiner's own one-tap answer on their "Before payroll" checklist to "Did
+--     you work for another employer earlier this year?" (coordinator review, 4 November 2026: the TP3 item must not be a
+--     false positive for a fresh graduate). "No" removes the checklist's TP3 item for that assessment year; "Yes" keeps it,
+--     with its link to the TP3 form. A fact about the person, never pay data: no amount, and nothing in payroll reads it (the
+--     TP3 form itself, employee_tp3, stays the only source of previous-employer income). Append-only; the latest answer of
+--     the person and year counts. Written only by the person about their own employment; read by the person and by HR who
+--     administer that employment.
+-- Who reads and writes (FORCE row-level security on the four new tables):
 --  - acknowledgements and rule decisions: payroll administrators of the company and the tenant's agent principal read;
 --    an auditor with a current grant reads the acknowledgements (they are listed in the Audit loop and its pack);
 --  - reminders: the agent principal reads and writes; payroll administrators of the company read.
 -- Grants: every privilege a table must not have is revoked, not merely left ungranted.
 --
 -- Writers reviewed before each constraint: core/payroll-anomaly.ts and core/payroll.ts read the two close functions and
--- write nothing through them; the three tables are new, written only by core/loops/acknowledgements.ts (acknowledgements and
--- rule decisions) and core/loops/cut-off-reminders.ts (reminders).
+-- write nothing through them; the four tables are new, written only by core/loops/acknowledgements.ts (acknowledgements and
+-- rule decisions), core/loops/cut-off-reminders.ts (reminders) and core/pre-salary/tp3-answer.ts (TP3 answers).
 
 -- 1. The close circuit's prior cycle, by run type.
 CREATE OR REPLACE FUNCTION app.payroll_close_circuit_inputs(p_batch uuid)
@@ -291,3 +298,50 @@ REVOKE ALL ON public.payroll_check_acknowledgement,public.payroll_check_rule_dec
 GRANT SELECT,INSERT,UPDATE ON public.payroll_check_acknowledgement TO ai_hr_app;
 --> statement-breakpoint
 GRANT SELECT,INSERT ON public.payroll_check_rule_decision,public.teras_cut_off_reminder TO ai_hr_app;
+--> statement-breakpoint
+-- ── 5. A new joiner's own answer: did they work for another employer earlier this year? ──
+CREATE TABLE public.payroll_tp3_previous_employer_answer (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ tenant_id uuid NOT NULL REFERENCES public.tenant(id),
+ person_id uuid NOT NULL REFERENCES public.person(id) ON DELETE CASCADE,
+ employment_id uuid NOT NULL REFERENCES public.employment(id) ON DELETE CASCADE,
+ assessment_year integer NOT NULL CHECK (assessment_year BETWEEN 2000 AND 2100),
+ had_previous_employer boolean NOT NULL,
+ answered_by_user_id uuid NOT NULL REFERENCES public.app_user(id),
+ answered_at timestamptz NOT NULL DEFAULT now()
+);
+--> statement-breakpoint
+CREATE INDEX payroll_tp3_previous_employer_answer_person_idx ON public.payroll_tp3_previous_employer_answer(tenant_id,person_id,assessment_year,answered_at DESC);
+--> statement-breakpoint
+CREATE FUNCTION app.payroll_tp3_previous_employer_answer_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ RAISE EXCEPTION 'A TP3 answer is never rewritten; the person answers again' USING ERRCODE='42501';
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.payroll_tp3_previous_employer_answer_guard() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TRIGGER payroll_tp3_previous_employer_answer_append_only BEFORE UPDATE ON public.payroll_tp3_previous_employer_answer
+ FOR EACH ROW EXECUTE FUNCTION app.payroll_tp3_previous_employer_answer_guard();
+--> statement-breakpoint
+ALTER TABLE public.payroll_tp3_previous_employer_answer ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+ALTER TABLE public.payroll_tp3_previous_employer_answer FORCE ROW LEVEL SECURITY;
+--> statement-breakpoint
+-- The person reads their own answers; HR who administer the employment read them too. No agent reads or writes them.
+CREATE POLICY payroll_tp3_previous_employer_answer_own_read ON public.payroll_tp3_previous_employer_answer FOR SELECT TO ai_hr_app
+ USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.is_self_person(person_id) IS TRUE);
+--> statement-breakpoint
+CREATE POLICY payroll_tp3_previous_employer_answer_hr_read ON public.payroll_tp3_previous_employer_answer FOR SELECT TO ai_hr_app
+ USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.current_user_id() IS NOT NULL
+  AND app.can_admin_employment(employment_id) IS TRUE);
+--> statement-breakpoint
+-- Only the person, about their own employment, as themselves.
+CREATE POLICY payroll_tp3_previous_employer_answer_own_insert ON public.payroll_tp3_previous_employer_answer FOR INSERT TO ai_hr_app
+ WITH CHECK (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND app.principal_snapshot_current() IS TRUE
+  AND answered_by_user_id=app.current_user_id() AND app.is_self_person(person_id) IS TRUE
+  AND EXISTS (SELECT 1 FROM public.employment e WHERE e.id=payroll_tp3_previous_employer_answer.employment_id AND e.tenant_id=app.current_tenant_id()
+   AND e.person_id=payroll_tp3_previous_employer_answer.person_id));
+--> statement-breakpoint
+REVOKE ALL ON public.payroll_tp3_previous_employer_answer FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+GRANT SELECT,INSERT ON public.payroll_tp3_previous_employer_answer TO ai_hr_app;

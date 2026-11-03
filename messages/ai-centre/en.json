@@ -2803,6 +2803,24 @@
       "dependants_mismatch": "Check your children for tax relief: your family record lists fewer than you declared",
       "review_acknowledge": "Acknowledge your performance review",
       "onboarding_acknowledge": "Acknowledge your onboarding hand-over"
+    },
+    "tp3Question": {
+      "prompt": "Did you work for another employer earlier this year?",
+      "yes": "Yes",
+      "no": "No"
+    },
+    "reminder": {
+      "title": {
+        "lead5": "Payroll cut-off in 5 days",
+        "lead2": "Payroll cut-off in 2 days",
+        "lead1": "Payroll cut-off tomorrow",
+        "soon": "Payroll cut-off soon"
+      },
+      "body": {
+        "own": "You have items of your own to finish before the payroll cut-off. Open Before payroll on Today to see them.",
+        "approvals": "Requests are waiting for your decision before the payroll cut-off. Open Before payroll on Today to see them.",
+        "both": "You have items of your own to finish and requests waiting for your decision before the payroll cut-off. Open Before payroll on Today to see them."
+      }
     }
   }
 }

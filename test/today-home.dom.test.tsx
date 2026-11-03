@@ -71,6 +71,7 @@ vi.mock('@/core/automatic-followups',()=>({followupItemsTx:async()=>{S.calls.pas
 // AI v2 W8: Confirm on the missed clock-out card posts the case, the person's reason option and, for Other, their words.
 const clockOut=vi.hoisted(()=>({posts:[] as unknown[],result:{kind:'submitted'} as unknown}));
 vi.mock('@/app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:async(input:unknown)=>{clockOut.posts.push(input);return clockOut.result;}}));
+vi.mock('@/app/assistant/payroll-readiness-actions',()=>({answerTp3PreviousEmployerAction:vi.fn()}));
 // AI v2 Phase 2 P2-3: the Before payroll card has its own DOM test (test/before-payroll.dom.test.tsx); here it reads nothing.
 vi.mock('@/core/pre-salary/person-items',()=>({readMyPayrollReadiness:async()=>null}));
 // AI v2 Phase 2 P2-1: the Undo on a clock-out the loop set (covered by test/teras-loop-autonomy-pages.dom.test.tsx).

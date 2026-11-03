@@ -25,6 +25,7 @@ vi.mock('next-intl/server',async()=>{
 });
 vi.mock('next/navigation',()=>({useRouter:()=>({push:vi.fn(),refresh:vi.fn()}),usePathname:()=>'/assistant'}));
 vi.mock('@/app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:async()=>({kind:'submitted'})}));
+vi.mock('@/app/assistant/payroll-readiness-actions',()=>({answerTp3PreviousEmployerAction:vi.fn()}));
 vi.mock('@/core/pre-salary/person-items',()=>({readMyPayrollReadiness:async(...args:unknown[])=>{fx.calls.push(args.slice(1));return fx.readiness;}}));
 // Wave 1 integration: Insights also carries P2-4's HR capacity ledger, for administrators only (its own test:
 // capacity-ledger-page.dom.test.tsx). Here it is a marker, so each role shows whether the view asked for it.
@@ -98,6 +99,20 @@ describe('Today: "Before payroll on <date>"',()=>{
   const card=(await today(ADMIN)).container.querySelector('[data-today-section="today-before-payroll"]') as HTMLElement;
   expect(within(card).getByRole('heading',{level:2}).textContent).toBe('Before payroll on Nov 19');
   expect(rows(card).map(row=>row[0])).toEqual(['tax_number_missing','approve_attendance']);
+ });
+ it('a new joiner: the TP3 item asks its one-tap question on the card, Yes and No posting the person\'s own employment and year',async()=>{
+  const question=item('tp3_new_joiner','details','check','2026-03-02','2026-11-19',{kind:'answer',card:'tp3PreviousEmployer',employmentId:'emp-own',year:2026,href:'/me/tp3'});
+  const card=(await today({...NOTHING,items:[question],groups:groups({details:'todo'})})).container.querySelector('[data-today-section="today-before-payroll"]') as HTMLElement;
+  const row=card.querySelector('[data-payroll-item="tp3_new_joiner"]') as HTMLElement;
+  expect(row.getAttribute('data-payroll-action')).toBe('answer');
+  expect(row.querySelector('p')?.textContent).toBe('Did you work for another employer earlier this year?');
+  const form=within(row).getByRole('form',{name:'Did you work for another employer earlier this year?'});
+  expect([...form.querySelectorAll('input[type="hidden"]')].map(input=>[input.getAttribute('name'),input.getAttribute('value')])).toEqual([['employment','emp-own'],['year','2026']]);
+  expect([...form.querySelectorAll('button[type="submit"]')].map(button=>[button.getAttribute('name'),button.getAttribute('value'),button.textContent?.split(' · ')[0]]))
+   .toEqual([['answer','no','No'],['answer','yes','Yes']]);
+  // No link stands in for the answer; the row carries no amount.
+  expect(row.querySelector('a')).toBeNull();
+  expect(row.textContent).not.toMatch(/RM|\d+\.\d{2}/);
  });
  it('shows no card when nothing is pending, payroll is not in use, or the read failed',async()=>{
   for(const readiness of [NOTHING,null]){

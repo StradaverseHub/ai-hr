@@ -67,6 +67,7 @@ import {pendingNoticeAcknowledgementTasks} from '../notice';
 import {listPendingTasks,type PendingTaskItem} from '../approvals-inbox';
 import {readLoopCards} from '../loops/cards';
 import {myTp3Eligibility} from '../../lib/my-tp3-eligibility';
+import {myTp3PreviousEmployerAnswer} from './tp3-answer';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {addHrDays} from '../../lib/today/audience';
 import {PAYROLL_ITEM_GROUPS,groupStatus,monthEnd,orderItems,periodOf,type GroupState,type PayrollItem,type PayrollItemGroup,
@@ -242,7 +243,8 @@ async function detailsGroup(ctx:SessionContext,subject:Subject,period:PayrollPer
  const payroll=moduleState(ctx,'payroll',subject.companyId);
  const [gaps,tp3,extra]=await Promise.all([
   settle(()=>myReadinessActions(ctx,subject.employmentId)),
-  payroll==='on'?settle(async()=>{const [employments,history]=await Promise.all([myTp3Employments(ctx),myTp3History(ctx)]);return{employments,history};}):Promise.resolve(null),
+  payroll==='on'?settle(async()=>{const [employments,history,answer]=await Promise.all([myTp3Employments(ctx),myTp3History(ctx),
+   myTp3PreviousEmployerAnswer(ctx,Number(today.slice(0,4)))]);return{employments,history,answer};}):Promise.resolve(null),
   payroll==='on'&&ctx.personId?settle(async()=>{const personId=ctx.personId!;
    const [tp1,profile,family]=await Promise.all([listMyTp1Declarations(ctx,{assessmentYear:Number(today.slice(0,4))}),myProfile(ctx),listDependents(ctx,{personId})]);
    return{tp1,profile,family};}):Promise.resolve(null),
@@ -276,9 +278,15 @@ async function detailsGroup(ctx:SessionContext,subject:Subject,period:PayrollPer
   const own=tp3.value.employments.find(row=>row.employmentId===subject.employmentId),eligibility=myTp3Eligibility(own,today);
   const year=eligibility.year,done=year!==null&&(tp3.value.history.records.some(record=>record.assessmentYear===year)||tp3.value.history.drafts.some(draft=>draft.assessmentYear===year&&draft.submittedAt!=null));
   // A new joiner this year who has not told payroll about any earlier employer this year (LHDN TP3). Someone who joined on
-  // 1 January had no earlier employer that year, so is never asked (Phase 2 hardening; no record says whether a later
-  // joiner had one, so they are still asked to check).
-  if(eligibility.eligible&&year===Number(today.slice(0,4))&&!done&&eligibility.joinDate!==`${year}-01-01`)items.push(item({key:`tp3_new_joiner:${year}`,group:'details',kind:'tp3_new_joiner',state:'check',date:eligibility.joinDate,due:period.cutOff,href:'/me/tp3'}));
+  // 1 January had no earlier employer that year, so is never asked. Anyone later is asked once, on this checklist, whether
+  // they worked for another employer earlier this year (core/pre-salary/tp3-answer.ts): "No" removes the item (a fresh
+  // graduate is not a TP3 case); "Yes" keeps it, with its link to the TP3 form; until they answer, the item is the question.
+  const answer=tp3.value.answer;
+  if(eligibility.eligible&&year===Number(today.slice(0,4))&&!done&&eligibility.joinDate!==`${year}-01-01`&&answer!=='no'){
+   const base={key:`tp3_new_joiner:${year}`,group:'details',kind:'tp3_new_joiner',state:'check',date:eligibility.joinDate,due:period.cutOff,href:'/me/tp3'} as const;
+   const row=item(base);
+   items.push(answer==='yes'||!own?row:Object.freeze({...row,action:Object.freeze({kind:'answer' as const,card:'tp3PreviousEmployer' as const,employmentId:own.employmentId,year,href:'/me/tp3'})}));
+  }
  }
  return {items,read:gaps.ok&&(tp3===null||tp3.ok)&&(extra===null||extra.ok)?'ok':'failed'};
 }

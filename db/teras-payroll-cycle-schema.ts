@@ -4,7 +4,7 @@
  * and out of db/teras-schema.ts (shared by parallel AI v2 workers), as db/teras-schema.ts explains. Imported only by
  * core/loops. Every column is a reference, a closed key, a ratio in basis points or a time: no name, amount or prose. */
 import {boolean,date,index,integer,jsonb,pgTable,primaryKey,text,timestamp,uniqueIndex,uuid} from 'drizzle-orm/pg-core';
-import {appUser,company,employment,tenant} from './schema';
+import {appUser,company,employment,person,tenant} from './schema';
 import {terasLoopCase} from './teras-schema';
 
 const at=(name:string)=>timestamp(name,{withTimezone:true});
@@ -70,3 +70,13 @@ export const terasCutOffReminder=pgTable('teras_cut_off_reminder',{
  agentPrincipalId:uuid('agent_principal_id').notNull(),sentAt:at('sent_at').notNull().defaultNow(),
 },t=>[uniqueIndex('teras_cut_off_reminder_tenant_id_recipient_employment_id_cut_off_lead_days_key').on(t.tenantId,t.recipientEmploymentId,t.cutOff,t.leadDays),
  index('teras_cut_off_reminder_company_idx').on(t.tenantId,t.companyId,t.cutOff)]);
+
+/** Phase 2 hardening (migration 2011): a new joiner's own answer to "Did you work for another employer earlier this year?"
+ * on their "Before payroll" checklist. Append-only; the latest answer of the person and year counts. Never pay data: the
+ * TP3 form (employee_tp3) stays the only source of previous-employer income. Written only through core/pre-salary/tp3-answer.ts. */
+export const payrollTp3PreviousEmployerAnswer=pgTable('payroll_tp3_previous_employer_answer',{
+ id:uuid('id').primaryKey().defaultRandom(),tenantId:tenantId(),personId:uuid('person_id').notNull().references(()=>person.id,{onDelete:'cascade'}),
+ employmentId:uuid('employment_id').notNull().references(()=>employment.id,{onDelete:'cascade'}),assessmentYear:integer('assessment_year').notNull(),
+ hadPreviousEmployer:boolean('had_previous_employer').notNull(),answeredByUserId:uuid('answered_by_user_id').notNull().references(()=>appUser.id),
+ answeredAt:at('answered_at').notNull().defaultNow(),
+},t=>[index('payroll_tp3_previous_employer_answer_person_idx').on(t.tenantId,t.personId,t.assessmentYear,t.answeredAt.desc())]);

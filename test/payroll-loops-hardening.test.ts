@@ -23,7 +23,7 @@
  *     company; the Pre-salary loop re-checks at the end of cut-off day (B1).
  * Expected values are written out from the fixtures. No model is called. */
 import {randomUUID} from 'node:crypto';
-import {and,eq,sql} from 'drizzle-orm';
+import {and,eq,inArray,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 
 const model=vi.hoisted(()=>({calls:0}));
@@ -44,7 +44,13 @@ vi.mock('../core/loops/payroll-inputs',async importOriginal=>{
 import * as schema from '../db/schema';
 import {terasLoopCase,terasLoopRun} from '../db/teras-schema';
 import {payrollAuditCapture,payrollAuditDisposition,payrollAuditFinding} from '../db/payroll-audit-schema';
-import {payrollCheckAcknowledgement,terasCutOffReminder,terasPayrollSwingDisposition} from '../db/teras-payroll-cycle-schema';
+import {payrollCheckAcknowledgement,payrollTp3PreviousEmployerAnswer,terasCutOffReminder,terasPayrollSwingDisposition} from '../db/teras-payroll-cycle-schema';
+import {checkIn,checkOut} from '../core/attendance';
+import {assignDefaultShift,createShift} from '../core/roster';
+import {preSalaryChecks} from '../core/loops/pre-salary-checks';
+import {preSalaryWindows} from '../core/loops/payroll-inputs';
+import {readMyPayrollReadiness} from '../core/pre-salary/person-items';
+import {answerTp3PreviousEmployer,myTp3PreviousEmployerAnswer} from '../core/pre-salary/tp3-answer';
 import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {setCompensation} from '../core/comp';
@@ -402,8 +408,10 @@ describe('B6: automatic cut-off reminders',()=>{
    expect(JSON.stringify(notice)).not.toMatch(/987|123\.45|3000/);
    expect(notice.linkPath).toBe('/');
   }
-  expect(notices.find(row=>row.recipientEmploymentId===drafting.employmentId)!.body).toBe('You have 1 item of your own to finish before the payroll cut-off on 2026-07-25. Open Before payroll on Today to see them.');
-  expect(notices.find(row=>row.recipientEmploymentId===manager.employmentId)!.body).toBe('You have 1 request waiting for your decision before the payroll cut-off on 2026-07-25. Open Before payroll on Today to see them.');
+  // Stored as message keys, rendered in the reader's own language by the bell (test/payroll-cut-off-reminder-notification.dom.test.tsx).
+  expect(notices.map(row=>[row.recipientEmploymentId,row.title,row.body,row.severity]).sort()).toEqual([
+   [drafting.employmentId,'payrollReadiness.reminder.title.lead5','payrollReadiness.reminder.body.own','action'],
+   [manager.employmentId,'payrollReadiness.reminder.title.lead5','payrollReadiness.reminder.body.approvals','action']].sort());
   // Nobody with nothing pending, and the agent wrote the ledger.
   expect((await ledger()).map(row=>row[0])).not.toContain(quiet.employmentId);
   // Rate-limited: the same cut-off and lead never again, however often it runs.
@@ -418,6 +426,84 @@ describe('B6: automatic cut-off reminders',()=>{
   // A paused company gets none (the database refuses the agent's write).
   await setLoopPause(group,{workerId:'loop_payroll_inputs',companyId:b.companyId,paused:true});
   expect(await sendCutOffReminders({tenantId:b.tenantId,principalId,runId:randomUUID(),agent:agentOf(entitlements),sponsor:group,companies:[b.companyId],today:'2026-07-24'})).toMatchObject({sent:0});
+ });
+});
+describe('Coordinator review: a joiner says once whether they worked for another employer earlier this year (TP3)',()=>{
+ it('No removes the TP3 item and Yes keeps it with its link; only the person answers; the person and HR read it; never rewritten',async()=>{
+  const TODAY='2026-06-20';
+  const joiner=await hireEmployee(await entitledCtx(b),{person:{fullName:'Fictional Graduate',primaryEmail:`grad-${randomUUID()}@fixture.test`},companyId:b.companyId,
+   departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-03-02'});
+  const me=await employeeLogin(joiner.personId);
+  const tp3=async()=>((await readMyPayrollReadiness(me,{today:TODAY,locale:'en'}))?.items??[]).filter(row=>row.kind==='tp3_new_joiner');
+  // Not answered: the item is the one-tap question about the person's own employment and this assessment year.
+  expect((await tp3()).map(row=>row.action)).toEqual([{kind:'answer',card:'tp3PreviousEmployer',employmentId:joiner.employmentId,year:2026,href:'/me/tp3'}]);
+  // Nobody answers for them: a colleague, HR, or a forged row past the service.
+  const colleague=await employeeLogin((await hire('Fictional Colleague')).personId);
+  await expect(answerTp3PreviousEmployer(colleague,{employmentId:joiner.employmentId,assessmentYear:2026,answer:'no'},{today:TODAY})).rejects.toMatchObject({reason:'not_eligible'});
+  const group=await groupAdministrator();
+  await expect(answerTp3PreviousEmployer(group,{employmentId:joiner.employmentId,assessmentYear:2026,answer:'no'},{today:TODAY})).rejects.toMatchObject({reason:'not_self'});
+  await refusedWith(withTenant(colleague,tx=>tx.insert(payrollTp3PreviousEmployerAnswer).values({tenantId:b.tenantId,personId:joiner.personId,employmentId:joiner.employmentId,
+   assessmentYear:2026,hadPreviousEmployer:false,answeredByUserId:colleague.userId})),/row-level security/i);
+  // Yes: the TP3 item stays, opening the TP3 form.
+  expect(await answerTp3PreviousEmployer(me,{employmentId:joiner.employmentId,assessmentYear:'2026',answer:'yes'},{today:TODAY})).toEqual({answer:'yes',assessmentYear:2026});
+  expect((await tp3()).map(row=>[row.state,row.action])).toEqual([['check',{kind:'open',href:'/me/tp3'}]]);
+  // No (answered again; the latest answer counts): the TP3 item leaves the checklist.
+  await answerTp3PreviousEmployer(me,{employmentId:joiner.employmentId,assessmentYear:2026,answer:'no'},{today:TODAY});
+  expect(await tp3()).toEqual([]);
+  expect(await myTp3PreviousEmployerAnswer(me,2026)).toBe('no');
+  // The person and HR who administer the employment read the answers; a colleague reads none. No pay data in them.
+  expect((await withTenant(group,tx=>tx.select().from(payrollTp3PreviousEmployerAnswer))).map(row=>row.hadPreviousEmployer).sort()).toEqual([false,true]);
+  expect(await withTenant(colleague,tx=>tx.select().from(payrollTp3PreviousEmployerAnswer))).toEqual([]);
+  // Each answer is the person's own event.
+  const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'payroll-tp3.previous-employer-answered'));
+  expect(events.map(row=>[row.actorType,row.actorId,row.subjectEmploymentId,(row.payload as {answer:string}).answer]).sort()).toEqual([
+   ['user',me.userId,joiner.employmentId,'no'],['user',me.userId,joiner.employmentId,'yes']].sort());
+  // Never rewritten, by anyone.
+  await refusedWith(owner.db.execute(sql`update public.payroll_tp3_previous_employer_answer set had_previous_employer=true`),/never rewritten/);
+  // Someone who joined in an earlier year is not asked, and may not answer.
+  const longServer=await hire('Fictional Long Server');
+  await expect(answerTp3PreviousEmployer(await employeeLogin(longServer.personId),{employmentId:longServer.employmentId,assessmentYear:2026,answer:'no'},{today:TODAY}))
+   .rejects.toMatchObject({reason:'not_eligible'});
+ });
+});
+
+describe('Coordinator review (owner ruling 19): standing acknowledgements in the Pre-salary counts',()=>{
+ it('takes a warning out of its count when an acknowledgement of the same fact covers the person, and never an open item',async()=>{
+  await setModule(b.tenantId,'attendance','active');
+  const admin=await entitledCtx(b),group=await groupAdministrator();
+  // A late mark (in the department no one else is late in), two missing tax numbers and a missing bank account.
+  const late=await hire('Fictional Late Starter',b.companyId,b.deptB);
+  const [noTax,otherNoTax,noBank]=[await hire('Fictional No Tax'),await hire('Fictional Other No Tax'),await hire('Fictional No Bank')];
+  await owner.db.update(schema.employeeStatutoryMy).set({taxNumber:null}).where(inArray(schema.employeeStatutoryMy.personId,[noTax.personId,otherNoTax.personId]));
+  await owner.db.update(schema.employeeStatutoryMy).set({bankAccountNo:null}).where(eq(schema.employeeStatutoryMy.personId,noBank.personId));
+  const shift=(await createShift(admin,{name:'Fictional Day',code:`HD${randomUUID().slice(0,4)}`,startTime:'09:00',endTime:'18:00',breakMinutes:60,weeklyPattern:[1,2,3,4,5]})).id;
+  await assignDefaultShift(admin,{employmentId:late.employmentId,shiftId:shift});
+  await checkIn(admin,{employmentId:late.employmentId,date:'2026-06-19',time:'09:45',manual:true});
+  await checkOut(admin,{employmentId:late.employmentId,date:'2026-06-19',time:'18:00',manual:true});
+  const counts=async()=>{
+   const result=await preSalaryChecks(group,{companyId:b.companyId,payPeriod:PERIOD,today:'2026-06-20',windows:preSalaryWindows(null,PERIOD)});
+   const of=(key:string)=>result.checks.find(item=>item.key===key)!;
+   return {timesheets:[of('timesheets').open,of('timesheets').warnings],statutory:[of('statutoryBank').open,of('statutoryBank').warnings]};
+  };
+  const before=await counts();
+  expect(before.timesheets[1]).toBeGreaterThanOrEqual(1);
+  expect(before.statutory[0]).toBeGreaterThanOrEqual(1);
+  expect(before.statutory[1]).toBeGreaterThanOrEqual(2);
+  const ack=(checkId:string,scope:'person'|'group'|'company',subject:{employmentId?:string;departmentId?:string})=>
+   acknowledgeCheck(group,{companyId:b.companyId,checkId,scope,...subject,reason:'Fictional: expected for this set-up'});
+  // The late starter's department is paid a fixed sum whatever the clock says ("pay without attendance" expected): the late
+  // mark leaves the warnings; the open absences of the month do not move.
+  const fixedPay=await ack('audit:pay_without_attendance','group',{departmentId:b.deptB});
+  // One missing tax profile acknowledged (person), and the missing bank profile, a BLOCK, acknowledged too.
+  await ack('anomaly:missing-tax-profile','person',{employmentId:noTax.employmentId});
+  await ack('anomaly:missing-bank-profile','person',{employmentId:noBank.employmentId});
+  expect(await counts()).toEqual({timesheets:[before.timesheets[0],before.timesheets[1]-1],statutory:[before.statutory[0],before.statutory[1]-1]});
+  // The other missing tax profile, through the anomaly detector's own acknowledgement for that person.
+  await ack('anomaly:missing-tax-profile','person',{employmentId:otherNoTax.employmentId});
+  expect(await counts()).toEqual({timesheets:[before.timesheets[0],before.timesheets[1]-1],statutory:[before.statutory[0],before.statutory[1]-2]});
+  // Revoked: the late mark is a warning again.
+  await revokeAcknowledgement(group,{id:fixedPay.id});
+  expect((await counts()).timesheets).toEqual(before.timesheets);
  });
 });
 const agentOf=(entitlements:NonNullable<SessionContext['entitlements']>):SessionContext=>agentContext(b.tenantId,principalId,entitlements);

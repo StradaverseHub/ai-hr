@@ -2803,6 +2803,24 @@
       "dependants_mismatch": "Semak anak untuk pelepasan cukai: rekod keluarga anda menyenaraikan kurang daripada yang anda isytiharkan",
       "review_acknowledge": "Akui penilaian prestasi anda",
       "onboarding_acknowledge": "Akui serahan onboarding anda"
+    },
+    "tp3Question": {
+      "prompt": "Adakah anda bekerja dengan majikan lain lebih awal tahun ini?",
+      "yes": "Ya",
+      "no": "Tidak"
+    },
+    "reminder": {
+      "title": {
+        "lead5": "Tarikh tutup gaji dalam 5 hari",
+        "lead2": "Tarikh tutup gaji dalam 2 hari",
+        "lead1": "Tarikh tutup gaji esok",
+        "soon": "Tarikh tutup gaji tidak lama lagi"
+      },
+      "body": {
+        "own": "Anda ada perkara sendiri untuk diselesaikan sebelum tarikh tutup gaji. Buka Sebelum gaji di Hari ini untuk melihatnya.",
+        "approvals": "Ada permohonan yang menunggu keputusan anda sebelum tarikh tutup gaji. Buka Sebelum gaji di Hari ini untuk melihatnya.",
+        "both": "Anda ada perkara sendiri untuk diselesaikan dan permohonan yang menunggu keputusan anda sebelum tarikh tutup gaji. Buka Sebelum gaji di Hari ini untuk melihatnya."
+      }
     }
   }
 }
