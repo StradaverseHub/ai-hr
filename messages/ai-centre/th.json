@@ -640,7 +640,9 @@
       "comingUp": "เร็วๆ นี้",
       "managerAwayRange": "{name} ผู้จัดการของคุณ ไม่อยู่ {start} – {end}",
       "managerAwayDay": "{name} ผู้จัดการของคุณ ไม่อยู่วันที่ {date}",
-      "nothingComingUp": "ไม่มีรายการในสองสัปดาห์ข้างหน้า"
+      "nothingComingUp": "ไม่มีรายการในสองสัปดาห์ข้างหน้า",
+      "managerAwayRangeUnnamed": "ผู้จัดการของคุณไม่อยู่ {start} – {end}",
+      "managerAwayDayUnnamed": "ผู้จัดการของคุณไม่อยู่วันที่ {date}"
     }
   }
 }

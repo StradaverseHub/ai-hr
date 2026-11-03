@@ -640,7 +640,9 @@
       "comingUp": "Coming up",
       "managerAwayRange": "{name}, your manager, is away {start} – {end}.",
       "managerAwayDay": "{name}, your manager, is away on {date}.",
-      "nothingComingUp": "Nothing coming up in the next two weeks."
+      "nothingComingUp": "Nothing coming up in the next two weeks.",
+      "managerAwayRangeUnnamed": "Your manager is away {start} – {end}.",
+      "managerAwayDayUnnamed": "Your manager is away on {date}."
     }
   }
 }

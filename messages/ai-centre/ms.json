@@ -640,7 +640,9 @@
       "comingUp": "Akan datang",
       "managerAwayRange": "{name}, pengurus anda, tiada di pejabat {start} – {end}.",
       "managerAwayDay": "{name}, pengurus anda, tiada di pejabat pada {date}.",
-      "nothingComingUp": "Tiada apa-apa dalam dua minggu akan datang."
+      "nothingComingUp": "Tiada apa-apa dalam dua minggu akan datang.",
+      "managerAwayRangeUnnamed": "Pengurus anda tiada di pejabat {start} – {end}.",
+      "managerAwayDayUnnamed": "Pengurus anda tiada di pejabat pada {date}."
     }
   }
 }

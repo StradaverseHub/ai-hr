@@ -640,7 +640,9 @@
       "comingUp": "即将发生",
       "managerAwayRange": "您的经理 {name} 将于 {start} – {end} 不在。",
       "managerAwayDay": "您的经理 {name} 将于 {date} 不在。",
-      "nothingComingUp": "未来两周没有安排。"
+      "nothingComingUp": "未来两周没有安排。",
+      "managerAwayRangeUnnamed": "您的经理将于 {start} – {end} 不在。",
+      "managerAwayDayUnnamed": "您的经理将于 {date} 不在。"
     }
   }
 }

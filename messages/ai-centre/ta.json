@@ -640,7 +640,9 @@
       "comingUp": "வரவிருப்பவை",
       "managerAwayRange": "உங்கள் மேலாளர் {name}, {start} – {end} வரை வேலையில் இருக்கமாட்டார்.",
       "managerAwayDay": "உங்கள் மேலாளர் {name}, {date} அன்று வேலையில் இருக்கமாட்டார்.",
-      "nothingComingUp": "அடுத்த இரண்டு வாரங்களில் எதுவும் இல்லை."
+      "nothingComingUp": "அடுத்த இரண்டு வாரங்களில் எதுவும் இல்லை.",
+      "managerAwayRangeUnnamed": "உங்கள் மேலாளர் {start} – {end} வரை வேலையில் இருக்கமாட்டார்.",
+      "managerAwayDayUnnamed": "உங்கள் மேலாளர் {date} அன்று வேலையில் இருக்கமாட்டார்."
     }
   }
 }

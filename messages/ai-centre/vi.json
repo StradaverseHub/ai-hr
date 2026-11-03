@@ -640,7 +640,9 @@
       "comingUp": "Sắp tới",
       "managerAwayRange": "{name}, quản lý của bạn, vắng mặt {start} – {end}.",
       "managerAwayDay": "{name}, quản lý của bạn, vắng mặt vào {date}.",
-      "nothingComingUp": "Không có gì trong hai tuần tới."
+      "nothingComingUp": "Không có gì trong hai tuần tới.",
+      "managerAwayRangeUnnamed": "Quản lý của bạn vắng mặt {start} – {end}.",
+      "managerAwayDayUnnamed": "Quản lý của bạn vắng mặt vào {date}."
     }
   }
 }

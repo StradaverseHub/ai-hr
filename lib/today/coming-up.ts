@@ -5,8 +5,9 @@
  * company's sharing policy and never carries a leave type or reason. A manager is shown away only on the days
  * that calendar lists them, under the name that calendar shows, so Today reveals nothing the person's own
  * Home calendar would not. Pure. */
-export type CalendarDay=Readonly<{date:string;available:boolean;items:readonly Readonly<{employmentId:string;name:string}>[]}>;
-export type AwayRange=Readonly<{employmentId:string;name:string;from:string;to:string}>;
+/** `name` is null when the person's sharing choice withholds it; the absence still shows, unnamed. */
+export type CalendarDay=Readonly<{date:string;available:boolean;items:readonly Readonly<{employmentId:string;name:string|null}>[]}>;
+export type AwayRange=Readonly<{employmentId:string;name:string|null;from:string;to:string}>;
 
 const next=(iso:string)=>new Date(Date.parse(`${iso}T00:00:00Z`)+86_400_000).toISOString().slice(0,10);
 
@@ -14,7 +15,7 @@ const next=(iso:string)=>new Date(Date.parse(`${iso}T00:00:00Z`)+86_400_000).toI
 export function managerAbsences(managerEmploymentIds:readonly string[],days:readonly CalendarDay[]):AwayRange[]{
  const wanted=new Set(managerEmploymentIds);
  const out:AwayRange[]=[];
- const open=new Map<string,{employmentId:string;name:string;from:string;to:string}>();
+ const open=new Map<string,{employmentId:string;name:string|null;from:string;to:string}>();
  for(const day of [...days].sort((a,b)=>a.date.localeCompare(b.date))){
   const here=new Set<string>();
   if(day.available)for(const item of day.items){
@@ -27,5 +28,5 @@ export function managerAbsences(managerEmploymentIds:readonly string[],days:read
   for(const [id,run] of open)if(!here.has(id)){out.push(Object.freeze({...run}));open.delete(id);}
  }
  for(const run of open.values())out.push(Object.freeze({...run}));
- return out.sort((a,b)=>a.from.localeCompare(b.from)||a.name.localeCompare(b.name));
+ return out.sort((a,b)=>a.from.localeCompare(b.from)||(a.name??'').localeCompare(b.name??'')||a.employmentId.localeCompare(b.employmentId));
 }

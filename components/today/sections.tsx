@@ -126,7 +126,9 @@ export async function AtAGlanceSection(p:Common&Readonly<{employmentId?:string}>
     <h3 className="text-sm font-semibold">{t('glance.comingUp')}</h3>
     {data.away.length===0?<p className="text-sm text-muted-foreground">{t('glance.nothingComingUp')}</p>:
      <ul className="space-y-1 text-sm text-muted-foreground">{data.away.map(run=><li key={`${run.employmentId}:${run.from}`} data-today-away>
-      {run.from===run.to?t('glance.managerAwayDay',{name:run.name,date:hrDay(p.locale,run.from,'short')})
+      {run.name===null?(run.from===run.to?t('glance.managerAwayDayUnnamed',{date:hrDay(p.locale,run.from,'short')})
+        :t('glance.managerAwayRangeUnnamed',{start:hrDay(p.locale,run.from,'short'),end:hrDay(p.locale,run.to,'short')}))
+       :run.from===run.to?t('glance.managerAwayDay',{name:run.name,date:hrDay(p.locale,run.from,'short')})
        :t('glance.managerAwayRange',{name:run.name,start:hrDay(p.locale,run.from,'short'),end:hrDay(p.locale,run.to,'short')})}
      </li>)}</ul>}
    </div>}

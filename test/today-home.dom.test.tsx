@@ -150,8 +150,8 @@ describe('Today for an employee',()=>{
  it('counts what AI Centre answered for the person, and shows nothing else from the record',async()=>{
   const view=await show(EMPLOYEE,['co-a']);
   const done=view.section('today-done-for-you')!;
-  expect([...done.querySelectorAll('[data-today-note]')].map(note=>[note.getAttribute('data-today-note'),text(note)])).toEqual([
-   ['answeredYou','Answered Answered 3 of your questions In the last 7 days.'],
+  expect([...done.querySelectorAll('[data-today-note]')].map(note=>[note.getAttribute('data-today-note'),...[...note.querySelectorAll('article > *')].map(text)])).toEqual([
+   ['answeredYou','Answered','Answered 3 of your questions','In the last 7 days.'],
   ]);
   expect(S.calls.summary).toEqual([{since:new Date('2026-10-28T16:00:00.000Z'),companyIds:['co-a']}]);
  });
@@ -171,6 +171,12 @@ describe('Today for an employee',()=>{
   ]);
   // A colleague on the same team calendar is not this person's manager and is not named.
   expect(text(glance)).not.toContain('Peer Fictional');
+ });
+
+ it('keeps a manager\'s absence when their sharing choice withholds the name, without inventing one',async()=>{
+  S.calendarDays=[{date:'2026-11-06',available:true,totalPeople:1,items:[{employmentId:'emp-siti',name:null}],nextCursor:null}];
+  const view=await show(EMPLOYEE,['co-a']);
+  expect([...view.section('today-at-a-glance')!.querySelectorAll('[data-today-away]')].map(text)).toEqual(['Your manager is away on Fri, Nov 6.']);
  });
 
  it('runs no administrator read and keeps the existing dashboard under More',async()=>{
