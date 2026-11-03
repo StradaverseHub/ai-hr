@@ -6,7 +6,7 @@ CREATE FUNCTION app.reward_entry_published_write_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE unit public.reward_unit; assessment jsonb; expected_facts jsonb;
  floor record; levels text[]:=ARRAY['standard','bg','ec']; current_rank integer; old_floor_rank integer; next_floor_rank integer;
- next_confidentiality text; floor_changed boolean;
+ next_confidentiality text; floor_changed boolean; floor_reason jsonb;
 BEGIN
  floor_changed:=ROW(NEW.source->'confidentialityFloor',NEW.source->'confidentialityReason')
   IS DISTINCT FROM ROW(OLD.source->'confidentialityFloor',OLD.source->'confidentialityReason');
@@ -64,9 +64,10 @@ BEGIN
     AND NEW.facts->'reviewed'='false'::jsonb THEN RETURN NEW; END IF;
 
    SELECT * INTO floor FROM app.reward_confidentiality_floors(unit.id,ARRAY[OLD.employment_id],unit.snapshot_date);
+   floor_reason:=CASE WHEN floor.level IS NULL THEN NULL
+    ELSE jsonb_build_object('seat',floor.level,'managerEmploymentId',floor.manager_employment_id) END;
    IF NEW.source->>'confidentialityFloor' IS NOT DISTINCT FROM floor.level
-    AND NEW.source->'confidentialityReason' IS NOT DISTINCT FROM CASE WHEN floor.level IS NULL THEN NULL
-     ELSE jsonb_build_object('seat',floor.level,'managerEmploymentId',floor.manager_employment_id) END
+    AND NEW.source->'confidentialityReason' IS NOT DISTINCT FROM floor_reason
    THEN
     current_rank:=array_position(levels,OLD.facts->>'confidentiality');
     old_floor_rank:=array_position(levels,coalesce(OLD.source->>'confidentialityFloor','standard'));
