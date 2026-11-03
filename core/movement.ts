@@ -1516,10 +1516,12 @@ async function assertOwnMovementEmploymentTx(tx:Tx,ctx:SessionContext,employment
 }
 
 export function ownMovementHistory(ctx:SessionContext,employmentId:string):Promise<MovementHistoryRow[]>{
-  return withTenant(ctx,async tx=>{
-    await assertOwnMovementEmploymentTx(tx,ctx,employmentId);
-    return projectMovementHistoryTx(tx,ctx,employmentId);
-  });
+  return withTenant(ctx,tx=>ownMovementHistoryTx(tx,ctx,employmentId));
+}
+
+export async function ownMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string):Promise<MovementHistoryRow[]>{
+  await assertOwnMovementEmploymentTx(tx,ctx,employmentId);
+  return projectMovementHistoryTx(tx,ctx,employmentId);
 }
 
 /** Explicit owner read seam for a caller-held scoped report snapshot. */

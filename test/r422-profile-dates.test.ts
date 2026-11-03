@@ -286,7 +286,9 @@ async function seedEmployee() {
   const rows = await movementHistory(a, e.employmentId);
   const secondment = rows.find((r) => r.kind === 'secondment');
   expect(secondment, 'the fixture recorded a secondment').toBeDefined();
-  return { ...e, secondmentId: secondment!.id };
+  const editable=rows.find(row=>row.kind==='secondment'&&row.canEdit);
+  expect(editable,'the fixture provides a movement with actual edit authority').toBeDefined();
+  return { ...e, secondmentId: secondment!.id, editableMovementId:editable!.id };
 }
 
 import {PersonnelMovementPage} from '../app/admin/personnel/[employmentId]/movement/movement-page';
@@ -354,7 +356,7 @@ describe('r422 — the employee profile draws every date as DD-MMM-YYYY', () => 
       { tab: 'careerMovement', movement: 'hired' },
       { tab: 'careerMovement', movement: e.secondmentId },
       { tab: 'careerMovement', newEvent: '1' },
-      { tab: 'careerMovement', editMovement: e.secondmentId },
+      { tab: 'careerMovement', editMovement: e.editableMovementId },
       { tab: 'careerMovement', correctHire: '1' },
       { tab: 'careerMovement', showCorrected: '1' },
     ];

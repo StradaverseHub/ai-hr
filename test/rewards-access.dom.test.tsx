@@ -192,7 +192,9 @@ it('shows an exact pending request and gives only an independent checker the dec
  expect(pending.queryByRole('button',{name:c.approve})).toBeNull();
  expect(pending.queryByRole('button',{name:c.reject})).toBeNull();
  expect(pending.getByText(c.needsChecker)).toBeTruthy();
-    it('requires a reason before preview and explains pending versus immediate application',async()=>{
+});
+
+it('requires a reason before preview and explains pending versus immediate application',async()=>{
         show();fireEvent.click(within(screen.getAllByRole('table')[0]).getByRole('button',{name:/Edit · Rewards Lead/}));pick('New Reviewer');
         expect(screen.getByRole('button',{name:'Preview changes'}).hasAttribute('disabled')).toBe(true);
         ports.preview.mockImplementationOnce(async input=>({ok:true,preview:{...input,digest:'a'.repeat(64),pending:true}}));
@@ -203,5 +205,3 @@ it('shows an exact pending request and gives only an independent checker the dec
         ports.preview.mockImplementationOnce(async input=>({ok:true,preview:{...input,digest:'a'.repeat(64),pending:false}}));
         fireEvent.click(screen.getByRole('button',{name:'Preview changes'}));expect(await screen.findByText(en.rewardsAccessControl.immediatePreview)).toBeTruthy();
     });
-
-});

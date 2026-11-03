@@ -11,7 +11,7 @@ import {ownMovementHistory,ownMovementDetail} from './movement';
 import {listAllProfileOptions} from './profile-options';
 import {listEmploymentPayComponents,listCp38} from '../packs/payroll/service';
 import {shiftArrangementHistory,scheduleGroupLookupTx,scheduleGroupDisplayName} from '../packs/attendance/service';
-import {leaveBalancesTx,leaveEntitlementBreakdownTx,benefitSchemeViewTx,serviceYearsMonthsDaysAt} from '../packs/leave/service';
+import {leaveBalancesTx,leaveEntitlementBreakdownTx,ownBenefitSchemeViewTx,serviceYearsMonthsDaysAt} from '../packs/leave/service';
 import {isModuleEnabled} from './entitlements';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
@@ -40,7 +40,7 @@ export async function readOwnProfileFacts(ctx:SessionContext,employmentId:string
   leaveOn?withTenant(ctx,async tx=>{
    const balances=await leaveBalancesTx(tx,ctx,employmentId,undefined,{asOf:today});
    const breakdowns=await Promise.all(balances.map(row=>leaveEntitlementBreakdownTx(tx,employmentId,row.leaveTypeId,today,undefined,{})));
-   return {balances,breakdowns,scheme:await benefitSchemeViewTx(tx,ctx,employmentId,today)};
+   return {balances,breakdowns,scheme:await ownBenefitSchemeViewTx(tx,ctx,employmentId,today)};
   }):null,
   leaveOn?leaveRequestsFor(ctx,employmentId):[],
  ]);

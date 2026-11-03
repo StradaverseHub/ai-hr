@@ -1,6 +1,6 @@
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
-import {assertModuleEnabled,isModuleEnabledOrFalse} from './entitlements';
+import {assertModuleEnabled,isModuleEnabled} from './entitlements';
 import {withProbationTenant,probationAdministrationOptions,ProbationError} from './probation';
 import {probationWorkflowIssues,type ProbationWorkflow,type ProbationWorkflowEvent,type ProbationTemplate} from '../lib/probation-workflow';
 export type {ProbationWorkflow,ProbationTemplate};
@@ -24,7 +24,7 @@ export function probationNotificationRecipientsTx(tx:Tx,ev:{id?:string;aggregate
 export type ProbationRequiredWorkflowStatus={companyName:string;canConfigure:boolean;missing:ProbationWorkflowEvent[];summaryReady:boolean};
 /** Scoped readiness metadata for setup and the tracker, without exposing message drafts. */
 export function probationRequiredWorkflowStatus(ctx:SessionContext,companyId:string):Promise<ProbationRequiredWorkflowStatus|null>{
- if(ctx.entitlementsExempt===undefined&&!isModuleEnabledOrFalse(ctx,'lifecycle',companyId))return Promise.resolve(null);
+ if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle',companyId))return Promise.resolve(null);
  return withProbationTenant(ctx,async tx=>{
   const [row]=await tx.execute<{data:ProbationRequiredWorkflowStatus|null}>(sql`select app.probation_required_workflow_status(${companyId}::uuid) as data`);
   return row.data;
