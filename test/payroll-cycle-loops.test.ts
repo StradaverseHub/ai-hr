@@ -31,10 +31,10 @@ import {terasPayrollLoopSetting,terasPayrollSwingDisposition,terasPayrollThresho
 import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee,setEmploymentPaymentMethod} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {listPayComponents,seedPayComponentCatalog,setEmploymentPayComponent} from '../core/pay-components';
+import {listPayComponents,seedPayComponentCatalog,setEmploymentPayComponent,setPayrollBatchComponent} from '../core/pay-components';
 import {upsertCompanyBankProfile} from '../core/bank-profile';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
-import {closeBatch,createAdditionalRun,createBatch,generatePayslips,payrollReadiness,setPayrollInput} from '../packs/payroll/service';
+import {closeBatch,createAdditionalRun,createBatch,generatePayslips,payrollReadiness} from '../packs/payroll/service';
 import {thresholdsInForce} from '../core/payroll-anomaly';
 import {checkIn,checkOut,requestAttendanceCorrection} from '../core/attendance';
 import {assignDefaultShift,createShift} from '../core/roster';
@@ -243,7 +243,9 @@ async function payrollFixture(){
  for(const [i,amount] of [1000,1100,1200,1300,1400].entries())await setEmploymentPayComponent(a,{employmentId:people[i].employmentId,componentId:housing.id,amount,effectiveFrom:'2026-06-01'});
  const june=(await createBatch(a,{companyId:b.companyId,payPeriod:JUNE})).batchId;await generatePayslips(a,{batchId:june});
  const bonus=(await createAdditionalRun(a,{companyId:b.companyId,payPeriod:JUNE,runType:'bonus'})).batchId;
- await setPayrollInput(a,{batchId:bonus,employmentId:people[6].employmentId,overtimeAmount:0,bonusAmount:2000});
+ // With typed pay items in use (the housing allowance is one), a bonus run pays the catalogue's BONUS item for the run.
+ const bonusItem=(await listPayComponents(a,{includeArchived:true})).find(component=>component.code==='BONUS')!;
+ await setPayrollBatchComponent(a,{batchId:bonus,employmentId:people[6].employmentId,componentId:bonusItem.id,amount:2000});
  await generatePayslips(a,{batchId:bonus});
  const offCycle=(await createAdditionalRun(a,{companyId:b.companyId,payPeriod:JUNE,runType:'off_cycle'})).batchId;
  await upsertCompanyBankProfile(a,{companyId:b.companyId,bank:'ocbc_bank',corporateId:'A999999',debitAccountNo:'1234567890',orgName:'FICTIONAL COMPANY',branch:'00701',
