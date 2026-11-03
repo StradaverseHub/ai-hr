@@ -53,7 +53,9 @@ export async function updateGeneration(_previous:GenerationActionState,form:Form
 export async function declineLetterRequestAction(form:FormData){
  const companyId=value(form,'companyId'),requestId=value(form,'requestId'),version=value(form,'expectedVersion');
  if(!uuid.test(companyId))redirect('/letters/generate?requestError=invalid');
- const back=(key:'requestNotice'|'requestError',code:string)=>'/letters/generate?'+new URLSearchParams({companyId,[key]:code})+'#letter-requests';
+ // Back to the list it was declined from: the company's, or every company's (Today's link).
+ const all=value(form,'requests')==='all';
+ const back=(key:'requestNotice'|'requestError',code:string)=>'/letters/generate?'+new URLSearchParams({companyId,...(all?{requests:'all'}:{}),[key]:code})+'#letter-requests';
  let code:string|null=null;
  try{if(!uuid.test(requestId)||!/^\d{1,9}$/.test(version))throw new LetterRequestError('invalid');
   await declineLetterRequest(await getSession(),{requestId,reason:value(form,'reason'),expectedVersion:Number(version)});}

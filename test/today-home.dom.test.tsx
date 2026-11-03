@@ -488,7 +488,7 @@ describe('Today for an HR administrator',()=>{
   const view=await show(HR_ADMIN,['co-a']);
   const card=view.section('today-needs-you')!.querySelector('[data-today-finding="letterRequests"]');
   expect(text(card?.querySelector('h3'))).toBe('2 letter requests wait for you');
-  expect(card?.querySelector('a')?.getAttribute('href')).toBe('/letters/generate#letter-requests');
+  expect(card?.querySelector('a')?.getAttribute('href')).toBe('/letters/generate?requests=all#letter-requests');
   expect(text(card)).toContain('Employee letter requests');
   expect(S.calls.letters).toEqual([['co-a']]);
  });

@@ -164,7 +164,7 @@ export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonl
  const fixes=proposals?.ok?proposals.value.reduce((sum,proposal)=>sum+proposal.count,0):0;
  if(fixes>0)findings.push(Object.freeze({key:'proposals',count:fixes,href:'/control-tower/actions'}));
  const waitingLetters=letterRequests.ok?letterRequests.value:0;
- if(waitingLetters>0)findings.push(Object.freeze({key:'letterRequests',count:waitingLetters,href:'/letters/generate#letter-requests'}));
+ if(waitingLetters>0)findings.push(Object.freeze({key:'letterRequests',count:waitingLetters,href:'/letters/generate?requests=all#letter-requests'}));
  const failed=modules.failed()||!tasks.ok||!loops.ok||[proposals,readiness,letterRequests].some(result=>result!==null&&!result.ok);
  const merged=mergeReviewLoops(list,loops.ok?loops.value:[]);
  return Object.freeze({tasks:list,recommender,prepared:detailed,findings,loops:merged.loops,taskLoops:merged.taskLoops,failed});

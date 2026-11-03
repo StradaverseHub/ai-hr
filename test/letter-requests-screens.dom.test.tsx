@@ -9,13 +9,13 @@ import {createTranslator} from 'next-intl';
 import en from '../messages/en.json';
 
 const svc=vi.hoisted(()=>({mine:vi.fn(),requestable:vi.fn(),staff:vi.fn(),one:vi.fn(),options:vi.fn(),letters:vi.fn(),access:vi.fn(),templates:vi.fn(),batches:vi.fn(),
- template:vi.fn(),policies:vi.fn(),assets:vi.fn(),session:{current:{} as Record<string,unknown>}}));
+ template:vi.fn(),policies:vi.fn(),assets:vi.fn(),session:{current:{} as Record<string,unknown>,scope:null as string[]|null}}));
 vi.mock('next/link',()=>({default:({children,prefetch:_prefetch,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('NOT_FOUND');},redirect:(url:string)=>{throw new Error('REDIRECT:'+url);},usePathname:()=>'/me/letters',
  useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:en as never,namespace})}));
 vi.mock('../lib/authz',()=>({requireModule:async()=>({})}));
-vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:svc.session.current,scopeIds:[COMPANY],allowedCount:1})}));
+vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:svc.session.current,scopeIds:svc.session.scope??[COMPANY],allowedCount:1})}));
 vi.mock('../core/letters',()=>({listMyLetters:svc.letters,letterCompanyAccess:svc.access,listLetterTemplates:svc.templates,listLetterGenerationBatches:svc.batches,
  getLetterTemplate:svc.template,getStaffLetter:vi.fn(),listLetterPolicies:svc.policies,listLetterSettingAssets:svc.assets}));
 vi.mock('../core/letter-requests',()=>({LETTER_REQUEST_LIMITS:{purposeChars:300,reasonChars:500,list:50,options:200},listMyLetterRequests:svc.mine,
@@ -43,7 +43,7 @@ const staff=(over:Record<string,unknown>={})=>({id:REQUEST,companyId:COMPANY,emp
  employeeCode:'LR-0001',publishedVersionId:VERSION,...over});
 
 beforeEach(()=>{
- vi.clearAllMocks();svc.session.current=employee;
+ vi.clearAllMocks();svc.session.current=employee;svc.session.scope=null;
  svc.letters.mockResolvedValue({rows:[],nextCursor:null});svc.mine.mockResolvedValue([]);svc.requestable.mockResolvedValue([]);
  svc.access.mockResolvedValue([{id:COMPANY,name:'Fictional Sdn Bhd',read:true,generate:true,settings:true,approve:false}]);
  svc.templates.mockResolvedValue({rows:[],nextCursor:null});svc.batches.mockResolvedValue({rows:[],nextCursor:null});svc.staff.mockResolvedValue([]);
@@ -135,6 +135,29 @@ describe('Letter requests on the generate page (HR holding generate)',()=>{
   expect(within(second).queryByRole('link',{name:staffCopy.prepare})).toBeNull();expect(within(second).getByText(staffCopy.prepareUnavailable)).toBeTruthy();
   expect(second.textContent).toContain(staffCopy.employee+': Badrul Fictional');
   expect(svc.staff).toHaveBeenCalledExactlyOnceWith(hrAdmin,{companyId:COMPANY});
+ });
+ it('from Today (requests=all): the waiting requests of every company the user handles, each naming its company, oldest first',async()=>{
+  const OTHER='00000000-0000-4000-8000-00000000c0bb',THIRD='00000000-0000-4000-8000-0000000000b3';
+  svc.session.scope=[COMPANY,OTHER];
+  svc.access.mockResolvedValue([{id:COMPANY,name:'Fictional Sdn Bhd',read:true,generate:true,settings:true,approve:false},
+   {id:OTHER,name:'Fictional Other Sdn Bhd',read:true,generate:true,settings:false,approve:false}]);
+  svc.staff.mockImplementation(async(_s:unknown,input:{companyId:string})=>input.companyId===COMPANY?[staff()]
+   :[staff({id:THIRD,companyId:OTHER,createdAt:new Date('2026-11-01T02:00:00Z'),employeeName:'Chong Fictional',employeeCode:null,purpose:null})]);
+  render(await GeneratePage({searchParams:Promise.resolve({requests:'all'})}));
+  expect(svc.staff.mock.calls.map(call=>call[1])).toEqual([{companyId:COMPANY},{companyId:OTHER}]);
+  const rows=[...screen.getByRole('region',{name:staffCopy.title}).querySelectorAll<HTMLElement>('[data-letter-request]')];
+  expect(rows.map(row=>row.querySelector('[data-letter-request-company]')?.textContent)).toEqual(['Company: Fictional Other Sdn Bhd','Company: Fictional Sdn Bhd']);
+  expect(rows[0].textContent).toContain(staffCopy.employee+': Chong Fictional');
+  // Decline names the request's own company and returns to the same list.
+  const hidden=(row:HTMLElement)=>Object.fromEntries([...row.querySelectorAll<HTMLInputElement>('input[type="hidden"]')].map(input=>[input.name,input.value]));
+  expect(hidden(rows[0])).toEqual({companyId:OTHER,requestId:THIRD,expectedVersion:'1',requests:'all'});
+  expect(hidden(rows[1])).toEqual({companyId:COMPANY,requestId:REQUEST,expectedVersion:'1',requests:'all'});
+  cleanup();
+  // Without it, the page keeps the one company's list and names no company.
+  svc.staff.mockClear();
+  render(await GeneratePage({searchParams:Promise.resolve({companyId:OTHER})}));
+  expect(svc.staff.mock.calls.map(call=>call[1])).toEqual([{companyId:OTHER}]);
+  expect(screen.getByRole('region',{name:staffCopy.title}).querySelector('[data-letter-request-company]')).toBeNull();
  });
  it('says when nothing is waiting, when the list is unavailable, and what a decline did',async()=>{
   render(await GeneratePage({searchParams:Promise.resolve({companyId:COMPANY,requestNotice:'declined'})}));

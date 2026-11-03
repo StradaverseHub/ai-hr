@@ -11,7 +11,10 @@ export type LetterRequestQueueLabels=Readonly<{title:string;intro:string;empty:s
  * "Prepare letter" opens the existing generate flow on the request's employee and template (the template's published
  * version now); HR writes, approves and issues the letter there as today. "Decline" needs a reason, which stays with HR:
  * the employee is told only that the request was declined. Rendered on the server; every action re-checks. */
-export function LetterRequestQueue({companyId,requests,labels,formatDate}:{companyId:string;requests:readonly StaffLetterRequest[]|null;labels:LetterRequestQueueLabels;formatDate:(date:Date)=>string}){
+/** `all` (Today's link, `requests=all`): the requests of every company the user may handle; each names its company when
+ * there is more than one (`companyNames`), and Decline returns to the same list. */
+export function LetterRequestQueue({companyId,requests,labels,formatDate,all=false,companyNames,companyLabel}:{companyId:string;requests:readonly StaffLetterRequest[]|null;labels:LetterRequestQueueLabels;formatDate:(date:Date)=>string;
+ all?:boolean;companyNames?:ReadonlyMap<string,string>;companyLabel?:string}){
  return <section id="letter-requests" className="space-y-3" aria-labelledby="letter-requests-title">
   <h2 id="letter-requests-title" className="font-semibold">{labels.title}</h2>
   <p className="text-sm text-muted-foreground">{labels.intro}</p>
@@ -20,6 +23,7 @@ export function LetterRequestQueue({companyId,requests,labels,formatDate}:{compa
    :<ul className="space-y-3">{requests.map(request=><li key={request.id}><Card className="space-y-3 p-4" data-letter-request={request.status}>
     <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 space-y-1">
      <h3 className="break-words font-semibold">{request.letterTypeName}</h3>
+     {companyNames&&companyLabel&&<p data-letter-request-company className="break-words text-sm">{companyLabel}: {companyNames.get(request.companyId)??'—'}</p>}
      <p className="break-words text-sm">{labels.employee}: {request.employeeName??'—'}{request.employeeCode?' · '+request.employeeCode:''}</p>
      <p className="text-xs text-muted-foreground">{labels.requestedOn(formatDate(request.createdAt))}</p></div>
      <StatusBadge status={'letter_request_'+request.status} label={labels.status[request.status]}/></div>
@@ -31,7 +35,8 @@ export function LetterRequestQueue({companyId,requests,labels,formatDate}:{compa
       :<p className="text-sm text-muted-foreground">{labels.prepareUnavailable}</p>}
      <details className="min-w-0 flex-1 basis-64"><summary className="inline-flex min-h-11 cursor-pointer items-center rounded-md border px-4 text-sm font-medium hover:bg-muted">{labels.decline}</summary>
       <form action={declineLetterRequestAction} className="mt-3 space-y-3">
-       <input type="hidden" name="companyId" value={companyId}/><input type="hidden" name="requestId" value={request.id}/><input type="hidden" name="expectedVersion" value={request.version}/>
+       <input type="hidden" name="companyId" value={all?request.companyId:companyId}/><input type="hidden" name="requestId" value={request.id}/><input type="hidden" name="expectedVersion" value={request.version}/>
+       {all&&<input type="hidden" name="requests" value="all"/>}
        <Field label={labels.declineReason}><textarea name="reason" required maxLength={LETTER_REQUEST_LIMITS.reasonChars} rows={3} className={inputCls+' h-auto min-h-20 py-2'}/></Field>
        <p className="text-xs text-muted-foreground">{labels.declineHelp}</p>
        <Button type="submit" variant="outline" className="pointer-coarse:min-h-11">{labels.declineSubmit}</Button>
