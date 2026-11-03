@@ -20,7 +20,8 @@ import {Sidebar} from '../components/sidebar';
 
 const nav=messages.nav;
 type Role='employee'|'manager'|'hrAdmin'|'groupAdmin';
-const PROPS:Readonly<Record<Role,Record<string,boolean>>>={
+type RoleProps={isAdmin:boolean;canAdministerAi:boolean;canConfigureAiProvider:boolean;canApprove:boolean;canAccessTeam:boolean};
+const PROPS:Readonly<Record<Role,RoleProps>>={
  employee:{isAdmin:false,canAdministerAi:false,canConfigureAiProvider:false,canApprove:false,canAccessTeam:false},
  manager:{isAdmin:false,canAdministerAi:false,canConfigureAiProvider:false,canApprove:true,canAccessTeam:true},
  hrAdmin:{isAdmin:true,canAdministerAi:true,canConfigureAiProvider:false,canApprove:false,canAccessTeam:true},

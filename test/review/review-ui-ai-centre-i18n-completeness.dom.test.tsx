@@ -78,7 +78,9 @@ describe('AI centre catalogue completeness', () => {
       // Arguments of the live-chat wiring copy (aiCentre.conversation, PR 197), added by claude/teras-review-fixes.
       time: '3:00 pm', reads: 'your leave balances',
       // Arguments of the leave application card title (aiCentre.conversation.leaveApply*Title, issue 10).
-      leaveType: 'Annual Leave', start: 'Thu, Nov 5', end: 'Fri, Nov 6', days: 2 };
+      leaveType: 'Annual Leave', start: 'Thu, Nov 5', end: 'Fri, Nov 6', days: 2,
+      // Argument of the second tab row's label (aiCentre.sectionsLabel, issue 17).
+      tab: 'Operations' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

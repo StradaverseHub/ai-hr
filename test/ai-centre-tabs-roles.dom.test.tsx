@@ -8,7 +8,7 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen,within} from '@testing-library/react';
 import type {ReactNode} from 'react';
-import {createTranslator,NextIntlClientProvider} from 'next-intl';
+import {NextIntlClientProvider} from 'next-intl';
 import {withAiCentre} from './helpers/ai-centre-messages';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 import en from '../messages/en.json';
@@ -116,7 +116,7 @@ describe('an Operations page renders inside AI Centre',()=>{
   state.locale=locale;state.session=SESSIONS.groupAdmin;
   const copy=messagesFor(locale);
   const view=wrap(locale,await ReadinessPage());
-  const sectionsName=createTranslator({locale,messages:copy as never,namespace:'aiCentre'})('sectionsLabel',{tab:copy.aiCentre.tabs.operations});
+  const sectionsName=String(copy.aiCentre.sectionsLabel).replace('{tab}',String(copy.aiCentre.tabs.operations));
   const second=screen.getByRole('navigation',{name:sectionsName});
   expect(within(second).getByRole('link',{current:'page'}).textContent).toBe(copy.aiCentre.sections.readiness);
   expect(screen.getByRole('link',{name:copy.aiCentre.tabs.operations})).toHaveAttribute('aria-current','page');
