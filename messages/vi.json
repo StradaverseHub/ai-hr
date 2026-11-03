@@ -5339,7 +5339,7 @@
     "submitDecisions": "Gửi",
     "employeeRemark": "Ghi chú của nhân viên",
     "closeDialog": "Đóng",
-    "bulkSelectAll": "Chọn tất cả",
+    "bulkSelectAll": "Chọn tất cả trên trang này",
     "bulkSelectRow": "Chọn yêu cầu",
     "bulkSelected": "Đã chọn: {count, plural, other {# yêu cầu}}",
     "bulkClear": "Xóa",

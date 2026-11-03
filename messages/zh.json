@@ -5339,7 +5339,7 @@
     "submitDecisions": "提交",
     "employeeRemark": "员工备注",
     "closeDialog": "关闭",
-    "bulkSelectAll": "全选",
+    "bulkSelectAll": "选择本页全部项目",
     "bulkSelectRow": "选择申请",
     "bulkSelected": "已选择：{count, plural, other {# 项申请}}",
     "bulkClear": "清除",

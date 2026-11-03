@@ -12,7 +12,7 @@ import {setRestDay} from '../core/roster';
 import {grantAssistant} from '../core/assistant-grant';
 import {withApprovalDelegatesTx} from '../core/notifications';
 import {withDelegatedRequestEffectTx} from '../core/delegated-request-effect';
-import {createClaimType,setClaimPolicy,submitClaim,decideClaim,listPendingClaims,pendingClaimTaskMetadata} from '../packs/claims/service';
+import {createClaimType,setClaimPolicy,submitClaim,decideClaim,listPendingClaims,listPendingClaimsPage,pendingClaimTaskMetadata} from '../packs/claims/service';
 import {requestAttendanceCorrection,decideAttendanceCorrection,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
 import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequest,listPendingReplacementLeaveRequests,listPendingReplacementLeaveTasks} from '../packs/leave/service';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../core/assistant-actions/assigned-decision-review-store';
@@ -97,6 +97,7 @@ describe('request-bound delegated approval effects',()=>{
  it('lists narrow names in native claims and replacement inboxes and task metadata',async()=>{
   const c=await claim(),t=await toil();
   expect((await listPendingClaims(delegate)).map(r=>r.id)).toContain(c);
+  expect((await listPendingClaimsPage(delegate)).rows.map(r=>r.id)).toContain(c);
   expect((await pendingClaimTaskMetadata(delegate)).map(r=>r.id)).toContain(c);
   expect((await listPendingReplacementLeaveRequests(delegate)).map(r=>r.id)).toContain(t);
   expect((await listPendingReplacementLeaveTasks(delegate)).map(r=>r.id)).toContain(t);
