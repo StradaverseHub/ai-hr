@@ -3,7 +3,7 @@
 import {withTenant,type SessionContext} from '../db/client';
 import {requireOwnHomeSubject} from './employee-home';
 import {readOwnEmployeeHomeConfiguration} from './employee-home-configuration';
-import {readEmployeeHomeTasks} from './employee-home-tasks';
+import {countEmployeeHomeTasks} from './employee-home-tasks';
 import {isModuleEnabled} from './entitlements';
 import {listEligibleLeaveTypesFor} from './read';
 import {nextApprovedLeavePresenceTx} from '../packs/leave/service';
@@ -26,8 +26,8 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
  const now=new Date(),today=todayInKualaLumpur(now),through=new Date(Date.parse(today+'T00:00:00Z')+HOME_SUMMARY_LOOKAHEAD_DAYS*86400000).toISOString().slice(0,10);
  const leaveOn=isModuleEnabled(ctx,'leave'),payrollOn=isModuleEnabled(ctx,'payroll'),claimsOn=isModuleEnabled(ctx,'claims');
  const configured=new Set(configuration.quickActions);
- const [tasks,leave,holidays,replacements,payroll,leaveTypes,claimAvailable,profile]=await Promise.all([
-  readEmployeeHomeTasks(ctx,subject.employmentId),
+ const [taskCount,leave,holidays,replacements,payroll,leaveTypes,claimAvailable,profile]=await Promise.all([
+  countEmployeeHomeTasks(ctx),
   leaveOn?withTenant(ctx,tx=>nextApprovedLeavePresenceTx(tx,subject.employmentId,today)):Promise.resolve(null),
   withTenant(ctx,tx=>originalHolidayCalendarFor(tx,{employmentId:subject.employmentId,startDate:today,endDate:through})),
   withTenant(ctx,tx=>replacementHolidayCalendarProjectionsTx(tx,{employmentIds:[subject.employmentId],startDate:today,endDate:through})),
@@ -40,7 +40,7 @@ export async function readEmployeeHomeSummary(ctx:SessionContext,employmentId:st
  const candidates:HomeSummaryCandidate[]=[];
  // Actionable work precedes informational reminders. This is presentation ranking, not an invented
  // due date or overdue assertion; the task owner alone supplies those facts in Waiting for You.
- if(tasks.total>0)candidates.push({key:'tasks',templateKey:'tasksPending',importance:'urgent',destination:'tasks',values:{count:tasks.total}});
+ if(taskCount>0)candidates.push({key:'tasks',templateKey:'tasksPending',importance:'urgent',destination:'tasks',values:{count:taskCount}});
  if(leave&&leave.date<=through)candidates.push({key:'leave:'+leave.requestId,templateKey:'leaveApproved',importance:'goodNews',destination:'leave',values:{dates:date(leave.date)}});
  const holiday=[...holidays.filter(row=>!row.tentative&&row.active).map(row=>({key:'holiday:'+row.id,date:row.date,name:row.name})),
   ...replacements.map(row=>({key:'replacement:'+row.id,date:row.replacementDate,name:replacementHolidayName}))]
