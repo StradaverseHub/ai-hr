@@ -7,6 +7,7 @@ import {migrateTestDb,resetDb,seedBase,adminCtx,owner,closeAll,type Base} from '
 import {client,db,withTenant,type SessionContext} from '../db/client';
 import {appUser,tenant,company,roleAssignment} from '../db/schema';
 import {publishActionCapabilityPackage,publishWorkforceCapabilities as publishAllActionCapabilities,publishWorkforceActionPackage as publishWorkforceCapabilities,WORKFORCE_CAPABILITY_BINDINGS_V2 as WORKFORCE_CAPABILITY_BINDINGS,WORKFORCE_ACTION_PACKAGE_BINDINGS_SHA256 as WORKFORCE_CAPABILITY_BINDINGS_SHA256} from '../deploy/access/publish-workforce-capabilities';
+import {hireEmployee} from '../core/org';
 import {workforceCompanies} from '../core/workforce-access';
 import {readAccessConfigurationEditor} from '../core/access-configuration-editor';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
@@ -124,7 +125,7 @@ it('registers exact mixed-case native submenu IDs while preserving closed gramma
 it('reports registered actions without a package and leaves the full publisher closed',async()=>{
  const before=await snapshot();
  await expect(publishAllActionCapabilities(owner.client))
-  .rejects.toThrow(/registry coverage differs .*function\.profileChanges\.maintenance\.edit/);
+  .rejects.toThrow(/registry coverage differs .*function\.employeeMasterReports\.view/);
  expect(await snapshot()).toEqual(before);
 });
 it('publishes Workforce Records and preserves the separate Edit denial',async()=>{
@@ -144,6 +145,26 @@ it('publishes Workforce Records and preserves the separate Edit denial',async()=
  }finally{
   await owner.client`delete from app.access_native_capability_default where capability_id like 'function.workforceRecords.%'`;
   await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.workforceRecords.%'`;
+ }
+});
+it('publishes Profile Maintenance and separates View from reroute Edit',async()=>{
+ const ctx=adminCtx(b),cap='function.profileChanges.maintenance.edit';
+ const subject=await hireEmployee(ctx,{person:{fullName:'Fictional profile maintenance subject',primaryEmail:'maintenance@fixture.invalid'},
+  companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01'});
+ await publishWorkforceCapabilities(owner.client);
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'profile_maintenance')).toMatchObject({changed:true,capabilities:2});
+  expect(await publishActionCapabilityPackage(owner.client,'profile_maintenance')).toMatchObject({changed:false});
+  const read=()=>withTenant(ctx,tx=>tx.execute(sql`select
+   app.workforce_profile_maintenance_allowed(${subject.employmentId}::uuid,'view') as view,
+   app.workforce_profile_maintenance_allowed(${subject.employmentId}::uuid,'edit') as edit`));
+  expect(await read()).toEqual([{view:true,edit:true}]);
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${ctx.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  expect(await read()).toEqual([{view:true,edit:false}]);
+ }finally{
+  await owner.client`delete from app.access_native_capability_default where capability_id like 'function.profileChanges.maintenance.%'`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.profileChanges.maintenance.%'`;
  }
 });
 it('keeps Workforce Imports closed if the Qualification subject guard is disabled',async()=>{

@@ -4684,6 +4684,13 @@
       "when": 1793330000365,
       "tag": "0965_workforce_record_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 813,
+      "version": "7",
+      "when": 1793330000366,
+      "tag": "0966_profile_maintenance_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

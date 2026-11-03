@@ -120,3 +120,17 @@ export const WORKFORCE_RECORD_CAPABILITY_PUBLICATION={
   'app.access_workforce_maintain_record(uuid,text,uuid,text,jsonb,text)',
  ],
 } as const;
+
+export const PROFILE_MAINTENANCE_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:WORKFORCE_FUNCTIONS.filter(descriptor=>descriptor.key==='profileChanges.maintenance'),
+ functionLegacyParityFunction:'app.workforce_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.workforce_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.profile_maintenance_bindings_complete()',
+  'app.workforce_profile_maintenance_allowed(uuid,text)',
+  'app.profile_request_reader(uuid)',
+  'app.profile_changes_maintenance_write_guard()',
+ ],
+} as const;
