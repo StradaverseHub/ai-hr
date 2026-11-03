@@ -4,6 +4,8 @@ import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {employeeDraftCreateCompanies,getEmployeeDraft,saveEmployeeDraft} from '../core/employee-draft';
+import {hireEmployee} from '../core/org';
+import {publishActionCapabilityPackage,publishWorkforceActionPackage} from '../deploy/access/publish-workforce-capabilities';
 import {pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base;
@@ -28,4 +30,29 @@ it('preserves the actual author read after a scope move without granting another
  expect(pgSqlState(denial)).toBe('42501');
  const [authority]=await owner.client`select app.workforce_draft_author_legacy_allowed(${b.tenantId}::uuid,${userId}::uuid,'function.workforceDrafts.author.view',null) as author,app.workforce_function_legacy_allowed(${b.tenantId}::uuid,${userId}::uuid,'function.workforceDrafts.view',${b.companyId}::uuid) as administers`;
  expect(authority).toEqual({author:true,administers:false});
+});
+
+it('publishes Drafts and applies Execute independently of Edit and ordinary new hire',async()=>{
+ const ctx=adminCtx(b);
+ await publishWorkforceActionPackage(owner.client);
+ const draft=await saveEmployeeDraft(ctx,{currentStep:1,data:{profile:{fullName:'Fictional Execute subject'},employment:{companyId:b.companyId}}});
+ const cap='function.workforceDrafts.execute';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'workforce_drafts')).toMatchObject({changed:true,capabilities:9});
+  expect(await publishActionCapabilityPackage(owner.client,'workforce_drafts')).toMatchObject({changed:false});
+  expect(await getEmployeeDraft(ctx,draft.id)).toMatchObject({actions:{canEdit:true,canActivate:true}});
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${ctx.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  expect(await getEmployeeDraft(ctx,draft.id)).toMatchObject({actions:{canEdit:true,canActivate:false}});
+  const hire={person:{fullName:'Fictional native hire',primaryEmail:'draft-execute@fixture.invalid'},
+   employeeCode:'DRAFT-EXECUTE',companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time' as const,hiredOn:'2025-01-01'};
+  let failure:unknown;
+  try{await hireEmployee(ctx,{...hire,fromEmployeeDraftId:draft.id});}catch(error){failure=error;}
+  expect(pgSqlState(failure)).toBe('42501');
+  expect(await getEmployeeDraft(ctx,draft.id)).toMatchObject({id:draft.id});
+  expect(await hireEmployee(ctx,hire)).toHaveProperty('employmentId');
+ }finally{
+  await owner.client`delete from app.access_native_capability_default where capability_id like 'function.workforceDrafts.%'`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.workforceDrafts.%'`;
+ }
 });

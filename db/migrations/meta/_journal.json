@@ -4656,6 +4656,13 @@
       "when": 1793330000361,
       "tag": "0961_workforce_import_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 809,
+      "version": "7",
+      "when": 1793330000362,
+      "tag": "0962_workforce_draft_binding_readiness",
+      "breakpoints": true
     }
   ]
 }

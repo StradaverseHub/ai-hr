@@ -69,3 +69,26 @@ export const WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION={
   'app.qualification_import_preview_subject_guard()',
  ],
 } as const;
+
+export const WORKFORCE_DRAFT_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:WORKFORCE_DRAFT_FUNCTIONS.filter(descriptor=>descriptor.key==='workforceDrafts'),
+ functionLegacyParityFunction:'app.workforce_function_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.workforce_function_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.workforce_drafts_bindings_complete()',
+  'app.workforce_draft_actions_current(uuid)',
+  'app.access_workforce_prepare_hire_source(uuid,uuid)',
+  'app.access_workforce_consumed_draft(jsonb)',
+ ],
+} as const;
+
+export const WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:WORKFORCE_DRAFT_FUNCTIONS.filter(descriptor=>descriptor.key==='workforceDrafts.author'),
+ functionLegacyParityFunction:'app.workforce_draft_author_legacy_allowed',
+ functionCurrentLegacyParityFunction:'app.workforce_draft_author_current_legacy_allowed',
+ legacyGroups:{},
+ requiredFunctions:['app.workforce_drafts_bindings_complete()'],
+} as const;

@@ -2,7 +2,7 @@
 import {createHash} from 'node:crypto';
 import type {Sql} from 'postgres';
 import {functionActionCapabilities,type FunctionActionDescriptor} from './function-action-contract';
-import {WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION} from './workforce-function-bindings';
+import {WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_CAPABILITY_PUBLICATION,WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION} from './workforce-function-bindings';
 import {FINANCIAL_SETUP_CAPABILITY_PUBLICATION} from './financial-setup-capability-bindings';
 import {FINANCIAL_LETTER_CAPABILITY_PUBLICATION} from './financial-letter-capability-bindings';
 import {ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION} from './organisation-settings-capability-bindings';
@@ -53,7 +53,7 @@ export const WORKFORCE_CAPABILITY_BINDINGS_V2=[...WORKFORCE_CAPABILITY_BINDINGS_
  ]})),
 ] as const;
 export type DomainPublication={capabilities:readonly {id:string;scope:'company'|'tenant';bindings:readonly {owner:string;operation:string}[]}[];requiredFunctions:readonly string[];legacyGroups:Record<string,readonly string[]>;legacyParityFunction?:string;delegationFloorFunction?:string;functions?:readonly FunctionActionDescriptor[];functionLegacyParityFunction?:string;currentLegacyParityFunction?:string;functionCurrentLegacyParityFunction?:string};
-export const ACTION_DOMAIN_PUBLICATIONS:readonly DomainPublication[]=[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION,FINANCIAL_SETUP_CAPABILITY_PUBLICATION,WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION];
+export const ACTION_DOMAIN_PUBLICATIONS:readonly DomainPublication[]=[FINANCIAL_LETTER_CAPABILITY_PUBLICATION,ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION,FINANCIAL_SETUP_CAPABILITY_PUBLICATION,WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION];
 export const WORKFORCE_CAPABILITY_BINDINGS=[...WORKFORCE_CAPABILITY_BINDINGS_V2,...ACTION_DOMAIN_PUBLICATIONS.flatMap(domain=>domain.capabilities)];
 export const WORKFORCE_CAPABILITY_BINDINGS_SHA256=createHash('sha256').update(JSON.stringify({version:WORKFORCE_CAPABILITY_PUBLICATION_VERSION,capabilities:WORKFORCE_CAPABILITY_BINDINGS})).digest('hex');
 const WORKFORCE_REQUIRED_FUNCTIONS=[
@@ -86,6 +86,7 @@ export function publishWorkforceActionPackage(owner:Sql){return publishActionCap
 const ACTION_PACKAGES={
  workforce:[],
  workforce_imports:[WORKFORCE_IMPORTS_CAPABILITY_PUBLICATION],
+ workforce_drafts:[WORKFORCE_DRAFT_CAPABILITY_PUBLICATION,WORKFORCE_DRAFT_AUTHOR_CAPABILITY_PUBLICATION],
  financial_letters:[FINANCIAL_LETTER_CAPABILITY_PUBLICATION],
  organisation_settings:[ORGANISATION_SETTINGS_CAPABILITY_PUBLICATION],
  financial_setup:[FINANCIAL_SETUP_CAPABILITY_PUBLICATION],
@@ -120,6 +121,11 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    const [parents]=await tx<{ready:boolean}[]>`select count(*)=3 and bool_and(supported) as ready
     from public.access_capability where id in ('workforce.view','workforce.add','workforce.edit')`;
    requireInstallation(parents?.ready,'publish Workforce parent capabilities before Workforce Imports');
+  }
+  if(key==='workforce_drafts'){
+   const [parents]=await tx<{ready:boolean}[]>`select count(*)=4 and bool_and(supported) as ready
+    from public.access_capability where id in ('workforce.view','workforce.add','workforce.edit','workforce.delete')`;
+   requireInstallation(parents?.ready,'publish Workforce parent capabilities before Workforce Drafts');
   }
   const rows=await tx<CapabilityRow[]>`select id,scope,supported,bindings,prerequisites from public.access_capability
    where id=any(${WORKFORCE_CAPABILITY_BINDINGS.map(item=>item.id)}::text[]) order by id for update`;
@@ -170,6 +176,7 @@ async function installActionCapabilities(owner:Sql,key:ActionCapabilityPackage|'
    ...(key==='all'||key==='organisation_settings'?['app.organisation_settings_bindings_complete']:[]),
    ...(key==='all'||key==='financial_setup'?['app.financial_setup_bindings_complete']:[]),
    ...(key==='all'||key==='workforce_imports'?['app.workforce_imports_bindings_complete']:[]),
+   ...(key==='all'||key==='workforce_drafts'?['app.workforce_drafts_bindings_complete']:[]),
    ...(key==='all'?['app.access_all_function_bindings_complete']:[]),
   ];
   for(const check of coverageChecks){
