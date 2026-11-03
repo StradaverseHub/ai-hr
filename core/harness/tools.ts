@@ -59,7 +59,7 @@ export type ToolCandidates=Readonly<{bindings:readonly ToolBinding[];
  destinations:readonly string[]}>;
 export type ToolProvider=(ctx:SessionContext,scope:ToolScope,actions:boolean)=>Promise<ToolCandidates>;
 
-const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change: action is one of this person\'s action ids (available_actions gives every purpose and the details each page collects). For leave.apply, details may carry leaveType, startDate and endDate (YYYY-MM-DD), durationType (full_day, half_day_am or half_day_pm) and reason, each only from the person\'s own words; leave out what they did not say. Nothing is submitted.'
+const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change. For leave.apply, details may carry leaveType, startDate and endDate (YYYY-MM-DD), durationType (full_day, half_day_am or half_day_pm) and reason, each only from the person\'s own words; leave out what they did not say. Nothing is submitted.'
  // AI v2 W2: the attendance requests prepared from chat (core/proposals/attendance-request.ts).
  +' For attendance.correction.request, details may carry date (YYYY-MM-DD), checkIn and checkOut (HH:MM, 24-hour) and reason; for attendance.overtime.request, date, plannedStartTime and plannedEndTime (HH:MM, 24-hour) and reason. The same rule applies: only what the person said.'
  // AI v2 W2: own claims and own profile changes (core/proposals/claim-submit.ts, claim-cancel.ts, profile-change.ts).

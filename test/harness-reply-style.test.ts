@@ -23,11 +23,11 @@ describe('reply style (spec v9)',()=>{
   // Owner, 3 November 2026: ask rather than guess, and offer to do it rather than point at a page. Spec v13: the options
   // are the catalogue's entries for this person, numbered by title.
   expect(instructions).toMatch(/a request that could mean several things this person can do \(such as "help me import data"\), call product_capabilities/);
-  // Spec v14: at most five numbered, the most common first, then "Something else"; one entry named is acted on without asking.
-  expect(instructions).toMatch(/If several fit, start with "Yes, I can …" and ask one short question numbering at most five, the most common first, then "Something else"; never guess\./);
+  // Spec v14 and v15: at most five numbered, the most common first, then "Something else"; one entry named is acted on without asking.
+  expect(instructions).toMatch(/If several fit, start with "Yes, I can …" and ask one short question numbering at most five, as listed \(most common first\), then "Something else"; never guess\./);
   // Spec v11: "Yes, I can …" when an action is listed; the card carries the page (test/teras-harness-v11.test.ts).
   expect(instructions).toMatch(/start with "Yes, I can …" and call suggest_action with the action from its list \(an action's id, or an import's action\), so its card comes with your reply; never open with "I can't" when an action is listed, and do not link that page in your text/);
-  expect(instructions).toMatch(/If none fits, it is not available to them here\./);
+  expect(instructions).toMatch(/anything else is not available to them here\./);
   expect(instructions).toMatch(/If a capability is not available, say so in one line/);
   // Issue 13: a pay refusal links where this person can already see pay, and sends only those without access elsewhere.
   expect(instructions).toMatch(/Individual pay never reaches you, so never give or estimate anyone's pay/);

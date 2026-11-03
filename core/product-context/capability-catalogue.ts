@@ -152,10 +152,14 @@ function actionEntries(catalogue:readonly SuggestableAction[],prepare:boolean):C
  return catalogue.filter(row=>!IMPORT_ACTIONS.has(row.id)).map(row=>({id:row.id,kind:'action' as const,mode:prepare&&PREPARED_ACTIONS.has(row.id)?'prepare' as const:'open' as const,
   area:areaOf(row.module),title:ACTION_PURPOSE[row.id]??row.id}));
 }
+/** Spec v15: the imports most people mean, listed first so "most common first" is a fact the model reads, not a guess
+ * (coordinator, 3 November 2026: employee records, leave balances, payroll history and attendance clockings). */
+export const COMMON_IMPORTS:readonly string[]=Object.freeze(['employee_records','leave_balances','payroll_history','attendance_clockings']);
+const commonRank=(id:string)=>{const rank=COMMON_IMPORTS.indexOf(id);return rank<0?COMMON_IMPORTS.length:rank;};
 async function importEntries(ctx:SessionContext,catalogue:readonly SuggestableAction[],linkable:ReadonlySet<string>,prepare:boolean):Promise<CatalogueEntry[]>{
  const admin=isAdmin(ctx),offered=new Set(catalogue.map(row=>row.id)),out:CatalogueEntry[]=[];
  let lifecycleLevel:number|undefined;
- for(const row of IMPORT_OWNERS){
+ for(const row of [...IMPORT_OWNERS].sort((a,b)=>commonRank(a.id)-commonRank(b.id))){
   if(!moduleOn(ctx,row.module))continue;
   if(row.access==='admin'&&!admin)continue;
   if(row.access==='lifecycle_agent'){if(lifecycleLevel===undefined)lifecycleLevel=await myLifecycleLevel(ctx);if(lifecycleLevel<LEVEL.agent)continue;}
@@ -202,7 +206,7 @@ export const PRODUCT_CAPABILITIES_SPEC:AiToolSpec=Object.freeze({name:READ.name,
 /** At most this many entries per result, so it always fits the harness's tool-output fence. */
 export const MAX_CAPABILITY_ENTRIES=40;
 const SUMMARY_NOTE='Counts per area of everything this person can do, import, report on or open, with example titles; entries lists what you can prepare here. For one part in full, call product_capabilities again with a kind or an area.';
-const LIST_NOTE='Only these are available to this person. When their words point to one, act on it. When several fit, ask one short question numbering at most five, the most common first, then "Something else"; never pick one yourself. suggest_action takes an action\'s id, or an import\'s action, for its card; otherwise link the page when one is given.';
+const LIST_NOTE='Only these are available to this person, most common first. When their words point to one, act on it. When several fit, ask one short question numbering at most five as listed, then "Something else"; never pick one yourself. suggest_action takes an action\'s id, or an import\'s action, for its card; otherwise link the page when one is given.';
 const MISS_NOTE='No title matched those words, so everything of this kind is listed instead. Never say something is unavailable only because the words did not match.';
 const MISS_ALL_NOTE='No title matched those words. Never say something is unavailable only because the words did not match: ask with a kind, or use the areas below.';
 const MORE_NOTE=' More match than are listed: ask again with a narrower area or a kind.';

@@ -177,6 +177,8 @@ describe('product_capabilities in a harness turn',()=>{
   // import does, and a surface that offers no actions gets none (nothing to suggest there).
   expect((sent.entries as {id:string;action?:string}[]).filter(row=>row.action).map(row=>[row.id,row.action])).toEqual([['import:employee_records','employees.import']]);
   expect((await capabilityCatalogueFor(hrAdmin,{prepare:false})).filter(row=>row.action)).toEqual([]);
+  // Spec v15: the imports most people mean come first, in this order, so "most common first" is read, not guessed.
+  expect(sent.entries.slice(0,4).map(row=>row.id)).toEqual(['import:employee_records','import:leave_balances','import:payroll_history','import:attendance_clockings']);
   expect(result.reads).toContain('product_capabilities');
   // Spec v13: suggest_action names the purposes of the declared actions this caller holds, so it can be called directly.
   const suggest=model.requests[0].tools.find(tool=>tool.name==='suggest_action')!.description;
