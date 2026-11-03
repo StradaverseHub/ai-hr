@@ -76,7 +76,7 @@ export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Pr
  const checker=c.actors.manager.ctx,accessAdmin=c.actors.operator.ctx;
  if(!checker.userId||checker.userId===accessAdmin.userId||memberships.some(([,actor])=>actor.userId===checker.userId))return refuse();
  async function addFixtureSeat(userId:string,role:RewardRole){
-  const input={unitId:rewardId,revision:(await getRewardUnit(accessAdmin,rewardId)).unit.revision,before:null,after:{userId,role},reason:'Fictional browser fixture seat reviewed by HR Administration'};
+  const input={unitId:rewardId,revision:(await getRewardUnit(admin,rewardId)).unit.revision,before:null,after:{userId,role},reason:'Fictional browser fixture seat reviewed by HR Administration'};
   const preview=await previewRewardAccessChange(accessAdmin,input);
   if(preview.pending)return refuse();
   const result=await saveRewardAccessChange(accessAdmin,input,preview.digest);
