@@ -14,8 +14,9 @@ import {resolveServerTree} from './helpers/server-tree';
 
 const fx=vi.hoisted(()=>{
  class FixtureHomeAccessError extends Error{constructor(readonly code:string){super(code);this.name='HomeAccessError';}}
+ class FixtureEntitlementsResolutionFailedError extends Error{}
  const empty={answeredForYou:0,answeredForOthers:0,leaveChecks:0,preparedForYou:0};
- return {FixtureHomeAccessError,empty,state:{} as {
+ return {FixtureHomeAccessError,FixtureEntitlementsResolutionFailedError,empty,state:{} as {
   tasks:{id:string;kind:string;subjectName:string|null;createdAt:string;linkPath:string;companyId:string}[];tasksFail:boolean;
   ownLeave:{actionId:string;state:string;createdAt:string;expiresAt:string}[];reopened:Record<string,unknown>;reopenCalls:string[];cancellations:{actionId:string;state:string;createdAt:string;expiresAt:string}[];
   decisions:{actionId:string;state:string;createdAt:string;expiresAt:string}[];
@@ -23,7 +24,7 @@ const fx=vi.hoisted(()=>{
   summary:typeof empty;summaryFail:boolean;worklist:Record<string,{status:string}[]>;exceptions:{rows:{disposition:string}[];total:number};
   passports:{itemId:string;employmentId:string;companyId:string;stage:string;waitingOn:string}[];
   timeOff:unknown;timeOffError:unknown;pay:unknown;payError:unknown;managers:{employmentId:string}[];calendarDays:unknown[];
-  assistant:boolean;name:string|null;modules:Set<string>;push:ReturnType<typeof vi.fn>;
+  assistant:boolean;name:string|null;modules:Set<string>;entitlementsFail:boolean;push:ReturnType<typeof vi.fn>;
   loops:unknown[];loopsFail:boolean;
   calls:{tasks:unknown[];worklist:string[];summary:unknown[];proposals:number;readiness:number;exceptions:number;passports:number;timeOff:unknown[];loops:unknown[]};
  }};
@@ -39,7 +40,10 @@ vi.mock('next-intl/server',async()=>{
 });
 vi.mock('next/navigation',()=>({useRouter:()=>({push:S.push}),usePathname:()=>'/'}));
 vi.mock('@/db/client',()=>({withTenant:async(_s:unknown,run:(tx:unknown)=>unknown)=>run({})}));
-vi.mock('@/core/entitlements',()=>({isModuleEnabledOrFalse:(_s:unknown,code:string)=>S.modules.has(code)}));
+// Today reads modules with the throwing check (test/module-catalog-drift.test.ts); an unresolved snapshot throws the
+// resolution-failed error, as core/entitlements.ts does.
+vi.mock('@/core/entitlements',()=>({EntitlementsResolutionFailedError:fx.FixtureEntitlementsResolutionFailedError,
+ isModuleEnabled:(_s:unknown,code:string)=>{if(S.entitlementsFail)throw new fx.FixtureEntitlementsResolutionFailedError('Fixture snapshot outage');return S.modules.has(code);}}));
 vi.mock('@/core/approvals-inbox',()=>({listPendingTasks:async(_s:unknown,scope:string[])=>{S.calls.tasks.push(scope);if(S.tasksFail)throw Error('Fixture queue outage');
  return S.tasks.filter(task=>scope.includes(task.companyId)).map(({companyId:_companyId,...task})=>task);}}));
 // The owners' own reopen of the caller's review, as the review page reads it; a missing fixture is the owner refusing.
@@ -108,7 +112,7 @@ beforeEach(()=>{
  Object.assign(S,{tasks:[],tasksFail:false,ownLeave:[],reopened:{},reopenCalls:[],cancellations:[],decisions:[],proposals:[],readiness:{employees:0,ready:0},digest:null,recommender:false,
   summary:{...fx.empty},summaryFail:false,worklist:{},exceptions:{rows:[],total:0},passports:[],timeOff:{version:1,employmentId:'emp-own',asOf:'2026-11-04',canApply:true,balances:[],nextApproved:null},
   timeOffError:null,pay:{version:1,employmentId:'emp-own',payslips:[],nextPayment:null},payError:null,managers:[],calendarDays:[],assistant:true,name:'Ravi Fictional',
-  modules:new Set(['leave','payroll','attendance','claims','performance','rewards']),push:vi.fn(),loops:[],loopsFail:false,
+  modules:new Set(['leave','payroll','attendance','claims','performance','rewards']),entitlementsFail:false,push:vi.fn(),loops:[],loopsFail:false,
   calls:{tasks:[],worklist:[],summary:[],proposals:0,readiness:0,exceptions:0,passports:0,timeOff:[],loops:[]}});
  window.sessionStorage.clear();
 });
@@ -558,6 +562,29 @@ describe('Today with nothing to show',()=>{
   expect(text(view.section('today-done-for-you')!.querySelector('[role="status"]'))).toBe('Some items could not be loaded. Their own pages still work.');
   expect(text(view.section('today-done-for-you'))).not.toContain('9');
   expect(text(view.section('today-at-a-glance')!.querySelector('[data-today-balance] b'))).toBe('2.00 days');
+ });
+});
+
+describe('Today when the entitlement snapshot cannot be resolved',()=>{
+ it('says its sections could not load, never that the modules are off, and still renders',async()=>{
+  S.entitlementsFail=true;
+  S.timeOff={version:1,employmentId:'emp-own',asOf:'2026-11-04',canApply:true,nextApproved:null,balances:[{id:'lt-al',name:'Annual Leave',annualLeave:true,available:2,pending:0}]};
+  S.pay={version:1,employmentId:'emp-own',nextPayment:null,payslips:[{id:'ps-oct',period:'2026-10',runType:'regular',runSequence:1}]};
+  const view=await show(EMPLOYEE,['co-a']);
+  const note='Some items could not be loaded. Their own pages still work.';
+  expect(text(view.section('today-needs-you')!.querySelector('[role="status"]'))).toBe(note);
+  expect(text(view.section('today-at-a-glance')!.querySelector('[role="status"]'))).toBe(note);
+  // The leave balance still shows; the payslip row (payroll unread) does not.
+  expect(text(view.section('today-at-a-glance')!.querySelector('[data-today-balance] b'))).toBe('2.00 days');
+  expect(text(view.section('today-at-a-glance'))).not.toContain('October 2026');
+  // The approvals queue is still asked, with every module off for this view.
+  expect(S.calls.tasks).toEqual([['co-a']]);
+ });
+ it('an administrator\'s Watching section says the same and reads no payroll deadlines',async()=>{
+  S.entitlementsFail=true;
+  const view=await show(HR_ADMIN,['co-a']);
+  expect(text(view.section('today-watching')!.querySelector('[role="status"]'))).toBe('Some items could not be loaded. Their own pages still work.');
+  expect(S.calls.worklist).toEqual([]);expect(S.calls.exceptions).toBe(0);
  });
 });
 

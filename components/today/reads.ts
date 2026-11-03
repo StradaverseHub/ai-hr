@@ -19,7 +19,7 @@
  *    payslip's metadata (core/employee-home.ts readEmployeeHomePayHints, no amounts) and a manager's absence
  *    from the Home team calendar (lib/today/coming-up.ts). */
 import {withTenant,type SessionContext} from '@/db/client';
-import {isModuleEnabledOrFalse} from '@/core/entitlements';
+import {EntitlementsResolutionFailedError,isModuleEnabled} from '@/core/entitlements';
 import {listPendingTasks,type PendingTaskItem} from '@/core/approvals-inbox';
 import {listOwnLeaveReviewsTx,reopenOwnLeaveReviewTx} from '@/core/assistant-actions/own-leave-store';
 import {leaveCancellationReviews} from '@/core/assistant-actions/leave-change-review-store';
@@ -49,8 +49,16 @@ async function settle<T>(read:()=>Promise<T>):Promise<Settled<T>>{try{return{ok:
 /** The person has no own employment to show (none, or several and none chosen yet): not a failure. */
 const noOwnSubject=(result:Settled<unknown>|null)=>result!==null&&!result.ok&&result.error instanceof HomeAccessError;
 
-const inboxModules=(s:SessionContext)=>({attendance:isModuleEnabledOrFalse(s,'attendance'),claims:isModuleEnabledOrFalse(s,'claims'),
- performance:isModuleEnabledOrFalse(s,'performance'),rewards:isModuleEnabledOrFalse(s,'rewards')});
+/** A module this section depends on, read with the throwing check (test/module-catalog-drift.test.ts keeps the quiet
+ * readers to pages in app/). An entitlement snapshot that could not be resolved is an incident, not a plan change: the
+ * module counts as off for this view and the section reports a failed read, so it shows its failure note rather than
+ * reading as "not on your plan". Any other throw is a wiring bug and still throws. */
+type ModuleChecks=Readonly<{on:(code:string)=>boolean;failed:()=>boolean}>;
+function moduleChecks(s:SessionContext):ModuleChecks{
+ let failed=false;
+ return {on:code=>{try{return isModuleEnabled(s,code);}catch(error){if(error instanceof EntitlementsResolutionFailedError){failed=true;return false;}throw error;}},failed:()=>failed};
+}
+const inboxModules=(m:ModuleChecks)=>({attendance:m.on('attendance'),claims:m.on('claims'),performance:m.on('performance'),rewards:m.on('rewards')});
 
 // ── Needs you ───────────────────────────────────────────────────────────────────────────────────────────────
 export type PreparedKind='leaveApply'|'leaveCancel'|'leaveDecision';
@@ -103,9 +111,9 @@ async function preparedLeave(s:SessionContext,item:PreparedItem,locale:string):P
 }
 
 export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonly string[];audience:TodayAudience;today:string;locale?:string;now?:number}>):Promise<NeedsYouData>{
- const now=p.now??Date.now(),admin=p.audience.layout==='administrator',payroll=isModuleEnabledOrFalse(s,'payroll'),leave=isModuleEnabledOrFalse(s,'leave');
+ const modules=moduleChecks(s),now=p.now??Date.now(),admin=p.audience.layout==='administrator',payroll=modules.on('payroll'),leave=modules.on('leave');
  const [tasks,ownLeave,cancellations,decisions,proposals,readiness,digest,loops]=await Promise.all([
-  settle(()=>listPendingTasks(s,[...p.scopeIds],inboxModules(s))),
+  settle(()=>listPendingTasks(s,[...p.scopeIds],inboxModules(modules))),
   leave?settle(()=>withTenant(s,tx=>listOwnLeaveReviewsTx(tx,s))):null,
   leave?settle(()=>leaveCancellationReviews.list(s)):null,
   leave?settle(()=>listLeaveDecisionReviews(s)):null,
@@ -132,7 +140,7 @@ export async function readNeedsYou(s:SessionContext,p:Readonly<{scopeIds:readonl
  if(missing>0)findings.push(Object.freeze({key:'readiness',count:missing,href:'/control-tower/readiness'}));
  const fixes=proposals?.ok?proposals.value.reduce((sum,proposal)=>sum+proposal.count,0):0;
  if(fixes>0)findings.push(Object.freeze({key:'proposals',count:fixes,href:'/control-tower/actions'}));
- const failed=!tasks.ok||!loops.ok||[proposals,readiness].some(result=>result!==null&&!result.ok);
+ const failed=modules.failed()||!tasks.ok||!loops.ok||[proposals,readiness].some(result=>result!==null&&!result.ok);
  return Object.freeze({tasks:list,recommender,prepared:detailed,findings,loops:loops.ok?loops.value:[],failed});
 }
 
@@ -154,7 +162,7 @@ export type WatchingData=Readonly<{
 }>;
 
 export async function readWatching(s:SessionContext,p:Readonly<{scopeIds:readonly string[];today:string}>):Promise<WatchingData>{
- const payroll=isModuleEnabledOrFalse(s,'payroll'),scope=new Set(p.scopeIds),companies=p.scopeIds.slice(0,WATCH_COMPANY_LIMIT);
+ const modules=moduleChecks(s),payroll=modules.on('payroll'),scope=new Set(p.scopeIds),companies=p.scopeIds.slice(0,WATCH_COMPANY_LIMIT);
  const deadlineRead=payroll?settle(async()=>{
   const lists:Awaited<ReturnType<typeof complianceWorklist>>[]=[];
   for(let i=0;i<companies.length;i+=COMPANY_CONCURRENCY)
@@ -174,7 +182,7 @@ export async function readWatching(s:SessionContext,p:Readonly<{scopeIds:readonl
   deadlines:deadlines?.ok&&deadlines.value.overdue+deadlines.value.dueSoon>0?Object.freeze(deadlines.value):null,
   exceptions:exceptions?.ok&&exceptions.value.total>0?Object.freeze({total:exceptions.value.total,blocking:exceptions.value.rows.filter(row=>row.disposition==='block').length}):null,
   passports:expiring.length?Object.freeze({count:expiring.length,first:expiring[0].waitingOn}):null,
-  failed:[deadlines,exceptions,passports].some(result=>result!==null&&!result.ok),
+  failed:modules.failed()||[deadlines,exceptions,passports].some(result=>result!==null&&!result.ok),
  });
 }
 
@@ -189,7 +197,7 @@ export type GlanceData=Readonly<{
 }>;
 
 export async function readAtAGlance(s:SessionContext,p:Readonly<{employmentId?:string;locale:string;today:string}>):Promise<GlanceData>{
- const payroll=isModuleEnabledOrFalse(s,'payroll');
+ const modules=moduleChecks(s),payroll=modules.on('payroll');
  const [timeOff,pay]=await Promise.all([
   settle(()=>readEmployeeHomeTimeOff(s,p.employmentId,p.locale)),
   payroll?settle(()=>readEmployeeHomePayHints(s,p.employmentId)):null,
@@ -205,6 +213,6 @@ export async function readAtAGlance(s:SessionContext,p:Readonly<{employmentId?:s
   // undefined: payroll is not in use, so no payslip line at all; null: none released yet.
   payslip:pay===null?undefined:pay.ok?(latest?Object.freeze({id:latest.id,period:latest.period}):null):undefined,
   away:away?.ok?away.value:null,
-  failed:(!timeOff.ok&&!noOwnSubject(timeOff))||(pay!==null&&!pay.ok&&!noOwnSubject(pay))||(away!==null&&!away.ok),
+  failed:modules.failed()||(!timeOff.ok&&!noOwnSubject(timeOff))||(pay!==null&&!pay.ok&&!noOwnSubject(pay))||(away!==null&&!away.ok),
  });
 }
