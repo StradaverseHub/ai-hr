@@ -51,6 +51,9 @@ vi.mock('@/core/record-readiness',()=>({recordReadiness:async()=>{S.calls.readin
 vi.mock('@/core/digest/daily-digest',()=>({DIGEST_PAGES:{approvals:'/approvals',setup:'/control-tower/readiness',deadlines:'/payroll/statutory-forms'},latestDailyDigest:async()=>S.digest}));
 vi.mock('@/core/agent-registry/controls',()=>({workerRunGate:async()=>({run:S.recommender})}));
 vi.mock('@/core/recommenders/leave-decision',()=>({RECOMMENDER_WORKER:'approver_recommendation'}));
+// The approver recommendation the person asked to open (the retired Inbox's in-place panel, now on Today).
+const recommendation=vi.hoisted(()=>({read:vi.fn(async()=>({kind:'recommendation',verdict:'recommend_approve',failedRules:[]}))}));
+vi.mock('@/app/assistant/centre/recommendation',()=>({readLeaveRecommendation:recommendation.read}));
 vi.mock('@/core/outcome-record/summary',()=>({summariseOutcomeRecords:async(_s:unknown,p:unknown)=>{S.calls.summary.push(p);if(S.summaryFail)throw Error('Fixture record outage');return S.summary;}}));
 vi.mock('@/core/reporting',()=>({complianceWorklist:async(_s:unknown,p:{companyId:string})=>{S.calls.worklist.push(p.companyId);return S.worklist[p.companyId]??[];}}));
 vi.mock('@/core/payroll-anomaly',()=>({openExceptionsAcrossRuns:async()=>{S.calls.exceptions++;return {...S.exceptions,cappedOut:false};}}));
@@ -90,8 +93,8 @@ beforeEach(()=>{
 });
 afterEach(cleanup);
 
-async function show(session:never,scopeIds:string[],employmentId?:string){
- const tree=await resolveServerTree(await TodayPage({session,scopeIds,employmentId,now:NOW,more:<p data-fixture-more>Existing dashboard</p>}));
+async function show(session:never,scopeIds:string[],employmentId?:string,needs?:{all?:boolean;recommend?:string}){
+ const tree=await resolveServerTree(await TodayPage({session,scopeIds,employmentId,needs,now:NOW,more:<p data-fixture-more>Existing dashboard</p>}));
  const view=render(<NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur">{tree}</NextIntlClientProvider>);
  const section=(id:string)=>view.container.querySelector(`[data-today-section="${id}"]`);
  return {...view,section};
@@ -153,7 +156,8 @@ describe('Today for an employee',()=>{
   const task=needs.querySelector('[data-today-task="noticeAcknowledgement"]')!;
   expect(text(task.querySelector('h3'))).toBe('Acknowledge notice');
   expect(text(task)).toContain('Received Nov 3, 2026');
-  expect(task.querySelector('a')?.getAttribute('href')).toBe('/notices/notice-1');
+  // The Review link carries the allow-listed Today origin, so the page offers "Back to Today".
+  expect(task.querySelector('a')?.getAttribute('href')).toBe('/notices/notice-1?from=today');
  });
 
  it('counts what AI Centre answered for the person, and shows nothing else from the record',async()=>{
@@ -248,8 +252,10 @@ describe('Today for a manager',()=>{
   let view=await show(MANAGER,['co-a']);
   const task=view.container.querySelector('[data-today-task="leave"]')!;
   expect(text(task.querySelector('h3'))).toBe('Approve leave request · Fictional Aminah');
-  expect(task.querySelector('a[href="/approvals?tab=leave"]')).not.toBeNull();
-  expect(task.querySelector('a[data-recommendation-loader]')?.getAttribute('href')).toBe('/assistant?view=inbox&recommend=lr-aminah');
+  expect(task.querySelector('a[href="/approvals?tab=leave&from=today"]')).not.toBeNull();
+  // The recommendation opens on Today itself (the AI Centre Inbox that showed it is retired).
+  expect(task.querySelector('a[data-recommendation-loader]')?.getAttribute('href')).toBe('/?recommend=lr-aminah');
+  expect(recommendation.read).not.toHaveBeenCalled();
   const decision=view.container.querySelector('[data-today-prepared="leaveDecision"]')!;
   expect(text(decision.querySelector('h3'))).toBe('Annual Leave, Mon, Nov 9 – Wed, Nov 11 (3 days)');
   expect(text(decision)).toContain('Leave decision prepared for you');
@@ -261,6 +267,40 @@ describe('Today for a manager',()=>{
   S.recommender=false;
   view=await show(MANAGER,['co-a']);
   expect(view.container.querySelector('a[data-recommendation-loader]')).toBeNull();
+ });
+});
+
+describe('Today keeps what the retired AI Centre Inbox showed',()=>{
+ const tasks=(n:number)=>Array.from({length:n},(_,i)=>({id:`lr-${i}`,kind:'leave',subjectName:`Fictional ${i}`,createdAt:'2026-11-02T02:00:00Z',linkPath:`/approvals?tab=leave&id=lr-${i}`,companyId:'co-a'}));
+ it('lists the first five decisions with "See all", and every decision on /?needs=all',async()=>{
+  S.tasks=tasks(7);
+  let view=await show(MANAGER,['co-a']);
+  expect(view.container.querySelectorAll('[data-today-task]')).toHaveLength(5);
+  const seeAll=[...view.container.querySelectorAll('a')].find(link=>link.getAttribute('href')==='/?needs=all');
+  expect(text(seeAll)).toContain('7');
+  expect(view.container.querySelector('a[href*="view=inbox"]')).toBeNull();
+  cleanup();
+  view=await show(MANAGER,['co-a'],undefined,{all:true});
+  expect([...view.container.querySelectorAll('[data-today-task] h3')].map(text)).toEqual(tasks(7).map(task=>`Approve leave request · ${task.subjectName}`));
+  expect(view.container.querySelector('a[href="/?needs=all"]')).toBeNull();
+ });
+ it('opens the recommendation the approver asked for in place, only for a leave request in their own queue while the worker may run',async()=>{
+  S.tasks=tasks(7);S.recommender=true;
+  let view=await show(MANAGER,['co-a'],undefined,{recommend:'lr-6'});
+  // The sixth-and-later card is shown when it is the one asked for.
+  const row=view.container.querySelector('[data-recommendation]')!;
+  expect(row.getAttribute('data-recommendation')).toBe('recommend_approve');
+  expect(row.id).toBe('recommendation-lr-6');
+  expect(recommendation.read).toHaveBeenCalledTimes(1);expect(recommendation.read.mock.calls[0][1]).toBe('lr-6');
+  expect(view.container.querySelectorAll('a[data-recommendation-loader]')).toHaveLength(6);
+  cleanup();recommendation.read.mockClear();
+  // Not in the viewer's queue, or the worker switched off: nothing is read and only the links remain.
+  view=await show(MANAGER,['co-a'],undefined,{recommend:'lr-foreign'});
+  expect(view.container.querySelector('[data-recommendation]')).toBeNull();
+  cleanup();S.recommender=false;
+  view=await show(MANAGER,['co-a'],undefined,{recommend:'lr-1'});
+  expect(view.container.querySelector('[data-recommendation]')).toBeNull();
+  expect(recommendation.read).not.toHaveBeenCalled();
  });
 });
 

@@ -23,6 +23,7 @@
       "how": "หลักการทำงาน"
     },
     "inboxCount": "{count, plural, one {รอดำเนินการ # รายการ} other {รอดำเนินการ # รายการ}}",
+    "backToToday": "กลับไปที่วันนี้",
     "sectionsLabel": "ส่วนต่าง ๆ ของ{tab}",
     "sections": {
       "overview": "ภาพรวม",
@@ -312,6 +313,7 @@
     },
     "launcher": {
       "inbox": "กล่องงานของคุณ",
+      "today": "วันนี้",
       "inboxCount": "{count, plural, one {รอ # รายการ} other {รอ # รายการ}}",
       "earlier": "ก่อนหน้านี้ ในหน้า{area}",
       "continue": "ทำต่อใน{name}",
@@ -646,7 +648,7 @@
       "from": "จากการอนุมัติ",
       "received": "ได้รับเมื่อ {date}",
       "open": "เปิด",
-      "seeAll": "ดูทั้งหมด {count} รายการในกล่องข้อความ AI Centre",
+      "seeAll": "ดูทั้งหมด {count} รายการ",
       "review": "ตรวจสอบ"
     },
     "prepared": {

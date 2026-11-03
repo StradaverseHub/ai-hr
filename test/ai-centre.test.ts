@@ -50,8 +50,9 @@ describe('AI centre tabs keep every permission identical', () => {
     expect(admin.map(tab => [tab.key, tab.href, tab.sections])).toEqual([['operations', '/control-tower', true], ['administration', '/control-tower/agents/features', true]]);
     for (const tab of admin) expect(read(pageOf(tab.href))).toContain('requireAdmin');
     expect(read('app/control-tower/layout.tsx')).toContain('await requireAdmin();');
-    expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'inbox', 'jobs', 'how']);
-    expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'inbox', 'jobs', 'operations', 'administration', 'how']);
+    // AI v2 Phase 1: the Inbox tab is retired; Today at / replaces it.
+    expect(centreTabsFor({ isAdmin: false }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'how']);
+    expect(centreTabsFor({ isAdmin: true }).map(tab => tab.key)).toEqual(['ask', 'jobs', 'operations', 'administration', 'how']);
   });
 
   it('every second-row tab is an existing /control-tower page behind requireAdmin, listed in the permission registry', () => {
@@ -77,11 +78,18 @@ describe('AI centre tabs keep every permission identical', () => {
   });
 
   it('the employee views live on /assistant, behind its unchanged session layout', () => {
-    for (const view of ['inbox', 'jobs', 'how']) {
+    for (const view of ['jobs', 'how']) {
       expect(isCentreView(view)).toBe(true);
       expect(CENTRE_TABS.some(tab => tab.href === `/assistant?view=${view}`)).toBe(true);
     }
     expect(isCentreView('workers')).toBe(false);
+    // The retired Inbox view is no tab and no view: its address moves to Today for good (308), before any view renders.
+    expect(isCentreView('inbox')).toBe(false);
+    expect(CENTRE_TABS.some(tab => tab.href.includes('view=inbox'))).toBe(false);
+    const page = read('app/assistant/page.tsx');
+    expect(page).toContain("if (sp.view === 'inbox') permanentRedirect(todayInboxRedirect(sp.recommend));");
+    expect(page.indexOf("permanentRedirect(todayInboxRedirect")).toBeLessThan(page.indexOf('if (isCentreView(sp.view))'));
+    expect(page).not.toMatch(/AiCentreInbox|InboxCountBadge/);
     const layout = read('app/assistant/layout.tsx');
     expect(layout).toContain('getBrowserCommandSession');
     expect(layout).toContain("redirect('/login')");

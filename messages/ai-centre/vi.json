@@ -23,6 +23,7 @@
       "how": "Cách hoạt động"
     },
     "inboxCount": "{count, plural, one {# mục đang chờ} other {# mục đang chờ}}",
+    "backToToday": "Quay lại Hôm nay",
     "sectionsLabel": "Các mục của {tab}",
     "sections": {
       "overview": "Tổng quan",
@@ -312,6 +313,7 @@
     },
     "launcher": {
       "inbox": "Hộp thư công việc của bạn",
+      "today": "Hôm nay",
       "inboxCount": "{count, plural, one {# đang chờ} other {# đang chờ}}",
       "earlier": "Trước đó, trên trang {area}",
       "continue": "Tiếp tục trong {name}",
@@ -646,7 +648,7 @@
       "from": "Từ phê duyệt",
       "received": "Nhận lúc {date}",
       "open": "Mở",
-      "seeAll": "Xem tất cả {count} mục trong Hộp thư AI Centre",
+      "seeAll": "Xem tất cả {count} mục",
       "review": "Xem xét"
     },
     "prepared": {

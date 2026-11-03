@@ -50,7 +50,6 @@ vi.mock('../core/digest/daily-digest', () => ({ digestPreview: async () => { thr
 vi.mock('../app/assistant/centre/recommendation', () => ({ readLeaveRecommendation: vi.fn() }));
 
 import { AiCentreTabs } from '../components/ai-centre/centre-tabs';
-import { AiCentreInbox } from '../app/assistant/centre/inbox';
 import { AiCentreDelegatedJobs } from '../components/ai-centre/delegated-jobs';
 import { HowItWorks } from '../components/ai-centre/how-it-works';
 import { AiManagementScreen } from '../app/control-tower/agents/screen';
@@ -71,20 +70,16 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('AI centre screens', () => {
-  it.each(['en', 'zh'] as const)('%s Inbox lists decisions as cards that only link to the deciding page', async locale => {
+  // Issue 6's Inbox screen is retired (AI v2 Phase 1): Today at / lists the same decisions and findings, with the same
+  // Review links carrying the allow-listed origin (test/today-home.dom.test.tsx); /assistant?view=inbox moves there (308).
+  it.each(['en', 'zh'] as const)('%s: the administrator tab row has no Inbox; what waited there is on Today', async locale => {
     state.locale = locale;
-    const tabs = <AiCentreTabs active="inbox" isAdmin />;
-    const inbox = await AiCentreInbox({ session });
-    const view = wrap(locale, <div className="mx-auto max-w-6xl space-y-6">{tabs}{inbox}</div>);
-    const cards = view.container.querySelectorAll('[data-proposal-card]');
-    expect(cards).toHaveLength(5);
-    for (const card of cards) { expect(card.querySelector('form, button')).toBeNull(); expect(card.querySelectorAll('a')).toHaveLength(1); }
-    // The Review link keeps the deciding page and adds only the allow-listed Inbox origin (01dee6a05, the way back).
-    expect(view.container.querySelector('a[href="/approvals?kind=leave&id=a1&from=ai-inbox"]')).not.toBeNull();
-    expect(view.container.querySelector('a[href="/approvals?kind=leave&id=a1"]')).toBeNull();
-    expect(view.container.querySelector('a[href="/control-tower/exceptions"]')).not.toBeNull();
-    expect(within(view.container.querySelector('nav[data-ai-centre-tabs]') as HTMLElement).getByRole('link', { current: 'page' })).toHaveAttribute('href', '/assistant?view=inbox');
-    await captureAiReviewScreenshots(aiReviewDomHtml(view.container), locale, 'ai-centre-inbox', FICTION, 'atelier');
+    const view = wrap(locale, <div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="ask" isAdmin /></div>);
+    const nav = view.container.querySelector('nav[data-ai-centre-tabs]') as HTMLElement;
+    expect(within(nav).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=jobs', '/control-tower', '/control-tower/agents/features', '/assistant?view=how']);
+    expect(within(nav).queryByRole('link', { name: new RegExp(messagesFor(locale).aiCentre.tabs.inbox) })).toBeNull();
+    expect(within(nav).getByRole('link', { current: 'page' })).toHaveAttribute('href', '/assistant');
+    await captureAiReviewScreenshots(aiReviewDomHtml(view.container), locale, 'ai-centre-tabs-without-inbox', FICTION, 'atelier');
   }, 120000);
 
   it('employees see no administrator tabs and no findings', async () => {
@@ -93,7 +88,7 @@ describe('AI centre screens', () => {
     const view = wrap('en', tabs);
     expect(screen.queryByRole('link', { name: messagesFor('en').aiCentre.tabs.operations })).toBeNull();
     expect(screen.queryByRole('link', { name: messagesFor('en').aiCentre.tabs.administration })).toBeNull();
-    expect(screen.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=inbox', '/assistant?view=jobs', '/assistant?view=how']);
+    expect(screen.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=jobs', '/assistant?view=how']);
     view.unmount();
   });
 
@@ -135,24 +130,26 @@ describe('AI centre screens', () => {
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), locale, 'ai-centre-how', FICTION, 'atelier');
   }, 120000);
 
-  it('a review page renders inside the shared shell, with the way back to the Inbox and its own refusal', async () => {
+  it('a review page renders inside the shared shell, with the way back to Today and its own refusal', async () => {
     state.locale = 'en';
     const page = await AssistantBankPage({ searchParams: Promise.resolve({}) });
     const view = wrap('en', page);
     const shell = view.container.querySelector('[data-review-shell]')!;
     expect(shell).not.toBeNull();
-    expect(shell.querySelector('a[href="/assistant?view=inbox"]')).not.toBeNull();
+    const back = shell.querySelector('nav a[href="/"]');
+    expect(back).toHaveTextContent(messagesFor('en').aiCentre.backToToday);
+    expect(shell.querySelector('a[href*="view=inbox"]')).toBeNull();
     expect(screen.getByText(en.assistant.denied_no_grant)).toBeInTheDocument();
     expect(shell.querySelector('a[href="/control-tower/agents/allowances#user-limits"]')).not.toBeNull();
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-review-shell', FICTION, 'atelier');
   }, 120000);
 
-  it('the floating chat links to the Inbox with the decision count', async () => {
+  it('the floating chat links to Today with the decision count', async () => {
     state.locale = 'en';
     const view = wrap('en', <AssistantLauncher position="bottom-right" hiddenAreas={[]} inboxCount={2} />);
     fireEvent.click(screen.getByRole('button', { name: messagesFor('en').aiCentre.launcher.open.replace('{name}', messagesFor('en').aiCentre.genericName) }));
-    const link = screen.getByRole('link', { name: new RegExp(messagesFor('en').aiCentre.launcher.inbox) });
-    expect(link).toHaveAttribute('href', '/assistant?view=inbox');
+    const link = screen.getByRole('link', { name: new RegExp(`^${messagesFor('en').aiCentre.launcher.today}`) });
+    expect(link).toHaveAttribute('href', '/');
     expect(link).toHaveTextContent('2');
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-floating-chat', FICTION, 'atelier');
   }, 120000);

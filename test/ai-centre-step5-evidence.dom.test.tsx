@@ -83,7 +83,8 @@ const ROWS: WorkerRow[] = [
 describe('AI centre step 5, rendered per role', () => {
   it('employee: the Inbox digest, no findings, no recommendation, no administrator tabs', async () => {
     Object.assign(state, { admin: false, group: false, tasks: [] });
-    const view = wrap(<div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="inbox" isAdmin={false} />{await AiCentreInbox({ session })}</div>);
+    // The Inbox is no longer routed (AI v2 Phase 1: Today replaces it); its component is checked here until it is removed.
+    const view = wrap(<div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="ask" isAdmin={false} />{await AiCentreInbox({ session })}</div>);
     const digest = view.container.querySelector('[data-inbox-digest]') as HTMLElement;
     // Nothing waits: "Your day" says so once, with no zero tile, no second empty box and no zero summary (review L9).
     expect(within(digest).getByText(enWithAiCentre.aiCentre.inbox.empty)).toBeInTheDocument();
@@ -108,14 +109,15 @@ describe('AI centre step 5, rendered per role', () => {
     expect(tile).toHaveTextContent(enWithAiCentre.aiCentre.digest.approvals);
     expect(tile.querySelector('.text-lg')).toHaveTextContent('1');
     // In place: no fragment to scroll to, and the link keeps the page where it is (staging acceptance, 3 November 2026).
-    expect(closed.container.querySelector('[data-recommendation-loader]')).toHaveAttribute('href', `/assistant?view=inbox&recommend=${LEAVE_ID}`);
+    // The recommendation now opens on Today, which replaced the Inbox.
+    expect(closed.container.querySelector('[data-recommendation-loader]')).toHaveAttribute('href', `/?recommend=${LEAVE_ID}`);
     expect(closed.container.querySelector('[data-recommendation]')).toBeNull();
     // Owner, 3 November 2026: no empty dashed "awaiting" circle; the section heading already says it needs a decision.
     expect(closed.container.querySelector('[data-proposal-card] .atelier-unmarked, [data-proposal-card] [role="img"]')).toBeNull();
-    // Review opens the native page carrying the allow-listed Inbox origin, so that page offers the way back.
-    expect(closed.container.querySelector(`[data-proposal-card] a[href^="/approvals"]`)).toHaveAttribute('href', `/approvals?kind=leave&id=${LEAVE_ID}&from=ai-inbox`);
+    // Review opens the native page carrying the allow-listed origin, so that page offers the way back (now to Today).
+    expect(closed.container.querySelector(`[data-proposal-card] a[href^="/approvals"]`)).toHaveAttribute('href', `/approvals?kind=leave&id=${LEAVE_ID}&from=today`);
     closed.unmount();
-    const view = wrap(<div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="inbox" isAdmin={false} />{await AiCentreInbox({ session, recommend: LEAVE_ID })}</div>);
+    const view = wrap(<div className="mx-auto max-w-6xl space-y-6">{await AiCentreInbox({ session, recommend: LEAVE_ID })}</div>);
     const panel = view.container.querySelector('[data-recommendation]') as HTMLElement;
     const copy = enWithAiCentre.aiCentre.recommendation;
     expect(panel).toHaveAttribute('data-recommendation', 'needs_review');
@@ -128,7 +130,6 @@ describe('AI centre step 5, rendered per role', () => {
     // The panel opens under its own row and takes focus, so a screen reader lands on it without the page moving.
     expect(panel.closest('li')?.querySelector('[data-proposal-card]')).not.toBeNull();
     expect(panel).toHaveAttribute('tabindex', '-1');await new Promise(resolve => setTimeout(resolve, 0));expect(document.activeElement).toBe(panel);
-    expect(view.container.querySelector('[data-ai-centre-tabs] a[aria-current="page"]')).toHaveAttribute('href', '/assistant?view=inbox');
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-step5-approver-inbox', FICTION, 'atelier');
   }, 120000);
 

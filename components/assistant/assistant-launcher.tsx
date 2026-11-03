@@ -145,12 +145,13 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
   </AssistantChatBoundary>;
 }
 
-/** AI centre: the floating chat's way to the Inbox. Its own translations, so a login without the count
- * (a shell that passes none) renders nothing here. */
+/** AI centre: the floating chat's way to what waits on the person: Today at `/`, which replaced the AI Centre
+ * Inbox (AI v2 Phase 1). Its own translations, so a login without the count (a shell that passes none) renders
+ * nothing here. */
 function InboxLink({ count }: { count: number }) {
   const t = useTranslations('aiCentre.launcher');
-  return <Link href="/assistant?view=inbox" className="mx-4 mt-3 flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary/10 px-3 text-sm hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-    <Inbox aria-hidden className="size-4 text-primary"/><span className="font-medium">{t('inbox')}</span>
+  return <Link href="/" className="mx-4 mt-3 flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary/10 px-3 text-sm hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Inbox aria-hidden className="size-4 text-primary"/><span className="font-medium">{t('today')}</span>
     {count > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[0.6875rem] font-semibold leading-none tabular-nums text-primary-foreground"><span aria-hidden>{count}</span><span className="sr-only">{t('inboxCount', { count })}</span></span>}
     <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground"/></Link>;
 }

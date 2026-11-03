@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 /** Issue 17 (owner: "Merge both entirely", 3 November 2026; mock-ups Operations.dc.html and Ask.dc.html): the AI Centre
- * tab row is Ask · Inbox · Delegated jobs · Operations ▾ · Administration ▾ · How it works, and the former Control
+ * tab row is Ask · Delegated jobs · Operations ▾ · Administration ▾ · How it works (the Inbox tab is retired: Today at /
+ * replaces it, AI v2 Phase 1), and the former Control
  * Tower pages render inside it with Operations' second row (Overview, Exceptions, Record readiness, Proposed actions,
  * Opportunities). Rendered with the real tab components and the real Record readiness page, per role, from the
  * same isAdmin predicate requireAdmin uses. Fictional data owners only. In CI the rendered page is also captured at
@@ -60,12 +61,14 @@ const linksOf=(nav:HTMLElement)=>within(nav).getAllByRole('link').map(link=>[lin
 afterEach(()=>{cleanup();state.locale='en';state.payroll=true;state.session=null;state.reads=0;});
 
 describe('AI Centre tabs per role',()=>{
- const ALL=[['Ask','/assistant'],['Inbox','/assistant?view=inbox'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']];
+ const ALL=[['Ask','/assistant'],['Delegated jobs','/assistant?view=jobs'],['Operations','/control-tower'],['Administration','/control-tower/agents/features'],['How it works','/assistant?view=how']];
  it.each([['employee',false],['manager',false],['hrAdmin',true],['groupAdmin',true]] as const)('%s sees exactly the tabs whose guard admits them',(role,admitted)=>{
   expect(isAdmin(SESSIONS[role] as never)).toBe(admitted);
   wrap('en',<AiCentreTabs active="ask" isAdmin={isAdmin(SESSIONS[role] as never)} />);
   const nav=screen.getByRole('navigation',{name:'AI Centre sections'});
-  // The Inbox tab stays until Today lands (the coordinator removes it then).
+  // No Inbox tab for anyone: what waits on the person is on Today.
+  expect(within(nav).queryByRole('link',{name:/Inbox/})).toBeNull();
+  expect(nav.querySelector('a[href*="view=inbox"]')).toBeNull();
   expect(linksOf(nav)).toEqual(admitted?ALL:ALL.filter(([label])=>label!=='Operations'&&label!=='Administration'));
   // The two group tabs carry the ▾ mark of the approved mock-up; no other tab does.
   expect(nav.querySelectorAll('[data-centre-group-mark]')).toHaveLength(admitted?2:0);

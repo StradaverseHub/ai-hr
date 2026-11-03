@@ -83,7 +83,8 @@ describe.each(Object.keys(copies) as Locale[])('AI centre, dark, phone width —
     const inbox = await AiCentreInbox({ session });
     const jobs = await AiCentreDelegatedJobs();
     const view = render(<NextIntlClientProvider locale={locale} messages={m as never} timeZone="Asia/Kuala_Lumpur">{dark(<div className="mx-auto max-w-6xl space-y-10">
-      <AiCentreTabs active="inbox" isAdmin={admin(role)} inboxCount={role === 'employee' || role === 'payroll_partner' ? 0 : 1} />{inbox}{jobs}<HowItWorks adminHref={admin(role) ? '#ai-centre-live-status' : undefined} />
+      {/* AI v2 Phase 1: no Inbox tab (Today replaces it); the retired Inbox component is still drawn here until it is removed. */}
+      <AiCentreTabs active="ask" isAdmin={admin(role)} />{inbox}{jobs}<HowItWorks adminHref={admin(role) ? '#ai-centre-live-status' : undefined} />
     </div>)}</NextIntlClientProvider>);
 
     const tabs = within(view.container.querySelector('nav[data-ai-centre-tabs]') as HTMLElement).getAllByRole('link');

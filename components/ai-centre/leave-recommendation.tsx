@@ -12,7 +12,8 @@ export function LeaveRecommendationLink({ leaveRequestId }: { leaveRequestId: st
   return (
     // No fragment and no scroll: the panel opens in place under its row (staging acceptance, 3 November 2026: the
     // fragment scrolled the page and carried the tab row out of view). Focus moves to it on arrival (FocusOnMount).
-    <Link href={`/assistant?view=inbox&recommend=${leaveRequestId}`} scroll={false} prefetch={false} data-recommendation-loader
+    // AI v2 Phase 1: the panel opens on Today, which replaced the AI Centre Inbox.
+    <Link href={`/?recommend=${leaveRequestId}`} scroll={false} prefetch={false} data-recommendation-loader
       className="ml-12 inline-flex min-h-9 items-center gap-1.5 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
       <Sparkles aria-hidden className="size-3.5" />{t('show')}
     </Link>

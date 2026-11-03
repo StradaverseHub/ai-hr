@@ -23,6 +23,7 @@
       "how": "How it works"
     },
     "inboxCount": "{count, plural, one {# item waiting} other {# items waiting}}",
+    "backToToday": "Back to Today",
     "sectionsLabel": "{tab} sections",
     "sections": {
       "overview": "Overview",
@@ -312,6 +313,7 @@
     },
     "launcher": {
       "inbox": "Your Inbox",
+      "today": "Today",
       "inboxCount": "{count, plural, one {# waiting} other {# waiting}}",
       "earlier": "Earlier, on the {area} page",
       "continue": "Continue in the {name}",
@@ -646,7 +648,7 @@
       "from": "From approvals",
       "received": "Received {date}",
       "open": "Open",
-      "seeAll": "See all {count} in the AI Centre Inbox",
+      "seeAll": "See all {count}",
       "review": "Review"
     },
     "prepared": {

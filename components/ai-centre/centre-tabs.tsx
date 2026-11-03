@@ -2,24 +2,22 @@
 // so a tab switch renders from the client cache instead of the loading shell (AI v2 W9).
 import Link from '@/components/intent-link';
 import { useTranslations } from 'next-intl';
-import { BookOpen, ChevronDown, Gauge, Inbox, MessageSquareText, Settings2, UserCheck } from 'lucide-react';
+import { BookOpen, ChevronDown, Gauge, MessageSquareText, Settings2, UserCheck } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { aiCentreName } from '@/lib/ai-centre/brand';
 import { ADMIN_GROUPS, centreSectionsFor, centreTabsFor, type AdminSection, type AdministrationSection, type CentreGroup, type CentreSection, type CentreTabKey } from '@/lib/ai-centre/centre-nav';
 import { cn } from '@/lib/utils';
 import { ScrollCurrentTabIntoView } from './centre-tabs-scroll';
 
 const ICONS: Readonly<Record<CentreTabKey, LucideIcon>> = {
-  ask: MessageSquareText, inbox: Inbox, jobs: UserCheck, operations: Gauge, administration: Settings2, how: BookOpen,
+  ask: MessageSquareText, jobs: UserCheck, operations: Gauge, administration: Settings2, how: BookOpen,
 };
 
 /** Synchronous with useTranslations, so it renders from server pages and from client tests alike.
  * The AI centre's one tab bar, on every centre page. Links only: each target page keeps its own guard, and
  * an administrator tab is hidden from a viewer whose page would refuse it. */
-/** `inboxBadge` (preferred) is rendered in place of the count, so a page can stream it in a Suspense boundary instead
- * of waiting for the Inbox's pending-task read before anything renders (issue 12, staging acceptance 3 November 2026). */
-export function AiCentreTabs({ active, isAdmin, inboxCount, inboxBadge }: { active: CentreTabKey; isAdmin: boolean; inboxCount?: number; inboxBadge?: ReactNode }) {
+/** AI v2 Phase 1: the Inbox tab and its count are retired; what waits on the person is on Today (`/`). */
+export function AiCentreTabs({ active, isAdmin }: { active: CentreTabKey; isAdmin: boolean }) {
   const t = useTranslations('aiCentre');
   const name = aiCentreName(t('genericName'));
   return (
@@ -41,7 +39,6 @@ export function AiCentreTabs({ active, isAdmin, inboxCount, inboxBadge }: { acti
                 {t(`tabs.${tab.key}`)}
                 {/* A group tab (approved mock-up, "Operations ▾ · Administration ▾"): its pages carry a second tab row. */}
                 {tab.sections && <ChevronDown aria-hidden data-centre-group-mark className="size-3.5 opacity-70" />}
-                {tab.key === 'inbox' && (inboxBadge ?? (inboxCount !== undefined && <InboxCount count={inboxCount} label={t('inboxCount', { count: inboxCount })} />))}
               </Link>
             </li>
           );
@@ -51,7 +48,7 @@ export function AiCentreTabs({ active, isAdmin, inboxCount, inboxBadge }: { acti
   );
 }
 
-/** The Inbox tab's count; nothing for zero. Shared by the streamed badge (app/assistant/centre/inbox.tsx). */
+/** A waiting count; nothing for zero. Used by the retired Inbox's streamed badge (app/assistant/centre/inbox.tsx). */
 export function InboxCount({ count, label }: { count: number; label: string }) {
   if (count <= 0) return null;
   return (

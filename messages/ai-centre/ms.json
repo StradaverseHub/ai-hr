@@ -23,6 +23,7 @@
       "how": "Cara ia berfungsi"
     },
     "inboxCount": "{count, plural, one {# item menunggu} other {# item menunggu}}",
+    "backToToday": "Kembali ke Hari ini",
     "sectionsLabel": "Bahagian {tab}",
     "sections": {
       "overview": "Gambaran keseluruhan",
@@ -312,6 +313,7 @@
     },
     "launcher": {
       "inbox": "Peti masuk anda",
+      "today": "Hari ini",
       "inboxCount": "{count, plural, one {# menunggu} other {# menunggu}}",
       "earlier": "Sebelum ini, di halaman {area}",
       "continue": "Teruskan dalam {name}",
@@ -646,7 +648,7 @@
       "from": "Daripada kelulusan",
       "received": "Diterima {date}",
       "open": "Buka",
-      "seeAll": "Lihat kesemua {count} dalam Peti Masuk AI Centre",
+      "seeAll": "Lihat kesemua {count}",
       "review": "Semak"
     },
     "prepared": {

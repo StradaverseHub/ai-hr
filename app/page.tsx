@@ -152,7 +152,7 @@ function orderTree(rows: BreakdownRow[]) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ moduleUnavailable?: string | string[];employmentId?:string|string[];workspace?:string|string[] }>;
+  searchParams?: Promise<{ moduleUnavailable?: string | string[];employmentId?:string|string[];workspace?:string|string[];needs?:string|string[];recommend?:string|string[] }>;
 }) {
   // AI v2 Phase 1, W3 — Today is the home for every role (components/today/today-page.tsx). Its sections stream
   // on their own; the dashboard this page drew before is unchanged and streams below them, under "More".
@@ -171,6 +171,8 @@ export default async function DashboardPage({
       session={scoped.s}
       scopeIds={scoped.scopeIds}
       employmentId={typeof homeQuery?.employmentId === 'string' ? homeQuery.employmentId : undefined}
+      // Needs you, as the retired AI Centre Inbox offered it: every decision, or one leave recommendation opened.
+      needs={{ all: homeQuery?.needs === 'all', recommend: typeof homeQuery?.recommend === 'string' ? homeQuery.recommend : undefined }}
       notice={unavailableModule && (
         <Card role="status" className="border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/40">
           <h2 className="text-sm font-semibold">{tModule('title')}</h2>

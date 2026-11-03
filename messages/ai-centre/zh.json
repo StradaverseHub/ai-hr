@@ -23,6 +23,7 @@
       "how": "运作方式"
     },
     "inboxCount": "{count, plural, one {# 项待处理} other {# 项待处理}}",
+    "backToToday": "返回今日",
     "sectionsLabel": "{tab}栏目",
     "sections": {
       "overview": "概览",
@@ -312,6 +313,7 @@
     },
     "launcher": {
       "inbox": "您的收件箱",
+      "today": "今日",
       "inboxCount": "{count, plural, one {# 项待处理} other {# 项待处理}}",
       "earlier": "之前，在{area}页面",
       "continue": "在{name}中继续",
@@ -646,7 +648,7 @@
       "from": "来自审批",
       "received": "收到于 {date}",
       "open": "打开",
-      "seeAll": "在 AI Centre 收件箱中查看全部 {count} 项",
+      "seeAll": "查看全部 {count} 项",
       "review": "审阅"
     },
     "prepared": {

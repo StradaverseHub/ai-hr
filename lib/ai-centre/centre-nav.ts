@@ -1,9 +1,11 @@
 /** The AI centre's information architecture (docs/design/ai-centre/PLAN.md), as data.
  *
  * NO NEW ROUTE AND NO NEW GUARD. Every tab is an existing, already-guarded page:
- *  - Ask, Inbox, Delegated jobs and How it works are views of /assistant (its layout requires a signed-in
- *    login; the conversation keeps its own grant check). Inbox and Delegated jobs read native owners as the
- *    caller and show nothing the person could not already open.
+ *  - Ask, Delegated jobs and How it works are views of /assistant (its layout requires a signed-in login; the
+ *    conversation keeps its own grant check). Delegated jobs reads native owners as the caller and shows
+ *    nothing the person could not already open.
+ *  - The Inbox tab is retired (AI v2 Phase 1): Today at `/` replaces it, and /assistant?view=inbox redirects
+ *    there (app/assistant/page.tsx).
  *  - Operations is the former Control Tower (issue 17, owner: "Merge both entirely"): the /control-tower pages,
  *    each behind requireAdmin in app/control-tower/layout.tsx and on the page itself.
  *  - Administration groups Workers, Setup and Spend and providers: the existing AI management pages under
@@ -11,20 +13,18 @@
  * lib/permissions.ts therefore lists every route unchanged, and `adminOnly` below only hides a tab the
  * page would refuse anyway; it is never the gate. */
 
-export const CENTRE_VIEWS = ['inbox', 'jobs', 'how'] as const;
+export const CENTRE_VIEWS = ['jobs', 'how'] as const;
 export type CentreView = (typeof CENTRE_VIEWS)[number];
 export const isCentreView = (value: unknown): value is CentreView =>
   typeof value === 'string' && (CENTRE_VIEWS as readonly string[]).includes(value);
 
-export type CentreTabKey = 'ask' | 'inbox' | 'jobs' | 'operations' | 'administration' | 'how';
+export type CentreTabKey = 'ask' | 'jobs' | 'operations' | 'administration' | 'how';
 
 /** `sections`: the tab is a group whose pages show a second tab row (CENTRE_SECTIONS). */
 export type CentreTab = Readonly<{ key: CentreTabKey; href: string; adminOnly: boolean; sections: boolean }>;
 
 export const CENTRE_TABS: readonly CentreTab[] = [
   { key: 'ask', href: '/assistant', adminOnly: false, sections: false },
-  // Inbox stays until Today lands (W3); the coordinator removes this tab then.
-  { key: 'inbox', href: '/assistant?view=inbox', adminOnly: false, sections: false },
   { key: 'jobs', href: '/assistant?view=jobs', adminOnly: false, sections: false },
   { key: 'operations', href: '/control-tower', adminOnly: true, sections: true },
   { key: 'administration', href: '/control-tower/agents/features', adminOnly: true, sections: true },

@@ -22,8 +22,10 @@ import {AtAGlanceSection,DoneForYouSection,NeedsYouSection,WatchingSection,needs
  * side by side; everyone else (employee, manager, payroll partner) gets Needs you and Done for you beside the
  * At a glance panel. Which sections run never widens what a read may return: every read is the viewer's own,
  * under row-level security. There is no HR capacity strip yet (Phase 2, W15). */
-export async function TodayPage({session,scopeIds,employmentId,notice,more,now=new Date()}:{
+export async function TodayPage({session,scopeIds,employmentId,notice,more,needs={},now=new Date()}:{
  session:SessionContext;scopeIds:readonly string[];employmentId?:string;
+ /** Needs you: every waiting decision ("See all"), and the leave recommendation the approver asked to open. */
+ needs?:Readonly<{all?:boolean;recommend?:string}>;
  /** A page-level message for the person (the module-unavailable explanation), shown above the greeting. */
  notice?:ReactNode;more:ReactNode;now?:Date;
 }){
@@ -44,12 +46,12 @@ export async function TodayPage({session,scopeIds,employmentId,notice,more,now=n
   </header>
   <Suspense fallback={null}><AskSlot session={session} audience={audience}/></Suspense>
   {admin?<div className="grid items-start gap-6 lg:grid-cols-3">
-   <Suspense fallback={<TodaySectionSkeleton title={t('needsYou')} rows={3}/>}><NeedsYouSection {...common}/></Suspense>
+   <Suspense fallback={<TodaySectionSkeleton title={t('needsYou')} rows={3}/>}><NeedsYouSection {...common} {...needs}/></Suspense>
    <Suspense fallback={<TodaySectionSkeleton title={t('doneForYou')}/>}><DoneForYouSection {...common}/></Suspense>
    <Suspense fallback={<TodaySectionSkeleton title={t('watching')}/>}><WatchingSection {...common}/></Suspense>
   </div>:<div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
    <div className="min-w-0 space-y-6">
-    <Suspense fallback={<TodaySectionSkeleton title={t(needsYouHeading(audience))} rows={3}/>}><NeedsYouSection {...common}/></Suspense>
+    <Suspense fallback={<TodaySectionSkeleton title={t(needsYouHeading(audience))} rows={3}/>}><NeedsYouSection {...common} {...needs}/></Suspense>
     <Suspense fallback={<TodaySectionSkeleton title={t('doneForYou')} rows={1}/>}><DoneForYouSection {...common}/></Suspense>
    </div>
    <Suspense fallback={<TodaySectionSkeleton title={t('atAGlance')} rows={2}/>}><AtAGlanceSection {...common} employmentId={employmentId}/></Suspense>

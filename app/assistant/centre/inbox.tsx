@@ -1,3 +1,5 @@
+/** RETIRED from routing in AI v2 Phase 1: Today at `/` (components/today) replaces the AI Centre Inbox and
+ * /assistant?view=inbox redirects there. Kept, unrouted, only while its component tests are moved; remove with them. */
 import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { CalendarCheck, ClipboardCheck, ListChecks, Receipt, Wand2 } from 'lucide-react';
@@ -19,7 +21,7 @@ import { readLeaveRecommendation } from './recommendation';
 import { workerRunGate } from '@/core/agent-registry/controls';
 import { RECOMMENDER_WORKER } from '@/core/recommenders/leave-decision';
 import { FocusOnMount } from '@/components/ai-centre/focus-on-mount';
-import { withInboxOrigin } from '@/lib/ai-centre/inbox-origin';
+import { withTodayOrigin } from '@/lib/ai-centre/inbox-origin';
 
 type Finding = { key: 'exceptions' | 'proposals' | 'readiness'; count: number; blocking?: number; href: string };
 
@@ -148,7 +150,7 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
                 <li key={`${task.kind}:${task.id}`}>
                   <ProposalCard tone="decide" icon={task.kind === 'noticeAcknowledgement' ? <ListChecks /> : <CalendarCheck />} title={taskTitle(task)}
                     meta={[t('inbox.items.fromApprovals'), f.dateTime(new Date(task.createdAt), { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' })]}
-                    href={withInboxOrigin(task.linkPath)} cta={t('inbox.items.review')} prepared={approvalPrepared} />
+                    href={withTodayOrigin(task.linkPath)} cta={t('inbox.items.review')} prepared={approvalPrepared} />
                   {task.kind === 'leave' && (opened?.id === task.id
                     ? <><RecommendationPanel id={`recommendation-${task.id}`} view={opened.view} /><FocusOnMount targetId={`recommendation-${task.id}`} /></>
                     : recommender ? <LeaveRecommendationLink leaveRequestId={task.id} /> : null)}
