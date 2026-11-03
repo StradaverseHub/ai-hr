@@ -76,8 +76,8 @@ describe('AI centre screens', () => {
     state.locale = locale;
     const view = wrap(locale, <div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="ask" isAdmin /></div>);
     const nav = view.container.querySelector('nav[data-ai-centre-tabs]') as HTMLElement;
-    // AI v2 Phase 2: Insights, for every role, between Operations and Administration.
-    expect(within(nav).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=jobs', '/control-tower', '/assistant?view=insights', '/control-tower/agents/features', '/assistant?view=how']);
+    // AI v2 Phase 2: Policies (P2-5, its own page) and Insights, for every role, between Operations and Administration.
+    expect(within(nav).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=jobs', '/control-tower', '/policies', '/assistant?view=insights', '/control-tower/agents/features', '/assistant?view=how']);
     expect(within(nav).queryByRole('link', { name: new RegExp(messagesFor(locale).aiCentre.tabs.inbox) })).toBeNull();
     expect(within(nav).getByRole('link', { current: 'page' })).toHaveAttribute('href', '/assistant');
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), locale, 'ai-centre-tabs-without-inbox', FICTION, 'atelier');
@@ -89,8 +89,9 @@ describe('AI centre screens', () => {
     const view = wrap('en', tabs);
     expect(screen.queryByRole('link', { name: messagesFor('en').aiCentre.tabs.operations })).toBeNull();
     expect(screen.queryByRole('link', { name: messagesFor('en').aiCentre.tabs.administration })).toBeNull();
-    // AI v2 Phase 2: employees see Insights too (their own payroll readiness; the HR capacity ledger stays administrators').
-    expect(screen.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=jobs', '/assistant?view=insights', '/assistant?view=how']);
+    // AI v2 Phase 2: employees see Policies (their own company's approved policies, P2-5) and Insights too (their own payroll
+    // readiness; the HR capacity ledger stays administrators').
+    expect(screen.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=jobs', '/policies', '/assistant?view=insights', '/assistant?view=how']);
     view.unmount();
   });
 
