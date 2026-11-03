@@ -123,3 +123,23 @@ it('publishes templates and preserves company HR creation under a scoped Edit de
   await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id like 'function.leaveApproval.templates.%'`;
  }
 });
+
+it('publishes company approval courses and blocks raw escalation changes under exact Edit denial',async()=>{
+ const cap='function.leaveApproval.escalation.edit';
+ try{
+  expect(await publishActionCapabilityPackage(owner.client,'leave_approval_company')).toMatchObject({changed:true,capabilities:6});
+  expect(await publishActionCapabilityPackage(owner.client,'leave_approval_company')).toMatchObject({changed:false});
+  await setLeaveEscalationPolicy(admin,{companyId:b.companyId,enabled:true,escalateAfterDays:4});
+  await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+   values(${b.tenantId}::uuid,${admin.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+  await expect(setLeaveEscalationPolicy(admin,{companyId:b.companyId,enabled:false})).rejects.toThrow('Leave approval company action unavailable');
+  await expect(withTenant(admin,tx=>tx.update(s.company).set({escalationEnabled:false}).where(eq(s.company.id,b.companyId))))
+   .rejects.toThrow();
+  expect(await leaveApprovalCompanyAccess(admin,'leaveApproval.assignments',b.companyId,['view','add','edit','delete'])).toEqual([true,true,true,true]);
+  expect(await getLeaveEscalationPolicyForMaintenance(admin,b.companyId)).toMatchObject({enabled:true,escalateAfterDays:4});
+ }finally{
+  await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+  await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+   where id like 'function.leaveApproval.assignments.%' or id like 'function.leaveApproval.escalation.%'`;
+ }
+});

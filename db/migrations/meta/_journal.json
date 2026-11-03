@@ -4803,6 +4803,13 @@
       "when": 1793330000382,
       "tag": "0982_leave_approval_template_binding_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 830,
+      "version": "7",
+      "when": 1793330000383,
+      "tag": "0983_leave_approval_escalation_write_guard",
+      "breakpoints": true
     }
   ]
 }

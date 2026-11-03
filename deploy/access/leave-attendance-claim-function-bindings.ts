@@ -254,3 +254,18 @@ export const LEAVE_APPROVAL_TEMPLATE_CAPABILITY_PUBLICATION={
   'app.leave_approval_template_guard()',
  ],
 } as const;
+
+export const LEAVE_APPROVAL_COMPANY_CAPABILITY_PUBLICATION={
+ capabilities:[],
+ functions:LEAVE_ATTENDANCE_CLAIM_FUNCTIONS.filter(descriptor=>descriptor.key==='leaveApproval.assignments'||descriptor.key==='leaveApproval.escalation'),
+ functionLegacyParityFunction:'app.leave_approval_company_native_allowed',
+ functionCurrentLegacyParityFunction:'app.leave_approval_company_current_native_allowed',
+ legacyGroups:{},
+ requiredFunctions:[
+  'app.leave_approval_company_bindings_complete()',
+  'app.leave_approval_company_allowed(text,text,uuid)',
+  'app.leave_approval_assignment_slot(uuid,uuid,uuid,text,integer,integer)',
+  'app.leave_approval_assignment_guard()',
+  'app.leave_approval_escalation_write_guard()',
+ ],
+} as const;
