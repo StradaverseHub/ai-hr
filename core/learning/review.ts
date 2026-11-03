@@ -20,10 +20,11 @@ import {actorOf,appendEvent} from '../../db/events';
 import {terasEvalCandidate,terasGapOccurrence,terasGapStatus,terasLearningSignal,terasLearningSignalReview} from '../../db/teras-learning-schema';
 import {LearningRefused,captureCtx,requireLearningAdmin} from './access';
 import {candidateFileName,exportCandidate as candidateFile} from './export';
-import {gapStatusesTx,reviewStatesTx} from './quality';
+import {detailedIntentsTx,gapStatusesTx,reviewStatesTx} from './quality';
 import {REDACTION_VERSION,looksRedacted,redact} from './redact';
 import {knownNamesTx} from './signals';
-import {CORRECTION_KINDS,EVAL_FACTORS,EVAL_KINDS,EXPECTATION_MAX_CHARS,GAP_STATUSES,INTENT_KEY,QUESTION_MAX_CHARS,type EvalFactor,type EvalKind} from './types';
+import {CORRECTION_KINDS,EVAL_FACTORS,EVAL_KINDS,EXPECTATION_MAX_CHARS,GAP_STATUSES,INTENT_KEY,LEARNING_LOCALES,LEARNING_ROLES,QUESTION_MAX_CHARS,type EvalFactor,
+ type EvalKind} from './types';
 
 export {EXPECTATION_MAX_CHARS,QUESTION_MAX_CHARS,candidateDefaults} from './types';
 const guid=z.guid().transform(value=>value.toLowerCase());
@@ -90,8 +91,12 @@ export async function promoteSignal(supplied:SessionContext,input:unknown){
  });
 }
 
-const PromoteGap=CandidateText.extend({companyId:guid,intentKey:z.string().regex(INTENT_KEY)}).strict();
-/** Make a gap intent an eval candidate: a draft with the most common role and locale of its questions in that company. */
+const PromoteGap=CandidateText.extend({companyId:guid,intentKey:z.string().regex(INTENT_KEY),
+ role:z.enum(LEARNING_ROLES).optional(),locale:z.enum(LEARNING_LOCALES).optional()}).strict();
+/** Make a gap intent an eval candidate: a draft with the most common role and locale of its questions in that company.
+ * Small groups (Phase 2 integration): only an intent at least five distinct logins asked in the company gives its askers'
+ * role and locale; for any other, the administrator names the candidate's role and locale themselves (refused as invalid
+ * without them), so a candidate, its event and its export never carry a small group's role band or locale. */
 export async function promoteGap(supplied:SessionContext,input:unknown){
  const ctx=captureCtx(supplied);requireLearningAdmin(ctx);
  const parsed=PromoteGap.safeParse(input);if(!parsed.success)throw new LearningRefused('invalid');
@@ -103,8 +108,10 @@ export async function promoteGap(supplied:SessionContext,input:unknown){
    .orderBy(desc(o.seenOn),desc(o.id)).limit(200);
   if(!rows.length)throw new LearningRefused('not_found');
   const most=<T extends string>(values:T[])=>[...values.reduce((map,value)=>map.set(value,(map.get(value)??0)+1),new Map<T,number>())].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]))[0][0];
+  const detailed=(await detailedIntentsTx(tx,[companyId],null,null)).has(intentKey);
+  if(!detailed&&(!parsed.data.role||!parsed.data.locale))throw new LearningRefused('invalid');
   const text=await redactedTx(tx,parsed.data);
-  const role=most(rows.map(row=>row.role)),locale=most(rows.map(row=>row.locale));
+  const role=parsed.data.role??most(rows.map(row=>row.role)),locale=parsed.data.locale??most(rows.map(row=>row.locale));
   const [row]=await tx.insert(terasEvalCandidate).values({tenantId:ctx.tenantId,companyId,signalId:null,intentKey,role,locale,...text,
    redactionVersion:REDACTION_VERSION,createdByUserId:ctx.userId!,changedByUserId:ctx.userId!}).returning({id:terasEvalCandidate.id,version:terasEvalCandidate.version});
   await event(tx,ctx,companyId,'teras-learning.candidate-created',{candidateId:row.id,from:'gap',intentKey,role,locale});

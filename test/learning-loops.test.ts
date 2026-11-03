@@ -18,7 +18,7 @@ import * as schema from '../db/schema';
 import {terasOutcomeFollowup,terasOutcomeRecord} from '../db/teras-schema';
 import {terasEvalCandidate,terasGapOccurrence,terasGapStatus,terasGapTurn,terasLearningSignal,terasLearningSignalReview} from '../db/teras-learning-schema';
 import {terasPayrollLoopSetting} from '../db/teras-payroll-cycle-schema';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {issueProposal,type Proposal} from '../core/proposals/proposal';
 import {recordAnswerMark,recordCardSignal,recordGapFromTurn,recordRecommendationSignal} from '../core/learning/signals';
@@ -242,13 +242,15 @@ describe('capturing what people did',()=>{
   await refusedWith(withTenant(employee,tx=>tx.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,kind:'cannot_answer',area:'general',
    intentKey:'cannot_answer:general',role:'employee',locale:'en'})),/row-level security/i);
   const peers=await turnRecord(manager);
-  await refusedWith(withTenant(employee,tx=>tx.insert(terasGapTurn).values({tenantId:b.tenantId,recordId:peers.id,companyId:b.companyId,byUserId:employee.userId})),/row-level security/i);
+  await refusedWith(withTenant(employee,tx=>tx.insert(terasGapTurn).values({tenantId:b.tenantId,recordId:peers.id,companyId:b.companyId,byUserId:employee.userId,
+   intentKey:'cannot_answer:general'})),/row-level security/i);
   await refusedWith(owner.db.update(terasGapOccurrence).set({area:'leave'}).where(eq(terasGapOccurrence.id,occurrence.id)),/append-only/i);
   await refusedWith(owner.db.update(terasGapTurn).set({companyId:second.id}),/append-only/i);
-  // The backlog keeps intent, area, count, first and last seen, and status: no words.
+  // The backlog keeps intent, area, count and status: no words. One person asked, so it is a small group: no role band
+  // and no day (Phase 2 integration).
   const view=await aiQuality(group);
-  expect(view.gaps).toEqual([{intentKey:'not_supported:payroll',kind:'not_supported',area:'payroll',count:1,roles:['employee'],firstSeen:todayInKualaLumpur(),
-   lastSeen:todayInKualaLumpur(),statuses:[{companyId:b.companyId,status:'open',duplicateOf:null}],status:'open',rank:1}]);
+  expect(view.gaps).toEqual([{intentKey:'not_supported:payroll',kind:'not_supported',area:'payroll',count:1,detailed:false,roles:null,firstSeen:null,
+   lastSeen:null,statuses:[{companyId:b.companyId,status:'open',duplicateOf:null}],status:'open',rank:1}]);
  });
 
  it('links no gap to the person who asked, for any administrator, even one who reads the turn\'s outcome record and its signals',async()=>{
@@ -270,10 +272,95 @@ describe('capturing what people did',()=>{
   // Nothing an administrator reads joins them: the note that holds the record is the asker's alone.
   expect(await withTenant(group,tx=>tx.select().from(terasGapTurn))).toEqual([]);
   expect((await aiQuality(group)).gaps.map(row=>[row.intentKey,row.count,Object.keys(row).sort()])).toEqual([['not_supported:payroll',1,
-   ['area','count','firstSeen','intentKey','kind','lastSeen','rank','roles','status','statuses']]]);
+   ['area','count','detailed','firstSeen','intentKey','kind','lastSeen','rank','roles','status','statuses']]]);
   // The person deleting the chat changes nothing about the count: a gap keeps nothing from a chat.
   expect(await deleteOwnChat(employee,chatId)).toBe(1);
   expect(await owner.db.select().from(terasGapOccurrence)).toHaveLength(1);
+ });
+
+ it('small groups: a gap gives its role bands and days only when at least five people asked it; one person asking five times is one',async()=>{
+  // Phase 2 integration: in a small company a gap's role band, locale and day can single a person out.
+  const ask=async(who:Login,question:string,locale='en')=>{const record=await turnRecord(who);
+   return recordGapFromTurn(who,{turnId:record.runId,turn:gapTurn(),question,companyId:b.companyId,locale});};
+  // One person asks about payroll five times: five questions, one asker.
+  for(let n=0;n<5;n++)expect(await ask(employee,'Can you run payroll?','ms')).toEqual({captured:true,intentKey:'not_supported:payroll'});
+  // Four other employees and the manager ask about leave once each: five questions, five askers.
+  const people:Login[]=[];
+  for(let n=1;n<=4;n++){const who=await login(b,`Fictional Leave Asker ${n}`,'employee');people.push({...who,grants:[{role:'employee',companyId:b.companyId}]});}
+  for(const who of [...people,manager])expect(await ask(who,'Can I apply for annual leave here?')).toEqual({captured:true,intentKey:'not_supported:leave'});
+  // Non-vacuity: every note names its intent, and only its writer reads it.
+  expect((await owner.db.select({intent:terasGapTurn.intentKey}).from(terasGapTurn)).map(row=>row.intent).sort())
+   .toEqual([...Array(5).fill('not_supported:leave'),...Array(5).fill('not_supported:payroll')]);
+  expect(await withTenant(group,tx=>tx.select().from(terasGapTurn))).toEqual([]);
+  const today=todayInKualaLumpur(),view=await aiQuality(group);
+  expect(view.gaps.map(row=>[row.intentKey,row.count,row.detailed,row.roles,row.firstSeen,row.lastSeen,row.rank])).toEqual([
+   ['not_supported:leave',5,true,['employee','manager'],today,today,1],
+   ['not_supported:payroll',5,false,null,null,null,2]]);
+  // The database answers which intents qualify, never a count or a login; only to an administrator of the companies named.
+  const intents=(who:SessionContext,companies:readonly string[],to:string|null=null)=>withTenant(who,tx=>tx.execute(sql`select app.teras_gap_detailed_intents(
+   array[${sql.join(companies.map(id=>sql`${id}::uuid`),sql`,`)}]::uuid[],null,${to}::date) as intent`)).then(rows=>Array.from(rows as unknown as {intent:string}[]).map(row=>({...row})));
+  expect(await intents(group,[b.companyId])).toEqual([{intent:'not_supported:leave'}]);
+  for(const who of [employee,manager,await companyAdmin(b,second.id,second.dept)])expect(await intents(who,[b.companyId])).toEqual([]);
+  // Before today nobody had asked: the period counts only its own days.
+  expect(await intents(group,[b.companyId],new Date(Date.now()-3*DAY).toISOString().slice(0,10))).toEqual([]);
+  // The ai_quality_summary read gives the intent and count only, for both.
+  expect((await askAiQuality(group,{period:'last30'}) as Record<string,unknown>).topGaps).toEqual([{kind:'not_supported',area:'leave',count:5,status:'open'},
+   {kind:'not_supported',area:'payroll',count:5,status:'open'}]);
+  // A candidate: from the five askers it takes their most common role and locale; from the small group only the
+  // administrator's own, and its event and export carry no askers' role or locale.
+  const text={question:'Can you run the payroll here?',expectation:'Says it cannot do that yet.',kind:'answer',factor:'facts'} as const;
+  const five=await promoteGap(group,{...text,companyId:b.companyId,intentKey:'not_supported:leave'});
+  await expect(promoteGap(group,{...text,companyId:b.companyId,intentKey:'not_supported:payroll'})).rejects.toMatchObject({reason:'invalid'});
+  const small=await promoteGap(group,{...text,companyId:b.companyId,intentKey:'not_supported:payroll',role:'hr_admin',locale:'en'});
+  const rows=await owner.db.select({id:terasEvalCandidate.id,role:terasEvalCandidate.role,locale:terasEvalCandidate.locale}).from(terasEvalCandidate);
+  expect(rows.map(row=>[row.id===five.id?'five':row.id===small.id?'small':'other',row.role,row.locale]).sort()).toEqual([['five','employee','en'],['small','hr_admin','en']]);
+  const created=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent)
+   .where(and(eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.eventType,'teras-learning.candidate-created')));
+  expect(created.map(row=>row.payload as Record<string,unknown>).find(payload=>payload.candidateId===small.id)).toMatchObject({from:'gap',role:'hr_admin',locale:'en'});
+  expect(await moveCandidate(group,{candidateId:small.id,version:1},'approve')).toMatchObject({state:'approved'});
+  await markCandidateExported(group,{candidateId:small.id});
+  const file=await candidateExportFile(group,{candidateId:small.id});
+  expect(file.text).toContain("role:'hr_admin'");expect(file.text).toContain("locale:'en'");expect(file.text).not.toMatch(/'ms'|role:'employee'/);
+ });
+
+ it('small groups under a restricted table owner: the count works under forced row-level security and widens no read',async()=>{
+  for(const n of [1,2,3,4,5]){
+   const who=n===5?manager:{...(await login(b,`Fictional Restricted Asker ${n}`,'employee')),grants:[{role:'employee' as const,companyId:b.companyId}]};
+   const record=await turnRecord(who);
+   expect(await recordGapFromTurn(who,{turnId:record.runId,turn:gapTurn(),question:'Can I apply for annual leave here?',companyId:b.companyId})).toMatchObject({captured:true});
+  }
+  /** Acts as the application role for one login inside the shared transaction, as withTenant would. */
+  async function as(tx:Tx,ctx:SessionContext){
+   const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
+   await tx.execute(sql`RESET ROLE`);
+   await tx.execute(sql`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId??''},true),set_config('app.roles',${(ctx.roles??[]).join(',')},true),
+    set_config('app.grants',${JSON.stringify(grants)},true),set_config('app.agent_principal_id','',true)`);
+   await tx.execute(sql`SET LOCAL ROLE ai_hr_app`);
+  }
+  const role='teras_gap_owner_'+randomUUID().replaceAll('-',''),rollback=new Error('rollback-restricted-gap-owner');
+  let verified=0;
+  await expect(owner.withTenant(group,async tx=>{
+   await tx.execute(sql.raw(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS`));
+   await tx.execute(sql.raw(`GRANT USAGE,CREATE ON SCHEMA public,app TO ${role}`));
+   await tx.execute(sql.raw(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO ${role}`));
+   await tx.execute(sql.raw(`ALTER TABLE public.teras_gap_turn OWNER TO ${role}`));
+   await tx.execute(sql.raw(`ALTER FUNCTION app.teras_gap_detailed_intents(uuid[],date,date) OWNER TO ${role}`));
+   const [shape]=await tx.execute<Record<string,boolean>>(sql`select r.rolsuper as super,r.rolbypassrls as bypass,
+    (select c.relforcerowsecurity and c.relowner=r.oid from pg_class c where c.oid='public.teras_gap_turn'::regclass) as forced_owned from pg_roles r where r.rolname=${role}`);
+   expect(shape).toEqual({super:false,bypass:false,forced_owned:true});
+   // The administrator: the intent five people asked, through the definer; still no note read directly.
+   await as(tx,group);
+   expect(await tx.execute(sql`select app.teras_gap_detailed_intents(array[${b.companyId}::uuid],null,null) as intent`)).toEqual([{intent:'not_supported:leave'}]);
+   expect(await tx.execute(sql`select record_id from public.teras_gap_turn`)).toEqual([]);
+   verified++;
+   // An employee who asked: their own note only, and no intent through the definer.
+   await as(tx,manager);
+   expect(await tx.execute(sql`select app.teras_gap_detailed_intents(array[${b.companyId}::uuid],null,null) as intent`)).toEqual([]);
+   expect((await tx.execute(sql`select by_user_id from public.teras_gap_turn`)).map(row=>({...row}))).toEqual([{by_user_id:manager.userId}]);
+   verified++;
+   throw rollback;
+  })).rejects.toBe(rollback);
+  expect(verified).toBe(2);
  });
 
  it('answers ai_quality_summary for an administrator as the page shows it, with no example, name or person; refuses anyone else',async()=>{
@@ -425,12 +512,16 @@ describe('reviewing corrections and eval candidates',()=>{
    'teras-learning.candidate-exported','teras-learning.signal-reviewed'].sort());
  });
 
- it('refuses text that redaction cannot clean, and makes a gap intent a candidate with its most common role and locale',async()=>{
+ it('refuses text that redaction cannot clean, and makes a small group\'s gap intent a candidate only with the administrator\'s own role and locale',async()=>{
   await owner.db.insert(terasGapOccurrence).values({tenantId:b.tenantId,companyId:b.companyId,kind:'no_route',area:'claims',intentKey:'no_route:claims',role:'employee',locale:'ms'});
-  const created=await promoteGap(group,{companyId:b.companyId,intentKey:'no_route:claims',question:'Boleh anda hantar tuntutan perjalanan saya?',expectation:'Prepares the travel claim for one Confirm.',
-   kind:'do',factor:'doing'});
+  const words={companyId:b.companyId,intentKey:'no_route:claims',question:'Boleh anda hantar tuntutan perjalanan saya?',expectation:'Prepares the travel claim for one Confirm.',
+   kind:'do',factor:'doing'} as const;
+  // Nobody counted as an asker (an occurrence with no note): a small group, so the askers' role and locale are never taken.
+  await expect(promoteGap(group,words)).rejects.toMatchObject({reason:'invalid'});
+  expect(await owner.db.select().from(terasEvalCandidate)).toEqual([]);
+  const created=await promoteGap(group,{...words,role:'manager',locale:'en'});
   const [row]=await owner.db.select().from(terasEvalCandidate).where(eq(terasEvalCandidate.id,created.id));
-  expect([row.intentKey,row.role,row.locale,row.signalId]).toEqual(['no_route:claims','employee','ms',null]);
+  expect([row.intentKey,row.role,row.locale,row.signalId]).toEqual(['no_route:claims','manager','en',null]);
   await expect(promoteGap(group,{companyId:b.companyId,intentKey:'not_supported:payroll',question:'q',expectation:'e',kind:'answer',factor:'facts'})).rejects.toMatchObject({reason:'not_found'});
   // The database refuses digits or an "@" in a stored candidate, whoever writes it.
   await refusedWith(withTenant(group,tx=>tx.insert(terasEvalCandidate).values({tenantId:b.tenantId,companyId:b.companyId,intentKey:'no_route:claims',role:'employee',locale:'en',

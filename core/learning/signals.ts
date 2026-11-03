@@ -111,9 +111,10 @@ export type GapCapture=Readonly<{captured:false}|{captured:true;intentKey:string
  * `question` is the words the person typed, read here only to name the product area (./gaps.ts intentOf) and never
  * stored. Nothing for a gated turn or a turn that is not a gap.
  *
- * Two rows, in one transaction: the asker's private note that this turn was counted (teras_gap_turn: the record, readable
- * only by this login; its key makes a turn count once), then the occurrence the administrators read, which names no
- * record, login, words or time finer than the day, so it cannot be joined back to the asker (migration 2010). */
+ * Two rows, in one transaction: the asker's private note that this turn was counted (teras_gap_turn: the record and the
+ * intent, readable only by this login; its key makes a turn count once), then the occurrence the administrators read, which
+ * names no record, login, words or time finer than the day, so it cannot be joined back to the asker (migration 2010). The
+ * note's intent lets the database count distinct askers for the small-group rule (./quality.ts) without naming any. */
 export async function recordGapFromTurn(supplied:SessionContext,input:Readonly<{turnId:string;turn:GapTurn;question:string;companyId:string;locale?:unknown}>):Promise<GapCapture>{
  const ctx=capture(supplied);
  const kind=gapKindOf(input.turn);
@@ -122,7 +123,7 @@ export async function recordGapFromTurn(supplied:SessionContext,input:Readonly<{
   const record=await ownRecordTx(tx,ctx,{runId:input.turnId});
   if(!record||record.agentIdentity!==ASSISTANT_TURN_IDENTITY||record.companyId!==input.companyId)return {captured:false} as const;
   const {area,intentKey}=intentOf(kind,input.question,areasOfReads(record.reads));
-  const counted=await tx.insert(terasGapTurn).values({tenantId:ctx.tenantId,recordId:record.id,companyId:record.companyId,byUserId:ctx.userId}).onConflictDoNothing();
+  const counted=await tx.insert(terasGapTurn).values({tenantId:ctx.tenantId,recordId:record.id,companyId:record.companyId,byUserId:ctx.userId,intentKey}).onConflictDoNothing();
   if(affected(counted)!==1)return {captured:false} as const;
   // No RETURNING: only the company's administrators may read an occurrence (2010), not the person who asked.
   await tx.insert(terasGapOccurrence).values({tenantId:ctx.tenantId,companyId:record.companyId,kind,area,intentKey,role:roleBand(ctx),locale:localeOf(input.locale)});

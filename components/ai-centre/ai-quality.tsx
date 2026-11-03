@@ -187,7 +187,8 @@ function GapsTable({ view, t, f, hidden }: { view: QualityView; t: T; f: F; hidd
           : view.gaps.slice(0, 20).map((row: GapBacklogRow) => (
             <tr key={row.intentKey} data-gap-row={row.intentKey}>
               <th scope="row" className={cn(cell, 'font-medium')}>{intentLabel(t, row.intentKey)}
-                <p className="mt-1 text-xs font-normal text-muted-foreground">{t('gaps.roles', { roles: row.roles.map(role => t(`roles.${role}`)).join(', ') })}</p>
+                {/* Small groups (Phase 2 integration): role bands only when at least five people asked; otherwise intent and count only. */}
+                {row.roles && <p className="mt-1 text-xs font-normal text-muted-foreground" data-gap-roles>{t('gaps.roles', { roles: row.roles.map(role => t(`roles.${role}`)).join(', ') })}</p>}
               </th>
               <td className={cn(cell, 'tabular-nums')}>{f.number(row.count)}</td>
               <td className={cell}>

@@ -39,6 +39,9 @@ export const terasLearningSignalReview=pgTable('teras_learning_signal_review',{
  * record it names never reaches an administrator. A turn counts once (its key). */
 export const terasGapTurn=pgTable('teras_gap_turn',{
  tenantId:tenantId(),recordId:uuid('record_id').notNull(),companyId:companyId(),byUserId:uuid('by_user_id').notNull().references(()=>appUser.id),
+ /** The intent the turn was counted under: the asker's own note only; app.teras_gap_detailed_intents counts distinct askers
+  * per intent for the small-group rule and returns intent keys, never a login (2010, Phase 2 integration). */
+ intentKey:text('intent_key').notNull(),
  /** Stamped by the 2010 trigger with the transaction's time; the occurrence's insert policy matches on it. */
  at:at('at').notNull().defaultNow(),
 },t=>[primaryKey({columns:[t.tenantId,t.recordId]})]);

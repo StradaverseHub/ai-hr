@@ -33,9 +33,13 @@
 --    by the company's administrators. It stores no words, no login, person or name, no outcome record and no time finer
 --    than the Malaysian day, so it cannot be joined to a signal, an outcome record (which a group administrator may read,
 --    0928) or anything else that names the asker. Append-only.
---    teras_gap_turn: the asker's own private note that a turn was counted, so a turn counts once. It holds the record, and
---    only the login that wrote it can read it: no administrator, group administrator or other-login policy. An occurrence
---    is admitted only beside a note its writer made in the same transaction, for the same company.
+--    teras_gap_turn: the asker's own private note that a turn was counted, so a turn counts once. It holds the record and
+--    the intent, and only the login that wrote it can read it: no administrator, group administrator or other-login policy.
+--    An occurrence is admitted only beside a note its writer made in the same transaction, for the same company and intent.
+--    Small groups (Phase 2 integration, 4 November 2026): in a small company an occurrence's role band, locale and day
+--    can single a person out, so the AI quality page, its read and any export show them only for an intent at least five
+--    distinct logins asked (app.teras_gap_detailed_intents counts the notes and answers which intents qualify: never a
+--    count of askers, never who); otherwise the intent and count only.
 -- 4. (Removed before any application: the redacted gap examples.)
 -- 5. teras_gap_status: an administrator's status for one intent in one company: open, planned, won't do or duplicate (of
 --    another intent). Append-only versions; the latest wins; setting it back to open is a new version.
@@ -189,12 +193,13 @@ GRANT SELECT,INSERT ON public.teras_learning_signal_review TO ai_hr_app;
 --> statement-breakpoint
 
 -- ── 3. Gap occurrences ──
--- The asker's private note that a turn was counted (one per outcome record).
+-- The asker's private note that a turn was counted (one per outcome record), with the intent it was counted under.
 CREATE TABLE public.teras_gap_turn (
  tenant_id uuid NOT NULL REFERENCES public.tenant(id),
  record_id uuid NOT NULL,
  company_id uuid NOT NULL,
  by_user_id uuid NOT NULL REFERENCES public.app_user(id),
+ intent_key text NOT NULL CHECK (intent_key ~ '^(cannot_answer|no_route|not_supported):[a-z_]{1,40}$'),
  at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY (tenant_id,record_id),
  FOREIGN KEY (company_id,tenant_id) REFERENCES public.company(id,tenant_id),
@@ -225,6 +230,13 @@ CREATE POLICY teras_gap_turn_own_read ON public.teras_gap_turn FOR SELECT TO ai_
 CREATE POLICY teras_gap_turn_own_insert ON public.teras_gap_turn FOR INSERT TO ai_hr_app
  WITH CHECK (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE AND by_user_id=app.current_user_id()
   AND app.teras_learning_own_record(record_id,company_id));
+--> statement-breakpoint
+-- The small-group lookup (app.teras_gap_detailed_intents, below): only the table owner as current user, only the notes of
+-- companies the calling administrator administers, and only to count distinct askers inside the function.
+CREATE POLICY teras_gap_turn_definer_count_read ON public.teras_gap_turn FOR SELECT TO PUBLIC
+ USING (current_user<>'ai_hr_app'
+  AND current_user=pg_catalog.pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.teras_gap_turn'::regclass))
+  AND tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id));
 --> statement-breakpoint
 REVOKE ALL ON public.teras_gap_turn FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -270,11 +282,28 @@ CREATE POLICY teras_gap_occurrence_read ON public.teras_gap_occurrence FOR SELEC
 CREATE POLICY teras_gap_occurrence_own_insert ON public.teras_gap_occurrence FOR INSERT TO ai_hr_app
  WITH CHECK (tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE AND app.current_agent_principal() IS NULL
   AND EXISTS(SELECT 1 FROM public.teras_gap_turn t WHERE t.tenant_id=teras_gap_occurrence.tenant_id AND t.company_id=teras_gap_occurrence.company_id
-   AND t.by_user_id=app.current_user_id() AND t.at=now()));
+   AND t.intent_key=teras_gap_occurrence.intent_key AND t.by_user_id=app.current_user_id() AND t.at=now()));
 --> statement-breakpoint
 REVOKE ALL ON public.teras_gap_occurrence FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 GRANT SELECT,INSERT ON public.teras_gap_occurrence TO ai_hr_app;
+--> statement-breakpoint
+-- Small groups: the intents at least five distinct logins asked, in the given companies the caller administers, between
+-- two Malaysian days (either may be null: unbounded). A definer over the askers' private notes (the policy above): it
+-- returns intent keys only, never a count of askers or a login, and nothing for a company the caller does not administer.
+CREATE FUNCTION app.teras_gap_detailed_intents(p_companies uuid[],p_from date,p_to date) RETURNS SETOF text
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t.intent_key FROM public.teras_gap_turn t
+ WHERE t.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() IS TRUE AND app.teras_learning_admin(t.company_id)
+  AND t.company_id=ANY(p_companies)
+  AND (p_from IS NULL OR (t.at AT TIME ZONE 'Asia/Kuala_Lumpur')::date>=p_from)
+  AND (p_to IS NULL OR (t.at AT TIME ZONE 'Asia/Kuala_Lumpur')::date<=p_to)
+ GROUP BY t.intent_key HAVING count(DISTINCT t.by_user_id)>=5
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.teras_gap_detailed_intents(uuid[],date,date) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.teras_gap_detailed_intents(uuid[],date,date) TO ai_hr_app;
 --> statement-breakpoint
 
 -- ── 5. Gap statuses ──

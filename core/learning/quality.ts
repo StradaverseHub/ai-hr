@@ -75,6 +75,14 @@ async function gapFactsTx(tx:Tx,ctx:SessionContext,scope:readonly string[],fromD
   where o.tenant_id=${ctx.tenantId}::uuid and o.company_id=any(${ids(scope)}) and o.seen_on>=${fromDay}::date group by 1,2,3,4`) as unknown as {company_id:string;intent_key:string;role:LearningRole;day:string;n:number}[];
  return Array.from(rows).map(row=>Object.freeze({companyId:row.company_id,intentKey:row.intent_key,role:row.role,date:row.day,count:Number(row.n)}));
 }
+/** Small groups (Phase 2 integration): the intents at least GAP_DETAIL_MIN_ASKERS distinct logins asked, in the given
+ * companies the caller administers, between two Malaysian days (null: unbounded). app.teras_gap_detailed_intents (2010)
+ * counts the askers' private notes and returns intent keys only, never a count of askers or a login. */
+export async function detailedIntentsTx(tx:Tx,scope:readonly string[],fromDay:string|null,toDay:string|null):Promise<Set<string>>{
+ if(!scope.length)return new Set();
+ const rows=await tx.execute(sql`select app.teras_gap_detailed_intents(${ids(scope)},${fromDay}::date,${toDay}::date) as intent_key`) as unknown as {intent_key:string}[];
+ return new Set(Array.from(rows).map(row=>row.intent_key));
+}
 /** Each intent's current status per company: its highest version. */
 export async function gapStatusesTx(tx:Tx,ctx:SessionContext,scope:readonly string[]):Promise<GapStatusFact[]>{
  if(!scope.length)return [];
@@ -143,7 +151,10 @@ export async function aiQuality(supplied:SessionContext,input:Readonly<{period?:
   const gapFacts:GapFact[]=empty?[]:await gapFactsTx(tx,ctx,scope,[periodFrom,months[0]+'-01'].sort()[0]);
   const statuses:GapStatusFact[]=empty?[]:await gapStatusesTx(tx,ctx,scope);
   const figures=computeQuality({period,today,signals,loopCards,gaps:gapFacts,statuses});
-  const backlog=gapBacklog({period,today,gaps:gapFacts,statuses});
+  // Small groups: the intents enough distinct people asked in these companies and this period to show who asked by role
+  // band and when (the database counts the askers' own notes and returns intent keys only).
+  const detailed=empty?new Set<string>():await detailedIntentsTx(tx,scope,periodFrom,today);
+  const backlog=gapBacklog({period,today,gaps:gapFacts,statuses,detailed});
   const periodStart=malaysiaDayStart(periodFrom);
   const corrections=empty?[]:await correctionsTx(tx,ctx,scope,periodStart);
   const candidates=empty?[]:await candidatesTx(tx,ctx,scope);

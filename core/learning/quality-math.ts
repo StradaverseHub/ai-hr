@@ -68,17 +68,28 @@ export function computeQuality(input:Readonly<{period:QualityPeriod;today:string
  });
 }
 
-export type GapRow=Readonly<{intentKey:string;kind:string;area:string;count:number;roles:readonly LearningRole[];
- /** The first and last Malaysian day it was asked in the period (YYYY-MM-DD). A gap keeps no words and no time finer than
-  * the day (AI v2 Phase 2 hardening). */
- firstSeen:string;lastSeen:string;
+/** Small groups (Phase 2 integration, 4 November 2026): a gap's role bands, locale and days are given only for an intent
+ * at least this many distinct logins asked in the companies and period shown (counted by the database over the askers' own
+ * notes, app.teras_gap_detailed_intents, which never names one); otherwise the intent and count only. */
+export const GAP_DETAIL_MIN_ASKERS=5;
+export type GapRow=Readonly<{intentKey:string;kind:string;area:string;count:number;
+ /** At least GAP_DETAIL_MIN_ASKERS distinct logins asked it: only then are `roles`, `firstSeen` and `lastSeen` given. */
+ detailed:boolean;
+ /** The role bands that asked it; null for a small group. */
+ roles:readonly LearningRole[]|null;
+ /** The first and last Malaysian day it was asked in the period (YYYY-MM-DD); null for a small group. A gap keeps no
+  * words and no time finer than the day (AI v2 Phase 2 hardening). */
+ firstSeen:string|null;lastSeen:string|null;
  /** Each company's current status, for the companies where the intent was asked in the period. */
  statuses:readonly Readonly<{companyId:string;status:GapStatus;duplicateOf:string|null}>[];
  /** One status when every company agrees, else null (mixed). */
  status:GapStatus|null;rank:number}>;
 /** The gap backlog: the period's gap questions grouped by intent, counted and ranked (most asked first, then the most
- * roles affected, then the intent key), with each company's status. */
-export function gapBacklog(input:Readonly<{period:QualityPeriod;today:string;gaps:readonly GapFact[];statuses:readonly GapStatusFact[]}>):readonly GapRow[]{
+ * roles affected, then the intent key), with each company's status. `detailed` names the intents at least
+ * GAP_DETAIL_MIN_ASKERS distinct logins asked (none when omitted): any other intent gives its intent and count only, and
+ * its roles never order it (it ranks as if it had none). */
+export function gapBacklog(input:Readonly<{period:QualityPeriod;today:string;gaps:readonly GapFact[];statuses:readonly GapStatusFact[];
+ detailed?:ReadonlySet<string>}>):readonly GapRow[]{
  const from=periodStartDate(input.period,input.today);
  const rows=input.gaps.filter(row=>row.date>=from&&row.date<=input.today);
  const status=new Map(input.statuses.map(row=>[statusKey(row.companyId,row.intentKey),row]));
@@ -93,9 +104,10 @@ export function gapBacklog(input:Readonly<{period:QualityPeriod;today:string;gap
   const statuses=[...group.companies].sort().map(companyId=>{const row=status.get(statusKey(companyId,intentKey));
    return Object.freeze({companyId,status:row?.status??'open' as GapStatus,duplicateOf:row?.duplicateOf??null});});
   const distinct=new Set(statuses.map(row=>row.status+'\u0000'+(row.duplicateOf??'')));
-  return {intentKey,kind,area,count:group.count,roles:Object.freeze([...group.roles].sort()),firstSeen:group.first,lastSeen:group.last,statuses:Object.freeze(statuses),
-   status:distinct.size===1?statuses[0].status:null};
- }).sort((a,b)=>b.count-a.count||b.roles.length-a.roles.length||a.intentKey.localeCompare(b.intentKey))
+  const detailed=input.detailed?.has(intentKey)===true;
+  return {intentKey,kind,area,count:group.count,detailed,roles:detailed?Object.freeze([...group.roles].sort()):null,firstSeen:detailed?group.first:null,
+   lastSeen:detailed?group.last:null,statuses:Object.freeze(statuses),status:distinct.size===1?statuses[0].status:null};
+ }).sort((a,b)=>b.count-a.count||(b.roles?.length??0)-(a.roles?.length??0)||a.intentKey.localeCompare(b.intentKey))
   .map((row,index)=>Object.freeze({...row,rank:index+1})));
 }
 

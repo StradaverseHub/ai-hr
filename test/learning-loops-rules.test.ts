@@ -13,7 +13,7 @@ import {join} from 'node:path';
 import {describe,expect,it} from 'vitest';
 import {REDACTION_VERSION,fictionalise,looksRedacted,placeholderLetters,redact} from '../core/learning/redact';
 import {areaOfWords,gapKindOf,gapTurnOf,intentOf,type GapTurn} from '../core/learning/gaps';
-import {computeQuality,gapBacklog,loopCorrectionTrend} from '../core/learning/quality-math';
+import {GAP_DETAIL_MIN_ASKERS,computeQuality,gapBacklog,loopCorrectionTrend} from '../core/learning/quality-math';
 import {candidateFileName,exportCandidate} from '../core/learning/export';
 import {CANDIDATE_STATES,EVAL_FACTORS,EVAL_KINDS,GAP_KINDS,GAP_STATUSES,LEARNING_LOCALES,LEARNING_ROLES,REVIEW_DECISIONS,SIGNAL_KINDS} from '../core/learning/types';
 import {SMART_EVAL_FACTORS} from '../core/improvement/smart-eval-score';
@@ -141,16 +141,28 @@ describe('the quality figures',()=>{
   expect(figures.helpful.share).toBeNull();expect(figures.prepared.unchanged.share).toBeNull();expect(figures.gaps.openQuestions.share).toBeNull();
   expect(figures.gaps.openIntents).toBe(0);
  });
- it('groups the backlog by intent, ranks it, and keeps each company\'s status and the first and last day it was asked',()=>{
-  // last30 to 2026-11-03 starts 2026-10-05, so the 2026-09-01 claims row is outside the period.
-  expect(gapBacklog({period:'last30',today:'2026-11-03',gaps,statuses})).toEqual([
-   {intentKey:'not_supported:payroll',kind:'not_supported',area:'payroll',count:5,roles:['employee','manager'],firstSeen:'2026-10-12',lastSeen:'2026-10-13',
+ it('groups the backlog by intent, ranks it, and keeps each company\'s status and, for an intent enough people asked, the first and last day',()=>{
+  // last30 to 2026-11-03 starts 2026-10-05, so the 2026-09-01 claims row is outside the period. The database named the
+  // payroll and leave intents as asked by at least five people (app.teras_gap_detailed_intents); claims is a small group.
+  expect(GAP_DETAIL_MIN_ASKERS).toBe(5);
+  expect(gapBacklog({period:'last30',today:'2026-11-03',gaps,statuses,detailed:new Set(['not_supported:payroll','cannot_answer:leave'])})).toEqual([
+   {intentKey:'not_supported:payroll',kind:'not_supported',area:'payroll',count:5,detailed:true,roles:['employee','manager'],firstSeen:'2026-10-12',lastSeen:'2026-10-13',
     statuses:[{companyId:A,status:'open',duplicateOf:null},{companyId:B,status:'wont_do',duplicateOf:null}],status:null,rank:1},
-   {intentKey:'cannot_answer:leave',kind:'cannot_answer',area:'leave',count:3,roles:['employee'],firstSeen:'2026-10-14',lastSeen:'2026-10-14',
+   {intentKey:'cannot_answer:leave',kind:'cannot_answer',area:'leave',count:3,detailed:true,roles:['employee'],firstSeen:'2026-10-14',lastSeen:'2026-10-14',
     statuses:[{companyId:A,status:'planned',duplicateOf:null}],status:'planned',rank:2},
-   {intentKey:'no_route:claims',kind:'no_route',area:'claims',count:2,roles:['hr_admin'],firstSeen:'2026-11-01',lastSeen:'2026-11-01',
+   {intentKey:'no_route:claims',kind:'no_route',area:'claims',count:2,detailed:false,roles:null,firstSeen:null,lastSeen:null,
     statuses:[{companyId:A,status:'open',duplicateOf:null}],status:'open',rank:3},
   ]);
+ });
+ it('a small group gives its intent and count only, and its roles never order it',()=>{
+  // Two intents asked twice each: one by two role bands, one by one. Neither named by the database: nothing about who
+  // asked, and the tie falls to the intent key (were roles counted, the two-band intent would rank first).
+  const tie=[{companyId:A,intentKey:'no_route:leave',role:'employee' as const,date:'2026-11-01',count:1},{companyId:A,intentKey:'no_route:leave',role:'manager' as const,date:'2026-11-02',count:1},
+   {companyId:A,intentKey:'cannot_answer:claims',role:'employee' as const,date:'2026-11-01',count:2}];
+  expect(gapBacklog({period:'last30',today:'2026-11-03',gaps:tie,statuses:[]}).map(row=>[row.intentKey,row.count,row.detailed,row.roles,row.firstSeen,row.lastSeen,row.rank]))
+   .toEqual([['cannot_answer:claims',2,false,null,null,null,1],['no_route:leave',2,false,null,null,null,2]]);
+  expect(gapBacklog({period:'last30',today:'2026-11-03',gaps:tie,statuses:[],detailed:new Set(['no_route:leave'])}).map(row=>[row.intentKey,row.roles,row.rank]))
+   .toEqual([['no_route:leave',['employee','manager'],1],['cannot_answer:claims',null,2]]);
  });
  it('trends each loop\'s corrections by month',()=>{
   expect(loopCorrectionTrend([{loop:'loop_missed_clock_outs',companyId:A,month:'2026-10',decided:200,corrected:1},
@@ -214,11 +226,21 @@ describe('the boundaries the owner set',()=>{
   expect(SQL).toContain("BEGIN NEW.seen_on:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date; RETURN NEW; END $$;");
   // The record goes only into the asker's own note, which only that login reads: no administrator, group administrator or
   // other-login policy, and no other policy of any kind on it but its own insert.
-  expect(columns('teras_gap_turn')).toEqual(['tenant_id','record_id','company_id','by_user_id','at']);
-  expect([...SQL.matchAll(/CREATE POLICY (\w+) ON public\.teras_gap_turn FOR (\w+)/g)].map(m=>[m[1],m[2]])).toEqual([['teras_gap_turn_own_read','SELECT'],['teras_gap_turn_own_insert','INSERT']]);
+  // Phase 2 integration (small groups): the note also names its intent, so the database can count distinct askers.
+  expect(columns('teras_gap_turn')).toEqual(['tenant_id','record_id','company_id','by_user_id','intent_key','at']);
+  // Besides its own read and insert, one policy: the table owner as current user, inside the small-group definer only.
+  expect([...SQL.matchAll(/CREATE POLICY (\w+) ON public\.teras_gap_turn FOR (\w+) TO (\w+)/g)].map(m=>[m[1],m[2],m[3]])).toEqual([['teras_gap_turn_own_read','SELECT','ai_hr_app'],
+   ['teras_gap_turn_own_insert','INSERT','ai_hr_app'],['teras_gap_turn_definer_count_read','SELECT','PUBLIC']]);
   expect(SQL).toContain('CREATE POLICY teras_gap_turn_own_read ON public.teras_gap_turn FOR SELECT TO ai_hr_app\n USING (tenant_id=app.current_tenant_id() AND app.current_agent_principal() IS NULL AND by_user_id=app.current_user_id());');
-  // An occurrence is admitted only beside its writer's own note from the same transaction, for the same company.
-  expect(SQL).toContain('AND EXISTS(SELECT 1 FROM public.teras_gap_turn t WHERE t.tenant_id=teras_gap_occurrence.tenant_id AND t.company_id=teras_gap_occurrence.company_id\n   AND t.by_user_id=app.current_user_id() AND t.at=now()));');
+  expect(SQL).toContain("CREATE POLICY teras_gap_turn_definer_count_read ON public.teras_gap_turn FOR SELECT TO PUBLIC\n USING (current_user<>'ai_hr_app'\n  AND current_user=pg_catalog.pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.teras_gap_turn'::regclass))\n  AND tenant_id=app.current_tenant_id() AND app.teras_learning_admin(company_id));");
+  // The definer returns intent keys only: five distinct logins at least, never a count or a login.
+  const definer=SQL.slice(SQL.indexOf('CREATE FUNCTION app.teras_gap_detailed_intents('),SQL.indexOf('$$;',SQL.indexOf('CREATE FUNCTION app.teras_gap_detailed_intents('))+3);
+  expect(definer).toContain('RETURNS SETOF text\n LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$\n SELECT t.intent_key FROM public.teras_gap_turn t');
+  expect(definer).toContain('GROUP BY t.intent_key HAVING count(DISTINCT t.by_user_id)>=5');
+  expect(definer).toContain('app.principal_snapshot_current() IS TRUE AND app.teras_learning_admin(t.company_id)');
+  expect(SQL).toContain('GRANT EXECUTE ON FUNCTION app.teras_gap_detailed_intents(uuid[],date,date) TO ai_hr_app;');
+  // An occurrence is admitted only beside its writer's own note from the same transaction, for the same company and intent.
+  expect(SQL).toContain('AND EXISTS(SELECT 1 FROM public.teras_gap_turn t WHERE t.tenant_id=teras_gap_occurrence.tenant_id AND t.company_id=teras_gap_occurrence.company_id\n   AND t.intent_key=teras_gap_occurrence.intent_key AND t.by_user_id=app.current_user_id() AND t.at=now()));');
   const quality=readFileSync(join(root,'core/learning/quality.ts'),'utf8'),signals=readFileSync(join(root,'core/learning/signals.ts'),'utf8');
   expect(quality).not.toMatch(/terasGapExample|examplesTx|exampleKept|example:/);
   expect(signals).not.toMatch(/terasGapExample|redact\(|chatId/);

@@ -62,9 +62,10 @@ const view=(over:Record<string,unknown>={})=>({period:'last30',periodFrom:'2026-
   gaps:{openIntents:2,questions:12,openQuestions:share(9,12)},
   trend:[['2026-06',0,0],['2026-07',0,0],['2026-08',0,0],['2026-09',6,8],['2026-10',27,36],['2026-11',3,4]].map(([month,unchanged,decided])=>({month,unchanged,decided,share:decided?(unchanged as number)/(decided as number):null}))},
  gaps:[
-  {intentKey:'not_supported:payroll',kind:'not_supported',area:'payroll',count:7,roles:['employee','manager'],firstSeen:'2026-10-07',lastSeen:'2026-11-02',
+  {intentKey:'not_supported:payroll',kind:'not_supported',area:'payroll',count:7,detailed:true,roles:['employee','manager'],firstSeen:'2026-10-07',lastSeen:'2026-11-02',
    statuses:[{companyId:C1,status:'open',duplicateOf:null}],status:'open',rank:1},
-  {intentKey:'cannot_answer:leave',kind:'cannot_answer',area:'leave',count:3,roles:['employee'],firstSeen:'2026-10-20',lastSeen:'2026-10-20',
+  // Phase 2 integration: fewer than five people asked, so the read gives the intent and count only.
+  {intentKey:'cannot_answer:leave',kind:'cannot_answer',area:'leave',count:3,detailed:false,roles:null,firstSeen:null,lastSeen:null,
    statuses:[{companyId:C1,status:'planned',duplicateOf:null},{companyId:C2,status:'open',duplicateOf:null}],status:null,rank:2},
  ],
  corrections:[
@@ -168,8 +169,10 @@ describe('AI quality, as an administrator',()=>{
   const rows=[...rendered.container.querySelectorAll('[data-gap-row]')];
   expect(rows.map(cells)).toEqual([
    ['Asked if it can do something in payroll: not yetAsked by: Employee, Manager','7',expect.stringContaining('Open')],
-   ['Could not answer about leaveAsked by: Employee','3',expect.stringContaining('Differs by company')],
+   // A small group: the intent and count only, no role band.
+   ['Could not answer about leave','3',expect.stringContaining('Differs by company')],
   ]);
+  expect(rows.map(row=>row.querySelectorAll('[data-gap-roles]').length)).toEqual([1,0]);
   const table=rendered.container.querySelector('#ai-quality-gaps') as HTMLElement;
   expect([...table.querySelectorAll('th[scope="col"]')].map(text)).toEqual(['Intent','Count','Status']);
   expect(table.querySelector('[data-gap-example]')).toBeNull();expect(text(table)).not.toMatch(/Example|“/);

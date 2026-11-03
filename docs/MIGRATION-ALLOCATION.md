@@ -1464,3 +1464,47 @@ SELECT and INSERT only, append-only triggers), the contribution-recording trigge
 of a settings change contributed nothing to it, `changes_settings` is derived from the confirmed values when a version is
 sent, and a rejected value's setting must be confirmed or marked text only. Its SHA256 in the Phase 2 integration table
 above (the idx809 row), the `lifecycle-v9` journal pin and the `board-nine` applied-ledger pin are the new file's. Same number, idx and `when`.
+
+## AI Centre block 2000–2019: AI v2 Phase 2 final integration — 4 November 2026 (unapplied source reservation)
+
+Branch `claude/aiv2-phase2-integration` (from `3a5273a02`) merges, in order and `--no-ff`, `claude/aiv2-phase1-release`
+`d895f80b9` (Phase 1's review fixes: 2001, 2002 and 2003 amended), `claude/aiv2-p2h-tools-privacy` `07c395db3` (2010
+edited), `claude/aiv2-p2h-loops-hardening` `8af205b3d` (2005, 2006 and 2008 edited; new 2011) and
+`claude/aiv2-p2h-handbook-hardening` `7046bf928` (2009 edited). None of these files has been applied anywhere.
+
+One more in-place edit, of the never-applied 2010 (integration fix, small groups): a gap occurrence keeps a role band,
+a locale and a day, which can single a person out in a small company. `teras_gap_turn` (the asker's own private note)
+gains `intent_key`, the occurrence's insert policy requires the note's intent to match, and the new SECURITY DEFINER
+`app.teras_gap_detailed_intents(uuid[],date,date)` counts distinct askers over the notes (an owner-only policy,
+`teras_gap_turn_definer_count_read`, admits it under a restricted NOBYPASSRLS owner, as 2003's lookups do) and returns
+only the intent keys at least five distinct logins asked, in companies the caller administers: never a count of askers
+and never a login. Writers reviewed: `core/learning/signals.ts` `recordGapFromTurn` remains the only writer of both gap
+tables. Same number, idx and `when`.
+
+A fresh fetch and scan on 4 November 2026 of every origin ref's `db/migrations` (1238 distinct commits) found file claims
+at or above 1500 only in `1500`–`1502` (`claude/wonderful-mccarthy-2fb38f`) and this block; 2011 only on the loops
+hardening branch and its CI branches; nothing at 2012 or above, and no `when` at or above 1793330001412.
+
+The journal ends with the block, ascending: idx800–811, `when` 1793330001400–1793330001411, all above main's applied
+1793330000353. Final identities:
+
+| idx | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|800|1793330001400|2000_teras_chats|8cd50320de942af9aa59e515c5e39e78f6027325da86264dd8e772bff1c802b7|
+|801|1793330001401|2001_private_cases|bcfb193a8f6e59c7fec485291bf94cf460f89f44d5abc5bb9ef80cdb6f802acc|
+|802|1793330001402|2002_teras_loops|9614f0d8aa6855d24fe0b7ee1e75c46f80f89e19ec43161825e4bf357eefb908|
+|803|1793330001403|2003_letter_requests|86648ce2dc7af62b92091a5ec195877c68a511f6272dd9681781cedf85900041|
+|804|1793330001404|2004_teras_loop_autonomy|b6bdeac1995dad6df759ce9a537c98e9a3666bf01aef716a7f6cac9a9134b132|
+|805|1793330001405|2005_teras_payroll_cycle_loops|d211dd97ebdeb673998d29a2a9b3b8d8597c39a5646259ac0c855d46eca49fbc|
+|806|1793330001406|2006_payroll_audit_loop|05bc9e35367093ae4c6aec877a7ca7ec171387cb84b28940e0db0e190fcf7723|
+|807|1793330001407|2007_teras_capacity_baseline|8b2bb6e38d76c7bf6643e45c62c11ed89e71d954615438d527adf1b4593f22ad|
+|808|1793330001408|2008_own_payroll_cut_off|c068fa72631c648453117fdf73cc81e6ffbbb4cc94d55d82397e40ac4e4291f8|
+|809|1793330001409|2009_teras_living_handbook|2ffa6731bc3e8cfbc0586875ba9c33d0db2c67104376dc99e35ba181214ccae0|
+|810|1793330001410|2010_teras_learning_loops|2cabdaa5975db8ef1d91f6027bb38b4b7ca1f7ce3c17561b9961926f2e02c201|
+|811|1793330001411|2011_payroll_loops_hardening|71c1b7ee489aef6fa8e9dda0fe0c014289fd278c7c7df01455f79185b68a0a40|
+
+`test/lifecycle-v9-populated-upgrade.test.ts` pins these identities; `test/board-nine-populated-upgrade.test.ts` applies
+staging's 656-entry ledger, then 2000–2003, then 2004–2011 on a populated database and logs the applied ledger
+(`[populated-upgrade-ledger]`). This table supersedes the per-branch hash rows above for 2001–2003, 2005, 2006 and
+2008–2010. Development source only: no installation priority, no deployment; at installation the numbers and `when`
+values are re-checked against staging's applied watermark and re-frozen above it if it has reached them.
