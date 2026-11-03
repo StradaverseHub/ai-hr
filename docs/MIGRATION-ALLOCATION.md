@@ -1035,3 +1035,20 @@ may claim the same idx; reconcile at integration.
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |766|1793330000361|0961_letter_requests|fac033d489f171da966f620f058f8f688c21e691786b2700bd9fe0876495eb5e|
+
+## AI v2 Phase 2 P2-1 autonomy ladder — 3 November 2026 (provisional source claim)
+
+Branch `claude/aiv2-p2-autonomy-ladder` (cut from `360e7f065` on `claude/aiv2-phase1-final`, journal ending
+`0961_letter_requests` idx766 / when1793330000361) appends `0963_teras_loop_autonomy` as idx767 / when1793330000363, the
+number and `when` the AI v2 coordinator reserved for P2-1 (Phase 2 common rules: 0962 is held for renumbering
+`0952_teras_chats` at release, 0964–0966 for P2-2a, P2-2b and P2-4). A fresh fetch on 3 November 2026 and a scan of every
+origin ref's migration files and journals (1618 refs) and every registered worktree found file claims through 0961 and
+journal `when` values through 1793330000361 on origin, and only the reserved `0966_teras_capacity_baseline` in the P2-4
+worktree; nothing claims 0963 or when1793330000363. Development source only: no installation priority, no deployment; the
+idx is this branch's own journal position and must be re-frozen above the then-installed ledger at integration (after
+0962 if the renumbered chats migration is placed first). Sibling Phase 2 branches cut from the same base may claim the
+same idx; reconcile at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|767|1793330000363|0963_teras_loop_autonomy|722a617075d07653622da6849c6cf1744918c19a7a2143d5558d5bd8d069210c|

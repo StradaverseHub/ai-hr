@@ -1036,6 +1036,21 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     category: null,
     render: () => ({ severity: 'info', title: 'Letter request declined', body: 'Your letter request was declined. Open My Letters to see its status.', linkPath: '/me/letters' }),
   },
+  // AI v2 Phase 2 P2-1 (core/loops/act-clock-outs.ts): the missed clock-outs loop, acting within its limits, set a missed
+  // clock-out to the roster end through the attendance owner. The employee (the event's subject) is told the day, the
+  // time and until when they can undo it on Today. Dates and a clock time only. In-app only (no email category).
+  'teras-loop.action.applied': {
+    kind: 'teras-loop.clock-out-set',
+    category: null,
+    render: (p) => {
+      const date = typeof p?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.date) ? p.date : 'a recent day';
+      const time = typeof p?.checkOut === 'string' && /^\d{2}:\d{2}$/.test(p.checkOut) ? p.checkOut : 'your roster end';
+      const until = typeof p?.undoUntil === 'string' && Number.isFinite(Date.parse(p.undoUntil))
+        ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(p.undoUntil)) : null;
+      return { severity: 'info', title: 'Missed clock-out filled in',
+        body: `Your missing clock-out on ${date} was set to ${time}, the end of your roster.${until ? ` If that is wrong, undo it on Today by ${until}.` : ''}`, linkPath: '/' };
+    },
+  },
 };
 
 export type DispatchResult = { processed: number; created: number };

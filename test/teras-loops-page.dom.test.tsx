@@ -39,6 +39,13 @@ vi.mock('next/navigation',()=>({
 vi.mock('../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>true,isModuleEnabledOrFalse:()=>true}));
 vi.mock('../app/control-tower/loops/actions',()=>({setLoopSwitchAction:vi.fn(),setLoopPauseAction:vi.fn()}));
+// AI v2 Phase 2 P2-1: the loop page also reads the levels and automatic actions (covered by test/teras-loop-autonomy-pages.dom.test.tsx);
+// here every company stays at Prepare and the loop has acted on nothing.
+vi.mock('../app/control-tower/loops/autonomy-actions',()=>({setLoopLevelAction:vi.fn(),undoLoopActionFromDetailAction:vi.fn()}));
+vi.mock('../core/loops/autonomy-views',()=>({loopAutonomyDetail:async(_s:unknown,id:string)=>({workerId:id,maxLevel:3,promotableTo:3,capped:false,hasActor:true,canChange:state.canSwitch,windowDays:30,
+ companies:[{companyId:'00000000-0000-4000-8000-0000000000c1',companyName:'Fictional A Sdn Bhd',level:1,limits:null,changedAt:null,changedBy:null,changedByName:null,lastChange:null},
+  {companyId:'00000000-0000-4000-8000-0000000000c2',companyName:'Fictional B Sdn Bhd',level:1,limits:null,changedAt:null,changedBy:null,changedByName:null,lastChange:null}],
+ actions:[],figures:{applied:0,corrected:0,undoneByEmployee:0,correctedShare:null}})}));
 const fx=vi.hoisted(()=>{
  const row=(id:string,extra:Record<string,unknown>={})=>({id,level:'prepare',on:false,stopped:false,running:false,sponsor:null,lastRun:null,prepared:0,confirmed:0,changed:0,
   correctionRate:null,proposesValue:id==='loop_missed_clock_outs',openNow:0,waitingNow:0,pausedCompanies:0,...extra});

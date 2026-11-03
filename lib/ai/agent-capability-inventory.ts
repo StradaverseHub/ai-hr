@@ -223,6 +223,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/assistant/own-change-proposal-actions.ts":{"confirmOwnChangeProposalAction":"internal:assistant_surface","editOwnChangeProposalAction":"internal:assistant_surface"},
  "app/assistant/chat-import-actions.ts":{"confirmChatImportAction":"internal:assistant_surface"},
  "app/assistant/loop-clock-out-actions.ts":{"confirmMissedClockOutAction":"internal:assistant_surface"},
+ // AI v2 Phase 2 P2-1: the employee's own Undo of a clock-out the missed clock-outs loop set (core/loops/undo.ts).
+ "app/assistant/loop-undo-actions.ts":{"undoOwnLoopAction":"internal:assistant_surface"},
  "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface","askFromWorkspaceAction":"internal:assistant_surface","loadEarlierChatAction":"internal:assistant_surface","loadMoreChatsAction":"internal:assistant_surface","openStoredChatAction":"internal:assistant_surface","chatImportOfferedAction":"internal:assistant_surface"},
  "app/assistant/chat-actions.ts":{"chatRetentionAction":"internal:assistant_surface","deleteChatAction":"internal:assistant_surface","eraseAllChatsAction":"internal:assistant_surface","listChatsAction":"internal:assistant_surface","setChatRetentionAction":"handoff:ai_governance"},
  "app/assistant/module-plan-actions.ts":{"eraseModuleProposalsAction":"internal:assistant_surface","evaluateHumanPlannerAction":"internal:assistant_surface","proposeModulePlanAction":"internal:assistant_surface"},
@@ -243,6 +245,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/control-tower/agents/actions.ts":{"applyBulkAssistantAction":"handoff:ai_governance","clearGroupAllowanceAction":"handoff:ai_governance","clearUserAllowanceAction":"handoff:ai_governance","setAiAllowanceAction":"handoff:ai_governance","setAiFeatureAction":"handoff:ai_governance","setAiFeatureCapAction":"handoff:ai_governance","setAgentActionPauseAction":"handoff:ai_governance","setAiSpendBudgetAction":"handoff:ai_governance","setAssistantPermissionAction":"handoff:ai_governance","setGroupAllowanceAction":"handoff:ai_governance"},
  "app/control-tower/agents/launcher-actions.ts":{"setAssistantLauncherAction":"handoff:ai_governance"},
  "app/control-tower/loops/actions.ts":{"setLoopPauseAction":"handoff:ai_governance","setLoopSwitchAction":"handoff:ai_governance"},
+ // AI v2 Phase 2 P2-1: a loop's level per company (group administrators) and HR's undo of an automatic loop action.
+ "app/control-tower/loops/autonomy-actions.ts":{"setLoopLevelAction":"handoff:ai_governance","undoLoopActionFromDetailAction":"handoff:ai_governance"},
  "app/control-tower/orchestrator-actions.ts":{"refreshOrchestrationAction":"handoff:ai_governance"},
  "app/dashboard-layout-actions.ts":{"resetDashboardLayoutAction":"internal:session_and_presentation","saveDashboardLayoutAction":"internal:session_and_presentation"},
  "app/delegations/actions.ts":{"createSelfDelegationAction":"backlog:confirm","hrCreateDelegationAction":"backlog:confirm","hrEditDelegationAction":"backlog:confirm","hrRevokeDelegationAction":"backlog:confirm","loadDelegationContextAction":"backlog:automatic","loadEligibleDelegatesAction":"backlog:automatic","revokeSelfDelegationAction":"backlog:confirm"},

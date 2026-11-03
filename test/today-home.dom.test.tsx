@@ -71,6 +71,8 @@ vi.mock('@/core/automatic-followups',()=>({followupItemsTx:async()=>{S.calls.pas
 // AI v2 W8: Confirm on the missed clock-out card posts the case, the person's reason option and, for Other, their words.
 const clockOut=vi.hoisted(()=>({posts:[] as unknown[],result:{kind:'submitted'} as unknown}));
 vi.mock('@/app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:async(input:unknown)=>{clockOut.posts.push(input);return clockOut.result;}}));
+// AI v2 Phase 2 P2-1: the Undo on a clock-out the loop set (covered by test/teras-loop-autonomy-pages.dom.test.tsx).
+vi.mock('@/app/assistant/loop-undo-actions',()=>({undoOwnLoopAction:async()=>({kind:'refused',reason:'unavailable'})}));
 vi.mock('@/core/loops/cards',()=>({readLoopCards:async(_s:unknown,p:unknown)=>{S.calls.loops.push(p);if(S.loopsFail)throw Error('Fixture loop outage');return S.loops;}}));
 vi.mock('@/core/employee-home-time-off',()=>({readEmployeeHomeTimeOff:async(_s:unknown,employmentId?:string)=>{S.calls.timeOff.push(employmentId);if(S.timeOffError)throw S.timeOffError;return S.timeOff;}}));
 vi.mock('@/core/employee-home',()=>({HomeAccessError:fx.FixtureHomeAccessError,
