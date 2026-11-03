@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
+import {publishActionCapabilityPackage} from '../deploy/access/publish-workforce-capabilities';
 import * as schema from '../db/schema';
 import { setReportingLine } from '../core/org';
 import {assignRole} from '../core/admin';
@@ -63,6 +64,29 @@ describe('D-TM-01: a line manager cannot read raw 360 panel rows',()=>{
     const [r]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=r.id;
   });
   afterAll(closeAll);
+
+  it('publishes nominated feedback and preserves the card under Edit denial',async()=>{
+    await assignAll();
+    const actor=peers[0].ctx,cap='function.performance.onehr.panelFeedback.edit';
+    try{
+      expect(await publishActionCapabilityPackage(owner.client,'onehr_panel_feedback')).toMatchObject({changed:true,capabilities:2});
+      expect(await publishActionCapabilityPackage(owner.client,'onehr_panel_feedback')).toMatchObject({changed:false});
+      const request=(await perf.onehrAssignments(actor)).feedback.find(row=>row.subject==='Assessment subject')!;
+      const before=await perf.getOnehrFeedback(actor,request.id);
+      await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect)
+       values(${b.tenantId}::uuid,${actor.userId!}::uuid,${cap},${b.companyId}::uuid,'deny')`;
+      expect((await perf.getOnehrFeedback(actor,request.id)).statements).toEqual(before.statements);
+      await expect(submit(0)).rejects.toThrow();
+      expect((await ownedRows()).find(row=>row.requestId===request.id)?.submittedAt).toBeNull();
+      await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+      await submit(0);
+      expect((await ownedRows()).find(row=>row.requestId===request.id)?.submittedAt).toBeTruthy();
+    }finally{
+      await owner.client`delete from access_user_override where tenant_id=${b.tenantId}::uuid and capability_id=${cap}`;
+      await owner.client`update access_capability set supported=false,bindings='[]'::jsonb
+       where id like 'function.performance.onehr.panelFeedback.%'`;
+    }
+  });
 
   it('returns no raw panel rows to the line manager below or at the minimum, and keeps subject, rater and HR access unchanged',async()=>{
     for(const ctx of [mgr,self,peers[0].ctx,a]){

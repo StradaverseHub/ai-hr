@@ -68,3 +68,15 @@ export const ONEHR_PLAN_ACKNOWLEDGEMENT_CAPABILITY_PUBLICATION={
   'app.financial_onehr_plan_acknowledgement_guard()',
  ],
 } as const;
+
+export const ONEHR_PANEL_FEEDBACK_CAPABILITY_PUBLICATION={
+ ...ONEHR_PLAN_ACKNOWLEDGEMENT_CAPABILITY_PUBLICATION,
+ functions:FINANCIAL_LETTER_FUNCTIONS.filter(descriptor=>descriptor.key==='performance.onehr.panelFeedback'),
+ requiredFunctions:[
+  'app.onehr_panel_feedback_bindings_complete()',
+  'app.onehr_feedback_card(uuid)',
+  'app.onehr_feedback_apply(uuid,boolean,jsonb,text,jsonb)',
+  'app.financial_onehr_feedback_delta_guard()',
+  'app.financial_onehr_draft_write_guard()',
+ ],
+} as const;
