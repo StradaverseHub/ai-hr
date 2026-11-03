@@ -627,6 +627,25 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     if(course==='save')expect((await view()).flags.some(flag=>flag.severity==='block')).toBe(true);
     await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_entry_save_command(${unitId}::uuid,${afterUnit.revision},${entry.id}::uuid,${JSON.stringify(rec)}::jsonb)`))).rejects.toThrow();await expect(withTenant(admin,tx=>tx.execute(sql`select app.reward_facts_import_command(${unitId}::uuid,${afterUnit.revision},${JSON.stringify([{employmentId,facts}])}::jsonb)`))).rejects.toThrow();
   });
+  it('enforces exact entry and decision denials on direct writes while leaving review readable',async()=>{
+    const before=await view(),entry=before.rows[0];
+    const entryEdit='function.rewards.entries.edit',submit='function.rewards.decisions.submit.execute';
+    try{
+      await owner.client`update access_capability set supported=true where id in (${entryEdit},${submit})`;
+      await owner.client`insert into access_user_override(tenant_id,user_id,capability_id,effect) values
+        (${b.tenantId}::uuid,${admin.userId!}::uuid,${entryEdit},'deny'),
+        (${b.tenantId}::uuid,${actors.bu!.userId!}::uuid,${submit},'deny')`;
+      await expectPgRefusal(withTenant(admin,tx=>tx.execute(sql`update reward_entry
+        set recommendation=jsonb_set(recommendation,'{reason}',to_jsonb('Denied direct edit'::text))
+        where id=${entry.id}::uuid`)),'42501','Reward entry editing unavailable');
+      await expectPgRefusal(withTenant(actors.bu!,tx=>tx.execute(sql`update reward_unit set status='bg'
+        where id=${unitId}::uuid`)),'42501','Reward review transition unavailable');
+      expect((await view()).rows).toEqual(before.rows);
+      expect((await view()).unit).toEqual(before.unit);
+    }finally{
+      await owner.client`update access_capability set supported=false where id in (${entryEdit},${submit})`;
+    }
+  });
   it('preserves the BU narrow case-facts course and refuses proposed classification or Senior selection changes',async()=>{
     const before=await view(),entry=before.rows[0],rec={...entry.recommendation,reason:'Actual BU recommendation'},facts={...entry.facts,erDecision:'in' as const,caseReason:'Actual BU employee relations decision'};
     await owner.withTenant(actors.bu!,async tx=>{await tx.execute(sql`select app.reward_entry_save_command(${unitId}::uuid,${before.unit.revision},${entry.id}::uuid,${JSON.stringify(rec)}::jsonb,${JSON.stringify(facts)}::jsonb)`);await tx.execute(sql`set constraints all immediate`);});const saved=await view();expect(saved.rows[0].facts).toEqual(facts);expect(saved.rows[0].recommendation).toEqual(rec);

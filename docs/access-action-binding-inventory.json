@@ -79286,10 +79286,11 @@
     {
       "table": "lc_v9_case_revision",
       "policy": "v9_case_revision_read",
-      "source": "db/migrations/0713_lifecycle_v9.sql",
+      "source": "db/migrations/1003_lifecycle_offboarding_view_boundary.sql",
       "owners": [
         "app.current_tenant_id",
-        "app.lc_v9_off_access"
+        "app.lc_v9_off_access",
+        "app.lifecycle_reward_notice_action"
       ]
     },
     {
@@ -79312,10 +79313,11 @@
     {
       "table": "lc_v9_case",
       "policy": "v9_case_read",
-      "source": "db/migrations/0713_lifecycle_v9.sql",
+      "source": "db/migrations/1003_lifecycle_offboarding_view_boundary.sql",
       "owners": [
         "app.current_tenant_id",
-        "app.lc_v9_off_access"
+        "app.lc_v9_off_access",
+        "app.lifecycle_reward_notice_action"
       ]
     },
     {
@@ -79427,9 +79429,10 @@
     {
       "table": "lc_v9_file",
       "policy": "v9_file_read",
-      "source": "db/migrations/0713_lifecycle_v9.sql",
+      "source": "db/migrations/1003_lifecycle_offboarding_view_boundary.sql",
       "owners": [
         "app.current_tenant_id",
+        "app.lifecycle_reward_notice_action",
         "app.lc_v9_off_access",
         "app.is_admin_for",
         "app.onboarding_page_access",

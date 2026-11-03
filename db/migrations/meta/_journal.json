@@ -4950,6 +4950,13 @@
       "when": 1793330000403,
       "tag": "1003_lifecycle_offboarding_view_boundary",
       "breakpoints": true
+    },
+    {
+      "idx": 851,
+      "version": "7",
+      "when": 1793330000404,
+      "tag": "1004_rewards_write_action_boundaries",
+      "breakpoints": true
     }
   ]
 }
