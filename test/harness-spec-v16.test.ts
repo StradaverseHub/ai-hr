@@ -32,13 +32,14 @@ function withCapabilities(base:ToolProvider,asked:Record<string,unknown>[]):Tool
  return async(ctx,scope,actions)=>{const candidates=await base(ctx,scope,actions);return{...candidates,bindings:[...candidates.bindings,binding]};};
 }
 
-describe('spec v15',()=>{
- it('is version 15 with its digest recorded, and every earlier digest is kept',()=>{
-  expect(HARNESS_SPEC.version).toBe(15);expect(HARNESS_SPEC_DIGESTS[15]).toBe(harnessSpecDigest());
+describe('spec v16',()=>{
+ it('is version 16 with its digest recorded, and every earlier digest is kept',()=>{
+  expect(HARNESS_SPEC.version).toBe(16);expect(HARNESS_SPEC_DIGESTS[16]).toBe(harnessSpecDigest());
+  expect(HARNESS_SPEC_DIGESTS[15]).toBe('4cff990778a5b5957d54bdabe691163d506f6948695d989b88c9545873b0ed10');
   expect(HARNESS_SPEC_DIGESTS[14]).toBe('29d137830167860f6e4ee98e1afda7751b75c2ae857fbdfb6c39f2b0f467b0da');
   expect(HARNESS_SPEC_DIGESTS[12]).toBe('c5fa36868fa6a153aefef022237df18c9a0bcb2184250c68b219a3af1c41a230');
   expect(HARNESS_SPEC_DIGESTS[13]).toBe('798629ac53828d762cce5d272e4a934fe622a3d185b7b91ed7c0ccda84692ba6');
-  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
+  expect(Object.keys(HARNESS_SPEC_DIGESTS).map(Number)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]);
  });
  it('sends little more instruction text than v12 did (4,979 characters, 164 in the role note), every safety rule kept',()=>{
   // v13 sent 6,148 characters of instructions; each model call slowed (5.2k to 6.0k input tokens per call, run 41577698046).
@@ -78,8 +79,9 @@ describe('spec v15',()=>{
   expect(asked).toEqual([{kind:'import'}]);expect(dispatched).toEqual([]);expect(result.reads).toEqual(['product_capabilities']);
   expect(result.reply).toBe('Importing is not available to you here.');
  });
- it('names product_capabilities in the role note every caller gets',()=>{
-  expect(HARNESS_SPEC.roleNote.tools).toBe('What they may see or change here is exactly what the offered tools allow (product_capabilities lists it): check them before declining, and never offer more than they return.');
+ it('describes the caller\'s tools in the role note without naming one',()=>{
+  // v16: no tool is named; v13-v15's "(product_capabilities lists it)" sent callers to it before facts and status.
+  expect(HARNESS_SPEC.roleNote.tools).toBe('What they may see or change here is exactly what the offered tools allow: check them before declining, and never offer more than they return.');
   expect(roleNoteFor(employee).endsWith(HARNESS_SPEC.roleNote.tools)).toBe(true);
  });
 });

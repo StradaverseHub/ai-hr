@@ -66,8 +66,10 @@ export const HARNESS_SPEC=freeze({
   * common first (employee records, leave balances, payroll history, attendance clockings); a setup task with no entry
   * gets steps and its page (v14 still refused "Boleh tolong saya sediakan jenis cuti baharu?"); an identity number asked
   * for is refused with the page where the person already sees it. available_actions is no longer mentioned as a first
-  * step at all. */
- version:15,
+  * step at all.
+  * 16: "(product_capabilities lists it)" leaves the role note (coordinator, after v15's run 41583443799): it sent every
+  * caller to product_capabilities before answering facts and status. Nothing else changes. */
+ version:16,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -219,7 +221,7 @@ export const HARNESS_SPEC=freeze({
   groupAdmin:'They are a group administrator, an HR administrator for every company in the group: they configure the system themselves, so give them the steps and use setup_readiness for what is already configured or blocking.',
   payroll:'They manage payroll for {scope}: payroll runs and the payroll actions available_actions lists are theirs to work on.',
   scope:{group:'every company in the group',one:'their company',many:'{n} companies'},
-  tools:'What they may see or change here is exactly what the offered tools allow (product_capabilities lists it): check them before declining, and never offer more than they return.',
+  tools:'What they may see or change here is exactly what the offered tools allow: check them before declining, and never offer more than they return.',
  },
  /** v11, issue 13: added to a turn about another person for a caller with payroll access. `page` names where the
   * destination registry says this caller already sees another person's pay; `none` when it names no such page. */
@@ -263,4 +265,5 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  13:'798629ac53828d762cce5d272e4a934fe622a3d185b7b91ed7c0ccda84692ba6',
  14:'29d137830167860f6e4ee98e1afda7751b75c2ae857fbdfb6c39f2b0f467b0da',
  15:'4cff990778a5b5957d54bdabe691163d506f6948695d989b88c9545873b0ed10',
+ 16:'8b50784f77cd3a929cbc30d0920ffe1f3b8e665f91fa8a51c8fd5c9ae9d3f055',
 });
