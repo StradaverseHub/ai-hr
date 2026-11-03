@@ -11601,7 +11601,7 @@ export const letterRequest=pgTable('letter_request',{
  requestedBy:uuid('requested_by').notNull().references(()=>appUser.id),templateId:uuid('template_id').notNull().references(()=>letterTemplate.id),
  letterTypeName:text('letter_type_name').notNull(),purpose:text('purpose'),clientKey:uuid('client_key'),
  status:text('status').notNull().$type<'requested'|'in_progress'|'issued'|'declined'>().default('requested'),
- letterId:uuid('letter_id').references(()=>letterRecord.id),declineReason:text('decline_reason'),handledBy:uuid('handled_by').references(()=>appUser.id),
+ letterId:uuid('letter_id').references(()=>letterRecord.id),declineReason:text('decline_reason'),employeeMessage:text('employee_message'),handledBy:uuid('handled_by').references(()=>appUser.id),
  createdAt:createdAt(),statusChangedAt:timestamp('status_changed_at',{withTimezone:true}).defaultNow().notNull(),version:integer('version').notNull().default(1),
 },t=>[index('letter_request_company_idx').on(t.tenantId,t.companyId,t.status,t.createdAt.desc()),index('letter_request_employment_idx').on(t.tenantId,t.employmentId,t.createdAt.desc())]);
 

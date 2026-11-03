@@ -21,7 +21,7 @@ export default async function GenerateLettersPage({searchParams}:{searchParams:P
    :listLetterRequestsForStaff(s,{companyId:company.id}).catch(()=>null)]);
  const requestLabels:LetterRequestQueueLabels={title:t('requests.title'),intro:t('requests.intro'),empty:t('requests.empty'),unavailable:t('requests.unavailable'),employee:t('requests.employee'),
   purpose:t('requests.purpose'),requestedOn:date=>t('requests.requestedOn',{date}),prepare:t('requests.prepare'),prepareUnavailable:t('requests.prepareUnavailable'),decline:t('requests.decline'),
-  declineReason:t('requests.declineReason'),declineHelp:t('requests.declineHelp'),declineSubmit:t('requests.declineSubmit'),inProgress:t('requests.inProgress'),
+  declineReason:t('requests.declineReason'),declineHelp:t('requests.declineHelp'),employeeMessage:t('requests.employeeMessage'),employeeMessageHelp:t('requests.employeeMessageHelp'),declineSubmit:t('requests.declineSubmit'),inProgress:t('requests.inProgress'),
   status:{requested:t('requests.status.requested'),in_progress:t('requests.status.in_progress'),issued:t('requests.status.issued'),declined:t('requests.status.declined')}};
  const requestNotice=value('requestNotice')==='declined'?t('requests.declined'):null,requestError=value('requestError')?t(['invalid','permission','state','stale'].includes(value('requestError')!)?`requests.errors.${value('requestError')}`:'requests.errors.unavailable'):null;
  const date=(value:Date)=>new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}).format(value),templateNext=new URLSearchParams({companyId:company.id,...(value('q')?{q:value('q')!}:{}),...(templates?.nextCursor?{templates:templates.nextCursor}:{})});

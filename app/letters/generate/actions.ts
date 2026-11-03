@@ -48,7 +48,8 @@ export async function updateGeneration(_previous:GenerationActionState,form:Form
  }catch(error){return failure(error,fields);}
  revalidatePath('/letters/generate');redirect('/letters/generate/'+target+'?notice='+action);
 }
-/** AI v2 Phase 1 slice 3 — HR declines an employee's letter request, with a reason that stays with HR. The owner service
+/** AI v2 Phase 1 slice 3 — HR declines an employee's letter request, with a reason that stays with HR and an optional
+ * message shown to the employee. The owner service
  * re-checks the caller's `generate` capability for the request's company and the request's version. */
 export async function declineLetterRequestAction(form:FormData){
  const companyId=value(form,'companyId'),requestId=value(form,'requestId'),version=value(form,'expectedVersion');
@@ -58,7 +59,7 @@ export async function declineLetterRequestAction(form:FormData){
  const back=(key:'requestNotice'|'requestError',code:string)=>'/letters/generate?'+new URLSearchParams({companyId,...(all?{requests:'all'}:{}),[key]:code})+'#letter-requests';
  let code:string|null=null;
  try{if(!uuid.test(requestId)||!/^\d{1,9}$/.test(version))throw new LetterRequestError('invalid');
-  await declineLetterRequest(await getSession(),{requestId,reason:value(form,'reason'),expectedVersion:Number(version)});}
+  await declineLetterRequest(await getSession(),{requestId,reason:value(form,'reason'),employeeMessage:value(form,'employeeMessage'),expectedVersion:Number(version)});}
  catch(error){code=error instanceof LetterRequestError&&['invalid','permission','state','stale'].includes(error.code)?error.code:'unavailable';}
  if(code)redirect(back('requestError',code));
  revalidatePath('/letters/generate');redirect(back('requestNotice','declined'));

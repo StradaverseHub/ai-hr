@@ -1030,8 +1030,12 @@ uncommitted files and allocation documents) found file claims through 0960 and j
 1793330000360; nothing claims 0961 or when1793330000361. This claim therefore takes 0961 with the `when` the coordinator
 assigned. Development source only: no installation priority, no deployment; the idx is this branch's own journal position
 and must be re-frozen above the then-installed ledger at integration. Sibling AI v2 slice branches cut from the same base
-may claim the same idx; reconcile at integration.
+may claim the same idx; reconcile at integration. The SQL was revised in place on `claude/aiv2-phase1-final` (coordinator,
+3 November 2026: the optional `employee_message` column, its checks, column grant and guard), while it was still
+unapplied source; no installation applied the earlier body
+(`fac033d489f171da966f620f058f8f688c21e691786b2700bd9fe0876495eb5e`, kept only as the slice branch's history). The hash
+below is the revised body's.
 
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
-|766|1793330000361|0961_letter_requests|fac033d489f171da966f620f058f8f688c21e691786b2700bd9fe0876495eb5e|
+|766|1793330000361|0961_letter_requests|86b91182f7f686d32fb37d5ab117198440aee24bad0abe029f5266cef1cbafc7|

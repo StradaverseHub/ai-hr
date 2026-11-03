@@ -18,7 +18,7 @@ vi.mock('../lib/authz',()=>({requireModule:async()=>({})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:svc.session.current,scopeIds:svc.session.scope??[COMPANY],allowedCount:1})}));
 vi.mock('../core/letters',()=>({listMyLetters:svc.letters,letterCompanyAccess:svc.access,listLetterTemplates:svc.templates,listLetterGenerationBatches:svc.batches,
  getLetterTemplate:svc.template,getStaffLetter:vi.fn(),listLetterPolicies:svc.policies,listLetterSettingAssets:svc.assets}));
-vi.mock('../core/letter-requests',()=>({LETTER_REQUEST_LIMITS:{purposeChars:300,reasonChars:500,list:50,options:200},listMyLetterRequests:svc.mine,
+vi.mock('../core/letter-requests',()=>({LETTER_REQUEST_LIMITS:{purposeChars:300,reasonChars:500,messageChars:500,list:50,options:200},listMyLetterRequests:svc.mine,
  listRequestableLetterTypes:svc.requestable,listLetterRequestsForStaff:svc.staff,getLetterRequestForStaff:svc.one,listLetterRequestOptions:svc.options}));
 vi.mock('../app/me/letters/actions',()=>({openMyLetter:vi.fn(),confirmMyLetter:vi.fn(),requestLetterAction:vi.fn()}));
 vi.mock('../app/letters/generate/actions',()=>({createGeneration:vi.fn(),updateGeneration:vi.fn(),declineLetterRequestAction:vi.fn()}));
@@ -37,9 +37,9 @@ const hrAdmin={...employee,userId:'00000000-0000-4000-8000-0000000000ad',roles:[
 const copy=en.letters.mine.requests,staffCopy=en.letters.generate.requests,settingsCopy=en.letters.settings.requests;
 const ASKED=new Date('2026-11-02T02:00:00Z');
 const type=(over:Record<string,unknown>={})=>({employmentId:EMPLOYMENT,companyId:COMPANY,companyName:'Fictional Sdn Bhd',templateId:TEMPLATE,name:'Employment Confirmation Letter',...over});
-const own=(over:Record<string,unknown>={})=>({id:REQUEST,letterTypeName:'Employment Confirmation Letter',purpose:null,status:'requested',createdAt:ASKED,statusChangedAt:ASKED,letterId:null,...over});
+const own=(over:Record<string,unknown>={})=>({id:REQUEST,letterTypeName:'Employment Confirmation Letter',purpose:null,status:'requested',createdAt:ASKED,statusChangedAt:ASKED,letterId:null,employeeMessage:null,...over});
 const staff=(over:Record<string,unknown>={})=>({id:REQUEST,companyId:COMPANY,employmentId:EMPLOYMENT,templateId:TEMPLATE,letterTypeName:'Employment Confirmation Letter',
- purpose:'Fictional housing loan',status:'requested',createdAt:ASKED,statusChangedAt:ASKED,letterId:null,declineReason:null,version:1,employeeName:'Aina Fictional',
+ purpose:'Fictional housing loan',status:'requested',createdAt:ASKED,statusChangedAt:ASKED,letterId:null,declineReason:null,employeeMessage:null,version:1,employeeName:'Aina Fictional',
  employeeCode:'LR-0001',publishedVersionId:VERSION,...over});
 
 beforeEach(()=>{
@@ -70,6 +70,19 @@ describe('My Letters (employee)',()=>{
   expect(within(cards[0]).queryByRole('link')).toBeNull();
   expect(within(cards[1]).getByRole('link',{name:copy.openLetter}).getAttribute('href')).toBe('/me/letters/'+LETTER);
   expect(svc.mine).toHaveBeenCalledExactlyOnceWith(employee);
+ });
+ it('shows HR\'s message to the employee with the declined status only, and nothing for a decline without one',async()=>{
+  const THIRD='00000000-0000-4000-8000-0000000000b3';
+  svc.mine.mockResolvedValue([own({status:'declined',employeeMessage:'Fictional message: ask again after confirmation'}),own({id:SECOND,status:'declined'}),
+   own({id:THIRD,status:'requested',employeeMessage:'Fictional stray text'})]);
+  render(await MyLettersPage({searchParams:Promise.resolve({})}));
+  const cards=[...screen.getByRole('region',{name:copy.title}).querySelectorAll<HTMLElement>('[data-letter-request]')];
+  expect(cards.map(card=>card.getAttribute('data-letter-request'))).toEqual(['declined','declined','requested']);
+  expect(within(cards[0]).getByText(copy.status.declined)).toBeTruthy();
+  expect(cards[0].querySelector('[data-letter-request-message]')?.textContent).toBe(copy.messageFromHr+': Fictional message: ask again after confirmation');
+  expect(cards[1].querySelector('[data-letter-request-message]')).toBeNull();
+  expect(cards[2].querySelector('[data-letter-request-message]')).toBeNull();
+  expect(document.body.textContent).not.toContain('Fictional stray text');
  });
  it('offers no request button when the company opened no letter type, and keeps the letters list when requests fail',async()=>{
   svc.mine.mockRejectedValue(new Error('Fictional outage'));
@@ -130,6 +143,11 @@ describe('Letter requests on the generate page (HR holding generate)',()=>{
   expect(Object.fromEntries([...form.querySelectorAll<HTMLInputElement>('input[type="hidden"]')].map(input=>[input.name,input.value]))).toEqual({companyId:COMPANY,requestId:REQUEST,expectedVersion:'1'});
   expect(within(first).getByRole('button',{name:staffCopy.declineSubmit,hidden:true})).toBeTruthy();
   expect(within(first).getByText(staffCopy.declineHelp)).toBeTruthy();
+  // An optional message to the employee, in the same form, labelled as shown to the employee.
+  const message=within(first).getByLabelText(staffCopy.employeeMessage) as HTMLTextAreaElement;
+  expect(message.name).toBe('employeeMessage');expect(message.required).toBe(false);expect(message.maxLength).toBe(500);expect(message.closest('form')).toBe(form);
+  expect(document.getElementById(message.getAttribute('aria-describedby')!)?.textContent).toBe(staffCopy.employeeMessageHelp);
+  expect(staffCopy.employeeMessageHelp).toMatch(/shown to the employee/i);
   // In preparation, with the template no longer published: no Prepare link, still declinable.
   expect(within(second).getByText(staffCopy.status.in_progress)).toBeTruthy();expect(within(second).getByText(staffCopy.inProgress)).toBeTruthy();
   expect(within(second).queryByRole('link',{name:staffCopy.prepare})).toBeNull();expect(within(second).getByText(staffCopy.prepareUnavailable)).toBeTruthy();

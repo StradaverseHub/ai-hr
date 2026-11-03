@@ -20,12 +20,13 @@
 --    issue trigger moves an in-progress request whose linked letter is issued to issued, nothing else.
 -- Lifecycle (database-owned, app.letter_request_guard): requested -> in_progress (HR prepared a draft from the request's
 -- own template for the request's own employee) -> issued (only when that letter is issued, by the trigger on
--- letter_record); requested or in_progress -> declined (HR, with a reason). in_progress may relink to a new draft while
--- the previous one was never issued. issued and declined are final. At most one open request per employee and letter type.
+-- letter_record); requested or in_progress -> declined (HR, with a reason and an optional message to the employee).
+-- in_progress may relink to a new draft while the previous one was never issued. issued and declined are final. At most one open request per employee and letter type.
 -- Audit: every change appends a domain event (letter-request.*): core/letter-requests.ts in the same transaction for
 -- submission, preparation, decline and option changes; the issue trigger for issued. No event carries the purpose, the
--- decline reason or any letter content. The employee is notified of a decline with no content beyond the status
--- (core/notifications.ts, letter-request.declined).
+-- decline reason, the message to the employee or any letter content. The employee is notified of a decline with no
+-- content beyond the status (core/notifications.ts, letter-request.declined); they read HR's optional message with the
+-- declined status on My Letters, never the reason.
 -- Grants: every privilege a table must not have is revoked, not merely left ungranted.
 --
 -- Writers reviewed before each constraint: both tables are new; core/letter-requests.ts is their only application writer
@@ -145,7 +146,9 @@ GRANT EXECUTE ON FUNCTION app.letter_request_option_choices(uuid) TO ai_hr_app;
 --> statement-breakpoint
 -- 2. One employee letter request. letter_type_name is the template's published name when it was requested (the
 --    employee cannot read templates); purpose is the person's own short text; client_key makes a repeated Confirm of
---    one chat card the same request; decline_reason is HR's and never leaves HR's screens or reaches an event.
+--    one chat card the same request; decline_reason is HR's and never leaves HR's screens or reaches an event;
+--    employee_message is HR's optional message to the employee, written only with a decline and shown to the employee
+--    with the declined status (never in an event or a notification).
 CREATE TABLE public.letter_request (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  tenant_id uuid NOT NULL REFERENCES public.tenant(id),
@@ -159,11 +162,13 @@ CREATE TABLE public.letter_request (
  status text NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','in_progress','issued','declined')),
  letter_id uuid REFERENCES public.letter_record(id),
  decline_reason text CHECK (decline_reason IS NULL OR length(decline_reason) BETWEEN 1 AND 500),
+ employee_message text CHECK (employee_message IS NULL OR length(employee_message) BETWEEN 1 AND 500),
  handled_by uuid REFERENCES public.app_user(id),
  created_at timestamptz NOT NULL DEFAULT now(),
  status_changed_at timestamptz NOT NULL DEFAULT now(),
  version integer NOT NULL DEFAULT 1 CHECK (version>=1),
  CHECK ((status='declined')=(decline_reason IS NOT NULL)),
+ CHECK (employee_message IS NULL OR status='declined'),
  CHECK (status NOT IN ('in_progress','issued') OR letter_id IS NOT NULL),
  CHECK (status<>'requested' OR (letter_id IS NULL AND handled_by IS NULL))
 );
@@ -203,24 +208,25 @@ GRANT EXECUTE ON FUNCTION app._letter_request_letter_state(uuid) TO ai_hr_app;
 --> statement-breakpoint
 -- Database-owned lifecycle. On insert: a request starts requested, at the clock's time, for a template its company has
 -- opened for employee requests and published; its name is that published name, whatever the writer sent. On update:
--- only the status, the linked letter, the decline reason and who handled it change, along the lifecycle above.
+-- only the status, the linked letter, the decline reason, the message to the employee and who handled it change, along
+-- the lifecycle above. The message is written only with a decline.
 CREATE FUNCTION app.letter_request_guard() RETURNS trigger
  LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE type_name text;linked_state text;
 BEGIN
  IF TG_OP='INSERT' THEN
-  NEW.status:='requested';NEW.letter_id:=NULL;NEW.decline_reason:=NULL;NEW.handled_by:=NULL;
+  NEW.status:='requested';NEW.letter_id:=NULL;NEW.decline_reason:=NULL;NEW.employee_message:=NULL;NEW.handled_by:=NULL;
   NEW.created_at:=now();NEW.status_changed_at:=now();NEW.version:=1;NEW.purpose:=nullif(btrim(NEW.purpose),'');
   type_name:=app._letter_request_type_name(NEW.tenant_id,NEW.company_id,NEW.template_id);
   IF type_name IS NULL THEN RAISE EXCEPTION 'This letter type is not open for employee requests' USING ERRCODE='23514';END IF;
   NEW.letter_type_name:=type_name;RETURN NEW;
  END IF;
- IF (to_jsonb(NEW)-ARRAY['status','letter_id','decline_reason','handled_by','status_changed_at','version'])
-   IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['status','letter_id','decline_reason','handled_by','status_changed_at','version']) THEN
+ IF (to_jsonb(NEW)-ARRAY['status','letter_id','decline_reason','employee_message','handled_by','status_changed_at','version'])
+   IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['status','letter_id','decline_reason','employee_message','handled_by','status_changed_at','version']) THEN
   RAISE EXCEPTION 'Only the status of a letter request changes' USING ERRCODE='42501';END IF;
  IF OLD.status IN ('issued','declined') THEN RAISE EXCEPTION 'A letter request that is issued or declined is final' USING ERRCODE='23514';END IF;
  IF NEW.status='in_progress' THEN
-  IF NEW.letter_id IS NULL OR NEW.letter_id IS NOT DISTINCT FROM OLD.letter_id OR NEW.decline_reason IS NOT NULL THEN
+  IF NEW.letter_id IS NULL OR NEW.letter_id IS NOT DISTINCT FROM OLD.letter_id OR NEW.decline_reason IS NOT NULL OR NEW.employee_message IS NOT NULL THEN
    RAISE EXCEPTION 'Preparing a letter request links one new draft' USING ERRCODE='23514';END IF;
   IF OLD.letter_id IS NOT NULL AND app._letter_request_letter_state(OLD.letter_id)='issued' THEN
    RAISE EXCEPTION 'The linked letter is already issued' USING ERRCODE='23514';END IF;
@@ -229,14 +235,14 @@ BEGIN
    RAISE EXCEPTION 'The draft is not this request''s letter' USING ERRCODE='23514';END IF;
   NEW.handled_by:=app.current_user_id();
  ELSIF NEW.status='declined' THEN
-  NEW.decline_reason:=nullif(btrim(NEW.decline_reason),'');
+  NEW.decline_reason:=nullif(btrim(NEW.decline_reason),'');NEW.employee_message:=nullif(btrim(NEW.employee_message),'');
   IF NEW.decline_reason IS NULL OR NEW.letter_id IS DISTINCT FROM OLD.letter_id THEN
    RAISE EXCEPTION 'Declining a letter request needs a reason and keeps its letter link' USING ERRCODE='23514';END IF;
   NEW.handled_by:=app.current_user_id();
  ELSIF NEW.status='issued' THEN
   linked_state:=app._letter_request_letter_state(OLD.letter_id);
   IF OLD.status<>'in_progress' OR NEW.letter_id IS DISTINCT FROM OLD.letter_id OR linked_state IS DISTINCT FROM 'issued'
-    OR NEW.handled_by IS DISTINCT FROM OLD.handled_by OR NEW.decline_reason IS NOT NULL THEN
+    OR NEW.handled_by IS DISTINCT FROM OLD.handled_by OR NEW.decline_reason IS NOT NULL OR NEW.employee_message IS NOT NULL THEN
    RAISE EXCEPTION 'A letter request is issued only with its letter' USING ERRCODE='23514';END IF;
  ELSE
   RAISE EXCEPTION 'Not an allowed letter request change' USING ERRCODE='23514';
@@ -367,4 +373,4 @@ GRANT UPDATE (requestable,updated_by) ON public.letter_request_option TO ai_hr_a
 --> statement-breakpoint
 GRANT SELECT,INSERT ON public.letter_request TO ai_hr_app;
 --> statement-breakpoint
-GRANT UPDATE (status,letter_id,decline_reason,handled_by) ON public.letter_request TO ai_hr_app;
+GRANT UPDATE (status,letter_id,decline_reason,employee_message,handled_by) ON public.letter_request TO ai_hr_app;

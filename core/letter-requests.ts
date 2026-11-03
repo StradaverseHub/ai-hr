@@ -9,8 +9,9 @@
  * Nothing here writes letter content or a figure: the request holds the template's published name, the person's own
  * optional purpose and its status. Every read and write runs as the caller under forced row-level security; the
  * database owns the lifecycle and refuses a template that is not open for requests. Every change appends a domain event
- * in the same transaction; none carries the purpose or the decline reason. The employee is notified of a decline with no
- * content beyond the status (core/notifications.ts letter-request.declined). */
+ * in the same transaction; none carries the purpose, the decline reason or the message to the employee. The employee is
+ * notified of a decline with no content beyond the status (core/notifications.ts letter-request.declined); HR's optional
+ * message to the employee is shown with the declined status on My Letters, and the reason never leaves HR. */
 import {createHash} from 'node:crypto';
 import {and,asc,desc,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -22,7 +23,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 export const LETTER_REQUEST_STATUSES=['requested','in_progress','issued','declined'] as const;
 export type LetterRequestStatus=typeof LETTER_REQUEST_STATUSES[number];
 export const LETTER_REQUEST_OPEN:readonly LetterRequestStatus[]=Object.freeze(['requested','in_progress']);
-export const LETTER_REQUEST_LIMITS=Object.freeze({purposeChars:300,reasonChars:500,list:50,options:200});
+export const LETTER_REQUEST_LIMITS=Object.freeze({purposeChars:300,reasonChars:500,messageChars:500,list:50,options:200});
 export type LetterRequestErrorCode='invalid'|'not_requestable'|'duplicate'|'permission'|'state'|'stale'|'unavailable';
 export class LetterRequestError extends Error{
  constructor(readonly code:LetterRequestErrorCode){super('Letter request: '+code);this.name='LetterRequestError';}
@@ -121,30 +122,32 @@ export async function submitLetterRequestTx(tx:Tx,ctx:SessionContext,input:Submi
 }
 
 export type OwnLetterRequest=Readonly<{id:string;letterTypeName:string;purpose:string|null;status:LetterRequestStatus;createdAt:Date;statusChangedAt:Date;
- /** The issued letter, once issued: the person opens it under My Letters. */letterId:string|null}>;
-/** The caller's own requests, newest first. Never HR's decline reason or who handled it. */
+ /** The issued letter, once issued: the person opens it under My Letters. */letterId:string|null;
+ /** HR's optional message to the employee, written with a decline; null otherwise. */employeeMessage:string|null}>;
+/** The caller's own requests, newest first. HR's message to the employee with a decline, never HR's decline reason or
+ * who handled it. */
 export function listMyLetterRequests(ctx:SessionContext,input:{limit?:number}={}):Promise<readonly OwnLetterRequest[]>{
  return requests(ctx,async tx=>{
   const limit=Math.min(Math.max(Math.trunc(input.limit??LETTER_REQUEST_LIMITS.list),1),LETTER_REQUEST_LIMITS.list);
   const rows=await tx.select({id:letterRequest.id,letterTypeName:letterRequest.letterTypeName,purpose:letterRequest.purpose,status:letterRequest.status,createdAt:letterRequest.createdAt,
-   statusChangedAt:letterRequest.statusChangedAt,letterId:letterRequest.letterId}).from(letterRequest)
+   statusChangedAt:letterRequest.statusChangedAt,letterId:letterRequest.letterId,employeeMessage:letterRequest.employeeMessage}).from(letterRequest)
    // Only the caller's own: an HR caller also reads other people's requests under the staff policy.
    .where(sql`exists(select 1 from employment e where e.id=${letterRequest.employmentId} and e.tenant_id=${letterRequest.tenantId} and app.is_self_person(e.person_id))`)
    .orderBy(desc(letterRequest.createdAt),desc(letterRequest.id)).limit(limit);
-  return Object.freeze(rows.map(row=>Object.freeze({...row,letterId:row.status==='issued'?row.letterId:null})));
+  return Object.freeze(rows.map(row=>Object.freeze({...row,letterId:row.status==='issued'?row.letterId:null,employeeMessage:row.status==='declined'?row.employeeMessage:null})));
  });
 }
 
 // ── HR holding `generate` ───────────────────────────────────────────────────────────────────────────────────────
 export type StaffLetterRequest=Readonly<{id:string;companyId:string;employmentId:string;templateId:string;letterTypeName:string;purpose:string|null;
- status:LetterRequestStatus;createdAt:Date;statusChangedAt:Date;letterId:string|null;declineReason:string|null;version:number;
+ status:LetterRequestStatus;createdAt:Date;statusChangedAt:Date;letterId:string|null;declineReason:string|null;employeeMessage:string|null;version:number;
  employeeName:string|null;employeeCode:string|null;
  /** The template's published version now, as this caller reads templates: where "Prepare letter" starts. Null when the
   * template is no longer published or the caller cannot read templates. */publishedVersionId:string|null}>;
 /** Columns for HR's reads. A function: "today" is the HR date owner's day at each read. */
 const staffColumns=()=>({id:letterRequest.id,companyId:letterRequest.companyId,employmentId:letterRequest.employmentId,templateId:letterRequest.templateId,
  letterTypeName:letterRequest.letterTypeName,purpose:letterRequest.purpose,status:letterRequest.status,createdAt:letterRequest.createdAt,statusChangedAt:letterRequest.statusChangedAt,
- letterId:letterRequest.letterId,declineReason:letterRequest.declineReason,version:letterRequest.version,
+ letterId:letterRequest.letterId,declineReason:letterRequest.declineReason,employeeMessage:letterRequest.employeeMessage,version:letterRequest.version,
  employeeName:sql<string|null>`(select s.employee_name from app.letter_request_subject(${letterRequest.id}) s)`,
  employeeCode:sql<string|null>`(select s.employee_code from app.letter_request_subject(${letterRequest.id}) s)`,
  publishedVersionId:sql<string|null>`(select v.id from letter_template_version v join letter_template t on t.id=v.template_id
@@ -195,17 +198,19 @@ export async function linkLetterRequestDraftTx(tx:Tx,ctx:SessionContext,input:{r
  await event(tx,ctx,{requestId,type:'in-progress',employmentId:held.employmentId,payload:{letterId,from:held.status,to:'in_progress'}});
 }
 
-/** HR declines a request with a reason. The reason stays with HR; the employee is told only that it was declined. */
-export function declineLetterRequest(ctx:SessionContext,input:{requestId:unknown;reason:unknown;expectedVersion:unknown}):Promise<Readonly<{requestId:string}>>{
+/** HR declines a request with a reason and, optionally, a message to the employee. The reason stays with HR; the
+ * employee sees that it was declined and the message, if any (never in the notification or an event). */
+export function declineLetterRequest(ctx:SessionContext,input:{requestId:unknown;reason:unknown;employeeMessage?:unknown;expectedVersion:unknown}):Promise<Readonly<{requestId:string}>>{
  return requests(ctx,async tx=>{
   const requestId=uuid(input.requestId),reason=optionalText(input.reason,LETTER_REQUEST_LIMITS.reasonChars);
+  const employeeMessage=optionalText(input.employeeMessage,LETTER_REQUEST_LIMITS.messageChars);
   if(!reason||typeof input.expectedVersion!=='number'||!Number.isInteger(input.expectedVersion))throw new LetterRequestError('invalid');
   const [held]=await tx.select({id:letterRequest.id,status:letterRequest.status,version:letterRequest.version,employmentId:letterRequest.employmentId}).from(letterRequest)
    .where(and(eq(letterRequest.id,requestId),sql`app.letter_permission(${letterRequest.companyId},'generate')`)).for('update');
   if(!held)throw new LetterRequestError('permission');
   if(held.version!==input.expectedVersion)throw new LetterRequestError('stale');
   if(!LETTER_REQUEST_OPEN.includes(held.status))throw new LetterRequestError('state');
-  await tx.update(letterRequest).set({status:'declined',declineReason:reason}).where(eq(letterRequest.id,requestId));
+  await tx.update(letterRequest).set({status:'declined',declineReason:reason,employeeMessage}).where(eq(letterRequest.id,requestId));
   await event(tx,ctx,{requestId,type:'declined',employmentId:held.employmentId,payload:{from:held.status,to:'declined'}});
   return Object.freeze({requestId});
  });

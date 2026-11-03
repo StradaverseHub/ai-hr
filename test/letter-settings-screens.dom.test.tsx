@@ -10,7 +10,7 @@ vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fixture',user
 vi.mock('../core/letters',()=>({letterCompanyAccess:mocks.access,listLetterPolicies:mocks.policies,listLetterSettingAssets:mocks.assets,getLetterPolicy:mocks.policy,readLetterSettingsReadiness:mocks.readiness}));
 vi.mock('../app/letters/settings/actions',()=>({savePolicySettings:mocks.save,uploadLetterAsset:mocks.upload}));
 // AI v2 Phase 1 slice 3: employee request options (test/letter-requests-screens.dom.test.tsx covers them); none here.
-vi.mock('../core/letter-requests',()=>({LETTER_REQUEST_LIMITS:{purposeChars:300,reasonChars:500,list:50,options:200},listLetterRequestOptions:async()=>[]}));
+vi.mock('../core/letter-requests',()=>({LETTER_REQUEST_LIMITS:{purposeChars:300,reasonChars:500,messageChars:500,list:50,options:200},listLetterRequestOptions:async()=>[]}));
 vi.mock('../app/letters/settings/request-actions',()=>({saveLetterRequestOptionsAction:vi.fn()}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('NOT_FOUND');}}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale,getTranslations:async(namespace:'letters.automation'|'letters.settings'|'letters.errors'|'letters.templates'|'letters.fields')=>{const c=catalogues[mocks.locale];return createTranslator({locale:mocks.locale,messages:{letters:{automation:c.letters.automation,settings:c.letters.settings,errors:c.letters.errors,templates:c.letters.templates,fields:c.letters.fields}},namespace});}}));

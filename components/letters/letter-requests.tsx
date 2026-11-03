@@ -4,13 +4,14 @@ import {LETTER_REQUEST_LIMITS,type LetterRequestOption,type RequestableLetterTyp
 import {declineLetterRequestAction} from '@/app/letters/generate/actions';
 
 export type LetterRequestQueueLabels=Readonly<{title:string;intro:string;empty:string;unavailable:string;employee:string;purpose:string;requestedOn:(date:string)=>string;
- prepare:string;prepareUnavailable:string;decline:string;declineReason:string;declineHelp:string;declineSubmit:string;inProgress:string;
+ prepare:string;prepareUnavailable:string;decline:string;declineReason:string;declineHelp:string;employeeMessage:string;employeeMessageHelp:string;declineSubmit:string;inProgress:string;
  status:Readonly<Record<StaffLetterRequest['status'],string>>}>;
 
 /** AI v2 Phase 1 slice 3 — the employee letter requests of one company, on the generate page, for HR holding `generate`.
  * "Prepare letter" opens the existing generate flow on the request's employee and template (the template's published
- * version now); HR writes, approves and issues the letter there as today. "Decline" needs a reason, which stays with HR:
- * the employee is told only that the request was declined. Rendered on the server; every action re-checks. */
+ * version now); HR writes, approves and issues the letter there as today. "Decline" needs a reason, which stays with HR,
+ * and takes an optional "Message to the employee", shown to the employee with the declined status. Rendered on the
+ * server; every action re-checks. */
 /** `all` (Today's link, `requests=all`): the requests of every company the user may handle; each names its company when
  * there is more than one (`companyNames`), and Decline returns to the same list. */
 export function LetterRequestQueue({companyId,requests,labels,formatDate,all=false,companyNames,companyLabel}:{companyId:string;requests:readonly StaffLetterRequest[]|null;labels:LetterRequestQueueLabels;formatDate:(date:Date)=>string;
@@ -39,6 +40,8 @@ export function LetterRequestQueue({companyId,requests,labels,formatDate,all=fal
        {all&&<input type="hidden" name="requests" value="all"/>}
        <Field label={labels.declineReason}><textarea name="reason" required maxLength={LETTER_REQUEST_LIMITS.reasonChars} rows={3} className={inputCls+' h-auto min-h-20 py-2'}/></Field>
        <p className="text-xs text-muted-foreground">{labels.declineHelp}</p>
+       <Field label={labels.employeeMessage}><textarea name="employeeMessage" maxLength={LETTER_REQUEST_LIMITS.messageChars} rows={3} aria-describedby={'letter-request-message-help-'+request.id} className={inputCls+' h-auto min-h-20 py-2'}/></Field>
+       <p id={'letter-request-message-help-'+request.id} className="text-xs text-muted-foreground">{labels.employeeMessageHelp}</p>
        <Button type="submit" variant="outline" className="pointer-coarse:min-h-11">{labels.declineSubmit}</Button>
       </form></details>
     </div>

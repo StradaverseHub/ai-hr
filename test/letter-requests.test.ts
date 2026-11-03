@@ -5,8 +5,10 @@
  * database (a direct insert for a closed template is refused); the employee reads only their own requests, HR holding
  * `generate` reads and handles them, and another employee, an HR user without `generate` and another tenant read nothing;
  * the lifecycle requested -> in progress -> issued (only with its own issued letter) and -> declined (with a reason), with
- * one open request per letter type and final states; every change has its domain event, none carrying the purpose or the
- * decline reason; and the employee's decline notice carries nothing beyond the status. */
+ * one open request per letter type and final states; every change has its domain event, none carrying the purpose, the
+ * decline reason or the message to the employee; HR's optional message to the employee is written only with a decline
+ * and the employee reads it with the declined status, never the reason; and the employee's decline notice carries
+ * nothing beyond the status. */
 import {randomUUID} from 'node:crypto';
 import {asc,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -29,6 +31,7 @@ const today=()=>todayInKualaLumpur();
 const custom=(ids:string[])=>Object.fromEntries(ids.map(id=>[id,{effectiveDate:{kind:'date' as const,value:today()}}]));
 const PURPOSE='Fictional purpose: housing loan at a fictional bank';
 const REASON='Fictional reason: the probation review is still open';
+const MESSAGE='Fictional message: please ask again after your confirmation date';
 
 async function hire(name:string,code:string,role:'employee'|'manager'='employee'):Promise<Person>{
  const hired=await hireEmployee(hr,{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01',employeeCode:code,
@@ -131,24 +134,34 @@ describe('the lifecycle',()=>{
   await refusedWith(declineLetterRequest(hr,{requestId,reason:'   ',expectedVersion:1}),'invalid');
   await refusedWith(declineLetterRequest(hr,{requestId,reason:REASON,expectedVersion:2}),'stale');
   await refusedWith(declineLetterRequest(badrul.ctx,{requestId,reason:REASON,expectedVersion:1}),'permission');
-  expect(await declineLetterRequest(hr,{requestId,reason:REASON,expectedVersion:1})).toEqual({requestId});
-  expect(await stored(requestId)).toMatchObject({status:'declined',declineReason:REASON,handledBy:hr.userId,version:2});
+  // The message to the employee is refused when too long (never cut), and the database never takes one before a decline.
+  await refusedWith(declineLetterRequest(hr,{requestId,reason:REASON,employeeMessage:'x'.repeat(501),expectedVersion:1}),'invalid');
+  await expect(withTenant(hr,tx=>tx.update(s.letterRequest).set({employeeMessage:MESSAGE}).where(eq(s.letterRequest.id,requestId)))).rejects.toThrow();
+  expect(await stored(requestId)).toMatchObject({status:'requested',employeeMessage:null,version:1});
+  expect(await declineLetterRequest(hr,{requestId,reason:REASON,employeeMessage:'  '+MESSAGE+'  ',expectedVersion:1})).toEqual({requestId});
+  expect(await stored(requestId)).toMatchObject({status:'declined',declineReason:REASON,employeeMessage:MESSAGE,handledBy:hr.userId,version:2});
+  // HR reads both; the message is final with the request.
+  expect(await getLetterRequestForStaff(hr,requestId)).toMatchObject({declineReason:REASON,employeeMessage:MESSAGE});
+  await expect(withTenant(hr,tx=>tx.update(s.letterRequest).set({employeeMessage:'Fictional rewrite'}).where(eq(s.letterRequest.id,requestId)))).rejects.toThrow();
   await refusedWith(declineLetterRequest(hr,{requestId,reason:REASON,expectedVersion:2}),'state');
   // The database refuses any move out of a final state, whoever asks.
   await expect(withTenant(hr,tx=>tx.update(s.letterRequest).set({status:'requested'}).where(eq(s.letterRequest.id,requestId)))).rejects.toThrow();
-  // The employee sees the status, never HR's reason.
-  const own=(await listMyLetterRequests(aina.ctx))[0];expect(own).toMatchObject({id:requestId,status:'declined',letterId:null});expect(JSON.stringify(own)).not.toContain(REASON);
+  // The employee sees the status and HR's message, never HR's reason.
+  const own=(await listMyLetterRequests(aina.ctx))[0];expect(own).toMatchObject({id:requestId,status:'declined',letterId:null,employeeMessage:MESSAGE});expect(JSON.stringify(own)).not.toContain(REASON);
   // The notice says only that it was declined.
   await dispatchNotifications(adminCtx(b),{});
   const notices=(await listNotifications(aina.ctx)).filter(notice=>notice.kind==='letter-request.declined');
   expect(notices.map(notice=>[notice.title,notice.body,notice.linkPath])).toEqual([['Letter request declined','Your letter request was declined. Open My Letters to see its status.','/me/letters']]);
-  expect(JSON.stringify(notices)).not.toMatch(/Fictional Employment Confirmation|Fictional reason|Fictional purpose/);
-  // A declined request no longer blocks a new one.
+  expect(JSON.stringify(notices)).not.toMatch(/Fictional Employment Confirmation|Fictional reason|Fictional purpose|Fictional message/);
+  // A declined request no longer blocks a new one; declined without a message, the employee sees none.
   const again=await submitLetterRequest(aina.ctx,{templateId});expect(again.requestId).not.toBe(requestId);
+  await declineLetterRequest(hr,{requestId:again.requestId,reason:REASON,employeeMessage:'   ',expectedVersion:1});
+  expect(await stored(again.requestId)).toMatchObject({status:'declined',employeeMessage:null});
+  expect((await listMyLetterRequests(aina.ctx)).find(row=>row.id===again.requestId)).toMatchObject({status:'declined',employeeMessage:null});
   // Audit: one event per change, none carrying the purpose or the reason.
   const audit=await events(requestId);
   expect(audit.map(row=>[row.type,row.subject])).toEqual([['letter-request.submitted',aina.employmentId],['letter-request.declined',aina.employmentId]]);
-  expect(JSON.stringify(audit)).not.toMatch(/Fictional reason|Fictional purpose/);
+  expect(JSON.stringify(audit)).not.toMatch(/Fictional reason|Fictional purpose|Fictional message/);
  });
 
  it('HR prepares the letter from the request, it moves to issued only with its own letter, and stays final',async()=>{

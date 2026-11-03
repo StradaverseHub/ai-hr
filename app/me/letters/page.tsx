@@ -29,6 +29,7 @@ export default async function MyLettersPage({searchParams}:{searchParams:Promise
    <p className="text-sm text-muted-foreground">{t('requests.requestedOn',{date:date(request.createdAt)})}</p></div>
   <div className="flex flex-wrap items-center gap-3"><StatusBadge status={'letter_request_'+request.status} label={t(`requests.status.${request.status}`)}/>
    {request.letterId&&<Link href={'/me/letters/'+request.letterId} className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-medium hover:bg-muted">{t('requests.openLetter')}</Link>}</div>
+  {request.status==='declined'&&request.employeeMessage&&<p data-letter-request-message className="basis-full whitespace-pre-line break-words rounded-md bg-muted p-3 text-sm"><span className="font-medium">{t('requests.messageFromHr')}:</span> {request.employeeMessage}</p>}
  </Card></li>;
  return <div className={pageWideCls}><PageHeader title={t('title')} description={t('description')}
   actions={types.length>0&&!asking?<Link href="/me/letters?request=1#request-letter" className={`${btnPrimary} inline-flex min-h-11 items-center`}>{t('requests.request')}</Link>:undefined}/>
