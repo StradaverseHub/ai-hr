@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../operations-tabs';
 import { setLoopPauseAction, setLoopSwitchAction } from '../actions';
 import { loopAutonomyDetail } from '@/core/loops/autonomy-views';
-import { AUTONOMY_NOTICES, LoopActionsCard, LoopAutonomyFigures, LoopGuardsAndOwner, LoopLevelBadges, LoopLevelsCard } from '@/components/ai-centre/loop-autonomy';
+import { AUTONOMY_NOTICES, LoopActionsCard, LoopAutonomyFigures, LoopGuardsAndOwner, LoopLevelBadges, LoopLevelsCard, LoopSamplesCard } from '@/components/ai-centre/loop-autonomy';
 
 /** AI v2 W8 — one loop's page (approved Phase 2 mock-up Main.dc.html "Loop detail", simplified to the Prepare level):
  * what done means, its four steps, its figures for the last 30 days, a pause per company the viewer administers, its
@@ -84,6 +84,7 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
 
       {await LoopLevelsCard({ autonomy, loop: id, notice })}
       {await LoopActionsCard({ autonomy, loop: id })}
+      {await LoopSamplesCard({ autonomy, loop: id })}
 
       <Card className="overflow-hidden">
         <SectionHeader title={t('pause.title')} />

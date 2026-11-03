@@ -56,9 +56,16 @@ export type WorkerMetrics=
 /** AI v2 W8: who answers for a loop. `switched_on_by`: the group administrator who switched it on; the loop reads under
  * that person's current authority and stops when they lose it. */
 export type WorkerSponsor=Readonly<{kind:'switched_on_by'}>;
+/** AI v2 Phase 2 P2-1: what a loop may do at each level, per company (core/loops/autonomy.ts is the cap in code; a test
+ * keeps the two in step). Level 0 Watch records only; Level 1 Prepare is `effect`. `ceiling` is the highest level any
+ * company may set. `act` is the automatic step at Level 2 (Act within limits) and Level 3 (Act and audit, the same step
+ * with HR reviewing a weekly sample instead of every action); null for a loop that stays at Prepare. Every automatic
+ * step is within the company's limits, tells the person, can be undone for a set window, and drops back to Prepare when
+ * people correct more than 1% in 7 days. */
+export type WorkerAutonomy=Readonly<{ceiling:1|2|3;act:Readonly<{does:string;owner:OwnerAnchor;undo:string}>|null}>;
 export type WorkerDeclaration=Readonly<{id:string;label:string;family:WorkerFamily;owners:readonly OwnerAnchor[];trigger:WorkerTrigger;
  readScope:readonly EntityId[];effect:WorkerEffect;authority:WorkerAuthority;switch:WorkerSwitch;stop:WorkerStop;record:WorkerRecord;metrics:WorkerMetrics;
- sponsor?:WorkerSponsor}>;
+ sponsor?:WorkerSponsor;autonomy?:WorkerAutonomy}>;
 
 export class WorkerNotRegistrable extends Error{constructor(readonly id:string,readonly missing:readonly string[]){super(`Worker ${id} cannot be registered: ${missing.join(', ')}`);this.name='WorkerNotRegistrable';}}
 
@@ -93,6 +100,11 @@ export function workerDeclarationProblems(value:unknown):readonly string[]{
  if(loop&&(d.family!=='preparer'||d.effect!=='prepare'||d.authority.kind!=='tenant_switch'||d.authority.actsAs!=='agent_principal'
   ||d.switch.kind!=='worker_control'||d.switch.workerId!==d.id||d.stop.honoured!==true||d.metrics.kind!=='loop_cases'))problems.push('loop');
  if(loop!==(d.sponsor?.kind==='switched_on_by'))problems.push('sponsor');
+ // AI v2 Phase 2 P2-1: a loop declares what it may do at each level; nothing else declares an autonomy.
+ const autonomy=d.autonomy;
+ if(loop!==(autonomy!==undefined))problems.push('autonomy');
+ if(autonomy&&(![1,2,3].includes(autonomy.ceiling)||(autonomy.ceiling>1)!==(autonomy.act!==null)
+  ||(autonomy.act&&(!nonEmpty(autonomy.act.does)||!nonEmpty(autonomy.act.undo)||!/^[a-z0-9_./-]+\.ts#[A-Za-z_][A-Za-z0-9_]*$/.test(autonomy.act.owner)))))problems.push('autonomy');
  if(!loop&&d.metrics.kind==='loop_cases')problems.push('metrics');
  return problems;
 }
@@ -177,27 +189,27 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   owners:['core/loops/probation-ending.ts#detectProbationEnding','core/employment-review.ts#probationDecisionFacts'],
   trigger:LOOP_NIGHTLY,readScope:['employment_profile','pending_approval'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_probation_ending'},stop:{honoured:true},
-  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:1,act:null}},
  {id:'loop_payroll_inputs',label:'Payroll inputs ready',family:'preparer',
   owners:['core/loops/payroll-inputs.ts#detectPayrollInputs','core/payroll-readiness.ts#payrollReadiness'],
   trigger:LOOP_NIGHTLY,readScope:['setup_copilot','readiness_gap'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_payroll_inputs'},stop:{honoured:true},
-  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:1,act:null}},
  {id:'loop_missing_employee_data',label:'Missing employee data',family:'preparer',
   owners:['core/loops/missing-employee-data.ts#detectMissingEmployeeData','core/record-readiness.ts#readinessSnapshot','core/readiness-actions.ts#loadReadinessActions'],
   trigger:LOOP_NIGHTLY,readScope:['readiness_gap','profile_change_request'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_missing_employee_data'},stop:{honoured:true},
-  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:3,act:{does:'Sends the employee the request to fill in their own missing details; changes no record',owner:'core/loops/act-requests.ts#applyRequest',undo:'HR withdraws the request; the employee is told'}}},
  {id:'loop_missed_clock_outs',label:'Missed clock-outs',family:'preparer',
   owners:['core/loops/missed-clock-outs.ts#detectMissedClockOuts','packs/attendance/service.ts#attendanceForEmploymentsRange'],
   trigger:LOOP_NIGHTLY,readScope:['attendance_request','absence'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_missed_clock_outs'},stop:{honoured:true},
-  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:true},sponsor:{kind:'switched_on_by'}},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:true},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:3,act:{does:'Sets a missed clock-out to the roster end through the attendance owner, only when the chosen condition holds; never creates overtime',owner:'packs/attendance/service.ts#requestAttendanceCorrection',undo:'A compensating correction through the attendance owner, by the employee or HR'}}},
  {id:'loop_document_expiry',label:'Passports expiring',family:'preparer',
   owners:['core/loops/document-expiry.ts#detectDocumentExpiry','core/automatic-followups.ts#followupItemsTx'],
   trigger:LOOP_NIGHTLY,readScope:['followup_item'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_document_expiry'},stop:{honoured:true},
-  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'}},
+  record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:1,act:null}},
 ];
 
 /** Builds a registry, refusing the whole list if any declaration breaks the contract or repeats an id. */

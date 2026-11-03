@@ -10,7 +10,7 @@ import type { LoopId } from '@/core/loops/types';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../../operations-tabs';
-import { setLoopLevelAction } from '../../autonomy-actions';
+import { changeLoopLimitsAction, setLoopLevelAction } from '../../autonomy-actions';
 
 /** AI v2 Phase 2 P2-1 — promote a loop, with evidence and limits, for one company (approved mock-up Promote.dc.html).
  *
@@ -20,7 +20,7 @@ import { setLoopLevelAction } from '../../autonomy-actions';
  * condition to act. Telling each person and the demotion rule are fixed and shown as such. Only a group administrator
  * may promote or move down, and the promotion is refused unless every requirement is met; anyone else sees the page
  * read-only. Guarded by requireAdmin like every Operations page. */
-const ERRORS = ['invalid', 'refused', 'capped', 'no_actor', 'not_next_level', 'certificate', 'changed', 'unchanged', 'not_found', 'failed'] as const;
+const ERRORS = ['invalid', 'refused', 'capped', 'no_actor', 'not_next_level', 'certificate', 'changed', 'unchanged', 'not_found', 'raise_needs_promotion', 'not_acting', 'failed'] as const;
 const TARGET = 'pointer-coarse:min-h-11';
 const percent = (value: number) => `${(Math.round(value * 1000) / 10).toString()}%`;
 const str = (facts: PromotionSample['facts'], key: string) => (typeof facts[key] === 'string' ? (facts[key] as string) : null);
@@ -34,7 +34,7 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
   const id: LoopId = view.workerId, name = tl(`names.${id}`), level = view.level, target = view.targetLevel;
   const levelName = (value: AutonomyLevel) => t(`levels.${levelKey(value)}`);
   const error = ERRORS.find(code => code === query.error);
-  const saved = query.saved === 'promoted' || query.saved === 'moved_down' ? query.saved : null;
+  const saved = query.saved === 'promoted' || query.saved === 'moved_down' || query.saved === 'limits' ? query.saved : null;
   const when = (date: Date) => f.dateTime(date, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' });
   const day = (iso: string | null) => (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? f.dateTime(new Date(`${iso}T00:00:00Z`), { dateStyle: 'medium', timeZone: 'UTC' }) : '—');
   const cert = view.certificate, loopHref = `/control-tower/loops/${encodeURIComponent(id)}`;
@@ -64,6 +64,51 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
   const ladderNote = (value: AutonomyLevel) => value === level ? t('promote.now') : value === target ? t('promote.proposed') : value === 3 ? t('promote.after90') : null;
   const lower = level > 0 ? (level - 1) as AutonomyLevel : null;
   const moveTo: AutonomyLevel | null = lower === null ? null : level >= 2 ? 1 : lower;
+  const requests = !view.usesCondition;
+  const chosen = view.usesCondition && view.conditionSetAt ? t('limits.chosenBy', { name: view.conditionSetByName ?? t('anAdministrator'), date: when(view.conditionSetAt) }) : null;
+  /** The limits a group administrator sets: the most actions a night, the undo window and, for missed clock-outs, the
+   * condition to act. `max` and `undoOptions` bound a change made without a promotion (only ever stricter). */
+  const limitFields = (max: number, undoOptions: readonly number[]) => <>
+    <label className="flex flex-col gap-1.5 text-sm"><span className="text-xs font-medium text-muted-foreground">{t(requests ? 'promote.maxPerNightRequests' : 'promote.maxPerNight')}</span>
+      <input name="maxActionsPerNight" type="number" min={1} max={max} step={1} required defaultValue={Math.min(view.limits.maxActionsPerNight, max)} className={cn(inputCls, 'max-w-40', TARGET)} /></label>
+    <label className="flex flex-col gap-1.5 text-sm"><span className="text-xs font-medium text-muted-foreground">{t(requests ? 'promote.undoForRequests' : 'promote.undoFor')}</span>
+      <select name="undoDays" defaultValue={String(undoOptions.includes(view.limits.undoDays) ? view.limits.undoDays : undoOptions[0])} className={cn(inputCls, 'max-w-40', TARGET)}>
+        {undoOptions.map(days => <option key={days} value={days}>{t('promote.undoDays', { count: days })}</option>)}</select></label>
+    {view.usesCondition ? <>
+      <label className="flex flex-col gap-1.5 text-sm"><span className="text-xs font-medium text-muted-foreground">{t('promote.onlyWhen')}</span>
+        <select name="condition" defaultValue={view.limits.condition} className={cn(inputCls, 'max-w-sm', TARGET)}>
+          {ACT_CONDITIONS.map(condition => <option key={condition} value={condition}>{t(`promote.conditions.${condition}`)}</option>)}</select></label>
+      <p data-autonomy-condition-note className="text-xs text-muted-foreground">{t('promote.rosterEndNote')}</p>
+      {!view.siteExitRecorded && <p data-autonomy-site-exit-note className="text-xs text-muted-foreground">{t('promote.siteExitNote')}</p>}
+      {chosen && <p className="text-xs text-muted-foreground">{chosen}</p>}
+    </> : <input type="hidden" name="condition" value={view.limits.condition} />}
+  </>;
+  const readOnlyLimits = (
+    <dl className="mt-3 space-y-2 text-sm">
+      <div><dt className="text-xs text-muted-foreground">{t(requests ? 'promote.maxPerNightRequests' : 'promote.maxPerNight')}</dt><dd>{view.limits.maxActionsPerNight}</dd></div>
+      <div><dt className="text-xs text-muted-foreground">{t(requests ? 'promote.undoForRequests' : 'promote.undoFor')}</dt><dd>{t('promote.undoDays', { count: view.limits.undoDays })}</dd></div>
+      {view.usesCondition && <div><dt className="text-xs text-muted-foreground">{t('promote.onlyWhen')}</dt><dd>{t(`promote.conditions.${view.limits.condition}`)}{chosen && <span className="block text-xs text-muted-foreground">{chosen}</span>}</dd></div>}
+    </dl>
+  );
+  /** The limits in force at Level 2 or 3: a group administrator makes them stricter, or chooses the condition, at any time. */
+  const currentLimits = <div data-autonomy-current-limits>
+    <h2 className="text-sm font-semibold">{t('promote.currentLimitsTitle', { n: level })}</h2>
+    {view.canChange && view.version !== null ? (
+      <form id="autonomy-limits" action={changeLoopLimitsAction} className="mt-3 space-y-4">
+        <input type="hidden" name="loop" value={id} /><input type="hidden" name="company" value={view.companyId} />
+        <input type="hidden" name="expectedVersion" value={view.version} />
+        {limitFields(view.limits.maxActionsPerNight, UNDO_WINDOW_DAYS.filter(days => days >= view.limits.undoDays))}
+        <p className="text-xs text-muted-foreground">{t('promote.changeLimitsNote')}</p>
+        <button type="submit" className={cn(btnGhost, TARGET)}>{t('promote.saveLimits')}</button>
+      </form>
+    ) : readOnlyLimits}
+  </div>;
+  const fixedRows = (
+    <dl className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
+      <div className="flex flex-wrap justify-between gap-2"><dt>{t('promote.tell')}</dt><dd className="text-muted-foreground">{t('promote.tellValue')}</dd></div>
+      <div className="flex flex-wrap justify-between gap-2"><dt>{t('promote.dropBack')}</dt><dd className="text-muted-foreground">{t('promote.dropBackValue')}</dd></div>
+    </dl>
+  );
   return (
     <div className={pageWideCls}>
       <OperationsTabs session={s} active="loops" />
@@ -131,34 +176,18 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
               <form id="autonomy-promote" action={setLoopLevelAction} className="mt-3 space-y-4">
                 <input type="hidden" name="loop" value={id} /><input type="hidden" name="company" value={view.companyId} />
                 <input type="hidden" name="toLevel" value={target} /><input type="hidden" name="expectedLevel" value={level} />
-                <label className="flex flex-col gap-1.5 text-sm"><span className="text-xs font-medium text-muted-foreground">{t('promote.maxPerNight')}</span>
-                  <input name="maxActionsPerNight" type="number" min={1} max={MAX_ACTIONS_PER_NIGHT} step={1} required defaultValue={view.limits.maxActionsPerNight} className={cn(inputCls, 'max-w-40', TARGET)} /></label>
-                <label className="flex flex-col gap-1.5 text-sm"><span className="text-xs font-medium text-muted-foreground">{t('promote.undoFor')}</span>
-                  <select name="undoDays" defaultValue={String(view.limits.undoDays)} className={cn(inputCls, 'max-w-40', TARGET)}>
-                    {UNDO_WINDOW_DAYS.map(days => <option key={days} value={days}>{t('promote.undoDays', { count: days })}</option>)}</select></label>
-                <label className="flex flex-col gap-1.5 text-sm"><span className="text-xs font-medium text-muted-foreground">{t('promote.onlyWhen')}</span>
-                  <select name="condition" defaultValue={view.limits.condition} className={cn(inputCls, 'max-w-sm', TARGET)}>
-                    {ACT_CONDITIONS.map(condition => <option key={condition} value={condition}>{t(`promote.conditions.${condition}`)}</option>)}</select></label>
-                <p className="text-xs text-muted-foreground">{t('promote.siteExitNote')}</p>
+                {limitFields(MAX_ACTIONS_PER_NIGHT, UNDO_WINDOW_DAYS)}
               </form>
-            ) : (
-              <dl className="mt-3 space-y-2 text-sm">
-                <div><dt className="text-xs text-muted-foreground">{t('promote.maxPerNight')}</dt><dd>{view.limits.maxActionsPerNight}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">{t('promote.undoFor')}</dt><dd>{t('promote.undoDays', { count: view.limits.undoDays })}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">{t('promote.onlyWhen')}</dt><dd>{t(`promote.conditions.${view.limits.condition}`)}</dd></div>
-              </dl>
-            )}
-            <dl className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
-              <div className="flex flex-wrap justify-between gap-2"><dt>{t('promote.tell')}</dt><dd className="text-muted-foreground">{t('promote.tellValue')}</dd></div>
-              <div className="flex flex-wrap justify-between gap-2"><dt>{t('promote.dropBack')}</dt><dd className="text-muted-foreground">{t('promote.dropBackValue')}</dd></div>
-            </dl>
-          </>) : (
-            <p className="text-sm text-muted-foreground">{level >= 2 && view.limits ? t('promote.currentLimits', { count: view.limits.maxActionsPerNight, days: view.limits.undoDays,
-              condition: t(`promote.conditions.${view.limits.condition}`) }) : t('promote.noLimits')}</p>
+            ) : readOnlyLimits}
+            {fixedRows}
+          </>) : level >= 2 ? currentLimits : (
+            <p className="text-sm text-muted-foreground">{t('promote.noLimits')}</p>
           )}
           <p className="mt-4 text-xs text-muted-foreground">{t('promote.capNote')}</p>
         </Card>
       </div>
+
+      {target !== null && target >= 2 && level >= 2 && <Card className="p-4">{currentLimits}</Card>}
 
       <div data-autonomy-commands className="flex flex-wrap items-center gap-3">
         {view.canChange && target !== null && (target < 2 ? (

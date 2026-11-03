@@ -4,9 +4,11 @@
  *  - up one level at a time, only to a level the loop may reach (core/loops/autonomy.ts: the cap is code), and above
  *    Prepare only when every criterion of its certificate is met now, computed in the same transaction from the loop's
  *    own records. The limits are set with the promotion (most actions a night, the undo window, the condition);
- *  - down at any time, to any lower level.
- * Every change is recorded with the administrator's name: the level row, an append-only history row with the
- * certificate and limits, and an audit event. The loop itself only ever moves itself back down to Prepare
+ *  - down at any time, to any lower level;
+ *  - without a promotion, make the limits stricter at any time (fewer actions a night, a longer undo window), and choose
+ *    the condition to act (changeLoopLimits). Raising a limit goes through a promotion.
+ * Every change is recorded with the administrator's name: the level row (with who chose the condition, and when), an
+ * append-only history row with the certificate and limits, and an audit event. The loop itself only ever moves itself back down to Prepare
  * (demoteLoopLevelTx, called by core/loops/act.ts as the agent principal). No model is called. */
 import {and,asc,count,desc,eq,gte,inArray,isNull,or,sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -17,19 +19,20 @@ import {terasLoopAction,terasLoopActionUndo,terasLoopLevel,terasLoopLevelChange}
 import {isGroupAdmin} from '../../lib/authz-model';
 import {isLoopId,type LoopId} from './types';
 import {DEFAULT_LIMITS,isAutonomyLevel,type AutonomyLevel,type LoopCorrection,type LoopLimits} from './autonomy-types';
-import {PROMOTION_RULES,certificate,levelAllowed,maxLevel,parseLimits,promotableTo,type Certificate} from './autonomy';
+import {PROMOTION_RULES,certificate,levelAllowed,limitsChangeAllowed,maxLevel,parseLimits,promotableTo,type Certificate} from './autonomy';
 
 const DAY_MS=86_400_000;
 export class LoopLevelRefused extends Error{
- constructor(readonly reason:'not_group_administrator'|'invalid'|'capped'|'no_actor'|'not_next_level'|'certificate'|'changed'|'unchanged'|'not_found'){super('Loop level refused: '+reason);this.name='LoopLevelRefused';}
+ constructor(readonly reason:'not_group_administrator'|'invalid'|'capped'|'no_actor'|'not_next_level'|'certificate'|'changed'|'unchanged'|'not_found'|'raise_needs_promotion'|'not_acting'){super('Loop level refused: '+reason);this.name='LoopLevelRefused';}
 }
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
 
-export type LoopLevelRow=Readonly<{companyId:string;level:AutonomyLevel;limits:LoopLimits;version:number;changedBy:'administrator'|'automatic';changedByUserId:string|null;changedAt:Date}>;
+export type LoopLevelRow=Readonly<{companyId:string;level:AutonomyLevel;limits:LoopLimits;version:number;changedBy:'administrator'|'automatic';changedByUserId:string|null;changedAt:Date;
+ conditionSetByUserId:string|null;conditionSetAt:Date|null}>;
 const limitsOf=(row:{maxActionsPerNight:number;undoDays:3|7;actCondition:LoopLimits['condition']}):LoopLimits=>
  Object.freeze({maxActionsPerNight:row.maxActionsPerNight,undoDays:row.undoDays,condition:row.actCondition});
 const toRow=(row:typeof terasLoopLevel.$inferSelect):LoopLevelRow=>Object.freeze({companyId:row.companyId,level:row.level,limits:limitsOf(row),version:row.version,
- changedBy:row.changedBy,changedByUserId:row.changedByUserId,changedAt:row.changedAt});
+ changedBy:row.changedBy,changedByUserId:row.changedByUserId,changedAt:row.changedAt,conditionSetByUserId:row.conditionSetByUserId,conditionSetAt:row.conditionSetAt});
 
 /** Every stored level of one loop in the tenant, by company. A company with no row is at Prepare. */
 export async function loopLevelsTx(tx:Tx,tenantId:string,workerId:LoopId):Promise<Map<string,LoopLevelRow>>{
@@ -141,6 +144,39 @@ export async function setLoopLevel(supplied:SessionContext,input:Readonly<{worke
    changedByUserId:ctx.userId!,limits:{...limits},evidence,changedAt:now});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-loop',aggregateId:companyId,eventType:'teras-loop.level-changed',actor:actorOf(ctx),
    payload:{workerId,companyId,from:current,to:toLevel,kind,limits:{...limits},version:row.version}});
+  return toRow(row);
+ });
+}
+
+const LimitsInput=z.object({workerId:z.string(),companyId:z.guid(),expectedVersion:z.number().int().min(1),limits:z.unknown()});
+
+/** A group administrator makes a company's limits stricter, or chooses the condition to act, without a promotion. Only for
+ * a loop standing above Prepare there; `expectedVersion` is the version the page showed. */
+export async function changeLoopLimits(supplied:SessionContext,input:Readonly<{workerId:unknown;companyId:unknown;expectedVersion:unknown;limits:unknown}>,now:Date=new Date()){
+ const ctx=capture(supplied);
+ if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new LoopLevelRefused('not_group_administrator');
+ const parsed=LimitsInput.safeParse(input),limits=parseLimits(input.limits);
+ if(!parsed.success||!isLoopId(parsed.data.workerId)||!limits)throw new LoopLevelRefused('invalid');
+ const workerId:LoopId=parsed.data.workerId,companyId=parsed.data.companyId;
+ return withTenant(ctx,async tx=>{
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`teras-loop-level:${ctx.tenantId}:${workerId}:${companyId}`},0))`);
+  const [admin]=await tx.execute(sql`select app.is_admin_for(c.id) as ok from public.company c where c.id=${companyId}::uuid and c.tenant_id=${ctx.tenantId}::uuid`) as unknown as {ok:boolean|null}[];
+  if(!admin)throw new LoopLevelRefused('not_found');
+  if(admin.ok!==true)throw new LoopLevelRefused('not_group_administrator');
+  const where=and(eq(terasLoopLevel.tenantId,ctx.tenantId),eq(terasLoopLevel.workerId,workerId),eq(terasLoopLevel.companyId,companyId));
+  const [before]=await tx.select().from(terasLoopLevel).where(where).limit(1).for('update');
+  if(!before||before.level<2)throw new LoopLevelRefused('not_acting');
+  if(before.version!==parsed.data.expectedVersion)throw new LoopLevelRefused('changed');
+  const previous=limitsOf(before);
+  if(!limitsChangeAllowed(previous,limits))throw new LoopLevelRefused(
+   limits.maxActionsPerNight>previous.maxActionsPerNight||limits.undoDays<previous.undoDays?'raise_needs_promotion':'unchanged');
+  const [row]=await tx.update(terasLoopLevel).set({maxActionsPerNight:limits.maxActionsPerNight,undoDays:limits.undoDays,actCondition:limits.condition,
+   changedBy:'administrator',changedByUserId:ctx.userId!,changedAt:now}).where(where).returning();
+  if(!row)throw new LoopLevelRefused('not_group_administrator');
+  await tx.insert(terasLoopLevelChange).values({tenantId:ctx.tenantId,workerId,companyId,fromLevel:before.level,toLevel:before.level,kind:'limits_changed',
+   changedBy:'administrator',changedByUserId:ctx.userId!,limits:{...limits},evidence:{before:{...previous},after:{...limits}},changedAt:now});
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-loop',aggregateId:companyId,eventType:'teras-loop.limits-changed',actor:actorOf(ctx),
+   payload:{workerId,companyId,level:before.level,before:{...previous},after:{...limits},version:row.version}});
   return toRow(row);
  });
 }

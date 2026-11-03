@@ -8,14 +8,15 @@
  *  4. Limits are refused, never clamped, outside their closed values.
  * Expected values are written out, never re-derived from the module's own constants. */
 import {describe,expect,it} from 'vitest';
-import {CAPPED_CATEGORIES,CAPPED_LOOPS,LOOP_AUTONOMY,certificate,levelAllowed,maxLevel,parseLimits,promotableTo,shouldDemote,type AutonomyDeclaration} from '../core/loops/autonomy';
+import {CAPPED_CATEGORIES,CAPPED_LOOPS,LOOP_AUTONOMY,certificate,levelAllowed,limitsChangeAllowed,maxLevel,parseLimits,promotableTo,sampleSize,shouldDemote,type AutonomyDeclaration} from '../core/loops/autonomy';
+import {DEFAULT_LIMITS} from '../core/loops/autonomy-types';
 import {LOOP_IDS} from '../core/loops/types';
 
 describe('the cap on automatic action',()=>{
  it('keeps probation, payroll inputs and passports at Prepare, and lets only missed clock-outs and missing employee data above it',()=>{
   expect([...CAPPED_LOOPS].sort()).toEqual(['loop_document_expiry','loop_payroll_inputs','loop_probation_ending']);
   expect(Object.fromEntries(LOOP_IDS.map(id=>[id,[maxLevel(id),promotableTo(id)]]))).toEqual({
-   loop_probation_ending:[1,1],loop_payroll_inputs:[1,1],loop_missing_employee_data:[3,1],loop_missed_clock_outs:[3,3],loop_document_expiry:[1,1]});
+   loop_probation_ending:[1,1],loop_payroll_inputs:[1,1],loop_missing_employee_data:[3,3],loop_missed_clock_outs:[3,3],loop_document_expiry:[1,1]});
  });
 
  it.each(['loop_probation_ending','loop_payroll_inputs','loop_document_expiry'] as const)('%s can never be set above Prepare',id=>{
@@ -99,5 +100,27 @@ describe('the limits',()=>{
    {maxActionsPerNight:2.5,undoDays:3,condition:'roster_end'},{maxActionsPerNight:Number.NaN,undoDays:3,condition:'roster_end'},
    {maxActionsPerNight:'50',undoDays:3,condition:'roster_end'},{maxActionsPerNight:50,undoDays:5,condition:'roster_end'},
    {maxActionsPerNight:50,undoDays:3,condition:'always'},null,undefined,'50'])expect(parseLimits(bad)).toBeNull();
+ });
+});
+
+describe('Level 3: the weekly sample',()=>{
+ it('is at least 10% and at least 5 actions, or every action when there are fewer',()=>{
+  expect([0,1,4,5,6,12,49,50,51,120,200].map(sampleSize)).toEqual([0,1,4,5,5,5,5,5,6,12,20]);
+ });
+});
+
+describe('changing limits without a promotion',()=>{
+ const now={maxActionsPerNight:50,undoDays:3,condition:'roster_end'} as const;
+ it('only makes them stricter, while the condition is the administrator\'s choice either way',()=>{
+  expect(limitsChangeAllowed(now,{...now,maxActionsPerNight:20})).toBe(true);
+  expect(limitsChangeAllowed(now,{...now,undoDays:7})).toBe(true);
+  expect(limitsChangeAllowed(now,{...now,condition:'roster_and_site_exit'})).toBe(true);
+  expect(limitsChangeAllowed({...now,condition:'roster_and_site_exit'},now)).toBe(true);
+  expect(limitsChangeAllowed(now,{...now,maxActionsPerNight:51})).toBe(false);
+  expect(limitsChangeAllowed({...now,undoDays:7},now)).toBe(false);
+  expect(limitsChangeAllowed(now,now)).toBe(false);
+ });
+ it('starts from the roster-end condition while no site exit is recorded',()=>{
+  expect(DEFAULT_LIMITS).toEqual({maxActionsPerNight:50,undoDays:3,condition:'roster_end'});
  });
 });

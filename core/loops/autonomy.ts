@@ -7,9 +7,12 @@
  *    cap in the database (teras_loop_level_cap), so a direct write cannot raise it either.
  *  - Of the five Phase 1 loops only missed clock-outs and missing employee data may stand above Prepare. Probation
  *    (employment status), payroll inputs (pay) and passports (owner decision) stay at Prepare.
- *  - A loop moves above Prepare only if it has an automatic step built in code (`actor`). Missed clock-outs has one
- *    (core/loops/act-clock-outs.ts). Missing employee data may go above Prepare, but its automatic step (sending the
- *    request to the employee by itself) is not built yet, so it cannot be promoted until it is.
+ *  - A loop moves above Prepare only if it has an automatic step built in code (`actor`): missed clock-outs sets the
+ *    clock-out to the roster end through the attendance owner (core/loops/act-clock-outs.ts); missing employee data sends
+ *    the request to the employee itself and changes no record (core/loops/act-requests.ts).
+ *  - Level 3 (Act and audit) acts exactly as Level 2; instead of every action showing in HR's feed, HR reviews a weekly
+ *    sample of at least 10% and at least 5 actions (core/loops/samples.ts). The employee is still told; undo and
+ *    demotion are unchanged.
  *  - Promotion is by certificate: each loop declares its criteria, computed from its own case and run records and its
  *    action ledger (core/loops/levels.ts promotionEvidenceTx). Level 3 needs 90 days at Level 2.
  *  - Demotion is fixed: more than 1% of the automatic actions changed or undone by people over 7 days drops the loop
@@ -44,7 +47,7 @@ const DECLARATIONS:Record<LoopId,AutonomyDeclaration>={
  loop_probation_ending:{categories:['employment_status'],ceiling:1,actor:false,criteria:['prepared','rule_broken','days_at_level']},
  loop_payroll_inputs:{categories:['pay'],ceiling:1,actor:false,criteria:['prepared','rule_broken','days_at_level']},
  // The request to the employee would be sent automatically, never the change itself (owner, 3 November 2026).
- loop_missing_employee_data:{categories:['employee_record_request'],ceiling:3,actor:false,criteria:['prepared','rule_broken','days_at_level']},
+ loop_missing_employee_data:{categories:['employee_record_request'],ceiling:3,actor:true,criteria:['prepared','rule_broken','days_at_level']},
  loop_missed_clock_outs:{categories:['attendance'],ceiling:3,actor:true,criteria:['prepared','changed','rule_broken','days_at_level']},
  // Passports stay at Prepare (owner, 3 November 2026).
  loop_document_expiry:{categories:['identity_document'],ceiling:1,actor:false,criteria:['prepared','rule_broken','days_at_level']},
@@ -69,6 +72,20 @@ export function promotableTo(id:LoopId,declaration:AutonomyDeclaration=LOOP_AUTO
 export const levelAllowed=(id:LoopId,level:number)=>Number.isInteger(level)&&level>=0&&level<=promotableTo(id);
 export const isCappedLoop=(id:LoopId)=>maxLevel(id)<=1;
 export const CAPPED_LOOPS:readonly LoopId[]=Object.freeze(LOOP_IDS.filter(isCappedLoop));
+
+/** Level 3: the weekly sample HR reviews, at least 10% and at least 5 actions (all of them when there are fewer). */
+export const SAMPLE_RULE=Object.freeze({minShare:0.1,minActions:5});
+export const sampleSize=(total:number)=>total<=0?0:Math.min(total,Math.max(SAMPLE_RULE.minActions,Math.ceil(total*SAMPLE_RULE.minShare)));
+
+/** Whether a loop's acting depends on a chosen condition (only the missed clock-outs loop's does). */
+export const usesCondition=(id:LoopId)=>id==='loop_missed_clock_outs';
+
+/** Without a promotion, limits only become stricter: no more actions a night, an undo window no shorter. The condition
+ * to act is the group administrator's choice at any time. Something must change. */
+export function limitsChangeAllowed(before:LoopLimits,after:LoopLimits):boolean{
+ if(after.maxActionsPerNight>before.maxActionsPerNight||after.undoDays<before.undoDays)return false;
+ return after.maxActionsPerNight!==before.maxActionsPerNight||after.undoDays!==before.undoDays||after.condition!==before.condition;
+}
 
 /** Limits a group administrator may set: at most MAX_ACTIONS_PER_NIGHT a night, an undo window of 3 or 7 days, and one
  * of the declared conditions. Anything else is refused, never clamped. */

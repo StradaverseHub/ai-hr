@@ -882,13 +882,17 @@
         "access": "Bạn không thể hoàn tác hành động này.",
         "ask_hr": "Hiện không thể hoàn tác từ đây.",
         "unavailable": "Không thể hoàn tác. Hãy thử lại.",
-        "invalid": "Không hiểu yêu cầu đó."
+        "invalid": "Không hiểu yêu cầu đó.",
+        "reviewed": "Đã ghi nhận việc xem xét mẫu.",
+        "review_failed": "Không thể ghi nhận việc xem xét. Hãy thử lại."
       },
       "figures": {
         "applied": "Số lần sửa trong {days} ngày",
         "corrected": "Được người sửa lại",
         "undoneByEmployee": "Bị nhân viên hoàn tác",
-        "none": "Chưa có"
+        "none": "Chưa có",
+        "appliedRequests": "Số yêu cầu đã gửi trong {days} ngày",
+        "withdrawn": "Bị người rút lại"
       },
       "actions": {
         "title": "Hành động gần đây",
@@ -910,7 +914,11 @@
           "owner_refused": "dịch vụ chấm công đã từ chối",
           "payroll_closed": "bảng lương cho ngày đó đã đóng",
           "approval_pending": "việc duyệt chấm công cần một người",
-          "interrupted": "lần chạy bị gián đoạn"
+          "interrupted": "lần chạy bị gián đoạn",
+          "condition_other_clocking": "có lần chấm công khác trong ngày",
+          "condition_inactive": "việc làm đã kết thúc",
+          "would_create_overtime": "lần sửa sẽ tạo ra giờ làm thêm",
+          "approval_routed": "việc duyệt chấm công đi theo quy trình phê duyệt"
         },
         "status": {
           "fixed": "Đã sửa · có thể hoàn tác đến {date}",
@@ -919,9 +927,16 @@
           "undoneHr": "Bị HR hoàn tác",
           "changed": "Được một người thay đổi sau đó",
           "applying": "Đang thực hiện",
-          "toPerson": "Để người đó xác nhận"
+          "toPerson": "Để người đó xác nhận",
+          "withdrawnEmployee": "Rút lại theo yêu cầu của nhân viên",
+          "withdrawnHr": "Bị HR rút lại",
+          "sentOpen": "Đã gửi · có thể rút lại đến {date}",
+          "sentClosed": "Đã gửi"
         },
-        "undo": "Hoàn tác"
+        "undo": "Hoàn tác",
+        "notSent": "Không gửi: {reason}",
+        "sent": "Đã gửi yêu cầu điền {count, plural, other {# thông tin}}",
+        "withdraw": "Rút lại"
       },
       "limits": {
         "title": "Những giới hạn không bao giờ được vượt qua",
@@ -929,7 +944,14 @@
         "leave": "Không bao giờ động đến ngày có nghỉ phép đã được duyệt",
         "pay": "Không bao giờ thay đổi lương, mức lương hay làm thêm giờ",
         "perNight": "{company}: tối đa {count, plural, other {# lần sửa}} mỗi đêm, mỗi lần có thể hoàn tác trong {days} ngày",
-        "demotion": "Tự trở về cấp Chuẩn bị nếu hơn 1% bị sửa lại trong 7 ngày"
+        "demotion": "Tự trở về cấp Chuẩn bị nếu hơn 1% bị sửa lại trong 7 ngày",
+        "noOvertime": "Không bao giờ tạo ra giờ làm thêm: lần sửa làm tăng giờ làm thêm sẽ không được giữ lại",
+        "condition": "{company}: chỉ thực hiện khi “{condition}”",
+        "chosenBy": "(do {name} chọn vào {date})",
+        "requestOnly": "Chỉ gửi yêu cầu; không bao giờ thay đổi hồ sơ",
+        "requestActive": "Không bao giờ gửi yêu cầu cho người đã nghỉ việc",
+        "perNightRequests": "{company}: tối đa {count, plural, other {# yêu cầu}} mỗi đêm, mỗi yêu cầu có thể rút lại trong {days} ngày",
+        "level3": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu hằng tuần thay vì từng hành động."
       },
       "owner": {
         "suspended": "Đã tạm ngưng: người bảo trợ không còn quyền truy cập HR.",
@@ -999,9 +1021,9 @@
         "onlyWhen": "Chỉ sửa khi",
         "conditions": {
           "roster_and_site_exit": "Giờ kết thúc ca và giờ rời địa điểm khớp nhau",
-          "roster_end": "Có giờ kết thúc ca"
+          "roster_end": "Có giờ kết thúc ca, không có nghỉ phép đã duyệt và không có lần chấm công khác trong ngày"
         },
-        "siteExitNote": "Hiện chưa ghi nhận giờ rời địa điểm, nên với “Giờ kết thúc ca và giờ rời địa điểm khớp nhau” nó sẽ không sửa gì và tiếp tục chuẩn bị thẻ.",
+        "siteExitNote": "Ở đây chưa ghi nhận giờ rời địa điểm, nên “Giờ kết thúc ca và giờ rời địa điểm khớp nhau” không thể đạt: với điều kiện này vòng lặp sẽ không sửa gì và tiếp tục chuẩn bị thẻ.",
         "tell": "Thông báo cho từng người",
         "tellValue": "Luôn luôn (cố định)",
         "dropBack": "Trở về cấp Chuẩn bị khi",
@@ -1017,7 +1039,8 @@
         "notMet": "Chưa đạt mọi yêu cầu, nên chưa thể nâng cấp.",
         "saved": {
           "promoted": "Đã nâng cấp. Hiện nó ở cấp {level} tại {company}.",
-          "moved_down": "Đã hạ cấp. Hiện nó ở cấp {level} tại {company}."
+          "moved_down": "Đã hạ cấp. Hiện nó ở cấp {level} tại {company}.",
+          "limits": "Đã lưu giới hạn cho {company}."
         },
         "errors": {
           "invalid": "Không hiểu thay đổi đó.",
@@ -1029,8 +1052,41 @@
           "changed": "Cấp đã thay đổi kể từ khi bạn mở trang này. Hãy kiểm tra lại.",
           "unchanged": "Nó đã ở cấp đó.",
           "not_found": "Không tìm thấy công ty hoặc vòng lặp đó.",
-          "failed": "Không thể lưu thay đổi. Hãy thử lại."
-        }
+          "failed": "Không thể lưu thay đổi. Hãy thử lại.",
+          "raise_needs_promotion": "Nâng giới hạn cần nâng cấp.",
+          "not_acting": "Vòng lặp không ở trên cấp Chuẩn bị tại công ty này."
+        },
+        "rosterEndNote": "Với điều kiện giờ kết thúc ca, giờ ra được đặt thành giờ kết thúc ca, nhân viên được thông báo và có thể hoàn tác, và lần sửa không bao giờ tạo ra giờ làm thêm.",
+        "maxPerNightRequests": "Số yêu cầu tối đa mỗi đêm",
+        "undoForRequests": "HR có thể rút lại trong",
+        "currentLimitsTitle": "Giới hạn hiện tại, ở Cấp {n}",
+        "changeLimitsNote": "Không qua nâng cấp, giới hạn chỉ có thể chặt hơn: ít hơn mỗi đêm hoặc thời hạn hoàn tác dài hơn. Điều kiện có thể thay đổi bất cứ lúc nào. Mọi thay đổi đều được ghi lại với tên của bạn.",
+        "saveLimits": "Lưu giới hạn"
+      },
+      "cannotActYet": "Nó chưa thể thực hiện: chưa ghi nhận giờ rời địa điểm, nên “giờ kết thúc ca và giờ rời địa điểm khớp nhau” không thể đạt. Nó tiếp tục chuẩn bị thẻ.",
+      "sample": {
+        "title": "Mẫu hằng tuần cần xem xét",
+        "help": "Ở cấp Thực hiện và kiểm tra, HR xem xét một mẫu hành động mỗi tuần (ít nhất 10% và ít nhất 5) thay vì từng hành động.",
+        "summary": "{size} trên {total} hành động trong tuần {week}",
+        "reviewed": "Đã được {name} xem xét vào {date}",
+        "markReviewed": "Đánh dấu đã xem xét mẫu",
+        "none": "Chưa có hành động nào trong tuần này."
+      },
+      "attribution": {
+        "loops": {
+          "loop_probation_ending": "kết thúc thử việc",
+          "loop_payroll_inputs": "dữ liệu đầu vào bảng lương",
+          "loop_missing_employee_data": "dữ liệu nhân viên còn thiếu",
+          "loop_missed_clock_outs": "quên chấm công ra",
+          "loop_document_expiry": "hộ chiếu"
+        },
+        "byLoop": "Vòng lặp AI Centre ({loop}), người bảo trợ: {sponsor}",
+        "byLoopForEmployee": "Vòng lặp AI Centre ({loop}), theo yêu cầu của {asker} (nhân viên), người bảo trợ: {sponsor}",
+        "byLoopForHr": "Vòng lặp AI Centre ({loop}), theo yêu cầu của {asker} (HR), người bảo trợ: {sponsor}",
+        "sponsorUnnamed": "người bảo trợ",
+        "byLoopForEmployeeUnnamed": "Vòng lặp AI Centre ({loop}), theo yêu cầu của nhân viên, người bảo trợ: {sponsor}",
+        "byLoopForHrUnnamed": "Vòng lặp AI Centre ({loop}), theo yêu cầu của HR, người bảo trợ: {sponsor}",
+        "madeBy": "Được tạo và duyệt bởi {actor}."
       }
     }
   },
@@ -1212,7 +1268,15 @@
       "someone": "Một người",
       "correctionMore": "và {count} mục khác",
       "movedDownNote": "Nó lại chuẩn bị thẻ cho đến khi quản trị viên tập đoàn nâng cấp nó.",
-      "movedDownCta": "Mở vòng lặp"
+      "movedDownCta": "Mở vòng lặp",
+      "actedTitle": "{loop} đã thực hiện {count, plural, other {# thay đổi}} tại {company} trong ngày qua",
+      "actedNote": "Ở cấp Thực hiện trong giới hạn, mọi hành động đều hiển thị ở đây. Mở vòng lặp để hoàn tác.",
+      "sampleTitle": "Mẫu hằng tuần cần xem xét: {loop} tại {company}",
+      "sampleMeta": "{size} trên {total} hành động tuần này",
+      "sampleNote": "Ở cấp Thực hiện và kiểm tra, HR xem xét mẫu này thay vì từng hành động.",
+      "sampleCta": "Xem xét mẫu",
+      "leftAloneTitle": "{loop} để lại {count, plural, other {# mục}} cho mọi người tại {company}",
+      "leftAloneNote": "Một điều kiện không đạt, nên người đó tự xác nhận."
     }
   },
   "why": {

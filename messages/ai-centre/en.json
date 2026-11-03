@@ -882,13 +882,17 @@
         "access": "You cannot undo this action.",
         "ask_hr": "This cannot be undone from here now.",
         "unavailable": "It could not be undone. Try again.",
-        "invalid": "That request was not understood."
+        "invalid": "That request was not understood.",
+        "reviewed": "Sample review recorded.",
+        "review_failed": "The review could not be recorded. Try again."
       },
       "figures": {
         "applied": "Fixes in {days} days",
         "corrected": "Corrected by people",
         "undoneByEmployee": "Undone by the employee",
-        "none": "None yet"
+        "none": "None yet",
+        "appliedRequests": "Requests sent in {days} days",
+        "withdrawn": "Withdrawn by people"
       },
       "actions": {
         "title": "Recent actions",
@@ -910,7 +914,11 @@
           "owner_refused": "the attendance service refused it",
           "payroll_closed": "the payroll for that day is closed",
           "approval_pending": "the attendance approval needs a person",
-          "interrupted": "the run was interrupted"
+          "interrupted": "the run was interrupted",
+          "condition_other_clocking": "another clocking that day",
+          "condition_inactive": "the employment has ended",
+          "would_create_overtime": "the fix would have created overtime",
+          "approval_routed": "the attendance approval goes to a workflow"
         },
         "status": {
           "fixed": "Fixed · undo until {date}",
@@ -919,9 +927,16 @@
           "undoneHr": "Undone by HR",
           "changed": "Changed by a person afterwards",
           "applying": "In progress",
-          "toPerson": "Left for the person to confirm"
+          "toPerson": "Left for the person to confirm",
+          "withdrawnEmployee": "Withdrawn at the employee’s request",
+          "withdrawnHr": "Withdrawn by HR",
+          "sentOpen": "Sent · can be withdrawn until {date}",
+          "sentClosed": "Sent"
         },
-        "undo": "Undo"
+        "undo": "Undo",
+        "notSent": "Not sent: {reason}",
+        "sent": "Request sent to fill in {count, plural, one {# detail} other {# details}}",
+        "withdraw": "Withdraw"
       },
       "limits": {
         "title": "Limits it can never cross",
@@ -929,7 +944,14 @@
         "leave": "Never touches a day with approved leave",
         "pay": "Never changes pay, rates or overtime",
         "perNight": "{company}: at most {count, plural, one {# fix} other {# fixes}} a night, each can be undone for {days} days",
-        "demotion": "Drops back to Prepare by itself if more than 1% are corrected in 7 days"
+        "demotion": "Drops back to Prepare by itself if more than 1% are corrected in 7 days",
+        "noOvertime": "Never creates overtime: a fix that would add overtime is not kept",
+        "condition": "{company}: acts only when “{condition}”",
+        "chosenBy": "(chosen by {name} on {date})",
+        "requestOnly": "Sends the request only; never changes a record",
+        "requestActive": "Never sends a request to someone whose employment has ended",
+        "perNightRequests": "{company}: at most {count, plural, one {# request} other {# requests}} a night, each can be withdrawn for {days} days",
+        "level3": "At Act and audit, HR reviews a weekly sample instead of every action."
       },
       "owner": {
         "suspended": "Suspended: its sponsor no longer has HR access.",
@@ -999,9 +1021,9 @@
         "onlyWhen": "Only fix when",
         "conditions": {
           "roster_and_site_exit": "Roster end and site exit agree",
-          "roster_end": "A roster end exists"
+          "roster_end": "Roster end, no approved leave and no other clocking that day"
         },
-        "siteExitNote": "No site exit is recorded yet, so with “Roster end and site exit agree” it fixes nothing and keeps preparing cards.",
+        "siteExitNote": "No site exit is recorded here yet, so “Roster end and site exit agree” cannot hold: with it the loop would fix nothing and keep preparing cards.",
         "tell": "Tell each person",
         "tellValue": "Always (fixed)",
         "dropBack": "Drop back to Prepare when",
@@ -1017,7 +1039,8 @@
         "notMet": "Not every requirement is met yet, so it cannot be promoted.",
         "saved": {
           "promoted": "Promoted. It now stands at {level} in {company}.",
-          "moved_down": "Moved down. It now stands at {level} in {company}."
+          "moved_down": "Moved down. It now stands at {level} in {company}.",
+          "limits": "Limits saved for {company}."
         },
         "errors": {
           "invalid": "That change was not understood.",
@@ -1029,8 +1052,41 @@
           "changed": "The level changed since you opened this page. Check it again.",
           "unchanged": "It is already at that level.",
           "not_found": "That company or loop was not found.",
-          "failed": "The change could not be saved. Try again."
-        }
+          "failed": "The change could not be saved. Try again.",
+          "raise_needs_promotion": "Raising a limit needs a promotion.",
+          "not_acting": "The loop is not above Prepare in this company."
+        },
+        "rosterEndNote": "With the roster-end condition, the clock-out is set to the roster end, the employee is told and can undo it, and the fix never creates overtime.",
+        "maxPerNightRequests": "Most requests per night",
+        "undoForRequests": "HR can withdraw for",
+        "currentLimitsTitle": "Limits now, at Level {n}",
+        "changeLimitsNote": "Without a promotion the limits can only be made stricter: fewer a night, or a longer undo window. The condition can be changed at any time. Every change is recorded with your name.",
+        "saveLimits": "Save the limits"
+      },
+      "cannotActYet": "It cannot act yet: no site exit is recorded, so “roster end and site exit agree” cannot hold. It keeps preparing cards.",
+      "sample": {
+        "title": "Weekly sample to review",
+        "help": "At Act and audit, HR reviews a sample of each week’s actions (at least 10% and at least 5) instead of every one.",
+        "summary": "{size} of {total} actions in the week of {week}",
+        "reviewed": "Reviewed by {name} on {date}",
+        "markReviewed": "Mark the sample reviewed",
+        "none": "No actions this week yet."
+      },
+      "attribution": {
+        "loops": {
+          "loop_probation_ending": "probation ending",
+          "loop_payroll_inputs": "payroll inputs",
+          "loop_missing_employee_data": "missing employee data",
+          "loop_missed_clock_outs": "missed clock-outs",
+          "loop_document_expiry": "passports"
+        },
+        "byLoop": "AI Centre loop ({loop}), sponsored by {sponsor}",
+        "byLoopForEmployee": "AI Centre loop ({loop}), at the request of {asker} (the employee), sponsored by {sponsor}",
+        "byLoopForHr": "AI Centre loop ({loop}), at the request of {asker} (HR), sponsored by {sponsor}",
+        "sponsorUnnamed": "its sponsor",
+        "byLoopForEmployeeUnnamed": "AI Centre loop ({loop}), at the employee’s request, sponsored by {sponsor}",
+        "byLoopForHrUnnamed": "AI Centre loop ({loop}), at HR’s request, sponsored by {sponsor}",
+        "madeBy": "Made and approved by the {actor}."
       }
     }
   },
@@ -1212,7 +1268,15 @@
       "someone": "Someone",
       "correctionMore": "and {count} more",
       "movedDownNote": "It prepares cards again until a group administrator promotes it.",
-      "movedDownCta": "Open the loop"
+      "movedDownCta": "Open the loop",
+      "actedTitle": "{loop} made {count, plural, one {# change} other {# changes}} in {company} in the last day",
+      "actedNote": "At Act within limits every action shows here. Open the loop to undo one.",
+      "sampleTitle": "Weekly sample to review: {loop} in {company}",
+      "sampleMeta": "{size} of {total} actions this week",
+      "sampleNote": "At Act and audit, HR reviews this sample instead of every action.",
+      "sampleCta": "Review the sample",
+      "leftAloneTitle": "{loop} left {count, plural, one {# item} other {# items}} for people in {company}",
+      "leftAloneNote": "A condition did not hold, so the person confirms it themselves."
     }
   },
   "why": {

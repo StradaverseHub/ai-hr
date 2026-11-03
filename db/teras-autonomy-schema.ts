@@ -4,7 +4,7 @@
  * A separate file, like db/teras-schema.ts and for the same reason: db/schema.ts and db/teras-schema.ts are inside the
  * approved provider-data source closure, and this step must leave that closure's digest unchanged. Imported only by
  * core/loops. Fold into db/schema.ts when the next approval of that closure is taken. */
-import {index,integer,jsonb,pgTable,primaryKey,smallint,text,timestamp,uuid} from 'drizzle-orm/pg-core';
+import {date,index,integer,jsonb,pgTable,primaryKey,smallint,text,timestamp,uuid} from 'drizzle-orm/pg-core';
 import {appUser,company,employment,tenant} from './schema';
 import {terasLoopCase} from './teras-schema';
 import type {ActCondition,AutonomyLevel,LevelChangeKind,LevelChangedBy,LoopActionCheck,LoopActionFacts,LoopActionReason,LoopActionState,UndoWindowDays,UndoneBy} from '../core/loops/autonomy-types';
@@ -21,6 +21,7 @@ export const terasLoopLevel=pgTable('teras_loop_level',{
  maxActionsPerNight:integer('max_actions_per_night').notNull().default(50),
  undoDays:smallint('undo_days').$type<UndoWindowDays>().notNull().default(3),
  actCondition:text('act_condition').$type<ActCondition>().notNull().default('roster_and_site_exit'),
+ conditionSetByUserId:uuid('condition_set_by_user_id').references(()=>appUser.id),conditionSetAt:at('condition_set_at'),
  version:integer('version').notNull().default(1),
  changedBy:text('changed_by').$type<LevelChangedBy>().notNull(),changedByUserId:uuid('changed_by_user_id').references(()=>appUser.id),
  changedAt:at('changed_at').notNull().defaultNow(),
@@ -42,7 +43,7 @@ export const terasLoopAction=pgTable('teras_loop_action',{
  caseId:uuid('case_id').notNull().references(()=>terasLoopCase.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
  runId:uuid('run_id').notNull(),level:smallint('level').$type<AutonomyLevel>().notNull(),state:text('state').$type<LoopActionState>().notNull(),
  reason:text('reason').$type<LoopActionReason>(),ruleVersion:text('rule_version').notNull(),
- sponsorUserId:uuid('sponsor_user_id').notNull().references(()=>appUser.id),
+ sponsorUserId:uuid('sponsor_user_id').notNull().references(()=>appUser.id),agentPrincipalId:uuid('agent_principal_id').notNull(),
  checks:jsonb('checks').$type<LoopActionCheck[]>().notNull(),facts:jsonb('facts').$type<LoopActionFacts>().notNull(),
  ownerRef:uuid('owner_ref'),createdAt:at('created_at').notNull().defaultNow(),appliedAt:at('applied_at'),undoUntil:at('undo_until').notNull(),
  peopleChangedAt:at('people_changed_at'),
@@ -54,3 +55,10 @@ export const terasLoopActionUndo=pgTable('teras_loop_action_undo',{
  undoneBy:text('undone_by').$type<UndoneBy>().notNull(),undoneByUserId:uuid('undone_by_user_id').notNull().references(()=>appUser.id),
  compensationRef:uuid('compensation_ref').notNull(),undoneAt:at('undone_at').notNull().defaultNow(),
 });
+
+/** 0963 — a weekly sample of a Level 3 loop's actions, reviewed by HR. Append-only. */
+export const terasLoopSampleReview=pgTable('teras_loop_sample_review',{
+ id:id(),tenantId:tenantId(),workerId:text('worker_id').$type<LoopId>().notNull(),companyId:uuid('company_id').notNull().references(()=>company.id),
+ weekStart:date('week_start').notNull(),actionIds:jsonb('action_ids').$type<string[]>().notNull(),
+ reviewedByUserId:uuid('reviewed_by_user_id').notNull().references(()=>appUser.id),reviewedAt:at('reviewed_at').notNull().defaultNow(),
+},t=>[index('teras_loop_sample_review_week_idx').on(t.tenantId,t.workerId,t.companyId,t.weekStart)]);

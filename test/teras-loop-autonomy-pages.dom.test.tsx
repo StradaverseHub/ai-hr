@@ -28,7 +28,8 @@ type Locale='en'|'ms'|'zh'|'vi'|'ta'|'th';
 const CATALOGUES={en,ms,zh,vi:vi_,ta,th};
 const messagesFor=(locale:Locale)=>withAiCentre(locale,CATALOGUES[locale] as Record<string,unknown>) as typeof en & {aiCentre:Record<string,any>;today:Record<string,any>};
 const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'ta'|'th',session:null as unknown,reads:[] as string[],canChange:false,certificateMet:true,
- sponsorLost:false,undo:{posts:[] as unknown[],result:{kind:'undone',by:'employee'} as unknown}}));
+ sponsorLost:false,undo:{posts:[] as unknown[],result:{kind:'undone',by:'employee'} as unknown},levelA:2,conditionA:'roster_end',promoteLevel:1,promoteUndo:3,
+ summaries:{} as Record<string,unknown>}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',async()=>{
  const {createTranslator:translator,createFormatter:formatter}=await import('next-intl');
@@ -46,7 +47,7 @@ vi.mock('next/navigation',()=>({
 vi.mock('../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:()=>true,isModuleEnabledOrFalse:()=>true}));
 vi.mock('../app/control-tower/loops/actions',()=>({setLoopSwitchAction:vi.fn(),setLoopPauseAction:vi.fn()}));
-vi.mock('../app/control-tower/loops/autonomy-actions',()=>({setLoopLevelAction:vi.fn(),undoLoopActionFromDetailAction:vi.fn()}));
+vi.mock('../app/control-tower/loops/autonomy-actions',()=>({setLoopLevelAction:vi.fn(),undoLoopActionFromDetailAction:vi.fn(),changeLoopLimitsAction:vi.fn(),reviewLoopSampleAction:vi.fn()}));
 vi.mock('../app/assistant/loop-clock-out-actions',()=>({confirmMissedClockOutAction:vi.fn()}));
 vi.mock('../app/assistant/loop-undo-actions',()=>({undoOwnLoopAction:async(input:unknown)=>{state.undo.posts.push(input);return state.undo.result;}}));
 
@@ -58,20 +59,25 @@ const fx=vi.hoisted(()=>{
   lastRun:{at:new Date('2026-11-03T15:05:00Z'),status:'ran',capped:false},prepared:4,confirmed:1,changed:1,correctionRate:0.5,proposesValue:id==='loop_missed_clock_outs',openNow:2,waitingNow:1,pausedCompanies:0});
  const detail=(id:string)=>({row:row(id),canSwitch:false,windowDays:30,companies:[],runs:[],cases:[]});
  const company=(companyId:string,companyName:string,level:number,extra:Record<string,unknown>={})=>({companyId,companyName,level,limits:level>=2?{maxActionsPerNight:50,undoDays:3,condition:'roster_end'}:null,
-  changedAt:level>=2?new Date('2026-10-01T02:00:00Z'):null,changedBy:level>=2?'administrator':null,changedByName:level>=2?'Aisyah Fictional':null,lastChange:level>=2?'promoted':null,...extra});
+  changedAt:level>=2?new Date('2026-10-01T02:00:00Z'):null,changedBy:level>=2?'administrator':null,changedByName:level>=2?'Aisyah Fictional':null,lastChange:level>=2?'promoted':null,
+  conditionSetByName:level>=2?'Aisyah Fictional':null,conditionSetAt:level>=2?new Date('2026-10-01T02:00:00Z'):null,...extra});
  const action=(id:string,extra:Record<string,unknown>)=>({id,at:new Date('2026-11-03T15:04:00Z'),personName:'Siti Fictional',companyName:'Fictional A Sdn Bhd',state:'applied',reason:null,
   facts:{date:'2026-11-03',checkIn:'09:02',checkOut:'18:00'},undoUntil:FUTURE,undo:null,peopleChanged:false,canUndo:true,...extra});
  return {LoopViewRefused,FUTURE,PAST,row,detail,company,action};
 });
 vi.mock('../core/loops/views',()=>({LoopViewRefused:fx.LoopViewRefused,
+ loopsOverview:async()=>({rows:['loop_probation_ending','loop_payroll_inputs','loop_missing_employee_data','loop_missed_clock_outs','loop_document_expiry'].map(fx.row),canSwitch:false,windowDays:30}),
  loopDetail:async(_s:unknown,id:string)=>{state.reads.push('detail:'+id);if(!['loop_missed_clock_outs','loop_probation_ending'].includes(id))throw new fx.LoopViewRefused('not_found');
   const out=fx.detail(id);if(state.sponsorLost)out.row.lastRun={...out.row.lastRun,status:'sponsor_lost'};return out;}}));
 vi.mock('../core/loops/autonomy-views',()=>({
+ loopLevelSummaries:async()=>state.summaries,
  loopAutonomyDetail:async(_s:unknown,id:string)=>{state.reads.push('autonomy:'+id);
-  if(id==='loop_probation_ending')return {workerId:id,maxLevel:1,promotableTo:1,capped:true,hasActor:false,canChange:state.canChange,windowDays:30,
-   companies:[fx.company(A,'Fictional A Sdn Bhd',1),fx.company(B,'Fictional B Sdn Bhd',1)],actions:[],figures:{applied:0,corrected:0,undoneByEmployee:0,correctedShare:null}};
-  return {workerId:id,maxLevel:3,promotableTo:3,capped:false,hasActor:true,canChange:state.canChange,windowDays:30,
-   companies:[fx.company(A,'Fictional A Sdn Bhd',2),fx.company(B,'Fictional B Sdn Bhd',1)],
+  if(id==='loop_probation_ending')return {workerId:id,maxLevel:1,promotableTo:1,capped:true,hasActor:false,canChange:state.canChange,usesCondition:false,siteExitRecorded:false,windowDays:30,
+   companies:[fx.company(A,'Fictional A Sdn Bhd',1),fx.company(B,'Fictional B Sdn Bhd',1)],actions:[],samples:[],figures:{applied:0,corrected:0,undoneByEmployee:0,correctedShare:null}};
+  const levelA=state.levelA;
+  return {workerId:id,maxLevel:3,promotableTo:3,capped:false,hasActor:true,canChange:state.canChange,usesCondition:true,siteExitRecorded:false,windowDays:30,
+   companies:[fx.company(A,'Fictional A Sdn Bhd',levelA,{limits:{maxActionsPerNight:50,undoDays:3,condition:state.conditionA}}),fx.company(B,'Fictional B Sdn Bhd',1)],
+   samples:levelA===3?[{companyId:A,companyName:'Fictional A Sdn Bhd',weekStart:'2026-11-02',total:12,actions:[fx.action('a1',{})],reviewed:null,canReview:true}]:[],
    actions:[
     fx.action('a1',{}),
     fx.action('a2',{personName:'Daniel Fictional',facts:{date:'2026-11-02',checkIn:'08:30',checkOut:'17:30'},undo:{by:'employee',at:new Date('2026-11-03T01:00:00Z')},canUndo:false}),
@@ -79,9 +85,10 @@ vi.mock('../core/loops/autonomy-views',()=>({
     fx.action('a4',{personName:'Ravi Fictional',facts:{date:'2026-10-20',checkIn:'09:00',checkOut:'18:00'},undoUntil:fx.PAST,canUndo:false}),
    ],figures:{applied:200,corrected:1,undoneByEmployee:1,correctedShare:0.005}};},
  loopPromotion:async(_s:unknown,id:string,companyId:string)=>{state.reads.push(`promote:${id}:${companyId}`);
-  if(id!=='loop_missed_clock_outs'||companyId!==B)throw new fx.LoopViewRefused('not_found');
-  const met=state.certificateMet;
-  return {workerId:id,companyId:B,companyName:'Fictional B Sdn Bhd',level:1,targetLevel:2,maxLevel:3,capped:false,hasActor:true,canChange:state.canChange,
+  if(!['loop_missed_clock_outs','loop_missing_employee_data'].includes(id)||companyId!==B)throw new fx.LoopViewRefused('not_found');
+  const met=state.certificateMet,level=state.promoteLevel;
+  return {workerId:id,companyId:B,companyName:'Fictional B Sdn Bhd',level,targetLevel:level+1,maxLevel:3,capped:false,hasActor:true,canChange:state.canChange,
+   usesCondition:id==='loop_missed_clock_outs',siteExitRecorded:false,version:level>=2?4:null,conditionSetByName:level>=2?'Aisyah Fictional':null,conditionSetAt:level>=2?new Date('2026-10-01T02:00:00Z'):null,
    certificate:{targetLevel:2,met,criteria:[
     {id:'prepared',needed:200,actual:met?214:150,count:null,met},
     {id:'changed',needed:0.01,actual:1/200,count:1,met:true},
@@ -90,9 +97,10 @@ vi.mock('../core/loops/autonomy-views',()=>({
    evidence:{windowDays:30,since:new Date('2026-10-04T00:00:00Z'),currentLevel:1,prepared:met?214:150,asPrepared:199,changed:1,ruleBroken:0,daysAtLevel:34,levelSince:new Date('2026-09-30T00:00:00Z')},
    sample:[{id:'k1',at:new Date('2026-11-03T15:05:00Z'),personName:'Siti Fictional',state:'closed',closeReason:'done',resolution:'as_prepared',facts:{date:'2026-11-02',proposedCheckOut:'18:00'}},
     {id:'k2',at:new Date('2026-11-03T15:05:00Z'),personName:'Daniel Fictional',state:'closed',closeReason:'done',resolution:'changed',facts:{date:'2026-11-01',proposedCheckOut:'17:30'}}],
-   limits:{maxActionsPerNight:50,undoDays:3,condition:'roster_and_site_exit'},limitsStored:false};},
+   limits:{maxActionsPerNight:50,undoDays:state.promoteUndo,condition:'roster_end'},limitsStored:level>=2};},
 }));
 import LoopPage from '../app/control-tower/loops/[loop]/page';
+import LoopsPage from '../app/control-tower/loops/page';
 import PromoteLoopPage from '../app/control-tower/loops/[loop]/promote/page';
 import {LoopCards} from '../components/today/loop-cards';
 
@@ -111,7 +119,8 @@ const promote=(loop:string,query:Record<string,string>)=>PromoteLoopPage({params
 /** An element's text with its parts kept apart, as they read on screen. */
 const parts=(el:Element|null|undefined):string=>el?[...el.childNodes].map(node=>node.nodeType===1?parts(node as Element):text(node)).filter(Boolean).join(' '):'';
 const inputs=(form:Element)=>[...form.querySelectorAll('input[type=hidden]')].map(input=>`${input.getAttribute('name')}=${input.getAttribute('value')}`);
-afterEach(()=>{cleanup();Object.assign(state,{locale:'en',session:null,reads:[],canChange:false,certificateMet:true,sponsorLost:false,undo:{posts:[],result:{kind:'undone',by:'employee'}}});});
+afterEach(()=>{cleanup();Object.assign(state,{locale:'en',session:null,reads:[],canChange:false,certificateMet:true,sponsorLost:false,undo:{posts:[],result:{kind:'undone',by:'employee'}},
+ levelA:2,conditionA:'roster_end',promoteLevel:1,promoteUndo:3,summaries:{}});});
 
 describe('a loop\'s page with the autonomy ladder',()=>{
  it.each(['employee','manager'] as const)('%s is refused before any read',async role=>{
@@ -145,7 +154,11 @@ describe('a loop\'s page with the autonomy ladder',()=>{
   expect(forms[0].querySelector('button')?.getAttribute('aria-label')).toBe('Undo · Siti Fictional');
   expect([...view.container.querySelectorAll('[data-loop-limits] li')].map(text)).toEqual([
    'Acts only when a clock-in and a roster end time both exist','Never touches a day with approved leave','Never changes pay, rates or overtime',
+   'Never creates overtime: a fix that would add overtime is not kept',
+   'Fictional A Sdn Bhd: acts only when “Roster end, no approved leave and no other clocking that day” (chosen by Aisyah Fictional on Oct 1, 2026)',
    'Fictional A Sdn Bhd: at most 50 fixes a night, each can be undone for 3 days','Drops back to Prepare by itself if more than 1% are corrected in 7 days','It calls no AI model.']);
+  expect(view.container.querySelector('[data-loop-cannot-act]')).toBeNull();
+  expect(view.container.querySelector('[data-loop-sample]')).toBeNull();
   expect(text(view.container)).toContain('Sponsor: Daniel Fictional');
   expect(text(view.container)).toContain('Suspended automatically if the sponsor leaves or loses HR access.');
   expect(view.container.querySelector('[data-loop-suspended]')).toBeNull();
@@ -200,7 +213,11 @@ describe('the promote page',()=>{
   expect((form.querySelector('input[name=maxActionsPerNight]') as HTMLInputElement).value).toBe('50');
   expect([...form.querySelectorAll('select[name=undoDays] option')].map(option=>[option.getAttribute('value'),text(option)])).toEqual([['3','3 days'],['7','7 days']]);
   expect([...form.querySelectorAll('select[name=condition] option')].map(option=>[option.getAttribute('value'),text(option)])).toEqual([
-   ['roster_and_site_exit','Roster end and site exit agree'],['roster_end','A roster end exists']]);
+   ['roster_and_site_exit','Roster end and site exit agree'],['roster_end','Roster end, no approved leave and no other clocking that day']]);
+  // No site exit is recorded, so the roster-end condition is what is offered first, explained plainly.
+  expect((form.querySelector('select[name=condition]') as HTMLSelectElement).value).toBe('roster_end');
+  expect(text(form.querySelector('[data-autonomy-condition-note]'))).toBe('With the roster-end condition, the clock-out is set to the roster end, the employee is told and can undo it, and the fix never creates overtime.');
+  expect(text(form.querySelector('[data-autonomy-site-exit-note]'))).toContain('No site exit is recorded here yet');
   expect([...view.container.querySelectorAll('dl div')].map(parts)).toEqual(['Tell each person Always (fixed)','Drop back to Prepare when Over 1% changed in 7 days (fixed)']);
   expect(text(view.container)).toContain('Pay, employment status, system access and discipline can never go above Prepare, in any company.');
   const submit=screen.getByRole('button',{name:'Promote to Level 2 in Fictional B Sdn Bhd'});
@@ -229,8 +246,9 @@ describe('the promote page',()=>{
   expect(view.container.querySelectorAll('form')).toHaveLength(0);
   expect(view.container.querySelectorAll('[data-autonomy-commands] button')).toHaveLength(0);
   expect(text(view.container)).toContain('Only a group administrator can change a loop\'s level.');
-  expect([...view.container.querySelectorAll('dl div')].map(parts)).toEqual(['Most fixes per night 50','Employee can undo for 3 days','Only fix when Roster end and site exit agree',
-   'Tell each person Always (fixed)','Drop back to Prepare when Over 1% changed in 7 days (fixed)']);
+  expect([...view.container.querySelectorAll('dl div')].map(parts)).toEqual(['Most fixes per night 50','Employee can undo for 3 days',
+   'Only fix when Roster end, no approved leave and no other clocking that day','Tell each person Always (fixed)','Drop back to Prepare when Over 1% changed in 7 days (fixed)']);
+  expect(view.container.querySelector('select')).toBeNull();
  });
 
  it('a company the viewer does not administer, or a loop that does not exist, is not found',async()=>{
@@ -272,6 +290,77 @@ describe('Today: the ladder\'s cards',()=>{
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:/^Undo/}));});
   expect(text(view.container.querySelector('[data-auto-fix-refusal]'))).toBe('The undo window has closed. Ask HR to change it.');
   expect(view.container.querySelector('[data-auto-fix-outcome]')).toBeNull();
+ });
+});
+
+describe('round 2: limits, the condition, the sample and the overview',()=>{
+ it('at Level 2 a group administrator makes the limits stricter or changes the condition, bounded by the limits in force',async()=>{
+  state.session=SESSIONS.groupAdmin;state.canChange=true;state.promoteLevel=2;state.promoteUndo=7;
+  const view=wrap('en',await promote('loop_missed_clock_outs',{company:B}));
+  const form=view.container.querySelector('form#autonomy-limits')!;
+  expect(inputs(form)).toEqual(['loop=loop_missed_clock_outs',`company=${B}`,'expectedVersion=4']);
+  expect((form.querySelector('input[name=maxActionsPerNight]') as HTMLInputElement).max).toBe('50');
+  expect([...form.querySelectorAll('select[name=undoDays] option')].map(option=>option.getAttribute('value'))).toEqual(['7']);
+  expect([...form.querySelectorAll('select[name=condition] option')].map(option=>option.getAttribute('value'))).toEqual(['roster_and_site_exit','roster_end']);
+  expect(text(form)).toContain('Without a promotion the limits can only be made stricter');
+  expect(text(form)).toContain('(chosen by Aisyah Fictional on Oct 1, 2026, 10:00 AM)');
+  expect(screen.getByRole('button',{name:'Save the limits'}).className).toContain('pointer-coarse:min-h-11');
+  // The Level 3 promotion has its own form.
+  expect(inputs(view.container.querySelector('form#autonomy-promote')!)).toEqual(['loop=loop_missed_clock_outs',`company=${B}`,'toLevel=3','expectedLevel=2']);
+ });
+ it('an HR administrator of the company is never offered the condition or the limits',async()=>{
+  state.session=SESSIONS.hrAdmin;state.promoteLevel=2;
+  const view=wrap('en',await promote('loop_missed_clock_outs',{company:B}));
+  expect(view.container.querySelectorAll('form,select')).toHaveLength(0);
+  expect(text(view.container)).toContain('Roster end, no approved leave and no other clocking that day');
+ });
+ it('the missing employee data loop is promoted with request limits and no condition to choose',async()=>{
+  state.session=SESSIONS.groupAdmin;state.canChange=true;
+  const view=wrap('en',await promote('loop_missing_employee_data',{company:B}));
+  const form=view.container.querySelector('form#autonomy-promote')!;
+  expect(inputs(form)).toEqual(['loop=loop_missing_employee_data',`company=${B}`,'toLevel=2','expectedLevel=1','condition=roster_end']);
+  expect(form.querySelector('select[name=condition]')).toBeNull();
+  expect(form.querySelector('[data-autonomy-condition-note]')).toBeNull();
+  expect([...form.querySelectorAll('label > span')].map(text)).toEqual(['Most requests per night','HR can withdraw for']);
+ });
+ it('says plainly when the site-exit condition means the loop cannot act yet',async()=>{
+  state.session=SESSIONS.groupAdmin;state.conditionA='roster_and_site_exit';
+  const view=wrap('en',await detail('loop_missed_clock_outs'));
+  expect(text(view.container.querySelector('[data-loop-cannot-act]'))).toBe('It cannot act yet: no site exit is recorded, so “roster end and site exit agree” cannot hold. It keeps preparing cards.');
+ });
+ it('at Level 3 the loop page shows the weekly sample HR reviews, with the way to record the review',async()=>{
+  state.session=SESSIONS.groupAdmin;state.canChange=true;state.levelA=3;
+  const view=wrap('en',await detail('loop_missed_clock_outs'));
+  const sample=view.container.querySelector(`[data-loop-sample="${A}"]`)!;
+  expect(text(sample)).toContain('1 of 12 actions in the week of Nov 2, 2026');
+  const form=sample.querySelector('form')!;
+  expect(inputs(form)).toEqual(['loop=loop_missed_clock_outs',`company=${A}`,'week=2026-11-02']);
+  expect(form.querySelector('button')?.getAttribute('aria-label')).toBe('Mark the sample reviewed · Fictional A Sdn Bhd');
+  expect(sample.querySelectorAll('[data-loop-actions] tbody tr')).toHaveLength(1);
+  expect(text(view.container)).toContain('At Act and audit, HR reviews a weekly sample instead of every action.');
+ });
+ it('the overview names the level in each company for each loop',async()=>{
+  state.session=SESSIONS.groupAdmin;state.summaries={loop_missed_clock_outs:[{level:2,count:1},{level:1,count:4}],loop_probation_ending:[{level:1,count:5}]};
+  const view=wrap('en',await LoopsPage({searchParams:Promise.resolve({})}));
+  const cell=(id:string)=>text(view.container.querySelector(`[data-loop-row="${id}"] [data-loop-level-summary]`));
+  expect(cell('loop_missed_clock_outs')).toBe('Act within limits · 1 company · Prepare · 4 companies');
+  expect(cell('loop_probation_ending')).toBe('Prepare');
+  expect(cell('loop_payroll_inputs')).toBe('Prepare');
+ });
+ it('HR\'s Today shows each action at Level 2, the weekly sample at Level 3 and what the loop left for people',async()=>{
+  const feed=[
+   {kind:'acted',workerId:'loop_missed_clock_outs',companyId:A,companyName:'Fictional A Sdn Bhd',count:2,items:[{personName:'Siti Fictional',date:'2026-11-02',reason:null},{personName:null,date:'2026-11-01',reason:null}],more:0,href:'/control-tower/loops/loop_missed_clock_outs'},
+   {kind:'sample',workerId:'loop_missed_clock_outs',companyId:B,companyName:'Fictional B Sdn Bhd',weekStart:'2026-11-02',size:5,total:12,href:'/control-tower/loops/loop_missed_clock_outs'},
+   {kind:'leftAlone',workerId:'loop_missed_clock_outs',companyId:A,companyName:'Fictional A Sdn Bhd',count:1,items:[{personName:'Mei Ling Fictional',date:'2026-11-02',reason:'condition_leave'}],more:0,href:'/control-tower/loops/loop_missed_clock_outs'},
+  ];
+  const view=wrap('en',<ul>{await LoopCards({cards:feed as never,locale:'en'})}</ul>);
+  const card=(kind:string)=>view.container.querySelector(`[data-today-loop="${kind}"]`)!;
+  expect(text(card('acted').querySelector('h3'))).toBe('Missed clock-outs made 2 changes in Fictional A Sdn Bhd in the last day');
+  expect([...card('acted').querySelectorAll('h3 + div span')].map(text)).toEqual(['Siti Fictional · Mon, Nov 2','Someone · Sun, Nov 1','At Act within limits every action shows here. Open the loop to undo one.']);
+  expect(text(card('sample').querySelector('h3'))).toBe('Weekly sample to review: Missed clock-outs in Fictional B Sdn Bhd');
+  expect(text(card('sample'))).toContain('5 of 12 actions this week');
+  expect(text(card('leftAlone').querySelector('h3'))).toBe('Missed clock-outs left 1 item for people in Fictional A Sdn Bhd');
+  expect(text(card('leftAlone'))).toContain('Mei Ling Fictional · Mon, Nov 2 · approved leave that day');
  });
 });
 

@@ -4,15 +4,16 @@
  * attendance owner (packs/attendance/service), never by writing an attendance row:
  *  - Conditions, read under the sponsor's current authority: the day still has a clock-in and no clock-out, exactly as
  *    the case recorded; no approved leave that day (packs/leave/service approvedLeavePresenceByEmploymentTx, part days
- *    included); the day is not the sponsor's own; and, when the company's condition is "roster end and site exit agree",
- *    a recorded site exit that agrees. The product records no site exit today, so under that condition the loop never
- *    acts and leaves the card for the person (fail closed).
+ *    included); the day is not the sponsor's own; and the condition the group administrator chose: "roster end and site
+ *    exit agree" (the product records no site exit today, so the loop then never acts and leaves the card for the person),
+ *    or "roster end, no approved leave and no other clocking that day" (the one clock-in and nothing else).
  *  - Apply: the attendance owner's own clock-data correction, the path HR uses on an employee's attendance day: the day's
  *    clockings plus one clock-out at the roster end, requested and approved through the owner in one transaction under
- *    the sponsor's authority, so every owner check runs (locks, payroll closed, the approval route). If the approval does
- *    not complete at once (a routed workflow), nothing is kept and the card stays with the person. The same transaction
- *    appends the notice event that tells the employee (core/notifications.ts 'teras-loop.action.applied'), attributed to
- *    the tenant's agent principal acting for the sponsor.
+ *    the sponsor's authority, so every owner check runs (locks, payroll closed). The transaction carries the loop's
+ *    attribution (core/loops/attribution.ts), so the correction and every event record the loop, its agent principal and
+ *    the sponsor who answers for it, never the sponsor alone. A correction the owner routes to an approval workflow, or a
+ *    fix that would create overtime, keeps nothing: the card stays with the person. The same transaction appends the
+ *    notice event that tells the employee (core/notifications.ts 'teras-loop.action.applied').
  *  - Observe: whether the clock-out the loop set still stands; a later different or removed clock-out is a person's
  *    change, and counts against the loop (core/loops/act.ts demotion).
  *  - Compensate (undo): the owner's clock-data correction again, voiding only the clock-out the loop added. The original
@@ -21,10 +22,12 @@
 import {and,eq} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {appendEvent} from '../../db/events';
-import {domainEvent,employment} from '../../db/schema';
+import {attendance,attendanceWorkflowRequest,domainEvent,employment} from '../../db/schema';
 import {AttendancePayrollClosedError,attendanceCorrectionClockSourceTx,attendanceForEmploymentsRange,decideAttendanceCorrection,requestAttendanceCorrection} from '../../packs/attendance/service';
 import {approvedLeavePresenceByEmploymentTx} from '../../packs/leave/service';
 import {clockOf,unique} from './detect';
+import {setLoopAttributionTx} from './attribution';
+import type {LoopAttribution} from '../../lib/ai-centre/loop-attribution';
 import type {LoopActionCheck,LoopActionFacts,LoopActionReason,LoopLimits,UndoneBy} from './autonomy-types';
 
 export const CLOCK_OUT_ACT_VERSION='loop_missed_clock_outs.act@v1';
@@ -59,6 +62,8 @@ const dayUnchanged=(rows:readonly ClockRow[],checkIn:string)=>{
  const ins=active.filter(row=>row.direction==='in').map(row=>row.punchAt.slice(0,5)).sort();
  return ins.length>0&&!active.some(row=>row.direction==='out')&&ins[0]===checkIn;
 };
+/** "No other clocking that day": the one clock-in on record and nothing else. */
+const onlyTheClockIn=(rows:readonly ClockRow[])=>rows.filter(row=>!row.voided).length===1;
 
 /** Every condition for one candidate, read under the sponsor. Never writes. */
 export async function evaluateClockOut(sponsor:SessionContext,item:ClockOutCandidate,limits:LoopLimits):Promise<ClockOutEvaluation>{
@@ -72,8 +77,9 @@ export async function evaluateClockOut(sponsor:SessionContext,item:ClockOutCandi
   const own=!!subject&&!!sponsor.personId&&subject.personId===sponsor.personId;
   checks.push(check('not_sponsor_own_day',null,!own));
   if(!subject||own)return Object.freeze({ok:false,reason:'condition_sponsor_self' as const,checks:Object.freeze(checks)});
-  let unchanged=false;
-  try{unchanged=dayUnchanged((await clockRowsTx(tx,item.employmentId,item.date)).rows,item.checkIn);}catch{unchanged=false;}
+  let rows:ClockRow[]=[];
+  try{rows=(await clockRowsTx(tx,item.employmentId,item.date)).rows;}catch{rows=[];}
+  const unchanged=dayUnchanged(rows,item.checkIn);
   checks.push(check('day_unchanged',SOURCE,unchanged));
   if(!unchanged)return Object.freeze({ok:false,reason:'condition_day_changed' as const,checks:Object.freeze(checks)});
   if(limits.condition==='roster_and_site_exit'){
@@ -81,27 +87,43 @@ export async function evaluateClockOut(sponsor:SessionContext,item:ClockOutCandi
    checks.push(check('site_exit_agrees',null,false));
    return Object.freeze({ok:false,reason:'condition_site_exit' as const,checks:Object.freeze(checks)});
   }
+  const alone=onlyTheClockIn(rows);
+  checks.push(check('no_other_clocking',SOURCE,alone));
+  if(!alone)return Object.freeze({ok:false,reason:'condition_other_clocking' as const,checks:Object.freeze(checks)});
   return Object.freeze({ok:true,reason:null,checks:Object.freeze(checks)});
  });
 }
 
 const ymd=(at:Date)=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kuala_Lumpur',year:'numeric',month:'2-digit',day:'2-digit'}).format(at);
 
+const otMinutesTx=async(tx:Tx,employmentId:string,date:string)=>(await tx.select({ot:attendance.otMinutes}).from(attendance)
+ .where(and(eq(attendance.employmentId,employmentId),eq(attendance.attendanceDate,date))).limit(1))[0]?.ot??0;
+
 export type ClockOutApplied=Readonly<{ownerRef:string;addedPunchId:string}>;
-/** Apply through the attendance owner under the sponsor, with the employee's notice, in one transaction. */
-export async function applyClockOut(sponsor:SessionContext,p:Readonly<{item:ClockOutCandidate;actionId:string;undoUntil:Date;principalId:string;workerId:string}>):Promise<ClockOutApplied>{
+/** Apply through the attendance owner under the sponsor, attributed to the loop, with the employee's notice, in one
+ * transaction. */
+export async function applyClockOut(sponsor:SessionContext,p:Readonly<{item:ClockOutCandidate;actionId:string;undoUntil:Date;principalId:string;workerId:string;
+ attribution:LoopAttribution;condition:LoopLimits['condition']}>):Promise<ClockOutApplied>{
  const {item}=p;
  try{
   return await withTenant(sponsor,async tx=>{
+   await setLoopAttributionTx(tx,p.attribution);
    const before=await clockRowsTx(tx,item.employmentId,item.date);
    if(!dayUnchanged(before.rows,item.checkIn))throw new LoopActRefused('condition_day_changed');
+   if(p.condition==='roster_end'&&!onlyTheClockIn(before.rows))throw new LoopActRefused('condition_other_clocking');
+   const overtimeBefore=await otMinutesTx(tx,item.employmentId,item.date);
    const active=before.rows.filter(row=>!row.voided);
    const entries=[...active.map(row=>({id:row.id,punchAt:row.punchAt,direction:row.direction})),{punchAt:`${item.proposedCheckOut}:00`,direction:'out' as const}];
    const reason=`AI Centre: missed clock-out set automatically to the roster end ${item.proposedCheckOut} by the missed clock-outs loop (action ${p.actionId.slice(0,8)}). It can be undone until ${ymd(p.undoUntil)}.`;
    const {correctionId}=await requestAttendanceCorrection(sponsor,{employmentId:item.employmentId,date:item.date,reason,
     clockChanges:{version:1,baseline:before.baseline,entries}},tx);
+   // The loop decides only a correction the owner leaves to HR's own decision, never a routed approval stage.
+   const [routed]=await tx.select({id:attendanceWorkflowRequest.id}).from(attendanceWorkflowRequest).where(eq(attendanceWorkflowRequest.correctionId,correctionId)).limit(1);
+   if(routed)throw new LoopActRefused('approval_routed');
    const outcome=await decideAttendanceCorrection(sponsor,{correctionId,decision:'approved',remarks:reason,expectedStageIndex:0},tx);
    if(outcome.status!=='approved')throw new LoopActRefused('approval_pending');
+   // The fix never creates overtime: the day's overtime as the owner recomputed it may not grow.
+   if(await otMinutesTx(tx,item.employmentId,item.date)>overtimeBefore)throw new LoopActRefused('would_create_overtime');
    const after=await clockRowsTx(tx,item.employmentId,item.date);
    const added=after.rows.find(row=>!row.voided&&row.direction==='out'&&!active.some(old=>old.id===row.id));
    if(!added||added.punchAt.slice(0,5)!==item.proposedCheckOut)throw new LoopActRefused('owner_refused');

@@ -1051,6 +1051,25 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
         body: `Your missing clock-out on ${date} was set to ${time}, the end of your roster.${until ? ` If that is wrong, undo it on Today by ${until}.` : ''}`, linkPath: '/' };
     },
   },
+  // AI v2 Phase 2 P2-1 (core/loops/act-requests.ts): the missing employee data loop, acting within its limits, sent the
+  // employee its request to fill in their own details. A count and their own request section only; no record changed.
+  'teras-loop.request.sent': {
+    kind: 'teras-loop.details-requested',
+    category: null,
+    render: (p) => {
+      const tab = p?.tab === 'bankStatutory' || p?.tab === 'payroll' ? p.tab : 'profile';
+      const count = typeof p?.gaps === 'number' && Number.isInteger(p.gaps) && p.gaps > 0 ? p.gaps : null;
+      return { severity: 'action', title: 'Please complete your details',
+        body: count === 1 ? 'One detail is missing from your record. Fill it in on your profile; HR approves it as usual.'
+          : `${count ?? 'Some'} details are missing from your record. Fill them in on your profile; HR approves them as usual.`,
+        linkPath: `/me?tab=${tab}#section-request-${tab}` };
+    },
+  },
+  'teras-loop.request.withdrawn': {
+    kind: 'teras-loop.details-request-withdrawn',
+    category: null,
+    render: () => ({ severity: 'info', title: 'Details request withdrawn', body: 'The request to complete your details was withdrawn. You can ignore it.', linkPath: '/me' }),
+  },
 };
 
 export type DispatchResult = { processed: number; created: number };

@@ -1,6 +1,6 @@
 import {getTranslations} from 'next-intl/server';
 import {CalendarCheck,ClipboardCheck,ClipboardList,Clock,UserCheck} from 'lucide-react';
-import {ArrowDown,CheckCircle2} from 'lucide-react';
+import {ArrowDown,CheckCircle2,ListChecks} from 'lucide-react';
 import type {LoopCard} from '@/core/loops/cards';
 import {ProposalCard} from '@/components/ai-centre/proposal-card';
 import {ClockOutLoopCard,type ClockOutCardCopy} from './clock-out-loop-card';
@@ -32,7 +32,9 @@ export async function LoopCards({cards,locale}:{cards:readonly LoopCard[];locale
    unavailable:ti('refused.unavailable'),expired:ti('refused.expired'),access:ti('refused.access')}};
  const source=(loop:'loop_probation_ending'|'loop_payroll_inputs'|'loop_missing_employee_data'|'loop_missed_clock_outs'|'loop_document_expiry')=>t('source',{loop:t(`names.${loop}`)});
  // AI v2 Phase 2 P2-1: a clock-out the loop set for the person (with Undo), and a loop that moved itself down (for HR).
- const ta=await getTranslations('today.autonomy');
+ const [ta,tr]=await Promise.all([getTranslations('today.autonomy'),getTranslations('aiCentre.autonomy.actions.reasons')]);
+ const item=(entry:{personName:string|null;date:string|null;reason:string|null})=>[entry.personName??ta('someone'),...(entry.date?[day(locale,entry.date,'short')]:[]),
+  ...(entry.reason?[tr(entry.reason)]:[])].join(' · ');
  const autoFix:AutoFixCardCopy={undo:ta('undo'),undoing:ta('undoing'),undone:ta('undone'),error:ta('refused.unavailable'),actionsLabel:ta('actionsLabel'),
   refused:{not_confirmed:ta('refused.unavailable'),invalid:ta('refused.unavailable'),unavailable:ta('refused.unavailable'),expired:ta('refused.expired'),
    changed:ta('refused.changed'),access:ta('refused.access'),ask_hr:ta('refused.ask_hr')}};
@@ -76,6 +78,18 @@ export async function LoopCards({cards,locale}:{cards:readonly LoopCard[];locale
       date:item.date?day(locale,item.date,'short'):'—',by:ta(item.by==='hr'?'byHr':'byEmployee')})),
      ...(card.more>0?[ta('correctionMore',{count:card.more})]:[]),ta('movedDownNote')]}
     href={card.href} cta={ta('movedDownCta')}/>
+  </li>;
+  if(card.kind==='acted')return <li key={`acted:${card.workerId}:${card.companyId}`} data-today-loop="acted">
+   <ProposalCard tone="finding" icon={<CheckCircle2/>} title={ta('actedTitle',{loop:t(`names.${card.workerId}`),count:card.count,company:card.companyName??'—'})}
+    meta={[...card.items.map(item),...(card.more>0?[ta('correctionMore',{count:card.more})]:[]),ta('actedNote')]} href={card.href} cta={ta('movedDownCta')}/>
+  </li>;
+  if(card.kind==='sample')return <li key={`sample:${card.workerId}:${card.companyId}`} data-today-loop="sample">
+   <ProposalCard tone="decide" icon={<ListChecks/>} title={ta('sampleTitle',{loop:t(`names.${card.workerId}`),company:card.companyName??'—'})}
+    meta={[ta('sampleMeta',{size:card.size,total:card.total}),ta('sampleNote')]} href={card.href} cta={ta('sampleCta')}/>
+  </li>;
+  if(card.kind==='leftAlone')return <li key={`left:${card.workerId}:${card.companyId}`} data-today-loop="leftAlone">
+   <ProposalCard tone="finding" icon={<Clock/>} title={ta('leftAloneTitle',{loop:t(`names.${card.workerId}`),count:card.count,company:card.companyName??'—'})}
+    meta={[...card.items.map(item),...(card.more>0?[ta('correctionMore',{count:card.more})]:[]),ta('leftAloneNote')]} href={card.href} cta={ta('movedDownCta')}/>
   </li>;
   return <li key="passports" data-today-loop="passports">
    <ProposalCard tone="finding" icon={<CalendarCheck/>} title={t('passportsTitle',{count:card.count})}

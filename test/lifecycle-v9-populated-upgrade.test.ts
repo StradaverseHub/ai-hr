@@ -50,7 +50,7 @@ it('preserves populated Native issuance, private data, identity and every applie
   // AI v2 Phase 1 slice 3 employee letter requests (claude/aiv2-s3-letter-request), frozen here at idx766 (Phase 1 final integration).
   {idx:766,version:'7',when:1793330000361,tag:'0961_letter_requests',breakpoints:true,hash:'fac033d489f171da966f620f058f8f688c21e691786b2700bd9fe0876495eb5e'},
   // AI v2 Phase 2 P2-1 autonomy ladder (claude/aiv2-p2-autonomy-ladder), frozen here.
-  {idx:767,version:'7',when:1793330000363,tag:'0963_teras_loop_autonomy',breakpoints:true,hash:'722a617075d07653622da6849c6cf1744918c19a7a2143d5558d5bd8d069210c'},
+  {idx:767,version:'7',when:1793330000363,tag:'0963_teras_loop_autonomy',breakpoints:true,hash:'d093765e06101882dbb2b17df70fc070363b0939a1aa97e55b9059d35666f655'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

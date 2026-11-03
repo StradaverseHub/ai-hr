@@ -4,22 +4,33 @@
  *    closes early.
  *  - movedDown (administrators): a loop that moved itself back to Prepare in a company in the viewer's current scope in
  *    the last 7 days, with the corrections that moved it, each named through the owners' row-level security.
+ *  - acted (administrators, Level 2): every action of the last day in a company at Act within limits, so HR sees each one.
+ *  - sample (administrators, Level 3): this week's sample to review in a company at Act and audit, until it is reviewed;
+ *    at Level 3 the individual actions no longer fill HR's feed.
+ *  - leftAlone (administrators): days or requests the loop left for the person in the last 7 days because a condition did
+ *    not hold, still waiting; the employee keeps their own card for each.
  * Row-level security decides what each viewer reads (migration 0963): an employee their own actions, an administrator
  * the level history of companies they administer and the actions of employments they administer. Only dates, clock
  * times and the employee's own name: no figure, no reason text. */
 import {and,desc,eq,gt,gte,inArray,isNull} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {company,employment,person} from '../../db/schema';
-import {terasLoopAction,terasLoopActionUndo,terasLoopLevelChange} from '../../db/teras-autonomy-schema';
+import {terasLoopCase} from '../../db/teras-schema';
+import {terasLoopAction,terasLoopActionUndo,terasLoopLevel,terasLoopLevelChange,terasLoopSampleReview} from '../../db/teras-autonomy-schema';
 import type {LoopId} from './types';
-import type {UndoneBy} from './autonomy-types';
+import type {LoopActionReason,UndoneBy} from './autonomy-types';
+import {currentWeekStart,weeklySampleTx} from './samples';
 
-const DAY_MS=86_400_000,MOVED_DOWN_DAYS=7,CORRECTIONS_SHOWN=5;
+const DAY_MS=86_400_000,MOVED_DOWN_DAYS=7,CORRECTIONS_SHOWN=5,LEFT_ALONE_DAYS=7;
 export type MovedDownCorrection=Readonly<{personName:string|null;date:string|null;kind:'undone'|'changed';by:UndoneBy|null}>;
+export type AutonomyCardItem=Readonly<{personName:string|null;date:string|null;reason:LoopActionReason|null}>;
 export type AutonomyCard=
  |Readonly<{kind:'autoFixed';actionId:string;date:string;checkOut:string;undoUntil:string}>
  |Readonly<{kind:'movedDown';changeId:string;workerId:LoopId;companyName:string|null;at:string;applied:number;corrected:number;
-  corrections:readonly MovedDownCorrection[];more:number;href:string}>;
+  corrections:readonly MovedDownCorrection[];more:number;href:string}>
+ |Readonly<{kind:'acted';workerId:LoopId;companyId:string;companyName:string|null;count:number;items:readonly AutonomyCardItem[];more:number;href:string}>
+ |Readonly<{kind:'sample';workerId:LoopId;companyId:string;companyName:string|null;weekStart:string;size:number;total:number;href:string}>
+ |Readonly<{kind:'leftAlone';workerId:LoopId;companyId:string;companyName:string|null;count:number;items:readonly AutonomyCardItem[];more:number;href:string}>;
 export const AUTONOMY_CARD_HREF=Object.freeze({movedDown:(workerId:LoopId)=>`/control-tower/loops/${encodeURIComponent(workerId)}`});
 
 const isDate=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -65,6 +76,49 @@ export async function readAutonomyCardsTx(tx:Tx,ctx:SessionContext,p:Readonly<{s
     applied:typeof evidence.applied==='number'?evidence.applied:0,corrected:typeof evidence.corrected==='number'?evidence.corrected:listed.length,
     corrections:Object.freeze(corrections),more:Math.max(0,listed.length-shown.length),href:AUTONOMY_CARD_HREF.movedDown(change.workerId)}));
   }
+  cards.push(...await feedCardsTx(tx,ctx,p.scopeIds,now));
  }
  return Object.freeze(cards);
+}
+
+/** HR's feed: each action of the last day at Level 2, the weekly sample at Level 3, and what the loop left alone. */
+async function feedCardsTx(tx:Tx,ctx:SessionContext,scopeIds:readonly string[],now:Date):Promise<AutonomyCard[]>{
+ const out:AutonomyCard[]=[];
+ const levels=await tx.select({workerId:terasLoopLevel.workerId,companyId:terasLoopLevel.companyId,level:terasLoopLevel.level,companyName:company.legalName})
+  .from(terasLoopLevel).leftJoin(company,eq(company.id,terasLoopLevel.companyId))
+  .where(and(eq(terasLoopLevel.tenantId,ctx.tenantId),inArray(terasLoopLevel.companyId,[...scopeIds]),gte(terasLoopLevel.level,2)));
+ const named=(rows:readonly {name:string|null;facts:Readonly<Record<string,unknown>>;reason:LoopActionReason|null}[]):AutonomyCardItem[]=>rows.slice(0,CORRECTIONS_SHOWN)
+  .map(row=>Object.freeze({personName:row.name??null,date:isDate(row.facts.date)?row.facts.date:null,reason:row.reason}));
+ const actionRows=(workerId:LoopId,companyId:string,extra:ReturnType<typeof and>)=>tx.select({id:terasLoopAction.id,facts:terasLoopAction.facts,reason:terasLoopAction.reason,name:person.fullName})
+  .from(terasLoopAction).leftJoin(employment,eq(employment.id,terasLoopAction.employmentId)).leftJoin(person,eq(person.id,employment.personId))
+  .where(and(eq(terasLoopAction.tenantId,ctx.tenantId),eq(terasLoopAction.workerId,workerId),eq(terasLoopAction.companyId,companyId),extra))
+  .orderBy(desc(terasLoopAction.createdAt),desc(terasLoopAction.id));
+ for(const row of levels){
+  const base={workerId:row.workerId,companyId:row.companyId,companyName:row.companyName??null,href:AUTONOMY_CARD_HREF.movedDown(row.workerId)};
+  if(row.level===2){
+   const acted=await actionRows(row.workerId,row.companyId,and(eq(terasLoopAction.state,'applied'),gte(terasLoopAction.appliedAt,new Date(now.getTime()-DAY_MS))));
+   if(acted.length)out.push(Object.freeze({kind:'acted' as const,...base,count:acted.length,items:Object.freeze(named(acted)),more:Math.max(0,acted.length-CORRECTIONS_SHOWN)}));
+  }else if(row.level===3){
+   const weekStart=currentWeekStart(now),sample=await weeklySampleTx(tx,ctx.tenantId,row.workerId,row.companyId,weekStart);
+   const [reviewed]=await tx.select({id:terasLoopSampleReview.id}).from(terasLoopSampleReview).where(and(eq(terasLoopSampleReview.tenantId,ctx.tenantId),
+    eq(terasLoopSampleReview.workerId,row.workerId),eq(terasLoopSampleReview.companyId,row.companyId),eq(terasLoopSampleReview.weekStart,weekStart))).limit(1);
+   if(sample.actionIds.length&&!reviewed)out.push(Object.freeze({kind:'sample' as const,...base,weekStart,size:sample.actionIds.length,total:sample.total}));
+  }
+ }
+ // What the loop left for people in the last 7 days, still waiting, in every company in scope.
+ const left=await tx.select({workerId:terasLoopAction.workerId,companyId:terasLoopAction.companyId,companyName:company.legalName,facts:terasLoopAction.facts,
+  reason:terasLoopAction.reason,name:person.fullName}).from(terasLoopAction)
+  .innerJoin(terasLoopCase,and(eq(terasLoopCase.id,terasLoopAction.caseId),eq(terasLoopCase.state,'open')))
+  .leftJoin(employment,eq(employment.id,terasLoopAction.employmentId)).leftJoin(person,eq(person.id,employment.personId))
+  .leftJoin(company,eq(company.id,terasLoopAction.companyId))
+  .where(and(eq(terasLoopAction.tenantId,ctx.tenantId),eq(terasLoopAction.state,'not_applied'),inArray(terasLoopAction.companyId,[...scopeIds]),
+   gte(terasLoopAction.createdAt,new Date(now.getTime()-LEFT_ALONE_DAYS*DAY_MS)))).orderBy(desc(terasLoopAction.createdAt),desc(terasLoopAction.id));
+ const groups=new Map<string,typeof left>();
+ for(const row of left){const key=`${row.workerId}:${row.companyId}`;groups.set(key,[...(groups.get(key)??[]),row]);}
+ for(const rows of groups.values()){
+  const first=rows[0];
+  out.push(Object.freeze({kind:'leftAlone' as const,workerId:first.workerId,companyId:first.companyId,companyName:first.companyName??null,count:rows.length,
+   items:Object.freeze(named(rows)),more:Math.max(0,rows.length-CORRECTIONS_SHOWN),href:AUTONOMY_CARD_HREF.movedDown(first.workerId)}));
+ }
+ return out;
 }
