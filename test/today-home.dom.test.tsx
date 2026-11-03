@@ -52,7 +52,7 @@ vi.mock('@/core/digest/daily-digest',()=>({DIGEST_PAGES:{approvals:'/approvals',
 vi.mock('@/core/agent-registry/controls',()=>({workerRunGate:async()=>({run:S.recommender})}));
 vi.mock('@/core/recommenders/leave-decision',()=>({RECOMMENDER_WORKER:'approver_recommendation'}));
 // The approver recommendation the person asked to open (the retired Inbox's in-place panel, now on Today).
-const recommendation=vi.hoisted(()=>({read:vi.fn(async()=>({kind:'recommendation',verdict:'recommend_approve',failedRules:[]}))}));
+const recommendation=vi.hoisted(()=>({read:vi.fn(async(_session:unknown,_leaveRequestId:string)=>({kind:'recommendation',verdict:'recommend_approve',failedRules:[]}))}));
 vi.mock('@/app/assistant/centre/recommendation',()=>({readLeaveRecommendation:recommendation.read}));
 vi.mock('@/core/outcome-record/summary',()=>({summariseOutcomeRecords:async(_s:unknown,p:unknown)=>{S.calls.summary.push(p);if(S.summaryFail)throw Error('Fixture record outage');return S.summary;}}));
 vi.mock('@/core/reporting',()=>({complianceWorklist:async(_s:unknown,p:{companyId:string})=>{S.calls.worklist.push(p.companyId);return S.worklist[p.companyId]??[];}}));

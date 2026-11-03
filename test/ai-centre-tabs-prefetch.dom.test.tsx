@@ -29,9 +29,9 @@ describe('AI Centre tabs prefetch the whole destination on intent',()=>{
   // Same tabs, same targets, same order as before: only the prefetch behaviour is new.
   expect(tabs.map(link=>link.getAttribute('href'))).toEqual(centreTabsFor({isAdmin}).map(tab=>tab.href));
   for(const link of tabs)expect(link.getAttribute('data-prefetch'),link.getAttribute('href')??'').toBe('null');
-  const [ask,inbox,jobs]=tabs;
-  fireEvent.focus(inbox);expect(inbox.getAttribute('data-prefetch')).toBe('true');
-  fireEvent.touchStart(jobs);expect(jobs.getAttribute('data-prefetch')).toBe('true');
+  // AI v2 Phase 1: no Inbox tab, so an employee has three tabs; the touch case gets its own render below.
+  const [ask,second]=tabs;
+  fireEvent.focus(second);expect(second.getAttribute('data-prefetch')).toBe('true');
   const last=tabs.at(-1)!;
   fireEvent.pointerEnter(last);expect(last.getAttribute('data-prefetch'),'not before the dwell').toBe('null');
   act(()=>{vi.advanceTimersByTime(INTENT_DWELL_MS);});
@@ -42,6 +42,9 @@ describe('AI Centre tabs prefetch the whole destination on intent',()=>{
   // The current-page marker is unchanged.
   expect(view.container.querySelectorAll('[data-ai-centre-tabs] a[aria-current="page"]')).toHaveLength(1);
   expect(ask.getAttribute('aria-current')).toBe('page');
+  view.unmount();
+  const again=links(wrap(<AiCentreTabs active="ask" isAdmin={isAdmin}/>).container).at(-1)!;
+  fireEvent.touchStart(again);expect(again.getAttribute('data-prefetch')).toBe('true');
  });
 
  it('administrator sub-navigation: the same intent prefetch on every section link',()=>{
