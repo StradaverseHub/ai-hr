@@ -34316,6 +34316,11 @@
       "pending": "Đang chờ bộ phận Vận hành Nhân sự rà soát",
       "approved": "Đã phê duyệt · chờ người phụ trách thực hiện",
       "applied": "Đã khôi phục quy trình trước"
+    },
+    "workflowReadiness": {
+      "title": "Một số thông báo thử việc mặc định không khả dụng",
+      "summary": "Phát hành một quy trình tổng hợp các mục quá hạn cho toàn công ty với Đối tác Nhân sự là người nhận.",
+      "help": "Phát hành các quy trình còn thiếu để khôi phục thông báo tương ứng. Hạn rà soát và dấu hiệu quá hạn vẫn áp dụng."
     }
   },
   "templateEditor": {

@@ -34316,6 +34316,11 @@
       "pending": "Menunggu semakan People Ops",
       "approved": "Diluluskan · menunggu tindakan pemilik",
       "applied": "Proses sebelumnya telah dipulihkan"
+    },
+    "workflowReadiness": {
+      "title": "Sesetengah mesej lalai percubaan tidak tersedia",
+      "summary": "Terbitkan satu aliran kerja ringkasan lewat untuk seluruh syarikat dengan People Business Partner sebagai penerima.",
+      "help": "Terbitkan aliran kerja yang belum tersedia untuk memulihkan mesejnya. Tarikh akhir semakan dan penanda lewat masih berkuat kuasa."
     }
   },
   "templateEditor": {

@@ -34316,6 +34316,11 @@
       "pending": "Awaiting People Ops review",
       "approved": "Approved · awaiting owner action",
       "applied": "Previous process restored"
+    },
+    "workflowReadiness": {
+      "title": "Some default probation messages are unavailable",
+      "summary": "Publish one company-wide overdue summary workflow with a People Business Partner recipient.",
+      "help": "Publish the missing workflows to restore their messages. Review deadlines and overdue flags still apply."
     }
   },
   "templateEditor": {
