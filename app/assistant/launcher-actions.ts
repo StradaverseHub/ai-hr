@@ -80,7 +80,8 @@ async function askThroughHarness(session:SessionContext,route:Extract<Conversati
   // AI v2 W11: the case route's form is linkable on its own turn, so a spec case clause naming it renders as a link.
   // An approver's decision card names the applicant, read now from its review for this approver: never in the card's
   // facts, the stored turn or anything the model sees.
-  const answer=await ConversationReply({turn,links:await replyLinksFor(session,turn.suggestion?.reviewRoute,turn.caseRoute),applicants:await decisionApplicants(session,turn)});
+  const applicants=await decisionApplicants(session,turn);
+  const answer=await ConversationReply({turn,links:await replyLinksFor(session,turn.suggestion?.reviewRoute,turn.caseRoute),...(applicants.size?{applicants}:{})});
   // Stored only once the reply could be shown, so a reopened chat holds no turn the person never saw.
   const chatId=await storeTurn(session,{question:input.question,conversationScope:input.conversationScope,companyId,turn});
   return {ok:true,exchangeId:'teras-'+turn.turnId,answer,conversationToken:turn.continuation,...(chatId?{chatId}:{})};
@@ -99,7 +100,7 @@ const unclassifiedFailure=(error:unknown)=>{const code=(error as {code?:unknown}
  * decision custody as this approver (core/assistant-actions/assigned-decision-proposal-confirm.ts). A card whose name
  * cannot be read keeps its title without one. */
 async function decisionApplicants(session:SessionContext,turn:ConversationTurn):Promise<ReadonlyMap<string,string>>{
- const decisions=turn.proposals.filter(proposal=>proposal.body.what.action==='approvals.claim.decide'||proposal.body.what.action==='approvals.attendance.decide');
+ const decisions=(Array.isArray(turn.proposals)?turn.proposals:[]).filter(proposal=>proposal.body.what.action==='approvals.claim.decide'||proposal.body.what.action==='approvals.attendance.decide');
  if(!decisions.length)return new Map();
  try{
   const {assignedDecisionApplicantName}=await import('@/core/assistant-actions/assigned-decision-proposal-confirm');

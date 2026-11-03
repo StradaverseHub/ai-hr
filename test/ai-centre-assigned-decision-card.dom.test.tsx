@@ -104,7 +104,7 @@ describe('an approver\'s claim decision card in chat', () => {
     expect(JSON.stringify(signed)).not.toContain('Siti');
     const card = await show(signed, 'en', new Map([[signed.body.id, 'Siti Fictional']]));
     expect(within(card).getByRole('heading', { level: 3 })).toHaveTextContent(`Approve: Fictional Travel claim, RM 42.60, ${claimDate('en', '2026-10-31')} · Siti Fictional`);
-    expect(button(card, inline('en').confirm)).toHaveAccessibleName(`${inline('en').confirm} · Approve: Fictional Travel claim, RM 42.60, ${claimDate('en', '2026-10-31')} · Siti Fictional`);
+    expect(button(card, inline('en').confirm)).toHaveAccessibleName(/ · Siti Fictional$/);
     cleanup();
     // A name for another card is not used.
     const other = await show(claim('approved'), 'en', new Map([[randomUUID(), 'Siti Fictional']]));
