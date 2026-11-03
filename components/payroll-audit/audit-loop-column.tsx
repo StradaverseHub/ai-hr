@@ -10,7 +10,11 @@ import type { AuditLoopSummary } from '@/core/payroll-audit/status';
  * Presentational: the page reads `auditLoopSummary` (core/payroll-audit/status.ts) for its pay month and company filter and
  * mounts this. Every figure is a count from its owner; no amount is shown. With one company in view the audit pack downloads
  * from here; with several, the Audit loop page has one per company. The loop stays at Prepare: a person files with EPF,
- * PERKESO and LHDN. Names are the AI Centre's; nothing here says Noveri. */
+ * PERKESO and LHDN. Names are the AI Centre's; nothing here says Noveri.
+ *
+ * Wave 1 integration: on the Payroll cycle page the column also takes `bank`, the Salary payroll loop's own check of each
+ * processed run's bank file total against its net pay (P2-2a, owner decision 1, core/loops/salary-payroll.ts), and shows it
+ * as "Bank paid vs payroll" in place of the bank file count. Runs are counted here; no amount is compared or shown. */
 export const AUDIT_LOOP_HREF = '/control-tower/loops/loop_payroll_audit';
 const DONE = 'text-emerald-700 dark:text-emerald-300';
 const WAITING = 'text-amber-700 dark:text-amber-300';
@@ -19,7 +23,11 @@ export function auditPackHref(companyId: string, payPeriod: string) {
   return `${AUDIT_LOOP_HREF}/pack?${new URLSearchParams({ company: companyId, period: payPeriod })}`;
 }
 
-export function AuditLoopColumn({ summary, position, className }: { summary: AuditLoopSummary; position?: number; className?: string }) {
+/** The Salary payroll loop's bank check over the processed runs in view: how many match their net pay and how many do not. */
+export type AuditBankReconciliation = Readonly<{ processed: number; matched: number; mismatched: number }>;
+
+export function AuditLoopColumn({ summary, position, className, bank, heading: Heading = 'h3' }: { summary: AuditLoopSummary; position?: number; className?: string;
+  bank?: AuditBankReconciliation; heading?: 'h2' | 'h3' }) {
   const t = useTranslations('payrollAudit.column');
   const f = useFormatter();
   const { totals } = summary;
@@ -36,7 +44,7 @@ export function AuditLoopColumn({ summary, position, className }: { summary: Aud
   return (
     <Card data-audit-loop className={cn('flex flex-col gap-3 p-4', className)}>
       <div className="flex items-baseline justify-between gap-2">
-        <h3 className="m-0 text-base font-semibold">{position ? t('titleNumbered', { n: position }) : t('title')}</h3>
+        <Heading className="m-0 text-base font-semibold">{position ? t('titleNumbered', { n: position }) : t('title')}</Heading>
         <span data-audit-badge className={cn('rounded-full px-2.5 py-0.5 text-xs', allDone ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' : 'bg-muted text-foreground')}>
           {allDone ? t('done') : t('badge')}
         </span>
@@ -47,7 +55,12 @@ export function AuditLoopColumn({ summary, position, className }: { summary: Aud
           totals.payslips > 0 && totals.released === totals.payslips ? 'done' : undefined)}
         {item('statutory', t('values.statutory', { prepared: totals.formsPrepared, filed: totals.formsFiled, forms: totals.forms, due }),
           totals.forms > 0 && totals.formsFiled === totals.forms ? 'done' : undefined)}
-        {item('bank', t('values.bank', { count: totals.bankFiles }))}
+        {bank
+          ? item('bankPaid', bank.mismatched > 0 ? t('values.bankMismatch', { count: bank.mismatched })
+            : bank.processed === 0 ? t('values.bankNone')
+              : bank.matched === bank.processed ? t('values.bankReconciled') : t('values.bankPartial', { matched: bank.matched, total: bank.processed }),
+          bank.mismatched > 0 ? 'waiting' : bank.processed > 0 && bank.matched === bank.processed ? 'done' : undefined)
+          : item('bank', t('values.bank', { count: totals.bankFiles }))}
         {item('corrections', t('values.corrections', { count: totals.corrections }), totals.corrections > 0 ? 'waiting' : undefined)}
         {item('findings', t('values.findings', { count: totals.openFindings }), totals.openFindings > 0 ? 'waiting' : undefined)}
         {item('approvals', single

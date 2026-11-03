@@ -13,7 +13,12 @@
  *    pay changes taking effect).
  * A check is done when nothing is open or waiting. "Done" for the loop is every check done before the cut-off (owner:
  * no blocker left). A check whose module the company does not use is off. Each check names the owner page where its
- * items are fixed (PRE_SALARY_CHECK_HREF); the loop itself changes nothing. Counts only: no name, no amount. */
+ * items are fixed (PRE_SALARY_CHECK_HREF); the loop itself changes nothing. Counts only: no name, no amount.
+ *
+ * Wave 1 integration: the last check is the payroll Audit loop's repeat issues (P2-2b, core/payroll-audit/status.ts
+ * repeatAuditIssues): the control checks that found something in the last audited month (the month before this one) and
+ * in the month before that too, which the next Pre-salary loop should look at first. A warning per repeated check, never
+ * blocking; off when the company does not use payroll or the sponsor may not read the Audit loop. */
 import {and,count,eq,gte,inArray,isNotNull,isNull,lte,or,sql,type Column} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {attendance,attendanceCorrection,claimAttachment,claimRequest,claimType,compensation,employeeStatutoryMy,employment,employmentPayComponent,
@@ -27,8 +32,10 @@ import {classifyDay} from '../../packs/attendance/exceptions';
 import {payrollReadiness} from '../../packs/payroll/service';
 import {addHrDays} from '../../lib/today/audience';
 import {unique} from './detect';
+import {previousPeriod} from './period';
+import {AuditViewRefused,repeatAuditIssues} from '../payroll-audit/status';
 
-export const PRE_SALARY_CHECKS=Object.freeze(['timesheets','overtime','leave','claims','joinersLeavers','statutoryBank','payChanges','setup'] as const);
+export const PRE_SALARY_CHECKS=Object.freeze(['timesheets','overtime','leave','claims','joinersLeavers','statutoryBank','payChanges','setup','repeatAudit'] as const);
 export type PreSalaryCheckKey=(typeof PRE_SALARY_CHECKS)[number];
 export type PreSalaryCheckStatus='done'|'waiting'|'open'|'warning'|'off';
 export type PreSalaryCheck=Readonly<{key:PreSalaryCheckKey;status:PreSalaryCheckStatus;open:number;waiting:number;warnings:number;info:number}>;
@@ -38,7 +45,8 @@ export type PreSalaryWindows=Readonly<{salary:Window;attendance:Window;overtime:
 /** Where each check's items are fixed: the owner's own page. Exported for the screens and the tests, which pin them. */
 export const PRE_SALARY_CHECK_HREF:Readonly<Record<PreSalaryCheckKey,string>>=Object.freeze({
  timesheets:'/attendance/individual',overtime:'/approvals?category=overtime',leave:'/approvals?category=leave',claims:'/approvals?category=claim',
- joinersLeavers:'/personnel',statutoryBank:'/control-tower/readiness',payChanges:'/performance',setup:'/payroll/setup?readiness=full'});
+ joinersLeavers:'/personnel',statutoryBank:'/control-tower/readiness',payChanges:'/performance',setup:'/payroll/setup?readiness=full',
+ repeatAudit:'/control-tower/loops/loop_payroll_audit'});
 
 const statusOf=(c:{open:number;waiting:number;warnings:number}):PreSalaryCheckStatus=>c.open>0?'open':c.waiting>0?'waiting':c.warnings>0?'warning':'done';
 const check=(key:PreSalaryCheckKey,c:{open?:number;waiting?:number;warnings?:number;info?:number}):PreSalaryCheck=>{
@@ -194,7 +202,15 @@ export async function preSalaryChecks(sponsor:SessionContext,input:PreSalaryInpu
  const missing=[...readiness.checks.filter(item=>item.status==='blocker'),...readiness.checks.filter(item=>item.status==='warning')].map(item=>item.key);
  const setup=check('setup',{open:readiness.blockers,warnings:readiness.warnings});
 
- return Object.freeze({checks:Object.freeze([timesheets,overtime,leave,claims,joinersLeavers,statutoryBank,payChanges,setup]),
+ // ── Repeat audit issues (P2-2b): checks that found something in the last audited month and the month before it ──
+ let repeatAudit=off('repeatAudit');
+ if(uses('payroll')){
+  const repeat=await repeatAuditIssues(sponsor,{payPeriod:previousPeriod(input.payPeriod),companyIds:[companyId]})
+   .catch((error:unknown)=>{if(error instanceof AuditViewRefused)return null;throw error;});
+  if(repeat)repeatAudit=check('repeatAudit',{warnings:repeat.get(companyId)?.length??0});
+ }
+
+ return Object.freeze({checks:Object.freeze([timesheets,overtime,leave,claims,joinersLeavers,statutoryBank,payChanges,setup,repeatAudit]),
   readiness:Object.freeze({missing:Object.freeze(unique(missing)),blockers:readiness.blockers,warnings:readiness.warnings})});
 }
 

@@ -89,6 +89,7 @@ export async function detectPayrollInputs(sponsor:SessionContext,input:LoopDetec
    :{subjectKey,companyId:subject.companyId,employmentId:null,recipient:'payroll',state:'closed',closeReason:'done',resolution:'completed',facts});
  }
  if(subjects.size)reads.push(read('payroll.pre_salary_checks',OWNER),read('payroll.readiness','core/payroll-readiness.ts#payrollReadiness'),
-  read('attendance.days','packs/attendance/service.ts#attendanceForEmploymentsRange'),read('record.readiness','core/record-readiness.ts#readinessSnapshot'));
+  read('attendance.days','packs/attendance/service.ts#attendanceForEmploymentsRange'),read('record.readiness','core/record-readiness.ts#readinessSnapshot'),
+  read('payroll_audit.repeat_issues','core/payroll-audit/status.ts#repeatAuditIssues'));
  return {observations,reads};
 }

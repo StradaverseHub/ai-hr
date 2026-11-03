@@ -6,15 +6,16 @@ import { PRE_SALARY_CHECKS, PRE_SALARY_CHECK_HREF, type PreSalaryCheckKey } from
 import { Card, PageHeader, SectionHeader, btnGhost, pageWideCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { OperationsTabs } from '../../operations-tabs';
-import { AuditLoopCard } from './audit-loop-card';
+import { AuditLoopCard, bankReconciliation } from './audit-loop-card';
 
 /** AI v2 P2-2a — AI Centre › Operations › Loops › Payroll cycle (owner-approved mock-up PayrollLoops.dc.html).
  *
  * One group pipeline per month, filtered to the companies the viewer administers (owner decision 6): the three loops in
  * order (Pre-salary, Salary payroll, Audit), a status per company, the last three cycles compared and the people loops.
  * Every figure is the loops' own record, read under the viewer's row-level security (core/loops/payroll-cycle-views.ts);
- * nothing here computes pay. The Audit loop's column is its own component (./audit-loop-card.tsx), which shows a status
- * only once that loop's read exists (P2-2b). Guarded by requireAdmin, as every Operations page is. AI Centre, never Noveri. */
+ * nothing here computes pay. The Audit loop's column is its own component (./audit-loop-card.tsx): P2-2b's status for the
+ * month, read with the overview, and the Salary payroll loop's bank check as its "Bank paid vs payroll" item; each company's
+ * row shows its Audit status. Guarded by requireAdmin, as every Operations page is. AI Centre, never Noveri. */
 const DONE = 'text-emerald-700 dark:text-emerald-300';
 const ATTENTION = 'text-amber-700 dark:text-amber-300';
 const pill = 'rounded-full border border-border px-2.5 py-1 text-xs font-medium';
@@ -29,8 +30,8 @@ const worst = <T extends string>(order: readonly T[], states: readonly T[]): T |
 export default async function PayrollCyclePage({ searchParams }: { searchParams: Promise<{ period?: string; company?: string }> }) {
   const s = await requireAdmin();
   const query = await searchParams;
-  const [t, tl, f, view] = await Promise.all([getTranslations('aiCentre.payrollCycle'), getTranslations('aiCentre.loops'), getFormatter(),
-    payrollCycleOverview(s, { period: query.period, companyId: query.company })]);
+  const [t, tl, ta, f, view] = await Promise.all([getTranslations('aiCentre.payrollCycle'), getTranslations('aiCentre.loops'), getTranslations('payrollAudit'),
+    getFormatter(), payrollCycleOverview(s, { period: query.period, companyId: query.company })]);
   const day = (iso: string) => f.dateTime(new Date(`${iso}T00:00:00Z`), { day: 'numeric', month: 'short', timeZone: 'UTC' });
   const month = (period: string) => f.dateTime(new Date(`${period}-01T00:00:00Z`), { month: 'long', year: 'numeric', timeZone: 'UTC' });
   const href = (params: Record<string, string | null>) => {
@@ -66,7 +67,7 @@ export default async function PayrollCyclePage({ searchParams }: { searchParams:
         <ol aria-label={t('loopsLabel')} data-payroll-loops className="grid list-none items-start gap-3 p-0 lg:grid-cols-3">
           <PreSalaryCard view={view} state={pre} days={days} t={t} />
           <SalaryCard view={view} state={salary} t={t} />
-          <AuditLoopCard status={view.audit} copy={{ title: t('audit.title'), done: t('audit.done'), note: t('audit.note') }} />
+          <AuditLoopCard status={view.audit} bank={bankReconciliation(view.companies)} copy={{ title: t('audit.title'), done: t('audit.done'), note: t('audit.note') }} />
         </ol>
 
         <Card className="overflow-hidden">
@@ -85,7 +86,7 @@ export default async function PayrollCyclePage({ searchParams }: { searchParams:
                     </th>
                     <td className="px-4 py-3"><CompanyPre c={c} t={t} /></td>
                     <td className="px-4 py-3"><CompanySalary c={c} t={t} /></td>
-                    <td className="px-4 py-3 text-muted-foreground">{view.audit ? null : '—'}</td>
+                    <td className="px-4 py-3"><CompanyAudit audit={view.audit?.companies.find(a => a.companyId === c.companyId) ?? null} t={t} ta={ta} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -219,6 +220,18 @@ function CompanyPre({ c, t }: { c: PayrollCycleCompany; t: T }) {
       {s === 'open' ? (c.preSalary.daysToCutOff >= 0 ? t('pre.state.open', { count: c.preSalary.daysToCutOff }) : t('pre.state.openPast')) : t(`pre.state.${s}`)}</p>
     {blocking.length > 0 && <p className="mt-1 text-xs text-muted-foreground">{blocking.map(check => t(`checks.${check.key}`)).join(', ')}</p>}
     <p className="mt-1 text-xs text-muted-foreground">{t(`interval.${c.preSalary.interval}`)}</p>
+  </>;
+}
+
+type TA = Awaited<ReturnType<typeof getTranslations<'payrollAudit'>>>;
+
+/** One company's Audit loop status (P2-2b): done, in progress or paused, and its open findings. A dash where the Audit loop's
+ * read has no row for the company (the viewer does not administer its payroll). */
+function CompanyAudit({ audit, t, ta }: { audit: NonNullable<PayrollCycleOverview['audit']>['companies'][number] | null; t: T; ta: TA }) {
+  if (!audit) return <span className="text-muted-foreground">—</span>;
+  return <>
+    <p className={cn(audit.done && DONE)}>{audit.paused ? t('salary.state.paused') : audit.done ? ta('state.done') : ta('state.open')}</p>
+    {audit.findings.open > 0 && <p className={cn('mt-1 text-xs', ATTENTION)}>{ta('column.values.findings', { count: audit.findings.open })}</p>}
   </>;
 }
 

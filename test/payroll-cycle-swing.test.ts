@@ -119,13 +119,16 @@ describe('threshold proposals: learned from payroll HR\'s dispositions, never ap
 
 describe('the Pre-salary checks\' record, periods and pay day',()=>{
  it('records each check as closed keys and counts only, and links each to its owner page',()=>{
-  expect(PRE_SALARY_CHECKS).toEqual(['timesheets','overtime','leave','claims','joinersLeavers','statutoryBank','payChanges','setup']);
+  // Wave 1 integration: the payroll Audit loop's repeat issues (P2-2b) are the last check.
+  expect(PRE_SALARY_CHECKS).toEqual(['timesheets','overtime','leave','claims','joinersLeavers','statutoryBank','payChanges','setup','repeatAudit']);
   const value={key:'claims' as const,status:'open' as const,open:2,waiting:1,warnings:1,info:0};
   expect(encodeCheck(value)).toBe('claims:open:2:1:1:0');
   expect(decodeCheck('claims:open:2:1:1:0')).toEqual(value);
   for(const bad of ['claims:open:2:1:1','salary:open:1:1:1:1','claims:open:a:1:1:1',null,42])expect(decodeCheck(bad)).toBeNull();
   expect(PRE_SALARY_CHECK_HREF).toEqual({timesheets:'/attendance/individual',overtime:'/approvals?category=overtime',leave:'/approvals?category=leave',
-   claims:'/approvals?category=claim',joinersLeavers:'/personnel',statutoryBank:'/control-tower/readiness',payChanges:'/performance',setup:'/payroll/setup?readiness=full'});
+   claims:'/approvals?category=claim',joinersLeavers:'/personnel',statutoryBank:'/control-tower/readiness',payChanges:'/performance',setup:'/payroll/setup?readiness=full',
+   repeatAudit:'/control-tower/loops/loop_payroll_audit'});
+  expect(decodeCheck('repeatAudit:warning:0:0:2:0')).toEqual({key:'repeatAudit',status:'warning',open:0,waiting:0,warnings:2,info:0});
  });
  it('starts the Salary payroll loop once the cut-off has passed, and reads the pay day from the company\'s day',()=>{
   const monthEnd=(period:string)=>({'2026-06':'2026-06-30','2026-07':'2026-07-31'} as Record<string,string>)[period];

@@ -1238,7 +1238,8 @@
         "joinersLeavers": "入职和离职资料完整",
         "statutoryBank": "银行、EPF、SOCSO 和税号",
         "payChanges": "津贴和薪资变更已批准",
-        "setup": "薪资设置就绪"
+        "setup": "薪资设置就绪",
+        "repeatAudit": "审计循环的重复问题"
       },
       "pre": {
         "title": "1 · 发薪前循环",
@@ -1942,7 +1943,8 @@
         "corrections": "运行后的更正",
         "findings": "控制检查",
         "approvals": "谁在何时批准了什么",
-        "repeat": "重复问题"
+        "repeat": "重复问题",
+        "bankPaid": "银行付款与薪资核对"
       },
       "values": {
         "payslips": "已发布 {released}/{total} · 已打开 {opened}",
@@ -1952,7 +1954,11 @@
         "findings": "{count, plural, =0 {没有未处理项} other {# 项未处理发现}}",
         "pack": "每家公司一份审计包",
         "packLink": "下载审计包",
-        "repeat": "{count, plural, =0 {无} other {# 项转入下一个薪前循环}}"
+        "repeat": "{count, plural, =0 {无} other {# 项转入下一个薪前循环}}",
+        "bankReconciled": "已核对",
+        "bankMismatch": "{count, plural, other {# 次运行不一致}}",
+        "bankPartial": "{total} 次中 {matched} 次已核对",
+        "bankNone": "运行后核对"
       },
       "note": "文件和申报停留在准备级别：由人员提交给 EPF、PERKESO 和 LHDN。审计包是供审计师使用的只读证据。",
       "open": "打开审计循环"

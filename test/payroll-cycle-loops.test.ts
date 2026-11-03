@@ -28,6 +28,7 @@ vi.mock('../lib/ai',async importOriginal=>{
 import * as schema from '../db/schema';
 import {terasLoopCase,terasLoopPause,terasLoopRun} from '../db/teras-schema';
 import {terasPayrollLoopSetting,terasPayrollSwingDisposition,terasPayrollThresholdDecision} from '../db/teras-payroll-cycle-schema';
+import {payrollAuditFinding} from '../db/payroll-audit-schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {hireEmployee,setEmploymentPaymentMethod} from '../core/org';
 import {setCompensation} from '../core/comp';
@@ -150,8 +151,18 @@ describe('the Pre-salary loop',()=>{
    c('statutoryBank','open',2,0,4,0),
    // The July pay rise is context only; nothing is waiting.
    c('payChanges','done',0,0,0,1),
-   c('setup',readiness.blockers>0?'open':readiness.warnings>0?'warning':'done',readiness.blockers,0,readiness.warnings,0)]);
+   c('setup',readiness.blockers>0?'open':readiness.warnings>0?'warning':'done',readiness.blockers,0,readiness.warnings,0),
+   // Wave 1 integration: no Audit loop finding yet, so no repeat issue.
+   c('repeatAudit','done',0,0,0,0)]);
   expect(result.readiness).toMatchObject({blockers:readiness.blockers,warnings:readiness.warnings});
+  // The Audit loop (P2-2b) found a shared bank account in June and in May, and a preparer closing the run in June only: one
+  // check repeats in the last audited month (June, before July) and the month before it. A warning, never a blocker.
+  const finding=(controlId:'shared_bank_account'|'preparer_closed_run',payPeriod:string)=>({tenantId:b.tenantId,companyId:b.companyId,payPeriod,controlId,
+   subjectKey:`test:${controlId}:${payPeriod}`,evidence:{fictional:true},writer:'user' as const,writerId:group.userId!});
+  await owner.db.insert(payrollAuditFinding).values([finding('shared_bank_account','2026-06'),finding('shared_bank_account','2026-05'),finding('preparer_closed_run','2026-06')]);
+  const again=await preSalaryChecks(group,{companyId:b.companyId,payPeriod:JULY,today:TODAY,windows});
+  expect(again.checks.at(-1)).toEqual(c('repeatAudit','warning',0,0,1,0));
+  expect(again.checks.slice(0,-1)).toEqual(result.checks.slice(0,-1));
   expect(result.readiness.missing).toEqual(expect.arrayContaining(['payrollCycle','masterData']));
   // Read-only: no record was written by the checks.
   expect(await owner.db.select({n:count()}).from(schema.attendanceCorrection)).toEqual([{n:2}]);
@@ -453,7 +464,9 @@ describe('the group pipeline and isolation',()=>{
   const acme=pipeline.companies.find(c=>c.companyId===b.companyId)!;
   expect(acme.salary).toMatchObject({state:'in_progress',cutOff:'2026-06-30'});
   expect(acme.salary.runs.map(r=>[r.runType,r.status,r.bank])).toEqual([['regular','processed','match'],['bonus','processed','match'],['off_cycle','draft','not_ready']]);
-  expect(pipeline.audit).toBeNull();
+  // Wave 1 integration: the Audit loop's column is P2-2b's summary for the same month, never a company outside the view.
+  expect(pipeline.audit).toMatchObject({payPeriod:JUNE,level:'prepare'});
+  for(const item of pipeline.audit!.companies)expect(pipeline.companies.map(c=>c.companyId)).toContain(item.companyId);
   expect(pipeline.statutoryDue).toBe('2026-07-15');
   // July: the Pre-salary loop's case for each company, open on its set-up blocker.
   const july=await payrollCycleOverview(group,{period:JULY,today:TODAY});
@@ -467,6 +480,7 @@ describe('the group pipeline and isolation',()=>{
   const own=await payrollCycleOverview(branch,{period:JUNE,today:TODAY});
   expect(own.allowed.map(c=>c.companyName)).toEqual(['Fictional Branch Sdn Bhd']);
   expect(own.companies.map(c=>[c.companyName,c.salary.runs.length])).toEqual([['Fictional Branch Sdn Bhd',0]]);
+  expect((own.audit?.companies??[]).map(c=>c.companyId)).not.toContain(b.companyId);
   expect((await payrollCycleOverview(branch,{period:JUNE,companyId:b.companyId,today:TODAY})).companies.map(c=>c.companyName)).toEqual(['Fictional Branch Sdn Bhd']);
   expect((await salaryLoopPage(branch,{period:JUNE,today:TODAY})).flags).toEqual([]);
   // The branch employs nobody, so it has no salary run to start; and the group company's runs and flags are not its to read.

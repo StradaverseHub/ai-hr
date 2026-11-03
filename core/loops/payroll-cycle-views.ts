@@ -3,7 +3,8 @@
  * One group pipeline per month, filtered to the companies the viewer administers (owner decision 6): for each company,
  * the Pre-salary loop's checks and the Salary payroll loop's runs, as their last runs recorded them (the loops' own
  * cases, never a fresh computation on view), the last three cycles compared, and the people loops' open cards. The Audit
- * loop's column is a separate read (P2-2b); this service leaves its slot empty (`audit: null`) until that read exists.
+ * loop's column is P2-2b's own read (core/payroll-audit/status.ts auditLoopSummary) for the same month and companies,
+ * under the same viewer: it narrows them further to the companies whose payroll the viewer administers.
  *
  * Administrators only (the page's requireAdmin, checked again here). Every row is read under the viewer's row-level
  * security: an administrator of one company sees that company only, and a named person appears only where the viewer
@@ -26,6 +27,7 @@ import {decodeCheck,type PreSalaryCheck} from './pre-salary-checks';
 import {daysBetween,nextPeriod,preSalaryWindows,previousPeriod,payrollKey,type CompanyCutOffs} from './payroll-inputs';
 import {payrollLoopSettingHistoryTx,payrollLoopSettingsTx,thresholdProposalsTx,type PayrollLoopSetting} from './payroll-loop-settings';
 import {startKey,type BankCheck} from './salary-payroll';
+import {AuditViewRefused,auditLoopSummary,type AuditLoopSummary} from '../payroll-audit/status';
 import type {SwingProposal} from './swing-proposals';
 import type {LoopFacts,LoopId} from './types';
 
@@ -55,8 +57,9 @@ export type CycleHistoryRow=Readonly<{period:string;
 export type PeopleLoopView=Readonly<{id:LoopId;open:number}>;
 export type PayrollCycleOverview=Readonly<{period:string;today:string;allowed:readonly CompanyRef[];filter:string|null;companies:readonly PayrollCycleCompany[];
  loops:Readonly<{preSalary:LoopSwitch;salary:LoopSwitch}>;history:readonly CycleHistoryRow[];people:readonly PeopleLoopView[];
- /** The Audit loop's column (P2-2b). Null until its read exists: the page then shows no status for it. */
- audit:null;statutoryDue:string}>;
+ /** The Audit loop's column (P2-2b's summary for this month and these companies). Null when no company is in view or the
+  * Audit loop's read refuses; the page then shows what the loop is for and no status. */
+ audit:AuditLoopSummary|null;statutoryDue:string}>;
 
 const PEOPLE_LOOPS:readonly LoopId[]=Object.freeze(['loop_probation_ending','loop_missing_employee_data','loop_document_expiry']);
 const BANK_CHECKS:readonly BankCheck[]=['match','total_mismatch','count_mismatch','not_available','blocked','not_ready'];
@@ -112,7 +115,7 @@ export async function payrollCycleOverview(ctx:SessionContext,options:Readonly<{
  requireViewer(ctx);
  const today=options.today??todayInKualaLumpur();
  const period=typeof options.period==='string'&&PERIOD.test(options.period)?options.period:today.slice(0,7);
- return withTenant(ctx,async tx=>{
+ const view=await withTenant(ctx,async tx=>{
   const allowed=await allowedTx(tx,ctx);
   const filter=typeof options.companyId==='string'&&allowed.some(item=>item.companyId===options.companyId)?options.companyId:null;
   const scope=filter?allowed.filter(item=>item.companyId===filter):allowed;
@@ -179,9 +182,14 @@ export async function payrollCycleOverview(ctx:SessionContext,options:Readonly<{
    .where(and(eq(terasLoopCase.tenantId,ctx.tenantId),inArray(terasLoopCase.workerId,[...PEOPLE_LOOPS]),inArray(terasLoopCase.companyId,ids),inArray(terasLoopCase.state,['open','waiting'])))
    .groupBy(terasLoopCase.workerId):[];
   return Object.freeze({period,today,allowed:Object.freeze(allowed),filter,companies:Object.freeze(companies),loops:Object.freeze(loops),history:Object.freeze(history),
-   people:Object.freeze(PEOPLE_LOOPS.map(id=>Object.freeze({id,open:Number(people.find(row=>row.workerId===id)?.n??0)}))),audit:null,
+   people:Object.freeze(PEOPLE_LOOPS.map(id=>Object.freeze({id,open:Number(people.find(row=>row.workerId===id)?.n??0)}))),
    statutoryDue:`${nextPeriod(period)}-15`});
  });
+ // AI v2 P2-2b: the Audit loop's column, its own read and guard. A refusal leaves the column without a status; a database
+ // failure propagates like any other read on this page.
+ const audit=view.companies.length?await auditLoopSummary(ctx,{payPeriod:view.period,companyIds:view.companies.map(c=>c.companyId)})
+  .catch((error:unknown)=>{if(error instanceof AuditViewRefused)return null;throw error;}):null;
+ return Object.freeze({...view,audit});
 }
 
 /** The pay day of a period: the company's pay day of the month, or the month end; clamped to the month. */

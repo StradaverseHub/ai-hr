@@ -1238,7 +1238,8 @@
         "joinersLeavers": "Joiners and leavers complete",
         "statutoryBank": "Bank, EPF, SOCSO and tax numbers",
         "payChanges": "Allowance and pay changes approved",
-        "setup": "Payroll set-up ready"
+        "setup": "Payroll set-up ready",
+        "repeatAudit": "Repeat issues from the Audit loop"
       },
       "pre": {
         "title": "1 · Pre-salary loop",
@@ -1942,7 +1943,8 @@
         "corrections": "Corrections after the run",
         "findings": "Control checks",
         "approvals": "Who approved what, when",
-        "repeat": "Repeat issues"
+        "repeat": "Repeat issues",
+        "bankPaid": "Bank paid vs payroll"
       },
       "values": {
         "payslips": "{released} of {total} released · {opened} opened",
@@ -1952,7 +1954,11 @@
         "findings": "{count, plural, =0 {Nothing open} one {# open finding} other {# open findings}}",
         "pack": "Audit pack per company",
         "packLink": "Download audit pack",
-        "repeat": "{count, plural, =0 {None} other {# fed to the next Pre-salary loop}}"
+        "repeat": "{count, plural, =0 {None} other {# fed to the next Pre-salary loop}}",
+        "bankReconciled": "Reconciled",
+        "bankMismatch": "{count, plural, one {# run does not match} other {# runs do not match}}",
+        "bankPartial": "{matched} of {total} reconciled",
+        "bankNone": "Checked after the run"
       },
       "note": "Files and filings stay at Prepare: a person submits to EPF, PERKESO and LHDN. The audit pack is read-only evidence for your auditors.",
       "open": "Open Audit loop"

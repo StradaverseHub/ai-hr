@@ -1238,7 +1238,8 @@
         "joinersLeavers": "Pekerja baharu dan yang berhenti lengkap",
         "statutoryBank": "Nombor bank, KWSP, PERKESO dan cukai",
         "payChanges": "Elaun dan perubahan gaji diluluskan",
-        "setup": "Tetapan gaji sedia"
+        "setup": "Tetapan gaji sedia",
+        "repeatAudit": "Isu berulang daripada gelung audit"
       },
       "pre": {
         "title": "1 · Gelung pra-gaji",
@@ -1942,7 +1943,8 @@
         "corrections": "Pembetulan selepas larian",
         "findings": "Semakan kawalan",
         "approvals": "Siapa meluluskan apa, bila",
-        "repeat": "Isu berulang"
+        "repeat": "Isu berulang",
+        "bankPaid": "Bayaran bank berbanding gaji"
       },
       "values": {
         "payslips": "{released} daripada {total} dikeluarkan · {opened} dibuka",
@@ -1952,7 +1954,11 @@
         "findings": "{count, plural, =0 {Tiada yang terbuka} other {# dapatan terbuka}}",
         "pack": "Pek audit setiap syarikat",
         "packLink": "Muat turun pek audit",
-        "repeat": "{count, plural, =0 {Tiada} other {# dihantar ke gelung Pra-gaji seterusnya}}"
+        "repeat": "{count, plural, =0 {Tiada} other {# dihantar ke gelung Pra-gaji seterusnya}}",
+        "bankReconciled": "Diselaraskan",
+        "bankMismatch": "{count, plural, one {# larian tidak sepadan} other {# larian tidak sepadan}}",
+        "bankPartial": "{matched} daripada {total} diselaraskan",
+        "bankNone": "Disemak selepas larian"
       },
       "note": "Fail dan pemfailan kekal di peringkat Sediakan: seorang pegawai menghantar kepada KWSP, PERKESO dan LHDN. Pek audit ialah bukti baca sahaja untuk juruaudit anda.",
       "open": "Buka gelung audit"

@@ -195,8 +195,10 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
  // AI v2 P2-2a: the Pre-salary loop absorbs the payroll inputs loop (same id): every input check from the start of the
  // period to the cut-off, at each company's own interval.
  {id:'loop_payroll_inputs',label:'Pre-salary loop',family:'preparer',
-  owners:['core/loops/payroll-inputs.ts#detectPayrollInputs','core/loops/pre-salary-checks.ts#preSalaryChecks','core/payroll-readiness.ts#payrollReadiness'],
-  trigger:LOOP_PAYROLL_INTERVAL,readScope:['setup_copilot','readiness_gap','attendance_request','absence','leave_request','claim_request','pending_approval'],effect:'prepare',
+  owners:['core/loops/payroll-inputs.ts#detectPayrollInputs','core/loops/pre-salary-checks.ts#preSalaryChecks','core/payroll-readiness.ts#payrollReadiness',
+   // Wave 1 integration: the Audit loop's repeat issues, read as one of its checks (control ids only, counted).
+   'core/payroll-audit/status.ts#repeatAuditIssues'],
+  trigger:LOOP_PAYROLL_INTERVAL,readScope:['setup_copilot','readiness_gap','attendance_request','absence','leave_request','claim_request','pending_approval','payroll_anomaly'],effect:'prepare',
   authority:{kind:'tenant_switch',actsAs:'agent_principal'},switch:{kind:'worker_control',workerId:'loop_payroll_inputs'},stop:{honoured:true},
   record:{kind:'loop_runs'},metrics:{kind:'loop_cases',proposesValue:false},sponsor:{kind:'switched_on_by'},autonomy:{ceiling:1,act:null}},
  {id:'loop_missing_employee_data',label:'Missing employee data',family:'preparer',

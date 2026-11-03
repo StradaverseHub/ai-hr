@@ -1238,7 +1238,8 @@
         "joinersLeavers": "Nhân viên mới và nghỉ việc đầy đủ",
         "statutoryBank": "Số ngân hàng, EPF, SOCSO và thuế",
         "payChanges": "Phụ cấp và thay đổi lương đã duyệt",
-        "setup": "Thiết lập lương sẵn sàng"
+        "setup": "Thiết lập lương sẵn sàng",
+        "repeatAudit": "Vấn đề lặp lại từ vòng lặp kiểm toán"
       },
       "pre": {
         "title": "1 · Vòng lặp trước kỳ lương",
@@ -1942,7 +1943,8 @@
         "corrections": "Chỉnh sửa sau khi chạy lương",
         "findings": "Kiểm tra kiểm soát",
         "approvals": "Ai đã duyệt gì, khi nào",
-        "repeat": "Vấn đề lặp lại"
+        "repeat": "Vấn đề lặp lại",
+        "bankPaid": "Ngân hàng đã trả so với bảng lương"
       },
       "values": {
         "payslips": "Đã phát hành {released}/{total} · đã mở {opened}",
@@ -1952,7 +1954,11 @@
         "findings": "{count, plural, =0 {Không có mục mở} other {# phát hiện đang mở}}",
         "pack": "Gói kiểm toán cho từng công ty",
         "packLink": "Tải gói kiểm toán",
-        "repeat": "{count, plural, =0 {Không có} other {# mục chuyển sang vòng lặp Trước lương tiếp theo}}"
+        "repeat": "{count, plural, =0 {Không có} other {# mục chuyển sang vòng lặp Trước lương tiếp theo}}",
+        "bankReconciled": "Đã đối chiếu",
+        "bankMismatch": "{count, plural, other {# lần chạy không khớp}}",
+        "bankPartial": "{matched}/{total} đã đối chiếu",
+        "bankNone": "Kiểm tra sau lần chạy"
       },
       "note": "Tệp và hồ sơ nộp vẫn ở mức Chuẩn bị: một người nộp cho EPF, PERKESO và LHDN. Gói kiểm toán là bằng chứng chỉ đọc cho kiểm toán viên của bạn.",
       "open": "Mở vòng lặp kiểm toán"
