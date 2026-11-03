@@ -28,6 +28,7 @@ import {
   type ReviewRecommendation,
 } from '@/core/employment-review';
 import { myEmployment } from '@/core/read';
+import { followLeaveRecommendation } from '@/app/assistant/centre/recommendation';
 
 // Thin wrappers around the same decide services the source pages use (authz lives in the
 // services: assertCanDecide / admin-only) — these just land back on /approvals.
@@ -105,6 +106,8 @@ export async function approveLeaveAction(formData: FormData) {
     // leave errors) into the viewer's language, like the /me + leave-tab flows do.
     await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
+  // AI v2 W6: after the decision committed, whether the approver followed the recommendation shown beside it.
+  await followLeaveRecommendation(s, formData.get('recommendationRecordId'), decision);
   await done(`Leave ${decision}`, nav, s);
 }
 
@@ -288,6 +291,8 @@ async function dispatchBulkItem(
     case 'leave':
       // decideLeave enforces the mandatory reject reason itself (MissingRejectReasonError).
       await decideLeave(s, { leaveRequestId: item.id, decision, rejectReason, deciderEmploymentId });
+      // AI v2 W6: the recommendation shown for this request, if any, learns whether it was followed.
+      if (item.recommendationRecordId) await followLeaveRecommendation(s, item.recommendationRecordId, decision);
       return;
     case 'leaveCancellation':
       await decideLeaveCancellation(s, { cancellationRequestId: item.id, decision, deciderEmploymentId });

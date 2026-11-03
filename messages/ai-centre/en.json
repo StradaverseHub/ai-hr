@@ -451,7 +451,8 @@
       "blocking": "A leave rule would refuse this request as it stands.",
       "version": {
         "leave_type": "Leave type rules, version {version}",
-        "approval_chain": "Approval chain, version {version}"
+        "approval_chain": "Approval chain, version {version}",
+        "recommender": "Recommendation checks, version {version}"
       },
       "youDecide": "This is advice. You decide on the request's own page.",
       "unavailable": {
@@ -462,7 +463,47 @@
         "not_assigned": "This request is not assigned to you.",
         "not_pending": "This request is no longer waiting for a decision.",
         "failed": "The recommendation could not be loaded just now."
-      }
+      },
+      "youDecideHere": "This is advice. You decide with Approve or Reject.",
+      "result": {
+        "balance_covers": {
+          "pass": "The balance covers the days requested.",
+          "fail": "The balance does not cover the days, and the leave type does not allow going that far negative.",
+          "unusual": "The balance covers the days only by going negative, which the leave type allows.",
+          "missing": "The balance could not be read."
+        },
+        "own_overlap": {
+          "pass": "No other leave of the applicant overlaps these dates.",
+          "fail": "The applicant already has approved leave on some of these dates.",
+          "unusual": "The applicant has another pending request on some of these dates.",
+          "missing": "Other leave of the applicant could not be fully read."
+        },
+        "team_coverage": {
+          "pass": "Nobody else you can see is away on these dates.",
+          "fail": "Team coverage is below the minimum.",
+          "unusual": "Others you can see are away on some of these dates.",
+          "missing": "Who else is away could not be read."
+        },
+        "policy_limits": {
+          "pass": "The leave type's document and date rules are met.",
+          "fail": "The leave type requires a document and none is attached.",
+          "unusual": "The leave starts before today.",
+          "missing": "The leave type's rules could not be read."
+        }
+      },
+      "prepared": {
+        "read": "The request, the applicant's other leave on these dates, who else you can see is away, and the leave type's rules, each read as you.",
+        "model": "None. The verdict comes from the four checks, and it never recommends rejecting.",
+        "recordLabel": "Record",
+        "record": "Kept as an outcome record. When you decide, whether you followed the recommendation is added to it."
+      },
+      "filter": {
+        "label": "Filter leave requests by recommendation",
+        "all": "All leave requests",
+        "passing": "Passes every check ({count})",
+        "help": "Showing only requests that pass every check. Select them, then approve or reject them with a confirmation. Nothing is approved automatically."
+      },
+      "openOne": "Show the recommendation"
     },
     "digest": {
       "title": "Your day",

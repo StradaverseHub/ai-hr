@@ -451,7 +451,8 @@
       "blocking": "Một quy tắc nghỉ phép sẽ từ chối yêu cầu này ở trạng thái hiện tại.",
       "version": {
         "leave_type": "Quy tắc loại nghỉ phép, phiên bản {version}",
-        "approval_chain": "Chuỗi phê duyệt, phiên bản {version}"
+        "approval_chain": "Chuỗi phê duyệt, phiên bản {version}",
+        "recommender": "Kiểm tra gợi ý, phiên bản {version}"
       },
       "youDecide": "Đây là lời khuyên. Bạn quyết định trên trang riêng của yêu cầu.",
       "unavailable": {
@@ -462,7 +463,47 @@
         "not_assigned": "Yêu cầu này không được giao cho bạn.",
         "not_pending": "Yêu cầu này không còn chờ quyết định.",
         "failed": "Hiện không thể tải gợi ý."
-      }
+      },
+      "youDecideHere": "Đây là lời khuyên. Bạn quyết định bằng Phê duyệt hoặc Từ chối.",
+      "result": {
+        "balance_covers": {
+          "pass": "Số ngày phép còn lại đủ cho số ngày yêu cầu.",
+          "fail": "Số ngày phép còn lại không đủ, và loại nghỉ phép này không cho phép âm đến mức đó.",
+          "unusual": "Số ngày phép chỉ đủ khi bị âm, điều mà loại nghỉ phép này cho phép.",
+          "missing": "Không thể đọc số ngày phép còn lại."
+        },
+        "own_overlap": {
+          "pass": "Không có kỳ nghỉ nào khác của người nộp đơn trùng với những ngày này.",
+          "fail": "Người nộp đơn đã có kỳ nghỉ được duyệt vào một số ngày này.",
+          "unusual": "Người nộp đơn có một yêu cầu khác đang chờ vào một số ngày này.",
+          "missing": "Không thể đọc đầy đủ các kỳ nghỉ khác của người nộp đơn."
+        },
+        "team_coverage": {
+          "pass": "Không có ai khác mà bạn thấy được nghỉ vào những ngày này.",
+          "fail": "Mức bố trí nhân sự của nhóm thấp hơn mức tối thiểu.",
+          "unusual": "Có người khác mà bạn thấy được nghỉ vào một số ngày này.",
+          "missing": "Không thể đọc những ai khác đang nghỉ."
+        },
+        "policy_limits": {
+          "pass": "Đáp ứng quy tắc về giấy tờ và ngày của loại nghỉ phép.",
+          "fail": "Loại nghỉ phép này yêu cầu giấy tờ nhưng chưa đính kèm.",
+          "unusual": "Kỳ nghỉ bắt đầu trước hôm nay.",
+          "missing": "Không thể đọc quy tắc của loại nghỉ phép."
+        }
+      },
+      "prepared": {
+        "read": "Yêu cầu, các kỳ nghỉ khác của người nộp đơn vào những ngày này, những ai khác mà bạn thấy được đang nghỉ, và quy tắc của loại nghỉ phép, đều được đọc với tư cách của bạn.",
+        "model": "Không có. Kết luận đến từ bốn kiểm tra, và không bao giờ đề xuất từ chối.",
+        "recordLabel": "Bản ghi",
+        "record": "Được lưu thành bản ghi kết quả. Khi bạn quyết định, việc bạn có làm theo gợi ý hay không sẽ được thêm vào đó."
+      },
+      "filter": {
+        "label": "Lọc yêu cầu nghỉ phép theo gợi ý",
+        "all": "Tất cả yêu cầu nghỉ phép",
+        "passing": "Đạt mọi kiểm tra ({count})",
+        "help": "Chỉ hiển thị các yêu cầu đạt mọi kiểm tra. Chọn chúng, rồi phê duyệt hoặc từ chối sau khi xác nhận. Không có gì được phê duyệt tự động."
+      },
+      "openOne": "Xem gợi ý"
     },
     "digest": {
       "title": "Ngày của bạn",

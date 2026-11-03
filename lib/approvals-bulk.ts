@@ -28,10 +28,15 @@ export type BulkCategory = 'leave' | 'leaveCancellation' | 'attendance' | 'overt
 
 /** A selectable pending row handed from the server page to the client island. `id` is the request id — the
  *  selection is keyed by (type,id) so it is index-independent and survives a re-sort (sort item 09cda965). */
-export type BulkRow = { id: string; type: BulkDecideType; category: BulkCategory; expectedStageIndex?: number; expectedParticipantSlot?: string };
+export type BulkRow = { id: string; type: BulkDecideType; category: BulkCategory; expectedStageIndex?: number; expectedParticipantSlot?: string;
+  /** AI v2 W6, leave only: the outcome record of the recommendation shown beside the row. */
+  recommendationRecordId?: string };
 
 /** One item posted back to the bulk server action. */
-export type BulkDecideItem = { type: BulkDecideType; id: string; expectedStageIndex?: number; expectedParticipantSlot?: string };
+export type BulkDecideItem = { type: BulkDecideType; id: string; expectedStageIndex?: number; expectedParticipantSlot?: string; recommendationRecordId?: string };
+
+/** A recommendation's outcome record id (a UUID). Anything else is dropped, never dispatched. */
+const RECORD_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 export const BULK_DECIDE_TYPES: readonly BulkDecideType[] = [
   'leave',
@@ -125,7 +130,11 @@ export function parseBulkItems(raw: string): BulkDecideItem[] {
     if (stage !== undefined && (!Number.isInteger(stage) || Number(stage) < 0 || Number(stage) > 9)) continue;
     const participantSlot = (el as { expectedParticipantSlot?: unknown }).expectedParticipantSlot;
     if (participantSlot !== undefined && (type !== 'attendance' || typeof participantSlot !== 'string' || !/^[0-9]:(?:[0-9]|1[0-9]|hr)$/.test(participantSlot))) continue;
-    out.push({ type: type as BulkDecideType, id, ...(type === 'attendance' && typeof stage === 'number' ? { expectedStageIndex: stage } : {}), ...(type === 'attendance' && typeof participantSlot === 'string' ? { expectedParticipantSlot: participantSlot } : {}) });
+    // AI v2 W6: a leave item may carry the recommendation's outcome record; on any other kind, or malformed,
+    // it is ignored (the decision itself is unaffected).
+    const record = (el as { recommendationRecordId?: unknown }).recommendationRecordId;
+    const recommendation = type === 'leave' && typeof record === 'string' && RECORD_ID.test(record) ? { recommendationRecordId: record } : {};
+    out.push({ type: type as BulkDecideType, id, ...(type === 'attendance' && typeof stage === 'number' ? { expectedStageIndex: stage } : {}), ...(type === 'attendance' && typeof participantSlot === 'string' ? { expectedParticipantSlot: participantSlot } : {}), ...recommendation });
   }
   return out;
 }
