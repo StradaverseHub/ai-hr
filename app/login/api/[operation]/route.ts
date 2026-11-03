@@ -5,7 +5,7 @@ import {getLocale} from 'next-intl/server';
 import {emailLocale} from '@/lib/email-design/model';
 import { after, NextRequest, NextResponse } from 'next/server';
 import { toDataURL } from 'qrcode';
-import { internalSelected, internalReady, internalConfig, INTERNAL_SESSION_COOKIE } from '@/lib/internal-auth/config';
+import { internalSelected, internalReady, internalConfig, INTERNAL_SESSION_COOKIE, INTERNAL_REMEMBERED_MFA_COOKIE } from '@/lib/internal-auth/config';
 import { AuthBusyError } from '@/lib/internal-auth/crypto';
 import { InternalAuthError, startLogin, changeInitialPassword, verifyMfa, rotateRefresh, revokeSession, touchSession, type AuthReply } from '@/lib/internal-auth/service';
 import { requestRecovery, completeRecovery } from '@/lib/internal-auth/recovery';
@@ -52,6 +52,12 @@ async function readBody(request: Request): Promise<Record<string, unknown>> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new InternalAuthError('invalidChallenge');
   return value as Record<string, unknown>;
 }
+function checked(body: Record<string, unknown>, key: string) {
+  const value = body[key];
+  if (value === undefined || value === false || value === 'false') return false;
+  if (value === true || value === 'true' || value === 'on') return true;
+  throw new InternalAuthError('invalidChallenge');
+}
 function text(body: Record<string, unknown>, key: string, max = 256) {
   const value = body[key] ?? '';
   if (typeof value !== 'string' || value.length > max) throw new InternalAuthError('invalidChallenge');
@@ -76,9 +82,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
     if (source) releaseSource = admitSource(source);
     if (source) await takeRequestBudget(['auth-source', source, operation === 'recovery' || operation === 'invite' ? 'mail' : 'session'], operation === 'recovery' || operation === 'invite' ? 12 : 60, 60);
     const body = await readBody(request);
-    if (operation === 'login') result = await startLogin({ organization: text(body, 'organization', 64), username: text(body, 'username', 64), password: text(body, 'password', 128), native, sourceBudgeted:source!==null });
+    if (operation === 'login') result = await startLogin({ organization: text(body, 'organization', 64), username: text(body, 'username', 64), password: text(body, 'password', 128), native, sourceBudgeted:source!==null, rememberedDevice: native ? text(body, 'remembered_device', 43) : request.cookies.get(INTERNAL_REMEMBERED_MFA_COOKIE)?.value });
     else if (operation === 'password') result = await changeInitialPassword(text(body, 'challenge', 43), text(body, 'password', 128), native);
-    else if (operation === 'mfa') result = await verifyMfa(text(body, 'challenge', 43), text(body, 'code', 64), native);
+    else if (operation === 'mfa') result = await verifyMfa(text(body, 'challenge', 43), text(body, 'code', 64), native, checked(body, 'rememberDevice'));
     else if (operation === 'refresh' && native) result = await rotateEntraRefresh(text(body, 'refresh_token', 80)) || await rotateRefresh(text(body, 'refresh_token', 80));
     else if (operation === 'invite') result = await startInvitation(text(body, 'token', 43), text(body, 'username', 64), text(body, 'password', 128), native, source!==null);
     else if (operation === 'accept-invite' && !native) {
@@ -106,6 +112,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
       const uri = authenticatorSetupUri(result.secret, result.account || '');
       reply.qr = await toDataURL(uri, { width: 224, margin: 2, errorCorrectionLevel: 'M' });
     }
+    let rememberedToken: string | undefined, rememberedMaxAge: number | undefined;
+    if (!native) {
+      if (result.step === 'complete' && 'remembered_device_token' in result) {
+        rememberedToken = result.remembered_device_token; rememberedMaxAge = result.remembered_device_expires_in;
+      }
+      delete reply.remembered_device_token; delete reply.remembered_device_expires_in;
+    }
     let browserToken: string | undefined;
     if (result.step === 'complete' && 'access_token' in result && !native) {
       browserToken = result.access_token;
@@ -113,6 +126,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
     }
     if (result.step === 'activated' && !native) await revokeSession(request.cookies.get(INTERNAL_SESSION_COOKIE)?.value);
     const response = NextResponse.json(reply, { headers: responseHeaders });
+    if (rememberedToken && rememberedMaxAge) response.cookies.set(INTERNAL_REMEMBERED_MFA_COOKIE, rememberedToken, { httpOnly: true, secure: true, sameSite: 'strict', path: '/', maxAge: rememberedMaxAge });
+    if (operation === 'reset' && !native) response.cookies.set(INTERNAL_REMEMBERED_MFA_COOKIE, '', { httpOnly: true, secure: true, sameSite: 'strict', path: '/', maxAge: 0 });
     if (browserToken) response.cookies.set(INTERNAL_SESSION_COOKIE, browserToken, { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 8 * 3600 });
     if ((operation === 'logout' || result.step === 'activated') && !native) response.cookies.set(INTERNAL_SESSION_COOKIE, '', { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 0 });
     return response;

@@ -1,0 +1,6 @@
+import type {LetterField} from './letter-model';
+export const CONTRACT_DOCUMENT_TYPES=['renewal','end','declined','retirement'] as const;
+export type ContractDocumentType=typeof CONTRACT_DOCUMENT_TYPES[number];
+const textFields=['employee.name','employee.id','employee.designation','employee.grade','employee.department','employee.businessGroup','employee.company','employee.manager','contract.type','contract.term','pay.changed','document.signatoryName','document.signatoryTitle'] as const;
+const dates=['contract.start','contract.end','contract.newStart','contract.newEnd','contract.lastWorkingDay','document.issueDate'] as const;
+export const CONTRACT_FIELDS:LetterField[]=[...textFields.map(key=>({key,label:key,description:'Contract Management source field',kind:'text' as const,source:'custom.text' as const,required:true,editable:false,sensitive:key.startsWith('pay.')})),...dates.map(key=>({key,label:key,description:'Verified calendar date',kind:'date' as const,source:'custom.date' as const,required:false,editable:false,sensitive:false})),...['pay.basicSalary','pay.fixedAllowance'].map(key=>({key,label:key,description:'Approved contract amount',kind:'currency' as const,source:'custom.currency' as const,required:true,editable:false,sensitive:true}))];

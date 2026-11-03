@@ -5,7 +5,8 @@ import { publicErrorMessage } from '@/lib/public-error';
 import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
-import { redirect } from 'next/navigation';
+import { redirect,unstable_rethrow } from 'next/navigation';
+import {movementHistoryHref} from '@/lib/personnel-movement-navigation';
 import { getTranslations } from 'next-intl/server';
 import { setEmploymentCardId } from '@/core/attendance-card';
 import { requireAdmin } from '@/lib/authz';
@@ -87,6 +88,13 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 // reloaded page lands back on the tab the user was editing instead of resetting to Profile. Absent/empty =
 // legacy behaviour (no tab param → first tab). All these URLs already carry a `?`, so we always append `&`.
 function withTab(formData: FormData, url: string): string {
+  if(formData.get('movementPage')){
+    const id=String(formData.get('employmentId')??'');
+    const destination=movementHistoryHref(id,{showCorrected:String(formData.get('showCorrected')??''),from:String(formData.get('from')??'')});
+    const parsed=new URL(url,'https://personnel.invalid'),target=new URL(destination,'https://personnel.invalid');
+    if(parsed.searchParams.has('toast'))target.searchParams.set('toast',parsed.searchParams.get('toast')!);
+    return target.pathname+target.search+target.hash;
+  }
   const tab = String(formData.get('tab') ?? '').trim();
   return tab ? `${url}&tab=${encodeURIComponent(tab)}` : url;
 }
@@ -518,6 +526,7 @@ export async function createMovementEventAction(formData: FormData) {
       });
     }
   } catch (e) {
+    if(formData.get('movementPage'))throw new Error(await compensationErrorMessage(e));
     // r374 (item 7dbaf677) — THROUGH THE ONE TRANSLATOR, because this path reaches `setCompensation`.
     //
     // `core/movement.ts` writes compensation whenever the pay STRUCTURE changed, not only when an amount
@@ -581,6 +590,7 @@ export async function editMovementEventAction(formData: FormData) {
         changeEffectiveOn: result.effectiveDate,
       });
   } catch (e) {
+    if(formData.get('movementPage'))throw new Error(await compensationErrorMessage(e));
     // r374 — the SAME translator as the create path, for the same reason and not a second one. A
     // correction is a rollback plus a REPLAY through the writer the New Event form uses, so it inherits
     // every refusal that path can raise, this one included (`editMovementEvent`'s own header says so).
@@ -641,6 +651,7 @@ export async function correctHireDetailsAction(formData: FormData) {
     });
     await recomputeEntitlement(s, employmentId, 'hire_corrected', { changeEffectiveOn: res.hiredOn });
   } catch (e) {
+    if(formData.get('movementPage'))throw new Error(publicErrorMessage(e));
     redirect(
       withTab(
         formData,
@@ -2202,4 +2213,16 @@ async function applyAttendancePhotoSection(
     employmentId: String(formData.get('employmentId')),
     setting,
   });
+}
+
+/** Inline failures keep standalone form drafts mounted. Redirects remain framework control flow. */
+export async function saveMovementPageAction(_state:string|null,data:FormData):Promise<string|null>{
+ try{
+   const mode=String(data.get('movementPage')??'');
+   if(mode==='new')await createMovementEventAction(data);
+   else if(mode==='edit')await editMovementEventAction(data);
+   else if(mode==='correct-hire')await correctHireDetailsAction(data);
+   else throw new Error('Invalid movement action.');
+   return null;
+ }catch(error){unstable_rethrow(error);return publicErrorMessage(error);}
 }

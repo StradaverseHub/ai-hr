@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import {validateTenantPassword,effectivePasswordPolicy} from './password-policy';
 import type { Sql } from 'postgres';
 import { internalIssuer } from './config';
-import { digest, passwordHash, validOpaque, validatePassword } from './crypto';
+import { digest, passwordHash, validOpaque } from './crypto';
 import { readRecord, writeRecord, type AuthSql } from './store';
 import { loginKey, type Credential, type Organization } from './service';
 /** Operator-owned database connection only. There is no HTTP route to bootstrap an administrator. */
@@ -11,7 +12,6 @@ export async function bootstrapInternalOwner(db: Sql, input: {
   const code = input.organization.trim().toLowerCase(), username = input.username.trim().toLowerCase(), email = input.email.trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(code) || !/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username) ||
     !/^\S+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 255 || !/^[0-9a-f-]{36}$/i.test(input.appUserId)) throw new Error('Invalid owner enrollment input.');
-  validatePassword(input.password, username, email);
   const privileged = await db.unsafe("select pg_has_role(current_user,pg_get_userbyid(c.relowner),'MEMBER') allowed from pg_class c where c.oid='app_internal_auth_record'::regclass");
   if (!privileged[0]?.allowed) throw new Error('The migration/schema owner connection is required.');
   const hash = await passwordHash(input.password);
@@ -49,9 +49,11 @@ export async function bootstrapInternalOwner(db: Sql, input: {
     }
     const enrolled = await tx.unsafe('select 1 from app_external_identity where app_user_id=$1::uuid and issuer=$2', [input.appUserId, issuer]);
     if (enrolled.length) throw new Error('This HR administrator already has an internal identity. Bootstrap never replaces it.');
+    await validateTenantPassword(tx,{tenantId:user.tenant_id,username,email},input.password);
+    const forceFirstChange=(await effectivePasswordPolicy(tx,user.tenant_id)).requirements?.forceFirstChange??true;
     const subject = randomUUID();
     const c: Credential = { subject, tenantId: user.tenant_id, issuer, organization: code, username, email, emailVerified: true,
-      enabled: true, password: hash, passwordChangedAt: Date.now(), mustChange: true, version: randomUUID(), totpSecret: null, lastStep: -1, recoveryHashes: [] };
+      enabled: true, password: hash, passwordChangedAt: Date.now(), mustChange: forceFirstChange, version: randomUUID(), totpSecret: null, lastStep: -1, recoveryHashes: [] };
     const organization: Organization = { code, tenantId: user.tenant_id, name: user.name };
     await writeRecord(tx, orgKey, organization, null); await writeRecord(tx, tenantKey, organization, null);
     await writeRecord(tx, `credential:${subject}`, c, subject); await writeRecord(tx, indexKey, { subject }, subject);

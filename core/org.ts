@@ -1,3 +1,7 @@
+import {probationDateAuthorityTx} from './probation-effect-authority';
+import {contractDateAuthorityTx,withAcceptedContractRecordIntentTx,withContractMaternityRecordIntentTx} from './contract-record-authority';
+import {setCompensation} from './comp';
+import {setEmploymentPayComponent,endEmploymentPayComponent,tryLockPayrollHistoryReadTx} from '../packs/payroll/service';
 import { hasExitDateAuthorityTx } from './exit-date-authority';
 import { hasClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {assertCostAllocationTransferTx} from './employment-cost-allocations';
@@ -3050,7 +3054,7 @@ export async function setEmploymentInfo(
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const roles = ctx.roles ?? [];
-  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
+  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))&&!probationDateAuthorityTx(outerTx,p as unknown as Record<string,unknown>)&&!contractDateAuthorityTx(outerTx,p)) {
     throw new Error('Only an admin can edit employment information.');
   }
 
@@ -3155,7 +3159,7 @@ export async function setEmploymentInfo(
   const run = async (tx: Tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    if(!probationDateAuthorityTx(tx,p as unknown as Record<string,unknown>)&&!contractDateAuthorityTx(tx,p))await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     // 1d58019a Step 2 — the exit-tag rule above, for one of the organisation's OWN Termination types. Its
     // code is not the string 'termination', so ask the catalogue (the custom row's behaviour). Only the
     // Movement writer's exit legs, which hold the exit-date authority, may carry an exit type's tag.
@@ -3658,4 +3662,38 @@ export async function setDesignatedPaymaster(
     });
     return { id: p.personId, designatedPaymasterEmploymentId: p.designatedPaymasterEmploymentId };
   });
+}
+
+/** Actual canonical owners apply only the protected accepted intent, under the real owner session. */
+export async function applyAcceptedContractRecordsTx(tx:Tx,ctx:SessionContext,caseId:string):Promise<Record<string,unknown>>{
+ ctx={...ctx,roles:[],grants:[]};
+ await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);
+ await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ return withAcceptedContractRecordIntentTx(tx,caseId,async intent=>{
+  if(intent.done)return intent.receipt??{};
+  await lockLeaveDependenciesTx(tx,ctx.tenantId,[intent.employmentId]);
+  // Reuse the canonical closed-period definition; do not waive closed Payroll evidence.
+  if((intent.salaryChanged||intent.allowanceChanged)&&overlapsClosedPeriod(await closedPeriodsTx(tx,intent.employmentId),intent.startOn,null))throw Error('Closed payroll requires authorised reconciliation.');
+  if(intent.salaryChanged)await setCompensation(ctx,{employmentId:intent.employmentId,basicSalary:Number(intent.salaryCents)/100,effectiveFrom:intent.startOn,remarks:intent.reason},tx);
+  if(intent.allowanceChanged){
+   if(Number(intent.allowanceCents)>0)await setEmploymentPayComponent(ctx,{employmentId:intent.employmentId,componentId:intent.allowanceComponentId,amount:Number(intent.allowanceCents)/100,effectiveFrom:intent.startOn,currency:'MYR',prorateOverride:intent.fixedProrate,remarks:intent.reason,inheritCycle:{payrollCycleId:intent.fixedCycle,runType:intent.fixedRunType}},tx);
+   else if(intent.fixedAllowanceId)await endEmploymentPayComponent(ctx,{id:intent.fixedAllowanceId,employmentId:intent.employmentId,effectiveTo:new Date(Date.parse(intent.startOn+'T00:00:00Z')-86400000).toISOString().slice(0,10)},tx);
+  }
+  if(intent.salaryChanged||intent.allowanceChanged){
+   // The ordinary marker filters login grants. The genuine owner executor discovers only
+   // this protected employment's processed runs and delegates each write to its canonical owner.
+   const {markBatchNeedsRecalc}=await import('../packs/payroll/service');
+   const batches=await tx.execute<{id:string}>(sql`select b.id from payroll_batch b where b.tenant_id=${ctx.tenantId}::uuid and b.status='processed' and b.pay_period>=${intent.startOn.slice(0,7)} and exists(select 1 from payslip p where p.batch_id=b.id and p.tenant_id=b.tenant_id and p.employment_id=${intent.employmentId}::uuid) order by b.id for update nowait`);
+   for(const batch of batches)await markBatchNeedsRecalc(tx,ctx,{batchId:batch.id,employmentIds:[intent.employmentId],category:'compensation'});
+  }
+  await tx.execute(sql`select app.contract_prepare_record_dates(${caseId}::uuid)`);
+  await setEmploymentInfo(ctx,{employmentId:intent.employmentId,contractStartDate:intent.startOn,contractEndDate:intent.endOn},tx);
+  const [row]=await tx.execute<{receipt:Record<string,unknown>}>(sql`select app.contract_finish_records(${caseId}::uuid) as receipt`);if(!row)throw Error('Canonical contract receipt unavailable.');return row.receipt;
+ });
+}
+
+export async function applyContractMaternityEndTx(tx:Tx,ctx:SessionContext,caseId:string){
+ ctx={...ctx,roles:[],grants:[]};await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ return withContractMaternityRecordIntentTx(tx,caseId,async intent=>{await lockLeaveDependenciesTx(tx,ctx.tenantId,[intent.employmentId]);await setEmploymentInfo(ctx,{employmentId:intent.employmentId,contractEndDate:intent.endOn},tx);const [r]=await tx.execute<{data:Record<string,unknown>}>(sql`select app.contract_finish_maternity_records(${caseId}::uuid) as data`);return r.data;});
 }

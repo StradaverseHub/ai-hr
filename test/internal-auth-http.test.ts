@@ -67,7 +67,7 @@ describe('embedded auth HTTP trust and credential carriers', () => {
     expect(response.cookies.get('__Host-aihr_internal')?.value).toBe('');
     expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
     expect(response.headers.get('cache-control')).toContain('no-store');
-    expect(service.verifyMfa).toHaveBeenCalledWith('c'.repeat(43), '123456', false);
+    expect(service.verifyMfa).toHaveBeenCalledWith('c'.repeat(43), '123456', false, false);
   });
   it('also sends an already authenticated invitee to their organization login after acceptance', async () => {
     const verified = { issuer: 'https://hr.test/auth/tenant', subject: 'existing', email: 'existing@example.test', emailVerified: true };
@@ -137,5 +137,38 @@ describe('embedded auth HTTP trust and credential carriers', () => {
     const response=await request('recovery',{organization:'alpha',username:'user',locale:'ms'},{origin:'https://hr.test'});
     expect(response.status).toBe(200);expect(await response.json()).toEqual({step:'sent'});
     expect(recovery.requestRecovery).toHaveBeenCalledWith('alpha','user',undefined,expect.any(Function),false,'ms');expect(intl.getLocale).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('remembered MFA HTTP carriers', () => {
+  it('keeps remembered browser proofs out of JSON and in a separate secure host-only cookie', async () => {
+    service.verifyMfa.mockResolvedValue({ step: 'complete', access_token: 'a'.repeat(43), expires_in: 28800, remembered_device_token: 'r'.repeat(43), remembered_device_expires_in: 604800 });
+    const response = await request('mfa', { challenge: 'c'.repeat(43), code: '123456', rememberDevice: 'on' }, { origin: 'https://hr.test' });
+    expect(await response.json()).toEqual({ step: 'complete' });
+    expect(service.verifyMfa).toHaveBeenCalledWith('c'.repeat(43), '123456', false, true);
+    const cookie = response.cookies.get('__Host-aihr_mfa'); expect(cookie?.value).toBe('r'.repeat(43));
+    expect(cookie).toMatchObject({ httpOnly: true, secure: true, sameSite: 'strict', path: '/', maxAge: 604800 });
+    expect(cookie).not.toHaveProperty('domain');
+  });
+  it('accepts web proofs only from the host cookie, and native proofs only from the native JSON carrier', async () => {
+    service.startLogin.mockResolvedValue({ step: 'mfa', challenge: 'c'.repeat(43) });
+    await request('login', { organization: 'alpha', username: 'owner', password: 'private', remembered_device: 'x'.repeat(43) }, { origin: 'https://hr.test', cookie: '__Host-aihr_mfa=' + 'w'.repeat(43) });
+    expect(service.startLogin.mock.calls.at(-1)?.[0]).toMatchObject({ native: false, rememberedDevice: 'w'.repeat(43) });
+    await request('login', { organization: 'alpha', username: 'owner', password: 'private', remembered_device: 'n'.repeat(43) }, { 'x-aihr-client': 'native', cookie: '__Host-aihr_mfa=' + 'w'.repeat(43) });
+    expect(service.startLogin.mock.calls.at(-1)?.[0]).toMatchObject({ native: true, rememberedDevice: 'n'.repeat(43) });
+  });
+  it('returns native proofs only after complete verification and never sets browser cookies for native requests', async () => {
+    service.verifyMfa.mockResolvedValue({ step: 'complete', access_token: access, refresh_token: refresh, expires_in: 900, remembered_device_token: 'n'.repeat(43), remembered_device_expires_in: 86400 });
+    const response = await request('mfa', { challenge: 'c'.repeat(43), code: '123456', rememberDevice: 'true' }, { 'x-aihr-client': 'native' });
+    expect((await response.json()).remembered_device_token).toBe('n'.repeat(43)); expect(response.headers.get('set-cookie')).toBeNull();
+  });
+  it('clears local browser trust after a successful reset and refuses malformed remember flags', async () => {
+    recovery.completeRecovery.mockResolvedValue(undefined);
+    const response = await request('reset', { token: 'c'.repeat(43), password: 'new password', code: '123456' }, { origin: 'https://hr.test' });
+    expect(response.cookies.get('__Host-aihr_mfa')).toMatchObject({ value: '', maxAge: 0 });
+    service.verifyMfa.mockClear();
+    const invalid = await request('mfa', { challenge: 'c'.repeat(43), code: '123456', rememberDevice: 'anything' }, { origin: 'https://hr.test' });
+    expect(invalid.status).toBe(400); expect(service.verifyMfa).not.toHaveBeenCalled();
   });
 });

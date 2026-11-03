@@ -195,12 +195,17 @@ export async function startReview(
   });
 }
 
+/** A migrated cohort keeps one review owner, including while the new module is paused. */
+export async function probationOwnsLegacyReviewTx(tx:Tx,employmentId:string):Promise<boolean>{const[row]=await tx.execute<{owned:boolean}>(sql`select app.probation_owns_legacy(${employmentId}::uuid) as owned`);return row?.owned===true;}
+async function assertLegacyReviewOwnerTx(tx:Tx,review:{employmentId:string;reviewType:string}){if(review.reviewType==='probation'&&await probationOwnsLegacyReviewTx(tx,review.employmentId))throw new ReviewError('This employment is owned by the Probation module. Use its current review and approval route.');}
+
 /** The startReview body, usable inside an existing transaction (the sweep reuses it). */
 async function startReviewTx(
   tx: Tx,
   ctx: SessionContext,
   p: { employmentId: string; auto?: boolean },
 ) {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
   const live = await liveTypeAndDates(tx, p.employmentId);
   if (!live) throw new ReviewError('Employee has no active assignment.');
   const window = computeReviewWindow(live.employmentType, live.emp);
@@ -209,6 +214,7 @@ async function startReviewTx(
     throw new ReviewError(`No ${window.reviewType} end date set for this employee.`);
   }
 
+  await assertLegacyReviewOwnerTx(tx,{employmentId:p.employmentId,reviewType:window.reviewType});
   const managerEmploymentId = await currentAdminManager(tx, ctx.tenantId, p.employmentId);
 
   // Pre-insert SELECT for ANY existing review — open OR completed — for this (employment, type). v1 has no
@@ -270,8 +276,10 @@ export async function submitManagerEvaluation(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     const [rev] = await tx.select().from(employmentReview).where(eq(employmentReview.id, p.reviewId)).limit(1).for('update');
     if (!rev) throw new ReviewError('Review not found (or not visible).');
+    await assertLegacyReviewOwnerTx(tx,rev);
     if (rev.status !== 'pending_manager') throw new ReviewError('This review is not awaiting a manager evaluation.');
 
     // Guard: the assigned manager's person, OR admin. Admin fallback covers the no-manager and
@@ -318,8 +326,10 @@ export async function decideReview(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     const [rev] = await tx.select().from(employmentReview).where(eq(employmentReview.id, p.reviewId)).limit(1).for('update');
     if (!rev) throw new ReviewError('Review not found (or not visible).');
+    await assertLegacyReviewOwnerTx(tx,rev);
     if (rev.status !== 'pending_hr') throw new ReviewError('This review is not awaiting an HR decision.');
     await assertHrReviewAuthorityTx(tx,ctx,rev.employmentId);
 
@@ -525,7 +535,8 @@ export function reviewProfile(ctx: SessionContext, employmentId: string): Promis
   return withTenant(ctx, async (tx) => {
     const live = await liveTypeAndDates(tx, employmentId);
     if (!live) return null;
-    const window = computeReviewWindow(live.employmentType, live.emp);
+    const resolved = computeReviewWindow(live.employmentType, live.emp);
+    const window=resolved?.reviewType==='probation'&&await probationOwnsLegacyReviewTx(tx,employmentId)?null:resolved;
     let openReview: { id: string; status: 'pending_manager' | 'pending_hr' } | null = null;
     if (window) {
       const [open] = await tx
@@ -583,6 +594,7 @@ export function pendingManagerReviewsFor(
         and(
           eq(employmentReview.managerEmploymentId, managerEmploymentId),
           eq(employmentReview.status, 'pending_manager'),
+          sql`(${employmentReview.reviewType}<>'probation' OR NOT app.probation_owns_legacy(${employmentReview.employmentId}))`,
         ),
       )
       .orderBy(desc(employmentReview.createdAt))
@@ -603,6 +615,7 @@ export async function sweepDueReviews(
 ): Promise<{ opened: number }> {
   const today = opts.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     // Enumerate active employments left-joined to the current open assignment row.
     const rows = await tx
       .select({
@@ -629,6 +642,7 @@ export async function sweepDueReviews(
     for (const r of rows) {
       const window = computeReviewWindow(r.employmentType, r);
       if (!window || !window.endDate || !window.dueDate) continue;
+      if(window.reviewType==='probation'){const[owned]=await tx.execute<{owned:boolean}>(sql`select app.probation_owns_legacy(${r.employmentId}::uuid) as owned`);if(owned?.owned)continue;}
       if (window.dueDate > today) continue; // not due yet
 
       // Exclude leavers with an open resignation (pending) — on their way out.
@@ -818,6 +832,7 @@ export async function sweepReviewReminders(
 ): Promise<{ reminders: number }> {
   const today = opts.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     const rows = await tx
       .select({
         reviewId: employmentReview.id,
@@ -836,6 +851,7 @@ export async function sweepReviewReminders(
 
     let reminders = 0;
     for (const r of rows) {
+      if(r.reviewType==='probation'){const[owned]=await tx.execute<{owned:boolean}>(sql`select app.probation_owns_legacy(${r.employmentId}::uuid) as owned`);if(owned?.owned)continue;}
       if (r.terminatedOn != null) continue; // leaver — already terminated
       // Leaver with an open resignation — on their way out (mirrors sweepDueReviews).
       const [resign] = await tx
@@ -946,12 +962,14 @@ export async function uploadReviewDocument(
   }
   assertValidReviewDocument(p.mimeType, p.content);
   return withTenant(ctx, async (tx) => {
+    await tx.execute(sql`select app.access_workforce_write_lock()`);
     const [rev] = await tx
-      .select({ id: employmentReview.id, employmentId: employmentReview.employmentId, status: employmentReview.status })
+      .select({ id: employmentReview.id, employmentId: employmentReview.employmentId, reviewType:employmentReview.reviewType,status: employmentReview.status })
       .from(employmentReview)
       .where(eq(employmentReview.id, p.reviewId))
       .limit(1);
     if (!rev) throw new ReviewError('Review not found (or not visible).');
+    await assertLegacyReviewOwnerTx(tx,rev);
     if (rev.status !== 'completed') throw new ReviewError('Documents can only be added once the review is completed.');
     if (p.kind === 'system_letter') {
       const [existing] = await tx
@@ -1049,7 +1067,7 @@ export function pendingReviewTaskMetadata(ctx:SessionContext,stage:'manager'|'hr
       .innerJoin(employment,and(eq(employment.id,employmentReview.employmentId),eq(employment.tenantId,employmentReview.tenantId)))
       .leftJoin(person,and(eq(person.id,employmentReview.personId),eq(person.tenantId,employmentReview.tenantId)))
       .where(and(eq(employmentReview.tenantId,ctx.tenantId),eq(employmentReview.status,stage==='manager'?'pending_manager':'pending_hr'),
-        sql`NOT app.is_self_person(${employmentReview.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds),
+        sql`NOT app.is_self_person(${employmentReview.personId})`,sql`NOT app.probation_legacy_review_owned(${employmentReview.id})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds),
         stage==='manager'?sql`EXISTS (SELECT 1 FROM public.employment AS manager WHERE manager.id=${employmentReview.managerEmploymentId}
           AND manager.tenant_id=${employmentReview.tenantId} AND app.is_self_person(manager.person_id))`:undefined))
       .orderBy(desc(employmentReview.createdAt),employmentReview.id);

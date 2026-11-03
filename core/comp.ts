@@ -1,3 +1,4 @@
+import {contractCompensationAuthorityTx} from './contract-record-authority';
 /**
  * Compensation — generic, jurisdiction-neutral, effective-dated (ADR-0008 #5).
  * Salary is comp *history*: a change CLOSE + INSERTs a new version. Amounts are tenant data.
@@ -26,11 +27,11 @@ import {lockLeaveDependencyReadConfigurationTx,lockLeaveDependenciesTx} from './
 /** The existing compensation WITH CHECK authority precedes subject resource ownership; this adds
  * no Workforce/Payroll role. Access→configuration→employment is held before any pay/history facts.
  * A busy/partial interval must roll back the WHOLE supplied transaction. */
-async function ownCompensationDependenciesTx(tx:Tx,ctx:SessionContext,employmentId:string){
+async function ownCompensationDependenciesTx(tx:Tx,ctx:SessionContext,employmentId:string,contractAuthority=false){
  await tx.execute(sql`select app.access_workforce_write_lock()`);
  await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
  const [row]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.employment e where e.id=${employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid and (app.can_admin_employment(e.id) or app.can_admin_perfcomp_employment(e.id))) as allowed`);
- if(row?.allowed!==true)throw new Error('Salary record or permission is unavailable');
+ if(row?.allowed!==true&&!contractAuthority)throw new Error('Salary record or permission is unavailable');
  await lockLeaveDependenciesTx(tx,ctx.tenantId,[employmentId]);
 }
 
@@ -332,7 +333,7 @@ export async function setCompensation(
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   p={...p,...(p.movement?{movement:{...p.movement}}:{})};
   const run = async (tx: Tx) => {
-    await ownCompensationDependenciesTx(tx,ctx,p.employmentId);
+    await ownCompensationDependenciesTx(tx,ctx,p.employmentId,contractCompensationAuthorityTx(tx,p));
     const [cur] = await tx
       .select()
       .from(compensation)

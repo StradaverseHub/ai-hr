@@ -8,7 +8,20 @@
  * Canonical home of the helper previously defined in core/leave.ts (which now re-exports it): pure,
  * dependency-free, safe to import from leaf modules like core/employment-status.ts and from tests.
  */
+import {isCalendarDate} from './calendar-date';
 export const HR_LOCAL_TZ = 'Asia/Kuala_Lumpur';
+
+/** Shift a calendar day by months, clamping month-end without host timezone rollover. */
+export function addCalendarMonths(day: string, months: number): string {
+  if (!isCalendarDate(day) || !Number.isSafeInteger(months) || Math.abs(months) > 1200) throw new Error('Invalid calendar month offset.');
+  const [year, month, date] = day.split('-').map(Number);
+  const result = new Date(Date.UTC(year, month - 1 + months, 1));
+  const last = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
+  result.setUTCDate(Math.min(date, last));
+  const value = result.toISOString().slice(0, 10);
+  if (!isCalendarDate(value)) throw new Error('Calendar result is outside the supported date range.');
+  return value;
+}
 
 /** "Today" in the tenant's local (Asia/Kuala_Lumpur) calendar as ISO yyyy-mm-dd. */
 export function todayInKualaLumpur(now: Date = new Date()): string {

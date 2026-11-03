@@ -18,8 +18,8 @@ afterEach(()=>{cleanup();vi.clearAllMocks()});
 describe('actual Movement history correction actions',()=>{
  it('retains View, Edit and Delete after exit while keeping New Event restricted',()=>{
   expect(movementScreenAccess({admin:true,canMaintainWorkforce:true,terminatedOn:'2026-10-13'})).toEqual({canCreateMovement:false,canCorrectMovement:true});
-  mount();expect(screen.getByRole('link',{name:m.view})).toHaveAttribute('href',expect.stringContaining('movement=fictional-exit'));
-  expect(screen.getByRole('link',{name:m.edit})).toHaveAttribute('href',expect.stringContaining('editMovement=fictional-exit'));
+  mount();expect(screen.getByRole('link',{name:m.view})).toHaveAttribute('href',expect.stringContaining('/movement/view/fictional-exit'));
+  expect(screen.getByRole('link',{name:m.edit})).toHaveAttribute('href',expect.stringContaining('/movement/edit/fictional-exit'));
   expect(screen.getByRole('button',{name:m.delete})).toBeInTheDocument();
  });
  it('requires reason and closed-payroll acknowledgement on the actual Delete form',async()=>{

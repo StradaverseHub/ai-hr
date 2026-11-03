@@ -71,11 +71,31 @@ async function loopsStatus(ctx:SessionContext):Promise<ExplainerOutcome>{
     'Counts and states only, read under the administrator\'s own access: never who a card is for, who switched a loop on, or a figure from pay. Loops are switched on or off and paused on the Loops page.')};
  }catch(error){if(error instanceof LoopViewRefused)return refuse('not_permitted','The loops overview is available to administrators only.');throw error;}
 }
+/** Public page guidance is literal product knowledge, never a configuration or account read.
+ * Keep these checks in the native owners: an offered capability is not execution authority. */
+export async function passwordPolicyGuidance(ctx:SessionContext):Promise<ExplainerOutcome>{
+ if(!isAdmin(ctx))return refuse('not_permitted','Password Policy guidance is available to administrators only.');
+ const page='/admin/security-center/password-policy';
+ return {ok:true,page,purpose:'Set password requirements and lockout policy for internal embedded HR login.',
+  navigation:'Open Security Center, then Password Policy.',
+  humanBoundary:'A group administrator chooses and saves policy changes, or unlocks a verified password-locked account through its native account controls. Password Policy requires internal embedded HR login; external-provider password controls remain with that provider. Disabled accounts and MFA are separate controls.',
+  provenance:provenance('core/explainers/capabilities.ts#passwordPolicyGuidance','Not applicable: literal public page guidance, not a tenant policy read.',page,'Page purpose and human authority only. No password, policy, account state or provider operation is read or changed.')};
+}
+export async function correctionControlsGuidance(ctx:SessionContext,scope:TerasCapabilityScope):Promise<ExplainerOutcome>{
+ if(!isAdmin(ctx)||!isModuleEnabled(ctx,'payroll',scope.companyId))return refuse('not_permitted','Correction Controls guidance requires an administrator with Payroll enabled.');
+ const page='/payroll/setup/correction-controls';
+ return {ok:true,page,purpose:'Review the control that makes native payroll correction actions available.',
+  navigation:'Open Payroll Setup, then Correction Controls.',
+  humanBoundary:'Administrators can review this page; only a group administrator may save the tenant-wide setting. An authorized human separately chooses any payroll correction action on the affected batch after reviewing its consequences and the native action requirements.',
+  provenance:provenance('core/explainers/capabilities.ts#correctionControlsGuidance','Not applicable: literal public page guidance, not a payroll setting read.',page,'Page purpose and human authority only. No setting, batch, person, pay value or payroll action is read or changed.')};
+}
 export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'explain_payslip_statutory',module:'payroll',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnPayslipStatutory(ctx,{period:text(input.period),item:text(input.item)})},
  {name:'explain_leave_entitlement',module:'leave',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnLeaveEntitlement(ctx,{leave_type:text(input.leave_type),as_of:text(input.as_of)})},
  {name:'explain_attendance_day',module:'attendance',admin:false,worker:'explainers',run:(ctx,input,scope)=>explainOwnAttendanceDay(ctx,{date:text(input.date)},scope.locale)},
  {name:'setup_copilot',module:null,admin:true,worker:null,run:(ctx,_input,scope)=>copilot(ctx,scope)},
+ {name:'password_policy_guidance',module:null,admin:true,worker:null,run:ctx=>passwordPolicyGuidance(ctx)},
+ {name:'correction_controls_guidance',module:'payroll',admin:true,worker:null,run:(ctx,_input,scope)=>correctionControlsGuidance(ctx,scope)},
  {name:'pay_aggregates',module:'payroll',admin:false,access:'payroll',worker:null,run:(ctx,input)=>payAggregates(ctx,input)},
  {name:'workforce_metrics',module:null,admin:false,access:'team',worker:null,run:(ctx,input)=>workforceAggregates(ctx,input)},
  // AI v2 W5: "Why?" on the pay difference and the claim limits, under the explainers worker switch like the three above.

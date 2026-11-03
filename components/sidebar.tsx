@@ -545,6 +545,7 @@ export function Sidebar({
   isAdmin,
   canConfigureIdentityEmail = false,
   canConfigureLoginPresentation = false,
+  canConfigurePasswordPolicy = false,
   canPreviewIdentityEmail = false,
   canApprove = false,
   hasAssignedAttendanceApproval = false,
@@ -561,6 +562,8 @@ export function Sidebar({
   performanceAdminHref,
   approvalCount = 0,
   taskCount = 0,
+  probationAccess = {page:false,configure:false},
+  contractStaffAccess = {page:false,configure:false},
   onboardingAccess = false,
   onboardingV9Access = false,
   onboardingV9Navigation,
@@ -582,6 +585,7 @@ export function Sidebar({
   canProvisionUsers?: boolean;
   canConfigureIdentityEmail?: boolean;
   canConfigureLoginPresentation?: boolean;
+  canConfigurePasswordPolicy?: boolean;
   /** Actual HR administrator access, independent of the broader partner administration rail. */
   canPreviewIdentityEmail?: boolean;
   /** Manager-and-up: shows the Approvals inbox. */
@@ -632,6 +636,8 @@ export function Sidebar({
    *  never queries. 0 (or a viewer without the row) renders no badge. */
   approvalCount?: number;
   taskCount?: number;
+  probationAccess?:{page:boolean;configure:boolean;intake?:boolean};
+  contractStaffAccess?:{page:boolean;configure:boolean;intake?:boolean};
   onboardingAccess?: boolean;
   onboardingV9Access?: boolean;
   onboardingV9Navigation?: V9NavigationPermissions;
@@ -731,7 +737,7 @@ export function Sidebar({
   };
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
-  const securityAccess={admin:canAdministerSecurity,configure:canConfigureAccess,provision:canProvisionUsers};
+  const securityAccess={admin:canAdministerSecurity,configure:canConfigureAccess,provision:canProvisionUsers,passwordPolicy:canConfigurePasswordPolicy};
   // Issue 17: the AI Centre row is also the only way to Operations and Administration, so an actual HR
   // administrator (whose requireAdmin pages those are) keeps it without the Assistant grant or module; /assistant
   // then shows its unavailable home with the centre's tabs, and every page still checks for itself.
@@ -777,10 +783,20 @@ export function Sidebar({
     } satisfies ChildItem)).filter(canSeeChild);
   const lifecycleShared: ChildItem[] = V9_SHARED_NAVIGATION.filter(item => onboardingV9Access &&
     (item.view === 'tasks' || !!onboardingV9Navigation?.records)).map(item => ({href:item.href,labelKey:item.labelKey,icon:ONBOARDING_NODE.icon,exactHref:true})).filter(canSeeChild);
+  // New module owners resolve both the actual purchased company and business-role visibility.
+  // These additive People destinations do not inherit the legacy global-only Lifecycle nav gate.
+  const scopedLifecycleRows:ChildItem[]=[
+    ...(probationAccess.page?[{href:'/lifecycle/probation',labelKey:'probationConfirmation',icon:ONBOARDING_NODE.icon,exactHref:true,ownedSubpaths:['/lifecycle/probation'] }]:[]),
+    ...(contractStaffAccess.page?[{href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ONBOARDING_NODE.icon,exactHref:true,ownedSubpaths:['/lifecycle/contracts'] }]:[]),
+    ...(probationAccess.configure?[['settings','probationSettings'],['forms','probationForms'],['routes','probationRoutes'],['workflows','probationWorkflows'],['templates','probationTemplates']].map(([path,labelKey])=>({href:`/lifecycle/probation/${path}`,labelKey,icon:ONBOARDING_NODE.icon,submenuKey:'probationConfirmation'})):[]),
+    ...(probationAccess.configure||probationAccess.intake===true?[{href:'/lifecycle/probation/intake',labelKey:'probationIntake',icon:ONBOARDING_NODE.icon,submenuKey:'probationConfirmation'}]:[]),
+    ...(contractStaffAccess.intake===true?[{href:'/lifecycle/contracts/intake',labelKey:'contractIntake',icon:ONBOARDING_NODE.icon,submenuKey:'contractManagement'}]:[]),
+    ...(contractStaffAccess.configure?[['settings','contractSettings'],['workflows','contractWorkflows'],['templates','contractTemplates']].map(([path,labelKey])=>({href:`/lifecycle/contracts/${path}`,labelKey,icon:ONBOARDING_NODE.icon,submenuKey:'contractManagement'})):[]),
+  ];
   const destinations: ChildItem[] = [...authorizedRows.filter(row => {
     const placement = navigationPlacement(row.href);
     return !placement || !('module' in placement) || placement.module !== 'onboarding';
-  }), ...additionalRows.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared];
+  }), ...additionalRows.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared, ...scopedLifecycleRows];
   const navigation = placeNavigation(destinations);
   const availableWorkspaces = (['ops','strata'] as const).filter(workspace =>
     navigation.placed.some(row => row.placement.area === workspace),
@@ -813,7 +829,7 @@ export function Sidebar({
     {labelKey:selectedWorkspace==='strata'?'workspaceStrata':'workspaceOps',items:moduleRows},
     ...(systemRows.length ? [{labelKey:'systemConfiguration',items:[
       ...(otherSystemRows.length?[{collapsible:true,activeMatch:'children',labelKey:'systemConfiguration',icon:Settings2,children:otherSystemRows} satisfies CollapsibleGroupItem]:[]),
-      ...(securityRows.length?[{collapsible:true,activeMatch:'children',labelKey:'securityCenter',icon:ShieldCheck,defaultHref:SECURITY_CENTER,children:securityRows} satisfies CollapsibleGroupItem]:[]),
+      ...(securityRows.length?[{collapsible:true,activeMatch:'children',labelKey:'securityCenter',icon:ShieldCheck,children:securityRows} satisfies CollapsibleGroupItem]:[]),
     ]}] : []),
   ];
   const isWorkspaceKey = (key?:string) => key==='workspaceOps'||key==='workspaceStrata';
@@ -909,7 +925,7 @@ export function Sidebar({
   }
   usePublishNavIndex(navEntries, activeEntry);
 
-  const openNode = openKey && !monolith
+  const openNode = openKey && (!monolith || openKey === 'securityCenter')
     ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (atelier || !r.defaultHref || collapsed)) ?? null
     : null;
   const openChildren = openNode ? openNode.children.filter(canSeeChild) : [];
@@ -948,6 +964,11 @@ export function Sidebar({
   const monolithModule = (item: CollapsibleGroupItem) => {
     const children = item.children.filter(canSeeChild);
     if (children.length === 0) return null;
+    if (item.labelKey === 'securityCenter') return <NavFlyout key={item.labelKey} labelKey={item.labelKey} icon={item.icon}
+      open={openKey === item.labelKey} active={children.some(isRowActive)} collapsed={false} rowBase={railRow}
+      panelId={`nav-flyout-${item.labelKey}`} onOpen={() => setOpenKey(item.labelKey)}
+      onToggle={() => setOpenKey(key => key === item.labelKey ? null : item.labelKey)}
+      triggerRef={element => { triggerRefs.current[item.labelKey] = element; }}/>;
     const active =
       item.defaultHref || item.activeMatch === 'children'
         ? children.some(isRowActive)
@@ -1121,12 +1142,12 @@ export function Sidebar({
       const Icon = item.icon;
       const label = t(item.labelKey);
       const kidsId = `atelier-flyout-${item.labelKey}`;
-      const flip = () => setOpenKey(expanded ? null : item.labelKey);
+      const flip = () => setOpenKey(item.labelKey === 'securityCenter' ? item.labelKey : expanded ? null : item.labelKey);
       const register = (element: HTMLButtonElement | null) => { triggerRefs.current[item.labelKey] = element; };
       // Collapsed (b953a339), a module is its icon: it opens the floating sub-menu, which lists every page
       // the module has — including a landing page, which is always one of its children.
       return (
-        <div key={item.labelKey} data-atelier-module={item.labelKey}>
+        <div key={item.labelKey} data-atelier-module={item.labelKey} onPointerEnter={event => { if (item.labelKey === 'securityCenter' && event.pointerType === 'mouse') setOpenKey(item.labelKey); }}>
           {item.defaultHref && !collapsed ? (
             <div className={cn('atelier-row pr-0', active&&'bg-accent font-medium text-foreground')}>
               <Link href={item.defaultHref} onClick={()=>setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
@@ -1367,6 +1388,7 @@ export function Sidebar({
                       collapsed={collapsed}
                       rowBase={rowBase}
                       panelId={`nav-flyout-${item.labelKey}`}
+                      onOpen={item.labelKey === 'securityCenter' ? () => setOpenKey(item.labelKey) : undefined}
                       onToggle={() =>
                         setOpenKey((k) => (k === item.labelKey ? null : item.labelKey))
                       }

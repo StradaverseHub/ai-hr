@@ -857,8 +857,13 @@ describe('§6 the Movement screen reaches the same refusal, and it is now legibl
     expect(src).not.toContain('await payModeErrorMessage(e)');
     // ONE translator in this file, not two that can disagree.
     expect((src.match(/async function \w*ErrorMessage\(/g) ?? []).length, 'exactly one translator').toBe(1);
-    // FOUR callers: the two salary forms and the two movement writers.
-    expect((src.match(/await compensationErrorMessage\(e\)/g) ?? []).length).toBe(4);
+    // Both entry points on each Movement writer and the two salary actions use the same translator.
+    const writers=src.split(/(?=export async function )/).flatMap(body=>{
+      const name=body.match(/^export async function (\w+)/)?.[1];
+      return name?Array.from(body.matchAll(/await compensationErrorMessage\(e\)/g),()=>name):[];
+    });
+    expect(writers).toEqual(['createMovementEventAction','createMovementEventAction',
+      'editMovementEventAction','editMovementEventAction','setCompensationAction','editCompensationAction']);
   });
 
   it('the ROLLBACK action is deliberately NOT routed, and the reason is checkable', () => {

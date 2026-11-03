@@ -1,0 +1,25 @@
+import {sql} from 'drizzle-orm';
+import {z} from 'zod';
+import type {SessionContext} from '../db/client';
+import {withScopedLifecycleTenant} from './module-gate';
+import {assertModuleEnabled,isModuleEnabled} from './entitlements';
+import {validateProbationOfflinePdf} from '../lib/probation-offline-pdf';
+import {ProbationError,type ProbationPersonnel} from './probation';
+import type {ProbationIntakeDisposition,ProbationIntakeStageOption,ProbationRequiredIntakePart,ProbationOfflineFinalDecision} from '../lib/probation-intake-model';
+export type ProbationIntakeCandidate={source:ProbationPersonnel;classification:'excluded'|'held'|'ready'|'already_admitted';issues:string[];canReview:boolean;canValidate:boolean;requiredParts:ProbationRequiredIntakePart[];stageOptions:ProbationIntakeStageOption[];offlineDecisionReady:boolean;offlineDecision:ProbationOfflineFinalDecision|null;holders:{role:string;name:string;userId:string}[];sourceDigest:string;disposition:ProbationIntakeDisposition|null;evidence:{id:string;name:string;reason:string;createdAt:string}[]};
+export type ProbationIntakeWorkspace={candidates:ProbationIntakeCandidate[];truncated:boolean;excludedCount:number};
+const id=z.uuid();
+export function probationIntakeWorkspace(ctx:SessionContext,companyId:string):Promise<ProbationIntakeWorkspace>{return withScopedLifecycleTenant(ctx,async tx=>{assertModuleEnabled(ctx,'lifecycle',id.parse(companyId));const[row]=await tx.execute<{data:ProbationIntakeWorkspace}>(sql`select app.probation_intake_workspace(${companyId}::uuid) as data`);return row.data;});}
+export function saveProbationIntakeDisposition(ctx:SessionContext,input:{employmentId:string;revision:number;sourceDigest:string;kind:'exclude'|'unfinished';reason:string;validatedUnknown:boolean;exclusionFlags:ProbationIntakeDisposition['exclusionFlags'];parts:ProbationIntakeDisposition['parts'];extensionCount?:number;extensionEventIds?:string[];validatedHistory?:boolean}){return withScopedLifecycleTenant(ctx,async tx=>{
+ const{employmentId,revision,sourceDigest,...data}=input;id.parse(employmentId);z.number().int().nonnegative().parse(revision);z.string().regex(/^[a-f0-9]{64}$/).parse(sourceDigest);
+ const[row]=await tx.execute<{id:string}>(sql`select app.probation_intake_save(${employmentId}::uuid,${revision},${sourceDigest},${JSON.stringify(data)}::jsonb) as id`);return row.id;
+});}
+export function uploadProbationCutoverEvidence(ctx:SessionContext,input:{employmentId:string;name:string;content:Buffer;reason:string}){return withScopedLifecycleTenant(ctx,async tx=>{
+ id.parse(input.employmentId);await validateProbationOfflinePdf(input.content);
+ const[row]=await tx.execute<{id:string}>(sql`select app.probation_intake_upload(${input.employmentId}::uuid,${input.name},${input.content},${input.reason}) as id`);return row.id;
+});}
+export function readProbationCutoverEvidence(ctx:SessionContext,input:{employmentId:string;evidenceId:string}):Promise<{name:string;content:Buffer}>{return withScopedLifecycleTenant(ctx,async tx=>{const[row]=await tx.execute<{name:string;content:Buffer}>(sql`select * from app.probation_intake_evidence_read(${id.parse(input.employmentId)}::uuid,${id.parse(input.evidenceId)}::uuid)`);if(!row)throw new ProbationError('forbidden','The original scoped offline PDF is unavailable.');return row;});}
+
+export function probationIntakeCompanies(ctx:SessionContext):Promise<{id:string;name:string;canPrepare:boolean}[]>{if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')&&!ctx.entitlements?.scopedModules.lifecycle?.some(company=>isModuleEnabled(ctx,'lifecycle',company)))return Promise.resolve([]);return withScopedLifecycleTenant(ctx,async tx=>{const rows=await tx.execute<{id:string;name:string;canPrepare:boolean}>(sql`select * from app.probation_intake_companies()`);return rows.filter(row=>ctx.entitlementsExempt!==undefined||isModuleEnabled(ctx,'lifecycle',row.id));});}
+export function proposeProbationOfflineFinalDecision(ctx:SessionContext,input:{employmentId:string;entryId:string;revision:number;evidenceId:string;outcome:ProbationOfflineFinalDecision['outcome'];extensionMonths:3|6|null;reason:string}){return withScopedLifecycleTenant(ctx,async tx=>{const[row]=await tx.execute<{id:string}>(sql`select app.probation_propose_offline_final(${id.parse(input.employmentId)}::uuid,${id.parse(input.entryId)}::uuid,${input.revision},${id.parse(input.evidenceId)}::uuid,${input.outcome},${input.extensionMonths},${input.reason}) as id`);return row.id;});}
+export function adjudicateProbationOfflineFinalDecision(ctx:SessionContext,input:{caseId:string;partId:string;revision:number;outcome:Exclude<ProbationOfflineFinalDecision['outcome'],'other'>;extensionMonths?:3|6|null;reason:string}){return withScopedLifecycleTenant(ctx,async tx=>{const[row]=await tx.execute<{id:string}>(sql`select app.probation_adjudicate_offline_final(${id.parse(input.caseId)}::uuid,${id.parse(input.partId)}::uuid,${input.revision},${input.outcome},${input.extensionMonths??null}::integer,${input.reason}) as id`);return row.id;});}

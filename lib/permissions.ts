@@ -107,7 +107,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   // Shared authenticated shell; facts/effects additionally require current Assistant/native access.
   {screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',routes:['/assistant','/assistant/leave','/assistant/notifications','/assistant/profile','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil','/assistant/approvals','/assistant/hr','/assistant/attendance','/assistant/pay-codes','/assistant/rewards','/assistant/payroll-close','/assistant/statutory','/assistant/payroll-runs','/assistant/bank','/assistant/compensation','/assistant/cost-allocation','/assistant/day-schedule','/assistant/document-details','/assistant/emergency-contacts','/assistant/employee-code','/assistant/employee-draft-discard','/assistant/employee-drafts','/assistant/family','/assistant/fixed-item-archive','/assistant/offboarding-case-cancel','/assistant/offboarding-step','/assistant/offboarding-step-undo','/assistant/org-departments','/assistant/org-employee-id','/assistant/org-people-general','/assistant/org-positions','/assistant/passport','/assistant/payment-method','/assistant/payroll-reopen','/assistant/payroll-reset','/assistant/performance/checkins','/assistant/performance/checkins/complete','/assistant/performance/checkins/schedule','/assistant/performance/goals','/assistant/profile-request-rejection','/assistant/qualifications','/assistant/rewards/calendar','/assistant/rewards/cancel','/assistant/rewards/return','/assistant/schedule-group','/assistant/tp3-opening','/assistant/workforce-profile'],hasScopeNote:true},
   {screenKey:'jobDescriptions',href:'/admin/job-descriptions',labelKey:'nav.jobDescriptions',guard:'requireAdmin',routes:['/admin/job-descriptions','/admin/job-descriptions/new','/admin/job-descriptions/configuration','/admin/job-descriptions/[id]','/admin/job-descriptions/[id]/print']},
-  {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedAdmin',routes:['/admin/rewards/access']},
+  {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedSession',hasScopeNote:true,routes:['/admin/rewards/access']},
   {screenKey:'peopleGeneral',href:'/admin/settings/people-general',labelKey:'nav.peopleGeneral',guard:'requireAdmin',routes:['/admin/settings/people-general']},
   {screenKey:'myTp3',href:'/me/tp3',labelKey:'nav.myTp3',guard:'scopedSession',routes:['/me/tp3'],hasScopeNote:true},
   {screenKey:'myEa',href:'/me/ea',labelKey:'nav.myEa',guard:'scopedSession',routes:['/me/ea'],hasScopeNote:true},
@@ -128,7 +128,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'letterFields',href:'/letters/fields',labelKey:'letters.fields.title',guard:'scopedSession',routes:['/letters/fields','/letters/fields/[fieldId]'],hasScopeNote:true},
   // This is a capability gate, not a role grant. The reference grid renders it conditionally for all
   // roles; the page reads current SQL authority and a matching individual denial always wins.
-  {screenKey:'securityCenter',href:'/admin/security-center',labelKey:'securityCenter.title',guard:'requireSecurityCenter',routes:['/admin/security-center'],hasScopeNote:true},
+  {screenKey:'securityCenter',href:'/admin/security-center',labelKey:'securityCenter.title',guard:'requireSecurityCenter',routes:['/admin/security-center','/admin/security-center/password-policy'],hasScopeNote:true},
   {screenKey:'functionAccess',href:'/admin/users/function-access',labelKey:'securityCenter.functions.title',guard:'requireAdmin',routes:['/admin/users/function-access']},
   {screenKey:'createLogin',href:'/admin/users/create',labelKey:'securityCenter.create.title',guard:'requireGroupAdministration',routes:['/admin/users/create'],hasScopeNote:true},
   {screenKey:'inviteUser',href:'/admin/users/invite',labelKey:'securityCenter.invite.title',guard:'requireGroupAdministration',routes:['/admin/users/invite'],hasScopeNote:true},
@@ -1404,6 +1404,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       // /payroll/transaction-view uses for `?tab=`.
       '/payroll/statutory-adjustment',
       '/payroll/setup',
+      '/payroll/setup/correction-controls',
       // 929ea296 (PR126): Recalculate Income Tax Value — the setup card's preview/confirm screen and one batch's
       // detail. Same scopedAdmin payroll key as the hub (requirePayrollAccess); it shows per-employee taxable
       // income and records tax-basis corrections. Registered for test/function-access.test.ts reverse completeness.

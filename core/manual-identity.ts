@@ -1,5 +1,6 @@
 import { internalSelected, internalIssuer } from '../lib/internal-auth/config';
-import { validatePassword } from '../lib/internal-auth/crypto';
+import {validatePassword,decryptRecord} from '../lib/internal-auth/crypto';
+import {DEFAULT_PASSWORD_POLICY,passwordPolicyKey,validatePasswordPolicy,passwordMeetsRequirements,type PasswordPolicyState} from '../lib/password-policy';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { keycloakConfig, keycloakSelected } from '../lib/identity/config';
@@ -23,6 +24,14 @@ async function read(tx:Tx,id:string) {
   if(!rows[0])throw new ManualIdentityError('forbidden');
   return rows[0];
 }
+async function validateInitialPassword(ctx:SessionContext,tx:Tx,password:string,username:string,email:string){
+ if(!internalSelected()){validateTemporaryPassword(password,username,email);return;}
+ const key=passwordPolicyKey(ctx.tenantId);
+ const [record]=await tx.execute(sql`select sealed from app.internal_auth_read(${key},false)`) as unknown as {sealed:string}[];
+ const policy=record?validatePasswordPolicy(decryptRecord<PasswordPolicyState>(record.sealed,key).policy):DEFAULT_PASSWORD_POLICY;
+ try{if(policy.requirements){if(!passwordMeetsRequirements(password,policy.requirements,username,email))throw Error();}else validatePassword(password,username,email);}
+ catch{throw new ManualIdentityError('invalid');}
+}
 export async function listManualIdentityEnrollments(ctx:SessionContext) {
   try {
     const issuer=await authorized(ctx);
@@ -39,8 +48,7 @@ export async function createManualAccount(ctx:SessionContext,input:CreateManualA
       (input.companyId!==null&&!canonicalUuid.test(input.companyId))||!ROLES.has(input.role)||
       !/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username)||username.startsWith('service-account-')||
       email.length>255||!/^\S+@[^\s@]+\.[^\s@]+$/.test(email)|| (input.role==='super_admin'&&input.companyId!==null))throw new ManualIdentityError('invalid');
-    validateTemporaryPassword(input.password,username,email);
-    if(internalSelected()) { try { validatePassword(input.password,username,email); } catch { throw new ManualIdentityError('invalid'); } }
+    await withTenant(ctx,tx=>validateInitialPassword(ctx,tx,input.password,username,email));
     // Intent and attestation commit before any provider mutation. No credential is a SQL parameter.
     await withTenant(ctx,tx=>input.personId===null
       ? tx.execute(sql`select * from app.manual_identity_reserve_new_person(${input.id}::uuid,${issuer},${input.fullName!.trim()},${username},${email},${input.role},${input.companyId}::uuid)`)
@@ -57,13 +65,13 @@ export async function resumeManualAccount(ctx:SessionContext,id:string,password:
       const e=await read(tx,id); if(e.issuer!==issuer)throw new ManualIdentityError('forbidden');
       if(e.status==='cancelled')throw new ManualIdentityError('conflict');
       if(e.status!=='reserved')return;
-      validateTemporaryPassword(password,e.username,e.email);
+      await validateInitialPassword(ctx,tx,password,e.username,e.email);
       const subject=await identity.create(e); // disabled, no password; persist the returned exact ID first
       await tx.execute(sql`select app.manual_identity_prepare(${id}::uuid,${subject})`);
     });
     await withTenant(ctx,async tx=>{
       const e=await read(tx,id); if(e.status!=='prepared')return;
-      validateTemporaryPassword(password,e.username,e.email);
+      await validateInitialPassword(ctx,tx,password,e.username,e.email);
       await identity.setPassword(e,password);
       await tx.execute(sql`select app.manual_identity_link(${id}::uuid,${e.subject})`);
     });

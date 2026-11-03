@@ -14,7 +14,7 @@
 //
 // Every option list is pre-loaded and pre-translated by the server page; this island owns only the form
 // state. The tab shell injects the hidden `tab` field on submit, so the save lands back on the Movement tab.
-import { useRef, useState } from 'react';
+import { useRef, useState, useActionState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { personnelWorkflowControl, personnelWorkflowInput, personnelFormLabel, personnelFormCatalog, personnelFormChoices } from '@/lib/personnel-form-contract';
@@ -22,8 +22,9 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DateField } from '@/components/ui/date-field';
 import { CurrencySelect } from '@/components/currency-select';
 import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structure-fields';
-import { createMovementEventAction, editMovementEventAction } from './actions';
+import { createMovementEventAction, editMovementEventAction,saveMovementPageAction } from './actions';
 
+import type {MovementPageContext} from '@/lib/personnel-movement-navigation';
 import {MOVEMENT_FORM_IDS, movementFormFields} from '@/lib/movement-form-contract';
 import {isComparisonKind} from '@/core/movement-kinds';
 import {MOVEMENT_PENDING_INPUT_FIELDS,type MovementPendingFormValues} from '@/lib/movement-pending-input';
@@ -162,6 +163,7 @@ export function MovementNewEvent({
   companies,
   orgByCompany,
   cancelHref,
+  pageContext,
   edit,
 }: {
   employmentId: string;
@@ -213,6 +215,7 @@ export function MovementNewEvent({
    */
   orgByCompany?: Record<string, MovementOrgScope>;
   cancelHref: string;
+  pageContext?:MovementPageContext;
   edit?: MovementEditTarget;
 }) {
   const t = useTranslations('people.detail.movement');
@@ -236,6 +239,13 @@ export function MovementNewEvent({
   const after = {...current,...saved};
   const initialFields=useRef<Map<string,string>|null>(null);
   const touched=useRef(new Set<string>());
+  const [pageError,pageAction,pagePending]=useActionState(async(previous:string|null,data:FormData)=>{
+    if(saved)for(const key of MOVEMENT_PENDING_INPUT_FIELDS){
+      if(Object.prototype.hasOwnProperty.call(saved,key)||touched.current.has(key))continue;
+      if(String(data.get(key)??'')===(initialFields.current?.get(key)??''))data.delete(key);
+    }
+    return saveMovementPageAction(previous,data);
+  },null);
   const submitPendingCorrection=async(data:FormData)=>{
     for(const key of MOVEMENT_PENDING_INPUT_FIELDS){
       if(Object.prototype.hasOwnProperty.call(saved,key)||touched.current.has(key))continue;
@@ -539,9 +549,10 @@ export function MovementNewEvent({
   </div>;
 
   return (
-    <form action={saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
+    <form aria-busy={pagePending} action={pageContext ? pageAction : saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
       ref={form=>{if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
       onSubmit={event=>{
+        if(pagePending){event.preventDefault();return;}
         // 1d58019a Step 2 — Required to Change, checked before the round trip (the server checks it too).
         if (!typeRules) return;
         const data = new FormData(event.currentTarget);
@@ -566,6 +577,8 @@ export function MovementNewEvent({
           if (target.name) touched.current.add(target.name);
         }
       }}>
+      {pageContext&&<><input type="hidden" name="movementPage" value={edit?'edit':'new'}/><input type="hidden" name="showCorrected" value={pageContext.showCorrected??''}/><input type="hidden" name="from" value={pageContext.from??''}/></>}
+      {pageError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive">{pageError}</p>}
       <input type="hidden" name="employmentId" value={employmentId} />
       {edit && <input type="hidden" name="movementId" value={edit.movementId} />}
       {ruleError && (

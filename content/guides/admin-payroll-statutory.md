@@ -36,6 +36,16 @@ In Transaction View's **Transaction Detail**, **Total Overtime** appears in **Su
 
 Personnel Management's **Bank & Statutory → EPF Contribution** preserves the percentage shown after save and reopen, including decimal rates such as 14.5. The selected EPF category continues to determine which fields are editable and which validation and contribution rules apply.
 
+## Review payroll correction controls
+
+From [Payroll setup](/payroll/setup), open [Correction controls](/payroll/setup/correction-controls). The separate page contains the existing correction control; it does not introduce a new payroll calculation or grant additional access.
+
+1. Use an authorized administrator account with the required payroll module and company scope. A group administrator can change the control; a company-scoped administrator can inspect the read-only view where their existing access permits it.
+2. Review the current setting and its explanation before deciding whether to change it. The saved setting governs the tenant, not only the company currently selected. Select **Save** only after reviewing that scope, and wait for the saved confirmation. If saving is refused, resolve the displayed access or validation problem rather than switching identities or repeating a payroll action.
+3. Return to the intended payroll run and review its company, period, state and affected employees. Choose any reset, correction or reprocess through the run's existing native action and confirmation. Enabling the control does not itself reset a run, change results or reopen closed payroll; the action's own permissions and state checks still apply.
+
+Assistant correction-controls guidance explains this route and the human decision boundary. It does not inspect payroll amounts or change settings, reset, reopen or reprocess a run. Keep the payroll administrator's decision separate from viewing guidance.
+
 ## Corrections and special cases
 
 [Back pay](/payroll/back-pay), [Statutory adjustment](/payroll/statutory-adjustment) and the multi-cycle worksheet serve different correction jobs. Review the period, existing runs and signed adjustments before committing. Final pay, leave encashment, taxable benefits and special incentives need their own configured treatment; do not put every exceptional payment into Bonus.

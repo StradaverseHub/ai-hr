@@ -59,6 +59,7 @@ describe('ADR-0080 rung 7: payroll pack registration', () => {
   it('declares the audited satellite tables (D11 criterion 2)', () => {
     const tables = (payrollPack.satelliteTables ?? []).map((t) => t.table);
     expect(tables).toEqual([
+      'payroll_tax_basis_replacement',
       'payroll_policy',
       'company_payroll_config',
       'payroll_cycle',

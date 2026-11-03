@@ -12,25 +12,26 @@ import { previewRewardAccessBatchAction, previewRewardAccessCopyAction, saveRewa
 type Value = RewardAccessAdministration;
 type Labels = { name: (userId: string) => string; scope: (unitId: string) => string };
 const MAX = 500;
-function BatchPreview({ changes, labels, onSaved }: { changes: RewardAccessChange[]; labels: Labels; onSaved: (reviews: number) => void }) {
-    const t = useTranslations('rewardsAccess'), b = useTranslations('rewardsAccessBatch'), r = useTranslations('rewards');
-    const [preview, setPreview] = useState<{ key: string; submitted: RewardAccessChange[]; changes: RewardAccessChange[]; alreadyPresent: RewardAccessChange[]; digest: string } | null>(null);
+function BatchPreview({ changes, labels, onSaved }: { changes: RewardAccessChange[]; labels: Labels; onSaved: (reviews: number,pending?:boolean) => void }) {
+    const t = useTranslations('rewardsAccess'), b = useTranslations('rewardsAccessBatch'), r = useTranslations('rewards'),c=useTranslations('rewardsAccessControl');
+    const [reason,setReason]=useState('');
+    const [preview, setPreview] = useState<{ key: string; submitted: RewardAccessChange[]; changes: RewardAccessChange[]; alreadyPresent: RewardAccessChange[]; digest: string;pending?:boolean } | null>(null);
     const [error, setError] = useState(''), [busy, start] = useTransition();
-    const key = JSON.stringify(changes), current = preview?.key === key ? preview : null;
+    const key = JSON.stringify({changes,reason}), current = preview?.key === key ? preview : null;
     const line = (c: RewardAccessChange) => `${c.after ? labels.name(c.after.userId) : ''} · ${c.after ? r(`roles.${c.after.role}`) : ''} · ${labels.scope(c.unitId)}`;
-    return <div className="mt-5 space-y-3">
+    return <div className="mt-5 space-y-3"><Field label={c('requestReason')}><textarea className={inputCls} value={reason} minLength={10} maxLength={2000} onChange={e=>setReason(e.target.value)}/></Field>
   {changes.length > MAX && <p role="alert" className="text-sm text-destructive">{b('tooMany')}</p>}
-  <div className="flex justify-end"><Button type="button" disabled={busy || !changes.length || changes.length > MAX} onClick={() => start(async () => {
+  <div className="flex justify-end"><Button type="button" disabled={busy || reason.trim().length<10 || !changes.length || changes.length > MAX} onClick={() => start(async () => {
         setError(''); setPreview(null);
         try {
-            const result = await previewRewardAccessBatchAction({ changes });
+            const result = await previewRewardAccessBatchAction({ changes,reason });
             if (result.ok) setPreview({ key, submitted: changes, ...result.preview });
             else setError(result.error);
         }
         catch { setError('system'); }
     })}>{t('preview')}</Button></div>
   {error && <p role="alert" className="text-sm text-destructive">{t(`errors.${error}`)}</p>}
-  {current && <section className="space-y-3 rounded-md border p-4" aria-label={t('previewTitle')}><h3 className="font-semibold">{t('previewTitle')}</h3>
+  {current && <section className="space-y-3 rounded-md border p-4" aria-label={t('previewTitle')}><h3 className="font-semibold">{t('previewTitle')}</h3><p className="text-sm font-medium">{c(current.pending?'pendingPreview':'immediatePreview')}</p>
    <p className="text-sm">{b('newCount', { count: current.changes.length })} · {b('presentCount', { count: current.alreadyPresent.length })}</p>
    {current.changes.length > 0 && <ul className="list-disc space-y-1 pl-5 text-sm">{current.changes.map(c => <li key={`${c.unitId}:${c.after?.userId}:${c.after?.role}`}>{line(c)}</li>)}</ul>}
    {current.alreadyPresent.length > 0 && <div><p className="text-xs font-medium text-muted-foreground">{b('presentTitle')}</p><ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">{current.alreadyPresent.map(c => <li key={`${c.unitId}:${c.after?.userId}:${c.after?.role}`}>{line(c)}</li>)}</ul></div>}
@@ -38,16 +39,16 @@ function BatchPreview({ changes, labels, onSaved }: { changes: RewardAccessChang
    <Button type="button" disabled={busy || !current.changes.length} onClick={() => start(async () => {
         setError('');
         try {
-            const result = await saveRewardAccessBatchAction({ changes: current.submitted }, current.digest);
+            const result = await saveRewardAccessBatchAction({ changes: current.submitted,reason }, current.digest);
             setPreview(null);
-            if (result.ok) onSaved(result.result.reviews);
+            if (result.ok) onSaved(result.result.reviews,result.result.pending);
             else setError(result.error);
         }
         catch { setPreview(null); setError('system'); }
     })}>{t('save')}</Button></section>}
  </div>;
 }
-export function BatchAddAccess({ value, accounts, labels, onSaved, onCancel }: { value: Value; accounts: ComboboxOption[]; labels: Labels; onSaved: (reviews: number) => void; onCancel: () => void }) {
+export function BatchAddAccess({ value, accounts, labels, onSaved, onCancel }: { value: Value; accounts: ComboboxOption[]; labels: Labels; onSaved: (reviews: number,pending?:boolean) => void; onCancel: () => void }) {
     const t = useTranslations('rewardsAccess'), b = useTranslations('rewardsAccessBatch'), r = useTranslations('rewards');
     const c=useTranslations('rewardsAccessControl'),[validFrom,setValidFrom]=useState(todayInKualaLumpur()),[validTo,setValidTo]=useState(''),[coversUserId,setCoversUserId]=useState('');
     const [userId, setUserId] = useState(''), [role, setRole] = useState<RewardRole>('bu'), [ticked, setTicked] = useState<string[]>([]), [suggested, setSuggested] = useState<string[]>([]), [search, setSearch] = useState('');
@@ -83,7 +84,7 @@ export function BatchAddAccess({ value, accounts, labels, onSaved, onCancel }: {
  </Card>;
 }
 type Copy = { proposals: RewardAccessCopyProposal[]; alreadyPresent: RewardAccessChange[]; skipped: { unitId: string; role: RewardRole; name: string | null; email: string | null }[]; unmatched: string[] };
-export function CopyAccess({ value, labels, onSaved, onCancel }: { value: Value; labels: Labels; onSaved: (reviews: number) => void; onCancel: () => void }) {
+export function CopyAccess({ value, labels, onSaved, onCancel }: { value: Value; labels: Labels; onSaved: (reviews: number,pending?:boolean) => void; onCancel: () => void }) {
     const t = useTranslations('rewardsAccess'), b = useTranslations('rewardsAccessBatch'), r = useTranslations('rewards');
     const cycles = [...new Map(value.reviews.filter(x => x.kind === 'annual').map(x => [x.cycleId, x])).values()];
     const [from, setFrom] = useState(''), [to, setTo] = useState(''), [copy, setCopy] = useState<Copy | null>(null), [picked, setPicked] = useState<number[]>([]), [error, setError] = useState(''), [busy, start] = useTransition();

@@ -2,9 +2,11 @@
 import {readdirSync,readFileSync,statSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterEach,describe,expect,it,vi} from 'vitest';
+import type {ToolBinding} from '../core/harness/tools';
+import {gateTurn} from '../lib/product-context/request-gate';
 import type {SessionContext} from '../db/client';
 import {HARNESS_SPEC,HARNESS_SPEC_DIGESTS,harnessSpecDigest} from '../core/harness/spec';
-import {HARNESS_TEST_ONLY,HarnessDisabled,runTurn,type TurnOptions} from '../core/harness/runner';
+import {HARNESS_TEST_ONLY,HarnessDisabled,offerFor,runTurn,type TurnOptions} from '../core/harness/runner';
 import {InMemoryTaskMemoryStore,emptyMemory,reauthoriseMemory} from '../core/harness/memory';
 import {DisclosureLedger,bandOf,discloseToolOutput} from '../core/harness/disclosure';
 import {restoreFigures} from '../core/harness/restore';
@@ -30,6 +32,47 @@ describe('harness spec',()=>{
   expect(Object.isFrozen(HARNESS_SPEC)&&Object.isFrozen(HARNESS_SPEC.budgets)).toBe(true);
   expect(HARNESS_SPEC_DIGESTS[HARNESS_SPEC.version],'record harnessSpecDigest() for this version').toBe(harnessSpecDigest());
   expect(harnessSpecDigest({...HARNESS_SPEC,budgets:{...HARNESS_SPEC.budgets,maxSteps:8}})).not.toBe(harnessSpecDigest());
+ });
+});
+
+it('appends spec 9 while retaining every released digest and the exact prior policy',()=>{
+ expect(HARNESS_SPEC.version).toBe(9);
+ expect(Object.fromEntries(Object.entries(HARNESS_SPEC_DIGESTS).filter(([version])=>Number(version)<=8))).toEqual({
+  1:'0589cb3e4beec5214c8b00b7869b06ae9065d387733c004820b2a66a25da0616',
+  2:'57fd6ad641945084c2b8c4eb40af07cc99f3e24e2f8521631bd6230d12596ee0',
+  3:'282df659d6d19d26efcdfddadec1c83369c9f98814ee8b15b0a05ed8401d7fb2',
+  4:'591d2ba8a837f029a7937ec3f1bfb346b1fe68ad23f949af4d070ebac61cb8e1',
+  5:'a6d44c30cdc53b9d6388aa08421fcc373a0a4119646dd7879feae8efdd333aa5',
+  6:'4bacd5c6e130a812e5a83b8f63dab8732817b2930eaf0c0d2f9ef113cd4c78be',
+  7:'b68ea8eecdca81d9cbb2a27cd5f3957dc3fd243d58f65feb9ac149fde4f9b701',
+  8:'48db87fd9276f9e828926d82ff07888f4400e4dcd40fbdf08e8a735610c0f9d2',
+ });
+ expect(Object.keys(HARNESS_SPEC_DIGESTS)).toEqual(['1','2','3','4','5','6','7','8','9']);
+ expect(HARNESS_SPEC.offer.publicContextTools).toEqual(['product_destinations','product_guidance','available_actions','password_policy_guidance','correction_controls_guidance']);
+ expect(harnessSpecDigest({...HARNESS_SPEC,version:8,offer:{...HARNESS_SPEC.offer,publicContextTools:['product_destinations','product_guidance','available_actions']}})).toBe('48db87fd9276f9e828926d82ff07888f4400e4dcd40fbdf08e8a735610c0f9d2');
+});
+
+describe('closed public context offer',()=>{
+ it('keeps private reads closed even when a read is named like an approved public guide',()=>{
+  const gate=gateTurn('Where are Password Policy and Correction Controls, and who confirms changes?',{sensitive:HARNESS_SPEC.sensitive.topics});
+  expect(gate).toEqual({privateReads:false,actions:true,reason:'other_person'});
+  const binding=(name:string,kind:ToolBinding['kind']):ToolBinding=>({name,kind,entity:null,identifierInputs:[],spec:{name,description:'Fictional offer-only fixture.',inputSchema:{type:'object',properties:{},required:[],additionalProperties:false}},run:async()=>({ok:true,content:{}})});
+  for(const name of ['password_policy_guidance','correction_controls_guidance']){
+   const context=binding(name,'context'),forgedRead=binding(name,'read');
+   expect(offerFor([context,forgedRead,binding('setup_copilot','read'),binding('unlisted_context','context')],gate)).toEqual([context]);
+   expect(offerFor([context],gate,[])).toEqual([]);
+   expect(offerFor([context,binding('available_actions','context'),binding('suggest_action','suggest')],{privateReads:false,actions:false,reason:'attachment'})).toEqual([context]);
+  }
+ });
+ it('refuses a gated private call before its owner executes, including an allowlisted name tagged read',async()=>{
+  let executed=0;
+  const binding=(name:string):ToolBinding=>({name,kind:'read',entity:null,identifierInputs:[],spec:{name,description:'Fictional private owner.',inputSchema:{type:'object',properties:{},required:[],additionalProperties:false}},run:async()=>{executed++;return{ok:true,content:{private:'must never execute'}};}});
+  const {result}=await turn('Where are Password Policy and Correction Controls, and who confirms changes?',[
+   {calls:[{name:'setup_copilot'},{name:'password_policy_guidance'}]},{final:{reply:'An authorized human checks the native page.'}},
+  ],{tools:async()=>({bindings:[binding('setup_copilot'),binding('password_policy_guidance')],reviewRoutes:[],destinations:[]})});
+  expect(result.trace.gate).toEqual({privateReads:false,actions:true,reason:'other_person'});
+  expect(result.trace.calls.map(call=>[call.tool,call.status])).toEqual([['setup_copilot','not_offered'],['password_policy_guidance','not_offered']]);
+  expect(executed).toBe(0);
  });
 });
 

@@ -26,6 +26,8 @@ export const KIT_DECLARATIONS:readonly KitDeclaration[]=Object.freeze([
  declare('explain_leave_entitlement','core/read.ts#leaveEntitlementBreakdown',{module:'leave',admin:false}),
  declare('explain_attendance_day','core/attendance-explain.ts#explainAttendanceDay',{module:'attendance',admin:false}),
  declare('setup_copilot','core/setup-copilot/copilot.ts#setupCopilot',{module:null,admin:true}),
+ declare('password_policy_guidance','core/explainers/capabilities.ts#passwordPolicyGuidance',{module:null,admin:true}),
+ declare('correction_controls_guidance','core/explainers/capabilities.ts#correctionControlsGuidance',{module:'payroll',admin:true}),
  // AI Centre issue 13b: governed pay averages (core/semantic-model/entities-metrics.ts), offered under payroll access.
  declare('pay_aggregates','packs/payroll/pay-averages.ts#payAverages',{module:'payroll',admin:false,access:'payroll'}),
  // AI v2 W7: governed workforce metrics (core/semantic-model/entities-metrics.ts), offered to managers and administrators.

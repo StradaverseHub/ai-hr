@@ -34,6 +34,7 @@ export function StepValidation({
   payPeriod,
   employmentIds,
   intendedRunType,
+  payrollCycleId,
   onStatusChange,
 }: {
   companyIds: string[];
@@ -42,6 +43,7 @@ export function StepValidation({
   // Organization Module (361e3b15) — the run's intended cycle type, driving the missing-cycle pre-flight.
   // Omitted (e.g. resume mode, where the batch's cycle is already fixed) ⇒ the pre-flight is skipped.
   intendedRunType?: IntendedRunType;
+  payrollCycleId?:string;
   onStatusChange: (s: { loading: boolean; hasBlockers: boolean }) => void;
 }) {
   const t = useTranslations('payroll.process');
@@ -56,7 +58,7 @@ export function StepValidation({
 
   // A stable, order-independent key for the selection so the effect refires when the admin goes back and
   // changes companies / period / who is included — never on a bare array-reference change.
-  const key = `${[...companyIds].sort().join(',')}|${payPeriod}|${[...(employmentIds ?? [])].sort().join(',')}|${intendedRunType ?? ''}`;
+  const key = `${[...companyIds].sort().join(',')}|${payPeriod}|${[...(employmentIds ?? [])].sort().join(',')}|${intendedRunType ?? ''}|${payrollCycleId??''}`;
 
   useEffect(() => {
     let live = true;
@@ -88,7 +90,7 @@ export function StepValidation({
       });
     setLoading(true);
     onStatusChange({ loading: true, hasBlockers: false });
-    validatePayrollSelection({ companyIds, payPeriod, employmentIds })
+    validatePayrollSelection({companyIds,payPeriod,employmentIds,payrollCycleId})
       .then((a) => {
         if (!live) return;
         setAdvisory(a);

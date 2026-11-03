@@ -1,5 +1,5 @@
 /** Ordinary journal upgrade over a populated, trigger-protected database at the installed 636-entry prefix,
- *  through the appended tail (0873 movement, 0874 tax, 0875 Rewards read-policy role, 0876 EPF manual 0%, 0898 idle policy, 0899 Entra). Hosted only. */
+ *  through the appended tail (0873 movement, 0874 tax, 0875 Rewards read-policy role, 0876 EPF manual 0%, 0898 idle policy, 0899 Entra, 0924–0929 Teras, 0935 account unlock, 0946 cohort custody). Hosted only. */
 import {randomUUID,createHash} from 'node:crypto';
 import {copyFileSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -26,9 +26,18 @@ it('applies the pinned payroll and authentication successor tail through the ord
  const destinationUrl=new URL(sourceUrl);destinationUrl.pathname='/'+name;
  const preDirectory=mkdtempSync(join(tmpdir(),'aihr-tax-pre0873-'));
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
- const tail=[['0873_movement_exit_payroll_preservation','1793330000273'],['0874_payroll_tax_basis_corrections','1793330000274'],['0875_reward_access_request_read_role','1793330000275'],['0876_epf_manual_percentage_zero','1793330000276'],['0898_session_idle_timeout','1793330000298'],['0899_entra_workforce','1793330000299'],['0924_teras_outcome_record_mandates','1793330000324'],['0925_teras_rule_version_labels','1793330000325'],['0926_teras_worker_registry','1793330000326'],['0927_teras_conversation_switch','1793330000327'],['0928_teras_outcome_private_turns','1793330000328'],['0929_teras_review_services','1793330000329'],['0952_teras_chats','1793330000352'],['0959_private_cases','1793330000359'],['0960_teras_loops','1793330000360'],['0961_letter_requests','1793330000361']] as const;
- expect(journal.entries.slice(-tail.length).map((entry:{tag:string;when:number})=>[entry.tag,String(entry.when)])).toEqual(tail);
- const installed=journal.entries.slice(0,-tail.length);expect(installed).toHaveLength(636);expect(installed.at(-1).tag).toBe('0865_assistant_company_retention_references');
+ const tail=[['0873_movement_exit_payroll_preservation','1793330000273'],['0874_payroll_tax_basis_corrections','1793330000274'],['0875_reward_access_request_read_role','1793330000275'],['0876_epf_manual_percentage_zero','1793330000276'],['0898_session_idle_timeout','1793330000298'],['0899_entra_workforce','1793330000299'],['0924_teras_outcome_record_mandates','1793330000324'],['0925_teras_rule_version_labels','1793330000325'],['0926_teras_worker_registry','1793330000326'],['0927_teras_conversation_switch','1793330000327'],['0928_teras_outcome_private_turns','1793330000328'],['0929_teras_review_services','1793330000329'],['0935_password_account_unlock','1793330000335'],['0946_draft_creation_cohort_custody','1793330000346'],['0947_rewards_access_approval_exemptions','1793330000347'],['0948_document_signing','1793330000348'],['0949_probation_confirmation','1793330000349'],['0950_contract_management','1793330000350'],['0951_payroll_reprocess_correction_lineage','1793330000351'],['0953_lifecycle_service_info_intents','1793330000353'],['0952_teras_chats','1793330000352'],['0959_private_cases','1793330000359'],['0960_teras_loops','1793330000360'],['0961_letter_requests','1793330000361']] as const;
+ expect(journal.entries.slice(636,636+tail.length).map((entry:{tag:string;when:number})=>[entry.tag,String(entry.when)])).toEqual(tail);
+ // The Board successors are exact appended source, not a count-only tail adjustment.
+ expect(journal.entries.slice(648,650)).toEqual([
+  {idx:763,version:'7',when:1793330000335,tag:'0935_password_account_unlock',breakpoints:true},
+  {idx:793,version:'7',when:1793330000346,tag:'0946_draft_creation_cohort_custody',breakpoints:true},
+ ]);
+ for(const [tag,expectedHash] of [
+  ['0935_password_account_unlock','3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa'],
+  ['0946_draft_creation_cohort_custody','cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390'],
+ ] as const)expect(createHash('sha256').update(readFileSync(`db/migrations/${tag}.sql`)).digest('hex'),tag).toBe(expectedHash);
+ const installed=journal.entries.slice(0,636);expect(installed).toHaveLength(636);expect(installed.at(-1).tag).toBe('0865_assistant_company_retention_references');
  mkdirSync(join(preDirectory,'meta'));writeFileSync(join(preDirectory,'meta','_journal.json'),JSON.stringify({...journal,entries:installed}));
  for(const entry of installed)copyFileSync(join('db/migrations',entry.tag+'.sql'),join(preDirectory,entry.tag+'.sql'));
  let target:ReturnType<typeof createDb>|undefined;

@@ -89,3 +89,8 @@ export * from '../../core/pay-formula';
 export * from '../../core/pay-formula-runtime';
 export * from '../../core/payroll-formula-inputs';
 export * from '../../core/payroll-tax-basis';
+
+export * from '../../core/payroll-employment-eligibility';
+export {draftPayFormula} from '../../core/pay-formula-ai';
+
+export {tryLockPayrollHistoryReadTx} from '../../core/payroll-history-lock';

@@ -4,6 +4,8 @@ import { createDb,type SessionContext } from '../db/client';
 import { loadSweepScope,describeSkips } from '../core/sweep-scope';
 import { resolveEntitlementsTx,isModuleEnabled } from '../core/entitlements';
 import { sweepOnboarding, refreshOnboardingPersonnel, v9Sweep, v9DeliverEmails } from '../packs/lifecycle/service';
+import {sweepProbation} from '../packs/probation/service';
+import {sweepContractManagement} from '../packs/contracts/service';
 import { sweepAssessmentReminders } from '../packs/performance/service';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
 import { deliverNotificationEmails,deliverAttendanceCcEmails } from '../core/notification-email-delivery';
@@ -21,6 +23,12 @@ async function main(){
     const entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,tenant.id));
     const ctx:SessionContext={tenantId:tenant.id,roles:['hr_admin'],entitlements};
     if(isModuleEnabled(ctx,'lifecycle')){await refreshOnboardingPersonnel(ctx,owner.withTenant);await sweepOnboarding(ctx);const v9=await v9Sweep(ctx,owner);if(v9.failed>0)failed++;const mail=await v9DeliverEmails(ctx,owner);if(mail.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,lifecycleV9:v9,lifecycleV9Mail:mail}));}
+    // Each new module checks its own activation and exact company purchase on the real owner connection.
+    // Publishing definitions does not activate either module or replay past reminder occurrences.
+    if(isModuleEnabled(ctx,'lifecycle')||(entitlements.scopedModules.lifecycle??[]).some(companyId=>isModuleEnabled(ctx,'lifecycle',companyId))){
+     try{const probation=await sweepProbation(ctx,owner);if(probation.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,probation}));}catch{failed++;console.error('Probation maintenance failed for tenant '+tenant.id);}
+     try{const contracts=await sweepContractManagement(ctx,owner);if(contracts.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,contracts}));}catch{failed++;console.error('Contract maintenance failed for tenant '+tenant.id);}
+    }
     const letterAutomation=await sweepLetterAutomationFromSweep(ctx,owner);if(letterAutomation.failed>0)failed++;console.log(JSON.stringify({tenantId:tenant.id,letterAutomation}));
     if(!isModuleEnabled(ctx,'notifications')&&!(entitlements.scopedModules.notifications??[]).some(companyId=>isModuleEnabled(ctx,'notifications',companyId)))continue;
     await sweepAssessmentReminders(ctx);

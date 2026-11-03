@@ -38,6 +38,8 @@ import { type SessionContext } from '../db/client';
 import { hireEmployee, updatePerson } from '../core/org';
 import {
   getStatutoryProfileMY,
+  initializeHiredStatutoryMY,
+  setStatutoryProfileMY,
   setIcProfileMY,
   setPassportProfileMY,
   PassportRequiredError,
@@ -104,7 +106,7 @@ describe('Identity sections — NRIC gated by nationality, passport always (5586
     for (const name of ['passportNumber', 'passportIssueDate', 'passportExpiryDate', 'passportIssuingCountry', 'passportIssuingCountryCode', 'passportRemark']) {
       const fieldId = `profile.identity_and_passport.${name.toLowerCase()}`;
       expect(PASSPORT).toContain(`${name}:'${fieldId}'`);
-      const required = ['passportNumber', 'passportIssueDate', 'passportExpiryDate'].includes(name);
+      const required = name === 'passportNumber';
       expect(personnelControl(fieldId, 'edit', { passportTrio: true })).toMatchObject({ name, required });
       expect(personnelControl(fieldId, 'edit', { passportTrio: false })).toMatchObject({ name, required: false });
       expect(personnelControl(fieldId, 'draft', { passportTrio: true })).not.toHaveProperty('name');
@@ -260,7 +262,7 @@ describe('Identity sections — service + action behaviour (55865c32, unchanged 
       passportIssuingCountry: 'Malaysia',
     });
     // Clearing outdated passport information = an all-blank save (same admin-gated path).
-    await setPassportProfileMY(a, { personId: e.personId });
+    await setPassportProfileMY(a, { personId: e.personId, passportNumber:null, passportIssueDate:null, passportExpiryDate:null, passportIssuingCountry:null, passportIssuingCountryCode:null, passportRemark:null });
     const row = await getStatutoryProfileMY(a, e.personId);
     expect(row?.passportNumber).toBeNull();
     expect(row?.passportIssueDate).toBeNull();
@@ -291,24 +293,29 @@ describe('Identity sections — service + action behaviour (55865c32, unchanged 
     expect(await getStatutoryProfileMY(a, e.personId)).toBeNull();
   });
 
-  it('(nonmy-3) the passport trio stays mandatory for a non-Malaysian — partial AND all-blank both rejected', async () => {
-    const a = adminCtx(base);
-    const e = await hireWithNationality(a, 'Foreign Strict', 'Singaporean');
-    await expect(
-      setPassportProfileMY(a, { personId: e.personId, passportNumber: 'E1', passportIssueDate: '2025-02-01' }),
-    ).rejects.toBeInstanceOf(PassportRequiredError);
-    // The Malaysian-only relaxation must NOT leak: all-blank is still an error for a non-Malaysian.
-    await expect(setPassportProfileMY(a, { personId: e.personId })).rejects.toBeInstanceOf(PassportRequiredError);
-    // Full trio (no optional fields) is accepted.
-    await setPassportProfileMY(a, {
-      personId: e.personId,
-      passportNumber: 'E12345678',
-      passportIssueDate: '2025-02-01',
-      passportExpiryDate: '2035-02-01',
-    });
-    const row = await getStatutoryProfileMY(a, e.personId);
-    expect(row?.passportNumber).toBe('E12345678');
-    expect(row?.passportIssuingCountry).toBeNull();
+  it('initializes new SKBBK elections without changing existing or explicit No choices', async () => {
+    const a=adminCtx(base),e=await hireWithNationality(a,'New SKBBK','Singaporean');
+    await initializeHiredStatutoryMY(a,{personId:e.personId,icNumber:null});
+    expect((await getStatutoryProfileMY(a,e.personId))?.subjectToSkbbk).toBe(true);
+    await setStatutoryProfileMY(a,{personId:e.personId,icNumber:null,subjectToSkbbk:false});
+    await initializeHiredStatutoryMY(a,{personId:e.personId,icNumber:null});
+    expect((await getStatutoryProfileMY(a,e.personId))?.subjectToSkbbk).toBe(false);
+    const second=await hireWithNationality(a,'Explicit No','Singaporean');
+    await initializeHiredStatutoryMY(a,{personId:second.personId,icNumber:null,subjectToSkbbk:false});
+    expect((await getStatutoryProfileMY(a,second.personId))?.subjectToSkbbk).toBe(false);
+  });
+
+  it('(nonmy-3) requires a foreign passport number, preserves omissions and validates supplied optional values', async () => {
+    const a=adminCtx(base),e=await hireWithNationality(a,'Foreign Optional','Singaporean');
+    await expect(setPassportProfileMY(a,{personId:e.personId})).rejects.toBeInstanceOf(PassportRequiredError);
+    await setPassportProfileMY(a,{personId:e.personId,passportNumber:'E123'});
+    expect(await getStatutoryProfileMY(a,e.personId)).toMatchObject({passportNumber:'E123',passportIssueDate:null,passportExpiryDate:null});
+    await setPassportProfileMY(a,{personId:e.personId,passportIssueDate:'2025-01-01',passportExpiryDate:'2030-01-01'});
+    await setPassportProfileMY(a,{personId:e.personId,passportRemark:'updated'});
+    expect(await getStatutoryProfileMY(a,e.personId)).toMatchObject({passportNumber:'E123',passportIssueDate:'2025-01-01',passportExpiryDate:'2030-01-01'});
+    for(const change of [{passportNumber:null},{passportIssueDate:'2031-01-01'},{passportExpiryDate:'2025-02-30'},{passportIssuingCountryCode:'XX'}])await expect(setPassportProfileMY(a,{personId:e.personId,...change})).rejects.toBeInstanceOf(PassportRequiredError);
+    await setPassportProfileMY(a,{personId:e.personId,passportIssueDate:null,passportExpiryDate:null});
+    expect(await getStatutoryProfileMY(a,e.personId)).toMatchObject({passportNumber:'E123',passportIssueDate:null,passportExpiryDate:null});
   });
 
   it('(kept) a stored NRIC survives a nationality change to non-Malaysian and later unrelated saves', async () => {

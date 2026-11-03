@@ -1,0 +1,122 @@
+/** Fictional fixtures exercise public decisions and genuine-owner canonical effects; no forged receipts. */
+import {randomUUID} from 'node:crypto';
+import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {and,eq,isNull,sql} from 'drizzle-orm';
+import {PDFDocument} from 'pdf-lib';
+import {hireEmployee} from '../core/org';
+import {setCompensation} from '../core/comp';
+import {addEmployeeDocument,deleteEmployeeDocument,replaceEmployeeDocumentContent,updateEmployeeDocumentMeta} from '../core/employee-documents';
+import {setStatutoryProfileMY} from '../localization/my/statutory';
+import {v9Setup,v9Workspace,v9SaveConfig,v9CreateOffboarding,v9Command} from '../packs/lifecycle/service';
+import {seedPayComponentCatalog,listPayComponents,setEmploymentPayComponent,createBatch,generatePayslips,closeBatch} from '../packs/payroll/service';
+import * as C from '../packs/contracts/service';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import type {LetterDocument} from '../lib/letter-model';
+import type {SessionContext} from '../db/client';
+import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
+import * as S from '../db/schema';
+let b:Base,admin:SessionContext;
+const today=todayInKualaLumpur(),year=Number(today.slice(0,4)),start=`${year}-01-01`,end=`${year}-10-31`,renewalStart=`${year}-11-01`,renewalEnd=`${year+1}-04-30`,period=`${year}-11`;
+beforeAll(migrateTestDb);afterAll(closeAll);
+beforeEach(async()=>{await resetDb();b=await seedBase();for(const module of ['lifecycle','payroll','typed_pay_components'] as const)await setModule(b.tenantId,module,'active');admin=await entitledCtx(b);});
+async function account(name:string){const [person]=await owner.db.insert(S.person).values({tenantId:b.tenantId,fullName:name,primaryEmail:randomUUID()+'@contract-financial.test'}).returning();const userId=await createAppUser(b.tenantId,person.id,'employee');return {...admin,userId,personId:person.id,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;}
+async function employee(name:string,manager?:string,personId?:string){const employment=await hireEmployee(admin,{person:personId?{id:personId}:{fullName:name,primaryEmail:randomUUID()+'@contract-financial.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:manager?'contract':'full_time',hiredOn:start,provisionalEndOn:manager?end:undefined,reportingManagerEmploymentId:manager});const userId=await createAppUser(b.tenantId,employment.personId,'employee');return {...employment,ctx:{...admin,userId,personId:employment.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext};}
+const letter=(renewal:boolean):LetterDocument=>({version:1,language:'en',blocks:(renewal?['employee.name','employee.id','contract.newStart','contract.newEnd','pay.basicSalary','pay.fixedAllowance']:['employee.name','employee.id','contract.lastWorkingDay']).map(key=>({type:'paragraph',content:[{type:'field',key}]}))});
+async function supportingPdf(text:string){const pdf=await PDFDocument.create();pdf.addPage().drawText(text);return Buffer.from(await pdf.save());}
+const maintenance=()=>({...admin,userId:undefined,personId:null,roles:[],grants:[]});
+async function sweep(){return C.sweepContractManagement(maintenance(),owner);}
+async function liveModule(initial=false,fixedEnd?:string,legacyForeign=false,hourly=false){
+ const manager=await employee('Fictional line manager'),chief=await employee('Fictional independent chief'),pbp=await account('Fictional assigned PBP'),gbs=await account('Fictional People Ops'),legal=await account('Fictional independent Legal'),rewards=await account('Fictional Rewards reviewer');
+ await v9Setup(admin);const native=(await v9Workspace(admin)).config!,groupId=randomUUID();await v9SaveConfig(admin,native.revision,{...native,groups:[...native.groups,{id:groupId,name:'Fictional actual People Ops group',members:[gbs.userId!],limit:10}],peopleOpsGroup:groupId,bpRules:[{rules:{company:[b.companyId]},userId:pbp.userId!}]});
+ let previousPerson:string|undefined,retirementId:string|undefined;
+ if(initial){const previous=await hireEmployee(admin,{person:{fullName:'Fictional returning retiree',primaryEmail:randomUUID()+'@contract-financial.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});previousPerson=previous.personId;retirementId=await v9CreateOffboarding(admin,{employmentId:previous.employmentId,type:'Retirement',noticeDate:`${year-1}-11-01`,lastDay:`${year-1}-12-31`});await v9Command(admin,retirementId,1,{type:'submit'});}
+ const subject=await employee('Fictional contract employee',manager.employmentId,previousPerson);
+ await setCompensation(admin,{employmentId:subject.employmentId,basicSalary:5000,monthlyAllowance:17,effectiveFrom:start});await setStatutoryProfileMY(admin,{personId:subject.personId,icNumber:'900101101234'});
+ if(hourly)await setCompensation(admin,{employmentId:subject.employmentId,basicSalary:5000,monthlyAllowance:17,effectiveFrom:`${year}-02-01`,payMode:'hourly',paymentTerm:'monthly',rateAmount:50,remarks:'Fictional existing hourly basis requiring review'});
+ await seedPayComponentCatalog(admin);const component=(await listPayComponents(admin)).find(c=>c.code==='ALLOWANCE')!;expect(component).toBeTruthy();
+ await setEmploymentPayComponent(admin,{employmentId:subject.employmentId,componentId:component.id,amount:100,effectiveFrom:start,effectiveTo:fixedEnd,currency:'MYR',prorateOverride:false,runType:'regular',remarks:'Actual fixed allowance before contract renewal'});
+ await C.setupContractManagement(admin,b.companyId,component.id);
+ for(const [actor,role] of [[pbp,'pbp'],[gbs,'gbs'],[legal,'legal'],[rewards,'rewards']] as const)await C.assignContractRole(admin,{companyId:b.companyId,businessUnitId:null,userId:actor.userId,role,from:start,to:null,reason:'Confirmed independent company contract role'});
+ for(const type of ['renewal','end','declined','retirement'] as const){const id=randomUUID();await C.saveContractTemplate(gbs,{id,companyId:b.companyId,type,expectedRevision:0,document:letter(type==='renewal'),signatoryName:'Verified legal entity signatory',signatoryTitle:'Director',letterhead:null,submit:true});await C.publishContractTemplate(legal,{id,revision:1,approve:true,reason:'Independently reviewed template wording and signatory'});}
+ let renewalId='';for(const row of (await C.contractWorkflowWorkspace(admin)).workflows){const draft={...row.draft,steps:row.draft.steps.map(step=>step.type==='request_approval'&&step.approver.type==='employee_record'&&step.approver.field==='ceo'?{...step,approver:{type:'named_employee' as const,userIds:[chief.ctx.userId!]}}:step)};await C.saveContractWorkflow(admin,{companyId:b.companyId,id:row.id,expectedRevision:row.revision,draft,publish:true});if(draft.conditions.some(c=>c.field==='decision'&&c.value==='renew'))renewalId=row.id;}
+ const [configuration]=(await C.contractSettings(admin)).configurations;await C.saveContractConfiguration(admin,{companyId:b.companyId,expectedRevision:configuration.revision,data:{...configuration.data,ownersConfirmed:true},runtimeEnabled:true,activationOn:today,effectPrincipalId:admin.userId});
+ // A historical external row can carry units the canonical application setter refuses.
+ if(legacyForeign)await owner.db.update(S.employmentPayComponent).set({currency:'USD'}).where(and(eq(S.employmentPayComponent.employmentId,subject.employmentId),eq(S.employmentPayComponent.componentId,component.id)));
+ const source=await C.previewContractIntake(gbs,subject.employmentId);if(legacyForeign||hourly)return {manager,chief,pbp,gbs,rewards,subject,component,caseId:'',renewalId,source,supportingDocuments:null};let retirementApprovalId:string|null=null,healthCheckId:string|null=null,supportingDocuments:{approvalId:string;healthId:string}|null=null;
+ if(initial){
+  const approval=await addEmployeeDocument(admin,{employmentId:subject.employmentId,title:'Reviewed retirement contract approval',fileName:'approval.pdf',mimeType:'application/pdf',content:await supportingPdf('Fictional retirement contract terms independently approved')});
+  const custody=await C.captureContractRetirementEvidence(pbp,{employmentId:subject.employmentId,retirementCaseId:retirementId!,approvalDocumentId:approval.id,healthDocumentId:null,sourceRevision:source.sourceRevision,reason:'Actual signed retirement approval checked; health check has not arrived'});
+  expect((await C.previewContractIntake(gbs,subject.employmentId)).retirementHealthPending).toBe(true);
+  const ordinary=()=>C.intakeContract(gbs,{employmentId:subject.employmentId,kind:'project',sourceRevision:source.sourceRevision});
+  await expect(ordinary()).rejects.toMatchObject({cause:{code:'23514'}});
+  await expect(C.verifyContractRetirementEvidence(gbs,{custodyId:custody.id,reason:'The current evidence requires independent verification'})).rejects.toMatchObject({cause:{code:'23514'}});
+  const health=await addEmployeeDocument(admin,{employmentId:subject.employmentId,title:'Completed health check',fileName:'health.pdf',mimeType:'application/pdf',content:await supportingPdf('Fictional completed health check reviewed for current contract')});
+  await C.attachContractRetirementHealth(pbp,{custodyId:custody.id,healthDocumentId:health.id,reason:'Original capturing PBP checked the separate completed health PDF'});
+  expect((await C.previewContractIntake(gbs,subject.employmentId)).retirementHealthPending).toBe(true);
+  await expect(ordinary()).rejects.toMatchObject({cause:{code:'23514'}});
+  const proof=await C.verifyContractRetirementEvidence(gbs,{custodyId:custody.id,reason:'Independent verification of prior retirement and approved current terms'});
+  expect(await C.previewContractIntake(gbs,subject.employmentId)).toMatchObject({retirementHealthPending:false,retirementProofRequired:true});
+  await expect(ordinary()).rejects.toMatchObject({cause:{code:'23514'}});
+  retirementApprovalId=proof.approvalEventId;healthCheckId=proof.healthEventId;supportingDocuments={approvalId:approval.id,healthId:health.id};
+ }
+ const {id:caseId}=await C.intakeContract(gbs,{employmentId:subject.employmentId,kind:initial?'post_retirement':'project',sourceRevision:source.sourceRevision,retirementApprovalId,healthCheckId});return {manager,chief,pbp,gbs,rewards,subject,component,caseId,renewalId,source,supportingDocuments};
+}
+type Fixture=Awaited<ReturnType<typeof liveModule>>;
+async function accepted(f:Fixture,salary='5500.00',allowance='250.00',initial=false,beforeAccept?:()=>Promise<void>){
+ if(!initial){let v=await C.contractCase(f.manager.ctx,f.caseId);await C.submitContractDecision(f.manager.ctx,{caseId:f.caseId,revision:v.record.revision,kind:'renew',months:6,basicSalary:salary,fixedAllowance:allowance,reason:'Approved continuation with independently reviewed pay'});v=await C.contractCase(f.pbp,f.caseId);await C.confirmContractDecision(f.pbp,{caseId:f.caseId,revision:v.record.revision,workflowId:f.renewalId});}
+ await sweep();
+ if(!initial)for(const actor of [f.rewards,f.chief.ctx]){const v=await C.contractCase(actor,f.caseId);for(const stepId of v.choices.approvalStepIds){const current=await C.contractCase(actor,f.caseId);await C.decideContractApproval(actor,{caseId:f.caseId,revision:current.record.revision,stepId,decisionRevision:current.record.decision!.revision,approve:true,comment:'Terms and pay independently approved'});}}
+ const v=await C.contractCase(f.subject.ctx,f.caseId);expect(v.record.state).toBe('e_acceptance');const doc=v.documents.find(d=>d.id===v.record.document?.id&&d.hash===v.record.document?.hash&&!d.supersededAt)!;expect(doc?.issuedAt).toBeTruthy();await beforeAccept?.();await C.acceptContract(f.subject.ctx,{caseId:f.caseId,revision:v.record.revision,documentId:doc.id,hash:doc.hash,action:'accept',reason:'',signature:{method:'typed',value:v.source.name,consent:true}});return doc;
+}
+async function assertRenewed(f:Fixture){
+ const view=await C.contractCase(f.gbs,f.caseId);
+ // Only fictional-fixture diagnostics enter test failure output; production DTOs stay bounded.
+ const diagnostics=view.record.state==='renewed'?[]:await owner.db.execute<{message:string}>(sql`select message from contract_effect_diagnostic where tenant_id=${b.tenantId}::uuid and case_id=${f.caseId}::uuid order by occurred_at`);
+ expect(view.record.state,JSON.stringify({effects:view.effects.map(({kind,status,error})=>({kind,status,error})),diagnostics})).toBe('renewed');return view;
+}
+async function actualPay(employmentId:string){return owner.db.select().from(S.compensation).where(and(eq(S.compensation.employmentId,employmentId),isNull(S.compensation.supersededAt))).orderBy(S.compensation.validFrom);}
+async function actualFixed(f:Fixture){return owner.db.select().from(S.employmentPayComponent).where(and(eq(S.employmentPayComponent.employmentId,f.subject.employmentId),eq(S.employmentPayComponent.componentId,f.component.id),isNull(S.employmentPayComponent.supersededAt))).orderBy(S.employmentPayComponent.validFrom);}
+async function batch(f:Fixture){const {batchId}=await createBatch(admin,{companyId:b.companyId,payPeriod:period,scope:{employmentIds:[f.subject.employmentId]}});await generatePayslips(admin,{batchId});expect(await owner.db.select().from(S.payslip).where(eq(S.payslip.batchId,batchId))).toHaveLength(1);return batchId;}
+describe('accepted contracts use canonical financial owners',()=>{
+ it.each([{allowance:'250.00',expected:'250.00'},{allowance:'0.00',expected:null}])('applies changed salary and fixed allowance $allowance once, preserving legacy OT basis and fixed provenance',async({allowance,expected})=>{
+  const f=await liveModule(),doc=await accepted(f,'5500.00',allowance);await sweep();const view=await assertRenewed(f);expect(view.effects.find(e=>e.kind==='records')?.status).toBe('done');const [employment]=await owner.db.select().from(S.employment).where(eq(S.employment.id,f.subject.employmentId));expect(employment).toMatchObject({contractStartDate:renewalStart,contractEndDate:renewalEnd,terminatedOn:null});
+  const pay=await actualPay(f.subject.employmentId);expect(pay.map(p=>[p.basicSalary,p.monthlyAllowance,p.validFrom,p.validTo])).toEqual([['5000.00','17.00',start,renewalStart],['5500.00','17.00',renewalStart,null]]);
+  const fixed=await actualFixed(f);expect(fixed[0]).toMatchObject({amount:'100.00',validFrom:start,validTo:end,runType:'regular',prorateOverride:false});if(expected)expect(fixed[1]).toMatchObject({amount:expected,validFrom:renewalStart,validTo:null,runType:'regular',prorateOverride:false});expect(fixed).toHaveLength(expected?2:1);
+  const before=await owner.db.execute(sql`select kind,status,receipt from contract_effect where case_id=${f.caseId}::uuid order by kind`);await sweep();expect(await actualPay(f.subject.employmentId)).toEqual(pay);expect(await actualFixed(f)).toEqual(fixed);expect(await owner.db.execute(sql`select kind,status,receipt from contract_effect where case_id=${f.caseId}::uuid order by kind`)).toEqual(before);expect(await owner.db.select().from(S.employeeDocument).where(eq(S.employeeDocument.contractDocumentId,doc.id))).toHaveLength(1);
+  const {batchId}=await createBatch(admin,{companyId:b.companyId,payPeriod:period,scope:{employmentIds:[f.subject.employmentId]}});await generatePayslips(admin,{batchId});const [slip]=await owner.db.select().from(S.payslip).where(eq(S.payslip.batchId,batchId));expect(slip.basicSalary).toBe('5500.00');expect(slip.grossPay).toBe(expected?'5750.00':'5500.00');
+ });
+ it('reads the configured fixed Pay Item through its inclusive final valid day',async()=>{
+  const f=await liveModule(false,today);expect((await C.previewContractIntake(f.gbs,f.subject.employmentId)).allowanceCents).toBe('10000');
+ });
+ it('refuses intake instead of presenting a historical foreign-currency fixed item as RM',async()=>{
+  const f=await liveModule(false,undefined,true);expect(f.source).toMatchObject({allowanceCents:null,sourceIssue:'unsupported_currency'});await expect(C.intakeContract(f.gbs,{employmentId:f.subject.employmentId,kind:'project',sourceRevision:f.source.sourceRevision})).rejects.toMatchObject({cause:{code:'40001'}});
+ });
+ it('refuses signing when the actual fixed-item currency changes after the exact PDF is issued',async()=>{
+  const f=await liveModule();await expect(accepted(f,'5500.00','250.00',false,async()=>{await owner.db.update(S.employmentPayComponent).set({currency:'USD'}).where(and(eq(S.employmentPayComponent.employmentId,f.subject.employmentId),eq(S.employmentPayComponent.componentId,f.component.id)));})).rejects.toMatchObject({cause:{code:'40001'}});expect((await C.contractCase(f.gbs,f.caseId)).record.state).toBe('e_acceptance');const [doc]=await owner.db.execute<{signature:unknown;signed:boolean}>(sql`select signature,signed_content is not null as signed from contract_document where case_id=${f.caseId}::uuid and superseded_at is null`);expect(doc.signature).toBeNull();expect(doc.signed).toBe(false);expect((await actualPay(f.subject.employmentId))[0].basicSalary).toBe('5000.00');
+ });
+ it('holds an actual canonical hourly rate at intake instead of representing it as monthly contract pay',async()=>{
+  const f=await liveModule(false,undefined,false,true);expect(f.source).toMatchObject({salaryCents:null,sourceIssue:'unsupported_pay_basis'});await expect(C.intakeContract(f.gbs,{employmentId:f.subject.employmentId,kind:'project',sourceRevision:f.source.sourceRevision})).rejects.toMatchObject({cause:{code:'40001'}});
+ });
+ it('holds the exact issued monthly contract when a real Personnel pay-basis change makes it stale',async()=>{
+  const f=await liveModule();await expect(accepted(f,'5500.00','250.00',false,async()=>{await setCompensation(admin,{employmentId:f.subject.employmentId,basicSalary:5000,monthlyAllowance:17,effectiveFrom:renewalStart,payMode:'hourly',paymentTerm:'monthly',rateAmount:50,remarks:'Actual canonical hourly basis change after issue'});})).rejects.toMatchObject({cause:{code:'40001'}});
+  const view=await C.contractCase(f.gbs,f.caseId);expect(view.source.sourceIssue).toBe('unsupported_pay_basis');expect(view.record.state).toBe('e_acceptance');expect(view.effects.some(e=>e.kind==='records')).toBe(false);const [doc]=await owner.db.execute<{signature:unknown}>(sql`select signature from contract_document where case_id=${f.caseId}::uuid and superseded_at is null`);expect(doc.signature).toBeNull();const pay=await actualPay(f.subject.employmentId);expect(pay.map(p=>[p.payMode,p.basicSalary,p.validFrom,p.validTo])).toEqual([['monthly','5000.00',start,renewalStart],['hourly','5000.00',renewalStart,null]]);expect(Number(pay[1].rateAmount)).toBe(50);
+ });
+ it('accepts the unchanged first post-retirement term at its existing pay start without creating another pay version',async()=>{
+  const f=await liveModule(true),before=await actualPay(f.subject.employmentId),fixed=await actualFixed(f);
+  const proof=f.supportingDocuments!;expect(proof).toBeTruthy();const [original]=await owner.db.select().from(S.employeeDocument).where(eq(S.employeeDocument.id,proof.healthId));
+  await updateEmployeeDocumentMeta(admin,{documentId:proof.healthId,title:'Reviewed original health record'});
+  await expect(replaceEmployeeDocumentContent(admin,{documentId:proof.healthId,fileName:'replacement.pdf',mimeType:'application/pdf',content:await supportingPdf('Fictional attempted replacement after verified custody')})).rejects.toMatchObject({cause:{code:'23514'}});
+  await expect(deleteEmployeeDocument(admin,{documentId:proof.approvalId})).rejects.toMatchObject({cause:{code:'23514'}});
+  const [retained]=await owner.db.select().from(S.employeeDocument).where(eq(S.employeeDocument.id,proof.healthId));expect(retained).toMatchObject({title:'Reviewed original health record',content:original.content,mimeType:'application/pdf',employmentId:f.subject.employmentId});
+  await accepted(f,'5000.00','100.00',true);await sweep();await assertRenewed(f);expect(await actualPay(f.subject.employmentId)).toEqual(before);expect(await actualFixed(f)).toEqual(fixed);const [employment]=await owner.db.select().from(S.employment).where(eq(S.employment.id,f.subject.employmentId));expect(employment).toMatchObject({contractStartDate:start,contractEndDate:end,terminatedOn:null});
+ });
+ it('holds an accepted pay change against a real closed payroll without rewriting payroll or pay history on retry',async()=>{
+  const f=await liveModule(),batchId=await batch(f);await closeBatch(admin,{batchId});const beforePay=await actualPay(f.subject.employmentId),beforeFixed=await actualFixed(f),beforeSlips=await owner.db.select().from(S.payslip).where(eq(S.payslip.batchId,batchId));await accepted(f);await sweep();let view=await C.contractCase(f.gbs,f.caseId);expect(view.record.state).toBe('records_pending');expect(view.effects.find(e=>e.kind==='records')?.status).toBe('failed');await C.retryContractRecords(f.gbs,f.caseId);await sweep();view=await C.contractCase(f.gbs,f.caseId);expect(view.record.state).toBe('records_pending');expect(await actualPay(f.subject.employmentId)).toEqual(beforePay);expect(await actualFixed(f)).toEqual(beforeFixed);expect(await owner.db.select().from(S.payslip).where(eq(S.payslip.batchId,batchId))).toEqual(beforeSlips);const [stored]=await owner.db.select().from(S.payrollBatch).where(eq(S.payrollBatch.id,batchId));expect(stored).toMatchObject({status:'closed',needsRecalcAt:null});
+ });
+ it('marks the existing processed batch through the payroll owner and reprocesses the exact accepted terms',async()=>{
+  const f=await liveModule(),batchId=await batch(f);await accepted(f);await sweep();await assertRenewed(f);const [stored]=await owner.db.select().from(S.payrollBatch).where(eq(S.payrollBatch.id,batchId));expect(stored.needsRecalcAt).toBeTruthy();expect(stored.recalcEmploymentIds).toContain(f.subject.employmentId);const events=await owner.db.select().from(S.domainEvent).where(and(eq(S.domainEvent.aggregateId,batchId),eq(S.domainEvent.eventType,'payroll-batch.recalc-required')));expect(events).toEqual(expect.arrayContaining([expect.objectContaining({actorType:'system',actorId:null,payload:expect.objectContaining({employmentIds:[f.subject.employmentId],changeCategory:'compensation'})})]));await sweep();expect(await owner.db.select().from(S.domainEvent).where(and(eq(S.domainEvent.aggregateId,batchId),eq(S.domainEvent.eventType,'payroll-batch.recalc-required')))).toEqual(events);await generatePayslips(admin,{batchId,reprocessSubset:{employmentIds:[f.subject.employmentId],reason:'Apply the exact accepted contract terms'}});const [slip]=await owner.db.select().from(S.payslip).where(eq(S.payslip.batchId,batchId));expect(slip.basicSalary).toBe('5500.00');expect(slip.grossPay).toBe('5750.00');
+ });
+ it('holds a conflicting future salary interval and preserves it without manufacturing an accepted-effects receipt',async()=>{
+  const f=await liveModule();await setCompensation(admin,{employmentId:f.subject.employmentId,basicSalary:6000,monthlyAllowance:17,effectiveFrom:`${year+1}-01-01`});const before=await actualPay(f.subject.employmentId),fixed=await actualFixed(f);await accepted(f);await sweep();const view=await C.contractCase(f.gbs,f.caseId);expect(view.record.state).toBe('records_pending');expect(view.effects.find(e=>e.kind==='records')?.status).toBe('failed');expect(await actualPay(f.subject.employmentId)).toEqual(before);expect(await actualFixed(f)).toEqual(fixed);expect(view.effects.find(e=>e.kind==='records')?.receipt).toBeNull();await C.retryContractRecords(f.gbs,f.caseId);await sweep();expect(await actualPay(f.subject.employmentId)).toEqual(before);
+ });
+});

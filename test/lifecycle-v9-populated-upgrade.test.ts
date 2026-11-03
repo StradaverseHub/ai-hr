@@ -14,9 +14,9 @@ it('preserves populated Native issuance, private data, identity and every applie
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(652); // Accepted prefix plus the explicit idle/Entra source reservations and the Teras source claims below.
+ expect(journal.entries).toHaveLength(660); // Accepted 650-entry LOGIN baseline plus the six Re-plan successors and the four AI v2 Phase 1 source claims below.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(81);
+ expect(journal.entries.slice(boundary)).toHaveLength(89);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
@@ -41,14 +41,23 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:760,version:'7',when:1793330000327,tag:'0927_teras_conversation_switch',breakpoints:true,hash:'ac5475982a99c2b387bc5f34e9af6f69cb5bbe3aac156bdd8aa906e17579c968'},
   {idx:761,version:'7',when:1793330000328,tag:'0928_teras_outcome_private_turns',breakpoints:true,hash:'17a50608b153559bfa06cf49f2b2efb526c85f2cbf0ce1de16a78fa4a0df8fa9'},
   {idx:762,version:'7',when:1793330000329,tag:'0929_teras_review_services',breakpoints:true,hash:'765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0'},
+  // Nine-item BOARD successors; the accepted Noveri SQL and prior journal identities above stay unchanged.
+  {idx:763,version:'7',when:1793330000335,tag:'0935_password_account_unlock',breakpoints:true,hash:'3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa'},
+  {idx:793,version:'7',when:1793330000346,tag:'0946_draft_creation_cohort_custody',breakpoints:true,hash:'cf06975c936963a98af73b2c602a32d599557a5791f461794564c03af066d390'},
+  {idx:794,version:'7',when:1793330000347,tag:'0947_rewards_access_approval_exemptions',breakpoints:true,hash:'f7a1e3725019d8ce09052efb3b3fe1763190622052b4f826a678f8231cf8914e'},
+  {idx:795,version:'7',when:1793330000348,tag:'0948_document_signing',breakpoints:true,hash:'07ab24b5dcd85f16ba3474fe7fdd7b620d9603ee882dc8b8abc22e18b21533ea'},
+  {idx:796,version:'7',when:1793330000349,tag:'0949_probation_confirmation',breakpoints:true,hash:'53978af9d391beb2683c47902413bbf4a61e11c4f013cdb3211f80c49aff42ab'},
+  {idx:797,version:'7',when:1793330000350,tag:'0950_contract_management',breakpoints:true,hash:'84bc3e3a907118e2c6806e863c63544df061b49dbb9b51fcd4fe8f85ffcef8ac'},
+  {idx:798,version:'7',when:1793330000351,tag:'0951_payroll_reprocess_correction_lineage',breakpoints:true,hash:'b65a8adc2f45165fb2bdb41b30d4ca6eeb7f7b44ef2539bcdecc7efde0322057'},
+  {idx:799,version:'7',when:1793330000353,tag:'0953_lifecycle_service_info_intents',breakpoints:true,hash:'6f71e2fe862f86c836026f3e07647ca29b913dd34b2171c98a033b43da0afa89'},
   // AI Centre stored chats (claude/noveri-chats), frozen here.
-  {idx:763,version:'7',when:1793330000352,tag:'0952_teras_chats',breakpoints:true,hash:'e320362770eedfafd2e9260d82713b1c669f056a296db979a1f5295e785b401b'},
+  {idx:800,version:'7',when:1793330000352,tag:'0952_teras_chats',breakpoints:true,hash:'e320362770eedfafd2e9260d82713b1c669f056a296db979a1f5295e785b401b'},
   // AI v2 W11 protected case route (claude/aiv2-s2-case-route), frozen here.
-  {idx:764,version:'7',when:1793330000359,tag:'0959_private_cases',breakpoints:true,hash:'3016959b49532efbd6da16be168ad6ef764c66f5a0af35f50b9de40112ccf55f'},
+  {idx:801,version:'7',when:1793330000359,tag:'0959_private_cases',breakpoints:true,hash:'3016959b49532efbd6da16be168ad6ef764c66f5a0af35f50b9de40112ccf55f'},
   // AI v2 W8 loops at the Prepare level (claude/aiv2-s3-loops), frozen here.
-  {idx:765,version:'7',when:1793330000360,tag:'0960_teras_loops',breakpoints:true,hash:'addec336da5a82869ab05d79c45bc9d884e92c3d877af6b073f3e892fdfda11d'},
-  // AI v2 Phase 1 slice 3 employee letter requests (claude/aiv2-s3-letter-request), frozen here at idx766 (Phase 1 final integration).
-  {idx:766,version:'7',when:1793330000361,tag:'0961_letter_requests',breakpoints:true,hash:'86b91182f7f686d32fb37d5ab117198440aee24bad0abe029f5266cef1cbafc7'},
+  {idx:802,version:'7',when:1793330000360,tag:'0960_teras_loops',breakpoints:true,hash:'addec336da5a82869ab05d79c45bc9d884e92c3d877af6b073f3e892fdfda11d'},
+  // AI v2 Phase 1 slice 3 employee letter requests (claude/aiv2-s3-letter-request), frozen here.
+  {idx:803,version:'7',when:1793330000361,tag:'0961_letter_requests',breakpoints:true,hash:'86b91182f7f686d32fb37d5ab117198440aee24bad0abe029f5266cef1cbafc7'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

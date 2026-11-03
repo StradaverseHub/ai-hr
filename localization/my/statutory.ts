@@ -1,5 +1,6 @@
 import {assertWorkforcePersonTx,assertWorkforceEmploymentTx,WorkforceAccessError} from '../../core/workforce-access';
 import {isDeepStrictEqual} from 'node:util';
+import { validPassportMY, type PassportFieldsMY } from './passport';
 import {captureStatutorySourceContext as captureStatutoryContext,lockStatutorySourceTx as statutoryWriteIntervalMYTx,lockReviewedStatutorySourceTx} from '../../core/statutory-source-lock';
 import {createHash} from 'node:crypto';
 import {z} from 'zod';
@@ -466,6 +467,13 @@ export async function setStatutoryProfileMY(ctx:SessionContext,p:StatutoryInput,
   const normalized=normalizeStatutoryInputMY(input);
   const run=async(tx:Tx)=>{await statutoryWriteIntervalMYTx(tx,ctx);const prepared=await prepareStatutoryProfileMYTx(tx,input,normalized),result=await writeStatutoryProfileMYTx(tx,ctx,input,prepared);return{id:result.id};};
   return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+/** New hire initializer: preserve an existing person's election; only a genuinely new profile defaults on. */
+export async function initializeHiredStatutoryMY(ctx:SessionContext,p:StatutoryInput,outerTx?:Tx){
+ ctx=captureStatutoryContext(ctx);p=structuredClone(p);
+ const run=async(tx:Tx)=>{await statutoryWriteIntervalMYTx(tx,ctx);const current=await getStatutoryProfileMYTx(tx,ctx,p.personId,{forUpdate:true});return setStatutoryProfileMY(ctx,{...p,subjectToSkbbk:p.subjectToSkbbk??current?.subjectToSkbbk??true},tx);};
+ return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /** A TP3 partial-save was attempted for a person with no Malaysian statutory row yet. */
@@ -1069,13 +1077,10 @@ export async function setIcProfileMY(
   return outerTx ? run(outerTx) : withTenant(ctx,run);
 }
 
-/** Item e3ce0d4d — an identity save was missing a mandatory passport field (number / issue / expiry). The
- *  trio is required for non-Malaysian employees, and required TOGETHER whenever any passport detail is
- *  entered (item 55865c32 — a partially-filled passport can never be saved); remark + issuing country are
- *  optional. Distinct message. */
+/** Country-owned passport completeness or supplied-format refusal. */
 export class PassportRequiredError extends Error {
   constructor() {
-    super('Passport number, issue date and expiry date are required together (mandatory for a non-Malaysian employee).');
+    super('A passport number is required for a non-Malaysian employee. Check any supplied passport dates and country code.');
     this.name = 'PassportRequiredError';
   }
 }
@@ -1104,7 +1109,7 @@ export type PassportInput = {
  *
  * Item 55865c32 — the Passport Information section now shows for EVERY employee, so requiredness is derived
  * from the person's stored nationality (SERVER-SIDE — the client's live selection is never trusted):
- *   • non-Malaysian → number + issue + expiry stay mandatory (their primary identification, as before);
+ *   • non-Malaysian → number is mandatory; supplied dates and country code are validated;
  *   • Malaysian     → the passport is optional, but all-or-nothing: if ANY passport field is entered the trio
  *     must be complete (PassportRequiredError otherwise). An all-blank save CLEARS an existing passport block
  *     (audited before/after, same admin gate as every profile save) and NO-OPS (`{ id: null }`) when the
@@ -1112,7 +1117,7 @@ export type PassportInput = {
  * Remark and issuing country are optional on every path.
  */
 /** The same six-field normalization serves native writes and local reviewed reads. */
-function normalizedPassportValuesMY(p:PassportInput){
+function normalizedPassportValuesMY(p:PassportFieldsMY){
   const number = (p.passportNumber ?? '').trim() || null;
   const issue = (p.passportIssueDate ?? '').trim() || null;
   const expiry = (p.passportExpiryDate ?? '').trim() || null;
@@ -1133,8 +1138,7 @@ function normalizedPassportValuesMY(p:PassportInput){
 }
 /** Same country-owned passport completeness check for a proposed edit and the actual writer. */
 export function validatePassportProfileMY(p:PassportInput,nationality:string|null|undefined){
- const values=normalizedPassportValuesMY(p),trioComplete=Boolean(values.passportNumber&&values.passportIssueDate&&values.passportExpiryDate),anyFieldPresent=Object.values(values).some(Boolean);
- return trioComplete||(isMalaysianNationality(nationality)&&!anyFieldPresent);
+ return validPassportMY(p,nationality);
 }
 /** Passport editor admission metadata only; the SAME native guard reads no government-ID fields. */
 export async function canMaintainPassportProfileMY(supplied:SessionContext,p:{personId:string;employmentId:string}):Promise<boolean>{
@@ -1145,7 +1149,6 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
-  const values=normalizedPassportValuesMY(p),anyFieldPresent=Object.values(values).some(Boolean);
   const run = async (tx:Tx) => {
     await statutoryMaintenanceSubjectMYTx(tx,ctx,p);
     // Nationality is derived from the person RECORD inside the same RLS tx — never from the caller.
@@ -1154,8 +1157,8 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
       .from(person)
       .where(eq(person.id, p.personId))
       .limit(1);
-    if(!validatePassportProfileMY(p,subject?.nationality))throw new PassportRequiredError();
-    // Non-Malaysian primary identification: the trio is always mandatory. Malaysian: mandatory only when a
+
+    // Non-Malaysian primary identification requires the number. Malaysian: the trio is mandatory when a
     // partial passport was entered (all-or-nothing). No MyKad IC validation runs on this path.
 
     const [existing] = await tx
@@ -1171,6 +1174,9 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
       .limit(1);
+    const merged={...existing,...Object.fromEntries(Object.entries(p).filter(([,value])=>value!==undefined))};
+    const values=normalizedPassportValuesMY(merged),anyFieldPresent=Object.values(values).some(Boolean);
+    if(!validPassportMY(merged,subject?.nationality))throw new PassportRequiredError();
     // All-blank Malaysian save with no statutory row: nothing to clear — don't seed an empty row.
     if (!existing && !anyFieldPresent) return { id: null as string | null };
     let id: string;
@@ -1586,8 +1592,8 @@ async function reviewedPassportSnapshotMYTx(tx:Tx,ctx:SessionContext,personId:st
 }
 export async function readReviewedPassportMYTx(tx:Tx,ctx:SessionContext,personId:string){const snapshot=await reviewedPassportSnapshotMYTx(tx,ctx,personId);return{statutoryId:snapshot.statutoryId,fields:snapshot.fields};}
 export async function prepareReviewedPassportMYTx(tx:Tx,ctx:SessionContext,p:PassportInput){
- p=structuredClone(p);const snapshot=await reviewedPassportSnapshotMYTx(tx,ctx,p.personId);if(!validatePassportProfileMY(p,snapshot.subject.nationality))throw new PassportRequiredError();
- const after=normalizedPassportValuesMY(p);return{statutoryId:snapshot.statutoryId,before:snapshot.fields,after,reviewedDigest:createHash('sha256').update(JSON.stringify(['passport:MY:existing:v1',snapshot,after])).digest('hex')};
+ p=structuredClone(p);const snapshot=await reviewedPassportSnapshotMYTx(tx,ctx,p.personId);const merged={...snapshot.fields,...Object.fromEntries(Object.entries(p).filter(([,value])=>value!==undefined))};if(!validPassportMY(merged,snapshot.subject.nationality))throw new PassportRequiredError();
+ const after=normalizedPassportValuesMY(merged);return{statutoryId:snapshot.statutoryId,before:snapshot.fields,after,reviewedDigest:createHash('sha256').update(JSON.stringify(['passport:MY:existing:v1',snapshot,after])).digest('hex')};
 }
 
 /** Existing hand opening balances only. Matching form membership uses the same person/year axis as

@@ -1,0 +1,67 @@
+{
+  "headlineOne": "工作，",
+  "headlineTwo": "焕然一新。",
+  "intro": "您的团队，您的下一步。\n以全新的方式前进。",
+  "workspaceLabel": "找到您的工作空间",
+  "workspacePlaceholder": "组织代码",
+  "workspaceNote": "使用管理员提供的代码。",
+  "continueLabel": "前往工作空间",
+  "nextStep": "下一步：使用 Microsoft 或密码登录",
+  "accountTitle": "欢迎来到您的工作空间。",
+  "accountSubtitle": "选择登录方式。",
+  "changeOrganization": "更改组织",
+  "closingOne": "少一点繁琐事务。",
+  "closingTwo": "多一点新的可能。",
+  "signInHelp": "登录帮助",
+  "language": "语言",
+  "brainHeadline": "{name}，您的人力资源系统大脑。",
+  "brainDescription": "一次提问，一处审核，让工作向前。",
+  "genericAiName": "AI 中心",
+  "storyLabel": "Noveri 如何连接您的人力资源系统",
+  "demoAlt": "虚构的 AI 中心：一个团队问题汇集了休假信息及待审核申请。",
+  "demoCaption": "示意预览 · 虚构数据",
+  "storyDescription": "AI 中心汇集背景信息和审核操作，然后旋入 Noveri OS 的界面层。AI 提出建议，决定权始终在您手中。",
+  "clockTitle": "{name} 如何运作",
+  "clockCaption": "分解图 · 如同腕表机芯",
+  "clockAlt": "Noveri OS：界面、模型、执行框架、背景信息、功能、记录系统和治理。",
+  "stop": "停止动画",
+  "replay": "重播动画",
+  "clock": {
+    "interfaces": {
+      "name": "界面",
+      "part": "表盘 · 对话 · 收件箱 · 审核页面"
+    },
+    "harness": {
+      "name": "智能体运行框架",
+      "part": "擒纵机构 · 一次只走一步"
+    },
+    "context": {
+      "name": "上下文与知识",
+      "part": "日历圈 · 指南 · 页面 · 你的角色"
+    },
+    "capabilities": {
+      "name": "HR 能力",
+      "part": "齿轮组 · 读取 · 说明 · 准备"
+    },
+    "record": {
+      "name": "HR 记录系统",
+      "part": "发条 · 休假 · 薪资 · 人员"
+    },
+    "model": {
+      "name": "模型",
+      "part": "摆轮 · 不做任何决定"
+    },
+    "foundation": {
+      "name": "基础：信任与治理",
+      "part": "表壳 · 防护层 · 结果记录 · 审计"
+    },
+    "guard": {
+      "name": "防护层",
+      "part": "表冠 · 任何改动前先检查"
+    },
+    "outcome": {
+      "name": "结果记录",
+      "part": "后盖刻字 · 谁 · 什么 · 何时"
+    }
+  }
+}

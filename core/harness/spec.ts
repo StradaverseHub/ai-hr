@@ -99,7 +99,11 @@ export const HARNESS_SPEC=freeze({
   * approver; anything else is no_match, said plainly with the approvals page (core/proposals/assigned-decide.ts, and the
   * leave decision now resolves the applicant the person named). payView.page says whose pay the page shows ({purpose}),
   * not "your own payslips". The private case link is the route note's alone (caseClause names it without a link), and
-  * the fixed refusals say "the AI Centre", not "the Assistant". No instruction line changes. */
+  * the fixed refusals say "the AI Centre", not "the Assistant". No instruction line changes.
+  * Main merge (claude/aiv2-phase1-release, 3 November 2026): main's own v9 (digest 50ffa246…, the spec staging runs at
+  * 848c7be36) kept two administrator-only, literal public page guides (password_policy_guidance and
+  * correction_controls_guidance) as context on a gated turn. They are folded into publicContextTools below, so the
+  * spec now differs from v20's recorded digest; the coordinator's next version records it. */
  version:20,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
@@ -142,7 +146,7 @@ export const HARNESS_SPEC=freeze({
  },
  offer:{
   /** Context tools that hold nothing about the person; the only ones a gated turn keeps. */
-  publicContextTools:['product_destinations','product_guidance','available_actions'],
+  publicContextTools:['product_destinations','product_guidance','available_actions','password_policy_guidance','correction_controls_guidance'],
   /** v17: the capability catalogue, offered only on an open turn whose words ask what the person can do, how, or to
    * import, set up, add or create something (lib/product-context/capability-intent.ts, revision below). Not a public
    * context tool, so a turn about another person, a file or a rule override never has it. */

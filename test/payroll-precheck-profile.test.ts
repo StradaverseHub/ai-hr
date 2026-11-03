@@ -17,7 +17,8 @@ describe('Payroll pre-check correction destinations',()=>{
   expect(page).toContain("payrollPrecheckProfileHref(r.employmentId, 'nothingPayable')");
   expect(page).toContain('payrollPrecheckProfileHref(r.employmentId, key)');
   expect(page).not.toContain('href={`/people/${r.employmentId}`}');
-  expect(page).toMatch(/payrollReadiness\(s,\s*\{\s*companyId: batch.companyId,\s*payPeriod: batch.payPeriod,\s*scope,/);
+  expect(page).toMatch(/const scope = \(batch\.scope \?\? null\) as BatchScope \| null;/);
+  expect(page).toMatch(/payrollReadiness\(s,\s*\{\s*id:\s*batchId,\s*runType:\s*batch\.runType,\s*payrollCycleId:\s*batch\.payrollCycleId,\s*companyId:\s*batch\.companyId,\s*payPeriod:\s*batch\.payPeriod,\s*scope,/);
   const target=readFileSync(new URL('../app/admin/personnel/[employmentId]/page.tsx',import.meta.url),'utf8');
   expect(target).toContain('await requireWorkforceAccess()');expect(target).toContain('tabKey="payroll"');expect(target).toContain('tabKey="bankStatutory"');
  });

@@ -1,4 +1,6 @@
-import { passwordChangeRequired, replacePassword } from './password-policy';
+import { readRememberedMfaPolicy, rememberedFactorValid, rememberVerifiedFactor } from './remembered-mfa';
+import { passwordChangeRequired, replacePassword, effectivePasswordPolicy } from './password-policy';
+import {admitPasswordAttempt} from './login-lockout';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { generateSecret, verify } from 'otplib';
 import { client } from '../../db/client';
@@ -13,13 +15,13 @@ export { assertActiveCredential } from './credential';
 export type { Credential } from './credential';
 
 type Challenge = { subject: string; version: string; phase: 'password' | 'enroll' | 'mfa'; attempts: number; native: boolean; expiresAt: number;
-  secret?: string; mfaPassed?: boolean; invitation?: string };
+  secret?: string; mfaPassed?: boolean; invitation?: string; rememberDays?: number; recoveryCodes?: string[] };
 /** lastActivity (web only, ADR-0171): the last reported user activity; absent on sessions created before idle sign-out. */
 type Session = { subject: string; version: string; family: string; native: boolean; absoluteExpiry: number; lastActivity?: number };
 type Refresh = Session & { used: boolean };
 export type Organization = { code: string; tenantId: string; name: string };
-export type AuthReply = { step: 'password' | 'enroll' | 'mfa'; challenge: string; secret?: string; account?: string } |
-  { step: 'complete'; access_token: string; refresh_token?: string; expires_in: number; recoveryCodes?: string[] } |
+export type AuthReply = { step: 'password' | 'enroll' | 'mfa'; challenge: string; secret?: string; account?: string; rememberDays?: number } |
+  { step: 'complete'; access_token: string; refresh_token?: string; expires_in: number; recoveryCodes?: string[]; remembered_device_token?: string; remembered_device_expires_in?: number } |
   { step: 'activated'; organization: string; recoveryCodes?: string[] };
 const SESSION_LIFE = 8 * 3600_000, ACCESS_LIFE = 15 * 60_000, CHALLENGE_LIFE = 10 * 60_000;
 const credentialKey = (subject: string) => `credential:${subject}`;
@@ -61,9 +63,9 @@ async function makeSession(tx: AuthSql, c: Credential, native: boolean, recovery
     ...(recoveryCodes ? { recoveryCodes } : {}) };
 }
 function reply(raw: string, c: Credential, challenge: Challenge): AuthReply {
-  return { step: challenge.phase, challenge: raw, ...(challenge.phase === 'enroll' ? { secret: challenge.secret, account: `${c.organization}:${c.username}` } : {}) };
+  return { step: challenge.phase, challenge: raw, ...(challenge.phase !== 'password' && challenge.rememberDays ? { rememberDays: challenge.rememberDays } : {}), ...(challenge.phase === 'enroll' ? { secret: challenge.secret, account: `${c.organization}:${c.username}` } : {}) };
 }
-export async function startLogin(input: { organization: string; username: string; password: string; native: boolean; sourceBudgeted?: boolean }): Promise<AuthReply> {
+export async function startLogin(input: { organization: string; username: string; password: string; native: boolean; sourceBudgeted?: boolean; rememberedDevice?: string }): Promise<AuthReply> {
   const org = canonicalOrg(input.organization), username = canonicalUsername(input.username);
   if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(org) || !/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username)) throw new InternalAuthError('invalidLogin');
   // Retain the legacy safety ceiling until a reviewed ingress supplies source admission.
@@ -72,23 +74,36 @@ export async function startLogin(input: { organization: string; username: string
   await takeRate(`login:${org}:${username}`, 10);
   const c = await credentialByLogin(org, username);
   const matched = await passwordMatches(input.password, c?.password || DUMMY_PASSWORD_HASH);
+  if (c?.enabled && !matched) await authTransaction(c.subject,async tx=>{
+    const current=await readRecord<Credential>(tx,credentialKey(c.subject),true);
+    if(current?.enabled&&current.password===c.password)await admitPasswordAttempt(tx,current,false);
+  });
   if (!c?.enabled || !matched) {
     await client.unsafe("select app.append_auth_event(NULL,'internal-login',$1::uuid,'app-user.login-refused','external',NULL,$2::jsonb)",
       [randomUUID(), JSON.stringify({ loginHash: digest(`${org}\0${username}`), reason: 'invalidCredentials' })]);
     throw new InternalAuthError('invalidLogin');
   }
-  return authTransaction(c.subject, async tx => {
+  const outcome = await authTransaction(c.subject, async tx => {
     const current = await readRecord<Credential>(tx, credentialKey(c.subject), true);
     if (!current?.enabled || current.version !== c.version || current.password !== c.password) throw new InternalAuthError('invalidLogin');
     const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [current.issuer, current.subject]);
     if (!principal[0] || principal[0].tenant_id !== current.tenantId) throw new InternalAuthError('invalidLogin');
+    if (!await admitPasswordAttempt(tx, current, true)) return null;
+    const requirements = (await effectivePasswordPolicy(tx, current.tenantId)).requirements;
+    if (current.totpSecret && !await passwordChangeRequired(tx, current) && await rememberedFactorValid(tx, current, input.native, input.rememberedDevice)) {
+      await audit(tx, current, 'app-user.mfa-remembered');
+      return makeSession(tx, current, input.native);
+    }
+    const rememberDays = (await readRememberedMfaPolicy(tx, current.tenantId)).policy.rememberDays;
     const raw = opaque();
-    const phase = current.totpSecret ? 'mfa' : await passwordChangeRequired(tx, current) ? 'password' : 'enroll';
-    const challenge: Challenge = { subject: c.subject, version: c.version, phase, attempts: 0, native: input.native, expiresAt: Date.now() + CHALLENGE_LIFE,
+    const phase = current.totpSecret ? 'mfa' : requirements?.firstResetVerification ? 'enroll' : await passwordChangeRequired(tx, current) ? 'password' : 'enroll';
+    const challenge: Challenge = { subject: c.subject, version: c.version, phase, attempts: 0, native: input.native, rememberDays, expiresAt: Date.now() + CHALLENGE_LIFE,
       ...(phase === 'enroll' ? { secret: generateSecret() } : {}) };
     await writeRecord(tx, `challenge:${digest(raw)}`, challenge, c.subject, challenge.expiresAt);
     return reply(raw, current, challenge);
   });
+  if(!outcome)throw new InternalAuthError('invalidLogin');
+  return outcome;
 }
 async function withChallenge(raw: string, native: boolean, operation: (tx: AuthSql, c: Credential, challenge: Challenge, key: string) => Promise<AuthReply | { failure: true }>) {
   if (!validOpaque(raw)) throw new InternalAuthError('invalidChallenge');
@@ -116,7 +131,7 @@ export async function changeInitialPassword(raw: string, password: string, nativ
     await revokeCredentialsSessions(tx, c.subject);
     await writeRecord(tx, credentialKey(c.subject), c, c.subject);
     await audit(tx, c, 'app-user.password-reset');
-    if (c.totpSecret && ch.mfaPassed) return makeSession(tx, c, ch.native);
+    if (c.totpSecret && ch.mfaPassed) return makeSession(tx, c, ch.native, ch.recoveryCodes);
     ch.version = c.version; ch.phase = 'enroll'; ch.secret = generateSecret();
     await writeRecord(tx, key, ch, c.subject, ch.expiresAt);
     return reply(raw, c, ch);
@@ -139,7 +154,7 @@ function consumeFactor(c: Credential, factor: { step?: number; recovery?: number
   if (factor.step !== undefined) c.lastStep = factor.step;
   if (factor.recovery !== undefined) c.recoveryHashes.splice(factor.recovery, 1);
 }
-export async function verifyMfa(raw: string, code: string, native = false): Promise<AuthReply> {
+export async function verifyMfa(raw: string, code: string, native = false, rememberDevice = false): Promise<AuthReply> {
   const initial = validOpaque(raw) ? await readRecord<Challenge>(client, `challenge:${digest(raw)}`) : null;
   if (initial) await takeRate(`mfa:${initial.subject}`, 15);
   return withChallenge(raw, native, async (tx, c, ch, key) => {
@@ -167,7 +182,7 @@ export async function verifyMfa(raw: string, code: string, native = false): Prom
     }
     await writeRecord(tx, credentialKey(c.subject), c, c.subject);
     if (await passwordChangeRequired(tx, c)) {
-      ch.phase = 'password'; ch.mfaPassed = true;
+      ch.phase = 'password'; ch.mfaPassed = true; if(codes)ch.recoveryCodes=codes;
       await writeRecord(tx, key, ch, c.subject, ch.expiresAt);
       return reply(raw, c, ch);
     }
@@ -177,7 +192,14 @@ export async function verifyMfa(raw: string, code: string, native = false): Prom
       await assertActiveCredential(tx, c);
       return { step: 'activated', organization: c.organization, recoveryCodes: codes };
     }
-    return makeSession(tx, c, ch.native, codes);
+    const session = await makeSession(tx, c, ch.native, codes);
+    // Recovery codes and forced-password/reset flows never mint a remembered-factor proof.
+    if (rememberDevice && factor.step !== undefined) {
+      const remembered = await rememberVerifiedFactor(tx, c, ch.native, ch.rememberDays ?? 0);
+      if (remembered.remembered_device_token) await audit(tx, c, 'app-user.mfa-device-remembered');
+      return { ...session, ...remembered };
+    }
+    return session;
   });
 }
 /** Web sessions also end after the organization's idle limit (ADR-0171); that check revokes and audits them. */
@@ -291,6 +313,7 @@ export async function updateDisabledCredential(subject: string, operation: 'pass
     } else if (operation === 'enable') {
       const p = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
       if (!c.password || !p[0] || p[0].tenant_id !== c.tenantId || !c.mustChange) throw new InternalAuthError('conflict');
+      c.mustChange=(await effectivePasswordPolicy(tx,c.tenantId)).requirements?.forceFirstChange??true;
       c.enabled = true;
     } else {
       await deleteRecord(tx, loginKey(c.organization, c.username)); await deleteRecord(tx, key); return;

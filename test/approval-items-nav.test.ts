@@ -164,11 +164,12 @@ describe('the count is the viewer\'s own pending queue, computed once', () => {
   it('it is NOT the bell\'s taskCount (which also folds in action notifications)', () => {
     // Deliberate divergence: the bell counts unread action-severity notifications too, which are not
     // approval records. The nav badge is strictly approval items.
-    expect(layout).toContain('taskCount={pendingTasks.length + taskNotifCount}');
-    expect(layout).not.toContain('approvalCount={pendingTasks.length + taskNotifCount}');
+    expect(layout).toContain('taskCount={pendingTaskCount + taskNotifCount}');
+    expect(layout).not.toContain('approvalCount={pendingTaskCount + taskNotifCount}');
     // Onboarding work joins My tasks/the bell, never the legacy Approval Items count.
-    expect(layout).toContain('const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask)];');
-    expect(layout).toContain('taskCount={pendingTasks.length}');
+    expect(layout).toContain('const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];');
+    expect(layout).toContain('const pendingTaskCount=approvalTasks.length+onboardingQueue.length+lifecycleInbox.count;');
+    expect(layout).toContain('taskCount={pendingTaskCount}');
   });
 
   it('each work row renders its own count only when positive', () => {

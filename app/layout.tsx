@@ -56,6 +56,8 @@ import {workforceViewScope} from '@/core/workforce-access';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import { listPendingTasks } from '@/core/approvals-inbox';
+import {lifecycleModuleInbox} from './lifecycle/module-inbox';
+import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
@@ -224,13 +226,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
   const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0};
+  const scopedLifecycleNavigation=await lifecycleModuleNavigation(session);
   const onboardingAccess=onboardingNav.module;
   const onboardingQueue = isModuleEnabledOrFalse(session, 'lifecycle') ? await onboardingTasks(session) : [];
   // Profile Changes now has its own Personnel queue. Count only tasks this inbox actually opens;
   // My tasks and the bell still contain every canonical task, without another query.
   const legacyApprovalCount = approvalTasks.filter(task => task.linkPath.split(/[?#]/, 1)[0] === '/approvals').length;
   const hasAssignedApproval = !canApprove && legacyApprovalCount>0;
-  const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask)];
+  const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
+  const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
+  const pendingTaskCount=approvalTasks.length+onboardingQueue.length+lifecycleInbox.count;
   const onboardingNoticesEnabled=isModuleEnabledOrFalse(session,'lifecycle');
   const [onboardingUnread,onboardingRead]=onboardingNoticesEnabled?await Promise.all([onboardingNotices(session),onboardingNotices(session,true)]):[[],[]];
   const onboardingUnreadCount=onboardingNoticesEnabled?await onboardingUnreadNoticeCount(session):0;
@@ -282,6 +287,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <Sidebar
               letterDestinations={letterDestinations}
               canConfigureLoginPresentation={isGroupAdmin(session)}
+              canConfigurePasswordPolicy={isGroupAdmin(session)&&internalSelected()}
               // ADR-0049: a partner is an admin who sees a subset, so it gets the admin nav group;
               // each page's route guard (requirePayrollAccess / requirePerfCompAccess) 403/redirects
               // the pages it can't enter. The cap ORs isAdmin into every partner capability so a user
@@ -311,8 +317,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // self-excluding, admin-only categories gated inside listPendingTasks. NOT the bell's
               // taskCount below, which also folds in unread action notifications (not approval records).
               approvalCount={legacyApprovalCount}
-              taskCount={pendingTasks.length}
+              taskCount={pendingTaskCount}
               onboardingAccess={onboardingAccess}
+              probationAccess={scopedLifecycleNavigation.probation}
+              contractStaffAccess={scopedLifecycleNavigation.contractStaff}
               onboardingV9Access={onboardingNav.v9}
               onboardingV9Navigation={onboardingNav.v9Navigation}
               onboardingJoinerCount={onboardingNav.joiners}
@@ -457,7 +465,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                     items={[...notifItems,...onboardingUnread]}
                     tasks={pendingTasks}
                     taskNotifications={taskNotifs}
-                    taskCount={pendingTasks.length + taskNotifCount}
+                    taskCount={pendingTaskCount + taskNotifCount}
                     readItems={[...readNotifs,...onboardingRead]}
                     history={approvalHistory}
                     canApprove={canApprove}

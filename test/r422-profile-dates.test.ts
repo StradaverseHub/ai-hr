@@ -286,11 +286,20 @@ async function seedEmployee() {
   const rows = await movementHistory(a, e.employmentId);
   const secondment = rows.find((r) => r.kind === 'secondment');
   expect(secondment, 'the fixture recorded a secondment').toBeDefined();
-  return { ...e, secondmentId: secondment!.id };
+  const editable=rows.find(row=>row.kind==='secondment'&&row.canEdit);
+  expect(editable,'the fixture provides a movement with actual edit authority').toBeDefined();
+  const hired=rows.find(row=>row.kind==='hired');
+  expect(hired,'the fixture recorded an actual Hired movement').toBeDefined();
+  return { ...e, hiredMovementId:hired!.id, secondmentId:secondment!.id, editableMovementId:editable!.id };
 }
 
+import {PersonnelMovementPage} from '../app/admin/personnel/[employmentId]/movement/movement-page';
+
 async function html(employmentId: string, sp: Record<string, string>): Promise<string> {
-  const tree = await EmployeePage({ params: Promise.resolve({ employmentId }), searchParams: Promise.resolve(sp) } as never);
+  const mode=sp.movement?'view':sp.editMovement?'edit':sp.newEvent?'new':sp.correctHire?'correct-hire':null;
+  const tree=mode
+    ? await PersonnelMovementPage({employmentId,mode,movementId:sp.movement??sp.editMovement,search:sp})
+    : await EmployeePage({params:Promise.resolve({employmentId}),searchParams:Promise.resolve(sp)} as never);
   const stream = await renderToReadableStream(tree, { onError: (err) => void console.error(err) });
   await stream.allReady;
   return await new Response(stream).text();
@@ -346,10 +355,10 @@ describe('r422 — the employee profile draws every date as DD-MMM-YYYY', () => 
     // eleven tabs; the views are the ones a query string opens inside the Movement tab.
     const views: Record<string, string>[] = [
       { tab: 'profile' },
-      { tab: 'careerMovement', movement: 'hired' },
+      { tab: 'careerMovement', movement: e.hiredMovementId },
       { tab: 'careerMovement', movement: e.secondmentId },
       { tab: 'careerMovement', newEvent: '1' },
-      { tab: 'careerMovement', editMovement: e.secondmentId },
+      { tab: 'careerMovement', editMovement: e.editableMovementId },
       { tab: 'careerMovement', correctHire: '1' },
       { tab: 'careerMovement', showCorrected: '1' },
     ];
@@ -358,7 +367,7 @@ describe('r422 — the employee profile draws every date as DD-MMM-YYYY', () => 
     const bare: string[] = [];
     let dateFields = 0;
     for (const sp of views) {
-      const markup = await html(e.employmentId, sp);
+      const markup = await html(e.employmentId, sp).catch(cause=>{throw new Error("Could not render the exact movement view: "+JSON.stringify(sp),{cause});});
       const strings = seenStrings(markup);
       raw.push(...strings.filter((t) => ISO.test(t)).map((t) => `${JSON.stringify(sp)} → ${t}`));
       seen.push(...strings);
